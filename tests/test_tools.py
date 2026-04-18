@@ -37,7 +37,6 @@ async def test_get_energy_history_returns_list(mock_ha):
     mock_ha.get_history.assert_awaited_once_with(entity_ids=ENERGY_ENTITY_IDS, days=1)
 
 
-from unittest.mock import patch
 from hiris.app.tools.weather_tools import get_weather_forecast
 
 
@@ -56,6 +55,9 @@ async def test_get_weather_forecast_returns_forecast():
         return mock_resp_data
 
     result = await get_weather_forecast(hours=2, _fetch=fake_fetch)
+    assert result["latitude"] is not None
+    assert result["longitude"] is not None
     assert len(result["hourly"]) == 2
+    assert result["hourly"][0]["time"] == "2026-04-18T12:00"
     assert result["hourly"][0]["temperature"] == 22.1
     assert result["hourly"][0]["cloudcover"] == 10

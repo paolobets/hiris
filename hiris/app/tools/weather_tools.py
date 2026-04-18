@@ -50,12 +50,12 @@ async def get_weather_forecast(
         "latitude": lat,
         "longitude": lon,
         "hourly": [
-            {
-                "time": times[i],
-                "temperature": hourly["temperature_2m"][i],
-                "cloudcover": hourly["cloudcover"][i],
-                "precipitation": hourly["precipitation"][i],
-            }
-            for i in range(len(times))
+            {"time": t, "temperature": temp, "cloudcover": cc, "precipitation": p}
+            for t, temp, cc, p in zip(
+                times,
+                hourly.get("temperature_2m", []),
+                hourly.get("cloudcover", []),
+                hourly.get("precipitation", []),
+            )
         ],
     }
