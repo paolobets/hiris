@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 import aiohttp
 from ..proxy.ha_client import HAClient
 
@@ -27,7 +26,11 @@ async def send_notification(ha: HAClient, message: str, channel: str, config: di
     """Send a notification via the specified channel."""
     if channel == "ha_push":
         service = config.get("ha_notify_service", "notify.notify")
-        domain, svc = service.split(".", 1)
+        try:
+            domain, svc = service.split(".", 1)
+        except ValueError:
+            logger.error("Invalid ha_notify_service format: %s (expected 'domain.service')", service)
+            return False
         return await ha.call_service(domain, svc, {"message": message})
 
     if channel == "telegram":

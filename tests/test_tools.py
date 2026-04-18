@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from hiris.app.tools.ha_tools import get_entity_states
 from hiris.app.tools.energy_tools import get_energy_history, ENERGY_ENTITY_IDS
 
@@ -106,4 +106,59 @@ async def test_toggle_automation_enable(mock_ha):
     assert result is True
     mock_ha.call_service.assert_awaited_with(
         "automation", "turn_on", {"entity_id": "automation.auto1"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_notification_telegram(mock_ha):
+    config = {"telegram_token": "test_token", "telegram_chat_id": "123456"}
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("aiohttp.ClientSession.post", return_value=mock_resp):
+        result = await send_notification(mock_ha, "Hello Telegram", "telegram", config)
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_send_notification_telegram_missing_credentials(mock_ha):
+    config = {}  # no token, no chat_id
+    result = await send_notification(mock_ha, "Hello", "telegram", config)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_send_notification_retropanel(mock_ha):
+    config = {"retropanel_url": "http://retropanel:8098"}
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("aiohttp.ClientSession.post", return_value=mock_resp):
+        result = await send_notification(mock_ha, "Hello kiosk", "retropanel", config)
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_disable(mock_ha):
+    mock_ha.call_service = AsyncMock(return_value=True)
+    result = await toggle_automation(mock_ha, "auto1", enabled=False)
+    assert result is True
+    mock_ha.call_service.assert_awaited_with(
+        "automation", "turn_off", {"entity_id": "automation.auto1"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_already_prefixed(mock_ha):
+    mock_ha.call_service = AsyncMock(return_value=True)
+    result = await trigger_automation(mock_ha, "automation.auto1")
+    assert result is True
+    mock_ha.call_service.assert_awaited_with(
+        "automation", "trigger", {"entity_id": "automation.auto1"}
     )
