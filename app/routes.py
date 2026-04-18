@@ -42,7 +42,7 @@ _INDEX_HTML = """\
   <div class="card">
     <h1>HIRIS</h1>
     <p class="subtitle">Home Intelligent Reasoning &amp; Integration System</p>
-    <span class="badge">Phase 0 — scaffold</span>
+    <span class="badge">v0.0.1 — experimental</span>
   </div>
 </body>
 </html>
@@ -54,7 +54,7 @@ async def handle_index(request: web.Request) -> web.Response:
 
 
 async def handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": "0.1.0"})
+    return web.json_response({"status": "ok", "version": "0.0.1"})
 
 
 def setup_routes(app: web.Application) -> None:
