@@ -68,11 +68,15 @@ def create_app() -> web.Application:
 
 async def _serve_index(request: web.Request) -> web.Response:
     path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if not os.path.exists(path):
+        return web.Response(text="UI not yet available", status=503)
     return web.FileResponse(path)
 
 
 async def _serve_config(request: web.Request) -> web.Response:
     path = os.path.join(os.path.dirname(__file__), "static", "config.html")
+    if not os.path.exists(path):
+        return web.Response(text="UI not yet available", status=503)
     return web.FileResponse(path)
 
 
