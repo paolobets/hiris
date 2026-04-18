@@ -48,24 +48,28 @@ class HAClient:
     async def call_service(self, domain: str, service: str, data: dict) -> bool:
         url = f"{self._base_url}/api/services/{domain}/{service}"
         async with self._session.post(url, json=data) as resp:
-            return resp.status == 200
+            if resp.status != 200:
+                body = await resp.text()
+                logger.error("call_service %s.%s failed %s: %s", domain, service, resp.status, body)
+                return False
+            return True
 
     async def get_automations(self) -> list[dict]:
-        url = f"{self._base_url}/api/config/automation/config"
+        url = f"{self._base_url}/api/states"
         async with self._session.get(url) as resp:
             resp.raise_for_status()
-            return await resp.json()
+            all_states: list[dict] = await resp.json()
+        return [s for s in all_states if s["entity_id"].startswith("automation.")]
 
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         self._state_listeners.append(callback)
 
-    def start_websocket(self) -> None:
+    async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url}/api/websocket"
         self._ws_task = asyncio.create_task(self._ws_loop(ws_url))
 
     async def _ws_loop(self, ws_url: str) -> None:
-        msg_id = 1
         try:
             async with self._session.ws_connect(ws_url) as ws:
                 auth_req = await ws.receive_json()
@@ -77,8 +81,7 @@ class HAClient:
                         logger.error("HA WebSocket auth failed")
                         return
 
-                await ws.send_json({"id": msg_id, "type": "subscribe_events", "event_type": "state_changed"})
-                msg_id += 1
+                await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
 
                 async for msg in ws:
                     if msg.type == aiohttp.WSMsgType.TEXT:
