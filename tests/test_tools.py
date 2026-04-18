@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
 from hiris.app.tools.ha_tools import get_entity_states
-from hiris.app.tools.energy_tools import get_energy_history
+from hiris.app.tools.energy_tools import get_energy_history, ENERGY_ENTITY_IDS
 
 
 @pytest.fixture
@@ -11,7 +11,10 @@ def mock_ha():
         {"entity_id": "light.living", "state": "on", "attributes": {"brightness": 200}}
     ])
     ha.get_history = AsyncMock(return_value=[
-        {"entity_id": "sensor.power", "state": "1.5", "last_changed": "2026-04-17T10:00:00"}
+        {"entity_id": "sensor.energy_consumption", "state": "1.5", "last_changed": "2026-04-17T10:00:00"},
+        {"entity_id": "sensor.solar_production", "state": "2.0", "last_changed": "2026-04-17T10:00:00"},
+        {"entity_id": "sensor.grid_import", "state": "0.5", "last_changed": "2026-04-17T10:00:00"},
+        {"entity_id": "sensor.grid_export", "state": "0.0", "last_changed": "2026-04-17T10:00:00"},
     ])
     return ha
 
@@ -27,6 +30,8 @@ async def test_get_entity_states_returns_dict(mock_ha):
 @pytest.mark.asyncio
 async def test_get_energy_history_returns_list(mock_ha):
     result = await get_energy_history(mock_ha, days=1)
-    assert len(result) == 1
-    assert result[0]["entity_id"] == "sensor.power"
-    mock_ha.get_history.assert_awaited_once()
+    assert len(result) == 4
+    entity_ids = [r["entity_id"] for r in result]
+    assert "sensor.energy_consumption" in entity_ids
+    assert "sensor.solar_production" in entity_ids
+    mock_ha.get_history.assert_awaited_once_with(entity_ids=ENERGY_ENTITY_IDS, days=1)
