@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HIRIS — Agent Designer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f1a;
+      color: #e2e8f0;
+      padding: 2rem;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 1.5rem; }
+    h1 a { color: #7c86b8; font-size: 0.8rem; margin-left: 1rem; text-decoration: none; }
+    .grid { display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; }
+    .panel { background: #1a1a2e; border: 1px solid #2d2d4a; border-radius: 12px; padding: 1rem; }
+    .panel h2 { font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1rem; }
+    .agent-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.6rem 0.75rem; border-radius: 8px; cursor: pointer;
+      font-size: 0.85rem; border: 1px solid transparent;
+    }
+    .agent-row:hover, .agent-row.active { border-color: #4a4a8a; background: #16162a; }
+    .agent-row .badge {
+      font-size: 0.7rem; padding: 0.1rem 0.5rem; border-radius: 999px;
+      background: #22c55e22; color: #22c55e;
+    }
+    .agent-row .badge.off { background: #64748b22; color: #64748b; }
+    #new-btn {
+      width: 100%; margin-top: 0.75rem;
+      background: #2d2d4a; border: 1px dashed #4a4a8a; color: #94a3b8;
+      padding: 0.6rem; border-radius: 8px; cursor: pointer; font-size: 0.85rem;
+    }
+    #new-btn:hover { background: #3d3d6a; }
+    label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.3rem; margin-top: 0.9rem; }
+    input[type=text], input[type=number], select, textarea {
+      width: 100%; background: #0f0f1a; border: 1px solid #2d2d4a;
+      border-radius: 8px; color: #e2e8f0; padding: 0.5rem 0.75rem;
+      font-size: 0.85rem; font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 80px; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #4a4a8a; }
+    .tool-checkboxes { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem; }
+    .tool-checkboxes label {
+      display: flex; align-items: center; gap: 0.3rem;
+      background: #0f0f1a; border: 1px solid #2d2d4a;
+      border-radius: 6px; padding: 0.3rem 0.6rem;
+      font-size: 0.75rem; color: #e2e8f0; cursor: pointer; margin: 0;
+    }
+    .actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
+    .actions button {
+      padding: 0.5rem 1.25rem; border-radius: 8px; font-size: 0.85rem; cursor: pointer; border: none;
+    }
+    #save-btn { background: #4a4a8a; color: #fff; }
+    #save-btn:hover { background: #5a5a9a; }
+    #delete-btn { background: #7f1d1d; color: #fca5a5; }
+    #delete-btn:hover { background: #991b1b; }
+    #run-btn { background: #1a3a2a; color: #4ade80; border: 1px solid #166534; }
+    #run-btn:hover { background: #166534; }
+    #run-output {
+      margin-top: 1rem; background: #0f0f1a; border: 1px solid #2d2d4a;
+      border-radius: 8px; padding: 0.75rem; font-size: 0.8rem; color: #94a3b8;
+      min-height: 60px; white-space: pre-wrap; display: none;
+    }
+    #no-selection { color: #64748b; font-size: 0.85rem; padding: 1rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Agent Designer <a href="/">← Chat</a></h1>
+  <div class="grid">
+    <div class="panel">
+      <h2>Agenti</h2>
+      <div id="agent-list"></div>
+      <button id="new-btn">+ Nuovo agente</button>
+    </div>
+    <div class="panel" id="editor">
+      <div id="no-selection">Seleziona un agente o creane uno nuovo.</div>
+      <div id="form" style="display:none">
+        <h2 id="form-title">Nuovo agente</h2>
+        <label>Nome</label>
+        <input type="text" id="f-name" placeholder="Es: Monitor energia">
+        <label>Tipo</label>
+        <select id="f-type">
+          <option value="monitor">Proactive Monitor</option>
+          <option value="reactive">Reactive Agent</option>
+          <option value="preventive">Preventive Scheduler</option>
+          <option value="chat">Chat NL Agent</option>
+        </select>
+        <div id="trigger-schedule">
+          <label>Intervallo (minuti)</label>
+          <input type="number" id="f-interval" value="5" min="1">
+        </div>
+        <div id="trigger-state" style="display:none">
+          <label>Entity ID (state_changed)</label>
+          <input type="text" id="f-entity" placeholder="Es: binary_sensor.garage_door">
+        </div>
+        <div id="trigger-cron" style="display:none">
+          <label>Cron expression (min ora [giorno mese weekday])</label>
+          <input type="text" id="f-cron" placeholder="0 6 (= ogni giorno alle 06:00)">
+        </div>
+        <label>System Prompt</label>
+        <textarea id="f-prompt" placeholder="Descrivi il comportamento dell'agente…"></textarea>
+        <label>Strumenti permessi</label>
+        <div class="tool-checkboxes" id="tool-checks"></div>
+        <label style="flex-direction:row;display:flex;align-items:center;gap:0.5rem;margin-top:0.9rem">
+          <input type="checkbox" id="f-enabled"> Abilitato
+        </label>
+        <div class="actions">
+          <button id="save-btn">Salva</button>
+          <button id="run-btn">Test Run</button>
+          <button id="delete-btn" style="display:none">Elimina</button>
+        </div>
+        <pre id="run-output"></pre>
+      </div>
+    </div>
+  </div>
+  <script>
+    const TOOLS = ['get_entity_states','get_energy_history','get_weather_forecast','call_ha_service','send_notification','get_ha_automations','trigger_automation','toggle_automation'];
+    const TRIGGER_TYPE_MAP = {monitor: 'schedule', reactive: 'state_changed', preventive: 'preventive', chat: 'manual'};
+
+    let agents = [];
+    let currentId = null;
+
+    async function loadAgents() {
+      try {
+        const r = await fetch('/api/agents');
+        agents = await r.json();
+        renderList();
+      } catch (e) { /* ignore */ }
+    }
+
+    function renderList() {
+      const el = document.getElementById('agent-list');
+      el.innerHTML = '';
+      agents.forEach(a => {
+        const row = document.createElement('div');
+        row.className = 'agent-row' + (a.id === currentId ? ' active' : '');
+        row.innerHTML = `<span>${a.name}</span><span class="badge ${a.enabled ? '' : 'off'}">${a.enabled ? 'ON' : 'OFF'}</span>`;
+        row.onclick = () => openAgent(a);
+        el.appendChild(row);
+      });
+    }
+
+    function buildToolChecks(selected) {
+      const el = document.getElementById('tool-checks');
+      el.innerHTML = '';
+      TOOLS.forEach(t => {
+        const lbl = document.createElement('label');
+        lbl.innerHTML = `<input type="checkbox" value="${t}" ${selected.includes(t) ? 'checked' : ''}> ${t}`;
+        el.appendChild(lbl);
+      });
+    }
+
+    function getSelectedTools() {
+      return [...document.querySelectorAll('#tool-checks input:checked')].map(i => i.value);
+    }
+
+    function showTriggerFields(type) {
+      document.getElementById('trigger-schedule').style.display = (type === 'monitor') ? '' : 'none';
+      document.getElementById('trigger-state').style.display = (type === 'reactive') ? '' : 'none';
+      document.getElementById('trigger-cron').style.display = (type === 'preventive') ? '' : 'none';
+    }
+
+    document.getElementById('f-type').onchange = e => showTriggerFields(e.target.value);
+
+    function openAgent(a) {
+      currentId = a.id;
+      document.getElementById('no-selection').style.display = 'none';
+      document.getElementById('form').style.display = '';
+      document.getElementById('form-title').textContent = a.name;
+      document.getElementById('f-name').value = a.name;
+      document.getElementById('f-type').value = a.type;
+      document.getElementById('f-interval').value = a.trigger?.interval_minutes || 5;
+      document.getElementById('f-entity').value = a.trigger?.entity_id || '';
+      document.getElementById('f-cron').value = a.trigger?.cron || '';
+      document.getElementById('f-prompt').value = a.system_prompt;
+      document.getElementById('f-enabled').checked = a.enabled;
+      document.getElementById('delete-btn').style.display = '';
+      document.getElementById('run-output').style.display = 'none';
+      buildToolChecks(a.allowed_tools || []);
+      showTriggerFields(a.type);
+      renderList();
+    }
+
+    document.getElementById('new-btn').onclick = () => {
+      currentId = null;
+      document.getElementById('no-selection').style.display = 'none';
+      document.getElementById('form').style.display = '';
+      document.getElementById('form-title').textContent = 'Nuovo agente';
+      document.getElementById('f-name').value = '';
+      document.getElementById('f-type').value = 'monitor';
+      document.getElementById('f-interval').value = 5;
+      document.getElementById('f-entity').value = '';
+      document.getElementById('f-cron').value = '';
+      document.getElementById('f-prompt').value = '';
+      document.getElementById('f-enabled').checked = true;
+      document.getElementById('delete-btn').style.display = 'none';
+      document.getElementById('run-output').style.display = 'none';
+      buildToolChecks([]);
+      showTriggerFields('monitor');
+    };
+
+    function buildPayload() {
+      const type = document.getElementById('f-type').value;
+      let trigger = {type: TRIGGER_TYPE_MAP[type]};
+      if (type === 'monitor') trigger.interval_minutes = parseInt(document.getElementById('f-interval').value) || 5;
+      if (type === 'reactive') trigger.entity_id = document.getElementById('f-entity').value;
+      if (type === 'preventive') trigger.cron = document.getElementById('f-cron').value;
+      return {
+        name: document.getElementById('f-name').value,
+        type,
+        trigger,
+        system_prompt: document.getElementById('f-prompt').value,
+        allowed_tools: getSelectedTools(),
+        enabled: document.getElementById('f-enabled').checked,
+      };
+    }
+
+    document.getElementById('save-btn').onclick = async () => {
+      const payload = buildPayload();
+      const method = currentId ? 'PUT' : 'POST';
+      const url = currentId ? `/api/agents/${currentId}` : '/api/agents';
+      const r = await fetch(url, {method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+      const a = await r.json();
+      await loadAgents();
+      openAgent(a);
+    };
+
+    document.getElementById('delete-btn').onclick = async () => {
+      if (!currentId || !confirm('Eliminare questo agente?')) return;
+      await fetch(`/api/agents/${currentId}`, {method: 'DELETE'});
+      currentId = null;
+      document.getElementById('form').style.display = 'none';
+      document.getElementById('no-selection').style.display = '';
+      await loadAgents();
+    };
+
+    document.getElementById('run-btn').onclick = async () => {
+      if (!currentId) return;
+      const out = document.getElementById('run-output');
+      out.style.display = '';
+      out.textContent = 'Esecuzione in corso…';
+      try {
+        const r = await fetch(`/api/agents/${currentId}/run`, {method: 'POST'});
+        const data = await r.json();
+        out.textContent = data.result || data.error || JSON.stringify(data);
+      } catch (e) {
+        out.textContent = 'Errore di connessione.';
+      }
+    };
+
+    loadAgents();
+  </script>
+</body>
+</html>
