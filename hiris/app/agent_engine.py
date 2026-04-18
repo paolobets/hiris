@@ -2,6 +2,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
@@ -34,6 +35,7 @@ class AgentEngine:
 
     async def start(self) -> None:
         self._ha.add_state_listener(self._on_state_changed)
+        await self._ha.start_websocket()
         self._scheduler.start()
         logger.info("AgentEngine started")
 
@@ -59,14 +61,16 @@ class AgentEngine:
     def get_agent(self, agent_id: str) -> Optional[Agent]:
         return self._agents.get(agent_id)
 
+    UPDATABLE_FIELDS = {"name", "type", "trigger", "system_prompt", "allowed_tools", "enabled"}
+
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
         agent = self._agents.get(agent_id)
         if not agent:
             return None
         self._unschedule_agent(agent_id)
-        for key, value in data.items():
-            if hasattr(agent, key):
-                setattr(agent, key, value)
+        for key in self.UPDATABLE_FIELDS:
+            if key in data:
+                setattr(agent, key, data[key])
         if agent.enabled:
             self._schedule_agent(agent)
         return agent
@@ -84,26 +88,45 @@ class AgentEngine:
     def _schedule_agent(self, agent: Agent) -> None:
         trigger = agent.trigger
         if trigger["type"] == "schedule":
-            minutes = trigger.get("interval_minutes", 5)
-            self._scheduler.add_job(
-                self._run_agent,
-                "interval",
-                minutes=minutes,
-                args=[agent],
-                id=agent.id,
-                replace_existing=True,
-            )
+            try:
+                minutes = trigger.get("interval_minutes", 5)
+                self._scheduler.add_job(
+                    self._run_agent,
+                    "interval",
+                    minutes=minutes,
+                    args=[agent],
+                    id=agent.id,
+                    replace_existing=True,
+                    coalesce=True,
+                )
+            except Exception as exc:
+                logger.error("Failed to schedule agent %s: %s", agent.id, exc)
         elif trigger["type"] == "preventive" and trigger.get("cron"):
-            parts = trigger["cron"].split()
-            self._scheduler.add_job(
-                self._run_agent,
-                "cron",
-                minute=parts[0],
-                hour=parts[1],
-                args=[agent],
-                id=agent.id,
-                replace_existing=True,
-            )
+            try:
+                parts = trigger["cron"].split()
+                if len(parts) < 2:
+                    logger.error("Invalid cron for agent %s: %s", agent.id, trigger["cron"])
+                    return
+                kwargs: dict = {
+                    "minute": parts[0],
+                    "hour": parts[1],
+                }
+                if len(parts) >= 3:
+                    kwargs["day"] = parts[2]
+                if len(parts) >= 4:
+                    kwargs["month"] = parts[3]
+                if len(parts) >= 5:
+                    kwargs["day_of_week"] = parts[4]
+                self._scheduler.add_job(
+                    self._run_agent,
+                    "cron",
+                    **kwargs,
+                    args=[agent],
+                    id=agent.id,
+                    replace_existing=True,
+                )
+            except Exception as exc:
+                logger.error("Failed to schedule agent %s: %s", agent.id, exc)
 
     def _unschedule_agent(self, agent_id: str) -> None:
         try:
@@ -116,11 +139,12 @@ class AgentEngine:
         for agent in self._agents.values():
             if not agent.enabled:
                 continue
-            if (
-                agent.trigger.get("type") == "state_changed"
-                and agent.trigger.get("entity_id") == entity_id
-            ):
-                asyncio.create_task(self._run_agent(agent, context=event_data))
+            if agent.trigger.get("type") == "state_changed" and agent.trigger.get("entity_id") == entity_id:
+                task = asyncio.create_task(self._run_agent(agent, context=event_data))
+                task.add_done_callback(
+                    lambda t: logger.error("Reactive agent task failed: %s", t.exception())
+                    if not t.cancelled() and t.exception() else None
+                )
 
     async def _run_agent(self, agent: Agent, context: Optional[dict] = None) -> str:
         if not self._claude_runner:
@@ -128,6 +152,7 @@ class AgentEngine:
             return ""
         logger.info("Running agent: %s (%s)", agent.name, agent.id)
         try:
+            agent.last_run = datetime.now(timezone.utc).isoformat()
             prompt = agent.system_prompt
             if context:
                 prompt = f"{prompt}\n\nContext: {context}"
