@@ -86,3 +86,80 @@ async def test_agents_crud(client):
 
     del_resp = await client.delete(f"/api/agents/{agent_id}")
     assert del_resp.status == 204
+
+
+@pytest.mark.asyncio
+async def test_chat_missing_message(client):
+    resp = await client.post("/api/chat", json={})
+    assert resp.status == 400
+    data = await resp.json()
+    assert "error" in data
+
+
+@pytest.mark.asyncio
+async def test_chat_no_runner(aiohttp_client):
+    app = create_app()
+    mock_ha = AsyncMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+
+    from hiris.app.agent_engine import AgentEngine
+    engine = AgentEngine(ha_client=mock_ha)
+    engine.start = AsyncMock()
+    engine.stop = AsyncMock()
+
+    app["ha_client"] = mock_ha
+    app["engine"] = engine
+    app["claude_runner"] = None
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+
+    c = await aiohttp_client(app)
+    resp = await c.post("/api/chat", json={"message": "Hello"})
+    assert resp.status == 503
+
+
+@pytest.mark.asyncio
+async def test_agent_not_found(client):
+    resp = await client.get("/api/agents/nonexistent-id")
+    assert resp.status == 404
+
+
+@pytest.mark.asyncio
+async def test_agent_update(client):
+    # Create
+    payload = {
+        "name": "Update Test",
+        "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "original",
+        "allowed_tools": [],
+        "enabled": False,
+    }
+    create_resp = await client.post("/api/agents", json=payload)
+    agent_id = (await create_resp.json())["id"]
+
+    # Update
+    update_resp = await client.put(f"/api/agents/{agent_id}", json={"system_prompt": "updated"})
+    assert update_resp.status == 200
+    data = await update_resp.json()
+    assert data["system_prompt"] == "updated"
+
+
+@pytest.mark.asyncio
+async def test_agent_run(client):
+    payload = {
+        "name": "Run Test",
+        "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "run test",
+        "allowed_tools": [],
+        "enabled": False,
+    }
+    create_resp = await client.post("/api/agents", json=payload)
+    agent_id = (await create_resp.json())["id"]
+
+    run_resp = await client.post(f"/api/agents/{agent_id}/run")
+    assert run_resp.status == 200
+    data = await run_resp.json()
+    assert "result" in data

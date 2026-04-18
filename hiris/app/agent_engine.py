@@ -82,6 +82,9 @@ class AgentEngine:
         del self._agents[agent_id]
         return True
 
+    async def run_agent(self, agent: "Agent") -> str:
+        return await self._run_agent(agent)
+
     def list_agents(self) -> dict[str, dict]:
         return {a.id: asdict(a) for a in self._agents.values()}
 

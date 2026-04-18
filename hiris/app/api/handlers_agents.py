@@ -58,5 +58,5 @@ async def handle_run_agent(request: web.Request) -> web.Response:
     agent = engine.get_agent(request.match_info["agent_id"])
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
-    result = await engine._run_agent(agent)
+    result = await engine.run_agent(agent)
     return web.json_response({"result": result})
