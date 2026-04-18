@@ -41,13 +41,13 @@ ALL_TOOL_DEFS = [
 ]
 
 MODEL = "claude-sonnet-4-6"
-MAX_TOKENS = 1024
+MAX_TOKENS = 4096
 MAX_TOOL_ITERATIONS = 10
 
 
 class ClaudeRunner:
     def __init__(self, api_key: str, ha_client: HAClient, notify_config: dict) -> None:
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._ha = ha_client
         self._notify_config = notify_config
 
@@ -63,13 +63,17 @@ class ClaudeRunner:
         messages.append({"role": "user", "content": user_message})
 
         for _ in range(MAX_TOOL_ITERATIONS):
-            response = self._client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
-                system=system_prompt,
-                tools=tools,
-                messages=messages,
-            )
+            try:
+                response = await self._client.messages.create(
+                    model=MODEL,
+                    max_tokens=MAX_TOKENS,
+                    system=system_prompt,
+                    tools=tools,
+                    messages=messages,
+                )
+            except anthropic.APIError as exc:
+                logger.error("Claude API error: %s", exc)
+                return f"Claude API error: {exc}"
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]
@@ -87,26 +91,34 @@ class ClaudeRunner:
                             "content": json.dumps(result),
                         })
                 messages.append({"role": "user", "content": tool_results})
+            else:
+                logger.warning("Unexpected stop_reason: %s", response.stop_reason)
+                text_blocks = [b.text for b in response.content if b.type == "text"]
+                return "\n".join(text_blocks) if text_blocks else f"Stopped: {response.stop_reason}"
 
         return "Max tool iterations reached."
 
     async def _dispatch_tool(self, name: str, inputs: dict) -> Any:
         logger.info("Tool call: %s(%s)", name, inputs)
-        if name == "get_entity_states":
-            return await get_entity_states(self._ha, inputs["ids"])
-        if name == "get_energy_history":
-            return await get_energy_history(self._ha, inputs["days"])
-        if name == "get_weather_forecast":
-            return await get_weather_forecast(inputs["hours"])
-        if name == "send_notification":
-            return await send_notification(self._ha, inputs["message"], inputs["channel"], self._notify_config)
-        if name == "get_ha_automations":
-            return await get_ha_automations(self._ha)
-        if name == "trigger_automation":
-            return await trigger_automation(self._ha, inputs["automation_id"])
-        if name == "toggle_automation":
-            return await toggle_automation(self._ha, inputs["automation_id"], inputs["enabled"])
-        if name == "call_ha_service":
-            return await self._ha.call_service(inputs["domain"], inputs["service"], inputs.get("data", {}))
-        logger.warning("Unknown tool: %s", name)
-        return {"error": f"Unknown tool: {name}"}
+        try:
+            if name == "get_entity_states":
+                return await get_entity_states(self._ha, inputs["ids"])
+            if name == "get_energy_history":
+                return await get_energy_history(self._ha, inputs["days"])
+            if name == "get_weather_forecast":
+                return await get_weather_forecast(inputs["hours"])
+            if name == "send_notification":
+                return await send_notification(self._ha, inputs["message"], inputs["channel"], self._notify_config)
+            if name == "get_ha_automations":
+                return await get_ha_automations(self._ha)
+            if name == "trigger_automation":
+                return await trigger_automation(self._ha, inputs["automation_id"])
+            if name == "toggle_automation":
+                return await toggle_automation(self._ha, inputs["automation_id"], inputs["enabled"])
+            if name == "call_ha_service":
+                return await self._ha.call_service(inputs["domain"], inputs["service"], inputs.get("data", {}))
+            logger.warning("Unknown tool: %s", name)
+            return {"error": f"Unknown tool: {name}"}
+        except Exception as exc:
+            logger.error("Tool %s failed: %s", name, exc)
+            return {"error": str(exc)}

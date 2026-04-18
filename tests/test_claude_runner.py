@@ -15,11 +15,12 @@ def mock_ha():
 
 @pytest.fixture
 def runner(mock_ha):
-    return ClaudeRunner(
-        api_key="test-key",
-        ha_client=mock_ha,
-        notify_config={},
-    )
+    with patch("anthropic.AsyncAnthropic"):
+        return ClaudeRunner(
+            api_key="test-key",
+            ha_client=mock_ha,
+            notify_config={},
+        )
 
 
 @pytest.mark.asyncio
@@ -28,9 +29,9 @@ async def test_chat_returns_text_response(runner):
     fake_message.stop_reason = "end_turn"
     fake_message.content = [MagicMock(type="text", text="Hello from Claude")]
 
-    with patch("anthropic.Anthropic") as MockClient:
+    with patch("anthropic.AsyncAnthropic") as MockClient:
         instance = MockClient.return_value
-        instance.messages.create.return_value = fake_message
+        instance.messages.create = AsyncMock(return_value=fake_message)
 
         runner._client = instance
         result = await runner.chat("Ciao")
@@ -60,9 +61,9 @@ async def test_chat_handles_tool_use(runner):
 
     runner._ha.get_states = AsyncMock(return_value=[{"entity_id": "light.living", "state": "on", "attributes": {}}])
 
-    with patch("anthropic.Anthropic") as MockClient:
+    with patch("anthropic.AsyncAnthropic") as MockClient:
         instance = MockClient.return_value
-        instance.messages.create.side_effect = [msg1, msg2]
+        instance.messages.create = AsyncMock(side_effect=[msg1, msg2])
         runner._client = instance
         result = await runner.chat("Is the light on?")
 
