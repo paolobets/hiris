@@ -1,3 +1,4 @@
+import fnmatch
 import json
 import logging
 from typing import Any, Optional
@@ -57,6 +58,8 @@ class ClaudeRunner:
         system_prompt: str = "You are HIRIS, an AI assistant for smart home management. Respond in the same language as the user.",
         allowed_tools: Optional[list[str]] = None,
         conversation_history: Optional[list[dict]] = None,
+        allowed_entities: Optional[list[str]] = None,
+        allowed_services: Optional[list[str]] = None,
     ) -> str:
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         messages: list[dict] = list(conversation_history or [])
@@ -84,7 +87,11 @@ class ClaudeRunner:
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        result = await self._dispatch_tool(block.name, block.input)
+                        result = await self._dispatch_tool(
+                            block.name, block.input,
+                            allowed_entities=allowed_entities,
+                            allowed_services=allowed_services,
+                        )
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
@@ -98,11 +105,21 @@ class ClaudeRunner:
 
         return "Max tool iterations reached."
 
-    async def _dispatch_tool(self, name: str, inputs: dict) -> Any:
+    async def _dispatch_tool(
+        self,
+        name: str,
+        inputs: dict,
+        allowed_entities: Optional[list[str]] = None,
+        allowed_services: Optional[list[str]] = None,
+    ) -> Any:
         logger.info("Tool call: %s(%s)", name, inputs)
         try:
             if name == "get_entity_states":
-                return await get_entity_states(self._ha, inputs["ids"])
+                ids = inputs["ids"]
+                if allowed_entities:
+                    ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
+                    logger.info("Filtered entity ids to: %s", ids)
+                return await get_entity_states(self._ha, ids)
             if name == "get_energy_history":
                 return await get_energy_history(self._ha, inputs["days"])
             if name == "get_weather_forecast":
@@ -116,7 +133,14 @@ class ClaudeRunner:
             if name == "toggle_automation":
                 return await toggle_automation(self._ha, inputs["automation_id"], inputs["enabled"])
             if name == "call_ha_service":
-                return await self._ha.call_service(inputs["domain"], inputs["service"], inputs.get("data", {}))
+                domain = inputs["domain"]
+                service = inputs["service"]
+                if allowed_services:
+                    service_key = f"{domain}.{service}"
+                    if not any(fnmatch.fnmatch(service_key, pat) for pat in allowed_services):
+                        logger.warning("Service %s.%s blocked by policy", domain, service)
+                        return {"error": f"Service {domain}.{service} not permitted by policy"}
+                return await self._ha.call_service(domain, service, inputs.get("data", {}))
             logger.warning("Unknown tool: %s", name)
             return {"error": f"Unknown tool: {name}"}
         except Exception as exc:
