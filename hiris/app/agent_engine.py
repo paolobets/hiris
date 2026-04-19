@@ -121,7 +121,7 @@ class AgentEngine:
             system_prompt=data.get("system_prompt", ""),
             allowed_tools=data.get("allowed_tools", []),
             enabled=data.get("enabled", True),
-            is_default=data.get("is_default", False),
+            is_default=False,
             strategic_context=data.get("strategic_context", ""),
             allowed_entities=data.get("allowed_entities", []),
             allowed_services=data.get("allowed_services", []),
