@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from hiris.app.claude_runner import ClaudeRunner
+from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT
 
 
 @pytest.fixture
@@ -156,3 +156,57 @@ async def test_allowed_services_empty_means_no_restriction(runner):
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
     await runner.chat("Accendi", allowed_services=[])
     runner._ha.call_service.assert_called_once()
+
+
+@pytest.fixture
+def restricted_runner(mock_ha):
+    with patch("anthropic.AsyncAnthropic"):
+        return ClaudeRunner(
+            api_key="test-key",
+            ha_client=mock_ha,
+            notify_config={},
+            restrict_to_home=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_restrict_to_home_injects_prompt(restricted_runner):
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs)
+        return MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="ok")])
+
+    restricted_runner._client.messages.create = capture
+    await restricted_runner.chat("Ciao")
+    system_used = captured[0]["system"]
+    assert "SOLO" in system_used or "solo" in system_used.lower()
+    assert RESTRICT_PROMPT in system_used
+
+
+@pytest.mark.asyncio
+async def test_restrict_to_home_false_does_not_inject(runner):
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs)
+        return MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="ok")])
+
+    runner._client.messages.create = capture
+    await runner.chat("Ciao", system_prompt="Prompt originale")
+    assert captured[0]["system"] == "Prompt originale"
+
+
+@pytest.mark.asyncio
+async def test_restrict_to_home_appends_to_existing_prompt(restricted_runner):
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs)
+        return MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="ok")])
+
+    restricted_runner._client.messages.create = capture
+    await restricted_runner.chat("Ciao", system_prompt="Sei un agente energia.")
+    system_used = captured[0]["system"]
+    assert "agente energia" in system_used
+    assert RESTRICT_PROMPT in system_used

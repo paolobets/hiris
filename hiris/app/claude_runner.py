@@ -45,12 +45,25 @@ MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
 MAX_TOOL_ITERATIONS = 10
 
+RESTRICT_PROMPT = (
+    "Sei HIRIS, assistente per la smart home. "
+    "Rispondi SOLO a domande relative alla casa, domotica, energia, clima, sicurezza. "
+    "Per qualsiasi altro argomento, rispondi educatamente che non puoi aiutare su quel tema."
+)
+
 
 class ClaudeRunner:
-    def __init__(self, api_key: str, ha_client: HAClient, notify_config: dict) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        ha_client: HAClient,
+        notify_config: dict,
+        restrict_to_home: bool = False,
+    ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._ha = ha_client
         self._notify_config = notify_config
+        self._restrict_to_home = restrict_to_home
 
     async def chat(
         self,
@@ -61,6 +74,9 @@ class ClaudeRunner:
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
     ) -> str:
+        effective_system = system_prompt
+        if self._restrict_to_home:
+            effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         messages: list[dict] = list(conversation_history or [])
         messages.append({"role": "user", "content": user_message})
@@ -70,7 +86,7 @@ class ClaudeRunner:
                 response = await self._client.messages.create(
                     model=MODEL,
                     max_tokens=MAX_TOKENS,
-                    system=system_prompt,
+                    system=effective_system,
                     tools=tools,
                     messages=messages,
                 )

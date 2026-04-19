@@ -28,9 +28,16 @@ async def _on_startup(app: web.Application) -> None:
         "telegram_chat_id": os.environ.get("TELEGRAM_CHAT_ID", ""),
         "retropanel_url": os.environ.get("RETROPANEL_URL", "http://retropanel:8098"),
     }
+    restrict_raw = os.environ.get("RESTRICT_CHAT_TO_HOME", "false").lower()
+    restrict_to_home = restrict_raw in ("true", "1", "yes")
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     if api_key:
-        runner = ClaudeRunner(api_key=api_key, ha_client=ha_client, notify_config=notify_config)
+        runner = ClaudeRunner(
+            api_key=api_key,
+            ha_client=ha_client,
+            notify_config=notify_config,
+            restrict_to_home=restrict_to_home,
+        )
         app["claude_runner"] = runner
         engine.set_claude_runner(runner)
     else:
