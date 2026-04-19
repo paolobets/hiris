@@ -178,3 +178,70 @@ async def test_delete_default_agent_returns_409(client):
     assert resp.status == 409
     data = await resp.json()
     assert "error" in data
+
+
+@pytest.mark.asyncio
+async def test_chat_with_agent_id_uses_agent_system_prompt(client):
+    from hiris.app.agent_engine import Agent
+    engine = client.app["engine"]
+    engine._agents["agent-chat-001"] = Agent(
+        id="agent-chat-001", name="Energia", type="chat",
+        trigger={"type": "manual"},
+        system_prompt="Sei un esperto di energia.",
+        allowed_tools=[], enabled=True, is_default=False,
+        strategic_context="Contesto: casa a Milano.",
+    )
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="risposta energia")
+
+    resp = await client.post("/api/chat", json={
+        "message": "quanto consumo?",
+        "agent_id": "agent-chat-001",
+    })
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["response"] == "risposta energia"
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "Contesto: casa a Milano." in call_kwargs["system_prompt"]
+    assert "esperto di energia" in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_chat_without_agent_id_uses_default_agent(client):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    engine = client.app["engine"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        trigger={"type": "manual"},
+        system_prompt="Prompt default HIRIS.",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="risposta default")
+
+    resp = await client.post("/api/chat", json={"message": "ciao"})
+    assert resp.status == 200
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "Prompt default HIRIS." in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_chat_with_unknown_agent_id_fallback_to_default(client):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    engine = client.app["engine"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        trigger={"type": "manual"},
+        system_prompt="Fallback prompt.",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="fallback")
+
+    resp = await client.post("/api/chat", json={
+        "message": "ciao",
+        "agent_id": "non-esiste-123",
+    })
+    assert resp.status == 200
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "Fallback prompt." in call_kwargs["system_prompt"]
