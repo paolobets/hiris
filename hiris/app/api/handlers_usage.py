@@ -33,4 +33,13 @@ async def handle_usage(request: web.Request) -> web.Response:
         "cost_usd": round(cost_usd, 6),
         "cost_eur": round(cost_eur, 6),
         "pricing_per_mtok": {"input_usd": prices["input"], "output_usd": prices["output"]},
+        "last_reset": getattr(runner, "usage_last_reset", None),
     })
+
+
+async def handle_reset_usage(request: web.Request) -> web.Response:
+    runner = request.app.get("claude_runner")
+    if runner is None:
+        return web.json_response({"error": "runner not configured"}, status=503)
+    runner.reset_usage()
+    return web.json_response({"reset": True, "last_reset": runner.usage_last_reset})

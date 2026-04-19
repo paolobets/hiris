@@ -235,11 +235,97 @@
       display: none;
       margin-top: 1rem;
     }
+
+    /* USAGE PANEL */
+    .usage-panel {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-top: 1.5rem;
+    }
+    .usage-panel h2 {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.75rem;
+    }
+    .usage-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .usage-stat {
+      background: var(--surface-2);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+    }
+    .usage-stat .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+    .usage-stat .stat-value {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .usage-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    #usage-last-reset {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    #usage-reset-btn {
+      background: var(--danger-bg);
+      color: var(--danger-text);
+      border: none;
+      border-radius: 8px;
+      padding: 0.45rem 1rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    #usage-reset-btn:hover { background: var(--danger); color: #fff; }
   </style>
 </head>
 <body>
   <h1>Agent Designer <a href="./">&#8592; Chat</a></h1>
-  <div class="grid">
+
+  <div class="usage-panel">
+    <h2>Consumi API</h2>
+    <div class="usage-stats">
+      <div class="usage-stat">
+        <div class="stat-label">Richieste</div>
+        <div class="stat-value" id="u-requests">—</div>
+      </div>
+      <div class="usage-stat">
+        <div class="stat-label">Token input</div>
+        <div class="stat-value" id="u-input">—</div>
+      </div>
+      <div class="usage-stat">
+        <div class="stat-label">Token output</div>
+        <div class="stat-value" id="u-output">—</div>
+      </div>
+      <div class="usage-stat">
+        <div class="stat-label">Costo (€)</div>
+        <div class="stat-value" id="u-cost">—</div>
+      </div>
+    </div>
+    <div class="usage-footer">
+      <span id="usage-last-reset"></span>
+      <button id="usage-reset-btn">Azzera contatori</button>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:1.5rem">
     <div class="panel">
       <h2>Agenti</h2>
       <div id="agent-list"></div>
@@ -532,6 +618,38 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
     };
 
     loadAgents();
+
+    function fmtNum(n) {
+      if (n == null) return '—';
+      return n >= 1000000 ? (n/1000000).toFixed(2) + 'M' : n >= 1000 ? (n/1000).toFixed(1) + 'k' : String(n);
+    }
+
+    async function loadUsage() {
+      try {
+        var r = await fetch('api/usage');
+        if (!r.ok) return;
+        var d = await r.json();
+        document.getElementById('u-requests').textContent = d.total_requests ?? '—';
+        document.getElementById('u-input').textContent = fmtNum(d.input_tokens);
+        document.getElementById('u-output').textContent = fmtNum(d.output_tokens);
+        document.getElementById('u-cost').textContent = d.cost_eur != null ? '€' + d.cost_eur.toFixed(4) : '—';
+        if (d.last_reset) {
+          var dt = new Date(d.last_reset);
+          document.getElementById('usage-last-reset').textContent = 'Azzerato il ' + dt.toLocaleString('it-IT');
+        }
+      } catch(e) {}
+    }
+
+    document.getElementById('usage-reset-btn').onclick = async function() {
+      if (!confirm('Azzerare i contatori di utilizzo API?')) return;
+      try {
+        var r = await fetch('api/usage/reset', {method: 'POST'});
+        if (r.ok) await loadUsage();
+      } catch(e) {}
+    };
+
+    loadUsage();
+    setInterval(loadUsage, 30000);
   </script>
 </body>
 </html>

@@ -5,7 +5,7 @@ from .api.handlers_chat import handle_chat
 from .api.handlers_agents import handle_list_agents, handle_create_agent, handle_get_agent, handle_update_agent, handle_delete_agent, handle_run_agent
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
-from .api.handlers_usage import handle_usage
+from .api.handlers_usage import handle_usage, handle_reset_usage
 from .agent_engine import AgentEngine
 from .proxy.ha_client import HAClient
 
@@ -35,12 +35,14 @@ async def _on_startup(app: web.Application) -> None:
     restrict_to_home = restrict_raw in ("true", "1", "yes")
     app["theme"] = os.environ.get("THEME", "auto")
     api_key = os.environ.get("CLAUDE_API_KEY", "")
+    usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     if api_key:
         runner = ClaudeRunner(
             api_key=api_key,
             ha_client=ha_client,
             notify_config=notify_config,
             restrict_to_home=restrict_to_home,
+            usage_path=usage_path,
         )
         app["claude_runner"] = runner
         engine.set_claude_runner(runner)
@@ -68,6 +70,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/status", handle_status)
     app.router.add_get("/api/config", handle_config)
     app.router.add_get("/api/usage", handle_usage)
+    app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/agents", handle_list_agents)
     app.router.add_post("/api/agents", handle_create_agent)

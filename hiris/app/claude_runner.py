@@ -1,6 +1,8 @@
 import fnmatch
 import json
 import logging
+import os
+from datetime import datetime, timezone
 from typing import Any, Optional
 import anthropic
 from .proxy.ha_client import HAClient
@@ -60,15 +62,58 @@ class ClaudeRunner:
         ha_client: HAClient,
         notify_config: dict,
         restrict_to_home: bool = False,
+        usage_path: str = "",
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._ha = ha_client
         self._notify_config = notify_config
         self._restrict_to_home = restrict_to_home
+        self._usage_path = usage_path
         self.last_tool_calls: list[dict] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
         self.total_requests: int = 0
+        self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
+        self._load_usage()
+
+    def _load_usage(self) -> None:
+        if not self._usage_path or not os.path.exists(self._usage_path):
+            return
+        try:
+            with open(self._usage_path, encoding="utf-8") as f:
+                data = json.load(f)
+            self.total_input_tokens = data.get("total_input_tokens", 0)
+            self.total_output_tokens = data.get("total_output_tokens", 0)
+            self.total_requests = data.get("total_requests", 0)
+            self.usage_last_reset = data.get("last_reset", self.usage_last_reset)
+        except Exception as exc:
+            logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
+
+    def _save_usage(self) -> None:
+        if not self._usage_path:
+            return
+        try:
+            data = {
+                "schema_version": 1,
+                "total_input_tokens": self.total_input_tokens,
+                "total_output_tokens": self.total_output_tokens,
+                "total_requests": self.total_requests,
+                "last_reset": self.usage_last_reset,
+            }
+            tmp = self._usage_path + ".tmp"
+            os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, self._usage_path)
+        except Exception as exc:
+            logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
+
+    def reset_usage(self) -> None:
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_requests = 0
+        self.usage_last_reset = datetime.now(timezone.utc).isoformat()
+        self._save_usage()
 
     async def chat(
         self,
@@ -103,6 +148,7 @@ class ClaudeRunner:
             self.total_input_tokens += response.usage.input_tokens
             self.total_output_tokens += response.usage.output_tokens
             self.total_requests += 1
+            self._save_usage()
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]
