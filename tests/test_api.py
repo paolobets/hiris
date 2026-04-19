@@ -7,7 +7,7 @@ from hiris.app.agent_engine import AgentEngine
 
 
 @pytest_asyncio.fixture
-async def client(aiohttp_client):
+async def client(aiohttp_client, tmp_path):
     app = create_app()
 
     mock_ha = AsyncMock()
@@ -17,7 +17,7 @@ async def client(aiohttp_client):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = AgentEngine(ha_client=mock_ha)
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
 

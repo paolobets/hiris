@@ -226,10 +226,10 @@ class AgentEngine:
                 continue
             if agent.trigger.get("type") == "state_changed" and agent.trigger.get("entity_id") == entity_id:
                 task = asyncio.create_task(self._run_agent(agent, context=event_data))
-                task.add_done_callback(
-                    lambda t: logger.error("Reactive agent task failed: %s", t.exception())
-                    if not t.cancelled() and t.exception() else None
-                )
+                def _on_task_done(t: asyncio.Task) -> None:
+                    if not t.cancelled() and (exc := t.exception()):
+                        logger.error("Reactive agent task failed: %s", exc)
+                task.add_done_callback(_on_task_done)
 
     async def _run_agent(self, agent: Agent, context: Optional[dict] = None) -> str:
         if not self._claude_runner:
@@ -252,8 +252,10 @@ class AgentEngine:
                 allowed_services=agent.allowed_services or None,
             )
             agent.last_result = result
+            self._save()
             return result
         except Exception as exc:
             logger.error("Agent %s failed: %s", agent.name, exc)
             agent.last_result = f"Error: {exc}"
+            self._save()
             return agent.last_result
