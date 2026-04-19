@@ -43,6 +43,7 @@
       --terminal-bg:   #0d1117;
       --terminal-text: #58a6ff;
       --terminal-border:#30363d;
+      --save-color:    #fff;
     }
 
     [data-theme="light"] {
@@ -83,6 +84,7 @@
       --terminal-bg:   #F8FAFC;
       --terminal-text: #2563EB;
       --terminal-border:#E2E8F0;
+      --save-color:    #fff;
     }
 
     @media (prefers-color-scheme: light) {
@@ -124,6 +126,7 @@
         --terminal-bg:   #F8FAFC;
         --terminal-text: #2563EB;
         --terminal-border:#E2E8F0;
+        --save-color:    #fff;
       }
     }
 
@@ -168,7 +171,7 @@
     .actions button {
       padding: 0.5rem 1.25rem; border-radius: 8px; font-size: 0.85rem; cursor: pointer; border: none;
     }
-    #save-btn { background: var(--save-bg); color: #fff; }
+    #save-btn { background: var(--save-bg); color: var(--save-color); }
     #save-btn:hover { background: var(--save-hover); }
     #delete-btn { background: var(--danger-bg); color: var(--danger-text); }
     #delete-btn:hover { background: var(--danger); }
