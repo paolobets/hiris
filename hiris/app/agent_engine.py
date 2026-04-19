@@ -94,6 +94,28 @@ class AgentEngine:
         except Exception as exc:
             logger.error("Failed to load agents from %s: %s", self._data_path, exc)
 
+    _DEFAULT_SYSTEM_PROMPT = (
+        "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
+        "Strumenti disponibili:\n"
+        "- get_entity_states(ids): stato attuale dei dispositivi. Passa [] per TUTTI gli stati di casa.\n"
+        "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
+        "- get_ha_automations(): elenco delle automazioni.\n"
+        "- get_energy_history(days): storico consumi energetici.\n"
+        "- get_weather_forecast(hours): previsioni meteo.\n"
+        "- call_ha_service(domain, service, data): controlla dispositivi.\n\n"
+        "Regole:\n"
+        "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
+        "- Per scoprire cosa c'è in casa chiama get_area_entities() e/o get_entity_states([]).\n"
+        "- Non inventare dati: usa gli strumenti.\n"
+        "- Rispondi nella lingua dell'utente."
+    )
+
+    # Old factory prompts that can be safely overwritten on upgrade
+    _LEGACY_DEFAULT_PROMPTS = {
+        "Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente.",
+        "You are HIRIS, an AI assistant for smart home management. Respond in the same language as the user.",
+    }
+
     def _seed_default_agent(self) -> None:
         if DEFAULT_AGENT_ID not in self._agents:
             agent = Agent(
@@ -101,27 +123,19 @@ class AgentEngine:
                 name="HIRIS",
                 type="chat",
                 trigger={"type": "manual"},
-                system_prompt=(
-                    "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
-                    "Strumenti disponibili:\n"
-                    "- get_entity_states(ids): stato attuale dei dispositivi. Passa [] per TUTTI gli stati di casa.\n"
-                    "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
-                    "- get_ha_automations(): elenco delle automazioni.\n"
-                    "- get_energy_history(days): storico consumi energetici.\n"
-                    "- get_weather_forecast(hours): previsioni meteo.\n"
-                    "- call_ha_service(domain, service, data): controlla dispositivi.\n\n"
-                    "Regole:\n"
-                    "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
-                    "- Per scoprire cosa c'è in casa chiama get_area_entities() e/o get_entity_states([]).\n"
-                    "- Non inventare dati: usa gli strumenti.\n"
-                    "- Rispondi nella lingua dell'utente."
-                ),
+                system_prompt=self._DEFAULT_SYSTEM_PROMPT,
                 allowed_tools=[],
                 enabled=True,
                 is_default=True,
             )
             self._agents[DEFAULT_AGENT_ID] = agent
             self._save()
+        else:
+            agent = self._agents[DEFAULT_AGENT_ID]
+            if agent.system_prompt in self._LEGACY_DEFAULT_PROMPTS:
+                agent.system_prompt = self._DEFAULT_SYSTEM_PROMPT
+                self._save()
+                logger.info("Migrated default agent system prompt to v0.0.7")
 
     def get_default_agent(self) -> Optional[Agent]:
         return self._agents.get(DEFAULT_AGENT_ID)
