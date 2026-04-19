@@ -441,7 +441,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-entities').value = (a.allowed_entities || []).join('\n');
       document.getElementById('f-services').value = (a.allowed_services || []).join('\n');
       document.getElementById('f-enabled').checked = a.enabled;
-      document.getElementById('delete-btn').style.display = '';
+      document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
       document.getElementById('run-output').style.display = 'none';
       buildToolChecks(a.allowed_tools || []);
       showTriggerFields(a.type);

@@ -65,6 +65,7 @@ class ClaudeRunner:
         self._ha = ha_client
         self._notify_config = notify_config
         self._restrict_to_home = restrict_to_home
+        self.last_tool_calls: list[dict] = []
 
     async def chat(
         self,
@@ -75,6 +76,7 @@ class ClaudeRunner:
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
     ) -> str:
+        self.last_tool_calls = []
         effective_system = system_prompt
         if self._restrict_to_home:
             effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
@@ -109,6 +111,7 @@ class ClaudeRunner:
                             allowed_entities=allowed_entities,
                             allowed_services=allowed_services,
                         )
+                        self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
@@ -134,7 +137,7 @@ class ClaudeRunner:
             if name == "get_area_entities":
                 return await get_area_entities(self._ha)
             if name == "get_entity_states":
-                ids = inputs["ids"]
+                ids = inputs.get("ids", [])
                 if allowed_entities:
                     ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                     logger.info("Filtered entity ids to: %s", ids)

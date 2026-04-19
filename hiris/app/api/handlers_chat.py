@@ -57,4 +57,6 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_entities=allowed_entities,
         allowed_services=allowed_services,
     )
-    return web.json_response({"response": response})
+    raw = getattr(runner, "last_tool_calls", None)
+    tools_called = raw if isinstance(raw, list) else []
+    return web.json_response({"response": response, "debug": {"tools_called": tools_called}})

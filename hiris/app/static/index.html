@@ -284,6 +284,21 @@
     .msg-row.assistant .msg-col { align-items: flex-start; }
     .msg-time { font-size: 0.65rem; color: #9CA3AF; margin-top: 0.25rem; padding: 0 0.25rem; }
 
+    /* DEBUG TOOLS */
+    .debug-row { align-self: flex-start; margin-left: 36px; margin-top: -0.5rem; }
+    .debug-summary {
+      font-size: 0.68rem; color: var(--text-muted); cursor: pointer;
+      padding: 0.15rem 0.4rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.3rem;
+    }
+    .debug-summary:hover { background: var(--surface-hover); }
+    .debug-body {
+      font-size: 0.7rem; color: var(--text-muted); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem;
+      margin-top: 0.25rem; font-family: monospace;
+    }
+    .debug-tool { margin-bottom: 0.25rem; }
+    .debug-tool:last-child { margin-bottom: 0; }
+
     /* TYPING */
     .typing-row { display: flex; align-items: flex-end; gap: 0.5rem; align-self: flex-start; }
     .typing-bubble {
@@ -324,8 +339,7 @@
       color: var(--text);
       background: var(--input-bg);
       resize: none;
-      max-height: 120px;
-      overflow-y: auto;
+      overflow-y: hidden;
       line-height: 1.5;
       transition: border-color 0.15s;
     }
@@ -473,6 +487,21 @@ function appendMsg(role, text) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+function appendDebug(tools) {
+  var row = document.createElement('div');
+  row.className = 'debug-row';
+  var body = tools.map(function(t) {
+    var inp = JSON.stringify(t.input);
+    return '<div class="debug-tool">&#x1F527; <b>' + esc(t.tool) + '</b>(' + esc(inp) + ')</div>';
+  }).join('');
+  row.innerHTML =
+    '<details>' +
+    '<summary class="debug-summary">&#x1F50D; ' + tools.length + ' tool' + (tools.length > 1 ? 's' : '') + ' chiamati</summary>' +
+    '<div class="debug-body">' + body + '</div>' +
+    '</details>';
+  messagesEl.appendChild(row);
+}
+
 function showTyping() {
   var row = document.createElement('div');
   row.className = 'typing-row';
@@ -508,6 +537,9 @@ async function sendMessage(text) {
     var data = await r.json();
     typing.remove();
     appendMsg('assistant', data.response || data.error || 'Errore sconosciuto');
+    if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
+      appendDebug(data.debug.tools_called);
+    }
     currentHistory().push({role:'user', content:text});
     currentHistory().push({role:'assistant', content: data.response || ''});
     if (currentHistory().length > 40) histories[activeAgentId] = currentHistory().slice(-40);
@@ -523,7 +555,7 @@ function sendQuick(text) { sendMessage(text); }
 
 function autoResize() {
   inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+  inputEl.style.height = inputEl.scrollHeight + 'px';
 }
 
 inputEl.addEventListener('input', autoResize);

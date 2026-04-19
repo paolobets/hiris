@@ -101,7 +101,21 @@ class AgentEngine:
                 name="HIRIS",
                 type="chat",
                 trigger={"type": "manual"},
-                system_prompt="Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente.",
+                system_prompt=(
+                    "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
+                    "Strumenti disponibili:\n"
+                    "- get_entity_states(ids): stato attuale dei dispositivi. Passa [] per TUTTI gli stati di casa.\n"
+                    "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
+                    "- get_ha_automations(): elenco delle automazioni.\n"
+                    "- get_energy_history(days): storico consumi energetici.\n"
+                    "- get_weather_forecast(hours): previsioni meteo.\n"
+                    "- call_ha_service(domain, service, data): controlla dispositivi.\n\n"
+                    "Regole:\n"
+                    "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
+                    "- Per scoprire cosa c'è in casa chiama get_area_entities() e/o get_entity_states([]).\n"
+                    "- Non inventare dati: usa gli strumenti.\n"
+                    "- Rispondi nella lingua dell'utente."
+                ),
                 allowed_tools=[],
                 enabled=True,
                 is_default=True,

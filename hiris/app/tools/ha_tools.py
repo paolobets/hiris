@@ -4,9 +4,10 @@ from ..proxy.ha_client import HAClient
 TOOL_DEF = {
     "name": "get_entity_states",
     "description": (
-        "Get current states of one or more Home Assistant entities. "
+        "Get current states of Home Assistant entities. "
+        "Pass an empty list [] to get ALL entity states in the home. "
         "Returns state, attributes, friendly_name, and last_changed for each entity. "
-        "Use get_area_entities first if you need to know which entities belong to a room."
+        "Call with [] to discover everything, or with specific IDs for targeted queries."
     ),
     "input_schema": {
         "type": "object",
@@ -14,10 +15,11 @@ TOOL_DEF = {
             "ids": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "List of entity IDs, e.g. ['light.living_room', 'sensor.temperature']",
+                "description": "List of entity IDs to query. Pass [] to get ALL entities.",
+                "default": [],
             }
         },
-        "required": ["ids"],
+        "required": [],
     },
 }
 
