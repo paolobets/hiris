@@ -48,6 +48,8 @@
       transition: background 0.15s;
     }
     .agent-item:hover { background: #F3F4F6; }
+    .agent-item.agent-active { background: #EFF6FF; }
+    .agent-item.agent-active:hover { background: #DBEAFE; }
     .badge {
       font-size: 0.62rem;
       font-weight: 600;
@@ -288,11 +290,14 @@ var agentListEl= document.getElementById('agent-list');
 var welcomeEl  = document.getElementById('welcome');
 var connDot    = document.getElementById('conn-dot');
 
-var history = [];
+var histories = {};
+var activeAgentId = 'hiris-default';
 var hasMessages = false;
 
-var BADGE_CLASS = { monitor:'badge-monitor', reactive:'badge-reactive', preventive:'badge-preventive', chat:'badge-chat' };
-var BADGE_LABEL = { monitor:'Monitor', reactive:'Reactive', preventive:'Prevent.', chat:'Chat' };
+function currentHistory() {
+  if (!histories[activeAgentId]) histories[activeAgentId] = [];
+  return histories[activeAgentId];
+}
 
 async function loadAgents() {
   try {
@@ -301,21 +306,32 @@ async function loadAgents() {
     var agents = await r.json();
     connDot.classList.remove('offline');
     agentListEl.innerHTML = '';
-    agents.forEach(function(a) {
+    var chatAgents = agents.filter(function(a) { return a.type === 'chat'; });
+    chatAgents.forEach(function(a) {
       var div = document.createElement('div');
-      div.className = 'agent-item';
-      var lastRun = a.last_run ? new Date(a.last_run).toLocaleString('it-IT') : 'Mai';
-      div.title = 'Ultimo run: ' + lastRun;
-      var badgeClass = a.enabled ? (BADGE_CLASS[a.type] || 'badge-monitor') : 'badge-off';
+      div.className = 'agent-item' + (a.id === activeAgentId ? ' agent-active' : '');
+      div.style.cursor = 'pointer';
+      div.onclick = function() { setActiveAgent(a.id, a.name); };
       div.innerHTML =
         '<div class="status-dot ' + (a.enabled ? 'dot-on' : 'dot-off') + '"></div>' +
         '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.name) + '</span>' +
-        '<span class="badge ' + badgeClass + '">' + (BADGE_LABEL[a.type] || a.type) + '</span>';
+        (a.is_default ? '<span style="font-size:0.6rem;color:#9CA3AF;margin-left:0.25rem">default</span>' : '');
       agentListEl.appendChild(div);
     });
   } catch(e) {
     connDot.classList.add('offline');
   }
+}
+
+function setActiveAgent(agentId, agentName) {
+  if (agentId === activeAgentId) return;
+  activeAgentId = agentId;
+  messagesEl.innerHTML = '';
+  messagesEl.appendChild(welcomeEl);
+  welcomeEl.style.display = '';
+  hasMessages = false;
+  document.getElementById('header-title').textContent = agentName;
+  loadAgents();
 }
 
 function nowHHMM() {
@@ -370,14 +386,18 @@ async function sendMessage(text) {
     var r = await fetch('api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: text, history: history}),
+      body: JSON.stringify({
+        message: text,
+        history: currentHistory(),
+        agent_id: activeAgentId,
+      }),
     });
     var data = await r.json();
     typing.remove();
     appendMsg('assistant', data.response || data.error || 'Errore sconosciuto');
-    history.push({role:'user', content:text});
-    history.push({role:'assistant', content: data.response || ''});
-    if (history.length > 40) history = history.slice(-40);
+    currentHistory().push({role:'user', content:text});
+    currentHistory().push({role:'assistant', content: data.response || ''});
+    if (currentHistory().length > 40) histories[activeAgentId] = currentHistory().slice(-40);
   } catch(e) {
     typing.remove();
     appendMsg('assistant', 'Errore di connessione. Riprova tra poco.');
