@@ -94,3 +94,66 @@ async def test_call_service_returns_false_on_error(client):
         await client.stop()
 
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_get_area_registry_returns_list(client):
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value=[
+        {"area_id": "cucina", "name": "Cucina", "floor_id": None},
+        {"area_id": "soggiorno", "name": "Soggiorno", "floor_id": None},
+    ])
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+    with patch("aiohttp.ClientSession.get", return_value=mock_resp):
+        await client.start()
+        result = await client.get_area_registry()
+        await client.stop()
+    assert len(result) == 2
+    assert result[0]["area_id"] == "cucina"
+
+
+@pytest.mark.asyncio
+async def test_get_area_registry_returns_empty_on_404(client):
+    mock_resp = AsyncMock()
+    mock_resp.status = 404
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+    with patch("aiohttp.ClientSession.get", return_value=mock_resp):
+        await client.start()
+        result = await client.get_area_registry()
+        await client.stop()
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_entity_registry_returns_list(client):
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value=[
+        {"entity_id": "light.luce_cucina", "area_id": "cucina", "name": "Luce cucina"},
+        {"entity_id": "sensor.temp", "area_id": None, "name": "Temperatura"},
+    ])
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+    with patch("aiohttp.ClientSession.get", return_value=mock_resp):
+        await client.start()
+        result = await client.get_entity_registry()
+        await client.stop()
+    assert len(result) == 2
+    assert result[0]["entity_id"] == "light.luce_cucina"
+    assert result[0]["area_id"] == "cucina"
+
+
+@pytest.mark.asyncio
+async def test_get_entity_registry_returns_empty_on_error(client):
+    mock_resp = AsyncMock()
+    mock_resp.status = 401
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+    with patch("aiohttp.ClientSession.get", return_value=mock_resp):
+        await client.start()
+        result = await client.get_entity_registry()
+        await client.stop()
+    assert result == []

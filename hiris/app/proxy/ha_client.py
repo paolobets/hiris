@@ -61,6 +61,30 @@ class HAClient:
             all_states: list[dict] = await resp.json()
         return [s for s in all_states if s["entity_id"].startswith("automation.")]
 
+    async def get_area_registry(self) -> list[dict]:
+        url = f"{self._base_url}/api/config/area_registry/list"
+        try:
+            async with self._session.get(url, headers=self._headers) as resp:
+                if resp.status != 200:
+                    logger.debug("area_registry not available (HTTP %s)", resp.status)
+                    return []
+                return await resp.json()
+        except Exception as exc:
+            logger.debug("area_registry fetch failed: %s", exc)
+            return []
+
+    async def get_entity_registry(self) -> list[dict]:
+        url = f"{self._base_url}/api/config/entity_registry/list"
+        try:
+            async with self._session.get(url, headers=self._headers) as resp:
+                if resp.status != 200:
+                    logger.debug("entity_registry not available (HTTP %s)", resp.status)
+                    return []
+                return await resp.json()
+        except Exception as exc:
+            logger.debug("entity_registry fetch failed: %s", exc)
+            return []
+
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         self._state_listeners.append(callback)
 
