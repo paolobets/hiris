@@ -3,6 +3,7 @@
 export LOG_LEVEL=$(bashio::config 'log_level' 'info')
 export CLAUDE_API_KEY=$(bashio::config 'claude_api_key')
 export RESTRICT_CHAT_TO_HOME=$(bashio::config 'restrict_chat_to_home' 'false')
+export THEME=$(bashio::config 'theme' 'auto')
 
 bashio::log.info "Starting HIRIS v0.0.3"
 bashio::log.info "Log level: ${LOG_LEVEL}"

@@ -28,6 +28,7 @@ async def client(aiohttp_client, tmp_path):
     app["ha_client"] = mock_ha
     app["engine"] = engine
     app["claude_runner"] = mock_runner
+    app["theme"] = "auto"
 
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -245,3 +246,12 @@ async def test_chat_with_unknown_agent_id_fallback_to_default(client):
     assert resp.status == 200
     call_kwargs = runner.chat.call_args.kwargs
     assert "Fallback prompt." in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_config_endpoint_returns_theme(client):
+    resp = await client.get("/api/config")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "theme" in data
+    assert data["theme"] in ("light", "dark", "auto")

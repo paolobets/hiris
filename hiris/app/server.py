@@ -4,6 +4,7 @@ from aiohttp import web
 from .api.handlers_chat import handle_chat
 from .api.handlers_agents import handle_list_agents, handle_create_agent, handle_get_agent, handle_update_agent, handle_delete_agent, handle_run_agent
 from .api.handlers_status import handle_status
+from .api.handlers_config import handle_config
 from .agent_engine import AgentEngine
 from .proxy.ha_client import HAClient
 
@@ -31,6 +32,7 @@ async def _on_startup(app: web.Application) -> None:
     }
     restrict_raw = os.environ.get("RESTRICT_CHAT_TO_HOME", "false").lower()
     restrict_to_home = restrict_raw in ("true", "1", "yes")
+    app["theme"] = os.environ.get("THEME", "auto")
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     if api_key:
         runner = ClaudeRunner(
@@ -63,6 +65,7 @@ def create_app() -> web.Application:
     app.router.add_get("/config", _serve_config)
     app.router.add_get("/api/health", _handle_health)
     app.router.add_get("/api/status", handle_status)
+    app.router.add_get("/api/config", handle_config)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/agents", handle_list_agents)
     app.router.add_post("/api/agents", handle_create_agent)

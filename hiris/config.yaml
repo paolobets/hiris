@@ -27,7 +27,9 @@ options:
   claude_api_key: ""
   log_level: "info"
   restrict_chat_to_home: false
+  theme: "auto"
 schema:
   claude_api_key: password
   log_level: "list(debug|info|warning|error)"
   restrict_chat_to_home: bool
+  theme: "list(light|dark|auto)"
