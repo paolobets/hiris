@@ -254,4 +254,4 @@ async def test_config_endpoint_returns_theme(client):
     assert resp.status == 200
     data = await resp.json()
     assert "theme" in data
-    assert data["theme"] in ("light", "dark", "auto")
+    assert data["theme"] == "auto"
