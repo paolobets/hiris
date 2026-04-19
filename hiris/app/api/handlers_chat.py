@@ -1,4 +1,8 @@
+import logging
+
 from aiohttp import web
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_chat(request: web.Request) -> web.Response:
@@ -34,10 +38,12 @@ async def handle_chat(request: web.Request) -> web.Response:
             system_prompt = agent.system_prompt or (
                 "Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente."
             )
+        # [] converts to None (unrestricted); non-empty list acts as whitelist
         allowed_tools = agent.allowed_tools or None
         allowed_entities = agent.allowed_entities or None
         allowed_services = agent.allowed_services or None
     else:
+        logger.warning("No agent found (requested: %s). Using fallback prompt.", agent_id)
         system_prompt = "Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente."
         allowed_tools = None
         allowed_entities = None
