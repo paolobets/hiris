@@ -6,7 +6,7 @@ async def handle_status(request: web.Request) -> web.Response:
     engine = request.app["engine"]
     agents = engine.list_agents()
     return web.json_response({
-        "version": "0.0.7",
+        "version": "0.0.8",
         "agents": {
             "total": len(agents),
             "enabled": sum(1 for a in agents.values() if a["enabled"]),
