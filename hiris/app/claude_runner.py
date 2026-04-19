@@ -4,7 +4,7 @@ import logging
 from typing import Any, Optional
 import anthropic
 from .proxy.ha_client import HAClient
-from .tools.ha_tools import get_entity_states, TOOL_DEF as HA_TOOL
+from .tools.ha_tools import get_entity_states, TOOL_DEF as HA_TOOL, get_area_entities, GET_AREA_ENTITIES_TOOL_DEF
 from .tools.energy_tools import get_energy_history, TOOL_DEF as ENERGY_TOOL
 from .tools.weather_tools import get_weather_forecast, TOOL_DEF as WEATHER_TOOL
 from .tools.notify_tools import send_notification, TOOL_DEF as NOTIFY_TOOL
@@ -32,6 +32,7 @@ CALL_SERVICE_TOOL_DEF = {
 
 ALL_TOOL_DEFS = [
     HA_TOOL,
+    GET_AREA_ENTITIES_TOOL_DEF,
     ENERGY_TOOL,
     WEATHER_TOOL,
     NOTIFY_TOOL,
@@ -130,6 +131,8 @@ class ClaudeRunner:
     ) -> Any:
         logger.info("Tool call: %s(%s)", name, inputs)
         try:
+            if name == "get_area_entities":
+                return await get_area_entities(self._ha)
             if name == "get_entity_states":
                 ids = inputs["ids"]
                 if allowed_entities:

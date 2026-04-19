@@ -198,6 +198,35 @@ async def test_restrict_to_home_false_does_not_inject(runner):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_get_area_entities(runner):
+    runner._ha.get_area_registry = AsyncMock(return_value=[
+        {"area_id": "cucina", "name": "Cucina"}
+    ])
+    runner._ha.get_entity_registry = AsyncMock(return_value=[
+        {"entity_id": "light.luce_cucina", "area_id": "cucina"}
+    ])
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.id = "tu_area"
+    tool_block.name = "get_area_entities"
+    tool_block.input = {}
+    text_block = MagicMock(type="text", text="Cucina: light.luce_cucina")
+    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
+    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
+    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
+    result = await runner.chat("Accendi le luci della cucina")
+    assert result == "Cucina: light.luce_cucina"
+    runner._ha.get_area_registry.assert_awaited_once()
+    runner._ha.get_entity_registry.assert_awaited_once()
+
+
+def test_get_area_entities_in_all_tool_defs():
+    from hiris.app.claude_runner import ALL_TOOL_DEFS
+    names = [t["name"] for t in ALL_TOOL_DEFS]
+    assert "get_area_entities" in names
+
+
+@pytest.mark.asyncio
 async def test_restrict_to_home_appends_to_existing_prompt(restricted_runner):
     captured = []
 
