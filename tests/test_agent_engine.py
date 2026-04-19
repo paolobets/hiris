@@ -1,4 +1,5 @@
 import asyncio
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.agent_engine import AgentEngine, Agent
@@ -187,9 +188,6 @@ async def test_run_agent_no_strategic_context_plain_prompt(engine):
     system_prompt_used = call_kwargs.kwargs.get("system_prompt", "")
     assert "---" not in system_prompt_used
     assert system_prompt_used == "Semplice monitor."
-
-
-import json, os
 
 
 def test_create_agent_persists_to_file(engine, tmp_path):

@@ -54,12 +54,15 @@ class AgentEngine:
         logger.info("AgentEngine stopped")
 
     def _save(self) -> None:
-        data = {"schema_version": 1, "agents": [asdict(a) for a in self._agents.values()]}
-        tmp = self._data_path + ".tmp"
-        os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, default=str)
-        os.replace(tmp, self._data_path)
+        try:
+            data = {"schema_version": 1, "agents": [asdict(a) for a in self._agents.values()]}
+            tmp = self._data_path + ".tmp"
+            os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, default=str)
+            os.replace(tmp, self._data_path)
+        except Exception as exc:
+            logger.error("Failed to persist agents to %s: %s", self._data_path, exc)
 
     def _load(self) -> None:
         if not os.path.exists(self._data_path):
