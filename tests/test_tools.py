@@ -162,3 +162,77 @@ async def test_trigger_automation_already_prefixed(mock_ha):
     mock_ha.call_service.assert_awaited_with(
         "automation", "trigger", {"entity_id": "automation.auto1"}
     )
+
+
+from hiris.app.tools.ha_tools import get_area_entities
+
+
+@pytest.mark.asyncio
+async def test_get_entity_states_includes_friendly_name():
+    ha = AsyncMock()
+    ha.get_states = AsyncMock(return_value=[{
+        "entity_id": "light.cucina",
+        "state": "on",
+        "attributes": {"brightness": 200, "friendly_name": "Luce Cucina"},
+        "last_changed": "2026-04-19T10:00:00",
+    }])
+    result = await get_entity_states(ha, ["light.cucina"])
+    assert result["light.cucina"]["friendly_name"] == "Luce Cucina"
+    assert result["light.cucina"]["state"] == "on"
+
+
+@pytest.mark.asyncio
+async def test_get_entity_states_friendly_name_none_when_missing():
+    ha = AsyncMock()
+    ha.get_states = AsyncMock(return_value=[{
+        "entity_id": "sensor.temp",
+        "state": "22.5",
+        "attributes": {},
+        "last_changed": "2026-04-19T10:00:00",
+    }])
+    result = await get_entity_states(ha, ["sensor.temp"])
+    assert result["sensor.temp"]["friendly_name"] is None
+    assert "state" in result["sensor.temp"]
+
+
+@pytest.fixture
+def mock_ha_with_areas():
+    ha = AsyncMock()
+    ha.get_area_registry = AsyncMock(return_value=[
+        {"area_id": "cucina", "name": "Cucina"},
+        {"area_id": "soggiorno", "name": "Soggiorno"},
+    ])
+    ha.get_entity_registry = AsyncMock(return_value=[
+        {"entity_id": "light.luce_cucina", "area_id": "cucina"},
+        {"entity_id": "switch.presa_cucina", "area_id": "cucina"},
+        {"entity_id": "light.luce_soggiorno", "area_id": "soggiorno"},
+        {"entity_id": "sensor.no_area", "area_id": None},
+    ])
+    return ha
+
+
+@pytest.mark.asyncio
+async def test_get_area_entities_groups_by_area(mock_ha_with_areas):
+    result = await get_area_entities(mock_ha_with_areas)
+    assert "Cucina" in result
+    assert "light.luce_cucina" in result["Cucina"]
+    assert "switch.presa_cucina" in result["Cucina"]
+    assert "Soggiorno" in result
+    assert "light.luce_soggiorno" in result["Soggiorno"]
+
+
+@pytest.mark.asyncio
+async def test_get_area_entities_no_area_sentinel(mock_ha_with_areas):
+    result = await get_area_entities(mock_ha_with_areas)
+    assert "__no_area__" in result
+    assert "sensor.no_area" in result["__no_area__"]
+
+
+@pytest.mark.asyncio
+async def test_get_area_entities_empty_when_registries_unavailable():
+    ha = AsyncMock()
+    ha.get_area_registry = AsyncMock(return_value=[])
+    ha.get_entity_registry = AsyncMock(return_value=[])
+    result = await get_area_entities(ha)
+    assert "Cucina" not in result
+    assert "Soggiorno" not in result
