@@ -18,7 +18,8 @@ async def _on_startup(app: web.Application) -> None:
     await ha_client.start()
     app["ha_client"] = ha_client
 
-    engine = AgentEngine(ha_client=ha_client)
+    data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
+    engine = AgentEngine(ha_client=ha_client, data_path=data_path)
     await engine.start()
     app["engine"] = engine
 

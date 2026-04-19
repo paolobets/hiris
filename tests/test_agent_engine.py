@@ -10,8 +10,8 @@ def mock_ha():
 
 
 @pytest.fixture
-def engine(mock_ha):
-    return AgentEngine(ha_client=mock_ha)
+def engine(mock_ha, tmp_path):
+    return AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
 
 
 def test_create_agent_stores_agent(engine):
@@ -187,3 +187,74 @@ async def test_run_agent_no_strategic_context_plain_prompt(engine):
     system_prompt_used = call_kwargs.kwargs.get("system_prompt", "")
     assert "---" not in system_prompt_used
     assert system_prompt_used == "Semplice monitor."
+
+
+import json, os
+
+
+def test_create_agent_persists_to_file(engine, tmp_path):
+    engine.create_agent({
+        "name": "Persist Test", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "test", "allowed_tools": [], "enabled": False,
+    })
+    path = tmp_path / "agents.json"
+    assert path.exists()
+    data = json.loads(path.read_text())
+    assert data["schema_version"] == 1
+    assert any(a["name"] == "Persist Test" for a in data["agents"])
+
+
+def test_delete_agent_removes_from_file(engine, tmp_path):
+    agent = engine.create_agent({
+        "name": "ToDelete", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    engine.delete_agent(agent.id)
+    data = json.loads((tmp_path / "agents.json").read_text())
+    assert not any(a["id"] == agent.id for a in data["agents"])
+
+
+def test_load_agents_from_existing_file(mock_ha, tmp_path):
+    path = tmp_path / "agents.json"
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "agents": [{
+            "id": "loaded-001",
+            "name": "Loaded Agent",
+            "type": "monitor",
+            "trigger": {"type": "schedule", "interval_minutes": 10},
+            "system_prompt": "loaded",
+            "allowed_tools": [],
+            "enabled": False,
+            "is_default": False,
+            "last_run": None,
+            "last_result": None,
+            "strategic_context": "",
+            "allowed_entities": [],
+            "allowed_services": [],
+        }]
+    }))
+    eng = AgentEngine(ha_client=mock_ha, data_path=str(path))
+    eng._load()
+    assert "loaded-001" in eng._agents
+    assert eng._agents["loaded-001"].name == "Loaded Agent"
+
+
+def test_load_missing_file_is_noop(mock_ha, tmp_path):
+    eng = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "nonexistent.json"))
+    eng._load()  # must not raise
+    assert len(eng._agents) == 0
+
+
+def test_update_agent_persists_to_file(engine, tmp_path):
+    agent = engine.create_agent({
+        "name": "Update Me", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "original", "allowed_tools": [], "enabled": False,
+    })
+    engine.update_agent(agent.id, {"system_prompt": "updated"})
+    data = json.loads((tmp_path / "agents.json").read_text())
+    entry = next(a for a in data["agents"] if a["id"] == agent.id)
+    assert entry["system_prompt"] == "updated"

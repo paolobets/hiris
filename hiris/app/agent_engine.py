@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -8,6 +10,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_AGENTS_DATA_PATH = "/data/agents.json"
 
 
 @dataclass
@@ -24,27 +28,66 @@ class Agent:
     strategic_context: str = ""
     allowed_entities: list[str] = field(default_factory=list)
     allowed_services: list[str] = field(default_factory=list)
+    is_default: bool = False
 
 
 class AgentEngine:
-    def __init__(self, ha_client: HAClient) -> None:
-        self._ha = ha_client
+    def __init__(self, ha_client: HAClient, data_path: str = DEFAULT_AGENTS_DATA_PATH) -> None:
         self._agents: dict[str, Agent] = {}
         self._scheduler = AsyncIOScheduler()
         self._claude_runner: Any = None  # set after init via set_claude_runner()
+        self._ha = ha_client
+        self._data_path = data_path
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
 
     async def start(self) -> None:
+        self._scheduler.start()
         self._ha.add_state_listener(self._on_state_changed)
         await self._ha.start_websocket()
-        self._scheduler.start()
+        self._load()
         logger.info("AgentEngine started")
 
     async def stop(self) -> None:
         self._scheduler.shutdown(wait=False)
         logger.info("AgentEngine stopped")
+
+    def _save(self) -> None:
+        data = {"schema_version": 1, "agents": [asdict(a) for a in self._agents.values()]}
+        tmp = self._data_path + ".tmp"
+        os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, default=str)
+        os.replace(tmp, self._data_path)
+
+    def _load(self) -> None:
+        if not os.path.exists(self._data_path):
+            return
+        try:
+            with open(self._data_path, encoding="utf-8") as f:
+                data = json.load(f)
+            for raw in data.get("agents", []):
+                agent = Agent(
+                    id=raw["id"],
+                    name=raw["name"],
+                    type=raw["type"],
+                    trigger=raw["trigger"],
+                    system_prompt=raw.get("system_prompt", ""),
+                    allowed_tools=raw.get("allowed_tools", []),
+                    enabled=raw.get("enabled", True),
+                    is_default=raw.get("is_default", False),
+                    last_run=raw.get("last_run"),
+                    last_result=raw.get("last_result"),
+                    strategic_context=raw.get("strategic_context", ""),
+                    allowed_entities=raw.get("allowed_entities", []),
+                    allowed_services=raw.get("allowed_services", []),
+                )
+                self._agents[agent.id] = agent
+                if agent.enabled and agent.type in ("monitor", "preventive"):
+                    self._schedule_agent(agent)
+        except Exception as exc:
+            logger.error("Failed to load agents from %s: %s", self._data_path, exc)
 
     def create_agent(self, data: dict) -> Agent:
         agent = Agent(
@@ -55,6 +98,7 @@ class AgentEngine:
             system_prompt=data.get("system_prompt", ""),
             allowed_tools=data.get("allowed_tools", []),
             enabled=data.get("enabled", True),
+            is_default=data.get("is_default", False),
             strategic_context=data.get("strategic_context", ""),
             allowed_entities=data.get("allowed_entities", []),
             allowed_services=data.get("allowed_services", []),
@@ -62,6 +106,7 @@ class AgentEngine:
         self._agents[agent.id] = agent
         if agent.enabled:
             self._schedule_agent(agent)
+        self._save()
         return agent
 
     def get_agent(self, agent_id: str) -> Optional[Agent]:
@@ -82,13 +127,18 @@ class AgentEngine:
                 setattr(agent, key, data[key])
         if agent.enabled:
             self._schedule_agent(agent)
+        self._save()
         return agent
 
     def delete_agent(self, agent_id: str) -> bool:
-        if agent_id not in self._agents:
+        agent = self._agents.get(agent_id)
+        if agent is None:
+            return False
+        if agent.is_default:
             return False
         self._unschedule_agent(agent_id)
         del self._agents[agent_id]
+        self._save()
         return True
 
     async def run_agent(self, agent: "Agent") -> str:
