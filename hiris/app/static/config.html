@@ -68,7 +68,7 @@
   </style>
 </head>
 <body>
-  <h1>Agent Designer <a href="/">← Chat</a></h1>
+  <h1>Agent Designer <a href="./">← Chat</a></h1>
   <div class="grid">
     <div class="panel">
       <h2>Agenti</h2>
@@ -125,7 +125,7 @@
 
     async function loadAgents() {
       try {
-        const r = await fetch('/api/agents');
+        const r = await fetch('api/agents');
         agents = await r.json();
         renderList();
       } catch (e) { /* ignore */ }
@@ -221,7 +221,7 @@
     document.getElementById('save-btn').onclick = async () => {
       const payload = buildPayload();
       const method = currentId ? 'PUT' : 'POST';
-      const url = currentId ? `/api/agents/${currentId}` : '/api/agents';
+      const url = currentId ? `api/agents/${currentId}` : 'api/agents';
       const r = await fetch(url, {method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)});
       const a = await r.json();
       await loadAgents();
@@ -230,7 +230,7 @@
 
     document.getElementById('delete-btn').onclick = async () => {
       if (!currentId || !confirm('Eliminare questo agente?')) return;
-      await fetch(`/api/agents/${currentId}`, {method: 'DELETE'});
+      await fetch(`api/agents/${currentId}`, {method: 'DELETE'});
       currentId = null;
       document.getElementById('form').style.display = 'none';
       document.getElementById('no-selection').style.display = '';
@@ -243,7 +243,7 @@
       out.style.display = '';
       out.textContent = 'Esecuzione in corso…';
       try {
-        const r = await fetch(`/api/agents/${currentId}/run`, {method: 'POST'});
+        const r = await fetch(`api/agents/${currentId}/run`, {method: 'POST'});
         const data = await r.json();
         out.textContent = data.result || data.error || JSON.stringify(data);
       } catch (e) {

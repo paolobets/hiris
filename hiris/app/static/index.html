@@ -104,7 +104,7 @@
   <div id="sidebar">
     <h2>Agents</h2>
     <div id="agent-list"></div>
-    <a class="config-link" href="/config">+ Configura agenti</a>
+    <a class="config-link" href="config">+ Configura agenti</a>
   </div>
   <div id="main">
     <div id="header">HIRIS — Home Intelligent Reasoning &amp; Integration System</div>
@@ -124,7 +124,7 @@
 
     async function loadAgents() {
       try {
-        const r = await fetch('/api/agents');
+        const r = await fetch('api/agents');
         const agents = await r.json();
         agentListEl.innerHTML = '';
         agents.forEach(a => {
@@ -153,7 +153,7 @@
       appendMsg('user', text);
       const thinking = appendMsg('assistant thinking', 'Sto ragionando…');
       try {
-        const r = await fetch('/api/chat', {
+        const r = await fetch('api/chat', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({message: text, history}),

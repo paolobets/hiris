@@ -3,7 +3,7 @@
 export LOG_LEVEL=$(bashio::config 'log_level' 'info')
 export CLAUDE_API_KEY=$(bashio::config 'claude_api_key')
 
-bashio::log.info "Starting HIRIS v0.0.1"
+bashio::log.info "Starting HIRIS v0.0.2"
 bashio::log.info "Log level: ${LOG_LEVEL}"
 
 cd /usr/lib/hiris
