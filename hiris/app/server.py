@@ -5,6 +5,7 @@ from .api.handlers_chat import handle_chat
 from .api.handlers_agents import handle_list_agents, handle_create_agent, handle_get_agent, handle_update_agent, handle_delete_agent, handle_run_agent
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
+from .api.handlers_usage import handle_usage
 from .agent_engine import AgentEngine
 from .proxy.ha_client import HAClient
 
@@ -66,6 +67,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/health", _handle_health)
     app.router.add_get("/api/status", handle_status)
     app.router.add_get("/api/config", handle_config)
+    app.router.add_get("/api/usage", handle_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/agents", handle_list_agents)
     app.router.add_post("/api/agents", handle_create_agent)

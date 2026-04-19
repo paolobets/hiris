@@ -182,6 +182,9 @@
     #sidebar-footer {
       padding: 0.75rem 1rem;
       border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
     }
     #sidebar-footer a {
       color: var(--text-muted);
@@ -192,6 +195,18 @@
       gap: 0.4rem;
     }
     #sidebar-footer a:hover { color: var(--text); }
+    #usage-widget {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+    #usage-widget .usage-row { display: flex; justify-content: space-between; align-items: center; }
+    #usage-widget .usage-label { opacity: 0.7; }
+    #usage-widget .usage-val { font-variant-numeric: tabular-nums; }
 
     /* MAIN */
     #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -376,6 +391,20 @@
     <div id="agent-list"></div>
     <div id="sidebar-footer">
       <a href="config">&#9881; Configura agenti</a>
+      <div id="usage-widget">
+        <div class="usage-row">
+          <span class="usage-label">&#x1F4AC; Token</span>
+          <span class="usage-val" id="u-tokens">—</span>
+        </div>
+        <div class="usage-row">
+          <span class="usage-label">&#x1F4B0; Costo</span>
+          <span class="usage-val" id="u-cost">—</span>
+        </div>
+        <div class="usage-row">
+          <span class="usage-label">&#x1F504; Richieste</span>
+          <span class="usage-val" id="u-reqs">—</span>
+        </div>
+      </div>
     </div>
   </aside>
   <main id="main">
@@ -576,10 +605,26 @@ async function applyTheme() {
     }
   } catch(e) {}
 }
+async function loadUsage() {
+  try {
+    var r = await fetch('api/usage');
+    if (!r.ok) return;
+    var d = await r.json();
+    var tok = (d.total_tokens || 0).toLocaleString('it-IT');
+    var usd = d.cost_usd != null ? '$' + d.cost_usd.toFixed(4) : '—';
+    var eur = d.cost_eur != null ? ' / €' + d.cost_eur.toFixed(4) : '';
+    document.getElementById('u-tokens').textContent = tok;
+    document.getElementById('u-cost').textContent = usd + eur;
+    document.getElementById('u-reqs').textContent = d.total_requests || 0;
+  } catch(e) {}
+}
+
 applyTheme();
 
 loadAgents();
+loadUsage();
 setInterval(loadAgents, 30000);
+setInterval(loadUsage, 30000);
 </script>
 </body>
 </html>

@@ -66,6 +66,9 @@ class ClaudeRunner:
         self._notify_config = notify_config
         self._restrict_to_home = restrict_to_home
         self.last_tool_calls: list[dict] = []
+        self.total_input_tokens: int = 0
+        self.total_output_tokens: int = 0
+        self.total_requests: int = 0
 
     async def chat(
         self,
@@ -96,6 +99,10 @@ class ClaudeRunner:
             except anthropic.APIError as exc:
                 logger.error("Claude API error: %s", exc)
                 return f"Claude API error: {exc}"
+
+            self.total_input_tokens += response.usage.input_tokens
+            self.total_output_tokens += response.usage.output_tokens
+            self.total_requests += 1
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]
