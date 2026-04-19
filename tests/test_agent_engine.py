@@ -72,3 +72,118 @@ async def test_state_changed_triggers_reactive_agent(engine, mock_ha):
         })
         await asyncio.sleep(0.05)
         mock_run.assert_called_once()
+
+
+def test_create_agent_with_new_fields(engine):
+    agent = engine.create_agent({
+        "name": "Climate Manager",
+        "type": "preventive",
+        "trigger": {"type": "preventive", "cron": "0 15 * * 1-5"},
+        "system_prompt": "Gestisci il clima",
+        "allowed_tools": ["get_entity_states", "call_ha_service"],
+        "enabled": True,
+        "strategic_context": "Famiglia rientra alle 16:00. Temp preferita 21°C.",
+        "allowed_entities": ["climate.*", "person.*"],
+        "allowed_services": ["climate.set_temperature", "notify.*"],
+    })
+    assert agent.strategic_context == "Famiglia rientra alle 16:00. Temp preferita 21°C."
+    assert agent.allowed_entities == ["climate.*", "person.*"]
+    assert agent.allowed_services == ["climate.set_temperature", "notify.*"]
+
+
+def test_create_agent_new_fields_default_empty(engine):
+    agent = engine.create_agent({
+        "name": "Minimal Agent",
+        "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "",
+        "allowed_tools": [],
+        "enabled": False,
+    })
+    assert agent.strategic_context == ""
+    assert agent.allowed_entities == []
+    assert agent.allowed_services == []
+
+
+def test_update_agent_new_fields(engine):
+    agent = engine.create_agent({
+        "name": "Test Agent",
+        "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 10},
+        "system_prompt": "test",
+        "allowed_tools": [],
+        "enabled": False,
+    })
+    updated = engine.update_agent(agent.id, {
+        "strategic_context": "Nuovo contesto",
+        "allowed_entities": ["sensor.*"],
+        "allowed_services": [],
+    })
+    assert updated.strategic_context == "Nuovo contesto"
+    assert updated.allowed_entities == ["sensor.*"]
+    assert updated.allowed_services == []
+
+
+def test_list_agents_includes_new_fields(engine):
+    engine.create_agent({
+        "name": "Export Test",
+        "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "",
+        "allowed_tools": [],
+        "enabled": False,
+        "strategic_context": "contesto",
+        "allowed_entities": ["light.*"],
+        "allowed_services": [],
+    })
+    agents = list(engine.list_agents().values())
+    assert "strategic_context" in agents[0]
+    assert "allowed_entities" in agents[0]
+    assert "allowed_services" in agents[0]
+    assert agents[0]["strategic_context"] == "contesto"
+    assert agents[0]["allowed_entities"] == ["light.*"]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_injects_strategic_context(engine):
+    mock_runner = AsyncMock()
+    mock_runner.chat = AsyncMock(return_value="ok")
+    engine.set_claude_runner(mock_runner)
+    agent = engine.create_agent({
+        "name": "Climate Agent",
+        "type": "preventive",
+        "trigger": {"type": "preventive", "cron": "0 6 * * *"},
+        "system_prompt": "Analizza il clima.",
+        "allowed_tools": [],
+        "enabled": False,
+        "strategic_context": "Famiglia: 2 adulti. Temp preferita 21°C.",
+        "allowed_entities": [],
+        "allowed_services": [],
+    })
+    await engine.run_agent(agent)
+    call_kwargs = mock_runner.chat.call_args
+    system_prompt_used = call_kwargs.kwargs.get("system_prompt", "")
+    assert "---" in system_prompt_used
+    assert "Famiglia: 2 adulti." in system_prompt_used
+    assert "Analizza il clima." in system_prompt_used
+    assert system_prompt_used.index("Famiglia: 2 adulti.") < system_prompt_used.index("Analizza il clima.")
+
+
+@pytest.mark.asyncio
+async def test_run_agent_no_strategic_context_plain_prompt(engine):
+    mock_runner = AsyncMock()
+    mock_runner.chat = AsyncMock(return_value="ok")
+    engine.set_claude_runner(mock_runner)
+    agent = engine.create_agent({
+        "name": "Simple Agent",
+        "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "Semplice monitor.",
+        "allowed_tools": [],
+        "enabled": False,
+    })
+    await engine.run_agent(agent)
+    call_kwargs = mock_runner.chat.call_args
+    system_prompt_used = call_kwargs.kwargs.get("system_prompt", "")
+    assert "---" not in system_prompt_used
+    assert system_prompt_used == "Semplice monitor."

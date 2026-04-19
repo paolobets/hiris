@@ -21,6 +21,9 @@ class Agent:
     enabled: bool
     last_run: Optional[str] = None
     last_result: Optional[str] = None
+    strategic_context: str = ""
+    allowed_entities: list[str] = field(default_factory=list)
+    allowed_services: list[str] = field(default_factory=list)
 
 
 class AgentEngine:
@@ -52,6 +55,9 @@ class AgentEngine:
             system_prompt=data.get("system_prompt", ""),
             allowed_tools=data.get("allowed_tools", []),
             enabled=data.get("enabled", True),
+            strategic_context=data.get("strategic_context", ""),
+            allowed_entities=data.get("allowed_entities", []),
+            allowed_services=data.get("allowed_services", []),
         )
         self._agents[agent.id] = agent
         if agent.enabled:
@@ -61,7 +67,10 @@ class AgentEngine:
     def get_agent(self, agent_id: str) -> Optional[Agent]:
         return self._agents.get(agent_id)
 
-    UPDATABLE_FIELDS = {"name", "type", "trigger", "system_prompt", "allowed_tools", "enabled"}
+    UPDATABLE_FIELDS = {
+        "name", "type", "trigger", "system_prompt", "allowed_tools", "enabled",
+        "strategic_context", "allowed_entities", "allowed_services",
+    }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
         agent = self._agents.get(agent_id)
@@ -156,13 +165,18 @@ class AgentEngine:
         logger.info("Running agent: %s (%s)", agent.name, agent.id)
         try:
             agent.last_run = datetime.now(timezone.utc).isoformat()
-            prompt = agent.system_prompt
+            if agent.strategic_context:
+                effective_prompt = f"{agent.strategic_context}\n\n---\n\n{agent.system_prompt}"
+            else:
+                effective_prompt = agent.system_prompt
             if context:
-                prompt = f"{prompt}\n\nContext: {context}"
+                effective_prompt = f"{effective_prompt}\n\nContext: {context}"
             result = await self._claude_runner.chat(
                 user_message=f"[Agent trigger: {agent.trigger.get('type')}]",
-                system_prompt=prompt,
+                system_prompt=effective_prompt,
                 allowed_tools=agent.allowed_tools or None,
+                allowed_entities=agent.allowed_entities or None,
+                allowed_services=agent.allowed_services or None,
             )
             agent.last_result = result
             return result
