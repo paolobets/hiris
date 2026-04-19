@@ -12,6 +12,7 @@ from .proxy.ha_client import HAClient
 logger = logging.getLogger(__name__)
 
 DEFAULT_AGENTS_DATA_PATH = "/data/agents.json"
+DEFAULT_AGENT_ID = "hiris-default"
 
 
 @dataclass
@@ -47,6 +48,7 @@ class AgentEngine:
         self._ha.add_state_listener(self._on_state_changed)
         await self._ha.start_websocket()
         self._load()
+        self._seed_default_agent()
         logger.info("AgentEngine started")
 
     async def stop(self) -> None:
@@ -91,6 +93,24 @@ class AgentEngine:
                     self._schedule_agent(agent)
         except Exception as exc:
             logger.error("Failed to load agents from %s: %s", self._data_path, exc)
+
+    def _seed_default_agent(self) -> None:
+        if DEFAULT_AGENT_ID not in self._agents:
+            agent = Agent(
+                id=DEFAULT_AGENT_ID,
+                name="HIRIS",
+                type="chat",
+                trigger={"type": "manual"},
+                system_prompt="Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente.",
+                allowed_tools=[],
+                enabled=True,
+                is_default=True,
+            )
+            self._agents[DEFAULT_AGENT_ID] = agent
+            self._save()
+
+    def get_default_agent(self) -> Optional[Agent]:
+        return self._agents.get(DEFAULT_AGENT_ID)
 
     def create_agent(self, data: dict) -> Agent:
         agent = Agent(

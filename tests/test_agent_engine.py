@@ -256,3 +256,67 @@ def test_update_agent_persists_to_file(engine, tmp_path):
     data = json.loads((tmp_path / "agents.json").read_text())
     entry = next(a for a in data["agents"] if a["id"] == agent.id)
     assert entry["system_prompt"] == "updated"
+
+
+@pytest.mark.asyncio
+async def test_default_agent_seeded_after_load(mock_ha, tmp_path):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID
+    eng = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    eng._scheduler.start()
+    eng._load()
+    eng._seed_default_agent()
+    assert DEFAULT_AGENT_ID in eng._agents
+    assert eng._agents[DEFAULT_AGENT_ID].is_default is True
+    assert eng._agents[DEFAULT_AGENT_ID].type == "chat"
+    eng._scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_default_agent_not_seeded_if_already_present(mock_ha, tmp_path):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID
+    path = tmp_path / "agents.json"
+    path.write_text(json.dumps({"schema_version": 1, "agents": [{
+        "id": DEFAULT_AGENT_ID, "name": "Custom HIRIS", "type": "chat",
+        "trigger": {"type": "manual"}, "system_prompt": "custom",
+        "allowed_tools": [], "enabled": True, "is_default": True,
+        "last_run": None, "last_result": None, "strategic_context": "",
+        "allowed_entities": [], "allowed_services": [],
+    }]}))
+    eng = AgentEngine(ha_client=mock_ha, data_path=str(path))
+    eng._scheduler.start()
+    eng._load()
+    eng._seed_default_agent()
+    assert eng._agents[DEFAULT_AGENT_ID].name == "Custom HIRIS"
+    eng._scheduler.shutdown(wait=False)
+
+
+def test_delete_default_agent_returns_false(engine):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        trigger={"type": "manual"}, system_prompt="",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+    result = engine.delete_agent(DEFAULT_AGENT_ID)
+    assert result is False
+    assert DEFAULT_AGENT_ID in engine._agents
+
+
+def test_get_agent_returns_correct(engine):
+    agent = engine.create_agent({
+        "name": "Find Me", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    assert engine.get_agent(agent.id) is agent
+    assert engine.get_agent("nonexistent") is None
+
+
+def test_get_default_agent(engine):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        trigger={"type": "manual"}, system_prompt="",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+    assert engine.get_default_agent() is engine._agents[DEFAULT_AGENT_ID]

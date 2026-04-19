@@ -46,8 +46,12 @@ async def handle_update_agent(request: web.Request) -> web.Response:
 
 
 async def handle_delete_agent(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
     engine = request.app["engine"]
-    deleted = engine.delete_agent(request.match_info["agent_id"])
+    agent = engine.get_agent(agent_id)
+    if agent is not None and agent.is_default:
+        return web.json_response({"error": "Cannot delete default agent"}, status=409)
+    deleted = engine.delete_agent(agent_id)
     if not deleted:
         return web.json_response({"error": "Not found"}, status=404)
     return web.Response(status=204)

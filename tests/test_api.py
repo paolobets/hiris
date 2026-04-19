@@ -163,3 +163,18 @@ async def test_agent_run(client):
     assert run_resp.status == 200
     data = await run_resp.json()
     assert "result" in data
+
+
+@pytest.mark.asyncio
+async def test_delete_default_agent_returns_409(client):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    engine = client.app["engine"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        trigger={"type": "manual"}, system_prompt="",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+    resp = await client.delete(f"/api/agents/{DEFAULT_AGENT_ID}")
+    assert resp.status == 409
+    data = await resp.json()
+    assert "error" in data
