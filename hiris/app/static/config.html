@@ -294,6 +294,58 @@
       cursor: pointer;
     }
     #usage-reset-btn:hover { background: var(--danger); color: #fff; }
+
+    details.log-section {
+      margin-top: 1rem;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      background: var(--surface-2);
+      padding: 0.4rem 0.8rem;
+    }
+    details.log-section summary {
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.4rem 0;
+    }
+    .log-empty {
+      font-size: 0.8rem;
+      color: var(--muted-alt);
+      padding: 0.5rem 0.2rem;
+    }
+    .log-list {
+      list-style: none;
+      margin: 0.4rem 0 0.6rem 0;
+      padding: 0;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .log-list li {
+      display: grid;
+      grid-template-columns: 120px 60px 1fr 90px;
+      gap: 0.5rem;
+      align-items: center;
+      font-size: 0.75rem;
+      padding: 0.35rem 0.25rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .log-list li:last-child { border-bottom: none; }
+    .log-time { color: var(--text-muted); font-family: 'Courier New', Consolas, monospace; }
+    .log-success { color: var(--run-color); font-weight: 600; }
+    .log-error { color: var(--danger); font-weight: 600; }
+    .log-summary {
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .log-tokens {
+      color: var(--muted-alt);
+      font-family: 'Courier New', Consolas, monospace;
+      text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -437,6 +489,10 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           <button id="delete-btn" style="display:none">Elimina</button>
         </div>
         <pre id="run-output"></pre>
+        <details class="log-section">
+          <summary>Log esecuzioni (ultime 20)</summary>
+          <div id="log-body"><div class="log-empty">Nessuna esecuzione registrata.</div></div>
+        </details>
       </div>
     </div>
   </div>
@@ -554,6 +610,33 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
+    function renderExecutionLog(a) {
+      var body = document.getElementById('log-body');
+      if (!body) return;
+      var log = (a && a.execution_log) || [];
+      if (log.length === 0) {
+        body.innerHTML = '<div class="log-empty">Nessuna esecuzione registrata.</div>';
+        return;
+      }
+      var rows = log.slice().reverse().map(function(r) {
+        var t = r.timestamp ? new Date(r.timestamp) : null;
+        var timeStr = t ? t.toLocaleString('it-IT', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—';
+        var statusCls = r.success ? 'log-success' : 'log-error';
+        var statusTxt = r.success ? '\u2713 ok' : '\u2717 err';
+        var tools = (r.tool_calls || []).join(', ');
+        var summary = r.result_summary || '';
+        var titleAttr = esc(summary) + (tools ? (' — tools: ' + esc(tools)) : '');
+        var tokens = (r.input_tokens || 0) + '\u2193 / ' + (r.output_tokens || 0) + '\u2191';
+        return '<li>' +
+          '<span class="log-time">' + esc(timeStr) + '</span>' +
+          '<span class="' + statusCls + '">' + statusTxt + '</span>' +
+          '<span class="log-summary" title="' + titleAttr + '">' + esc(summary || tools || '\u2014') + '</span>' +
+          '<span class="log-tokens">' + esc(tokens) + '</span>' +
+        '</li>';
+      }).join('');
+      body.innerHTML = '<ul class="log-list">' + rows + '</ul>';
+    }
+
     function buildToolChecks(selected) {
       var el = document.getElementById('tool-checks');
       el.innerHTML = '';
@@ -653,6 +736,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       buildToolChecks(a.allowed_tools || []);
       showTriggerFields(a.type);
       renderList();
+      renderExecutionLog(a);
     }
 
     document.getElementById('new-btn').onclick = function() {
@@ -679,6 +763,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('run-output').style.display = 'none';
       buildToolChecks([]);
       showTriggerFields('monitor');
+      renderExecutionLog(null);
     };
 
     function buildPayload() {
