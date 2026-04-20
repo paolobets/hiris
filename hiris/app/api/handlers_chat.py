@@ -49,6 +49,12 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_entities = None
         allowed_services = None
 
+    # resolve per-agent config (with fallbacks for the no-agent path)
+    agent_model = getattr(agent, "model", "auto") if agent else "auto"
+    agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096
+    agent_type = getattr(agent, "type", "chat") if agent else "chat"
+    agent_restrict = getattr(agent, "restrict_to_home", False) if agent else False
+
     response = await runner.chat(
         user_message=message,
         system_prompt=system_prompt,
@@ -56,6 +62,10 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_tools=allowed_tools,
         allowed_entities=allowed_entities,
         allowed_services=allowed_services,
+        model=agent_model,
+        max_tokens=agent_max_tokens,
+        agent_type=agent_type,
+        restrict_to_home=agent_restrict,
     )
     raw = getattr(runner, "last_tool_calls", None)
     tools_called = raw if isinstance(raw, list) else []

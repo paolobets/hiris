@@ -292,6 +292,10 @@ class AgentEngine:
                 allowed_tools=agent.allowed_tools or None,
                 allowed_entities=agent.allowed_entities or None,
                 allowed_services=agent.allowed_services or None,
+                model=agent.model,
+                max_tokens=agent.max_tokens,
+                agent_type=agent.type,
+                restrict_to_home=agent.restrict_to_home,
             )
             agent.last_result = result
             self._save()

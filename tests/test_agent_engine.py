@@ -359,3 +359,24 @@ def test_agent_update_model_and_max_tokens(engine):
     updated = engine.update_agent(agent.id, {"model": "claude-sonnet-4-6", "max_tokens": 2048})
     assert updated.model == "claude-sonnet-4-6"
     assert updated.max_tokens == 2048
+
+
+@pytest.mark.asyncio
+async def test_run_agent_passes_per_agent_config_to_runner(engine):
+    mock_runner = AsyncMock()
+    mock_runner.chat = AsyncMock(return_value="result")
+    engine.set_claude_runner(mock_runner)
+
+    agent = engine.create_agent({
+        "name": "Config Test", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "Test prompt", "allowed_tools": [], "enabled": False,
+        "model": "claude-haiku-4-5-20251001", "max_tokens": 512, "restrict_to_home": True,
+    })
+    await engine._run_agent(agent)
+
+    call_kwargs = mock_runner.chat.call_args.kwargs
+    assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
+    assert call_kwargs["max_tokens"] == 512
+    assert call_kwargs["agent_type"] == "monitor"
+    assert call_kwargs["restrict_to_home"] is True

@@ -255,3 +255,24 @@ async def test_config_endpoint_returns_theme(client):
     data = await resp.json()
     assert "theme" in data
     assert data["theme"] == "auto"
+
+
+@pytest.mark.asyncio
+async def test_chat_passes_model_to_runner(client):
+    from hiris.app.agent_engine import Agent
+    engine = client.app["engine"]
+    engine._agents["agent-haiku-001"] = Agent(
+        id="agent-haiku-001", name="Haiku Agent", type="monitor",
+        trigger={"type": "manual"}, system_prompt="Monitor test",
+        allowed_tools=[], enabled=True, is_default=False,
+        model="claude-haiku-4-5-20251001", max_tokens=1024, restrict_to_home=False,
+    )
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "test", "agent_id": "agent-haiku-001"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
+    assert call_kwargs["max_tokens"] == 1024
+    assert call_kwargs["agent_type"] == "monitor"
