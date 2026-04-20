@@ -432,3 +432,102 @@ def test_agent_require_confirmation_persists(engine):
     engine2._load()
     loaded = engine2.get_agent(agent.id)
     assert loaded.require_confirmation is True
+
+
+@pytest.mark.asyncio
+async def test_run_agent_appends_execution_log_record(engine):
+    mock_runner = AsyncMock()
+    mock_runner.last_tool_calls = [{"tool": "get_home_status", "input": {}}]
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+
+    async def chat_side_effect(**kwargs):
+        mock_runner.total_input_tokens += 120
+        mock_runner.total_output_tokens += 30
+        return "Tutto ok, niente da fare."
+    mock_runner.chat = AsyncMock(side_effect=chat_side_effect)
+    engine.set_claude_runner(mock_runner)
+
+    agent = engine.create_agent({
+        "name": "Log Agent", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    await engine.run_agent(agent)
+
+    assert len(agent.execution_log) == 1
+    rec = agent.execution_log[0]
+    assert rec["trigger"] == "schedule"
+    assert rec["tool_calls"] == ["get_home_status"]
+    assert rec["input_tokens"] == 120
+    assert rec["output_tokens"] == 30
+    assert rec["result_summary"].startswith("Tutto ok")
+    assert rec["success"] is True
+    assert rec["timestamp"] == agent.last_run
+
+
+@pytest.mark.asyncio
+async def test_run_agent_execution_log_caps_at_20(engine):
+    mock_runner = AsyncMock()
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+    mock_runner.chat = AsyncMock(return_value="ok")
+    engine.set_claude_runner(mock_runner)
+
+    agent = engine.create_agent({
+        "name": "Cap Agent", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    for _ in range(25):
+        await engine.run_agent(agent)
+    assert len(agent.execution_log) == 20
+
+
+@pytest.mark.asyncio
+async def test_run_agent_execution_log_marks_error(engine):
+    mock_runner = AsyncMock()
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+    mock_runner.chat = AsyncMock(side_effect=RuntimeError("boom"))
+    engine.set_claude_runner(mock_runner)
+
+    agent = engine.create_agent({
+        "name": "Err Agent", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    await engine.run_agent(agent)
+    assert len(agent.execution_log) == 1
+    rec = agent.execution_log[0]
+    assert rec["success"] is False
+    assert rec["result_summary"].startswith("Error:")
+
+
+def test_execution_log_not_in_updatable_fields(engine):
+    assert "execution_log" not in AgentEngine.UPDATABLE_FIELDS
+
+
+def test_execution_log_persists_across_reload(engine):
+    agent = engine.create_agent({
+        "name": "Persist Log", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    agent.execution_log = [{
+        "timestamp": "2026-04-20T10:00:00+00:00",
+        "trigger": "schedule",
+        "tool_calls": ["get_home_status"],
+        "input_tokens": 50,
+        "output_tokens": 10,
+        "result_summary": "ok",
+        "success": True,
+    }]
+    engine._save()
+    engine2 = AgentEngine(ha_client=engine._ha, data_path=engine._data_path)
+    engine2._load()
+    loaded = engine2.get_agent(agent.id)
+    assert len(loaded.execution_log) == 1
+    assert loaded.execution_log[0]["trigger"] == "schedule"

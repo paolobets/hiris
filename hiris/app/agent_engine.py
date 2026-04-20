@@ -34,6 +34,7 @@ class Agent:
     max_tokens: int = 4096
     restrict_to_home: bool = False
     require_confirmation: bool = False
+    execution_log: list[dict] = field(default_factory=list)
 
 
 class AgentEngine:
@@ -95,6 +96,7 @@ class AgentEngine:
                     max_tokens=raw.get("max_tokens", 4096),
                     restrict_to_home=raw.get("restrict_to_home", False),
                     require_confirmation=raw.get("require_confirmation", False),
+                    execution_log=raw.get("execution_log", []),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -282,6 +284,8 @@ class AgentEngine:
             logger.warning("No Claude runner configured")
             return ""
         logger.info("Running agent: %s (%s)", agent.name, agent.id)
+        inp_before = getattr(self._claude_runner, "total_input_tokens", 0)
+        out_before = getattr(self._claude_runner, "total_output_tokens", 0)
         try:
             agent.last_run = datetime.now(timezone.utc).isoformat()
             if agent.strategic_context:
@@ -303,10 +307,36 @@ class AgentEngine:
                 require_confirmation=agent.require_confirmation,
             )
             agent.last_result = result
+            self._append_execution_log(agent, result, inp_before, out_before, success=True)
             self._save()
             return result
         except Exception as exc:
             logger.error("Agent %s failed: %s", agent.name, exc)
             agent.last_result = f"Error: {exc}"
+            self._append_execution_log(agent, agent.last_result, inp_before, out_before, success=False)
             self._save()
             return agent.last_result
+
+    def _append_execution_log(
+        self,
+        agent: Agent,
+        result: str,
+        inp_before: int,
+        out_before: int,
+        success: bool,
+    ) -> None:
+        inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
+        out_after = getattr(self._claude_runner, "total_output_tokens", 0)
+        tool_calls = [
+            t.get("tool", "") for t in (getattr(self._claude_runner, "last_tool_calls", None) or [])
+        ]
+        record = {
+            "timestamp": agent.last_run,
+            "trigger": agent.trigger.get("type", "unknown"),
+            "tool_calls": tool_calls,
+            "input_tokens": inp_after - inp_before,
+            "output_tokens": out_after - out_before,
+            "result_summary": (result or "")[:200],
+            "success": success and not (result or "").startswith("Error:"),
+        }
+        agent.execution_log = (agent.execution_log + [record])[-20:]
