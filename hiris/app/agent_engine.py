@@ -30,6 +30,9 @@ class Agent:
     allowed_entities: list[str] = field(default_factory=list)
     allowed_services: list[str] = field(default_factory=list)
     is_default: bool = False
+    model: str = "auto"
+    max_tokens: int = 4096
+    restrict_to_home: bool = False
 
 
 class AgentEngine:
@@ -87,6 +90,9 @@ class AgentEngine:
                     strategic_context=raw.get("strategic_context", ""),
                     allowed_entities=raw.get("allowed_entities", []),
                     allowed_services=raw.get("allowed_services", []),
+                    model=raw.get("model", "auto"),
+                    max_tokens=raw.get("max_tokens", 4096),
+                    restrict_to_home=raw.get("restrict_to_home", False),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -157,6 +163,9 @@ class AgentEngine:
             strategic_context=data.get("strategic_context", ""),
             allowed_entities=data.get("allowed_entities", []),
             allowed_services=data.get("allowed_services", []),
+            model=data.get("model", "auto"),
+            max_tokens=data.get("max_tokens", 4096),
+            restrict_to_home=data.get("restrict_to_home", False),
         )
         self._agents[agent.id] = agent
         if agent.enabled:
@@ -170,6 +179,7 @@ class AgentEngine:
     UPDATABLE_FIELDS = {
         "name", "type", "trigger", "system_prompt", "allowed_tools", "enabled",
         "strategic_context", "allowed_entities", "allowed_services",
+        "model", "max_tokens", "restrict_to_home",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:

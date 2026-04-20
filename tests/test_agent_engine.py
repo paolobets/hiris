@@ -320,3 +320,42 @@ def test_get_default_agent(engine):
         allowed_tools=[], enabled=True, is_default=True,
     )
     assert engine.get_default_agent() is engine._agents[DEFAULT_AGENT_ID]
+
+
+def test_agent_model_defaults_to_auto(engine):
+    agent = engine.create_agent({
+        "name": "Test", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    assert agent.model == "auto"
+    assert agent.max_tokens == 4096
+    assert agent.restrict_to_home is False
+
+
+def test_agent_per_agent_config_persists(engine):
+    agent = engine.create_agent({
+        "name": "Haiku Agent", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 1024,
+        "restrict_to_home": True,
+    })
+    engine2 = AgentEngine(ha_client=engine._ha, data_path=engine._data_path)
+    engine2._load()
+    loaded = engine2.get_agent(agent.id)
+    assert loaded.model == "claude-haiku-4-5-20251001"
+    assert loaded.max_tokens == 1024
+    assert loaded.restrict_to_home is True
+
+
+def test_agent_update_model_and_max_tokens(engine):
+    agent = engine.create_agent({
+        "name": "Test", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    updated = engine.update_agent(agent.id, {"model": "claude-sonnet-4-6", "max_tokens": 2048})
+    assert updated.model == "claude-sonnet-4-6"
+    assert updated.max_tokens == 2048
