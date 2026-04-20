@@ -88,6 +88,14 @@ RESTRICT_PROMPT = (
     "Per qualsiasi altro argomento, rispondi educatamente che non puoi aiutare su quel tema."
 )
 
+REQUIRE_CONFIRMATION_PROMPT = (
+    "Prima di chiamare call_ha_service per eseguire un'azione reale, "
+    "descrivi l'azione che intendi eseguire e chiedi conferma con il formato: "
+    "'Proposta: [descrizione azione]. Confermi? (sì/no)'. "
+    "Esegui call_ha_service SOLO se il messaggio più recente dell'utente "
+    "contiene 'sì', 'si', 'ok', 'conferma' o 'yes' (case insensitive)."
+)
+
 
 class ClaudeRunner:
     def __init__(
@@ -171,11 +179,14 @@ class ClaudeRunner:
         max_tokens: int = MAX_TOKENS,
         agent_type: str = "chat",
         restrict_to_home: bool = False,
+        require_confirmation: bool = False,
     ) -> str:
         self.last_tool_calls = []
         effective_system = system_prompt
         if restrict_to_home:
             effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
+        if require_confirmation:
+            effective_system = f"{effective_system}\n\n---\n\n{REQUIRE_CONFIRMATION_PROMPT}"
         if self._cache is not None:
             effective_system = f"{effective_system}\n\n---\n\n{generate_home_profile(self._cache)}"
         effective_model = resolve_model(model, agent_type)

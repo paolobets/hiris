@@ -380,3 +380,55 @@ async def test_run_agent_passes_per_agent_config_to_runner(engine):
     assert call_kwargs["max_tokens"] == 512
     assert call_kwargs["agent_type"] == "monitor"
     assert call_kwargs["restrict_to_home"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_agent_passes_require_confirmation_to_runner(engine):
+    mock_runner = AsyncMock()
+    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+    engine.set_claude_runner(mock_runner)
+
+    agent = engine.create_agent({
+        "name": "Conf Agent", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "do stuff", "allowed_tools": [], "enabled": False,
+        "require_confirmation": True,
+    })
+    await engine.run_agent(agent)
+    call_kwargs = mock_runner.chat.call_args.kwargs
+    assert call_kwargs["require_confirmation"] is True
+
+
+def test_agent_require_confirmation_defaults_false(engine):
+    agent = engine.create_agent({
+        "name": "Default", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    assert agent.require_confirmation is False
+
+
+def test_update_agent_require_confirmation(engine):
+    agent = engine.create_agent({
+        "name": "Flip", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    updated = engine.update_agent(agent.id, {"require_confirmation": True})
+    assert updated.require_confirmation is True
+
+
+def test_agent_require_confirmation_persists(engine):
+    agent = engine.create_agent({
+        "name": "Persist Conf", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+        "require_confirmation": True,
+    })
+    engine2 = AgentEngine(ha_client=engine._ha, data_path=engine._data_path)
+    engine2._load()
+    loaded = engine2.get_agent(agent.id)
+    assert loaded.require_confirmation is True

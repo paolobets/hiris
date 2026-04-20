@@ -387,3 +387,66 @@ async def test_rate_limit_exhausts_retries_raises(runner):
 
     assert runner.total_rate_limit_errors == MAX_RETRIES
     assert call_count == MAX_RETRIES + 1
+
+
+@pytest.mark.asyncio
+async def test_require_confirmation_injects_prompt(runner):
+    from hiris.app.claude_runner import REQUIRE_CONFIRMATION_PROMPT
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs)
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage.input_tokens = 5
+        m.usage.output_tokens = 2
+        return m
+
+    runner._client.messages.create = capture
+    await runner.chat("Ciao", system_prompt="Base", require_confirmation=True)
+    system_used = captured[0]["system"]
+    assert REQUIRE_CONFIRMATION_PROMPT in system_used
+    assert "Base" in system_used
+
+
+@pytest.mark.asyncio
+async def test_require_confirmation_false_does_not_inject(runner):
+    from hiris.app.claude_runner import REQUIRE_CONFIRMATION_PROMPT
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs)
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage.input_tokens = 5
+        m.usage.output_tokens = 2
+        return m
+
+    runner._client.messages.create = capture
+    await runner.chat("Ciao", system_prompt="Base", require_confirmation=False)
+    system_used = captured[0]["system"]
+    assert REQUIRE_CONFIRMATION_PROMPT not in system_used
+
+
+@pytest.mark.asyncio
+async def test_require_confirmation_combines_with_restrict(runner):
+    from hiris.app.claude_runner import REQUIRE_CONFIRMATION_PROMPT, RESTRICT_PROMPT
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs)
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage.input_tokens = 5
+        m.usage.output_tokens = 2
+        return m
+
+    runner._client.messages.create = capture
+    await runner.chat("Ciao", system_prompt="Base", restrict_to_home=True, require_confirmation=True)
+    system_used = captured[0]["system"]
+    assert "Base" in system_used
+    assert RESTRICT_PROMPT in system_used
+    assert REQUIRE_CONFIRMATION_PROMPT in system_used

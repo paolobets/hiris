@@ -33,6 +33,7 @@ class Agent:
     model: str = "auto"
     max_tokens: int = 4096
     restrict_to_home: bool = False
+    require_confirmation: bool = False
 
 
 class AgentEngine:
@@ -93,6 +94,7 @@ class AgentEngine:
                     model=raw.get("model", "auto"),
                     max_tokens=raw.get("max_tokens", 4096),
                     restrict_to_home=raw.get("restrict_to_home", False),
+                    require_confirmation=raw.get("require_confirmation", False),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -166,6 +168,7 @@ class AgentEngine:
             model=data.get("model", "auto"),
             max_tokens=int(data.get("max_tokens", 4096)),
             restrict_to_home=bool(data.get("restrict_to_home", False)),
+            require_confirmation=bool(data.get("require_confirmation", False)),
         )
         self._agents[agent.id] = agent
         if agent.enabled:
@@ -179,7 +182,7 @@ class AgentEngine:
     UPDATABLE_FIELDS = {
         "name", "type", "trigger", "system_prompt", "allowed_tools", "enabled",
         "strategic_context", "allowed_entities", "allowed_services",
-        "model", "max_tokens", "restrict_to_home",
+        "model", "max_tokens", "restrict_to_home", "require_confirmation",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -296,6 +299,7 @@ class AgentEngine:
                 max_tokens=agent.max_tokens,
                 agent_type=agent.type,
                 restrict_to_home=agent.restrict_to_home,
+                require_confirmation=agent.require_confirmation,
             )
             agent.last_result = result
             self._save()

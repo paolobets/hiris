@@ -54,6 +54,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096
     agent_type = getattr(agent, "type", "chat") if agent else "chat"
     agent_restrict = getattr(agent, "restrict_to_home", False) if agent else False
+    agent_require_confirmation = getattr(agent, "require_confirmation", False) if agent else False
 
     response = await runner.chat(
         user_message=message,
@@ -66,6 +67,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         max_tokens=agent_max_tokens,
         agent_type=agent_type,
         restrict_to_home=agent_restrict,
+        require_confirmation=agent_require_confirmation,
     )
     raw = getattr(runner, "last_tool_calls", None)
     tools_called = raw if isinstance(raw, list) else []
