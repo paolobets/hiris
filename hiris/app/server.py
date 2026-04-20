@@ -52,8 +52,6 @@ async def _on_startup(app: web.Application) -> None:
         "telegram_chat_id": os.environ.get("TELEGRAM_CHAT_ID", ""),
         "retropanel_url": os.environ.get("RETROPANEL_URL", "http://retropanel:8098"),
     }
-    restrict_raw = os.environ.get("RESTRICT_CHAT_TO_HOME", "false").lower()
-    restrict_to_home = restrict_raw in ("true", "1", "yes")
     app["theme"] = os.environ.get("THEME", "auto")
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
