@@ -425,6 +425,10 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
             <input type="checkbox" id="f-enabled"> Agente abilitato
           </label>
           <p class="hint">Gli agenti disabilitati non vengono eseguiti automaticamente ma possono essere avviati manualmente.</p>
+          <label style="flex-direction:row;display:flex;align-items:center;gap:0.5rem;margin-top:0.75rem">
+            <input type="checkbox" id="f-require-confirmation"> Richiedi conferma prima delle azioni
+          </label>
+          <p class="hint">Se attivo, l&apos;agente descrive l&apos;azione e attende conferma (&quot;s&igrave;&quot;, &quot;ok&quot;, &quot;conferma&quot;) prima di chiamare call_ha_service.</p>
         </fieldset>
 
         <div class="actions">
@@ -641,6 +645,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-model').value = a.model || 'auto';
       document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
       document.getElementById('f-restrict').checked = !!a.restrict_to_home;
+      document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
       buildActionChecks(a.allowed_services || []);
       document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
       document.getElementById('run-output').style.display = 'none';
@@ -668,6 +673,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-model').value = 'auto';
       document.getElementById('f-max-tokens').value = 4096;
       document.getElementById('f-restrict').checked = false;
+      document.getElementById('f-require-confirmation').checked = false;
       buildActionChecks([]);
       document.getElementById('delete-btn').style.display = 'none';
       document.getElementById('run-output').style.display = 'none';
@@ -694,6 +700,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         model: document.getElementById('f-model').value,
         max_tokens: parseInt(document.getElementById('f-max-tokens').value) || 4096,
         restrict_to_home: document.getElementById('f-restrict').checked,
+        require_confirmation: document.getElementById('f-require-confirmation').checked,
         enabled: document.getElementById('f-enabled').checked,
       };
     }
