@@ -23,6 +23,7 @@ from .tools.automation_tools import (
     trigger_automation, TRIGGER_TOOL_DEF,
     toggle_automation, TOGGLE_TOOL_DEF,
 )
+from .proxy.home_profile import generate_home_profile
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,6 @@ class ClaudeRunner:
         if restrict_to_home:
             effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
         if self._cache is not None:
-            from .proxy.home_profile import generate_home_profile
             effective_system = f"{effective_system}\n\n---\n\n{generate_home_profile(self._cache)}"
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
