@@ -306,14 +306,16 @@ class AgentEngine:
                 restrict_to_home=agent.restrict_to_home,
                 require_confirmation=agent.require_confirmation,
             )
+            tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             agent.last_result = result
-            self._append_execution_log(agent, result, inp_before, out_before, success=True)
+            self._append_execution_log(agent, result, inp_before, out_before, tool_calls_snapshot, success=True)
             self._save()
             return result
         except Exception as exc:
+            tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             logger.error("Agent %s failed: %s", agent.name, exc)
             agent.last_result = f"Error: {exc}"
-            self._append_execution_log(agent, agent.last_result, inp_before, out_before, success=False)
+            self._append_execution_log(agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False)
             self._save()
             return agent.last_result
 
@@ -323,13 +325,12 @@ class AgentEngine:
         result: str,
         inp_before: int,
         out_before: int,
+        tool_calls_snapshot: list,
         success: bool,
     ) -> None:
         inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
         out_after = getattr(self._claude_runner, "total_output_tokens", 0)
-        tool_calls = [
-            t.get("tool", "") for t in (getattr(self._claude_runner, "last_tool_calls", None) or [])
-        ]
+        tool_calls = [t.get("tool", "") for t in tool_calls_snapshot]
         record = {
             "timestamp": agent.last_run,
             "trigger": agent.trigger.get("type", "unknown"),

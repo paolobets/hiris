@@ -365,6 +365,9 @@ def test_agent_update_model_and_max_tokens(engine):
 async def test_run_agent_passes_per_agent_config_to_runner(engine):
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="result")
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
     engine.set_claude_runner(mock_runner)
 
     agent = engine.create_agent({
