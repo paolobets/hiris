@@ -41,7 +41,7 @@ async def _on_startup(app: web.Application) -> None:
 
     embedding_index = EmbeddingIndex()
     asyncio.create_task(
-        embedding_index.build(entity_cache.get_all()),
+        embedding_index.build(entity_cache.get_all_useful()),
         name="embedding_index_build",
     )
     app["embedding_index"] = embedding_index

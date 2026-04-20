@@ -133,6 +133,8 @@ def search_entities(
     top_k: int = 10,
     domain: str | None = None,
 ) -> list[dict]:
+    if not embedding_index.ready:
+        return entity_cache.get_all_useful()[:top_k]
     ids = embedding_index.search(query, top_k=top_k, domain_filter=domain)
     return entity_cache.get_minimal(ids)
 

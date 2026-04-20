@@ -287,6 +287,19 @@ def test_get_entities_by_domain_delegates_to_cache():
     assert result == [{"id": "light.test", "state": "on", "name": "Test", "unit": ""}]
 
 
+def test_search_entities_falls_back_when_index_not_ready():
+    cache = MagicMock()
+    index = MagicMock()
+    index.ready = False
+    cache.get_all_useful.return_value = [
+        {"id": "light.a", "state": "on", "name": "A", "unit": ""},
+        {"id": "light.b", "state": "off", "name": "B", "unit": ""},
+    ]
+    result = search_entities("lights", cache, index, top_k=1)
+    index.search.assert_not_called()
+    assert result == [{"id": "light.a", "state": "on", "name": "A", "unit": ""}]
+
+
 @pytest.mark.asyncio
 async def test_get_entity_states_uses_cache_when_provided():
     ha = AsyncMock()
