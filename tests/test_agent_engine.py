@@ -534,3 +534,91 @@ def test_execution_log_persists_across_reload(engine):
     loaded = engine2.get_agent(agent.id)
     assert len(loaded.execution_log) == 1
     assert loaded.execution_log[0]["trigger"] == "schedule"
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility / no-regression tests (Cycle 3 → v0.1.1)
+# These tests codify the contracts that must hold for users upgrading from
+# v0.1.0 agents.json files that do not contain the new Cycle 3 fields.
+# ---------------------------------------------------------------------------
+
+def test_load_old_json_without_cycle3_fields_defaults_safely(mock_ha, tmp_path):
+    """agents.json from v0.1.0 (no require_confirmation / execution_log) loads without error."""
+    data_path = str(tmp_path / "agents.json")
+    old_payload = {
+        "schema_version": 1,
+        "agents": [{
+            "id": "legacy-001",
+            "name": "Legacy Agent",
+            "type": "monitor",
+            "trigger": {"type": "schedule", "interval_minutes": 10},
+            "system_prompt": "do stuff",
+            "allowed_tools": [],
+            "enabled": False,
+            "last_run": None,
+            "last_result": None,
+            "strategic_context": "",
+            "allowed_entities": [],
+            "allowed_services": [],
+            "is_default": False,
+            "model": "auto",
+            "max_tokens": 4096,
+            "restrict_to_home": False,
+            # NO require_confirmation, NO execution_log  ← v0.1.0 file
+        }],
+    }
+    with open(data_path, "w") as f:
+        json.dump(old_payload, f)
+
+    eng = AgentEngine(ha_client=mock_ha, data_path=data_path)
+    eng._load()
+    agent = eng.get_agent("legacy-001")
+    assert agent is not None
+    assert agent.require_confirmation is False
+    assert agent.execution_log == []
+
+
+def test_update_agent_without_require_confirmation_preserves_existing_value(engine):
+    """PUT payload missing require_confirmation leaves the existing value untouched."""
+    agent = engine.create_agent({
+        "name": "Keep Me", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+        "require_confirmation": True,
+    })
+    updated = engine.update_agent(agent.id, {"name": "Keep Me Updated"})
+    assert updated.require_confirmation is True  # unchanged
+
+
+def test_create_agent_without_require_confirmation_defaults_false(engine):
+    """POST /api/agents payload without require_confirmation must default to False."""
+    agent = engine.create_agent({
+        "name": "No Conf", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+        # no require_confirmation key
+    })
+    assert agent.require_confirmation is False
+
+
+def test_update_agent_with_require_confirmation_false_from_ui(engine):
+    """buildPayload() always sends require_confirmation:false — must not break existing agents."""
+    agent = engine.create_agent({
+        "name": "UI Save", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "original", "allowed_tools": [], "enabled": False,
+    })
+    # Simulate UI saving the agent (sends require_confirmation even if user never touched it)
+    updated = engine.update_agent(agent.id, {"system_prompt": "updated", "require_confirmation": False})
+    assert updated.system_prompt == "updated"
+    assert updated.require_confirmation is False
+
+
+def test_execution_log_initialises_empty_for_new_agents(engine):
+    """Newly created agents have an empty execution_log — no stale data."""
+    agent = engine.create_agent({
+        "name": "Fresh", "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    assert agent.execution_log == []
