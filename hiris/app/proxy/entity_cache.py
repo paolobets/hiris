@@ -39,7 +39,9 @@ class EntityCache:
         new_state = event_data.get("new_state")
         if not new_state:
             return
-        eid = new_state["entity_id"]
+        eid = new_state.get("entity_id")
+        if not eid:
+            return
         minimal = _to_minimal(new_state)
         if eid not in self._states:
             dom = _domain(eid)

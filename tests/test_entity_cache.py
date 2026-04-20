@@ -137,6 +137,19 @@ def test_on_state_changed_ignores_none_new_state():
     assert cache._states == {}
 
 
+def test_on_state_changed_ignores_missing_entity_id():
+    cache = EntityCache()
+    cache._states = {}
+    cache._by_domain = {}
+    cache.on_state_changed({
+        "new_state": {
+            "state": "on",
+            "attributes": {"friendly_name": "Ghost"},
+        }
+    })
+    assert cache._states == {}
+
+
 def test_get_all_returns_all_states():
     cache = EntityCache()
     cache._states = {
