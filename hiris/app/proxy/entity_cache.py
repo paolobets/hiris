@@ -9,7 +9,7 @@ def _domain(entity_id: str) -> str:
 
 
 def _to_minimal(raw: dict) -> dict:
-    attrs = raw.get("attributes", {})
+    attrs = raw.get("attributes") or {}
     return {
         "id": raw["entity_id"],
         "state": raw.get("state", "unknown"),
@@ -28,7 +28,9 @@ class EntityCache:
         self._states = {}
         self._by_domain = {}
         for raw in raw_states:
-            eid = raw["entity_id"]
+            eid = raw.get("entity_id")
+            if not eid:
+                continue
             self._states[eid] = _to_minimal(raw)
             dom = _domain(eid)
             self._by_domain.setdefault(dom, []).append(eid)

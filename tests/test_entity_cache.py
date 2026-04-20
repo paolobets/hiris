@@ -144,3 +144,18 @@ def test_get_all_returns_all_states():
         "button.b": {"id": "button.b", "state": "available", "name": "B", "unit": ""},
     }
     assert len(cache.get_all()) == 2
+
+
+def test_on_state_changed_handles_none_attributes():
+    cache = EntityCache()
+    cache._states = {}
+    cache._by_domain = {}
+    cache.on_state_changed({
+        "new_state": {
+            "entity_id": "sensor.weird",
+            "state": "unavailable",
+            "attributes": None,
+        }
+    })
+    assert "sensor.weird" in cache._states
+    assert cache._states["sensor.weird"]["name"] == ""
