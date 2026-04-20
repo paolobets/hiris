@@ -327,3 +327,60 @@ async def test_chat_skips_home_profile_when_no_cache(runner):
     call_kwargs = runner._client.messages.create.call_args.kwargs
     assert "CASA" not in call_kwargs["system"]
     assert call_kwargs["system"] == "Solo prompt"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_retries_once_and_succeeds(runner):
+    """_call_api retries on 429 and succeeds on second attempt."""
+    from hiris.app.claude_runner import MAX_RETRIES  # noqa: F401
+
+    success = MagicMock()
+    success.stop_reason = "end_turn"
+    success.content = [MagicMock(type="text", text="ok")]
+    success.usage.input_tokens = 5
+    success.usage.output_tokens = 2
+
+    call_count = 0
+
+    async def fake_create(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise anthropic.APIStatusError(
+                "rate limited",
+                response=MagicMock(status_code=429),
+                body={},
+            )
+        return success
+
+    with patch.object(runner._client.messages, "create", side_effect=fake_create), \
+         patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await runner._call_api(
+            model="claude-sonnet-4-6", max_tokens=100, messages=[]
+        )
+
+    assert result is success
+    assert call_count == 2
+    assert runner.total_rate_limit_errors == 1
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_exhausts_retries_raises(runner):
+    """_call_api raises after MAX_RETRIES 429 errors."""
+    from hiris.app.claude_runner import MAX_RETRIES
+
+    async def always_rate_limit(**kwargs):
+        raise anthropic.APIStatusError(
+            "rate limited",
+            response=MagicMock(status_code=429),
+            body={},
+        )
+
+    with patch.object(runner._client.messages, "create", side_effect=always_rate_limit), \
+         patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(anthropic.APIStatusError):
+            await runner._call_api(
+                model="claude-sonnet-4-6", max_tokens=100, messages=[]
+            )
+
+    assert runner.total_rate_limit_errors == MAX_RETRIES
