@@ -332,8 +332,6 @@ async def test_chat_skips_home_profile_when_no_cache(runner):
 @pytest.mark.asyncio
 async def test_rate_limit_retries_once_and_succeeds(runner):
     """_call_api retries on 429 and succeeds on second attempt."""
-    from hiris.app.claude_runner import MAX_RETRIES  # noqa: F401
-
     success = MagicMock()
     success.stop_reason = "end_turn"
     success.content = [MagicMock(type="text", text="ok")]
@@ -354,7 +352,7 @@ async def test_rate_limit_retries_once_and_succeeds(runner):
         return success
 
     with patch.object(runner._client.messages, "create", side_effect=fake_create), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+         patch("hiris.app.claude_runner.asyncio.sleep", new_callable=AsyncMock):
         result = await runner._call_api(
             model="claude-sonnet-4-6", max_tokens=100, messages=[]
         )
@@ -369,7 +367,11 @@ async def test_rate_limit_exhausts_retries_raises(runner):
     """_call_api raises after MAX_RETRIES 429 errors."""
     from hiris.app.claude_runner import MAX_RETRIES
 
+    call_count = 0
+
     async def always_rate_limit(**kwargs):
+        nonlocal call_count
+        call_count += 1
         raise anthropic.APIStatusError(
             "rate limited",
             response=MagicMock(status_code=429),
@@ -377,10 +379,11 @@ async def test_rate_limit_exhausts_retries_raises(runner):
         )
 
     with patch.object(runner._client.messages, "create", side_effect=always_rate_limit), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+         patch("hiris.app.claude_runner.asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(anthropic.APIStatusError):
             await runner._call_api(
                 model="claude-sonnet-4-6", max_tokens=100, messages=[]
             )
 
     assert runner.total_rate_limit_errors == MAX_RETRIES
+    assert call_count == MAX_RETRIES + 1
