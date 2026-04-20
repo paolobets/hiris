@@ -380,6 +380,24 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         </fieldset>
 
         <fieldset>
+          <legend>Modello AI</legend>
+          <p class="hint">Seleziona il modello Claude. <em>auto</em> usa Haiku per monitor/reactive/preventive e Sonnet per chat.</p>
+          <label>Modello</label>
+          <select id="f-model">
+            <option value="auto">auto &mdash; segue tipo agente</option>
+            <option value="claude-haiku-4-5-20251001">Haiku (veloce, economico)</option>
+            <option value="claude-sonnet-4-6">Sonnet (pi&ugrave; capace)</option>
+          </select>
+          <label>Max token risposta</label>
+          <input type="number" id="f-max-tokens" value="4096" min="256" max="16000">
+          <p class="hint">Limita la lunghezza massima della risposta. Default: 4096.</p>
+          <label style="flex-direction:row;display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem">
+            <input type="checkbox" id="f-restrict"> Limita conversazione alla casa
+          </label>
+          <p class="hint">L&apos;agente risponder&agrave; solo a domande di domotica e smart home.</p>
+        </fieldset>
+
+        <fieldset>
           <legend>Permessi</legend>
           <p class="hint">Controlla cosa pu&ograve; fare questo agente. Lascia i campi vuoti per nessuna restrizione.</p>
           <label>Strumenti permessi</label>
@@ -390,9 +408,9 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
             <p class="hint">Pattern fnmatch separati da newline. Lascia vuoto per accesso completo a tutte le entit&agrave;.</p>
           </div>
           <div id="f-services-section" style="margin-top:1rem; display:none">
-            <label>Servizi permessi</label>
-            <textarea id="f-services" rows="3" placeholder="climate.set_temperature&#10;notify.*&#10;light.turn_on"></textarea>
-            <p class="hint">Pattern &quot;domain.service&quot; separati da newline. Visibile solo se call_ha_service &egrave; selezionato.</p>
+            <label>Azioni permesse</label>
+            <p class="hint">Seleziona i domini su cui questo agente pu&ograve; intervenire tramite call_ha_service.</p>
+            <div class="tool-checkboxes" id="action-checks"></div>
           </div>
         </fieldset>
 
@@ -429,14 +447,27 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
     applyTheme();
 
     var TOOLS = [
-      { id: 'get_entity_states',    label: 'get_entity_states',    desc: 'Legge stato entit\u00e0 HA (luce, clima, sensori\u2026)' },
-      { id: 'get_energy_history',   label: 'get_energy_history',   desc: 'Storico consumi energetici' },
-      { id: 'get_weather_forecast', label: 'get_weather_forecast', desc: 'Previsioni meteo (Open-Meteo)' },
-      { id: 'call_ha_service',      label: 'call_ha_service',      desc: 'Chiama un servizio HA (luci, clima, switch\u2026)' },
-      { id: 'send_notification',    label: 'send_notification',    desc: 'Invia notifica (HA push / Telegram / RetroPanel)' },
-      { id: 'get_ha_automations',   label: 'get_ha_automations',   desc: 'Elenco automazioni HA' },
-      { id: 'trigger_automation',   label: 'trigger_automation',   desc: 'Avvia un\'automazione HA' },
-      { id: 'toggle_automation',    label: 'toggle_automation',    desc: 'Abilita/disabilita automazione HA' },
+      { id: 'get_entity_states',      label: 'get_entity_states',      desc: 'Legge stato entit\u00e0 HA (luce, clima, sensori\u2026)' },
+      { id: 'get_home_status',        label: 'get_home_status',        desc: 'Panoramica compatta di tutti i dispositivi utili' },
+      { id: 'get_entities_on',        label: 'get_entities_on',        desc: 'Tutti i dispositivi attualmente accesi' },
+      { id: 'search_entities',        label: 'search_entities',        desc: 'Ricerca semantica di entit\u00e0 per linguaggio naturale' },
+      { id: 'get_entities_by_domain', label: 'get_entities_by_domain', desc: 'Tutte le entit\u00e0 di un dominio (es. light, sensor)' },
+      { id: 'get_area_entities',      label: 'get_area_entities',      desc: 'Scopre stanze/aree e i dispositivi associati' },
+      { id: 'get_energy_history',     label: 'get_energy_history',     desc: 'Storico consumi energetici' },
+      { id: 'get_weather_forecast',   label: 'get_weather_forecast',   desc: 'Previsioni meteo (Open-Meteo)' },
+      { id: 'call_ha_service',        label: 'call_ha_service',        desc: 'Chiama un servizio HA (luci, clima, switch\u2026)' },
+      { id: 'send_notification',      label: 'send_notification',      desc: 'Invia notifica (HA push / Telegram / RetroPanel)' },
+      { id: 'get_ha_automations',     label: 'get_ha_automations',     desc: 'Elenco automazioni HA' },
+      { id: 'trigger_automation',     label: 'trigger_automation',     desc: 'Avvia un\'automazione HA' },
+      { id: 'toggle_automation',      label: 'toggle_automation',      desc: 'Abilita/disabilita automazione HA' },
+    ];
+    var ACTIONS = [
+      { id: 'light.*',         label: 'Luci',          desc: 'Accendi, spegni, regola intensit\u00e0 e colore' },
+      { id: 'climate.*',       label: 'Clima',          desc: 'Termostati e condizionatori' },
+      { id: 'switch.*',        label: 'Switch',         desc: 'Interruttori e prese smart' },
+      { id: 'cover.*',         label: 'Tapparelle',     desc: 'Tende, tapparelle e serrande' },
+      { id: 'notify.*',        label: 'Notifiche',      desc: 'Servizi di notifica push' },
+      { id: 'input_boolean.*', label: 'Input Boolean',  desc: 'Toggle e variabili booleane virtuali' },
     ];
     var TRIGGER_TYPE_MAP = {monitor: 'schedule', reactive: 'state_changed', preventive: 'preventive', chat: 'manual'};
 
@@ -504,6 +535,34 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       return Array.from(document.querySelectorAll('#tool-checks input:checked')).map(function(i) { return i.value; });
     }
 
+    function buildActionChecks(selected) {
+      var el = document.getElementById('action-checks');
+      el.innerHTML = '';
+      ACTIONS.forEach(function(a) {
+        var item = document.createElement('div');
+        item.className = 'tool-item';
+        var chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.value = a.id;
+        chk.checked = selected.indexOf(a.id) >= 0;
+        chk.id = 'action-' + a.id.replace('.*', '');
+        var lbl = document.createElement('label');
+        lbl.htmlFor = chk.id;
+        lbl.appendChild(chk);
+        lbl.appendChild(document.createTextNode(' ' + a.label));
+        var desc = document.createElement('div');
+        desc.className = 'tool-desc';
+        desc.textContent = a.desc;
+        item.appendChild(lbl);
+        item.appendChild(desc);
+        el.appendChild(item);
+      });
+    }
+
+    function getSelectedActions() {
+      return Array.from(document.querySelectorAll('#action-checks input:checked')).map(function(i) { return i.value; });
+    }
+
     function showTriggerFields(type) {
       document.getElementById('trigger-schedule').style.display = (type === 'monitor') ? '' : 'none';
       document.getElementById('trigger-state').style.display = (type === 'reactive') ? '' : 'none';
@@ -525,8 +584,11 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-prompt').value = a.system_prompt || '';
       document.getElementById('f-strategic').value = a.strategic_context || '';
       document.getElementById('f-entities').value = (a.allowed_entities || []).join('\n');
-      document.getElementById('f-services').value = (a.allowed_services || []).join('\n');
       document.getElementById('f-enabled').checked = a.enabled;
+      document.getElementById('f-model').value = a.model || 'auto';
+      document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
+      document.getElementById('f-restrict').checked = !!a.restrict_to_home;
+      buildActionChecks(a.allowed_services || []);
       document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
       document.getElementById('run-output').style.display = 'none';
       buildToolChecks(a.allowed_tools || []);
@@ -547,8 +609,11 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-prompt').value = '';
       document.getElementById('f-strategic').value = '';
       document.getElementById('f-entities').value = '';
-      document.getElementById('f-services').value = '';
       document.getElementById('f-enabled').checked = true;
+      document.getElementById('f-model').value = 'auto';
+      document.getElementById('f-max-tokens').value = 4096;
+      document.getElementById('f-restrict').checked = false;
+      buildActionChecks([]);
       document.getElementById('delete-btn').style.display = 'none';
       document.getElementById('run-output').style.display = 'none';
       buildToolChecks([]);
@@ -562,7 +627,6 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       if (type === 'reactive')   trigger.entity_id = document.getElementById('f-entity').value;
       if (type === 'preventive') trigger.cron = document.getElementById('f-cron').value;
       var entRaw = document.getElementById('f-entities').value.trim();
-      var svcRaw = document.getElementById('f-services').value.trim();
       return {
         name: document.getElementById('f-name').value,
         type: type,
@@ -571,7 +635,10 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         strategic_context: document.getElementById('f-strategic').value,
         allowed_tools: getSelectedTools(),
         allowed_entities: entRaw ? entRaw.split('\n').map(function(s) { return s.trim(); }).filter(Boolean) : [],
-        allowed_services: svcRaw ? svcRaw.split('\n').map(function(s) { return s.trim(); }).filter(Boolean) : [],
+        allowed_services: getSelectedActions(),
+        model: document.getElementById('f-model').value,
+        max_tokens: parseInt(document.getElementById('f-max-tokens').value) || 4096,
+        restrict_to_home: document.getElementById('f-restrict').checked,
         enabled: document.getElementById('f-enabled').checked,
       };
     }
