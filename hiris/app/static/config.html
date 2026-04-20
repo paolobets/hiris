@@ -407,7 +407,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
             <textarea id="f-entities" rows="3" placeholder="climate.*&#10;person.*&#10;sensor.temperature_*"></textarea>
             <p class="hint">Pattern fnmatch separati da newline. Lascia vuoto per accesso completo a tutte le entit&agrave;.</p>
           </div>
-          <div id="f-services-section" style="margin-top:1rem; display:none">
+          <div id="f-actions-section" style="margin-top:1rem; display:none">
             <label>Azioni permesse</label>
             <p class="hint">Seleziona i domini su cui questo agente pu&ograve; intervenire tramite call_ha_service.</p>
             <div class="tool-checkboxes" id="action-checks"></div>
@@ -528,7 +528,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     function updateServicesVisibility() {
       var chk = document.querySelector('#tool-checks input[value="call_ha_service"]');
-      document.getElementById('f-services-section').style.display = (chk && chk.checked) ? '' : 'none';
+      document.getElementById('f-actions-section').style.display = (chk && chk.checked) ? '' : 'none';
     }
 
     function getSelectedTools() {
@@ -591,6 +591,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       buildActionChecks(a.allowed_services || []);
       document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
       document.getElementById('run-output').style.display = 'none';
+      // buildToolChecks must run after buildActionChecks — it owns the final updateServicesVisibility() call
       buildToolChecks(a.allowed_tools || []);
       showTriggerFields(a.type);
       renderList();
