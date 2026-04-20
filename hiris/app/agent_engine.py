@@ -164,8 +164,8 @@ class AgentEngine:
             allowed_entities=data.get("allowed_entities", []),
             allowed_services=data.get("allowed_services", []),
             model=data.get("model", "auto"),
-            max_tokens=data.get("max_tokens", 4096),
-            restrict_to_home=data.get("restrict_to_home", False),
+            max_tokens=int(data.get("max_tokens", 4096)),
+            restrict_to_home=bool(data.get("restrict_to_home", False)),
         )
         self._agents[agent.id] = agent
         if agent.enabled:
