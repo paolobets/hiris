@@ -139,7 +139,7 @@ class AgentEngine:
             if agent.system_prompt in self._LEGACY_DEFAULT_PROMPTS:
                 agent.system_prompt = self._DEFAULT_SYSTEM_PROMPT
                 self._save()
-                logger.info("Migrated default agent system prompt to v0.0.7")
+                logger.info("Migrated default agent system prompt to v0.0.9")
 
     def get_default_agent(self) -> Optional[Agent]:
         return self._agents.get(DEFAULT_AGENT_ID)
