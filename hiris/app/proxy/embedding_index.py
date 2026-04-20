@@ -61,7 +61,7 @@ class EmbeddingIndex:
                     scores[i] = -np.inf
         idx = np.argsort(scores)[::-1]
         # Filter out -inf scores
-        valid_idx = [i for i in idx if not np.isinf(scores[i]) or scores[i] > -np.inf]
+        valid_idx = [i for i in idx if scores[i] > -np.inf]
         n = min(top_k, len(valid_idx))
         return [self._entity_ids[i] for i in valid_idx[:n]]
 
@@ -69,6 +69,6 @@ class EmbeddingIndex:
         if self._model is None or entity_id not in self._entity_ids:
             return
         i = self._entity_ids.index(entity_id)
-        domain, slug = entity_id.split(".", 1)
-        text = f"{friendly_name} [{domain} {slug.replace('_', ' ')}]"
+        entity = {"id": entity_id, "name": friendly_name, "state": "", "unit": ""}
+        text = _entity_text(entity)
         self._matrix[i] = np.array(list(self._model.embed([text]))[0], dtype=np.float32)
