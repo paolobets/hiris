@@ -1,5 +1,5 @@
-from unittest.mock import MagicMock
-from hiris.app.proxy.home_profile import generate_home_profile
+from unittest.mock import MagicMock, patch
+from hiris.app.proxy.home_profile import generate_home_profile, get_cached_home_profile, _reset_profile_cache
 
 
 def _make_cache(entities):
@@ -47,11 +47,6 @@ def test_generate_home_profile_no_climate():
     ])
     result = generate_home_profile(cache)
     assert "Clima:" in result
-
-
-import time
-from unittest.mock import patch
-from hiris.app.proxy.home_profile import get_cached_home_profile, _reset_profile_cache
 
 
 def test_cached_home_profile_returns_string():

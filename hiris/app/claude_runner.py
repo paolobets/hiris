@@ -23,7 +23,7 @@ from .tools.automation_tools import (
     trigger_automation, TRIGGER_TOOL_DEF,
     toggle_automation, TOGGLE_TOOL_DEF,
 )
-from .proxy.home_profile import generate_home_profile, get_cached_home_profile
+from .proxy.home_profile import get_cached_home_profile
 
 logger = logging.getLogger(__name__)
 
