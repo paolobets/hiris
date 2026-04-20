@@ -1,41 +1,23 @@
-from typing import Any
+from __future__ import annotations
 from ..proxy.ha_client import HAClient
+from ..proxy.entity_cache import EntityCache
+from ..proxy.embedding_index import EmbeddingIndex
 
 TOOL_DEF = {
     "name": "get_entity_states",
-    "description": (
-        "Get current states of Home Assistant entities. "
-        "Pass an empty list [] to get ALL entity states in the home. "
-        "Returns state, attributes, friendly_name, and last_changed for each entity. "
-        "Call with [] to discover everything, or with specific IDs for targeted queries."
-    ),
+    "description": "Get current state of specific Home Assistant entities by ID.",
     "input_schema": {
         "type": "object",
         "properties": {
             "ids": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "List of entity IDs to query. Pass [] to get ALL entities.",
-                "default": [],
+                "description": "List of entity IDs to query.",
             }
         },
-        "required": [],
+        "required": ["ids"],
     },
 }
-
-
-async def get_entity_states(ha: HAClient, ids: list[str]) -> dict[str, Any]:
-    states = await ha.get_states(ids)
-    return {
-        s["entity_id"]: {
-            "state": s["state"],
-            "attributes": s.get("attributes", {}),
-            "last_changed": s.get("last_changed", ""),
-            "friendly_name": s.get("attributes", {}).get("friendly_name"),
-        }
-        for s in states
-    }
-
 
 GET_AREA_ENTITIES_TOOL_DEF = {
     "name": "get_area_entities",
@@ -48,6 +30,68 @@ GET_AREA_ENTITIES_TOOL_DEF = {
     ),
     "input_schema": {"type": "object", "properties": {}, "required": []},
 }
+
+GET_HOME_STATUS_TOOL_DEF = {
+    "name": "get_home_status",
+    "description": (
+        "Get a compact summary of all useful home entities (excludes noise domains "
+        "like buttons, updates). Use this as the first call to understand the current home state."
+    ),
+    "input_schema": {"type": "object", "properties": {}, "required": []},
+}
+
+GET_ENTITIES_ON_TOOL_DEF = {
+    "name": "get_entities_on",
+    "description": "Get all entities currently in 'on' state (lights, switches, etc.).",
+    "input_schema": {"type": "object", "properties": {}, "required": []},
+}
+
+SEARCH_ENTITIES_TOOL_DEF = {
+    "name": "search_entities",
+    "description": "Semantic search for entities by natural language query. Returns the most relevant entity IDs.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Natural language query, e.g. 'living room lights'"},
+            "top_k": {"type": "integer", "description": "Max results to return (default 10)", "default": 10},
+            "domain": {"type": "string", "description": "Optional domain filter, e.g. 'light'"},
+        },
+        "required": ["query"],
+    },
+}
+
+GET_ENTITIES_BY_DOMAIN_TOOL_DEF = {
+    "name": "get_entities_by_domain",
+    "description": "Get all entities for a specific domain (e.g. 'light', 'sensor', 'switch').",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "domain": {"type": "string", "description": "Entity domain, e.g. 'light'"},
+        },
+        "required": ["domain"],
+    },
+}
+
+
+async def get_entity_states(
+    ha: HAClient,
+    ids: list[str],
+    entity_cache: EntityCache | None = None,
+) -> list[dict]:
+    if entity_cache is not None:
+        return entity_cache.get_minimal(ids)
+    states = await ha.get_states(ids)
+    result = []
+    for s in states:
+        eid = s.get("entity_id", "unknown")
+        attrs = s.get("attributes") or {}
+        result.append({
+            "id": eid,
+            "state": s.get("state", "unknown"),
+            "name": attrs.get("friendly_name") or "",
+            "unit": attrs.get("unit_of_measurement") or "",
+        })
+    return result
 
 
 async def get_area_entities(ha: HAClient) -> dict[str, list[str]]:
@@ -72,3 +116,26 @@ async def get_area_entities(ha: HAClient) -> dict[str, list[str]]:
         result["__no_area__"] = no_area
 
     return result
+
+
+def get_home_status(entity_cache: EntityCache) -> list[dict]:
+    return entity_cache.get_all_useful()
+
+
+def get_entities_on(entity_cache: EntityCache) -> list[dict]:
+    return entity_cache.get_on()
+
+
+def search_entities(
+    query: str,
+    entity_cache: EntityCache,
+    embedding_index: EmbeddingIndex,
+    top_k: int = 10,
+    domain: str | None = None,
+) -> list[dict]:
+    ids = embedding_index.search(query, top_k=top_k, domain_filter=domain)
+    return entity_cache.get_minimal(ids)
+
+
+def get_entities_by_domain(domain: str, entity_cache: EntityCache) -> list[dict]:
+    return entity_cache.get_by_domain(domain)

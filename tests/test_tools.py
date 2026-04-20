@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.tools.ha_tools import get_entity_states
 from hiris.app.tools.energy_tools import get_energy_history, ENERGY_ENTITY_IDS
 
@@ -22,11 +22,13 @@ def mock_ha():
 
 
 @pytest.mark.asyncio
-async def test_get_entity_states_returns_dict(mock_ha):
+async def test_get_entity_states_returns_list(mock_ha):
     result = await get_entity_states(mock_ha, ["light.living"])
-    assert "light.living" in result
-    assert result["light.living"]["state"] == "on"
-    assert result["light.living"]["attributes"]["brightness"] == 200
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0]["id"] == "light.living"
+    assert result[0]["state"] == "on"
+    assert set(result[0].keys()) == {"id", "state", "name", "unit"}
 
 
 @pytest.mark.asyncio
@@ -177,8 +179,9 @@ async def test_get_entity_states_includes_friendly_name():
         "last_changed": "2026-04-19T10:00:00",
     }])
     result = await get_entity_states(ha, ["light.cucina"])
-    assert result["light.cucina"]["friendly_name"] == "Luce Cucina"
-    assert result["light.cucina"]["state"] == "on"
+    assert isinstance(result, list)
+    assert result[0]["name"] == "Luce Cucina"
+    assert result[0]["state"] == "on"
 
 
 @pytest.mark.asyncio
@@ -191,8 +194,9 @@ async def test_get_entity_states_friendly_name_none_when_missing():
         "last_changed": "2026-04-19T10:00:00",
     }])
     result = await get_entity_states(ha, ["sensor.temp"])
-    assert result["sensor.temp"]["friendly_name"] is None
-    assert "state" in result["sensor.temp"]
+    assert isinstance(result, list)
+    assert result[0]["name"] == ""
+    assert "state" in result[0]
 
 
 @pytest.fixture
@@ -236,3 +240,59 @@ async def test_get_area_entities_empty_when_registries_unavailable():
     result = await get_area_entities(ha)
     assert "Cucina" not in result
     assert "Soggiorno" not in result
+
+
+# ── New tests for Task 4 optimized tools ────────────────────────────────────
+
+from hiris.app.tools.ha_tools import (
+    get_home_status,
+    get_entities_on,
+    search_entities,
+    get_entities_by_domain,
+)
+
+
+def test_get_home_status_delegates_to_cache():
+    cache = MagicMock()
+    cache.get_all_useful.return_value = [{"id": "light.test", "state": "on", "name": "Test", "unit": ""}]
+    result = get_home_status(cache)
+    cache.get_all_useful.assert_called_once()
+    assert result == [{"id": "light.test", "state": "on", "name": "Test", "unit": ""}]
+
+
+def test_get_entities_on_delegates_to_cache():
+    cache = MagicMock()
+    cache.get_on.return_value = [{"id": "switch.test", "state": "on", "name": "Switch", "unit": ""}]
+    result = get_entities_on(cache)
+    cache.get_on.assert_called_once()
+    assert result == [{"id": "switch.test", "state": "on", "name": "Switch", "unit": ""}]
+
+
+def test_search_entities_uses_embedding_index():
+    cache = MagicMock()
+    index = MagicMock()
+    index.search.return_value = ["light.living_room"]
+    cache.get_minimal.return_value = [{"id": "light.living_room", "state": "on", "name": "Living Room", "unit": ""}]
+    result = search_entities("living room lights", cache, index, top_k=5)
+    index.search.assert_called_once_with("living room lights", top_k=5, domain_filter=None)
+    cache.get_minimal.assert_called_once_with(["light.living_room"])
+    assert result == [{"id": "light.living_room", "state": "on", "name": "Living Room", "unit": ""}]
+
+
+def test_get_entities_by_domain_delegates_to_cache():
+    cache = MagicMock()
+    cache.get_by_domain.return_value = [{"id": "light.test", "state": "on", "name": "Test", "unit": ""}]
+    result = get_entities_by_domain("light", cache)
+    cache.get_by_domain.assert_called_once_with("light")
+    assert result == [{"id": "light.test", "state": "on", "name": "Test", "unit": ""}]
+
+
+@pytest.mark.asyncio
+async def test_get_entity_states_uses_cache_when_provided():
+    ha = AsyncMock()
+    ha.get_states = AsyncMock()
+    cache = MagicMock()
+    cache.get_minimal.return_value = [{"id": "light.x", "state": "on", "name": "X", "unit": ""}]
+    result = await get_entity_states(ha, ["light.x"], entity_cache=cache)
+    ha.get_states.assert_not_called()
+    assert result == [{"id": "light.x", "state": "on", "name": "X", "unit": ""}]
