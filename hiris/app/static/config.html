@@ -368,6 +368,11 @@
         <fieldset>
           <legend>Istruzioni</legend>
           <p class="hint">Il Contesto Strategico viene anteposto al System Prompt &mdash; usalo per descrivere la casa e le abitudini della famiglia.</p>
+          <label>Template contesto</label>
+          <select id="f-template">
+            <option value="">— nessun template —</option>
+          </select>
+          <p class="hint">Seleziona un template per precompilare Contesto Strategico e System Prompt. Puoi modificarli liberamente dopo.</p>
           <label>Contesto Strategico</label>
           <textarea id="f-strategic" rows="5" placeholder="Es: La famiglia &egrave; composta da 2 adulti. Rientro tipico: 16:00 nei giorni feriali in inverno, 18:30 in estate. Temperatura preferita in casa: 21&deg;C. Di notte (dopo le 23:00): 18&deg;C.
 Sensori presenza: person.paolo, person.elena
@@ -445,6 +450,52 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       } catch(e) {}
     }
     applyTheme();
+
+    var TEMPLATES = [
+      {
+        id: 'energy-solar',
+        label: 'Monitor Energia Solare',
+        strategic: 'SISTEMA ENERGETICO:\n- Usa search_entities("produzione solare") per trovare il sensore fotovoltaico\n- Usa search_entities("batteria percentuale") per lo stato batteria\n- Usa search_entities("consumo totale potenza") per il consumo casa\n- Usa search_entities("importazione rete") per l\'importazione rete\n\nSOGLIE:\n- Importazione > 100W sostenuta: stai comprando energia — avvisa\n- Batteria < 15%: livello critico — avvisa\n- Surplus solare > 300W: momento ottimale per carichi\n\nCARICHI DIFFERIBILI: lavatrice, lavastoviglie, forno elettrico\nPICCO SOLARE: tipicamente 10:00-14:00',
+        prompt: 'Analizza lo stato energetico. Se rilevi importazione dalla rete o batteria bassa, invia notifica. Se c\'è surplus solare, suggerisci un\'azione.',
+      },
+      {
+        id: 'security',
+        label: 'Sicurezza Casa',
+        strategic: 'SENSORI:\n- Porte/finestre: search_entities("porta aperta") o search_entities("finestra aperta")\n- Movimento: search_entities("sensore movimento")\n- Persone in casa: person.* (state="home" = presente)\n\nREGOLE:\n- Porta/finestra aperta oltre 30 min: notifica\n- Movimento con nessuno in casa: notifica urgente\n- Controlla presenze con get_home_status() prima di agire',
+        prompt: 'Controlla sicurezza casa: porte, finestre, sensori movimento. Notifica anomalie.',
+      },
+      {
+        id: 'family-presence',
+        label: 'Presenza Famiglia',
+        strategic: 'PERSONE:\n- Tracker: search_entities("persona") — state="home" significa in casa\n\nAZIONI TIPICHE:\n- Arrivo: pre-riscalda climate, accendi luci benvenuto\n- Partenza: spegni climate, luci off, verifica serrature\n\nABITUDINI:\n- Rientro tipico: [modifica qui]\n- Temperatura preferita: [modifica qui, es. 21°C diurno / 18°C notturno]',
+        prompt: 'Verifica presenze. Se cambiano, adatta riscaldamento e luci di conseguenza.',
+      },
+      {
+        id: 'climate',
+        label: 'Monitor Clima',
+        strategic: 'TERMOSTATI: get_entities_by_domain("climate")\nMETEO: get_weather_forecast(hours=24)\n\nPREFERENCE:\n- Temperatura diurna: [es. 21°C]\n- Temperatura notturna: [es. 18°C]\n- Orario diurno: 07:00-23:00\n\nREGOLE:\n- Non riscaldare con finestre aperte (search_entities("finestra"))\n- Anticipa riscaldamento di 30 min rispetto al rientro\n- In estate: preferisci ventilazione naturale a condizionamento',
+        prompt: 'Analizza temperatura attuale vs preferita. Ottimizza riscaldamento. Segnala anomalie.',
+      },
+    ];
+
+    function populateTemplateSelector() {
+      var sel = document.getElementById('f-template');
+      if (!sel || sel.options.length > 1) return;
+      TEMPLATES.forEach(function(t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.label;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', function(e) {
+        var id = e.target.value;
+        if (!id) return;
+        var tpl = TEMPLATES.filter(function(x) { return x.id === id; })[0];
+        if (!tpl) return;
+        document.getElementById('f-strategic').value = tpl.strategic;
+        document.getElementById('f-prompt').value = tpl.prompt;
+      });
+    }
 
     var TOOLS = [
       { id: 'get_entity_states',      label: 'get_entity_states',      desc: 'Legge stato entit\u00e0 HA (luce, clima, sensori\u2026)' },
@@ -573,6 +624,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     function openAgent(a) {
       currentId = a.id;
+      document.getElementById('f-template').value = '';
       document.getElementById('no-selection').style.display = 'none';
       document.getElementById('form').style.display = '';
       document.getElementById('form-title').textContent = a.name;
@@ -599,6 +651,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     document.getElementById('new-btn').onclick = function() {
       currentId = null;
+      document.getElementById('f-template').value = '';
       document.getElementById('no-selection').style.display = 'none';
       document.getElementById('form').style.display = '';
       document.getElementById('form-title').textContent = 'Nuovo agente';
@@ -685,6 +738,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       }
     };
 
+    populateTemplateSelector();
     loadAgents();
 
     function fmtNum(n) {
