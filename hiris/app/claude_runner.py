@@ -175,6 +175,9 @@ class ClaudeRunner:
         effective_system = system_prompt
         if restrict_to_home:
             effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
+        if self._cache is not None:
+            from .proxy.home_profile import generate_home_profile
+            effective_system = f"{effective_system}\n\n---\n\n{generate_home_profile(self._cache)}"
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         messages: list[dict] = list(conversation_history or [])

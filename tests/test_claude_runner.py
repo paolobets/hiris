@@ -287,3 +287,43 @@ async def test_chat_uses_resolved_model_for_monitor(runner):
     await runner.chat("Test", model="auto", agent_type="monitor")
     call_kwargs = runner._client.messages.create.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
+
+
+@pytest.mark.asyncio
+async def test_chat_injects_home_profile_when_cache_available(runner):
+    cache = MagicMock()
+    cache.get_all_useful.return_value = [
+        {"id": "light.test", "state": "on", "name": "Test", "unit": ""},
+    ]
+    runner._cache = cache
+
+    success = MagicMock()
+    success.stop_reason = "end_turn"
+    success.content = [MagicMock(type="text", text="ok")]
+    success.usage.input_tokens = 5
+    success.usage.output_tokens = 2
+    runner._client.messages.create = AsyncMock(return_value=success)
+
+    await runner.chat("Ciao", system_prompt="Base prompt")
+
+    call_kwargs = runner._client.messages.create.call_args.kwargs
+    assert "CASA [aggiornato" in call_kwargs["system"]
+    assert "Base prompt" in call_kwargs["system"]
+
+
+@pytest.mark.asyncio
+async def test_chat_skips_home_profile_when_no_cache(runner):
+    runner._cache = None
+
+    success = MagicMock()
+    success.stop_reason = "end_turn"
+    success.content = [MagicMock(type="text", text="ok")]
+    success.usage.input_tokens = 5
+    success.usage.output_tokens = 2
+    runner._client.messages.create = AsyncMock(return_value=success)
+
+    await runner.chat("Ciao", system_prompt="Solo prompt")
+
+    call_kwargs = runner._client.messages.create.call_args.kwargs
+    assert "CASA" not in call_kwargs["system"]
+    assert call_kwargs["system"] == "Solo prompt"
