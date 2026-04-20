@@ -6,7 +6,14 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 import anthropic
 from .proxy.ha_client import HAClient
-from .tools.ha_tools import get_entity_states, TOOL_DEF as HA_TOOL, get_area_entities, GET_AREA_ENTITIES_TOOL_DEF
+from .tools.ha_tools import (
+    get_entity_states, TOOL_DEF as HA_TOOL,
+    get_area_entities, GET_AREA_ENTITIES_TOOL_DEF,
+    get_home_status, GET_HOME_STATUS_TOOL_DEF,
+    get_entities_on, GET_ENTITIES_ON_TOOL_DEF,
+    search_entities, SEARCH_ENTITIES_TOOL_DEF,
+    get_entities_by_domain, GET_ENTITIES_BY_DOMAIN_TOOL_DEF,
+)
 from .tools.energy_tools import get_energy_history, TOOL_DEF as ENERGY_TOOL
 from .tools.weather_tools import get_weather_forecast, TOOL_DEF as WEATHER_TOOL
 from .tools.notify_tools import send_notification, TOOL_DEF as NOTIFY_TOOL
@@ -35,6 +42,10 @@ CALL_SERVICE_TOOL_DEF = {
 ALL_TOOL_DEFS = [
     HA_TOOL,
     GET_AREA_ENTITIES_TOOL_DEF,
+    GET_HOME_STATUS_TOOL_DEF,
+    GET_ENTITIES_ON_TOOL_DEF,
+    SEARCH_ENTITIES_TOOL_DEF,
+    GET_ENTITIES_BY_DOMAIN_TOOL_DEF,
     ENERGY_TOOL,
     WEATHER_TOOL,
     NOTIFY_TOOL,
@@ -63,12 +74,16 @@ class ClaudeRunner:
         notify_config: dict,
         restrict_to_home: bool = False,
         usage_path: str = "",
+        entity_cache=None,
+        embedding_index=None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._ha = ha_client
         self._notify_config = notify_config
         self._restrict_to_home = restrict_to_home
         self._usage_path = usage_path
+        self._cache = entity_cache
+        self._index = embedding_index
         self.last_tool_calls: list[dict] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
@@ -194,7 +209,23 @@ class ClaudeRunner:
                 if allowed_entities:
                     ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                     logger.info("Filtered entity ids to: %s", ids)
-                return await get_entity_states(self._ha, ids)
+                return await get_entity_states(self._ha, ids, entity_cache=self._cache)
+            if name == "get_home_status":
+                return get_home_status(self._cache) if self._cache else []
+            if name == "get_entities_on":
+                return get_entities_on(self._cache) if self._cache else []
+            if name == "search_entities":
+                if self._cache is None or self._index is None:
+                    return []
+                return search_entities(
+                    inputs["query"],
+                    self._cache,
+                    self._index,
+                    top_k=inputs.get("top_k", 10),
+                    domain=inputs.get("domain"),
+                )
+            if name == "get_entities_by_domain":
+                return get_entities_by_domain(inputs["domain"], self._cache) if self._cache else []
             if name == "get_energy_history":
                 return await get_energy_history(self._ha, inputs["days"])
             if name == "get_weather_forecast":
