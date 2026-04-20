@@ -450,3 +450,4 @@ async def test_require_confirmation_combines_with_restrict(runner):
     assert "Base" in system_used
     assert RESTRICT_PROMPT in system_used
     assert REQUIRE_CONFIRMATION_PROMPT in system_used
+    assert system_used.index(RESTRICT_PROMPT) < system_used.index(REQUIRE_CONFIRMATION_PROMPT)
