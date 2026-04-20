@@ -1,6 +1,7 @@
 import pytest
+import anthropic
 from unittest.mock import AsyncMock, MagicMock, patch
-from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT
+from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT, resolve_model, AUTO_MODEL_MAP
 
 
 @pytest.fixture
@@ -165,7 +166,6 @@ def restricted_runner(mock_ha):
             api_key="test-key",
             ha_client=mock_ha,
             notify_config={},
-            restrict_to_home=True,
         )
 
 
@@ -175,10 +175,15 @@ async def test_restrict_to_home_injects_prompt(restricted_runner):
 
     async def capture(**kwargs):
         captured.append(kwargs)
-        return MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="ok")])
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage.input_tokens = 5
+        m.usage.output_tokens = 2
+        return m
 
     restricted_runner._client.messages.create = capture
-    await restricted_runner.chat("Ciao")
+    await restricted_runner.chat("Ciao", restrict_to_home=True)
     system_used = captured[0]["system"]
     assert "SOLO" in system_used or "solo" in system_used.lower()
     assert RESTRICT_PROMPT in system_used
@@ -190,10 +195,15 @@ async def test_restrict_to_home_false_does_not_inject(runner):
 
     async def capture(**kwargs):
         captured.append(kwargs)
-        return MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="ok")])
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage.input_tokens = 5
+        m.usage.output_tokens = 2
+        return m
 
     runner._client.messages.create = capture
-    await runner.chat("Ciao", system_prompt="Prompt originale")
+    await runner.chat("Ciao", system_prompt="Prompt originale", restrict_to_home=False)
     assert captured[0]["system"] == "Prompt originale"
 
 
@@ -232,10 +242,48 @@ async def test_restrict_to_home_appends_to_existing_prompt(restricted_runner):
 
     async def capture(**kwargs):
         captured.append(kwargs)
-        return MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="ok")])
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage.input_tokens = 5
+        m.usage.output_tokens = 2
+        return m
 
     restricted_runner._client.messages.create = capture
-    await restricted_runner.chat("Ciao", system_prompt="Sei un agente energia.")
+    await restricted_runner.chat("Ciao", system_prompt="Sei un agente energia.", restrict_to_home=True)
     system_used = captured[0]["system"]
     assert "agente energia" in system_used
     assert RESTRICT_PROMPT in system_used
+
+
+def test_resolve_model_auto_chat_returns_sonnet():
+    assert resolve_model("auto", "chat") == "claude-sonnet-4-6"
+
+
+def test_resolve_model_auto_monitor_returns_haiku():
+    assert resolve_model("auto", "monitor") == "claude-haiku-4-5-20251001"
+
+
+def test_resolve_model_auto_reactive_returns_haiku():
+    assert resolve_model("auto", "reactive") == "claude-haiku-4-5-20251001"
+
+
+def test_resolve_model_explicit_overrides_auto():
+    assert resolve_model("claude-sonnet-4-6", "monitor") == "claude-sonnet-4-6"
+
+
+def test_resolve_model_auto_unknown_type_defaults_to_sonnet():
+    assert resolve_model("auto", "unknown_type") == "claude-sonnet-4-6"
+
+
+@pytest.mark.asyncio
+async def test_chat_uses_resolved_model_for_monitor(runner):
+    success = MagicMock()
+    success.stop_reason = "end_turn"
+    success.content = [MagicMock(type="text", text="ok")]
+    success.usage.input_tokens = 10
+    success.usage.output_tokens = 5
+    runner._client.messages.create = AsyncMock(return_value=success)
+    await runner.chat("Test", model="auto", agent_type="monitor")
+    call_kwargs = runner._client.messages.create.call_args.kwargs
+    assert call_kwargs["model"] == "claude-haiku-4-5-20251001"

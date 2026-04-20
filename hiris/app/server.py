@@ -62,7 +62,6 @@ async def _on_startup(app: web.Application) -> None:
             api_key=api_key,
             ha_client=ha_client,
             notify_config=notify_config,
-            restrict_to_home=restrict_to_home,
             usage_path=usage_path,
             entity_cache=entity_cache,
             embedding_index=embedding_index,

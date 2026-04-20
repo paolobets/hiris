@@ -1,3 +1,4 @@
+import asyncio
 import fnmatch
 import json
 import logging
@@ -58,6 +59,27 @@ ALL_TOOL_DEFS = [
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
 MAX_TOOL_ITERATIONS = 10
+MAX_RETRIES = 3
+RETRY_DELAYS = [5, 15, 45]
+
+AUTO_MODEL_MAP: dict[str, str] = {
+    "chat": "claude-sonnet-4-6",
+    "monitor": "claude-haiku-4-5-20251001",
+    "reactive": "claude-haiku-4-5-20251001",
+    "preventive": "claude-haiku-4-5-20251001",
+}
+
+_PRICING: dict[str, dict[str, float]] = {
+    "claude-sonnet-4-6":         {"input": 3.0,  "output": 15.0},
+    "claude-opus-4-7":           {"input": 15.0, "output": 75.0},
+    "claude-haiku-4-5-20251001": {"input": 0.25, "output": 1.25},
+}
+
+
+def resolve_model(model: str, agent_type: str) -> str:
+    if model == "auto":
+        return AUTO_MODEL_MAP.get(agent_type, MODEL)
+    return model
 
 RESTRICT_PROMPT = (
     "Sei HIRIS, assistente per la smart home. "
@@ -72,7 +94,6 @@ class ClaudeRunner:
         api_key: str,
         ha_client: HAClient,
         notify_config: dict,
-        restrict_to_home: bool = False,
         usage_path: str = "",
         entity_cache=None,
         embedding_index=None,
@@ -80,7 +101,6 @@ class ClaudeRunner:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._ha = ha_client
         self._notify_config = notify_config
-        self._restrict_to_home = restrict_to_home
         self._usage_path = usage_path
         self._cache = entity_cache
         self._index = embedding_index
@@ -88,6 +108,8 @@ class ClaudeRunner:
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
         self.total_requests: int = 0
+        self.total_cost_usd: float = 0.0
+        self.total_rate_limit_errors: int = 0
         self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
         self._load_usage()
 
@@ -101,6 +123,8 @@ class ClaudeRunner:
             self.total_output_tokens = data.get("total_output_tokens", 0)
             self.total_requests = data.get("total_requests", 0)
             self.usage_last_reset = data.get("last_reset", self.usage_last_reset)
+            self.total_cost_usd = data.get("total_cost_usd", 0.0)
+            self.total_rate_limit_errors = data.get("total_rate_limit_errors", 0)
         except Exception as exc:
             logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
 
@@ -114,6 +138,8 @@ class ClaudeRunner:
                 "total_output_tokens": self.total_output_tokens,
                 "total_requests": self.total_requests,
                 "last_reset": self.usage_last_reset,
+                "total_cost_usd": self.total_cost_usd,
+                "total_rate_limit_errors": self.total_rate_limit_errors,
             }
             tmp = self._usage_path + ".tmp"
             os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
@@ -127,6 +153,8 @@ class ClaudeRunner:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_requests = 0
+        self.total_cost_usd = 0.0
+        self.total_rate_limit_errors = 0
         self.usage_last_reset = datetime.now(timezone.utc).isoformat()
         self._save_usage()
 
@@ -138,20 +166,25 @@ class ClaudeRunner:
         conversation_history: Optional[list[dict]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
+        model: str = "auto",
+        max_tokens: int = MAX_TOKENS,
+        agent_type: str = "chat",
+        restrict_to_home: bool = False,
     ) -> str:
         self.last_tool_calls = []
         effective_system = system_prompt
-        if self._restrict_to_home:
+        if restrict_to_home:
             effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
+        effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         messages: list[dict] = list(conversation_history or [])
         messages.append({"role": "user", "content": user_message})
 
         for _ in range(MAX_TOOL_ITERATIONS):
             try:
-                response = await self._client.messages.create(
-                    model=MODEL,
-                    max_tokens=MAX_TOKENS,
+                response = await self._call_api(
+                    model=effective_model,
+                    max_tokens=max_tokens,
                     system=effective_system,
                     tools=tools,
                     messages=messages,
@@ -160,9 +193,13 @@ class ClaudeRunner:
                 logger.error("Claude API error: %s", exc)
                 return f"Claude API error: {exc}"
 
-            self.total_input_tokens += response.usage.input_tokens
-            self.total_output_tokens += response.usage.output_tokens
+            inp = response.usage.input_tokens
+            out = response.usage.output_tokens
+            self.total_input_tokens += inp
+            self.total_output_tokens += out
             self.total_requests += 1
+            prices = _PRICING.get(effective_model, _PRICING["claude-sonnet-4-6"])
+            self.total_cost_usd += (inp * prices["input"] + out * prices["output"]) / 1_000_000
             self._save_usage()
 
             if response.stop_reason == "end_turn":
@@ -192,6 +229,19 @@ class ClaudeRunner:
                 return "\n".join(text_blocks) if text_blocks else f"Stopped: {response.stop_reason}"
 
         return "Max tool iterations reached."
+
+    async def _call_api(self, **kwargs) -> Any:
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                return await self._client.messages.create(**kwargs)
+            except anthropic.APIStatusError as exc:
+                if exc.status_code in (429, 529) and attempt < MAX_RETRIES:
+                    self.total_rate_limit_errors += 1
+                    delay = RETRY_DELAYS[attempt]
+                    logger.warning("Rate limit (attempt %d/%d), retry in %ds", attempt + 1, MAX_RETRIES, delay)
+                    await asyncio.sleep(delay)
+                else:
+                    raise
 
     async def _dispatch_tool(
         self,
