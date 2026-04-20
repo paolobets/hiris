@@ -494,6 +494,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         if (!tpl) return;
         document.getElementById('f-strategic').value = tpl.strategic;
         document.getElementById('f-prompt').value = tpl.prompt;
+        e.target.value = '';
       });
     }
 
