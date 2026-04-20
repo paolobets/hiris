@@ -1,4 +1,6 @@
 # hiris/app/server.py
+import asyncio
+import logging
 import os
 from aiohttp import web
 from .api.handlers_chat import handle_chat
@@ -8,6 +10,10 @@ from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
 from .agent_engine import AgentEngine
 from .proxy.ha_client import HAClient
+from .proxy.entity_cache import EntityCache
+from .proxy.embedding_index import EmbeddingIndex
+
+logger = logging.getLogger(__name__)
 
 
 async def _on_startup(app: web.Application) -> None:
@@ -20,10 +26,25 @@ async def _on_startup(app: web.Application) -> None:
     await ha_client.start()
     app["ha_client"] = ha_client
 
+    entity_cache = EntityCache()
+    try:
+        await entity_cache.load(ha_client)
+    except Exception as exc:
+        logger.warning("EntityCache load failed: %s", exc)
+    ha_client.add_state_listener(entity_cache.on_state_changed)
+    app["entity_cache"] = entity_cache
+
     data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
     engine = AgentEngine(ha_client=ha_client, data_path=data_path)
     await engine.start()
     app["engine"] = engine
+
+    embedding_index = EmbeddingIndex()
+    asyncio.create_task(
+        embedding_index.build(entity_cache.get_all()),
+        name="embedding_index_build",
+    )
+    app["embedding_index"] = embedding_index
 
     notify_config = {
         "ha_notify_service": os.environ.get("HA_NOTIFY_SERVICE", "notify.notify"),
@@ -43,6 +64,8 @@ async def _on_startup(app: web.Application) -> None:
             notify_config=notify_config,
             restrict_to_home=restrict_to_home,
             usage_path=usage_path,
+            entity_cache=entity_cache,
+            embedding_index=embedding_index,
         )
         app["claude_runner"] = runner
         engine.set_claude_runner(runner)
