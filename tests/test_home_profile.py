@@ -47,3 +47,53 @@ def test_generate_home_profile_no_climate():
     ])
     result = generate_home_profile(cache)
     assert "Clima:" in result
+
+
+import time
+from unittest.mock import patch
+from hiris.app.proxy.home_profile import get_cached_home_profile, _reset_profile_cache
+
+
+def test_cached_home_profile_returns_string():
+    _reset_profile_cache()
+    cache = _make_cache([])
+    result = get_cached_home_profile(cache)
+    assert result.startswith("CASA [aggiornato")
+
+
+def test_cached_home_profile_hit_within_ttl():
+    _reset_profile_cache()
+    cache = _make_cache([
+        {"id": "light.a", "state": "on", "name": "A", "unit": ""},
+    ])
+    t0 = 1000.0
+    with patch("hiris.app.proxy.home_profile._now", return_value=t0):
+        first = get_cached_home_profile(cache, ttl=60.0)
+    with patch("hiris.app.proxy.home_profile._now", return_value=t0 + 30.0):
+        second = get_cached_home_profile(cache, ttl=60.0)
+    assert first == second
+    # get_all_useful deve essere chiamato 1 sola volta (cache hit)
+    assert cache.get_all_useful.call_count == 1
+
+
+def test_cached_home_profile_miss_after_ttl():
+    _reset_profile_cache()
+    cache = _make_cache([])
+    t0 = 1000.0
+    with patch("hiris.app.proxy.home_profile._now", return_value=t0):
+        get_cached_home_profile(cache, ttl=60.0)
+    with patch("hiris.app.proxy.home_profile._now", return_value=t0 + 61.0):
+        get_cached_home_profile(cache, ttl=60.0)
+    assert cache.get_all_useful.call_count == 2
+
+
+def test_reset_profile_cache_forces_regeneration():
+    _reset_profile_cache()
+    cache = _make_cache([])
+    t0 = 1000.0
+    with patch("hiris.app.proxy.home_profile._now", return_value=t0):
+        get_cached_home_profile(cache, ttl=600.0)
+    _reset_profile_cache()
+    with patch("hiris.app.proxy.home_profile._now", return_value=t0 + 1.0):
+        get_cached_home_profile(cache, ttl=600.0)
+    assert cache.get_all_useful.call_count == 2

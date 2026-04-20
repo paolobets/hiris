@@ -1,9 +1,29 @@
 from __future__ import annotations
+import time
 from datetime import datetime, timezone
 from .entity_cache import EntityCache
 
+# ── module-level cache ────────────────────────────────────────────────────────
+_cached_profile: str = ""
+_cached_at: float = 0.0
+
+
+def _now() -> float:
+    """Indirection for monkeypatching in tests."""
+    return time.monotonic()
+
+
+def _reset_profile_cache() -> None:
+    """Force cache invalidation — used in tests."""
+    global _cached_profile, _cached_at
+    _cached_profile = ""
+    _cached_at = 0.0
+
+
+# ── public API ────────────────────────────────────────────────────────────────
 
 def generate_home_profile(entity_cache: EntityCache) -> str:
+    """Generate fresh profile string (no caching). Used internally and in tests."""
     now = datetime.now(timezone.utc).strftime("%H:%M")
     entities = entity_cache.get_all_useful()
 
@@ -30,3 +50,19 @@ def generate_home_profile(entity_cache: EntityCache) -> str:
         f"Accesi({on_count}): {on_summary}\n"
         f"Clima: {climate_str}"
     )
+
+
+def get_cached_home_profile(entity_cache: EntityCache, ttl: float = 60.0) -> str:
+    """Return HOME_PROFILE, regenerating at most once per `ttl` seconds.
+
+    Keeping the system prompt string stable within the TTL window maximises
+    Anthropic API prompt-cache hits, cutting cached-input token cost by ~90%.
+    TTL defaults to 60 s (aligned with the HH:MM timestamp granularity).
+    """
+    global _cached_profile, _cached_at
+    ts = _now()
+    if _cached_profile and (ts - _cached_at) < ttl:
+        return _cached_profile
+    _cached_profile = generate_home_profile(entity_cache)
+    _cached_at = ts
+    return _cached_profile

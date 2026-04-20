@@ -23,7 +23,7 @@ from .tools.automation_tools import (
     trigger_automation, TRIGGER_TOOL_DEF,
     toggle_automation, TOGGLE_TOOL_DEF,
 )
-from .proxy.home_profile import generate_home_profile
+from .proxy.home_profile import generate_home_profile, get_cached_home_profile
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,7 @@ class ClaudeRunner:
         if require_confirmation:
             effective_system = f"{effective_system}\n\n---\n\n{REQUIRE_CONFIRMATION_PROMPT}"
         if self._cache is not None:
-            effective_system = f"{effective_system}\n\n---\n\n{generate_home_profile(self._cache)}"
+            effective_system = f"{effective_system}\n\n---\n\n{get_cached_home_profile(self._cache)}"
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         messages: list[dict] = list(conversation_history or [])
