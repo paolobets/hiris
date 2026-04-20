@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HIRIS</title>
+  <link rel="icon" type="image/svg+xml" href="static/hiris-icon.svg">
   <style>
     :root {
       --bg:               #F9FAFB;
@@ -251,7 +252,7 @@
       max-width: 360px;
       padding: 2rem 0;
     }
-    #welcome .welcome-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    #welcome .welcome-icon { font-size: 2.5rem; margin-bottom: 0.75rem; display:flex; justify-content:center; }
     #welcome h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.4rem; }
     #welcome p  { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem; }
     .quick-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
@@ -409,7 +410,7 @@
   </aside>
   <main id="main">
     <header id="header">
-      <span id="header-icon">&#x1F916;</span>
+      <img id="header-icon" src="static/hiris-icon.svg" width="32" height="32" alt="HIRIS" style="border-radius:50%;flex-shrink:0">
       <div>
         <div id="header-title">HIRIS</div>
         <div id="header-subtitle">Home Intelligent Reasoning &amp; Integration</div>
@@ -418,7 +419,7 @@
     </header>
     <div id="messages">
       <div id="welcome">
-        <div class="welcome-icon">&#x1F44B;</div>
+        <div class="welcome-icon"><img src="static/hiris-icon.svg" width="72" height="72" alt="HIRIS" style="border-radius:50%"></div>
         <h3>Ciao! Sono HIRIS</h3>
         <p>Il tuo assistente per la smart home.<br>Chiedimi tutto ci&ograve; di cui hai bisogno.</p>
         <div class="quick-chips">
@@ -439,6 +440,20 @@
   </main>
 </div>
 <script>
+/* Iris Petali avatar — inline SVG used for all agent bubbles */
+var HIRIS_AVATAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="28" height="28" style="display:block;border-radius:50%">'
+  + '<circle cx="50" cy="50" r="50" fill="#1a0533"/>'
+  + '<g transform="translate(50,50)">'
+  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#c084fc"/>'
+  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#818cf8" transform="rotate(60)"/>'
+  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#60a5fa" transform="rotate(120)"/>'
+  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#22d3ee" transform="rotate(180)"/>'
+  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#2dd4bf" transform="rotate(240)"/>'
+  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#e879f9" transform="rotate(300)"/>'
+  + '</g>'
+  + '<circle cx="50" cy="50" r="4.5" fill="white"/>'
+  + '</svg>';
+
 var messagesEl = document.getElementById('messages');
 var inputEl    = document.getElementById('input');
 var sendBtn    = document.getElementById('send-btn');
@@ -506,7 +521,7 @@ function appendMsg(role, text) {
   var content = esc(text).replace(/\n/g,'<br>');
   if (role === 'assistant') {
     row.innerHTML =
-      '<div class="avatar">&#x1F916;</div>' +
+      '<div class="avatar">' + HIRIS_AVATAR + '</div>' +
       '<div class="msg-col"><div class="bubble">' + content + '</div><div class="msg-time">' + time + '</div></div>';
   } else {
     row.innerHTML =
@@ -536,7 +551,7 @@ function showTyping() {
   row.className = 'typing-row';
   row.id = 'typing-indicator';
   row.innerHTML =
-    '<div class="avatar">&#x1F916;</div>' +
+    '<div class="avatar">' + HIRIS_AVATAR + '</div>' +
     '<div class="typing-bubble">' +
     '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>' +
     '</div>';

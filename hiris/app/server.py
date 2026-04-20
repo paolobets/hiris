@@ -117,4 +117,4 @@ async def _serve_config(request: web.Request) -> web.Response:
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": "0.1.2"})
+    return web.json_response({"status": "ok", "version": "0.1.3"})
