@@ -371,6 +371,20 @@ class AgentEngine:
             self._append_execution_log(agent, result, inp_before, out_before, tool_calls_snapshot, success=True,
                                        eval_status=eval_status, action_taken=action_taken)
             self._save()
+            # Auto-disable if budget_eur_limit exceeded
+            if agent.budget_eur_limit > 0 and self._claude_runner:
+                try:
+                    usage = self._claude_runner.get_agent_usage(agent.id)
+                    cost_eur = usage.get("cost_usd", 0.0) * 0.92
+                    if cost_eur >= agent.budget_eur_limit:
+                        logger.warning(
+                            "Agent %s auto-disabled: cost €%.4f >= limit €%.4f",
+                            agent.name, cost_eur, agent.budget_eur_limit,
+                        )
+                        agent.enabled = False
+                        self._save()
+                except Exception as exc:
+                    logger.warning("Budget check failed for %s: %s", agent.name, exc)
             return result
         except Exception as exc:
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
@@ -378,6 +392,19 @@ class AgentEngine:
             agent.last_result = f"Error: {exc}"
             self._append_execution_log(agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False)
             self._save()
+            if agent.budget_eur_limit > 0 and self._claude_runner:
+                try:
+                    usage = self._claude_runner.get_agent_usage(agent.id)
+                    cost_eur = usage.get("cost_usd", 0.0) * 0.92
+                    if cost_eur >= agent.budget_eur_limit:
+                        logger.warning(
+                            "Agent %s auto-disabled on failure: cost €%.4f >= limit €%.4f",
+                            agent.name, cost_eur, agent.budget_eur_limit,
+                        )
+                        agent.enabled = False
+                        self._save()
+                except Exception as exc:
+                    logger.warning("Budget check failed for %s: %s", agent.name, exc)
             return agent.last_result
 
     def _append_execution_log(
