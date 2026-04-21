@@ -332,3 +332,37 @@ async def test_chat_persists_exchange_in_history(client):
     history = load_history(DEFAULT_AGENT_ID, data_dir)
     assert any(m["content"] == "persist me" for m in history)
     assert any(m["content"] == "stored response" for m in history)
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_prefetch_injects_entity_context(client):
+    from unittest.mock import MagicMock
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+
+    engine = client.app["engine"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        trigger={"type": "manual"}, system_prompt="base prompt",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+
+    # Wire a minimal embedding index and entity cache
+    idx = MagicMock()
+    idx.ready = True
+    idx.search = MagicMock(return_value=["light.soggiorno"])
+    cache = MagicMock()
+    cache.get_minimal = MagicMock(return_value=[
+        {"id": "light.soggiorno", "name": "Luce Soggiorno", "state": "on", "unit": ""},
+    ])
+    client.app["embedding_index"] = idx
+    client.app["entity_cache"] = cache
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "luce soggiorno accesa?"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "Luce Soggiorno" in call_kwargs["system_prompt"]
+    assert "light.soggiorno" in call_kwargs["system_prompt"]
+    assert "Entità rilevanti" in call_kwargs["system_prompt"]

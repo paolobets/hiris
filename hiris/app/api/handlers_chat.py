@@ -6,6 +6,40 @@ from ..chat_store import load_history, append_messages
 
 logger = logging.getLogger(__name__)
 
+_RAG_TOP_K = 12  # entities to pre-fetch per request
+
+
+def _prefetch_context(message: str, app: web.Application) -> str:
+    """Semantic search → fetch current states → return compact context block."""
+    idx = app.get("embedding_index")
+    cache = app.get("entity_cache")
+    if not idx or not cache or not idx.ready:
+        return ""
+    ids = idx.search(message, top_k=_RAG_TOP_K)
+    if not ids:
+        return ""
+    entities = cache.get_minimal(ids)
+    if not entities:
+        return ""
+    lines = []
+    for e in entities:
+        name = e.get("name") or e["id"]
+        seg = f"- {name} [{e['id']}]: {e['state']}"
+        if e.get("unit"):
+            seg += f" {e['unit']}"
+        a = e.get("attributes") or {}
+        curr = a.get("current_temperature")
+        setp = a.get("temperature")
+        action = a.get("hvac_action")
+        if curr is not None:
+            seg += f", corrente {curr}°C"
+        if setp is not None:
+            seg += f" → setpoint {setp}°C"
+        if action:
+            seg += f" ({action})"
+        lines.append(seg)
+    return "Entità rilevanti (dati in tempo reale):\n" + "\n".join(lines)
+
 
 async def handle_chat(request: web.Request) -> web.Response:
     try:
@@ -70,6 +104,11 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_tools = None
         allowed_entities = None
         allowed_services = None
+
+    # RAG pre-fetch: inject relevant entity states before Claude reasons
+    prefetched = _prefetch_context(message, request.app)
+    if prefetched:
+        system_prompt = f"{system_prompt}\n\n---\n\n{prefetched}"
 
     agent_model = getattr(agent, "model", "auto") if agent else "auto"
     agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096
