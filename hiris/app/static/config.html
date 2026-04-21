@@ -413,6 +413,56 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .run-empty { color: var(--text-muted); font-style: italic; }
     .run-error-text { color: var(--danger); }
+
+    /* Action builder */
+    .actions-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+    .action-item {
+      display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+      background: var(--surface-3); border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px;
+    }
+    .action-item .ai-type {
+      font-size: 11px; padding: 2px 6px; border-radius: 10px;
+      background: var(--surface-4); color: var(--text-muted);
+    }
+    .action-item .ai-label { flex: 1; }
+    .action-item .ai-remove {
+      cursor: pointer; color: var(--text-muted); font-size: 16px; line-height: 1;
+    }
+    .action-item .ai-remove:hover { color: var(--danger); }
+    .btn-add-action {
+      background: var(--surface-4); border: 1px dashed var(--border-accent);
+      color: var(--accent); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-add-action:hover { background: var(--surface-hover); }
+    .action-editor {
+      margin-top: 10px; padding: 12px; background: var(--surface-3);
+      border: 1px solid var(--border-accent); border-radius: 8px;
+    }
+    .ae-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .ae-row label { width: 100px; font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+    .ae-row input, .ae-row select {
+      flex: 1; padding: 5px 8px; background: var(--input-bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px; font-size: 13px;
+    }
+    .ae-buttons { display: flex; gap: 8px; margin-top: 10px; }
+    .ae-buttons button {
+      padding: 5px 14px; border-radius: 5px; border: 1px solid var(--border);
+      cursor: pointer; font-size: 12px;
+    }
+    #ae-confirm { background: var(--accent); color: #fff; border-color: var(--accent); }
+    #ae-cancel { background: var(--surface-4); color: var(--text-muted); }
+
+    /* Execution log eval badge */
+    .eval-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
+      font-weight: 600; margin-right: 6px;
+    }
+    .eval-ok    { background: #16532222; color: #34d399; border: 1px solid #16532266; }
+    .eval-warn  { background: #78350f22; color: #fbbf24; border: 1px solid #78350f66; }
+    .eval-alert { background: #7f1d1d22; color: #f87171; border: 1px solid #7f1d1d66; }
+    .log-action-taken { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
   </style>
 </head>
 <body>
@@ -551,6 +601,55 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
             <label>Azioni permesse</label>
             <p class="hint">Seleziona i domini su cui questo agente pu&ograve; intervenire tramite call_ha_service.</p>
             <div class="tool-checkboxes" id="action-checks"></div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section" id="actions-fieldset">
+          <legend>Azioni configurate</legend>
+          <div id="actions-list" class="actions-list"></div>
+          <button type="button" class="btn-add-action" id="btn-add-action">+ Aggiungi azione</button>
+
+          <!-- Inline action editor (hidden until "add" clicked) -->
+          <div id="action-editor" class="action-editor" style="display:none">
+            <div class="ae-row">
+              <label>Tipo</label>
+              <select id="ae-type">
+                <option value="notify">Notifica</option>
+                <option value="call_service">Chiama servizio HA</option>
+              </select>
+            </div>
+            <div class="ae-row">
+              <label>Etichetta</label>
+              <input type="text" id="ae-label" placeholder="es. Avvisa via Telegram">
+            </div>
+            <div id="ae-notify-fields" class="ae-conditional">
+              <div class="ae-row">
+                <label>Canale</label>
+                <select id="ae-channel">
+                  <option value="ha">Home Assistant push</option>
+                  <option value="telegram">Telegram</option>
+                  <option value="retropanel">Retro Panel toast</option>
+                </select>
+              </div>
+            </div>
+            <div id="ae-service-fields" class="ae-conditional" style="display:none">
+              <div class="ae-row">
+                <label>Dominio</label>
+                <input type="text" id="ae-domain" placeholder="light">
+              </div>
+              <div class="ae-row">
+                <label>Servizio</label>
+                <input type="text" id="ae-service" placeholder="turn_off">
+              </div>
+              <div class="ae-row">
+                <label>Pattern entit&agrave;</label>
+                <input type="text" id="ae-entity-pattern" placeholder="light.* (opzionale)">
+              </div>
+            </div>
+            <div class="ae-buttons">
+              <button type="button" id="ae-confirm">&#10003; Aggiungi</button>
+              <button type="button" id="ae-cancel">Annulla</button>
+            </div>
           </div>
         </fieldset>
 
@@ -713,9 +812,19 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         var rowId = 'lr-' + Math.random().toString(36).slice(2, 9);
         var isLong = summary.length > 120;
         var preview = isLong ? summary.slice(0, 120) + '\u2026' : summary;
-        var summaryHtml = '<span class="log-preview">' + esc(preview || tools || '\u2014') + '</span>' +
+        var EVAL_CLASS = { 'OK': 'eval-ok', 'ATTENZIONE': 'eval-warn', 'ANOMALIA': 'eval-alert' };
+        var evalStatus = r.eval_status || null;
+        var evalBadge = evalStatus
+          ? '<span class="eval-badge ' + (EVAL_CLASS[evalStatus] || '') + '">' + esc(evalStatus) + '</span>'
+          : '';
+        var actionLine = r.action_taken
+          ? '<div class="log-action-taken">\u21b3 ' + esc(r.action_taken) + '</div>'
+          : '';
+        var summaryHtml = evalBadge +
+          '<span class="log-preview">' + esc(preview || tools || '\u2014') + '</span>' +
           (isLong ? '<span class="log-full" style="display:none">' + esc(summary) + '</span>' +
-            '<button class="log-expand-btn" data-row-id="' + esc(rowId) + '">\u25bc espandi</button>' : '');
+            '<button class="log-expand-btn" data-row-id="' + esc(rowId) + '">\u25bc espandi</button>' : '') +
+          actionLine;
         return '<li id="' + rowId + '">' +
           '<span class="log-time">' + esc(timeStr) + '</span>' +
           '<span class="' + statusCls + '">' + statusTxt + '</span>' +
@@ -819,6 +928,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-restrict').checked = !!a.restrict_to_home;
       document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
       buildActionChecks(a.allowed_services || []);
+      _actionsLoad(a.actions || []);
       document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
       var ro = document.getElementById('run-output');
       ro.style.display = 'none';
@@ -851,6 +961,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-restrict').checked = false;
       document.getElementById('f-require-confirmation').checked = false;
       buildActionChecks([]);
+      _actionsLoad([]);
       document.getElementById('delete-btn').style.display = 'none';
       var ro = document.getElementById('run-output');
       ro.style.display = 'none';
@@ -881,6 +992,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         restrict_to_home: document.getElementById('f-restrict').checked,
         require_confirmation: document.getElementById('f-require-confirmation').checked,
         enabled: document.getElementById('f-enabled').checked,
+        actions: _actionsValue(),
       };
     }
 
@@ -1081,6 +1193,81 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       if (_entitySearchInput && !_entitySearchInput.contains(e.target) && !_entitySuggestions.contains(e.target)) {
         _entitySuggestions.style.display = 'none';
       }
+    });
+
+    // ── Action Builder ────────────────────────────────────────────────────────
+    var _agentActions = [];
+
+    function _actionsRender() {
+      var list = document.getElementById('actions-list');
+      list.innerHTML = '';
+      _agentActions.forEach(function(a, i) {
+        var typeLabel = a.type === 'notify' ? 'Notifica' : 'Servizio';
+        var detail = a.type === 'notify'
+          ? ('canale: ' + esc(a.channel || 'ha'))
+          : (esc(a.domain || '') + '.' + esc(a.service || '') + (a.entity_pattern ? ' su ' + esc(a.entity_pattern) : ''));
+        var div = document.createElement('div');
+        div.className = 'action-item';
+        div.innerHTML =
+          '<span class="ai-type">' + esc(typeLabel) + '</span>' +
+          '<span class="ai-label">' + esc(a.label || '\u2014') +
+            ' <span style="color:var(--text-muted);font-size:11px">(' + detail + ')</span></span>' +
+          '<span class="ai-remove" data-i="' + i + '">\u00d7</span>';
+        div.querySelector('.ai-remove').addEventListener('click', function() {
+          _agentActions.splice(parseInt(this.dataset.i), 1);
+          _actionsRender();
+        });
+        list.appendChild(div);
+      });
+    }
+
+    function _actionsLoad(actions) {
+      _agentActions = Array.isArray(actions) ? JSON.parse(JSON.stringify(actions)) : [];
+      _actionsRender();
+      document.getElementById('action-editor').style.display = 'none';
+    }
+
+    function _actionsValue() {
+      return JSON.parse(JSON.stringify(_agentActions));
+    }
+
+    document.getElementById('btn-add-action').addEventListener('click', function() {
+      document.getElementById('action-editor').style.display = 'block';
+      document.getElementById('ae-label').value = '';
+      document.getElementById('ae-domain').value = '';
+      document.getElementById('ae-service').value = '';
+      document.getElementById('ae-entity-pattern').value = '';
+      document.getElementById('ae-type').value = 'notify';
+      document.getElementById('ae-notify-fields').style.display = '';
+      document.getElementById('ae-service-fields').style.display = 'none';
+    });
+
+    document.getElementById('ae-type').addEventListener('change', function() {
+      var isService = this.value === 'call_service';
+      document.getElementById('ae-notify-fields').style.display = isService ? 'none' : '';
+      document.getElementById('ae-service-fields').style.display = isService ? '' : 'none';
+    });
+
+    document.getElementById('ae-confirm').addEventListener('click', function() {
+      var type = document.getElementById('ae-type').value;
+      var label = document.getElementById('ae-label').value.trim();
+      if (!label) { alert('Inserisci un\'etichetta per l\'azione.'); return; }
+      var action = { type: type, label: label };
+      if (type === 'notify') {
+        action.channel = document.getElementById('ae-channel').value;
+      } else {
+        action.domain = document.getElementById('ae-domain').value.trim();
+        action.service = document.getElementById('ae-service').value.trim();
+        var ep = document.getElementById('ae-entity-pattern').value.trim();
+        if (ep) action.entity_pattern = ep;
+      }
+      _agentActions.push(action);
+      _actionsRender();
+      document.getElementById('action-editor').style.display = 'none';
+    });
+
+    document.getElementById('ae-cancel').addEventListener('click', function() {
+      document.getElementById('action-editor').style.display = 'none';
     });
 
     document.getElementById('log-body').addEventListener('click', function(e) {
