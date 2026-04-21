@@ -542,3 +542,92 @@ async def test_run_with_actions_injects_instructions_and_parses():
     assert "VALUTAZIONE:" in call_kwargs["system_prompt"]
     assert "AZIONE:" in call_kwargs["system_prompt"]
     assert "Test" in call_kwargs["system_prompt"]
+
+
+def test_get_agent_usage_returns_zeros_for_unknown_agent():
+    from unittest.mock import MagicMock
+    from hiris.app.claude_runner import ClaudeRunner
+    runner = ClaudeRunner(
+        api_key="test", ha_client=MagicMock(),
+        notify_config={}, usage_path="",
+    )
+    usage = runner.get_agent_usage("agent-xyz")
+    assert usage["input_tokens"] == 0
+    assert usage["output_tokens"] == 0
+    assert usage["requests"] == 0
+    assert usage["cost_usd"] == 0.0
+    assert usage["last_run"] is None
+
+
+def test_per_agent_usage_accumulates_after_chat():
+    """chat() with agent_id accumulates tokens in _per_agent_usage."""
+    import asyncio
+    from unittest.mock import MagicMock
+    from hiris.app.claude_runner import ClaudeRunner
+
+    runner = ClaudeRunner(
+        api_key="test", ha_client=MagicMock(),
+        notify_config={}, usage_path="",
+    )
+
+    mock_response = MagicMock()
+    mock_response.stop_reason = "end_turn"
+    mock_response.content = [MagicMock(type="text", text="ok")]
+    mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+    async def fake_call(**kwargs):
+        return mock_response
+
+    runner._call_api = fake_call
+
+    asyncio.run(runner.chat(user_message="hello", agent_id="agent-abc"))
+
+    usage = runner.get_agent_usage("agent-abc")
+    assert usage["input_tokens"] == 100
+    assert usage["output_tokens"] == 50
+    assert usage["requests"] == 1
+    assert usage["cost_usd"] > 0
+    assert usage["last_run"] is not None
+
+
+def test_reset_agent_usage_clears_counters():
+    from unittest.mock import MagicMock
+    from hiris.app.claude_runner import ClaudeRunner
+
+    runner = ClaudeRunner(
+        api_key="test", ha_client=MagicMock(),
+        notify_config={}, usage_path="",
+    )
+    runner._per_agent_usage["agent-abc"] = {
+        "input_tokens": 500, "output_tokens": 200,
+        "requests": 3, "cost_usd": 0.002, "last_run": "2026-01-01T00:00:00Z",
+    }
+    runner.reset_agent_usage("agent-abc")
+    usage = runner.get_agent_usage("agent-abc")
+    assert usage["input_tokens"] == 0
+    assert usage["requests"] == 0
+    assert usage["last_run"] is None
+
+
+def test_per_agent_usage_persists_and_reloads(tmp_path):
+    from unittest.mock import MagicMock
+    from hiris.app.claude_runner import ClaudeRunner
+
+    usage_file = str(tmp_path / "usage.json")
+    runner = ClaudeRunner(
+        api_key="test", ha_client=MagicMock(),
+        notify_config={}, usage_path=usage_file,
+    )
+    runner._per_agent_usage["agent-persist"] = {
+        "input_tokens": 1000, "output_tokens": 400,
+        "requests": 5, "cost_usd": 0.005, "last_run": "2026-04-01T10:00:00Z",
+    }
+    runner._save_usage()
+
+    runner2 = ClaudeRunner(
+        api_key="test", ha_client=MagicMock(),
+        notify_config={}, usage_path=usage_file,
+    )
+    usage = runner2.get_agent_usage("agent-persist")
+    assert usage["input_tokens"] == 1000
+    assert usage["requests"] == 5

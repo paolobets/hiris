@@ -187,6 +187,7 @@ class ClaudeRunner:
         self.total_cost_usd: float = 0.0
         self.total_rate_limit_errors: int = 0
         self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
+        self._per_agent_usage: dict[str, dict] = {}
         self._load_usage()
 
     def _load_usage(self) -> None:
@@ -201,6 +202,7 @@ class ClaudeRunner:
             self.usage_last_reset = data.get("last_reset", self.usage_last_reset)
             self.total_cost_usd = data.get("total_cost_usd", 0.0)
             self.total_rate_limit_errors = data.get("total_rate_limit_errors", 0)
+            self._per_agent_usage = data.get("per_agent", {})
         except Exception as exc:
             logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
 
@@ -216,6 +218,7 @@ class ClaudeRunner:
                 "last_reset": self.usage_last_reset,
                 "total_cost_usd": self.total_cost_usd,
                 "total_rate_limit_errors": self.total_rate_limit_errors,
+                "per_agent": self._per_agent_usage,
             }
             tmp = self._usage_path + ".tmp"
             os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
@@ -234,6 +237,21 @@ class ClaudeRunner:
         self.usage_last_reset = datetime.now(timezone.utc).isoformat()
         self._save_usage()
 
+    def get_agent_usage(self, agent_id: str) -> dict:
+        """Return usage stats for a specific agent. Returns zero-filled dict if not found."""
+        return dict(self._per_agent_usage.get(agent_id, {
+            "input_tokens": 0, "output_tokens": 0,
+            "requests": 0, "cost_usd": 0.0, "last_run": None,
+        }))
+
+    def reset_agent_usage(self, agent_id: str) -> None:
+        """Reset usage counters for a specific agent."""
+        self._per_agent_usage[agent_id] = {
+            "input_tokens": 0, "output_tokens": 0,
+            "requests": 0, "cost_usd": 0.0, "last_run": None,
+        }
+        self._save_usage()
+
     async def chat(
         self,
         user_message: str,
@@ -247,7 +265,16 @@ class ClaudeRunner:
         agent_type: str = "chat",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
+        agent_id: Optional[str] = None,
     ) -> str:
+        if agent_id:
+            if agent_id not in self._per_agent_usage:
+                self._per_agent_usage[agent_id] = {
+                    "input_tokens": 0, "output_tokens": 0,
+                    "requests": 0, "cost_usd": 0.0, "last_run": None,
+                }
+            self._per_agent_usage[agent_id]["requests"] += 1
+            self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         effective_system = system_prompt
         if restrict_to_home:
@@ -282,6 +309,11 @@ class ClaudeRunner:
             prices = _PRICING.get(effective_model, _PRICING["claude-sonnet-4-6"])
             self.total_cost_usd += (inp * prices["input"] + out * prices["output"]) / 1_000_000
             self._save_usage()
+            if agent_id and agent_id in self._per_agent_usage:
+                pau = self._per_agent_usage[agent_id]
+                pau["input_tokens"] += inp
+                pau["output_tokens"] += out
+                pau["cost_usd"] += (inp * prices["input"] + out * prices["output"]) / 1_000_000
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]
@@ -324,6 +356,7 @@ class ClaudeRunner:
         agent_type: str = "monitor",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
+        agent_id: Optional[str] = None,
     ) -> tuple[str, str | None, str | None]:
         """Like chat() but injects action instructions and parses structured response.
 
@@ -360,6 +393,7 @@ class ClaudeRunner:
             agent_type=agent_type,
             restrict_to_home=restrict_to_home,
             require_confirmation=require_confirmation,
+            agent_id=agent_id,
         )
         return _parse_structured_response(raw_result)
 
