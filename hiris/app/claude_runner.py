@@ -131,7 +131,10 @@ def _build_action_instructions(actions: list[dict]) -> str:
 
 
 def _parse_structured_response(text: str) -> tuple[str, str | None, str | None]:
-    """Parse VALUTAZIONE and AZIONE lines from a Claude response.
+    """Parse VALUTAZIONE and AZIONE lines from the TRAILING block of a Claude response.
+
+    Only lines at the very end (after the last real content) are consumed.
+    Mid-paragraph occurrences of VALUTAZIONE: or AZIONE: are left intact.
 
     Args:
         text: Raw response text from Claude.
@@ -142,16 +145,22 @@ def _parse_structured_response(text: str) -> tuple[str, str | None, str | None]:
     """
     eval_status: str | None = None
     action_taken: str | None = None
-    clean_lines = []
-    for line in text.splitlines():
-        stripped = line.strip()
+    lines = text.splitlines()
+    cut = len(lines)
+    for i in range(len(lines) - 1, -1, -1):
+        stripped = lines[i].strip()
         if stripped.startswith("VALUTAZIONE:"):
             eval_status = stripped[len("VALUTAZIONE:"):].strip()
+            cut = i
         elif stripped.startswith("AZIONE:"):
             action_taken = stripped[len("AZIONE:"):].strip()
+            cut = i
+        elif not stripped:
+            # Blank lines in the trailing block are fine to consume
+            cut = i
         else:
-            clean_lines.append(line)
-    clean_text = "\n".join(clean_lines).rstrip()
+            break  # Hit real content — stop scanning
+    clean_text = "\n".join(lines[:cut]).rstrip()
     return clean_text, eval_status, action_taken
 
 
@@ -306,7 +315,7 @@ class ClaudeRunner:
         self,
         user_message: str,
         system_prompt: str,
-        agent: Any,
+        actions: list[dict],
         allowed_tools: Optional[list[str]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
@@ -318,14 +327,14 @@ class ClaudeRunner:
     ) -> tuple[str, str | None, str | None]:
         """Like chat() but injects action instructions and parses structured response.
 
-        Retrieves the ``actions`` attribute from ``agent`` (if present), builds
-        structured-response instructions, appends them to ``system_prompt``, calls
-        :meth:`chat`, then parses ``VALUTAZIONE`` / ``AZIONE`` lines from the reply.
+        Builds structured-response instructions from the provided ``actions`` list,
+        appends them to ``system_prompt``, calls :meth:`chat`, then parses
+        ``VALUTAZIONE`` / ``AZIONE`` lines from the reply.
 
         Args:
             user_message: The user/trigger message to send to Claude.
             system_prompt: Base system prompt for the agent.
-            agent: Agent object; its ``actions`` attribute is inspected.
+            actions: List of action dicts, each with at least ``type`` and ``label``.
             allowed_tools: Whitelist of tool names, or None for all.
             allowed_entities: Entity glob patterns, or None for unrestricted.
             allowed_services: Service glob patterns, or None for unrestricted.
@@ -338,10 +347,8 @@ class ClaudeRunner:
         Returns:
             Tuple of (cleaned_text, eval_status, action_taken).
         """
-        action_instructions = _build_action_instructions(getattr(agent, "actions", []))
-        augmented_prompt = (
-            f"{system_prompt}\n\n{action_instructions}" if action_instructions else system_prompt
-        )
+        action_instructions = _build_action_instructions(actions)
+        augmented_prompt = f"{system_prompt}\n\n{action_instructions}" if action_instructions else system_prompt
         raw_result = await self.chat(
             user_message=user_message,
             system_prompt=augmented_prompt,

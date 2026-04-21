@@ -506,3 +506,39 @@ def test_parse_structured_response_missing_lines():
     assert text == raw
     assert status is None
     assert action is None
+
+
+def test_parse_structured_response_no_false_positive():
+    from hiris.app.claude_runner import _parse_structured_response
+    # VALUTAZIONE mid-paragraph should NOT be consumed
+    raw = "La VALUTAZIONE: scarsa dell'impianto è allarmante.\n\nVALUTAZIONE: ANOMALIA\nAZIONE: notifica"
+    text, status, action = _parse_structured_response(raw)
+    assert status == "ANOMALIA"
+    assert action == "notifica"
+    # The mid-body mention should remain in clean text
+    assert "VALUTAZIONE: scarsa" in text
+
+
+@pytest.mark.asyncio
+async def test_run_with_actions_injects_instructions_and_parses():
+    from unittest.mock import AsyncMock
+    from hiris.app.claude_runner import ClaudeRunner
+
+    runner = ClaudeRunner.__new__(ClaudeRunner)
+    runner.chat = AsyncMock(return_value="Tutto OK.\n\nVALUTAZIONE: OK\nAZIONE: nessuna azione necessaria")
+
+    actions = [{"type": "notify", "label": "Test", "channel": "ha"}]
+    text, status, action = await runner.run_with_actions(
+        user_message="test",
+        system_prompt="base system",
+        actions=actions,
+    )
+
+    assert status == "OK"
+    assert action == "nessuna azione necessaria"
+    assert "Tutto OK." in text
+    # Verify the augmented prompt was passed to chat()
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "VALUTAZIONE:" in call_kwargs["system_prompt"]
+    assert "AZIONE:" in call_kwargs["system_prompt"]
+    assert "Test" in call_kwargs["system_prompt"]

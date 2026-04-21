@@ -331,11 +331,12 @@ class AgentEngine:
                 if entity_ctx:
                     user_message = f"{user_message}\n\n{entity_ctx}"
 
-            if getattr(agent, "actions", []):
+            agent_actions: list = list(getattr(agent, "actions", []) or [])
+            if agent_actions:
                 result, eval_status, action_taken = await self._claude_runner.run_with_actions(
                     user_message=user_message,
                     system_prompt=effective_prompt,
-                    agent=agent,
+                    actions=agent_actions,
                     allowed_tools=agent.allowed_tools or None,
                     allowed_entities=agent.allowed_entities or None,
                     allowed_services=agent.allowed_services or None,
