@@ -300,6 +300,7 @@ class ClaudeRunner:
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         messages: list[dict] = list(conversation_history or [])
         messages.append({"role": "user", "content": user_message})
+        self.total_requests += 1  # one per user exchange, regardless of tool iterations
 
         for _ in range(MAX_TOOL_ITERATIONS):
             try:
@@ -318,7 +319,6 @@ class ClaudeRunner:
             out = response.usage.output_tokens
             self.total_input_tokens += inp
             self.total_output_tokens += out
-            self.total_requests += 1
             prices = _PRICING.get(effective_model, _PRICING["claude-sonnet-4-6"])
             self.total_cost_usd += (inp * prices["input"] + out * prices["output"]) / 1_000_000
             if agent_id and agent_id in self._per_agent_usage:
