@@ -44,9 +44,13 @@ class AgentEngine:
         self._claude_runner: Any = None  # set after init via set_claude_runner()
         self._ha = ha_client
         self._data_path = data_path
+        self._entity_cache: Any = None
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
+
+    def set_entity_cache(self, cache: Any) -> None:
+        self._entity_cache = cache
 
     async def start(self) -> None:
         self._scheduler.start()
@@ -279,6 +283,28 @@ class AgentEngine:
                         logger.error("Reactive agent task failed: %s", exc)
                 task.add_done_callback(_on_task_done)
 
+    def _build_entity_context(self, agent: "Agent") -> str:
+        """Build entity state context string for pre-injection into proactive agent runs."""
+        import fnmatch as _fnmatch
+        if self._entity_cache is None:
+            return ""
+        all_entities = self._entity_cache.get_all_useful()
+        if agent.allowed_entities:
+            relevant = [
+                e for e in all_entities
+                if any(_fnmatch.fnmatch(e["id"], pat) for pat in agent.allowed_entities)
+            ]
+        else:
+            relevant = all_entities
+        if not relevant:
+            return ""
+        lines = ["[CONTESTO ENTITÀ]"]
+        for e in relevant[:50]:
+            name = e.get("name") or e["id"]
+            unit = f" {e['unit']}" if e.get("unit") else ""
+            lines.append(f"- {name}: {e['state']}{unit}")
+        return "\n".join(lines)
+
     async def _run_agent(self, agent: Agent, context: Optional[dict] = None) -> str:
         if not self._claude_runner:
             logger.warning("No Claude runner configured")
@@ -294,8 +320,15 @@ class AgentEngine:
                 effective_prompt = agent.system_prompt
             if context:
                 effective_prompt = f"{effective_prompt}\n\nContext: {context}"
+            # Pre-inject current entity states for proactive agents
+            user_message = f"[Agent trigger: {agent.trigger.get('type')}]"
+            if agent.type in ("monitor", "reactive", "preventive"):
+                entity_ctx = self._build_entity_context(agent)
+                if entity_ctx:
+                    user_message = f"{user_message}\n\n{entity_ctx}"
+
             result = await self._claude_runner.chat(
-                user_message=f"[Agent trigger: {agent.trigger.get('type')}]",
+                user_message=user_message,
                 system_prompt=effective_prompt,
                 allowed_tools=agent.allowed_tools or None,
                 allowed_entities=agent.allowed_entities or None,

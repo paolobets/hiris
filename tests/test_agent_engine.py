@@ -622,3 +622,137 @@ def test_execution_log_initialises_empty_for_new_agents(engine):
         "system_prompt": "", "allowed_tools": [], "enabled": False,
     })
     assert agent.execution_log == []
+
+
+def _make_entity_cache(entities):
+    cache = MagicMock()
+    cache.get_all_useful.return_value = entities
+    return cache
+
+
+def test_set_entity_cache_stores_cache(engine):
+    cache = _make_entity_cache([])
+    engine.set_entity_cache(cache)
+    assert engine._entity_cache is cache
+
+
+def test_build_entity_context_with_allowed_entities(engine):
+    cache = _make_entity_cache([
+        {"id": "light.soggiorno", "state": "on",   "name": "Luce Soggiorno", "unit": ""},
+        {"id": "sensor.temp",     "state": "22.5", "name": "Temperatura",    "unit": "°C"},
+        {"id": "switch.pompa",    "state": "off",  "name": "Pompa",          "unit": ""},
+    ])
+    engine.set_entity_cache(cache)
+    agent = engine.create_agent({
+        "name": "Monitor",
+        "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "Monitor",
+        "allowed_tools": [],
+        "allowed_entities": ["light.*", "sensor.*"],
+        "enabled": False,
+    })
+    ctx = engine._build_entity_context(agent)
+    assert "[CONTESTO ENTITÀ]" in ctx
+    assert "Luce Soggiorno: on" in ctx
+    assert "Temperatura: 22.5 °C" in ctx
+    # switch.pompa is not in allowed_entities → must not appear
+    assert "Pompa" not in ctx
+
+
+def test_build_entity_context_no_allowed_entities_uses_useful(engine):
+    entities = [
+        {"id": f"light.l{i}", "state": "on", "name": f"Luce {i}", "unit": ""}
+        for i in range(60)
+    ]
+    cache = _make_entity_cache(entities)
+    engine.set_entity_cache(cache)
+    agent = engine.create_agent({
+        "name": "Monitor",
+        "type": "monitor",
+        "trigger": {"type": "schedule"},
+        "system_prompt": "test",
+        "allowed_tools": [],
+        "allowed_entities": [],
+        "enabled": False,
+    })
+    ctx = engine._build_entity_context(agent)
+    # cap at 50 entities even without filter
+    lines = [l for l in ctx.splitlines() if l.startswith("- ")]
+    assert len(lines) == 50
+
+
+def test_build_entity_context_returns_empty_without_cache(engine):
+    # no cache set → empty string
+    agent = engine.create_agent({
+        "name": "Monitor",
+        "type": "monitor",
+        "trigger": {"type": "schedule"},
+        "system_prompt": "test",
+        "allowed_tools": [],
+        "allowed_entities": [],
+        "enabled": False,
+    })
+    ctx = engine._build_entity_context(agent)
+    assert ctx == ""
+
+
+@pytest.mark.asyncio
+async def test_run_agent_injects_context_for_monitor(engine):
+    cache = _make_entity_cache([
+        {"id": "sensor.temp", "state": "21.0", "name": "Temp", "unit": "°C"},
+    ])
+    engine.set_entity_cache(cache)
+
+    runner = AsyncMock()
+    runner.chat = AsyncMock(return_value="ok")
+    runner.last_tool_calls = []
+    runner.total_input_tokens = 0
+    runner.total_output_tokens = 0
+    engine.set_claude_runner(runner)
+
+    agent = engine.create_agent({
+        "name": "Monitor",
+        "type": "monitor",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "Analizza",
+        "allowed_tools": [],
+        "allowed_entities": ["sensor.*"],
+        "enabled": False,
+    })
+    await engine._run_agent(agent)
+
+    call_args = runner.chat.call_args
+    user_msg = call_args.kwargs["user_message"]
+    assert "[CONTESTO ENTITÀ]" in user_msg
+    assert "Temp: 21.0 °C" in user_msg
+
+
+@pytest.mark.asyncio
+async def test_run_agent_does_not_inject_for_chat(engine):
+    cache = _make_entity_cache([
+        {"id": "sensor.temp", "state": "21.0", "name": "Temp", "unit": "°C"},
+    ])
+    engine.set_entity_cache(cache)
+
+    runner = AsyncMock()
+    runner.chat = AsyncMock(return_value="ok")
+    runner.last_tool_calls = []
+    runner.total_input_tokens = 0
+    runner.total_output_tokens = 0
+    engine.set_claude_runner(runner)
+
+    agent = engine.create_agent({
+        "name": "Chat",
+        "type": "chat",
+        "trigger": {"type": "manual"},
+        "system_prompt": "Chat",
+        "allowed_tools": [],
+        "allowed_entities": [],
+        "enabled": False,
+    })
+    await engine._run_agent(agent)
+
+    call_args = runner.chat.call_args
+    user_msg = call_args.kwargs["user_message"]
+    assert "[CONTESTO ENTITÀ]" not in user_msg
