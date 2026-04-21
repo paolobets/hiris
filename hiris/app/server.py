@@ -12,6 +12,7 @@ from .api.handlers_agents import (
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
+from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
 from .agent_engine import AgentEngine
 from .proxy.ha_client import HAClient
 from .proxy.entity_cache import EntityCache
@@ -43,6 +44,7 @@ async def _on_startup(app: web.Application) -> None:
     app["entity_cache"] = entity_cache
 
     data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
+    app["data_dir"] = os.path.dirname(os.path.abspath(data_path))
     engine = AgentEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)  # wire cache before start() opens WebSocket
     await engine.start()
@@ -110,6 +112,8 @@ def create_app() -> web.Application:
     app.router.add_get("/api/entities", handle_list_entities)
     app.router.add_get("/api/agents/{agent_id}/usage", handle_get_agent_usage)
     app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
+    app.router.add_get("/api/agents/{agent_id}/chat-history", handle_get_chat_history)
+    app.router.add_delete("/api/agents/{agent_id}/chat-history", handle_clear_chat_history)
 
     return app
 
