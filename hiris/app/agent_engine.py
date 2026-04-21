@@ -37,6 +37,7 @@ class Agent:
     require_confirmation: bool = False
     execution_log: list[dict] = field(default_factory=list)
     actions: list[dict] = field(default_factory=list)
+    budget_eur_limit: float = 0.0
 
 
 class AgentEngine:
@@ -104,6 +105,7 @@ class AgentEngine:
                     require_confirmation=raw.get("require_confirmation", False),
                     execution_log=raw.get("execution_log", []),
                     actions=raw.get("actions", []),
+                    budget_eur_limit=raw.get("budget_eur_limit", 0.0),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -179,6 +181,7 @@ class AgentEngine:
             restrict_to_home=bool(data.get("restrict_to_home", False)),
             require_confirmation=bool(data.get("require_confirmation", False)),
             actions=data.get("actions", []),
+            budget_eur_limit=float(data.get("budget_eur_limit", 0.0)),
         )
         self._agents[agent.id] = agent
         if agent.enabled:
@@ -193,7 +196,7 @@ class AgentEngine:
         "name", "type", "trigger", "system_prompt", "allowed_tools", "enabled",
         "strategic_context", "allowed_entities", "allowed_services",
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
-        "actions",
+        "actions", "budget_eur_limit",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:

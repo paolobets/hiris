@@ -463,6 +463,46 @@
     .eval-warn  { background: #78350f22; color: #fbbf24; border: 1px solid #78350f66; }
     .eval-alert { background: #7f1d1d22; color: #f87171; border: 1px solid #7f1d1d66; }
     .log-action-taken { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    /* Per-agent usage section */
+    .usage-section { border: 1px solid var(--border); border-radius: 6px; margin-top: 12px; }
+    .usage-section summary {
+      padding: 10px 14px; cursor: pointer; font-size: 13px; color: var(--text-muted);
+      list-style: none; user-select: none;
+    }
+    .usage-section summary::-webkit-details-marker { display: none; }
+    .usage-section[open] summary { border-bottom: 1px solid var(--border); color: var(--text); }
+    .usage-content { padding: 14px; }
+    .usage-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px;
+    }
+    .usage-stat {
+      background: var(--surface-3); border-radius: 6px; padding: 10px 8px; text-align: center;
+    }
+    .us-val { font-size: 18px; font-weight: 600; color: var(--accent); }
+    .us-label { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    .usage-last-run { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+    .usage-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .btn-usage-reset {
+      padding: 6px 14px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--surface-4); color: var(--text-muted); font-size: 12px; cursor: pointer;
+    }
+    .btn-usage-reset:hover { background: var(--surface-hover); color: var(--text); }
+    .btn-usage-block {
+      padding: 6px 14px; border-radius: 5px; border: 1px solid var(--danger-bg);
+      background: #7f1d1d22; color: var(--danger-text); font-size: 12px; cursor: pointer;
+    }
+    .btn-usage-block:hover { background: var(--danger-bg); }
+    .btn-usage-enable {
+      padding: 6px 14px; border-radius: 5px; border: 1px solid #16532244;
+      background: #16532222; color: var(--success); font-size: 12px; cursor: pointer;
+    }
+    .btn-usage-enable:hover { background: #16532244; }
+    .usage-budget { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .usage-budget label { font-size: 12px; color: var(--text-muted); }
+    .usage-budget input {
+      width: 80px; padding: 4px 8px; background: var(--input-bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px; font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -674,6 +714,27 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         <details class="log-section">
           <summary>Log esecuzioni (ultime 20)</summary>
           <div id="log-body"><div class="log-empty">Nessuna esecuzione registrata.</div></div>
+        </details>
+        <details class="usage-section" id="agent-usage-section">
+          <summary>📊 Consumi agente</summary>
+          <div class="usage-content">
+            <div class="usage-grid">
+              <div class="usage-stat"><div class="us-val" id="u-ag-requests">—</div><div class="us-label">Richieste</div></div>
+              <div class="usage-stat"><div class="us-val" id="u-ag-input">—</div><div class="us-label">Token IN</div></div>
+              <div class="usage-stat"><div class="us-val" id="u-ag-output">—</div><div class="us-label">Token OUT</div></div>
+              <div class="usage-stat"><div class="us-val" id="u-ag-cost">—</div><div class="us-label">Costo stimato</div></div>
+            </div>
+            <div class="usage-last-run">Ultima esecuzione: <span id="u-ag-last-run">—</span></div>
+            <div class="usage-actions">
+              <button type="button" id="u-ag-reset-btn" class="btn-usage-reset">↺ Azzera contatori</button>
+              <button type="button" id="u-ag-toggle-btn" class="btn-usage-block">⊘ Blocca agente</button>
+            </div>
+            <div class="usage-budget">
+              <label>Budget massimo (€, 0 = nessun limite)</label>
+              <input type="number" id="u-ag-budget" min="0" step="0.01" value="0" placeholder="0.00">
+              <button type="button" id="u-ag-budget-save-btn" class="btn-usage-reset">Salva soglia</button>
+            </div>
+          </div>
         </details>
       </div>
     </div>
@@ -939,6 +1000,9 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       showTriggerFields(a.type);
       renderList();
       renderExecutionLog(a);
+      loadAgentUsage(a.id);
+      updateAgentUsageToggleBtn(a);
+      document.getElementById('u-ag-budget').value = a.budget_eur_limit || 0;
     }
 
     document.getElementById('new-btn').onclick = function() {
@@ -1288,6 +1352,76 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       if (full) full.style.display = expanded ? 'none' : 'block';
       if (btn) btn.textContent = expanded ? '\u25bc espandi' : '\u25b2 comprimi';
       row.classList.toggle('expanded', !expanded);
+    }
+
+    // ── Per-agent usage section ───────────────────────────────────────────────────
+    async function loadAgentUsage(agentId) {
+      if (!agentId) return;
+      try {
+        var r = await fetch('api/agents/' + agentId + '/usage');
+        if (!r.ok) return;
+        var d = await r.json();
+        document.getElementById('u-ag-requests').textContent = d.requests ?? '—';
+        document.getElementById('u-ag-input').textContent = fmtNum(d.input_tokens);
+        document.getElementById('u-ag-output').textContent = fmtNum(d.output_tokens);
+        document.getElementById('u-ag-cost').textContent = d.cost_eur != null ? '€' + d.cost_eur.toFixed(4) : '—';
+        var lr = d.last_run ? new Date(d.last_run).toLocaleString('it-IT') : 'mai';
+        document.getElementById('u-ag-last-run').textContent = lr;
+      } catch(e) {}
+    }
+
+    document.getElementById('u-ag-reset-btn').onclick = async function() {
+      if (!currentId || !confirm('Azzerare i contatori di consumo per questo agente?')) return;
+      try {
+        await fetch('api/agents/' + currentId + '/usage/reset', { method: 'POST' });
+        await loadAgentUsage(currentId);
+      } catch(e) {}
+    };
+
+    document.getElementById('u-ag-toggle-btn').onclick = async function() {
+      if (!currentId) return;
+      var agent = agents.find(function(a) { return a.id === currentId; });
+      if (!agent) return;
+      var newEnabled = !agent.enabled;
+      var confirmMsg = newEnabled
+        ? 'Riabilitare questo agente?'
+        : 'Bloccare questo agente? Non verrà più eseguito automaticamente.';
+      if (!confirm(confirmMsg)) return;
+      try {
+        var r = await fetch('api/agents/' + currentId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: newEnabled }),
+        });
+        var updated = await r.json();
+        await loadAgents();
+        openAgent(updated);
+      } catch(e) {}
+    };
+
+    document.getElementById('u-ag-budget-save-btn').onclick = async function() {
+      if (!currentId) return;
+      var budget = parseFloat(document.getElementById('u-ag-budget').value) || 0;
+      try {
+        await fetch('api/agents/' + currentId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ budget_eur_limit: budget }),
+        });
+        alert(budget > 0 ? 'Soglia di budget salvata: €' + budget.toFixed(2) : 'Nessun limite di budget impostato.');
+      } catch(e) {}
+    };
+
+    function updateAgentUsageToggleBtn(agent) {
+      var btn = document.getElementById('u-ag-toggle-btn');
+      if (!agent) return;
+      if (agent.enabled) {
+        btn.textContent = '⊘ Blocca agente';
+        btn.className = 'btn-usage-block';
+      } else {
+        btn.textContent = '✓ Riabilita agente';
+        btn.className = 'btn-usage-enable';
+      }
     }
   </script>
 </body>
