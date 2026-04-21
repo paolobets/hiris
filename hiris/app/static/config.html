@@ -385,6 +385,19 @@
       font-family: 'Courier New', Consolas, monospace;
       text-align: right;
     }
+
+    /* Run button spinner */
+    #run-btn { position: relative; min-width: 90px; }
+    #run-btn.running { opacity: 0.7; cursor: not-allowed; }
+    #run-btn .spinner {
+      display: none; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 5px;
+    }
+    #run-btn.running .spinner { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .run-empty { color: var(--text-muted); font-style: italic; }
+    .run-error-text { color: var(--danger); }
   </style>
 </head>
 <body>
@@ -540,7 +553,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
         <div class="actions">
           <button id="save-btn">Salva</button>
-          <button id="run-btn">&#9654; Test Run</button>
+          <button id="run-btn"><span class="spinner"></span>&#9654; Test Run</button>
           <button id="delete-btn" style="display:none">Elimina</button>
         </div>
         <pre id="run-output"></pre>
@@ -786,7 +799,10 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
       buildActionChecks(a.allowed_services || []);
       document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
-      document.getElementById('run-output').style.display = 'none';
+      var ro = document.getElementById('run-output');
+      ro.style.display = 'none';
+      ro.textContent = '';
+      ro.className = '';
       // buildToolChecks must run after buildActionChecks — it owns the final updateServicesVisibility() call
       buildToolChecks(a.allowed_tools || []);
       showTriggerFields(a.type);
@@ -815,7 +831,10 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-require-confirmation').checked = false;
       buildActionChecks([]);
       document.getElementById('delete-btn').style.display = 'none';
-      document.getElementById('run-output').style.display = 'none';
+      var ro = document.getElementById('run-output');
+      ro.style.display = 'none';
+      ro.textContent = '';
+      ro.className = '';
       buildToolChecks([]);
       showTriggerFields('monitor');
       renderExecutionLog(null);
@@ -872,16 +891,46 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     document.getElementById('run-btn').onclick = async function() {
       if (!currentId) return;
+      var btn = document.getElementById('run-btn');
       var out = document.getElementById('run-output');
+
+      btn.classList.add('running');
+      btn.disabled = true;
       out.style.display = '';
-      out.innerHTML = '<span style="color:#9CA3AF">Esecuzione in corso\u2026</span>';
+      out.className = '';
+      out.textContent = 'Avvio esecuzione\u2026';
+
+      var timeout = 90000;
+      var ctrl = new AbortController();
+      var timer = setTimeout(function() { ctrl.abort(); }, timeout);
+
       try {
-        var r = await fetch('api/agents/' + currentId + '/run', {method: 'POST'});
+        var r = await fetch('api/agents/' + currentId + '/run', {
+          method: 'POST',
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
         var data = await r.json();
-        var raw = data.result || data.error || JSON.stringify(data, null, 2);
-        out.innerHTML = highlightOutput(esc(raw));
+        var raw = (data.result || data.error || '').trim();
+        if (!raw) {
+          out.className = 'run-empty';
+          out.textContent = '(nessun risultato restituito dall\'agente)';
+        } else {
+          out.className = '';
+          out.innerHTML = highlightOutput(esc(raw));
+        }
       } catch(e) {
-        out.innerHTML = '<span style="color:#ff7b72">Errore di connessione.</span>';
+        clearTimeout(timer);
+        out.className = 'run-error-text';
+        if (e.name === 'AbortError') {
+          out.textContent = '\u23f1 Timeout: l\'agente non ha risposto entro 90 secondi.';
+        } else {
+          out.textContent = 'Errore: ' + e.message;
+        }
+      } finally {
+        btn.classList.remove('running');
+        btn.disabled = false;
+        out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     };
 
