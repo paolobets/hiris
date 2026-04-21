@@ -331,21 +331,39 @@ class AgentEngine:
                 if entity_ctx:
                     user_message = f"{user_message}\n\n{entity_ctx}"
 
-            result = await self._claude_runner.chat(
-                user_message=user_message,
-                system_prompt=effective_prompt,
-                allowed_tools=agent.allowed_tools or None,
-                allowed_entities=agent.allowed_entities or None,
-                allowed_services=agent.allowed_services or None,
-                model=agent.model,
-                max_tokens=agent.max_tokens,
-                agent_type=agent.type,
-                restrict_to_home=agent.restrict_to_home,
-                require_confirmation=agent.require_confirmation,
-            )
+            if getattr(agent, "actions", []):
+                result, eval_status, action_taken = await self._claude_runner.run_with_actions(
+                    user_message=user_message,
+                    system_prompt=effective_prompt,
+                    agent=agent,
+                    allowed_tools=agent.allowed_tools or None,
+                    allowed_entities=agent.allowed_entities or None,
+                    allowed_services=agent.allowed_services or None,
+                    model=agent.model,
+                    max_tokens=agent.max_tokens,
+                    agent_type=agent.type,
+                    restrict_to_home=agent.restrict_to_home,
+                    require_confirmation=agent.require_confirmation,
+                )
+            else:
+                result = await self._claude_runner.chat(
+                    user_message=user_message,
+                    system_prompt=effective_prompt,
+                    allowed_tools=agent.allowed_tools or None,
+                    allowed_entities=agent.allowed_entities or None,
+                    allowed_services=agent.allowed_services or None,
+                    model=agent.model,
+                    max_tokens=agent.max_tokens,
+                    agent_type=agent.type,
+                    restrict_to_home=agent.restrict_to_home,
+                    require_confirmation=agent.require_confirmation,
+                )
+                eval_status = None
+                action_taken = None
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             agent.last_result = result
-            self._append_execution_log(agent, result, inp_before, out_before, tool_calls_snapshot, success=True)
+            self._append_execution_log(agent, result, inp_before, out_before, tool_calls_snapshot, success=True,
+                                       eval_status=eval_status, action_taken=action_taken)
             self._save()
             return result
         except Exception as exc:
@@ -364,6 +382,8 @@ class AgentEngine:
         out_before: int,
         tool_calls_snapshot: list,
         success: bool,
+        eval_status: Optional[str] = None,
+        action_taken: Optional[str] = None,
     ) -> None:
         inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
         out_after = getattr(self._claude_runner, "total_output_tokens", 0)
@@ -376,5 +396,7 @@ class AgentEngine:
             "output_tokens": out_after - out_before,
             "result_summary": (result or "")[:1000],
             "success": success and not (result or "").startswith("Error:"),
+            "eval_status": eval_status,
+            "action_taken": action_taken,
         }
         agent.execution_log = (agent.execution_log + [record])[-20:]

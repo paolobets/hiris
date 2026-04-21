@@ -453,3 +453,56 @@ async def test_require_confirmation_combines_with_restrict(runner):
     assert RESTRICT_PROMPT in system_used
     assert REQUIRE_CONFIRMATION_PROMPT in system_used
     assert system_used.index(RESTRICT_PROMPT) < system_used.index(REQUIRE_CONFIRMATION_PROMPT)
+
+
+def test_build_action_instructions_notify():
+    from hiris.app.claude_runner import _build_action_instructions
+    actions = [{"type": "notify", "label": "Avvisa via Telegram", "channel": "telegram"}]
+    instructions = _build_action_instructions(actions)
+    assert "VALUTAZIONE:" in instructions
+    assert "AZIONE:" in instructions
+    assert "Avvisa via Telegram" in instructions
+
+
+def test_build_action_instructions_call_service():
+    from hiris.app.claude_runner import _build_action_instructions
+    actions = [
+        {"type": "call_service", "label": "Spegni luci",
+         "domain": "light", "service": "turn_off", "entity_pattern": "light.*"},
+    ]
+    instructions = _build_action_instructions(actions)
+    assert "Spegni luci" in instructions
+    assert "light.turn_off" in instructions
+
+
+def test_build_action_instructions_empty():
+    from hiris.app.claude_runner import _build_action_instructions
+    assert _build_action_instructions([]) == ""
+
+
+def test_parse_structured_response_extracts_fields():
+    from hiris.app.claude_runner import _parse_structured_response
+    raw = "Il sistema è normale.\n\nVALUTAZIONE: OK\nAZIONE: nessuna azione necessaria"
+    text, status, action = _parse_structured_response(raw)
+    assert status == "OK"
+    assert action == "nessuna azione necessaria"
+    assert "VALUTAZIONE:" not in text
+    assert "AZIONE:" not in text
+    assert "Il sistema è normale." in text
+
+
+def test_parse_structured_response_attenzione():
+    from hiris.app.claude_runner import _parse_structured_response
+    raw = "Anomalia rilevata.\nVALUTAZIONE: ANOMALIA\nAZIONE: Notifica inviata via Telegram"
+    text, status, action = _parse_structured_response(raw)
+    assert status == "ANOMALIA"
+    assert action == "Notifica inviata via Telegram"
+
+
+def test_parse_structured_response_missing_lines():
+    from hiris.app.claude_runner import _parse_structured_response
+    raw = "Risposta senza struttura"
+    text, status, action = _parse_structured_response(raw)
+    assert text == raw
+    assert status is None
+    assert action is None

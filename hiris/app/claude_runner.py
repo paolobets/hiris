@@ -97,6 +97,64 @@ REQUIRE_CONFIRMATION_PROMPT = (
 )
 
 
+def _build_action_instructions(actions: list[dict]) -> str:
+    """Return the structured-response instruction block for a list of actions.
+
+    Returns empty string if no actions defined.
+
+    Args:
+        actions: List of action dicts, each with at least ``type`` and ``label``.
+
+    Returns:
+        Formatted instruction block as a string, or empty string.
+    """
+    if not actions:
+        return ""
+    lines = [
+        "---",
+        "ISTRUZIONI DI RISPOSTA:",
+        "Termina SEMPRE la tua risposta con queste due righe esatte:",
+        "VALUTAZIONE: [OK | ATTENZIONE | ANOMALIA]",
+        "AZIONE: [breve descrizione dell'azione intrapresa, oppure \"nessuna azione necessaria\"]",
+        "",
+        "Azioni disponibili per questo agente:",
+    ]
+    for a in actions:
+        if a.get("type") == "notify":
+            lines.append(f"- {a.get('label', 'Notifica')} (canale: {a.get('channel', 'ha')})")
+        elif a.get("type") == "call_service":
+            svc = f"{a.get('domain', '')}.{a.get('service', '')}"
+            pattern = a.get("entity_pattern", "")
+            suffix = f" su {pattern}" if pattern else ""
+            lines.append(f"- {a.get('label', 'Servizio')} ({svc}{suffix})")
+    return "\n".join(lines)
+
+
+def _parse_structured_response(text: str) -> tuple[str, str | None, str | None]:
+    """Parse VALUTAZIONE and AZIONE lines from a Claude response.
+
+    Args:
+        text: Raw response text from Claude.
+
+    Returns:
+        Tuple of (cleaned_text, eval_status, action_taken).
+        ``eval_status`` and ``action_taken`` are None if not found.
+    """
+    eval_status: str | None = None
+    action_taken: str | None = None
+    clean_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("VALUTAZIONE:"):
+            eval_status = stripped[len("VALUTAZIONE:"):].strip()
+        elif stripped.startswith("AZIONE:"):
+            action_taken = stripped[len("AZIONE:"):].strip()
+        else:
+            clean_lines.append(line)
+    clean_text = "\n".join(clean_lines).rstrip()
+    return clean_text, eval_status, action_taken
+
+
 class ClaudeRunner:
     def __init__(
         self,
@@ -243,6 +301,60 @@ class ClaudeRunner:
                 return "\n".join(text_blocks) if text_blocks else f"Stopped: {response.stop_reason}"
 
         return "Max tool iterations reached."
+
+    async def run_with_actions(
+        self,
+        user_message: str,
+        system_prompt: str,
+        agent: Any,
+        allowed_tools: Optional[list[str]] = None,
+        allowed_entities: Optional[list[str]] = None,
+        allowed_services: Optional[list[str]] = None,
+        model: str = "auto",
+        max_tokens: int = MAX_TOKENS,
+        agent_type: str = "monitor",
+        restrict_to_home: bool = False,
+        require_confirmation: bool = False,
+    ) -> tuple[str, str | None, str | None]:
+        """Like chat() but injects action instructions and parses structured response.
+
+        Retrieves the ``actions`` attribute from ``agent`` (if present), builds
+        structured-response instructions, appends them to ``system_prompt``, calls
+        :meth:`chat`, then parses ``VALUTAZIONE`` / ``AZIONE`` lines from the reply.
+
+        Args:
+            user_message: The user/trigger message to send to Claude.
+            system_prompt: Base system prompt for the agent.
+            agent: Agent object; its ``actions`` attribute is inspected.
+            allowed_tools: Whitelist of tool names, or None for all.
+            allowed_entities: Entity glob patterns, or None for unrestricted.
+            allowed_services: Service glob patterns, or None for unrestricted.
+            model: Model identifier or ``"auto"``.
+            max_tokens: Maximum tokens for the response.
+            agent_type: Used for model auto-resolution.
+            restrict_to_home: Whether to inject the home-restriction prompt.
+            require_confirmation: Whether to inject the confirmation prompt.
+
+        Returns:
+            Tuple of (cleaned_text, eval_status, action_taken).
+        """
+        action_instructions = _build_action_instructions(getattr(agent, "actions", []))
+        augmented_prompt = (
+            f"{system_prompt}\n\n{action_instructions}" if action_instructions else system_prompt
+        )
+        raw_result = await self.chat(
+            user_message=user_message,
+            system_prompt=augmented_prompt,
+            allowed_tools=allowed_tools,
+            allowed_entities=allowed_entities,
+            allowed_services=allowed_services,
+            model=model,
+            max_tokens=max_tokens,
+            agent_type=agent_type,
+            restrict_to_home=restrict_to_home,
+            require_confirmation=require_confirmation,
+        )
+        return _parse_structured_response(raw_result)
 
     async def _call_api(self, **kwargs) -> Any:
         for attempt in range(MAX_RETRIES + 1):
