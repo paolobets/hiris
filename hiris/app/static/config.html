@@ -1034,6 +1034,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       buildToolChecks([]);
       showTriggerFields('monitor');
       renderExecutionLog(null);
+      document.getElementById('u-ag-budget').value = 0;
     };
 
     function buildPayload() {
@@ -1057,6 +1058,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         require_confirmation: document.getElementById('f-require-confirmation').checked,
         enabled: document.getElementById('f-enabled').checked,
         actions: _actionsValue(),
+        budget_eur_limit: parseFloat(document.getElementById('u-ag-budget').value) || 0,
       };
     }
 
