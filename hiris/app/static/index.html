@@ -415,6 +415,7 @@
         <div id="header-title">HIRIS</div>
         <div id="header-subtitle">Home Intelligent Reasoning &amp; Integration</div>
       </div>
+      <button id="new-conv-btn" onclick="clearConversation()" title="Nuova conversazione" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text-muted);font-size:12px;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s" onmouseover="this.style.background='var(--surface-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='none';this.style.color='var(--text-muted)'">&#x21BA; Nuova conv.</button>
       <div id="conn-dot" title="Connesso"></div>
     </header>
     <div id="messages">
@@ -437,6 +438,8 @@
         </svg>
       </button>
     </div>
+    <div id="turn-counter" style="display:none;font-size:11px;text-align:right;padding:2px 8px 4px 0;color:var(--text-muted)"></div>
+    <div id="session-ended-msg" style="display:none;font-size:12px;text-align:center;padding:6px 8px;color:var(--conn-off);background:var(--surface);border-top:1px solid var(--border)">Sessione completata &#8212; avvia una nuova conversazione</div>
   </main>
 </div>
 <script>
@@ -461,13 +464,49 @@ var agentListEl= document.getElementById('agent-list');
 var welcomeEl  = document.getElementById('welcome');
 var connDot    = document.getElementById('conn-dot');
 
-var histories = {};
 var activeAgentId = 'hiris-default';
 var hasMessages = false;
+var agentMaxTurns = {};
+var agentTurnCounts = {};
 
-function currentHistory() {
-  if (!histories[activeAgentId]) histories[activeAgentId] = [];
-  return histories[activeAgentId];
+function updateTurnCounter() {
+  var counter = document.getElementById('turn-counter');
+  var max = agentMaxTurns[activeAgentId] || 0;
+  if (!activeAgentId || max === 0) { counter.style.display = 'none'; return; }
+  var current = agentTurnCounts[activeAgentId] || 0;
+  counter.style.display = '';
+  counter.textContent = current + ' / ' + max + ' messaggi';
+  counter.style.color = current >= max ? 'var(--conn-off)' : 'var(--text-muted)';
+}
+
+function checkTurnLimit() {
+  var max = agentMaxTurns[activeAgentId] || 0;
+  var sessionMsg = document.getElementById('session-ended-msg');
+  if (max === 0) {
+    inputEl.disabled = false;
+    sendBtn.disabled = false;
+    if (sessionMsg) sessionMsg.style.display = 'none';
+    return;
+  }
+  var current = agentTurnCounts[activeAgentId] || 0;
+  var reached = current >= max;
+  inputEl.disabled = reached;
+  sendBtn.disabled = reached;
+  if (sessionMsg) sessionMsg.style.display = reached ? '' : 'none';
+}
+
+async function clearConversation() {
+  if (!activeAgentId) return;
+  try {
+    await fetch('api/agents/' + activeAgentId + '/chat-history', { method: 'DELETE' });
+  } catch(e) {}
+  messagesEl.innerHTML = '';
+  messagesEl.appendChild(welcomeEl);
+  welcomeEl.style.display = '';
+  hasMessages = false;
+  agentTurnCounts[activeAgentId] = 0;
+  updateTurnCounter();
+  checkTurnLimit();
 }
 
 async function loadAgents() {
@@ -479,6 +518,7 @@ async function loadAgents() {
     agentListEl.innerHTML = '';
     var chatAgents = agents.filter(function(a) { return a.type === 'chat'; });
     chatAgents.forEach(function(a) {
+      agentMaxTurns[a.id] = a.max_chat_turns || 0;
       var div = document.createElement('div');
       div.className = 'agent-item' + (a.id === activeAgentId ? ' agent-active' : '');
       div.style.cursor = 'pointer';
@@ -494,7 +534,7 @@ async function loadAgents() {
   }
 }
 
-function setActiveAgent(agentId, agentName) {
+async function setActiveAgent(agentId, agentName) {
   if (agentId === activeAgentId) return;
   activeAgentId = agentId;
   messagesEl.innerHTML = '';
@@ -502,6 +542,22 @@ function setActiveAgent(agentId, agentName) {
   welcomeEl.style.display = '';
   hasMessages = false;
   document.getElementById('header-title').textContent = agentName;
+  agentTurnCounts[agentId] = 0;
+  updateTurnCounter();
+  checkTurnLimit();
+  try {
+    var r = await fetch('api/agents/' + agentId + '/chat-history');
+    if (r.ok) {
+      var data = await r.json();
+      var msgs = data.messages || [];
+      msgs.forEach(function(m) {
+        appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
+      });
+      agentTurnCounts[agentId] = msgs.filter(function(m) { return m.role === 'user'; }).length;
+      updateTurnCounter();
+      checkTurnLimit();
+    }
+  } catch(e) {}
   loadAgents();
 }
 
@@ -574,25 +630,31 @@ async function sendMessage(text) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         message: text,
-        history: currentHistory(),
         agent_id: activeAgentId,
       }),
     });
     var data = await r.json();
     typing.remove();
+    if (data.error === 'max_turns_reached') {
+      appendMsg('assistant', 'Sessione completata. Avvia una nuova conversazione.');
+      checkTurnLimit();
+      return;
+    }
     appendMsg('assistant', data.response || data.error || 'Errore sconosciuto');
     if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
       appendDebug(data.debug.tools_called);
     }
-    currentHistory().push({role:'user', content:text});
-    currentHistory().push({role:'assistant', content: data.response || ''});
-    if (currentHistory().length > 40) histories[activeAgentId] = currentHistory().slice(-40);
+    agentTurnCounts[activeAgentId] = (agentTurnCounts[activeAgentId] || 0) + 1;
+    updateTurnCounter();
+    checkTurnLimit();
   } catch(e) {
     typing.remove();
     appendMsg('assistant', 'Errore di connessione. Riprova tra poco.');
   }
-  sendBtn.disabled = false;
-  inputEl.focus();
+  if (!inputEl.disabled) {
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
 }
 
 function sendQuick(text) { sendMessage(text); }
