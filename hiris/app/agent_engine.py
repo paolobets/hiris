@@ -1,4 +1,5 @@
 import asyncio
+import fnmatch
 import json
 import logging
 import os
@@ -285,14 +286,13 @@ class AgentEngine:
 
     def _build_entity_context(self, agent: "Agent") -> str:
         """Build entity state context string for pre-injection into proactive agent runs."""
-        import fnmatch as _fnmatch
         if self._entity_cache is None:
             return ""
         all_entities = self._entity_cache.get_all_useful()
         if agent.allowed_entities:
             relevant = [
                 e for e in all_entities
-                if any(_fnmatch.fnmatch(e["id"], pat) for pat in agent.allowed_entities)
+                if any(fnmatch.fnmatch(e["id"], pat) for pat in agent.allowed_entities)
             ]
         else:
             relevant = all_entities
