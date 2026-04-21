@@ -160,6 +160,19 @@ def _parse_structured_response(text: str) -> tuple[str, str | None, str | None]:
             cut = i
         else:
             break  # Hit real content — stop scanning
+    # Fallback: if a stray line interrupted the trailing block (e.g. Claude put text
+    # between VALUTAZIONE and AZIONE), scan the last 6 lines for any still-missing marker.
+    # Uses min(cut, i) so the clean_text boundary is moved to the earliest found marker.
+    if eval_status is None or action_taken is None:
+        window_start = max(0, len(lines) - 6)
+        for i in range(window_start, len(lines)):
+            stripped = lines[i].strip()
+            if eval_status is None and stripped.startswith("VALUTAZIONE:"):
+                eval_status = stripped[len("VALUTAZIONE:"):].strip()
+                cut = min(cut, i)
+            elif action_taken is None and stripped.startswith("AZIONE:"):
+                action_taken = stripped[len("AZIONE:"):].strip()
+                cut = min(cut, i)
     clean_text = "\n".join(lines[:cut]).rstrip()
     return clean_text, eval_status, action_taken
 

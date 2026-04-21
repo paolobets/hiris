@@ -1395,9 +1395,10 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: newEnabled }),
         });
-        var updated = await r.json();
+        await r.json();
         await loadAgents();
-        openAgent(updated);
+        var fresh = agents.find(function(a) { return a.id === currentId; });
+        if (fresh) openAgent(fresh);
       } catch(e) {}
     };
 

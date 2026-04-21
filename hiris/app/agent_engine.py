@@ -205,9 +205,15 @@ class AgentEngine:
             return None
         self._unschedule_agent(agent_id)
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
+        _FLOAT_FIELDS = {"budget_eur_limit"}
         for key in self.UPDATABLE_FIELDS:
             if key in data:
-                setattr(agent, key, bool(data[key]) if key in _BOOL_FIELDS else data[key])
+                if key in _BOOL_FIELDS:
+                    setattr(agent, key, bool(data[key]))
+                elif key in _FLOAT_FIELDS:
+                    setattr(agent, key, float(data[key]))
+                else:
+                    setattr(agent, key, data[key])
         if agent.enabled:
             self._schedule_agent(agent)
         self._save()
