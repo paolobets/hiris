@@ -668,7 +668,6 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
                 <select id="ae-channel">
                   <option value="ha_push">Home Assistant push</option>
                   <option value="telegram">Telegram</option>
-                  <option value="retropanel">Retro Panel toast</option>
                 </select>
               </div>
             </div>
@@ -823,6 +822,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       { id: 'cover.*',         label: 'Tapparelle',     desc: 'Tende, tapparelle e serrande' },
       { id: 'notify.*',        label: 'Notifiche',      desc: 'Servizi di notifica push' },
       { id: 'input_boolean.*', label: 'Input Boolean',  desc: 'Toggle e variabili booleane virtuali' },
+      { id: 'script.*',        label: 'Script',         desc: 'Esegui script e automazioni personalizzate' },
     ];
     var TRIGGER_TYPE_MAP = {monitor: 'schedule', reactive: 'state_changed', preventive: 'preventive', chat: 'manual'};
 
