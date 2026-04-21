@@ -7,7 +7,8 @@ _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def _path(agent_id: str, data_dir: str) -> str:
-    return os.path.join(data_dir, f"chat_history_{agent_id}.json")
+    safe_id = agent_id.replace("/", "_").replace("\\", "_").replace("..", "_")
+    return os.path.join(data_dir, f"chat_history_{safe_id}.json")
 
 
 def _now_ts() -> str:
@@ -35,7 +36,7 @@ def load_history(agent_id: str, data_dir: str) -> list[dict]:
             if msg_dt < cutoff:
                 continue
         except (ValueError, TypeError):
-            pass
+            pass  # missing/unparseable timestamp: keep the message (unknown age = retain)
         result.append({"role": m["role"], "content": m["content"]})
     return result
 
@@ -47,7 +48,7 @@ def append_messages(agent_id: str, messages: list[dict], data_dir: str) -> None:
     ts = _now_ts()
     for m in messages:
         raw.append({"role": m["role"], "content": m["content"], "timestamp": ts})
-    _write(agent_id, raw, path, data_dir)
+    _write(agent_id, raw, path)
 
 
 def clear_history(agent_id: str, data_dir: str) -> None:
@@ -58,7 +59,8 @@ def clear_history(agent_id: str, data_dir: str) -> None:
         pass
 
 
-def _write(agent_id: str, raw_messages: list[dict], path: str, data_dir: str) -> None:
+def _write(agent_id: str, raw_messages: list[dict], path: str) -> None:
+    data_dir = os.path.dirname(path)
     os.makedirs(data_dir, exist_ok=True)
     data = {"schema_version": 1, "agent_id": agent_id, "messages": raw_messages}
     tmp = path + ".tmp"

@@ -1,6 +1,5 @@
 import json
 import os
-import pytest
 from datetime import datetime, timezone, timedelta
 from hiris.app.chat_store import load_history, append_messages, clear_history, _path
 
