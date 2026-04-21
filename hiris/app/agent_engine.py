@@ -345,6 +345,7 @@ class AgentEngine:
                     agent_type=agent.type,
                     restrict_to_home=agent.restrict_to_home,
                     require_confirmation=agent.require_confirmation,
+                    agent_id=agent.id,
                 )
             else:
                 result = await self._claude_runner.chat(
@@ -358,6 +359,7 @@ class AgentEngine:
                     agent_type=agent.type,
                     restrict_to_home=agent.restrict_to_home,
                     require_confirmation=agent.require_confirmation,
+                    agent_id=agent.id,
                 )
                 eval_status = None
                 action_taken = None
