@@ -24,6 +24,9 @@ TOOL_DEF = {
 
 async def send_notification(ha: HAClient, message: str, channel: str, config: dict) -> bool:
     """Send a notification via the specified channel."""
+    # Normalize legacy "ha" value (was an early UI bug, correct value is "ha_push")
+    if channel == "ha":
+        channel = "ha_push"
     if channel == "ha_push":
         service = config.get("ha_notify_service", "notify.notify")
         try:
