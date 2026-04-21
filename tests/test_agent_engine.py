@@ -789,3 +789,68 @@ async def test_run_agent_does_not_inject_for_chat(engine):
     call_args = runner.chat.call_args
     user_msg = call_args.kwargs["user_message"]
     assert "[CONTESTO ENTITÀ]" not in user_msg
+
+
+def test_create_agent_with_actions(tmp_path):
+    from unittest.mock import MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+
+    actions = [
+        {"type": "notify", "label": "Avvisa via Telegram", "channel": "telegram"},
+        {"type": "call_service", "label": "Spegni luci", "domain": "light", "service": "turn_off", "entity_pattern": "light.*"},
+    ]
+    agent = engine.create_agent({
+        "name": "Action Test",
+        "type": "monitor",
+        "trigger": {"type": "manual"},
+        "actions": actions,
+    })
+    assert agent.actions == actions
+
+
+def test_update_agent_actions(tmp_path):
+    from unittest.mock import MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    agent = engine.create_agent({
+        "name": "Action Update Test", "type": "monitor",
+        "trigger": {"type": "manual"},
+    })
+    assert agent.actions == []
+
+    new_actions = [{"type": "notify", "label": "Test", "channel": "ha"}]
+    updated = engine.update_agent(agent.id, {"actions": new_actions})
+    assert updated.actions == new_actions
+
+
+def test_agent_actions_persist_to_disk(tmp_path):
+    from unittest.mock import MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+
+    data_path = str(tmp_path / "agents.json")
+    engine = AgentEngine(ha_client=mock_ha, data_path=data_path)
+
+    actions = [{"type": "notify", "label": "Disk test", "channel": "telegram"}]
+    agent = engine.create_agent({
+        "name": "Persist Test", "type": "monitor",
+        "trigger": {"type": "manual"},
+        "actions": actions,
+    })
+
+    # Reload from disk
+    engine2 = AgentEngine(ha_client=mock_ha, data_path=data_path)
+    engine2._load()
+    reloaded = engine2.get_agent(agent.id)
+    assert reloaded.actions == actions
