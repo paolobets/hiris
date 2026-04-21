@@ -23,12 +23,14 @@ async def client(aiohttp_client, tmp_path):
 
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="Test response")
+    mock_runner.last_tool_calls = []
     engine.set_claude_runner(mock_runner)
 
     app["ha_client"] = mock_ha
     app["engine"] = engine
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
+    app["data_dir"] = str(tmp_path)
 
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -42,7 +44,7 @@ async def test_health_endpoint(client):
     assert resp.status == 200
     data = await resp.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.1.6"
+    assert data["version"] == "0.1.7"
 
 
 @pytest.mark.asyncio
@@ -276,3 +278,57 @@ async def test_chat_passes_model_to_runner(client):
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
     assert call_kwargs["max_tokens"] == 1024
     assert call_kwargs["agent_type"] == "monitor"
+
+
+@pytest.mark.asyncio
+async def test_chat_max_turns_blocks_when_limit_reached(client):
+    from hiris.app.agent_engine import Agent
+    from hiris.app.chat_store import append_messages
+    engine = client.app["engine"]
+    data_dir = client.app["data_dir"]
+    engine._agents["agent-limited"] = Agent(
+        id="agent-limited", name="Limited", type="chat",
+        trigger={"type": "manual"},
+        system_prompt="test",
+        allowed_tools=[], enabled=True, is_default=False,
+        max_chat_turns=2,
+    )
+    # Pre-fill 2 user turns in server-side history
+    append_messages("agent-limited", [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "reply1"},
+        {"role": "user", "content": "second"},
+        {"role": "assistant", "content": "reply2"},
+    ], data_dir)
+
+    resp = await client.post("/api/chat", json={
+        "message": "third message",
+        "agent_id": "agent-limited",
+    })
+    assert resp.status == 200
+    data = await resp.json()
+    assert data.get("error") == "max_turns_reached"
+    assert data["turns"] == 2
+    assert data["limit"] == 2
+
+
+@pytest.mark.asyncio
+async def test_chat_persists_exchange_in_history(client):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chat_store import load_history
+    engine = client.app["engine"]
+    data_dir = client.app["data_dir"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        trigger={"type": "manual"},
+        system_prompt="test",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="stored response")
+
+    await client.post("/api/chat", json={"message": "persist me"})
+
+    history = load_history(DEFAULT_AGENT_ID, data_dir)
+    assert any(m["content"] == "persist me" for m in history)
+    assert any(m["content"] == "stored response" for m in history)
