@@ -223,10 +223,10 @@ async def test_get_area_entities_uses_cache_when_populated():
 
 
 @pytest.mark.asyncio
-async def test_get_area_entities_falls_back_to_http_when_cache_empty():
-    """When cache is empty, HTTP calls should be made."""
+async def test_get_area_entities_falls_back_to_http_when_cache_not_loaded():
+    """When cache has not been loaded yet (returns None), HTTP calls should be made."""
     cache = MagicMock()
-    cache.get_area_map.return_value = {}
+    cache.get_area_map.return_value = None  # None = not loaded yet
     ha = AsyncMock()
     ha.get_area_registry = AsyncMock(return_value=[
         {"area_id": "cucina_id", "name": "Cucina"},

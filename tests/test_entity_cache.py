@@ -199,9 +199,9 @@ async def test_load_area_registry_builds_area_map():
     assert "sensor.no_area" in area_map["__no_area__"]
 
 
-def test_get_area_map_returns_empty_before_load():
+def test_get_area_map_returns_none_before_load():
     cache = EntityCache()
-    assert cache.get_area_map() == {}
+    assert cache.get_area_map() is None
 
 
 @pytest.mark.asyncio

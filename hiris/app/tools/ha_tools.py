@@ -101,7 +101,7 @@ async def get_area_entities(
     """Return area→[entity_id] map. Uses EntityCache if populated, else HTTP fallback."""
     if entity_cache is not None:
         cached = entity_cache.get_area_map()
-        if cached:
+        if cached is not None:
             return cached
 
     areas = await ha.get_area_registry()

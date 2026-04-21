@@ -2,6 +2,7 @@ import pytest
 import anthropic
 from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT, resolve_model, AUTO_MODEL_MAP
+from hiris.app.proxy.home_profile import _reset_profile_cache
 
 
 @pytest.fixture
@@ -291,6 +292,7 @@ async def test_chat_uses_resolved_model_for_monitor(runner):
 
 @pytest.mark.asyncio
 async def test_chat_injects_home_profile_when_cache_available(runner):
+    _reset_profile_cache()
     cache = MagicMock()
     cache.get_all_useful.return_value = [
         {"id": "light.test", "state": "on", "name": "Test", "unit": ""},

@@ -22,7 +22,7 @@ class EntityCache:
     def __init__(self) -> None:
         self._states: dict[str, dict] = {}
         self._by_domain: dict[str, list[str]] = {}
-        self._area_map: dict[str, list[str]] = {}
+        self._area_map: dict[str, list[str]] | None = None  # None = not loaded yet
 
     async def load(self, ha_client) -> None:
         raw_states = await ha_client.get_states([])
@@ -88,6 +88,6 @@ class EntityCache:
             result["__no_area__"] = no_area
         self._area_map = result
 
-    def get_area_map(self) -> dict[str, list[str]]:
-        """Return cached area→[entity_id] map. Empty dict if not yet loaded."""
+    def get_area_map(self) -> dict[str, list[str]] | None:
+        """Return cached area→[entity_id] map. None if not yet loaded; {} if loaded but no areas."""
         return self._area_map

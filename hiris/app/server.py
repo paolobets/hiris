@@ -40,8 +40,8 @@ async def _on_startup(app: web.Application) -> None:
 
     data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
     engine = AgentEngine(ha_client=ha_client, data_path=data_path)
+    engine.set_entity_cache(entity_cache)  # wire cache before start() opens WebSocket
     await engine.start()
-    engine.set_entity_cache(entity_cache)
     app["engine"] = engine
 
     embedding_index = EmbeddingIndex()
