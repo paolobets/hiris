@@ -386,6 +386,14 @@
       text-align: right;
     }
 
+    .log-expand-btn {
+      background: none; border: none; color: var(--accent); font-size: 11px;
+      cursor: pointer; padding: 0; margin-left: 6px;
+    }
+    .log-expand-btn:hover { text-decoration: underline; }
+    .log-full { display: none; white-space: pre-wrap; margin-top: 4px; font-size: 11px; color: var(--text-muted); }
+    .log-preview { }
+
     /* Run button spinner */
     #run-btn { position: relative; min-width: 90px; }
     #run-btn.running { opacity: 0.7; cursor: not-allowed; }
@@ -695,10 +703,16 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         var summary = r.result_summary || '';
         var titleAttr = esc(summary) + (tools ? (' — tools: ' + esc(tools)) : '');
         var tokens = (r.input_tokens || 0) + '\u2193 / ' + (r.output_tokens || 0) + '\u2191';
-        return '<li>' +
+        var rowId = 'lr-' + Math.random().toString(36).slice(2, 9);
+        var isLong = summary.length > 120;
+        var preview = isLong ? summary.slice(0, 120) + '\u2026' : summary;
+        var summaryHtml = '<span class="log-preview">' + esc(preview || tools || '\u2014') + '</span>' +
+          (isLong ? '<span class="log-full" style="display:none">' + esc(summary) + '</span>' +
+            '<button class="log-expand-btn" onclick="toggleLogRow(\'' + rowId + '\')">\u25bc espandi</button>' : '');
+        return '<li id="' + rowId + '">' +
           '<span class="log-time">' + esc(timeStr) + '</span>' +
           '<span class="' + statusCls + '">' + statusTxt + '</span>' +
-          '<span class="log-summary" title="' + titleAttr + '">' + esc(summary || tools || '\u2014') + '</span>' +
+          '<span class="log-summary" title="' + titleAttr + '">' + summaryHtml + '</span>' +
           '<span class="log-tokens">' + esc(tokens) + '</span>' +
         '</li>';
       }).join('');
@@ -1061,6 +1075,18 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         _entitySuggestions.style.display = 'none';
       }
     });
+
+    function toggleLogRow(rowId) {
+      var row = document.getElementById(rowId);
+      if (!row) return;
+      var preview = row.querySelector('.log-preview');
+      var full = row.querySelector('.log-full');
+      var btn = row.querySelector('.log-expand-btn');
+      var expanded = full && full.style.display !== 'none';
+      if (preview) preview.style.display = expanded ? '' : 'none';
+      if (full) full.style.display = expanded ? 'none' : 'block';
+      if (btn) btn.textContent = expanded ? '\u25bc espandi' : '\u25b2 comprimi';
+    }
   </script>
 </body>
 </html>

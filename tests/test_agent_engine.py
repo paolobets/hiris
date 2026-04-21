@@ -729,6 +729,39 @@ async def test_run_agent_injects_context_for_monitor(engine):
 
 
 @pytest.mark.asyncio
+async def test_execution_log_result_summary_truncated_at_1000(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+    mock_ha.start = AsyncMock()
+    mock_ha.stop = AsyncMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    await engine.start()
+
+    agent = engine.create_agent({
+        "name": "Log Test", "type": "monitor",
+        "trigger": {"type": "manual"},
+    })
+
+    long_result = "x" * 1500
+    mock_runner = MagicMock()
+    mock_runner.chat = AsyncMock(return_value=long_result)
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+    engine.set_claude_runner(mock_runner)
+
+    await engine.run_agent(agent)
+    assert len(agent.execution_log[0]["result_summary"]) == 1000
+
+    await engine.stop()
+
+
+@pytest.mark.asyncio
 async def test_run_agent_does_not_inject_for_chat(engine):
     cache = _make_entity_cache([
         {"id": "sensor.temp", "state": "21.0", "name": "Temp", "unit": "°C"},

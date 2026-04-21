@@ -370,7 +370,7 @@ class AgentEngine:
             "tool_calls": tool_calls,
             "input_tokens": inp_after - inp_before,
             "output_tokens": out_after - out_before,
-            "result_summary": (result or "")[:200],
+            "result_summary": (result or "")[:1000],
             "success": success and not (result or "").startswith("Error:"),
         }
         agent.execution_log = (agent.execution_log + [record])[-20:]
