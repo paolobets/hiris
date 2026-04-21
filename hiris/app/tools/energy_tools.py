@@ -1,3 +1,5 @@
+from __future__ import annotations
+from collections import defaultdict
 from ..proxy.ha_client import HAClient
 
 ENERGY_ENTITY_IDS = [
@@ -9,7 +11,13 @@ ENERGY_ENTITY_IDS = [
 
 TOOL_DEF = {
     "name": "get_energy_history",
-    "description": "Get energy consumption and production history for the last N days from Home Assistant.",
+    "description": (
+        "Get energy history for the last N days. "
+        "Returns compressed daily records: "
+        "[{id, day (YYYY-MM-DD), start (first reading), end (last reading), n (samples)}]. "
+        "Use start/end to compute daily delta. "
+        "Source entities: consumption, solar production, grid import/export."
+    ),
     "input_schema": {
         "type": "object",
         "properties": {
@@ -25,5 +33,35 @@ TOOL_DEF = {
 }
 
 
+def _compress_energy_history(raw: list[dict]) -> list[dict]:
+    """Group raw HA history records by (entity_id, day).
+
+    Input:  [{"entity_id": ..., "state": ..., "last_changed": "YYYY-MM-DDTHH:..."}]
+    Output: [{"id": ..., "day": "YYYY-MM-DD", "start": ..., "end": ..., "n": int}]
+    """
+    # bucket: (entity_id, day) -> list of state strings in order
+    buckets: dict[tuple[str, str], list[str]] = defaultdict(list)
+
+    for item in raw:
+        eid = item.get("entity_id", "")
+        ts = item.get("last_changed", "")
+        if not eid or not ts:
+            continue
+        day = ts[:10]  # "YYYY-MM-DD"
+        buckets[(eid, day)].append(item.get("state", ""))
+
+    result = []
+    for (eid, day), readings in sorted(buckets.items()):
+        result.append({
+            "id": eid,
+            "day": day,
+            "start": readings[0],
+            "end": readings[-1],
+            "n": len(readings),
+        })
+    return result
+
+
 async def get_energy_history(ha: HAClient, days: int) -> list[dict]:
-    return await ha.get_history(entity_ids=ENERGY_ENTITY_IDS, days=days)
+    raw = await ha.get_history(entity_ids=ENERGY_ENTITY_IDS, days=days)
+    return _compress_energy_history(raw)

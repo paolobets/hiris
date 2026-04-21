@@ -32,12 +32,19 @@ async def test_get_entity_states_returns_list(mock_ha):
 
 
 @pytest.mark.asyncio
-async def test_get_energy_history_returns_list(mock_ha):
+async def test_get_energy_history_returns_compressed_format(mock_ha):
     result = await get_energy_history(mock_ha, days=1)
+    # 4 entities × 1 day = 4 compressed records
     assert len(result) == 4
-    entity_ids = [r["entity_id"] for r in result]
-    assert "sensor.energy_consumption" in entity_ids
-    assert "sensor.solar_production" in entity_ids
+    ids = [r["id"] for r in result]
+    assert "sensor.energy_consumption" in ids
+    assert "sensor.solar_production" in ids
+    # each record must have the compressed format
+    rec = next(r for r in result if r["id"] == "sensor.energy_consumption")
+    assert rec["day"] == "2026-04-17"
+    assert rec["start"] == "1.5"
+    assert rec["end"] == "1.5"
+    assert rec["n"] == 1
     mock_ha.get_history.assert_awaited_once_with(entity_ids=ENERGY_ENTITY_IDS, days=1)
 
 
@@ -338,3 +345,50 @@ async def test_get_entity_states_uses_cache_when_provided():
     result = await get_entity_states(ha, ["light.x"], entity_cache=cache)
     ha.get_states.assert_not_called()
     assert result == [{"id": "light.x", "state": "on", "name": "X", "unit": ""}]
+
+
+from hiris.app.tools.energy_tools import _compress_energy_history
+
+
+def test_compress_energy_history_groups_by_entity_and_day():
+    raw = [
+        {"entity_id": "sensor.e", "state": "100.0", "last_changed": "2026-04-17T08:00:00"},
+        {"entity_id": "sensor.e", "state": "102.0", "last_changed": "2026-04-17T12:00:00"},
+        {"entity_id": "sensor.e", "state": "105.0", "last_changed": "2026-04-17T20:00:00"},
+        {"entity_id": "sensor.e", "state": "107.0", "last_changed": "2026-04-18T09:00:00"},
+    ]
+    result = _compress_energy_history(raw)
+    assert len(result) == 2
+    day17 = next(r for r in result if r["day"] == "2026-04-17")
+    assert day17["id"] == "sensor.e"
+    assert day17["start"] == "100.0"
+    assert day17["end"] == "105.0"
+    assert day17["n"] == 3
+    day18 = next(r for r in result if r["day"] == "2026-04-18")
+    assert day18["start"] == "107.0"
+    assert day18["n"] == 1
+
+
+def test_compress_energy_history_handles_unavailable_state():
+    raw = [
+        {"entity_id": "sensor.e", "state": "unavailable", "last_changed": "2026-04-17T08:00:00"},
+        {"entity_id": "sensor.e", "state": "unavailable", "last_changed": "2026-04-17T09:00:00"},
+    ]
+    result = _compress_energy_history(raw)
+    assert len(result) == 1
+    assert result[0]["start"] == "unavailable"
+
+
+def test_compress_energy_history_multiple_entities():
+    raw = [
+        {"entity_id": "sensor.a", "state": "10", "last_changed": "2026-04-17T10:00:00"},
+        {"entity_id": "sensor.b", "state": "20", "last_changed": "2026-04-17T10:00:00"},
+    ]
+    result = _compress_energy_history(raw)
+    assert len(result) == 2
+    ids = {r["id"] for r in result}
+    assert ids == {"sensor.a", "sensor.b"}
+
+
+def test_compress_energy_history_empty_input():
+    assert _compress_energy_history([]) == []
