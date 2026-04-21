@@ -97,6 +97,86 @@ REQUIRE_CONFIRMATION_PROMPT = (
 )
 
 
+def _build_action_instructions(actions: list[dict]) -> str:
+    """Return the structured-response instruction block for a list of actions.
+
+    Returns empty string if no actions defined.
+
+    Args:
+        actions: List of action dicts, each with at least ``type`` and ``label``.
+
+    Returns:
+        Formatted instruction block as a string, or empty string.
+    """
+    if not actions:
+        return ""
+    lines = [
+        "---",
+        "ISTRUZIONI DI RISPOSTA:",
+        "Termina SEMPRE la tua risposta con queste due righe esatte:",
+        "VALUTAZIONE: [OK | ATTENZIONE | ANOMALIA]",
+        "AZIONE: [breve descrizione dell'azione intrapresa, oppure \"nessuna azione necessaria\"]",
+        "",
+        "Azioni disponibili per questo agente:",
+    ]
+    for a in actions:
+        if a.get("type") == "notify":
+            lines.append(f"- {a.get('label', 'Notifica')} (canale: {a.get('channel', 'ha')})")
+        elif a.get("type") == "call_service":
+            svc = f"{a.get('domain', '')}.{a.get('service', '')}"
+            pattern = a.get("entity_pattern", "")
+            suffix = f" su {pattern}" if pattern else ""
+            lines.append(f"- {a.get('label', 'Servizio')} ({svc}{suffix})")
+    return "\n".join(lines)
+
+
+def _parse_structured_response(text: str) -> tuple[str, str | None, str | None]:
+    """Parse VALUTAZIONE and AZIONE lines from the TRAILING block of a Claude response.
+
+    Only lines at the very end (after the last real content) are consumed.
+    Mid-paragraph occurrences of VALUTAZIONE: or AZIONE: are left intact.
+
+    Args:
+        text: Raw response text from Claude.
+
+    Returns:
+        Tuple of (cleaned_text, eval_status, action_taken).
+        ``eval_status`` and ``action_taken`` are None if not found.
+    """
+    eval_status: str | None = None
+    action_taken: str | None = None
+    lines = text.splitlines()
+    cut = len(lines)
+    for i in range(len(lines) - 1, -1, -1):
+        stripped = lines[i].strip()
+        if stripped.startswith("VALUTAZIONE:"):
+            eval_status = stripped[len("VALUTAZIONE:"):].strip()
+            cut = i
+        elif stripped.startswith("AZIONE:"):
+            action_taken = stripped[len("AZIONE:"):].strip()
+            cut = i
+        elif not stripped:
+            # Blank lines in the trailing block are fine to consume
+            cut = i
+        else:
+            break  # Hit real content — stop scanning
+    # Fallback: if a stray line interrupted the trailing block (e.g. Claude put text
+    # between VALUTAZIONE and AZIONE), scan the last 6 lines for any still-missing marker.
+    # Uses min(cut, i) so the clean_text boundary is moved to the earliest found marker.
+    if eval_status is None or action_taken is None:
+        window_start = max(0, len(lines) - 6)
+        for i in range(window_start, len(lines)):
+            stripped = lines[i].strip()
+            if eval_status is None and stripped.startswith("VALUTAZIONE:"):
+                eval_status = stripped[len("VALUTAZIONE:"):].strip()
+                cut = min(cut, i)
+            elif action_taken is None and stripped.startswith("AZIONE:"):
+                action_taken = stripped[len("AZIONE:"):].strip()
+                cut = min(cut, i)
+    clean_text = "\n".join(lines[:cut]).rstrip()
+    return clean_text, eval_status, action_taken
+
+
 class ClaudeRunner:
     def __init__(
         self,
@@ -120,6 +200,7 @@ class ClaudeRunner:
         self.total_cost_usd: float = 0.0
         self.total_rate_limit_errors: int = 0
         self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
+        self._per_agent_usage: dict[str, dict] = {}
         self._load_usage()
 
     def _load_usage(self) -> None:
@@ -134,6 +215,7 @@ class ClaudeRunner:
             self.usage_last_reset = data.get("last_reset", self.usage_last_reset)
             self.total_cost_usd = data.get("total_cost_usd", 0.0)
             self.total_rate_limit_errors = data.get("total_rate_limit_errors", 0)
+            self._per_agent_usage = data.get("per_agent", {})
         except Exception as exc:
             logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
 
@@ -149,6 +231,7 @@ class ClaudeRunner:
                 "last_reset": self.usage_last_reset,
                 "total_cost_usd": self.total_cost_usd,
                 "total_rate_limit_errors": self.total_rate_limit_errors,
+                "per_agent": self._per_agent_usage,
             }
             tmp = self._usage_path + ".tmp"
             os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
@@ -167,6 +250,21 @@ class ClaudeRunner:
         self.usage_last_reset = datetime.now(timezone.utc).isoformat()
         self._save_usage()
 
+    def get_agent_usage(self, agent_id: str) -> dict:
+        """Return usage stats for a specific agent. Returns zero-filled dict if not found."""
+        return dict(self._per_agent_usage.get(agent_id, {
+            "input_tokens": 0, "output_tokens": 0,
+            "requests": 0, "cost_usd": 0.0, "last_run": None,
+        }))
+
+    def reset_agent_usage(self, agent_id: str) -> None:
+        """Reset usage counters for a specific agent."""
+        self._per_agent_usage[agent_id] = {
+            "input_tokens": 0, "output_tokens": 0,
+            "requests": 0, "cost_usd": 0.0, "last_run": None,
+        }
+        self._save_usage()
+
     async def chat(
         self,
         user_message: str,
@@ -180,7 +278,16 @@ class ClaudeRunner:
         agent_type: str = "chat",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
+        agent_id: Optional[str] = None,
     ) -> str:
+        if agent_id:
+            if agent_id not in self._per_agent_usage:
+                self._per_agent_usage[agent_id] = {
+                    "input_tokens": 0, "output_tokens": 0,
+                    "requests": 0, "cost_usd": 0.0, "last_run": None,
+                }
+            self._per_agent_usage[agent_id]["requests"] += 1
+            self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         effective_system = system_prompt
         if restrict_to_home:
@@ -214,6 +321,11 @@ class ClaudeRunner:
             self.total_requests += 1
             prices = _PRICING.get(effective_model, _PRICING["claude-sonnet-4-6"])
             self.total_cost_usd += (inp * prices["input"] + out * prices["output"]) / 1_000_000
+            if agent_id and agent_id in self._per_agent_usage:
+                pau = self._per_agent_usage[agent_id]
+                pau["input_tokens"] += inp
+                pau["output_tokens"] += out
+                pau["cost_usd"] += (inp * prices["input"] + out * prices["output"]) / 1_000_000
             self._save_usage()
 
             if response.stop_reason == "end_turn":
@@ -243,6 +355,60 @@ class ClaudeRunner:
                 return "\n".join(text_blocks) if text_blocks else f"Stopped: {response.stop_reason}"
 
         return "Max tool iterations reached."
+
+    async def run_with_actions(
+        self,
+        user_message: str,
+        system_prompt: str,
+        actions: list[dict],
+        allowed_tools: Optional[list[str]] = None,
+        allowed_entities: Optional[list[str]] = None,
+        allowed_services: Optional[list[str]] = None,
+        model: str = "auto",
+        max_tokens: int = MAX_TOKENS,
+        agent_type: str = "monitor",
+        restrict_to_home: bool = False,
+        require_confirmation: bool = False,
+        agent_id: Optional[str] = None,
+    ) -> tuple[str, str | None, str | None]:
+        """Like chat() but injects action instructions and parses structured response.
+
+        Builds structured-response instructions from the provided ``actions`` list,
+        appends them to ``system_prompt``, calls :meth:`chat`, then parses
+        ``VALUTAZIONE`` / ``AZIONE`` lines from the reply.
+
+        Args:
+            user_message: The user/trigger message to send to Claude.
+            system_prompt: Base system prompt for the agent.
+            actions: List of action dicts, each with at least ``type`` and ``label``.
+            allowed_tools: Whitelist of tool names, or None for all.
+            allowed_entities: Entity glob patterns, or None for unrestricted.
+            allowed_services: Service glob patterns, or None for unrestricted.
+            model: Model identifier or ``"auto"``.
+            max_tokens: Maximum tokens for the response.
+            agent_type: Used for model auto-resolution.
+            restrict_to_home: Whether to inject the home-restriction prompt.
+            require_confirmation: Whether to inject the confirmation prompt.
+
+        Returns:
+            Tuple of (cleaned_text, eval_status, action_taken).
+        """
+        action_instructions = _build_action_instructions(actions)
+        augmented_prompt = f"{system_prompt}\n\n{action_instructions}" if action_instructions else system_prompt
+        raw_result = await self.chat(
+            user_message=user_message,
+            system_prompt=augmented_prompt,
+            allowed_tools=allowed_tools,
+            allowed_entities=allowed_entities,
+            allowed_services=allowed_services,
+            model=model,
+            max_tokens=max_tokens,
+            agent_type=agent_type,
+            restrict_to_home=restrict_to_home,
+            require_confirmation=require_confirmation,
+            agent_id=agent_id,
+        )
+        return _parse_structured_response(raw_result)
 
     async def _call_api(self, **kwargs) -> Any:
         for attempt in range(MAX_RETRIES + 1):

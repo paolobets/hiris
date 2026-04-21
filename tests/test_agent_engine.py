@@ -729,6 +729,39 @@ async def test_run_agent_injects_context_for_monitor(engine):
 
 
 @pytest.mark.asyncio
+async def test_execution_log_result_summary_truncated_at_1000(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+    mock_ha.start = AsyncMock()
+    mock_ha.stop = AsyncMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    await engine.start()
+
+    agent = engine.create_agent({
+        "name": "Log Test", "type": "monitor",
+        "trigger": {"type": "manual"},
+    })
+
+    long_result = "x" * 1500
+    mock_runner = MagicMock()
+    mock_runner.chat = AsyncMock(return_value=long_result)
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+    engine.set_claude_runner(mock_runner)
+
+    await engine.run_agent(agent)
+    assert len(agent.execution_log[0]["result_summary"]) == 1000
+
+    await engine.stop()
+
+
+@pytest.mark.asyncio
 async def test_run_agent_does_not_inject_for_chat(engine):
     cache = _make_entity_cache([
         {"id": "sensor.temp", "state": "21.0", "name": "Temp", "unit": "°C"},
@@ -756,3 +789,148 @@ async def test_run_agent_does_not_inject_for_chat(engine):
     call_args = runner.chat.call_args
     user_msg = call_args.kwargs["user_message"]
     assert "[CONTESTO ENTITÀ]" not in user_msg
+
+
+def test_create_agent_with_actions(tmp_path):
+    from unittest.mock import MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+
+    actions = [
+        {"type": "notify", "label": "Avvisa via Telegram", "channel": "telegram"},
+        {"type": "call_service", "label": "Spegni luci", "domain": "light", "service": "turn_off", "entity_pattern": "light.*"},
+    ]
+    agent = engine.create_agent({
+        "name": "Action Test",
+        "type": "monitor",
+        "trigger": {"type": "manual"},
+        "actions": actions,
+    })
+    assert agent.actions == actions
+
+
+def test_update_agent_actions(tmp_path):
+    from unittest.mock import MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    agent = engine.create_agent({
+        "name": "Action Update Test", "type": "monitor",
+        "trigger": {"type": "manual"},
+    })
+    assert agent.actions == []
+
+    new_actions = [{"type": "notify", "label": "Test", "channel": "ha"}]
+    updated = engine.update_agent(agent.id, {"actions": new_actions})
+    assert updated.actions == new_actions
+
+
+def test_agent_actions_persist_to_disk(tmp_path):
+    from unittest.mock import MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+
+    data_path = str(tmp_path / "agents.json")
+    engine = AgentEngine(ha_client=mock_ha, data_path=data_path)
+
+    actions = [{"type": "notify", "label": "Disk test", "channel": "telegram"}]
+    agent = engine.create_agent({
+        "name": "Persist Test", "type": "monitor",
+        "trigger": {"type": "manual"},
+        "actions": actions,
+    })
+
+    # Reload from disk
+    engine2 = AgentEngine(ha_client=mock_ha, data_path=data_path)
+    engine2._load()
+    reloaded = engine2.get_agent(agent.id)
+    assert reloaded.actions == actions
+
+
+@pytest.mark.asyncio
+async def test_agent_auto_disabled_when_budget_exceeded(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+    mock_ha.start = AsyncMock()
+    mock_ha.stop = AsyncMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    await engine.start()
+
+    agent = engine.create_agent({
+        "name": "Budget Test", "type": "monitor",
+        "trigger": {"type": "manual"},
+        "budget_eur_limit": 0.001,  # €0.001 — very low, will be exceeded
+    })
+
+    mock_runner = MagicMock()
+    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+    # Simulate usage exceeding budget
+    mock_runner.get_agent_usage = MagicMock(return_value={
+        "input_tokens": 5000, "output_tokens": 2000,
+        "requests": 1, "cost_usd": 0.005,  # 0.005 * 0.92 = €0.0046 > €0.001 limit
+        "last_run": "2026-04-21T10:00:00Z",
+    })
+    engine.set_claude_runner(mock_runner)
+
+    await engine.run_agent(agent)
+
+    # Agent should be auto-disabled after budget exceeded
+    assert agent.enabled is False
+
+    await engine.stop()
+
+
+@pytest.mark.asyncio
+async def test_agent_not_disabled_when_budget_not_exceeded(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock
+    from hiris.app.agent_engine import AgentEngine
+
+    mock_ha = MagicMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+    mock_ha.start = AsyncMock()
+    mock_ha.stop = AsyncMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    await engine.start()
+
+    agent = engine.create_agent({
+        "name": "No Budget Test", "type": "monitor",
+        "trigger": {"type": "manual"},
+        "budget_eur_limit": 10.0,  # high limit — will not be exceeded
+    })
+
+    mock_runner = MagicMock()
+    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+    mock_runner.get_agent_usage = MagicMock(return_value={
+        "input_tokens": 100, "output_tokens": 50,
+        "requests": 1, "cost_usd": 0.0001,
+        "last_run": "2026-04-21T10:00:00Z",
+    })
+    engine.set_claude_runner(mock_runner)
+
+    await engine.run_agent(agent)
+
+    assert agent.enabled is True  # not disabled
+
+    await engine.stop()

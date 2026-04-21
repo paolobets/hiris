@@ -68,6 +68,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         agent_type=agent_type,
         restrict_to_home=agent_restrict,
         require_confirmation=agent_require_confirmation,
+        agent_id=getattr(agent, "id", None) if agent else None,
     )
     raw = getattr(runner, "last_tool_calls", None)
     tools_called = raw if isinstance(raw, list) else []

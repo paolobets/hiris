@@ -4,7 +4,11 @@ import logging
 import os
 from aiohttp import web
 from .api.handlers_chat import handle_chat
-from .api.handlers_agents import handle_list_agents, handle_create_agent, handle_get_agent, handle_update_agent, handle_delete_agent, handle_run_agent
+from .api.handlers_agents import (
+    handle_list_agents, handle_create_agent, handle_get_agent,
+    handle_update_agent, handle_delete_agent, handle_run_agent,
+    handle_list_entities, handle_get_agent_usage, handle_reset_agent_usage,
+)
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
@@ -103,6 +107,9 @@ def create_app() -> web.Application:
     app.router.add_put("/api/agents/{agent_id}", handle_update_agent)
     app.router.add_delete("/api/agents/{agent_id}", handle_delete_agent)
     app.router.add_post("/api/agents/{agent_id}/run", handle_run_agent)
+    app.router.add_get("/api/entities", handle_list_entities)
+    app.router.add_get("/api/agents/{agent_id}/usage", handle_get_agent_usage)
+    app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
 
     return app
 
@@ -122,4 +129,4 @@ async def _serve_config(request: web.Request) -> web.Response:
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": "0.1.4"})
+    return web.json_response({"status": "ok", "version": "0.1.5"})

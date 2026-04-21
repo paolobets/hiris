@@ -47,6 +47,44 @@
       --save-color:    #fff;
     }
 
+    /* Entity selector */
+    .entity-selector { display: flex; flex-direction: column; gap: 8px; }
+    .entity-domain-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .domain-pill {
+      padding: 4px 10px; border-radius: 12px; font-size: 12px; cursor: pointer;
+      background: var(--surface-4); color: var(--text-muted); border: 1px solid var(--border);
+      user-select: none; transition: background 0.15s, color 0.15s;
+    }
+    .domain-pill:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .entity-search-row { position: relative; }
+    #entity-search {
+      width: 100%; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--input-bg); color: var(--text); font-size: 13px; box-sizing: border-box;
+    }
+    #entity-search:focus { outline: none; border-color: var(--accent); }
+    .entity-suggestions {
+      position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 100;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      max-height: 180px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .suggestion-item {
+      padding: 7px 12px; cursor: pointer; font-size: 13px; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .suggestion-item:hover { background: var(--surface-hover); }
+    .suggestion-item .s-name { color: var(--text-muted); font-size: 11px; }
+    .entity-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 10px; }
+    .entity-chip {
+      display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
+      border-radius: 12px; background: var(--surface-4); border: 1px solid var(--border-accent);
+      font-size: 12px; color: var(--text);
+    }
+    .entity-chip .chip-remove {
+      cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1;
+      padding: 0 1px;
+    }
+    .entity-chip .chip-remove:hover { color: var(--danger); }
+
     [data-theme="light"] {
       --bg:            #F9FAFB;
       --surface:       #FFFFFF;
@@ -342,10 +380,128 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .log-list li.expanded {
+      display: block;
+    }
+    .log-list li.expanded .log-summary {
+      overflow: visible;
+      white-space: normal;
+    }
     .log-tokens {
       color: var(--muted-alt);
       font-family: 'Courier New', Consolas, monospace;
       text-align: right;
+    }
+
+    .log-expand-btn {
+      background: none; border: none; color: var(--accent); font-size: 11px;
+      cursor: pointer; padding: 0; margin-left: 6px;
+    }
+    .log-expand-btn:hover { text-decoration: underline; }
+    .log-full { display: none; white-space: pre-wrap; margin-top: 4px; font-size: 11px; color: var(--text-muted); }
+    .log-preview { }
+
+    /* Run button spinner */
+    #run-btn { position: relative; min-width: 90px; }
+    #run-btn.running { opacity: 0.7; cursor: not-allowed; }
+    #run-btn .spinner {
+      display: none; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 5px;
+    }
+    #run-btn.running .spinner { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .run-empty { color: var(--text-muted); font-style: italic; }
+    .run-error-text { color: var(--danger); }
+
+    /* Action builder */
+    .actions-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+    .action-item {
+      display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+      background: var(--surface-3); border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px;
+    }
+    .action-item .ai-type {
+      font-size: 11px; padding: 2px 6px; border-radius: 10px;
+      background: var(--surface-4); color: var(--text-muted);
+    }
+    .action-item .ai-label { flex: 1; }
+    .action-item .ai-remove {
+      cursor: pointer; color: var(--text-muted); font-size: 16px; line-height: 1;
+    }
+    .action-item .ai-remove:hover { color: var(--danger); }
+    .btn-add-action {
+      background: var(--surface-4); border: 1px dashed var(--border-accent);
+      color: var(--accent); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-add-action:hover { background: var(--surface-hover); }
+    .action-editor {
+      margin-top: 10px; padding: 12px; background: var(--surface-3);
+      border: 1px solid var(--border-accent); border-radius: 8px;
+    }
+    .ae-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .ae-row label { width: 100px; font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+    .ae-row input, .ae-row select {
+      flex: 1; padding: 5px 8px; background: var(--input-bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px; font-size: 13px;
+    }
+    .ae-buttons { display: flex; gap: 8px; margin-top: 10px; }
+    .ae-buttons button {
+      padding: 5px 14px; border-radius: 5px; border: 1px solid var(--border);
+      cursor: pointer; font-size: 12px;
+    }
+    #ae-confirm { background: var(--accent); color: #fff; border-color: var(--accent); }
+    #ae-cancel { background: var(--surface-4); color: var(--text-muted); }
+
+    /* Execution log eval badge */
+    .eval-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
+      font-weight: 600; margin-right: 6px;
+    }
+    .eval-ok    { background: #16532222; color: #34d399; border: 1px solid #16532266; }
+    .eval-warn  { background: #78350f22; color: #fbbf24; border: 1px solid #78350f66; }
+    .eval-alert { background: #7f1d1d22; color: #f87171; border: 1px solid #7f1d1d66; }
+    .log-action-taken { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    /* Per-agent usage section */
+    .usage-section { border: 1px solid var(--border); border-radius: 6px; margin-top: 12px; }
+    .usage-section summary {
+      padding: 10px 14px; cursor: pointer; font-size: 13px; color: var(--text-muted);
+      list-style: none; user-select: none;
+    }
+    .usage-section summary::-webkit-details-marker { display: none; }
+    .usage-section[open] summary { border-bottom: 1px solid var(--border); color: var(--text); }
+    .usage-content { padding: 14px; }
+    .usage-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px;
+    }
+    .usage-stat {
+      background: var(--surface-3); border-radius: 6px; padding: 10px 8px; text-align: center;
+    }
+    .us-val { font-size: 18px; font-weight: 600; color: var(--accent); }
+    .us-label { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    .usage-last-run { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+    .usage-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .btn-usage-reset {
+      padding: 6px 14px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--surface-4); color: var(--text-muted); font-size: 12px; cursor: pointer;
+    }
+    .btn-usage-reset:hover { background: var(--surface-hover); color: var(--text); }
+    .btn-usage-block {
+      padding: 6px 14px; border-radius: 5px; border: 1px solid var(--danger-bg);
+      background: #7f1d1d22; color: var(--danger-text); font-size: 12px; cursor: pointer;
+    }
+    .btn-usage-block:hover { background: var(--danger-bg); }
+    .btn-usage-enable {
+      padding: 6px 14px; border-radius: 5px; border: 1px solid #16532244;
+      background: #16532222; color: var(--success); font-size: 12px; cursor: pointer;
+    }
+    .btn-usage-enable:hover { background: #16532244; }
+    .usage-budget { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .usage-budget label { font-size: 12px; color: var(--text-muted); }
+    .usage-budget input {
+      width: 80px; padding: 4px 8px; background: var(--input-bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px; font-size: 13px;
     }
   </style>
 </head>
@@ -368,7 +524,7 @@
         <div class="stat-value" id="u-output">—</div>
       </div>
       <div class="usage-stat">
-        <div class="stat-label">Costo (€)</div>
+        <div class="stat-label">Costo stimato (€)</div>
         <div class="stat-value" id="u-cost">—</div>
       </div>
     </div>
@@ -462,13 +618,78 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           <div class="tool-checkboxes" id="tool-checks"></div>
           <div style="margin-top:1rem">
             <label>Entit&agrave; accessibili</label>
-            <textarea id="f-entities" rows="3" placeholder="climate.*&#10;person.*&#10;sensor.temperature_*"></textarea>
-            <p class="hint">Pattern fnmatch separati da newline. Lascia vuoto per accesso completo a tutte le entit&agrave;.</p>
+            <div class="entity-selector">
+              <div class="entity-domain-pills" id="entity-domain-pills">
+                <span class="domain-pill" data-pattern="light.*">&#128161; luci</span>
+                <span class="domain-pill" data-pattern="switch.*">&#128268; switch</span>
+                <span class="domain-pill" data-pattern="sensor.*">&#128202; sensori</span>
+                <span class="domain-pill" data-pattern="climate.*">&#127777;&#65039; clima</span>
+                <span class="domain-pill" data-pattern="cover.*">&#129695; tapparelle</span>
+                <span class="domain-pill" data-pattern="binary_sensor.*">&#9889; binari</span>
+                <span class="domain-pill" data-pattern="person.*">&#129489; persone</span>
+              </div>
+              <div class="entity-search-row">
+                <input type="text" id="entity-search" placeholder="Cerca entit&agrave;&hellip;" autocomplete="off">
+                <div id="entity-suggestions" class="entity-suggestions" style="display:none"></div>
+              </div>
+              <div id="entity-chips" class="entity-chips"></div>
+              <input type="hidden" id="f-entities">
+            </div>
+            <p class="hint">Aggiungi domini con le pillole o cerca entit&agrave; singole. Premi Invio per aggiungere pattern personalizzati. Lascia vuoto per accesso completo.</p>
           </div>
           <div id="f-actions-section" style="margin-top:1rem; display:none">
             <label>Azioni permesse</label>
             <p class="hint">Seleziona i domini su cui questo agente pu&ograve; intervenire tramite call_ha_service.</p>
             <div class="tool-checkboxes" id="action-checks"></div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section" id="actions-fieldset">
+          <legend>Azioni configurate</legend>
+          <div id="actions-list" class="actions-list"></div>
+          <button type="button" class="btn-add-action" id="btn-add-action">+ Aggiungi azione</button>
+
+          <!-- Inline action editor (hidden until "add" clicked) -->
+          <div id="action-editor" class="action-editor" style="display:none">
+            <div class="ae-row">
+              <label>Tipo</label>
+              <select id="ae-type">
+                <option value="notify">Notifica</option>
+                <option value="call_service">Chiama servizio HA</option>
+              </select>
+            </div>
+            <div class="ae-row">
+              <label>Etichetta</label>
+              <input type="text" id="ae-label" placeholder="es. Avvisa via Telegram">
+            </div>
+            <div id="ae-notify-fields" class="ae-conditional">
+              <div class="ae-row">
+                <label>Canale</label>
+                <select id="ae-channel">
+                  <option value="ha">Home Assistant push</option>
+                  <option value="telegram">Telegram</option>
+                  <option value="retropanel">Retro Panel toast</option>
+                </select>
+              </div>
+            </div>
+            <div id="ae-service-fields" class="ae-conditional" style="display:none">
+              <div class="ae-row">
+                <label>Dominio</label>
+                <input type="text" id="ae-domain" placeholder="light">
+              </div>
+              <div class="ae-row">
+                <label>Servizio</label>
+                <input type="text" id="ae-service" placeholder="turn_off">
+              </div>
+              <div class="ae-row">
+                <label>Pattern entit&agrave;</label>
+                <input type="text" id="ae-entity-pattern" placeholder="light.* (opzionale)">
+              </div>
+            </div>
+            <div class="ae-buttons">
+              <button type="button" id="ae-confirm">&#10003; Aggiungi</button>
+              <button type="button" id="ae-cancel">Annulla</button>
+            </div>
           </div>
         </fieldset>
 
@@ -486,13 +707,34 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
         <div class="actions">
           <button id="save-btn">Salva</button>
-          <button id="run-btn">&#9654; Test Run</button>
+          <button id="run-btn"><span class="spinner"></span>&#9654; Test Run</button>
           <button id="delete-btn" style="display:none">Elimina</button>
         </div>
         <pre id="run-output"></pre>
         <details class="log-section">
           <summary>Log esecuzioni (ultime 20)</summary>
           <div id="log-body"><div class="log-empty">Nessuna esecuzione registrata.</div></div>
+        </details>
+        <details class="usage-section" id="agent-usage-section">
+          <summary>📊 Consumi agente</summary>
+          <div class="usage-content">
+            <div class="usage-grid">
+              <div class="usage-stat"><div class="us-val" id="u-ag-requests">—</div><div class="us-label">Richieste</div></div>
+              <div class="usage-stat"><div class="us-val" id="u-ag-input">—</div><div class="us-label">Token IN</div></div>
+              <div class="usage-stat"><div class="us-val" id="u-ag-output">—</div><div class="us-label">Token OUT</div></div>
+              <div class="usage-stat"><div class="us-val" id="u-ag-cost">—</div><div class="us-label">Costo stimato</div></div>
+            </div>
+            <div class="usage-last-run">Ultima esecuzione: <span id="u-ag-last-run">—</span></div>
+            <div class="usage-actions">
+              <button type="button" id="u-ag-reset-btn" class="btn-usage-reset">↺ Azzera contatori</button>
+              <button type="button" id="u-ag-toggle-btn" class="btn-usage-block">⊘ Blocca agente</button>
+            </div>
+            <div class="usage-budget">
+              <label>Budget massimo (€, 0 = nessun limite)</label>
+              <input type="number" id="u-ag-budget" min="0" step="0.01" value="0" placeholder="0.00">
+              <button type="button" id="u-ag-budget-save-btn" class="btn-usage-reset">Salva soglia</button>
+            </div>
+          </div>
         </details>
       </div>
     </div>
@@ -608,7 +850,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
     }
 
     function esc(t) {
-      return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     function renderExecutionLog(a) {
@@ -628,10 +870,26 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         var summary = r.result_summary || '';
         var titleAttr = esc(summary) + (tools ? (' — tools: ' + esc(tools)) : '');
         var tokens = (r.input_tokens || 0) + '\u2193 / ' + (r.output_tokens || 0) + '\u2191';
-        return '<li>' +
+        var rowId = 'lr-' + Math.random().toString(36).slice(2, 9);
+        var isLong = summary.length > 120;
+        var preview = isLong ? summary.slice(0, 120) + '\u2026' : summary;
+        var EVAL_CLASS = { 'OK': 'eval-ok', 'ATTENZIONE': 'eval-warn', 'ANOMALIA': 'eval-alert' };
+        var evalStatus = r.eval_status || null;
+        var evalBadge = evalStatus
+          ? '<span class="eval-badge ' + (EVAL_CLASS[evalStatus] || '') + '">' + esc(evalStatus) + '</span>'
+          : '';
+        var actionLine = r.action_taken
+          ? '<div class="log-action-taken">\u21b3 ' + esc(r.action_taken) + '</div>'
+          : '';
+        var summaryHtml = evalBadge +
+          '<span class="log-preview">' + esc(preview || tools || '\u2014') + '</span>' +
+          (isLong ? '<span class="log-full" style="display:none">' + esc(summary) + '</span>' +
+            '<button class="log-expand-btn" data-row-id="' + esc(rowId) + '">\u25bc espandi</button>' : '') +
+          actionLine;
+        return '<li id="' + rowId + '">' +
           '<span class="log-time">' + esc(timeStr) + '</span>' +
           '<span class="' + statusCls + '">' + statusTxt + '</span>' +
-          '<span class="log-summary" title="' + titleAttr + '">' + esc(summary || tools || '\u2014') + '</span>' +
+          '<span class="log-summary" title="' + titleAttr + '">' + summaryHtml + '</span>' +
           '<span class="log-tokens">' + esc(tokens) + '</span>' +
         '</li>';
       }).join('');
@@ -724,20 +982,27 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-cron').value = (a.trigger && a.trigger.cron) || '';
       document.getElementById('f-prompt').value = a.system_prompt || '';
       document.getElementById('f-strategic').value = a.strategic_context || '';
-      document.getElementById('f-entities').value = (a.allowed_entities || []).join('\n');
+      _entitySelectorLoad(a.allowed_entities || []);
       document.getElementById('f-enabled').checked = a.enabled;
       document.getElementById('f-model').value = a.model || 'auto';
       document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
       document.getElementById('f-restrict').checked = !!a.restrict_to_home;
       document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
       buildActionChecks(a.allowed_services || []);
+      _actionsLoad(a.actions || []);
       document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
-      document.getElementById('run-output').style.display = 'none';
+      var ro = document.getElementById('run-output');
+      ro.style.display = 'none';
+      ro.textContent = '';
+      ro.className = '';
       // buildToolChecks must run after buildActionChecks — it owns the final updateServicesVisibility() call
       buildToolChecks(a.allowed_tools || []);
       showTriggerFields(a.type);
       renderList();
       renderExecutionLog(a);
+      loadAgentUsage(a.id);
+      updateAgentUsageToggleBtn(a);
+      document.getElementById('u-ag-budget').value = a.budget_eur_limit || 0;
     }
 
     document.getElementById('new-btn').onclick = function() {
@@ -753,18 +1018,23 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-cron').value = '';
       document.getElementById('f-prompt').value = '';
       document.getElementById('f-strategic').value = '';
-      document.getElementById('f-entities').value = '';
+      _entitySelectorLoad([]);
       document.getElementById('f-enabled').checked = true;
       document.getElementById('f-model').value = 'auto';
       document.getElementById('f-max-tokens').value = 4096;
       document.getElementById('f-restrict').checked = false;
       document.getElementById('f-require-confirmation').checked = false;
       buildActionChecks([]);
+      _actionsLoad([]);
       document.getElementById('delete-btn').style.display = 'none';
-      document.getElementById('run-output').style.display = 'none';
+      var ro = document.getElementById('run-output');
+      ro.style.display = 'none';
+      ro.textContent = '';
+      ro.className = '';
       buildToolChecks([]);
       showTriggerFields('monitor');
       renderExecutionLog(null);
+      document.getElementById('u-ag-budget').value = 0;
     };
 
     function buildPayload() {
@@ -773,7 +1043,6 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       if (type === 'monitor')    trigger.interval_minutes = parseInt(document.getElementById('f-interval').value) || 5;
       if (type === 'reactive')   trigger.entity_id = document.getElementById('f-entity').value;
       if (type === 'preventive') trigger.cron = document.getElementById('f-cron').value;
-      var entRaw = document.getElementById('f-entities').value.trim();
       return {
         name: document.getElementById('f-name').value,
         type: type,
@@ -781,13 +1050,15 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         system_prompt: document.getElementById('f-prompt').value,
         strategic_context: document.getElementById('f-strategic').value,
         allowed_tools: getSelectedTools(),
-        allowed_entities: entRaw ? entRaw.split('\n').map(function(s) { return s.trim(); }).filter(Boolean) : [],
+        allowed_entities: (function() { try { return JSON.parse(document.getElementById('f-entities').value || '[]'); } catch(e) { return []; } })(),
         allowed_services: getSelectedActions(),
         model: document.getElementById('f-model').value,
         max_tokens: parseInt(document.getElementById('f-max-tokens').value) || 4096,
         restrict_to_home: document.getElementById('f-restrict').checked,
         require_confirmation: document.getElementById('f-require-confirmation').checked,
         enabled: document.getElementById('f-enabled').checked,
+        actions: _actionsValue(),
+        budget_eur_limit: parseFloat(document.getElementById('u-ag-budget').value) || 0,
       };
     }
 
@@ -819,16 +1090,46 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     document.getElementById('run-btn').onclick = async function() {
       if (!currentId) return;
+      var btn = document.getElementById('run-btn');
       var out = document.getElementById('run-output');
+
+      btn.classList.add('running');
+      btn.disabled = true;
       out.style.display = '';
-      out.innerHTML = '<span style="color:#9CA3AF">Esecuzione in corso\u2026</span>';
+      out.className = '';
+      out.textContent = 'Avvio esecuzione\u2026';
+
+      var timeout = 90000;
+      var ctrl = new AbortController();
+      var timer = setTimeout(function() { ctrl.abort(); }, timeout);
+
       try {
-        var r = await fetch('api/agents/' + currentId + '/run', {method: 'POST'});
+        var r = await fetch('api/agents/' + currentId + '/run', {
+          method: 'POST',
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
         var data = await r.json();
-        var raw = data.result || data.error || JSON.stringify(data, null, 2);
-        out.innerHTML = highlightOutput(esc(raw));
+        var raw = (data.result || data.error || '').trim();
+        if (!raw) {
+          out.className = 'run-empty';
+          out.textContent = '(nessun risultato restituito dall\'agente)';
+        } else {
+          out.className = '';
+          out.innerHTML = highlightOutput(esc(raw));
+        }
       } catch(e) {
-        out.innerHTML = '<span style="color:#ff7b72">Errore di connessione.</span>';
+        clearTimeout(timer);
+        out.className = 'run-error-text';
+        if (e.name === 'AbortError') {
+          out.textContent = '\u23f1 Timeout: l\'agente non ha risposto entro 90 secondi.';
+        } else {
+          out.textContent = 'Errore: ' + e.message;
+        }
+      } finally {
+        btn.classList.remove('running');
+        btn.disabled = false;
+        out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     };
 
@@ -866,6 +1167,265 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     loadUsage();
     setInterval(loadUsage, 30000);
+
+    // ── Entity Selector ─────────────────────────────────────────────────────────
+    var _entitySelectionSet = new Set();
+
+    function _entitySelectorRender() {
+      var chips = document.getElementById('entity-chips');
+      chips.innerHTML = '';
+      _entitySelectionSet.forEach(function(pattern) {
+        var chip = document.createElement('span');
+        chip.className = 'entity-chip';
+        chip.innerHTML = '<span>' + esc(pattern) + '</span><span class="chip-remove" data-p="' + esc(pattern) + '">\u00d7</span>';
+        chip.querySelector('.chip-remove').addEventListener('click', function() {
+          _entitySelectionSet.delete(this.dataset.p);
+          _entitySelectorRender();
+        });
+        chips.appendChild(chip);
+      });
+      document.getElementById('f-entities').value = JSON.stringify(Array.from(_entitySelectionSet));
+    }
+
+    function _entitySelectorAdd(pattern) {
+      if (pattern && !_entitySelectionSet.has(pattern)) {
+        _entitySelectionSet.add(pattern);
+        _entitySelectorRender();
+      }
+    }
+
+    function _entitySelectorLoad(patterns) {
+      _entitySelectionSet = new Set(Array.isArray(patterns) ? patterns : []);
+      _entitySelectorRender();
+      var srch = document.getElementById('entity-search');
+      var sugg = document.getElementById('entity-suggestions');
+      if (srch) srch.value = '';
+      if (sugg) sugg.style.display = 'none';
+    }
+
+    // Domain pills
+    document.querySelectorAll('.domain-pill').forEach(function(pill) {
+      pill.addEventListener('click', function() {
+        _entitySelectorAdd(this.dataset.pattern);
+        document.getElementById('entity-search').value = '';
+      });
+    });
+
+    // Search with debounce
+    var _entitySearchTimer = null;
+    var _entitySearchInput = document.getElementById('entity-search');
+    var _entitySuggestions = document.getElementById('entity-suggestions');
+
+    _entitySearchInput.addEventListener('input', function() {
+      clearTimeout(_entitySearchTimer);
+      var q = _entitySearchInput.value.trim();
+      if (!q) { _entitySuggestions.style.display = 'none'; return; }
+      _entitySearchTimer = setTimeout(async function() {
+        try {
+          var resp = await fetch('api/entities?q=' + encodeURIComponent(q));
+          var items = await resp.json();
+          _entitySuggestions.innerHTML = '';
+          if (!items.length) { _entitySuggestions.style.display = 'none'; return; }
+          items.slice(0, 20).forEach(function(e) {
+            var div = document.createElement('div');
+            div.className = 'suggestion-item';
+            div.innerHTML = '<span>' + esc(e.id) + '</span><span class="s-name">' + esc(e.name || '') + '</span>';
+            div.addEventListener('click', function() {
+              _entitySelectorAdd(e.id);
+              _entitySearchInput.value = '';
+              _entitySuggestions.style.display = 'none';
+            });
+            _entitySuggestions.appendChild(div);
+          });
+          _entitySuggestions.style.display = 'block';
+        } catch(err) { /* ignore network errors */ }
+      }, 300);
+    });
+
+    _entitySearchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var q = _entitySearchInput.value.trim();
+        if (q) {
+          _entitySelectorAdd(q);
+          _entitySearchInput.value = '';
+          _entitySuggestions.style.display = 'none';
+        }
+      }
+      if (e.key === 'Escape') { _entitySuggestions.style.display = 'none'; }
+    });
+
+    document.addEventListener('click', function(e) {
+      if (_entitySearchInput && !_entitySearchInput.contains(e.target) && !_entitySuggestions.contains(e.target)) {
+        _entitySuggestions.style.display = 'none';
+      }
+    });
+
+    // ── Action Builder ────────────────────────────────────────────────────────
+    var _agentActions = [];
+
+    function _actionsRender() {
+      var list = document.getElementById('actions-list');
+      list.innerHTML = '';
+      _agentActions.forEach(function(a, i) {
+        var typeLabel = a.type === 'notify' ? 'Notifica' : 'Servizio';
+        var detail = a.type === 'notify'
+          ? ('canale: ' + esc(a.channel || 'ha'))
+          : (esc(a.domain || '') + '.' + esc(a.service || '') + (a.entity_pattern ? ' su ' + esc(a.entity_pattern) : ''));
+        var div = document.createElement('div');
+        div.className = 'action-item';
+        div.innerHTML =
+          '<span class="ai-type">' + esc(typeLabel) + '</span>' +
+          '<span class="ai-label">' + esc(a.label || '\u2014') +
+            ' <span style="color:var(--text-muted);font-size:11px">(' + detail + ')</span></span>' +
+          '<span class="ai-remove" data-i="' + i + '">\u00d7</span>';
+        div.querySelector('.ai-remove').addEventListener('click', function() {
+          _agentActions.splice(parseInt(this.dataset.i), 1);
+          _actionsRender();
+        });
+        list.appendChild(div);
+      });
+    }
+
+    function _actionsLoad(actions) {
+      _agentActions = Array.isArray(actions) ? JSON.parse(JSON.stringify(actions)) : [];
+      _actionsRender();
+      document.getElementById('action-editor').style.display = 'none';
+    }
+
+    function _actionsValue() {
+      return JSON.parse(JSON.stringify(_agentActions));
+    }
+
+    document.getElementById('btn-add-action').addEventListener('click', function() {
+      document.getElementById('action-editor').style.display = 'block';
+      document.getElementById('ae-label').value = '';
+      document.getElementById('ae-domain').value = '';
+      document.getElementById('ae-service').value = '';
+      document.getElementById('ae-entity-pattern').value = '';
+      document.getElementById('ae-type').value = 'notify';
+      document.getElementById('ae-notify-fields').style.display = '';
+      document.getElementById('ae-service-fields').style.display = 'none';
+    });
+
+    document.getElementById('ae-type').addEventListener('change', function() {
+      var isService = this.value === 'call_service';
+      document.getElementById('ae-notify-fields').style.display = isService ? 'none' : '';
+      document.getElementById('ae-service-fields').style.display = isService ? '' : 'none';
+    });
+
+    document.getElementById('ae-confirm').addEventListener('click', function() {
+      var type = document.getElementById('ae-type').value;
+      var label = document.getElementById('ae-label').value.trim();
+      if (!label) { alert('Inserisci un\'etichetta per l\'azione.'); return; }
+      var action = { type: type, label: label };
+      if (type === 'notify') {
+        action.channel = document.getElementById('ae-channel').value;
+      } else {
+        action.domain = document.getElementById('ae-domain').value.trim();
+        action.service = document.getElementById('ae-service').value.trim();
+        var ep = document.getElementById('ae-entity-pattern').value.trim();
+        if (ep) action.entity_pattern = ep;
+      }
+      _agentActions.push(action);
+      _actionsRender();
+      document.getElementById('action-editor').style.display = 'none';
+    });
+
+    document.getElementById('ae-cancel').addEventListener('click', function() {
+      document.getElementById('action-editor').style.display = 'none';
+    });
+
+    document.getElementById('log-body').addEventListener('click', function(e) {
+      var btn = e.target.closest('.log-expand-btn');
+      if (!btn) return;
+      var rowId = btn.dataset.rowId;
+      if (rowId) toggleLogRow(rowId);
+    });
+
+    function toggleLogRow(rowId) {
+      var row = document.getElementById(rowId);
+      if (!row) return;
+      var preview = row.querySelector('.log-preview');
+      var full = row.querySelector('.log-full');
+      var btn = row.querySelector('.log-expand-btn');
+      var expanded = full && full.style.display !== 'none';
+      if (preview) preview.style.display = expanded ? '' : 'none';
+      if (full) full.style.display = expanded ? 'none' : 'block';
+      if (btn) btn.textContent = expanded ? '\u25bc espandi' : '\u25b2 comprimi';
+      row.classList.toggle('expanded', !expanded);
+    }
+
+    // ── Per-agent usage section ───────────────────────────────────────────────────
+    async function loadAgentUsage(agentId) {
+      if (!agentId) return;
+      try {
+        var r = await fetch('api/agents/' + agentId + '/usage');
+        if (!r.ok) return;
+        var d = await r.json();
+        document.getElementById('u-ag-requests').textContent = d.requests ?? '—';
+        document.getElementById('u-ag-input').textContent = fmtNum(d.input_tokens);
+        document.getElementById('u-ag-output').textContent = fmtNum(d.output_tokens);
+        document.getElementById('u-ag-cost').textContent = d.cost_eur != null ? '€' + d.cost_eur.toFixed(4) : '—';
+        var lr = d.last_run ? new Date(d.last_run).toLocaleString('it-IT') : 'mai';
+        document.getElementById('u-ag-last-run').textContent = lr;
+      } catch(e) {}
+    }
+
+    document.getElementById('u-ag-reset-btn').onclick = async function() {
+      if (!currentId || !confirm('Azzerare i contatori di consumo per questo agente?')) return;
+      try {
+        await fetch('api/agents/' + currentId + '/usage/reset', { method: 'POST' });
+        await loadAgentUsage(currentId);
+      } catch(e) {}
+    };
+
+    document.getElementById('u-ag-toggle-btn').onclick = async function() {
+      if (!currentId) return;
+      var agent = agents.find(function(a) { return a.id === currentId; });
+      if (!agent) return;
+      var newEnabled = !agent.enabled;
+      var confirmMsg = newEnabled
+        ? 'Riabilitare questo agente?'
+        : 'Bloccare questo agente? Non verrà più eseguito automaticamente.';
+      if (!confirm(confirmMsg)) return;
+      try {
+        var r = await fetch('api/agents/' + currentId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: newEnabled }),
+        });
+        await r.json();
+        await loadAgents();
+        var fresh = agents.find(function(a) { return a.id === currentId; });
+        if (fresh) openAgent(fresh);
+      } catch(e) {}
+    };
+
+    document.getElementById('u-ag-budget-save-btn').onclick = async function() {
+      if (!currentId) return;
+      var budget = parseFloat(document.getElementById('u-ag-budget').value) || 0;
+      try {
+        await fetch('api/agents/' + currentId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ budget_eur_limit: budget }),
+        });
+        alert(budget > 0 ? 'Soglia di budget salvata: €' + budget.toFixed(2) : 'Nessun limite di budget impostato.');
+      } catch(e) {}
+    };
+
+    function updateAgentUsageToggleBtn(agent) {
+      var btn = document.getElementById('u-ag-toggle-btn');
+      if (!agent) return;
+      if (agent.enabled) {
+        btn.textContent = '⊘ Blocca agente';
+        btn.className = 'btn-usage-block';
+      } else {
+        btn.textContent = '✓ Riabilita agente';
+        btn.className = 'btn-usage-enable';
+      }
+    }
   </script>
 </body>
 </html>

@@ -36,6 +36,8 @@ class Agent:
     restrict_to_home: bool = False
     require_confirmation: bool = False
     execution_log: list[dict] = field(default_factory=list)
+    actions: list[dict] = field(default_factory=list)
+    budget_eur_limit: float = 0.0
 
 
 class AgentEngine:
@@ -102,6 +104,8 @@ class AgentEngine:
                     restrict_to_home=raw.get("restrict_to_home", False),
                     require_confirmation=raw.get("require_confirmation", False),
                     execution_log=raw.get("execution_log", []),
+                    actions=raw.get("actions", []),
+                    budget_eur_limit=raw.get("budget_eur_limit", 0.0),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -176,6 +180,8 @@ class AgentEngine:
             max_tokens=int(data.get("max_tokens", 4096)),
             restrict_to_home=bool(data.get("restrict_to_home", False)),
             require_confirmation=bool(data.get("require_confirmation", False)),
+            actions=data.get("actions", []),
+            budget_eur_limit=float(data.get("budget_eur_limit", 0.0)),
         )
         self._agents[agent.id] = agent
         if agent.enabled:
@@ -190,6 +196,7 @@ class AgentEngine:
         "name", "type", "trigger", "system_prompt", "allowed_tools", "enabled",
         "strategic_context", "allowed_entities", "allowed_services",
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
+        "actions", "budget_eur_limit",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -198,9 +205,15 @@ class AgentEngine:
             return None
         self._unschedule_agent(agent_id)
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
+        _FLOAT_FIELDS = {"budget_eur_limit"}
         for key in self.UPDATABLE_FIELDS:
             if key in data:
-                setattr(agent, key, bool(data[key]) if key in _BOOL_FIELDS else data[key])
+                if key in _BOOL_FIELDS:
+                    setattr(agent, key, bool(data[key]))
+                elif key in _FLOAT_FIELDS:
+                    setattr(agent, key, float(data[key]))
+                else:
+                    setattr(agent, key, data[key])
         if agent.enabled:
             self._schedule_agent(agent)
         self._save()
@@ -327,22 +340,57 @@ class AgentEngine:
                 if entity_ctx:
                     user_message = f"{user_message}\n\n{entity_ctx}"
 
-            result = await self._claude_runner.chat(
-                user_message=user_message,
-                system_prompt=effective_prompt,
-                allowed_tools=agent.allowed_tools or None,
-                allowed_entities=agent.allowed_entities or None,
-                allowed_services=agent.allowed_services or None,
-                model=agent.model,
-                max_tokens=agent.max_tokens,
-                agent_type=agent.type,
-                restrict_to_home=agent.restrict_to_home,
-                require_confirmation=agent.require_confirmation,
-            )
+            agent_actions: list = list(getattr(agent, "actions", []) or [])
+            if agent_actions:
+                result, eval_status, action_taken = await self._claude_runner.run_with_actions(
+                    user_message=user_message,
+                    system_prompt=effective_prompt,
+                    actions=agent_actions,
+                    allowed_tools=agent.allowed_tools or None,
+                    allowed_entities=agent.allowed_entities or None,
+                    allowed_services=agent.allowed_services or None,
+                    model=agent.model,
+                    max_tokens=agent.max_tokens,
+                    agent_type=agent.type,
+                    restrict_to_home=agent.restrict_to_home,
+                    require_confirmation=agent.require_confirmation,
+                    agent_id=agent.id,
+                )
+            else:
+                result = await self._claude_runner.chat(
+                    user_message=user_message,
+                    system_prompt=effective_prompt,
+                    allowed_tools=agent.allowed_tools or None,
+                    allowed_entities=agent.allowed_entities or None,
+                    allowed_services=agent.allowed_services or None,
+                    model=agent.model,
+                    max_tokens=agent.max_tokens,
+                    agent_type=agent.type,
+                    restrict_to_home=agent.restrict_to_home,
+                    require_confirmation=agent.require_confirmation,
+                    agent_id=agent.id,
+                )
+                eval_status = None
+                action_taken = None
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             agent.last_result = result
-            self._append_execution_log(agent, result, inp_before, out_before, tool_calls_snapshot, success=True)
+            self._append_execution_log(agent, result, inp_before, out_before, tool_calls_snapshot, success=True,
+                                       eval_status=eval_status, action_taken=action_taken)
             self._save()
+            # Auto-disable if budget_eur_limit exceeded
+            if agent.budget_eur_limit > 0 and self._claude_runner:
+                try:
+                    usage = self._claude_runner.get_agent_usage(agent.id)
+                    cost_eur = usage.get("cost_usd", 0.0) * 0.92
+                    if cost_eur >= agent.budget_eur_limit:
+                        logger.warning(
+                            "Agent %s auto-disabled: cost €%.4f >= limit €%.4f",
+                            agent.name, cost_eur, agent.budget_eur_limit,
+                        )
+                        agent.enabled = False
+                        self._save()
+                except Exception as exc:
+                    logger.warning("Budget check failed for %s: %s", agent.name, exc)
             return result
         except Exception as exc:
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
@@ -350,6 +398,19 @@ class AgentEngine:
             agent.last_result = f"Error: {exc}"
             self._append_execution_log(agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False)
             self._save()
+            if agent.budget_eur_limit > 0 and self._claude_runner:
+                try:
+                    usage = self._claude_runner.get_agent_usage(agent.id)
+                    cost_eur = usage.get("cost_usd", 0.0) * 0.92
+                    if cost_eur >= agent.budget_eur_limit:
+                        logger.warning(
+                            "Agent %s auto-disabled on failure: cost €%.4f >= limit €%.4f",
+                            agent.name, cost_eur, agent.budget_eur_limit,
+                        )
+                        agent.enabled = False
+                        self._save()
+                except Exception as budget_exc:
+                    logger.warning("Budget check failed for %s: %s", agent.name, budget_exc)
             return agent.last_result
 
     def _append_execution_log(
@@ -360,6 +421,8 @@ class AgentEngine:
         out_before: int,
         tool_calls_snapshot: list,
         success: bool,
+        eval_status: Optional[str] = None,
+        action_taken: Optional[str] = None,
     ) -> None:
         inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
         out_after = getattr(self._claude_runner, "total_output_tokens", 0)
@@ -370,7 +433,9 @@ class AgentEngine:
             "tool_calls": tool_calls,
             "input_tokens": inp_after - inp_before,
             "output_tokens": out_after - out_before,
-            "result_summary": (result or "")[:200],
+            "result_summary": (result or "")[:1000],
             "success": success and not (result or "").startswith("Error:"),
+            "eval_status": eval_status,
+            "action_taken": action_taken,
         }
         agent.execution_log = (agent.execution_log + [record])[-20:]
