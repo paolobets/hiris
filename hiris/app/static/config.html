@@ -662,7 +662,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
     }
 
     function esc(t) {
-      return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     function renderExecutionLog(a) {
@@ -834,7 +834,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         system_prompt: document.getElementById('f-prompt').value,
         strategic_context: document.getElementById('f-strategic').value,
         allowed_tools: getSelectedTools(),
-        allowed_entities: JSON.parse(document.getElementById('f-entities').value || '[]'),
+        allowed_entities: (function() { try { return JSON.parse(document.getElementById('f-entities').value || '[]'); } catch(e) { return []; } })(),
         allowed_services: getSelectedActions(),
         model: document.getElementById('f-model').value,
         max_tokens: parseInt(document.getElementById('f-max-tokens').value) || 4096,
@@ -949,6 +949,10 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
     function _entitySelectorLoad(patterns) {
       _entitySelectionSet = new Set(Array.isArray(patterns) ? patterns : []);
       _entitySelectorRender();
+      var srch = document.getElementById('entity-search');
+      var sugg = document.getElementById('entity-suggestions');
+      if (srch) srch.value = '';
+      if (sugg) sugg.style.display = 'none';
     }
 
     // Domain pills
