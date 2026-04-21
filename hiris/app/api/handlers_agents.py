@@ -64,3 +64,24 @@ async def handle_run_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": "Not found"}, status=404)
     result = await engine.run_agent(agent)
     return web.json_response({"result": result})
+
+
+async def handle_list_entities(request: web.Request) -> web.Response:
+    cache = request.app["entity_cache"]
+    q = request.rel_url.query.get("q", "").lower().strip()
+    entities = []
+    for e in cache.get_all():
+        domain = e["id"].split(".")[0]
+        entities.append({
+            "id": e["id"],
+            "name": e.get("name", ""),
+            "state": e.get("state", ""),
+            "domain": domain,
+        })
+    if q:
+        entities = [
+            e for e in entities
+            if q in e["id"].lower() or q in e["name"].lower() or q in e["domain"].lower()
+        ]
+    entities.sort(key=lambda e: e["id"])
+    return web.json_response(entities)
