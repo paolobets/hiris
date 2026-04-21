@@ -308,12 +308,12 @@ class ClaudeRunner:
             self.total_requests += 1
             prices = _PRICING.get(effective_model, _PRICING["claude-sonnet-4-6"])
             self.total_cost_usd += (inp * prices["input"] + out * prices["output"]) / 1_000_000
-            self._save_usage()
             if agent_id and agent_id in self._per_agent_usage:
                 pau = self._per_agent_usage[agent_id]
                 pau["input_tokens"] += inp
                 pau["output_tokens"] += out
                 pau["cost_usd"] += (inp * prices["input"] + out * prices["output"]) / 1_000_000
+            self._save_usage()
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]
