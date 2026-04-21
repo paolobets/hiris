@@ -38,6 +38,7 @@ class Agent:
     execution_log: list[dict] = field(default_factory=list)
     actions: list[dict] = field(default_factory=list)
     budget_eur_limit: float = 0.0
+    max_chat_turns: int = 0
 
 
 class AgentEngine:
@@ -106,6 +107,7 @@ class AgentEngine:
                     execution_log=raw.get("execution_log", []),
                     actions=raw.get("actions", []),
                     budget_eur_limit=raw.get("budget_eur_limit", 0.0),
+                    max_chat_turns=int(raw.get("max_chat_turns", 0)),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -182,6 +184,7 @@ class AgentEngine:
             require_confirmation=bool(data.get("require_confirmation", False)),
             actions=data.get("actions", []),
             budget_eur_limit=float(data.get("budget_eur_limit", 0.0)),
+            max_chat_turns=int(data.get("max_chat_turns", 0)),
         )
         self._agents[agent.id] = agent
         if agent.enabled:
@@ -196,7 +199,7 @@ class AgentEngine:
         "name", "type", "trigger", "system_prompt", "allowed_tools", "enabled",
         "strategic_context", "allowed_entities", "allowed_services",
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
-        "actions", "budget_eur_limit",
+        "actions", "budget_eur_limit", "max_chat_turns",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -206,12 +209,15 @@ class AgentEngine:
         self._unschedule_agent(agent_id)
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
         _FLOAT_FIELDS = {"budget_eur_limit"}
+        _INT_FIELDS = {"max_chat_turns"}
         for key in self.UPDATABLE_FIELDS:
             if key in data:
                 if key in _BOOL_FIELDS:
                     setattr(agent, key, bool(data[key]))
                 elif key in _FLOAT_FIELDS:
                     setattr(agent, key, float(data[key]))
+                elif key in _INT_FIELDS:
+                    setattr(agent, key, int(data[key]))
                 else:
                     setattr(agent, key, data[key])
         if agent.enabled:
