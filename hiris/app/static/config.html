@@ -605,6 +605,11 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           <label>Max token risposta</label>
           <input type="number" id="f-max-tokens" value="4096" min="256" max="16000">
           <p class="hint">Limita la lunghezza massima della risposta. Default: 4096.</p>
+          <div id="max-turns-row" style="display:none">
+            <label>Max messaggi per sessione</label>
+            <input type="number" id="f-max-chat-turns" value="0" min="0" max="9999">
+            <p class="hint">Numero massimo di scambi in una sessione chat. 0 = illimitato. Visibile all&apos;utente sotto il box di input.</p>
+          </div>
           <label style="flex-direction:row;display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem">
             <input type="checkbox" id="f-restrict"> Limita conversazione alla casa
           </label>
@@ -965,6 +970,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('trigger-schedule').style.display = (type === 'monitor') ? '' : 'none';
       document.getElementById('trigger-state').style.display = (type === 'reactive') ? '' : 'none';
       document.getElementById('trigger-cron').style.display = (type === 'preventive') ? '' : 'none';
+      var maxTurnsRow = document.getElementById('max-turns-row');
+      if (maxTurnsRow) maxTurnsRow.style.display = type === 'chat' ? '' : 'none';
     }
 
     document.getElementById('f-type').onchange = function(e) { showTriggerFields(e.target.value); };
@@ -988,6 +995,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
       document.getElementById('f-restrict').checked = !!a.restrict_to_home;
       document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
+      document.getElementById('f-max-chat-turns').value = a.max_chat_turns || 0;
+      document.getElementById('max-turns-row').style.display = a.type === 'chat' ? '' : 'none';
       buildActionChecks(a.allowed_services || []);
       _actionsLoad(a.actions || []);
       document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
@@ -1024,6 +1033,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-max-tokens').value = 4096;
       document.getElementById('f-restrict').checked = false;
       document.getElementById('f-require-confirmation').checked = false;
+      document.getElementById('f-max-chat-turns').value = 0;
+      document.getElementById('max-turns-row').style.display = 'none';
       buildActionChecks([]);
       _actionsLoad([]);
       document.getElementById('delete-btn').style.display = 'none';
@@ -1059,6 +1070,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         enabled: document.getElementById('f-enabled').checked,
         actions: _actionsValue(),
         budget_eur_limit: parseFloat(document.getElementById('u-ag-budget').value) || 0,
+        max_chat_turns: parseInt(document.getElementById('f-max-chat-turns').value) || 0,
       };
     }
 
