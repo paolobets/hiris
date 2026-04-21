@@ -47,6 +47,44 @@
       --save-color:    #fff;
     }
 
+    /* Entity selector */
+    .entity-selector { display: flex; flex-direction: column; gap: 8px; }
+    .entity-domain-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .domain-pill {
+      padding: 4px 10px; border-radius: 12px; font-size: 12px; cursor: pointer;
+      background: var(--surface-4); color: var(--text-muted); border: 1px solid var(--border);
+      user-select: none; transition: background 0.15s, color 0.15s;
+    }
+    .domain-pill:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .entity-search-row { position: relative; }
+    #entity-search {
+      width: 100%; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--input-bg); color: var(--text); font-size: 13px; box-sizing: border-box;
+    }
+    #entity-search:focus { outline: none; border-color: var(--accent); }
+    .entity-suggestions {
+      position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 100;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      max-height: 180px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .suggestion-item {
+      padding: 7px 12px; cursor: pointer; font-size: 13px; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .suggestion-item:hover { background: var(--surface-hover); }
+    .suggestion-item .s-name { color: var(--text-muted); font-size: 11px; }
+    .entity-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 10px; }
+    .entity-chip {
+      display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
+      border-radius: 12px; background: var(--surface-4); border: 1px solid var(--border-accent);
+      font-size: 12px; color: var(--text);
+    }
+    .entity-chip .chip-remove {
+      cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1;
+      padding: 0 1px;
+    }
+    .entity-chip .chip-remove:hover { color: var(--danger); }
+
     [data-theme="light"] {
       --bg:            #F9FAFB;
       --surface:       #FFFFFF;
@@ -462,8 +500,24 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           <div class="tool-checkboxes" id="tool-checks"></div>
           <div style="margin-top:1rem">
             <label>Entit&agrave; accessibili</label>
-            <textarea id="f-entities" rows="3" placeholder="climate.*&#10;person.*&#10;sensor.temperature_*"></textarea>
-            <p class="hint">Pattern fnmatch separati da newline. Lascia vuoto per accesso completo a tutte le entit&agrave;.</p>
+            <div class="entity-selector">
+              <div class="entity-domain-pills" id="entity-domain-pills">
+                <span class="domain-pill" data-pattern="light.*">&#128161; luci</span>
+                <span class="domain-pill" data-pattern="switch.*">&#128268; switch</span>
+                <span class="domain-pill" data-pattern="sensor.*">&#128202; sensori</span>
+                <span class="domain-pill" data-pattern="climate.*">&#127777;&#65039; clima</span>
+                <span class="domain-pill" data-pattern="cover.*">&#129695; tapparelle</span>
+                <span class="domain-pill" data-pattern="binary_sensor.*">&#9889; binari</span>
+                <span class="domain-pill" data-pattern="person.*">&#129489; persone</span>
+              </div>
+              <div class="entity-search-row">
+                <input type="text" id="entity-search" placeholder="Cerca entit&agrave;&hellip;" autocomplete="off">
+                <div id="entity-suggestions" class="entity-suggestions" style="display:none"></div>
+              </div>
+              <div id="entity-chips" class="entity-chips"></div>
+              <input type="hidden" id="f-entities">
+            </div>
+            <p class="hint">Aggiungi domini con le pillole o cerca entit&agrave; singole. Premi Invio per aggiungere pattern personalizzati. Lascia vuoto per accesso completo.</p>
           </div>
           <div id="f-actions-section" style="margin-top:1rem; display:none">
             <label>Azioni permesse</label>
@@ -724,7 +778,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-cron').value = (a.trigger && a.trigger.cron) || '';
       document.getElementById('f-prompt').value = a.system_prompt || '';
       document.getElementById('f-strategic').value = a.strategic_context || '';
-      document.getElementById('f-entities').value = (a.allowed_entities || []).join('\n');
+      _entitySelectorLoad(a.allowed_entities || []);
       document.getElementById('f-enabled').checked = a.enabled;
       document.getElementById('f-model').value = a.model || 'auto';
       document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
@@ -753,7 +807,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-cron').value = '';
       document.getElementById('f-prompt').value = '';
       document.getElementById('f-strategic').value = '';
-      document.getElementById('f-entities').value = '';
+      _entitySelectorLoad([]);
       document.getElementById('f-enabled').checked = true;
       document.getElementById('f-model').value = 'auto';
       document.getElementById('f-max-tokens').value = 4096;
@@ -773,7 +827,6 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       if (type === 'monitor')    trigger.interval_minutes = parseInt(document.getElementById('f-interval').value) || 5;
       if (type === 'reactive')   trigger.entity_id = document.getElementById('f-entity').value;
       if (type === 'preventive') trigger.cron = document.getElementById('f-cron').value;
-      var entRaw = document.getElementById('f-entities').value.trim();
       return {
         name: document.getElementById('f-name').value,
         type: type,
@@ -781,7 +834,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         system_prompt: document.getElementById('f-prompt').value,
         strategic_context: document.getElementById('f-strategic').value,
         allowed_tools: getSelectedTools(),
-        allowed_entities: entRaw ? entRaw.split('\n').map(function(s) { return s.trim(); }).filter(Boolean) : [],
+        allowed_entities: JSON.parse(document.getElementById('f-entities').value || '[]'),
         allowed_services: getSelectedActions(),
         model: document.getElementById('f-model').value,
         max_tokens: parseInt(document.getElementById('f-max-tokens').value) || 4096,
@@ -866,6 +919,95 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     loadUsage();
     setInterval(loadUsage, 30000);
+
+    // ── Entity Selector ─────────────────────────────────────────────────────────
+    var _entitySelectionSet = new Set();
+
+    function _entitySelectorRender() {
+      var chips = document.getElementById('entity-chips');
+      chips.innerHTML = '';
+      _entitySelectionSet.forEach(function(pattern) {
+        var chip = document.createElement('span');
+        chip.className = 'entity-chip';
+        chip.innerHTML = '<span>' + esc(pattern) + '</span><span class="chip-remove" data-p="' + esc(pattern) + '">\u00d7</span>';
+        chip.querySelector('.chip-remove').addEventListener('click', function() {
+          _entitySelectionSet.delete(this.dataset.p);
+          _entitySelectorRender();
+        });
+        chips.appendChild(chip);
+      });
+      document.getElementById('f-entities').value = JSON.stringify(Array.from(_entitySelectionSet));
+    }
+
+    function _entitySelectorAdd(pattern) {
+      if (pattern && !_entitySelectionSet.has(pattern)) {
+        _entitySelectionSet.add(pattern);
+        _entitySelectorRender();
+      }
+    }
+
+    function _entitySelectorLoad(patterns) {
+      _entitySelectionSet = new Set(Array.isArray(patterns) ? patterns : []);
+      _entitySelectorRender();
+    }
+
+    // Domain pills
+    document.querySelectorAll('.domain-pill').forEach(function(pill) {
+      pill.addEventListener('click', function() {
+        _entitySelectorAdd(this.dataset.pattern);
+        document.getElementById('entity-search').value = '';
+      });
+    });
+
+    // Search with debounce
+    var _entitySearchTimer = null;
+    var _entitySearchInput = document.getElementById('entity-search');
+    var _entitySuggestions = document.getElementById('entity-suggestions');
+
+    _entitySearchInput.addEventListener('input', function() {
+      clearTimeout(_entitySearchTimer);
+      var q = _entitySearchInput.value.trim();
+      if (!q) { _entitySuggestions.style.display = 'none'; return; }
+      _entitySearchTimer = setTimeout(async function() {
+        try {
+          var resp = await fetch('api/entities?q=' + encodeURIComponent(q));
+          var items = await resp.json();
+          _entitySuggestions.innerHTML = '';
+          if (!items.length) { _entitySuggestions.style.display = 'none'; return; }
+          items.slice(0, 20).forEach(function(e) {
+            var div = document.createElement('div');
+            div.className = 'suggestion-item';
+            div.innerHTML = '<span>' + esc(e.id) + '</span><span class="s-name">' + esc(e.name || '') + '</span>';
+            div.addEventListener('click', function() {
+              _entitySelectorAdd(e.id);
+              _entitySearchInput.value = '';
+              _entitySuggestions.style.display = 'none';
+            });
+            _entitySuggestions.appendChild(div);
+          });
+          _entitySuggestions.style.display = 'block';
+        } catch(err) { /* ignore network errors */ }
+      }, 300);
+    });
+
+    _entitySearchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var q = _entitySearchInput.value.trim();
+        if (q) {
+          _entitySelectorAdd(q);
+          _entitySearchInput.value = '';
+          _entitySuggestions.style.display = 'none';
+        }
+      }
+      if (e.key === 'Escape') { _entitySuggestions.style.display = 'none'; }
+    });
+
+    document.addEventListener('click', function(e) {
+      if (_entitySearchInput && !_entitySearchInput.contains(e.target) && !_entitySuggestions.contains(e.target)) {
+        _entitySuggestions.style.display = 'none';
+      }
+    });
   </script>
 </body>
 </html>
