@@ -81,9 +81,7 @@ async def test_list_entities_search_case_insensitive():
     ]
     app = MagicMock()
     app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
-    request = make_mocked_request("GET", "/api/entities", app=app)
-    request.rel_url = MagicMock()
-    request.rel_url.query = {"q": "SOGGIORNO"}
+    request = make_mocked_request("GET", "/api/entities?q=SOGGIORNO", app=app)
 
     resp = await handle_list_entities(request)
     entities = json.loads(resp.body)
