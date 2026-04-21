@@ -87,3 +87,55 @@ async def test_list_entities_search_case_insensitive():
     entities = json.loads(resp.body)
     assert len(entities) == 1
     assert entities[0]["id"] == "light.salon"
+
+
+@pytest.mark.asyncio
+async def test_get_agent_usage_returns_stats():
+    from hiris.app.api.handlers_agents import handle_get_agent_usage
+
+    runner = MagicMock()
+    runner.get_agent_usage = MagicMock(return_value={
+        "input_tokens": 1000, "output_tokens": 400,
+        "requests": 5, "cost_usd": 0.005, "last_run": "2026-04-21T10:00:00Z",
+    })
+    engine = MagicMock()
+    engine.get_agent.return_value = MagicMock(id="agent-1")
+
+    app = MagicMock()
+    app.__getitem__ = MagicMock(side_effect=lambda k: engine if k == "engine" else None)
+    app.get = MagicMock(side_effect=lambda k, *args: runner if k == "claude_runner" else None)
+
+    request = make_mocked_request(
+        "GET", "/api/agents/agent-1/usage", app=app,
+        match_info={"agent_id": "agent-1"},
+    )
+
+    resp = await handle_get_agent_usage(request)
+    data = json.loads(resp.body)
+    assert data["requests"] == 5
+    assert data["input_tokens"] == 1000
+    assert "cost_eur" in data
+    assert data["cost_eur"] == round(0.005 * 0.92, 6)
+
+
+@pytest.mark.asyncio
+async def test_reset_agent_usage():
+    from hiris.app.api.handlers_agents import handle_reset_agent_usage
+
+    runner = MagicMock()
+    runner.reset_agent_usage = MagicMock()
+    engine = MagicMock()
+    engine.get_agent.return_value = MagicMock(id="agent-1")
+
+    app = MagicMock()
+    app.__getitem__ = MagicMock(side_effect=lambda k: engine if k == "engine" else None)
+    app.get = MagicMock(side_effect=lambda k, *args: runner if k == "claude_runner" else None)
+
+    request = make_mocked_request(
+        "POST", "/api/agents/agent-1/usage/reset", app=app,
+        match_info={"agent_id": "agent-1"},
+    )
+
+    resp = await handle_reset_agent_usage(request)
+    assert resp.status == 200
+    runner.reset_agent_usage.assert_called_once_with("agent-1")
