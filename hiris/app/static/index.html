@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>HIRIS</title>
   <link rel="icon" type="image/svg+xml" href="static/hiris-icon.svg">
   <style>
@@ -124,10 +124,11 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      height: 100vh;
+      height: 100dvh;
       overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
     }
-    #app { display: flex; height: 100vh; }
+    #app { display: flex; height: 100dvh; }
 
     /* SIDEBAR */
     #sidebar {
@@ -350,26 +351,31 @@
       border: 1px solid var(--border);
       border-radius: 22px;
       padding: 0.6rem 1rem;
-      font-size: 0.9rem;
+      font-size: 1rem;
       font-family: inherit;
       color: var(--text);
       background: var(--input-bg);
       resize: none;
-      overflow-y: hidden;
+      overflow-y: auto;
+      max-height: 8rem;
       line-height: 1.5;
       transition: border-color 0.15s;
+      -webkit-appearance: none;
+      touch-action: manipulation;
     }
     #input:focus { outline: none; border-color: var(--accent-muted); background: var(--surface); }
     #input::placeholder { color: #9CA3AF; }
     #send-btn {
-      width: 38px; height: 38px;
+      width: 44px; height: 44px;
       background: var(--accent);
       border: none; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
       cursor: pointer; flex-shrink: 0;
       transition: background 0.15s;
+      touch-action: manipulation;
     }
     #send-btn:hover    { background: var(--accent-hover); }
+    #send-btn:active   { background: var(--accent-hover); transform: scale(0.94); }
     #send-btn:disabled { background: var(--accent-muted); cursor: not-allowed; }
     #send-btn svg { width: 18px; height: 18px; fill: white; }
 
@@ -382,6 +388,8 @@
     @media (max-width: 640px) {
       #sidebar { display: none; }
       .msg-row { max-width: 92%; }
+      #input-area { padding: 0.5rem 0.75rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+      #input { font-size: 1rem; }
     }
   </style>
 </head>
@@ -431,7 +439,9 @@
       </div>
     </div>
     <div id="input-area">
-      <textarea id="input" placeholder="Scrivi un messaggio&#8230;" rows="1"></textarea>
+      <textarea id="input" placeholder="Scrivi un messaggio&#8230;" rows="1"
+        enterkeyhint="send" autocomplete="off" autocorrect="off"
+        autocapitalize="sentences" spellcheck="false"></textarea>
       <button id="send-btn" title="Invia">
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -661,7 +671,7 @@ function sendQuick(text) { sendMessage(text); }
 
 function autoResize() {
   inputEl.style.height = 'auto';
-  inputEl.style.height = inputEl.scrollHeight + 'px';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 128) + 'px';
 }
 
 inputEl.addEventListener('input', autoResize);
