@@ -94,7 +94,16 @@ async def get_entity_states(
     return result
 
 
-async def get_area_entities(ha: HAClient) -> dict[str, list[str]]:
+async def get_area_entities(
+    ha: HAClient,
+    entity_cache: EntityCache | None = None,
+) -> dict[str, list[str]]:
+    """Return area→[entity_id] map. Uses EntityCache if populated, else HTTP fallback."""
+    if entity_cache is not None:
+        cached = entity_cache.get_area_map()
+        if cached:
+            return cached
+
     areas = await ha.get_area_registry()
     entities = await ha.get_entity_registry()
 

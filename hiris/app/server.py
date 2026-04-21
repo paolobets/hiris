@@ -31,6 +31,10 @@ async def _on_startup(app: web.Application) -> None:
         await entity_cache.load(ha_client)
     except Exception as exc:
         logger.warning("EntityCache load failed: %s", exc)
+    try:
+        await entity_cache.load_area_registry(ha_client)
+    except Exception as exc:
+        logger.warning("Area registry load failed: %s", exc)
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
 

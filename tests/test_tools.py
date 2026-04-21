@@ -199,6 +199,35 @@ async def test_get_entity_states_friendly_name_none_when_missing():
     assert "state" in result[0]
 
 
+@pytest.mark.asyncio
+async def test_get_area_entities_uses_cache_when_populated():
+    """When cache is populated, no HTTP calls should be made."""
+    cache = MagicMock()
+    cache.get_area_map.return_value = {"Cucina": ["light.cucina", "switch.presa"]}
+    ha = AsyncMock()
+    result = await get_area_entities(ha, entity_cache=cache)
+    ha.get_area_registry.assert_not_called()
+    ha.get_entity_registry.assert_not_called()
+    assert result == {"Cucina": ["light.cucina", "switch.presa"]}
+
+
+@pytest.mark.asyncio
+async def test_get_area_entities_falls_back_to_http_when_cache_empty():
+    """When cache is empty, HTTP calls should be made."""
+    cache = MagicMock()
+    cache.get_area_map.return_value = {}
+    ha = AsyncMock()
+    ha.get_area_registry = AsyncMock(return_value=[
+        {"area_id": "cucina_id", "name": "Cucina"},
+    ])
+    ha.get_entity_registry = AsyncMock(return_value=[
+        {"entity_id": "light.cucina", "area_id": "cucina_id"},
+    ])
+    result = await get_area_entities(ha, entity_cache=cache)
+    ha.get_area_registry.assert_awaited_once()
+    assert "Cucina" in result
+
+
 @pytest.fixture
 def mock_ha_with_areas():
     ha = AsyncMock()

@@ -267,7 +267,7 @@ class ClaudeRunner:
         logger.info("Tool call: %s(%s)", name, inputs)
         try:
             if name == "get_area_entities":
-                return await get_area_entities(self._ha)
+                return await get_area_entities(self._ha, entity_cache=self._cache)
             if name == "get_entity_states":
                 ids = inputs.get("ids", [])
                 if allowed_entities:

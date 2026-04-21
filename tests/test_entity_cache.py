@@ -172,3 +172,43 @@ def test_on_state_changed_handles_none_attributes():
     })
     assert "sensor.weird" in cache._states
     assert cache._states["sensor.weird"]["name"] == ""
+
+
+@pytest.mark.asyncio
+async def test_load_area_registry_builds_area_map():
+    mock_ha = AsyncMock()
+    mock_ha.get_area_registry = AsyncMock(return_value=[
+        {"area_id": "cucina_id", "name": "Cucina"},
+        {"area_id": "soggiorno_id", "name": "Soggiorno"},
+    ])
+    mock_ha.get_entity_registry = AsyncMock(return_value=[
+        {"entity_id": "light.luce_cucina",    "area_id": "cucina_id"},
+        {"entity_id": "switch.presa_cucina",  "area_id": "cucina_id"},
+        {"entity_id": "light.luce_soggiorno", "area_id": "soggiorno_id"},
+        {"entity_id": "sensor.no_area",       "area_id": None},
+    ])
+    cache = EntityCache()
+    await cache.load_area_registry(mock_ha)
+    area_map = cache.get_area_map()
+    assert "Cucina" in area_map
+    assert "light.luce_cucina" in area_map["Cucina"]
+    assert "switch.presa_cucina" in area_map["Cucina"]
+    assert "Soggiorno" in area_map
+    assert "light.luce_soggiorno" in area_map["Soggiorno"]
+    assert "__no_area__" in area_map
+    assert "sensor.no_area" in area_map["__no_area__"]
+
+
+def test_get_area_map_returns_empty_before_load():
+    cache = EntityCache()
+    assert cache.get_area_map() == {}
+
+
+@pytest.mark.asyncio
+async def test_load_area_registry_survives_empty_registries():
+    mock_ha = AsyncMock()
+    mock_ha.get_area_registry = AsyncMock(return_value=[])
+    mock_ha.get_entity_registry = AsyncMock(return_value=[])
+    cache = EntityCache()
+    await cache.load_area_registry(mock_ha)
+    assert cache.get_area_map() == {}

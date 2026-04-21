@@ -22,6 +22,7 @@ class EntityCache:
     def __init__(self) -> None:
         self._states: dict[str, dict] = {}
         self._by_domain: dict[str, list[str]] = {}
+        self._area_map: dict[str, list[str]] = {}
 
     async def load(self, ha_client) -> None:
         raw_states = await ha_client.get_states([])
@@ -66,3 +67,27 @@ class EntityCache:
 
     def get_all(self) -> list[dict]:
         return list(self._states.values())
+
+    async def load_area_registry(self, ha_client) -> None:
+        """Load area→entity mapping from HA registries. Cached until next call."""
+        areas = await ha_client.get_area_registry()
+        entities = await ha_client.get_entity_registry()
+        area_lookup: dict[str, str] = {a["area_id"]: a["name"] for a in areas}
+        result: dict[str, list[str]] = {}
+        no_area: list[str] = []
+        for entry in entities:
+            eid = entry.get("entity_id", "")
+            if not eid:
+                continue
+            area_id = entry.get("area_id")
+            if area_id and area_id in area_lookup:
+                result.setdefault(area_lookup[area_id], []).append(eid)
+            else:
+                no_area.append(eid)
+        if no_area:
+            result["__no_area__"] = no_area
+        self._area_map = result
+
+    def get_area_map(self) -> dict[str, list[str]]:
+        """Return cached area→[entity_id] map. Empty dict if not yet loaded."""
+        return self._area_map
