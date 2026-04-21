@@ -403,8 +403,8 @@ class AgentEngine:
                         )
                         agent.enabled = False
                         self._save()
-                except Exception as exc:
-                    logger.warning("Budget check failed for %s: %s", agent.name, exc)
+                except Exception as budget_exc:
+                    logger.warning("Budget check failed for %s: %s", agent.name, budget_exc)
             return agent.last_result
 
     def _append_execution_log(
