@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import MagicMock
 from aiohttp.test_utils import make_mocked_request
@@ -17,7 +18,6 @@ async def test_list_entities_returns_sorted_entities():
     request = make_mocked_request("GET", "/api/entities", app=app)
 
     resp = await handle_list_entities(request)
-    import json
     entities = json.loads(resp.body)
 
     assert len(entities) == 3
@@ -39,6 +39,53 @@ async def test_list_entities_search_filter():
     request = make_mocked_request("GET", "/api/entities?q=light", app=app)
 
     resp = await handle_list_entities(request)
-    import json
     entities = json.loads(resp.body)
     assert all("light" in e["id"] or "light" in e["name"].lower() for e in entities)
+
+
+@pytest.mark.asyncio
+async def test_list_entities_empty_cache():
+    cache = MagicMock()
+    cache.get_all.return_value = []
+    app = MagicMock()
+    app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
+    request = make_mocked_request("GET", "/api/entities", app=app)
+
+    resp = await handle_list_entities(request)
+    entities = json.loads(resp.body)
+    assert entities == []
+
+
+@pytest.mark.asyncio
+async def test_list_entities_missing_name_field():
+    cache = MagicMock()
+    cache.get_all.return_value = [
+        {"id": "sensor.weird", "state": "unavailable"},  # no "name" or "unit"
+    ]
+    app = MagicMock()
+    app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
+    request = make_mocked_request("GET", "/api/entities", app=app)
+
+    resp = await handle_list_entities(request)
+    entities = json.loads(resp.body)
+    assert len(entities) == 1
+    assert entities[0]["name"] == ""
+    assert entities[0]["domain"] == "sensor"
+
+
+@pytest.mark.asyncio
+async def test_list_entities_search_case_insensitive():
+    cache = MagicMock()
+    cache.get_all.return_value = [
+        {"id": "light.salon", "state": "on", "name": "Luce Soggiorno", "unit": ""},
+    ]
+    app = MagicMock()
+    app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
+    request = make_mocked_request("GET", "/api/entities", app=app)
+    request.rel_url = MagicMock()
+    request.rel_url.query = {"q": "SOGGIORNO"}
+
+    resp = await handle_list_entities(request)
+    entities = json.loads(resp.body)
+    assert len(entities) == 1
+    assert entities[0]["id"] == "light.salon"

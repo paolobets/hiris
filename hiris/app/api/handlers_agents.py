@@ -69,6 +69,9 @@ async def handle_run_agent(request: web.Request) -> web.Response:
 async def handle_list_entities(request: web.Request) -> web.Response:
     cache = request.app["entity_cache"]
     q = request.rel_url.query.get("q", "").lower().strip()
+    _MAX_Q_LEN = 100
+    if len(q) > _MAX_Q_LEN:
+        return web.json_response({"error": "Query too long"}, status=400)
     entities = []
     for e in cache.get_all():
         domain = e["id"].split(".")[0]
