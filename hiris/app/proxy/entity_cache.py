@@ -8,14 +8,22 @@ def _domain(entity_id: str) -> str:
     return entity_id.split(".")[0]
 
 
+_CLIMATE_ATTRS = ("current_temperature", "temperature", "hvac_action")
+
+
 def _to_minimal(raw: dict) -> dict:
     attrs = raw.get("attributes") or {}
-    return {
+    result: dict = {
         "id": raw["entity_id"],
         "state": raw.get("state", "unknown"),
         "name": attrs.get("friendly_name") or "",
         "unit": attrs.get("unit_of_measurement") or "",
     }
+    if raw.get("entity_id", "").startswith("climate."):
+        extra = {k: attrs[k] for k in _CLIMATE_ATTRS if k in attrs}
+        if extra:
+            result["attributes"] = extra
+    return result
 
 
 class EntityCache:

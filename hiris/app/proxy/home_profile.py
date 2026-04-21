@@ -40,13 +40,25 @@ def generate_home_profile(entity_cache: EntityCache) -> str:
     )
 
     climate = [e for e in entities if e["id"].startswith("climate.")]
-    climate_str = (
-        ", ".join(f"{(e.get('name') or e['id'])}: {e['state']}" for e in climate[:3])
-        if climate else "n/a"
-    )
+    if climate:
+        parts = []
+        for e in climate[:4]:
+            name = e.get("name") or e["id"]
+            seg = f"{name}: {e['state']}"
+            a = e.get("attributes") or {}
+            curr = a.get("current_temperature")
+            setp = a.get("temperature")
+            if curr is not None:
+                seg += f" {curr}°C"
+            if setp is not None:
+                seg += f"→{setp}°C"
+            parts.append(seg)
+        climate_str = ", ".join(parts)
+    else:
+        climate_str = "n/a"
 
     return (
-        f"CASA [aggiornato {now}]:\n"
+        f"CASA [aggiornato {now}] — snapshot di orientamento, usa i tool per valori precisi:\n"
         f"Accesi({on_count}): {on_summary}\n"
         f"Clima: {climate_str}"
     )
