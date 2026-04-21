@@ -49,6 +49,11 @@ async def handle_chat(request: web.Request) -> web.Response:
                 "limit": max_turns,
             })
 
+    # Send only the most recent messages to Claude to avoid stale-context issues
+    # and keep token usage bounded. Full history is still persisted and counted.
+    _MAX_CONTEXT = 30
+    context_history = history[-_MAX_CONTEXT:] if len(history) > _MAX_CONTEXT else history
+
     if agent:
         if agent.strategic_context:
             system_prompt = f"{agent.strategic_context}\n\n---\n\n{agent.system_prompt}"
@@ -75,7 +80,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     response = await runner.chat(
         user_message=message,
         system_prompt=system_prompt,
-        conversation_history=history,
+        conversation_history=context_history,
         allowed_tools=allowed_tools,
         allowed_entities=allowed_entities,
         allowed_services=allowed_services,
