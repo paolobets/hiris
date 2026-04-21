@@ -380,6 +380,10 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .log-list li.expanded .log-summary {
+      overflow: visible;
+      white-space: normal;
+    }
     .log-tokens {
       color: var(--muted-alt);
       font-family: 'Courier New', Consolas, monospace;
@@ -708,7 +712,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         var preview = isLong ? summary.slice(0, 120) + '\u2026' : summary;
         var summaryHtml = '<span class="log-preview">' + esc(preview || tools || '\u2014') + '</span>' +
           (isLong ? '<span class="log-full" style="display:none">' + esc(summary) + '</span>' +
-            '<button class="log-expand-btn" onclick="toggleLogRow(\'' + rowId + '\')">\u25bc espandi</button>' : '');
+            '<button class="log-expand-btn" data-row-id="' + esc(rowId) + '">\u25bc espandi</button>' : '');
         return '<li id="' + rowId + '">' +
           '<span class="log-time">' + esc(timeStr) + '</span>' +
           '<span class="' + statusCls + '">' + statusTxt + '</span>' +
@@ -1076,6 +1080,13 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       }
     });
 
+    document.getElementById('log-body').addEventListener('click', function(e) {
+      var btn = e.target.closest('.log-expand-btn');
+      if (!btn) return;
+      var rowId = btn.dataset.rowId;
+      if (rowId) toggleLogRow(rowId);
+    });
+
     function toggleLogRow(rowId) {
       var row = document.getElementById(rowId);
       if (!row) return;
@@ -1086,6 +1097,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       if (preview) preview.style.display = expanded ? '' : 'none';
       if (full) full.style.display = expanded ? 'none' : 'block';
       if (btn) btn.textContent = expanded ? '\u25bc espandi' : '\u25b2 comprimi';
+      row.classList.toggle('expanded', !expanded);
     }
   </script>
 </body>
