@@ -252,6 +252,10 @@ Nuova tab nella Config UI (o sezione separata nell'index) con:
 
 Il `DEFAULT_AGENT_ID` (hiris-default) avrà tutti e tre i tool abilitati di default.
 
+### Sicurezza: whitelist `allowed_services` estesa alle task
+
+Il dispatch di `create_task` in `ClaudeRunner` verifica ogni azione `call_ha_service` nella lista `actions` contro la whitelist `allowed_services` dell'agente prima di creare la task. Se anche solo un'azione viola la policy, la tool call restituisce errore e la task non viene creata. Questo impedisce che un agente con whitelist ristretta possa programmare azioni differite che bypassano i controlli.
+
 ---
 
 ## Cleanup

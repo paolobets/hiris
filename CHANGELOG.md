@@ -14,6 +14,13 @@
 - **Task UI** — "Task" tab in sidebar with pending-count badge; active task list + recent (24h) list; Annulla button for pending tasks; auto-refresh every 30s
 - **Python 3.13** — upgraded base image from `3.11-alpine3.18` to `3.13-alpine3.21`
 
+### Fixed
+- `at_datetime` trigger called removed `_run_task_async` method — changed to `_execute_task`
+- `_check_time_window` stored naive local timestamp in `executed_at` — now UTC-aware
+- `create_task` tool dispatch now enforces agent's `allowed_services` whitelist on all `call_ha_service` actions before scheduling (previously bypassable via deferred tasks)
+- Task UI: `label`, `result`, `error`, `status`, and `id` fields now HTML-escaped before injection into innerHTML (XSS prevention)
+- `EntityCache`: added `get_state(entity_id)` method required by `TaskEngine` condition evaluation
+
 ## [0.2.2] — 2026-04-22
 
 ### Fixed
