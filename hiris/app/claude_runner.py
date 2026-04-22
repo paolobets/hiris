@@ -24,6 +24,10 @@ from .tools.automation_tools import (
     toggle_automation, TOGGLE_TOOL_DEF,
 )
 from .proxy.home_profile import get_cached_home_profile
+from .tools.task_tools import (
+    create_task_tool, list_tasks_tool, cancel_task_tool,
+    CREATE_TASK_TOOL_DEF, LIST_TASKS_TOOL_DEF, CANCEL_TASK_TOOL_DEF,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +59,9 @@ ALL_TOOL_DEFS = [
     TRIGGER_TOOL_DEF,
     TOGGLE_TOOL_DEF,
     CALL_SERVICE_TOOL_DEF,
+    CREATE_TASK_TOOL_DEF,
+    LIST_TASKS_TOOL_DEF,
+    CANCEL_TASK_TOOL_DEF,
 ]
 
 MODEL = "claude-sonnet-4-6"
@@ -195,6 +202,7 @@ class ClaudeRunner:
         self._cache = entity_cache
         self._index = embedding_index
         self._semantic_map = semantic_map
+        self._task_engine = None
         self.last_tool_calls: list[dict] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
@@ -204,6 +212,9 @@ class ClaudeRunner:
         self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
         self._per_agent_usage: dict[str, dict] = {}
         self._load_usage()
+
+    def set_task_engine(self, engine: Any) -> None:
+        self._task_engine = engine
 
     def _load_usage(self) -> None:
         if not self._usage_path or not os.path.exists(self._usage_path):
@@ -355,6 +366,7 @@ class ClaudeRunner:
                             block.name, block.input,
                             allowed_entities=allowed_entities,
                             allowed_services=allowed_services,
+                            agent_id=agent_id,
                         )
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({
@@ -443,6 +455,7 @@ class ClaudeRunner:
         inputs: dict,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
+        agent_id: Optional[str] = None,
     ) -> Any:
         logger.info("Tool call: %s(%s)", name, inputs)
         try:
@@ -491,6 +504,33 @@ class ClaudeRunner:
                         logger.warning("Service %s.%s blocked by policy", domain, service)
                         return {"error": f"Service {domain}.{service} not permitted by policy"}
                 return await self._ha.call_service(domain, service, inputs.get("data", {}))
+            if name == "create_task":
+                if self._task_engine is None:
+                    return {"error": "TaskEngine not available"}
+                return create_task_tool(
+                    task_engine=self._task_engine,
+                    label=inputs["label"],
+                    trigger=inputs["trigger"],
+                    actions=inputs["actions"],
+                    condition=inputs.get("condition"),
+                    one_shot=inputs.get("one_shot", True),
+                    agent_id=agent_id or "hiris-default",
+                )
+            if name == "list_tasks":
+                if self._task_engine is None:
+                    return {"error": "TaskEngine not available"}
+                return list_tasks_tool(
+                    task_engine=self._task_engine,
+                    agent_id=inputs.get("agent_id"),
+                    status=inputs.get("status"),
+                )
+            if name == "cancel_task":
+                if self._task_engine is None:
+                    return {"error": "TaskEngine not available"}
+                return cancel_task_tool(
+                    task_engine=self._task_engine,
+                    task_id=inputs["task_id"],
+                )
             logger.warning("Unknown tool: %s", name)
             return {"error": f"Unknown tool: {name}"}
         except Exception as exc:
