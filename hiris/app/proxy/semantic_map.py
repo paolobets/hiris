@@ -216,20 +216,27 @@ class SemanticMap:
                 labels.append(f"{eid}({unit})")
             parts.append("Energia: " + ", ".join(labels))
 
-        # Climate
+        # Climate — eid(curr°→setp°C hvac_action) for climate.*, eid(value°C) for sensor.*
         climate_ids = self.get_category("climate_sensor")
         if climate_ids:
-            states = entity_cache.get_minimal(climate_ids[:4])
             segs = []
-            for e in states:
-                seg = f"{e.get('name') or e['id']}: {e['state']}"
-                a = e.get("attributes") or {}
-                curr = a.get("current_temperature")
-                setp = a.get("temperature")
-                if curr is not None:
-                    seg += f" {curr}°C"
-                if setp is not None:
-                    seg += f"→{setp}°C"
+            for eid in climate_ids[:4]:
+                domain = eid.split(".")[0]
+                state_data = entity_cache.get_state(eid) or {}
+                state = state_data.get("state", "")
+                a = state_data.get("attributes") or {}
+                if domain == "climate":
+                    curr = a.get("current_temperature")
+                    setp = a.get("temperature")
+                    hvac_action = a.get("hvac_action", "")
+                    if curr is not None and setp is not None:
+                        seg = f"{eid}({curr}°→{setp}°C{' ' + hvac_action if hvac_action else ''})"
+                    elif curr is not None:
+                        seg = f"{eid}({curr}°C)"
+                    else:
+                        seg = f"{eid}({state})"
+                else:
+                    seg = f"{eid}({state}°C)" if state else f"{eid}(unknown)"
                 segs.append(seg)
             if segs:
                 parts.append("Clima: " + ", ".join(segs))
@@ -242,16 +249,17 @@ class SemanticMap:
             if segs:
                 parts.append("Presenze: " + ", ".join(segs))
 
-        # Lighting
+        # Lighting — N entità / M stanze (unique non-empty areas)
         lighting_ids = self.get_category("lighting")
         if lighting_ids:
-            parts.append(f"Luci: {len(lighting_ids)} entità")
+            areas = {self._entity_meta.get(eid, {}).get("area", "") for eid in lighting_ids}
+            area_count = len({a for a in areas if a})
+            parts.append(f"Luci: {len(lighting_ids)} entità / {area_count} stanze")
 
-        # Appliances
+        # Appliances — use entity IDs directly (Claude needs them for service calls)
         appliance_ids = self.get_category("appliance")
         if appliance_ids:
-            names = [self._entity_meta.get(eid, {}).get("label") or eid for eid in appliance_ids[:4]]
-            parts.append("Elettrodomestici: " + ", ".join(names))
+            parts.append("Elettrodomestici: " + ", ".join(appliance_ids[:4]))
 
         # Unknown pending classification
         unknown_count = len([
@@ -259,7 +267,7 @@ class SemanticMap:
             if self._entity_meta.get(eid, {}).get("classified_by") == "pending"
         ])
         if unknown_count:
-            parts.append(f"In classificazione: {unknown_count} entità")
+            parts.append(f"Sconosciuti: {unknown_count} entità in attesa classificazione")
 
         return "\n".join(parts)
 
