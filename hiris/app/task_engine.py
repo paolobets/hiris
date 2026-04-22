@@ -200,7 +200,7 @@ class TaskEngine:
             elif t_type == "at_datetime":
                 run_dt = datetime.fromisoformat(trigger["datetime"])
                 self._scheduler.add_job(
-                    self._run_task_async, "date", run_date=run_dt,
+                    self._execute_task, "date", run_date=run_dt,
                     args=[task.id], id=f"task_{task.id}", replace_existing=True,
                 )
             elif t_type == "time_window":
@@ -323,7 +323,7 @@ class TaskEngine:
         to_dt = now.replace(hour=to_h, minute=to_m, second=0, microsecond=0)
         if now > to_dt:
             task.status = "expired"
-            task.executed_at = now.isoformat()
+            task.executed_at = datetime.now(timezone.utc).isoformat()
             task.result = "Time window expired without condition being met"
             self._remove_job(task_id)
             self._save()
