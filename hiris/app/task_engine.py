@@ -8,6 +8,8 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from .tools.notify_tools import send_notification
+
 logger = logging.getLogger(__name__)
 
 _TERMINAL = frozenset({"done", "skipped", "failed", "expired", "cancelled"})
@@ -61,6 +63,12 @@ class TaskEngine:
     # ── Public API ─────────────────────────────────────────────────────────
 
     def add_task(self, data: dict, agent_id: str, parent_task_id: Optional[str] = None) -> Task:
+        for key in ("label", "trigger", "actions"):
+            if key not in data:
+                raise ValueError(f"Task data missing required field: {key!r}")
+        trigger_type = data["trigger"].get("type")
+        if trigger_type not in ("delay", "at_time", "at_datetime", "time_window"):
+            raise ValueError(f"Unknown trigger type: {trigger_type!r}")
         task = Task(
             id=str(uuid.uuid4()),
             label=data["label"],
@@ -177,18 +185,16 @@ class TaskEngine:
             if t_type == "delay":
                 run_dt = datetime.now(timezone.utc) + timedelta(minutes=int(trigger["minutes"]))
                 self._scheduler.add_job(
-                    self._run_task_async, "date", run_date=run_dt,
+                    self._execute_task, "date", run_date=run_dt,
                     args=[task.id], id=f"task_{task.id}", replace_existing=True,
                 )
             elif t_type == "at_time":
                 h, m = (int(x) for x in trigger["time"].split(":"))
-                run_dt = datetime.now(timezone.utc).replace(
-                    hour=h, minute=m, second=0, microsecond=0
-                )
-                if run_dt <= datetime.now(timezone.utc):
+                run_dt = datetime.now().replace(hour=h, minute=m, second=0, microsecond=0)
+                if run_dt <= datetime.now():
                     run_dt += timedelta(days=1)
                 self._scheduler.add_job(
-                    self._run_task_async, "date", run_date=run_dt,
+                    self._execute_task, "date", run_date=run_dt,
                     args=[task.id], id=f"task_{task.id}", replace_existing=True,
                 )
             elif t_type == "at_datetime":
@@ -200,7 +206,7 @@ class TaskEngine:
             elif t_type == "time_window":
                 interval = int(trigger.get("check_interval_minutes", 5))
                 self._scheduler.add_job(
-                    self._poll_time_window, "interval", minutes=interval,
+                    self._check_time_window, "interval", minutes=interval,
                     args=[task.id], id=f"task_{task.id}", replace_existing=True,
                 )
             else:
@@ -214,12 +220,6 @@ class TaskEngine:
                 self._scheduler.remove_job(job_id)
             except Exception:
                 pass
-
-    async def _run_task_async(self, task_id: str) -> None:
-        await self._execute_task(task_id)
-
-    async def _poll_time_window(self, task_id: str) -> None:
-        await self._check_time_window(task_id)
 
     # ── Condition evaluation ────────────────────────────────────────────────
 
@@ -267,9 +267,12 @@ class TaskEngine:
         task.status = "running"
         task.executed_at = datetime.now(timezone.utc).isoformat()
         if task.condition and not self._evaluate_condition(task.condition):
-            task.status = "skipped"
-            task.result = "Condition not met"
-            self._remove_job(task_id)
+            if task.one_shot:
+                task.status = "skipped"
+                task.result = "Condition not met"
+                self._remove_job(task_id)
+            else:
+                task.status = "pending"
             self._save()
             logger.info("Task %s skipped (condition not met)", task.label)
             return
@@ -286,7 +289,10 @@ class TaskEngine:
             task.error = str(exc)
             logger.error("Task %s failed: %s", task.label, exc)
         finally:
-            self._remove_job(task_id)
+            if task.one_shot or task.status == "failed":
+                self._remove_job(task_id)
+            else:
+                task.status = "pending"
             self._save()
 
     async def _run_action(self, action: dict, task: Task) -> Any:
@@ -296,7 +302,6 @@ class TaskEngine:
                 action["domain"], action["service"], action.get("data", {})
             )
         if a_type == "send_notification":
-            from .tools.notify_tools import send_notification
             return await send_notification(
                 self._ha, action["message"], action.get("channel", "ha_push"), self._notify_config
             )
@@ -311,7 +316,7 @@ class TaskEngine:
             self._remove_job(task_id)
             return
         trigger = task.trigger
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         from_h, from_m = (int(x) for x in trigger["from"].split(":"))
         to_h, to_m = (int(x) for x in trigger["to"].split(":"))
         from_dt = now.replace(hour=from_h, minute=from_m, second=0, microsecond=0)

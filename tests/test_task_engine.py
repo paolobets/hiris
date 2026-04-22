@@ -224,3 +224,70 @@ async def test_execute_task_chain_creates_child(engine):
     children = [t for t in engine._tasks.values() if t.parent_task_id == task.id]
     assert len(children) == 1
     assert children[0].label == "Child"
+
+
+# ── Task 3: Additional coverage ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_check_time_window_within_window(engine, mock_ha):
+    now = datetime.now()
+    from_time = (now - timedelta(hours=1)).strftime("%H:%M")
+    to_time = (now + timedelta(hours=1)).strftime("%H:%M")
+    task = engine.add_task(
+        {
+            "label": "Window task",
+            "trigger": {
+                "type": "time_window",
+                "from": from_time,
+                "to": to_time,
+                "check_interval_minutes": 5,
+            },
+            "actions": [
+                {
+                    "type": "call_ha_service",
+                    "domain": "light",
+                    "service": "turn_on",
+                    "data": {"entity_id": "light.test"},
+                }
+            ],
+        },
+        agent_id="hiris-default",
+    )
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "done"
+
+
+def test_at_time_rollover(engine):
+    task = engine.add_task(
+        {"label": "Night", "trigger": {"type": "at_time", "time": "00:01"}, "actions": []},
+        agent_id="hiris-default",
+    )
+    run_date = engine._scheduler.add_job.call_args[1]["run_date"]
+    tomorrow = (datetime.now() + timedelta(days=1)).date()
+    assert run_date.date() == tomorrow
+
+
+@pytest.mark.asyncio
+async def test_unknown_action_marks_failed(engine):
+    task = engine.add_task(
+        {
+            "label": "Bad action",
+            "trigger": {"type": "delay", "minutes": 1},
+            "actions": [{"type": "unknown_action", "foo": "bar"}],
+        },
+        agent_id="hiris-default",
+    )
+    await engine._execute_task(task.id)
+    assert engine._tasks[task.id].status == "failed"
+    assert "unknown_action" in engine._tasks[task.id].error
+
+
+def test_cancel_removes_scheduler_job(engine):
+    task = engine.add_task(
+        {"label": "Cancel me", "trigger": {"type": "delay", "minutes": 5}, "actions": []},
+        agent_id="hiris-default",
+    )
+    engine.cancel_task(task.id)
+    removed = [c[0][0] for c in engine._scheduler.remove_job.call_args_list]
+    assert f"task_{task.id}" in removed
