@@ -455,7 +455,7 @@ class ClaudeRunner:
                     logger.info("Filtered entity ids to: %s", ids)
                 return await get_entity_states(self._ha, ids, entity_cache=self._cache)
             if name == "get_home_status":
-                return get_home_status(self._cache) if self._cache else []
+                return get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
             if name == "get_entities_on":
                 return get_entities_on(self._cache) if self._cache else []
             if name == "search_entities":
@@ -471,7 +471,7 @@ class ClaudeRunner:
             if name == "get_entities_by_domain":
                 return get_entities_by_domain(inputs["domain"], self._cache) if self._cache else []
             if name == "get_energy_history":
-                return await get_energy_history(self._ha, inputs["days"])
+                return await get_energy_history(self._ha, inputs["days"], semantic_map=self._semantic_map)
             if name == "get_weather_forecast":
                 return await get_weather_forecast(inputs["hours"])
             if name == "send_notification":
