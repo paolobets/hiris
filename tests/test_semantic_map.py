@@ -136,3 +136,28 @@ def test_on_entity_added_marks_unknown_if_ambiguous(tmp_path):
     m = SemanticMap(data_dir=str(tmp_path))
     m.on_entity_added("sensor.opaque_xyz_weird", {})
     assert "sensor.opaque_xyz_weird" in m.get_category("unknown")
+
+
+def test_get_prompt_snippet_contains_sections(tmp_path):
+    cache = _make_cache([
+        "sensor.shellyem3_power", "light.salotto", "climate.heatpump",
+        "binary_sensor.presence_home",
+    ])
+    # override get_minimal to return states for climate
+    cache.get_minimal.return_value = [
+        {"id": "climate.heatpump", "state": "heat", "name": "Heatpump",
+         "unit": "", "attributes": {"current_temperature": 20.5, "temperature": 21.0, "hvac_action": "heating"}},
+    ]
+    m = SemanticMap(data_dir=str(tmp_path))
+    m.build_from_cache(cache)
+    snippet = m.get_prompt_snippet(cache)
+    assert "CASA" in snippet
+    assert "sensor.shellyem3_power" in snippet
+    assert "light" in snippet.lower() or "Luci" in snippet
+
+
+def test_get_prompt_snippet_empty_map(tmp_path):
+    cache = _make_cache([])
+    m = SemanticMap(data_dir=str(tmp_path))
+    snippet = m.get_prompt_snippet(cache)
+    assert isinstance(snippet, str)

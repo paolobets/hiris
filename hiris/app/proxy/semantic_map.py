@@ -196,6 +196,73 @@ class SemanticMap:
                 )
         self.save()
 
+    def get_prompt_snippet(self, entity_cache: Any) -> str:
+        """Return compact home context string for injection into system prompt."""
+        now = datetime.now(timezone.utc).strftime("%H:%M")
+
+        parts = [f"CASA [mappa agg. {now}]"]
+
+        # Energy meters
+        energy_ids = (
+            self.get_category("energy_meter") +
+            self.get_category("solar_production") +
+            self.get_category("grid_import")
+        )
+        if energy_ids:
+            labels = []
+            for eid in energy_ids[:6]:
+                meta = self._entity_meta.get(eid, {})
+                unit = meta.get("unit") or "?"
+                labels.append(f"{eid}({unit})")
+            parts.append("Energia: " + ", ".join(labels))
+
+        # Climate
+        climate_ids = self.get_category("climate_sensor")
+        if climate_ids:
+            states = entity_cache.get_minimal(climate_ids[:4])
+            segs = []
+            for e in states:
+                seg = f"{e.get('name') or e['id']}: {e['state']}"
+                a = e.get("attributes") or {}
+                curr = a.get("current_temperature")
+                setp = a.get("temperature")
+                if curr is not None:
+                    seg += f" {curr}°C"
+                if setp is not None:
+                    seg += f"→{setp}°C"
+                segs.append(seg)
+            if segs:
+                parts.append("Clima: " + ", ".join(segs))
+
+        # Presence
+        presence_ids = self.get_category("presence")
+        if presence_ids:
+            states = entity_cache.get_minimal(presence_ids[:3])
+            segs = [f"{e.get('name') or e['id']}({e['state']})" for e in states]
+            if segs:
+                parts.append("Presenze: " + ", ".join(segs))
+
+        # Lighting
+        lighting_ids = self.get_category("lighting")
+        if lighting_ids:
+            parts.append(f"Luci: {len(lighting_ids)} entità")
+
+        # Appliances
+        appliance_ids = self.get_category("appliance")
+        if appliance_ids:
+            names = [self._entity_meta.get(eid, {}).get("label") or eid for eid in appliance_ids[:4]]
+            parts.append("Elettrodomestici: " + ", ".join(names))
+
+        # Unknown pending classification
+        unknown_count = len([
+            eid for eid in self._categories.get("unknown", [])
+            if self._entity_meta.get(eid, {}).get("classified_by") == "pending"
+        ])
+        if unknown_count:
+            parts.append(f"In classificazione: {unknown_count} entità")
+
+        return "\n".join(parts)
+
     async def _classify_unknown_batch(self) -> None:
         """Classify all 'unknown'/'pending' entities via LLM router in batches of 20."""
         if not self._router:
