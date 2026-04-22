@@ -1,5 +1,26 @@
 # HIRIS — Changelog
 
+## [0.2.3] — 2026-04-22
+
+### Added
+- **TaskEngine** — shared deferred-task system available to all agent types (chat, monitor, reactive, preventive)
+- **4 trigger types** — `delay` (minutes from now), `at_time` (wall-clock HH:MM local time), `at_datetime` (ISO datetime), `time_window` (poll every N min within a HH:MM–HH:MM window)
+- **Optional condition** — entity state check at trigger time with operators `<`, `<=`, `>`, `>=`, `=`, `!=`; task skipped (not failed) if condition unmet
+- **3 action types** — `call_ha_service`, `send_notification`, `create_task` (chaining: child task inherits `agent_id`, sets `parent_task_id`)
+- **Task persistence** — tasks saved to `/data/tasks.json` with atomic write; pending tasks rescheduled on restart
+- **Automatic cleanup** — terminal tasks (done/skipped/failed/expired/cancelled) deleted after 24h via hourly APScheduler job
+- **3 Claude tools** — `create_task`, `list_tasks`, `cancel_task` available in `allowed_tools` per agent
+- **REST API** — `GET /api/tasks`, `GET /api/tasks/{id}`, `DELETE /api/tasks/{id}`
+- **Task UI** — "Task" tab in sidebar with pending-count badge; active task list + recent (24h) list; Annulla button for pending tasks; auto-refresh every 30s
+- **Python 3.13** — upgraded base image from `3.11-alpine3.18` to `3.13-alpine3.21`
+
+### Fixed
+- `at_datetime` trigger called removed `_run_task_async` method — changed to `_execute_task`
+- `_check_time_window` stored naive local timestamp in `executed_at` — now UTC-aware
+- `create_task` tool dispatch now enforces agent's `allowed_services` whitelist on all `call_ha_service` actions before scheduling (previously bypassable via deferred tasks)
+- Task UI: `label`, `result`, `error`, `status`, and `id` fields now HTML-escaped before injection into innerHTML (XSS prevention)
+- `EntityCache`: added `get_state(entity_id)` method required by `TaskEngine` condition evaluation
+
 ## [0.2.2] — 2026-04-22
 
 ### Fixed

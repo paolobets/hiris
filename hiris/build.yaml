@@ -1,6 +1,6 @@
 build_from:
-  aarch64: "ghcr.io/home-assistant/aarch64-base-python:3.11-alpine3.18"
-  amd64: "ghcr.io/home-assistant/amd64-base-python:3.11-alpine3.18"
+  aarch64: "ghcr.io/home-assistant/aarch64-base-python:3.13-alpine3.21"
+  amd64: "ghcr.io/home-assistant/amd64-base-python:3.13-alpine3.21"
 squash: false
 labels:
   org.opencontainers.image.title: "HIRIS"

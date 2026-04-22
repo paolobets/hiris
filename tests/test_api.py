@@ -44,7 +44,7 @@ async def test_health_endpoint(client):
     assert resp.status == 200
     data = await resp.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.2.2"
+    assert data["version"] == "0.2.3"
 
 
 @pytest.mark.asyncio
@@ -366,3 +366,45 @@ async def test_chat_rag_prefetch_injects_entity_context(client):
     assert "Luce Soggiorno" in call_kwargs["system_prompt"]
     assert "light.soggiorno" in call_kwargs["system_prompt"]
     assert "Entità rilevanti" in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_create_task_tool_via_chat(client):
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from unittest.mock import MagicMock, AsyncMock
+
+    engine = client.app["engine"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        trigger={"type": "manual"}, system_prompt="test",
+        allowed_tools=["create_task"], enabled=True, is_default=True,
+    )
+
+    mock_task_engine = MagicMock()
+    from hiris.app.task_engine import Task
+    from datetime import datetime, timezone
+    fake_task = Task(
+        id="t-001", label="Test", agent_id=DEFAULT_AGENT_ID,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        trigger={"type": "delay", "minutes": 5}, actions=[],
+    )
+    mock_task_engine.add_task = MagicMock(return_value=fake_task)
+    client.app["task_engine"] = mock_task_engine
+
+    runner = client.app["claude_runner"]
+    runner.set_task_engine(mock_task_engine)
+    runner.chat = AsyncMock(return_value="Task scheduled")
+
+    resp = await client.post("/api/chat", json={"message": "schedule something"})
+    assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_api_empty(client):
+    mock_te = MagicMock()
+    mock_te.list_tasks = MagicMock(return_value=[])
+    client.app["task_engine"] = mock_te
+    resp = await client.get("/api/tasks")
+    assert resp.status == 200
+    data = await resp.json()
+    assert isinstance(data, list)

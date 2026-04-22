@@ -391,6 +391,50 @@
       #input-area { padding: 0.5rem 0.75rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
       #input { font-size: 1rem; }
     }
+    /* ── Task section ─────────────────────────────── */
+    .task-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; border-radius: 9px;
+      background: var(--accent); color: #fff;
+      font-size: 11px; font-weight: 700; padding: 0 5px; margin-left: 6px;
+    }
+    .task-badge:empty, .task-badge[data-count="0"] { display: none; }
+    .task-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+    }
+    .task-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-bottom: 4px;
+    }
+    .task-label { font-weight: 600; font-size: 14px; color: var(--text); flex: 1; }
+    .task-status {
+      font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+    }
+    .task-status.pending  { background: var(--badge-monitor-bg);    color: var(--badge-monitor-text); }
+    .task-status.running  { background: var(--badge-reactive-bg);   color: var(--badge-reactive-text); }
+    .task-status.done     { background: var(--badge-reactive-bg);   color: var(--badge-reactive-text); }
+    .task-status.skipped  { background: var(--badge-off-bg);        color: var(--text-muted); }
+    .task-status.failed   { background: #FEE2E2;                    color: #DC2626; }
+    .task-status.expired  { background: var(--badge-off-bg);        color: var(--text-muted); }
+    .task-status.cancelled{ background: var(--badge-off-bg);        color: var(--text-muted); }
+    .task-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .task-cancel-btn {
+      background: none; border: 1px solid var(--border); color: var(--text-muted);
+      border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+    }
+    .task-cancel-btn:hover { background: var(--surface-hover); color: var(--text); }
+    .task-section-title {
+      font-size: 12px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 8px;
+    }
+    .task-empty { color: var(--text-muted); font-size: 14px; text-align: center; padding: 32px 0; }
+    #task-panel {
+      display: none; flex-direction: column; flex: 1; overflow-y: auto;
+      padding: 16px; min-height: 0;
+    }
+    #nav-tasks { cursor: pointer; display: flex; align-items: center; }
+    #nav-tasks.active { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -400,6 +444,7 @@
     <div id="agent-list"></div>
     <div id="sidebar-footer">
       <a href="config">&#9881; Configura agenti</a>
+      <a href="#" id="nav-tasks" onclick="showPanel('tasks'); return false;">&#128336; Task<span class="task-badge" id="task-badge" data-count="0"></span></a>
       <div id="usage-widget">
         <div class="usage-row">
           <span class="usage-label">&#x1F4AC; Token</span>
@@ -450,6 +495,13 @@
     </div>
     <div id="turn-counter" style="display:none;font-size:11px;text-align:right;padding:2px 8px 4px 0;color:var(--text-muted)"></div>
     <div id="session-ended-msg" style="display:none;font-size:12px;text-align:center;padding:6px 8px;color:var(--conn-off);background:var(--surface);border-top:1px solid var(--border)">Sessione completata &#8212; avvia una nuova conversazione</div>
+    <!-- Task panel -->
+    <div id="task-panel">
+      <div class="task-section-title">Task attive</div>
+      <div id="task-active-list"></div>
+      <div class="task-section-title">Task recenti (24h)</div>
+      <div id="task-recent-list"></div>
+    </div>
   </main>
 </div>
 <script>
@@ -712,6 +764,87 @@ loadAgents();
 loadUsage();
 setInterval(loadAgents, 30000);
 setInterval(loadUsage, 30000);
+
+// ── Task panel ──────────────────────────────────────────────────────────
+
+function showPanel(name) {
+  var isTask = name === 'tasks';
+  document.getElementById('messages').style.display = isTask ? 'none' : '';
+  document.getElementById('input-area').style.display = isTask ? 'none' : '';
+  var tc = document.getElementById('turn-counter');
+  if (tc) tc.style.display = isTask ? 'none' : '';
+  var se = document.getElementById('session-ended-msg');
+  if (se) se.style.display = isTask ? 'none' : '';
+  document.getElementById('task-panel').style.display = isTask ? 'flex' : 'none';
+  var navTasks = document.getElementById('nav-tasks');
+  if (navTasks) navTasks.classList.toggle('active', isTask);
+  if (isTask) loadTasks();
+}
+
+function formatTrigger(trigger) {
+  if (!trigger) return '';
+  if (trigger.type === 'delay') return 'tra ' + trigger.minutes + ' min';
+  if (trigger.type === 'at_time') return 'alle ' + trigger.time;
+  if (trigger.type === 'at_datetime') return trigger.datetime;
+  if (trigger.type === 'time_window') return 'finestra ' + trigger.from + '\u2013' + trigger.to;
+  return trigger.type;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function renderTask(task) {
+  var isPending = task.status === 'pending';
+  var safeId = escapeHtml(task.id);
+  var cancelBtn = isPending
+    ? '<button class="task-cancel-btn" onclick="cancelTask(&quot;' + safeId + '&quot;)">Annulla</button>'
+    : '';
+  var rawMeta = task.result || task.error || formatTrigger(task.trigger);
+  var meta = rawMeta ? escapeHtml(rawMeta) : '';
+  return '<div class="task-card" id="task-' + safeId + '">'
+    + '<div class="task-card-header">'
+    + '<span class="task-label">' + escapeHtml(task.label) + '</span>'
+    + '<span class="task-status ' + escapeHtml(task.status) + '">' + escapeHtml(task.status) + '</span>'
+    + cancelBtn
+    + '</div>'
+    + '<div class="task-meta">' + meta + '</div>'
+    + '</div>';
+}
+
+async function loadTasks() {
+  try {
+    var resp = await fetch('/api/tasks');
+    var tasks = await resp.json();
+    var active = tasks.filter(function(t) { return t.status === 'pending' || t.status === 'running'; });
+    var recent = tasks.filter(function(t) { return t.status !== 'pending' && t.status !== 'running'; });
+    var activeEl = document.getElementById('task-active-list');
+    var recentEl = document.getElementById('task-recent-list');
+    if (activeEl) activeEl.innerHTML = active.length
+      ? active.map(renderTask).join('')
+      : '<div class="task-empty">Nessuna task attiva</div>';
+    if (recentEl) recentEl.innerHTML = recent.length
+      ? recent.map(renderTask).join('')
+      : '<div class="task-empty">Nessuna task recente</div>';
+    var badge = document.getElementById('task-badge');
+    if (badge) {
+      badge.textContent = active.length || '';
+      badge.dataset.count = active.length;
+    }
+  } catch(e) { console.error('loadTasks failed', e); }
+}
+
+async function cancelTask(taskId) {
+  if (!confirm('Annullare questa task?')) return;
+  try {
+    var resp = await fetch('/api/tasks/' + taskId, {method: 'DELETE'});
+    if (resp.ok || resp.status === 204) loadTasks();
+  } catch(e) { console.error('cancelTask failed', e); }
+}
+
+// Auto-refresh badge every 30s (even when task panel is not visible)
+setInterval(loadTasks, 30000);
+loadTasks();
 </script>
 </body>
 </html>
