@@ -258,6 +258,17 @@ async def test_check_time_window_within_window(engine, mock_ha):
     assert engine._tasks[task.id].status == "done"
 
 
+def test_at_datetime_schedules_correct_run_date(engine):
+    future = datetime.now() + timedelta(hours=2)
+    future_iso = future.replace(microsecond=0).isoformat()
+    task = engine.add_task(
+        {"label": "Future", "trigger": {"type": "at_datetime", "datetime": future_iso}, "actions": []},
+        agent_id="hiris-default",
+    )
+    run_date = engine._scheduler.add_job.call_args[1]["run_date"]
+    assert abs((run_date - future).total_seconds()) < 2
+
+
 def test_at_time_rollover(engine):
     task = engine.add_task(
         {"label": "Night", "trigger": {"type": "at_time", "time": "00:01"}, "actions": []},

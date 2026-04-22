@@ -507,6 +507,13 @@ class ClaudeRunner:
             if name == "create_task":
                 if self._task_engine is None:
                     return {"error": "TaskEngine not available"}
+                if allowed_services:
+                    for action in inputs.get("actions", []):
+                        if action.get("type") == "call_ha_service":
+                            svc_key = f"{action.get('domain', '')}.{action.get('service', '')}"
+                            if not any(fnmatch.fnmatch(svc_key, pat) for pat in allowed_services):
+                                logger.warning("create_task blocked: action %s not permitted", svc_key)
+                                return {"error": f"Action {svc_key} not permitted by policy"}
                 return create_task_tool(
                     task_engine=self._task_engine,
                     label=inputs["label"],

@@ -790,19 +790,25 @@ function formatTrigger(trigger) {
   return trigger.type;
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function renderTask(task) {
   var isPending = task.status === 'pending';
+  var safeId = escapeHtml(task.id);
   var cancelBtn = isPending
-    ? '<button class="task-cancel-btn" onclick="cancelTask(\'' + task.id + '\')">Annulla</button>'
+    ? '<button class="task-cancel-btn" onclick="cancelTask(&quot;' + safeId + '&quot;)">Annulla</button>'
     : '';
-  var meta = task.result || task.error || formatTrigger(task.trigger);
-  return '<div class="task-card" id="task-' + task.id + '">'
+  var rawMeta = task.result || task.error || formatTrigger(task.trigger);
+  var meta = rawMeta ? escapeHtml(rawMeta) : '';
+  return '<div class="task-card" id="task-' + safeId + '">'
     + '<div class="task-card-header">'
-    + '<span class="task-label">' + task.label + '</span>'
-    + '<span class="task-status ' + task.status + '">' + task.status + '</span>'
+    + '<span class="task-label">' + escapeHtml(task.label) + '</span>'
+    + '<span class="task-status ' + escapeHtml(task.status) + '">' + escapeHtml(task.status) + '</span>'
     + cancelBtn
     + '</div>'
-    + '<div class="task-meta">' + (meta || '') + '</div>'
+    + '<div class="task-meta">' + meta + '</div>'
     + '</div>';
 }
 
