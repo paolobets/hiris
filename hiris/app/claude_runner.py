@@ -265,6 +265,20 @@ class ClaudeRunner:
         }
         self._save_usage()
 
+    async def simple_chat(self, messages: list[dict], system: str = "") -> str:
+        """Single API call with no tools and no retry loop — for classification tasks."""
+        try:
+            response = await self._client.messages.create(
+                model=MODEL,
+                max_tokens=1024,
+                system=system,
+                messages=messages,
+            )
+            return next((b.text for b in response.content if b.type == "text"), "")
+        except Exception as exc:
+            logger.error("simple_chat failed: %s", exc)
+            return ""
+
     async def chat(
         self,
         user_message: str,
