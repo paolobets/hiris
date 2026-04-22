@@ -27,7 +27,13 @@ options:
   claude_api_key: ""
   log_level: "info"
   theme: "auto"
+  primary_model: "claude-sonnet-4-6"
+  local_model_url: ""
+  local_model_name: ""
 schema:
   claude_api_key: password
   log_level: "list(debug|info|warning|error)"
   theme: "list(light|dark|auto)"
+  primary_model: str
+  local_model_url: str
+  local_model_name: str
