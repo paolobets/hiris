@@ -440,3 +440,64 @@ I dati vengono salvati su `/data/usage.json` e sono consultabili da `/api/usage`
 | `/data/chat_history_<agent_id>.json` | Cronologia chat per agente (30 giorni) |
 
 Tutti i file vengono scritti atomicamente (temp file + rename) per resistere ai crash.
+
+---
+
+## Differenze tra spec e implementazione
+
+Questa sezione documenta i punti dove l'implementazione reale diverge dalle specifiche di progetto (`docs/superpowers/specs/`).
+
+### EmbeddingIndex: keyword overlap invece di fastembed
+
+**Spec** (2026-04-20): usare `fastembed` con modello `intfloat/multilingual-e5-small` (120 MB, vettori 384-dim, ricerca coseno).
+
+**Implementato**: token overlap puro Python, zero dipendenze ML.
+
+Motivazione: `fastembed` usa `onnxruntime` che non compila su Alpine/musllinux (base Docker di HA). L'approccio keyword è istantaneo, senza download, deterministico. La qualità di ricerca è sufficiente per nomi di entità HA (es. "luce salotto" trova `light.soggiorno_principale`).
+
+**Impatto**: `search_entities()` è meno accurata su query linguisticamente distanti dall'ID entità, ma funziona bene per i casi d'uso reali.
+
+---
+
+### LLMRouter: wrapper sottile, non orchestratore per complessità
+
+**Spec**: il router avrebbe dovuto scegliere il modello in base alla complessità della richiesta (bassa → Ollama locale, alta → Claude).
+
+**Implementato**: `LLMRouter` è un thin wrapper attorno a `ClaudeRunner`. L'unico routing reale è in `classify_entities()` → Ollama se configurato, Claude altrimenti. La chat principale va sempre su Claude.
+
+**Motivazione**: il routing per complessità richiederebbe una stima della complessità prima della risposta — un problema difficile. Il routing per tipo di task (classificazione vs chat) è invece naturale e già implementato.
+
+---
+
+### Doppio sistema contesto casa (home_profile + semantic_map snippet)
+
+Esistono due sistemi che generano il contesto della casa per il system prompt:
+
+| Sistema | File | Quando usato |
+|---|---|---|
+| `SemanticMap.get_prompt_snippet()` | `proxy/semantic_map.py` | `handlers_chat.py` — normale flusso chat |
+| `get_cached_home_profile()` | `proxy/home_profile.py` | `claude_runner.py` — solo se `semantic_map is None` |
+
+In pratica: se la Semantic Map è attiva (configurazione normale), `home_profile` non viene mai iniettato nella chat. È un fallback per installazioni senza Semantic Map.
+
+Il commento in `handlers_chat.py` lo spiega: `# Inject semantic map snippet (replaces home_profile — richer context)`.
+
+---
+
+### LLMResponse dataclass: non implementata
+
+**Spec**: `chat()` avrebbe dovuto restituire un oggetto `LLMResponse(content, tool_calls, stop_reason, usage)`.
+
+**Implementato**: le funzioni restituiscono `str` o `dict` direttamente. Non c'è overhead di wrapping — è più semplice e il codice chiamante non ne aveva bisogno.
+
+---
+
+### Funzionalità pianificate ma non ancora implementate
+
+| Funzionalità | Spec | Stato |
+|---|---|---|
+| Test Runner per agente | `hiris-design.md` | Non implementato |
+| Template agenti pre-costruiti | `hiris-design.md` | Solo campo `strategic_context` libero |
+| Canvas drag-and-drop (n8n style) | `hiris-design.md` | Phase 2 |
+| Plugin Retro Panel | `hiris-design.md` | Phase 2 |
+| Memoria conversazione Redis/SQLite | `hiris-design.md` | Phase 2 |
