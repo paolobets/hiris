@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 import pytest
 from hiris.app.proxy.semantic_map import SemanticMap, classify_by_rules
 
@@ -45,14 +46,23 @@ def test_classify_by_rules_unknown():
 
 
 def test_semantic_map_get_category_empty():
-    m = SemanticMap(data_dir="/tmp")
+    m = SemanticMap(data_dir=tempfile.gettempdir())
     assert m.get_category("energy_meter") == []
 
 
 def test_semantic_map_add_and_get_category():
-    m = SemanticMap(data_dir="/tmp")
+    m = SemanticMap(data_dir=tempfile.gettempdir())
     m._add_entity("sensor.power_main", "energy_meter", "Contatore principale", classified_by="rules")
     assert "sensor.power_main" in m.get_category("energy_meter")
+
+
+def test_add_entity_reclassification_removes_old_category(tmp_path):
+    m = SemanticMap(data_dir=str(tmp_path))
+    m._add_entity("sensor.x", "unknown", "X", classified_by="pending")
+    assert "sensor.x" in m.get_category("unknown")
+    m._add_entity("sensor.x", "energy_meter", "X meter", classified_by="claude")
+    assert "sensor.x" in m.get_category("energy_meter")
+    assert "sensor.x" not in m.get_category("unknown")
 
 
 def test_semantic_map_save_load_roundtrip(tmp_path):

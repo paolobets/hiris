@@ -3,7 +3,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -75,7 +74,6 @@ def classify_by_rules(entity_id: str) -> Optional[str]:
 
 class SemanticMap:
     def __init__(self, data_dir: str) -> None:
-        self._data_dir = data_dir
         self._path = os.path.join(data_dir, "home_semantic_map.json")
         self._categories: dict[str, list[str]] = {role: [] for role in ALL_ROLES}
         self._entity_meta: dict[str, dict] = {}
@@ -99,6 +97,10 @@ class SemanticMap:
     ) -> None:
         if role not in self._categories:
             role = "other"
+        # Remove from any previous category to avoid duplicates across categories
+        for cat_ids in self._categories.values():
+            if entity_id in cat_ids:
+                cat_ids.remove(entity_id)
         if entity_id not in self._categories[role]:
             self._categories[role].append(entity_id)
         self._entity_meta[entity_id] = {
@@ -126,7 +128,6 @@ class SemanticMap:
             self._last_updated = data.get("last_updated")
             self._categories = {role: [] for role in ALL_ROLES}
             for role, ids in data.get("categories", {}).items():
-                self._categories.setdefault(role, [])
                 self._categories[role] = list(ids)
             self._entity_meta = data.get("entity_meta", {})
             return True
