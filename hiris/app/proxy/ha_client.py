@@ -65,7 +65,7 @@ class HAClient:
     async def get_area_registry(self) -> list[dict]:
         url = f"{self._base_url}/api/config/area_registry/list"
         try:
-            async with self._session.get(url, headers=self._headers) as resp:
+            async with self._session.get(url) as resp:
                 if resp.status != 200:
                     logger.debug("area_registry not available (HTTP %s)", resp.status)
                     return []
@@ -77,7 +77,7 @@ class HAClient:
     async def get_entity_registry(self) -> list[dict]:
         url = f"{self._base_url}/api/config/entity_registry/list"
         try:
-            async with self._session.get(url, headers=self._headers) as resp:
+            async with self._session.get(url) as resp:
                 if resp.status != 200:
                     logger.debug("entity_registry not available (HTTP %s)", resp.status)
                     return []
@@ -127,8 +127,11 @@ class HAClient:
                             action = event.get("data", {}).get("action")
                             if action == "create":
                                 eid = event["data"].get("entity_id", "")
-                                attrs = event["data"].get("changes", {})
+                                attrs = event["data"]  # full payload for create events
                                 for cb in self._registry_listeners:
-                                    cb(eid, attrs)
+                                    try:
+                                        cb(eid, attrs)
+                                    except Exception as cb_exc:
+                                        logger.exception("registry_listener callback raised: %s", cb_exc)
         except Exception as exc:
             logger.warning("HA WebSocket disconnected: %s", exc)
