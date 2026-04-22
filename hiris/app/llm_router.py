@@ -109,11 +109,11 @@ def _parse_classify_response(raw: str) -> dict[str, dict]:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if match:
+        # Scan right-to-left for a valid JSON object (avoids greedy regex matching multiple blobs)
+        for m in reversed(list(re.finditer(r'\{', raw))):
             try:
-                return json.loads(match.group())
+                return json.loads(raw[m.start():])
             except json.JSONDecodeError:
-                pass
+                continue
     logger.warning("classify_entities: could not parse JSON from LLM response: %.200s", raw)
     return {}

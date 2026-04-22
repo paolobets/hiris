@@ -269,13 +269,11 @@ class ClaudeRunner:
 
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
         """Single API call with no tools and no retry loop — for classification tasks."""
+        kwargs: dict = {"model": MODEL, "max_tokens": 1024, "messages": messages}
+        if system:
+            kwargs["system"] = system
         try:
-            response = await self._client.messages.create(
-                model=MODEL,
-                max_tokens=1024,
-                system=system,
-                messages=messages,
-            )
+            response = await self._client.messages.create(**kwargs)
             return next((b.text for b in response.content if b.type == "text"), "")
         except Exception as exc:
             logger.error("simple_chat failed: %s", exc)
