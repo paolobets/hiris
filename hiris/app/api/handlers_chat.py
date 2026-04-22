@@ -51,7 +51,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     if not message:
         return web.json_response({"error": "message required"}, status=400)
 
-    runner = request.app.get("claude_runner")
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response(
             {"error": "Claude runner not configured — set CLAUDE_API_KEY"}, status=503
@@ -104,6 +104,14 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_tools = None
         allowed_entities = None
         allowed_services = None
+
+    # Inject semantic map snippet (replaces home_profile — richer context)
+    semantic_map = request.app.get("semantic_map")
+    entity_cache = request.app.get("entity_cache")
+    if semantic_map and entity_cache:
+        map_snippet = semantic_map.get_prompt_snippet(entity_cache)
+        if map_snippet:
+            system_prompt = f"{system_prompt}\n\n---\n\n{map_snippet}"
 
     # RAG pre-fetch: inject relevant entity states before Claude reasons
     prefetched = _prefetch_context(message, request.app)
