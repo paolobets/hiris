@@ -160,3 +160,10 @@ async def test_get_entity_registry_returns_empty_on_error(client):
         result = await client.get_entity_registry()
         await client.stop()
     assert result == []
+
+
+def test_add_registry_listener():
+    ha = HAClient("http://supervisor/core", "token")
+    callback = MagicMock()
+    ha.add_registry_listener(callback)
+    assert callback in ha._registry_listeners

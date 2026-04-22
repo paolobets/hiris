@@ -631,3 +631,18 @@ def test_per_agent_usage_persists_and_reloads(tmp_path):
     usage = runner2.get_agent_usage("agent-persist")
     assert usage["input_tokens"] == 1000
     assert usage["requests"] == 5
+
+
+@pytest.mark.asyncio
+async def test_simple_chat_returns_text(runner):
+    fake_message = MagicMock()
+    fake_message.content = [MagicMock(type="text", text='{"result": "ok"}')]
+    with patch("anthropic.AsyncAnthropic") as MockClient:
+        instance = MockClient.return_value
+        instance.messages.create = AsyncMock(return_value=fake_message)
+        runner._client = instance
+        result = await runner.simple_chat(
+            [{"role": "user", "content": "classify"}],
+            system="Classify entities",
+        )
+    assert result == '{"result": "ok"}'

@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.1.9"
+version: "0.2.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -27,7 +27,13 @@ options:
   claude_api_key: ""
   log_level: "info"
   theme: "auto"
+  primary_model: "claude-sonnet-4-6"
+  local_model_url: ""
+  local_model_name: ""
 schema:
   claude_api_key: password
   log_level: "list(debug|info|warning|error)"
   theme: "list(light|dark|auto)"
+  primary_model: str
+  local_model_url: str
+  local_model_name: str

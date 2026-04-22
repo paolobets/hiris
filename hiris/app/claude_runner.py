@@ -186,6 +186,7 @@ class ClaudeRunner:
         usage_path: str = "",
         entity_cache=None,
         embedding_index=None,
+        semantic_map=None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._ha = ha_client
@@ -193,6 +194,7 @@ class ClaudeRunner:
         self._usage_path = usage_path
         self._cache = entity_cache
         self._index = embedding_index
+        self._semantic_map = semantic_map
         self.last_tool_calls: list[dict] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
@@ -265,6 +267,18 @@ class ClaudeRunner:
         }
         self._save_usage()
 
+    async def simple_chat(self, messages: list[dict], system: str = "") -> str:
+        """Single API call with no tools and no retry loop — for classification tasks."""
+        kwargs: dict = {"model": MODEL, "max_tokens": 1024, "messages": messages}
+        if system:
+            kwargs["system"] = system
+        try:
+            response = await self._client.messages.create(**kwargs)
+            return next((b.text for b in response.content if b.type == "text"), "")
+        except Exception as exc:
+            logger.error("simple_chat failed: %s", exc)
+            return ""
+
     async def chat(
         self,
         user_message: str,
@@ -294,7 +308,7 @@ class ClaudeRunner:
             effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
         if require_confirmation:
             effective_system = f"{effective_system}\n\n---\n\n{REQUIRE_CONFIRMATION_PROMPT}"
-        if self._cache is not None:
+        if self._cache is not None and self._semantic_map is None:
             effective_system = f"{effective_system}\n\n---\n\n{get_cached_home_profile(self._cache)}"
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
@@ -441,7 +455,7 @@ class ClaudeRunner:
                     logger.info("Filtered entity ids to: %s", ids)
                 return await get_entity_states(self._ha, ids, entity_cache=self._cache)
             if name == "get_home_status":
-                return get_home_status(self._cache) if self._cache else []
+                return get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
             if name == "get_entities_on":
                 return get_entities_on(self._cache) if self._cache else []
             if name == "search_entities":
@@ -457,7 +471,7 @@ class ClaudeRunner:
             if name == "get_entities_by_domain":
                 return get_entities_by_domain(inputs["domain"], self._cache) if self._cache else []
             if name == "get_energy_history":
-                return await get_energy_history(self._ha, inputs["days"])
+                return await get_energy_history(self._ha, inputs["days"], semantic_map=self._semantic_map)
             if name == "get_weather_forecast":
                 return await get_weather_forecast(inputs["hours"])
             if name == "send_notification":

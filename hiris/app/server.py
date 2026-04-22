@@ -23,9 +23,14 @@ logger = logging.getLogger(__name__)
 
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner
+    from .proxy.semantic_map import SemanticMap
+    from .llm_router import LLMRouter
 
+    ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
+    if not ha_base_url.startswith("http://supervisor"):
+        logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
     ha_client = HAClient(
-        base_url=os.environ.get("HA_BASE_URL", "http://supervisor/core"),
+        base_url=ha_base_url,
         token=os.environ.get("SUPERVISOR_TOKEN", ""),
     )
     await ha_client.start()
@@ -44,9 +49,18 @@ async def _on_startup(app: web.Application) -> None:
     app["entity_cache"] = entity_cache
 
     data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
-    app["data_dir"] = os.path.dirname(os.path.abspath(data_path))
+    data_dir = os.path.dirname(os.path.abspath(data_path))
+    app["data_dir"] = data_dir
+
+    # Build semantic map
+    semantic_map = SemanticMap(data_dir=data_dir)
+    semantic_map.load()
+    ambiguous = semantic_map.build_from_cache(entity_cache)
+    app["semantic_map"] = semantic_map
+    ha_client.add_registry_listener(semantic_map.on_entity_added)
+
     engine = AgentEngine(ha_client=ha_client, data_path=data_path)
-    engine.set_entity_cache(entity_cache)  # wire cache before start() opens WebSocket
+    engine.set_entity_cache(entity_cache)
     await engine.start()
     app["engine"] = engine
 
@@ -66,6 +80,17 @@ async def _on_startup(app: web.Application) -> None:
     app["theme"] = os.environ.get("THEME", "auto")
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
+    primary_model = os.environ.get("PRIMARY_MODEL", "claude-sonnet-4-6")
+    local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
+    if local_model_url:
+        try:
+            from .backends.ollama import _validate_ollama_url
+            _validate_ollama_url(local_model_url)
+        except ValueError as exc:
+            logger.error("Invalid LOCAL_MODEL_URL (%s) — disabling local model", exc)
+            local_model_url = ""
+    local_model_name = os.environ.get("LOCAL_MODEL_NAME", "")
+
     if api_key:
         runner = ClaudeRunner(
             api_key=api_key,
@@ -74,11 +99,27 @@ async def _on_startup(app: web.Application) -> None:
             usage_path=usage_path,
             entity_cache=entity_cache,
             embedding_index=embedding_index,
+            semantic_map=semantic_map,
         )
-        app["claude_runner"] = runner
-        engine.set_claude_runner(runner)
+        router = LLMRouter(
+            runner=runner,
+            local_model_url=local_model_url,
+            local_model_name=local_model_name,
+        )
+        semantic_map.set_router(router)
+        app["claude_runner"] = runner   # backward compat
+        app["llm_router"] = router
+        engine.set_claude_runner(router)
+
+        # Kick off LLM classification for ambiguous entities (background, non-blocking)
+        if ambiguous:
+            asyncio.create_task(
+                semantic_map._classify_unknown_batch(),
+                name="semantic_map_initial_classify",
+            )
     else:
         app["claude_runner"] = None
+        app["llm_router"] = None
 
 
 async def _on_cleanup(app: web.Application) -> None:
@@ -133,4 +174,4 @@ async def _serve_config(request: web.Request) -> web.Response:
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": "0.1.9"})
+    return web.json_response({"status": "ok", "version": "0.2.0"})

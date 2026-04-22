@@ -1,4 +1,5 @@
 import logging
+import re
 
 from aiohttp import web
 
@@ -7,6 +8,11 @@ from ..chat_store import load_history, append_messages
 logger = logging.getLogger(__name__)
 
 _RAG_TOP_K = 12  # entities to pre-fetch per request
+_CTRL_RE = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
+
+
+def _sanitize(value: str, max_len: int = 128) -> str:
+    return _CTRL_RE.sub('', str(value))[:max_len]
 
 
 def _prefetch_context(message: str, app: web.Application) -> str:
@@ -23,10 +29,11 @@ def _prefetch_context(message: str, app: web.Application) -> str:
         return ""
     lines = []
     for e in entities:
-        name = e.get("name") or e["id"]
-        seg = f"- {name} [{e['id']}]: {e['state']}"
+        name = _sanitize(e.get("name") or e["id"])
+        state = _sanitize(e["state"])
+        seg = f"- {name} [{e['id']}]: {state}"
         if e.get("unit"):
-            seg += f" {e['unit']}"
+            seg += f" {_sanitize(e['unit'], 16)}"
         a = e.get("attributes") or {}
         curr = a.get("current_temperature")
         setp = a.get("temperature")
@@ -36,7 +43,7 @@ def _prefetch_context(message: str, app: web.Application) -> str:
         if setp is not None:
             seg += f" → setpoint {setp}°C"
         if action:
-            seg += f" ({action})"
+            seg += f" ({_sanitize(action, 32)})"
         lines.append(seg)
     return "Entità rilevanti (dati in tempo reale):\n" + "\n".join(lines)
 
@@ -51,7 +58,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     if not message:
         return web.json_response({"error": "message required"}, status=400)
 
-    runner = request.app.get("claude_runner")
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response(
             {"error": "Claude runner not configured — set CLAUDE_API_KEY"}, status=503
@@ -104,6 +111,14 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_tools = None
         allowed_entities = None
         allowed_services = None
+
+    # Inject semantic map snippet (replaces home_profile — richer context)
+    semantic_map = request.app.get("semantic_map")
+    entity_cache = request.app.get("entity_cache")
+    if semantic_map and entity_cache:
+        map_snippet = semantic_map.get_prompt_snippet(entity_cache)
+        if map_snippet:
+            system_prompt = f"{system_prompt}\n\n---\n\n{map_snippet}"
 
     # RAG pre-fetch: inject relevant entity states before Claude reasons
     prefetched = _prefetch_context(message, request.app)

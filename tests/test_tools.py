@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.tools.ha_tools import get_entity_states
-from hiris.app.tools.energy_tools import get_energy_history, ENERGY_ENTITY_IDS
+from hiris.app.tools.energy_tools import get_energy_history
 
 
 @pytest.fixture
@@ -32,20 +32,55 @@ async def test_get_entity_states_returns_list(mock_ha):
 
 
 @pytest.mark.asyncio
-async def test_get_energy_history_returns_compressed_format(mock_ha):
-    result = await get_energy_history(mock_ha, days=1)
-    # 4 entities × 1 day = 4 compressed records
+async def test_get_energy_history_returns_compressed_format(mock_ha, tmp_path):
+    from hiris.app.proxy.semantic_map import SemanticMap
+    smap = SemanticMap(data_dir=str(tmp_path))
+    smap._add_entity("sensor.energy_consumption", "energy_meter", "Consumption", unit="kWh", classified_by="rules")
+    smap._add_entity("sensor.solar_production", "solar_production", "Solar", unit="W", classified_by="rules")
+    smap._add_entity("sensor.grid_import", "grid_import", "Grid Import", unit="kWh", classified_by="rules")
+    smap._add_entity("sensor.grid_export", "grid_import", "Grid Export", unit="kWh", classified_by="rules")
+
+    result = await get_energy_history(mock_ha, days=1, semantic_map=smap)
     assert len(result) == 4
     ids = [r["id"] for r in result]
     assert "sensor.energy_consumption" in ids
     assert "sensor.solar_production" in ids
-    # each record must have the compressed format
     rec = next(r for r in result if r["id"] == "sensor.energy_consumption")
     assert rec["day"] == "2026-04-17"
     assert rec["start"] == "1.5"
     assert rec["end"] == "1.5"
     assert rec["n"] == 1
-    mock_ha.get_history.assert_awaited_once_with(entity_ids=ENERGY_ENTITY_IDS, days=1)
+
+
+@pytest.mark.asyncio
+async def test_get_energy_history_uses_semantic_map(mock_ha, tmp_path):
+    from hiris.app.proxy.semantic_map import SemanticMap
+    smap = SemanticMap(data_dir=str(tmp_path))
+    smap._add_entity("sensor.real_power", "energy_meter", "Real meter", unit="W", classified_by="rules")
+    smap._add_entity("sensor.real_solar", "solar_production", "Solar", unit="W", classified_by="rules")
+
+    from unittest.mock import AsyncMock
+    mock_ha.get_history = AsyncMock(return_value=[
+        {"entity_id": "sensor.real_power", "state": "250.0", "last_changed": "2026-04-22T10:00:00"},
+    ])
+
+    result = await get_energy_history(mock_ha, days=1, semantic_map=smap)
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0]["id"] == "sensor.real_power"
+    called_ids = mock_ha.get_history.call_args[1]["entity_ids"]
+    assert "sensor.real_power" in called_ids
+    assert "sensor.real_solar" in called_ids
+    assert "sensor.energy_consumption" not in called_ids
+
+
+@pytest.mark.asyncio
+async def test_get_energy_history_returns_error_if_no_map_entities(mock_ha, tmp_path):
+    from hiris.app.proxy.semantic_map import SemanticMap
+    smap = SemanticMap(data_dir=str(tmp_path))  # empty map
+    result = await get_energy_history(mock_ha, days=1, semantic_map=smap)
+    assert isinstance(result, dict)
+    assert "error" in result
 
 
 from hiris.app.tools.weather_tools import get_weather_forecast
