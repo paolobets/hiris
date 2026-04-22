@@ -127,8 +127,21 @@ async def get_area_entities(
     return result
 
 
-def get_home_status(entity_cache: EntityCache) -> list[dict]:
-    return entity_cache.get_all_useful()
+def get_home_status(entity_cache, semantic_map=None) -> list[dict]:
+    """Return all useful entity states, enriched with semantic labels if map is available."""
+    entities = entity_cache.get_all_useful() if entity_cache else []
+    if semantic_map is None:
+        return entities
+    enriched = []
+    for e in entities:
+        eid = e["id"]
+        meta = semantic_map._entity_meta.get(eid)
+        if meta and meta.get("label"):
+            e = dict(e)
+            e["semantic_label"] = meta["label"]
+            e["semantic_role"] = meta.get("role", "")
+        enriched.append(e)
+    return enriched
 
 
 def get_entities_on(entity_cache: EntityCache) -> list[dict]:
