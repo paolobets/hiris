@@ -99,39 +99,46 @@ class HAClient:
         self._ws_task = asyncio.create_task(self._ws_loop(ws_url))
 
     async def _ws_loop(self, ws_url: str) -> None:
-        try:
-            async with self._session.ws_connect(ws_url) as ws:
-                auth_req = await ws.receive_json()
-                if auth_req.get("type") == "auth_required":
-                    token = self._headers["Authorization"].removeprefix("Bearer ")
-                    await ws.send_json({"type": "auth", "access_token": token})
-                    auth_resp = await ws.receive_json()
-                    if auth_resp.get("type") != "auth_ok":
-                        logger.error("HA WebSocket auth failed")
-                        return
+        while True:
+            try:
+                async with self._session.ws_connect(ws_url) as ws:
+                    auth_req = await ws.receive_json()
+                    if auth_req.get("type") == "auth_required":
+                        token = self._headers["Authorization"].removeprefix("Bearer ")
+                        await ws.send_json({"type": "auth", "access_token": token})
+                        auth_resp = await ws.receive_json()
+                        if auth_resp.get("type") != "auth_ok":
+                            logger.error("HA WebSocket auth failed")
+                            return
 
-                await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
-                await ws.send_json({"id": 2, "type": "subscribe_events", "event_type": "entity_registry_updated"})
+                    await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
+                    await ws.send_json({"id": 2, "type": "subscribe_events", "event_type": "entity_registry_updated"})
 
-                async for msg in ws:
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        data = msg.json()
-                        if data.get("type") != "event":
-                            continue
-                        event = data.get("event", {})
-                        event_type = event.get("event_type")
-                        if event_type == "state_changed":
-                            for cb in self._state_listeners:
-                                cb(event["data"])
-                        elif event_type == "entity_registry_updated":
-                            action = event.get("data", {}).get("action")
-                            if action == "create":
-                                eid = event["data"].get("entity_id", "")
-                                attrs = event["data"]  # full payload for create events
-                                for cb in self._registry_listeners:
+                    async for msg in ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            data = msg.json()
+                            if data.get("type") != "event":
+                                continue
+                            event = data.get("event", {})
+                            event_type = event.get("event_type")
+                            if event_type == "state_changed":
+                                for cb in self._state_listeners:
                                     try:
-                                        cb(eid, attrs)
+                                        cb(event["data"])
                                     except Exception as cb_exc:
-                                        logger.exception("registry_listener callback raised: %s", cb_exc)
-        except Exception as exc:
-            logger.warning("HA WebSocket disconnected: %s", exc)
+                                        logger.exception("state_listener callback raised: %s", cb_exc)
+                            elif event_type == "entity_registry_updated":
+                                action = event.get("data", {}).get("action")
+                                if action == "create":
+                                    eid = event["data"].get("entity_id", "")
+                                    attrs = event["data"]  # full payload for create events
+                                    for cb in self._registry_listeners:
+                                        try:
+                                            cb(eid, attrs)
+                                        except Exception as cb_exc:
+                                            logger.exception("registry_listener callback raised: %s", cb_exc)
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.warning("HA WebSocket disconnected: %s — reconnecting in 10s", exc)
+                await asyncio.sleep(10)

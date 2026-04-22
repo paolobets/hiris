@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -49,6 +50,13 @@ _DOMAIN_RULES: dict[str, str] = {
     "update":   "diagnostic",
 }
 
+_CTRL_RE = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
+
+
+def _sanitize_prompt_value(value: str, max_len: int = 64) -> str:
+    """Strip control characters and truncate to prevent prompt injection."""
+    return _CTRL_RE.sub('', str(value))[:max_len]
+
 
 def classify_by_rules(entity_id: str) -> Optional[str]:
     """Return a role string if the entity_id matches a known pattern, else None.
@@ -81,6 +89,7 @@ class SemanticMap:
         self._classify_task: Optional[asyncio.Task] = None
         self._generated_at: Optional[str] = None
         self._last_updated: Optional[str] = None
+        self._lock = asyncio.Lock()
 
     def set_router(self, router: Any) -> None:
         self._router = router
@@ -215,7 +224,7 @@ class SemanticMap:
             labels = []
             for eid in energy_ids[:6]:
                 meta = self._entity_meta.get(eid, {})
-                unit = meta.get("unit") or "?"
+                unit = _sanitize_prompt_value(meta.get("unit") or "?", 16)
                 labels.append(f"{eid}({unit})")
             parts.append("Energia: " + ", ".join(labels))
 
@@ -231,15 +240,15 @@ class SemanticMap:
                 if domain == "climate":
                     curr = a.get("current_temperature")
                     setp = a.get("temperature")
-                    hvac_action = a.get("hvac_action", "")
+                    hvac_action = _sanitize_prompt_value(a.get("hvac_action", ""), 32)
                     if curr is not None and setp is not None:
                         seg = f"{eid}({curr}°→{setp}°C{' ' + hvac_action if hvac_action else ''})"
                     elif curr is not None:
                         seg = f"{eid}({curr}°C)"
                     else:
-                        seg = f"{eid}({state})"
+                        seg = f"{eid}({_sanitize_prompt_value(state)})"
                 else:
-                    seg = f"{eid}({state}°C)" if state else f"{eid}(unknown)"
+                    seg = f"{eid}({_sanitize_prompt_value(state)}°C)" if state else f"{eid}(unknown)"
                 segs.append(seg)
             if segs:
                 parts.append("Clima: " + ", ".join(segs))
@@ -248,7 +257,10 @@ class SemanticMap:
         presence_ids = self.get_category("presence")
         if presence_ids:
             states = entity_cache.get_minimal(presence_ids[:3])
-            segs = [f"{e.get('name') or e['id']}({e['state']})" for e in states]
+            segs = [
+                f"{_sanitize_prompt_value(e.get('name') or e['id'])}({_sanitize_prompt_value(e['state'])})"
+                for e in states
+            ]
             if segs:
                 parts.append("Presenze: " + ", ".join(segs))
 
@@ -276,34 +288,35 @@ class SemanticMap:
 
     async def _classify_unknown_batch(self) -> None:
         """Classify all 'unknown'/'pending' entities via LLM router in batches of 20."""
-        if not self._router:
-            return
-        pending = [
-            eid for eid in self._categories.get("unknown", [])
-            if self._entity_meta.get(eid, {}).get("classified_by") == "pending"
-        ]
-        if not pending:
-            return
-        BATCH = 20
-        for i in range(0, len(pending), BATCH):
-            batch_ids = pending[i:i + BATCH]
-            entities = [
-                {"id": eid, **self._entity_meta.get(eid, {})}
-                for eid in batch_ids
+        async with self._lock:
+            if not self._router:
+                return
+            pending = [
+                eid for eid in self._categories.get("unknown", [])
+                if self._entity_meta.get(eid, {}).get("classified_by") == "pending"
             ]
-            try:
-                results = await self._router.classify_entities(entities)
-                for eid, meta in results.items():
-                    if eid not in self._entity_meta:
-                        continue
-                    role = meta.get("role", "other")
-                    label = meta.get("label", eid.split(".")[-1])
-                    confidence = float(meta.get("confidence", 0.8))
-                    self._add_entity(
-                        eid, role, label,
-                        classified_by="claude",
-                        confidence=confidence,
-                    )
-                self.save()
-            except Exception as exc:
-                logger.warning("LLM batch classification failed: %s", exc)
+            if not pending:
+                return
+            BATCH = 20
+            for i in range(0, len(pending), BATCH):
+                batch_ids = pending[i:i + BATCH]
+                entities = [
+                    {"id": eid, **self._entity_meta.get(eid, {})}
+                    for eid in batch_ids
+                ]
+                try:
+                    results = await self._router.classify_entities(entities)
+                    for eid, meta in results.items():
+                        if eid not in self._entity_meta:
+                            continue
+                        role = meta.get("role", "other")
+                        label = meta.get("label", eid.split(".")[-1])
+                        confidence = float(meta.get("confidence", 0.8))
+                        self._add_entity(
+                            eid, role, label,
+                            classified_by="claude",
+                            confidence=confidence,
+                        )
+                    self.save()
+                except Exception as exc:
+                    logger.warning("LLM batch classification failed: %s", exc)

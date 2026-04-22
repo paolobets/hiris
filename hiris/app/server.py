@@ -26,8 +26,11 @@ async def _on_startup(app: web.Application) -> None:
     from .proxy.semantic_map import SemanticMap
     from .llm_router import LLMRouter
 
+    ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
+    if not ha_base_url.startswith("http://supervisor"):
+        logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
     ha_client = HAClient(
-        base_url=os.environ.get("HA_BASE_URL", "http://supervisor/core"),
+        base_url=ha_base_url,
         token=os.environ.get("SUPERVISOR_TOKEN", ""),
     )
     await ha_client.start()
@@ -79,6 +82,13 @@ async def _on_startup(app: web.Application) -> None:
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     primary_model = os.environ.get("PRIMARY_MODEL", "claude-sonnet-4-6")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
+    if local_model_url:
+        try:
+            from .backends.ollama import _validate_ollama_url
+            _validate_ollama_url(local_model_url)
+        except ValueError as exc:
+            logger.error("Invalid LOCAL_MODEL_URL (%s) — disabling local model", exc)
+            local_model_url = ""
     local_model_name = os.environ.get("LOCAL_MODEL_NAME", "")
 
     if api_key:

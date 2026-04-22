@@ -105,15 +105,41 @@ class LLMRouter:
         return _parse_classify_response(raw)
 
 
+_VALID_ROLES = frozenset([
+    "energy_meter", "solar_production", "grid_import", "climate_sensor",
+    "presence", "lighting", "appliance", "door_window", "electrical",
+    "diagnostic", "other", "unknown",
+])
+
+
 def _parse_classify_response(raw: str) -> dict[str, dict]:
+    raw = raw[:100_000]
+    data: dict | None = None
     try:
-        return json.loads(raw)
+        data = json.loads(raw)
     except json.JSONDecodeError:
         # Scan right-to-left for a valid JSON object (avoids greedy regex matching multiple blobs)
         for m in reversed(list(re.finditer(r'\{', raw))):
             try:
-                return json.loads(raw[m.start():])
+                data = json.loads(raw[m.start():])
+                break
             except json.JSONDecodeError:
                 continue
-    logger.warning("classify_entities: could not parse JSON from LLM response: %.200s", raw)
-    return {}
+    if not isinstance(data, dict):
+        logger.warning("classify_entities: could not parse JSON from LLM response: %.200s", raw)
+        return {}
+    result: dict[str, dict] = {}
+    for eid, meta in list(data.items())[:500]:
+        if not isinstance(meta, dict):
+            continue
+        role = str(meta.get("role", "other"))
+        if role not in _VALID_ROLES:
+            role = "other"
+        label = str(meta.get("label", ""))[:128] or eid.split(".")[-1]
+        try:
+            confidence = float(meta.get("confidence", 0.8))
+            confidence = max(0.0, min(1.0, confidence))
+        except (TypeError, ValueError):
+            confidence = 0.8
+        result[eid] = {"role": role, "label": label, "confidence": confidence}
+    return result
