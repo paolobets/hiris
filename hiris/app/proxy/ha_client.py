@@ -17,6 +17,7 @@ class HAClient:
         self._session: Optional[aiohttp.ClientSession] = None
         self._ws_task: Optional[asyncio.Task] = None
         self._state_listeners: list[Callable[[dict], None]] = []
+        self._registry_listeners: list[Callable[[str, dict], None]] = []
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -88,6 +89,10 @@ class HAClient:
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         self._state_listeners.append(callback)
 
+    def add_registry_listener(self, callback: Callable[[str, dict], None]) -> None:
+        """Register callback(entity_id, attributes) for entity_registry_updated events."""
+        self._registry_listeners.append(callback)
+
     async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url}/api/websocket"
@@ -106,12 +111,24 @@ class HAClient:
                         return
 
                 await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
+                await ws.send_json({"id": 2, "type": "subscribe_events", "event_type": "entity_registry_updated"})
 
                 async for msg in ws:
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         data = msg.json()
-                        if data.get("type") == "event" and data.get("event", {}).get("event_type") == "state_changed":
+                        if data.get("type") != "event":
+                            continue
+                        event = data.get("event", {})
+                        event_type = event.get("event_type")
+                        if event_type == "state_changed":
                             for cb in self._state_listeners:
-                                cb(data["event"]["data"])
+                                cb(event["data"])
+                        elif event_type == "entity_registry_updated":
+                            action = event.get("data", {}).get("action")
+                            if action == "create":
+                                eid = event["data"].get("entity_id", "")
+                                attrs = event["data"].get("changes", {})
+                                for cb in self._registry_listeners:
+                                    cb(eid, attrs)
         except Exception as exc:
             logger.warning("HA WebSocket disconnected: %s", exc)
