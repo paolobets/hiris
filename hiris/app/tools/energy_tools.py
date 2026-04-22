@@ -68,5 +68,5 @@ async def get_energy_history(
             "error": "Mappa semantica non disponibile.",
             "hint": "Il sistema sta inizializzando la mappa degli sensori.",
         }
-    raw = await ha.get_history(entity_ids=entity_ids, days=days)
+    raw = await ha.get_history(entity_ids=entity_ids, days=int(days))
     return _compress_energy_history(raw)
