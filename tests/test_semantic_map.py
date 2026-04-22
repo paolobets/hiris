@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import pytest
+from unittest.mock import MagicMock
 from hiris.app.proxy.semantic_map import SemanticMap, classify_by_rules
 
 def test_classify_by_rules_energy_meter():
@@ -84,3 +85,54 @@ def test_semantic_map_get_all_entity_ids(tmp_path):
     ids = m.get_all_entity_ids()
     assert "light.a" in ids
     assert "sensor.b" in ids
+
+
+def _make_cache(entity_ids: list[str]):
+    """Create a minimal mock EntityCache."""
+    cache = MagicMock()
+    minimal = [{"id": eid, "state": "on", "name": eid.split(".")[-1], "unit": ""} for eid in entity_ids]
+    cache.get_all_useful.return_value = minimal
+    return cache
+
+
+def test_build_from_cache_classifies_known(tmp_path):
+    cache = _make_cache([
+        "light.salotto",
+        "sensor.shellyem3_xxx_power",
+        "climate.heatpump",
+    ])
+    m = SemanticMap(data_dir=str(tmp_path))
+    new_ids = m.build_from_cache(cache)
+    assert "light.salotto" in m.get_category("lighting")
+    assert "sensor.shellyem3_xxx_power" in m.get_category("energy_meter")
+    assert "climate.heatpump" in m.get_category("climate_sensor")
+
+
+def test_build_from_cache_returns_unknown_for_ambiguous(tmp_path):
+    cache = _make_cache(["sensor.opaque_34945479_ch1_weird"])
+    m = SemanticMap(data_dir=str(tmp_path))
+    new_ids = m.build_from_cache(cache)
+    assert "sensor.opaque_34945479_ch1_weird" in new_ids  # returned as needs-LLM
+
+
+def test_build_from_cache_skips_existing(tmp_path):
+    cache = _make_cache(["light.salotto", "sensor.new_sensor_power"])
+    m = SemanticMap(data_dir=str(tmp_path))
+    m._add_entity("light.salotto", "lighting", "Luce", classified_by="rules")
+    new_ids = m.build_from_cache(cache)
+    # light.salotto already in map — not returned as new
+    assert "light.salotto" not in new_ids
+    # new sensor is classified by rules (power pattern), not ambiguous
+    assert "sensor.new_sensor_power" not in new_ids
+
+
+def test_on_entity_added_classifies_by_rules(tmp_path):
+    m = SemanticMap(data_dir=str(tmp_path))
+    m.on_entity_added("light.new_light", {"friendly_name": "New Light"})
+    assert "light.new_light" in m.get_category("lighting")
+
+
+def test_on_entity_added_marks_unknown_if_ambiguous(tmp_path):
+    m = SemanticMap(data_dir=str(tmp_path))
+    m.on_entity_added("sensor.opaque_xyz_weird", {})
+    assert "sensor.opaque_xyz_weird" in m.get_category("unknown")

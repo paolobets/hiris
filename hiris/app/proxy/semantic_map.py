@@ -155,3 +155,77 @@ class SemanticMap:
             os.replace(tmp, self._path)
         except Exception as exc:
             logger.error("SemanticMap save failed: %s", exc)
+
+    def build_from_cache(self, entity_cache: Any) -> list[str]:
+        """Classify all entities not yet in the map. Returns list of ambiguous entity IDs needing LLM."""
+        known = self.get_all_entity_ids()
+        all_entities = entity_cache.get_all_useful()
+        ambiguous: list[str] = []
+        for e in all_entities:
+            eid = e["id"]
+            if eid in known:
+                continue
+            role = classify_by_rules(eid)
+            if role:
+                label = e.get("name") or eid.split(".")[-1]
+                unit = e.get("unit") or ""
+                self._add_entity(eid, role, label, unit=unit, classified_by="rules")
+            else:
+                self._add_entity(eid, "unknown", e.get("name") or eid, classified_by="pending")
+                ambiguous.append(eid)
+        if all_entities:
+            self.save()
+        return ambiguous
+
+    def on_entity_added(self, entity_id: str, attributes: dict) -> None:
+        """Called when HA fires entity_registry_updated for a new entity."""
+        if entity_id in self.get_all_entity_ids():
+            return
+        role = classify_by_rules(entity_id)
+        label = attributes.get("friendly_name") or entity_id.split(".")[-1]
+        if role:
+            self._add_entity(entity_id, role, label, classified_by="rules")
+            logger.info("SemanticMap: auto-classified %s → %s", entity_id, role)
+        else:
+            self._add_entity(entity_id, "unknown", label, classified_by="pending")
+            logger.info("SemanticMap: %s queued for LLM classification", entity_id)
+            if self._router:
+                asyncio.create_task(
+                    self._classify_unknown_batch(),
+                    name=f"classify_{entity_id}",
+                )
+        self.save()
+
+    async def _classify_unknown_batch(self) -> None:
+        """Classify all 'unknown'/'pending' entities via LLM router in batches of 20."""
+        if not self._router:
+            return
+        pending = [
+            eid for eid in self._categories.get("unknown", [])
+            if self._entity_meta.get(eid, {}).get("classified_by") == "pending"
+        ]
+        if not pending:
+            return
+        BATCH = 20
+        for i in range(0, len(pending), BATCH):
+            batch_ids = pending[i:i + BATCH]
+            entities = [
+                {"id": eid, **self._entity_meta.get(eid, {})}
+                for eid in batch_ids
+            ]
+            try:
+                results = await self._router.classify_entities(entities)
+                for eid, meta in results.items():
+                    if eid not in self._entity_meta:
+                        continue
+                    role = meta.get("role", "other")
+                    label = meta.get("label", eid.split(".")[-1])
+                    confidence = float(meta.get("confidence", 0.8))
+                    self._add_entity(
+                        eid, role, label,
+                        classified_by="claude",
+                        confidence=confidence,
+                    )
+                self.save()
+            except Exception as exc:
+                logger.warning("LLM batch classification failed: %s", exc)
