@@ -186,6 +186,7 @@ class ClaudeRunner:
         usage_path: str = "",
         entity_cache=None,
         embedding_index=None,
+        semantic_map=None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._ha = ha_client
@@ -193,6 +194,7 @@ class ClaudeRunner:
         self._usage_path = usage_path
         self._cache = entity_cache
         self._index = embedding_index
+        self._semantic_map = semantic_map
         self.last_tool_calls: list[dict] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
