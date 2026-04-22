@@ -115,6 +115,9 @@ class SemanticMap:
     def get_category(self, role: str) -> list[str]:
         return list(self._categories.get(role, []))
 
+    def get_entity_meta(self, entity_id: str) -> dict:
+        return dict(self._entity_meta.get(entity_id) or {})
+
     def get_all_entity_ids(self) -> list[str]:
         return list(self._entity_meta.keys())
 

@@ -135,7 +135,7 @@ def get_home_status(entity_cache, semantic_map=None) -> list[dict]:
     enriched = []
     for e in entities:
         eid = e["id"]
-        meta = semantic_map._entity_meta.get(eid)
+        meta = semantic_map.get_entity_meta(eid)
         if meta and meta.get("label"):
             e = dict(e)
             e["semantic_label"] = meta["label"]

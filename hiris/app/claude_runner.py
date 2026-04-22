@@ -308,7 +308,7 @@ class ClaudeRunner:
             effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
         if require_confirmation:
             effective_system = f"{effective_system}\n\n---\n\n{REQUIRE_CONFIRMATION_PROMPT}"
-        if self._cache is not None:
+        if self._cache is not None and self._semantic_map is None:
             effective_system = f"{effective_system}\n\n---\n\n{get_cached_home_profile(self._cache)}"
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
