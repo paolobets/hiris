@@ -57,6 +57,9 @@ class EntityCache:
             self._by_domain.setdefault(dom, []).append(eid)
         self._states[eid] = minimal
 
+    def get_state(self, entity_id: str) -> dict | None:
+        return self._states.get(entity_id)
+
     def get_minimal(self, entity_ids: list[str]) -> list[dict]:
         return [self._states[eid] for eid in entity_ids if eid in self._states]
 
