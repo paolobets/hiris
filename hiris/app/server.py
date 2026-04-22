@@ -13,7 +13,9 @@ from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
 from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
+from .api.handlers_tasks import handle_list_tasks, handle_get_task, handle_cancel_task
 from .agent_engine import AgentEngine
+from .task_engine import TaskEngine
 from .proxy.ha_client import HAClient
 from .proxy.entity_cache import EntityCache
 from .proxy.embedding_index import EmbeddingIndex
@@ -78,6 +80,17 @@ async def _on_startup(app: web.Application) -> None:
         "retropanel_url": os.environ.get("RETROPANEL_URL", "http://retropanel:8098"),
     }
     app["theme"] = os.environ.get("THEME", "auto")
+
+    tasks_data_path = os.environ.get("TASKS_DATA_PATH", "/data/tasks.json")
+    task_engine = TaskEngine(
+        ha_client=ha_client,
+        entity_cache=entity_cache,
+        notify_config=notify_config,
+        data_path=tasks_data_path,
+    )
+    await task_engine.start()
+    app["task_engine"] = task_engine
+
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     primary_model = os.environ.get("PRIMARY_MODEL", "claude-sonnet-4-6")
@@ -110,6 +123,7 @@ async def _on_startup(app: web.Application) -> None:
         app["claude_runner"] = runner   # backward compat
         app["llm_router"] = router
         engine.set_claude_runner(router)
+        runner.set_task_engine(task_engine)
 
         # Kick off LLM classification for ambiguous entities (background, non-blocking)
         if ambiguous:
@@ -123,6 +137,8 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_cleanup(app: web.Application) -> None:
+    if "task_engine" in app:
+        await app["task_engine"].stop()
     await app["engine"].stop()
     await app["ha_client"].stop()
 
@@ -155,6 +171,9 @@ def create_app() -> web.Application:
     app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
     app.router.add_get("/api/agents/{agent_id}/chat-history", handle_get_chat_history)
     app.router.add_delete("/api/agents/{agent_id}/chat-history", handle_clear_chat_history)
+    app.router.add_get("/api/tasks", handle_list_tasks)
+    app.router.add_get("/api/tasks/{task_id}", handle_get_task)
+    app.router.add_delete("/api/tasks/{task_id}", handle_cancel_task)
 
     return app
 
