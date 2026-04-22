@@ -90,6 +90,7 @@ async def get_weather_forecast(
     longitude: Optional[float] = None,
     _fetch: Callable[[str], Awaitable[dict]] = _default_fetch,
 ) -> dict[str, Any]:
+    hours = int(hours)
     lat = latitude or float(os.environ.get("HA_LATITUDE", "45.4642"))
     lon = longitude or float(os.environ.get("HA_LONGITUDE", "9.1900"))
     url = (
