@@ -138,32 +138,28 @@ def test_persistence_roundtrip(tmp_path, mock_ha, mock_cache):
 # ── Task 2: Condition evaluation + execution ───────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_evaluate_condition_numeric_lt_passes(engine, mock_cache):
+def test_evaluate_condition_numeric_lt_passes(engine, mock_cache):
     mock_cache.get_state = MagicMock(return_value={"state": "15.0"})
     assert engine._evaluate_condition(
         {"entity_id": "sensor.temp", "operator": "<", "value": 19}
     ) is True
 
 
-@pytest.mark.asyncio
-async def test_evaluate_condition_numeric_lt_fails(engine, mock_cache):
+def test_evaluate_condition_numeric_lt_fails(engine, mock_cache):
     mock_cache.get_state = MagicMock(return_value={"state": "22.0"})
     assert engine._evaluate_condition(
         {"entity_id": "sensor.temp", "operator": "<", "value": 19}
     ) is False
 
 
-@pytest.mark.asyncio
-async def test_evaluate_condition_string_eq(engine, mock_cache):
+def test_evaluate_condition_string_eq(engine, mock_cache):
     mock_cache.get_state = MagicMock(return_value={"state": "on"})
     assert engine._evaluate_condition(
         {"entity_id": "binary_sensor.door", "operator": "=", "value": "on"}
     ) is True
 
 
-@pytest.mark.asyncio
-async def test_evaluate_condition_entity_missing(engine, mock_cache):
+def test_evaluate_condition_entity_missing(engine, mock_cache):
     mock_cache.get_state = MagicMock(return_value=None)
     assert engine._evaluate_condition(
         {"entity_id": "sensor.missing", "operator": "<", "value": 10}

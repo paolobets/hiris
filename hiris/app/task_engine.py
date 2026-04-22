@@ -215,13 +215,11 @@ class TaskEngine:
             except Exception:
                 pass
 
-    def _run_task_async(self, task_id: str) -> None:
-        loop = asyncio.get_event_loop()
-        loop.create_task(self._execute_task(task_id))
+    async def _run_task_async(self, task_id: str) -> None:
+        await self._execute_task(task_id)
 
-    def _poll_time_window(self, task_id: str) -> None:
-        loop = asyncio.get_event_loop()
-        loop.create_task(self._check_time_window(task_id))
+    async def _poll_time_window(self, task_id: str) -> None:
+        await self._check_time_window(task_id)
 
     # ── Condition evaluation ────────────────────────────────────────────────
 
@@ -248,6 +246,10 @@ class TaskEngine:
                 return actual_num > threshold_num
             if operator == ">=":
                 return actual_num >= threshold_num
+            if operator in ("=", "=="):
+                return actual_num == threshold_num
+            if operator == "!=":
+                return actual_num != threshold_num
         except (ValueError, TypeError):
             pass
         if operator in ("=", "=="):
