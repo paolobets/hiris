@@ -1,6 +1,15 @@
 # hiris/app/api/handlers_agents.py
+import re
 from dataclasses import asdict
 from aiohttp import web
+
+_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+def _check_agent_id(agent_id: str) -> web.Response | None:
+    if not _AGENT_ID_RE.match(agent_id):
+        return web.json_response({"error": "invalid agent_id"}, status=400)
+    return None
 
 
 async def handle_list_agents(request: web.Request) -> web.Response:
@@ -25,21 +34,27 @@ async def handle_create_agent(request: web.Request) -> web.Response:
 
 
 async def handle_get_agent(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
+    if err := _check_agent_id(agent_id):
+        return err
     engine = request.app["engine"]
-    agent = engine.get_agent(request.match_info["agent_id"])
+    agent = engine.get_agent(agent_id)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
     return web.json_response(asdict(agent))
 
 
 async def handle_update_agent(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
+    if err := _check_agent_id(agent_id):
+        return err
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
 
     engine = request.app["engine"]
-    agent = engine.update_agent(request.match_info["agent_id"], body)
+    agent = engine.update_agent(agent_id, body)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
     return web.json_response(asdict(agent))
@@ -47,6 +62,8 @@ async def handle_update_agent(request: web.Request) -> web.Response:
 
 async def handle_delete_agent(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
+    if err := _check_agent_id(agent_id):
+        return err
     engine = request.app["engine"]
     agent = engine.get_agent(agent_id)
     if agent is not None and agent.is_default:
@@ -58,8 +75,11 @@ async def handle_delete_agent(request: web.Request) -> web.Response:
 
 
 async def handle_run_agent(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
+    if err := _check_agent_id(agent_id):
+        return err
     engine = request.app["engine"]
-    agent = engine.get_agent(request.match_info["agent_id"])
+    agent = engine.get_agent(agent_id)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
     result = await engine.run_agent(agent)
@@ -95,6 +115,8 @@ _EUR_RATE = 0.92
 
 async def handle_get_agent_usage(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
+    if err := _check_agent_id(agent_id):
+        return err
     engine = request.app["engine"]
     if not engine.get_agent(agent_id):
         return web.json_response({"error": "Not found"}, status=404)
@@ -117,6 +139,8 @@ async def handle_get_agent_usage(request: web.Request) -> web.Response:
 
 async def handle_reset_agent_usage(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
+    if err := _check_agent_id(agent_id):
+        return err
     engine = request.app["engine"]
     if not engine.get_agent(agent_id):
         return web.json_response({"error": "Not found"}, status=404)

@@ -1,8 +1,11 @@
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 import aiohttp
+
+_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +50,9 @@ class HAClient:
         return [item for sublist in nested for item in sublist]
 
     async def call_service(self, domain: str, service: str, data: dict) -> bool:
+        if not _IDENTIFIER_RE.match(domain) or not _IDENTIFIER_RE.match(service):
+            logger.error("Rejected invalid domain/service: %r.%r", domain, service)
+            return False
         url = f"{self._base_url}/api/services/{domain}/{service}"
         async with self._session.post(url, json=data) as resp:
             if resp.status != 200:

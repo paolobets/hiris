@@ -205,7 +205,7 @@ class AgentEngine:
             allowed_entities=data.get("allowed_entities", []),
             allowed_services=data.get("allowed_services", []),
             model=data.get("model", "auto"),
-            max_tokens=int(data.get("max_tokens", 4096)),
+            max_tokens=min(int(data.get("max_tokens", 4096)), 8192),
             restrict_to_home=bool(data.get("restrict_to_home", False)),
             require_confirmation=bool(data.get("require_confirmation", False)),
             actions=data.get("actions", []),
@@ -236,6 +236,7 @@ class AgentEngine:
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
         _FLOAT_FIELDS = {"budget_eur_limit"}
         _INT_FIELDS = {"max_chat_turns"}
+        _MAX_TOKENS_CAP = 8192
         for key in self.UPDATABLE_FIELDS:
             if key in data:
                 if key in _BOOL_FIELDS:
@@ -244,6 +245,8 @@ class AgentEngine:
                     setattr(agent, key, float(data[key]))
                 elif key in _INT_FIELDS:
                     setattr(agent, key, int(data[key]))
+                elif key == "max_tokens":
+                    setattr(agent, key, min(int(data[key]), _MAX_TOKENS_CAP))
                 else:
                     setattr(agent, key, data[key])
         if agent.enabled:
@@ -307,6 +310,8 @@ class AgentEngine:
                     args=[agent],
                     id=agent.id,
                     replace_existing=True,
+                    coalesce=True,
+                    misfire_grace_time=60,
                 )
             except Exception as exc:
                 logger.error("Failed to schedule agent %s: %s", agent.id, exc)

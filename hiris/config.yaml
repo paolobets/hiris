@@ -12,10 +12,6 @@ arch:
   - amd64
 ingress: true
 ingress_port: 8099
-ports:
-  8099/tcp: 8099
-ports_description:
-  8099/tcp: "HIRIS HTTP API (direct access for testing)"
 panel_icon: mdi:robot
 panel_title: HIRIS
 startup: services

@@ -335,7 +335,7 @@ class ClaudeRunner:
                 )
             except anthropic.APIError as exc:
                 logger.error("Claude API error: %s", exc)
-                return f"Claude API error: {exc}"
+                return "Errore temporaneo del servizio AI. Riprova tra poco."
 
             inp = response.usage.input_tokens
             out = response.usage.output_tokens
@@ -456,7 +456,9 @@ class ClaudeRunner:
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
     ) -> Any:
-        logger.info("Tool call: %s(%s)", name, inputs)
+        _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization"})
+        _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
+        logger.info("Tool call: %s(%s)", name, _log_inputs)
         try:
             if name == "get_area_entities":
                 return await get_area_entities(self._ha, entity_cache=self._cache)

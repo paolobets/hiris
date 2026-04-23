@@ -148,8 +148,17 @@ async def _on_cleanup(app: web.Application) -> None:
     await app["ha_client"].stop()
 
 
+@web.middleware
+async def _security_headers(request: web.Request, handler) -> web.Response:
+    response = await handler(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
+
+
 def create_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[_security_headers])
 
     app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)

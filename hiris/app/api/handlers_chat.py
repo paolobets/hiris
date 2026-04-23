@@ -16,6 +16,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     message = body.get("message", "").strip()
     if not message:
         return web.json_response({"error": "message required"}, status=400)
+    if len(message) > 4000:
+        return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -104,6 +106,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         restrict_to_home=agent_restrict,
         require_confirmation=agent_require_confirmation,
         agent_id=effective_agent_id,
+        visible_entity_ids=visible_ids,
     )
 
     # Persist the new user+assistant exchange
