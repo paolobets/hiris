@@ -18,7 +18,8 @@ from .agent_engine import AgentEngine
 from .task_engine import TaskEngine
 from .proxy.ha_client import HAClient
 from .proxy.entity_cache import EntityCache
-from .proxy.embedding_index import EmbeddingIndex
+from .proxy.knowledge_db import KnowledgeDB
+from .proxy.semantic_context_map import SemanticContextMap
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +67,15 @@ async def _on_startup(app: web.Application) -> None:
     await engine.start()
     app["engine"] = engine
 
-    embedding_index = EmbeddingIndex()
-    asyncio.create_task(
-        embedding_index.build(entity_cache.get_all_useful()),
-        name="embedding_index_build",
+    knowledge_db = KnowledgeDB(
+        db_path=os.path.join(data_dir, "hiris_knowledge.db")
     )
-    app["embedding_index"] = embedding_index
+    app["knowledge_db"] = knowledge_db
+
+    context_map = SemanticContextMap()
+    context_map.build(entity_cache, knowledge_db=knowledge_db)
+    app["context_map"] = context_map
+    logger.info("SemanticContextMap ready")
 
     notify_config = {
         "ha_notify_service": os.environ.get("HA_NOTIFY_SERVICE", "notify.notify"),
@@ -111,7 +115,6 @@ async def _on_startup(app: web.Application) -> None:
             notify_config=notify_config,
             usage_path=usage_path,
             entity_cache=entity_cache,
-            embedding_index=embedding_index,
             semantic_map=semantic_map,
         )
         router = LLMRouter(
@@ -137,6 +140,8 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_cleanup(app: web.Application) -> None:
+    if "knowledge_db" in app:
+        app["knowledge_db"].close()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()
