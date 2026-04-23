@@ -362,6 +362,7 @@ async def test_chat_context_map_injects_area_context(client):
     call_kwargs = runner.chat.call_args.kwargs
     assert "BAGNO" in call_kwargs["system_prompt"]
     assert "Termostato" in call_kwargs["system_prompt"]
+    assert call_kwargs["visible_entity_ids"] == frozenset(["climate.bagno"])
 
 
 @pytest.mark.asyncio
