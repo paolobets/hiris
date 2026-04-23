@@ -51,6 +51,7 @@ _DOMAIN_FALLBACK: dict[str, tuple[str, str]] = {
     "binary_sensor": ("binary", "Sensore"),
 }
 
+# Superset of entity_cache.NOISE_DOMAINS — keep in sync when adding noise domains.
 _EXCLUDED_DOMAINS = frozenset({
     "update", "button", "tag", "event", "ai_task", "todo", "conversation",
     "device_tracker", "persistent_notification", "scene", "script",
@@ -82,6 +83,13 @@ CONCEPT_TO_TYPES: dict[str, list[str]] = {
     "robot": ["vacuum"], "aspirapolvere": ["vacuum"],
     "lavatrice": ["switch"], "lavastoviglie": ["switch"],
     "interruttore": ["switch"],
+    "ventilatore": ["fan"], "co2": ["co2"], "anidride": ["co2"],
+    "batteria": ["battery"], "luminosità": ["illuminance"], "lux": ["illuminance"],
+    "pm25": ["pm25"], "polveri": ["pm25"],
+    "pressione": ["pressure"], "tensione": ["voltage"], "corrente": ["current"],
+    "gas": ["gas"], "acqua": ["water"], "perdita": ["moisture"],
+    "fumo": ["smoke"], "vibrazione": ["vibration"], "connessione": ["connectivity"],
+    "scaldabagno": ["water_heater"], "boiler": ["water_heater"],
 }
 
 # area_name (or None for unassigned) → entity_type → [entity_ids]
@@ -121,7 +129,7 @@ class SemanticContextMap:
                 eid_to_area[eid] = resolved
 
         new_map: _MapType = {}
-        for eid, entity_data in entity_cache._states.items():
+        for eid, entity_data in entity_cache.get_all_states().items():
             domain = entity_data.get("domain", eid.split(".")[0])
             if domain in _EXCLUDED_DOMAINS:
                 continue
@@ -182,7 +190,7 @@ class SemanticContextMap:
             vol = attrs.get("volume_level")
             vol_str = f" vol:{round(vol * 100)}%" if vol is not None else ""
             return f"{state} · {title}{vol_str}" if title else f"{state}{vol_str}"
-        if entity_type in ("motion", "occupancy", "presence"):
+        if entity_type in ("motion", "presence"):
             return "rilevato" if state == "on" else "assente"
         if entity_type == "door":
             return "aperta" if state == "on" else "chiusa"
@@ -207,14 +215,13 @@ class SemanticContextMap:
                 result[area] = filtered
         return result
 
-    def _format_overview(self, filtered: _MapType) -> str:
-        now = datetime.now().strftime("%H:%M")
+    def _format_overview(self, filtered: _MapType, now: str) -> str:
         named = {k: v for k, v in filtered.items() if k is not None}
         unassigned = filtered.get(None, {})
         lines = [f"CASA — {len(named)} aree [agg. {now}]"]
         for area in sorted(named):
             parts = []
-            for et, eids in named[area].items():
+            for et, eids in sorted(named[area].items()):
                 label = self._get_label(et)
                 parts.append(f"{label}×{len(eids)}" if len(eids) > 1 else label)
             lines.append(f"  {area}: {' · '.join(parts)}")
@@ -230,8 +237,8 @@ class SemanticContextMap:
         areas: list[str | None],
         types: set[str] | None,
         knowledge_db: Optional[KnowledgeDB] = None,
+        now: str = "",
     ) -> str:
-        now = datetime.now().strftime("%H:%M")
         sections = []
         for area in areas:
             area_types = filtered.get(area, {})
@@ -248,6 +255,7 @@ class SemanticContextMap:
                 for eid in eids:
                     ed = entity_cache.get_state(eid)
                     if ed is None:
+                        logger.debug("get_state returned None for %s (cache/map desync?)", eid)
                         continue
                     state_str = self._format_state(et, ed)
                     name = ed.get("name") or eid
@@ -275,17 +283,18 @@ class SemanticContextMap:
             for eids in types.values()
             for eid in eids
         )
+        now = datetime.now().strftime("%H:%M")
         q = query.lower()
         area_matches = [a for a in filtered if a is not None and a.lower() in q]
         type_matches: set[str] = set()
         for concept, ctypes in CONCEPT_TO_TYPES.items():
             if concept in q:
                 type_matches.update(ctypes)
-        overview = self._format_overview(filtered)
+        overview = self._format_overview(filtered, now)
         if area_matches or type_matches:
             expand = area_matches if area_matches else [a for a in filtered if a is not None]
             detail = self._format_detail(
-                filtered, entity_cache, expand, type_matches or None, knowledge_db
+                filtered, entity_cache, expand, type_matches or None, knowledge_db, now
             )
             context = f"{overview}\n\n{detail}" if detail else overview
         else:

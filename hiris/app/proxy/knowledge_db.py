@@ -135,3 +135,9 @@ class KnowledgeDB:
 
     def close(self) -> None:
         self._conn.close()
+
+    def __enter__(self) -> "KnowledgeDB":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()

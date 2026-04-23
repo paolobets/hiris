@@ -8,14 +8,14 @@ def _domain(entity_id: str) -> str:
     return entity_id.split(".")[0]
 
 
-_DOMAIN_ATTRS: dict[str, list[str]] = {
-    "climate": ["hvac_mode", "hvac_action", "current_temperature", "temperature", "preset_mode"],
-    "light": ["brightness", "color_temp"],
-    "cover": ["current_position"],
-    "media_player": ["media_title", "media_artist", "source", "volume_level"],
-    "vacuum": ["battery_level"],
-    "fan": ["percentage", "preset_mode"],
-    "water_heater": ["current_temperature", "temperature", "operation_mode"],
+_DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
+    "climate": ("hvac_mode", "hvac_action", "current_temperature", "temperature", "preset_mode"),
+    "light": ("brightness", "color_temp"),
+    "cover": ("current_position",),
+    "media_player": ("media_title", "media_artist", "source", "volume_level"),
+    "vacuum": ("battery_level",),
+    "fan": ("percentage", "preset_mode"),
+    "water_heater": ("current_temperature", "temperature", "operation_mode"),
 }
 
 
@@ -91,6 +91,9 @@ class EntityCache:
 
     def get_all(self) -> list[dict]:
         return list(self._states.values())
+
+    def get_all_states(self) -> dict[str, dict]:
+        return dict(self._states)
 
     async def load_area_registry(self, ha_client) -> None:
         """Load area→entity mapping from HA registries. Cached until next call."""
