@@ -8,7 +8,8 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # Copy application source and entrypoint
 COPY app/ /usr/lib/hiris/app/
 COPY run.sh /usr/lib/hiris/run.sh
-RUN chmod +x /usr/lib/hiris/run.sh
+RUN chmod +x /usr/lib/hiris/run.sh && \
+    find /usr/lib/hiris -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Internal port — accessed only via HA Supervisor Ingress
 EXPOSE 8099
