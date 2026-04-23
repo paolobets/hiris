@@ -208,10 +208,17 @@ class AgentEngine:
             self._save()
         else:
             agent = self._agents[DEFAULT_AGENT_ID]
+            changed = False
             if agent.system_prompt in self._LEGACY_DEFAULT_PROMPTS:
                 agent.system_prompt = self._DEFAULT_SYSTEM_PROMPT
+                changed = True
+            # Default agent must always have all tools unrestricted
+            if agent.allowed_tools:
+                agent.allowed_tools = []
+                changed = True
+            if changed:
                 self._save()
-                logger.info("Migrated default agent system prompt to v0.3.5")
+                logger.info("Migrated default agent to v0.3.6")
 
     def get_default_agent(self) -> Optional[Agent]:
         return self._agents.get(DEFAULT_AGENT_ID)
