@@ -3,7 +3,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -49,14 +48,6 @@ _DOMAIN_RULES: dict[str, str] = {
     "climate":  "climate_sensor",
     "update":   "diagnostic",
 }
-
-_CTRL_RE = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
-
-
-def _sanitize_prompt_value(value: str, max_len: int = 64) -> str:
-    """Strip control characters and truncate to prevent prompt injection."""
-    return _CTRL_RE.sub('', str(value))[:max_len]
-
 
 def classify_by_rules(entity_id: str) -> Optional[str]:
     """Return a role string if the entity_id matches a known pattern, else None.
