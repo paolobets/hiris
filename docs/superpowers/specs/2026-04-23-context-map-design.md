@@ -1,10 +1,10 @@
-# ContextMap Design
+# SemanticContextMap Design
 
-> **Versione:** 1.0 · **Data:** 2026-04-23
+> **Versione:** 2.0 · **Data:** 2026-04-23
 
 ## Goal
 
-Sostituire il sistema RAG keyword-based (`EmbeddingIndex`) e lo snippet generico di `SemanticMap` con una **ContextMap strutturata per area**, costruita a partire dalla classificazione nativa di Home Assistant (`device_class` + domain). Ad ogni richiesta, un `ContextSelector` inietta nel prompt solo le sezioni rilevanti, riducendo il rumore e migliorando la precisione delle risposte di Claude.
+Sostituire il sistema RAG keyword-based (`EmbeddingIndex`) e lo snippet generico di `SemanticMap` con una **SemanticContextMap** — knowledge base persistente della casa, organizzata per area, classificata tramite la tassonomia nativa di Home Assistant (`device_class` + domain), arricchita nel tempo dagli agenti, e interrogata semanticamente ad ogni richiesta per iniettare nel prompt solo il contesto pertinente.
 
 ---
 
@@ -12,20 +12,83 @@ Sostituire il sistema RAG keyword-based (`EmbeddingIndex`) e lo snippet generico
 
 | Problema attuale | Soluzione |
 |---|---|
-| RAG keyword brittle: "termostato" non matcha `climate.bagno` | Classificazione per domain+device_class, non per nome |
+| RAG keyword brittle: "termostato" non matcha `climate.bagno` | Classificazione per domain+device_class + ricerca semantica |
 | Claude dice "nessun termostato in bagno" quando esiste | Overview per area lista esplicitamente i tipi presenti |
 | Sensori non pertinenti iniettati nel prompt | Retrieval mirato per area e tipo entity |
-| `allowed_entities` non applicato uniformemente nei tool | ContextMap filtrata per agente = confine unico di visibilità |
+| `allowed_entities` non applicato uniformemente | SemanticContextMap filtrata = confine unico di visibilità |
+| Classificazioni LLM rifatte ad ogni restart | Persistenza SQLite — lavoro non ripetuto |
+| Agenti non accumulano conoscenza | Annotation + correlation layer in SQLite |
 
 ---
 
-## Classificazione entity: ENTITY_TYPE_SCHEMA
+## Architettura a tre layer
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 3 — Semantic Search (opzionale)                  │
+│  ChromaDB embedded                                      │
+│  Attivo solo se EmbeddingBackend configurato            │
+│  Similarity search: "fa freddo" → climate.bagno        │
+└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 2 — Knowledge Base persistente (sempre attivo)   │
+│  SQLite: hiris_knowledge.db                             │
+│  entity_classifications · entity_annotations           │
+│  entity_correlations · query_patterns                  │
+└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 1 — Stati live (sempre attivo)                   │
+│  EntityCache in-memory                                  │
+│  Aggiornato in real-time via WebSocket HA               │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## EmbeddingBackend — astrazione pluggabile
+
+Stesso pattern del `LLMBackend` esistente. ChromaDB usa il backend configurato per generare embedding — stessa collection, API invariata, backend intercambiabile.
+
+```python
+class EmbeddingBackend(ABC):
+    @abstractmethod
+    async def embed(self, texts: list[str]) -> list[list[float]]: ...
+    @property
+    def available(self) -> bool: ...
+
+class NoEmbeddingBackend(EmbeddingBackend):
+    """Default — nessun embedding, keyword ContextSelector only."""
+    available = False
+
+class VoyageEmbeddingBackend(EmbeddingBackend):
+    """Anthropic Voyage API — stesso account Claude, modello voyage-3-lite."""
+    available = True  # se CLAUDE_API_KEY configurata
+
+class OllamaEmbeddingBackend(EmbeddingBackend):
+    """Ollama locale — modello nomic-embed-text o configurabile."""
+    available = True  # se LOCAL_MODEL_URL configurata
+```
+
+### Scenari utente
+
+| Configurazione | LLM | Embedding | Modalità ricerca |
+|---|---|---|---|
+| Solo Claude API | Claude | Voyage API | Semantic (ChromaDB + Voyage) |
+| Solo Ollama | Ollama LLM | Ollama embed | Semantic (ChromaDB + Ollama) |
+| Claude + Ollama | Claude | Ollama embed | Semantic (ChromaDB + Ollama) |
+| Nessuno | — | — | Keyword (ContextSelector) |
+
+Voyage è disponibile automaticamente a chi ha già `CLAUDE_API_KEY` — nessuna configurazione extra richiesta. Ollama usa l'endpoint `/api/embeddings` separato dal chat, con modello configurabile (`nomic-embed-text` default).
+
+---
+
+## ENTITY_TYPE_SCHEMA
 
 Fonte di verità per classificare ogni entity in base a `domain` + `device_class` (attributo nativo HA). Per ogni tipo: label italiano e attributi da estrarre.
 
-### Domini con classificazione diretta (device_class non necessario)
+### Domini con classificazione diretta
 
-| Domain | Tipo interno | Label IT | Attributi da estrarre |
+| Domain | Tipo | Label IT | Attributi estratti |
 |---|---|---|---|
 | `climate` | `climate` | Termostato | `hvac_mode`, `hvac_action`, `current_temperature`, `temperature`, `preset_mode` |
 | `light` | `light` | Luce | `state`, `brightness` (→ %), `color_temp` |
@@ -39,9 +102,9 @@ Fonte di verità per classificare ogni entity in base a `domain` + `device_class
 | `switch` | `switch` | Interruttore | `state` |
 | `input_boolean` | `switch` | Interruttore | `state` |
 
-### `sensor` — classificato per device_class
+### `sensor` — per device_class
 
-| device_class | Tipo interno | Label IT | Attributi |
+| device_class | Tipo | Label IT | Attributi |
 |---|---|---|---|
 | `temperature` | `temperature` | Temperatura | `state`, `unit_of_measurement` |
 | `humidity` | `humidity` | Umidità | `state`, `unit_of_measurement` |
@@ -58,9 +121,9 @@ Fonte di verità per classificare ogni entity in base a `domain` + `device_class
 | `water` | `water` | Acqua | `state`, `unit_of_measurement` |
 | *(nessuno)* | `sensor` | Sensore | `state`, `unit_of_measurement` |
 
-### `binary_sensor` — classificato per device_class
+### `binary_sensor` — per device_class
 
-| device_class | Tipo interno | Label IT | Stato significato |
+| device_class | Tipo | Label IT | Stato |
 |---|---|---|---|
 | `motion` / `occupancy` | `motion` | Presenza | on=rilevato · off=assente |
 | `door` | `door` | Porta | on=aperta · off=chiusa |
@@ -70,166 +133,191 @@ Fonte di verità per classificare ogni entity in base a `domain` + `device_class
 | `moisture` | `moisture` | Perdita | on=bagnato · off=asciutto |
 | `vibration` | `vibration` | Vibrazione | on=rilevata · off=ok |
 | `connectivity` | `connectivity` | Connessione | on=ok · off=persa |
-| `cold` / `heat` | `temperature_alert` | Allerta temp. | on=allerta · off=ok |
 | *(nessuno)* | `binary` | Sensore | on/off |
 
 ### Priorità di classificazione
 
-1. `domain` + `device_class` → ENTITY_TYPE_SCHEMA (fonte primaria)
+1. `domain` + `device_class` → ENTITY_TYPE_SCHEMA (fonte primaria, nessun costo)
 2. `domain` solo → fallback per domini diretti (climate, light, cover…)
-3. SemanticMap LLM → fallback per entity senza device_class né domain riconosciuto
-4. `sensor` generico → tipo `sensor`, incluso senza espansione attributi
+3. LLM (Claude o Ollama) → fallback per entity senza device_class riconosciuto
+4. Classificazione salvata in SQLite → non viene ripetuta ai restart successivi
 
 ---
 
-## EntityCache — estensione
+## Layer 2 — SQLite: `hiris_knowledge.db`
 
-L'`EntityCache` attuale memorizza dati minimali. Viene esteso per includere `device_class` e `domain`, e per estrarre gli attributi tipizzati di tutti i domini (non solo `climate` come ora).
+Sempre attivo, indipendente dagli embedding.
+
+```sql
+-- Classificazioni persistenti (evita ricalcolo ad ogni restart)
+CREATE TABLE entity_classifications (
+    entity_id        TEXT PRIMARY KEY,
+    area             TEXT,              -- NULL se non assegnata
+    entity_type      TEXT,              -- 'climate', 'temperature', 'light'…
+    label_it         TEXT,              -- 'Termostato', 'Luce'…
+    friendly_name    TEXT,
+    domain           TEXT,
+    device_class     TEXT,
+    classified_by    TEXT,              -- 'schema', 'llm', 'user'
+    confidence       REAL DEFAULT 1.0,
+    created_at       TEXT,
+    updated_at       TEXT
+);
+
+-- Annotazioni apprese dagli agenti o dall'utente
+CREATE TABLE entity_annotations (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_id    TEXT,
+    source       TEXT,    -- 'user', agent_id, 'system'
+    annotation   TEXT,    -- testo libero: "scalda lentamente", "sensore inaffidabile"
+    created_at   TEXT
+);
+
+-- Correlazioni osservate tra entity
+CREATE TABLE entity_correlations (
+    entity_a         TEXT,
+    entity_b         TEXT,
+    correlation_type TEXT,   -- 'triggers', 'co-occurs', 'inverse'
+    confidence       REAL,
+    observed_count   INTEGER DEFAULT 1,
+    last_observed    TEXT,
+    PRIMARY KEY (entity_a, entity_b, correlation_type)
+);
+
+-- Pattern d'uso: quali entity vengono chieste insieme
+CREATE TABLE query_patterns (
+    entity_id    TEXT,
+    concept_type TEXT,   -- 'climate', 'energy'…
+    hit_count    INTEGER DEFAULT 1,
+    last_hit     TEXT,
+    PRIMARY KEY (entity_id, concept_type)
+);
+```
+
+### Ciclo di apprendimento
+
+1. **Startup** — carica `entity_classifications` da SQLite, evita ricalcolo
+2. **Nuova entity** — classifica via schema → LLM se necessario → salva in SQLite
+3. **Ogni richiesta** — incrementa `query_patterns.hit_count` per le entity iniettate
+4. **Agente nota qualcosa** — inserisce riga in `entity_annotations`
+   (`"climate.bagno scalda da 3h senza raggiungere setpoint"`)
+5. **Correlazione rilevata** — quando entity A cambia e B segue sistematicamente → `entity_correlations`
+6. **Correzione utente** — aggiorna `entity_classifications` con `classified_by='user'`
+
+---
+
+## Layer 3 — ChromaDB (opzionale)
+
+Attivato automaticamente quando `EmbeddingBackend.available == True`.
+
+### Documento per entity
 
 ```python
-# Formato esteso (aggiunto a minimal):
-{
-  "id": "climate.bagno",
-  "state": "heat",
-  "name": "Termostato Bagno",
-  "unit": "",
-  "domain": "climate",
-  "device_class": None,
-  "attributes": {
-    "hvac_mode": "heat",
-    "hvac_action": "heating",
-    "current_temperature": 21.5,
-    "temperature": 22.0,
-    "preset_mode": "home"
-  }
-}
+collection.upsert(
+    ids=["climate.bagno"],
+    documents=[
+        "Termostato Bagno — dispositivo riscaldamento area bagno. "
+        "Modalità: heat. Temperatura attuale 21.5°C, setpoint 22°C. "
+        "Annotazioni: scalda lentamente in inverno."
+    ],
+    metadatas=[{
+        "area": "Bagno",
+        "entity_type": "climate",
+        "label_it": "Termostato",
+        "domain": "climate",
+        "device_class": None,
+        "classified_by": "schema",
+    }]
+)
 ```
 
-Gli attributi estratti per ogni entity dipendono da `ENTITY_TYPE_SCHEMA[entity_type]`. Solo gli attributi definiti nello schema vengono salvati — nessun attributo superfluo.
+Il testo del documento include annotazioni da SQLite — la ricerca semantica beneficia dell'arricchimento accumulato.
+
+### Query semantica
+
+```python
+results = collection.query(
+    query_texts=[user_message],
+    n_results=15,
+    where={"area": {"$in": agent_allowed_areas}},  # filtro permessi
+)
+# → entity_ids più semanticamente rilevanti
+# → stati live letti da EntityCache
+```
+
+### Sincronizzazione ChromaDB ↔ SQLite
+
+- Nuova entity → upsert in entrambi
+- Annotazione aggiunta in SQLite → rigenera documento ChromaDB per quell'entity
+- Classificazione corretta da utente → aggiorna metadata ChromaDB
 
 ---
 
-## ContextMap
+## ContextSelector — modalità keyword (fallback)
 
-### Struttura dati
-
-```
-ContextMap._map: dict[str | None, dict[str, list[str]]]
-
-{
-  "Bagno": {
-    "climate": ["climate.bagno"],
-    "temperature": ["sensor.temperatura_bagno"],
-    "humidity": ["sensor.umidita_bagno"],
-    "light": ["light.bagno"]
-  },
-  "Soggiorno": {
-    "light": ["light.soggiorno_1", "light.soggiorno_2"],
-    "temperature": ["sensor.temp_soggiorno"],
-    "motion": ["binary_sensor.pir_soggiorno"],
-    "media_player": ["media_player.tv_soggiorno"]
-  },
-  None: {
-    "power": ["sensor.consumo_totale"],
-    "energy": ["sensor.energia_totale"]
-  }
-}
-```
-
-Le chiavi sono `area_name` (stringa) o `None` (non assegnate). I valori sono dizionari `entity_type → [entity_ids]`.
-
-### Costruzione all'avvio
-
-1. `EntityCache.load()` — carica tutti gli stati HA
-2. `EntityCache.load_area_registry()` — carica area registry e entity registry
-3. `ContextMap.build(entity_cache)` — per ogni entity_id:
-   - Ricava `domain` dall'entity_id (parte prima del punto)
-   - Legge `device_class` dagli attributi
-   - Classifica con ENTITY_TYPE_SCHEMA
-   - Inserisce nella mappa sotto l'area corretta (o `None`)
-4. `ContextMap` pronto — struttura immutabile fino al prossimo `state_changed` che aggiunga/rimuova entity
-
-### Aggiornamento
-
-- **Stato entity cambiato** (`state_changed`): nessuna modifica alla mappa strutturale — la mappa contiene solo entity_ids; gli stati live vengono sempre letti da `EntityCache` al momento della richiesta
-- **Nuova entity aggiunta** (`entity_registry_updated`): `ContextMap.add_entity(entity_id, attributes)` la classifica e inserisce nella mappa
-- **Entity rimossa**: `ContextMap.remove_entity(entity_id)`
-
----
-
-## ContextSelector
-
-### Dizionario concetti → tipi (italiano)
+Usato quando ChromaDB non è disponibile. Dizionario fisso concetti → tipi:
 
 ```python
 CONCEPT_TO_TYPES = {
-    # climate
     "termostato": ["climate"], "riscaldamento": ["climate"],
-    "raffreddamento": ["climate"], "clima": ["climate"],
     "caldo": ["climate", "temperature"], "freddo": ["climate", "temperature"],
-    "gradi": ["climate", "temperature"], "temperatura": ["climate", "temperature"],
-
-    # light
     "luce": ["light"], "luci": ["light"], "illuminazione": ["light"],
-    "lampada": ["light"], "accesa": ["light"], "spenta": ["light"],
-
-    # energy
-    "consumo": ["power", "energy"], "energia": ["energy"],
-    "watt": ["power"], "kwh": ["energy"], "corrente": ["power"],
-    "bolletta": ["energy"], "elettricità": ["power", "energy"],
-
-    # presence/motion
-    "movimento": ["motion", "occupancy"], "presenza": ["motion", "presence"],
-    "qualcuno": ["motion", "occupancy"], "persona": ["motion"],
-
-    # door/window
-    "porta": ["door"], "finestra": ["window"], "ingresso": ["door"],
-    "aperta": ["door", "window", "cover"], "chiusa": ["door", "window", "cover"],
-
-    # cover
+    "consumo": ["power", "energy"], "energia": ["energy"], "watt": ["power"],
+    "movimento": ["motion"], "presenza": ["motion", "presence"],
+    "porta": ["door"], "finestra": ["window"],
     "tapparella": ["cover"], "veneziana": ["cover"],
-    "tenda": ["cover"], "avvolgibile": ["cover"],
-
-    # media
-    "tv": ["media_player"], "televisione": ["media_player"],
-    "musica": ["media_player"], "volume": ["media_player"],
-
-    # lock
-    "serratura": ["lock"], "chiave": ["lock"],
-
-    # humidity
-    "umidità": ["humidity"],
-
-    # switch/appliance
-    "lavatrice": ["switch"], "lavastoviglie": ["switch"],
-    "presa": ["switch"], "interruttore": ["switch"],
-
-    # alarm
-    "allarme": ["alarm"], "sicurezza": ["alarm"],
-
-    # vacuum
+    "tv": ["media_player"], "musica": ["media_player"], "volume": ["media_player"],
+    "umidità": ["humidity"], "temperatura": ["climate", "temperature"],
+    "serratura": ["lock"], "allarme": ["alarm"],
     "robot": ["vacuum"], "aspirapolvere": ["vacuum"],
+    "lavatrice": ["switch"], "lavastoviglie": ["switch"],
 }
 ```
 
-### Logica di selezione
+Logica: area match + concept match → sezione espansa. Nessun match → solo overview.
 
+---
+
+## Permission model
+
+### Visibilità (`allowed_entities`)
+
+```python
+SemanticContextMap.get_context(
+    query: str,
+    entity_cache: EntityCache,
+    allowed_entities: list[str] | None = None,
+) -> tuple[str, frozenset[str]]
+# Returns: (prompt_context, visible_entity_ids)
 ```
-query = messaggio utente (lowercase)
 
-1. area_matches = [area for area in map.areas if area.lower() in query]
-2. type_matches = flatten([CONCEPT_TO_TYPES[c] for c in CONCEPT_TO_TYPES if c in query])
+Filtraggio applicato prima del retrieval (sia ChromaDB `where` clause, sia keyword filter). `visible_entity_ids` = entity accessibili dall'agente in questa chiamata.
 
-Selezione:
-  - area_matches E type_matches → espandi solo quei tipi in quelle aree
-  - solo area_matches           → espandi tutta l'area
-  - solo type_matches           → espandi quel tipo in tutte le aree
-  - nessun match                → solo overview compatto
+### Controllo (`allowed_services`)
+
+Invariato — verificato in `_dispatch_tool` per `call_ha_service` e `create_task`.
+
+### Validazione tool call
+
+```python
+# In claude_runner._dispatch_tool:
+if entity_id not in self._visible_entity_ids:
+    return {"error": f"Entity {entity_id} non accessibile da questo agente"}
 ```
 
-### Formato output nel prompt
+### Tabella permessi
 
-**Overview compatto** (sempre iniettato, ~80 token):
+| In `allowed_entities` | In `allowed_services` | Vede nel prompt | Può controllare |
+|---|---|---|---|
+| ✅ | ✅ | ✅ | ✅ |
+| ✅ | ❌ | ✅ | ❌ |
+| ❌ | qualsiasi | ❌ | ❌ |
+
+---
+
+## Formato prompt iniettato
+
+**Overview compatto** (sempre, ~80 token):
 ```
 CASA — 4 aree [agg. 14:32]
   Bagno:      Termostato · Temperatura · Umidità · Luce
@@ -239,66 +327,28 @@ CASA — 4 aree [agg. 14:32]
 [Non assegnate: Potenza · Energia]
 ```
 
-**Dettaglio espanso** (solo aree/tipi matchati, ~150 token per area):
+**Dettaglio espanso** (solo aree/tipi rilevanti, ~150 token per area):
 ```
 BAGNO [agg. 14:32]
-  Termostato  climate.bagno            heat · 21.5°C → 22°C · azione: heating
+  Termostato  climate.bagno            heat · 21.5°C → 22°C · heating
   Temperatura sensor.temperatura_bagno 21.5°C
   Umidità     sensor.umidita_bagno     65%
   Luce        light.bagno              spenta
+  [Nota: scalda lentamente in inverno — da annotazione agente 2026-04-20]
 ```
+
+Le annotazioni da SQLite vengono incluse nel dettaglio espanso quando presenti.
 
 ---
 
-## Permission model — ContextMap come confine unico
+## Agenti per tipo
 
-### Asse visibilità (`allowed_entities`)
-
-```python
-ContextMap.get_context(
-    query: str,
-    entity_cache: EntityCache,
-    allowed_entities: list[str] | None = None,  # glob patterns
-) -> tuple[str, frozenset[str]]
-# Returns: (prompt_context, visible_entity_ids)
-```
-
-La mappa viene filtrata prima del retrieval. Se `allowed_entities = ["climate.*", "sensor.temp_*"]`:
-- Overview mostra solo le aree che hanno almeno una entity permessa
-- Overview lista solo i tipi che hanno entity permesse
-- Dettaglio espande solo entity permesse
-- `visible_entity_ids` = set delle entity_id visibili all'agente in questa chiamata
-
-### Asse controllo (`allowed_services`)
-
-Invariato rispetto a oggi — verificato in `_dispatch_tool` per `call_ha_service` e `create_task`.
-
-### Validazione tool call
-
-```python
-# In claude_runner._dispatch_tool, per ogni tool che accede a entity:
-if entity_id not in self._visible_entity_ids:
-    return {"error": f"Entity {entity_id} non accessibile da questo agente"}
-```
-
-`_visible_entity_ids` viene impostato da `runner.chat()` a ogni chiamata, basato sul risultato di `ContextMap.get_context()`.
-
-**Tabella permessi completa:**
-
-| Entity in allowed_entities | Service in allowed_services | Può vedere (prompt) | Può controllare (tool) |
-|---|---|---|---|
-| ✅ | ✅ | ✅ | ✅ |
-| ✅ | ❌ | ✅ | ❌ |
-| ❌ | qualsiasi | ❌ | ❌ |
-
-### Agenti per tipo
-
-| Tipo agente | Query per ContextSelector | allowed_entities applicato |
+| Tipo agente | Query per retrieval | Contesto iniettato |
 |---|---|---|
-| Chat | Messaggio utente | Sì |
-| Monitor | `system_prompt` dell'agente | Sì |
-| Reactive | ID entity che ha scatenato l'evento → area corrispondente | Sì |
-| Preventive | `system_prompt` dell'agente | Sì |
+| Chat | Messaggio utente | Overview + aree/tipi rilevanti |
+| Monitor | `system_prompt` dell'agente | Overview + aree nel suo scope |
+| Reactive | Entity_id che ha scatenato l'evento | Area dell'entity + tipi correlati |
+| Preventive | `system_prompt` dell'agente | Overview + aree rilevanti |
 
 ---
 
@@ -308,73 +358,55 @@ if entity_id not in self._visible_entity_ids:
 
 | File | Responsabilità |
 |---|---|
-| `hiris/app/proxy/context_map.py` | `ENTITY_TYPE_SCHEMA`, `ContextMap`, `ContextSelector` |
+| `hiris/app/proxy/semantic_context_map.py` | `ENTITY_TYPE_SCHEMA`, `SemanticContextMap`, `ContextSelector` |
+| `hiris/app/proxy/embedding_backend.py` | `EmbeddingBackend` ABC, `NoEmbeddingBackend`, `VoyageEmbeddingBackend`, `OllamaEmbeddingBackend` |
+| `hiris/app/proxy/knowledge_db.py` | SQLite `hiris_knowledge.db` — classificazioni, annotazioni, correlazioni, pattern |
 
 ### File da modificare
 
 | File | Modifica |
 |---|---|
-| `hiris/app/proxy/entity_cache.py` | Aggiungere `domain`, `device_class`, attributi tipizzati per tutti i tipi (non solo climate) |
-| `hiris/app/server.py` | Startup: `ContextMap.build(entity_cache)` dopo `load_area_registry()`; registra callback per entity added/removed |
-| `hiris/app/api/handlers_chat.py` | Sostituire `_prefetch_context()` con `ContextMap.get_context(message, entity_cache, allowed_entities)` |
-| `hiris/app/claude_runner.py` | Accettare `visible_entity_ids` in `chat()`; validare entity nei tool |
-| `hiris/app/tools/ha_tools.py` | `get_entity_states`, `get_area_entities`: filtrare risultati su `visible_entity_ids` |
-| `hiris/app/proxy/semantic_map.py` | Rimuovere `get_prompt_snippet()` — mantenere solo classificazione per `get_home_status` tool |
+| `hiris/app/proxy/entity_cache.py` | Aggiungere `domain`, `device_class`, attributi tipizzati per tutti i domini |
+| `hiris/app/server.py` | Startup: init `KnowledgeDB`, `EmbeddingBackend`, `SemanticContextMap.build()` |
+| `hiris/app/api/handlers_chat.py` | Sostituire `_prefetch_context()` con `SemanticContextMap.get_context()` |
+| `hiris/app/claude_runner.py` | Accettare `visible_entity_ids`; validare entity nei tool |
+| `hiris/app/tools/ha_tools.py` | Filtrare `get_entity_states`, `get_area_entities` su `visible_entity_ids` |
+| `hiris/app/proxy/semantic_map.py` | Rimuovere `get_prompt_snippet()` — mantenere classificazione per `get_home_status` tool |
+| `hiris/config.yaml` | Aggiungere opzioni: `embedding_backend`, `embedding_model` |
 
 ### File da rimuovere
 
 | File | Motivo |
 |---|---|
-| `hiris/app/proxy/embedding_index.py` | Sostituito da `ContextSelector` |
+| `hiris/app/proxy/embedding_index.py` | Sostituito da `SemanticContextMap` + `ContextSelector` |
 
 ### Compatibilità
 
 - API REST invariata
-- Tool Claude invariati (solo validazione rafforzata)
-- `runner.chat()` signature invariata — `visible_entity_ids` è dettaglio interno
-- `SemanticMap` rimane per `get_home_status` tool
-- Zero breaking changes per gli agenti esistenti
+- Tool Claude invariati (validazione rafforzata trasparente)
+- `runner.chat()` signature invariata
+- `SemanticMap` mantenuta per `get_home_status` tool
+- Zero breaking changes per agenti esistenti
 
 ---
 
 ## Stima risparmio token
 
-| Componente | Attuale | ContextMap |
+| Componente | Attuale | SemanticContextMap |
 |---|---|---|
 | Snippet SemanticMap | ~200 token | 0 |
-| RAG prefetch (30 entity) | ~400 token | 0 |
+| RAG prefetch (30 entity rumorose) | ~400 token | 0 |
 | Overview compatto | — | ~80 token |
 | Dettaglio espanso (1 area) | — | ~150 token |
 | **Totale** | **~600 token** | **~230 token** |
 
-Risparmio stimato: ~60% per richiesta, con qualità superiore (nessun falso positivo).
-
 ---
 
-## Scenari di esempio
+## Roadmap embedding
 
-### "C'è un termostato in bagno?"
-- area_match: `Bagno`
-- type_match: `climate` (da "termostato")
-- Inietta: overview + dettaglio Bagno/climate
-
-```
-BAGNO
-  Termostato  climate.bagno  heat · 21.5°C → 22°C · azione: heating
-```
-
-### "Quanta energia sto consumando?"
-- area_match: nessuna
-- type_match: `power`, `energy` (da "energia", "consumo")
-- Inietta: overview + tutti i sensori power/energy di tutte le aree
-
-### "Accendi le luci del soggiorno"
-- area_match: `Soggiorno`
-- type_match: `light` (da "luci")
-- Inietta: overview + dettaglio Soggiorno/light
-- Tool call: `call_ha_service` validato contro `visible_entity_ids`
-
-### "Tutto ok in casa?" (query generica)
-- area_match: nessuna
-- type_match: nessuna
-- Inietta: solo overview compatto — Claude vede la struttura e usa i tool per approfondire
+| Fase | Backend | Quando |
+|---|---|---|
+| **Ora** | `NoEmbeddingBackend` | Keyword ContextSelector, SQLite persistence |
+| **Prossimo step** | `OllamaEmbeddingBackend` | Quando utente configura Ollama |
+| **Parallelo** | `VoyageEmbeddingBackend` | Chi ha Claude API key, zero config extra |
+| **Futuro** | Scelta utente da UI | `embedding_backend` option in config.yaml |
