@@ -1,5 +1,21 @@
 # HIRIS — Changelog
 
+## [0.3.0] — 2026-04-23
+
+### Added
+- **SemanticContextMap** — replaces EmbeddingIndex RAG and SemanticMap snippet; organizes all HA entities by area using native `device_class` + domain classification
+- **ENTITY_TYPE_SCHEMA** — maps (domain, device_class) → (entity_type, label_it) for 30+ entity types, based on HA documentation
+- **ContextSelector** — keyword-based query: extracts area + concept→type matches from user message, injects only relevant sections
+- **Two-tier prompt injection** — compact home overview always present (~80 token); area/type detail expanded on match (~150 token); ~60% token reduction vs previous RAG
+- **KnowledgeDB** — SQLite persistence for entity classifications, agent annotations, entity correlations, query patterns
+- **Unified permission boundary** — `visible_entity_ids` from `SemanticContextMap.get_context()` used to validate all entity tool calls; consistent `allowed_entities` enforcement
+- **EntityCache enriched** — `domain`, `device_class`, and typed attributes (hvac_mode, brightness, current_position, etc.) stored per entity for all domains
+
+### Removed
+- `EmbeddingIndex` — replaced by `SemanticContextMap` + `ContextSelector`
+- `SemanticMap.get_prompt_snippet()` — replaced by `SemanticContextMap._format_overview()` + `_format_detail()`
+- `search_entities` Claude tool — removed with EmbeddingIndex dependency
+
 ## [0.2.3] — 2026-04-22
 
 ### Added
