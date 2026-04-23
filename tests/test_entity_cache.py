@@ -31,10 +31,12 @@ async def test_load_builds_minimal_state():
     await cache.load(mock_ha)
 
     assert cache.get_minimal(["light.soggiorno"]) == [
-        {"id": "light.soggiorno", "state": "on", "name": "Luce Soggiorno", "unit": ""}
+        {"id": "light.soggiorno", "state": "on", "name": "Luce Soggiorno", "unit": "",
+         "domain": "light", "device_class": None}
     ]
     assert cache.get_minimal(["sensor.temp"]) == [
-        {"id": "sensor.temp", "state": "21.5", "name": "Temperatura", "unit": "°C"}
+        {"id": "sensor.temp", "state": "21.5", "name": "Temperatura", "unit": "°C",
+         "domain": "sensor", "device_class": None}
     ]
 
 

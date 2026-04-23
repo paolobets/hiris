@@ -8,19 +8,32 @@ def _domain(entity_id: str) -> str:
     return entity_id.split(".")[0]
 
 
-_CLIMATE_ATTRS = ("current_temperature", "temperature", "hvac_action")
+_DOMAIN_ATTRS: dict[str, list[str]] = {
+    "climate": ["hvac_mode", "hvac_action", "current_temperature", "temperature", "preset_mode"],
+    "light": ["brightness", "color_temp"],
+    "cover": ["current_position"],
+    "media_player": ["media_title", "media_artist", "source", "volume_level"],
+    "vacuum": ["battery_level"],
+    "fan": ["percentage", "preset_mode"],
+    "water_heater": ["current_temperature", "temperature", "operation_mode"],
+}
 
 
 def _to_minimal(raw: dict) -> dict:
     attrs = raw.get("attributes") or {}
+    eid = raw["entity_id"]
+    dom = _domain(eid)
     result: dict = {
-        "id": raw["entity_id"],
+        "id": eid,
         "state": raw.get("state", "unknown"),
         "name": attrs.get("friendly_name") or "",
         "unit": attrs.get("unit_of_measurement") or "",
+        "domain": dom,
+        "device_class": attrs.get("device_class"),
     }
-    if raw.get("entity_id", "").startswith("climate."):
-        extra = {k: attrs[k] for k in _CLIMATE_ATTRS if k in attrs}
+    domain_keys = _DOMAIN_ATTRS.get(dom, [])
+    if domain_keys:
+        extra = {k: attrs[k] for k in domain_keys if k in attrs}
         if extra:
             result["attributes"] = extra
     return result
