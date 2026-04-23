@@ -335,7 +335,7 @@ async def test_chat_persists_exchange_in_history(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_rag_prefetch_injects_entity_context(client):
+async def test_chat_context_map_injects_area_context(client):
     from unittest.mock import MagicMock
     from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
 
@@ -346,26 +346,22 @@ async def test_chat_rag_prefetch_injects_entity_context(client):
         allowed_tools=[], enabled=True, is_default=True,
     )
 
-    # Wire a minimal embedding index and entity cache
-    idx = MagicMock()
-    idx.ready = True
-    idx.search = MagicMock(return_value=["light.soggiorno"])
-    cache = MagicMock()
-    cache.get_minimal = MagicMock(return_value=[
-        {"id": "light.soggiorno", "name": "Luce Soggiorno", "state": "on", "unit": ""},
-    ])
-    client.app["embedding_index"] = idx
-    client.app["entity_cache"] = cache
+    mock_context_map = MagicMock()
+    mock_context_map.get_context = MagicMock(return_value=(
+        "CASA — 1 aree\n  Bagno: Termostato\n\nBAGNO\n  Termostato  climate.bagno  heat · 21°C → 22°C",
+        frozenset(["climate.bagno"]),
+    ))
+    client.app["context_map"] = mock_context_map
+    client.app["entity_cache"] = MagicMock()
 
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="ok")
 
-    await client.post("/api/chat", json={"message": "luce soggiorno accesa?"})
+    await client.post("/api/chat", json={"message": "termostato bagno?"})
 
     call_kwargs = runner.chat.call_args.kwargs
-    assert "Luce Soggiorno" in call_kwargs["system_prompt"]
-    assert "light.soggiorno" in call_kwargs["system_prompt"]
-    assert "Entità rilevanti" in call_kwargs["system_prompt"]
+    assert "BAGNO" in call_kwargs["system_prompt"]
+    assert "Termostato" in call_kwargs["system_prompt"]
 
 
 @pytest.mark.asyncio

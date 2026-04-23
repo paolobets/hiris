@@ -1,51 +1,10 @@
 import logging
-import re
 
 from aiohttp import web
 
 from ..chat_store import load_history, append_messages
 
 logger = logging.getLogger(__name__)
-
-_RAG_TOP_K = 12  # entities to pre-fetch per request
-_CTRL_RE = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
-
-
-def _sanitize(value: str, max_len: int = 128) -> str:
-    return _CTRL_RE.sub('', str(value))[:max_len]
-
-
-def _prefetch_context(message: str, app: web.Application) -> str:
-    """Semantic search → fetch current states → return compact context block."""
-    idx = app.get("embedding_index")
-    cache = app.get("entity_cache")
-    if not idx or not cache or not idx.ready:
-        return ""
-    ids = idx.search(message, top_k=_RAG_TOP_K)
-    if not ids:
-        return ""
-    entities = cache.get_minimal(ids)
-    if not entities:
-        return ""
-    lines = []
-    for e in entities:
-        name = _sanitize(e.get("name") or e["id"])
-        state = _sanitize(e["state"])
-        seg = f"- {name} [{e['id']}]: {state}"
-        if e.get("unit"):
-            seg += f" {_sanitize(e['unit'], 16)}"
-        a = e.get("attributes") or {}
-        curr = a.get("current_temperature")
-        setp = a.get("temperature")
-        action = a.get("hvac_action")
-        if curr is not None:
-            seg += f", corrente {curr}°C"
-        if setp is not None:
-            seg += f" → setpoint {setp}°C"
-        if action:
-            seg += f" ({_sanitize(action, 32)})"
-        lines.append(seg)
-    return "Entità rilevanti (dati in tempo reale):\n" + "\n".join(lines)
 
 
 async def handle_chat(request: web.Request) -> web.Response:
@@ -112,18 +71,19 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_entities = None
         allowed_services = None
 
-    # Inject semantic map snippet (replaces home_profile — richer context)
-    semantic_map = request.app.get("semantic_map")
+    context_map = request.app.get("context_map")
     entity_cache = request.app.get("entity_cache")
-    if semantic_map and entity_cache:
-        map_snippet = semantic_map.get_prompt_snippet(entity_cache)
-        if map_snippet:
-            system_prompt = f"{system_prompt}\n\n---\n\n{map_snippet}"
-
-    # RAG pre-fetch: inject relevant entity states before Claude reasons
-    prefetched = _prefetch_context(message, request.app)
-    if prefetched:
-        system_prompt = f"{system_prompt}\n\n---\n\n{prefetched}"
+    knowledge_db = request.app.get("knowledge_db")
+    visible_ids: frozenset[str] = frozenset()
+    if context_map and entity_cache:
+        ctx_str, visible_ids = context_map.get_context(
+            query=message,
+            entity_cache=entity_cache,
+            allowed_entities=allowed_entities,
+            knowledge_db=knowledge_db,
+        )
+        if ctx_str:
+            system_prompt = f"{system_prompt}\n\n---\n\n{ctx_str}"
 
     agent_model = getattr(agent, "model", "auto") if agent else "auto"
     agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096
