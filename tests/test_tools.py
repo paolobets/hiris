@@ -322,7 +322,6 @@ async def test_get_area_entities_empty_when_registries_unavailable():
 from hiris.app.tools.ha_tools import (
     get_home_status,
     get_entities_on,
-    search_entities,
     get_entities_by_domain,
 )
 
@@ -343,17 +342,6 @@ def test_get_entities_on_delegates_to_cache():
     assert result == [{"id": "switch.test", "state": "on", "name": "Switch", "unit": ""}]
 
 
-def test_search_entities_uses_embedding_index():
-    cache = MagicMock()
-    index = MagicMock()
-    index.search.return_value = ["light.living_room"]
-    cache.get_minimal.return_value = [{"id": "light.living_room", "state": "on", "name": "Living Room", "unit": ""}]
-    result = search_entities("living room lights", cache, index, top_k=5)
-    index.search.assert_called_once_with("living room lights", top_k=5, domain_filter=None)
-    cache.get_minimal.assert_called_once_with(["light.living_room"])
-    assert result == [{"id": "light.living_room", "state": "on", "name": "Living Room", "unit": ""}]
-
-
 def test_get_entities_by_domain_delegates_to_cache():
     cache = MagicMock()
     cache.get_by_domain.return_value = [{"id": "light.test", "state": "on", "name": "Test", "unit": ""}]
@@ -361,18 +349,6 @@ def test_get_entities_by_domain_delegates_to_cache():
     cache.get_by_domain.assert_called_once_with("light")
     assert result == [{"id": "light.test", "state": "on", "name": "Test", "unit": ""}]
 
-
-def test_search_entities_falls_back_when_index_not_ready():
-    cache = MagicMock()
-    index = MagicMock()
-    index.ready = False
-    cache.get_all_useful.return_value = [
-        {"id": "light.a", "state": "on", "name": "A", "unit": ""},
-        {"id": "light.b", "state": "off", "name": "B", "unit": ""},
-    ]
-    result = search_entities("lights", cache, index, top_k=1)
-    index.search.assert_not_called()
-    assert result == [{"id": "light.a", "state": "on", "name": "A", "unit": ""}]
 
 
 @pytest.mark.asyncio

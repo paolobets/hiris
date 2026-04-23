@@ -5,6 +5,9 @@ FROM $BUILD_FROM
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
+# Bust Docker layer cache on every release — update this string with each version bump
+RUN echo "HIRIS v0.3.4"
+
 # Copy application source and entrypoint
 COPY app/ /usr/lib/hiris/app/
 COPY run.sh /usr/lib/hiris/run.sh
