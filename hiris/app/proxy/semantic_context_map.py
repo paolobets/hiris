@@ -246,7 +246,7 @@ class SemanticContextMap:
             for et, eids in relevant.items():
                 label = self._get_label(et)
                 for eid in eids:
-                    ed = entity_cache._states.get(eid)
+                    ed = entity_cache.get_state(eid)
                     if ed is None:
                         continue
                     state_str = self._format_state(et, ed)

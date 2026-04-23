@@ -50,6 +50,7 @@ def _make_cache(entities: list[dict], area_map: dict) -> MagicMock:
     cache = MagicMock()
     cache._states = {e["id"]: e for e in entities}
     cache.get_area_map.return_value = area_map
+    cache.get_state.side_effect = lambda eid: cache._states.get(eid)
     return cache
 
 
