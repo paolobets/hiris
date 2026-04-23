@@ -152,7 +152,7 @@ async def _on_cleanup(app: web.Application) -> None:
 async def _security_headers(request: web.Request, handler) -> web.Response:
     response = await handler(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
+    # X-Frame-Options omesso: HA Ingress carica l'UI in un iframe
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     return response
 

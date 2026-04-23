@@ -137,7 +137,7 @@ async def test_security_headers_present():
             async with TestClient(TestServer(app)) as client:
                 resp = await client.post("/api/chat", json={"message": "ciao"})
                 assert resp.headers.get("X-Content-Type-Options") == "nosniff"
-                assert resp.headers.get("X-Frame-Options") == "DENY"
+                assert "X-Frame-Options" not in resp.headers  # HA Ingress richiede iframe
                 assert resp.headers.get("Referrer-Policy") == "no-referrer"
 
 
