@@ -1,5 +1,7 @@
 from __future__ import annotations
+import fnmatch
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -151,3 +153,166 @@ class SemanticContextMap:
         n_areas = len([k for k in new_map if k is not None])
         n_entities = sum(len(eids) for t in new_map.values() for eids in t.values())
         logger.info("SemanticContextMap built: %d areas, %d entities", n_areas, n_entities)
+
+    def _get_label(self, entity_type: str) -> str:
+        return self._type_to_label.get(entity_type, entity_type)
+
+    def _format_state(self, entity_type: str, entity_data: dict) -> str:
+        state = entity_data.get("state", "")
+        attrs = entity_data.get("attributes") or {}
+        if entity_type == "climate":
+            cur = attrs.get("current_temperature", "?")
+            sp = attrs.get("temperature", "?")
+            mode = attrs.get("hvac_mode", state)
+            action = attrs.get("hvac_action", "")
+            action_str = f" · {action}" if action and action not in ("idle", "off") else ""
+            return f"{mode} · {cur}°C → {sp}°C{action_str}"
+        if entity_type == "light":
+            if state == "off":
+                return "spenta"
+            b = attrs.get("brightness")
+            return f"accesa {round(b / 255 * 100)}%" if b is not None else "accesa"
+        if entity_type == "cover":
+            pos = attrs.get("current_position")
+            return f"{state} {pos}%" if pos is not None else state
+        if entity_type == "media_player":
+            if state in ("off", "standby", "idle"):
+                return state
+            title = attrs.get("media_title", "")
+            vol = attrs.get("volume_level")
+            vol_str = f" vol:{round(vol * 100)}%" if vol is not None else ""
+            return f"{state} · {title}{vol_str}" if title else f"{state}{vol_str}"
+        if entity_type in ("motion", "occupancy", "presence"):
+            return "rilevato" if state == "on" else "assente"
+        if entity_type == "door":
+            return "aperta" if state == "on" else "chiusa"
+        if entity_type == "window":
+            return "aperta" if state == "on" else "chiusa"
+        if entity_type == "switch":
+            return "acceso" if state == "on" else "spento"
+        unit = entity_data.get("unit", "")
+        return f"{state} {unit}".strip() if unit else state
+
+    def _filter_by_allowed(self, allowed_entities: list[str] | None) -> _MapType:
+        if not allowed_entities:
+            return self._map
+        result: _MapType = {}
+        for area, types in self._map.items():
+            filtered: dict[str, list[str]] = {}
+            for et, eids in types.items():
+                ok = [e for e in eids if any(fnmatch.fnmatch(e, p) for p in allowed_entities)]
+                if ok:
+                    filtered[et] = ok
+            if filtered:
+                result[area] = filtered
+        return result
+
+    def _format_overview(self, filtered: _MapType) -> str:
+        now = datetime.now().strftime("%H:%M")
+        named = {k: v for k, v in filtered.items() if k is not None}
+        unassigned = filtered.get(None, {})
+        lines = [f"CASA — {len(named)} aree [agg. {now}]"]
+        for area in sorted(named):
+            parts = []
+            for et, eids in named[area].items():
+                label = self._get_label(et)
+                parts.append(f"{label}×{len(eids)}" if len(eids) > 1 else label)
+            lines.append(f"  {area}: {' · '.join(parts)}")
+        if unassigned:
+            ua = [self._get_label(et) for et in unassigned]
+            lines.append(f"[Non assegnate: {' · '.join(ua)}]")
+        return "\n".join(lines)
+
+    def _format_detail(
+        self,
+        filtered: _MapType,
+        entity_cache: EntityCache,
+        areas: list[str | None],
+        types: set[str] | None,
+        knowledge_db: Optional[KnowledgeDB] = None,
+    ) -> str:
+        now = datetime.now().strftime("%H:%M")
+        sections = []
+        for area in areas:
+            area_types = filtered.get(area, {})
+            relevant = {
+                et: eids for et, eids in area_types.items()
+                if types is None or et in types
+            }
+            if not relevant:
+                continue
+            header = (area or "Non assegnate").upper()
+            lines = [f"{header} [agg. {now}]"]
+            for et, eids in relevant.items():
+                label = self._get_label(et)
+                for eid in eids:
+                    ed = entity_cache._states.get(eid)
+                    if ed is None:
+                        continue
+                    state_str = self._format_state(et, ed)
+                    name = ed.get("name") or eid
+                    lines.append(f"  {label:<14} {name:<32} {state_str}")
+                    if knowledge_db:
+                        for annot in knowledge_db.get_annotations(eid)[:1]:
+                            lines.append(
+                                f"    [Nota: {annot['annotation']} — {annot['source']}]"
+                            )
+            if len(lines) > 1:
+                sections.append("\n".join(lines))
+        return "\n\n".join(sections)
+
+    def get_context(
+        self,
+        query: str,
+        entity_cache: EntityCache,
+        allowed_entities: list[str] | None = None,
+        knowledge_db: Optional[KnowledgeDB] = None,
+    ) -> tuple[str, frozenset[str]]:
+        filtered = self._filter_by_allowed(allowed_entities)
+        visible_ids = frozenset(
+            eid
+            for types in filtered.values()
+            for eids in types.values()
+            for eid in eids
+        )
+        q = query.lower()
+        area_matches = [a for a in filtered if a is not None and a.lower() in q]
+        type_matches: set[str] = set()
+        for concept, ctypes in CONCEPT_TO_TYPES.items():
+            if concept in q:
+                type_matches.update(ctypes)
+        overview = self._format_overview(filtered)
+        if area_matches or type_matches:
+            expand = area_matches if area_matches else [a for a in filtered if a is not None]
+            detail = self._format_detail(
+                filtered, entity_cache, expand, type_matches or None, knowledge_db
+            )
+            context = f"{overview}\n\n{detail}" if detail else overview
+        else:
+            context = overview
+        return context, visible_ids
+
+    def add_entity(
+        self,
+        entity_id: str,
+        domain: str,
+        device_class: str | None,
+        area: str | None,
+        knowledge_db: Optional[KnowledgeDB] = None,
+    ) -> None:
+        if domain in _EXCLUDED_DOMAINS:
+            return
+        entity_type, label_it = classify_entity(domain, device_class)
+        if entity_type == "other":
+            return
+        self._type_to_label[entity_type] = label_it
+        bucket = self._map.setdefault(area, {}).setdefault(entity_type, [])
+        if entity_id not in bucket:
+            bucket.append(entity_id)
+
+    def remove_entity(self, entity_id: str) -> None:
+        for area_types in self._map.values():
+            for eids in area_types.values():
+                if entity_id in eids:
+                    eids.remove(entity_id)
+                    return

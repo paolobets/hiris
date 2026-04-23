@@ -100,3 +100,108 @@ def test_build_excludes_noise_domains():
     ]
     assert "button.reset" not in all_ids
     assert "light.sala" in all_ids
+
+
+def test_get_context_area_and_type_match_expands_detail():
+    cache = _make_cache(
+        [{"id": "climate.bagno", "state": "heat", "name": "Termostato Bagno",
+          "domain": "climate", "device_class": None, "unit": "",
+          "attributes": {"hvac_mode": "heat", "current_temperature": 21.5, "temperature": 22.0}}],
+        {"Bagno": ["climate.bagno"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, visible_ids = scm.get_context("c'è il termostato in bagno?", cache)
+    assert "CASA" in context
+    assert "BAGNO" in context
+    assert "21.5" in context
+    assert "climate.bagno" in visible_ids
+
+
+def test_get_context_no_match_returns_overview_only():
+    cache = _make_cache(
+        [{"id": "light.sala", "state": "on", "name": "Luce Sala",
+          "domain": "light", "device_class": None, "unit": "", "attributes": {}}],
+        {"Soggiorno": ["light.sala"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, visible_ids = scm.get_context("ciao come stai?", cache)
+    assert "CASA" in context
+    assert "SOGGIORNO" not in context
+    assert "light.sala" in visible_ids
+
+
+def test_get_context_type_only_match_expands_all_areas():
+    cache = _make_cache(
+        [
+            {"id": "light.sala", "state": "on", "name": "Luce Sala",
+             "domain": "light", "device_class": None, "unit": "", "attributes": {"brightness": 200}},
+            {"id": "light.cucina", "state": "off", "name": "Luce Cucina",
+             "domain": "light", "device_class": None, "unit": "", "attributes": {}},
+        ],
+        {"Soggiorno": ["light.sala"], "Cucina": ["light.cucina"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, _ = scm.get_context("tutte le luci", cache)
+    assert "SOGGIORNO" in context
+    assert "CUCINA" in context
+
+
+def test_get_context_filters_by_allowed_entities():
+    cache = _make_cache(
+        [
+            {"id": "climate.bagno", "state": "heat", "name": "T Bagno",
+             "domain": "climate", "device_class": None, "unit": "", "attributes": {}},
+            {"id": "light.bagno", "state": "off", "name": "L Bagno",
+             "domain": "light", "device_class": None, "unit": "", "attributes": {}},
+        ],
+        {"Bagno": ["climate.bagno", "light.bagno"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    _, visible_ids = scm.get_context("bagno", cache, allowed_entities=["climate.*"])
+    assert "climate.bagno" in visible_ids
+    assert "light.bagno" not in visible_ids
+
+
+def test_get_context_unassigned_shown_in_overview():
+    cache = _make_cache(
+        [{"id": "sensor.power", "state": "1200", "name": "Potenza",
+          "domain": "sensor", "device_class": "power", "unit": "W", "attributes": {}}],
+        {"__no_area__": ["sensor.power"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, _ = scm.get_context("niente", cache)
+    assert "Non assegnate" in context
+
+
+def test_light_state_format_on_with_brightness():
+    cache = _make_cache(
+        [{"id": "light.sala", "state": "on", "name": "Luce Sala",
+          "domain": "light", "device_class": None, "unit": "",
+          "attributes": {"brightness": 128}}],
+        {"Soggiorno": ["light.sala"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, _ = scm.get_context("luci soggiorno", cache)
+    assert "50%" in context
+
+
+def test_climate_state_format():
+    cache = _make_cache(
+        [{"id": "climate.sala", "state": "heat", "name": "Termostato Sala",
+          "domain": "climate", "device_class": None, "unit": "",
+          "attributes": {"hvac_mode": "heat", "hvac_action": "heating",
+                         "current_temperature": 19.0, "temperature": 21.0}}],
+        {"Soggiorno": ["climate.sala"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, _ = scm.get_context("termostato soggiorno", cache)
+    assert "19.0" in context
+    assert "21.0" in context
+    assert "heating" in context
