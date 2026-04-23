@@ -12,7 +12,6 @@ from .tools.ha_tools import (
     get_area_entities, GET_AREA_ENTITIES_TOOL_DEF,
     get_home_status, GET_HOME_STATUS_TOOL_DEF,
     get_entities_on, GET_ENTITIES_ON_TOOL_DEF,
-    search_entities, SEARCH_ENTITIES_TOOL_DEF,
     get_entities_by_domain, GET_ENTITIES_BY_DOMAIN_TOOL_DEF,
 )
 from .tools.energy_tools import get_energy_history, TOOL_DEF as ENERGY_TOOL
@@ -50,7 +49,6 @@ ALL_TOOL_DEFS = [
     GET_AREA_ENTITIES_TOOL_DEF,
     GET_HOME_STATUS_TOOL_DEF,
     GET_ENTITIES_ON_TOOL_DEF,
-    SEARCH_ENTITIES_TOOL_DEF,
     GET_ENTITIES_BY_DOMAIN_TOOL_DEF,
     ENERGY_TOOL,
     WEATHER_TOOL,
@@ -192,7 +190,6 @@ class ClaudeRunner:
         notify_config: dict,
         usage_path: str = "",
         entity_cache=None,
-        embedding_index=None,
         semantic_map=None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
@@ -200,7 +197,6 @@ class ClaudeRunner:
         self._notify_config = notify_config
         self._usage_path = usage_path
         self._cache = entity_cache
-        self._index = embedding_index
         self._semantic_map = semantic_map
         self._task_engine = None
         self.last_tool_calls: list[dict] = []
@@ -304,6 +300,7 @@ class ClaudeRunner:
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
+        visible_entity_ids: Optional[frozenset] = None,
     ) -> str:
         if agent_id:
             if agent_id not in self._per_agent_usage:
@@ -367,6 +364,7 @@ class ClaudeRunner:
                             allowed_entities=allowed_entities,
                             allowed_services=allowed_services,
                             agent_id=agent_id,
+                            visible_entity_ids=visible_entity_ids,
                         )
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({
@@ -456,6 +454,7 @@ class ClaudeRunner:
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
         agent_id: Optional[str] = None,
+        visible_entity_ids: Optional[frozenset] = None,
     ) -> Any:
         logger.info("Tool call: %s(%s)", name, inputs)
         try:
@@ -463,24 +462,15 @@ class ClaudeRunner:
                 return await get_area_entities(self._ha, entity_cache=self._cache)
             if name == "get_entity_states":
                 ids = inputs.get("ids", [])
+                if visible_entity_ids:
+                    ids = [eid for eid in ids if eid in visible_entity_ids]
                 if allowed_entities:
                     ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
-                    logger.info("Filtered entity ids to: %s", ids)
                 return await get_entity_states(self._ha, ids, entity_cache=self._cache)
             if name == "get_home_status":
                 return get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
             if name == "get_entities_on":
                 return get_entities_on(self._cache) if self._cache else []
-            if name == "search_entities":
-                if self._cache is None or self._index is None:
-                    return []
-                return search_entities(
-                    inputs["query"],
-                    self._cache,
-                    self._index,
-                    top_k=inputs.get("top_k", 10),
-                    domain=inputs.get("domain"),
-                )
             if name == "get_entities_by_domain":
                 return get_entities_by_domain(inputs["domain"], self._cache) if self._cache else []
             if name == "get_energy_history":
