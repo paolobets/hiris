@@ -845,6 +845,24 @@ async function cancelTask(taskId) {
 // Auto-refresh badge every 30s (even when task panel is not visible)
 setInterval(loadTasks, 30000);
 loadTasks();
+
+// ── Mobile keyboard fix (iOS Safari) ───────────────────────────────────
+// When the keyboard opens, iOS shrinks window.visualViewport.height but
+// does NOT reliably update dvh units. We manually set the app height so
+// #input-area stays visible and #messages shrinks above it.
+if (window.visualViewport) {
+  function adjustForKeyboard() {
+    var vvh = window.visualViewport.height;
+    document.body.style.height = vvh + 'px';
+    document.getElementById('app').style.height = vvh + 'px';
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+  window.visualViewport.addEventListener('resize', adjustForKeyboard);
+  window.visualViewport.addEventListener('scroll', adjustForKeyboard);
+}
+inputEl.addEventListener('focus', function() {
+  setTimeout(function() { messagesEl.scrollTop = messagesEl.scrollHeight; }, 400);
+});
 </script>
 </body>
 </html>
