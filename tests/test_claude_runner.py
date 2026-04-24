@@ -5,6 +5,13 @@ from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT, resolve_model
 from hiris.app.proxy.home_profile import _reset_profile_cache
 
 
+def _sys_text(system) -> str:
+    """Flatten system blocks list to a plain string for assertions."""
+    if isinstance(system, str):
+        return system
+    return "\n".join(b.get("text", "") for b in system if b.get("type") == "text")
+
+
 @pytest.fixture
 def mock_ha():
     ha = AsyncMock()
@@ -185,9 +192,9 @@ async def test_restrict_to_home_injects_prompt(restricted_runner):
 
     restricted_runner._client.messages.create = capture
     await restricted_runner.chat("Ciao", restrict_to_home=True)
-    system_used = captured[0]["system"]
-    assert "SOLO" in system_used or "solo" in system_used.lower()
-    assert RESTRICT_PROMPT in system_used
+    system_text = _sys_text(captured[0]["system"])
+    assert "solo" in system_text.lower()
+    assert RESTRICT_PROMPT in system_text
 
 
 @pytest.mark.asyncio
@@ -205,7 +212,9 @@ async def test_restrict_to_home_false_does_not_inject(runner):
 
     runner._client.messages.create = capture
     await runner.chat("Ciao", system_prompt="Prompt originale", restrict_to_home=False)
-    assert captured[0]["system"] == "Prompt originale"
+    system_text = _sys_text(captured[0]["system"])
+    assert "Prompt originale" in system_text
+    assert RESTRICT_PROMPT not in system_text
 
 
 @pytest.mark.asyncio
@@ -252,9 +261,9 @@ async def test_restrict_to_home_appends_to_existing_prompt(restricted_runner):
 
     restricted_runner._client.messages.create = capture
     await restricted_runner.chat("Ciao", system_prompt="Sei un agente energia.", restrict_to_home=True)
-    system_used = captured[0]["system"]
-    assert "agente energia" in system_used
-    assert RESTRICT_PROMPT in system_used
+    system_text = _sys_text(captured[0]["system"])
+    assert "agente energia" in system_text
+    assert RESTRICT_PROMPT in system_text
 
 
 def test_resolve_model_auto_chat_returns_sonnet():
@@ -309,8 +318,9 @@ async def test_chat_injects_home_profile_when_cache_available(runner):
     await runner.chat("Ciao", system_prompt="Base prompt")
 
     call_kwargs = runner._client.messages.create.call_args.kwargs
-    assert "CASA [aggiornato" in call_kwargs["system"]
-    assert "Base prompt" in call_kwargs["system"]
+    system_text = _sys_text(call_kwargs["system"])
+    assert "CASA [aggiornato" in system_text
+    assert "Base prompt" in system_text
 
 
 @pytest.mark.asyncio
@@ -327,8 +337,9 @@ async def test_chat_skips_home_profile_when_no_cache(runner):
     await runner.chat("Ciao", system_prompt="Solo prompt")
 
     call_kwargs = runner._client.messages.create.call_args.kwargs
-    assert "CASA" not in call_kwargs["system"]
-    assert call_kwargs["system"] == "Solo prompt"
+    system_text = _sys_text(call_kwargs["system"])
+    assert "CASA" not in system_text
+    assert "Solo prompt" in system_text
 
 
 @pytest.mark.asyncio
@@ -407,9 +418,9 @@ async def test_require_confirmation_injects_prompt(runner):
 
     runner._client.messages.create = capture
     await runner.chat("Ciao", system_prompt="Base", require_confirmation=True)
-    system_used = captured[0]["system"]
-    assert REQUIRE_CONFIRMATION_PROMPT in system_used
-    assert "Base" in system_used
+    system_text = _sys_text(captured[0]["system"])
+    assert REQUIRE_CONFIRMATION_PROMPT in system_text
+    assert "Base" in system_text
 
 
 @pytest.mark.asyncio
@@ -449,10 +460,14 @@ async def test_require_confirmation_combines_with_restrict(runner):
     runner._client.messages.create = capture
     await runner.chat("Ciao", system_prompt="Base", restrict_to_home=True, require_confirmation=True)
     system_used = captured[0]["system"]
-    assert "Base" in system_used
-    assert RESTRICT_PROMPT in system_used
-    assert REQUIRE_CONFIRMATION_PROMPT in system_used
-    assert system_used.index(RESTRICT_PROMPT) < system_used.index(REQUIRE_CONFIRMATION_PROMPT)
+    system_text = _sys_text(system_used)
+    assert "Base" in system_text
+    assert RESTRICT_PROMPT in system_text
+    assert REQUIRE_CONFIRMATION_PROMPT in system_text
+    block_texts = [b["text"] for b in system_used if b.get("type") == "text"]
+    idx_restrict = next(i for i, t in enumerate(block_texts) if RESTRICT_PROMPT in t)
+    idx_confirm = next(i for i, t in enumerate(block_texts) if REQUIRE_CONFIRMATION_PROMPT in t)
+    assert idx_restrict < idx_confirm
 
 
 def test_build_action_instructions_notify():
@@ -573,7 +588,10 @@ def test_per_agent_usage_accumulates_after_chat():
     mock_response = MagicMock()
     mock_response.stop_reason = "end_turn"
     mock_response.content = [MagicMock(type="text", text="ok")]
-    mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+    mock_response.usage = MagicMock(
+        input_tokens=100, output_tokens=50,
+        cache_creation_input_tokens=0, cache_read_input_tokens=0,
+    )
 
     async def fake_call(**kwargs):
         return mock_response
