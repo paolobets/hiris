@@ -388,7 +388,17 @@
     @media (max-width: 640px) {
       #sidebar { display: none; }
       .msg-row { max-width: 92%; }
-      #input-area { padding: 0.5rem 0.75rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+      /* position:fixed keeps input-area visible above the iOS keyboard in WKWebView */
+      #input-area {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 0.5rem 0.75rem;
+        padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+      }
+      /* compensate for the fixed input bar so messages don't hide behind it */
+      #messages { padding-bottom: 74px; }
       #input { font-size: 1rem; }
     }
     /* ── Task section ─────────────────────────────── */
@@ -846,22 +856,29 @@ async function cancelTask(taskId) {
 setInterval(loadTasks, 30000);
 loadTasks();
 
-// ── Mobile keyboard fix (iOS Safari) ───────────────────────────────────
-// When the keyboard opens, iOS shrinks window.visualViewport.height but
-// does NOT reliably update dvh units. We manually set the app height so
-// #input-area stays visible and #messages shrinks above it.
+// ── Mobile keyboard fix ──────────────────────────────────────────────────
+// On mobile (≤640px): #input-area is position:fixed — iOS shifts fixed
+// elements above the keyboard automatically. visualViewport adjusts the
+// bottom value precisely for WKWebViews that don't auto-shift.
+// On tablet/desktop: shrink app container to match visual viewport height.
 if (window.visualViewport) {
   function adjustForKeyboard() {
-    var vvh = window.visualViewport.height;
-    document.body.style.height = vvh + 'px';
-    document.getElementById('app').style.height = vvh + 'px';
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    var kbH = Math.max(0,
+      window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
+    if (window.innerWidth <= 640) {
+      document.getElementById('input-area').style.bottom = kbH > 50 ? kbH + 'px' : '';
+    } else {
+      var vvh = window.visualViewport.height;
+      document.body.style.height = vvh + 'px';
+      document.getElementById('app').style.height = vvh + 'px';
+    }
+    if (kbH > 50) messagesEl.scrollTop = messagesEl.scrollHeight;
   }
   window.visualViewport.addEventListener('resize', adjustForKeyboard);
   window.visualViewport.addEventListener('scroll', adjustForKeyboard);
 }
 inputEl.addEventListener('focus', function() {
-  setTimeout(function() { messagesEl.scrollTop = messagesEl.scrollHeight; }, 400);
+  setTimeout(function() { messagesEl.scrollTop = messagesEl.scrollHeight; }, 350);
 });
 </script>
 </body>
