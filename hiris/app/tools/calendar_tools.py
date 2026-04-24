@@ -58,7 +58,8 @@ async def get_calendar_events(
         try:
             cals = await ha.get_calendars()
             entity_ids = [c["entity_id"] for c in cals if "entity_id" in c]
-        except Exception:
+        except Exception as exc:
+            logger.warning("get_calendars failed: %s", exc)
             entity_ids = []
 
     events: list[dict] = []

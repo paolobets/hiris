@@ -617,9 +617,16 @@ class ClaudeRunner:
                 )
             if name == "set_input_helper":
                 eid = inputs.get("entity_id", "")
+                if "value" not in inputs:
+                    return {"error": "Missing required parameter: value"}
                 ih_domain = eid.split(".")[0] if "." in eid else ""
                 if allowed_services and ih_domain:
-                    if not any(fnmatch.fnmatch(f"{ih_domain}.*", pat) for pat in allowed_services):
+                    if not any(
+                        fnmatch.fnmatch(f"{ih_domain}.turn_on", pat)
+                        or fnmatch.fnmatch(f"{ih_domain}.set_value", pat)
+                        or fnmatch.fnmatch(f"{ih_domain}.select_option", pat)
+                        for pat in allowed_services
+                    ):
                         logger.warning("set_input_helper on %r blocked by allowed_services policy", ih_domain)
                         return {"error": f"Domain {ih_domain!r} not permitted by allowed_services policy"}
                 return await set_input_helper(
