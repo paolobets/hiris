@@ -192,19 +192,22 @@ def create_app() -> web.Application:
     return app
 
 
+_NO_CACHE = {"Cache-Control": "no-store"}
+
+
 async def _serve_index(request: web.Request) -> web.Response:
     path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if not os.path.exists(path):
         return web.Response(text="UI not yet available", status=503)
-    return web.FileResponse(path)
+    return web.FileResponse(path, headers=_NO_CACHE)
 
 
 async def _serve_config(request: web.Request) -> web.Response:
     path = os.path.join(os.path.dirname(__file__), "static", "config.html")
     if not os.path.exists(path):
         return web.Response(text="UI not yet available", status=503)
-    return web.FileResponse(path)
+    return web.FileResponse(path, headers=_NO_CACHE)
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": "0.3.7"})
+    return web.json_response({"status": "ok", "version": "0.3.8"})
