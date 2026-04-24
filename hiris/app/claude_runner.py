@@ -616,9 +616,15 @@ class ClaudeRunner:
                     calendar_entity=inputs.get("calendar_entity"),
                 )
             if name == "set_input_helper":
+                eid = inputs.get("entity_id", "")
+                ih_domain = eid.split(".")[0] if "." in eid else ""
+                if allowed_services and ih_domain:
+                    if not any(fnmatch.fnmatch(f"{ih_domain}.*", pat) for pat in allowed_services):
+                        logger.warning("set_input_helper on %r blocked by allowed_services policy", ih_domain)
+                        return {"error": f"Domain {ih_domain!r} not permitted by allowed_services policy"}
                 return await set_input_helper(
                     self._ha,
-                    entity_id=inputs.get("entity_id", ""),
+                    entity_id=eid,
                     value=inputs.get("value"),
                 )
             logger.warning("Unknown tool: %s", name)

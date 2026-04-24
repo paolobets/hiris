@@ -768,3 +768,17 @@ async def test_dispatch_set_input_helper_select(runner):
     runner._ha.call_service.assert_awaited_once_with(
         "input_select", "select_option", {"entity_id": "input_select.house_mode", "option": "Away"}
     )
+
+
+@pytest.mark.asyncio
+async def test_set_input_helper_blocked_by_allowed_services(runner):
+    runner._ha.call_service = AsyncMock(return_value=True)
+    tool_block = MagicMock(type="tool_use", id="tu_ih4",
+                           input={"entity_id": "input_boolean.guest_mode", "value": True})
+    tool_block.name = "set_input_helper"
+    text_block = MagicMock(type="text", text="Bloccato.")
+    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
+    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
+    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
+    await runner.chat("Attiva guest mode.", allowed_services=["light.*", "climate.*"])
+    runner._ha.call_service.assert_not_called()
