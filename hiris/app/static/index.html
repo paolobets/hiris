@@ -982,7 +982,7 @@ function renderTask(task) {
 
 async function loadTasks() {
   try {
-    var resp = await fetch('/api/tasks');
+    var resp = await fetch('api/tasks');
     var tasks = await resp.json();
     var active = tasks.filter(function(t) { return t.status === 'pending' || t.status === 'running'; });
     var recent = tasks.filter(function(t) { return t.status !== 'pending' && t.status !== 'running'; });
@@ -1025,7 +1025,7 @@ var _obType = 'chat';
 async function checkOnboarding() {
   if (localStorage.getItem('hiris_onboarding_v1')) return;
   try {
-    var r = await fetch('/api/agents');
+    var r = await fetch('api/agents');
     if (!r.ok) return;
     var agents = await r.json();
     var nonDefault = agents.filter(function(a) { return !a.is_default; });
@@ -1059,21 +1059,19 @@ async function obCreate() {
   var prompt = (document.getElementById('ob-prompt').value || '').trim();
   var trigger = _obType === 'monitor'
     ? { type: 'schedule', interval_minutes: 60 }
-    : (_obType === 'reactive'
-      ? { type: 'state_changed', entity_id: '' }
-      : { type: 'manual' });
+    : { type: 'manual' };
   var payload = { name: name, type: _obType, trigger: trigger };
   if (prompt) payload.system_prompt = prompt;
   var btn = document.getElementById('ob-create-btn');
   btn.disabled = true;
   try {
-    var r = await fetch('/api/agents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    if (!r.ok) { btn.disabled = false; return; }
+    var r = await fetch('api/agents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    if (!r.ok) { btn.disabled = false; alert('Errore nella creazione agente. Riprova.'); return; }
     var agent = await r.json();
-    obDismiss();
     await loadAgents();
     if (agent.id) setActiveAgent(agent.id, agent.name || agent.id);
-  } catch(e) { btn.disabled = false; }
+    obDismiss();
+  } catch(e) { btn.disabled = false; alert('Errore di rete. Riprova.'); }
 }
 
 checkOnboarding();
