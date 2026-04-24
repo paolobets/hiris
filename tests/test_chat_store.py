@@ -154,6 +154,32 @@ def test_active_session_reused_within_gap(tmp_path):
     store.close()
 
 
+def test_load_context_returns_empty_for_stale_session(tmp_path):
+    """load_context must return [] if the session gap has elapsed (read path)."""
+    store = ChatStore(str(tmp_path / "chat_history.db"))
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime(_TS_FMT)
+    sid = "stale-read"
+    conn = store._conn
+    conn.execute(
+        "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) VALUES(?,?,?,?)",
+        (sid, "ag", old_ts, old_ts),
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
+        ("ag", sid, "user", "old", old_ts),
+    )
+    conn.commit()
+    # load_context must treat stale session as empty — no side effects
+    assert store.load_context("ag") == []
+    assert store.count_user_turns("ag") == 0
+    # Session is still "open" (not closed) since we only read
+    still_open = conn.execute(
+        "SELECT summary FROM chat_sessions WHERE session_id = ?", (sid,)
+    ).fetchone()
+    assert still_open["summary"] is None
+    store.close()
+
+
 # ---------------------------------------------------------------------------
 # Past summaries
 # ---------------------------------------------------------------------------

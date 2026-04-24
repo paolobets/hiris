@@ -375,11 +375,15 @@ class ClaudeRunner:
             for msg in hist[:-1]:
                 messages.append({"role": msg["role"], "content": msg["content"]})
             last = hist[-1]
-            raw = last["content"] if isinstance(last["content"], str) else str(last["content"])
-            messages.append({
-                "role": last["role"],
-                "content": [{"type": "text", "text": raw, "cache_control": {"type": "ephemeral"}}],
-            })
+            content = last["content"]
+            if isinstance(content, str):
+                cached_content = [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}]
+            elif isinstance(content, list) and content:
+                # Preserve structured blocks; attach cache_control to the last block only
+                cached_content = content[:-1] + [{**content[-1], "cache_control": {"type": "ephemeral"}}]
+            else:
+                cached_content = content  # empty list or unexpected type: skip caching
+            messages.append({"role": last["role"], "content": cached_content})
         messages.append({"role": "user", "content": user_message})
         self.total_requests += 1  # one per user exchange, regardless of tool iterations
 

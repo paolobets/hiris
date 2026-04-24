@@ -1,10 +1,13 @@
 import glob as _glob
 import json
+import logging
 import os
 import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone, timedelta
+
+logger = logging.getLogger(__name__)
 
 HISTORY_RETENTION_DAYS = 30
 SESSION_GAP_HOURS = 2
@@ -53,7 +56,8 @@ class ChatStore:
     def _now(self) -> str:
         return datetime.now(timezone.utc).strftime(_TS_FMT)
 
-    def _active_session(self, agent_id: str) -> str | None:
+    def _fresh_session_id(self, agent_id: str) -> str | None:
+        """Return the open session_id only if within the gap window — no side effects."""
         row = self._conn.execute(
             "SELECT session_id, last_msg_at FROM chat_sessions "
             "WHERE agent_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
@@ -64,10 +68,23 @@ class ChatStore:
         try:
             last = datetime.strptime(row["last_msg_at"], _TS_FMT).replace(tzinfo=timezone.utc)
         except ValueError:
-            last = datetime.now(timezone.utc)
+            return row["session_id"]
         if (datetime.now(timezone.utc) - last).total_seconds() < SESSION_GAP_HOURS * 3600:
             return row["session_id"]
-        self._close_session(agent_id, row["session_id"])
+        return None
+
+    def _active_session(self, agent_id: str) -> str | None:
+        """Return fresh session_id, closing stale ones as side effect (write path only)."""
+        sid = self._fresh_session_id(agent_id)
+        if sid:
+            return sid
+        row = self._conn.execute(
+            "SELECT session_id FROM chat_sessions "
+            "WHERE agent_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
+            (agent_id,),
+        ).fetchone()
+        if row:
+            self._close_session(agent_id, row["session_id"])
         return None
 
     def _close_session(self, agent_id: str, session_id: str) -> None:
@@ -121,20 +138,16 @@ class ChatStore:
             self._conn.commit()
 
     def load_context(self, agent_id: str, max_turns: int = 30) -> list[dict]:
-        """Return last max_turns pairs from the active session (within 30 days)."""
+        """Return last max_turns pairs from the active (non-stale) session (within 30 days)."""
         with self._mu:
-            cutoff = (datetime.now(timezone.utc) - timedelta(days=HISTORY_RETENTION_DAYS)).strftime(_TS_FMT)
-            row = self._conn.execute(
-                "SELECT session_id FROM chat_sessions "
-                "WHERE agent_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
-                (agent_id,),
-            ).fetchone()
-            if not row:
+            sid = self._fresh_session_id(agent_id)
+            if not sid:
                 return []
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=HISTORY_RETENTION_DAYS)).strftime(_TS_FMT)
             rows = self._conn.execute(
                 "SELECT role, content FROM chat_messages "
                 "WHERE session_id = ? AND timestamp >= ? ORDER BY id",
-                (row["session_id"], cutoff),
+                (sid, cutoff),
             ).fetchall()
             messages = [{"role": r["role"], "content": r["content"]} for r in rows]
             if len(messages) > max_turns * 2:
@@ -152,18 +165,14 @@ class ChatStore:
             return [dict(r) for r in rows]
 
     def count_user_turns(self, agent_id: str) -> int:
-        """Count user messages in the active session."""
+        """Count user messages in the active (non-stale) session."""
         with self._mu:
-            row = self._conn.execute(
-                "SELECT session_id FROM chat_sessions "
-                "WHERE agent_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
-                (agent_id,),
-            ).fetchone()
-            if not row:
+            sid = self._fresh_session_id(agent_id)
+            if not sid:
                 return 0
             cnt = self._conn.execute(
                 "SELECT COUNT(*) FROM chat_messages WHERE session_id = ? AND role = 'user'",
-                (row["session_id"],),
+                (sid,),
             ).fetchone()
             return cnt[0] if cnt else 0
 
@@ -212,14 +221,15 @@ class ChatStore:
                             (agent_id, session_id, m["role"], m["content"], m.get("timestamp", ts_end)),
                         )
                     last_asst = next((m for m in reversed(messages) if m["role"] == "assistant"), None)
-                    summary = last_asst["content"][:SUMMARY_MAX_CHARS] if last_asst else "(migrated)"
+                    text = last_asst["content"] if last_asst else "(migrated)"
+                    summary = text[:SUMMARY_MAX_CHARS] + "…" if len(text) > SUMMARY_MAX_CHARS else text
                     self._conn.execute(
                         "UPDATE chat_sessions SET summary = ? WHERE session_id = ?",
                         (summary, session_id),
                     )
                     self._conn.commit()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to migrate %s: %s", path, exc)
 
     def close(self) -> None:
         with self._mu:

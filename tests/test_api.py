@@ -4,6 +4,14 @@ from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import TestClient
 from hiris.app.server import create_app
 from hiris.app.agent_engine import AgentEngine
+from hiris.app.chat_store import close_all_stores
+
+
+@pytest.fixture(autouse=True)
+def reset_chat_stores():
+    """Close SQLite connections after each test to avoid file-lock on Windows."""
+    yield
+    close_all_stores()
 
 
 @pytest_asyncio.fixture

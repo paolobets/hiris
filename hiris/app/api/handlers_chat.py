@@ -2,7 +2,7 @@ import logging
 
 from aiohttp import web
 
-from ..chat_store import load_history, append_messages, get_past_summaries
+from ..chat_store import load_history, append_messages, get_past_summaries, count_user_turns
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +40,10 @@ async def handle_chat(request: web.Request) -> web.Response:
     # Load server-side history (client-sent history field is ignored)
     history = load_history(effective_agent_id, data_dir) if effective_agent_id else []
 
-    # Enforce max turns limit
+    # Enforce max turns limit (count from DB, not from the trimmed context window)
     max_turns = getattr(agent, "max_chat_turns", 0) if agent else 0
     if max_turns > 0:
-        turn_count = sum(1 for m in history if m["role"] == "user")
+        turn_count = count_user_turns(effective_agent_id, data_dir) if effective_agent_id else 0
         if turn_count >= max_turns:
             return web.json_response({
                 "error": "max_turns_reached",
