@@ -66,18 +66,21 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_entities = None
         allowed_services = None
 
-    # Assemble agent-specific prompt parts in order; BASE_SYSTEM_PROMPT is
-    # prepended by claude_runner.py at runtime so it is not included here.
-    prompt_parts = []
+    # system_prompt = static agent content (strategic_context + system_prompt).
+    # Kept separate from context_str so claude_runner can cache it independently.
+    static_parts = []
     if agent and agent.strategic_context:
-        prompt_parts.append(agent.strategic_context.strip())
+        static_parts.append(agent.strategic_context.strip())
     if agent and agent.system_prompt:
-        prompt_parts.append(agent.system_prompt.strip())
+        static_parts.append(agent.system_prompt.strip())
+    system_prompt = "\n\n---\n\n".join(static_parts)
 
+    # context_str = SemanticContextMap output (query-dependent, never cached).
     context_map = request.app.get("context_map")
     entity_cache = request.app.get("entity_cache")
     knowledge_db = request.app.get("knowledge_db")
     visible_ids: frozenset[str] = frozenset()
+    context_str = ""
     if context_map and entity_cache:
         ctx_str, visible_ids = context_map.get_context(
             query=message,
@@ -85,10 +88,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             allowed_entities=allowed_entities,
             knowledge_db=knowledge_db,
         )
-        if ctx_str:
-            prompt_parts.append(ctx_str.strip())
-
-    system_prompt = "\n\n---\n\n".join(prompt_parts)
+        context_str = ctx_str.strip() if ctx_str else ""
 
     agent_model = getattr(agent, "model", "auto") if agent else "auto"
     agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096
@@ -99,6 +99,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     response = await runner.chat(
         user_message=message,
         system_prompt=system_prompt,
+        context_str=context_str,
         conversation_history=context_history,
         allowed_tools=allowed_tools,
         allowed_entities=allowed_entities,

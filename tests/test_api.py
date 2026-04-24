@@ -44,7 +44,7 @@ async def test_health_endpoint(client):
     assert resp.status == 200
     data = await resp.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.3.16"
+    assert data["version"] == "0.3.17"
 
 
 @pytest.mark.asyncio
@@ -360,8 +360,11 @@ async def test_chat_context_map_injects_area_context(client):
     await client.post("/api/chat", json={"message": "termostato bagno?"})
 
     call_kwargs = runner.chat.call_args.kwargs
-    assert "BAGNO" in call_kwargs["system_prompt"]
-    assert "Termostato" in call_kwargs["system_prompt"]
+    # context_map output is passed separately as context_str (not cached)
+    assert "BAGNO" in call_kwargs["context_str"]
+    assert "Termostato" in call_kwargs["context_str"]
+    # static agent prompt must NOT contain the dynamic context
+    assert "BAGNO" not in call_kwargs["system_prompt"]
     assert call_kwargs["visible_entity_ids"] == frozenset(["climate.bagno"])
 
 

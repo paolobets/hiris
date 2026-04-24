@@ -324,6 +324,7 @@ class ClaudeRunner:
         self,
         user_message: str,
         system_prompt: str = "",
+        context_str: str = "",
         allowed_tools: Optional[list[str]] = None,
         conversation_history: Optional[list[dict]] = None,
         allowed_entities: Optional[list[str]] = None,
@@ -346,14 +347,18 @@ class ClaudeRunner:
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         # ── System prompt blocks with prompt caching ─────────────────────────
-        # BASE is marked cache_control=ephemeral — it's identical across every
-        # call so Anthropic can serve it from cache after the first write.
-        # Agent-specific and dynamic content follow in separate blocks (no cache).
+        # Block 1 — BASE (always cached): tool list + anti-hallucination rules.
+        # Block 2 — agent prompt (cached): strategic_context + system_prompt,
+        #           stable per agent across queries → reused from cache.
+        # Block 3 — context_str (NOT cached): SemanticContextMap output,
+        #           query-dependent → different content each request → no reuse.
         system_blocks: list[dict] = [
             {"type": "text", "text": BASE_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
         ]
         if system_prompt:
-            system_blocks.append({"type": "text", "text": system_prompt})
+            system_blocks.append({"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}})
+        if context_str:
+            system_blocks.append({"type": "text", "text": context_str})
         if restrict_to_home:
             system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
         if require_confirmation:
