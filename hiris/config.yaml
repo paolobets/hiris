@@ -34,4 +34,4 @@ schema:
   primary_model: str
   local_model_url: str
   local_model_name: str
-  internal_token: str
+  internal_token: password
