@@ -388,18 +388,18 @@
     @media (max-width: 640px) {
       #sidebar { display: none; }
       .msg-row { max-width: 92%; }
-      /* position:fixed keeps input-area visible above the iOS keyboard in WKWebView */
-      #input-area {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        padding: 0.5rem 0.75rem;
-        padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
-      }
-      /* compensate for the fixed input bar so messages don't hide behind it */
-      #messages { padding-bottom: 74px; }
+      #input-area { padding: 0.5rem 0.75rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
       #input { font-size: 1rem; }
+    }
+    #kb-debug {
+      display: none;
+      font-size: 10px;
+      padding: 3px 8px;
+      background: #fef2f2;
+      color: #dc2626;
+      border-bottom: 1px solid #fecaca;
+      flex-shrink: 0;
+      font-family: monospace;
     }
     /* ── Task section ─────────────────────────────── */
     .task-badge {
@@ -478,9 +478,11 @@
         <div id="header-title">HIRIS <span id="header-version" style="font-size:0.65rem;font-weight:400;color:var(--text-muted);letter-spacing:0"></span></div>
         <div id="header-subtitle">Home Intelligent Reasoning &amp; Integration</div>
       </div>
+
       <button id="new-conv-btn" onclick="clearConversation()" title="Nuova conversazione" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text-muted);font-size:12px;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s" onmouseover="this.style.background='var(--surface-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='none';this.style.color='var(--text-muted)'">&#x21BA; Nuova conv.</button>
       <div id="conn-dot" title="Connesso"></div>
     </header>
+    <div id="kb-debug"></div>
     <div id="messages">
       <div id="welcome">
         <div class="welcome-icon"><img src="static/hiris-icon.svg" width="72" height="72" alt="HIRIS" style="border-radius:50%"></div>
@@ -862,29 +864,69 @@ setInterval(loadTasks, 30000);
 loadTasks();
 
 // ── Mobile keyboard fix ──────────────────────────────────────────────────
-// On mobile (≤640px): #input-area is position:fixed — iOS shifts fixed
-// elements above the keyboard automatically. visualViewport adjusts the
-// bottom value precisely for WKWebViews that don't auto-shift.
-// On tablet/desktop: shrink app container to match visual viewport height.
-if (window.visualViewport) {
-  function adjustForKeyboard() {
-    var kbH = Math.max(0,
-      window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
-    if (window.innerWidth <= 640) {
-      document.getElementById('input-area').style.bottom = kbH > 50 ? kbH + 'px' : '';
-    } else {
-      var vvh = window.visualViewport.height;
-      document.body.style.height = vvh + 'px';
-      document.getElementById('app').style.height = vvh + 'px';
-    }
+// Strategy: shrink body+#app to the visible area (above keyboard) so the
+// flex layout naturally pushes #input-area to the top of the keyboard.
+//
+// Two complementary triggers:
+//  1. visualViewport 'resize' — fires when WKWebView reports keyboard height
+//  2. focus/blur fallback    — estimates height when WKWebView does NOT report
+//
+// The #kb-debug bar shows live values so we can diagnose which path fires.
+(function () {
+  var dbg = document.getElementById('kb-debug');
+  var appEl = document.getElementById('app');
+
+  function applyKbH(kbH, source) {
+    var vvh = window.innerHeight - Math.max(0, kbH);
+    document.body.style.height = vvh + 'px';
+    appEl.style.height = vvh + 'px';
     if (kbH > 50) messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (dbg) {
+      dbg.textContent = source + ' | innerH:' + window.innerHeight
+        + ' vvh:' + Math.round(window.visualViewport ? window.visualViewport.height : -1)
+        + ' kbH:' + Math.round(kbH);
+      dbg.style.display = '';
+    }
   }
-  window.visualViewport.addEventListener('resize', adjustForKeyboard);
-  window.visualViewport.addEventListener('scroll', adjustForKeyboard);
-}
-inputEl.addEventListener('focus', function() {
-  setTimeout(function() { messagesEl.scrollTop = messagesEl.scrollHeight; }, 350);
-});
+
+  function resetKbH() {
+    document.body.style.height = '';
+    appEl.style.height = '';
+    if (dbg) dbg.textContent += ' [reset]';
+  }
+
+  // Path 1 — visualViewport API
+  if (window.visualViewport) {
+    function onVV() {
+      var kbH = window.innerHeight - window.visualViewport.height;
+      applyKbH(kbH, 'VV');
+    }
+    window.visualViewport.addEventListener('resize', onVV);
+    window.visualViewport.addEventListener('scroll', onVV);
+  }
+
+  // Path 2 — focus/blur fallback (when VV height doesn't change in WKWebView)
+  inputEl.addEventListener('focus', function () {
+    setTimeout(function () {
+      var vvKbH = window.visualViewport
+        ? Math.max(0, window.innerHeight - window.visualViewport.height)
+        : 0;
+      if (vvKbH < 50) {
+        // VV didn't report keyboard — estimate ~40% of screen height
+        applyKbH(window.innerHeight * 0.40, 'EST');
+      }
+    }, 400);
+  });
+
+  inputEl.addEventListener('blur', function () {
+    setTimeout(function () {
+      var vvKbH = window.visualViewport
+        ? Math.max(0, window.innerHeight - window.visualViewport.height)
+        : 0;
+      if (vvKbH < 50) resetKbH();
+    }, 300);
+  });
+}());
 </script>
 </body>
 </html>
