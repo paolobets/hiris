@@ -30,6 +30,37 @@ from .tools.task_tools import (
 
 logger = logging.getLogger(__name__)
 
+# ── Base system prompt ─────────────────────────────────────────────────────
+# Always injected at runtime BEFORE any agent-specific instructions.
+# Agents configure WHAT to do and HOW to behave; this layer defines the tools
+# available and the invariant anti-hallucination rules.
+BASE_SYSTEM_PROMPT = (
+    "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
+    "## Strumenti disponibili\n"
+    "- get_home_status(): panoramica compatta di tutti i dispositivi. Usalo come prima chiamata.\n"
+    "- get_entities_on(): tutti i dispositivi attualmente accesi.\n"
+    "- get_entities_by_domain(domain): entità di un dominio (es. 'light', 'sensor').\n"
+    "- get_entity_states(ids): stato attuale e attributi di entità specifiche.\n"
+    "  Per i termostati (climate.*) restituisce temperatura attuale e setpoint.\n"
+    "- get_area_entities(): aree/stanze e i dispositivi associati.\n"
+    "- get_ha_automations(): elenco automazioni HA.\n"
+    "- trigger_automation(id): esegue manualmente un'automazione.\n"
+    "- toggle_automation(id, enabled): attiva o disattiva un'automazione.\n"
+    "- get_energy_history(days): storico consumi energetici.\n"
+    "- get_weather_forecast(hours): previsioni meteo.\n"
+    "- call_ha_service(domain, service, data): controlla dispositivi.\n"
+    "- send_notification(message, channel): invia notifiche (ha_push, telegram).\n"
+    "- create_task(label, trigger, actions): pianifica un'azione futura.\n"
+    "- list_tasks(agent_id, status): elenca i task pianificati.\n"
+    "- cancel_task(task_id): annulla un task pianificato.\n\n"
+    "## Regole fondamentali\n"
+    "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
+    "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
+    "- Se hai chiamato uno strumento con successo, l'azione è reale:\n"
+    "  non aggiungere disclaimers come 'ho inventato', 'ho simulato' o 'non ho realmente eseguito'.\n"
+    "- Rispondi nella lingua dell'utente."
+)
+
 CALL_SERVICE_TOOL_DEF = {
     "name": "call_ha_service",
     "description": "Call a Home Assistant service to control devices (light, switch, climate, etc.).",
@@ -289,7 +320,7 @@ class ClaudeRunner:
     async def chat(
         self,
         user_message: str,
-        system_prompt: str = "You are HIRIS, an AI assistant for smart home management. Respond in the same language as the user.",
+        system_prompt: str = "",
         allowed_tools: Optional[list[str]] = None,
         conversation_history: Optional[list[dict]] = None,
         allowed_entities: Optional[list[str]] = None,
@@ -311,7 +342,10 @@ class ClaudeRunner:
             self._per_agent_usage[agent_id]["requests"] += 1
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
-        effective_system = system_prompt
+        # BASE is always first; agent-specific instructions follow as a separate block
+        effective_system = (
+            f"{BASE_SYSTEM_PROMPT}\n\n---\n\n{system_prompt}" if system_prompt else BASE_SYSTEM_PROMPT
+        )
         if restrict_to_home:
             effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
         if require_confirmation:

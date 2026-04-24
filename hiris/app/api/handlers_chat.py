@@ -57,21 +57,22 @@ async def handle_chat(request: web.Request) -> web.Response:
     context_history = history[-_MAX_CONTEXT:] if len(history) > _MAX_CONTEXT else history
 
     if agent:
-        if agent.strategic_context:
-            system_prompt = f"{agent.strategic_context}\n\n---\n\n{agent.system_prompt}"
-        else:
-            system_prompt = agent.system_prompt or (
-                "Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente."
-            )
         allowed_tools = agent.allowed_tools or None
         allowed_entities = agent.allowed_entities or None
         allowed_services = agent.allowed_services or None
     else:
-        logger.warning("No agent found (requested: %s). Using fallback prompt.", agent_id)
-        system_prompt = "Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente."
+        logger.warning("No agent found (requested: %s). BASE_SYSTEM_PROMPT will be used.", agent_id)
         allowed_tools = None
         allowed_entities = None
         allowed_services = None
+
+    # Assemble agent-specific prompt parts in order; BASE_SYSTEM_PROMPT is
+    # prepended by claude_runner.py at runtime so it is not included here.
+    prompt_parts = []
+    if agent and agent.strategic_context:
+        prompt_parts.append(agent.strategic_context.strip())
+    if agent and agent.system_prompt:
+        prompt_parts.append(agent.system_prompt.strip())
 
     context_map = request.app.get("context_map")
     entity_cache = request.app.get("entity_cache")
@@ -85,7 +86,9 @@ async def handle_chat(request: web.Request) -> web.Response:
             knowledge_db=knowledge_db,
         )
         if ctx_str:
-            system_prompt = f"{system_prompt}\n\n---\n\n{ctx_str}"
+            prompt_parts.append(ctx_str.strip())
+
+    system_prompt = "\n\n---\n\n".join(prompt_parts)
 
     agent_model = getattr(agent, "model", "auto") if agent else "auto"
     agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096

@@ -115,34 +115,13 @@ class AgentEngine:
         except Exception as exc:
             logger.error("Failed to load agents from %s: %s", self._data_path, exc)
 
+    # Agent-specific instructions only — tool list and base rules are injected
+    # at runtime via BASE_SYSTEM_PROMPT in claude_runner.py.
     _DEFAULT_SYSTEM_PROMPT = (
-        "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
-        "Strumenti disponibili:\n"
-        "- get_home_status(): panoramica compatta di tutti i dispositivi utili. Usalo come prima chiamata.\n"
-        "- get_entities_on(): tutti i dispositivi attualmente accesi.\n"
-        "- get_entities_by_domain(domain): tutte le entità di un dominio (es. 'light', 'sensor').\n"
-        "- get_entity_states(ids): stato attuale e attributi di entità specifiche per ID."
-        " Per i termostati (climate.*) restituisce anche temperatura attuale e setpoint.\n"
-        "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
-        "- get_ha_automations(): elenco delle automazioni HA.\n"
-        "- trigger_automation(id): esegue manualmente un'automazione.\n"
-        "- toggle_automation(id, enabled): attiva o disattiva un'automazione.\n"
-        "- get_energy_history(days): storico consumi energetici.\n"
-        "- get_weather_forecast(hours): previsioni meteo.\n"
-        "- call_ha_service(domain, service, data): controlla dispositivi.\n"
-        "- send_notification(message, channel): invia notifiche (HA push, Telegram).\n"
-        "- create_task(label, trigger, actions): pianifica un'azione futura (es. accendi luce tra 30 min).\n"
-        "- list_tasks(agent_id, status): elenca i task pianificati.\n"
-        "- cancel_task(task_id): annulla un task pianificato.\n\n"
-        "Regole:\n"
-        "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
-        "- La sezione CASA in fondo a questo prompt è uno snapshot di orientamento (aggiornato ogni 60s):"
-        " usa i tool per valori precisi come temperature, stati correnti, sensori.\n"
-        "- Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
-        "- Non inventare dati: usa gli strumenti.\n"
-        "- Se hai chiamato uno strumento e ha risposto con successo, l'azione o il dato è reale:"
-        " non aggiungere disclaimers come 'ho inventato', 'ho simulato' o 'non ho eseguito nulla'.\n"
-        "- Rispondi nella lingua dell'utente."
+        "Sei l'assistente principale per la gestione della smart home.\n"
+        "Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
+        "La sezione CASA in fondo al prompt è uno snapshot di orientamento:"
+        " usa i tool per valori precisi come temperature e stati correnti."
     )
 
     # Old factory prompts that can be safely overwritten on upgrade
@@ -220,6 +199,36 @@ class AgentEngine:
             "- Non inventare dati: usa gli strumenti.\n"
             "- Rispondi nella lingua dell'utente."
         ),
+        # v0.3.14: full tool list in system_prompt (now moved to BASE_SYSTEM_PROMPT)
+        (
+            "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
+            "Strumenti disponibili:\n"
+            "- get_home_status(): panoramica compatta di tutti i dispositivi utili. Usalo come prima chiamata.\n"
+            "- get_entities_on(): tutti i dispositivi attualmente accesi.\n"
+            "- get_entities_by_domain(domain): tutte le entità di un dominio (es. 'light', 'sensor').\n"
+            "- get_entity_states(ids): stato attuale e attributi di entità specifiche per ID."
+            " Per i termostati (climate.*) restituisce anche temperatura attuale e setpoint.\n"
+            "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
+            "- get_ha_automations(): elenco delle automazioni HA.\n"
+            "- trigger_automation(id): esegue manualmente un'automazione.\n"
+            "- toggle_automation(id, enabled): attiva o disattiva un'automazione.\n"
+            "- get_energy_history(days): storico consumi energetici.\n"
+            "- get_weather_forecast(hours): previsioni meteo.\n"
+            "- call_ha_service(domain, service, data): controlla dispositivi.\n"
+            "- send_notification(message, channel): invia notifiche (HA push, Telegram).\n"
+            "- create_task(label, trigger, actions): pianifica un'azione futura (es. accendi luce tra 30 min).\n"
+            "- list_tasks(agent_id, status): elenca i task pianificati.\n"
+            "- cancel_task(task_id): annulla un task pianificato.\n\n"
+            "Regole:\n"
+            "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
+            "- La sezione CASA in fondo a questo prompt è uno snapshot di orientamento (aggiornato ogni 60s):"
+            " usa i tool per valori precisi come temperature, stati correnti, sensori.\n"
+            "- Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
+            "- Non inventare dati: usa gli strumenti.\n"
+            "- Se hai chiamato uno strumento e ha risposto con successo, l'azione o il dato è reale:"
+            " non aggiungere disclaimers come 'ho inventato', 'ho simulato' o 'non ho eseguito nulla'.\n"
+            "- Rispondi nella lingua dell'utente."
+        ),
     }
 
     def _seed_default_agent(self) -> None:
@@ -248,7 +257,7 @@ class AgentEngine:
                 changed = True
             if changed:
                 self._save()
-                logger.info("Migrated default agent to v0.3.14")
+                logger.info("Migrated default agent to v0.3.15")
 
     def get_default_agent(self) -> Optional[Agent]:
         return self._agents.get(DEFAULT_AGENT_ID)
