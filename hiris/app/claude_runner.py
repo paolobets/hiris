@@ -107,9 +107,12 @@ AUTO_MODEL_MAP: dict[str, str] = {
 }
 
 _PRICING: dict[str, dict[str, float]] = {
-    "claude-sonnet-4-6":         {"input": 3.0,  "output": 15.0},
-    "claude-opus-4-7":           {"input": 15.0, "output": 75.0},
-    "claude-haiku-4-5-20251001": {"input": 0.25, "output": 1.25},
+    # input/output: normal token rates ($/MTok)
+    # cache_write: rate for writing new tokens into the prompt cache (billed once)
+    # cache_read:  rate for reading tokens already in cache (90% discount vs input)
+    "claude-sonnet-4-6":         {"input": 3.0,  "output": 15.0,  "cache_write": 3.75,  "cache_read": 0.30},
+    "claude-opus-4-7":           {"input": 15.0, "output": 75.0,  "cache_write": 18.75, "cache_read": 1.50},
+    "claude-haiku-4-5-20251001": {"input": 0.25, "output": 1.25,  "cache_write": 0.30,  "cache_read": 0.03},
 }
 
 
@@ -342,16 +345,23 @@ class ClaudeRunner:
             self._per_agent_usage[agent_id]["requests"] += 1
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
-        # BASE is always first; agent-specific instructions follow as a separate block
-        effective_system = (
-            f"{BASE_SYSTEM_PROMPT}\n\n---\n\n{system_prompt}" if system_prompt else BASE_SYSTEM_PROMPT
-        )
+        # ── System prompt blocks with prompt caching ─────────────────────────
+        # BASE is marked cache_control=ephemeral — it's identical across every
+        # call so Anthropic can serve it from cache after the first write.
+        # Agent-specific and dynamic content follow in separate blocks (no cache).
+        system_blocks: list[dict] = [
+            {"type": "text", "text": BASE_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
+        ]
+        if system_prompt:
+            system_blocks.append({"type": "text", "text": system_prompt})
         if restrict_to_home:
-            effective_system = f"{system_prompt}\n\n---\n\n{RESTRICT_PROMPT}"
+            system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
         if require_confirmation:
-            effective_system = f"{effective_system}\n\n---\n\n{REQUIRE_CONFIRMATION_PROMPT}"
+            system_blocks.append({"type": "text", "text": REQUIRE_CONFIRMATION_PROMPT})
         if self._cache is not None and self._semantic_map is None:
-            effective_system = f"{effective_system}\n\n---\n\n{get_cached_home_profile(self._cache)}"
+            profile = get_cached_home_profile(self._cache)
+            if profile:
+                system_blocks.append({"type": "text", "text": profile})
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         messages: list[dict] = list(conversation_history or [])
@@ -363,7 +373,7 @@ class ClaudeRunner:
                 response = await self._call_api(
                     model=effective_model,
                     max_tokens=max_tokens,
-                    system=effective_system,
+                    system=system_blocks,
                     tools=tools,
                     messages=messages,
                 )
@@ -373,15 +383,23 @@ class ClaudeRunner:
 
             inp = response.usage.input_tokens
             out = response.usage.output_tokens
-            self.total_input_tokens += inp
+            cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+            cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+            self.total_input_tokens += inp + cache_creation + cache_read
             self.total_output_tokens += out
             prices = _PRICING.get(effective_model, _PRICING["claude-sonnet-4-6"])
-            self.total_cost_usd += (inp * prices["input"] + out * prices["output"]) / 1_000_000
+            cost = (
+                inp * prices["input"]
+                + cache_creation * prices.get("cache_write", prices["input"] * 1.25)
+                + cache_read * prices.get("cache_read", prices["input"] * 0.1)
+                + out * prices["output"]
+            ) / 1_000_000
+            self.total_cost_usd += cost
             if agent_id and agent_id in self._per_agent_usage:
                 pau = self._per_agent_usage[agent_id]
-                pau["input_tokens"] += inp
+                pau["input_tokens"] += inp + cache_creation + cache_read
                 pau["output_tokens"] += out
-                pau["cost_usd"] += (inp * prices["input"] + out * prices["output"]) / 1_000_000
+                pau["cost_usd"] += cost
             self._save_usage()
 
             if response.stop_reason == "end_turn":
