@@ -68,6 +68,22 @@ class HAClient:
             all_states: list[dict] = await resp.json()
         return [s for s in all_states if s["entity_id"].startswith("automation.")]
 
+    async def get_calendars(self) -> list[dict]:
+        """Return list of all calendar entities from HA."""
+        url = f"{self._base_url}/api/calendars"
+        async with self._session.get(url) as resp:
+            resp.raise_for_status()
+            return await resp.json()
+
+    async def get_calendar_events_range(self, entity_id: str, start: str, end: str) -> list[dict]:
+        """Return events for a single calendar entity in [start, end] ISO8601 range."""
+        url = f"{self._base_url}/api/calendars/{entity_id}?start={start}&end={end}"
+        async with self._session.get(url) as resp:
+            if resp.status == 404:
+                return []
+            resp.raise_for_status()
+            return await resp.json()
+
     async def get_area_registry(self) -> list[dict]:
         url = f"{self._base_url}/api/config/area_registry/list"
         try:

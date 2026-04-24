@@ -1,4 +1,5 @@
 import pytest
+import unittest.mock
 import anthropic
 from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT, resolve_model, AUTO_MODEL_MAP
@@ -664,3 +665,47 @@ async def test_simple_chat_returns_text(runner):
             system="Classify entities",
         )
     assert result == '{"result": "ok"}'
+
+
+def test_get_calendar_events_in_all_tool_defs():
+    from hiris.app.claude_runner import ALL_TOOL_DEFS
+    names = [t["name"] for t in ALL_TOOL_DEFS]
+    assert "get_calendar_events" in names
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_calendar_events_all_calendars(runner):
+    runner._ha.get_calendars = AsyncMock(return_value=[
+        {"entity_id": "calendar.home", "name": "Home"},
+    ])
+    runner._ha.get_calendar_events_range = AsyncMock(return_value=[
+        {"summary": "Meeting", "start": {"dateTime": "2026-04-24T10:00:00+00:00"}, "end": {"dateTime": "2026-04-24T11:00:00+00:00"}},
+    ])
+    # MagicMock's `name` kwarg sets the mock's internal repr, not the .name attribute.
+    # Assign .name explicitly so _dispatch_tool sees the correct string.
+    tool_block = MagicMock(type="tool_use", id="tu_cal", input={"hours": 24})
+    tool_block.name = "get_calendar_events"
+    text_block = MagicMock(type="text", text="Hai un meeting alle 10.")
+    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
+    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
+    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
+    result = await runner.chat("Cosa ho in agenda oggi?")
+    assert result == "Hai un meeting alle 10."
+    runner._ha.get_calendars.assert_awaited_once()
+    runner._ha.get_calendar_events_range.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_calendar_events_specific_calendar(runner):
+    runner._ha.get_calendar_events_range = AsyncMock(return_value=[])
+    tool_block = MagicMock(type="tool_use", id="tu_cal2", input={"hours": 48, "calendar_entity": "calendar.work"})
+    tool_block.name = "get_calendar_events"
+    text_block = MagicMock(type="text", text="Nessun evento.")
+    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
+    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
+    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
+    result = await runner.chat("Impegni di lavoro nei prossimi 2 giorni?")
+    assert result == "Nessun evento."
+    runner._ha.get_calendar_events_range.assert_awaited_once_with(
+        "calendar.work", unittest.mock.ANY, unittest.mock.ANY
+    )
