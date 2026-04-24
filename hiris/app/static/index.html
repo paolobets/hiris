@@ -391,16 +391,6 @@
       #input-area { padding: 0.5rem 0.75rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
       #input { font-size: 1rem; }
     }
-    #kb-debug {
-      display: none;
-      font-size: 10px;
-      padding: 3px 8px;
-      background: #fef2f2;
-      color: #dc2626;
-      border-bottom: 1px solid #fecaca;
-      flex-shrink: 0;
-      font-family: monospace;
-    }
     /* ── Task section ─────────────────────────────── */
     .task-badge {
       display: inline-flex; align-items: center; justify-content: center;
@@ -482,7 +472,6 @@
       <button id="new-conv-btn" onclick="clearConversation()" title="Nuova conversazione" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text-muted);font-size:12px;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s" onmouseover="this.style.background='var(--surface-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='none';this.style.color='var(--text-muted)'">&#x21BA; Nuova conv.</button>
       <div id="conn-dot" title="Connesso"></div>
     </header>
-    <div id="kb-debug"></div>
     <div id="messages">
       <div id="welcome">
         <div class="welcome-icon"><img src="static/hiris-icon.svg" width="72" height="72" alt="HIRIS" style="border-radius:50%"></div>
@@ -879,50 +868,36 @@ setInterval(loadTasks, 30000);
 loadTasks();
 
 // ── Mobile keyboard fix ──────────────────────────────────────────────────
-// Strategy: shrink body+#app to the visible area (above keyboard) so the
-// flex layout naturally pushes #input-area to the top of the keyboard.
-//
-// Two complementary triggers:
-//  1. visualViewport 'resize' — fires when WKWebView reports keyboard height
-//  2. focus/blur fallback    — estimates height when WKWebView does NOT report
-//
-// The #kb-debug bar shows live values so we can diagnose which path fires.
+// Shrinks body+#app to the visible area so the flex layout pushes
+// #input-area above the keyboard.
+// Note: in HA's WKWebView, visualViewport.height never changes when the
+// keyboard opens, so Path 1 is a no-op — Path 2 (EST) does all the work.
 (function () {
-  var dbg = document.getElementById('kb-debug');
   var appEl = document.getElementById('app');
-
   var isTouchDevice = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
 
-  function applyKbH(kbH, source) {
+  function applyKbH(kbH) {
     var vvh = window.innerHeight - Math.max(0, kbH);
     document.body.style.height = vvh + 'px';
     appEl.style.height = vvh + 'px';
     if (kbH > 50) messagesEl.scrollTop = messagesEl.scrollHeight;
-    if (dbg) {
-      dbg.textContent = source + ' | innerH:' + window.innerHeight
-        + ' vvh:' + Math.round(window.visualViewport ? window.visualViewport.height : -1)
-        + ' kbH:' + Math.round(kbH);
-      dbg.style.display = 'block';  // was '' which reverts to CSS display:none
-    }
   }
 
   function resetKbH() {
     document.body.style.height = '';
     appEl.style.height = '';
-    if (dbg) { dbg.textContent += ' [reset]'; }
   }
 
   // Path 1 — visualViewport API
   if (window.visualViewport) {
     function onVV() {
-      var kbH = window.innerHeight - window.visualViewport.height;
-      applyKbH(kbH, 'VV');
+      applyKbH(window.innerHeight - window.visualViewport.height);
     }
     window.visualViewport.addEventListener('resize', onVV);
     window.visualViewport.addEventListener('scroll', onVV);
   }
 
-  // Path 2 — focus/blur fallback (only on touch devices, when VV didn't change)
+  // Path 2 — focus/blur fallback (touch only, when VV didn't change)
   inputEl.addEventListener('focus', function () {
     if (!isTouchDevice) return;
     setTimeout(function () {
@@ -930,9 +905,8 @@ loadTasks();
         ? Math.max(0, window.innerHeight - window.visualViewport.height)
         : 0;
       if (vvKbH < 50) {
-        // VV didn't report keyboard — estimate (capped between 220px and 380px)
         var est = Math.min(Math.max(Math.round(window.innerHeight * 0.44), 220), 380);
-        applyKbH(est, 'EST');
+        applyKbH(est);
       }
     }, 400);
   });
