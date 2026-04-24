@@ -390,7 +390,23 @@
       .msg-row { max-width: 92%; }
       #input-area { padding: 0.5rem 0.75rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
       #input { font-size: 1rem; }
+      #mobile-task-btn { display: flex; }
     }
+    #mobile-task-btn {
+      display: none; align-items: center; gap: 4px;
+      background: none; border: 1px solid var(--border); border-radius: 6px;
+      padding: 3px 9px; color: var(--text-muted); font-size: 12px; cursor: pointer;
+      white-space: nowrap; transition: background 0.15s, color 0.15s;
+    }
+    #mobile-task-btn:hover { background: var(--surface-hover); color: var(--text); }
+    #mobile-task-btn.active { color: var(--accent); border-color: var(--accent); }
+    #mobile-task-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 16px; height: 16px; border-radius: 8px;
+      background: var(--accent); color: #fff;
+      font-size: 10px; font-weight: 700; padding: 0 4px;
+    }
+    #mobile-task-badge:empty, #mobile-task-badge[data-count="0"] { display: none; }
     /* ── Task section ─────────────────────────────── */
     .task-badge {
       display: inline-flex; align-items: center; justify-content: center;
@@ -469,6 +485,7 @@
         <div id="header-subtitle">Home Intelligent Reasoning &amp; Integration</div>
       </div>
 
+      <button id="mobile-task-btn" onclick="showPanel('tasks'); return false;" title="Task pianificati">&#128336; Task<span id="mobile-task-badge" data-count="0"></span></button>
       <button id="new-conv-btn" onclick="clearConversation()" title="Nuova conversazione" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text-muted);font-size:12px;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s" onmouseover="this.style.background='var(--surface-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='none';this.style.color='var(--text-muted)'">&#x21BA; Nuova conv.</button>
       <div id="conn-dot" title="Connesso"></div>
     </header>
@@ -498,6 +515,10 @@
     <div id="session-ended-msg" style="display:none;font-size:12px;text-align:center;padding:6px 8px;color:var(--conn-off);background:var(--surface);border-top:1px solid var(--border)">Sessione completata &#8212; avvia una nuova conversazione</div>
     <!-- Task panel -->
     <div id="task-panel">
+      <div id="task-panel-header" style="display:none;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-weight:600;font-size:15px">Task pianificati</span>
+        <button onclick="showPanel('chat')" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:4px 8px">&#8592; Chat</button>
+      </div>
       <div class="task-section-title">Task attive</div>
       <div id="task-active-list"></div>
       <div class="task-section-title">Task recenti (24h)</div>
@@ -799,6 +820,10 @@ function showPanel(name) {
   document.getElementById('task-panel').style.display = isTask ? 'flex' : 'none';
   var navTasks = document.getElementById('nav-tasks');
   if (navTasks) navTasks.classList.toggle('active', isTask);
+  var mobileBtn = document.getElementById('mobile-task-btn');
+  if (mobileBtn) mobileBtn.classList.toggle('active', isTask);
+  var taskHeader = document.getElementById('task-panel-header');
+  if (taskHeader) taskHeader.style.display = (isTask && window.innerWidth <= 640) ? 'flex' : 'none';
   if (isTask) loadTasks();
 }
 
@@ -851,6 +876,11 @@ async function loadTasks() {
     if (badge) {
       badge.textContent = active.length || '';
       badge.dataset.count = active.length;
+    }
+    var mbadge = document.getElementById('mobile-task-badge');
+    if (mbadge) {
+      mbadge.textContent = active.length || '';
+      mbadge.dataset.count = active.length;
     }
   } catch(e) { console.error('loadTasks failed', e); }
 }
