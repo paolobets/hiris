@@ -475,7 +475,7 @@
     <header id="header">
       <img id="header-icon" src="static/hiris-icon.svg" width="32" height="32" alt="HIRIS" style="border-radius:50%;flex-shrink:0">
       <div>
-        <div id="header-title">HIRIS</div>
+        <div id="header-title">HIRIS <span id="header-version" style="font-size:0.65rem;font-weight:400;color:var(--text-muted);letter-spacing:0"></span></div>
         <div id="header-subtitle">Home Intelligent Reasoning &amp; Integration</div>
       </div>
       <button id="new-conv-btn" onclick="clearConversation()" title="Nuova conversazione" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text-muted);font-size:12px;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s" onmouseover="this.style.background='var(--surface-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='none';this.style.color='var(--text-muted)'">&#x21BA; Nuova conv.</button>
@@ -769,6 +769,11 @@ async function loadUsage() {
 }
 
 applyTheme();
+
+fetch('api/health').then(function(r){ return r.json(); }).then(function(d){
+  var el = document.getElementById('header-version');
+  if (el && d.version) el.textContent = 'v' + d.version;
+}).catch(function(){});
 
 loadAgents();
 loadUsage();
