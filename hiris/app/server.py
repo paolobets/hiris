@@ -21,6 +21,7 @@ from .proxy.ha_client import HAClient
 from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
 from .proxy.semantic_context_map import SemanticContextMap
+from .api.middleware_internal_auth import internal_auth_middleware
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ async def _on_startup(app: web.Application) -> None:
     from .proxy.semantic_map import SemanticMap
     from .llm_router import LLMRouter
 
+    app["internal_token"] = os.environ.get("INTERNAL_TOKEN", "")
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
         logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
@@ -161,7 +163,7 @@ async def _security_headers(request: web.Request, handler) -> web.Response:
 
 
 def create_app() -> web.Application:
-    app = web.Application(middlewares=[_security_headers])
+    app = web.Application(middlewares=[internal_auth_middleware, _security_headers])
 
     app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)

@@ -6,6 +6,7 @@ export THEME=$(bashio::config 'theme' 'auto')
 export PRIMARY_MODEL=$(bashio::config 'primary_model' 'claude-sonnet-4-6')
 export LOCAL_MODEL_URL=$(bashio::config 'local_model_url' '')
 export LOCAL_MODEL_NAME=$(bashio::config 'local_model_name' '')
+export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
 
 bashio::log.info "Starting HIRIS"
 bashio::log.info "Log level: ${LOG_LEVEL}"
