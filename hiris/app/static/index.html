@@ -738,9 +738,24 @@ function autoResize() {
   inputEl.style.height = Math.min(inputEl.scrollHeight, 128) + 'px';
 }
 
-inputEl.addEventListener('input', autoResize);
+var _enterSent = false;
 inputEl.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
+    e.preventDefault();
+    _enterSent = true;
+    sendMessage();
+    setTimeout(function() { _enterSent = false; }, 200);
+  }
+});
+inputEl.addEventListener('input', function() {
+  autoResize();
+  // iOS fallback: WKWebView may insert \n even after preventDefault
+  if (!_enterSent && inputEl.value.includes('\n')) {
+    var msg = inputEl.value.replace(/\n/g, '').trim();
+    inputEl.value = msg;
+    autoResize();
+    if (msg) sendMessage(msg);
+  }
 });
 sendBtn.addEventListener('click', function() { sendMessage(); });
 
@@ -876,6 +891,8 @@ loadTasks();
   var dbg = document.getElementById('kb-debug');
   var appEl = document.getElementById('app');
 
+  var isTouchDevice = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+
   function applyKbH(kbH, source) {
     var vvh = window.innerHeight - Math.max(0, kbH);
     document.body.style.height = vvh + 'px';
@@ -885,14 +902,14 @@ loadTasks();
       dbg.textContent = source + ' | innerH:' + window.innerHeight
         + ' vvh:' + Math.round(window.visualViewport ? window.visualViewport.height : -1)
         + ' kbH:' + Math.round(kbH);
-      dbg.style.display = '';
+      dbg.style.display = 'block';  // was '' which reverts to CSS display:none
     }
   }
 
   function resetKbH() {
     document.body.style.height = '';
     appEl.style.height = '';
-    if (dbg) dbg.textContent += ' [reset]';
+    if (dbg) { dbg.textContent += ' [reset]'; }
   }
 
   // Path 1 — visualViewport API
@@ -905,15 +922,17 @@ loadTasks();
     window.visualViewport.addEventListener('scroll', onVV);
   }
 
-  // Path 2 — focus/blur fallback (when VV height doesn't change in WKWebView)
+  // Path 2 — focus/blur fallback (only on touch devices, when VV didn't change)
   inputEl.addEventListener('focus', function () {
+    if (!isTouchDevice) return;
     setTimeout(function () {
       var vvKbH = window.visualViewport
         ? Math.max(0, window.innerHeight - window.visualViewport.height)
         : 0;
       if (vvKbH < 50) {
-        // VV didn't report keyboard — estimate ~40% of screen height
-        applyKbH(window.innerHeight * 0.40, 'EST');
+        // VV didn't report keyboard — estimate (capped between 220px and 380px)
+        var est = Math.min(Math.max(Math.round(window.innerHeight * 0.44), 220), 380);
+        applyKbH(est, 'EST');
       }
     }, 400);
   });
