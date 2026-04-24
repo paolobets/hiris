@@ -149,3 +149,33 @@ async def handle_reset_agent_usage(request: web.Request) -> web.Response:
         return web.json_response({"error": "runner not configured"}, status=503)
     runner.reset_agent_usage(agent_id)
     return web.json_response({"reset": True, "agent_id": agent_id})
+
+
+async def handle_context_preview(request: web.Request) -> web.Response:
+    """Return SemanticContextMap output for this agent (empty-string query = all relevant entities)."""
+    agent_id = request.match_info["agent_id"]
+    if err := _check_agent_id(agent_id):
+        return err
+    engine = request.app["engine"]
+    agent = engine.get_agent(agent_id)
+    if agent is None:
+        return web.json_response({"error": "Not found"}, status=404)
+
+    context_map = request.app.get("context_map")
+    entity_cache = request.app.get("entity_cache")
+    if not context_map or not entity_cache:
+        return web.json_response({"context_str": "", "entity_count": 0, "token_estimate": 0})
+
+    allowed_entities = agent.allowed_entities or None
+    ctx_str, visible_ids = context_map.get_context(
+        query="",
+        entity_cache=entity_cache,
+        allowed_entities=allowed_entities,
+        knowledge_db=request.app.get("knowledge_db"),
+    )
+    context_str = ctx_str.strip() if ctx_str else ""
+    return web.json_response({
+        "context_str": context_str,
+        "entity_count": len(visible_ids),
+        "token_estimate": len(context_str) // 4,
+    })

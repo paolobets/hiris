@@ -503,6 +503,32 @@
       width: 80px; padding: 4px 8px; background: var(--input-bg); border: 1px solid var(--border);
       color: var(--text); border-radius: 4px; font-size: 13px;
     }
+    /* Token counter */
+    .token-bar {
+      display: flex; flex-wrap: wrap; gap: 6px 12px;
+      padding: 8px 10px; margin-top: 6px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      font-size: 11px;
+    }
+    .token-row { display: flex; align-items: center; gap: 5px; }
+    .token-label { color: var(--text-muted); }
+    .token-val { font-weight: 600; color: var(--text); }
+    .token-val.warn { color: #f59e0b; }
+    .token-sep { width: 1px; background: var(--border); height: 14px; }
+    .context-preview-wrap {
+      margin-top: 6px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+    }
+    .context-preview-wrap summary {
+      padding: 6px 10px; font-size: 12px; color: var(--text-muted); cursor: pointer;
+      background: var(--surface); user-select: none;
+    }
+    .context-preview-wrap summary:hover { color: var(--text); }
+    .context-preview-wrap pre {
+      margin: 0; padding: 10px; font-size: 11px; line-height: 1.5;
+      white-space: pre-wrap; word-break: break-word;
+      max-height: 260px; overflow-y: auto;
+      background: var(--input-bg); color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -591,6 +617,20 @@ Termostati: climate.soggiorno, climate.camera_da_letto"></textarea>
           <textarea id="f-prompt" rows="4" placeholder="Descrivi il comportamento specifico dell&apos;agente&#8230;
 Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo anomalo (&gt;20% della media settimanale), invia una notifica."></textarea>
           <p class="hint">Istruzioni operative specifiche per questo agente.</p>
+
+          <div class="token-bar" id="token-bar">
+            <div class="token-row"><span class="token-label">Contesto strategico</span><span class="token-val" id="tc-strategic">—</span></div>
+            <div class="token-sep"></div>
+            <div class="token-row"><span class="token-label">System prompt</span><span class="token-val" id="tc-prompt">—</span></div>
+            <div class="token-sep"></div>
+            <div class="token-row"><span class="token-label">Totale statico (stima)</span><span class="token-val" id="tc-total">—</span></div>
+            <div class="token-sep"></div>
+            <div class="token-row"><span class="token-label">Context dinamico (≈)</span><span class="token-val" id="tc-context">—</span></div>
+          </div>
+          <details class="context-preview-wrap" id="context-preview-wrap" style="display:none">
+            <summary>&#128269; Anteprima context_str (entità rilevanti per questo agente)</summary>
+            <pre id="context-preview-content"></pre>
+          </details>
         </fieldset>
 
         <fieldset>
@@ -1011,6 +1051,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       renderExecutionLog(a);
       loadAgentUsage(a.id);
       updateAgentUsageToggleBtn(a);
+      updateTokenCounter();
+      loadContextPreview(a.id);
       document.getElementById('u-ag-budget').value = a.budget_eur_limit || 0;
     }
 
@@ -1046,6 +1088,9 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       showTriggerFields('monitor');
       renderExecutionLog(null);
       document.getElementById('u-ag-budget').value = 0;
+      updateTokenCounter();
+      document.getElementById('tc-context').textContent = '—';
+      document.getElementById('context-preview-wrap').style.display = 'none';
     };
 
     function buildPayload() {
@@ -1438,6 +1483,55 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         btn.className = 'btn-usage-enable';
       }
     }
+
+    // ── Token counter ────────────────────────────────────────────────────
+    var BASE_TOK = 1800; // rough estimate of BASE_SYSTEM_PROMPT size in tokens
+
+    function estimateTok(text) { return Math.ceil((text || '').length / 4); }
+
+    function fmtTok(n) {
+      if (n === 0) return '—';
+      return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+    }
+
+    function updateTokenCounter() {
+      var strategic = document.getElementById('f-strategic').value;
+      var prompt    = document.getElementById('f-prompt').value;
+      var tStrat  = estimateTok(strategic);
+      var tPrompt = estimateTok(prompt);
+      var tTotal  = BASE_TOK + tStrat + tPrompt;
+      document.getElementById('tc-strategic').textContent = fmtTok(tStrat);
+      document.getElementById('tc-prompt').textContent    = fmtTok(tPrompt);
+      var totalEl = document.getElementById('tc-total');
+      totalEl.textContent = '~' + fmtTok(tTotal);
+      totalEl.className = 'token-val' + (tTotal > 6000 ? ' warn' : '');
+    }
+
+    var _ctxPreviewTimer = null;
+    async function loadContextPreview(agentId) {
+      if (!agentId) { document.getElementById('tc-context').textContent = '—'; return; }
+      try {
+        var r = await fetch('api/agents/' + agentId + '/context-preview');
+        if (!r.ok) throw new Error();
+        var d = await r.json();
+        var ctxEl = document.getElementById('tc-context');
+        ctxEl.textContent = d.token_estimate > 0 ? '~' + fmtTok(d.token_estimate) : '—';
+        var wrap = document.getElementById('context-preview-wrap');
+        var pre  = document.getElementById('context-preview-content');
+        if (d.context_str) {
+          pre.textContent = d.context_str;
+          wrap.style.display = '';
+        } else {
+          wrap.style.display = 'none';
+        }
+      } catch(e) {
+        document.getElementById('tc-context').textContent = '—';
+        document.getElementById('context-preview-wrap').style.display = 'none';
+      }
+    }
+
+    document.getElementById('f-strategic').addEventListener('input', updateTokenCounter);
+    document.getElementById('f-prompt').addEventListener('input', updateTokenCounter);
   </script>
 </body>
 </html>

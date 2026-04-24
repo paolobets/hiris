@@ -451,9 +451,131 @@
     }
     #nav-tasks { cursor: pointer; display: flex; align-items: center; }
     #nav-tasks.active { color: var(--accent); }
+
+    /* Onboarding wizard */
+    #onboarding {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,0.72); display: flex;
+      align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .ob-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 32px 28px; max-width: 480px; width: 100%;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    }
+    .ob-step { display: none; }
+    .ob-step.active { display: block; }
+    .ob-icon { font-size: 2.8rem; margin-bottom: 12px; text-align: center; }
+    .ob-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 8px; text-align: center; }
+    .ob-sub { font-size: 0.875rem; color: var(--text-muted); text-align: center; margin-bottom: 24px; line-height: 1.55; }
+    .ob-types { display: flex; gap: 10px; margin-bottom: 24px; }
+    .ob-type-btn {
+      flex: 1; padding: 14px 8px; border: 2px solid var(--border);
+      border-radius: 10px; background: var(--input-bg); cursor: pointer;
+      text-align: center; transition: border-color 0.15s, background 0.15s;
+      color: var(--text);
+    }
+    .ob-type-btn:hover { border-color: var(--accent); background: var(--surface-hover); }
+    .ob-type-btn.selected { border-color: var(--accent); background: rgba(139,92,246,0.12); }
+    .ob-type-btn .ob-type-icon { font-size: 1.6rem; display: block; margin-bottom: 6px; }
+    .ob-type-btn .ob-type-name { font-size: 0.78rem; font-weight: 600; display: block; }
+    .ob-type-btn .ob-type-desc { font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 2px; }
+    .ob-field { margin-bottom: 14px; }
+    .ob-field label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; }
+    .ob-field input, .ob-field textarea {
+      width: 100%; box-sizing: border-box;
+      padding: 8px 10px; background: var(--input-bg);
+      border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); font-size: 0.875rem; font-family: inherit;
+    }
+    .ob-field textarea { resize: vertical; min-height: 80px; }
+    .ob-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    .ob-btn-skip {
+      background: none; border: 1px solid var(--border); color: var(--text-muted);
+      border-radius: 7px; padding: 8px 18px; cursor: pointer; font-size: 0.875rem;
+    }
+    .ob-btn-skip:hover { color: var(--text); background: var(--surface-hover); }
+    .ob-btn-next {
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 7px; padding: 8px 22px; cursor: pointer;
+      font-size: 0.875rem; font-weight: 600;
+    }
+    .ob-btn-next:hover { opacity: 0.9; }
+    .ob-btn-next:disabled { opacity: 0.45; cursor: not-allowed; }
+    .ob-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 20px; }
+    .ob-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+    .ob-dot.active { background: var(--accent); }
   </style>
 </head>
 <body>
+
+<!-- Onboarding wizard (shown once on first access) -->
+<div id="onboarding" style="display:none" role="dialog" aria-modal="true" aria-label="Benvenuto in HIRIS">
+  <div class="ob-card">
+    <div class="ob-dots">
+      <div class="ob-dot active" id="ob-dot-0"></div>
+      <div class="ob-dot" id="ob-dot-1"></div>
+      <div class="ob-dot" id="ob-dot-2"></div>
+    </div>
+
+    <!-- Step 0: Welcome -->
+    <div class="ob-step active" id="ob-step-0">
+      <div class="ob-icon">&#x1F3E0;</div>
+      <div class="ob-title">Benvenuto in HIRIS!</div>
+      <div class="ob-sub">Il tuo assistente AI per la smart home.<br>Creiamo il tuo primo agente in meno di un minuto.</div>
+      <div class="ob-actions">
+        <button class="ob-btn-skip" onclick="obDismiss()">Salta</button>
+        <button class="ob-btn-next" onclick="obGo(1)">Inizia &#8594;</button>
+      </div>
+    </div>
+
+    <!-- Step 1: Choose type -->
+    <div class="ob-step" id="ob-step-1">
+      <div class="ob-title">Che tipo di agente vuoi creare?</div>
+      <div class="ob-sub">Potrai creare altri agenti in seguito dalla pagina di configurazione.</div>
+      <div class="ob-types">
+        <button class="ob-type-btn" onclick="obSelectType('monitor', this)">
+          <span class="ob-type-icon">&#x1F4CA;</span>
+          <span class="ob-type-name">Monitor</span>
+          <span class="ob-type-desc">Controlla la casa a intervalli</span>
+        </button>
+        <button class="ob-type-btn selected" onclick="obSelectType('chat', this)">
+          <span class="ob-type-icon">&#x1F4AC;</span>
+          <span class="ob-type-name">Chat</span>
+          <span class="ob-type-desc">Rispondi alle domande</span>
+        </button>
+        <button class="ob-type-btn" onclick="obSelectType('reactive', this)">
+          <span class="ob-type-icon">&#x26A1;</span>
+          <span class="ob-type-name">Reattivo</span>
+          <span class="ob-type-desc">Reagisce ai cambiamenti</span>
+        </button>
+      </div>
+      <div class="ob-actions">
+        <button class="ob-btn-skip" onclick="obGo(0)">&#8592; Indietro</button>
+        <button class="ob-btn-next" onclick="obGo(2)">Avanti &#8594;</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Name + quick create -->
+    <div class="ob-step" id="ob-step-2">
+      <div class="ob-title">Configura il tuo agente</div>
+      <div class="ob-sub">Pochi dettagli per iniziare — potrai sempre modificarli in seguito.</div>
+      <div class="ob-field">
+        <label>Nome agente</label>
+        <input type="text" id="ob-name" placeholder="Es: Assistente Casa, Monitor Energia…" maxlength="60">
+      </div>
+      <div class="ob-field">
+        <label>Istruzioni (opzionale)</label>
+        <textarea id="ob-prompt" placeholder="Descrivi come deve comportarsi questo agente…"></textarea>
+      </div>
+      <div class="ob-actions">
+        <button class="ob-btn-skip" onclick="obGo(1)">&#8592; Indietro</button>
+        <button class="ob-btn-next" id="ob-create-btn" onclick="obCreate()">Crea agente &#10003;</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="app">
   <aside id="sidebar">
     <div id="sidebar-header"><h2>Agenti attivi</h2></div>
@@ -896,6 +1018,65 @@ async function cancelTask(taskId) {
 // Auto-refresh badge every 30s (even when task panel is not visible)
 setInterval(loadTasks, 30000);
 loadTasks();
+
+// ── Onboarding wizard ───────────────────────────────────────────────────
+var _obType = 'chat';
+
+async function checkOnboarding() {
+  if (localStorage.getItem('hiris_onboarding_v1')) return;
+  try {
+    var r = await fetch('/api/agents');
+    if (!r.ok) return;
+    var agents = await r.json();
+    var nonDefault = agents.filter(function(a) { return !a.is_default; });
+    if (nonDefault.length > 0) { localStorage.setItem('hiris_onboarding_v1', '1'); return; }
+  } catch(e) { return; }
+  document.getElementById('onboarding').style.display = 'flex';
+}
+
+function obDismiss() {
+  localStorage.setItem('hiris_onboarding_v1', '1');
+  document.getElementById('onboarding').style.display = 'none';
+}
+
+function obGo(step) {
+  for (var i = 0; i < 3; i++) {
+    document.getElementById('ob-step-' + i).classList.toggle('active', i === step);
+    document.getElementById('ob-dot-' + i).classList.toggle('active', i === step);
+  }
+}
+
+function obSelectType(type, btn) {
+  _obType = type;
+  var btns = document.querySelectorAll('.ob-type-btn');
+  btns.forEach(function(b) { b.classList.remove('selected'); });
+  btn.classList.add('selected');
+}
+
+async function obCreate() {
+  var name = (document.getElementById('ob-name').value || '').trim();
+  if (!name) { document.getElementById('ob-name').focus(); return; }
+  var prompt = (document.getElementById('ob-prompt').value || '').trim();
+  var trigger = _obType === 'monitor'
+    ? { type: 'schedule', interval_minutes: 60 }
+    : (_obType === 'reactive'
+      ? { type: 'state_changed', entity_id: '' }
+      : { type: 'manual' });
+  var payload = { name: name, type: _obType, trigger: trigger };
+  if (prompt) payload.system_prompt = prompt;
+  var btn = document.getElementById('ob-create-btn');
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/agents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    if (!r.ok) { btn.disabled = false; return; }
+    var agent = await r.json();
+    obDismiss();
+    await loadAgents();
+    if (agent.id) setActiveAgent(agent.id, agent.name || agent.id);
+  } catch(e) { btn.disabled = false; }
+}
+
+checkOnboarding();
 
 // ── Mobile keyboard fix ──────────────────────────────────────────────────
 // Shrinks body+#app to the visible area so the flex layout pushes

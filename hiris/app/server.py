@@ -8,6 +8,7 @@ from .api.handlers_agents import (
     handle_list_agents, handle_create_agent, handle_get_agent,
     handle_update_agent, handle_delete_agent, handle_run_agent,
     handle_list_entities, handle_get_agent_usage, handle_reset_agent_usage,
+    handle_context_preview,
 )
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
@@ -185,6 +186,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/entities", handle_list_entities)
     app.router.add_get("/api/agents/{agent_id}/usage", handle_get_agent_usage)
     app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
+    app.router.add_get("/api/agents/{agent_id}/context-preview", handle_context_preview)
     app.router.add_get("/api/agents/{agent_id}/chat-history", handle_get_chat_history)
     app.router.add_delete("/api/agents/{agent_id}/chat-history", handle_clear_chat_history)
     app.router.add_get("/api/tasks", handle_list_tasks)
@@ -212,4 +214,4 @@ async def _serve_config(request: web.Request) -> web.Response:
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": "0.4.0"})
+    return web.json_response({"status": "ok", "version": "0.4.1"})
