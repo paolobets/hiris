@@ -140,12 +140,14 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_cleanup(app: web.Application) -> None:
+    from .chat_store import close_all_stores
     if "knowledge_db" in app:
         app["knowledge_db"].close()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()
     await app["ha_client"].stop()
+    close_all_stores()
 
 
 @web.middleware
@@ -210,4 +212,4 @@ async def _serve_config(request: web.Request) -> web.Response:
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": "0.3.17"})
+    return web.json_response({"status": "ok", "version": "0.4.0"})

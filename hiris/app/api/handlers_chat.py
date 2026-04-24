@@ -2,7 +2,7 @@ import logging
 
 from aiohttp import web
 
-from ..chat_store import load_history, append_messages
+from ..chat_store import load_history, append_messages, get_past_summaries
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,16 @@ async def handle_chat(request: web.Request) -> web.Response:
         static_parts.append(agent.system_prompt.strip())
     system_prompt = "\n\n---\n\n".join(static_parts)
 
+    # Inject closed-session summaries so Claude remembers previous conversations.
+    past = get_past_summaries(effective_agent_id, data_dir) if effective_agent_id else []
+    past_str = ""
+    if past:
+        lines = ["Sessioni precedenti (memoria):"]
+        for s in past:
+            dt = s["started_at"][:10]
+            lines.append(f"[{dt}] {s['summary']}")
+        past_str = "\n".join(lines)
+
     # context_str = SemanticContextMap output (query-dependent, never cached).
     context_map = request.app.get("context_map")
     entity_cache = request.app.get("entity_cache")
@@ -89,6 +99,9 @@ async def handle_chat(request: web.Request) -> web.Response:
             knowledge_db=knowledge_db,
         )
         context_str = ctx_str.strip() if ctx_str else ""
+
+    if past_str:
+        context_str = f"{past_str}\n\n---\n\n{context_str}" if context_str else past_str
 
     agent_model = getattr(agent, "model", "auto") if agent else "auto"
     agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096

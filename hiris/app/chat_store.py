@@ -1,69 +1,278 @@
+import glob as _glob
 import json
 import os
+import sqlite3
+import threading
+import uuid
 from datetime import datetime, timezone, timedelta
 
 HISTORY_RETENTION_DAYS = 30
+SESSION_GAP_HOURS = 2
+PAST_SESSIONS_LIMIT = 3
+SUMMARY_MAX_CHARS = 200
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
+_stores: dict[str, "ChatStore"] = {}
+_lock = threading.Lock()
 
-def _path(agent_id: str, data_dir: str) -> str:
-    safe_id = agent_id.replace("/", "_").replace("\\", "_").replace("..", "_")
-    return os.path.join(data_dir, f"chat_history_{safe_id}.json")
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id    TEXT NOT NULL,
+    session_id  TEXT NOT NULL,
+    role        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    timestamp   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_id  TEXT PRIMARY KEY,
+    agent_id    TEXT NOT NULL,
+    started_at  TEXT NOT NULL,
+    last_msg_at TEXT NOT NULL,
+    summary     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_msg_agent  ON chat_messages(agent_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_sess_agent ON chat_sessions(agent_id, last_msg_at);
+"""
 
 
-def _now_ts() -> str:
-    return datetime.now(timezone.utc).strftime(_TS_FMT)
+class ChatStore:
+    def __init__(self, db_path: str):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._mu = threading.Lock()
+        with self._mu:
+            self._conn.executescript(_SCHEMA)
+            self._conn.commit()
+
+    # ------------------------------------------------------------------
+    # Internal helpers (called with self._mu already held)
+    # ------------------------------------------------------------------
+
+    def _now(self) -> str:
+        return datetime.now(timezone.utc).strftime(_TS_FMT)
+
+    def _active_session(self, agent_id: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT session_id, last_msg_at FROM chat_sessions "
+            "WHERE agent_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
+            (agent_id,),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            last = datetime.strptime(row["last_msg_at"], _TS_FMT).replace(tzinfo=timezone.utc)
+        except ValueError:
+            last = datetime.now(timezone.utc)
+        if (datetime.now(timezone.utc) - last).total_seconds() < SESSION_GAP_HOURS * 3600:
+            return row["session_id"]
+        self._close_session(agent_id, row["session_id"])
+        return None
+
+    def _close_session(self, agent_id: str, session_id: str) -> None:
+        row = self._conn.execute(
+            "SELECT content FROM chat_messages WHERE session_id = ? AND role = 'assistant' "
+            "ORDER BY id DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        if row:
+            text = row["content"]
+            summary = text[:SUMMARY_MAX_CHARS] + "…" if len(text) > SUMMARY_MAX_CHARS else text
+        else:
+            summary = "(nessuna risposta)"
+        self._conn.execute(
+            "UPDATE chat_sessions SET summary = ? WHERE session_id = ?",
+            (summary, session_id),
+        )
+
+    def _new_session(self, agent_id: str) -> str:
+        session_id = str(uuid.uuid4())
+        ts = self._now()
+        self._conn.execute(
+            "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) VALUES(?,?,?,?)",
+            (session_id, agent_id, ts, ts),
+        )
+        return session_id
+
+    def _get_or_create_session(self, agent_id: str) -> str:
+        sid = self._active_session(agent_id)
+        if sid:
+            return sid
+        return self._new_session(agent_id)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def append(self, agent_id: str, messages: list[dict]) -> None:
+        with self._mu:
+            sid = self._get_or_create_session(agent_id)
+            ts = self._now()
+            for m in messages:
+                self._conn.execute(
+                    "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) "
+                    "VALUES(?,?,?,?,?)",
+                    (agent_id, sid, m["role"], m["content"], ts),
+                )
+            self._conn.execute(
+                "UPDATE chat_sessions SET last_msg_at = ? WHERE session_id = ?", (ts, sid)
+            )
+            self._conn.commit()
+
+    def load_context(self, agent_id: str, max_turns: int = 30) -> list[dict]:
+        """Return last max_turns pairs from the active session (within 30 days)."""
+        with self._mu:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=HISTORY_RETENTION_DAYS)).strftime(_TS_FMT)
+            row = self._conn.execute(
+                "SELECT session_id FROM chat_sessions "
+                "WHERE agent_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
+                (agent_id,),
+            ).fetchone()
+            if not row:
+                return []
+            rows = self._conn.execute(
+                "SELECT role, content FROM chat_messages "
+                "WHERE session_id = ? AND timestamp >= ? ORDER BY id",
+                (row["session_id"], cutoff),
+            ).fetchall()
+            messages = [{"role": r["role"], "content": r["content"]} for r in rows]
+            if len(messages) > max_turns * 2:
+                messages = messages[-(max_turns * 2):]
+            return messages
+
+    def get_past_summaries(self, agent_id: str, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
+        """Return closed sessions with summaries, most recent first."""
+        with self._mu:
+            rows = self._conn.execute(
+                "SELECT session_id, started_at, last_msg_at, summary FROM chat_sessions "
+                "WHERE agent_id = ? AND summary IS NOT NULL ORDER BY last_msg_at DESC LIMIT ?",
+                (agent_id, n),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def count_user_turns(self, agent_id: str) -> int:
+        """Count user messages in the active session."""
+        with self._mu:
+            row = self._conn.execute(
+                "SELECT session_id FROM chat_sessions "
+                "WHERE agent_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
+                (agent_id,),
+            ).fetchone()
+            if not row:
+                return 0
+            cnt = self._conn.execute(
+                "SELECT COUNT(*) FROM chat_messages WHERE session_id = ? AND role = 'user'",
+                (row["session_id"],),
+            ).fetchone()
+            return cnt[0] if cnt else 0
+
+    def clear(self, agent_id: str) -> None:
+        with self._mu:
+            sessions = self._conn.execute(
+                "SELECT session_id FROM chat_sessions WHERE agent_id = ?", (agent_id,)
+            ).fetchall()
+            for s in sessions:
+                self._conn.execute(
+                    "DELETE FROM chat_messages WHERE session_id = ?", (s["session_id"],)
+                )
+            self._conn.execute("DELETE FROM chat_sessions WHERE agent_id = ?", (agent_id,))
+            self._conn.commit()
+
+    def migrate_from_json(self, data_dir: str) -> None:
+        """One-time import of legacy chat_history_*.json files into SQLite."""
+        for path in _glob.glob(os.path.join(data_dir, "chat_history_*.json")):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+                agent_id = data.get("agent_id") or (
+                    os.path.basename(path)[len("chat_history_"):-len(".json")]
+                )
+                messages = data.get("messages", [])
+                if not messages:
+                    continue
+                with self._mu:
+                    existing = self._conn.execute(
+                        "SELECT COUNT(*) FROM chat_sessions WHERE agent_id = ?", (agent_id,)
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+                    session_id = str(uuid.uuid4())
+                    ts_start = messages[0].get("timestamp", self._now())
+                    ts_end = messages[-1].get("timestamp", self._now())
+                    self._conn.execute(
+                        "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) "
+                        "VALUES(?,?,?,?)",
+                        (session_id, agent_id, ts_start, ts_end),
+                    )
+                    for m in messages:
+                        self._conn.execute(
+                            "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) "
+                            "VALUES(?,?,?,?,?)",
+                            (agent_id, session_id, m["role"], m["content"], m.get("timestamp", ts_end)),
+                        )
+                    last_asst = next((m for m in reversed(messages) if m["role"] == "assistant"), None)
+                    summary = last_asst["content"][:SUMMARY_MAX_CHARS] if last_asst else "(migrated)"
+                    self._conn.execute(
+                        "UPDATE chat_sessions SET summary = ? WHERE session_id = ?",
+                        (summary, session_id),
+                    )
+                    self._conn.commit()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        with self._mu:
+            self._conn.close()
 
 
-def _load_raw(path: str) -> list[dict]:
-    if not os.path.exists(path):
-        return []
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f).get("messages", [])
-    except Exception:
-        return []
+# ---------------------------------------------------------------------------
+# Module-level lazy init keyed by data_dir (supports multiple test fixtures)
+# ---------------------------------------------------------------------------
 
+def _get_store(data_dir: str) -> ChatStore:
+    if data_dir not in _stores:
+        with _lock:
+            if data_dir not in _stores:
+                db_path = os.path.join(data_dir, "chat_history.db")
+                store = ChatStore(db_path)
+                store.migrate_from_json(data_dir)
+                _stores[data_dir] = store
+    return _stores[data_dir]
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible public functions (same signatures as old JSON store)
+# ---------------------------------------------------------------------------
 
 def load_history(agent_id: str, data_dir: str) -> list[dict]:
-    """Return [{role, content}] for Claude API, filtered to last 30 days."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=HISTORY_RETENTION_DAYS)
-    result = []
-    for m in _load_raw(_path(agent_id, data_dir)):
-        ts = m.get("timestamp", "")
-        try:
-            msg_dt = datetime.strptime(ts, _TS_FMT).replace(tzinfo=timezone.utc)
-            if msg_dt < cutoff:
-                continue
-        except (ValueError, TypeError):
-            pass  # missing/unparseable timestamp: keep the message (unknown age = retain)
-        result.append({"role": m["role"], "content": m["content"]})
-    return result
+    """Return [{role, content}] for the active session (Claude API format)."""
+    return _get_store(data_dir).load_context(agent_id)
 
 
 def append_messages(agent_id: str, messages: list[dict], data_dir: str) -> None:
-    """Append [{role, content}] with current timestamp and save atomically."""
-    path = _path(agent_id, data_dir)
-    raw = _load_raw(path)
-    ts = _now_ts()
-    for m in messages:
-        raw.append({"role": m["role"], "content": m["content"], "timestamp": ts})
-    _write(agent_id, raw, path)
+    """Append [{role, content}] to the active session."""
+    _get_store(data_dir).append(agent_id, messages)
 
 
 def clear_history(agent_id: str, data_dir: str) -> None:
-    """Delete the history file for the given agent."""
-    try:
-        os.remove(_path(agent_id, data_dir))
-    except FileNotFoundError:
-        pass
+    """Delete all history and sessions for the given agent."""
+    _get_store(data_dir).clear(agent_id)
 
 
-def _write(agent_id: str, raw_messages: list[dict], path: str) -> None:
-    data_dir = os.path.dirname(path)
-    os.makedirs(data_dir, exist_ok=True)
-    data = {"schema_version": 1, "agent_id": agent_id, "messages": raw_messages}
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, path)
+def get_past_summaries(agent_id: str, data_dir: str, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
+    """Return up to n closed session summaries, most recent first."""
+    return _get_store(data_dir).get_past_summaries(agent_id, n)
+
+
+def count_user_turns(agent_id: str, data_dir: str) -> int:
+    """Count user turns in the active session (used for max_chat_turns enforcement)."""
+    return _get_store(data_dir).count_user_turns(agent_id)
+
+
+def close_all_stores() -> None:
+    """Close all SQLite connections (call on app shutdown)."""
+    with _lock:
+        for store in _stores.values():
+            store.close()
+        _stores.clear()

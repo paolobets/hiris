@@ -369,7 +369,17 @@ class ClaudeRunner:
                 system_blocks.append({"type": "text", "text": profile})
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
-        messages: list[dict] = list(conversation_history or [])
+        hist = list(conversation_history or [])
+        messages: list[dict] = []
+        if hist:
+            for msg in hist[:-1]:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+            last = hist[-1]
+            raw = last["content"] if isinstance(last["content"], str) else str(last["content"])
+            messages.append({
+                "role": last["role"],
+                "content": [{"type": "text", "text": raw, "cache_control": {"type": "ephemeral"}}],
+            })
         messages.append({"role": "user", "content": user_message})
         self.total_requests += 1  # one per user exchange, regardless of tool iterations
 
