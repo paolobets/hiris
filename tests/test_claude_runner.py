@@ -711,3 +711,60 @@ async def test_dispatch_get_calendar_events_specific_calendar(runner):
         "calendar.work", unittest.mock.ANY, unittest.mock.ANY
     )
     runner._ha.get_calendars.assert_not_awaited()
+
+
+def test_set_input_helper_in_all_tool_defs():
+    from hiris.app.claude_runner import ALL_TOOL_DEFS
+    names = [t["name"] for t in ALL_TOOL_DEFS]
+    assert "set_input_helper" in names
+
+
+@pytest.mark.asyncio
+async def test_dispatch_set_input_helper_boolean_on(runner):
+    runner._ha.call_service = AsyncMock(return_value=True)
+    tool_block = MagicMock(type="tool_use", id="tu_ih1",
+                           input={"entity_id": "input_boolean.guest_mode", "value": True})
+    tool_block.name = "set_input_helper"
+    text_block = MagicMock(type="text", text="Modalità ospite attivata.")
+    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
+    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
+    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
+    result = await runner.chat("Attiva la modalità ospite.")
+    assert result == "Modalità ospite attivata."
+    runner._ha.call_service.assert_awaited_once_with(
+        "input_boolean", "turn_on", {"entity_id": "input_boolean.guest_mode"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_set_input_helper_number(runner):
+    runner._ha.call_service = AsyncMock(return_value=True)
+    tool_block = MagicMock(type="tool_use", id="tu_ih2",
+                           input={"entity_id": "input_number.target_temp", "value": 21.5})
+    tool_block.name = "set_input_helper"
+    text_block = MagicMock(type="text", text="Temperatura impostata a 21.5°C.")
+    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
+    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
+    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
+    result = await runner.chat("Imposta temperatura target a 21.5.")
+    assert result == "Temperatura impostata a 21.5°C."
+    runner._ha.call_service.assert_awaited_once_with(
+        "input_number", "set_value", {"entity_id": "input_number.target_temp", "value": 21.5}
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_set_input_helper_select(runner):
+    runner._ha.call_service = AsyncMock(return_value=True)
+    tool_block = MagicMock(type="tool_use", id="tu_ih3",
+                           input={"entity_id": "input_select.house_mode", "value": "Away"})
+    tool_block.name = "set_input_helper"
+    text_block = MagicMock(type="text", text="Modalità impostata su Away.")
+    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
+    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
+    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
+    result = await runner.chat("Imposta modalità casa su Away.")
+    assert result == "Modalità impostata su Away."
+    runner._ha.call_service.assert_awaited_once_with(
+        "input_select", "select_option", {"entity_id": "input_select.house_mode", "option": "Away"}
+    )

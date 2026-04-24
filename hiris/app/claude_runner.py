@@ -27,7 +27,10 @@ from .tools.task_tools import (
     create_task_tool, list_tasks_tool, cancel_task_tool,
     CREATE_TASK_TOOL_DEF, LIST_TASKS_TOOL_DEF, CANCEL_TASK_TOOL_DEF,
 )
-from .tools.calendar_tools import get_calendar_events, GET_CALENDAR_EVENTS_TOOL_DEF
+from .tools.calendar_tools import (
+    get_calendar_events, GET_CALENDAR_EVENTS_TOOL_DEF,
+    set_input_helper, SET_INPUT_HELPER_TOOL_DEF,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,8 @@ BASE_SYSTEM_PROMPT = (
     "- create_task(label, trigger, actions): pianifica un'azione futura.\n"
     "- list_tasks(agent_id, status): elenca i task pianificati.\n"
     "- cancel_task(task_id): annulla un task pianificato.\n"
-    "- get_calendar_events(hours, calendar_entity?): eventi calendario HA nelle prossime N ore.\n\n"
+    "- get_calendar_events(hours, calendar_entity?): eventi calendario HA nelle prossime N ore.\n"
+    "- set_input_helper(entity_id, value): imposta un input helper HA (boolean/number/text/select).\n\n"
     "## Regole fondamentali\n"
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
     "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
@@ -94,6 +98,7 @@ ALL_TOOL_DEFS = [
     LIST_TASKS_TOOL_DEF,
     CANCEL_TASK_TOOL_DEF,
     GET_CALENDAR_EVENTS_TOOL_DEF,
+    SET_INPUT_HELPER_TOOL_DEF,
 ]
 
 MODEL = "claude-sonnet-4-6"
@@ -609,6 +614,12 @@ class ClaudeRunner:
                     self._ha,
                     hours=inputs.get("hours", 24),
                     calendar_entity=inputs.get("calendar_entity"),
+                )
+            if name == "set_input_helper":
+                return await set_input_helper(
+                    self._ha,
+                    entity_id=inputs.get("entity_id", ""),
+                    value=inputs.get("value"),
                 )
             logger.warning("Unknown tool: %s", name)
             return {"error": f"Unknown tool: {name}"}
