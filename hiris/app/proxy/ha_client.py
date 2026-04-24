@@ -77,7 +77,11 @@ class HAClient:
 
     async def get_calendar_events_range(self, entity_id: str, start: str, end: str) -> list[dict]:
         """Return events for a single calendar entity in [start, end] ISO8601 range."""
-        url = f"{self._base_url}/api/calendars/{entity_id}?start={start}&end={end}"
+        if not re.match(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$", entity_id):
+            logger.warning("Rejected invalid calendar entity_id: %r", entity_id)
+            return []
+        from urllib.parse import quote
+        url = f"{self._base_url}/api/calendars/{entity_id}?start={quote(start, safe='')}&end={quote(end, safe='')}"
         async with self._session.get(url) as resp:
             if resp.status == 404:
                 return []

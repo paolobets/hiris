@@ -698,6 +698,7 @@ async def test_dispatch_get_calendar_events_all_calendars(runner):
 @pytest.mark.asyncio
 async def test_dispatch_get_calendar_events_specific_calendar(runner):
     runner._ha.get_calendar_events_range = AsyncMock(return_value=[])
+    runner._ha.get_calendars = AsyncMock()
     tool_block = MagicMock(type="tool_use", id="tu_cal2", input={"hours": 48, "calendar_entity": "calendar.work"})
     tool_block.name = "get_calendar_events"
     text_block = MagicMock(type="text", text="Nessun evento.")
@@ -709,3 +710,4 @@ async def test_dispatch_get_calendar_events_specific_calendar(runner):
     runner._ha.get_calendar_events_range.assert_awaited_once_with(
         "calendar.work", unittest.mock.ANY, unittest.mock.ANY
     )
+    runner._ha.get_calendars.assert_not_awaited()

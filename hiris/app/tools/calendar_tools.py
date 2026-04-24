@@ -67,6 +67,6 @@ async def get_calendar_events(
             continue
 
     events.sort(
-        key=lambda e: e.get("start", {}).get("dateTime") or e.get("start", {}).get("date", "")
+        key=lambda e: (e.get("start") or {}).get("dateTime") or (e.get("start") or {}).get("date") or ""
     )
     return events
