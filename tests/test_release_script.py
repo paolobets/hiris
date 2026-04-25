@@ -3,7 +3,7 @@
 import sys
 import pytest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 # Import release.py from scripts/ directory (not a package)
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
@@ -83,9 +83,16 @@ def test_missing_changelog_section_aborts(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_dry_run_no_git_calls():
+    # The branch-detection call (git rev-parse) is read-only and always runs.
+    # All other git mutating commands must be skipped in dry-run mode.
     with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout="master\n", returncode=0)
         rel.git_commit_and_tag("0.6.0", dry_run=True)
-    assert mock_run.call_count == 0, "subprocess.run must not be called in dry-run mode"
+    # Only the one read-only branch-detection call is expected
+    assert mock_run.call_count == 1, (
+        f"Only the branch-detection subprocess.run call is allowed in dry-run mode, "
+        f"got {mock_run.call_count}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -104,3 +111,24 @@ def test_extract_changelog_section(tmp_path):
     assert "## [0.6.0]" in section
     assert "feature A" in section
     assert "bug B" not in section, "Must not include next version's content"
+
+
+# ---------------------------------------------------------------------------
+# check_git_clean
+# ---------------------------------------------------------------------------
+
+def test_git_clean_passes_when_only_release_files_dirty():
+    """Only config.yaml and CHANGELOG.md dirty → should not exit."""
+    porcelain = " M hiris/config.yaml\n M CHANGELOG.md\n"
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=porcelain, returncode=0)
+        rel.check_git_clean()  # must not exit
+
+
+def test_git_clean_aborts_on_unexpected_dirty_file():
+    """Any other dirty file → should exit."""
+    porcelain = " M hiris/config.yaml\n M hiris/app/server.py\n"
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=porcelain, returncode=0)
+        with pytest.raises(SystemExit):
+            rel.check_git_clean()

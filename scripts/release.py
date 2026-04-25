@@ -104,10 +104,17 @@ def check_git_clean() -> None:
         ["git", "status", "--porcelain"],
         capture_output=True, text=True, cwd=ROOT,
     )
-    allowed = {"config.yaml", "CHANGELOG.md"}
+    # git status --porcelain format: "XY PATH" or "XY OLD_PATH -> NEW_PATH"
+    # Allow only the exact relative paths for our release files
+    _ALLOWED = {"hiris/config.yaml", "CHANGELOG.md"}
+
+    def _extract_path(line: str) -> str:
+        # Strip the 2-char status + space prefix, handle renames
+        return line[3:].strip().split(" -> ")[-1]
+
     dirty = [
         line for line in result.stdout.splitlines()
-        if line.strip() and not any(pat in line for pat in allowed)
+        if line.strip() and _extract_path(line) not in _ALLOWED
     ]
     if dirty:
         _fail(
@@ -137,11 +144,17 @@ def run_tests() -> None:
 # ---------------------------------------------------------------------------
 
 def git_commit_and_tag(version: str, dry_run: bool) -> None:
+    # Detect current branch dynamically (avoids hardcoding "master")
+    branch_result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True, text=True, cwd=ROOT,
+    )
+    branch = branch_result.stdout.strip() or "master"
     cmds = [
         ["git", "add", "hiris/config.yaml", "CHANGELOG.md"],
         ["git", "commit", "-m", f"chore: release v{version}"],
         ["git", "tag", f"v{version}"],
-        ["git", "push", "origin", "master", "--tags"],
+        ["git", "push", "origin", branch, "--tags"],
     ]
     for cmd in cmds:
         if dry_run:
@@ -151,7 +164,7 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
         if result.returncode != 0:
             _fail(f"Command failed: {' '.join(cmd)}")
     if not dry_run:
-        _ok(f"Committed, tagged v{version}, pushed to origin/master")
+        _ok(f"Committed, tagged v{version}, pushed to origin/{branch}")
 
 
 # ---------------------------------------------------------------------------

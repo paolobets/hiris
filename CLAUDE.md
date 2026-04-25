@@ -195,3 +195,5 @@ python scripts/release.py --version X.Y.Z
 Show full script output to the user.
 - Exit 0 → announce "Release vX.Y.Z completato ✓ — HA rileverà l'aggiornamento al prossimo check."
 - Non-zero → show the failing step. **Do NOT retry automatically.** Wait for the user to fix the issue.
+
+> **Recovery if the script fails after step 6 (commit/tag already created):** Do NOT re-run the script — it will fail at the commit step because the tag already exists. Instead diagnose the specific failure (e.g. push rejected → `git push origin master --tags` manually; gh CLI missing → create the GitHub Release at https://github.com/paolobets/hiris/releases/new).
