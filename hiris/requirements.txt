@@ -3,6 +3,7 @@ anthropic==0.40.0
 apscheduler==3.10.4
 python-dotenv==1.0.1
 aiohttp-cors==0.7.0
+aiomqtt>=2.0.0
 pytest==8.3.2
 pytest-asyncio==0.23.8
 pytest-aiohttp==1.0.5

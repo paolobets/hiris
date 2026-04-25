@@ -22,6 +22,7 @@ from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
 from .proxy.semantic_context_map import SemanticContextMap
 from .api.middleware_internal_auth import internal_auth_middleware
+from .mqtt_publisher import MQTTPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,16 @@ async def _on_startup(app: web.Application) -> None:
     await task_engine.start()
     app["task_engine"] = task_engine
 
+    mqtt_pub = MQTTPublisher()
+    await mqtt_pub.start(
+        host=os.environ.get("MQTT_HOST", ""),
+        port=int(os.environ.get("MQTT_PORT", "1883")),
+        user=os.environ.get("MQTT_USER", ""),
+        password=os.environ.get("MQTT_PASSWORD", ""),
+    )
+    app["mqtt_publisher"] = mqtt_pub
+    engine.set_mqtt_publisher(mqtt_pub)
+
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     primary_model = os.environ.get("PRIMARY_MODEL", "claude-sonnet-4-6")
@@ -144,6 +155,8 @@ async def _on_startup(app: web.Application) -> None:
 
 async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
+    if "mqtt_publisher" in app:
+        await app["mqtt_publisher"].stop()
     if "knowledge_db" in app:
         app["knowledge_db"].close()
     if "task_engine" in app:

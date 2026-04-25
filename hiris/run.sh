@@ -7,6 +7,10 @@ export PRIMARY_MODEL=$(bashio::config 'primary_model' 'claude-sonnet-4-6')
 export LOCAL_MODEL_URL=$(bashio::config 'local_model_url' '')
 export LOCAL_MODEL_NAME=$(bashio::config 'local_model_name' '')
 export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
+export MQTT_HOST=$(bashio::config 'mqtt_host' '')
+export MQTT_PORT=$(bashio::config 'mqtt_port' '1883')
+export MQTT_USER=$(bashio::config 'mqtt_user' '')
+export MQTT_PASSWORD=$(bashio::config 'mqtt_password' '')
 
 bashio::log.info "Starting HIRIS"
 bashio::log.info "Log level: ${LOG_LEVEL}"

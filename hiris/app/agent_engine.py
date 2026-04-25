@@ -289,6 +289,11 @@ class AgentEngine:
             max_chat_turns=int(data.get("max_chat_turns", 0)),
         )
         self._agents[agent.id] = agent
+        if self._mqtt_publisher:
+            asyncio.create_task(
+                self._mqtt_publisher.publish_discovery(agent),
+                name=f"mqtt_disc_{agent.id}",
+            )
         if agent.enabled:
             self._schedule_agent(agent)
         self._save()
@@ -536,6 +541,21 @@ class AgentEngine:
             return agent.last_result
         finally:
             self._running_agents.discard(agent.id)
+            if self._mqtt_publisher:
+                runner = self._claude_runner
+                budget_eur = 0.0
+                if runner and hasattr(runner, "get_agent_usage"):
+                    try:
+                        usage = runner.get_agent_usage(agent.id)
+                        budget_eur = round(usage.get("cost_usd", 0.0) * 0.92, 4)
+                    except Exception:
+                        pass
+                asyncio.create_task(
+                    self._mqtt_publisher.publish_agent_state(
+                        agent, budget_eur=budget_eur, status="idle"
+                    ),
+                    name=f"mqtt_pub_{agent.id}",
+                )
 
     def _append_execution_log(
         self,

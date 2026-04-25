@@ -27,6 +27,10 @@ options:
   local_model_url: ""
   local_model_name: ""
   internal_token: ""
+  mqtt_host: ""
+  mqtt_port: 1883
+  mqtt_user: ""
+  mqtt_password: ""
 schema:
   claude_api_key: password
   log_level: "list(debug|info|warning|error)"
@@ -35,3 +39,7 @@ schema:
   local_model_url: str
   local_model_name: str
   internal_token: password
+  mqtt_host: str
+  mqtt_port: int
+  mqtt_user: str
+  mqtt_password: password
