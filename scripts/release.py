@@ -124,7 +124,7 @@ def check_git_clean() -> None:
 def run_tests() -> None:
     _info("Running pytest…")
     result = subprocess.run(
-        ["py", "-m", "pytest", "--tb=short", "-q"],
+        [sys.executable, "-m", "pytest", "--tb=short", "-q"],
         cwd=ROOT,
     )
     if result.returncode != 0:
