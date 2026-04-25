@@ -187,6 +187,10 @@ class HirisCard extends HTMLElement {
     }[this._status] || '#9e9e9e';
   }
 
+  _esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   _render() {
     const pct = this._budgetLimitEur > 0
       ? Math.min(100, (this._budgetEur / this._budgetLimitEur) * 100)
@@ -242,10 +246,10 @@ class HirisCard extends HTMLElement {
       </style>
       <div class="card">
         <div class="header">
-          <span class="title">&#x1F916; ${this._title}</span>
+          <span class="title">&#x1F916; ${this._esc(this._title)}</span>
           <div class="status">
             <span class="dot"></span>
-            <span class="status-text">${this._status}</span>
+            <span class="status-text">${this._esc(this._status)}</span>
             <button class="toggle" id="tog" title="${this._enabled ? 'Disabilita' : 'Abilita'}">
               ${this._enabled ? '&#x1F7E2;' : '&#x26AA;'}
             </button>
@@ -255,7 +259,7 @@ class HirisCard extends HTMLElement {
           <div class="budget-bar"><div class="budget-fill"></div></div>
           <div class="budget-text">&#x20AC;${this._budgetEur.toFixed(2)} / &#x20AC;${this._budgetLimitEur.toFixed(2)}</div>
         ` : ''}
-        ${this._error ? `<div class="error-badge">${this._error}</div>` : ''}
+        ${this._error ? `<div class="error-badge">${this._esc(this._error)}</div>` : ''}
         <div class="messages" id="msgs">
           ${msgs || '<div class="empty">Scrivi un messaggio per iniziare&#x2026;</div>'}
         </div>

@@ -14,6 +14,7 @@ class MQTTPublisher:
     def __init__(self) -> None:
         self._task: Optional[asyncio.Task] = None
         self._connected = False
+        self._enabled = False   # True once start() is called with a non-empty host
         self._host = ""
         self._port = 1883
         self._user = ""
@@ -32,6 +33,7 @@ class MQTTPublisher:
         self._port = port
         self._user = user
         self._password = password
+        self._enabled = True
         self._task = asyncio.create_task(self._connect_loop(), name="mqtt_publisher")
 
     async def stop(self) -> None:
@@ -105,7 +107,9 @@ class MQTTPublisher:
         }
 
     async def publish_discovery(self, agent) -> None:
-        if not self._connected:
+        # Enqueue even when not yet connected so discovery config survives
+        # the initial MQTT backoff period (messages drain once connected).
+        if not self._enabled:
             return
         metrics = [
             ("status", "sensor"),

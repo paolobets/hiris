@@ -50,6 +50,7 @@ class AgentEngine:
         self._data_path = data_path
         self._entity_cache: Any = None
         self._running_agents: set[str] = set()
+        self._error_agents: set[str] = set()
         self._mqtt_publisher = None
 
     def set_claude_runner(self, runner: Any) -> None:
@@ -355,6 +356,8 @@ class AgentEngine:
     def get_agent_status(self, agent_id: str) -> str:
         if agent_id in self._running_agents:
             return "running"
+        if agent_id in self._error_agents:
+            return "error"
         agent = self._agents.get(agent_id)
         if agent is None or not agent.enabled:
             return "idle"
@@ -452,6 +455,7 @@ class AgentEngine:
         inp_before = getattr(self._claude_runner, "total_input_tokens", 0)
         out_before = getattr(self._claude_runner, "total_output_tokens", 0)
         self._running_agents.add(agent.id)
+        _had_error = False
         try:
             agent.last_run = datetime.now(timezone.utc).isoformat()
             if agent.strategic_context:
@@ -521,6 +525,7 @@ class AgentEngine:
             return result
         except Exception as exc:
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
+            _had_error = True
             logger.error("Agent %s failed: %s", agent.name, exc)
             agent.last_result = f"Error: {exc}"
             self._append_execution_log(agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False)
@@ -541,6 +546,10 @@ class AgentEngine:
             return agent.last_result
         finally:
             self._running_agents.discard(agent.id)
+            if _had_error:
+                self._error_agents.add(agent.id)
+            else:
+                self._error_agents.discard(agent.id)
             if self._mqtt_publisher:
                 runner = self._claude_runner
                 budget_eur = 0.0
@@ -550,9 +559,10 @@ class AgentEngine:
                         budget_eur = round(usage.get("cost_usd", 0.0) * 0.92, 4)
                     except Exception:
                         pass
+                final_status = "error" if _had_error else "idle"
                 asyncio.create_task(
                     self._mqtt_publisher.publish_agent_state(
-                        agent, budget_eur=budget_eur, status="idle"
+                        agent, budget_eur=budget_eur, status=final_status
                     ),
                     name=f"mqtt_pub_{agent.id}",
                 )

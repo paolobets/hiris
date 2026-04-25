@@ -4,6 +4,7 @@ from dataclasses import asdict
 from aiohttp import web
 
 _AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_EUR_RATE = 0.92
 
 
 def _check_agent_id(agent_id: str) -> web.Response | None:
@@ -124,9 +125,6 @@ async def handle_list_entities(request: web.Request) -> web.Response:
         ]
     entities.sort(key=lambda e: e["id"])
     return web.json_response(entities)
-
-
-_EUR_RATE = 0.92
 
 
 async def handle_get_agent_usage(request: web.Request) -> web.Response:

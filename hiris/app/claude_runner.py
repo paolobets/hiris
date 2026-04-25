@@ -478,6 +478,11 @@ class ClaudeRunner:
     ):
         """Async generator yielding SSE-formatted lines for the chat response.
 
+        Phase 1 implementation: awaits the full chat() response, then slices it
+        into 80-char chunks for SSE framing. The client sees all tokens arrive
+        after the full Claude round-trip (same latency as non-streaming).
+        Phase 2 will replace this with true Anthropic streaming API calls.
+
         Yields lines in the form:
           'data: {"type": "token", "text": "<chunk>"}\\n\\n'
           'data: {"type": "done", "agent_id": "<id>", "tool_calls": [...]}\\n\\n'
