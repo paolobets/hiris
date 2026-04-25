@@ -265,35 +265,51 @@ Claude calls: send_notification("Irrigazione attivata (20 min) — ieri 35°C, u
 
 ## 11. Phase Roadmap
 
-### Phase 1 — Beta Standalone
-- [ ] HA add-on structure (config.yaml, Docker, aiohttp server)
-- [ ] HA client (REST + History + WebSocket)
-- [ ] Claude runner with 8 tools
-- [ ] Flow engine (scheduler + state_changed trigger)
-- [ ] Step-based agent designer UI
-- [ ] Chat NL interface
-- [ ] Notification: HA push + Telegram + Retro Panel toast
-- [ ] Agent types: Monitor, Reactive, Preventive, Chat
-- [ ] Security: key vault, service whitelist, tool permissions
-- [ ] Test runner per agent
+### Phase 1 — Beta Standalone ✅ completata (v0.3.17)
+- [x] HA add-on structure (config.yaml, Docker, aiohttp server)
+- [x] HA client (REST + History + WebSocket)
+- [x] Claude runner con 15+ tool + retry logic (429/529)
+- [x] Flow engine (scheduler + state_changed + cron trigger)
+- [x] Agent designer UI (template, log esecuzioni, require_confirmation)
+- [x] Chat NL interface con storia persistente
+- [x] Notification: HA push + Telegram + Retro Panel toast
+- [x] Agent types: Monitor, Reactive, Preventive, Chat
+- [x] Security: allowed_entities, allowed_services, restrict_to_home, require_confirmation
+- [x] Test runner per agent
+- [x] SemanticContextMap + KnowledgeDB (area-aware context injection)
+- [x] Task engine (create_task, list_tasks, cancel_task)
+- [x] Prompt caching Anthropic (BASE + agent layer, 90% sconto cache read)
+- [x] Budget auto-disable per agente
+- [x] LLM Router (modello locale OpenAI-compatible)
 
-### Phase 2 — Plugin + Canvas
+### Phase 1.x — Miglioramenti immediati (pre-v0.4.0)
+- [ ] Conversation history caching (cache_control su messaggi stabili >5 min)
+- [ ] HA area discovery automatico al boot (da HA area registry)
+- [ ] UI agent designer: token counter live + anteprima context_str
+- [ ] Onboarding wizard (prima apertura: guida creazione primo agente)
+
+### Phase 2 — Memoria + Tool aggiuntivi (v0.4.x)
+- [ ] Memoria conversazionale SQLite (storia illimitata + finestra contestuale dinamica + riassunti automatici)
+- [ ] Tool: `send_email(to, subject, body)` via SMTP
+- [ ] Tool: `http_request(url, method, headers, body)` con allowed_urls per agente
+- [ ] Tool: `get_calendar_events(days)` via HA calendario integration
+- [ ] Tool: `set_input_helper(entity_id, value)` per input_boolean/number/text/select
+
+### Phase 3 — Plugin + Canvas (v0.5.x+)
 - [ ] Canvas drag-and-drop designer (n8n style)
-- [ ] Retro Panel plugin integration (embedded chat in kiosk)
-- [ ] Conversation memory (Redis or SQLite)
-- [ ] Additional tools: email (SMTP), HTTP custom, calendar
+- [ ] Retro Panel plugin integration (embedded chat in kiosk, shared auth)
 - [ ] Multi-user / role support
 - [ ] HACS official distribution
 
 ---
 
-## 12. Open Questions (for future sessions)
+## 12. Open Questions (resolved)
 
-1. **Agent library:** ship with pre-built agent templates (energy monitor, irrigation, etc.) or blank canvas only?
-2. **Conversation memory:** session-scoped (simple) vs persistent SQLite (powerful but complex)?
-3. **Retro Panel `/api/notify`:** what's the minimal API contract needed for Phase 1 integration?
-4. **Open-Meteo coordinates:** auto-detect from HA `homeassistant.latitude/longitude` or manual config?
-5. **Claude model:** claude-sonnet-4-6 default, allow user to override to claude-haiku-4-5 for cost savings?
+1. **Agent library:** ✅ Templates pre-built in config.html (energy, security, presence, climate)
+2. **Conversation memory:** ✅ Decisione: SQLite (Phase 2) — attuale JSON è sufficiente per Phase 1
+3. **Retro Panel `/api/notify`:** ✅ Implementato: `POST /api/notify` con `{"message": "..."}` 
+4. **Open-Meteo coordinates:** ✅ Auto-detect da `homeassistant.latitude/longitude`
+5. **Claude model:** ✅ `model: "auto"` usa tabella per tipo agente; override esplicito disponibile
 
 ---
 

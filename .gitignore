@@ -17,3 +17,6 @@ Testbook/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Superpowers brainstorm sessions
+.superpowers/
