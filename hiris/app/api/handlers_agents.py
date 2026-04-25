@@ -14,7 +14,23 @@ def _check_agent_id(agent_id: str) -> web.Response | None:
 
 async def handle_list_agents(request: web.Request) -> web.Response:
     engine = request.app["engine"]
-    return web.json_response(list(engine.list_agents().values()))
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
+    result = []
+    for agent_id, agent_data in engine.list_agents().items():
+        entry = dict(agent_data)
+        entry["status"] = engine.get_agent_status(agent_id)
+        budget_eur = 0.0
+        if runner:
+            try:
+                usage = runner.get_agent_usage(agent_id)
+                cost_usd = usage.get("cost_usd", 0.0)
+                budget_eur = round(float(cost_usd) * _EUR_RATE, 4)
+            except Exception:
+                budget_eur = 0.0
+        entry["budget_eur"] = budget_eur
+        entry["budget_limit_eur"] = float(entry.get("budget_eur_limit", 0.0))
+        result.append(entry)
+    return web.json_response(result)
 
 
 async def handle_create_agent(request: web.Request) -> web.Response:

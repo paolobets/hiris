@@ -1,6 +1,7 @@
 import json
 import pytest
-from unittest.mock import MagicMock
+import pytest_asyncio
+from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import make_mocked_request
 from hiris.app.api.handlers_agents import handle_list_entities
 
@@ -139,3 +140,99 @@ async def test_reset_agent_usage():
     resp = await handle_reset_agent_usage(request)
     assert resp.status == 200
     runner.reset_agent_usage.assert_called_once_with("agent-1")
+
+
+# ---- Dashboard field tests (Task 2) ----
+
+@pytest.fixture
+def _dashboard_app(tmp_path):
+    """Shared app factory for dashboard-field tests."""
+    from hiris.app.server import create_app
+    from hiris.app.agent_engine import AgentEngine
+    app = create_app()
+    mock_ha = AsyncMock()
+    mock_ha.start = AsyncMock()
+    mock_ha.stop = AsyncMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine.start = AsyncMock()
+    engine.stop = AsyncMock()
+    mock_runner = AsyncMock()
+    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.last_tool_calls = []
+    mock_runner.get_agent_usage = MagicMock(return_value={
+        "input_tokens": 100, "output_tokens": 50,
+        "requests": 2, "cost_usd": 0.13, "last_run": None,
+    })
+    engine.set_claude_runner(mock_runner)
+    app["ha_client"] = mock_ha
+    app["engine"] = engine
+    app["claude_runner"] = mock_runner
+    app["llm_router"] = mock_runner
+    app["theme"] = "auto"
+    app["data_dir"] = str(tmp_path)
+    app["internal_token"] = ""
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+    return app
+
+
+@pytest_asyncio.fixture
+async def dashboard_client(aiohttp_client, _dashboard_app):
+    from hiris.app.chat_store import close_all_stores
+    yield await aiohttp_client(_dashboard_app)
+    close_all_stores()
+
+
+@pytest.mark.asyncio
+async def test_list_agents_has_status_field(dashboard_client):
+    resp = await dashboard_client.get("/api/agents")
+    assert resp.status == 200
+    agents = await resp.json()
+    assert isinstance(agents, list)
+    for agent in agents:
+        assert "status" in agent
+        assert agent["status"] in ("idle", "running", "error")
+
+
+@pytest.mark.asyncio
+async def test_list_agents_has_budget_fields(dashboard_client):
+    resp = await dashboard_client.get("/api/agents")
+    assert resp.status == 200
+    agents = await resp.json()
+    for agent in agents:
+        assert "budget_eur" in agent
+        assert "budget_limit_eur" in agent
+        assert isinstance(agent["budget_eur"], float)
+        assert isinstance(agent["budget_limit_eur"], float)
+
+
+@pytest.mark.asyncio
+async def test_list_agents_budget_computed_from_usage(dashboard_client):
+    resp = await dashboard_client.get("/api/agents")
+    assert resp.status == 200
+    agents = await resp.json()
+    # mock_runner returns cost_usd=0.13, EUR rate=0.92 → 0.1196
+    for agent in agents:
+        assert agent["budget_eur"] == round(0.13 * 0.92, 4)
+
+
+@pytest.mark.asyncio
+async def test_created_agent_has_all_dashboard_fields(dashboard_client):
+    resp = await dashboard_client.post("/api/agents", json={
+        "name": "Test",
+        "type": "chat",
+        "trigger": {"type": "manual"},
+        "system_prompt": "test",
+    })
+    assert resp.status == 201
+
+    resp = await dashboard_client.get("/api/agents")
+    assert resp.status == 200
+    agents = await resp.json()
+    required = {"id", "name", "type", "enabled", "status", "last_run",
+                "budget_eur", "budget_limit_eur", "is_default"}
+    for agent in agents:
+        missing = required - set(agent.keys())
+        assert not missing, f"Missing fields: {missing}"

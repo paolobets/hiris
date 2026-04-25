@@ -49,12 +49,17 @@ class AgentEngine:
         self._ha = ha_client
         self._data_path = data_path
         self._entity_cache: Any = None
+        self._running_agents: set[str] = set()
+        self._mqtt_publisher = None
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
 
     def set_entity_cache(self, cache: Any) -> None:
         self._entity_cache = cache
+
+    def set_mqtt_publisher(self, publisher) -> None:
+        self._mqtt_publisher = publisher
 
     async def start(self) -> None:
         self._scheduler.start()
@@ -342,6 +347,14 @@ class AgentEngine:
     def list_agents(self) -> dict[str, dict]:
         return {a.id: asdict(a) for a in self._agents.values()}
 
+    def get_agent_status(self, agent_id: str) -> str:
+        if agent_id in self._running_agents:
+            return "running"
+        agent = self._agents.get(agent_id)
+        if agent is None or not agent.enabled:
+            return "idle"
+        return "idle"
+
     def _schedule_agent(self, agent: Agent) -> None:
         trigger = agent.trigger
         if trigger["type"] == "schedule":
@@ -433,6 +446,7 @@ class AgentEngine:
         logger.info("Running agent: %s (%s)", agent.name, agent.id)
         inp_before = getattr(self._claude_runner, "total_input_tokens", 0)
         out_before = getattr(self._claude_runner, "total_output_tokens", 0)
+        self._running_agents.add(agent.id)
         try:
             agent.last_run = datetime.now(timezone.utc).isoformat()
             if agent.strategic_context:
@@ -520,6 +534,8 @@ class AgentEngine:
                 except Exception as budget_exc:
                     logger.warning("Budget check failed for %s: %s", agent.name, budget_exc)
             return agent.last_result
+        finally:
+            self._running_agents.discard(agent.id)
 
     def _append_execution_log(
         self,
