@@ -18,6 +18,7 @@ from .api.handlers_chat_history import handle_get_chat_history, handle_clear_cha
 from .api.handlers_tasks import handle_list_tasks, handle_get_task, handle_cancel_task
 from .agent_engine import AgentEngine
 from .task_engine import TaskEngine
+from .version import read_version
 from .proxy.ha_client import HAClient
 from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
@@ -295,4 +296,4 @@ async def _serve_config(request: web.Request) -> web.Response:
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": "0.5.0"})
+    return web.json_response({"status": "ok", "version": read_version()})

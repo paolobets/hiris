@@ -1,10 +1,18 @@
 import pytest
 import pytest_asyncio
+import re
+import pathlib
 from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import TestClient
 from hiris.app.server import create_app
 from hiris.app.agent_engine import AgentEngine
 from hiris.app.chat_store import close_all_stores
+
+
+def _cfg_version() -> str:
+    cfg = pathlib.Path(__file__).parent.parent / "hiris" / "config.yaml"
+    m = re.search(r'^version:\s*"([^"]+)"', cfg.read_text(), re.MULTILINE)
+    return m.group(1) if m else "unknown"
 
 
 @pytest.fixture(autouse=True)
@@ -52,7 +60,7 @@ async def test_health_endpoint(client):
     assert resp.status == 200
     data = await resp.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.5.0"
+    assert data["version"] == _cfg_version()
 
 
 @pytest.mark.asyncio
