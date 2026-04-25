@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import aiohttp
 from aiohttp import web
 from .api.handlers_chat import handle_chat
 from .api.handlers_agents import (
@@ -27,6 +28,63 @@ from .mqtt_publisher import MQTTPublisher
 logger = logging.getLogger(__name__)
 
 
+async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
+    """Auto-register the HIRIS Lovelace card as a HA UI module resource.
+
+    Idempotent: no-op if the URL is already present in the resources list.
+    Graceful: logs a warning and returns on any error (YAML-mode HA, Supervisor
+    unavailable, permission denied, …) — never raises.
+    """
+    card_url = f"/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
+    resources_url = f"{ha_base_url}/api/lovelace/resources"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(resources_url, headers=headers) as resp:
+                if resp.status == 405:
+                    logger.info(
+                        "Lovelace is in YAML mode — card must be added manually: "
+                        "resources:\n  - url: %s\n    type: module", card_url
+                    )
+                    return
+                if resp.status != 200:
+                    logger.warning(
+                        "Lovelace resources GET returned %d — skipping auto-registration",
+                        resp.status,
+                    )
+                    return
+                existing = await resp.json()
+
+            for resource in existing:
+                if resource.get("url") == card_url:
+                    logger.debug("HIRIS Lovelace card already registered: %s", card_url)
+                    return
+
+            payload = {"res_type": "module", "url": card_url}
+            async with session.post(resources_url, headers=headers, json=payload) as resp:
+                if resp.status in (200, 201):
+                    logger.info(
+                        "HIRIS Lovelace card registered ✓  url=%s  "
+                        "— restart HA UI or clear browser cache to load it",
+                        card_url,
+                    )
+                elif resp.status == 405:
+                    logger.info(
+                        "Lovelace YAML mode — add the card resource manually: "
+                        "url: %s  type: module", card_url
+                    )
+                else:
+                    body = await resp.text()
+                    logger.warning(
+                        "Lovelace card registration failed (%d): %s", resp.status, body[:200]
+                    )
+    except Exception as exc:
+        logger.warning("Lovelace card auto-registration failed: %s", exc)
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner
     from .proxy.semantic_map import SemanticMap
@@ -42,6 +100,14 @@ async def _on_startup(app: web.Application) -> None:
     )
     await ha_client.start()
     app["ha_client"] = ha_client
+
+    # Auto-register the Lovelace card resource so users don't need manual config
+    hiris_slug = os.environ.get("HIRIS_SLUG", "hiris")
+    await _register_lovelace_card(
+        ha_base_url,
+        os.environ.get("SUPERVISOR_TOKEN", ""),
+        hiris_slug,
+    )
 
     entity_cache = EntityCache()
     try:
