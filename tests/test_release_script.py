@@ -52,6 +52,13 @@ def test_version_mismatch_aborts(tmp_path):
             rel.check_config_version("9.9.9")
 
 
+def test_config_file_not_found_aborts(tmp_path):
+    missing = tmp_path / "nonexistent.yaml"
+    with patch.object(rel, "CONFIG", missing):
+        with pytest.raises(SystemExit):
+            rel.check_config_version("0.6.0")
+
+
 # ---------------------------------------------------------------------------
 # check_changelog
 # ---------------------------------------------------------------------------
@@ -78,9 +85,7 @@ def test_missing_changelog_section_aborts(tmp_path):
 def test_dry_run_no_git_calls():
     with patch("subprocess.run") as mock_run:
         rel.git_commit_and_tag("0.6.0", dry_run=True)
-    for c in mock_run.call_args_list:
-        args = c[0][0] if c[0] else c[1].get("args", [])
-        assert "commit" not in args, "git commit must not run in dry-run mode"
+    assert mock_run.call_count == 0, "subprocess.run must not be called in dry-run mode"
 
 
 # ---------------------------------------------------------------------------
