@@ -459,6 +459,59 @@ class ClaudeRunner:
 
         return "Max tool iterations reached."
 
+    async def chat_stream(
+        self,
+        user_message: str,
+        system_prompt: str = "",
+        context_str: str = "",
+        allowed_tools: Optional[list[str]] = None,
+        conversation_history: Optional[list[dict]] = None,
+        allowed_entities: Optional[list[str]] = None,
+        allowed_services: Optional[list[str]] = None,
+        model: str = "auto",
+        max_tokens: int = MAX_TOKENS,
+        agent_type: str = "chat",
+        restrict_to_home: bool = False,
+        require_confirmation: bool = False,
+        agent_id: Optional[str] = None,
+        visible_entity_ids=None,
+    ):
+        """Async generator yielding SSE-formatted lines for the chat response.
+
+        Yields lines in the form:
+          'data: {"type": "token", "text": "<chunk>"}\\n\\n'
+          'data: {"type": "done", "agent_id": "<id>", "tool_calls": [...]}\\n\\n'
+          'data: {"type": "error", "message": "<msg>"}\\n\\n'
+        """
+        import json as _json
+        try:
+            result = await self.chat(
+                user_message=user_message,
+                system_prompt=system_prompt,
+                context_str=context_str,
+                allowed_tools=allowed_tools,
+                conversation_history=conversation_history,
+                allowed_entities=allowed_entities,
+                allowed_services=allowed_services,
+                model=model,
+                max_tokens=max_tokens,
+                agent_type=agent_type,
+                restrict_to_home=restrict_to_home,
+                require_confirmation=require_confirmation,
+                agent_id=agent_id,
+                visible_entity_ids=visible_entity_ids,
+            )
+        except Exception as exc:
+            yield f'data: {_json.dumps({"type": "error", "message": str(exc)})}\n\n'
+            return
+
+        chunk_size = 80
+        for i in range(0, len(result), chunk_size):
+            yield f'data: {_json.dumps({"type": "token", "text": result[i:i + chunk_size]})}\n\n'
+
+        tool_calls = self.last_tool_calls if isinstance(self.last_tool_calls, list) else []
+        yield f'data: {_json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": tool_calls})}\n\n'
+
     async def run_with_actions(
         self,
         user_message: str,

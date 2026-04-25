@@ -1,3 +1,4 @@
+import json
 import logging
 
 from aiohttp import web
@@ -108,6 +109,54 @@ async def handle_chat(request: web.Request) -> web.Response:
     agent_type = getattr(agent, "type", "chat") if agent else "chat"
     agent_restrict = getattr(agent, "restrict_to_home", False) if agent else False
     agent_require_confirmation = getattr(agent, "require_confirmation", False) if agent else False
+
+    wants_stream = (
+        "text/event-stream" in request.headers.get("Accept", "")
+        or body.get("stream") is True
+    )
+
+    if wants_stream:
+        stream_resp = web.StreamResponse(
+            status=200,
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+        await stream_resp.prepare(request)
+        collected_tokens: list[str] = []
+        async for chunk in runner.chat_stream(
+            user_message=message,
+            system_prompt=system_prompt,
+            context_str=context_str,
+            conversation_history=context_history,
+            allowed_tools=allowed_tools,
+            allowed_entities=allowed_entities,
+            allowed_services=allowed_services,
+            model=agent_model,
+            max_tokens=agent_max_tokens,
+            agent_type=agent_type,
+            restrict_to_home=agent_restrict,
+            require_confirmation=agent_require_confirmation,
+            agent_id=effective_agent_id,
+            visible_entity_ids=visible_ids,
+        ):
+            await stream_resp.write(chunk.encode())
+            try:
+                evt = json.loads(chunk.removeprefix("data: ").strip())
+                if evt.get("type") == "token":
+                    collected_tokens.append(evt.get("text", ""))
+            except Exception:
+                pass
+        await stream_resp.write_eof()
+        full_response = "".join(collected_tokens)
+        if effective_agent_id and full_response:
+            append_messages(effective_agent_id, [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": full_response},
+            ], data_dir)
+        return stream_resp
 
     response = await runner.chat(
         user_message=message,
