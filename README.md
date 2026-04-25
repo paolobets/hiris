@@ -96,6 +96,68 @@ Before calling Claude, HIRIS searches for entities semantically related to the u
 
 ---
 
+## HA Dashboard Integration
+
+### Lovelace Chat Card
+
+Add to `configuration.yaml`:
+
+```yaml
+lovelace:
+  resources:
+    - url: /api/hassio_ingress/hiris/static/hiris-chat-card.js
+      type: module
+```
+
+Add to any Lovelace dashboard:
+
+```yaml
+type: custom:hiris-chat-card
+agent_id: hiris-default       # required — agent ID to use
+title: "Assistente Casa"      # optional, default: "HIRIS Chat"
+hiris_slug: hiris             # optional, default: "hiris"
+```
+
+The card shows agent status, a budget bar, full chat history, and an enable/disable toggle. Responses stream token-by-token via SSE.
+
+### Chat Streaming (SSE)
+
+The `/api/chat` endpoint supports SSE streaming. Send `"stream": true` in the request body (or `Accept: text/event-stream` header) to receive token-by-token events:
+
+```
+data: {"type": "token", "text": "chunk of text"}
+data: {"type": "done", "agent_id": "hiris-default", "tool_calls": [...]}
+```
+
+### Inter-Addon Auth (Retro Panel / external systems)
+
+Set `internal_token` in add-on options to require a shared secret on non-Ingress requests. HA Ingress requests (browser via HA UI) always bypass this check. Leave empty to disable (default).
+
+Pass the token in the `X-HIRIS-Internal-Token` header from external systems.
+
+### MQTT Agent Entities (Phase 2)
+
+Set `mqtt_host` in add-on options to publish agent states as native HA entities via MQTT Discovery. Requires a Mosquitto (or compatible) MQTT broker:
+
+| Entity | Type | Values |
+|---|---|---|
+| `sensor.hiris_{id}_status` | sensor | `idle` \| `running` \| `error` |
+| `sensor.hiris_{id}_last_run` | sensor | ISO 8601 timestamp |
+| `sensor.hiris_{id}_budget_eur` | sensor | float (EUR) |
+| `switch.hiris_{id}_enabled` | switch | `on` / `off` |
+
+When MQTT entities are present, the Lovelace card automatically switches from polling to WebSocket push.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `internal_token` | `password` | — | Shared secret for inter-addon auth (leave empty to disable) |
+| `mqtt_host` | `str` | — | MQTT broker hostname (leave empty to disable) |
+| `mqtt_port` | `int` | `1883` | MQTT broker port |
+| `mqtt_user` | `str` | — | MQTT username |
+| `mqtt_password` | `password` | — | MQTT password |
+
+---
+
 ## Agent configuration
 
 Each agent exposes the following fields in the designer UI:
