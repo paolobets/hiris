@@ -20,3 +20,6 @@ Testbook/
 
 # Superpowers brainstorm sessions
 .superpowers/
+
+# Local IDE config
+.claude/launch.json

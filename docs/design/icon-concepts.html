@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HIRIS — Icon Evolution</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Space+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #03030a;
+  --card: #070710;
+  --bd: rgba(140,120,255,0.08);
+  --txt: #ece6ff;
+  --muted: rgba(180,160,240,0.38);
+  --v: #a78bfa;          /* violet label */
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  overflow-x: hidden;
+}
+/* grain */
+body::before {
+  content:''; position:fixed; inset:0; z-index:999; pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity:.03;
+}
+/* ── header ──────────────────────────── */
+.header {
+  padding: 5rem 5rem 3.5rem;
+  border-bottom: 1px solid var(--bd);
+}
+.eyebrow { font-family:'Space Mono',monospace; font-size:.58rem; letter-spacing:.3em; text-transform:uppercase; color:var(--muted); margin-bottom:1rem; }
+.hero-title { font-family:'Cinzel',serif; font-size:clamp(2.8rem,5.5vw,5.5rem); font-weight:400; letter-spacing:.06em; line-height:1; }
+.hero-title em { font-style:normal; color:var(--v); }
+.header-sub { font-style:italic; font-size:1.05rem; font-weight:300; color:var(--muted); margin-top:.9rem; line-height:1.7; }
+
+/* ── wordmark lockup ──────────────────── */
+.wm { display:inline-flex; align-items:baseline; gap:.12em; font-family:'Cinzel',serif; font-weight:700; line-height:1; user-select:none; }
+.wm-hi  { color:#fff; }
+.wm-ris { color:var(--v); }
+
+/* ── concept grid ────────────────────── */
+.concepts { display:flex; flex-direction:column; }
+.concept {
+  display:grid; grid-template-columns:1fr 1fr;
+  border-bottom:1px solid var(--bd); min-height:540px;
+}
+.concept:nth-child(even) .c-stage { order:1; }
+.concept:nth-child(even) .c-info  { order:2; border-right:none; border-left:1px solid var(--bd); }
+
+.c-info {
+  padding:4.5rem 5rem; display:flex; flex-direction:column;
+  justify-content:center; border-right:1px solid var(--bd);
+}
+.c-stage {
+  background:var(--card); padding:3.5rem;
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:2.5rem; position:relative; overflow:hidden;
+}
+/* subtle inner vignette */
+.c-stage::before {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(ellipse at 50% 45%, rgba(100,80,200,0.03) 0%, transparent 72%);
+}
+.c-num { font-family:'Space Mono',monospace; font-size:.55rem; letter-spacing:.3em; text-transform:uppercase; color:var(--muted); margin-bottom:2rem; }
+.c-title { font-family:'Cinzel',serif; font-size:clamp(1.8rem,2.8vw,2.8rem); font-weight:600; line-height:1.08; margin-bottom:1.6rem; }
+.c-desc { font-size:1rem; font-weight:300; line-height:1.95; color:rgba(200,185,248,0.52); max-width:340px; }
+.c-tag { margin-top:2rem; font-family:'Space Mono',monospace; font-size:.5rem; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); opacity:.5; }
+
+/* hero icon + scales */
+.icon-hero { position:relative; display:flex; align-items:center; justify-content:center; }
+.icon-hero svg { transition:filter .3s ease; }
+.icon-hero:hover svg { filter:brightness(1.12) drop-shadow(0 0 22px rgba(167,139,250,.5)); }
+
+.scales { display:flex; gap:1.6rem; align-items:flex-end; flex-wrap:wrap; }
+.sz { display:flex; flex-direction:column; align-items:center; gap:.5rem; }
+.sz-lbl { font-family:'Space Mono',monospace; font-size:.48rem; letter-spacing:.1em; text-transform:uppercase; color:rgba(140,120,200,.35); }
+.on-w { background:#f5f3ff; padding:9px; border-radius:9px; }
+
+/* wordmark below icon */
+.wm-block { display:flex; flex-direction:column; align-items:center; gap:.5rem; }
+.wm-sm { font-size:1.2rem; }
+.wm-xs { font-size:.85rem; }
+
+/* ── compare strip ───────────────────── */
+.compare { padding:4rem 5rem 5rem; }
+.compare-title { font-family:'Space Mono',monospace; font-size:.55rem; letter-spacing:.3em; text-transform:uppercase; color:var(--muted); margin-bottom:2.5rem; }
+.compare-row { display:flex; gap:3rem; align-items:flex-end; flex-wrap:wrap; }
+.ci { display:flex; flex-direction:column; align-items:center; gap:.9rem; }
+.ci-name { font-style:italic; font-size:.78rem; color:var(--muted); }
+
+/* responsive */
+@media(max-width:860px){
+  .concept { grid-template-columns:1fr; min-height:auto; }
+  .concept:nth-child(even) .c-stage,.concept:nth-child(even) .c-info { order:unset; }
+  .c-info { padding:3rem 2rem; border:none; border-bottom:1px solid var(--bd); }
+  .c-stage { padding:3rem 2rem; }
+  .header,.compare { padding:3rem 2rem; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <p class="eyebrow">HIRIS · Icon Evolution · L'Occhio di Iride — 5 direzioni</p>
+  <h1 class="hero-title">HI<em>RIS</em></h1>
+  <p class="header-sub">
+    Dal concetto dell'iride: geometrico, ancestrale, cosmico, organico, cristallino.<br>
+    Cinque evoluzioni — nessuna casa, nessun simbolo letterale. Solo luce e forma.
+  </p>
+</header>
+
+<div class="concepts">
+
+<!-- ════════════ I · ORBITA ════════════ -->
+<div class="concept">
+  <div class="c-info">
+    <p class="c-num">I / V</p>
+    <h2 class="c-title">Orbita<br>Cromatica</h2>
+    <p class="c-desc">
+      L'iride ridotta alla sua essenza: anelli concentrici. Nessun occhio letterale,
+      solo la struttura — il pattern che il cervello legge come "iride" prima ancora
+      di vedere la parola. Cinque orbite nei colori del viola, dal teal più freddo
+      al malva più caldo. Centro: un punto di luce bianca.
+    </p>
+    <p class="c-tag">Minimalista · Senza tempo · Scalabile</p>
+    <div class="wm-block" style="margin-top:2.5rem; align-items:flex-start;">
+      <span class="wm wm-sm"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+  </div>
+
+  <div class="c-stage">
+    <div class="icon-hero">
+      <svg width="220" height="220" viewBox="0 0 400 400" fill="none">
+        <defs>
+          <radialGradient id="orb-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#0a0818"/>
+            <stop offset="100%" stop-color="#03030a"/>
+          </radialGradient>
+          <filter id="orb-g" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="7" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="orb-gs" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="3"/>
+          </filter>
+          <radialGradient id="orb-center" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="white" stop-opacity="1"/>
+            <stop offset="60%" stop-color="white" stop-opacity=".5"/>
+            <stop offset="100%" stop-color="white" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="200" cy="200" r="200" fill="url(#orb-bg)"/>
+        <!-- glow halos behind rings -->
+        <circle cx="200" cy="200" r="166" fill="none" stroke="#22d3ee" stroke-width="20" opacity=".045" filter="url(#orb-gs)"/>
+        <circle cx="200" cy="200" r="104" fill="none" stroke="#a855f7" stroke-width="24" opacity=".06" filter="url(#orb-gs)"/>
+        <!-- rings -->
+        <circle cx="200" cy="200" r="168" fill="none" stroke="#22d3ee" stroke-width="2.8" opacity=".85" filter="url(#orb-g)"/>
+        <circle cx="200" cy="200" r="138" fill="none" stroke="#60a5fa" stroke-width="2.8" opacity=".88" filter="url(#orb-g)"/>
+        <circle cx="200" cy="200" r="108" fill="none" stroke="#818cf8" stroke-width="2.8" opacity=".90" filter="url(#orb-g)"/>
+        <circle cx="200" cy="200" r="80"  fill="none" stroke="#a78bfa" stroke-width="2.8" opacity=".92" filter="url(#orb-g)"/>
+        <circle cx="200" cy="200" r="54"  fill="none" stroke="#c084fc" stroke-width="2.8" opacity=".95" filter="url(#orb-g)"/>
+        <!-- center dot -->
+        <circle cx="200" cy="200" r="12"  fill="url(#orb-center)" filter="url(#orb-gs)"/>
+        <circle cx="200" cy="200" r="5"   fill="white" opacity=".95"/>
+      </svg>
+    </div>
+    <div class="scales">
+      <div class="sz">
+        <svg width="56" height="56" viewBox="0 0 400 400" fill="none">
+          <circle cx="200" cy="200" r="200" fill="#04030c"/>
+          <circle cx="200" cy="200" r="168" fill="none" stroke="#22d3ee" stroke-width="4"/>
+          <circle cx="200" cy="200" r="134" fill="none" stroke="#60a5fa" stroke-width="4"/>
+          <circle cx="200" cy="200" r="101" fill="none" stroke="#818cf8" stroke-width="4"/>
+          <circle cx="200" cy="200" r="70"  fill="none" stroke="#a78bfa" stroke-width="4"/>
+          <circle cx="200" cy="200" r="42"  fill="none" stroke="#c084fc" stroke-width="4"/>
+          <circle cx="200" cy="200" r="8"   fill="white"/>
+        </svg>
+        <span class="sz-lbl">56px</span>
+      </div>
+      <div class="sz">
+        <svg width="32" height="32" viewBox="0 0 400 400" fill="none">
+          <circle cx="200" cy="200" r="200" fill="#04030c"/>
+          <circle cx="200" cy="200" r="168" fill="none" stroke="#22d3ee" stroke-width="6"/>
+          <circle cx="200" cy="200" r="128" fill="none" stroke="#60a5fa" stroke-width="6"/>
+          <circle cx="200" cy="200" r="90"  fill="none" stroke="#818cf8" stroke-width="6"/>
+          <circle cx="200" cy="200" r="55"  fill="none" stroke="#c084fc" stroke-width="6"/>
+          <circle cx="200" cy="200" r="10"  fill="white"/>
+        </svg>
+        <span class="sz-lbl">32px</span>
+      </div>
+      <div class="sz">
+        <div class="on-w">
+          <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+            <circle cx="200" cy="200" r="200" fill="#0d0a22"/>
+            <circle cx="200" cy="200" r="168" fill="none" stroke="#22d3ee" stroke-width="5"/>
+            <circle cx="200" cy="200" r="134" fill="none" stroke="#60a5fa" stroke-width="5"/>
+            <circle cx="200" cy="200" r="101" fill="none" stroke="#818cf8" stroke-width="5"/>
+            <circle cx="200" cy="200" r="70"  fill="none" stroke="#a78bfa" stroke-width="5"/>
+            <circle cx="200" cy="200" r="42"  fill="none" stroke="#c084fc" stroke-width="5"/>
+            <circle cx="200" cy="200" r="9"   fill="white"/>
+          </svg>
+        </div>
+        <span class="sz-lbl">su bianco</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════ II · HORUS ════════════ -->
+<div class="concept">
+  <div class="c-stage">
+    <div class="icon-hero">
+      <svg width="220" height="220" viewBox="0 0 400 400" fill="none">
+        <defs>
+          <radialGradient id="hor-bg" cx="48%" cy="46%" r="68%">
+            <stop offset="0%" stop-color="#0a0618"/>
+            <stop offset="100%" stop-color="#030308"/>
+          </radialGradient>
+          <radialGradient id="hor-iris" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stop-color="#010110"/>
+            <stop offset="28%"  stop-color="#1c0a45"/>
+            <stop offset="62%"  stop-color="#5b21b6"/>
+            <stop offset="85%"  stop-color="#7c3aed"/>
+            <stop offset="100%" stop-color="#9333ea"/>
+          </radialGradient>
+          <radialGradient id="hor-hl" cx="25%" cy="22%" r="75%">
+            <stop offset="0%"   stop-color="white" stop-opacity=".9"/>
+            <stop offset="100%" stop-color="white" stop-opacity="0"/>
+          </radialGradient>
+          <filter id="hor-g" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="8" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="hor-gs" x="-150%" y="-150%" width="400%" height="400%">
+            <feGaussianBlur stdDeviation="6"/>
+          </filter>
+          <!-- clip to eye shape -->
+          <clipPath id="hor-clip">
+            <path d="M108 190 C128 150 172 144 200 144 C228 144 272 150 292 190 C272 236 228 240 200 240 C172 240 128 236 108 190 Z"/>
+          </clipPath>
+        </defs>
+
+        <circle cx="200" cy="200" r="200" fill="url(#hor-bg)"/>
+
+        <!-- ambient glow behind eye -->
+        <ellipse cx="200" cy="190" rx="110" ry="55" fill="#7c3aed" opacity=".06" filter="url(#hor-gs)"/>
+
+        <!-- EYEBROW -->
+        <path d="M120 166 C158 146 242 146 280 166"
+              fill="none" stroke="#fbbf24" stroke-width="5.5" stroke-linecap="round"
+              opacity=".85" filter="url(#hor-g)"/>
+        <!-- eyebrow inner tick (classic Horus detail) -->
+        <line x1="120" y1="166" x2="114" y2="178" stroke="#fbbf24" stroke-width="3.5"
+              stroke-linecap="round" opacity=".65"/>
+
+        <!-- EYE OUTLINE -->
+        <path d="M108 190 C128 150 172 144 200 144 C228 144 272 150 292 190 C272 236 228 240 200 240 C172 240 128 236 108 190 Z"
+              fill="none" stroke="rgba(220,210,255,0.75)" stroke-width="2.5" filter="url(#hor-g)"/>
+
+        <!-- IRIS fill -->
+        <circle cx="200" cy="192" r="38" fill="url(#hor-iris)" filter="url(#hor-g)"/>
+
+        <!-- Spectrum micro-ring inside iris -->
+        <circle cx="200" cy="192" r="33" fill="none" stroke="#c084fc" stroke-width="1.5" opacity=".5"/>
+        <circle cx="200" cy="192" r="26" fill="none" stroke="#818cf8" stroke-width="1"   opacity=".4"/>
+
+        <!-- Pupil -->
+        <circle cx="200" cy="192" r="14" fill="#000008"/>
+        <!-- Pupil glow border -->
+        <circle cx="200" cy="192" r="14" fill="none" stroke="#5b21b6" stroke-width="2" opacity=".5"/>
+        <!-- Corneal highlight -->
+        <ellipse cx="210" cy="183" rx="8" ry="5" fill="url(#hor-hl)" transform="rotate(-18,210,183)"/>
+
+        <!-- RA CURL — below right corner -->
+        <path d="M292 190 C318 198 334 224 316 246 C298 268 268 264 258 246"
+              fill="none" stroke="#fbbf24" stroke-width="4.5" stroke-linecap="round"
+              opacity=".82" filter="url(#hor-g)"/>
+        <!-- curl terminal dot -->
+        <circle cx="258" cy="246" r="6" fill="#fbbf24" opacity=".8" filter="url(#hor-gs)"/>
+
+        <!-- INNER CORNER decoration (lotus bud simplified) -->
+        <circle cx="108" cy="190" r="4.5" fill="#fbbf24" opacity=".65"/>
+        <line x1="108" y1="190" x2="94" y2="183" stroke="#fbbf24" stroke-width="2.5"
+              stroke-linecap="round" opacity=".45"/>
+
+        <!-- outer circle frame -->
+        <circle cx="200" cy="200" r="188" fill="none" stroke="#a78bfa" stroke-width="1.5" opacity=".1"/>
+      </svg>
+    </div>
+    <div class="scales">
+      <div class="sz">
+        <svg width="56" height="56" viewBox="0 0 400 400" fill="none">
+          <defs>
+            <radialGradient id="hsi" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1c0a45"/><stop offset="100%" stop-color="#9333ea"/></radialGradient>
+          </defs>
+          <circle cx="200" cy="200" r="200" fill="#030308"/>
+          <path d="M120 166 C158 146 242 146 280 166" fill="none" stroke="#fbbf24" stroke-width="7" stroke-linecap="round"/>
+          <path d="M108 190 C128 150 172 144 200 144 C228 144 272 150 292 190 C272 236 228 240 200 240 C172 240 128 236 108 190 Z" fill="none" stroke="rgba(220,210,255,.75)" stroke-width="3.5"/>
+          <circle cx="200" cy="192" r="38" fill="url(#hsi)"/>
+          <circle cx="200" cy="192" r="14" fill="#000"/>
+          <ellipse cx="210" cy="184" rx="9" ry="5.5" fill="white" opacity=".6"/>
+          <path d="M292 190 C318 198 334 224 316 246 C298 268 268 264 258 246" fill="none" stroke="#fbbf24" stroke-width="5.5" stroke-linecap="round"/>
+          <circle cx="258" cy="246" r="7" fill="#fbbf24"/>
+        </svg>
+        <span class="sz-lbl">56px</span>
+      </div>
+      <div class="sz">
+        <svg width="32" height="32" viewBox="0 0 400 400" fill="none">
+          <defs>
+            <radialGradient id="hsi2" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1c0a45"/><stop offset="100%" stop-color="#9333ea"/></radialGradient>
+          </defs>
+          <circle cx="200" cy="200" r="200" fill="#030308"/>
+          <path d="M120 162 C158 142 242 142 280 162" fill="none" stroke="#fbbf24" stroke-width="9" stroke-linecap="round"/>
+          <path d="M108 190 C128 150 172 144 200 144 C228 144 272 150 292 190 C272 236 228 240 200 240 C172 240 128 236 108 190 Z" fill="none" stroke="rgba(220,210,255,.8)" stroke-width="5"/>
+          <circle cx="200" cy="192" r="40" fill="url(#hsi2)"/>
+          <circle cx="200" cy="192" r="14" fill="#000"/>
+          <path d="M292 190 C318 200 332 228 312 248 C292 268 264 265 255 248" fill="none" stroke="#fbbf24" stroke-width="7" stroke-linecap="round"/>
+          <circle cx="255" cy="248" r="9" fill="#fbbf24"/>
+        </svg>
+        <span class="sz-lbl">32px</span>
+      </div>
+      <div class="sz">
+        <div class="on-w">
+          <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+            <defs>
+              <radialGradient id="hsiw" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1c0a45"/><stop offset="100%" stop-color="#9333ea"/></radialGradient>
+            </defs>
+            <circle cx="200" cy="200" r="200" fill="#0d0820"/>
+            <path d="M120 166 C158 146 242 146 280 166" fill="none" stroke="#d97706" stroke-width="7" stroke-linecap="round"/>
+            <path d="M108 190 C128 150 172 144 200 144 C228 144 272 150 292 190 C272 236 228 240 200 240 C172 240 128 236 108 190 Z" fill="none" stroke="rgba(200,190,255,.85)" stroke-width="3.5"/>
+            <circle cx="200" cy="192" r="38" fill="url(#hsiw)"/>
+            <circle cx="200" cy="192" r="14" fill="#000"/>
+            <ellipse cx="210" cy="184" rx="8" ry="5" fill="white" opacity=".6"/>
+            <path d="M292 190 C318 198 334 224 316 246 C298 268 268 264 258 246" fill="none" stroke="#d97706" stroke-width="5.5" stroke-linecap="round"/>
+            <circle cx="258" cy="246" r="6.5" fill="#d97706"/>
+          </svg>
+        </div>
+        <span class="sz-lbl">su bianco</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="c-info">
+    <p class="c-num">II / V</p>
+    <h2 class="c-title">Horus<br>Vettoriale</h2>
+    <p class="c-desc">
+      L'Occhio di Horus — "Wedjat", l'occhio che vede tutto —
+      è il simbolo egizio di protezione, salute, percezione.
+      Riportato in linee vettoriali nette. L'iride: viola profondo.
+      Il sopracciglio e il ricciolo Ra: oro antico.
+      Millenni di saggezza reinterpretati come logotipo moderno.
+    </p>
+    <p class="c-tag">Ancestrale · Protezione · Viola + Oro</p>
+    <div class="wm-block" style="margin-top:2.5rem; align-items:flex-start;">
+      <span class="wm wm-sm"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════ III · PETALI ════════════ -->
+<div class="concept">
+  <div class="c-info">
+    <p class="c-num">III / V</p>
+    <h2 class="c-title">Iris<br>Petali</h2>
+    <p class="c-desc">
+      Il fiore Iris prese il nome dalla dea. Sei petali in rotazione
+      lenta — ogni petalo un diverso colore dello spettro —
+      convergono su un centro luminoso. Tra forma naturale e forma tecnica:
+      potrebbe essere un fiore, un'apertura, una turbina di luce.
+    </p>
+    <p class="c-tag">Organico · Dinamico · Spettro pieno</p>
+    <div class="wm-block" style="margin-top:2.5rem; align-items:flex-start;">
+      <span class="wm wm-sm"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+  </div>
+
+  <div class="c-stage">
+    <style>
+      @keyframes spin-slow { to { transform: rotate(360deg); } }
+      .petali-spin { animation: spin-slow 28s linear infinite; transform-origin:110px 110px; }
+    </style>
+    <div class="icon-hero">
+      <svg width="220" height="220" viewBox="0 0 400 400" fill="none">
+        <defs>
+          <radialGradient id="pet-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#08050e"/>
+            <stop offset="100%" stop-color="#03030a"/>
+          </radialGradient>
+          <radialGradient id="pet-core" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stop-color="white"   stop-opacity="1"/>
+            <stop offset="40%"  stop-color="#e9d5ff" stop-opacity=".85"/>
+            <stop offset="80%"  stop-color="#7c3aed" stop-opacity=".5"/>
+            <stop offset="100%" stop-color="transparent"/>
+          </radialGradient>
+          <filter id="pet-g" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="8" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="pet-gs" x="-200%" y="-200%" width="500%" height="500%">
+            <feGaussianBlur stdDeviation="12"/>
+          </filter>
+        </defs>
+        <circle cx="200" cy="200" r="200" fill="url(#pet-bg)"/>
+
+        <!-- petal glows behind -->
+        <circle cx="200" cy="200" r="100" fill="#7c3aed" opacity=".04" filter="url(#pet-gs)"/>
+
+        <!-- 6 petals: each is a pointed teardrop from center to r=152 -->
+        <!-- petal path unrotated: center at 200,200; tip at 200,58 -->
+        <!-- M 200 200 C 185 170 183 95 200 58 C 217 95 215 170 200 200 Z -->
+        <g filter="url(#pet-g)">
+          <!-- 0° violet -->
+          <path d="M200 200 C186 170 183 96 200 58 C217 96 214 170 200 200 Z"
+                fill="#c084fc" opacity=".88" transform="rotate(0,200,200)"/>
+          <!-- 60° indigo -->
+          <path d="M200 200 C186 170 183 96 200 58 C217 96 214 170 200 200 Z"
+                fill="#818cf8" opacity=".88" transform="rotate(60,200,200)"/>
+          <!-- 120° blue -->
+          <path d="M200 200 C186 170 183 96 200 58 C217 96 214 170 200 200 Z"
+                fill="#60a5fa" opacity=".88" transform="rotate(120,200,200)"/>
+          <!-- 180° cyan -->
+          <path d="M200 200 C186 170 183 96 200 58 C217 96 214 170 200 200 Z"
+                fill="#22d3ee" opacity=".85" transform="rotate(180,200,200)"/>
+          <!-- 240° teal -->
+          <path d="M200 200 C186 170 183 96 200 58 C217 96 214 170 200 200 Z"
+                fill="#2dd4bf" opacity=".85" transform="rotate(240,200,200)"/>
+          <!-- 300° magenta -->
+          <path d="M200 200 C186 170 183 96 200 58 C217 96 214 170 200 200 Z"
+                fill="#e879f9" opacity=".85" transform="rotate(300,200,200)"/>
+        </g>
+
+        <!-- center circle -->
+        <circle cx="200" cy="200" r="28" fill="url(#pet-core)" filter="url(#pet-gs)"/>
+        <circle cx="200" cy="200" r="10" fill="white" opacity=".95"/>
+      </svg>
+    </div>
+    <div class="scales">
+      <div class="sz">
+        <svg width="56" height="56" viewBox="0 0 400 400" fill="none">
+          <circle cx="200" cy="200" r="200" fill="#03030a"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#c084fc" transform="rotate(0,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#818cf8" transform="rotate(60,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#60a5fa" transform="rotate(120,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#22d3ee" transform="rotate(180,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#2dd4bf" transform="rotate(240,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#e879f9" transform="rotate(300,200,200)"/>
+          <circle cx="200" cy="200" r="10" fill="white"/>
+        </svg>
+        <span class="sz-lbl">56px</span>
+      </div>
+      <div class="sz">
+        <svg width="32" height="32" viewBox="0 0 400 400" fill="none">
+          <circle cx="200" cy="200" r="200" fill="#03030a"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#c084fc" transform="rotate(0,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#818cf8" transform="rotate(60,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#60a5fa" transform="rotate(120,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#22d3ee" transform="rotate(180,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#2dd4bf" transform="rotate(240,200,200)"/>
+          <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#e879f9" transform="rotate(300,200,200)"/>
+          <circle cx="200" cy="200" r="14" fill="white"/>
+        </svg>
+        <span class="sz-lbl">32px</span>
+      </div>
+      <div class="sz">
+        <div class="on-w">
+          <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+            <circle cx="200" cy="200" r="200" fill="#0d0818"/>
+            <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#c084fc" transform="rotate(0,200,200)"/>
+            <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#818cf8" transform="rotate(60,200,200)"/>
+            <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#60a5fa" transform="rotate(120,200,200)"/>
+            <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#22d3ee" transform="rotate(180,200,200)"/>
+            <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#2dd4bf" transform="rotate(240,200,200)"/>
+            <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#e879f9" transform="rotate(300,200,200)"/>
+            <circle cx="200" cy="200" r="12" fill="white"/>
+          </svg>
+        </div>
+        <span class="sz-lbl">su bianco</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════ IV · MAGNETICO ════════════ -->
+<div class="concept">
+  <div class="c-stage">
+    <div class="icon-hero">
+      <svg width="220" height="220" viewBox="0 0 400 400" fill="none">
+        <defs>
+          <radialGradient id="mag-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#07040e"/>
+            <stop offset="100%" stop-color="#03030a"/>
+          </radialGradient>
+          <radialGradient id="mag-core" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stop-color="white" stop-opacity=".95"/>
+            <stop offset="45%"  stop-color="#c084fc" stop-opacity=".7"/>
+            <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+          </radialGradient>
+          <filter id="mag-g" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="mag-gs" x="-200%" y="-200%" width="500%" height="500%">
+            <feGaussianBlur stdDeviation="10"/>
+          </filter>
+        </defs>
+        <circle cx="200" cy="200" r="200" fill="url(#mag-bg)"/>
+
+        <!-- 3 ellipses, 60° apart — orbital rings -->
+        <!-- Each pair of lines from the ellipse creates an "orbital band" effect -->
+        <!-- Outer glow for each ellipse -->
+        <ellipse cx="200" cy="200" rx="166" ry="52"
+                 fill="none" stroke="#c084fc" stroke-width="22" opacity=".05"
+                 filter="url(#mag-gs)"/>
+        <ellipse cx="200" cy="200" rx="166" ry="52"
+                 fill="none" stroke="#60a5fa" stroke-width="22" opacity=".05"
+                 filter="url(#mag-gs)" transform="rotate(60,200,200)"/>
+        <ellipse cx="200" cy="200" rx="166" ry="52"
+                 fill="none" stroke="#22d3ee" stroke-width="22" opacity=".05"
+                 filter="url(#mag-gs)" transform="rotate(120,200,200)"/>
+
+        <!-- Ellipse 1 (violet) -->
+        <ellipse cx="200" cy="200" rx="166" ry="52"
+                 fill="none" stroke="#c084fc" stroke-width="2.8" opacity=".82"
+                 filter="url(#mag-g)"/>
+        <!-- Ellipse 2 (blue, rotated 60°) -->
+        <ellipse cx="200" cy="200" rx="166" ry="52"
+                 fill="none" stroke="#60a5fa" stroke-width="2.8" opacity=".82"
+                 filter="url(#mag-g)" transform="rotate(60,200,200)"/>
+        <!-- Ellipse 3 (cyan, rotated 120°) -->
+        <ellipse cx="200" cy="200" rx="166" ry="52"
+                 fill="none" stroke="#22d3ee" stroke-width="2.8" opacity=".82"
+                 filter="url(#mag-g)" transform="rotate(120,200,200)"/>
+
+        <!-- Central nucleus glow -->
+        <circle cx="200" cy="200" r="30" fill="#7c3aed" opacity=".15" filter="url(#mag-gs)"/>
+        <circle cx="200" cy="200" r="22" fill="url(#mag-core)" filter="url(#mag-gs)"/>
+        <circle cx="200" cy="200" r="10" fill="white" opacity=".92"/>
+        <!-- nucleus outline ring -->
+        <circle cx="200" cy="200" r="22" fill="none" stroke="#c084fc" stroke-width="1.5" opacity=".5"/>
+      </svg>
+    </div>
+    <div class="scales">
+      <div class="sz">
+        <svg width="56" height="56" viewBox="0 0 400 400" fill="none">
+          <circle cx="200" cy="200" r="200" fill="#03030a"/>
+          <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#c084fc" stroke-width="4"/>
+          <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#60a5fa" stroke-width="4" transform="rotate(60,200,200)"/>
+          <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#22d3ee" stroke-width="4" transform="rotate(120,200,200)"/>
+          <circle cx="200" cy="200" r="10" fill="white"/>
+        </svg>
+        <span class="sz-lbl">56px</span>
+      </div>
+      <div class="sz">
+        <svg width="32" height="32" viewBox="0 0 400 400" fill="none">
+          <circle cx="200" cy="200" r="200" fill="#03030a"/>
+          <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#c084fc" stroke-width="6"/>
+          <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#60a5fa" stroke-width="6" transform="rotate(60,200,200)"/>
+          <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#22d3ee" stroke-width="6" transform="rotate(120,200,200)"/>
+          <circle cx="200" cy="200" r="14" fill="white"/>
+        </svg>
+        <span class="sz-lbl">32px</span>
+      </div>
+      <div class="sz">
+        <div class="on-w">
+          <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+            <circle cx="200" cy="200" r="200" fill="#0d0820"/>
+            <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#a855f7" stroke-width="4.5"/>
+            <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#3b82f6" stroke-width="4.5" transform="rotate(60,200,200)"/>
+            <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#06b6d4" stroke-width="4.5" transform="rotate(120,200,200)"/>
+            <circle cx="200" cy="200" r="10" fill="white"/>
+          </svg>
+        </div>
+        <span class="sz-lbl">su bianco</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="c-info">
+    <p class="c-num">IV / V</p>
+    <h2 class="c-title">Campo<br>Magnetico</h2>
+    <p class="c-desc">
+      Tre ellissi orbitali a 60° l'una dall'altra: l'atomo di Bohr,
+      il campo magnetico, l'occhio della fisica quantistica.
+      Un nucleo di luce al centro. Geometria perfetta, proporzione aurea.
+      Intelligenza che orbita attorno a te, non che ti guarda.
+    </p>
+    <p class="c-tag">Scientifico · Simmetria · Orbitale</p>
+    <div class="wm-block" style="margin-top:2.5rem; align-items:flex-start;">
+      <span class="wm wm-sm"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════ V · GEMMA ════════════ -->
+<div class="concept">
+  <div class="c-info">
+    <p class="c-num">V / V</p>
+    <h2 class="c-title">Gemma<br>Tagliata</h2>
+    <p class="c-desc">
+      Vista dall'alto su un cristallo di ametista tagliato a ottogono.
+      Otto faccette, ognuna con un'ombra diversa del viola —
+      dal profondo indaco al lilla chiaro. Un punto di luce al centro.
+      Lusso, precisione, profondità. Come un occhio ridotto alla sua
+      struttura più essenziale: geometria pura, colore perfetto.
+    </p>
+    <p class="c-tag">Lussuoso · Geometrico · Monocromatico</p>
+    <div class="wm-block" style="margin-top:2.5rem; align-items:flex-start;">
+      <span class="wm wm-sm"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+  </div>
+
+  <div class="c-stage">
+    <div class="icon-hero">
+      <svg width="220" height="220" viewBox="0 0 400 400" fill="none">
+        <defs>
+          <radialGradient id="gem-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#080610"/>
+            <stop offset="100%" stop-color="#03030a"/>
+          </radialGradient>
+          <radialGradient id="gem-c" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stop-color="white" stop-opacity=".9"/>
+            <stop offset="50%"  stop-color="#e9d5ff" stop-opacity=".6"/>
+            <stop offset="100%" stop-color="transparent"/>
+          </radialGradient>
+          <filter id="gem-g" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="7" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="gem-gs" x="-200%" y="-200%" width="500%" height="500%">
+            <feGaussianBlur stdDeviation="12"/>
+          </filter>
+        </defs>
+
+        <circle cx="200" cy="200" r="200" fill="url(#gem-bg)"/>
+
+        <!-- ambient glow -->
+        <circle cx="200" cy="200" r="155" fill="#7c3aed" opacity=".06" filter="url(#gem-gs)"/>
+
+        <!--
+          Octagon vertices at r=158 from center (200,200):
+          angle = 90° + k*45° for k=0..7 (flat-top orientation, starting from top)
+          k=0:  (200-158*sin(0°), 200-158*cos(0°))   = (200, 42)
+          k=1:  (200+158*sin(45°),200-158*cos(45°))  = (312, 88)
+          k=2:  (200+158, 200)                        = (358, 200)
+          k=3:  (200+158*sin(45°),200+158*cos(45°))  = (312, 312)
+          k=4:  (200, 358)
+          k=5:  (200-158*sin(45°),200+158*cos(45°))  = (88, 312)
+          k=6:  (42, 200)
+          k=7:  (88, 88)
+          sin(45°)=cos(45°)≈0.707 → 158*0.707≈112
+        -->
+
+        <!-- 8 facets from center, each a different violet tone -->
+        <!-- Facet 0: top (v0→v1): light violet -->
+        <polygon points="200,200 200,42  312,88"  fill="#ddd6fe" opacity=".82" filter="url(#gem-g)"/>
+        <!-- Facet 1: upper-right (v1→v2): violet -->
+        <polygon points="200,200 312,88  358,200" fill="#a78bfa" opacity=".88" filter="url(#gem-g)"/>
+        <!-- Facet 2: right (v2→v3): medium violet -->
+        <polygon points="200,200 358,200 312,312" fill="#8b5cf6" opacity=".85" filter="url(#gem-g)"/>
+        <!-- Facet 3: lower-right (v3→v4): deeper violet -->
+        <polygon points="200,200 312,312 200,358" fill="#7c3aed" opacity=".90" filter="url(#gem-g)"/>
+        <!-- Facet 4: bottom (v4→v5): deep indigo-violet -->
+        <polygon points="200,200 200,358  88,312" fill="#6d28d9" opacity=".85" filter="url(#gem-g)"/>
+        <!-- Facet 5: lower-left (v5→v6): indigo -->
+        <polygon points="200,200  88,312  42,200" fill="#5b21b6" opacity=".82" filter="url(#gem-g)"/>
+        <!-- Facet 6: left (v6→v7): deep purple -->
+        <polygon points="200,200  42,200  88,88"  fill="#4c1d95" opacity=".80" filter="url(#gem-g)"/>
+        <!-- Facet 7: upper-left (v7→v0): medium-deep violet -->
+        <polygon points="200,200  88,88  200,42"  fill="#6d28d9" opacity=".78" filter="url(#gem-g)"/>
+
+        <!-- Facet edge lines (refraction lines) — very subtle -->
+        <g stroke="rgba(220,210,255,0.12)" stroke-width="1">
+          <line x1="200" y1="200" x2="200"  y2="42"/>
+          <line x1="200" y1="200" x2="312"  y2="88"/>
+          <line x1="200" y1="200" x2="358"  y2="200"/>
+          <line x1="200" y1="200" x2="312"  y2="312"/>
+          <line x1="200" y1="200" x2="200"  y2="358"/>
+          <line x1="200" y1="200" x2="88"   y2="312"/>
+          <line x1="200" y1="200" x2="42"   y2="200"/>
+          <line x1="200" y1="200" x2="88"   y2="88"/>
+        </g>
+
+        <!-- Outer octagon edge -->
+        <polygon points="200,42 312,88 358,200 312,312 200,358 88,312 42,200 88,88"
+                 fill="none" stroke="rgba(220,200,255,0.25)" stroke-width="2"/>
+
+        <!-- Inner "table" octagon (center facet, smaller) -->
+        <polygon points="200,108 256,128 272,200 256,272 200,292 144,272 128,200 144,128"
+                 fill="none" stroke="rgba(230,220,255,0.18)" stroke-width="1.2"/>
+
+        <!-- "Kite" lines from inner octagon vertices to outer — refraction effect -->
+        <g stroke="rgba(200,180,255,0.08)" stroke-width="0.8">
+          <line x1="200" y1="108" x2="200" y2="42"/>
+          <line x1="256" y1="128" x2="312" y2="88"/>
+          <line x1="272" y1="200" x2="358" y2="200"/>
+          <line x1="256" y1="272" x2="312" y2="312"/>
+          <line x1="200" y1="292" x2="200" y2="358"/>
+          <line x1="144" y1="272" x2="88"  y2="312"/>
+          <line x1="128" y1="200" x2="42"  y2="200"/>
+          <line x1="144" y1="128" x2="88"  y2="88"/>
+        </g>
+
+        <!-- center table glow -->
+        <circle cx="200" cy="200" r="36" fill="url(#gem-c)" filter="url(#gem-gs)"/>
+        <circle cx="200" cy="200" r="8"  fill="white" opacity=".9"/>
+      </svg>
+    </div>
+    <div class="scales">
+      <div class="sz">
+        <svg width="56" height="56" viewBox="0 0 400 400" fill="none">
+          <circle cx="200" cy="200" r="200" fill="#03030a"/>
+          <polygon points="200,42 312,88 358,200 312,312 200,358 88,312 42,200 88,88" fill="#7c3aed" opacity=".3"/>
+          <polygon points="200,42 312,88 358,200 312,312 200,358 88,312 42,200 88,88"
+                   fill="none" stroke="rgba(200,180,255,.5)" stroke-width="3"/>
+          <polygon points="200,200 200,42  312,88"  fill="#ddd6fe" opacity=".7"/>
+          <polygon points="200,200 312,88  358,200" fill="#a78bfa" opacity=".75"/>
+          <polygon points="200,200 358,200 312,312" fill="#7c3aed" opacity=".7"/>
+          <polygon points="200,200 312,312 200,358" fill="#6d28d9" opacity=".75"/>
+          <polygon points="200,200 200,358  88,312" fill="#5b21b6" opacity=".7"/>
+          <polygon points="200,200  88,312  42,200" fill="#4c1d95" opacity=".65"/>
+          <polygon points="200,200  42,200  88,88"  fill="#5b21b6" opacity=".65"/>
+          <polygon points="200,200  88,88  200,42"  fill="#6d28d9" opacity=".65"/>
+          <circle cx="200" cy="200" r="10" fill="white"/>
+        </svg>
+        <span class="sz-lbl">56px</span>
+      </div>
+      <div class="sz">
+        <svg width="32" height="32" viewBox="0 0 400 400" fill="none">
+          <circle cx="200" cy="200" r="200" fill="#03030a"/>
+          <polygon points="200,42 312,88 358,200 312,312 200,358 88,312 42,200 88,88" fill="#7c3aed" opacity=".4"/>
+          <polygon points="200,42 312,88 358,200 312,312 200,358 88,312 42,200 88,88"
+                   fill="none" stroke="rgba(200,180,255,.6)" stroke-width="4"/>
+          <polygon points="200,200 200,42  312,88"  fill="#e9d5ff" opacity=".8"/>
+          <polygon points="200,200 312,88  358,200" fill="#a78bfa" opacity=".85"/>
+          <polygon points="200,200  42,200  88,88"  fill="#4c1d95" opacity=".75"/>
+          <circle cx="200" cy="200" r="14" fill="white"/>
+        </svg>
+        <span class="sz-lbl">32px</span>
+      </div>
+      <div class="sz">
+        <div class="on-w">
+          <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+            <circle cx="200" cy="200" r="200" fill="#0d0820"/>
+            <polygon points="200,42 312,88 358,200 312,312 200,358 88,312 42,200 88,88"
+                     fill="none" stroke="rgba(200,180,255,.6)" stroke-width="3"/>
+            <polygon points="200,200 200,42  312,88"  fill="#ddd6fe" opacity=".75"/>
+            <polygon points="200,200 312,88  358,200" fill="#a78bfa" opacity=".80"/>
+            <polygon points="200,200 358,200 312,312" fill="#8b5cf6" opacity=".78"/>
+            <polygon points="200,200 312,312 200,358" fill="#7c3aed" opacity=".82"/>
+            <polygon points="200,200 200,358  88,312" fill="#6d28d9" opacity=".80"/>
+            <polygon points="200,200  88,312  42,200" fill="#5b21b6" opacity=".75"/>
+            <polygon points="200,200  42,200  88,88"  fill="#4c1d95" opacity=".72"/>
+            <polygon points="200,200  88,88  200,42"  fill="#6d28d9" opacity=".70"/>
+            <circle cx="200" cy="200" r="10" fill="white"/>
+          </svg>
+        </div>
+        <span class="sz-lbl">su bianco</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /concepts -->
+
+
+<!-- ════════════ COMPARE ════════════ -->
+<div class="compare">
+  <p class="compare-title">Confronto diretto — tutti e cinque — 48px</p>
+  <div class="compare-row">
+
+    <!-- I Orbita -->
+    <div class="ci">
+      <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+        <circle cx="200" cy="200" r="200" fill="#04030c"/>
+        <circle cx="200" cy="200" r="168" fill="none" stroke="#22d3ee" stroke-width="5"/>
+        <circle cx="200" cy="200" r="134" fill="none" stroke="#60a5fa" stroke-width="5"/>
+        <circle cx="200" cy="200" r="101" fill="none" stroke="#818cf8" stroke-width="5"/>
+        <circle cx="200" cy="200" r="70"  fill="none" stroke="#a78bfa" stroke-width="5"/>
+        <circle cx="200" cy="200" r="42"  fill="none" stroke="#c084fc" stroke-width="5"/>
+        <circle cx="200" cy="200" r="9"   fill="white"/>
+      </svg>
+      <span class="ci-name">Orbita</span>
+      <span class="wm wm-xs"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+
+    <!-- II Horus -->
+    <div class="ci">
+      <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+        <defs>
+          <radialGradient id="cmp-h" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1c0a45"/><stop offset="100%" stop-color="#9333ea"/></radialGradient>
+        </defs>
+        <circle cx="200" cy="200" r="200" fill="#030308"/>
+        <path d="M120 166 C158 146 242 146 280 166" fill="none" stroke="#fbbf24" stroke-width="7" stroke-linecap="round"/>
+        <path d="M108 190 C128 150 172 144 200 144 C228 144 272 150 292 190 C272 236 228 240 200 240 C172 240 128 236 108 190 Z" fill="none" stroke="rgba(220,210,255,.8)" stroke-width="3.5"/>
+        <circle cx="200" cy="192" r="38" fill="url(#cmp-h)"/>
+        <circle cx="200" cy="192" r="14" fill="#000"/>
+        <ellipse cx="210" cy="184" rx="8" ry="5" fill="white" opacity=".6"/>
+        <path d="M292 190 C318 198 334 224 316 246 C298 268 268 264 258 246" fill="none" stroke="#fbbf24" stroke-width="5.5" stroke-linecap="round"/>
+        <circle cx="258" cy="246" r="7" fill="#fbbf24"/>
+      </svg>
+      <span class="ci-name">Horus</span>
+      <span class="wm wm-xs"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+
+    <!-- III Petali -->
+    <div class="ci">
+      <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+        <circle cx="200" cy="200" r="200" fill="#03030a"/>
+        <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#c084fc" transform="rotate(0,200,200)"/>
+        <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#818cf8" transform="rotate(60,200,200)"/>
+        <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#60a5fa" transform="rotate(120,200,200)"/>
+        <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#22d3ee" transform="rotate(180,200,200)"/>
+        <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#2dd4bf" transform="rotate(240,200,200)"/>
+        <path d="M200 200 C186 168 183 94 200 56 C217 94 214 168 200 200 Z" fill="#e879f9" transform="rotate(300,200,200)"/>
+        <circle cx="200" cy="200" r="12" fill="white"/>
+      </svg>
+      <span class="ci-name">Petali</span>
+      <span class="wm wm-xs"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+
+    <!-- IV Magnetico -->
+    <div class="ci">
+      <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+        <circle cx="200" cy="200" r="200" fill="#03030a"/>
+        <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#c084fc" stroke-width="5"/>
+        <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#60a5fa" stroke-width="5" transform="rotate(60,200,200)"/>
+        <ellipse cx="200" cy="200" rx="166" ry="52" fill="none" stroke="#22d3ee" stroke-width="5" transform="rotate(120,200,200)"/>
+        <circle cx="200" cy="200" r="10" fill="white"/>
+      </svg>
+      <span class="ci-name">Magnetico</span>
+      <span class="wm wm-xs"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+
+    <!-- V Gemma -->
+    <div class="ci">
+      <svg width="48" height="48" viewBox="0 0 400 400" fill="none">
+        <circle cx="200" cy="200" r="200" fill="#03030a"/>
+        <polygon points="200,42 312,88 358,200 312,312 200,358 88,312 42,200 88,88"
+                 fill="none" stroke="rgba(200,180,255,.55)" stroke-width="3.5"/>
+        <polygon points="200,200 200,42  312,88"  fill="#ddd6fe" opacity=".75"/>
+        <polygon points="200,200 312,88  358,200" fill="#a78bfa" opacity=".80"/>
+        <polygon points="200,200 358,200 312,312" fill="#8b5cf6" opacity=".78"/>
+        <polygon points="200,200 312,312 200,358" fill="#7c3aed" opacity=".82"/>
+        <polygon points="200,200 200,358  88,312" fill="#6d28d9" opacity=".78"/>
+        <polygon points="200,200  88,312  42,200" fill="#5b21b6" opacity=".75"/>
+        <polygon points="200,200  42,200  88,88"  fill="#4c1d95" opacity=".72"/>
+        <polygon points="200,200  88,88  200,42"  fill="#6d28d9" opacity=".70"/>
+        <circle cx="200" cy="200" r="10" fill="white"/>
+      </svg>
+      <span class="ci-name">Gemma</span>
+      <span class="wm wm-xs"><span class="wm-hi">HI</span><span class="wm-ris">RIS</span></span>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
