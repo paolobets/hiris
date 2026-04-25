@@ -149,3 +149,49 @@ app/
 - `SUPERVISOR_TOKEN`: env var injected by HA Supervisor
 - Service call whitelist: configurable per-agent
 - No persistent storage of chat history (in-memory, session-scoped)
+
+---
+
+## Release Procedure
+
+Follow these steps **in order** whenever asked for a release ("fai il release", "prepara la X.Y.Z", "rilascia", "nuova versione"):
+
+### Step 1 — Scope commits
+```bash
+git log $(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --oneline
+```
+Collect all commits since the last tag (or since repo start if no tags yet).
+
+### Step 2 — Propose version
+Determine bump type:
+- Any `feat:` or `feat(...):` → minimum **minor** bump (0.5.x → 0.6.0)
+- Any `BREAKING CHANGE` or `!:` → **major** bump
+- Only `fix:`, `chore:`, `docs:`, `test:` → **patch** bump (0.5.0 → 0.5.1)
+
+Show proposed version to user. Wait for confirmation. User may override.
+
+### Step 3 — Draft CHANGELOG section
+Generate a Keep-a-Changelog section and show it to the user:
+```
+## [X.Y.Z] — YYYY-MM-DD
+
+### Added      ← feat: commits
+### Fixed      ← fix: commits
+### Changed    ← refactor:, perf: commits
+### Removed    ← commits that delete features
+```
+Wait for user approval. Incorporate any edits.
+
+### Step 4 — Update files (after user approves)
+a. Insert the approved section into `CHANGELOG.md` immediately after the `# HIRIS — Changelog` heading line.
+b. Update `hiris/config.yaml` → `version: "X.Y.Z"`.
+
+### Step 5 — Run release script (Bash only — never PowerShell)
+```bash
+python scripts/release.py --version X.Y.Z
+```
+
+### Step 6 — Report
+Show full script output to the user.
+- Exit 0 → announce "Release vX.Y.Z completato ✓ — HA rileverà l'aggiornamento al prossimo check."
+- Non-zero → show the failing step. **Do NOT retry automatically.** Wait for the user to fix the issue.

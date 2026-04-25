@@ -1,5 +1,44 @@
 # HIRIS — Changelog
 
+## [0.5.1] — 2026-04-25
+
+### Added
+- **Lovelace card auto-registration** — on startup HIRIS calls `POST /api/lovelace/resources` (via Supervisor token) to register `hiris-chat-card.js` as a UI module; idempotent, graceful in YAML-mode HA
+- **Single-source versioning** — version read dynamically from `config.yaml` at runtime; `server.py` and `handlers_status.py` no longer hardcode it
+- **Release script** — `scripts/release.py`: 10-step mechanical release executor (semver validation → changelog check → tests → git tag → GitHub Release); supports `--dry-run` and `--skip-tests`
+
+## [0.5.0] — 2026-04-25
+
+### Added
+- **X-HIRIS-Internal-Token middleware** — HMAC-validated auth for inter-add-on requests (non-Ingress)
+- **Enriched `/api/agents` response** — includes `status`, `budget_eur`, `budget_limit_eur` for Lovelace dashboard
+- **SSE streaming for `/api/chat`** — Server-Sent Events path when `stream: true` or `Accept: text/event-stream`; Phase 1 pseudo-streaming (full response sliced into 80-char tokens)
+- **`hiris-chat-card.js`** — vanilla JS Lovelace custom card (shadow DOM, 30s polling, SSE streaming, budget bar, toggle enable/disable)
+- **MQTT Discovery publisher** — publishes `sensor.hiris_*_status/budget_eur/last_run` and `switch.hiris_*_enabled` via aiomqtt; exponential backoff reconnect; discovery messages queue during initial backoff
+
+### Changed
+- `config.yaml`: added `internal_token`, `mqtt_host`, `mqtt_port`, `mqtt_user`, `mqtt_password` options
+- `AgentEngine`: tracks running/error agent status; publishes MQTT state on each run
+
+## [0.4.2] — 2026-04-24
+
+### Fixed
+- `internal_token` option uses `password` schema in `config.yaml` (masked in HA UI)
+- HMAC comparison uses `hmac.compare_digest` (constant-time, prevents timing attacks)
+
+## [0.4.0] — 2026-04-23
+
+### Added
+- **SemanticContextMap** — replaces EmbeddingIndex; organizes entities by area using `device_class` + domain classification; ~60% token reduction vs previous RAG
+- **KnowledgeDB** — SQLite persistence for entity classifications, agent annotations, entity correlations
+- **TaskEngine** — shared deferred-task system; 4 trigger types (`delay`, `at_time`, `at_datetime`, `time_window`); 3 action types; task persistence in `/data/tasks.json`
+- **LLM Router** — routes standard inference to Claude, offloads `classify_entities()` to local Ollama when `LOCAL_MODEL_URL` configured
+- **Task UI** — "Task" tab with pending-count badge; active + recent task list; cancel button; auto-refresh every 30s
+
+### Removed
+- `EmbeddingIndex` — replaced by `SemanticContextMap`
+- `search_entities` Claude tool — removed with EmbeddingIndex dependency
+
 ## [0.3.0] — 2026-04-23
 
 ### Added
