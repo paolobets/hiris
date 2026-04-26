@@ -1,5 +1,13 @@
 # HIRIS — Changelog
 
+## [0.5.4] — 2026-04-26
+
+### Fixed
+- Aggiunto `getCardSize()` → HA alloca la griglia correttamente senza mostrare shimmer di caricamento permanente
+- `preview: false` nel registro `window.customCards` → il picker non tenta un render live (che richiede HIRIS attivo)
+- `_fetchStatus()` usa `_patchStatus()` invece di `_render()` quando il DOM è già inizializzato → preserva il testo digitato nella chat
+- `set hass()` usa `_patchStatus()` per aggiornamenti MQTT → nessuna sostituzione DOM su ogni cambio entity
+
 ## [0.5.3] — 2026-04-26
 
 ### Fixed
