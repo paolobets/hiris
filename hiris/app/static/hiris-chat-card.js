@@ -66,6 +66,8 @@ class HirisCard extends HTMLElement {
     return { agent_id: 'hiris-default', title: 'HIRIS Chat', hiris_slug: 'hiris' };
   }
 
+  getCardSize() { return 6; }
+
   setConfig(config) {
     this._agentId = config.agent_id || null;
     this._slug = config.hiris_slug || 'hiris';
@@ -83,7 +85,8 @@ class HirisCard extends HTMLElement {
       this._budgetEur = parseFloat(hass.states[budgetKey]?.state || '0');
       const switchKey = `switch.hiris_${this._agentId}_enabled`;
       this._enabled = hass.states[switchKey]?.state !== 'off';
-      this._render();
+      if (this._shadow.querySelector('.card')) this._patchStatus();
+      else this._render();
     } else if (this._agentId && !this._polling) {
       this._startPolling();
     }
@@ -119,7 +122,39 @@ class HirisCard extends HTMLElement {
     } catch (e) {
       this._error = '⚠ HIRIS non disponibile';
     }
-    this._render();
+    // Patch only the status area to preserve input focus and typed text
+    if (this._shadow.querySelector('.card') && !this._loading) this._patchStatus();
+    else this._render();
+  }
+
+  _patchStatus() {
+    const color = this._statusColor();
+    const dot = this._shadow.querySelector('.dot');
+    if (dot) dot.style.background = color;
+    const statusText = this._shadow.querySelector('.status-text');
+    if (statusText) statusText.textContent = this._status;
+    const tog = this._shadow.getElementById('tog');
+    if (tog) {
+      tog.title = this._enabled ? 'Disabilita' : 'Abilita';
+      tog.innerHTML = this._enabled ? '&#x1F7E2;' : '&#x26AA;';
+    }
+    const card = this._shadow.querySelector('.card');
+    let badge = card?.querySelector('.error-badge');
+    if (this._error) {
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'error-badge';
+        const msgs = this._shadow.getElementById('msgs');
+        if (card && msgs) card.insertBefore(badge, msgs);
+      }
+      badge.textContent = this._error;
+    } else if (badge) {
+      badge.remove();
+    }
+    const snd = this._shadow.getElementById('snd');
+    if (snd) snd.disabled = this._loading || !this._enabled;
+    const inp = this._shadow.getElementById('inp');
+    if (inp) inp.disabled = !this._enabled;
   }
 
   async _sendMessage(text) {
@@ -275,7 +310,7 @@ class HirisCard extends HTMLElement {
         .header-left { display: flex; align-items: center; gap: 8px; }
         .title { font-size: 15px; font-weight: 600; color: var(--primary-text-color,#333); }
         .status { display: flex; align-items: center; gap: 6px; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: ${color}; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
         .status-text { font-size: 12px; color: var(--secondary-text-color,#666); }
         .toggle { cursor: pointer; font-size: 18px; background: none; border: none;
           padding: 0; line-height: 1; }
@@ -341,6 +376,8 @@ class HirisCard extends HTMLElement {
     const snd = this._shadow.getElementById('snd');
     const tog = this._shadow.getElementById('tog');
     const msgs = this._shadow.getElementById('msgs');
+    const dot = this._shadow.querySelector('.dot');
+    if (dot) dot.style.background = color;
 
     if (msgs) msgs.scrollTop = msgs.scrollHeight;
     if (snd) snd.onclick = () => {
@@ -503,5 +540,5 @@ window.customCards.push({
   type: 'hiris-chat-card',
   name: 'HIRIS Chat',
   description: 'Chat con il tuo assistente smart home HIRIS',
-  preview: true,
+  preview: false,
 });

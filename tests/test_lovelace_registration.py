@@ -228,6 +228,19 @@ def test_hiris_icon_inlined():
     assert "c084fc" in src
 
 
+def test_get_card_size_defined():
+    """HirisCard implements getCardSize() so HA can allocate grid rows without showing shimmer."""
+    src = _js()
+    assert "getCardSize()" in src
+
+
+def test_preview_is_false():
+    """preview: false prevents HA from attempting a live render in the picker (which requires HIRIS)."""
+    src = _js()
+    assert "preview: false" in src
+    assert "preview: true" not in src
+
+
 def test_card_url_is_local_not_ingress():
     """The JS comment documents /local/ URL; the old static ingress resource URL is gone."""
     src = _js()
