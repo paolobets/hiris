@@ -150,7 +150,9 @@ def test_customcards_registration():
 def test_editor_element_defined():
     """JS defines the hiris-chat-card-editor custom element for the config UI."""
     src = _js()
+    assert "class HirisChatCardEditor" in src
     assert "hiris-chat-card-editor" in src
+    assert "getConfigElement" in src
 
 
 def test_stub_config_has_default_agent():

@@ -260,7 +260,7 @@ class HirisCard extends HTMLElement {
     const color = this._statusColor();
     const msgs = this._messages.map(m => `
       <div class="msg ${m.role}">
-        ${m.text.replace(/</g, '&lt;').replace(/\n/g, '<br>')}
+        ${this._esc(m.text).replace(/\n/g, '<br>')}
         ${m.streaming ? '<span class="cursor">&#x258C;</span>' : ''}
       </div>`).join('');
 
@@ -378,6 +378,7 @@ class HirisChatCardEditor extends HTMLElement {
   }
 
   async _loadAgents() {
+    this._agents = 'loading';  // sentinel: prevents concurrent fetches
     const slug = this._config.hiris_slug || 'hiris';
     try {
       const result = await this._hass.callApi('GET', `hassio_ingress/${slug}/api/agents`);
@@ -405,7 +406,7 @@ class HirisChatCardEditor extends HTMLElement {
     const title = this._config.title || 'HIRIS Chat';
 
     let agentField;
-    if (this._agents === null) {
+    if (this._agents === null || this._agents === 'loading') {
       // Still loading
       agentField = `<select disabled style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#f9fafb;color:#9ca3af;box-sizing:border-box">
         <option>Caricamento agenti…</option>
