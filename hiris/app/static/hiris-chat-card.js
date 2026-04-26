@@ -14,6 +14,33 @@ const POLL_MS = 30_000;
 const CHAT_TIMEOUT_MS = 30_000;
 const EUR_RATE = 0.92;
 
+// HIRIS SVG icon inlined as a data URI to avoid Shadow DOM ID conflicts
+// when multiple card instances are present on the same dashboard.
+const _HIRIS_ICON_DATA = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
+  '<defs>' +
+  '<radialGradient id="bg" cx="50%" cy="50%" r="50%">' +
+  '<stop offset="0%" stop-color="#2a0a4e"/>' +
+  '<stop offset="100%" stop-color="#0a0015"/>' +
+  '</radialGradient>' +
+  '<filter id="glow" x="-25%" y="-25%" width="150%" height="150%">' +
+  '<feGaussianBlur in="SourceGraphic" stdDeviation="1.8" result="blur"/>' +
+  '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>' +
+  '</filter>' +
+  '</defs>' +
+  '<circle cx="50" cy="50" r="50" fill="url(#bg)"/>' +
+  '<g transform="translate(50,50)" filter="url(#glow)">' +
+  '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#c084fc"/>' +
+  '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#818cf8" transform="rotate(60)"/>' +
+  '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#60a5fa" transform="rotate(120)"/>' +
+  '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#22d3ee" transform="rotate(180)"/>' +
+  '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#2dd4bf" transform="rotate(240)"/>' +
+  '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#e879f9" transform="rotate(300)"/>' +
+  '</g>' +
+  '<circle cx="50" cy="50" r="4.5" fill="white"/>' +
+  '</svg>'
+);
+
 class HirisCard extends HTMLElement {
   constructor() {
     super();
@@ -33,14 +60,13 @@ class HirisCard extends HTMLElement {
     this._render();
   }
 
-  static getConfigElement() { return document.createElement('div'); }
+  static getConfigElement() { return document.createElement('hiris-chat-card-editor'); }
   static getStubConfig() {
-    return { agent_id: '', title: 'HIRIS Chat', hiris_slug: 'hiris' };
+    return { agent_id: 'hiris-default', title: 'HIRIS Chat', hiris_slug: 'hiris' };
   }
 
   setConfig(config) {
-    if (!config.agent_id) throw new Error('agent_id is required');
-    this._agentId = config.agent_id;
+    this._agentId = config.agent_id || null;
     this._slug = config.hiris_slug || 'hiris';
     this._title = config.title || 'HIRIS Chat';
     this._render();
@@ -57,7 +83,7 @@ class HirisCard extends HTMLElement {
       const switchKey = `switch.hiris_${this._agentId}_enabled`;
       this._enabled = hass.states[switchKey]?.state !== 'off';
       this._render();
-    } else if (!this._polling) {
+    } else if (this._agentId && !this._polling) {
       this._startPolling();
     }
   }
@@ -187,18 +213,54 @@ class HirisCard extends HTMLElement {
     }[this._status] || '#9e9e9e';
   }
 
+  _iconHtml(size) {
+    return `<img src="${_HIRIS_ICON_DATA}" width="${size}" height="${size}" style="border-radius:50%;vertical-align:middle;flex-shrink:0" alt="HIRIS">`;
+  }
+
   _esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   _render() {
+    // Unconfigured state — no agent_id yet (card just added from picker)
+    if (!this._agentId) {
+      this._shadow.innerHTML = `
+        <style>
+          :host { display: block; }
+          .card { background: var(--card-background-color,#fff); border-radius: 12px;
+            overflow: hidden; box-shadow: var(--ha-card-box-shadow,0 2px 4px rgba(0,0,0,.1)); }
+          .header { display: flex; align-items: center; gap: 8px;
+            padding: 12px 16px; border-bottom: 1px solid var(--divider-color,#e0e0e0); }
+          .title { font-size: 15px; font-weight: 600; color: var(--primary-text-color,#333); }
+          .unconfigured { padding: 32px 16px; text-align: center;
+            display: flex; flex-direction: column; align-items: center; gap: 12px; }
+          .unconfigured-title { font-size: 13px; font-weight: 600;
+            color: var(--primary-text-color,#374151); }
+          .unconfigured-sub { font-size: 12px; color: var(--secondary-text-color,#9ca3af); }
+        </style>
+        <div class="card">
+          <div class="header">
+            ${this._iconHtml(22)}
+            <span class="title">${this._esc(this._title)}</span>
+          </div>
+          <div class="unconfigured">
+            <div style="opacity:.7">${this._iconHtml(40)}</div>
+            <div>
+              <div class="unconfigured-title">Card non configurata</div>
+              <div class="unconfigured-sub">Clicca ✏️ per selezionare un agente</div>
+            </div>
+          </div>
+        </div>`;
+      return;
+    }
+
     const pct = this._budgetLimitEur > 0
       ? Math.min(100, (this._budgetEur / this._budgetLimitEur) * 100)
       : 0;
     const color = this._statusColor();
     const msgs = this._messages.map(m => `
       <div class="msg ${m.role}">
-        ${m.text.replace(/</g, '&lt;').replace(/\n/g, '<br>')}
+        ${this._esc(m.text).replace(/\n/g, '<br>')}
         ${m.streaming ? '<span class="cursor">&#x258C;</span>' : ''}
       </div>`).join('');
 
@@ -209,6 +271,7 @@ class HirisCard extends HTMLElement {
           overflow: hidden; box-shadow: var(--ha-card-box-shadow,0 2px 4px rgba(0,0,0,.1)); }
         .header { display: flex; align-items: center; justify-content: space-between;
           padding: 12px 16px; border-bottom: 1px solid var(--divider-color,#e0e0e0); }
+        .header-left { display: flex; align-items: center; gap: 8px; }
         .title { font-size: 15px; font-weight: 600; color: var(--primary-text-color,#333); }
         .status { display: flex; align-items: center; gap: 6px; }
         .dot { width: 8px; height: 8px; border-radius: 50%; background: ${color}; }
@@ -246,7 +309,10 @@ class HirisCard extends HTMLElement {
       </style>
       <div class="card">
         <div class="header">
-          <span class="title">&#x1F916; ${this._esc(this._title)}</span>
+          <div class="header-left">
+            ${this._iconHtml(22)}
+            <span class="title">${this._esc(this._title)}</span>
+          </div>
           <div class="status">
             <span class="dot"></span>
             <span class="status-text">${this._esc(this._status)}</span>
@@ -287,4 +353,154 @@ class HirisCard extends HTMLElement {
   }
 }
 
+// ---------------------------------------------------------------------------
+// HirisChatCardEditor — visual config editor shown in the HA card picker
+// ---------------------------------------------------------------------------
+
+class HirisChatCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this._shadow = this.attachShadow({ mode: 'open' });
+    this._config = {};
+    this._hass = null;
+    this._agents = null;   // null = loading, [] = loaded (possibly empty), 'error' = failed
+    this._render();
+  }
+
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._agents === null) this._loadAgents();
+  }
+
+  async _loadAgents() {
+    this._agents = 'loading';  // sentinel: prevents concurrent fetches
+    const slug = this._config.hiris_slug || 'hiris';
+    try {
+      const result = await this._hass.callApi('GET', `hassio_ingress/${slug}/api/agents`);
+      this._agents = Array.isArray(result) ? result : [];
+    } catch (e) {
+      this._agents = 'error';
+    }
+    this._render();
+  }
+
+  _fireConfigChanged() {
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { config: { ...this._config } },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  _esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  _render() {
+    const agentId = this._config.agent_id || '';
+    const title = this._config.title || 'HIRIS Chat';
+
+    let agentField;
+    if (this._agents === null || this._agents === 'loading') {
+      // Still loading
+      agentField = `<select disabled style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#f9fafb;color:#9ca3af;box-sizing:border-box">
+        <option>Caricamento agenti…</option>
+      </select>`;
+    } else if (this._agents === 'error' || this._agents.length === 0) {
+      // Fallback to text input
+      agentField = `<input id="agentInput" type="text" value="${this._esc(agentId)}"
+        placeholder="es. hiris-default"
+        style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;color:#111;box-sizing:border-box">`;
+    } else {
+      // Populated dropdown
+      const options = this._agents.map(a => {
+        const sel = a.id === agentId ? ' selected' : '';
+        return `<option value="${this._esc(a.id)}"${sel}>${this._esc(a.name || a.id)} (${this._esc(a.id)})</option>`;
+      }).join('');
+      agentField = `<div style="position:relative">
+        <select id="agentSelect" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;appearance:none;color:#111;box-sizing:border-box">
+          ${options}
+        </select>
+        <div style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9ca3af;font-size:12px">▾</div>
+      </div>`;
+    }
+
+    this._shadow.innerHTML = `
+      <style>
+        :host { display: block; }
+        .editor { font-family: var(--paper-font-body1_-_font-family, sans-serif); }
+        .editor-header { display: flex; align-items: center; gap: 10px;
+          padding-bottom: 12px; border-bottom: 1px solid #e5e7eb; margin-bottom: 14px; }
+        .editor-title { font-weight: 700; font-size: 14px; color: #111; }
+        .editor-sub { font-size: 11px; color: #9ca3af; }
+        .field { margin-bottom: 14px; }
+        .field-label { font-size: 11px; font-weight: 600; color: #6b7280;
+          text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+        .field-hint { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+      </style>
+      <div class="editor">
+        <div class="editor-header">
+          <img src="${_HIRIS_ICON_DATA}" width="32" height="32"
+            style="border-radius:50%;flex-shrink:0" alt="HIRIS">
+          <div>
+            <div class="editor-title">HIRIS Chat</div>
+            <div class="editor-sub">Configurazione card</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">Agente</div>
+          ${agentField}
+          <div class="field-hint">Agente che risponde nella chat</div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">Titolo</div>
+          <input id="titleInput" type="text" value="${this._esc(title)}"
+            style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;color:#111;box-sizing:border-box">
+          <div class="field-hint">Mostrato nell'intestazione</div>
+        </div>
+      </div>`;
+
+    // Wire up events
+    const agentSelect = this._shadow.getElementById('agentSelect');
+    const agentInput = this._shadow.getElementById('agentInput');
+    const titleInput = this._shadow.getElementById('titleInput');
+
+    if (agentSelect) {
+      agentSelect.onchange = (e) => {
+        this._config = { ...this._config, agent_id: e.target.value };
+        this._fireConfigChanged();
+      };
+    }
+    if (agentInput) {
+      agentInput.oninput = (e) => {
+        this._config = { ...this._config, agent_id: e.target.value };
+        this._fireConfigChanged();
+      };
+    }
+    if (titleInput) {
+      titleInput.oninput = (e) => {
+        this._config = { ...this._config, title: e.target.value };
+        this._fireConfigChanged();
+      };
+    }
+  }
+}
+
+customElements.define('hiris-chat-card-editor', HirisChatCardEditor);
 customElements.define('hiris-chat-card', HirisCard);
+
+// Register in window.customCards so HA shows the card in the picker
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: 'hiris-chat-card',
+  name: 'HIRIS Chat',
+  description: 'Chat con il tuo assistente smart home HIRIS',
+  preview: true,
+});
