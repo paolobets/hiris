@@ -125,3 +125,47 @@ async def test_custom_slug():
 
     call_kwargs = session.post.call_args
     assert "/api/hassio_ingress/my-hiris/static/hiris-chat-card.js" == call_kwargs[1]["json"]["url"]
+
+
+# ---------------------------------------------------------------------------
+# Content-check tests for hiris-chat-card.js picker integration
+# ---------------------------------------------------------------------------
+
+from pathlib import Path
+
+_CARD_JS = Path(__file__).parent.parent / "hiris" / "app" / "static" / "hiris-chat-card.js"
+
+
+def _js() -> str:
+    return _CARD_JS.read_text(encoding="utf-8")
+
+
+def test_customcards_registration():
+    """JS registers the card in window.customCards so HA shows it in the picker."""
+    src = _js()
+    assert "window.customCards" in src
+    assert "'hiris-chat-card'" in src or '"hiris-chat-card"' in src
+
+
+def test_editor_element_defined():
+    """JS defines the hiris-chat-card-editor custom element for the config UI."""
+    src = _js()
+    assert "hiris-chat-card-editor" in src
+
+
+def test_stub_config_has_default_agent():
+    """getStubConfig returns hiris-default so the picker can add the card without crashing."""
+    src = _js()
+    assert "hiris-default" in src
+
+
+def test_setconfig_no_throw():
+    """setConfig no longer throws when agent_id is missing."""
+    src = _js()
+    assert "throw new Error('agent_id is required')" not in src
+
+
+def test_hiris_icon_inlined():
+    """The HIRIS SVG icon is inlined in the JS (petal colour c084fc is present)."""
+    src = _js()
+    assert "c084fc" in src
