@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [0.5.2] — 2026-04-26
+
+### Added
+- Lovelace card picker: registrazione custom card, visual editor e stato "unconfigured"
+- Lovelace card picker integration completa (v0.6.0 feature set)
+
+### Fixed
+- Code review findings post-picker integration
+
 ## [0.5.1] — 2026-04-25
 
 ### Added
