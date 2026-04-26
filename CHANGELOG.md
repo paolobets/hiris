@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.5.3] — 2026-04-26
+
+### Fixed
+- Lovelace card JS ora servita via `/local/hiris/hiris-chat-card.js` invece dell'URL ingress (che richiedeva auth e restituiva 401 al browser)
+- Aggiunto `map: homeassistant:rw` in `config.yaml` per consentire la copia del JS in `/homeassistant/www/hiris/` all'avvio
+- Migrazione automatica: l'URL ingress stale viene eliminata da Lovelace resources e sostituita con quella `/local/`
+
 ## [0.5.2] — 2026-04-26
 
 ### Added

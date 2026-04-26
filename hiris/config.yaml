@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.5.2"
+version: "0.5.3"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -17,6 +17,8 @@ panel_title: HIRIS
 startup: services
 stage: experimental
 init: false
+map:
+  - homeassistant:rw
 hassio_api: true
 homeassistant_api: true
 options:
