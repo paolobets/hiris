@@ -13,7 +13,6 @@
 
 const POLL_MS = 30_000;
 const CHAT_TIMEOUT_MS = 30_000;
-const EUR_RATE = 0.92;
 
 // HIRIS SVG icon inlined as a data URI to avoid Shadow DOM ID conflicts
 // when multiple card instances are present on the same dashboard.
@@ -69,9 +68,19 @@ class HirisCard extends HTMLElement {
   getCardSize() { return 6; }
 
   setConfig(config) {
-    this._agentId = config.agent_id || null;
+    if (!config) throw new Error('Invalid configuration');
+    const newAgentId = config.agent_id || null;
+    const agentChanged = newAgentId !== this._agentId;
+    this._agentId = newAgentId;
     this._slug = config.hiris_slug || 'hiris';
     this._title = config.title || 'HIRIS Chat';
+    if (agentChanged) {
+      this._messages = [];
+      this._status = 'idle';
+      this._error = null;
+      if (this._polling) { clearInterval(this._polling); this._polling = null; }
+      if (this._agentId && this.isConnected) this._startPolling();
+    }
     this._render();
   }
 
@@ -167,7 +176,8 @@ class HirisCard extends HTMLElement {
 
     try {
       const hassUrl = this._hass.connection.options.hassUrl || '';
-      const token = this._hass.connection.options.auth?.data?.access_token || '';
+      const auth = this._hass.connection.options.auth;
+      const token = auth?.accessToken ?? auth?.data?.access_token ?? '';
       const url = `${hassUrl}/api/hassio_ingress/${this._slug}/api/chat`;
 
       const controller = new AbortController();
