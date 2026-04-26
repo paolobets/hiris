@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.5.5] — 2026-04-26
+
+### Fixed
+- `setConfig` lancia eccezione su config null (contratto HA), resetta messaggi/polling al cambio agente
+- Token SSE in `_sendMessage` usa `auth.accessToken` (HA 2024+) con fallback a `data.access_token`
+- Rimossa costante `EUR_RATE` inutilizzata
+
 ## [0.5.4] — 2026-04-26
 
 ### Fixed
