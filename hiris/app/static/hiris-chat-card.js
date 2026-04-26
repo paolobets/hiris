@@ -1,8 +1,9 @@
 // hiris-chat-card.js — HA Lovelace custom card for HIRIS chat
-// Add to configuration.yaml:
+// Served via /local/hiris/hiris-chat-card.js (auto-deployed by the add-on to /homeassistant/www/).
+// For YAML-mode HA, add manually:
 //   lovelace:
 //     resources:
-//       - url: /api/hassio_ingress/hiris/static/hiris-chat-card.js
+//       - url: /local/hiris/hiris-chat-card.js
 //         type: module
 // Dashboard config:
 //   type: custom:hiris-chat-card

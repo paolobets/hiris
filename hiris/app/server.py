@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import shutil
 import aiohttp
 from aiohttp import web
 from .api.handlers_chat import handle_chat
@@ -29,14 +30,27 @@ from .mqtt_publisher import MQTTPublisher
 logger = logging.getLogger(__name__)
 
 
-async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
-    """Auto-register the HIRIS Lovelace card as a HA UI module resource.
+def _deploy_card_to_www(slug: str = "hiris") -> None:
+    """Copy hiris-chat-card.js to /homeassistant/www/{slug}/ for auth-free Lovelace access."""
+    src = os.path.join(os.path.dirname(__file__), "static", "hiris-chat-card.js")
+    dst_dir = f"/homeassistant/www/{slug}"
+    dst = os.path.join(dst_dir, "hiris-chat-card.js")
+    try:
+        os.makedirs(dst_dir, exist_ok=True)
+        shutil.copy2(src, dst)
+        logger.info("HIRIS card deployed to %s", dst)
+    except Exception as exc:
+        logger.warning("Failed to deploy HIRIS card to %s: %s", dst, exc)
 
-    Idempotent: no-op if the URL is already present in the resources list.
-    Graceful: logs a warning and returns on any error (YAML-mode HA, Supervisor
-    unavailable, permission denied, …) — never raises.
+
+async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
+    """Register /local/{slug}/hiris-chat-card.js as a Lovelace module resource.
+
+    Migrates the old ingress URL to the new /local/ URL (no auth required).
+    Idempotent: no-op if already registered. Graceful on any error.
     """
-    card_url = f"/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
+    old_url = f"/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
+    new_url = f"/local/{slug}/hiris-chat-card.js"
     resources_url = f"{ha_base_url}/api/lovelace/resources"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -48,7 +62,7 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
                 if resp.status == 405:
                     logger.info(
                         "Lovelace is in YAML mode — card must be added manually: "
-                        "resources:\n  - url: %s\n    type: module", card_url
+                        "resources:\n  - url: %s\n    type: module", new_url
                     )
                     return
                 if resp.status != 200:
@@ -60,22 +74,34 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
                 existing = await resp.json()
 
             for resource in existing:
-                if resource.get("url") == card_url:
-                    logger.debug("HIRIS Lovelace card already registered: %s", card_url)
+                if resource.get("url") == old_url:
+                    res_id = resource.get("id")
+                    async with session.delete(
+                        f"{resources_url}/{res_id}", headers=headers
+                    ) as del_resp:
+                        if del_resp.status in (200, 204):
+                            logger.info("Removed stale ingress card URL: %s", old_url)
+                        else:
+                            logger.warning(
+                                "Failed to remove stale card URL (%d)", del_resp.status
+                            )
+
+            for resource in existing:
+                if resource.get("url") == new_url:
+                    logger.debug("HIRIS Lovelace card already registered: %s", new_url)
                     return
 
-            payload = {"res_type": "module", "url": card_url}
+            payload = {"res_type": "module", "url": new_url}
             async with session.post(resources_url, headers=headers, json=payload) as resp:
                 if resp.status in (200, 201):
                     logger.info(
                         "HIRIS Lovelace card registered ✓  url=%s  "
-                        "— restart HA UI or clear browser cache to load it",
-                        card_url,
+                        "— reload HA UI to load it",
+                        new_url,
                     )
                 elif resp.status == 405:
                     logger.info(
-                        "Lovelace YAML mode — add the card resource manually: "
-                        "url: %s  type: module", card_url
+                        "Lovelace YAML mode — add manually: url: %s  type: module", new_url
                     )
                 else:
                     body = await resp.text()
@@ -102,8 +128,9 @@ async def _on_startup(app: web.Application) -> None:
     await ha_client.start()
     app["ha_client"] = ha_client
 
-    # Auto-register the Lovelace card resource so users don't need manual config
+    # Deploy card JS to /homeassistant/www/ and register as /local/ resource (no auth)
     hiris_slug = os.environ.get("HIRIS_SLUG", "hiris")
+    _deploy_card_to_www(hiris_slug)
     await _register_lovelace_card(
         ha_base_url,
         os.environ.get("SUPERVISOR_TOKEN", ""),
