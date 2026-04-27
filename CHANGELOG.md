@@ -1,5 +1,18 @@
 # HIRIS — Changelog
 
+## [0.5.11] — 2026-04-27
+
+### Fixed
+- `set hass()` in `HirisCard` non guardava contro `hass` null/undefined — il card picker di HA istanzia gli elementi e chiama il setter prima di `setConfig`, causando `TypeError` che HA interpreta come "card rotta" e rimuove silenziosamente dal picker
+- `set hass()` in `HirisChatCardEditor` idem — impediva il caricamento dell'editor di configurazione
+- `_loadAgents()` ora verifica `this._hass` prima di chiamare `callApi`
+- `_sendMessage()` ora esce anticipatamente se `this._hass` non è disponibile
+- `parseFloat` sul budget ora usa `Number.isFinite` per evitare `NaN.toFixed(2)` in template
+- `customElements.define()` ora guarda con `customElements.get()` prima di registrare: se il file viene caricato due volte (hot reload HA) la `define()` non lancia più `NotSupportedError` che bloccava la `window.customCards.push()` sottostante
+- `window.customCards.push()` ora deduplica con `.find()`: nessuna doppia registrazione nel picker
+- `titleInput.oninput` → `onchange` nell'editor: HA chiama `setConfig` → `_render()` → `innerHTML` ricreato ad ogni tasto, causando perdita del focus; con `onchange` il focus si perde solo al blur
+- `getCardSize()` ora restituisce 2 in stato non configurato (era 6: riservava troppo spazio verticale)
+
 ## [0.5.10] — 2026-04-27
 
 ### Fixed
