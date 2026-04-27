@@ -14,6 +14,26 @@
 const POLL_MS = 30_000;
 const CHAT_TIMEOUT_MS = 30_000;
 
+// Cached ingress base URL written by the add-on at startup to /local/{slug}/hiris-ingress.json.
+// undefined = not yet fetched, null = fetch failed, string = URL with trailing /
+// The Supervisor uses a random token (not the add-on slug) in /api/hassio_ingress/{token}/
+// so we discover the real URL rather than constructing it from the slug.
+let _cachedIngressBase;
+async function _discoverIngressBase(slug) {
+  if (_cachedIngressBase !== undefined) return;
+  _cachedIngressBase = null;  // mark before awaiting to prevent concurrent fetches
+  try {
+    const r = await fetch(`/local/${slug}/hiris-ingress.json`);
+    if (r.ok) {
+      const d = await r.json();
+      const url = d?.ingress_url;
+      if (typeof url === 'string' && url) {
+        _cachedIngressBase = url.endsWith('/') ? url : url + '/';
+      }
+    }
+  } catch {}
+}
+
 // HIRIS SVG icon inlined as a data URI to avoid Shadow DOM ID conflicts
 // when multiple card instances are present on the same dashboard.
 const _HIRIS_ICON_DATA = 'data:image/svg+xml,' + encodeURIComponent(
@@ -119,6 +139,7 @@ class HirisCard extends HTMLElement {
 
   async _fetchStatus() {
     if (!this._hass) return;
+    await _discoverIngressBase(this._slug);
     try {
       const resp = await fetch(this._hirisUrl('api/agents'), {
         headers: { 'Authorization': `Bearer ${this._authToken()}` },
@@ -185,6 +206,7 @@ class HirisCard extends HTMLElement {
 
     try {
       if (!this._hass) { this._loading = false; this._render(); return; }
+      await _discoverIngressBase(this._slug);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
 
@@ -249,6 +271,7 @@ class HirisCard extends HTMLElement {
 
   async _toggleAgent() {
     if (!this._hass) return;
+    await _discoverIngressBase(this._slug);
     try {
       await fetch(this._hirisUrl(`api/agents/${this._agentId}`), {
         method: 'PUT',
@@ -265,8 +288,9 @@ class HirisCard extends HTMLElement {
   }
 
   _hirisUrl(path) {
-    const base = this._hass?.connection?.options?.hassUrl || '';
-    return `${base}/api/hassio_ingress/${this._slug}/${path}`;
+    const base = _cachedIngressBase
+      ?? `${this._hass?.connection?.options?.hassUrl || ''}/api/hassio_ingress/${this._slug}/`;
+    return `${base}${path}`;
   }
 
   _authToken() {
@@ -455,10 +479,22 @@ class HirisChatCardEditor extends HTMLElement {
     if (!this._hass) return;
     this._agents = 'loading';  // sentinel: prevents concurrent fetches
     const slug = this._config.hiris_slug || 'hiris';
+    await _discoverIngressBase(slug);
+    const base = _cachedIngressBase
+      ?? `${this._hass?.connection?.options?.hassUrl || ''}/api/hassio_ingress/${slug}/`;
+    const auth = this._hass?.connection?.options?.auth;
+    const token = auth?.accessToken ?? auth?.data?.access_token ?? '';
     try {
-      const result = await this._hass.callApi('GET', `hassio_ingress/${slug}/api/agents`);
-      this._agents = Array.isArray(result) ? result : [];
-    } catch (e) {
+      const resp = await fetch(`${base}api/agents`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        this._agents = Array.isArray(result) ? result : [];
+      } else {
+        this._agents = 'error';
+      }
+    } catch {
       this._agents = 'error';
     }
     this._render();
