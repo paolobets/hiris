@@ -1,5 +1,11 @@
 # HIRIS — Changelog
 
+## [0.5.7] — 2026-04-27
+
+### Fixed
+- `_deploy_card_to_www()` ora prova sia `/config` che `/homeassistant` per trovare la directory di configurazione HA (il Supervisor monta il volume `config:rw` su `/config` nelle versioni correnti, non su `/homeassistant`); la funzione usa il percorso che contiene effettivamente `configuration.yaml` o `.storage`
+- Aggiunta funzione `_find_ha_config_dir()` che individua il percorso corretto in modo robusto tra le versioni di Supervisor
+
 ## [0.5.6] — 2026-04-26
 
 ### Fixed
