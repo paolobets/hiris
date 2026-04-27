@@ -30,24 +30,36 @@ from .mqtt_publisher import MQTTPublisher
 logger = logging.getLogger(__name__)
 
 
-def _deploy_card_to_www(slug: str = "hiris") -> None:
-    """Copy hiris-chat-card.js to /homeassistant/www/{slug}/ for auth-free Lovelace access.
+def _find_ha_config_dir() -> str | None:
+    """Return the HA config directory path inside the container, or None if not mounted.
 
-    Requires 'config:rw' in the add-on map (config.yaml). The Supervisor mounts the
-    HA configuration directory at /homeassistant inside the container.
+    Different Supervisor versions mount the config volume at different paths:
+    - /config  (documented standard, most Supervisor versions)
+    - /homeassistant  (used in some older/newer variants)
+    We probe both and return the first that looks like the real HA config.
     """
-    ha_config = "/homeassistant"
-    # Verify the HA config directory is actually mounted (not an empty container dir).
-    # configuration.yaml or .storage must be present for this to be the real HA config.
-    if not (
-        os.path.exists(os.path.join(ha_config, "configuration.yaml"))
-        or os.path.isdir(os.path.join(ha_config, ".storage"))
-    ):
+    for candidate in ("/config", "/homeassistant"):
+        if (
+            os.path.exists(os.path.join(candidate, "configuration.yaml"))
+            or os.path.isdir(os.path.join(candidate, ".storage"))
+        ):
+            return candidate
+    return None
+
+
+def _deploy_card_to_www(slug: str = "hiris") -> None:
+    """Copy hiris-chat-card.js to <ha-config>/www/{slug}/ for auth-free Lovelace access.
+
+    Requires 'config:rw' in the add-on map (config.yaml).
+    """
+    ha_config = _find_ha_config_dir()
+    if ha_config is None:
         logger.error(
-            "HA config directory not mounted at %s — card cannot be deployed. "
-            "Ensure 'config:rw' is in the add-on map, then stop and restart the add-on. "
+            "HA config directory not found at /config or /homeassistant — "
+            "card cannot be deployed. Ensure 'config:rw' is in the add-on map, "
+            "then stop and restart the add-on. "
             "Until fixed, /local/%s/hiris-chat-card.js will return 404.",
-            ha_config, slug,
+            slug,
         )
         return
 

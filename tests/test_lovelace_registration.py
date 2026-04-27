@@ -161,19 +161,55 @@ async def test_migrates_old_ingress_url():
 # Tests — _deploy_card_to_www
 # ---------------------------------------------------------------------------
 
-def _patch_ha_mounted(mounted: bool = True):
-    """Return context managers that make /homeassistant look mounted (or not)."""
-    # _deploy_card_to_www checks os.path.exists(…/configuration.yaml) OR
-    # os.path.isdir(…/.storage). We mock both to control the mounted state.
+def _patch_ha_mounted(ha_config_dir: str | None = "/config"):
+    """Return (exists_patch, isdir_patch) that simulate the given HA config dir being mounted.
+
+    Pass None to simulate no volume mounted at all.
+    """
+    def _exists(path):
+        if ha_config_dir is None:
+            return False
+        return path == os.path.join(ha_config_dir, "configuration.yaml")
+
+    def _isdir(path):
+        if ha_config_dir is None:
+            return False
+        return path == os.path.join(ha_config_dir, ".storage")
+
+    import os
     return (
-        patch("hiris.app.server.os.path.exists", return_value=mounted),
-        patch("hiris.app.server.os.path.isdir", return_value=mounted),
+        patch("hiris.app.server.os.path.exists", side_effect=_exists),
+        patch("hiris.app.server.os.path.isdir", side_effect=_isdir),
     )
 
 
-def test_deploy_card_to_www():
-    """_deploy_card_to_www copies hiris-chat-card.js to /homeassistant/www/{slug}/."""
-    exists_patch, isdir_patch = _patch_ha_mounted(True)
+def test_find_ha_config_dir_config_path():
+    """_find_ha_config_dir returns /config when configuration.yaml is present there."""
+    exists_patch, isdir_patch = _patch_ha_mounted("/config")
+    with exists_patch, isdir_patch:
+        from hiris.app.server import _find_ha_config_dir
+        assert _find_ha_config_dir() == "/config"
+
+
+def test_find_ha_config_dir_homeassistant_fallback():
+    """_find_ha_config_dir falls back to /homeassistant if /config has no HA files."""
+    exists_patch, isdir_patch = _patch_ha_mounted("/homeassistant")
+    with exists_patch, isdir_patch:
+        from hiris.app.server import _find_ha_config_dir
+        assert _find_ha_config_dir() == "/homeassistant"
+
+
+def test_find_ha_config_dir_not_mounted():
+    """_find_ha_config_dir returns None when neither candidate path looks like HA config."""
+    exists_patch, isdir_patch = _patch_ha_mounted(None)
+    with exists_patch, isdir_patch:
+        from hiris.app.server import _find_ha_config_dir
+        assert _find_ha_config_dir() is None
+
+
+def test_deploy_card_to_www_uses_config_path():
+    """_deploy_card_to_www deploys to /config/www/{slug}/ when /config is the HA config dir."""
+    exists_patch, isdir_patch = _patch_ha_mounted("/config")
     with exists_patch, isdir_patch, \
          patch("hiris.app.server.os.makedirs") as mock_makedirs, \
          patch("hiris.app.server.shutil.copy2") as mock_copy:
@@ -181,7 +217,7 @@ def test_deploy_card_to_www():
         _deploy_card_to_www("hiris")
 
     import os as _os
-    expected_dst_dir = _os.path.join("/homeassistant", "www", "hiris")
+    expected_dst_dir = _os.path.join("/config", "www", "hiris")
     mock_makedirs.assert_called_once_with(expected_dst_dir, exist_ok=True)
     expected_dst = _os.path.join(expected_dst_dir, "hiris-chat-card.js")
     assert mock_copy.call_args[0][1] == expected_dst
@@ -189,7 +225,7 @@ def test_deploy_card_to_www():
 
 def test_deploy_card_to_www_not_mounted_does_not_copy():
     """When the HA config volume is not mounted, no file is written and no exception raised."""
-    exists_patch, isdir_patch = _patch_ha_mounted(False)
+    exists_patch, isdir_patch = _patch_ha_mounted(None)
     with exists_patch, isdir_patch, \
          patch("hiris.app.server.os.makedirs") as mock_makedirs:
         from hiris.app.server import _deploy_card_to_www
@@ -200,7 +236,7 @@ def test_deploy_card_to_www_not_mounted_does_not_copy():
 
 def test_deploy_card_to_www_failure_does_not_raise():
     """If the www directory is not writable, _deploy_card_to_www logs and returns."""
-    exists_patch, isdir_patch = _patch_ha_mounted(True)
+    exists_patch, isdir_patch = _patch_ha_mounted("/config")
     with exists_patch, isdir_patch, \
          patch("hiris.app.server.os.makedirs", side_effect=PermissionError("read-only")):
         from hiris.app.server import _deploy_card_to_www
