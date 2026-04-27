@@ -152,7 +152,7 @@ app/
 
 ### Phase 3 — Plugin + Canvas (v0.7.x+)
 - Canvas drag-and-drop designer (n8n style)
-- Retro Panel plugin integration (embedded chat in kiosk, shared auth)
+- ✅ Retro Panel plugin integration (embedded chat in kiosk, shared auth)
 - Multi-user / role support
 
 ### Phase 4 — Integrazioni esterne (futuro)

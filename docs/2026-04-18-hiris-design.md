@@ -309,9 +309,9 @@ Claude calls: send_notification("Irrigazione attivata (20 min) — ieri 35°C, u
 - [ ] Tool: `set_input_helper(entity_id, value)` per input_boolean/number/text/select
 - [ ] HACS official distribution
 
-### Phase 3 — Plugin + Canvas (v0.7.x+) — futuro
+### Phase 3 — Plugin + Canvas (v0.7.x+) — parzialmente completata
 - [ ] Canvas drag-and-drop designer (n8n style)
-- [ ] Retro Panel plugin integration (embedded chat in kiosk, shared auth)
+- [x] Retro Panel plugin integration (embedded chat in kiosk, shared auth)
 - [ ] Multi-user / role support
 
 ### Phase 4 — Integrazioni esterne (futuro)
