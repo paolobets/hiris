@@ -1,9 +1,8 @@
 // hiris-chat-card.js — HA Lovelace custom card for HIRIS chat
-// Add to configuration.yaml:
-//   lovelace:
-//     resources:
-//       - url: /api/hassio_ingress/hiris/static/hiris-chat-card.js
-//         type: module
+// Served at: /local/hiris/hiris-chat-card.js (deployed automatically by add-on)
+// Add to Lovelace resources if not auto-detected:
+//   url: /local/hiris/hiris-chat-card.js
+//   type: module
 // Dashboard config:
 //   type: custom:hiris-chat-card
 //   agent_id: hiris-default
@@ -87,6 +86,8 @@ class HirisCard extends HTMLElement {
       this._startPolling();
     }
   }
+
+  getCardSize() { return 6; }
 
   connectedCallback() {
     if (this._agentId && !this._polling) this._startPolling();
@@ -502,5 +503,5 @@ window.customCards.push({
   type: 'hiris-chat-card',
   name: 'HIRIS Chat',
   description: 'Chat con il tuo assistente smart home HIRIS',
-  preview: true,
+  preview: false,
 });
