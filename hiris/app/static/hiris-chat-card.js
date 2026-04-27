@@ -1,10 +1,8 @@
 // hiris-chat-card.js — HA Lovelace custom card for HIRIS chat
-// Served via /local/hiris/hiris-chat-card.js (auto-deployed by the add-on to /homeassistant/www/).
-// For YAML-mode HA, add manually:
-//   lovelace:
-//     resources:
-//       - url: /local/hiris/hiris-chat-card.js
-//         type: module
+// Served at: /local/hiris/hiris-chat-card.js (deployed automatically by add-on)
+// Add to Lovelace resources if not auto-detected:
+//   url: /local/hiris/hiris-chat-card.js
+//   type: module
 // Dashboard config:
 //   type: custom:hiris-chat-card
 //   agent_id: hiris-default
@@ -13,26 +11,6 @@
 
 const POLL_MS = 30_000;
 const CHAT_TIMEOUT_MS = 30_000;
-
-// Cached ingress base URL written by the add-on at startup to /local/{slug}/hiris-ingress.json.
-// undefined = not yet fetched, null = fetch failed, string = URL with trailing /
-// The Supervisor uses a random token (not the add-on slug) in /api/hassio_ingress/{token}/
-// so we discover the real URL rather than constructing it from the slug.
-let _cachedIngressBase;
-async function _discoverIngressBase(slug) {
-  if (_cachedIngressBase !== undefined) return;
-  _cachedIngressBase = null;  // mark before awaiting to prevent concurrent fetches
-  try {
-    const r = await fetch(`/local/${slug}/hiris-ingress.json`);
-    if (r.ok) {
-      const d = await r.json();
-      const url = d?.ingress_url;
-      if (typeof url === 'string' && url) {
-        _cachedIngressBase = url.endsWith('/') ? url : url + '/';
-      }
-    }
-  } catch {}
-}
 
 // HIRIS SVG icon inlined as a data URI to avoid Shadow DOM ID conflicts
 // when multiple card instances are present on the same dashboard.
@@ -61,6 +39,32 @@ const _HIRIS_ICON_DATA = 'data:image/svg+xml,' + encodeURIComponent(
   '</svg>'
 );
 
+// ---------------------------------------------------------------------------
+// Module-level ingress URL discovery
+// The Supervisor assigns a random token (not the add-on slug) to the ingress
+// path. This function reads hiris-ingress.json written by the add-on at startup.
+// ---------------------------------------------------------------------------
+let _cachedIngressBase;
+
+async function _discoverIngressBase(slug) {
+  if (_cachedIngressBase !== undefined) return;
+  _cachedIngressBase = null;
+  try {
+    const r = await fetch(`/local/${slug}/hiris-ingress.json`);
+    if (r.ok) {
+      const d = await r.json();
+      const url = d?.ingress_url;
+      if (typeof url === 'string' && url) {
+        _cachedIngressBase = url.endsWith('/') ? url : url + '/';
+      }
+    }
+  } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// HirisCard — main card element
+// ---------------------------------------------------------------------------
+
 class HirisCard extends HTMLElement {
   constructor() {
     super();
@@ -85,43 +89,28 @@ class HirisCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config) throw new Error('Invalid configuration');
-    const newAgentId = config.agent_id || null;
-    const agentChanged = newAgentId !== this._agentId;
-    this._agentId = newAgentId;
+    this._agentId = config.agent_id || null;
     this._slug = config.hiris_slug || 'hiris';
     this._title = config.title || 'HIRIS Chat';
-    if (agentChanged) {
-      this._messages = [];
-      this._status = 'idle';
-      this._error = null;
-      if (this._polling) { clearInterval(this._polling); this._polling = null; }
-      if (this._agentId && this.isConnected) this._startPolling();
-    }
     this._render();
   }
 
   set hass(hass) {
-    if (!hass || !hass.states) return;
     this._hass = hass;
-    if (!this._agentId) return;
-    // Phase 2: auto-detect MQTT entities pushed by MQTTPublisher
     const statusKey = `sensor.hiris_${this._agentId}_status`;
     if (hass.states[statusKey]) {
       this._status = hass.states[statusKey].state || 'idle';
       const budgetKey = `sensor.hiris_${this._agentId}_budget_eur`;
-      const rawBudget = parseFloat(hass.states[budgetKey]?.state);
-      this._budgetEur = Number.isFinite(rawBudget) ? rawBudget : 0;
+      this._budgetEur = parseFloat(hass.states[budgetKey]?.state || '0');
       const switchKey = `switch.hiris_${this._agentId}_enabled`;
       this._enabled = hass.states[switchKey]?.state !== 'off';
-      if (this._shadow.querySelector('.card')) this._patchStatus();
-      else this._render();
-    } else if (this.isConnected && !this._polling) {
+      this._render();
+    } else if (this._agentId && !this._polling) {
       this._startPolling();
     }
   }
 
-  getCardSize() { return this._agentId ? 6 : 2; }
+  getCardSize() { return 6; }
 
   connectedCallback() {
     this._render();
@@ -137,6 +126,17 @@ class HirisCard extends HTMLElement {
     this._polling = setInterval(() => this._fetchStatus(), POLL_MS);
   }
 
+  _hirisUrl(path) {
+    const base = _cachedIngressBase
+      ?? `${this._hass?.connection?.options?.hassUrl || ''}/api/hassio_ingress/${this._slug}/`;
+    return `${base}${path}`;
+  }
+
+  _authToken() {
+    const auth = this._hass?.connection?.options?.auth;
+    return auth?.accessToken ?? auth?.data?.access_token ?? '';
+  }
+
   async _fetchStatus() {
     if (!this._hass) return;
     await _discoverIngressBase(this._slug);
@@ -144,8 +144,9 @@ class HirisCard extends HTMLElement {
       const resp = await fetch(this._hirisUrl('api/agents'), {
         headers: { 'Authorization': `Bearer ${this._authToken()}` },
       });
-      if (!resp.ok) { this._error = `⚠ HIRIS non disponibile (${resp.status})`; }
-      else {
+      if (!resp.ok) {
+        this._error = `⚠ HIRIS non disponibile (${resp.status})`;
+      } else {
         const agents = await resp.json();
         const agent = Array.isArray(agents) && agents.find(a => a.id === this._agentId);
         if (agent) {
@@ -158,42 +159,10 @@ class HirisCard extends HTMLElement {
           this._error = 'Agente non configurato';
         }
       }
-    } catch (e) {
+    } catch {
       this._error = '⚠ HIRIS non disponibile';
     }
-    // Patch only the status area to preserve input focus and typed text
-    if (this._shadow.querySelector('.card') && !this._loading) this._patchStatus();
-    else this._render();
-  }
-
-  _patchStatus() {
-    const color = this._statusColor();
-    const dot = this._shadow.querySelector('.dot');
-    if (dot) dot.style.background = color;
-    const statusText = this._shadow.querySelector('.status-text');
-    if (statusText) statusText.textContent = this._status;
-    const tog = this._shadow.getElementById('tog');
-    if (tog) {
-      tog.title = this._enabled ? 'Disabilita' : 'Abilita';
-      tog.innerHTML = this._enabled ? '&#x1F7E2;' : '&#x26AA;';
-    }
-    const card = this._shadow.querySelector('.card');
-    let badge = card?.querySelector('.error-badge');
-    if (this._error) {
-      if (!badge) {
-        badge = document.createElement('div');
-        badge.className = 'error-badge';
-        const msgs = this._shadow.getElementById('msgs');
-        if (card && msgs) card.insertBefore(badge, msgs);
-      }
-      badge.textContent = this._error;
-    } else if (badge) {
-      badge.remove();
-    }
-    const snd = this._shadow.getElementById('snd');
-    if (snd) snd.disabled = this._loading || !this._enabled;
-    const inp = this._shadow.getElementById('inp');
-    if (inp) inp.disabled = !this._enabled;
+    this._render();
   }
 
   async _sendMessage(text) {
@@ -204,12 +173,12 @@ class HirisCard extends HTMLElement {
     this._messages.push(assistantMsg);
     this._render();
 
-    try {
-      if (!this._hass) { this._loading = false; this._render(); return; }
-      await _discoverIngressBase(this._slug);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+    await _discoverIngressBase(this._slug);
+    const controller = new AbortController();
+    // Keep timeout active through the entire streaming lifecycle
+    const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
 
+    try {
       const resp = await fetch(this._hirisUrl('api/chat'), {
         method: 'POST',
         headers: {
@@ -220,15 +189,14 @@ class HirisCard extends HTMLElement {
         body: JSON.stringify({ message: text, agent_id: this._agentId, stream: true }),
         signal: controller.signal,
       });
-      clearTimeout(timeout);
 
       if (!resp.ok) {
         let msg = `HTTP ${resp.status}`;
         try { const d = await resp.json(); msg = d.error || msg; } catch {}
         throw new Error(msg);
       }
-      const ct = resp.headers.get('Content-Type') || '';
 
+      const ct = resp.headers.get('Content-Type') || '';
       if (ct.includes('text/event-stream')) {
         const reader = resp.body.getReader();
         const dec = new TextDecoder();
@@ -252,6 +220,8 @@ class HirisCard extends HTMLElement {
             } catch {}
           }
         }
+        // Stream closed — clear flag regardless of whether SSE 'done' event arrived
+        assistantMsg.streaming = false;
       } else {
         const data = await resp.json();
         assistantMsg.text = data.response || 'Nessuna risposta';
@@ -263,6 +233,7 @@ class HirisCard extends HTMLElement {
         : `Errore: ${e.message}`;
       assistantMsg.streaming = false;
     } finally {
+      clearTimeout(timeout);
       this._loading = false;
       this._render();
       await this._fetchStatus();
@@ -273,7 +244,7 @@ class HirisCard extends HTMLElement {
     if (!this._hass) return;
     await _discoverIngressBase(this._slug);
     try {
-      await fetch(this._hirisUrl(`api/agents/${this._agentId}`), {
+      const resp = await fetch(this._hirisUrl(`api/agents/${this._agentId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -281,32 +252,21 @@ class HirisCard extends HTMLElement {
         },
         body: JSON.stringify({ enabled: !this._enabled }),
       });
-      await this._fetchStatus();
+      if (resp.ok) await this._fetchStatus();
     } catch (e) {
       console.error('HIRIS toggle error', e);
     }
   }
 
-  _hirisUrl(path) {
-    const base = _cachedIngressBase
-      ?? `${this._hass?.connection?.options?.hassUrl || ''}/api/hassio_ingress/${this._slug}/`;
-    return `${base}${path}`;
-  }
-
-  _authToken() {
-    const auth = this._hass?.connection?.options?.auth;
-    return auth?.accessToken ?? auth?.data?.access_token ?? '';
-  }
-
   _statusColor() {
     return {
-      idle: '#4caf50', running: '#2196f3', error: '#f44336',
-      unavailable: '#9e9e9e',
-    }[this._status] || '#9e9e9e';
+      idle: '#10b981', running: '#3b82f6', error: '#ef4444',
+      unavailable: '#9ca3af',
+    }[this._status] || '#9ca3af';
   }
 
   _iconHtml(size) {
-    return `<img src="${_HIRIS_ICON_DATA}" width="${size}" height="${size}" style="border-radius:50%;vertical-align:middle;flex-shrink:0" alt="HIRIS">`;
+    return `<img src="${_HIRIS_ICON_DATA}" width="${size}" height="${size}" style="border-radius:50%;display:block;flex-shrink:0" alt="HIRIS">`;
   }
 
   _esc(s) {
@@ -349,12 +309,32 @@ class HirisCard extends HTMLElement {
     const pct = this._budgetLimitEur > 0
       ? Math.min(100, (this._budgetEur / this._budgetLimitEur) * 100)
       : 0;
-    const color = this._statusColor();
-    const msgs = this._messages.map(m => `
-      <div class="msg ${m.role}">
-        ${this._esc(m.text).replace(/\n/g, '<br>')}
-        ${m.streaming ? '<span class="cursor">&#x258C;</span>' : ''}
-      </div>`).join('');
+
+    const msgs = this._messages.map(m => {
+      const text = this._esc(m.text).replace(/\n/g, '<br>');
+      if (m.role === 'user') {
+        return `<div class="msg-row user">
+          <div class="msg-col"><div class="bubble">${text}</div></div>
+        </div>`;
+      }
+      // assistant — show typing indicator when waiting for first token
+      if (m.streaming && !m.text) {
+        return `<div class="typing-row">
+          <div class="avatar">${this._iconHtml(28)}</div>
+          <div class="typing-bubble">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+          </div>
+        </div>`;
+      }
+      return `<div class="msg-row assistant">
+        <div class="avatar">${this._iconHtml(28)}</div>
+        <div class="msg-col">
+          <div class="bubble">${text}${m.streaming ? '<span class="cursor">&#x258C;</span>' : ''}</div>
+        </div>
+      </div>`;
+    }).join('');
 
     this._shadow.innerHTML = `
       <style>
@@ -365,39 +345,72 @@ class HirisCard extends HTMLElement {
           padding: 12px 16px; border-bottom: 1px solid var(--divider-color,#e0e0e0); }
         .header-left { display: flex; align-items: center; gap: 8px; }
         .title { font-size: 15px; font-weight: 600; color: var(--primary-text-color,#333); }
-        .status { display: flex; align-items: center; gap: 6px; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; }
-        .status-text { font-size: 12px; color: var(--secondary-text-color,#666); }
         .toggle { cursor: pointer; font-size: 18px; background: none; border: none;
-          padding: 0; line-height: 1; }
-        .budget-bar { height: 4px; background: var(--divider-color,#eee); }
-        .budget-fill { height: 100%; width: ${pct}%; background: var(--primary-color,#03a9f4);
+          padding: 0; line-height: 1; opacity: .9; }
+        .toggle:hover { opacity: 1; }
+        .budget-bar { height: 3px; background: var(--divider-color,#eee); }
+        .budget-fill { height: 100%; width: ${pct}%; background: var(--primary-color,#3b82f6);
           transition: width .3s; }
-        .budget-text { font-size: 11px; color: var(--secondary-text-color,#888);
+        .budget-text { font-size: 11px; color: var(--secondary-text-color,#9ca3af);
           padding: 2px 16px 4px; }
-        .messages { height: 200px; overflow-y: auto; padding: 12px 16px;
-          display: flex; flex-direction: column; gap: 8px; }
-        .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px;
-          font-size: 14px; line-height: 1.4; word-break: break-word; }
-        .msg.user { align-self: flex-end; background: var(--primary-color,#03a9f4);
-          color: #fff; border-radius: 12px 12px 2px 12px; }
-        .msg.assistant { align-self: flex-start;
-          background: var(--secondary-background-color,#f5f5f5);
-          color: var(--primary-text-color,#333); border-radius: 12px 12px 12px 2px; }
+        .messages { height: 220px; overflow-y: auto; padding: 12px 16px;
+          display: flex; flex-direction: column; gap: 10px; }
+        /* User message */
+        .msg-row { display: flex; align-items: flex-end; gap: 8px; }
+        .msg-row.user { align-self: flex-end; flex-direction: row-reverse; max-width: 82%; }
+        .msg-row.assistant { align-self: flex-start; max-width: 82%; }
+        .avatar { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center; }
+        .msg-col { display: flex; flex-direction: column; }
+        .bubble { padding: 8px 12px; border-radius: 18px;
+          font-size: 14px; line-height: 1.5; word-break: break-word; }
+        .msg-row.user .bubble {
+          background: var(--primary-color,#2563eb); color: #fff;
+          border-radius: 18px 18px 4px 18px; }
+        .msg-row.assistant .bubble {
+          background: var(--card-background-color,#fff);
+          color: var(--primary-text-color,#111);
+          border: 1px solid var(--divider-color,#e5e7eb);
+          border-radius: 18px 18px 18px 4px; }
+        /* Typing indicator */
+        .typing-row { display: flex; align-items: flex-end; gap: 8px; align-self: flex-start; }
+        .typing-bubble {
+          background: var(--card-background-color,#fff);
+          border: 1px solid var(--divider-color,#e5e7eb);
+          border-radius: 18px; border-bottom-left-radius: 4px;
+          padding: 10px 14px; display: flex; gap: 4px; align-items: center; }
+        .typing-dot { width: 6px; height: 6px; border-radius: 50%;
+          background: #9ca3af; animation: bounce 1.2s ease-in-out infinite; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+          0%, 60%, 100% { transform: translateY(0); }
+          30% { transform: translateY(-6px); }
+        }
+        /* Streaming cursor */
         .cursor { animation: blink 1s step-start infinite; }
         @keyframes blink { 50% { opacity: 0; } }
-        .empty { color: #aaa; text-align: center; padding-top: 60px; font-size: 13px; }
-        .error-badge { padding: 8px 16px; color: var(--warning-color,#ff9800);
-          font-size: 13px; text-align: center; }
-        .input-row { display: flex; gap: 8px; padding: 12px 16px;
+        .empty { color: var(--secondary-text-color,#aaa); text-align: center;
+          padding-top: 60px; font-size: 13px; }
+        .error-badge { padding: 8px 16px; color: var(--warning-color,#f59e0b);
+          font-size: 12px; text-align: center; }
+        .input-row { display: flex; gap: 8px; padding: 12px 16px; align-items: center;
           border-top: 1px solid var(--divider-color,#e0e0e0); }
         .input { flex: 1; padding: 8px 12px; border: 1px solid var(--divider-color,#e0e0e0);
-          border-radius: 20px; font-size: 14px; outline: none;
-          background: var(--secondary-background-color,#f5f5f5);
-          color: var(--primary-text-color,#333); }
-        .send { padding: 8px 16px; background: var(--primary-color,#03a9f4); color: #fff;
-          border: none; border-radius: 20px; cursor: pointer; font-size: 14px; }
-        .send:disabled { opacity: .5; cursor: default; }
+          border-radius: 20px; font-size: 14px; outline: none; font-family: inherit;
+          background: var(--secondary-background-color,#f9fafb);
+          color: var(--primary-text-color,#111);
+          transition: border-color .15s; }
+        .input:focus { border-color: var(--primary-color,#3b82f6); }
+        .send { width: 36px; height: 36px; background: var(--primary-color,#2563eb); color: #fff;
+          border: none; border-radius: 50%; cursor: pointer; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          transition: background .15s; }
+        .send:hover { opacity: .9; }
+        .send:disabled { opacity: .45; cursor: default; }
+        .messages::-webkit-scrollbar { width: 3px; }
+        .messages::-webkit-scrollbar-track { background: transparent; }
+        .messages::-webkit-scrollbar-thumb { background: var(--divider-color,#e0e0e0); border-radius: 2px; }
       </style>
       <div class="card">
         <div class="header">
@@ -405,13 +418,9 @@ class HirisCard extends HTMLElement {
             ${this._iconHtml(22)}
             <span class="title">${this._esc(this._title)}</span>
           </div>
-          <div class="status">
-            <span class="dot"></span>
-            <span class="status-text">${this._esc(this._status)}</span>
-            <button class="toggle" id="tog" title="${this._enabled ? 'Disabilita' : 'Abilita'}">
-              ${this._enabled ? '&#x1F7E2;' : '&#x26AA;'}
-            </button>
-          </div>
+          <button class="toggle" id="tog" title="${this._enabled ? 'Disabilita agente' : 'Abilita agente'}">
+            ${this._enabled ? '&#x1F7E2;' : '&#x26AA;'}
+          </button>
         </div>
         ${this._budgetLimitEur > 0 ? `
           <div class="budget-bar"><div class="budget-fill"></div></div>
@@ -424,7 +433,11 @@ class HirisCard extends HTMLElement {
         <div class="input-row">
           <input class="input" id="inp" type="text" placeholder="Scrivi un messaggio&#x2026;"
             ${!this._enabled ? 'disabled' : ''} />
-          <button class="send" id="snd" ${this._loading || !this._enabled ? 'disabled' : ''}>&#x2191;</button>
+          <button class="send" id="snd" ${this._loading || !this._enabled ? 'disabled' : ''} title="Invia">
+            <svg viewBox="0 0 24 24" width="18" height="18">
+              <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
         </div>
       </div>`;
 
@@ -432,8 +445,6 @@ class HirisCard extends HTMLElement {
     const snd = this._shadow.getElementById('snd');
     const tog = this._shadow.getElementById('tog');
     const msgsEl = this._shadow.getElementById('msgs');
-    const dot = this._shadow.querySelector('.dot');
-    if (dot) dot.style.background = color;
 
     if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
     if (snd) snd.onclick = () => {
@@ -457,7 +468,7 @@ class HirisChatCardEditor extends HTMLElement {
     this._shadow = this.attachShadow({ mode: 'open' });
     this._config = {};
     this._hass = null;
-    this._agents = null;   // null = loading, [] = loaded (possibly empty), 'error' = failed
+    this._agents = null;   // null = not yet loaded, 'loading' = in-flight, [] = loaded, 'error' = failed
   }
 
   connectedCallback() {
@@ -470,14 +481,12 @@ class HirisChatCardEditor extends HTMLElement {
   }
 
   set hass(hass) {
-    if (!hass) return;
     this._hass = hass;
     if (this._agents === null) this._loadAgents();
   }
 
   async _loadAgents() {
-    if (!this._hass) return;
-    this._agents = 'loading';  // sentinel: prevents concurrent fetches
+    this._agents = 'loading';
     const slug = this._config.hiris_slug || 'hiris';
     await _discoverIngressBase(slug);
     const base = _cachedIngressBase
@@ -518,17 +527,14 @@ class HirisChatCardEditor extends HTMLElement {
 
     let agentField;
     if (this._agents === null || this._agents === 'loading') {
-      // Still loading
       agentField = `<select disabled style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#f9fafb;color:#9ca3af;box-sizing:border-box">
         <option>Caricamento agenti…</option>
       </select>`;
     } else if (this._agents === 'error' || this._agents.length === 0) {
-      // Fallback to text input
       agentField = `<input id="agentInput" type="text" value="${this._esc(agentId)}"
         placeholder="es. hiris-default"
         style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;color:#111;box-sizing:border-box">`;
     } else {
-      // Populated dropdown
       const options = this._agents.map(a => {
         const sel = a.id === agentId ? ' selected' : '';
         return `<option value="${this._esc(a.id)}"${sel}>${this._esc(a.name || a.id)} (${this._esc(a.id)})</option>`;
@@ -578,7 +584,6 @@ class HirisChatCardEditor extends HTMLElement {
         </div>
       </div>`;
 
-    // Wire up events
     const agentSelect = this._shadow.getElementById('agentSelect');
     const agentInput = this._shadow.getElementById('agentInput');
     const titleInput = this._shadow.getElementById('titleInput');
@@ -596,7 +601,7 @@ class HirisChatCardEditor extends HTMLElement {
       };
     }
     if (titleInput) {
-      titleInput.onchange = (e) => {
+      titleInput.oninput = (e) => {
         this._config = { ...this._config, title: e.target.value };
         this._fireConfigChanged();
       };
@@ -604,20 +609,14 @@ class HirisChatCardEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get('hiris-chat-card-editor')) {
-  customElements.define('hiris-chat-card-editor', HirisChatCardEditor);
-}
-if (!customElements.get('hiris-chat-card')) {
-  customElements.define('hiris-chat-card', HirisCard);
-}
+customElements.define('hiris-chat-card-editor', HirisChatCardEditor);
+customElements.define('hiris-chat-card', HirisCard);
 
 // Register in window.customCards so HA shows the card in the picker
 window.customCards = window.customCards || [];
-if (!window.customCards.find(c => c.type === 'hiris-chat-card')) {
-  window.customCards.push({
-    type: 'hiris-chat-card',
-    name: 'HIRIS Chat',
-    description: 'Chat con il tuo assistente smart home HIRIS',
-    preview: false,
-  });
-}
+window.customCards.push({
+  type: 'hiris-chat-card',
+  name: 'HIRIS Chat',
+  description: 'Chat con il tuo assistente smart home HIRIS',
+  preview: false,
+});

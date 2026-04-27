@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## [0.5.16] — 2026-04-27
+
+### Fixed
+- Lovelace card: server writes `hiris-ingress.json` to `/local/hiris/` at startup so the card discovers the real Supervisor ingress URL — resolves all card 503 errors
+- Lovelace card: chat streaming hang fixed — timeout now covers the entire stream lifecycle; `streaming` flag cleared when stream closes even without SSE `done` event
+- Lovelace card: replaced blinking cursor with animated typing indicator (HIRIS icon + three bouncing dots) matching the add-on's direct chat UI
+- Lovelace card: removed duplicate status indicator from header — only the enable/disable toggle button remains in the top-right
+- Lovelace card: switched all API calls from `hass.callApi()` to `fetch()` with explicit Authorization header
+- Lovelace card: SyntaxError and constructor render crash blocking the HA card picker
+- Docker: `config.yaml` now copied into the container so `read_version()` returns the correct version string instead of "unknown"
+
 ## [0.5.15] — 2026-04-27
 
 ### Fixed
