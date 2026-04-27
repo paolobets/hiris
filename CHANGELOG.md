@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [0.5.9] — 2026-04-27
+
+### Fixed
+- `get_area_registry()` e `get_entity_registry()` migrati da REST
+  (`/api/config/*/list`, restituiva 404 via Supervisor) a WebSocket
+  (`config/area_registry/list`, `config/entity_registry/list`);
+  il tool Claude `get_area_entities` ora funziona e le aree/stanze
+  sono disponibili come contesto per gli agenti
+
 ## [0.5.8] — 2026-04-27
 
 ### Added
