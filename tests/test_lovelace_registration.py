@@ -161,22 +161,48 @@ async def test_migrates_old_ingress_url():
 # Tests — _deploy_card_to_www
 # ---------------------------------------------------------------------------
 
+def _patch_ha_mounted(mounted: bool = True):
+    """Return context managers that make /homeassistant look mounted (or not)."""
+    # _deploy_card_to_www checks os.path.exists(…/configuration.yaml) OR
+    # os.path.isdir(…/.storage). We mock both to control the mounted state.
+    return (
+        patch("hiris.app.server.os.path.exists", return_value=mounted),
+        patch("hiris.app.server.os.path.isdir", return_value=mounted),
+    )
+
+
 def test_deploy_card_to_www():
     """_deploy_card_to_www copies hiris-chat-card.js to /homeassistant/www/{slug}/."""
-    with patch("hiris.app.server.os.makedirs") as mock_makedirs, \
+    exists_patch, isdir_patch = _patch_ha_mounted(True)
+    with exists_patch, isdir_patch, \
+         patch("hiris.app.server.os.makedirs") as mock_makedirs, \
          patch("hiris.app.server.shutil.copy2") as mock_copy:
         from hiris.app.server import _deploy_card_to_www
         _deploy_card_to_www("hiris")
 
-    mock_makedirs.assert_called_once_with("/homeassistant/www/hiris", exist_ok=True)
     import os as _os
-    expected_dst = _os.path.join("/homeassistant/www/hiris", "hiris-chat-card.js")
+    expected_dst_dir = _os.path.join("/homeassistant", "www", "hiris")
+    mock_makedirs.assert_called_once_with(expected_dst_dir, exist_ok=True)
+    expected_dst = _os.path.join(expected_dst_dir, "hiris-chat-card.js")
     assert mock_copy.call_args[0][1] == expected_dst
+
+
+def test_deploy_card_to_www_not_mounted_does_not_copy():
+    """When the HA config volume is not mounted, no file is written and no exception raised."""
+    exists_patch, isdir_patch = _patch_ha_mounted(False)
+    with exists_patch, isdir_patch, \
+         patch("hiris.app.server.os.makedirs") as mock_makedirs:
+        from hiris.app.server import _deploy_card_to_www
+        _deploy_card_to_www("hiris")
+
+    mock_makedirs.assert_not_called()
 
 
 def test_deploy_card_to_www_failure_does_not_raise():
     """If the www directory is not writable, _deploy_card_to_www logs and returns."""
-    with patch("hiris.app.server.os.makedirs", side_effect=PermissionError("read-only")):
+    exists_patch, isdir_patch = _patch_ha_mounted(True)
+    with exists_patch, isdir_patch, \
+         patch("hiris.app.server.os.makedirs", side_effect=PermissionError("read-only")):
         from hiris.app.server import _deploy_card_to_www
         _deploy_card_to_www("hiris")
     # No exception raised

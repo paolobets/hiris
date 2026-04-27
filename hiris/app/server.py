@@ -31,16 +31,35 @@ logger = logging.getLogger(__name__)
 
 
 def _deploy_card_to_www(slug: str = "hiris") -> None:
-    """Copy hiris-chat-card.js to /homeassistant/www/{slug}/ for auth-free Lovelace access."""
+    """Copy hiris-chat-card.js to /homeassistant/www/{slug}/ for auth-free Lovelace access.
+
+    Requires 'config:rw' in the add-on map (config.yaml). The Supervisor mounts the
+    HA configuration directory at /homeassistant inside the container.
+    """
+    ha_config = "/homeassistant"
+    # Verify the HA config directory is actually mounted (not an empty container dir).
+    # configuration.yaml or .storage must be present for this to be the real HA config.
+    if not (
+        os.path.exists(os.path.join(ha_config, "configuration.yaml"))
+        or os.path.isdir(os.path.join(ha_config, ".storage"))
+    ):
+        logger.error(
+            "HA config directory not mounted at %s — card cannot be deployed. "
+            "Ensure 'config:rw' is in the add-on map, then stop and restart the add-on. "
+            "Until fixed, /local/%s/hiris-chat-card.js will return 404.",
+            ha_config, slug,
+        )
+        return
+
     src = os.path.join(os.path.dirname(__file__), "static", "hiris-chat-card.js")
-    dst_dir = f"/homeassistant/www/{slug}"
+    dst_dir = os.path.join(ha_config, "www", slug)
     dst = os.path.join(dst_dir, "hiris-chat-card.js")
     try:
         os.makedirs(dst_dir, exist_ok=True)
         shutil.copy2(src, dst)
         logger.info("HIRIS card deployed to %s", dst)
     except Exception as exc:
-        logger.warning("Failed to deploy HIRIS card to %s: %s", dst, exc)
+        logger.error("Failed to deploy HIRIS card to %s: %s", dst, exc, exc_info=True)
 
 
 async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
