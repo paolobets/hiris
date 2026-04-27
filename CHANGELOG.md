@@ -1,5 +1,25 @@
 # HIRIS — Changelog
 
+## [0.5.8] — 2026-04-27
+
+### Added
+- **Lovelace card picker** — `window.customCards` registration, visual editor
+  (`hiris-chat-card-editor`), `getStubConfig` returning `hiris-default`; card
+  now appears in the HA "Add Card" picker without manual YAML
+
+### Fixed
+- **Lovelace resource registration** — switched from REST API
+  (`/api/lovelace/resources`, returned 404 in many HA setups) to WebSocket API
+  (`lovelace/resources/create/delete`); works in all storage-mode configurations
+- **Card JS deployment** — add-on copies `hiris-chat-card.js` to
+  `<ha-config>/www/{slug}/` on startup so `/local/{slug}/hiris-chat-card.js`
+  resolves without authentication; probes `/config` then `/homeassistant`
+- **Stale ingress URL migration** — removes old `/api/hassio_ingress/` resource
+  automatically and registers the new `/local/` URL in its place
+- `config:rw` added to add-on map (`config.yaml`) — required for www deployment
+- `getCardSize()` implemented; `preview: false` set to prevent HA from
+  attempting live renders in the picker
+
 ## [0.5.1] — 2026-04-25
 
 ### Added
