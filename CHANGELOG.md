@@ -1,5 +1,10 @@
 # HIRIS — Changelog
 
+## [0.5.13] — 2026-04-27
+
+### Fixed
+- `config.yaml` ora viene copiato nel container Docker (`COPY config.yaml /usr/lib/hiris/config.yaml`): `read_version()` restituiva sempre `"unknown"` in produzione perché il file non era presente, rendendo l'URL della risorsa Lovelace sempre `/local/hiris/hiris-chat-card.js?v=unknown` e vanificando il cache-busting introdotto in v0.5.12
+
 ## [0.5.12] — 2026-04-27
 
 ### Fixed
