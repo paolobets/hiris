@@ -88,12 +88,14 @@ async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
 
 
 async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
-    """Register /local/{slug}/hiris-chat-card.js as a Lovelace module resource.
+    """Register /local/{slug}/hiris-chat-card.js?v=VERSION as a Lovelace module resource.
 
     Uses the HA WebSocket API, which works even when the REST endpoint is unavailable.
-    Migrates the old ingress URL if present. Idempotent. Graceful on any error.
+    Migrates stale URLs (old ingress URL and older versioned /local/ URLs). Idempotent.
+    The ?v= query param forces the browser to fetch the new JS on every version bump.
     """
-    new_url = f"/local/{slug}/hiris-chat-card.js"
+    version = read_version()
+    new_url = f"/local/{slug}/hiris-chat-card.js?v={version}"
     old_url = f"/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
     ws_url = (
         ha_base_url.replace("http://", "ws://").replace("https://", "wss://")
@@ -128,9 +130,17 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
                 resources: list[dict] = list_resp.get("result", [])
                 msg_id = 2
 
-                # Migrate: remove stale ingress URL
+                # Remove stale URLs: old ingress URL and any /local/ URL that is not
+                # the current versioned URL (handles version upgrades and bare URL left
+                # by older add-on versions).
+                base_local = f"/local/{slug}/hiris-chat-card.js"
                 for resource in resources:
-                    if resource.get("url") == old_url:
+                    url = resource.get("url", "")
+                    is_stale = (
+                        url == old_url
+                        or (url.startswith(base_local) and url != new_url)
+                    )
+                    if is_stale:
                         await ws.send_json({
                             "id": msg_id,
                             "type": "lovelace/resources/delete",
@@ -138,10 +148,10 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
                         })
                         del_resp = await _ws_await(ws, msg_id)
                         if del_resp.get("success"):
-                            logger.info("Removed stale ingress URL from Lovelace: %s", old_url)
+                            logger.info("Removed stale Lovelace resource: %s", url)
                         msg_id += 1
 
-                # Idempotency check
+                # Idempotency check against the current versioned URL
                 for resource in resources:
                     if resource.get("url") == new_url:
                         logger.debug("HIRIS Lovelace card already registered: %s", new_url)

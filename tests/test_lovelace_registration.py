@@ -9,9 +9,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # ---------------------------------------------------------------------------
 
 SLUG = "hiris"
+TEST_VERSION = "0.5.99"   # pinned for tests — patched via read_version
 OLD_CARD_URL = f"/api/hassio_ingress/{SLUG}/static/hiris-chat-card.js"
-CARD_URL = f"/local/{SLUG}/hiris-chat-card.js"
+OLD_BARE_URL = f"/local/{SLUG}/hiris-chat-card.js"            # unversioned legacy URL
+OLD_VERSIONED_URL = f"/local/{SLUG}/hiris-chat-card.js?v=0.4.0"  # stale versioned URL
+CARD_URL = f"/local/{SLUG}/hiris-chat-card.js?v={TEST_VERSION}"
 TOKEN = "test-token"
+
+# Patch helper — every test that calls _register_lovelace_card must use this
+import contextlib
+
+@contextlib.contextmanager
+def _patch_version():
+    with patch("hiris.app.server.read_version", return_value=TEST_VERSION):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +96,7 @@ async def test_registers_card_when_not_present():
         _ws_list_ok([{"id": "other", "url": "/other/card.js", "type": "module"}]),
         _ws_create_ok(2),
     ])
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
@@ -96,23 +107,24 @@ async def test_registers_card_when_not_present():
 
 @pytest.mark.asyncio
 async def test_skips_when_already_registered():
-    """No create command when /local/ URL already exists in resources."""
+    """No create/delete when the current versioned URL already exists in resources."""
     ws = _make_ws_mock([
         _AUTH_REQUIRED, _AUTH_OK,
         _ws_list_ok([{"id": "x1", "url": CARD_URL, "type": "module"}]),
     ])
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
     assert "lovelace/resources/create" not in _sent_types(ws)
+    assert "lovelace/resources/delete" not in _sent_types(ws)
 
 
 @pytest.mark.asyncio
 async def test_yaml_mode_no_create():
     """When list returns failure (YAML/unsupported mode), no create attempted, no exception."""
     ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_OK, _ws_list_fail()])
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
@@ -123,7 +135,7 @@ async def test_yaml_mode_no_create():
 async def test_auth_failure_does_not_raise():
     """If HA rejects the WS token, the function returns silently."""
     ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_INVALID])
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
@@ -136,39 +148,79 @@ async def test_network_error_does_not_raise():
     session.__aexit__ = AsyncMock(return_value=False)
     session.ws_connect = MagicMock(side_effect=OSError("connection refused"))
 
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
 
 @pytest.mark.asyncio
 async def test_custom_slug():
-    """The /local/ URL uses the provided slug."""
+    """The /local/ URL uses the provided slug and includes ?v=VERSION."""
     ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_OK, _ws_list_ok([]), _ws_create_ok(2)])
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, slug="my-hiris")
 
     create = next(m for m in _sent_msgs(ws) if m.get("type") == "lovelace/resources/create")
-    assert create["url"] == "/local/my-hiris/hiris-chat-card.js"
+    assert create["url"] == f"/local/my-hiris/hiris-chat-card.js?v={TEST_VERSION}"
 
 
 @pytest.mark.asyncio
 async def test_migrates_old_ingress_url():
-    """delete sent for old ingress URL, then create for new /local/ URL."""
+    """delete sent for old ingress URL, then create for new versioned /local/ URL."""
     ws = _make_ws_mock([
         _AUTH_REQUIRED, _AUTH_OK,
         _ws_list_ok([{"id": "42", "url": OLD_CARD_URL, "type": "module"}]),
         _ws_delete_ok(2),
         _ws_create_ok(3),
     ])
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
     msgs = _sent_msgs(ws)
     delete = next(m for m in msgs if m.get("type") == "lovelace/resources/delete")
     assert delete["resource_id"] == "42"
+    create = next(m for m in msgs if m.get("type") == "lovelace/resources/create")
+    assert create["url"] == CARD_URL
+
+
+@pytest.mark.asyncio
+async def test_migrates_old_bare_local_url():
+    """delete sent for old unversioned /local/ URL, then create for versioned URL."""
+    ws = _make_ws_mock([
+        _AUTH_REQUIRED, _AUTH_OK,
+        _ws_list_ok([{"id": "99", "url": OLD_BARE_URL, "type": "module"}]),
+        _ws_delete_ok(2),
+        _ws_create_ok(3),
+    ])
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
+        from hiris.app.server import _register_lovelace_card
+        await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
+
+    msgs = _sent_msgs(ws)
+    delete = next(m for m in msgs if m.get("type") == "lovelace/resources/delete")
+    assert delete["resource_id"] == "99"
+    create = next(m for m in msgs if m.get("type") == "lovelace/resources/create")
+    assert create["url"] == CARD_URL
+
+
+@pytest.mark.asyncio
+async def test_migrates_old_versioned_url():
+    """delete sent for stale ?v=OLD versioned URL, then create for current version."""
+    ws = _make_ws_mock([
+        _AUTH_REQUIRED, _AUTH_OK,
+        _ws_list_ok([{"id": "77", "url": OLD_VERSIONED_URL, "type": "module"}]),
+        _ws_delete_ok(2),
+        _ws_create_ok(3),
+    ])
+    with _patch_version(), patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
+        from hiris.app.server import _register_lovelace_card
+        await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
+
+    msgs = _sent_msgs(ws)
+    delete = next(m for m in msgs if m.get("type") == "lovelace/resources/delete")
+    assert delete["resource_id"] == "77"
     create = next(m for m in msgs if m.get("type") == "lovelace/resources/create")
     assert create["url"] == CARD_URL
 
