@@ -5,120 +5,136 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Constants
 # ---------------------------------------------------------------------------
 
 SLUG = "hiris"
 OLD_CARD_URL = f"/api/hassio_ingress/{SLUG}/static/hiris-chat-card.js"
 CARD_URL = f"/local/{SLUG}/hiris-chat-card.js"
-RESOURCES_URL = "http://supervisor/core/api/lovelace/resources"
 TOKEN = "test-token"
 
 
-def _make_session_mock(
-    get_status: int,
-    get_body,
-    post_status: int = 201,
-    post_body: str = "{}",
-    delete_status: int = 204,
-):
-    """Build an async context-manager mock that simulates ClientSession behaviour."""
-    get_resp = AsyncMock()
-    get_resp.status = get_status
-    get_resp.json = AsyncMock(return_value=get_body)
-    get_resp.text = AsyncMock(return_value=str(get_body))
-    get_resp.__aenter__ = AsyncMock(return_value=get_resp)
-    get_resp.__aexit__ = AsyncMock(return_value=False)
+# ---------------------------------------------------------------------------
+# WebSocket mock helpers
+# ---------------------------------------------------------------------------
 
-    post_resp = AsyncMock()
-    post_resp.status = post_status
-    post_resp.text = AsyncMock(return_value=post_body)
-    post_resp.__aenter__ = AsyncMock(return_value=post_resp)
-    post_resp.__aexit__ = AsyncMock(return_value=False)
+def _make_ws_mock(messages: list[dict]):
+    """WebSocket mock that returns messages in sequence from receive_json()."""
+    it = iter(messages)
 
-    delete_resp = AsyncMock()
-    delete_resp.status = delete_status
-    delete_resp.__aenter__ = AsyncMock(return_value=delete_resp)
-    delete_resp.__aexit__ = AsyncMock(return_value=False)
+    async def _receive_json():
+        return next(it)
 
+    ws = AsyncMock()
+    ws.receive_json = _receive_json
+    ws.send_json = AsyncMock()
+    ws.__aenter__ = AsyncMock(return_value=ws)
+    ws.__aexit__ = AsyncMock(return_value=False)
+    return ws
+
+
+def _make_session_ws(ws_mock):
+    """ClientSession mock whose ws_connect() returns ws_mock."""
     session = AsyncMock()
-    session.get = MagicMock(return_value=get_resp)
-    session.post = MagicMock(return_value=post_resp)
-    session.delete = MagicMock(return_value=delete_resp)
+    session.ws_connect = MagicMock(return_value=ws_mock)
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
     return session
 
 
+_AUTH_REQUIRED = {"type": "auth_required"}
+_AUTH_OK = {"type": "auth_ok"}
+_AUTH_INVALID = {"type": "auth_invalid"}
+
+
+def _ws_list_ok(resources: list) -> dict:
+    return {"id": 1, "type": "result", "success": True, "result": resources}
+
+
+def _ws_list_fail() -> dict:
+    return {"id": 1, "type": "result", "success": False,
+            "error": {"code": "not_supported", "message": "Not in storage mode"}}
+
+
+def _ws_create_ok(msg_id: int) -> dict:
+    return {"id": msg_id, "type": "result", "success": True,
+            "result": {"id": "x1", "type": "module", "url": CARD_URL}}
+
+
+def _ws_delete_ok(msg_id: int) -> dict:
+    return {"id": msg_id, "type": "result", "success": True, "result": None}
+
+
+def _sent_types(ws) -> list[str]:
+    return [c[0][0].get("type") for c in ws.send_json.call_args_list]
+
+
+def _sent_msgs(ws) -> list[dict]:
+    return [c[0][0] for c in ws.send_json.call_args_list]
+
+
 # ---------------------------------------------------------------------------
-# Tests — _register_lovelace_card
+# Tests — _register_lovelace_card (WebSocket-based)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_registers_card_when_not_present():
-    """POST is called with /local/ URL when the card is absent from existing resources."""
-    session = _make_session_mock(
-        get_status=200,
-        get_body=[{"url": "/some/other/card.js", "res_type": "module"}],
-        post_status=201,
-    )
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
+    """create command sent when the card is absent from existing resources."""
+    ws = _make_ws_mock([
+        _AUTH_REQUIRED, _AUTH_OK,
+        _ws_list_ok([{"id": "other", "url": "/other/card.js", "type": "module"}]),
+        _ws_create_ok(2),
+    ])
+    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
-    session.post.assert_called_once()
-    call_kwargs = session.post.call_args
-    assert call_kwargs[1]["json"]["url"] == CARD_URL
-    assert call_kwargs[1]["json"]["res_type"] == "module"
+    create = next(m for m in _sent_msgs(ws) if m.get("type") == "lovelace/resources/create")
+    assert create["url"] == CARD_URL
+    assert create["res_type"] == "module"
 
 
 @pytest.mark.asyncio
 async def test_skips_when_already_registered():
-    """No POST is made if the /local/ URL already exists in resources."""
-    session = _make_session_mock(
-        get_status=200,
-        get_body=[{"url": CARD_URL, "res_type": "module"}],
-    )
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
+    """No create command when /local/ URL already exists in resources."""
+    ws = _make_ws_mock([
+        _AUTH_REQUIRED, _AUTH_OK,
+        _ws_list_ok([{"id": "x1", "url": CARD_URL, "type": "module"}]),
+    ])
+    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
-    session.post.assert_not_called()
+    assert "lovelace/resources/create" not in _sent_types(ws)
 
 
 @pytest.mark.asyncio
-async def test_yaml_mode_get_405_no_post():
-    """When GET /lovelace/resources returns 405 (YAML mode), no POST is attempted."""
-    session = _make_session_mock(get_status=405, get_body=None)
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
+async def test_yaml_mode_no_create():
+    """When list returns failure (YAML/unsupported mode), no create attempted, no exception."""
+    ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_OK, _ws_list_fail()])
+    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
-    session.post.assert_not_called()
+    assert "lovelace/resources/create" not in _sent_types(ws)
 
 
 @pytest.mark.asyncio
-async def test_yaml_mode_post_405_no_exception():
-    """When POST returns 405 (YAML mode response), the function completes silently."""
-    session = _make_session_mock(
-        get_status=200,
-        get_body=[],
-        post_status=405,
-        post_body="Method Not Allowed",
-    )
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
+async def test_auth_failure_does_not_raise():
+    """If HA rejects the WS token, the function returns silently."""
+    ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_INVALID])
+    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
-    # No exception raised — test passes if we reach here
 
 
 @pytest.mark.asyncio
 async def test_network_error_does_not_raise():
-    """Any exception during HTTP calls is swallowed — startup must not crash."""
+    """Any exception during WS connection is swallowed — startup must not crash."""
     session = AsyncMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
-    session.get = MagicMock(side_effect=OSError("connection refused"))
+    session.ws_connect = MagicMock(side_effect=OSError("connection refused"))
 
     with patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
         from hiris.app.server import _register_lovelace_card
@@ -128,33 +144,33 @@ async def test_network_error_does_not_raise():
 @pytest.mark.asyncio
 async def test_custom_slug():
     """The /local/ URL uses the provided slug."""
-    session = _make_session_mock(get_status=200, get_body=[], post_status=201)
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
+    ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_OK, _ws_list_ok([]), _ws_create_ok(2)])
+    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, slug="my-hiris")
 
-    call_kwargs = session.post.call_args
-    assert call_kwargs[1]["json"]["url"] == "/local/my-hiris/hiris-chat-card.js"
+    create = next(m for m in _sent_msgs(ws) if m.get("type") == "lovelace/resources/create")
+    assert create["url"] == "/local/my-hiris/hiris-chat-card.js"
 
 
 @pytest.mark.asyncio
 async def test_migrates_old_ingress_url():
-    """DELETE is called for the old ingress URL, then POST registers the new /local/ URL."""
-    session = _make_session_mock(
-        get_status=200,
-        get_body=[{"id": "42", "url": OLD_CARD_URL, "res_type": "module"}],
-        post_status=201,
-        delete_status=204,
-    )
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=session):
+    """delete sent for old ingress URL, then create for new /local/ URL."""
+    ws = _make_ws_mock([
+        _AUTH_REQUIRED, _AUTH_OK,
+        _ws_list_ok([{"id": "42", "url": OLD_CARD_URL, "type": "module"}]),
+        _ws_delete_ok(2),
+        _ws_create_ok(3),
+    ])
+    with patch("hiris.app.server.aiohttp.ClientSession", return_value=_make_session_ws(ws)):
         from hiris.app.server import _register_lovelace_card
         await _register_lovelace_card("http://supervisor/core", TOKEN, SLUG)
 
-    session.delete.assert_called_once()
-    delete_url = session.delete.call_args[0][0]
-    assert delete_url.endswith("/42")
-    session.post.assert_called_once()
-    assert session.post.call_args[1]["json"]["url"] == CARD_URL
+    msgs = _sent_msgs(ws)
+    delete = next(m for m in msgs if m.get("type") == "lovelace/resources/delete")
+    assert delete["resource_id"] == "42"
+    create = next(m for m in msgs if m.get("type") == "lovelace/resources/create")
+    assert create["url"] == CARD_URL
 
 
 # ---------------------------------------------------------------------------

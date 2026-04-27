@@ -74,73 +74,100 @@ def _deploy_card_to_www(slug: str = "hiris") -> None:
         logger.error("Failed to deploy HIRIS card to %s: %s", dst, exc, exc_info=True)
 
 
+async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
+    """Read WebSocket messages until we get the one matching msg_id."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            raise asyncio.TimeoutError(f"Timeout waiting for WS message id={msg_id}")
+        msg = await asyncio.wait_for(ws.receive_json(), timeout=remaining)
+        if msg.get("id") == msg_id:
+            return msg
+
+
 async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
     """Register /local/{slug}/hiris-chat-card.js as a Lovelace module resource.
 
-    Migrates the old ingress URL to the new /local/ URL (no auth required).
-    Idempotent: no-op if already registered. Graceful on any error.
+    Uses the HA WebSocket API, which works even when the REST endpoint is unavailable.
+    Migrates the old ingress URL if present. Idempotent. Graceful on any error.
     """
-    old_url = f"/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
     new_url = f"/local/{slug}/hiris-chat-card.js"
-    resources_url = f"{ha_base_url}/api/lovelace/resources"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
+    old_url = f"/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
+    ws_url = (
+        ha_base_url.replace("http://", "ws://").replace("https://", "wss://")
+        + "/api/websocket"
+    )
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(resources_url, headers=headers) as resp:
-                if resp.status == 405:
+            async with session.ws_connect(ws_url) as ws:
+                # Authenticate
+                handshake = await asyncio.wait_for(ws.receive_json(), timeout=10.0)
+                if handshake.get("type") == "auth_required":
+                    await ws.send_json({"type": "auth", "access_token": token})
+                    auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=10.0)
+                    if auth_resp.get("type") != "auth_ok":
+                        logger.warning("HA WebSocket auth failed — Lovelace registration skipped")
+                        return
+
+                # List existing resources
+                await ws.send_json({"id": 1, "type": "lovelace/resources"})
+                list_resp = await _ws_await(ws, msg_id=1)
+
+                if not list_resp.get("success"):
+                    # YAML mode or HA version without resources support
+                    err_msg = list_resp.get("error", {}).get("message", "unsupported")
                     logger.info(
-                        "Lovelace is in YAML mode — card must be added manually: "
-                        "resources:\n  - url: %s\n    type: module", new_url
+                        "Lovelace resources not manageable via WebSocket (%s) — "
+                        "add manually in lovelace config: url: %s  type: module",
+                        err_msg, new_url,
                     )
                     return
-                if resp.status != 200:
-                    logger.warning(
-                        "Lovelace resources GET returned %d — skipping auto-registration",
-                        resp.status,
-                    )
-                    return
-                existing = await resp.json()
 
-            for resource in existing:
-                if resource.get("url") == old_url:
-                    res_id = resource.get("id")
-                    async with session.delete(
-                        f"{resources_url}/{res_id}", headers=headers
-                    ) as del_resp:
-                        if del_resp.status in (200, 204):
-                            logger.info("Removed stale ingress card URL: %s", old_url)
-                        else:
-                            logger.warning(
-                                "Failed to remove stale card URL (%d)", del_resp.status
-                            )
+                resources: list[dict] = list_resp.get("result", [])
+                msg_id = 2
 
-            for resource in existing:
-                if resource.get("url") == new_url:
-                    logger.debug("HIRIS Lovelace card already registered: %s", new_url)
-                    return
+                # Migrate: remove stale ingress URL
+                for resource in resources:
+                    if resource.get("url") == old_url:
+                        await ws.send_json({
+                            "id": msg_id,
+                            "type": "lovelace/resources/delete",
+                            "resource_id": resource["id"],
+                        })
+                        del_resp = await _ws_await(ws, msg_id)
+                        if del_resp.get("success"):
+                            logger.info("Removed stale ingress URL from Lovelace: %s", old_url)
+                        msg_id += 1
 
-            payload = {"res_type": "module", "url": new_url}
-            async with session.post(resources_url, headers=headers, json=payload) as resp:
-                if resp.status in (200, 201):
+                # Idempotency check
+                for resource in resources:
+                    if resource.get("url") == new_url:
+                        logger.debug("HIRIS Lovelace card already registered: %s", new_url)
+                        return
+
+                # Register
+                await ws.send_json({
+                    "id": msg_id,
+                    "type": "lovelace/resources/create",
+                    "res_type": "module",
+                    "url": new_url,
+                })
+                create_resp = await _ws_await(ws, msg_id)
+
+                if create_resp.get("success"):
                     logger.info(
-                        "HIRIS Lovelace card registered ✓  url=%s  "
-                        "— reload HA UI to load it",
+                        "HIRIS Lovelace card registered ✓ url=%s — reload HA UI to activate",
                         new_url,
                     )
-                elif resp.status == 405:
-                    logger.info(
-                        "Lovelace YAML mode — add manually: url: %s  type: module", new_url
-                    )
                 else:
-                    body = await resp.text()
                     logger.warning(
-                        "Lovelace card registration failed (%d): %s", resp.status, body[:200]
+                        "Lovelace registration failed: %s",
+                        create_resp.get("error", {}).get("message", "unknown"),
                     )
     except Exception as exc:
-        logger.warning("Lovelace card auto-registration failed: %s", exc)
+        logger.warning("Lovelace card registration error: %s", exc)
 
 
 async def _on_startup(app: web.Application) -> None:

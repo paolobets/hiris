@@ -101,6 +101,8 @@ class HirisCard extends HTMLElement {
     }
   }
 
+  getCardSize() { return 6; }
+
   connectedCallback() {
     if (this._agentId && !this._polling) this._startPolling();
   }
