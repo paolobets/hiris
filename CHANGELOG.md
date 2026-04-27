@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.5.14] — 2026-04-27
+
+### Fixed
+- `_fetchStatus()` e `_toggleAgent()` ora usano `fetch()` con auth esplicita invece di `hass.callApi()`: quest'ultimo fallisce su alcuni HA/Supervisor con percorsi di ingress, mostrando "HIRIS non disponibile" anche quando il backend è raggiungibile
+- Il messaggio di errore nel chat ora mostra la causa reale dal body JSON del backend (es. "Claude runner not configured — set CLAUDE_API_KEY") invece del generico "HTTP 503"
+- Estratti i metodi helper `_hirisUrl(path)` e `_authToken()` per eliminare la duplicazione della logica di autenticazione
+
 ## [0.5.13] — 2026-04-27
 
 ### Fixed
