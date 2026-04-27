@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.5.10] — 2026-04-27
+
+### Fixed
+- `SyntaxError: Identifier 'msgs' has already been declared` in `hiris-chat-card.js`: variabile `msgs` dichiarata due volte nella stessa funzione `_render()`, impediva il parsing del file e rendeva la card completamente invisibile in HA
+- Rimosso `this._render()` dai costruttori di `HirisCard` e `HirisChatCardEditor`: il card picker di HA istanzia gli elementi custom prima di connetterli al DOM, causando ricorsione Shadow DOM tramite i mutation observer di Lit (`Maximum call stack size exceeded`)
+- Aggiunto `connectedCallback` a `HirisChatCardEditor` in modo che il primo render avvenga nel momento corretto del lifecycle
+
 ## [0.5.9] — 2026-04-27
 
 ### Fixed
