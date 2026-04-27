@@ -1,5 +1,11 @@
 # HIRIS — Changelog
 
+## [0.5.12] — 2026-04-27
+
+### Fixed
+- La risorsa Lovelace ora viene registrata come `/local/hiris/hiris-chat-card.js?v=VERSION` invece dell'URL senza versione: ad ogni aggiornamento dell'add-on il vecchio URL viene rimosso e quello nuovo creato, forzando il browser a ricaricare il JS aggiornato (cache-busting)
+- Migrazione automatica da tre tipi di URL obsoleti: vecchio ingress URL, vecchio URL senza versione, vecchio URL con versione diversa
+
 ## [0.5.11] — 2026-04-27
 
 ### Fixed
