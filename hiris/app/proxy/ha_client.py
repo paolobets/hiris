@@ -88,29 +88,37 @@ class HAClient:
             resp.raise_for_status()
             return await resp.json()
 
-    async def get_area_registry(self) -> list[dict]:
-        url = f"{self._base_url}/api/config/area_registry/list"
+    async def _ws_call(self, msg_type: str, timeout: float = 10.0) -> list[dict]:
+        """Send a single WebSocket command and return its result list."""
+        ws_url = (
+            self._base_url.replace("http://", "ws://").replace("https://", "wss://")
+            + "/api/websocket"
+        )
+        token = self._headers["Authorization"].removeprefix("Bearer ")
         try:
-            async with self._session.get(url) as resp:
-                if resp.status != 200:
-                    logger.debug("area_registry not available (HTTP %s)", resp.status)
-                    return []
-                return await resp.json()
+            async with aiohttp.ClientSession() as session:
+                async with session.ws_connect(ws_url) as ws:
+                    handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                    if handshake.get("type") == "auth_required":
+                        await ws.send_json({"type": "auth", "access_token": token})
+                        auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                        if auth_resp.get("type") != "auth_ok":
+                            logger.warning("HA WS auth failed in _ws_call(%s)", msg_type)
+                            return []
+                    await ws.send_json({"id": 1, "type": msg_type})
+                    while True:
+                        msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                        if msg.get("id") == 1:
+                            return msg.get("result", []) or []
         except Exception as exc:
-            logger.debug("area_registry fetch failed: %s", exc)
+            logger.debug("_ws_call(%s) failed: %s", msg_type, exc)
             return []
 
+    async def get_area_registry(self) -> list[dict]:
+        return await self._ws_call("config/area_registry/list")
+
     async def get_entity_registry(self) -> list[dict]:
-        url = f"{self._base_url}/api/config/entity_registry/list"
-        try:
-            async with self._session.get(url) as resp:
-                if resp.status != 200:
-                    logger.debug("entity_registry not available (HTTP %s)", resp.status)
-                    return []
-                return await resp.json()
-        except Exception as exc:
-            logger.debug("entity_registry fetch failed: %s", exc)
-            return []
+        return await self._ws_call("config/entity_registry/list")
 
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         self._state_listeners.append(callback)

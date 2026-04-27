@@ -83,7 +83,7 @@ async def get_area_entities(
     ha: HAClient,
     entity_cache: EntityCache | None = None,
 ) -> dict[str, list[str]]:
-    """Return area→[entity_id] map. Uses EntityCache if populated, else HTTP fallback."""
+    """Return area→[entity_id] map. Uses EntityCache if populated, else HA WebSocket fallback."""
     if entity_cache is not None:
         cached = entity_cache.get_area_map()
         if cached is not None:
@@ -110,6 +110,7 @@ async def get_area_entities(
         result["__no_area__"] = no_area
 
     return result
+
 
 
 def get_home_status(entity_cache, semantic_map=None) -> list[dict]:

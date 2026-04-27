@@ -118,3 +118,4 @@ class EntityCache:
     def get_area_map(self) -> dict[str, list[str]] | None:
         """Return cached area→[entity_id] map. None if not yet loaded; {} if loaded but no areas."""
         return self._area_map
+

@@ -99,51 +99,63 @@ async def test_call_service_returns_false_on_error(client):
     assert result is False
 
 
+def _make_ws_registry_mock(msg_type: str, result_data: list) -> tuple:
+    """Build a minimal WS session mock that returns result_data for the given msg_type."""
+    it = iter([
+        {"type": "auth_required"},
+        {"type": "auth_ok"},
+        {"id": 1, "type": "result", "success": True, "result": result_data},
+    ])
+
+    async def _receive_json():
+        return next(it)
+
+    ws = AsyncMock()
+    ws.receive_json = _receive_json
+    ws.send_json = AsyncMock()
+    ws.__aenter__ = AsyncMock(return_value=ws)
+    ws.__aexit__ = AsyncMock(return_value=False)
+
+    session = AsyncMock()
+    session.ws_connect = MagicMock(return_value=ws)
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    return session, ws
+
+
 @pytest.mark.asyncio
 async def test_get_area_registry_returns_list(client):
-    mock_resp = AsyncMock()
-    mock_resp.status = 200
-    mock_resp.json = AsyncMock(return_value=[
+    areas = [
         {"area_id": "cucina", "name": "Cucina", "floor_id": None},
         {"area_id": "soggiorno", "name": "Soggiorno", "floor_id": None},
-    ])
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-    with patch("aiohttp.ClientSession.get", return_value=mock_resp):
-        await client.start()
+    ]
+    session, _ = _make_ws_registry_mock("config/area_registry/list", areas)
+    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
         result = await client.get_area_registry()
-        await client.stop()
     assert len(result) == 2
     assert result[0]["area_id"] == "cucina"
 
 
 @pytest.mark.asyncio
-async def test_get_area_registry_returns_empty_on_404(client):
-    mock_resp = AsyncMock()
-    mock_resp.status = 404
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-    with patch("aiohttp.ClientSession.get", return_value=mock_resp):
-        await client.start()
+async def test_get_area_registry_returns_empty_on_error(client):
+    session = AsyncMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    session.ws_connect = MagicMock(side_effect=OSError("refused"))
+    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
         result = await client.get_area_registry()
-        await client.stop()
     assert result == []
 
 
 @pytest.mark.asyncio
 async def test_get_entity_registry_returns_list(client):
-    mock_resp = AsyncMock()
-    mock_resp.status = 200
-    mock_resp.json = AsyncMock(return_value=[
+    entities = [
         {"entity_id": "light.luce_cucina", "area_id": "cucina", "name": "Luce cucina"},
         {"entity_id": "sensor.temp", "area_id": None, "name": "Temperatura"},
-    ])
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-    with patch("aiohttp.ClientSession.get", return_value=mock_resp):
-        await client.start()
+    ]
+    session, _ = _make_ws_registry_mock("config/entity_registry/list", entities)
+    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
         result = await client.get_entity_registry()
-        await client.stop()
     assert len(result) == 2
     assert result[0]["entity_id"] == "light.luce_cucina"
     assert result[0]["area_id"] == "cucina"
@@ -151,14 +163,12 @@ async def test_get_entity_registry_returns_list(client):
 
 @pytest.mark.asyncio
 async def test_get_entity_registry_returns_empty_on_error(client):
-    mock_resp = AsyncMock()
-    mock_resp.status = 401
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-    with patch("aiohttp.ClientSession.get", return_value=mock_resp):
-        await client.start()
+    session = AsyncMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    session.ws_connect = MagicMock(side_effect=OSError("refused"))
+    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
         result = await client.get_entity_registry()
-        await client.stop()
     assert result == []
 
 
