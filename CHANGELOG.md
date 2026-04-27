@@ -1,5 +1,13 @@
 # HIRIS — Changelog
 
+## [0.5.15] — 2026-04-27
+
+### Fixed
+- La card Lovelace restituiva HTTP 503 per tutte le chiamate API anche con il add-on attivo: il Supervisor HA assegna ad ogni add-on un token casuale come percorso ingress (`/api/hassio_ingress/{token}/`) invece dello slug, quindi il vecchio URL hardcoded `/api/hassio_ingress/hiris/` non veniva riconosciuto da HA
+- All'avvio HIRIS interroga il Supervisor (`/addons/self/info`) per ottenere il proprio `ingress_url` reale e lo scrive in `/homeassistant/www/hiris/hiris-ingress.json` (file statico pubblico, nessuna auth richiesta)
+- La card legge questo file una volta prima della prima chiamata API e usa l'URL corretto per tutte le operazioni; se il file non è disponibile usa l'URL basato sullo slug come fallback
+- `HirisChatCardEditor._loadAgents()` migrato da `hass.callApi()` a `fetch()` con auth esplicita (stesso motivo)
+
 ## [0.5.14] — 2026-04-27
 
 ### Fixed
