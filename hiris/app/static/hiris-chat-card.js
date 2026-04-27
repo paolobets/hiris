@@ -56,7 +56,6 @@ class HirisCard extends HTMLElement {
     this._polling = null;
     this._loading = false;
     this._error = null;
-    this._render();
   }
 
   static getConfigElement() { return document.createElement('hiris-chat-card-editor'); }
@@ -90,6 +89,7 @@ class HirisCard extends HTMLElement {
   getCardSize() { return 6; }
 
   connectedCallback() {
+    this._render();
     if (this._agentId && !this._polling) this._startPolling();
   }
 
@@ -340,9 +340,9 @@ class HirisCard extends HTMLElement {
     const inp = this._shadow.getElementById('inp');
     const snd = this._shadow.getElementById('snd');
     const tog = this._shadow.getElementById('tog');
-    const msgs = this._shadow.getElementById('msgs');
+    const msgsEl = this._shadow.getElementById('msgs');
 
-    if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
     if (snd) snd.onclick = () => {
       const t = inp?.value.trim();
       if (t) { inp.value = ''; this._sendMessage(t); }
@@ -365,6 +365,9 @@ class HirisChatCardEditor extends HTMLElement {
     this._config = {};
     this._hass = null;
     this._agents = null;   // null = loading, [] = loaded (possibly empty), 'error' = failed
+  }
+
+  connectedCallback() {
     this._render();
   }
 
