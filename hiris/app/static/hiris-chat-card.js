@@ -82,23 +82,26 @@ class HirisCard extends HTMLElement {
   }
 
   set hass(hass) {
+    if (!hass || !hass.states) return;
     this._hass = hass;
+    if (!this._agentId) return;
     // Phase 2: auto-detect MQTT entities pushed by MQTTPublisher
     const statusKey = `sensor.hiris_${this._agentId}_status`;
     if (hass.states[statusKey]) {
       this._status = hass.states[statusKey].state || 'idle';
       const budgetKey = `sensor.hiris_${this._agentId}_budget_eur`;
-      this._budgetEur = parseFloat(hass.states[budgetKey]?.state || '0');
+      const rawBudget = parseFloat(hass.states[budgetKey]?.state);
+      this._budgetEur = Number.isFinite(rawBudget) ? rawBudget : 0;
       const switchKey = `switch.hiris_${this._agentId}_enabled`;
       this._enabled = hass.states[switchKey]?.state !== 'off';
       if (this._shadow.querySelector('.card')) this._patchStatus();
       else this._render();
-    } else if (this._agentId && !this._polling) {
+    } else if (this.isConnected && !this._polling) {
       this._startPolling();
     }
   }
 
-  getCardSize() { return 6; }
+  getCardSize() { return this._agentId ? 6 : 2; }
 
   connectedCallback() {
     this._render();
@@ -175,6 +178,7 @@ class HirisCard extends HTMLElement {
     this._render();
 
     try {
+      if (!this._hass) { this._loading = false; this._render(); return; }
       const hassUrl = this._hass.connection.options.hassUrl || '';
       const auth = this._hass.connection.options.auth;
       const token = auth?.accessToken ?? auth?.data?.access_token ?? '';
@@ -424,11 +428,13 @@ class HirisChatCardEditor extends HTMLElement {
   }
 
   set hass(hass) {
+    if (!hass) return;
     this._hass = hass;
     if (this._agents === null) this._loadAgents();
   }
 
   async _loadAgents() {
+    if (!this._hass) return;
     this._agents = 'loading';  // sentinel: prevents concurrent fetches
     const slug = this._config.hiris_slug || 'hiris';
     try {
@@ -536,7 +542,7 @@ class HirisChatCardEditor extends HTMLElement {
       };
     }
     if (titleInput) {
-      titleInput.oninput = (e) => {
+      titleInput.onchange = (e) => {
         this._config = { ...this._config, title: e.target.value };
         this._fireConfigChanged();
       };
@@ -544,14 +550,20 @@ class HirisChatCardEditor extends HTMLElement {
   }
 }
 
-customElements.define('hiris-chat-card-editor', HirisChatCardEditor);
-customElements.define('hiris-chat-card', HirisCard);
+if (!customElements.get('hiris-chat-card-editor')) {
+  customElements.define('hiris-chat-card-editor', HirisChatCardEditor);
+}
+if (!customElements.get('hiris-chat-card')) {
+  customElements.define('hiris-chat-card', HirisCard);
+}
 
 // Register in window.customCards so HA shows the card in the picker
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: 'hiris-chat-card',
-  name: 'HIRIS Chat',
-  description: 'Chat con il tuo assistente smart home HIRIS',
-  preview: false,
-});
+if (!window.customCards.find(c => c.type === 'hiris-chat-card')) {
+  window.customCards.push({
+    type: 'hiris-chat-card',
+    name: 'HIRIS Chat',
+    description: 'Chat con il tuo assistente smart home HIRIS',
+    preview: false,
+  });
+}
