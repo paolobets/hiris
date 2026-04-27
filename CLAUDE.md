@@ -145,13 +145,18 @@ app/
 
 ### Phase 2 — Memoria + Tool aggiuntivi (v0.6.x)
 - Conversation memory SQLite (unlimited history + dynamic context window)
-- Additional tools: email, HTTP custom, calendar, input_helper
+- Tool: `http_request(url, method, headers, body)` — custom API calls with per-agent allowed_urls
+- Tool: `get_calendar_events(days)` + `create_calendar_event(...)` via HA calendar integration
+- Tool: `set_input_helper(entity_id, value)` for input_boolean/number/text/select
 - HACS official distribution
 
 ### Phase 3 — Plugin + Canvas (v0.7.x+)
 - Canvas drag-and-drop designer (n8n style)
 - Retro Panel plugin integration (embedded chat in kiosk, shared auth)
 - Multi-user / role support
+
+### Phase 4 — Integrazioni esterne (futuro)
+- Tool: `send_email(to, subject, body)` via SMTP
 
 ---
 

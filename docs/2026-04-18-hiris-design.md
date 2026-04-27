@@ -304,16 +304,18 @@ Claude calls: send_notification("Irrigazione attivata (20 min) — ieri 35°C, u
 
 ### Phase 2 — Memoria + Tool aggiuntivi (v0.6.x) — in pianificazione
 - [ ] Memoria conversazionale SQLite (storia illimitata + finestra contestuale dinamica)
-- [ ] Tool: `send_email(to, subject, body)` via SMTP
 - [ ] Tool: `http_request(url, method, headers, body)` con allowed_urls per agente
-- [ ] Tool: `get_calendar_events(days)` via HA calendario integration
+- [ ] Tool: `get_calendar_events(days)` + `create_calendar_event(...)` via HA calendario integration
 - [ ] Tool: `set_input_helper(entity_id, value)` per input_boolean/number/text/select
+- [ ] HACS official distribution
 
 ### Phase 3 — Plugin + Canvas (v0.7.x+) — futuro
 - [ ] Canvas drag-and-drop designer (n8n style)
 - [ ] Retro Panel plugin integration (embedded chat in kiosk, shared auth)
 - [ ] Multi-user / role support
-- [ ] HACS official distribution
+
+### Phase 4 — Integrazioni esterne (futuro)
+- [ ] Tool: `send_email(to, subject, body)` via SMTP
 
 ---
 
