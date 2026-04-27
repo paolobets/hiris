@@ -148,6 +148,9 @@ app/
 - Tool: `http_request(url, method, headers, body)` — custom API calls with per-agent allowed_urls
 - Tool: `get_calendar_events(days)` + `create_calendar_event(...)` via HA calendar integration
 - Tool: `set_input_helper(entity_id, value)` for input_boolean/number/text/select
+- Tool: `send_telegram(chat_id, message)` — Telegram Bot API (proactive + reactive agent actions)
+- Tool: `send_whatsapp(to, message)` — WhatsApp via CallMeBot or similar free gateway
+- Agent action chaining: structured `actions[]` block with sequential/conditional step execution (notify → wait → verify → escalate)
 - HACS official distribution
 
 ### Phase 3 — Plugin + Canvas (v0.7.x+)

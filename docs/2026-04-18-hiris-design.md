@@ -307,6 +307,9 @@ Claude calls: send_notification("Irrigazione attivata (20 min) — ieri 35°C, u
 - [ ] Tool: `http_request(url, method, headers, body)` con allowed_urls per agente
 - [ ] Tool: `get_calendar_events(days)` + `create_calendar_event(...)` via HA calendario integration
 - [ ] Tool: `set_input_helper(entity_id, value)` per input_boolean/number/text/select
+- [ ] Tool: `send_telegram(chat_id, message)` — Telegram Bot API per azioni proattive/reattive degli agenti
+- [ ] Tool: `send_whatsapp(to, message)` — WhatsApp via CallMeBot o gateway gratuito equivalente
+- [ ] Agent action chaining: blocco `actions[]` strutturato con esecuzione sequenziale/condizionale (notifica → attendi → verifica → escalation)
 - [ ] HACS official distribution
 
 ### Phase 3 — Plugin + Canvas (v0.7.x+) — parzialmente completata
