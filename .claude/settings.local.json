@@ -59,7 +59,8 @@
       "Bash(py -m pip install pytest-aiohttp==1.0.5)",
       "Bash(py -m pytest --co tests/ -q)",
       "Bash(py -m pytest tests/test_api.py -v)",
-      "Bash(python -m pytest tests/test_api.py -v)"
+      "Bash(python -m pytest tests/test_api.py -v)",
+      "Bash(py scripts/release.py --version 0.5.16 --skip-tests)"
     ]
   }
 }
