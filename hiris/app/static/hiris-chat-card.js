@@ -120,16 +120,22 @@ class HirisCard extends HTMLElement {
   async _fetchStatus() {
     if (!this._hass) return;
     try {
-      const agents = await this._hass.callApi('GET', `hassio_ingress/${this._slug}/api/agents`);
-      const agent = agents.find(a => a.id === this._agentId);
-      if (agent) {
-        this._status = agent.status || 'idle';
-        this._enabled = !!agent.enabled;
-        this._budgetEur = agent.budget_eur || 0;
-        this._budgetLimitEur = agent.budget_limit_eur || 0;
-        this._error = null;
-      } else {
-        this._error = 'Agente non configurato';
+      const resp = await fetch(this._hirisUrl('api/agents'), {
+        headers: { 'Authorization': `Bearer ${this._authToken()}` },
+      });
+      if (!resp.ok) { this._error = `⚠ HIRIS non disponibile (${resp.status})`; }
+      else {
+        const agents = await resp.json();
+        const agent = Array.isArray(agents) && agents.find(a => a.id === this._agentId);
+        if (agent) {
+          this._status = agent.status || 'idle';
+          this._enabled = !!agent.enabled;
+          this._budgetEur = agent.budget_eur || 0;
+          this._budgetLimitEur = agent.budget_limit_eur || 0;
+          this._error = null;
+        } else {
+          this._error = 'Agente non configurato';
+        }
       }
     } catch (e) {
       this._error = '⚠ HIRIS non disponibile';
@@ -179,27 +185,26 @@ class HirisCard extends HTMLElement {
 
     try {
       if (!this._hass) { this._loading = false; this._render(); return; }
-      const hassUrl = this._hass.connection.options.hassUrl || '';
-      const auth = this._hass.connection.options.auth;
-      const token = auth?.accessToken ?? auth?.data?.access_token ?? '';
-      const url = `${hassUrl}/api/hassio_ingress/${this._slug}/api/chat`;
-
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
 
-      const resp = await fetch(url, {
+      const resp = await fetch(this._hirisUrl('api/chat'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${this._authToken()}`,
         },
         body: JSON.stringify({ message: text, agent_id: this._agentId, stream: true }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
 
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      if (!resp.ok) {
+        let msg = `HTTP ${resp.status}`;
+        try { const d = await resp.json(); msg = d.error || msg; } catch {}
+        throw new Error(msg);
+      }
       const ct = resp.headers.get('Content-Type') || '';
 
       if (ct.includes('text/event-stream')) {
@@ -245,15 +250,28 @@ class HirisCard extends HTMLElement {
   async _toggleAgent() {
     if (!this._hass) return;
     try {
-      await this._hass.callApi(
-        'PUT',
-        `hassio_ingress/${this._slug}/api/agents/${this._agentId}`,
-        { enabled: !this._enabled },
-      );
+      await fetch(this._hirisUrl(`api/agents/${this._agentId}`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this._authToken()}`,
+        },
+        body: JSON.stringify({ enabled: !this._enabled }),
+      });
       await this._fetchStatus();
     } catch (e) {
       console.error('HIRIS toggle error', e);
     }
+  }
+
+  _hirisUrl(path) {
+    const base = this._hass?.connection?.options?.hassUrl || '';
+    return `${base}/api/hassio_ingress/${this._slug}/${path}`;
+  }
+
+  _authToken() {
+    const auth = this._hass?.connection?.options?.auth;
+    return auth?.accessToken ?? auth?.data?.access_token ?? '';
   }
 
   _statusColor() {
