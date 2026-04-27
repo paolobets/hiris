@@ -1,9 +1,9 @@
 # HIRIS — Design Spec
 **Home Intelligent Reasoning & Integration System**
 
-**Date:** 2026-04-18
-**Status:** Feasibility Study / Brainstorming
-**Branch:** claude/beautiful-booth-639783 (study branch, no production changes)
+**Date:** 2026-04-18 (aggiornato 2026-04-27)
+**Status:** In Produzione — v0.5.16 su master
+**Branch:** master
 
 ---
 
@@ -265,14 +265,17 @@ Claude calls: send_notification("Irrigazione attivata (20 min) — ieri 35°C, u
 
 ## 11. Phase Roadmap
 
-### Phase 1 — Beta Standalone ✅ completata (v0.3.17)
+### Phase 0 — Scaffold ✅ completata
 - [x] HA add-on structure (config.yaml, Docker, aiohttp server)
+- [x] Basic routes: `/` placeholder, `/api/health`
+
+### Phase 1 — Beta Standalone ✅ completata (v0.3.17)
 - [x] HA client (REST + History + WebSocket)
 - [x] Claude runner con 15+ tool + retry logic (429/529)
 - [x] Flow engine (scheduler + state_changed + cron trigger)
 - [x] Agent designer UI (template, log esecuzioni, require_confirmation)
 - [x] Chat NL interface con storia persistente
-- [x] Notification: HA push + Telegram + Retro Panel toast
+- [x] Notification: HA push + Telegram
 - [x] Agent types: Monitor, Reactive, Preventive, Chat
 - [x] Security: allowed_entities, allowed_services, restrict_to_home, require_confirmation
 - [x] Test runner per agent
@@ -282,20 +285,31 @@ Claude calls: send_notification("Irrigazione attivata (20 min) — ieri 35°C, u
 - [x] Budget auto-disable per agente
 - [x] LLM Router (modello locale OpenAI-compatible)
 
-### Phase 1.x — Miglioramenti immediati (pre-v0.4.0)
-- [ ] Conversation history caching (cache_control su messaggi stabili >5 min)
-- [ ] HA area discovery automatico al boot (da HA area registry)
-- [ ] UI agent designer: token counter live + anteprima context_str
-- [ ] Onboarding wizard (prima apertura: guida creazione primo agente)
+### Phase 1.x — Miglioramenti immediati ✅ completata (v0.4.x–v0.5.1)
+- [x] Conversation history caching (cache_control su messaggi stabili)
+- [x] HA area discovery automatico al boot via WebSocket area registry
+- [x] UI agent designer: anteprima context_str (`/api/agents/{id}/context-preview`)
+- [x] Onboarding wizard (prima apertura: guida creazione primo agente)
+- [x] Entity chip selector nel designer
+- [x] Action Builder (Notifica + Chiama Servizio)
+- [x] Per-agent usage tracking + budget EUR auto-disable
 
-### Phase 2 — Memoria + Tool aggiuntivi (v0.4.x)
-- [ ] Memoria conversazionale SQLite (storia illimitata + finestra contestuale dinamica + riassunti automatici)
+### Phase 1.5 — Lovelace Dashboard Card ✅ completata (v0.5.8–v0.5.16)
+- [x] `hiris-chat-card` custom element registrato in `window.customCards`
+- [x] Visual editor (`hiris-chat-card-editor`) per il card picker HA
+- [x] Deploy automatico in `/local/hiris/` + registrazione risorsa Lovelace via WebSocket
+- [x] Ingress URL discovery (`hiris-ingress.json`) — risolve 503 su percorso ingress random
+- [x] Chat streaming con indicatore HIRIS icon + 3 dot animati
+- [x] Toggle enable/disable agente dalla card
+
+### Phase 2 — Memoria + Tool aggiuntivi (v0.6.x) — in pianificazione
+- [ ] Memoria conversazionale SQLite (storia illimitata + finestra contestuale dinamica)
 - [ ] Tool: `send_email(to, subject, body)` via SMTP
 - [ ] Tool: `http_request(url, method, headers, body)` con allowed_urls per agente
 - [ ] Tool: `get_calendar_events(days)` via HA calendario integration
 - [ ] Tool: `set_input_helper(entity_id, value)` per input_boolean/number/text/select
 
-### Phase 3 — Plugin + Canvas (v0.5.x+)
+### Phase 3 — Plugin + Canvas (v0.7.x+) — futuro
 - [ ] Canvas drag-and-drop designer (n8n style)
 - [ ] Retro Panel plugin integration (embedded chat in kiosk, shared auth)
 - [ ] Multi-user / role support

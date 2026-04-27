@@ -120,26 +120,38 @@ app/
 
 ## Roadmap
 
-### Phase 0 — Scaffold (done)
+### Phase 0 — Scaffold ✅ done
 - HA add-on structure (config.yaml, Docker, aiohttp server)
 - Basic routes: `/` placeholder, `/api/health`
 
-### Phase 1 — Beta Standalone
+### Phase 1 — Beta Standalone ✅ done (v0.3.17)
 - HA client (REST + History + WebSocket)
-- Claude runner with 8 tools
-- Flow engine (scheduler + state_changed trigger)
-- Step-based agent designer UI
-- Chat NL interface
-- Notifications: HA push + Telegram + Retro Panel toast
+- Claude runner with 15+ tools + retry logic
+- Flow engine (scheduler + state_changed + cron trigger)
+- Step-based agent designer UI + onboarding wizard
+- Chat NL interface with persistent history
+- Notifications: HA push + Telegram
 - Security: API key vault, service whitelist, tool permissions per agent
-- Test runner per agent
+- Test runner per agent, budget auto-disable, per-agent usage tracking
+- SemanticContextMap + KnowledgeDB (area-aware context)
+- Task engine, LLM Router (local model support)
 
-### Phase 2 — Retro Panel Plugin + Canvas
-- Canvas drag-and-drop designer (n8n style)
-- Retro Panel plugin integration (embedded chat in kiosk)
-- Conversation memory (Redis or SQLite)
-- Additional tools: email, HTTP custom, calendar
+### Phase 1.5 — Lovelace Dashboard Card ✅ done (v0.5.16)
+- `hiris-chat-card` custom element + card picker registration
+- Visual config editor (`hiris-chat-card-editor`)
+- Auto-deploy to `/local/hiris/` + Lovelace resource registration via WebSocket
+- Ingress URL discovery via `hiris-ingress.json` (fixes 503 on random ingress token)
+- Animated typing indicator (HIRIS icon + 3 dots)
+
+### Phase 2 — Memoria + Tool aggiuntivi (v0.6.x)
+- Conversation memory SQLite (unlimited history + dynamic context window)
+- Additional tools: email, HTTP custom, calendar, input_helper
 - HACS official distribution
+
+### Phase 3 — Plugin + Canvas (v0.7.x+)
+- Canvas drag-and-drop designer (n8n style)
+- Retro Panel plugin integration (embedded chat in kiosk, shared auth)
+- Multi-user / role support
 
 ---
 
