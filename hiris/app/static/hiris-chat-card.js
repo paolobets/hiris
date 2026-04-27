@@ -11,7 +11,6 @@
 
 const POLL_MS = 30_000;
 const CHAT_TIMEOUT_MS = 30_000;
-const EUR_RATE = 0.92;
 
 // HIRIS SVG icon inlined as a data URI to avoid Shadow DOM ID conflicts
 // when multiple card instances are present on the same dashboard.
@@ -39,6 +38,32 @@ const _HIRIS_ICON_DATA = 'data:image/svg+xml,' + encodeURIComponent(
   '<circle cx="50" cy="50" r="4.5" fill="white"/>' +
   '</svg>'
 );
+
+// ---------------------------------------------------------------------------
+// Module-level ingress URL discovery
+// The Supervisor assigns a random token (not the add-on slug) to the ingress
+// path. This function reads hiris-ingress.json written by the add-on at startup.
+// ---------------------------------------------------------------------------
+let _cachedIngressBase;
+
+async function _discoverIngressBase(slug) {
+  if (_cachedIngressBase !== undefined) return;
+  _cachedIngressBase = null;
+  try {
+    const r = await fetch(`/local/${slug}/hiris-ingress.json`);
+    if (r.ok) {
+      const d = await r.json();
+      const url = d?.ingress_url;
+      if (typeof url === 'string' && url) {
+        _cachedIngressBase = url.endsWith('/') ? url : url + '/';
+      }
+    }
+  } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// HirisCard — main card element
+// ---------------------------------------------------------------------------
 
 class HirisCard extends HTMLElement {
   constructor() {
@@ -72,7 +97,6 @@ class HirisCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    // Phase 2: auto-detect MQTT entities pushed by MQTTPublisher
     const statusKey = `sensor.hiris_${this._agentId}_status`;
     if (hass.states[statusKey]) {
       this._status = hass.states[statusKey].state || 'idle';
@@ -102,21 +126,40 @@ class HirisCard extends HTMLElement {
     this._polling = setInterval(() => this._fetchStatus(), POLL_MS);
   }
 
+  _hirisUrl(path) {
+    const base = _cachedIngressBase
+      ?? `${this._hass?.connection?.options?.hassUrl || ''}/api/hassio_ingress/${this._slug}/`;
+    return `${base}${path}`;
+  }
+
+  _authToken() {
+    const auth = this._hass?.connection?.options?.auth;
+    return auth?.accessToken ?? auth?.data?.access_token ?? '';
+  }
+
   async _fetchStatus() {
     if (!this._hass) return;
+    await _discoverIngressBase(this._slug);
     try {
-      const agents = await this._hass.callApi('GET', `hassio_ingress/${this._slug}/api/agents`);
-      const agent = agents.find(a => a.id === this._agentId);
-      if (agent) {
-        this._status = agent.status || 'idle';
-        this._enabled = !!agent.enabled;
-        this._budgetEur = agent.budget_eur || 0;
-        this._budgetLimitEur = agent.budget_limit_eur || 0;
-        this._error = null;
+      const resp = await fetch(this._hirisUrl('api/agents'), {
+        headers: { 'Authorization': `Bearer ${this._authToken()}` },
+      });
+      if (!resp.ok) {
+        this._error = `⚠ HIRIS non disponibile (${resp.status})`;
       } else {
-        this._error = 'Agente non configurato';
+        const agents = await resp.json();
+        const agent = Array.isArray(agents) && agents.find(a => a.id === this._agentId);
+        if (agent) {
+          this._status = agent.status || 'idle';
+          this._enabled = !!agent.enabled;
+          this._budgetEur = agent.budget_eur || 0;
+          this._budgetLimitEur = agent.budget_limit_eur || 0;
+          this._error = null;
+        } else {
+          this._error = 'Agente non configurato';
+        }
       }
-    } catch (e) {
+    } catch {
       this._error = '⚠ HIRIS non disponibile';
     }
     this._render();
@@ -130,29 +173,30 @@ class HirisCard extends HTMLElement {
     this._messages.push(assistantMsg);
     this._render();
 
+    await _discoverIngressBase(this._slug);
+    const controller = new AbortController();
+    // Keep timeout active through the entire streaming lifecycle
+    const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+
     try {
-      const hassUrl = this._hass.connection.options.hassUrl || '';
-      const token = this._hass.connection.options.auth?.data?.access_token || '';
-      const url = `${hassUrl}/api/hassio_ingress/${this._slug}/api/chat`;
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
-
-      const resp = await fetch(url, {
+      const resp = await fetch(this._hirisUrl('api/chat'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${this._authToken()}`,
         },
         body: JSON.stringify({ message: text, agent_id: this._agentId, stream: true }),
         signal: controller.signal,
       });
-      clearTimeout(timeout);
 
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      if (!resp.ok) {
+        let msg = `HTTP ${resp.status}`;
+        try { const d = await resp.json(); msg = d.error || msg; } catch {}
+        throw new Error(msg);
+      }
+
       const ct = resp.headers.get('Content-Type') || '';
-
       if (ct.includes('text/event-stream')) {
         const reader = resp.body.getReader();
         const dec = new TextDecoder();
@@ -176,6 +220,8 @@ class HirisCard extends HTMLElement {
             } catch {}
           }
         }
+        // Stream closed — clear flag regardless of whether SSE 'done' event arrived
+        assistantMsg.streaming = false;
       } else {
         const data = await resp.json();
         assistantMsg.text = data.response || 'Nessuna risposta';
@@ -187,6 +233,7 @@ class HirisCard extends HTMLElement {
         : `Errore: ${e.message}`;
       assistantMsg.streaming = false;
     } finally {
+      clearTimeout(timeout);
       this._loading = false;
       this._render();
       await this._fetchStatus();
@@ -195,13 +242,17 @@ class HirisCard extends HTMLElement {
 
   async _toggleAgent() {
     if (!this._hass) return;
+    await _discoverIngressBase(this._slug);
     try {
-      await this._hass.callApi(
-        'PUT',
-        `hassio_ingress/${this._slug}/api/agents/${this._agentId}`,
-        { enabled: !this._enabled },
-      );
-      await this._fetchStatus();
+      const resp = await fetch(this._hirisUrl(`api/agents/${this._agentId}`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this._authToken()}`,
+        },
+        body: JSON.stringify({ enabled: !this._enabled }),
+      });
+      if (resp.ok) await this._fetchStatus();
     } catch (e) {
       console.error('HIRIS toggle error', e);
     }
@@ -209,13 +260,13 @@ class HirisCard extends HTMLElement {
 
   _statusColor() {
     return {
-      idle: '#4caf50', running: '#2196f3', error: '#f44336',
-      unavailable: '#9e9e9e',
-    }[this._status] || '#9e9e9e';
+      idle: '#10b981', running: '#3b82f6', error: '#ef4444',
+      unavailable: '#9ca3af',
+    }[this._status] || '#9ca3af';
   }
 
   _iconHtml(size) {
-    return `<img src="${_HIRIS_ICON_DATA}" width="${size}" height="${size}" style="border-radius:50%;vertical-align:middle;flex-shrink:0" alt="HIRIS">`;
+    return `<img src="${_HIRIS_ICON_DATA}" width="${size}" height="${size}" style="border-radius:50%;display:block;flex-shrink:0" alt="HIRIS">`;
   }
 
   _esc(s) {
@@ -258,12 +309,32 @@ class HirisCard extends HTMLElement {
     const pct = this._budgetLimitEur > 0
       ? Math.min(100, (this._budgetEur / this._budgetLimitEur) * 100)
       : 0;
-    const color = this._statusColor();
-    const msgs = this._messages.map(m => `
-      <div class="msg ${m.role}">
-        ${this._esc(m.text).replace(/\n/g, '<br>')}
-        ${m.streaming ? '<span class="cursor">&#x258C;</span>' : ''}
-      </div>`).join('');
+
+    const msgs = this._messages.map(m => {
+      const text = this._esc(m.text).replace(/\n/g, '<br>');
+      if (m.role === 'user') {
+        return `<div class="msg-row user">
+          <div class="msg-col"><div class="bubble">${text}</div></div>
+        </div>`;
+      }
+      // assistant — show typing indicator when waiting for first token
+      if (m.streaming && !m.text) {
+        return `<div class="typing-row">
+          <div class="avatar">${this._iconHtml(28)}</div>
+          <div class="typing-bubble">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+          </div>
+        </div>`;
+      }
+      return `<div class="msg-row assistant">
+        <div class="avatar">${this._iconHtml(28)}</div>
+        <div class="msg-col">
+          <div class="bubble">${text}${m.streaming ? '<span class="cursor">&#x258C;</span>' : ''}</div>
+        </div>
+      </div>`;
+    }).join('');
 
     this._shadow.innerHTML = `
       <style>
@@ -274,39 +345,72 @@ class HirisCard extends HTMLElement {
           padding: 12px 16px; border-bottom: 1px solid var(--divider-color,#e0e0e0); }
         .header-left { display: flex; align-items: center; gap: 8px; }
         .title { font-size: 15px; font-weight: 600; color: var(--primary-text-color,#333); }
-        .status { display: flex; align-items: center; gap: 6px; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: ${color}; }
-        .status-text { font-size: 12px; color: var(--secondary-text-color,#666); }
         .toggle { cursor: pointer; font-size: 18px; background: none; border: none;
-          padding: 0; line-height: 1; }
-        .budget-bar { height: 4px; background: var(--divider-color,#eee); }
-        .budget-fill { height: 100%; width: ${pct}%; background: var(--primary-color,#03a9f4);
+          padding: 0; line-height: 1; opacity: .9; }
+        .toggle:hover { opacity: 1; }
+        .budget-bar { height: 3px; background: var(--divider-color,#eee); }
+        .budget-fill { height: 100%; width: ${pct}%; background: var(--primary-color,#3b82f6);
           transition: width .3s; }
-        .budget-text { font-size: 11px; color: var(--secondary-text-color,#888);
+        .budget-text { font-size: 11px; color: var(--secondary-text-color,#9ca3af);
           padding: 2px 16px 4px; }
-        .messages { height: 200px; overflow-y: auto; padding: 12px 16px;
-          display: flex; flex-direction: column; gap: 8px; }
-        .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px;
-          font-size: 14px; line-height: 1.4; word-break: break-word; }
-        .msg.user { align-self: flex-end; background: var(--primary-color,#03a9f4);
-          color: #fff; border-radius: 12px 12px 2px 12px; }
-        .msg.assistant { align-self: flex-start;
-          background: var(--secondary-background-color,#f5f5f5);
-          color: var(--primary-text-color,#333); border-radius: 12px 12px 12px 2px; }
+        .messages { height: 220px; overflow-y: auto; padding: 12px 16px;
+          display: flex; flex-direction: column; gap: 10px; }
+        /* User message */
+        .msg-row { display: flex; align-items: flex-end; gap: 8px; }
+        .msg-row.user { align-self: flex-end; flex-direction: row-reverse; max-width: 82%; }
+        .msg-row.assistant { align-self: flex-start; max-width: 82%; }
+        .avatar { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center; }
+        .msg-col { display: flex; flex-direction: column; }
+        .bubble { padding: 8px 12px; border-radius: 18px;
+          font-size: 14px; line-height: 1.5; word-break: break-word; }
+        .msg-row.user .bubble {
+          background: var(--primary-color,#2563eb); color: #fff;
+          border-radius: 18px 18px 4px 18px; }
+        .msg-row.assistant .bubble {
+          background: var(--card-background-color,#fff);
+          color: var(--primary-text-color,#111);
+          border: 1px solid var(--divider-color,#e5e7eb);
+          border-radius: 18px 18px 18px 4px; }
+        /* Typing indicator */
+        .typing-row { display: flex; align-items: flex-end; gap: 8px; align-self: flex-start; }
+        .typing-bubble {
+          background: var(--card-background-color,#fff);
+          border: 1px solid var(--divider-color,#e5e7eb);
+          border-radius: 18px; border-bottom-left-radius: 4px;
+          padding: 10px 14px; display: flex; gap: 4px; align-items: center; }
+        .typing-dot { width: 6px; height: 6px; border-radius: 50%;
+          background: #9ca3af; animation: bounce 1.2s ease-in-out infinite; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+          0%, 60%, 100% { transform: translateY(0); }
+          30% { transform: translateY(-6px); }
+        }
+        /* Streaming cursor */
         .cursor { animation: blink 1s step-start infinite; }
         @keyframes blink { 50% { opacity: 0; } }
-        .empty { color: #aaa; text-align: center; padding-top: 60px; font-size: 13px; }
-        .error-badge { padding: 8px 16px; color: var(--warning-color,#ff9800);
-          font-size: 13px; text-align: center; }
-        .input-row { display: flex; gap: 8px; padding: 12px 16px;
+        .empty { color: var(--secondary-text-color,#aaa); text-align: center;
+          padding-top: 60px; font-size: 13px; }
+        .error-badge { padding: 8px 16px; color: var(--warning-color,#f59e0b);
+          font-size: 12px; text-align: center; }
+        .input-row { display: flex; gap: 8px; padding: 12px 16px; align-items: center;
           border-top: 1px solid var(--divider-color,#e0e0e0); }
         .input { flex: 1; padding: 8px 12px; border: 1px solid var(--divider-color,#e0e0e0);
-          border-radius: 20px; font-size: 14px; outline: none;
-          background: var(--secondary-background-color,#f5f5f5);
-          color: var(--primary-text-color,#333); }
-        .send { padding: 8px 16px; background: var(--primary-color,#03a9f4); color: #fff;
-          border: none; border-radius: 20px; cursor: pointer; font-size: 14px; }
-        .send:disabled { opacity: .5; cursor: default; }
+          border-radius: 20px; font-size: 14px; outline: none; font-family: inherit;
+          background: var(--secondary-background-color,#f9fafb);
+          color: var(--primary-text-color,#111);
+          transition: border-color .15s; }
+        .input:focus { border-color: var(--primary-color,#3b82f6); }
+        .send { width: 36px; height: 36px; background: var(--primary-color,#2563eb); color: #fff;
+          border: none; border-radius: 50%; cursor: pointer; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          transition: background .15s; }
+        .send:hover { opacity: .9; }
+        .send:disabled { opacity: .45; cursor: default; }
+        .messages::-webkit-scrollbar { width: 3px; }
+        .messages::-webkit-scrollbar-track { background: transparent; }
+        .messages::-webkit-scrollbar-thumb { background: var(--divider-color,#e0e0e0); border-radius: 2px; }
       </style>
       <div class="card">
         <div class="header">
@@ -314,13 +418,9 @@ class HirisCard extends HTMLElement {
             ${this._iconHtml(22)}
             <span class="title">${this._esc(this._title)}</span>
           </div>
-          <div class="status">
-            <span class="dot"></span>
-            <span class="status-text">${this._esc(this._status)}</span>
-            <button class="toggle" id="tog" title="${this._enabled ? 'Disabilita' : 'Abilita'}">
-              ${this._enabled ? '&#x1F7E2;' : '&#x26AA;'}
-            </button>
-          </div>
+          <button class="toggle" id="tog" title="${this._enabled ? 'Disabilita agente' : 'Abilita agente'}">
+            ${this._enabled ? '&#x1F7E2;' : '&#x26AA;'}
+          </button>
         </div>
         ${this._budgetLimitEur > 0 ? `
           <div class="budget-bar"><div class="budget-fill"></div></div>
@@ -333,7 +433,11 @@ class HirisCard extends HTMLElement {
         <div class="input-row">
           <input class="input" id="inp" type="text" placeholder="Scrivi un messaggio&#x2026;"
             ${!this._enabled ? 'disabled' : ''} />
-          <button class="send" id="snd" ${this._loading || !this._enabled ? 'disabled' : ''}>&#x2191;</button>
+          <button class="send" id="snd" ${this._loading || !this._enabled ? 'disabled' : ''} title="Invia">
+            <svg viewBox="0 0 24 24" width="18" height="18">
+              <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
         </div>
       </div>`;
 
@@ -364,7 +468,7 @@ class HirisChatCardEditor extends HTMLElement {
     this._shadow = this.attachShadow({ mode: 'open' });
     this._config = {};
     this._hass = null;
-    this._agents = null;   // null = loading, [] = loaded (possibly empty), 'error' = failed
+    this._agents = null;   // null = not yet loaded, 'loading' = in-flight, [] = loaded, 'error' = failed
   }
 
   connectedCallback() {
@@ -382,12 +486,24 @@ class HirisChatCardEditor extends HTMLElement {
   }
 
   async _loadAgents() {
-    this._agents = 'loading';  // sentinel: prevents concurrent fetches
+    this._agents = 'loading';
     const slug = this._config.hiris_slug || 'hiris';
+    await _discoverIngressBase(slug);
+    const base = _cachedIngressBase
+      ?? `${this._hass?.connection?.options?.hassUrl || ''}/api/hassio_ingress/${slug}/`;
+    const auth = this._hass?.connection?.options?.auth;
+    const token = auth?.accessToken ?? auth?.data?.access_token ?? '';
     try {
-      const result = await this._hass.callApi('GET', `hassio_ingress/${slug}/api/agents`);
-      this._agents = Array.isArray(result) ? result : [];
-    } catch (e) {
+      const resp = await fetch(`${base}api/agents`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        this._agents = Array.isArray(result) ? result : [];
+      } else {
+        this._agents = 'error';
+      }
+    } catch {
       this._agents = 'error';
     }
     this._render();
@@ -411,17 +527,14 @@ class HirisChatCardEditor extends HTMLElement {
 
     let agentField;
     if (this._agents === null || this._agents === 'loading') {
-      // Still loading
       agentField = `<select disabled style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#f9fafb;color:#9ca3af;box-sizing:border-box">
         <option>Caricamento agenti…</option>
       </select>`;
     } else if (this._agents === 'error' || this._agents.length === 0) {
-      // Fallback to text input
       agentField = `<input id="agentInput" type="text" value="${this._esc(agentId)}"
         placeholder="es. hiris-default"
         style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;color:#111;box-sizing:border-box">`;
     } else {
-      // Populated dropdown
       const options = this._agents.map(a => {
         const sel = a.id === agentId ? ' selected' : '';
         return `<option value="${this._esc(a.id)}"${sel}>${this._esc(a.name || a.id)} (${this._esc(a.id)})</option>`;
@@ -471,7 +584,6 @@ class HirisChatCardEditor extends HTMLElement {
         </div>
       </div>`;
 
-    // Wire up events
     const agentSelect = this._shadow.getElementById('agentSelect');
     const agentInput = this._shadow.getElementById('agentInput');
     const titleInput = this._shadow.getElementById('titleInput');

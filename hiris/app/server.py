@@ -1,5 +1,6 @@
 # hiris/app/server.py
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -72,6 +73,44 @@ def _deploy_card_to_www(slug: str = "hiris") -> None:
         logger.info("HIRIS card deployed to %s", dst)
     except Exception as exc:
         logger.error("Failed to deploy HIRIS card to %s: %s", dst, exc, exc_info=True)
+
+
+async def _write_ingress_config(supervisor_token: str, slug: str = "hiris") -> None:
+    """Write <ha-config>/www/{slug}/hiris-ingress.json with the real ingress_url.
+
+    The Supervisor assigns a random token (not the add-on slug) to the ingress
+    path: /api/hassio_ingress/{random_token}/. The Lovelace card reads this file
+    at startup so it can call the correct URL without hardcoding the slug.
+    """
+    ha_config = _find_ha_config_dir()
+    if ha_config is None:
+        return
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "http://supervisor/addons/self/info",
+                headers={"Authorization": f"Bearer {supervisor_token}"},
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning("Supervisor /addons/self/info returned %s — skipping ingress config", resp.status)
+                    return
+                data = await resp.json()
+    except Exception as exc:
+        logger.warning("Cannot reach Supervisor API (%s) — skipping ingress config", exc)
+        return
+    ingress_url = (data.get("data") or {}).get("ingress_url")
+    if not ingress_url:
+        logger.warning("Supervisor /addons/self/info has no ingress_url field — skipping")
+        return
+    dst_dir = os.path.join(ha_config, "www", slug)
+    dst = os.path.join(dst_dir, "hiris-ingress.json")
+    try:
+        os.makedirs(dst_dir, exist_ok=True)
+        with open(dst, "w", encoding="utf-8") as f:
+            json.dump({"ingress_url": ingress_url}, f)
+        logger.info("HIRIS ingress config written: %s → %s", ingress_url, dst)
+    except Exception as exc:
+        logger.error("Failed to write ingress config to %s: %s", dst, exc)
 
 
 async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
@@ -189,6 +228,7 @@ async def _on_startup(app: web.Application) -> None:
     # Deploy card JS to /homeassistant/www/ and register as /local/ resource (no auth)
     hiris_slug = os.environ.get("HIRIS_SLUG", "hiris")
     _deploy_card_to_www(hiris_slug)
+    await _write_ingress_config(os.environ.get("SUPERVISOR_TOKEN", ""), hiris_slug)
     await _register_lovelace_card(
         ha_base_url,
         os.environ.get("SUPERVISOR_TOKEN", ""),
