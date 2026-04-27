@@ -324,3 +324,30 @@ def test_card_url_is_local_not_ingress():
     src = _js()
     assert "/local/hiris/hiris-chat-card.js" in src
     assert "/api/hassio_ingress/hiris/static/hiris-chat-card.js" not in src
+
+
+def test_no_render_in_hiriscard_constructor():
+    """HirisCard constructor must not call _render() — HA picker instantiates elements before connection."""
+    import re
+    src = _js()
+    # Find the HirisCard class body (from 'class HirisCard' to 'class HirisChatCardEditor')
+    match = re.search(r"class HirisCard extends HTMLElement \{(.+?)class HirisChatCardEditor", src, re.DOTALL)
+    assert match, "HirisCard class not found"
+    card_body = match.group(1)
+    # Extract constructor block only
+    ctor_match = re.search(r"constructor\(\)\s*\{(.+?)\n  \}", card_body, re.DOTALL)
+    assert ctor_match, "HirisCard constructor not found"
+    assert "_render()" not in ctor_match.group(1), "HirisCard constructor must not call _render()"
+
+
+def test_no_render_in_editor_constructor():
+    """HirisChatCardEditor constructor must not call _render() — picker instantiates before connection."""
+    import re
+    src = _js()
+    # Find the HirisChatCardEditor class body
+    match = re.search(r"class HirisChatCardEditor extends HTMLElement \{(.+?)customElements\.define", src, re.DOTALL)
+    assert match, "HirisChatCardEditor class not found"
+    editor_body = match.group(1)
+    ctor_match = re.search(r"constructor\(\)\s*\{(.+?)\n  \}", editor_body, re.DOTALL)
+    assert ctor_match, "HirisChatCardEditor constructor not found"
+    assert "_render()" not in ctor_match.group(1), "HirisChatCardEditor constructor must not call _render()"
