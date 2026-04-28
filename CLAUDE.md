@@ -183,13 +183,15 @@ Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMP
 - `TaskEngine`: `immediate` trigger type; per-action `on_fail` loop with `_stop` flag
 - config.html UI: trigger_on checkboxes, on_fail dropdown, wait/verify action types with child-action editor ("Poi esegui")
 
-#### Sprint C — Memory-RAG (v0.7.x)
+#### Sprint C — Memory-RAG ✅ done (v0.7.x)
 *Competenza: SQLite + embeddings + AI context*
-- `chat_store.py`: `HISTORY_RETENTION_DAYS` configurable (default 90d, `None` = unlimited)
-- sqlite-vec layer on existing DB: message vectorization + agent memory store
-- Tools: `recall_memory(query, k, tags)` + `save_memory(content, tags)` exposed to Claude
-- RAG injection: inject k relevant memories into system prompt before each Claude call
-- Embedding provider configurable: `openai/text-embedding-3-small` (default) / `ollama/nomic-embed-text`
+- `HISTORY_RETENTION_DAYS` configurable via env (0=unlimited, default 90d) + `delete_old_messages()` DELETE job
+- `backends/embeddings.py`: `EmbeddingProvider` Protocol + `OpenAIEmbedder` (httpx) + `OllamaEmbedder` (aiohttp) + `NullEmbedder`
+- `proxy/memory_store.py`: `agent_memories` SQLite table, pure-Python cosine similarity (no sqlite-vec — Alpine compat), async save/search
+- Tools: `recall_memory(query, k, tags)` + `save_memory(content, tags)` — `recall_memory` in `EVALUATION_ONLY_TOOLS`; `save_memory` chat-only (security)
+- RAG pre-injection: top-k memories prepended to `context_str` in `handlers_chat.py` before every `runner.chat()`
+- Config: `openai_api_key`, `memory_embedding_provider` (openai|ollama|""), `memory_embedding_model`, `memory_rag_k`, `memory_retention_days`, `history_retention_days`
+- Daily APScheduler retention job at 03:00 UTC: purge old chat messages + expired memories
 
 #### Sprint D — Multi-provider LLM (v0.7.x)
 *Competenza: LLM abstraction layer — requires ADR-0002 first*
