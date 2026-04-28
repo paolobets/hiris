@@ -1,21 +1,32 @@
-MIT License
+Copyright (c) 2026 Paolo Bets. All Rights Reserved.
 
-Copyright (c) 2026 Paolo
+PROPRIETARY SOFTWARE LICENSE
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software and associated documentation files (the "Software") are the
+exclusive property of Paolo Bets ("Author"). All rights are reserved.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+PERMITTED USE
+You may install and use the Software solely for personal, non-commercial
+home automation purposes on hardware you own or control.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+PROHIBITED ACTIONS
+Without prior written permission from the Author, you may NOT:
+- Copy, reproduce, or duplicate the Software or any portion of it
+- Modify, adapt, translate, or create derivative works based on the Software
+- Distribute, publish, sublicense, sell, rent, lease, or otherwise transfer
+  the Software or any rights in it to any third party
+- Use the Software or any part of it in any commercial product or service
+- Remove or alter any copyright, trademark, or other proprietary notices
+
+INTELLECTUAL PROPERTY
+The Software, including all source code, algorithms, architecture, design
+patterns, and documentation, is protected by copyright law and international
+treaties. Unauthorized use, reproduction, or distribution may result in
+severe civil and criminal penalties.
+
+NO WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. THE AUTHOR SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM THE
+USE OF OR INABILITY TO USE THE SOFTWARE.
+
+For licensing inquiries contact: paolo.bets@gmail.com
