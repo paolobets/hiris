@@ -25,5 +25,8 @@ Testbook/
 .superpowers/
 docs/superpowers/
 
+# Internal planning documents
+docs/HIRIS_CLAUDE_CODE_PROMPT.md
+
 # Local IDE config
 .claude/launch.json

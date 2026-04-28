@@ -3,207 +3,161 @@
 </p>
 
 <h1 align="center">HIRIS</h1>
-<p align="center"><strong>Home Intelligent Reasoning & Integration System</strong></p>
+<p align="center"><em>Home Intelligent Reasoning & Integration System</em></p>
+
 <p align="center">
   <a href="https://github.com/paolobets/hiris/releases"><img src="https://img.shields.io/github/v/release/paolobets/hiris?label=version&color=blue" alt="version"/></a>
   <img src="https://img.shields.io/badge/stage-experimental-orange" alt="stage"/>
-  <img src="https://img.shields.io/badge/HA-2023.1%2B-41BDF5" alt="Home Assistant"/>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2023.1%2B-41BDF5" alt="Home Assistant"/>
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-lightgrey" alt="arch"/>
+  <img src="https://img.shields.io/badge/license-Proprietary-red" alt="license"/>
 </p>
+
+<p align="center">
+  <strong>An AI agent platform for Home Assistant that actually reasons about your home.</strong>
+</p>
+
+---
 
 > **Experimental** — HIRIS is under active development. APIs and configuration options may change between releases.
 
-A standalone **Home Assistant Add-on** that brings AI-powered agent reasoning to your smart home. HIRIS combines a Python flow engine (runs 100% locally, no AI cost) with a Claude-powered agentic loop for natural language chat, anomaly detection, and autonomous actions.
+## Why HIRIS exists
+
+Most smart home AI tools are glorified voice assistants: they hear a command and execute it. HIRIS is different — it *thinks* before acting.
+
+When you ask HIRIS why your electricity bill is higher this month, it queries your energy sensors, checks yesterday's weather forecast it already fetched, looks at which appliances ran the most, and gives you a reasoned answer. When it detects an anomaly at 2 AM it doesn't just send a notification — it evaluates the context, decides if it's worth waking you up, and tells you exactly what it found.
+
+HIRIS is built on four ideas:
+
+- **Agents as first-class citizens** — not a single chatbot, but a team of specialized agents each with their own trigger, permissions, and budget
+- **Cost visibility** — every euro spent on AI is tracked, capped, and visible; agents auto-disable when they exceed their budget
+- **Local-first when possible** — simple automations run entirely offline; AI is called only when reasoning is actually needed
+- **Your home, not a generic demo** — context about your house, your family, your habits is part of every AI call
 
 ---
 
 ## What HIRIS can do
 
-### Chat with your home
-Ask anything about your home in natural language. HIRIS queries Home Assistant in real time and uses Claude to reason before answering or acting.
+### Talk to your home in natural language
+
+Ask anything. HIRIS queries Home Assistant in real time and reasons before answering.
 
 ```
-You: "Accendi le luci del salotto e dimmi quanto consuma la casa in questo momento"
-HIRIS: "Ho acceso le luci del soggiorno. La casa consuma attualmente 2.4 kW:
-        lavatrice (1.8 kW), forno (0.6 kW). Fotovoltaico: 0 W (è notte)."
+You:   "Is the washing machine still running?"
+HIRIS: "Yes — it started 47 minutes ago and is drawing 980W. Based on the
+        usual cycle length, it should finish in about 25 minutes."
+
+You:   "Turn off the living room lights and tell me how much the house is
+        consuming right now."
+HIRIS: "Done. Current draw: 2.4 kW — oven (1.8 kW), fridge (0.6 kW).
+        Solar is producing 0W (it's night)."
 ```
 
-### Autonomous agents
-Configure agents that run on a schedule, react to HA events, or trigger at fixed times — with or without Claude.
+### Four types of autonomous agents
 
-| Agent type | Trigger | Use case |
+| Type | Trigger | What it does |
 |---|---|---|
-| **Monitor** | Every N minutes | Energy anomaly detection, presence monitoring |
-| **Reactive** | HA `state_changed` event | Door opened at night → notify; motion detected → lights on |
-| **Preventive** | Fixed cron time | Morning briefing, daily energy report, pre-heat house |
-| **Chat** | User message | Natural language interface |
+| **Chat** | You send a message | Natural language interface, full tool access |
+| **Monitor** | Every N minutes | Scans the house, detects anomalies, notifies only when needed |
+| **Reactive** | HA `state_changed` event | Reacts instantly to sensor changes |
+| **Preventive** | Fixed cron time | Prepares your day — briefings, energy reports, pre-heating |
 
 ### Semantic Home Map
-HIRIS automatically classifies every entity in your HA installation (lights, climate, sensors, appliances…) using rule-based logic and LLM-assisted classification. This map is used to:
-- give Claude a structured snapshot of your home before each call
-- pre-fetch only the entities relevant to the current query (RAG)
-- power the energy tools without manual configuration
 
-### RAG pre-fetch
-Before calling Claude, HIRIS searches for entities semantically related to the user's message and injects their live states into the system prompt. Claude sees real data before calling any tool — faster and cheaper.
+HIRIS automatically builds a semantic model of your home by classifying every entity (lights, climate sensors, appliances, power meters) using rule-based logic + optional LLM assistance. This map powers:
+
+- Structured home snapshots injected into every AI call
+- RAG pre-fetch: live entity states loaded before each call (Claude gets real data without needing to call a tool first)
+- Energy tools that work without any manual entity configuration
+
+### Multi-provider LLM
+
+HIRIS routes to the right model for each task:
+
+- **Chat agents** → Claude Sonnet (highest quality)
+- **Monitor / reactive / preventive** → Claude Haiku (cheaper for high-frequency tasks)
+- **Entity classification** → Local Ollama model (free, if configured)
+- **Fallback chain** → if the primary backend fails, the next one is tried automatically
+
+Supported backends: Anthropic Claude, OpenAI (GPT-4o, GPT-4.1, o-series), any Ollama-compatible local model.
+
+### Memory & RAG
+
+HIRIS stores and retrieves memories across conversations. Before every Claude call, relevant past interactions are injected as context — so agents remember what happened last Tuesday and can build on it.
+
+### Notifications everywhere
+
+Send alerts via Home Assistant push, Telegram, WhatsApp, ntfy, Gotify, Pushover, Slack, and 80+ other channels — all configured through a single `apprise_urls` option.
 
 ---
 
-## Features
+## Use cases
 
-- **8 built-in tools** — entity states, energy history, weather forecast (Open-Meteo, no key needed), HA service calls, notifications, automation management
-- **4 agent types** — chat, monitor, reactive, preventive
-- **Per-agent security filters** — allowed entities (glob patterns), allowed services, require confirmation, restrict to home topics only
-- **Per-agent budget** — auto-disable when cost exceeds EUR limit
-- **Chat history** — server-side conversation persistence per agent, configurable max turns
-- **Model auto-selection** — chat agents use Sonnet; monitor/reactive/preventive use Haiku (cheaper)
-- **Optional local model** — route classification tasks to a local Ollama model to save API cost
-- **Mobile-optimized UI** — safe-area insets, 16px font, 44px touch targets
-- **Notifications** — HA push, Telegram, or custom channels
-- **Execution log** — last 20 runs per agent with token usage, tool calls, and structured evaluation
+### Morning briefing
+A **preventive agent** triggers at 7:00 AM. It fetches yesterday's energy consumption, today's weather forecast, and any pending calendar events. Claude writes a concise briefing and sends it as a push notification.
+
+### Energy anomaly detection
+A **monitor agent** runs every 15 minutes. It checks consumption against historical patterns. If the house is drawing 3× more than usual at 11 PM with no one awake, it sends an alert with the specific culprits identified.
+
+### Door left open
+A **reactive agent** listens to the front door contact sensor. If it's been open for more than 5 minutes, Claude checks whether someone is home (via presence sensors), decides if this is unusual, and sends a contextual notification — not just "door open" but "front door has been open 7 minutes, no motion detected inside for the last 20 minutes."
+
+### Night security check
+A **monitor agent** runs at midnight. It reads all door/window sensors and presence detectors. If anything is unexpected, it sends a structured security report.
+
+### Pre-heat before arrival
+A **preventive agent** at 5:30 PM checks tomorrow's forecast and your calendar. If it's going to be cold and you have an early meeting, it starts heating 30 minutes earlier than usual.
+
+### Chat for guests
+A **chat agent** restricted to lighting and climate only, with `restrict_to_home: true` and `require_confirmation: true` — so guests can control the house without accessing sensitive data or executing unreviewed actions.
 
 ---
 
 ## Installation
 
-### Via Home Assistant Add-on Store
+### Home Assistant Add-on Store
 
-1. **Settings** → **Add-ons** → **Add-on Store** → three-dot menu → **Repositories**
+1. **Settings → Add-ons → Add-on Store** → ⋮ → **Repositories**
 2. Add: `https://github.com/paolobets/hiris`
-3. Find **HIRIS** in the store and install
-4. Configure your API key (see below) and start the add-on
+3. Find **HIRIS** → Install
+4. Set your API key in the configuration tab, then start
 
-### Via HACS (Custom Repository)
+### HACS
 
-1. Open HACS → three-dot menu → **Custom repositories**
-2. Add `https://github.com/paolobets/hiris` with category **Add-ons**
-3. Go to **Add-ons** → search for **HIRIS** → Install
-
----
-
-## Configuration
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `claude_api_key` | `password` | — | Anthropic API key (required for AI features) |
-| `log_level` | `list` | `info` | `debug` / `info` / `warning` / `error` |
-| `theme` | `list` | `auto` | `light` / `dark` / `auto` |
-| `primary_model` | `str` | `claude-sonnet-4-6` | Claude model for chat agents |
-| `local_model_url` | `str` | — | Ollama base URL for local classification (e.g. `http://192.168.1.10:11434`) |
-| `local_model_name` | `str` | — | Ollama model name (e.g. `llama3`) |
-
-> If `claude_api_key` is empty, HIRIS starts in **local-only mode**: the UI and agent engine run, but Claude calls are disabled.
+1. HACS → ⋮ → **Custom repositories**
+2. URL: `https://github.com/paolobets/hiris` — Category: **Add-ons**
+3. Install from the Add-ons section
 
 ---
 
-## HA Dashboard Integration
+## Quick configuration
 
-### Lovelace Chat Card
+| Option | Description |
+|---|---|
+| `claude_api_key` | Anthropic API key — required for AI features |
+| `openai_api_key` | OpenAI API key — optional, enables GPT models |
+| `local_model_url` | Ollama base URL for local inference (e.g. `http://192.168.1.10:11434`) |
+| `local_model_name` | Ollama model name (e.g. `llama3`) |
+| `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first` |
+| `mqtt_host` | MQTT broker for native HA entity publishing (optional) |
+| `apprise_urls` | Notification URLs — one per channel (optional) |
+| `internal_token` | Shared secret for inter-addon calls (optional) |
 
-Add to `configuration.yaml`:
+> If `claude_api_key` is empty, HIRIS runs in **local-only mode**: the UI and flow engine work, but AI calls are disabled.
 
-```yaml
-lovelace:
-  resources:
-    - url: /api/hassio_ingress/hiris/static/hiris-chat-card.js
-      type: module
-```
+---
 
-Add to any Lovelace dashboard:
+## Lovelace Chat Card
+
+Add the chat card to any dashboard:
 
 ```yaml
 type: custom:hiris-chat-card
-agent_id: hiris-default       # required — agent ID to use
-title: "Assistente Casa"      # optional, default: "HIRIS Chat"
-hiris_slug: hiris             # optional, default: "hiris"
+agent_id: hiris-default
+title: "Home Assistant"
 ```
 
-The card shows agent status, a budget bar, full chat history, and an enable/disable toggle. Responses stream token-by-token via SSE.
-
-### Chat Streaming (SSE)
-
-The `/api/chat` endpoint supports SSE streaming. Send `"stream": true` in the request body (or `Accept: text/event-stream` header) to receive token-by-token events:
-
-```
-data: {"type": "token", "text": "chunk of text"}
-data: {"type": "done", "agent_id": "hiris-default", "tool_calls": [...]}
-```
-
-### Inter-Addon Auth (Retro Panel / external systems)
-
-Set `internal_token` in add-on options to require a shared secret on non-Ingress requests. HA Ingress requests (browser via HA UI) always bypass this check. Leave empty to disable (default).
-
-Pass the token in the `X-HIRIS-Internal-Token` header from external systems.
-
-### MQTT Agent Entities (Phase 2)
-
-Set `mqtt_host` in add-on options to publish agent states as native HA entities via MQTT Discovery. Requires a Mosquitto (or compatible) MQTT broker:
-
-| Entity | Type | Values |
-|---|---|---|
-| `sensor.hiris_{id}_status` | sensor | `idle` \| `running` \| `error` |
-| `sensor.hiris_{id}_last_run` | sensor | ISO 8601 timestamp |
-| `sensor.hiris_{id}_budget_eur` | sensor | float (EUR) |
-| `switch.hiris_{id}_enabled` | switch | `on` / `off` |
-
-When MQTT entities are present, the Lovelace card automatically switches from polling to WebSocket push.
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `internal_token` | `password` | — | Shared secret for inter-addon auth (leave empty to disable) |
-| `mqtt_host` | `str` | — | MQTT broker hostname (leave empty to disable) |
-| `mqtt_port` | `int` | `1883` | MQTT broker port |
-| `mqtt_user` | `str` | — | MQTT username |
-| `mqtt_password` | `password` | — | MQTT password |
-
----
-
-## Agent configuration
-
-Each agent exposes the following fields in the designer UI:
-
-| Field | Description |
-|---|---|
-| `name` | Display name |
-| `type` | `chat` / `monitor` / `reactive` / `preventive` |
-| `trigger` | `{type, interval_minutes?, entity_id?, cron?}` |
-| `system_prompt` | Instructions for Claude |
-| `strategic_context` | House/family context prepended to every call |
-| `allowed_tools` | Which of the 8 tools this agent can call |
-| `allowed_entities` | Glob patterns — e.g. `["light.*", "climate.soggiorno"]` |
-| `allowed_services` | Glob patterns — e.g. `["light.*", "climate.*"]` |
-| `require_confirmation` | Claude must ask user before calling `call_ha_service` |
-| `restrict_to_home` | Refuse off-topic questions |
-| `model` | `auto` (default) or explicit model ID |
-| `max_tokens` | Max tokens per call (default 4096) |
-| `budget_eur_limit` | Auto-disable when cumulative cost exceeds this (0 = unlimited) |
-| `max_chat_turns` | Max conversation turns (0 = unlimited, chat agents only) |
-
-### Automatic model selection (`model: auto`)
-
-| Agent type | Model |
-|---|---|
-| `chat` | `claude-sonnet-4-6` |
-| `monitor` | `claude-haiku-4-5` |
-| `reactive` | `claude-haiku-4-5` |
-| `preventive` | `claude-haiku-4-5` |
-
----
-
-## Available tools
-
-| Tool | Description |
-|---|---|
-| `get_entity_states(ids)` | Live state of one or more HA entities |
-| `get_area_entities()` | All entities grouped by HA area |
-| `get_home_status()` | Structured home snapshot (energy, climate, lights) |
-| `get_energy_history(days)` | Historical energy consumption from HA History API |
-| `get_weather_forecast(hours)` | Forecast from Open-Meteo (free, no key needed) |
-| `call_ha_service(domain, service, data)` | Call any HA service (subject to `allowed_services` filter) |
-| `send_notification(message, channel)` | Push via HA, Telegram, or other channels |
-| `get_ha_automations()` | List HA automations |
-| `trigger_automation(id)` | Trigger an HA automation |
-| `toggle_automation(id, enabled)` | Enable or disable an HA automation |
+HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resource on startup. No manual resource configuration needed.
 
 ---
 
@@ -211,59 +165,53 @@ Each agent exposes the following fields in the designer UI:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  LAYER 2 — Claude Agentic Loop              │
-│  Claude API + tool use (max 10 iterations)  │
-│  • Chat NL interface                        │
-│  • Proactive monitors                       │
+│  LAYER 2 — AI Reasoning                     │
+│  Claude / OpenAI / Ollama + tool use        │
+│  • Natural language chat                    │
+│  • Anomaly detection & reasoning            │
 │  • Semantic Home Map + RAG pre-fetch        │
-│  • LLM Router (optional Ollama offload)     │
+│  • LLM Router with strategy + fallback      │
+│  • Memory store (vector search)             │
 └─────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────┐
-│  LAYER 1 — Python Flow Engine (local)       │
-│  Runs offline — no AI cost                  │
-│  • APScheduler for monitor/preventive       │
-│  • HA WebSocket for reactive triggers       │
+│  LAYER 1 — Local Flow Engine                │
+│  Runs 100% offline — zero AI cost           │
+│  • APScheduler (monitor / preventive)       │
+│  • HA WebSocket (reactive triggers)         │
+│  • Task engine with action chaining         │
 │  • Per-agent budget enforcement             │
 └─────────────────────────────────────────────┘
 ```
 
-**Stack:** Python 3.11 · aiohttp · Anthropic SDK · APScheduler · Open-Meteo
-
----
-
-## Versioning
-
-HIRIS uses semantic versioning. The project remains at `0.x.x` (experimental) until Phase 1 is fully stable. `1.0.0` marks the first production-ready release.
-
-**Current version: v0.2.2**
+**Stack:** Python 3.11 · aiohttp · Anthropic SDK · OpenAI SDK · APScheduler · SQLite · Open-Meteo
 
 ---
 
 ## Roadmap
 
-### Phase 1 — Beta Standalone (current)
-- [x] HA client (REST + History + WebSocket)
-- [x] Claude agentic loop with 8 tools
-- [x] 4 agent types (chat, monitor, reactive, preventive)
-- [x] Agent designer UI
-- [x] Chat NL interface with conversation history
-- [x] Semantic Home Map (rule + LLM classification)
-- [x] RAG pre-fetch
-- [x] LLM Router with optional Ollama offload
-- [x] Per-agent security filters
-- [x] Per-agent budget & usage tracking
-- [x] Notifications: HA push + Telegram
-- [x] Mobile-optimized UI
+| Milestone | Status |
+|---|---|
+| Phase 1 — Core platform (tools, agents, chat UI, MQTT, Lovelace card) | ✅ v0.6.x |
+| Sprint C — Memory & RAG (SQLite vector store, recall/save memory tools) | ✅ v0.6.x |
+| Sprint D — Multi-provider LLM (OpenAI, Ollama, strategy routing) | ✅ v0.6.3 |
+| Sprint E — Lovelace agent card + HACS packaging | 🔜 v0.8.x |
+| Phase 2 — Automation intelligence (proposal workflow, anomaly baseline) | 📋 v0.9.x |
+| Phase 3 — Canvas designer + Retro Panel plugin | 📋 v1.0 |
 
-### Phase 2 — Retro Panel Plugin (planned)
-- [ ] Canvas drag-and-drop agent designer (n8n style)
-- [ ] Retro Panel plugin integration (embedded chat in kiosk)
-- [ ] Conversation memory (Redis or SQLite)
-- [ ] Additional tools: email, HTTP custom, calendar
-- [ ] HACS official distribution
+---
+
+## Documentation
+
+| Document | Language |
+|---|---|
+| [How it works — architecture & internals](docs/how-it-works.md) | 🇬🇧 English |
+| [Come funziona — architettura e internals](docs/come-funziona.md) | 🇮🇹 Italiano |
+| [Roadmap](docs/roadmap.md) | 🇬🇧 English |
+| [Roadmap (IT)](docs/ROADMAP.md) | 🇮🇹 Italiano |
 
 ---
 
 ## License
 
-MIT
+Copyright © 2026 Paolo Bets. All Rights Reserved.  
+Personal non-commercial use permitted. See [LICENSE](LICENSE) for details.
