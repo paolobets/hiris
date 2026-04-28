@@ -356,8 +356,7 @@
       color: var(--text);
       background: var(--input-bg);
       resize: none;
-      overflow-y: auto;
-      max-height: 8rem;
+      overflow-y: hidden;
       line-height: 1.5;
       transition: border-color 0.15s;
       -webkit-appearance: none;
@@ -885,7 +884,7 @@ function sendQuick(text) { sendMessage(text); }
 
 function autoResize() {
   inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 128) + 'px';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, Math.floor(window.innerHeight * 0.4)) + 'px';
 }
 
 var _enterSent = false;
