@@ -179,6 +179,7 @@ def check_git_clean() -> None:
         "hiris/translations/en.yaml",
         "hiris/translations/it.yaml",
         "hiris/translations/",  # git reports new untracked dirs with trailing slash
+        "hiris/app/backends/embeddings.py",
         "CHANGELOG.md",
         "README.md",
         *[f"docs/{d.name}" for d in _VERSIONED_DOCS],
@@ -224,7 +225,7 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
     # "HEAD:master" is a refspec that fast-forwards remote master to the
     # current commit without requiring a local checkout of master.
     doc_paths = [f"docs/{d.name}" for d in _VERSIONED_DOCS if (ROOT / "docs" / d.name).exists()]
-    extra = [p for p in ["hiris/run.sh", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "README.md"] if (ROOT / p).exists()]
+    extra = [p for p in ["hiris/run.sh", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "hiris/app/backends/embeddings.py", "README.md"] if (ROOT / p).exists()]
     cmds = [
         ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *doc_paths, *extra],
         ["git", "commit", "-m", f"chore: release v{version}"],
