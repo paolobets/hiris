@@ -1,5 +1,10 @@
 # HIRIS — Changelog
 
+## [0.6.9] — 2026-04-28
+
+### Fixed
+- **Chat input (`index.html`)**: textarea now grows dynamically as you type without ever showing a scrollbar (`overflow-y: hidden`); height cap raised to 40% of viewport height instead of the fixed 8rem/128px limit
+
 ## [0.6.8] — 2026-04-28
 
 ### Added
