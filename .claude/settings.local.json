@@ -73,7 +73,11 @@
       "Bash(py -m pytest tests/ -x -q)",
       "Bash(py -m pytest tests/test_claude_runner.py::test_run_with_actions_injects_instructions_and_parses -v)",
       "Bash(py -m pytest tests/ -q)",
-      "Bash(py scripts/release.py --version 0.6.2)"
+      "Bash(py scripts/release.py --version 0.6.2)",
+      "Bash(xargs grep *)",
+      "Bash(py -m pytest tests/test_llm_router.py -v)",
+      "Bash(python scripts/release.py --version 0.6.3)",
+      "Bash(py scripts/release.py --version 0.6.3)"
     ]
   }
 }
