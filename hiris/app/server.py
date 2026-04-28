@@ -343,6 +343,7 @@ async def _on_startup(app: web.Application) -> None:
             local_model_url = ""
     local_model_name = os.environ.get("LOCAL_MODEL_NAME", "")
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
+    llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
 
     # Memory / RAG config
     mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
@@ -441,6 +442,7 @@ async def _on_startup(app: web.Application) -> None:
             claude=claude_runner,
             openai=openai_runner,
             ollama=ollama_runner,
+            strategy=llm_strategy,
         )
         semantic_map.set_router(router)
         app["claude_runner"] = claude_runner  # backward compat (may be None)

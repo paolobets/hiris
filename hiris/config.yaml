@@ -35,6 +35,7 @@ options:
   mqtt_password: ""
   apprise_urls: []
   openai_api_key: ""
+  llm_strategy: "balanced"
   memory_embedding_provider: ""
   memory_embedding_model: ""
   memory_rag_k: 5
@@ -55,6 +56,7 @@ schema:
   apprise_urls:
     - str
   openai_api_key: password
+  llm_strategy: "list(balanced|cost_first|quality_first)"
   memory_embedding_provider: str
   memory_embedding_model: str
   memory_rag_k: int

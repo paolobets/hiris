@@ -21,23 +21,52 @@ def _is_openai_model(model: str) -> bool:
     return bool(re.match(r"^(gpt-|o[1-9])", model))
 
 
+_STRATEGY_ORDER = {
+    # cost_first: prefer free local (Ollama) → cheap cloud → full cloud
+    "cost_first":    ["ollama", "openai", "claude"],
+    # quality_first: prefer most capable first
+    "quality_first": ["claude", "openai", "ollama"],
+    # balanced (default): same as quality_first
+    "balanced":      ["claude", "openai", "ollama"],
+}
+
+
 class LLMRouter:
-    """Routes LLM calls to the appropriate backend (Claude, OpenAI, Ollama)."""
+    """Routes LLM calls to the appropriate backend (Claude, OpenAI, Ollama).
+
+    strategy controls the backend preference order when model="auto":
+      - "balanced" / "quality_first": Claude → OpenAI → Ollama
+      - "cost_first": Ollama → OpenAI → Claude
+    Fallback: if the primary backend raises an exception and model="auto",
+    the next backend in the strategy chain is tried automatically.
+    """
 
     def __init__(
         self,
         claude: Any = None,
         openai: Any = None,
         ollama: Any = None,
+        strategy: str = "balanced",
     ) -> None:
         self._claude = claude
         self._openai = openai
         self._ollama = ollama
+        self._strategy = strategy if strategy in _STRATEGY_ORDER else "balanced"
         self._all = [r for r in [claude, openai, ollama] if r is not None]
+
+    def _backend_map(self) -> dict[str, Any]:
+        return {"claude": self._claude, "openai": self._openai, "ollama": self._ollama}
+
+    def _ordered_backends(self) -> list[Any]:
+        """Return available backends in strategy priority order."""
+        order = _STRATEGY_ORDER[self._strategy]
+        bmap = self._backend_map()
+        return [bmap[name] for name in order if bmap[name] is not None]
 
     def _route(self, model: str) -> Any:
         if model == "auto":
-            return self._claude or self._openai or self._ollama
+            backends = self._ordered_backends()
+            return backends[0] if backends else None
         if model.startswith("claude-"):
             return self._claude
         if _is_openai_model(model):
@@ -49,10 +78,19 @@ class LLMRouter:
     # ------------------------------------------------------------------
 
     async def chat(self, **kwargs) -> str:
-        runner = self._route(kwargs.get("model", "auto"))
-        if runner is None:
-            return "Nessun provider AI configurato per questo modello."
-        return await runner.chat(**kwargs)
+        model = kwargs.get("model", "auto")
+        if model != "auto":
+            runner = self._route(model)
+            if runner is None:
+                return "Nessun provider AI configurato per questo modello."
+            return await runner.chat(**kwargs)
+        # auto: try backends in strategy order with fallback
+        for runner in self._ordered_backends():
+            try:
+                return await runner.chat(**kwargs)
+            except Exception as exc:
+                logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
+        return "Tutti i provider AI non disponibili. Riprova tra poco."
 
     async def chat_stream(self, **kwargs):
         runner = self._route(kwargs.get("model", "auto"))
@@ -63,10 +101,18 @@ class LLMRouter:
             yield chunk
 
     async def run_with_actions(self, **kwargs):
-        runner = self._route(kwargs.get("model", "auto"))
-        if runner is None:
-            return "", None, None
-        return await runner.run_with_actions(**kwargs)
+        model = kwargs.get("model", "auto")
+        if model != "auto":
+            runner = self._route(model)
+            if runner is None:
+                return "", None, None
+            return await runner.run_with_actions(**kwargs)
+        for runner in self._ordered_backends():
+            try:
+                return await runner.run_with_actions(**kwargs)
+            except Exception as exc:
+                logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
+        return "", None, None
 
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
         runner = self._claude or self._openai or self._ollama

@@ -15,24 +15,12 @@ from ..claude_runner import (
     _parse_structured_response,
     _build_action_instructions,
 )
+from .pricing import PRICING as _PRICING
 
 if TYPE_CHECKING:
     from ..tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
-
-# Model→cost map (USD/1M tokens). "_default" is the Ollama fallback (free).
-_PRICING: dict[str, dict[str, float]] = {
-    "gpt-4o":         {"input": 2.50, "output": 10.00},
-    "gpt-4o-mini":    {"input": 0.15, "output":  0.60},
-    "gpt-4.1":        {"input": 2.00, "output":  8.00},
-    "gpt-4.1-mini":   {"input": 0.40, "output":  1.60},
-    "gpt-4.1-nano":   {"input": 0.10, "output":  0.40},
-    "o3":             {"input": 10.0, "output": 40.00},
-    "o3-mini":        {"input": 1.10, "output":  4.40},
-    "o4-mini":        {"input": 1.10, "output":  4.40},
-    "_default":       {"input": 0.0,  "output":  0.00},
-}
 
 AUTO_MODEL_MAP: dict[str, str] = {
     "chat":        "gpt-4o",

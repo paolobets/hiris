@@ -142,14 +142,7 @@ AUTO_MODEL_MAP: dict[str, str] = {
     "preventive": "claude-haiku-4-5-20251001",
 }
 
-_PRICING: dict[str, dict[str, float]] = {
-    # input/output: normal token rates ($/MTok)
-    # cache_write: rate for writing new tokens into the prompt cache (billed once)
-    # cache_read:  rate for reading tokens already in cache (90% discount vs input)
-    "claude-sonnet-4-6":         {"input": 3.0,  "output": 15.0,  "cache_write": 3.75,  "cache_read": 0.30},
-    "claude-opus-4-7":           {"input": 15.0, "output": 75.0,  "cache_write": 18.75, "cache_read": 1.50},
-    "claude-haiku-4-5-20251001": {"input": 0.25, "output": 1.25,  "cache_write": 0.30,  "cache_read": 0.03},
-}
+from .backends.pricing import PRICING as _PRICING
 
 
 def resolve_model(model: str, agent_type: str) -> str:
@@ -457,7 +450,7 @@ class ClaudeRunner:
             cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
             self.total_input_tokens += inp + cache_creation + cache_read
             self.total_output_tokens += out
-            prices = _PRICING.get(effective_model, _PRICING["claude-sonnet-4-6"])
+            prices = _PRICING.get(effective_model, _PRICING["_default"])
             cost = (
                 inp * prices["input"]
                 + cache_creation * prices.get("cache_write", prices["input"] * 1.25)

@@ -83,3 +83,52 @@ def test_router_proxies_usage_properties(mock_runner):
     router = LLMRouter(claude=mock_runner)
     assert router.total_input_tokens == 10
     assert router.last_tool_calls == []
+
+
+def test_router_strategy_defaults_to_balanced(mock_runner):
+    router = LLMRouter(claude=mock_runner)
+    assert router._strategy == "balanced"
+
+
+def test_router_strategy_invalid_falls_back_to_balanced(mock_runner):
+    router = LLMRouter(claude=mock_runner, strategy="unknown_strategy")
+    assert router._strategy == "balanced"
+
+
+def test_router_strategy_cost_first_orders_ollama_first(mock_runner):
+    mock_ollama = MagicMock()
+    mock_ollama.chat = AsyncMock(return_value="ollama response")
+    router = LLMRouter(claude=mock_runner, ollama=mock_ollama, strategy="cost_first")
+    backends = router._ordered_backends()
+    assert backends[0] is mock_ollama
+    assert backends[1] is mock_runner
+
+
+def test_router_strategy_quality_first_orders_claude_first(mock_runner):
+    mock_ollama = MagicMock()
+    router = LLMRouter(claude=mock_runner, ollama=mock_ollama, strategy="quality_first")
+    backends = router._ordered_backends()
+    assert backends[0] is mock_runner
+    assert backends[1] is mock_ollama
+
+
+@pytest.mark.asyncio
+async def test_router_chat_fallback_on_exception(mock_runner):
+    failing_runner = MagicMock()
+    failing_runner.chat = AsyncMock(side_effect=Exception("backend down"))
+    mock_ollama = MagicMock()
+    mock_ollama.chat = AsyncMock(return_value="ollama fallback")
+    router = LLMRouter(claude=failing_runner, ollama=mock_ollama, strategy="quality_first")
+    result = await router.chat(user_message="hello", model="auto")
+    assert result == "ollama fallback"
+    failing_runner.chat.assert_awaited_once()
+    mock_ollama.chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_router_chat_all_fail_returns_error_message(mock_runner):
+    failing_runner = MagicMock()
+    failing_runner.chat = AsyncMock(side_effect=Exception("down"))
+    router = LLMRouter(claude=failing_runner, strategy="balanced")
+    result = await router.chat(user_message="hello", model="auto")
+    assert "non disponibili" in result
