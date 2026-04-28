@@ -778,6 +778,45 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
                 <input type="number" id="ae-verify-window" value="30" min="1">
               </div>
             </div>
+            <!-- Then-action block: shown for wait/verify -->
+            <div id="ae-then-section" style="display:none; margin-top:8px; padding:10px; background:var(--surface); border:1px dashed var(--border-accent); border-radius:6px">
+              <div style="font-size:11px; color:var(--legend-text); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:6px">Poi esegui</div>
+              <div class="ae-row">
+                <label>Tipo</label>
+                <select id="ae-then-type">
+                  <option value="">— nessuna azione —</option>
+                  <option value="notify">Notifica</option>
+                  <option value="call_service">Chiama servizio HA</option>
+                </select>
+              </div>
+              <div id="ae-then-notify-fields" style="display:none">
+                <div class="ae-row">
+                  <label>Canale</label>
+                  <select id="ae-then-channel">
+                    <option value="ha_push">Home Assistant push</option>
+                    <option value="apprise">Apprise (Telegram, WhatsApp, ntfy&hellip;)</option>
+                  </select>
+                </div>
+                <div class="ae-row">
+                  <label>Messaggio</label>
+                  <input type="text" id="ae-then-message" placeholder="Es. Temperatura rientrata nella norma">
+                </div>
+              </div>
+              <div id="ae-then-service-fields" style="display:none">
+                <div class="ae-row">
+                  <label>Dominio</label>
+                  <input type="text" id="ae-then-svc-domain" placeholder="climate">
+                </div>
+                <div class="ae-row">
+                  <label>Servizio</label>
+                  <input type="text" id="ae-then-svc-service" placeholder="turn_off">
+                </div>
+                <div class="ae-row">
+                  <label>Entity ID</label>
+                  <input type="text" id="ae-then-svc-entity" placeholder="climate.soggiorno (opzionale)">
+                </div>
+              </div>
+            </div>
             <div class="ae-row">
               <label>Se fallisce</label>
               <select id="ae-on-fail">
@@ -1405,8 +1444,20 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           detail = esc(a.domain || '') + '.' + esc(a.service || '') + (a.entity_pattern ? ' su ' + esc(a.entity_pattern) : '');
         } else if (a.type === 'wait') {
           detail = esc(String(a.minutes || 5)) + ' min';
+          if (a.actions && a.actions.length) {
+            var ta = a.actions[0];
+            detail += ta.type === 'send_notification'
+              ? ' → notifica:' + esc(ta.channel || 'ha_push')
+              : ' → ' + esc(ta.domain || '') + '.' + esc(ta.service || '');
+          }
         } else if (a.type === 'verify') {
           detail = esc(a.entity_id || '?') + ' ' + esc(a.operator || '') + ' ' + esc(String(a.value || ''));
+          if (a.actions && a.actions.length) {
+            var ta = a.actions[0];
+            detail += ta.type === 'send_notification'
+              ? ' → notifica:' + esc(ta.channel || 'ha_push')
+              : ' → ' + esc(ta.domain || '') + '.' + esc(ta.service || '');
+          }
         } else {
           detail = '';
         }
@@ -1450,10 +1501,19 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('ae-verify-value').value = '';
       document.getElementById('ae-verify-window').value = '30';
       document.getElementById('ae-on-fail').value = 'continue';
+      document.getElementById('ae-then-type').value = '';
+      document.getElementById('ae-then-message').value = '';
+      document.getElementById('ae-then-channel').value = 'ha_push';
+      document.getElementById('ae-then-svc-domain').value = '';
+      document.getElementById('ae-then-svc-service').value = '';
+      document.getElementById('ae-then-svc-entity').value = '';
       document.getElementById('ae-notify-fields').style.display  = '';
       document.getElementById('ae-service-fields').style.display = 'none';
       document.getElementById('ae-wait-fields').style.display    = 'none';
       document.getElementById('ae-verify-fields').style.display  = 'none';
+      document.getElementById('ae-then-section').style.display   = 'none';
+      document.getElementById('ae-then-notify-fields').style.display  = 'none';
+      document.getElementById('ae-then-service-fields').style.display = 'none';
     });
 
     document.getElementById('ae-type').addEventListener('change', function() {
@@ -1462,6 +1522,13 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('ae-service-fields').style.display = v === 'call_service' ? '' : 'none';
       document.getElementById('ae-wait-fields').style.display    = v === 'wait'         ? '' : 'none';
       document.getElementById('ae-verify-fields').style.display  = v === 'verify'       ? '' : 'none';
+      document.getElementById('ae-then-section').style.display   = (v === 'wait' || v === 'verify') ? '' : 'none';
+    });
+
+    document.getElementById('ae-then-type').addEventListener('change', function() {
+      var v = this.value;
+      document.getElementById('ae-then-notify-fields').style.display  = v === 'notify'       ? '' : 'none';
+      document.getElementById('ae-then-service-fields').style.display = v === 'call_service' ? '' : 'none';
     });
 
     document.getElementById('ae-confirm').addEventListener('click', function() {
@@ -1489,6 +1556,23 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         action.value     = val;
         action.window_minutes = parseInt(document.getElementById('ae-verify-window').value) || 30;
         action.condition = { entity_id: eid, operator: op, value: val };
+      }
+      // Build child action for wait/verify
+      if (type === 'wait' || type === 'verify') {
+        var thenType = document.getElementById('ae-then-type').value;
+        if (thenType === 'notify') {
+          var thenMsg = document.getElementById('ae-then-message').value.trim() || 'Azione completata.';
+          action.actions = [{ type: 'send_notification', message: thenMsg,
+            channel: document.getElementById('ae-then-channel').value }];
+        } else if (thenType === 'call_service') {
+          var thenDomain = document.getElementById('ae-then-svc-domain').value.trim();
+          var thenSvc    = document.getElementById('ae-then-svc-service').value.trim();
+          if (!thenDomain || !thenSvc) { alert('Inserisci dominio e servizio per l\'azione successiva.'); return; }
+          var thenData = {};
+          var thenEid  = document.getElementById('ae-then-svc-entity').value.trim();
+          if (thenEid) thenData.entity_id = thenEid;
+          action.actions = [{ type: 'call_ha_service', domain: thenDomain, service: thenSvc, data: thenData }];
+        }
       }
       _agentActions.push(action);
       _actionsRender();
