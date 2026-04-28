@@ -183,7 +183,7 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 └─────────────────────────────────────────────┘
 ```
 
-**Stack:** Python 3.11 · aiohttp · Anthropic SDK · OpenAI SDK · APScheduler · SQLite · Open-Meteo
+**Stack:** Python 3.13 · aiohttp · Anthropic SDK · OpenAI SDK · APScheduler · SQLite · Open-Meteo
 
 ---
 
@@ -196,7 +196,7 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 | Sprint D — Multi-provider LLM (OpenAI, Ollama, strategy routing) | ✅ v0.6.3 |
 | Sprint E — Lovelace agent card + HACS packaging | 🔜 v0.8.x |
 | Phase 2 — Automation intelligence (proposal workflow, anomaly baseline) | 📋 v0.9.x |
-| Phase 3 — Canvas designer + Retro Panel plugin | 📋 v1.0 |
+| Phase 3 — Canvas designer (n8n-style drag-and-drop) | 📋 v1.0 |
 
 ---
 
@@ -206,8 +206,11 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 |---|---|
 | [How it works — architecture & internals](docs/how-it-works.md) | 🇬🇧 English |
 | [Come funziona — architettura e internals](docs/come-funziona.md) | 🇮🇹 Italiano |
+| [Technical architecture](docs/architecture.md) | 🇬🇧 English |
+| [Architettura tecnica](docs/architettura.md) | 🇮🇹 Italiano |
+| [Use cases & examples](docs/use-cases.md) | 🇬🇧 English |
+| [Casi d'uso ed esempi](docs/casi-duso.md) | 🇮🇹 Italiano |
 | [Roadmap](docs/roadmap.md) | 🇬🇧 English |
-| [Roadmap (IT)](docs/ROADMAP.md) | 🇮🇹 Italiano |
 
 ---
 

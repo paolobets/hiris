@@ -4,20 +4,13 @@
 
 **HIRIS** (Home Intelligent Reasoning & Integration System) is a standalone **Home Assistant Add-on** that provides an AI-powered agent platform for smart home management. It combines a Python flow engine with a Claude API agentic loop.
 
-**Relationship to Retro Panel:**
-- Phase 1: Standalone HA Add-on, independent of Retro Panel
-- Phase 2: Becomes a Retro Panel plugin (embedded chat in kiosk, shared auth)
-- Separation rationale: Retro Panel stays a "minimal kiosk"; users who don't want AI don't install HIRIS
-
-Full design spec: [`docs/2026-04-18-hiris-design.md`](docs/2026-04-18-hiris-design.md)
-
 ---
 
 ## Stack
 
 | Component | Technology |
 |---|---|
-| Backend | Python 3.11 + aiohttp |
+| Backend | Python 3.13 + aiohttp |
 | AI | Claude API (claude-sonnet-4-6), tool use / agentic loop |
 | Frontend | Modern JS (no iOS 12 constraint) |
 | HA integration | Supervisor Ingress, `SUPERVISOR_TOKEN` env var |
@@ -62,7 +55,7 @@ Full design spec: [`docs/2026-04-18-hiris-design.md`](docs/2026-04-18-hiris-desi
 | `get_energy_history(days)` | HA History API |
 | `get_weather_forecast(hours)` | Open-Meteo (free, no key) |
 | `call_ha_service(domain, service, data)` | HA REST, whitelisted domains |
-| `send_notification(message, channel)` | HA push / Telegram / Retro Panel toast |
+| `send_notification(message, channel)` | HA push / Telegram / Apprise (80+ channels) |
 | `get_ha_automations()` | HA REST `/api/config/automation` |
 | `trigger_automation(id)` | HA `automation.trigger` |
 | `toggle_automation(id, enabled)` | HA `automation.turn_on/off` |
@@ -205,9 +198,8 @@ Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMP
 - HACS packaging (`hacs.json`, `repository.json`)
 - Blueprint YAML starter pack (morning briefing, energy anomaly, door reactive)
 
-### Phase 3 — Plugin + Canvas (v0.9.x+)
+### Phase 3 — Canvas (v0.9.x+)
 - Canvas drag-and-drop designer (n8n style)
-- ✅ Retro Panel plugin integration (embedded chat in kiosk, shared auth)
 - HA Services formal registration (`hiris.run_agent`, `hiris.chat`, etc.)
 - Multi-user / role support
 
