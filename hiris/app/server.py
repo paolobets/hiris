@@ -406,8 +406,6 @@ async def _on_startup(app: web.Application) -> None:
             api_key=api_key,
             dispatcher=dispatcher,
             usage_path=usage_path,
-            entity_cache=entity_cache,
-            semantic_map=semantic_map,
         )
 
     _usage_base, _usage_ext = os.path.splitext(usage_path)
