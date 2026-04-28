@@ -14,7 +14,7 @@ Steps (abort on first failure):
   5  Run pytest (skipped with --skip-tests)
   6  git add + commit chore: release vX.Y.Z
   7  git tag vX.Y.Z
-  8  git push origin master --tags
+  8  git push HEAD:master --tags  (always targets master, worktree-safe)
   9  Extract changelog section for X.Y.Z
   10 gh release create vX.Y.Z with extracted notes
 """
@@ -150,17 +150,14 @@ def run_tests() -> None:
 # ---------------------------------------------------------------------------
 
 def git_commit_and_tag(version: str, dry_run: bool) -> None:
-    # Detect current branch dynamically (avoids hardcoding "master")
-    branch_result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True, text=True, cwd=ROOT,
-    )
-    branch = branch_result.stdout.strip() or "master"
+    # Always push HEAD to master regardless of the working branch/worktree.
+    # "HEAD:master" is a refspec that fast-forwards remote master to the
+    # current commit without requiring a local checkout of master.
     cmds = [
         ["git", "add", "hiris/config.yaml", "CHANGELOG.md"],
         ["git", "commit", "-m", f"chore: release v{version}"],
         ["git", "tag", f"v{version}"],
-        ["git", "push", "origin", branch, "--tags"],
+        ["git", "push", "origin", "HEAD:master", "--tags"],
     ]
     for cmd in cmds:
         if dry_run:
@@ -170,7 +167,7 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
         if result.returncode != 0:
             _fail(f"Command failed: {' '.join(cmd)}")
     if not dry_run:
-        _ok(f"Committed, tagged v{version}, pushed to origin/{branch}")
+        _ok(f"Committed, tagged v{version}, pushed to origin/master")
 
 
 # ---------------------------------------------------------------------------
