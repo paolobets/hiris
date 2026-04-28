@@ -176,6 +176,7 @@ def check_git_clean() -> None:
         "hiris/run.sh",
         "hiris/translations/en.yaml",
         "hiris/translations/it.yaml",
+        "hiris/translations/",  # git reports new untracked dirs with trailing slash
         "CHANGELOG.md",
         *[f"docs/{d.name}" for d in _VERSIONED_DOCS],
     }
