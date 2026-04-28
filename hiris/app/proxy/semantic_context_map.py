@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import fnmatch
 import json
 import logging
@@ -127,16 +128,25 @@ class SemanticContextMap:
             (_NO_AREA_KEY if k is None else k): v
             for k, v in self._map.items()
         }
-        data = {"version": "1", "map": serialized_map, "type_to_label": self._type_to_label}
+        data = {"version": "1", "map": serialized_map, "type_to_label": dict(self._type_to_label)}
         tmp = self._cache_path + ".tmp"
+        cache_path = self._cache_path
+
+        def _write() -> None:
+            try:
+                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                os.replace(tmp, cache_path)
+                logger.debug("SemanticContextMap saved to %s", cache_path)
+            except Exception as exc:
+                logger.warning("SemanticContextMap save failed: %s", exc)
+
         try:
-            os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp, self._cache_path)
-            logger.debug("SemanticContextMap saved to %s", self._cache_path)
-        except Exception as exc:
-            logger.warning("SemanticContextMap save failed: %s", exc)
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, _write)
+        except RuntimeError:
+            _write()
 
     def load(self) -> bool:
         if not self._cache_path:

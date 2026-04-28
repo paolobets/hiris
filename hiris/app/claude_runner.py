@@ -277,24 +277,32 @@ class ClaudeRunner:
     def _save_usage(self) -> None:
         if not self._usage_path:
             return
+        data = {
+            "schema_version": 1,
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_requests": self.total_requests,
+            "last_reset": self.usage_last_reset,
+            "total_cost_usd": self.total_cost_usd,
+            "total_rate_limit_errors": self.total_rate_limit_errors,
+            "per_agent": dict(self._per_agent_usage),
+        }
+        tmp = self._usage_path + ".tmp"
+
+        def _write() -> None:
+            try:
+                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                os.replace(tmp, self._usage_path)
+            except Exception as exc:
+                logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
+
         try:
-            data = {
-                "schema_version": 1,
-                "total_input_tokens": self.total_input_tokens,
-                "total_output_tokens": self.total_output_tokens,
-                "total_requests": self.total_requests,
-                "last_reset": self.usage_last_reset,
-                "total_cost_usd": self.total_cost_usd,
-                "total_rate_limit_errors": self.total_rate_limit_errors,
-                "per_agent": self._per_agent_usage,
-            }
-            tmp = self._usage_path + ".tmp"
-            os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp, self._usage_path)
-        except Exception as exc:
-            logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, _write)
+        except RuntimeError:
+            _write()
 
     def reset_usage(self) -> None:
         self.total_input_tokens = 0
