@@ -11,6 +11,7 @@ export MQTT_HOST=$(bashio::config 'mqtt_host' '')
 export MQTT_PORT=$(bashio::config 'mqtt_port' '1883')
 export MQTT_USER=$(bashio::config 'mqtt_user' '')
 export MQTT_PASSWORD=$(bashio::config 'mqtt_password' '')
+export APPRISE_URLS=$(bashio::config --raw 'apprise_urls' '[]')
 
 bashio::log.info "Starting HIRIS"
 bashio::log.info "Log level: ${LOG_LEVEL}"

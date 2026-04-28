@@ -691,6 +691,21 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
         <fieldset class="form-section" id="actions-fieldset">
           <legend>Azioni configurate</legend>
+          <div id="trigger-on-section" style="margin-bottom:12px">
+            <label>Valutazione che attiva le azioni</label>
+            <p class="hint">Le azioni vengono eseguite solo se la valutazione di Claude corrisponde a uno dei valori selezionati.</p>
+            <div id="trigger-on-checks" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">
+              <label style="display:flex;align-items:center;gap:5px;font-size:0.8rem;color:var(--text);margin:0;cursor:pointer">
+                <input type="checkbox" name="trigger_on" value="OK"> OK
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:0.8rem;color:var(--text);margin:0;cursor:pointer">
+                <input type="checkbox" name="trigger_on" value="ATTENZIONE"> ATTENZIONE
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:0.8rem;color:var(--text);margin:0;cursor:pointer">
+                <input type="checkbox" name="trigger_on" value="ANOMALIA"> ANOMALIA
+              </label>
+            </div>
+          </div>
           <div id="actions-list" class="actions-list"></div>
           <button type="button" class="btn-add-action" id="btn-add-action">+ Aggiungi azione</button>
 
@@ -701,18 +716,20 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
               <select id="ae-type">
                 <option value="notify">Notifica</option>
                 <option value="call_service">Chiama servizio HA</option>
+                <option value="wait">Attendi (delay)</option>
+                <option value="verify">Verifica condizione</option>
               </select>
             </div>
             <div class="ae-row">
               <label>Etichetta</label>
-              <input type="text" id="ae-label" placeholder="es. Avvisa via Telegram">
+              <input type="text" id="ae-label" placeholder="es. Avvisa via Apprise">
             </div>
             <div id="ae-notify-fields" class="ae-conditional">
               <div class="ae-row">
                 <label>Canale</label>
                 <select id="ae-channel">
                   <option value="ha_push">Home Assistant push</option>
-                  <option value="telegram">Telegram</option>
+                  <option value="apprise">Apprise (Telegram, WhatsApp, ntfy&hellip;)</option>
                 </select>
               </div>
             </div>
@@ -729,6 +746,44 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
                 <label>Pattern entit&agrave;</label>
                 <input type="text" id="ae-entity-pattern" placeholder="light.* (opzionale)">
               </div>
+            </div>
+            <div id="ae-wait-fields" class="ae-conditional" style="display:none">
+              <div class="ae-row">
+                <label>Attendi (min)</label>
+                <input type="number" id="ae-wait-minutes" value="5" min="1">
+              </div>
+            </div>
+            <div id="ae-verify-fields" class="ae-conditional" style="display:none">
+              <div class="ae-row">
+                <label>Entity ID</label>
+                <input type="text" id="ae-verify-entity" placeholder="sensor.temperature">
+              </div>
+              <div class="ae-row">
+                <label>Operatore</label>
+                <select id="ae-verify-operator">
+                  <option value="<">&lt;</option>
+                  <option value="<=">&lt;=</option>
+                  <option value=">">&gt;</option>
+                  <option value=">=">&gt;=</option>
+                  <option value="==">==</option>
+                  <option value="!=">!=</option>
+                </select>
+              </div>
+              <div class="ae-row">
+                <label>Valore</label>
+                <input type="text" id="ae-verify-value" placeholder="20">
+              </div>
+              <div class="ae-row">
+                <label>Finestra (min)</label>
+                <input type="number" id="ae-verify-window" value="30" min="1">
+              </div>
+            </div>
+            <div class="ae-row">
+              <label>Se fallisce</label>
+              <select id="ae-on-fail">
+                <option value="continue">Continua</option>
+                <option value="stop">Ferma</option>
+              </select>
             </div>
             <div class="ae-buttons">
               <button type="button" id="ae-confirm">&#10003; Aggiungi</button>
@@ -1012,6 +1067,19 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('trigger-cron').style.display = (type === 'preventive') ? '' : 'none';
       var maxTurnsRow = document.getElementById('max-turns-row');
       if (maxTurnsRow) maxTurnsRow.style.display = type === 'chat' ? '' : 'none';
+      var triggerOnSection = document.getElementById('trigger-on-section');
+      if (triggerOnSection) triggerOnSection.style.display = type !== 'chat' ? '' : 'none';
+    }
+
+    function _triggerOnLoad(values) {
+      document.querySelectorAll('#trigger-on-checks input[name="trigger_on"]').forEach(function(chk) {
+        chk.checked = values.indexOf(chk.value) >= 0;
+      });
+    }
+
+    function _triggerOnValue() {
+      return Array.from(document.querySelectorAll('#trigger-on-checks input[name="trigger_on"]:checked'))
+        .map(function(i) { return i.value; });
     }
 
     document.getElementById('f-type').onchange = function(e) { showTriggerFields(e.target.value); };
@@ -1054,6 +1122,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       updateTokenCounter();
       loadContextPreview(a.id);
       document.getElementById('u-ag-budget').value = a.budget_eur_limit || 0;
+      _triggerOnLoad(a.trigger_on || ['ANOMALIA']);
     }
 
     document.getElementById('new-btn').onclick = function() {
@@ -1088,6 +1157,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       showTriggerFields('monitor');
       renderExecutionLog(null);
       document.getElementById('u-ag-budget').value = 0;
+      _triggerOnLoad(['ANOMALIA']);
       updateTokenCounter();
       document.getElementById('tc-context').textContent = '—';
       document.getElementById('context-preview-wrap').style.display = 'none';
@@ -1114,6 +1184,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         require_confirmation: document.getElementById('f-require-confirmation').checked,
         enabled: document.getElementById('f-enabled').checked,
         actions: _actionsValue(),
+        trigger_on: _triggerOnValue(),
         budget_eur_limit: parseFloat(document.getElementById('u-ag-budget').value) || 0,
         max_chat_turns: parseInt(document.getElementById('f-max-chat-turns').value) || 0,
       };
@@ -1324,17 +1395,30 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
     function _actionsRender() {
       var list = document.getElementById('actions-list');
       list.innerHTML = '';
+      var TYPE_LABELS = { notify: 'Notifica', call_service: 'Servizio', wait: 'Attendi', verify: 'Verifica' };
       _agentActions.forEach(function(a, i) {
-        var typeLabel = a.type === 'notify' ? 'Notifica' : 'Servizio';
-        var detail = a.type === 'notify'
-          ? ('canale: ' + esc(a.channel || 'ha'))
-          : (esc(a.domain || '') + '.' + esc(a.service || '') + (a.entity_pattern ? ' su ' + esc(a.entity_pattern) : ''));
+        var typeLabel = TYPE_LABELS[a.type] || a.type;
+        var detail;
+        if (a.type === 'notify') {
+          detail = 'canale: ' + esc(a.channel || 'ha_push');
+        } else if (a.type === 'call_service') {
+          detail = esc(a.domain || '') + '.' + esc(a.service || '') + (a.entity_pattern ? ' su ' + esc(a.entity_pattern) : '');
+        } else if (a.type === 'wait') {
+          detail = esc(String(a.minutes || 5)) + ' min';
+        } else if (a.type === 'verify') {
+          detail = esc(a.entity_id || '?') + ' ' + esc(a.operator || '') + ' ' + esc(String(a.value || ''));
+        } else {
+          detail = '';
+        }
+        var onFailBadge = (a.on_fail === 'stop')
+          ? ' <span style="font-size:10px;color:var(--danger);background:var(--danger-bg);padding:1px 5px;border-radius:8px">stop</span>'
+          : '';
         var div = document.createElement('div');
         div.className = 'action-item';
         div.innerHTML =
           '<span class="ai-type">' + esc(typeLabel) + '</span>' +
           '<span class="ai-label">' + esc(a.label || '\u2014') +
-            ' <span style="color:var(--text-muted);font-size:11px">(' + detail + ')</span></span>' +
+            ' <span style="color:var(--text-muted);font-size:11px">(' + detail + ')</span>' + onFailBadge + '</span>' +
           '<span class="ai-remove" data-i="' + i + '">\u00d7</span>';
         div.querySelector('.ai-remove').addEventListener('click', function() {
           _agentActions.splice(parseInt(this.dataset.i), 1);
@@ -1356,33 +1440,55 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     document.getElementById('btn-add-action').addEventListener('click', function() {
       document.getElementById('action-editor').style.display = 'block';
+      document.getElementById('ae-type').value = 'notify';
       document.getElementById('ae-label').value = '';
       document.getElementById('ae-domain').value = '';
       document.getElementById('ae-service').value = '';
       document.getElementById('ae-entity-pattern').value = '';
-      document.getElementById('ae-type').value = 'notify';
-      document.getElementById('ae-notify-fields').style.display = '';
+      document.getElementById('ae-wait-minutes').value = '5';
+      document.getElementById('ae-verify-entity').value = '';
+      document.getElementById('ae-verify-value').value = '';
+      document.getElementById('ae-verify-window').value = '30';
+      document.getElementById('ae-on-fail').value = 'continue';
+      document.getElementById('ae-notify-fields').style.display  = '';
       document.getElementById('ae-service-fields').style.display = 'none';
+      document.getElementById('ae-wait-fields').style.display    = 'none';
+      document.getElementById('ae-verify-fields').style.display  = 'none';
     });
 
     document.getElementById('ae-type').addEventListener('change', function() {
-      var isService = this.value === 'call_service';
-      document.getElementById('ae-notify-fields').style.display = isService ? 'none' : '';
-      document.getElementById('ae-service-fields').style.display = isService ? '' : 'none';
+      var v = this.value;
+      document.getElementById('ae-notify-fields').style.display  = v === 'notify'       ? '' : 'none';
+      document.getElementById('ae-service-fields').style.display = v === 'call_service' ? '' : 'none';
+      document.getElementById('ae-wait-fields').style.display    = v === 'wait'         ? '' : 'none';
+      document.getElementById('ae-verify-fields').style.display  = v === 'verify'       ? '' : 'none';
     });
 
     document.getElementById('ae-confirm').addEventListener('click', function() {
       var type = document.getElementById('ae-type').value;
       var label = document.getElementById('ae-label').value.trim();
       if (!label) { alert('Inserisci un\'etichetta per l\'azione.'); return; }
-      var action = { type: type, label: label };
+      var onFail = document.getElementById('ae-on-fail').value;
+      var action = { type: type, label: label, on_fail: onFail };
       if (type === 'notify') {
         action.channel = document.getElementById('ae-channel').value;
-      } else {
+      } else if (type === 'call_service') {
         action.domain = document.getElementById('ae-domain').value.trim();
         action.service = document.getElementById('ae-service').value.trim();
         var ep = document.getElementById('ae-entity-pattern').value.trim();
         if (ep) action.entity_pattern = ep;
+      } else if (type === 'wait') {
+        action.minutes = parseInt(document.getElementById('ae-wait-minutes').value) || 5;
+      } else if (type === 'verify') {
+        var eid = document.getElementById('ae-verify-entity').value.trim();
+        var op  = document.getElementById('ae-verify-operator').value;
+        var val = document.getElementById('ae-verify-value').value.trim();
+        if (!eid || !val) { alert('Inserisci Entity ID e Valore per la verifica.'); return; }
+        action.entity_id = eid;
+        action.operator  = op;
+        action.value     = val;
+        action.window_minutes = parseInt(document.getElementById('ae-verify-window').value) || 30;
+        action.condition = { entity_id: eid, operator: op, value: val };
       }
       _agentActions.push(action);
       _actionsRender();

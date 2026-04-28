@@ -33,6 +33,7 @@ options:
   mqtt_port: 1883
   mqtt_user: ""
   mqtt_password: ""
+  apprise_urls: []
 schema:
   claude_api_key: password
   log_level: "list(debug|info|warning|error)"
@@ -45,3 +46,5 @@ schema:
   mqtt_port: int
   mqtt_user: str
   mqtt_password: password
+  apprise_urls:
+    - str

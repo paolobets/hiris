@@ -151,3 +151,115 @@ async def set_input_helper(ha: HAClient, entity_id: str, value) -> dict:
     if ok:
         return {"entity_id": entity_id, "service": f"{domain}.{service}", "ok": True}
     return {"error": f"call_service {domain}.{service} failed"}
+
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+CREATE_CALENDAR_EVENT_TOOL_DEF = {
+    "name": "create_calendar_event",
+    "description": (
+        "Create a calendar event in a Home Assistant calendar integration. "
+        "Supports timed events (start_date_time/end_date_time) and all-day events (start_date/end_date). "
+        "For all-day events, end_date is EXCLUSIVE (set it to the day after the last day of the event)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "calendar_entity": {
+                "type": "string",
+                "description": "Calendar entity ID (e.g. 'calendar.home'). Required.",
+            },
+            "summary": {
+                "type": "string",
+                "description": "Event title/summary.",
+            },
+            "event_type": {
+                "type": "string",
+                "enum": ["datetime", "allday"],
+                "description": (
+                    "Event type. Use 'datetime' with start_date_time/end_date_time; "
+                    "use 'allday' with start_date/end_date."
+                ),
+            },
+            "start_date_time": {
+                "type": "string",
+                "description": "Start datetime ISO 8601 (e.g. '2025-06-01T10:00:00'). Required for datetime events.",
+            },
+            "end_date_time": {
+                "type": "string",
+                "description": "End datetime ISO 8601. Required for datetime events. Must be after start_date_time.",
+            },
+            "start_date": {
+                "type": "string",
+                "description": "Start date YYYY-MM-DD. Required for all-day events.",
+            },
+            "end_date": {
+                "type": "string",
+                "description": "End date YYYY-MM-DD (exclusive). Required for all-day events.",
+            },
+            "description": {
+                "type": "string",
+                "description": "Optional event description/notes.",
+            },
+            "location": {
+                "type": "string",
+                "description": "Optional event location.",
+            },
+        },
+        "required": ["calendar_entity", "summary", "event_type"],
+    },
+}
+
+
+async def create_calendar_event(
+    ha: HAClient,
+    calendar_entity: str,
+    summary: str,
+    event_type: str,
+    start_date_time: str | None = None,
+    end_date_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    description: str | None = None,
+    location: str | None = None,
+) -> dict:
+    if not _ENTITY_ID_RE.match(calendar_entity):
+        return {"error": f"Invalid entity_id format: {calendar_entity!r}"}
+    if calendar_entity.split(".")[0] != "calendar":
+        return {"error": f"Entity {calendar_entity!r} is not a calendar entity"}
+    if event_type not in ("datetime", "allday"):
+        return {"error": f"event_type must be 'datetime' or 'allday', got {event_type!r}"}
+
+    data: dict = {"entity_id": calendar_entity, "summary": summary}
+
+    if event_type == "datetime":
+        if not start_date_time or not end_date_time:
+            return {"error": "start_date_time and end_date_time are required for datetime events"}
+        try:
+            dt_start = datetime.fromisoformat(start_date_time)
+            dt_end = datetime.fromisoformat(end_date_time)
+        except ValueError as exc:
+            return {"error": f"Invalid datetime format: {exc}"}
+        if dt_end <= dt_start:
+            return {"error": "end_date_time must be after start_date_time"}
+        data["start_date_time"] = start_date_time
+        data["end_date_time"] = end_date_time
+    else:  # allday
+        if not start_date or not end_date:
+            return {"error": "start_date and end_date are required for all-day events"}
+        if not _DATE_RE.match(start_date) or not _DATE_RE.match(end_date):
+            return {"error": "Dates must be in YYYY-MM-DD format"}
+        if end_date <= start_date:
+            return {"error": "end_date must be after start_date (end_date is exclusive)"}
+        data["start_date"] = start_date
+        data["end_date"] = end_date
+
+    if description:
+        data["description"] = description
+    if location:
+        data["location"] = location
+
+    ok = await ha.call_service("calendar", "create_event", data)
+    if ok:
+        return {"ok": True, "calendar": calendar_entity, "summary": summary}
+    return {"error": "call_service calendar.create_event failed"}

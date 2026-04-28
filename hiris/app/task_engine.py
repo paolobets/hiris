@@ -67,7 +67,7 @@ class TaskEngine:
             if key not in data:
                 raise ValueError(f"Task data missing required field: {key!r}")
         trigger_type = data["trigger"].get("type")
-        if trigger_type not in ("delay", "at_time", "at_datetime", "time_window"):
+        if trigger_type not in ("delay", "at_time", "at_datetime", "time_window", "immediate"):
             raise ValueError(f"Unknown trigger type: {trigger_type!r}")
         task = Task(
             id=str(uuid.uuid4()),
@@ -149,7 +149,12 @@ class TaskEngine:
                 )
                 self._tasks[task.id] = task
                 if task.status == "pending":
-                    self._schedule_task(task)
+                    if task.trigger.get("type") == "immediate":
+                        task.status = "skipped"
+                        task.result = "Skipped: HIRIS restarted before execution"
+                        logger.debug("Skipping stale immediate task %s on reload", task.label)
+                    else:
+                        self._schedule_task(task)
         except Exception as exc:
             logger.error("Failed to load tasks: %s", exc)
 
@@ -208,6 +213,10 @@ class TaskEngine:
                 self._scheduler.add_job(
                     self._check_time_window, "interval", minutes=interval,
                     args=[task.id], id=f"task_{task.id}", replace_existing=True,
+                )
+            elif t_type == "immediate":
+                asyncio.create_task(
+                    self._execute_task(task.id), name=f"imm_{task.id[:8]}"
                 )
             else:
                 logger.warning("Unknown trigger type: %s", t_type)
@@ -277,17 +286,28 @@ class TaskEngine:
             logger.info("Task %s skipped (condition not met)", task.label)
             return
         results = []
+        _stop = False
         try:
             for action in task.actions:
-                action_result = await self._run_action(action, task)
-                results.append(str(action_result))
-            task.status = "done"
+                if _stop:
+                    break
+                try:
+                    action_result = await self._run_action(action, task)
+                    results.append(f"{action.get('type', '?')}:OK")
+                except Exception as exc:
+                    a_label = action.get("type", "?")
+                    results.append(f"{a_label}:FAILED({exc})")
+                    logger.warning("Task %s action %s failed: %s", task.label, a_label, exc)
+                    if action.get("on_fail", "continue") == "stop":
+                        _stop = True
+                        task.error = str(exc)
+            task.status = "failed" if _stop else "done"
             task.result = "; ".join(results)
-            logger.info("Task %s done", task.label)
+            logger.info("Task %s %s: %s", task.label, task.status, task.result)
         except Exception as exc:
             task.status = "failed"
             task.error = str(exc)
-            logger.error("Task %s failed: %s", task.label, exc)
+            logger.error("Task %s unexpected error: %s", task.label, exc)
         finally:
             if task.one_shot or task.status == "failed":
                 self._remove_job(task_id)

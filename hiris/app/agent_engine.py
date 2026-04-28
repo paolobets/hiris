@@ -41,6 +41,7 @@ class Agent:
     budget_eur_limit: float = 0.0
     max_chat_turns: int = 0
     allowed_endpoints: Optional[list[dict]] = None
+    trigger_on: list[str] = field(default_factory=lambda: ["ANOMALIA"])
 
 
 class AgentEngine:
@@ -55,6 +56,8 @@ class AgentEngine:
         self._error_agents: set[str] = set()
         self._mqtt_publisher = None
         self._pending_mqtt_runs: set[str] = set()
+        self._task_engine: Any = None
+        self._notify_config: dict = {}
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
@@ -65,6 +68,12 @@ class AgentEngine:
     def set_mqtt_publisher(self, publisher) -> None:
         self._mqtt_publisher = publisher
         publisher.set_command_callback(self._handle_mqtt_command)
+
+    def set_task_engine(self, engine: Any) -> None:
+        self._task_engine = engine
+
+    def set_notify_config(self, config: dict) -> None:
+        self._notify_config = config
 
     async def _handle_mqtt_command(self, agent_id: str, command: str, payload: str) -> None:
         agent = self._agents.get(agent_id)
@@ -145,6 +154,7 @@ class AgentEngine:
                     budget_eur_limit=raw.get("budget_eur_limit", 0.0),
                     max_chat_turns=int(raw.get("max_chat_turns", 0)),
                     allowed_endpoints=raw.get("allowed_endpoints"),
+                    trigger_on=raw.get("trigger_on", ["ANOMALIA"]),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -320,6 +330,7 @@ class AgentEngine:
             budget_eur_limit=float(data.get("budget_eur_limit", 0.0)),
             max_chat_turns=int(data.get("max_chat_turns", 0)),
             allowed_endpoints=data.get("allowed_endpoints"),
+            trigger_on=data.get("trigger_on", ["ANOMALIA"]),
         )
         self._agents[agent.id] = agent
         if self._mqtt_publisher:
@@ -340,6 +351,7 @@ class AgentEngine:
         "strategic_context", "allowed_entities", "allowed_services",
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
         "actions", "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
+        "trigger_on",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -488,6 +500,131 @@ class AgentEngine:
             lines.append(f"- {name}: {e['state']}{unit}")
         return "\n".join(lines)
 
+    def _check_budget_auto_disable(self, agent: "Agent") -> None:
+        if not (agent.budget_eur_limit > 0 and self._claude_runner):
+            return
+        try:
+            usage = self._claude_runner.get_agent_usage(agent.id)
+            cost_eur = usage.get("cost_usd", 0.0) * EUR_RATE
+            if cost_eur >= agent.budget_eur_limit:
+                logger.warning(
+                    "Agent %s auto-disabled: cost €%.4f >= limit €%.4f",
+                    agent.name, cost_eur, agent.budget_eur_limit,
+                )
+                agent.enabled = False
+                self._save()
+        except Exception as exc:
+            logger.warning("Budget check failed for %s: %s", agent.name, exc)
+
+    async def _execute_agent_actions(
+        self, agent: "Agent", eval_status: Optional[str], claude_text: str
+    ) -> str:
+        """Execute agent.actions via TaskEngine immediate tasks when eval_status matches trigger_on."""
+        if not agent.actions or not eval_status:
+            return ""
+        if eval_status not in agent.trigger_on:
+            return ""
+        if not self._task_engine:
+            logger.warning("_execute_agent_actions: TaskEngine not configured for agent %s", agent.id)
+            return ""
+
+        results: list[str] = []
+        for action in agent.actions:
+            a_type = action.get("type", "")
+            label = action.get("label", a_type)
+            on_fail = action.get("on_fail", "continue")
+
+            if a_type == "notify":
+                task_actions = [{
+                    "type": "send_notification",
+                    "message": claude_text,
+                    "channel": action.get("channel", "ha_push"),
+                    "on_fail": on_fail,
+                }]
+                try:
+                    self._task_engine.add_task(
+                        {"label": f"{agent.name} — {label}", "trigger": {"type": "immediate"},
+                         "actions": task_actions, "one_shot": True},
+                        agent_id=agent.id,
+                    )
+                    results.append(f"notify:queued")
+                except Exception as exc:
+                    results.append(f"notify:FAILED({exc})")
+
+            elif a_type == "call_service":
+                domain = action.get("domain", "")
+                service = action.get("service", "")
+                svc_key = f"{domain}.{service}"
+                if agent.allowed_services and not any(
+                    fnmatch.fnmatch(svc_key, pat) for pat in agent.allowed_services
+                ):
+                    results.append(f"call_service({svc_key}):BLOCKED")
+                    continue
+                entity_pattern = action.get("entity_pattern", "")
+                if entity_pattern and "*" in entity_pattern and self._entity_cache:
+                    all_ids = list(self._entity_cache.get_all_states().keys())
+                    matched = [eid for eid in all_ids if fnmatch.fnmatch(eid, entity_pattern)]
+                    data: dict = {"entity_id": matched} if matched else {}
+                elif entity_pattern:
+                    data = {"entity_id": entity_pattern}
+                else:
+                    data = {}
+                task_actions = [{"type": "call_ha_service", "domain": domain, "service": service,
+                                  "data": data, "on_fail": on_fail}]
+                try:
+                    self._task_engine.add_task(
+                        {"label": f"{agent.name} — {label}", "trigger": {"type": "immediate"},
+                         "actions": task_actions, "one_shot": True},
+                        agent_id=agent.id,
+                    )
+                    results.append(f"call_service({svc_key}):queued")
+                except Exception as exc:
+                    results.append(f"call_service({svc_key}):FAILED({exc})")
+
+            elif a_type == "wait":
+                delay_minutes = max(1, int(action.get("minutes", action.get("delay_minutes", 5))))
+                child_actions = action.get("actions", [])
+                if child_actions:
+                    try:
+                        self._task_engine.add_task(
+                            {"label": f"{agent.name} — {label}",
+                             "trigger": {"type": "delay", "minutes": delay_minutes},
+                             "actions": child_actions, "one_shot": True},
+                            agent_id=agent.id,
+                        )
+                        results.append(f"wait({delay_minutes}min):scheduled")
+                    except Exception as exc:
+                        results.append(f"wait:FAILED({exc})")
+
+            elif a_type == "verify":
+                condition = action.get("condition")
+                child_actions = action.get("actions", [])
+                timeout_minutes = max(1, int(action.get("timeout_minutes", 60)))
+                if not condition or not condition.get("entity_id") or not condition.get("operator") or "value" not in condition:
+                    logger.warning("_execute_agent_actions: verify action %r missing condition for agent %s", label, agent.id)
+                    results.append(f"verify:SKIPPED(invalid condition)")
+                elif child_actions:
+                    from datetime import timedelta
+                    now_dt = datetime.now(timezone.utc)
+                    to_dt = now_dt + timedelta(minutes=timeout_minutes)
+                    try:
+                        self._task_engine.add_task(
+                            {"label": f"{agent.name} — {label}",
+                             "trigger": {"type": "time_window",
+                                          "from": now_dt.strftime("%H:%M"),
+                                          "to": to_dt.strftime("%H:%M")},
+                             "condition": condition,
+                             "actions": child_actions, "one_shot": True},
+                            agent_id=agent.id,
+                        )
+                        results.append(f"verify({condition['entity_id']}):scheduled")
+                    except Exception as exc:
+                        results.append(f"verify:FAILED({exc})")
+            else:
+                logger.warning("_execute_agent_actions: unknown action type %r for agent %s", a_type, agent.id)
+
+        return "; ".join(results) if results else ""
+
     async def _run_agent(self, agent: Agent, context: Optional[dict] = None) -> str:
         if not self._claude_runner:
             logger.warning("No Claude runner configured")
@@ -513,7 +650,7 @@ class AgentEngine:
                     user_message = f"{user_message}\n\n{entity_ctx}"
 
             agent_actions: list = list(getattr(agent, "actions", []) or [])
-            if agent_actions:
+            if agent_actions and agent.type != "chat":
                 result, eval_status, action_taken = await self._claude_runner.run_with_actions(
                     user_message=user_message,
                     system_prompt=effective_prompt,
@@ -529,6 +666,7 @@ class AgentEngine:
                     require_confirmation=agent.require_confirmation,
                     agent_id=agent.id,
                 )
+                action_taken = await self._execute_agent_actions(agent, eval_status, result)
             else:
                 result = await self._claude_runner.chat(
                     user_message=user_message,
@@ -551,20 +689,7 @@ class AgentEngine:
             self._append_execution_log(agent, result, inp_before, out_before, tool_calls_snapshot, success=True,
                                        eval_status=eval_status, action_taken=action_taken)
             self._save()
-            # Auto-disable if budget_eur_limit exceeded
-            if agent.budget_eur_limit > 0 and self._claude_runner:
-                try:
-                    usage = self._claude_runner.get_agent_usage(agent.id)
-                    cost_eur = usage.get("cost_usd", 0.0) * EUR_RATE
-                    if cost_eur >= agent.budget_eur_limit:
-                        logger.warning(
-                            "Agent %s auto-disabled: cost €%.4f >= limit €%.4f",
-                            agent.name, cost_eur, agent.budget_eur_limit,
-                        )
-                        agent.enabled = False
-                        self._save()
-                except Exception as exc:
-                    logger.warning("Budget check failed for %s: %s", agent.name, exc)
+            self._check_budget_auto_disable(agent)
             return result
         except Exception as exc:
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
@@ -573,19 +698,7 @@ class AgentEngine:
             agent.last_result = f"Error: {exc}"
             self._append_execution_log(agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False)
             self._save()
-            if agent.budget_eur_limit > 0 and self._claude_runner:
-                try:
-                    usage = self._claude_runner.get_agent_usage(agent.id)
-                    cost_eur = usage.get("cost_usd", 0.0) * EUR_RATE
-                    if cost_eur >= agent.budget_eur_limit:
-                        logger.warning(
-                            "Agent %s auto-disabled on failure: cost €%.4f >= limit €%.4f",
-                            agent.name, cost_eur, agent.budget_eur_limit,
-                        )
-                        agent.enabled = False
-                        self._save()
-                except Exception as budget_exc:
-                    logger.warning("Budget check failed for %s: %s", agent.name, budget_exc)
+            self._check_budget_auto_disable(agent)
             return agent.last_result
         finally:
             self._running_agents.discard(agent.id)

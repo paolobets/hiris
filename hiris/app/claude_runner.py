@@ -30,6 +30,7 @@ from .tools.task_tools import (
 from .tools.calendar_tools import (
     get_calendar_events, GET_CALENDAR_EVENTS_TOOL_DEF,
     set_input_helper, SET_INPUT_HELPER_TOOL_DEF,
+    create_calendar_event, CREATE_CALENDAR_EVENT_TOOL_DEF,
 )
 from .tools.http_tools import http_request, HTTP_REQUEST_TOOL_DEF
 
@@ -54,7 +55,8 @@ BASE_SYSTEM_PROMPT = (
     "- get_energy_history(days): storico consumi energetici.\n"
     "- get_weather_forecast(hours): previsioni meteo.\n"
     "- call_ha_service(domain, service, data): controlla dispositivi.\n"
-    "- send_notification(message, channel): invia notifiche (ha_push, telegram).\n"
+    "- send_notification(message, channel): invia notifiche (ha_push, apprise, retropanel).\n"
+    "- create_calendar_event(calendar_entity, summary, event_type, ...): crea un evento nel calendario HA.\n"
     "- create_task(label, trigger, actions): pianifica un'azione futura.\n"
     "- list_tasks(agent_id, status): elenca i task pianificati.\n"
     "- cancel_task(task_id): annulla un task pianificato.\n"
@@ -102,8 +104,21 @@ ALL_TOOL_DEFS = [
     CANCEL_TASK_TOOL_DEF,
     GET_CALENDAR_EVENTS_TOOL_DEF,
     SET_INPUT_HELPER_TOOL_DEF,
+    CREATE_CALENDAR_EVENT_TOOL_DEF,
     HTTP_REQUEST_TOOL_DEF,
 ]
+
+# Tools available to non-chat agents in evaluation mode.
+# Excludes direct-execution tools (send_notification, call_ha_service,
+# trigger_automation, toggle_automation, http_request) to prevent prompt
+# injection from HA entity state from triggering real-world actions.
+EVALUATION_ONLY_TOOLS = frozenset({
+    "get_entity_states", "get_area_entities", "get_home_status",
+    "get_entities_on", "get_entities_by_domain",
+    "get_energy_history", "get_weather_forecast",
+    "get_ha_automations", "get_calendar_events",
+    "create_task", "list_tasks", "cancel_task",
+})
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
@@ -588,12 +603,25 @@ class ClaudeRunner:
         Returns:
             Tuple of (cleaned_text, eval_status, action_taken).
         """
-        action_instructions = _build_action_instructions(actions)
-        augmented_prompt = f"{system_prompt}\n\n{action_instructions}" if action_instructions else system_prompt
+        # Restrict tools to evaluation-only set for non-chat agents.
+        # Claude may gather data and schedule tasks, but cannot directly
+        # execute HA actions (send_notification, call_ha_service, etc.).
+        eval_tools = list(EVALUATION_ONLY_TOOLS)
+        if allowed_tools:
+            eval_tools = [t for t in eval_tools if t in allowed_tools]
+
+        eval_instruction = (
+            "\n\n---\n"
+            "Analizza il contesto e concludi la risposta con:\n"
+            "VALUTAZIONE: OK|ATTENZIONE|ANOMALIA\n"
+            "Motivazione: [1-2 righe sintetiche]"
+        )
+        augmented_prompt = system_prompt + eval_instruction
+
         raw_result = await self.chat(
             user_message=user_message,
             system_prompt=augmented_prompt,
-            allowed_tools=allowed_tools,
+            allowed_tools=eval_tools,
             allowed_entities=allowed_entities,
             allowed_services=allowed_services,
             allowed_endpoints=allowed_endpoints,
@@ -604,7 +632,8 @@ class ClaudeRunner:
             require_confirmation=require_confirmation,
             agent_id=agent_id,
         )
-        return _parse_structured_response(raw_result)
+        text, eval_status, action_taken = _parse_structured_response(raw_result)
+        return text, eval_status, action_taken
 
     async def _call_api(self, **kwargs) -> Any:
         for attempt in range(MAX_RETRIES + 1):
@@ -727,6 +756,19 @@ class ClaudeRunner:
                     self._ha,
                     entity_id=eid,
                     value=inputs.get("value"),
+                )
+            if name == "create_calendar_event":
+                return await create_calendar_event(
+                    self._ha,
+                    calendar_entity=inputs["calendar_entity"],
+                    summary=inputs["summary"],
+                    event_type=inputs["event_type"],
+                    start_date_time=inputs.get("start_date_time"),
+                    end_date_time=inputs.get("end_date_time"),
+                    start_date=inputs.get("start_date"),
+                    end_date=inputs.get("end_date"),
+                    description=inputs.get("description"),
+                    location=inputs.get("location"),
                 )
             if name == "http_request":
                 return await http_request(

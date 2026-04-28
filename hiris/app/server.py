@@ -75,44 +75,6 @@ def _deploy_card_to_www(slug: str = "hiris") -> None:
         logger.error("Failed to deploy HIRIS card to %s: %s", dst, exc, exc_info=True)
 
 
-async def _write_ingress_config(supervisor_token: str, slug: str = "hiris") -> None:
-    """Write <ha-config>/www/{slug}/hiris-ingress.json with the real ingress_url.
-
-    The Supervisor assigns a random token (not the add-on slug) to the ingress
-    path: /api/hassio_ingress/{random_token}/. The Lovelace card reads this file
-    at startup so it can call the correct URL without hardcoding the slug.
-    """
-    ha_config = _find_ha_config_dir()
-    if ha_config is None:
-        return
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "http://supervisor/addons/self/info",
-                headers={"Authorization": f"Bearer {supervisor_token}"},
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning("Supervisor /addons/self/info returned %s — skipping ingress config", resp.status)
-                    return
-                data = await resp.json()
-    except Exception as exc:
-        logger.warning("Cannot reach Supervisor API (%s) — skipping ingress config", exc)
-        return
-    ingress_url = (data.get("data") or {}).get("ingress_url")
-    if not ingress_url:
-        logger.warning("Supervisor /addons/self/info has no ingress_url field — skipping")
-        return
-    dst_dir = os.path.join(ha_config, "www", slug)
-    dst = os.path.join(dst_dir, "hiris-ingress.json")
-    try:
-        os.makedirs(dst_dir, exist_ok=True)
-        with open(dst, "w", encoding="utf-8") as f:
-            json.dump({"ingress_url": ingress_url}, f)
-        logger.info("HIRIS ingress config written: %s → %s", ingress_url, dst)
-    except Exception as exc:
-        logger.error("Failed to write ingress config to %s: %s", dst, exc)
-
-
 async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
     """Read WebSocket messages until we get the one matching msg_id."""
     loop = asyncio.get_running_loop()
@@ -332,10 +294,16 @@ async def _on_startup(app: web.Application) -> None:
     app["context_map"] = context_map
     logger.info("SemanticContextMap ready")
 
+    _apprise_raw = os.environ.get("APPRISE_URLS", "[]")
+    try:
+        _apprise_urls: list[str] = json.loads(_apprise_raw)
+        if not isinstance(_apprise_urls, list):
+            _apprise_urls = []
+    except Exception:
+        _apprise_urls = []
     notify_config = {
         "ha_notify_service": os.environ.get("HA_NOTIFY_SERVICE", "notify.notify"),
-        "telegram_token": os.environ.get("TELEGRAM_TOKEN", ""),
-        "telegram_chat_id": os.environ.get("TELEGRAM_CHAT_ID", ""),
+        "apprise_urls": _apprise_urls,
         "retropanel_url": os.environ.get("RETROPANEL_URL", "http://retropanel:8098"),
     }
     app["theme"] = os.environ.get("THEME", "auto")
@@ -391,6 +359,8 @@ async def _on_startup(app: web.Application) -> None:
         app["claude_runner"] = runner   # backward compat
         app["llm_router"] = router
         engine.set_claude_runner(router)
+        engine.set_task_engine(task_engine)
+        engine.set_notify_config(notify_config)
         runner.set_task_engine(task_engine)
 
         # Kick off LLM classification for ambiguous entities (background, non-blocking)
