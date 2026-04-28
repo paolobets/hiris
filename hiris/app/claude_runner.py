@@ -33,6 +33,12 @@ from .tools.calendar_tools import (
     create_calendar_event, CREATE_CALENDAR_EVENT_TOOL_DEF,
 )
 from .tools.http_tools import http_request, HTTP_REQUEST_TOOL_DEF
+from .tools.memory_tools import (
+    recall_memory as _recall_memory,
+    save_memory as _save_memory,
+    RECALL_MEMORY_TOOL_DEF,
+    SAVE_MEMORY_TOOL_DEF,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +69,11 @@ BASE_SYSTEM_PROMPT = (
     "- get_calendar_events(hours, calendar_entity?): eventi calendario HA nelle prossime N ore.\n"
     "- set_input_helper(entity_id, value): imposta un input helper HA (boolean/number/text/select).\n"
     "- http_request(url, method?, headers?, body?): chiama un'API esterna o un dispositivo locale"
-    " pre-approvato (solo se configurato nell'agente).\n\n"
+    " pre-approvato (solo se configurato nell'agente).\n"
+    "- recall_memory(query, k?, tags?): cerca nella memoria persistente dell'agente ricordi rilevanti"
+    " da sessioni precedenti.\n"
+    "- save_memory(content, tags?): salva un'informazione importante in memoria per sessioni future"
+    " (solo per agenti chat).\n\n"
     "## Regole fondamentali\n"
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
     "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
@@ -106,6 +116,8 @@ ALL_TOOL_DEFS = [
     SET_INPUT_HELPER_TOOL_DEF,
     CREATE_CALENDAR_EVENT_TOOL_DEF,
     HTTP_REQUEST_TOOL_DEF,
+    RECALL_MEMORY_TOOL_DEF,
+    SAVE_MEMORY_TOOL_DEF,
 ]
 
 # Tools available to non-chat agents in evaluation mode.
@@ -118,6 +130,8 @@ EVALUATION_ONLY_TOOLS = frozenset({
     "get_energy_history", "get_weather_forecast",
     "get_ha_automations", "get_calendar_events",
     "create_task", "list_tasks", "cancel_task",
+    "recall_memory",  # read-only — safe for non-chat agents
+    # save_memory excluded: write risk in reactive agents (prompt injection via HA state)
 })
 
 MODEL = "claude-sonnet-4-6"
@@ -252,6 +266,9 @@ class ClaudeRunner:
         usage_path: str = "",
         entity_cache=None,
         semantic_map=None,
+        memory_store=None,
+        embedding_provider=None,
+        memory_retention_days: int | None = None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._ha = ha_client
@@ -259,6 +276,9 @@ class ClaudeRunner:
         self._usage_path = usage_path
         self._cache = entity_cache
         self._semantic_map = semantic_map
+        self._memory_store = memory_store
+        self._embedder = embedding_provider
+        self._memory_retention_days = memory_retention_days
         self._task_engine = None
         self.last_tool_calls: list[dict] = []
         self.total_input_tokens: int = 0
@@ -420,6 +440,8 @@ class ClaudeRunner:
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         if allowed_endpoints is None:
             tools = [t for t in tools if t["name"] != "http_request"]
+        if self._memory_store is None or self._embedder is None:
+            tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         hist = list(conversation_history or [])
         messages: list[dict] = []
         if hist:
@@ -777,6 +799,28 @@ class ClaudeRunner:
                     headers=inputs.get("headers"),
                     body=inputs.get("body"),
                     allowed_endpoints=allowed_endpoints,
+                )
+            if name == "recall_memory":
+                if self._memory_store is None:
+                    return {"error": "Memory store not configured"}
+                return await _recall_memory(
+                    memory_store=self._memory_store,
+                    embedder=self._embedder,
+                    agent_id=agent_id or "hiris-default",
+                    query=inputs["query"],
+                    k=int(inputs.get("k", 5)),
+                    tags=inputs.get("tags") or None,
+                )
+            if name == "save_memory":
+                if self._memory_store is None:
+                    return {"error": "Memory store not configured"}
+                return await _save_memory(
+                    memory_store=self._memory_store,
+                    embedder=self._embedder,
+                    agent_id=agent_id or "hiris-default",
+                    content=inputs["content"],
+                    tags=inputs.get("tags") or None,
+                    retention_days=self._memory_retention_days,
                 )
             logger.warning("Unknown tool: %s", name)
             return {"error": f"Unknown tool: {name}"}

@@ -34,6 +34,12 @@ options:
   mqtt_user: ""
   mqtt_password: ""
   apprise_urls: []
+  openai_api_key: ""
+  memory_embedding_provider: ""
+  memory_embedding_model: ""
+  memory_rag_k: 5
+  memory_retention_days: 90
+  history_retention_days: 90
 schema:
   claude_api_key: password
   log_level: "list(debug|info|warning|error)"
@@ -48,3 +54,9 @@ schema:
   mqtt_password: password
   apprise_urls:
     - str
+  openai_api_key: password
+  memory_embedding_provider: str
+  memory_embedding_model: str
+  memory_rag_k: int
+  memory_retention_days: int
+  history_retention_days: int

@@ -12,6 +12,12 @@ export MQTT_PORT=$(bashio::config 'mqtt_port' '1883')
 export MQTT_USER=$(bashio::config 'mqtt_user' '')
 export MQTT_PASSWORD=$(bashio::config 'mqtt_password' '')
 export APPRISE_URLS=$(bashio::config --raw 'apprise_urls' '[]')
+export OPENAI_API_KEY=$(bashio::config 'openai_api_key' '')
+export MEMORY_EMBEDDING_PROVIDER=$(bashio::config 'memory_embedding_provider' '')
+export MEMORY_EMBEDDING_MODEL=$(bashio::config 'memory_embedding_model' '')
+export MEMORY_RAG_K=$(bashio::config 'memory_rag_k' '5')
+export MEMORY_RETENTION_DAYS=$(bashio::config 'memory_retention_days' '90')
+export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 
 bashio::log.info "Starting HIRIS"
 bashio::log.info "Log level: ${LOG_LEVEL}"

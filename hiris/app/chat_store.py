@@ -9,7 +9,8 @@ from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
-HISTORY_RETENTION_DAYS = 30
+# 0 = unlimited; overridable at startup via configure()
+HISTORY_RETENTION_DAYS: int = int(os.environ.get("HISTORY_RETENTION_DAYS", "90"))
 SESSION_GAP_HOURS = 2
 PAST_SESSIONS_LIMIT = 3
 SUMMARY_MAX_CHARS = 200
@@ -138,17 +139,26 @@ class ChatStore:
             self._conn.commit()
 
     def load_context(self, agent_id: str, max_turns: int = 30) -> list[dict]:
-        """Return last max_turns pairs from the active (non-stale) session (within 30 days)."""
+        """Return last max_turns pairs from the active (non-stale) session."""
         with self._mu:
             sid = self._fresh_session_id(agent_id)
             if not sid:
                 return []
-            cutoff = (datetime.now(timezone.utc) - timedelta(days=HISTORY_RETENTION_DAYS)).strftime(_TS_FMT)
-            rows = self._conn.execute(
-                "SELECT role, content FROM chat_messages "
-                "WHERE session_id = ? AND timestamp >= ? ORDER BY id",
-                (sid, cutoff),
-            ).fetchall()
+            if HISTORY_RETENTION_DAYS > 0:
+                cutoff = (
+                    datetime.now(timezone.utc) - timedelta(days=HISTORY_RETENTION_DAYS)
+                ).strftime(_TS_FMT)
+                rows = self._conn.execute(
+                    "SELECT role, content FROM chat_messages "
+                    "WHERE session_id = ? AND timestamp >= ? ORDER BY id",
+                    (sid, cutoff),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT role, content FROM chat_messages "
+                    "WHERE session_id = ? ORDER BY id",
+                    (sid,),
+                ).fetchall()
             messages = [{"role": r["role"], "content": r["content"]} for r in rows]
             if len(messages) > max_turns * 2:
                 messages = messages[-(max_turns * 2):]
@@ -187,6 +197,24 @@ class ChatStore:
                 )
             self._conn.execute("DELETE FROM chat_sessions WHERE agent_id = ?", (agent_id,))
             self._conn.commit()
+
+    def delete_old_messages(self, retention_days: int) -> int:
+        """Hard-delete chat messages older than retention_days. Returns row count deleted."""
+        if retention_days <= 0:
+            return 0
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=retention_days)
+        ).strftime(_TS_FMT)
+        with self._mu:
+            cur = self._conn.execute(
+                "DELETE FROM chat_messages WHERE timestamp < ?", (cutoff,)
+            )
+            self._conn.execute(
+                "DELETE FROM chat_sessions WHERE session_id NOT IN "
+                "(SELECT DISTINCT session_id FROM chat_messages)"
+            )
+            self._conn.commit()
+            return cur.rowcount
 
     def migrate_from_json(self, data_dir: str) -> None:
         """One-time import of legacy chat_history_*.json files into SQLite."""
@@ -278,6 +306,11 @@ def get_past_summaries(agent_id: str, data_dir: str, n: int = PAST_SESSIONS_LIMI
 def count_user_turns(agent_id: str, data_dir: str) -> int:
     """Count user turns in the active session (used for max_chat_turns enforcement)."""
     return _get_store(data_dir).count_user_turns(agent_id)
+
+
+def delete_old_messages(data_dir: str, retention_days: int) -> int:
+    """Hard-delete chat messages older than retention_days days."""
+    return _get_store(data_dir).delete_old_messages(retention_days)
 
 
 def close_all_stores() -> None:

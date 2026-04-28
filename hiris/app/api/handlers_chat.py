@@ -104,6 +104,30 @@ async def handle_chat(request: web.Request) -> web.Response:
     if past_str:
         context_str = f"{past_str}\n\n---\n\n{context_str}" if context_str else past_str
 
+    # RAG memory injection: prepend top-k semantically relevant memories
+    memory_store = request.app.get("memory_store")
+    embedder = request.app.get("embedding_provider")
+    if memory_store is not None and embedder is not None and effective_agent_id:
+        try:
+            rag_k = int(request.app.get("memory_rag_k", 5))
+            top_mems = await memory_store.search(
+                agent_id=effective_agent_id,
+                query=message,
+                k=rag_k,
+                tags=None,
+                embedder=embedder,
+            )
+            if top_mems:
+                lines = ["Memorie rilevanti (recuperate automaticamente):"]
+                for m in top_mems:
+                    dt = m["created_at"][:10]
+                    tags_str = f" [{', '.join(m['tags'])}]" if m.get("tags") else ""
+                    lines.append(f"[{dt}]{tags_str} {m['content']}")
+                rag_str = "\n".join(lines)
+                context_str = f"{rag_str}\n\n---\n\n{context_str}" if context_str else rag_str
+        except Exception as exc:
+            logger.warning("RAG memory injection failed: %s", exc)
+
     agent_model = getattr(agent, "model", "auto") if agent else "auto"
     agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096
     agent_type = getattr(agent, "type", "chat") if agent else "chat"

@@ -25,6 +25,8 @@ from .proxy.ha_client import HAClient
 from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
 from .proxy.semantic_context_map import SemanticContextMap
+from .proxy.memory_store import MemoryStore
+from .backends.embeddings import build_embedding_provider
 from .api.middleware_internal_auth import internal_auth_middleware
 from .mqtt_publisher import MQTTPublisher
 
@@ -340,6 +342,48 @@ async def _on_startup(app: web.Application) -> None:
             logger.error("Invalid LOCAL_MODEL_URL (%s) — disabling local model", exc)
             local_model_url = ""
     local_model_name = os.environ.get("LOCAL_MODEL_NAME", "")
+    openai_api_key = os.environ.get("OPENAI_API_KEY", "")
+
+    # Memory / RAG config
+    mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
+    mem_model = os.environ.get("MEMORY_EMBEDDING_MODEL", "")
+    memory_rag_k = int(os.environ.get("MEMORY_RAG_K", "5"))
+    _mem_ret_raw = os.environ.get("MEMORY_RETENTION_DAYS", "90")
+    memory_retention_days: int | None = None if _mem_ret_raw == "0" else int(_mem_ret_raw)
+
+    embedder = build_embedding_provider(
+        provider=mem_provider,
+        model=mem_model,
+        openai_api_key=openai_api_key,
+        local_model_url=local_model_url,
+    )
+    memory_store = MemoryStore(db_path=os.path.join(data_dir, "hiris_memory.db"))
+    app["memory_store"] = memory_store
+    app["embedding_provider"] = embedder
+    app["memory_rag_k"] = memory_rag_k
+
+    # Daily retention job (chat messages + expired memories)
+    from .chat_store import delete_old_messages as _delete_old_messages
+
+    def _run_retention() -> None:
+        from .chat_store import HISTORY_RETENTION_DAYS
+        if HISTORY_RETENTION_DAYS > 0:
+            n = _delete_old_messages(data_dir, HISTORY_RETENTION_DAYS)
+            if n:
+                logger.info("Retention: deleted %d old chat messages", n)
+        n2 = memory_store.delete_expired()
+        if n2:
+            logger.info("Retention: deleted %d expired memories", n2)
+
+    engine._scheduler.add_job(
+        _run_retention,
+        trigger="cron",
+        hour=3,
+        minute=0,
+        id="hiris_retention",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
 
     if api_key:
         runner = ClaudeRunner(
@@ -349,6 +393,9 @@ async def _on_startup(app: web.Application) -> None:
             usage_path=usage_path,
             entity_cache=entity_cache,
             semantic_map=semantic_map,
+            memory_store=memory_store,
+            embedding_provider=embedder,
+            memory_retention_days=memory_retention_days,
         )
         router = LLMRouter(
             runner=runner,
@@ -380,6 +427,8 @@ async def _on_cleanup(app: web.Application) -> None:
         await app["mqtt_publisher"].stop()
     if "knowledge_db" in app:
         app["knowledge_db"].close()
+    if "memory_store" in app:
+        app["memory_store"].close()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()
