@@ -324,7 +324,10 @@ async def _on_startup(app: web.Application) -> None:
     )
     app["knowledge_db"] = knowledge_db
 
-    context_map = SemanticContextMap()
+    context_map = SemanticContextMap(
+        cache_path=os.path.join(data_dir, "semantic_context_map.json")
+    )
+    context_map.load()
     context_map.build(entity_cache, knowledge_db=knowledge_db)
     app["context_map"] = context_map
     logger.info("SemanticContextMap ready")

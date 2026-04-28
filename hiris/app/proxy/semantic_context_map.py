@@ -1,6 +1,8 @@
 from __future__ import annotations
 import fnmatch
+import json
 import logging
+import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -109,10 +111,53 @@ def classify_entity(domain: str, device_class: str | None) -> tuple[str, str]:
     return ("other", domain)
 
 
+_NO_AREA_KEY = "__no_area__"
+
+
 class SemanticContextMap:
-    def __init__(self) -> None:
+    def __init__(self, cache_path: str | None = None) -> None:
         self._map: _MapType = {}
         self._type_to_label: dict[str, str] = {}
+        self._cache_path = cache_path
+
+    def save(self) -> None:
+        if not self._cache_path:
+            return
+        serialized_map = {
+            (_NO_AREA_KEY if k is None else k): v
+            for k, v in self._map.items()
+        }
+        data = {"version": "1", "map": serialized_map, "type_to_label": self._type_to_label}
+        tmp = self._cache_path + ".tmp"
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, self._cache_path)
+            logger.debug("SemanticContextMap saved to %s", self._cache_path)
+        except Exception as exc:
+            logger.warning("SemanticContextMap save failed: %s", exc)
+
+    def load(self) -> bool:
+        if not self._cache_path:
+            return False
+        try:
+            with open(self._cache_path, encoding="utf-8") as f:
+                data = json.load(f)
+            raw = data.get("map", {})
+            self._map = {
+                (None if k == _NO_AREA_KEY else k): {et: list(eids) for et, eids in types.items()}
+                for k, types in raw.items()
+            }
+            self._type_to_label = data.get("type_to_label", {})
+            n = sum(len(eids) for t in self._map.values() for eids in t.values())
+            logger.info("SemanticContextMap loaded from cache: %d entities", n)
+            return True
+        except FileNotFoundError:
+            return False
+        except Exception as exc:
+            logger.warning("SemanticContextMap load failed: %s", exc)
+            return False
 
     def build(
         self,
@@ -157,10 +202,14 @@ class SemanticContextMap:
             area = eid_to_area.get(eid)
             new_map.setdefault(area, {}).setdefault(entity_type, []).append(eid)
 
-        self._map = new_map
         n_areas = len([k for k in new_map if k is not None])
         n_entities = sum(len(eids) for t in new_map.values() for eids in t.values())
+        if n_entities == 0:
+            logger.warning("SemanticContextMap.build(): entity cache empty, keeping previous map")
+            return
+        self._map = new_map
         logger.info("SemanticContextMap built: %d areas, %d entities", n_areas, n_entities)
+        self.save()
 
     def _get_label(self, entity_type: str) -> str:
         return self._type_to_label.get(entity_type, entity_type)

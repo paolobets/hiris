@@ -1,10 +1,9 @@
 from aiohttp import web
-
-_EUR_RATE = 0.92  # approximate USD→EUR
+from ..config import EUR_RATE as _EUR_RATE
 
 
 async def handle_usage(request: web.Request) -> web.Response:
-    runner = request.app.get("claude_runner")
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response({"error": "runner not configured"}, status=503)
 
@@ -28,7 +27,7 @@ async def handle_usage(request: web.Request) -> web.Response:
 
 
 async def handle_reset_usage(request: web.Request) -> web.Response:
-    runner = request.app.get("claude_runner")
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response({"error": "runner not configured"}, status=503)
     runner.reset_usage()

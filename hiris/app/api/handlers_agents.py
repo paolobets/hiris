@@ -2,9 +2,9 @@
 import re
 from dataclasses import asdict
 from aiohttp import web
+from ..config import EUR_RATE as _EUR_RATE
 
 _AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-_EUR_RATE = 0.92
 
 
 def _check_agent_id(agent_id: str) -> web.Response | None:
@@ -134,7 +134,7 @@ async def handle_get_agent_usage(request: web.Request) -> web.Response:
     engine = request.app["engine"]
     if not engine.get_agent(agent_id):
         return web.json_response({"error": "Not found"}, status=404)
-    runner = request.app.get("claude_runner")
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response({"error": "runner not configured"}, status=503)
     usage = runner.get_agent_usage(agent_id)
@@ -158,7 +158,7 @@ async def handle_reset_agent_usage(request: web.Request) -> web.Response:
     engine = request.app["engine"]
     if not engine.get_agent(agent_id):
         return web.json_response({"error": "Not found"}, status=404)
-    runner = request.app.get("claude_runner")
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response({"error": "runner not configured"}, status=503)
     runner.reset_agent_usage(agent_id)

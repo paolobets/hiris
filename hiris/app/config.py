@@ -1,5 +1,7 @@
 import os
 
+EUR_RATE: float = 0.92  # approximate USD→EUR conversion rate
+
 
 class Config:
     claude_api_key: str = os.environ.get("CLAUDE_API_KEY", "")

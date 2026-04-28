@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
+from .config import EUR_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +315,7 @@ class AgentEngine:
         agent = self._agents.get(agent_id)
         if not agent:
             return None
+        enabled_before = agent.enabled
         self._unschedule_agent(agent_id)
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
         _FLOAT_FIELDS = {"budget_eur_limit"}
@@ -334,6 +336,14 @@ class AgentEngine:
         if agent.enabled:
             self._schedule_agent(agent)
         self._save()
+        if self._mqtt_publisher and agent.enabled != enabled_before:
+            try:
+                asyncio.create_task(
+                    self._mqtt_publisher.publish_agent_state(agent, budget_eur=0.0, status="idle"),
+                    name=f"mqtt_enable_{agent.id}",
+                )
+            except RuntimeError:
+                logger.debug("update_agent: no event loop, MQTT publish skipped")
         return agent
 
     def delete_agent(self, agent_id: str) -> bool:
@@ -512,7 +522,7 @@ class AgentEngine:
             if agent.budget_eur_limit > 0 and self._claude_runner:
                 try:
                     usage = self._claude_runner.get_agent_usage(agent.id)
-                    cost_eur = usage.get("cost_usd", 0.0) * 0.92
+                    cost_eur = usage.get("cost_usd", 0.0) * EUR_RATE
                     if cost_eur >= agent.budget_eur_limit:
                         logger.warning(
                             "Agent %s auto-disabled: cost €%.4f >= limit €%.4f",
@@ -533,7 +543,7 @@ class AgentEngine:
             if agent.budget_eur_limit > 0 and self._claude_runner:
                 try:
                     usage = self._claude_runner.get_agent_usage(agent.id)
-                    cost_eur = usage.get("cost_usd", 0.0) * 0.92
+                    cost_eur = usage.get("cost_usd", 0.0) * EUR_RATE
                     if cost_eur >= agent.budget_eur_limit:
                         logger.warning(
                             "Agent %s auto-disabled on failure: cost €%.4f >= limit €%.4f",
@@ -556,7 +566,7 @@ class AgentEngine:
                 if runner and hasattr(runner, "get_agent_usage"):
                     try:
                         usage = runner.get_agent_usage(agent.id)
-                        budget_eur = round(usage.get("cost_usd", 0.0) * 0.92, 4)
+                        budget_eur = round(usage.get("cost_usd", 0.0) * EUR_RATE, 4)
                     except Exception:
                         pass
                 final_status = "error" if _had_error else "idle"
