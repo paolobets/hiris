@@ -173,6 +173,9 @@ def check_git_clean() -> None:
     # Allow only the exact relative paths for our release files
     _ALLOWED = {
         "hiris/config.yaml",
+        "hiris/run.sh",
+        "hiris/translations/en.yaml",
+        "hiris/translations/it.yaml",
         "CHANGELOG.md",
         *[f"docs/{d.name}" for d in _VERSIONED_DOCS],
     }
@@ -217,8 +220,9 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
     # "HEAD:master" is a refspec that fast-forwards remote master to the
     # current commit without requiring a local checkout of master.
     doc_paths = [f"docs/{d.name}" for d in _VERSIONED_DOCS if (ROOT / "docs" / d.name).exists()]
+    extra = [p for p in ["hiris/run.sh", "hiris/translations/en.yaml", "hiris/translations/it.yaml"] if (ROOT / p).exists()]
     cmds = [
-        ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *doc_paths],
+        ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *doc_paths, *extra],
         ["git", "commit", "-m", f"chore: release v{version}"],
         ["git", "tag", f"v{version}"],
         ["git", "push", "origin", "HEAD:master", "--tags"],
