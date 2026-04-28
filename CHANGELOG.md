@@ -1,5 +1,11 @@
 # HIRIS — Changelog
 
+## [0.6.5] — 2026-04-28
+
+### Fixed
+- **Chat UI (`index.html`)**: added `_isLoading` flag — Enter key can no longer trigger a second request while a response is in progress; send button shows a CSS spinner during generation
+- **Lovelace card**: text typed in the input field is now preserved across streaming re-renders (previously lost on every token); send button shows a spinner and `title="Elaborazione…"` while loading; input placeholder changes to "Elaborazione…" during generation
+
 ## [0.6.4] — 2026-04-28
 
 ### Fixed
