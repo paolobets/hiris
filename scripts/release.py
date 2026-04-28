@@ -7,12 +7,13 @@ Usage:
   python scripts/release.py --version X.Y.Z --skip-tests  # hotfix only
 
 Steps (abort on first failure):
-  1  Validate semver X.Y.Z
-  2  Check config.yaml version matches --version
-  3  Check CHANGELOG.md has ## [X.Y.Z] section
-  4  Check git tree clean (only config.yaml / CHANGELOG.md allowed dirty)
-  5  Run pytest (skipped with --skip-tests)
-  6  git add + commit chore: release vX.Y.Z
+  1   Validate semver X.Y.Z
+  2   Check config.yaml version matches --version
+  3   Check CHANGELOG.md has ## [X.Y.Z] section
+  3b  Update version/date headers in all versioned docs
+  4   Check git tree clean (only config.yaml / CHANGELOG.md / docs allowed dirty)
+  5   Run pytest (skipped with --skip-tests)
+  6   git add + commit chore: release vX.Y.Z (includes docs)
   7  git tag vX.Y.Z
   8  git push HEAD:master --tags  (always targets master, worktree-safe)
   9  Extract changelog section for X.Y.Z
@@ -22,6 +23,7 @@ import argparse
 import re
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 # Ensure UTF-8 output on Windows (cp1252 terminals can't encode ✓/✗/→)
@@ -33,6 +35,17 @@ if hasattr(sys.stderr, "reconfigure"):
 ROOT = Path(__file__).parent.parent
 CONFIG = ROOT / "hiris" / "config.yaml"
 CHANGELOG = ROOT / "CHANGELOG.md"
+
+# Docs that carry a version/date header updated on each release
+_VERSIONED_DOCS = [
+    ROOT / "docs" / "architecture.md",
+    ROOT / "docs" / "architettura.md",
+    ROOT / "docs" / "how-it-works.md",
+    ROOT / "docs" / "come-funziona.md",
+    ROOT / "docs" / "use-cases.md",
+    ROOT / "docs" / "casi-duso.md",
+    ROOT / "docs" / "ROADMAP.md",
+]
 
 _GREEN = "\033[32m"
 _RED = "\033[31m"
@@ -102,6 +115,52 @@ def check_changelog(version: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Step 3b — bump version/date headers in docs
+# ---------------------------------------------------------------------------
+
+def update_docs_version(version: str, dry_run: bool) -> None:
+    today = date.today().isoformat()
+    updated: list[str] = []
+    for doc in _VERSIONED_DOCS:
+        if not doc.exists():
+            continue
+        text = doc.read_text(encoding="utf-8")
+        new_text = text
+        # "> Version: X.Y.Z · Updated: DATE" (EN)
+        new_text = re.sub(
+            r"(> Version: )\d+\.\d+\.\d+( · Updated: )\d{4}-\d{2}-\d{2}",
+            rf"\g<1>{version}\g<2>{today}",
+            new_text,
+        )
+        # "> Versione: X.Y.Z · Aggiornato: DATE" (IT)
+        new_text = re.sub(
+            r"(> Versione: )\d+\.\d+\.\d+( · Aggiornato: )\d{4}-\d{2}-\d{2}",
+            rf"\g<1>{version}\g<2>{today}",
+            new_text,
+        )
+        # roadmap: "Current version: **vX.Y.Z**"
+        new_text = re.sub(
+            r"(Current version: \*\*v)\d+\.\d+\.\d+(\*\*)",
+            rf"\g<1>{version}\g<2>",
+            new_text,
+        )
+        # roadmap: "Last updated: DATE"
+        new_text = re.sub(
+            r"(Last updated: )\d{4}-\d{2}-\d{2}",
+            rf"\g<1>{today}",
+            new_text,
+        )
+        if new_text != text:
+            updated.append(doc.name)
+            if not dry_run:
+                doc.write_text(new_text, encoding="utf-8")
+    if updated:
+        label = "[dry-run] would update" if dry_run else "Updated version headers in"
+        _info(f"{label}: {', '.join(updated)}")
+    _ok(f"Docs version headers → {version} ({today})")
+
+
+# ---------------------------------------------------------------------------
 # Step 4
 # ---------------------------------------------------------------------------
 
@@ -112,7 +171,11 @@ def check_git_clean() -> None:
     )
     # git status --porcelain format: "XY PATH" or "XY OLD_PATH -> NEW_PATH"
     # Allow only the exact relative paths for our release files
-    _ALLOWED = {"hiris/config.yaml", "CHANGELOG.md"}
+    _ALLOWED = {
+        "hiris/config.yaml",
+        "CHANGELOG.md",
+        *[f"docs/{d.name}" for d in _VERSIONED_DOCS],
+    }
 
     def _extract_path(line: str) -> str:
         # Strip the 2-char status + space prefix, handle renames
@@ -153,8 +216,9 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
     # Always push HEAD to master regardless of the working branch/worktree.
     # "HEAD:master" is a refspec that fast-forwards remote master to the
     # current commit without requiring a local checkout of master.
+    doc_paths = [f"docs/{d.name}" for d in _VERSIONED_DOCS if (ROOT / "docs" / d.name).exists()]
     cmds = [
-        ["git", "add", "hiris/config.yaml", "CHANGELOG.md"],
+        ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *doc_paths],
         ["git", "commit", "-m", f"chore: release v{version}"],
         ["git", "tag", f"v{version}"],
         ["git", "push", "origin", "HEAD:master", "--tags"],
@@ -228,10 +292,11 @@ def main() -> None:
     if args.dry_run:
         _info("DRY RUN — steps 6–10 will be printed but not executed\n")
 
-    validate_semver(args.version)          # step 1
-    check_config_version(args.version)     # step 2
-    check_changelog(args.version)          # step 3
-    check_git_clean()                      # step 4
+    validate_semver(args.version)               # step 1
+    check_config_version(args.version)          # step 2
+    check_changelog(args.version)               # step 3
+    update_docs_version(args.version, args.dry_run)  # step 3b
+    check_git_clean()                           # step 4
     if args.skip_tests:
         _info("Skipping pytest (--skip-tests)")
     else:

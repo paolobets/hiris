@@ -83,15 +83,12 @@ def test_missing_changelog_section_aborts(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_dry_run_no_git_calls():
-    # The branch-detection call (git rev-parse) is read-only and always runs.
-    # All other git mutating commands must be skipped in dry-run mode.
+    # In dry-run mode all git mutating commands must be skipped entirely.
+    # No subprocess.run calls expected (branch detection was removed).
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(stdout="master\n", returncode=0)
         rel.git_commit_and_tag("0.6.0", dry_run=True)
-    # Only the one read-only branch-detection call is expected
-    assert mock_run.call_count == 1, (
-        f"Only the branch-detection subprocess.run call is allowed in dry-run mode, "
-        f"got {mock_run.call_count}"
+    assert mock_run.call_count == 0, (
+        f"No subprocess.run calls expected in dry-run mode, got {mock_run.call_count}"
     )
 
 
