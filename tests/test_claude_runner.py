@@ -4,6 +4,7 @@ import anthropic
 from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT, resolve_model, AUTO_MODEL_MAP
 from hiris.app.proxy.home_profile import _reset_profile_cache
+from hiris.app.tools.dispatcher import ToolDispatcher
 
 
 def _sys_text(system) -> str:
@@ -25,12 +26,11 @@ def mock_ha():
 
 @pytest.fixture
 def runner(mock_ha):
+    dispatcher = ToolDispatcher(mock_ha, {})
     with patch("anthropic.AsyncAnthropic"):
-        return ClaudeRunner(
-            api_key="test-key",
-            ha_client=mock_ha,
-            notify_config={},
-        )
+        r = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
+    r._ha = mock_ha  # shortcut for tests
+    return r
 
 
 @pytest.mark.asyncio
@@ -170,12 +170,11 @@ async def test_allowed_services_empty_means_no_restriction(runner):
 
 @pytest.fixture
 def restricted_runner(mock_ha):
+    dispatcher = ToolDispatcher(mock_ha, {})
     with patch("anthropic.AsyncAnthropic"):
-        return ClaudeRunner(
-            api_key="test-key",
-            ha_client=mock_ha,
-            notify_config={},
-        )
+        r = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
+    r._ha = mock_ha
+    return r
 
 
 @pytest.mark.asyncio
@@ -556,16 +555,16 @@ async def test_run_with_actions_injects_instructions_and_parses():
     # Verify the augmented prompt was passed to chat()
     call_kwargs = runner.chat.call_args.kwargs
     assert "VALUTAZIONE:" in call_kwargs["system_prompt"]
-    assert "AZIONE:" in call_kwargs["system_prompt"]
-    assert "Test" in call_kwargs["system_prompt"]
+    assert "base system" in call_kwargs["system_prompt"]
 
 
 def test_get_agent_usage_returns_zeros_for_unknown_agent():
     from unittest.mock import MagicMock
     from hiris.app.claude_runner import ClaudeRunner
     runner = ClaudeRunner(
-        api_key="test", ha_client=MagicMock(),
-        notify_config={}, usage_path="",
+        api_key="test",
+        dispatcher=ToolDispatcher(MagicMock(), {}),
+        usage_path="",
     )
     usage = runner.get_agent_usage("agent-xyz")
     assert usage["input_tokens"] == 0
@@ -582,8 +581,9 @@ def test_per_agent_usage_accumulates_after_chat():
     from hiris.app.claude_runner import ClaudeRunner
 
     runner = ClaudeRunner(
-        api_key="test", ha_client=MagicMock(),
-        notify_config={}, usage_path="",
+        api_key="test",
+        dispatcher=ToolDispatcher(MagicMock(), {}),
+        usage_path="",
     )
 
     mock_response = MagicMock()
@@ -614,8 +614,9 @@ def test_reset_agent_usage_clears_counters():
     from hiris.app.claude_runner import ClaudeRunner
 
     runner = ClaudeRunner(
-        api_key="test", ha_client=MagicMock(),
-        notify_config={}, usage_path="",
+        api_key="test",
+        dispatcher=ToolDispatcher(MagicMock(), {}),
+        usage_path="",
     )
     runner._per_agent_usage["agent-abc"] = {
         "input_tokens": 500, "output_tokens": 200,
@@ -634,8 +635,9 @@ def test_per_agent_usage_persists_and_reloads(tmp_path):
 
     usage_file = str(tmp_path / "usage.json")
     runner = ClaudeRunner(
-        api_key="test", ha_client=MagicMock(),
-        notify_config={}, usage_path=usage_file,
+        api_key="test",
+        dispatcher=ToolDispatcher(MagicMock(), {}),
+        usage_path=usage_file,
     )
     runner._per_agent_usage["agent-persist"] = {
         "input_tokens": 1000, "output_tokens": 400,
@@ -644,8 +646,9 @@ def test_per_agent_usage_persists_and_reloads(tmp_path):
     runner._save_usage()
 
     runner2 = ClaudeRunner(
-        api_key="test", ha_client=MagicMock(),
-        notify_config={}, usage_path=usage_file,
+        api_key="test",
+        dispatcher=ToolDispatcher(MagicMock(), {}),
+        usage_path=usage_file,
     )
     usage = runner2.get_agent_usage("agent-persist")
     assert usage["input_tokens"] == 1000

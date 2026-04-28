@@ -1,8 +1,8 @@
 import pytest
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.backends.base import LLMBackend
 from hiris.app.backends.ollama import OllamaBackend
+from hiris.app.llm_router import LLMRouter
 
 
 def test_llm_backend_is_abstract():
@@ -31,11 +31,6 @@ async def test_ollama_backend_simple_chat():
         assert "energy_meter" in result
 
 
-from unittest.mock import patch
-import json
-from hiris.app.llm_router import LLMRouter
-
-
 @pytest.fixture
 def mock_runner():
     runner = MagicMock()
@@ -57,7 +52,7 @@ def mock_runner():
 
 @pytest.mark.asyncio
 async def test_router_chat_delegates_to_runner(mock_runner):
-    router = LLMRouter(runner=mock_runner)
+    router = LLMRouter(claude=mock_runner)
     result = await router.chat(user_message="hello", system_prompt="sys")
     mock_runner.chat.assert_awaited_once()
     assert result == "response text"
@@ -65,7 +60,7 @@ async def test_router_chat_delegates_to_runner(mock_runner):
 
 @pytest.mark.asyncio
 async def test_router_classify_entities_no_local_uses_runner(mock_runner):
-    router = LLMRouter(runner=mock_runner)
+    router = LLMRouter(claude=mock_runner)
     entities = [{"id": "sensor.test", "state": "100", "name": "Test", "unit": "W"}]
     result = await router.classify_entities(entities)
     mock_runner.simple_chat.assert_awaited_once()
@@ -75,18 +70,16 @@ async def test_router_classify_entities_no_local_uses_runner(mock_runner):
 
 @pytest.mark.asyncio
 async def test_router_classify_entities_uses_ollama_if_configured(mock_runner):
-    router = LLMRouter(runner=mock_runner, local_model_url="http://localhost:11434", local_model_name="llama3.2")
+    mock_ollama = MagicMock()
+    mock_ollama.simple_chat = AsyncMock(return_value='{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}')
+    router = LLMRouter(claude=mock_runner, ollama=mock_ollama)
     entities = [{"id": "sensor.test", "state": "100", "name": "Test", "unit": "W"}]
-    with patch("hiris.app.llm_router.OllamaBackend") as MockOllama:
-        mock_ollama = MagicMock()
-        mock_ollama.simple_chat = AsyncMock(return_value='{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}')
-        MockOllama.return_value = mock_ollama
-        result = await router.classify_entities(entities)
+    result = await router.classify_entities(entities)
     mock_ollama.simple_chat.assert_awaited_once()
     mock_runner.simple_chat.assert_not_awaited()
 
 
 def test_router_proxies_usage_properties(mock_runner):
-    router = LLMRouter(runner=mock_runner)
+    router = LLMRouter(claude=mock_runner)
     assert router.total_input_tokens == 10
     assert router.last_tool_calls == []

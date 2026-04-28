@@ -198,7 +198,7 @@ async def test_execute_task_failed_on_ha_error(engine, mock_ha):
     task = engine.add_task({
         "label": "Fail task",
         "trigger": {"type": "delay", "minutes": 1},
-        "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on", "data": {}}],
+        "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on", "data": {}, "on_fail": "stop"}],
     }, agent_id="hiris-default")
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "failed"
@@ -285,7 +285,7 @@ async def test_unknown_action_marks_failed(engine):
         {
             "label": "Bad action",
             "trigger": {"type": "delay", "minutes": 1},
-            "actions": [{"type": "unknown_action", "foo": "bar"}],
+            "actions": [{"type": "unknown_action", "foo": "bar", "on_fail": "stop"}],
         },
         agent_id="hiris-default",
     )

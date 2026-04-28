@@ -159,15 +159,13 @@ async def test_toggle_automation_enable(mock_ha):
 
 @pytest.mark.asyncio
 async def test_send_notification_telegram(mock_ha):
-    config = {"telegram_token": "test_token", "telegram_chat_id": "123456"}
-    mock_resp = AsyncMock()
-    mock_resp.status = 200
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-    with patch("aiohttp.ClientSession.post", return_value=mock_resp):
+    config = {"apprise_urls": ["tgram://test_token/123456"]}
+    with patch("hiris.app.tools.notify_tools._APPRISE_AVAILABLE", True), \
+         patch("hiris.app.tools.notify_tools._apprise_lib") as mock_apprise_lib:
+        mock_apobj = MagicMock()
+        mock_apobj.async_notify = AsyncMock(return_value=True)
+        mock_apprise_lib.Apprise.return_value = mock_apobj
         result = await send_notification(mock_ha, "Hello Telegram", "telegram", config)
-
     assert result is True
 
 

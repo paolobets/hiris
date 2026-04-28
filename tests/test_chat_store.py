@@ -78,30 +78,35 @@ def test_different_agents_have_separate_histories(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_load_filters_messages_older_than_30_days(tmp_path):
-    store = ChatStore(str(tmp_path / "chat_history.db"))
-    old_ts = (datetime.now(timezone.utc) - timedelta(days=31)).strftime(_TS_FMT)
-    new_ts = datetime.now(timezone.utc).strftime(_TS_FMT)
-    # Inject a session and old+new messages directly
-    session_id = "sess-old"
-    conn = store._conn
-    conn.execute(
-        "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) VALUES(?,?,?,?)",
-        (session_id, "agent1", old_ts, new_ts),
-    )
-    conn.execute(
-        "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
-        ("agent1", session_id, "user", "old msg", old_ts),
-    )
-    conn.execute(
-        "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
-        ("agent1", session_id, "assistant", "new msg", new_ts),
-    )
-    conn.commit()
-    result = store.load_context("agent1")
-    contents = [m["content"] for m in result]
-    assert "old msg" not in contents
-    assert "new msg" in contents
-    store.close()
+    import hiris.app.chat_store as cs
+    cs.HISTORY_RETENTION_DAYS = 30
+    try:
+        store = ChatStore(str(tmp_path / "chat_history.db"))
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=31)).strftime(_TS_FMT)
+        new_ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+        # Inject a session and old+new messages directly
+        session_id = "sess-old"
+        conn = store._conn
+        conn.execute(
+            "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) VALUES(?,?,?,?)",
+            (session_id, "agent1", old_ts, new_ts),
+        )
+        conn.execute(
+            "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
+            ("agent1", session_id, "user", "old msg", old_ts),
+        )
+        conn.execute(
+            "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
+            ("agent1", session_id, "assistant", "new msg", new_ts),
+        )
+        conn.commit()
+        result = store.load_context("agent1")
+        contents = [m["content"] for m in result]
+        assert "old msg" not in contents
+        assert "new msg" in contents
+        store.close()
+    finally:
+        cs.HISTORY_RETENTION_DAYS = 90
 
 
 # ---------------------------------------------------------------------------
