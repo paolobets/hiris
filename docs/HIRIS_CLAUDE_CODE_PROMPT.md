@@ -4,7 +4,7 @@ Questo documento è il brief operativo per una sessione di lavoro agentico con C
 
 ---
 
-## STATO CORRENTE (aggiornato 2026-04-28 — v0.6.1)
+## STATO CORRENTE (aggiornato 2026-04-28 — v0.6.1 → Sprint B completato)
 
 ### Completato rispetto alla roadmap originale
 
@@ -38,7 +38,7 @@ Prima di qualsiasi feature sprint, i seguenti bug devono essere corretti:
 |---|---|---|---|
 | **Sprint 0** ✅ | v0.6.0 | Bugfix | handler llm_router fix, task_tools await fix, ha_client stub rimosso, SemanticContextMap persist, EUR costante, MQTT enable publish, non-blocking I/O |
 | **Sprint A** ✅ | v0.6.1 | HA Backend + MQTT | MQTT 2-way subscribe (enabled/run_now), nuove entità MQTT, `http_request` tool (Option C SSRF), `Agent.allowed_endpoints` |
-| **Sprint B** | v0.6.x | External APIs + tools | `create_calendar_event`, `send_telegram` dedicato, `send_whatsapp`, action chaining reale |
+| **Sprint B** ✅ | v0.6.x | External APIs + tools | `create_calendar_event`, Apprise unified layer (Telegram/WhatsApp/ntfy), action chaining agenti non-chat via TaskEngine, `EVALUATION_ONLY_TOOLS`, `trigger_on`, `on_fail`, UI editor wait/verify |
 | **Sprint C** | v0.7.x | SQLite + embeddings | sqlite-vec, `recall_memory`/`save_memory`, RAG injection |
 | **Sprint D** | v0.7.x | LLM abstraction | LiteLLM o shim, Router avanzato, `pricing.yaml` |
 | **Sprint E** | v0.8.x | Frontend + distrib | `hiris-agent-card`, HACS, blueprints |

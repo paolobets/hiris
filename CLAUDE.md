@@ -172,12 +172,16 @@ Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMP
 - *(§2A.2 REST bridge: deferred — Lovelace card already uses REST+SUPERVISOR\_TOKEN)*
 - *(§2A.5 HA Services formal registration: deferred to Phase 3)*
 
-#### Sprint B — Tool Expansion (v0.6.x)
+#### Sprint B — Tool Expansion ✅ done (v0.6.x)
 *Competenza: External APIs + Python tool layer*
-- Tool: `create_calendar_event(...)` — small delta, `get_calendar_events` already done
-- Tool: `send_telegram(chat_id, message)` — dedicated proactive bot tool (separate from `send_notification` channel)
-- Tool: `send_whatsapp(to, message)` — CallMeBot gateway
-- Agent action chaining: real sequential `actions[]` execution (notify→wait→verify→escalate), replacing current structured-response-parsing approach
+- Tool: `create_calendar_event(calendar_entity, summary, event_type, ...)` — datetime + all-day events
+- Apprise unified notification layer — replaces dedicated Telegram/WhatsApp tools; 80+ channels via `apprise_urls` config
+- `EVALUATION_ONLY_TOOLS` frozenset: non-chat agents restricted to read-only + task-mgmt tools (no direct HA execution)
+- `Agent.trigger_on: list[str]` — eval statuses (OK/ATTENZIONE/ANOMALIA) that activate `agent.actions`
+- `AgentEngine._execute_agent_actions()` — dispatches notify/call_service/wait/verify via TaskEngine immediate/delay/time_window tasks
+- `on_fail: continue|stop` per action; `_check_budget_auto_disable` helper extracted
+- `TaskEngine`: `immediate` trigger type; per-action `on_fail` loop with `_stop` flag
+- config.html UI: trigger_on checkboxes, on_fail dropdown, wait/verify action types with child-action editor ("Poi esegui")
 
 #### Sprint C — Memory-RAG (v0.7.x)
 *Competenza: SQLite + embeddings + AI context*
