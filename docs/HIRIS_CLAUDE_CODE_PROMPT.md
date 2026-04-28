@@ -39,8 +39,8 @@ Prima di qualsiasi feature sprint, i seguenti bug devono essere corretti:
 | **Sprint 0** ✅ | v0.6.0 | Bugfix | handler llm_router fix, task_tools await fix, ha_client stub rimosso, SemanticContextMap persist, EUR costante, MQTT enable publish, non-blocking I/O |
 | **Sprint A** ✅ | v0.6.1 | HA Backend + MQTT | MQTT 2-way subscribe (enabled/run_now), nuove entità MQTT, `http_request` tool (Option C SSRF), `Agent.allowed_endpoints` |
 | **Sprint B** ✅ | v0.6.x | External APIs + tools | `create_calendar_event`, Apprise unified layer (Telegram/WhatsApp/ntfy), action chaining agenti non-chat via TaskEngine, `EVALUATION_ONLY_TOOLS`, `trigger_on`, `on_fail`, UI editor wait/verify |
-| **Sprint C** | v0.7.x | SQLite + embeddings | sqlite-vec, `recall_memory`/`save_memory`, RAG injection |
-| **Sprint D** | v0.7.x | LLM abstraction | LiteLLM o shim, Router avanzato, `pricing.yaml` |
+| **Sprint C** ✅ | v0.7.x | SQLite + embeddings | sqlite-vec, `recall_memory`/`save_memory`, RAG injection |
+| **Sprint D** ✅ | v0.6.3 | LLM abstraction | Shim custom (ADR-0002), Router strategy/fallback, `pricing.py` centralizzato |
 | **Sprint E** | v0.8.x | Frontend + distrib | `hiris-agent-card`, HACS, blueprints |
 
 ---
@@ -75,7 +75,7 @@ HIRIS è un Home Assistant add-on che fornisce agenti AI powered by Claude per c
 Prima di iniziare qualsiasi implementazione, Claude Code deve:
 
 1. Leggere `CLAUDE.md` e `README.md` del repo per allinearsi sullo stato corrente.
-2. Verificare la versione attuale in `CHANGELOG.md` e allineare il lavoro a una nuova branch `feat/phase-2a-<nome-feature>` per ogni blocco di lavoro.
+2. Verificare la versione attuale in `CHANGELOG.md`. Il workflow git è: sviluppo in worktree locale → push `HEAD:master` → delete worktree. **Nessun branch remoto**: solo `master` vive su GitHub.
 3. Non introdurre dipendenze pesanti (LangChain completo, PostgreSQL obbligatorio, torch, modelli ML locali) senza prima produrre un ADR — Architecture Decision Record — in `docs/adr/NNNN-nome-decisione.md` e attendere approvazione umana.
 4. Scrivere test per ogni nuovo modulo (`tests/`) e mantenere coverage ≥70% sui moduli toccati.
 5. Aggiornare `CHANGELOG.md` seguendo Keep a Changelog e rispettare SemVer.
@@ -488,12 +488,9 @@ HIRIS è un progetto di un singolo sviluppatore con valore commerciale potenzial
 
 ### 4.1 — Repository hygiene
 
-- Attivare **branch protection** su `master` (o rinominare in `main` — standard moderno):
-  - Require PR prima del merge
-  - Require status checks (CI) before merging
-  - Require linear history (no merge commits)
-  - Dismiss stale reviews on new push
-  - Include administrators nella protection (self-discipline)
+**Workflow git scelto:** sviluppo in git worktree locale → push diretto `HEAD:master` → delete worktree. Nessun branch remoto salvo `master`. Lo script `scripts/release.py` usa sempre `git push origin HEAD:master --tags`.
+
+- **Solo `master`** vive su GitHub. Nessun branch `feat/*` o `claude/*` viene pushato.
 - Abilitare **Secret scanning** (gratuito su public repo) e **Push protection**
 - Abilitare **Dependabot** per:
   - Python dependencies (`requirements.txt`, `pyproject.toml`)
@@ -693,17 +690,15 @@ Partenza da **v0.5.16**. Piano sprint:
 - Action chaining reale
 - **Versione finale sprint: `0.6.x`** (minor bump dal primo feat)
 
-### Sprint C — Memory-RAG → **v0.7.0**
+### Sprint C — Memory-RAG → ✅ **v0.7.x completato**
 - Retention configurabile
-- sqlite-vec + `recall_memory`/`save_memory`
-- RAG injection
-- **Versione: `0.7.0`** (minor bump per feature significativa)
+- Pure-Python cosine similarity (no sqlite-vec — Alpine compat), `recall_memory`/`save_memory`
+- RAG injection con tag untrusted
 
-### Sprint D — Multi-provider → **v0.7.x**
-*Prerequisito: ADR-0002 scritto e approvato*
-- LiteLLM o shim custom
-- Router avanzato + pricing.yaml
-- **Versione finale sprint: `0.7.x`**
+### Sprint D — Multi-provider → ✅ **v0.6.3 completato**
+- ADR-0002 risolto: shim custom (`OpenAICompatRunner`) scelto vs LiteLLM (troppo pesante su RPi)
+- LLMRouter: `strategy` param (balanced/cost_first/quality_first), fallback chain automatica
+- `backends/pricing.py` centralizzato (unica fonte per Claude + OpenAI + Ollama)
 
 ### Sprint E — Lovelace + HACS → **v0.8.0**
 - `hiris-agent-card`

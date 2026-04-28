@@ -21,8 +21,9 @@ Testbook/
 # Superpowers worktrees
 .worktrees/
 
-# Superpowers brainstorm sessions
+# Superpowers brainstorm sessions and generated plans
 .superpowers/
+docs/superpowers/
 
 # Local IDE config
 .claude/launch.json
