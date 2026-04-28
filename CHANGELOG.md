@@ -1,5 +1,10 @@
 # HIRIS — Changelog
 
+## [0.6.4] — 2026-04-28
+
+### Fixed
+- `ClaudeRunner.__init__()` crashed on startup due to spurious `entity_cache` and `semantic_map` kwargs passed from `server.py` (introduced in v0.6.3)
+
 ## [0.6.3] — 2026-04-28
 
 ### Added
