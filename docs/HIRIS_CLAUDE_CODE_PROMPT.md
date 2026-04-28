@@ -4,6 +4,49 @@ Questo documento è il brief operativo per una sessione di lavoro agentico con C
 
 ---
 
+## STATO CORRENTE (aggiornato 2026-04-28 — v0.5.16)
+
+### Completato rispetto alla roadmap originale
+
+| Sezione doc | Feature | Versione |
+|---|---|---|
+| §2A.4 | `hiris-chat-card` Lovelace custom element + editor | v0.5.x |
+| §2B.2 (parziale) | SQLite conversation history (`chat_store.py`) — sessioni, summary, retention 30d | v0.4.x |
+| §2A.1 (parziale) | MQTT Discovery publisher (`mqtt_publisher.py`) — publish-only, discovery sensor/switch | v0.4.x |
+| §2A: tools | `get_calendar_events` + `set_input_helper` già implementati (`calendar_tools.py`) | v0.4.x |
+| §2A: tools | `send_notification` con canale telegram (token+chat_id da config) | v0.3.x |
+| §2B.3 (parziale) | LLM Router base — routing classify_entities → Ollama | v0.3.x |
+| §2A.1 | MQTT config in `config.yaml` (mqtt_host/port/user/password) | v0.4.x |
+
+### Bug critici rilevati (audit codebase 2026-04-28) — **Sprint 0 obbligatorio**
+
+Prima di qualsiasi feature sprint, i seguenti bug devono essere corretti:
+
+| Priorità | File | Problema |
+|---|---|---|
+| **CRITICA** | `api/handlers_agents.py:137,161` | `get("claude_runner")` hardcoded → 503 su usage/reset con LLMRouter attivo |
+| **CRITICA** | `api/handlers_usage.py` | Stesso bug → `/api/usage` restituisce 503 con LLMRouter |
+| **ALTA** | `tools/task_tools.py` | Funzioni sync chiamate con `await` → `TypeError` a runtime |
+| **ALTA** | `app/ha_client.py` | File stub orfano (nessun import) — duplica confusamente `proxy/ha_client.py` |
+| **ALTA** | `proxy/semantic_context_map.py` | Zero persistenza tra restart (SemanticMap salva JSON, SemanticContextMap no) |
+| **MEDIA** | 6 file | EUR rate `0.92` hardcoded in 6+ posti — deve essere costante centralizzata |
+| **MEDIA** | `agent_engine.py:313-337` | `update_agent()` non chiama `publish_agent_state()` quando `enabled` cambia |
+
+### Sprint Plan unificato (v0.6.x → v0.8.x)
+
+| Sprint | Target | Competenza | Items chiave |
+|---|---|---|---|
+| **Sprint 0** | v0.6.0 | Bugfix | 7 bug critici sopra |
+| **Sprint A** | v0.6.x | HA Backend + MQTT | MQTT 2-way, `http_request` tool |
+| **Sprint B** | v0.6.x | External APIs + tools | `create_calendar_event`, `send_telegram` dedicato, `send_whatsapp`, action chaining reale |
+| **Sprint C** | v0.7.x | SQLite + embeddings | sqlite-vec, `recall_memory`/`save_memory`, RAG injection |
+| **Sprint D** | v0.7.x | LLM abstraction | LiteLLM o shim, Router avanzato, `pricing.yaml` |
+| **Sprint E** | v0.8.x | Frontend + distrib | `hiris-agent-card`, HACS, blueprints |
+
+---
+
+---
+
 ## 0. Contesto strategico (leggi prima di toccare codice)
 
 HIRIS è un Home Assistant add-on che fornisce agenti AI powered by Claude per chat naturale, monitor proattivi, reactive events e preventive cron jobs. È in fase **experimental v0.2.2**, pubblicato senza stelle/fork, in una categoria di mercato **già affollata**.
@@ -46,16 +89,22 @@ Prima di iniziare qualsiasi implementazione, Claude Code deve:
 
 Organizzata in **4 fasi incrementali**, ciascuna con milestone di release. Ogni feature ha: *cosa fare*, *perché*, *criteri di accettazione*, *punti tecnici da approfondire*.
 
-### PHASE 2A — Integrazione HA nativa (target: v0.3.0, 3-4 settimane)
+### PHASE 2A — Integrazione HA nativa → **Sprint A + Sprint E**
 
-**Obiettivo di fase:** rendere HIRIS percepito come componente di HA, non come tab separata. È il gap più urgente e quello con il ROI più alto per la scopribilità.
+> **Stato aggiornato 2026-04-28:** La roadmap originale prevedeva target v0.3.0. La codebase reale è a v0.5.16.
+> Items qui sotto sono mappati sui nuovi Sprint A e Sprint E (vedi tabella Sprint Plan sopra).
+
+**Obiettivo di fase:** rendere HIRIS percepito come componente di HA, non come tab separata.
 
 ---
 
-#### 2A.1 — Sensor bridge via MQTT Discovery
+#### 2A.1 — Sensor bridge via MQTT Discovery → **Sprint A** ⚠️ PARZIALE
+
+> **Stato:** `mqtt_publisher.py` già implementa publish + discovery per `sensor.status`, `sensor.last_run`, `sensor.budget_eur`, `switch.enabled`. MQTT config già in `config.yaml`.
+> **Delta Sprint A:** aggiungere MQTT subscribe (command_topic per switch/button), entity `last_result`, `budget_remaining_eur`, `tokens_used_today`. Correggere `update_agent()` che non chiama publish su enable/disable.
 
 **Cosa fare:**
-Implementare un publisher MQTT che espone lo stato di ogni agent come entità HA usando il protocollo [Home Assistant MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery). Per ogni agent configurato HIRIS pubblica automaticamente:
+Publisher MQTT già in produzione. Completare la bridge 2-way e le entità mancanti. Per ogni agent configurato HIRIS pubblica automaticamente:
 
 - `sensor.hiris_<agent_id>_status` → `idle` / `running` / `disabled` / `budget_exceeded` / `error`
 - `sensor.hiris_<agent_id>_last_run` → timestamp ISO 8601 ultima esecuzione
@@ -84,9 +133,11 @@ Implementare un publisher MQTT che espone lo stato di ogni agent come entità HA
 
 ---
 
-#### 2A.2 — REST bridge come fallback (no-MQTT path)
+#### 2A.2 — REST bridge come fallback (no-MQTT path) → **DEFER (non in Sprint A)**
 
-**Cosa fare:**
+> **Decisione 2026-04-28:** La Lovelace card usa già REST + SUPERVISOR_TOKEN per tutte le chiamate. Aggiungere un secondo REST bridge per le entity sarebbe ridondante rispetto alla strada MQTT già avviata. Defer a dopo Sprint A per valutare se ancora necessario.
+
+**Cosa fare (se ripreso):**
 Se l'utente non ha Mosquitto installato, HIRIS deve comunque poter creare entità HA. Implementare un modulo che chiama direttamente l'API HA REST/WebSocket per mantenere entità template sincronizzate.
 
 **Criteri di accettazione:**
@@ -100,7 +151,9 @@ Se l'utente non ha Mosquitto installato, HIRIS deve comunque poter creare entit�
 
 ---
 
-#### 2A.3 — Custom Lovelace card `hiris-agent-card`
+#### 2A.3 — Custom Lovelace card `hiris-agent-card` → **Sprint E**
+
+> **Stato:** Non ancora implementata. `hiris-chat-card` (2A.4) è il reference pattern per stile e deployment. Sprint E la costruisce riusando quella architettura.
 
 **Cosa fare:**
 Distribuire una custom card Lovelace che mostra lo stato di un singolo agent in una qualsiasi dashboard HA, con:
@@ -135,10 +188,12 @@ Card distribuita come plugin HACS separato nel repo `paolobets/hiris` path `love
 
 ---
 
-#### 2A.4 — Custom Lovelace card `hiris-chat-card`
+#### 2A.4 — Custom Lovelace card `hiris-chat-card` → ✅ COMPLETATA (v0.5.16)
 
-**Cosa fare:**
-Una seconda custom card che rende disponibile la chat HIRIS **inline** in una dashboard Lovelace, senza aprire la sidebar. Utile per utenti che vogliono un'interfaccia chat dedicata nella loro home dashboard.
+> Chat card con streaming, selector agente, typing indicator, auto-deploy via WebSocket Lovelace, ingress URL discovery tramite `hiris-ingress.json`. Nessun delta necessario.
+
+**Cosa fa:**
+Custom card inline in una dashboard Lovelace, senza aprire la sidebar.
 
 **Criteri di accettazione:**
 - Layout responsive: mobile-friendly (usa stesse safe-area insets della UI principale)
@@ -153,9 +208,11 @@ Una seconda custom card che rende disponibile la chat HIRIS **inline** in una da
 
 ---
 
-#### 2A.5 — HA Services esposti
+#### 2A.5 — HA Services esposti → **DEFER a Phase 3**
 
-**Cosa fare:**
+> **Decisione 2026-04-28:** La registrazione di servizi HA custom da un addon richiede ricerca approfondita sul Supervisor API (strada MQTT command_topic è più semplice e già parzialmente implementata). Defer a Phase 3 insieme al canvas designer.
+
+**Cosa fare (se ripreso):**
 Registrare servizi HA chiamabili da automation e script:
 
 - `hiris.run_agent` — esegue un agent on-demand. Args: `agent_id`, `input` (opzionale).
@@ -174,7 +231,9 @@ Registrare servizi HA chiamabili da automation e script:
 
 ---
 
-#### 2A.6 — Blueprint distribuiti
+#### 2A.6 — Blueprint distribuiti → **Sprint E**
+
+> Bundle con `hiris-agent-card` e HACS. Sono YAML puri, nessun codice Python. Sprint E li crea insieme al packaging HACS.
 
 **Cosa fare:**
 Creare e distribuire blueprint HA pronti all'uso per i pattern più comuni:
@@ -191,13 +250,17 @@ Creare e distribuire blueprint HA pronti all'uso per i pattern più comuni:
 
 ---
 
-### PHASE 2B — Multi-provider e memoria persistente (target: v0.4.0, 4-6 settimane)
+### PHASE 2B — Multi-provider e memoria persistente → **Sprint C + Sprint D**
+
+> **Stato aggiornato 2026-04-28:** `chat_store.py` già implementa SQLite conversation history (sessioni, summary, retention 30d). Manca la parte vettoriale (sqlite-vec + RAG). LiteLLM non ancora implementato. LLM Router base esiste.
 
 **Obiettivo di fase:** rimuovere il vendor lock-in su Claude e aggiungere memoria a lungo termine, due feature che abilitano conversazioni continuate e riduzione del gap con goruck.
 
 ---
 
-#### 2B.1 — Adozione di LiteLLM come abstraction layer
+#### 2B.1 — Adozione di LiteLLM come abstraction layer → **Sprint D** ⚠️ ADR-0002 first
+
+> **Attenzione:** LiteLLM pesa ~100MB+. Su Raspberry Pi (target principale) potrebbe essere troppo pesante. ADR-0002 deve scegliere tra LiteLLM e uno shim custom leggero prima di iniziare l'implementazione.
 
 **Cosa fare:**
 Sostituire la chiamata diretta all'SDK Anthropic con [LiteLLM](https://github.com/BerriAI/litellm), libreria che espone una interface OpenAI-compatible su 100+ provider (Anthropic, OpenAI, Gemini, Ollama, Groq, Mistral, DeepSeek, Bedrock, Azure, OpenRouter, ecc.).
@@ -221,12 +284,18 @@ Claude rimane **default e consigliato**, ma configurabile.
 
 ---
 
-#### 2B.2 — Vector memory persistente con SQLite+sqlite-vec
+#### 2B.2 — Vector memory persistente con SQLite+sqlite-vec → **Sprint C**
+
+> **Stato:** `chat_store.py` già implementa la tabella `chat_messages` + `chat_sessions` in SQLite. Sprint C aggiunge:
+> - sqlite-vec come estensione sulla stessa `/data/chat_history.db`
+> - Colonna `embedding BLOB` su `chat_messages`
+> - Tabella `memories` per memorie esplicite
+> - Tools `recall_memory`/`save_memory` per Claude
+> - RAG injection nel system prompt prima di ogni call
+> - `HISTORY_RETENTION_DAYS` configurabile (ora hardcoded a 30d)
 
 **Cosa fare:**
-Implementare memoria a lungo termine per gli agent: ogni conversazione chat, ogni anomalia rilevata, ogni action suggerita viene vettorizzata ed salvata. Prima di ogni chiamata LLM, un RAG retrieval porta in contesto i k ricordi più rilevanti.
-
-Stack: **SQLite + sqlite-vec** (non PostgreSQL/pgvector) per mantenere l'addon auto-contenuto.
+Aggiungere layer vettoriale sulla base SQLite esistente. Ogni messaggio, ogni anomalia rilevata, ogni action suggerita viene vettorizzata e indicizzata. Prima di ogni chiamata LLM, RAG retrieval porta in contesto i k ricordi più rilevanti.
 
 **Criteri di accettazione:**
 - Database SQLite persistente in `/data/hiris.db` (mount volume addon)
@@ -248,7 +317,9 @@ Stack: **SQLite + sqlite-vec** (non PostgreSQL/pgvector) per mantenere l'addon a
 
 ---
 
-#### 2B.3 — Router LLM più sofisticato
+#### 2B.3 — Router LLM più sofisticato → **Sprint D**
+
+> **Stato:** `llm_router.py` già wrappa `ClaudeRunner` e fa routing `classify_entities` → Ollama se configurato. Sprint D estende questo wrapper con strategy configurabile e fallback chain. **Dipende da ADR-0002** (se si sceglie LiteLLM, il Router diventa un thin wrapper su LiteLLM; se shim custom, il Router gestisce la logica direttamente).
 
 **Cosa fare:**
 Estendere il Router esistente (che già offre Ollama offload) con routing per:
@@ -596,18 +667,53 @@ Struttura target:
 
 ---
 
-## 6. Milestone e delivery
+## 6. Milestone e delivery (aggiornato 2026-04-28)
 
-Claude Code dovrebbe proporre un piano settimanale di questo tipo (approvare prima di partire):
+Partenza da **v0.5.16**. Piano sprint:
 
-- **Week 1**: ADR-0001, 0002, 0003. Setup CI/CD + pre-commit + branch protection. Refactor light.
-- **Week 2-3**: Phase 2A.1 (MQTT bridge) + 2A.5 (services) + 2A.6 (blueprints).
-- **Week 4**: Phase 2A.3 + 2A.4 (custom cards). Release v0.3.0.
-- **Week 5-6**: Phase 2B.1 (LiteLLM). Release v0.3.5 (intermediate).
-- **Week 7-9**: Phase 2B.2 + 2B.3 (memory + router). Release v0.4.0.
-- **Week 10-13**: Phase 2C (automation intelligence). Release v0.5.0.
-- **Week 14-16**: Phase 2D (Telegram + vision). Release v1.0.0-rc1.
-- **Week 17-18**: Hardening, documentation polish, marketing asset production. Release v1.0.0.
+### Sprint 0 — Critical Bugfixes → **v0.6.0** (patch release, 1-2 giorni)
+- Fix `handlers_agents.py` + `handlers_usage.py`: `get("llm_router") or get("claude_runner")`
+- Fix `task_tools.py`: funzioni sync → async
+- Remove `app/ha_client.py` stub orfano
+- Fix `SemanticContextMap`: aggiungere JSON persist/load
+- EUR rate: costante centralizzata `_EUR_RATE` in un unico posto
+- Fix `agent_engine.update_agent()`: publish MQTT su enable/disable
+- **Versione: `0.6.0`** (breaking fix per LLMRouter users)
+
+### Sprint A — HA-Bridge → **v0.6.1–v0.6.x**
+- MQTT subscribe command_topic (switch + button.run_now)
+- Entità MQTT mancanti (last_result, budget_remaining_eur, tokens_used_today)
+- Tool `http_request`
+- **Versione finale sprint: `0.6.x`**
+
+### Sprint B — Tool Expansion → **v0.6.x**
+- Tool `create_calendar_event`
+- Tool `send_telegram` dedicato
+- Tool `send_whatsapp`
+- Action chaining reale
+- **Versione finale sprint: `0.6.x`** (minor bump dal primo feat)
+
+### Sprint C — Memory-RAG → **v0.7.0**
+- Retention configurabile
+- sqlite-vec + `recall_memory`/`save_memory`
+- RAG injection
+- **Versione: `0.7.0`** (minor bump per feature significativa)
+
+### Sprint D — Multi-provider → **v0.7.x**
+*Prerequisito: ADR-0002 scritto e approvato*
+- LiteLLM o shim custom
+- Router avanzato + pricing.yaml
+- **Versione finale sprint: `0.7.x`**
+
+### Sprint E — Lovelace + HACS → **v0.8.0**
+- `hiris-agent-card`
+- HACS packaging + blueprints
+- **Versione: `0.8.0`** (milestone distribuzione pubblica)
+
+### Phase 2C–2D (futuro, post v0.8.0)
+- 2C: Automation intelligence (proposal workflow, dashboard generator, anomaly baseline)
+- 2D: Telegram long-polling bot, vision tool
+- **Target: v0.9.x → v1.0.0**
 
 ---
 

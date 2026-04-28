@@ -50,11 +50,15 @@ Full design spec: [`docs/2026-04-18-hiris-design.md`](docs/2026-04-18-hiris-desi
 
 ---
 
-## 8 Claude Tools (Phase 1)
+## Claude Tools (Phase 1 — current)
 
 | Tool | Description |
 |---|---|
 | `get_entity_states(ids)` | HA REST `/api/states` |
+| `get_area_entities()` | Area→entity mapping via WS registry |
+| `get_home_status()` | Compact summary of useful entities |
+| `get_entities_on()` | All entities currently in `on` state |
+| `get_entities_by_domain(domain)` | Entities filtered by domain |
 | `get_energy_history(days)` | HA History API |
 | `get_weather_forecast(hours)` | Open-Meteo (free, no key) |
 | `call_ha_service(domain, service, data)` | HA REST, whitelisted domains |
@@ -62,6 +66,9 @@ Full design spec: [`docs/2026-04-18-hiris-design.md`](docs/2026-04-18-hiris-desi
 | `get_ha_automations()` | HA REST `/api/config/automation` |
 | `trigger_automation(id)` | HA `automation.trigger` |
 | `toggle_automation(id, enabled)` | HA `automation.turn_on/off` |
+| `get_calendar_events(hours, calendar_entity)` | HA calendar integration |
+| `set_input_helper(entity_id, value)` | input_boolean/number/text/select |
+| `create_task(...)` / `list_tasks()` / `cancel_task(id)` | Internal task management |
 
 ---
 
@@ -143,23 +150,65 @@ app/
 - Ingress URL discovery via `hiris-ingress.json` (fixes 503 on random ingress token)
 - Animated typing indicator (HIRIS icon + 3 dots)
 
-### Phase 2 — Memoria + Tool aggiuntivi (v0.6.x)
-- Conversation memory SQLite (unlimited history + dynamic context window)
-- Tool: `http_request(url, method, headers, body)` — custom API calls with per-agent allowed_urls
-- Tool: `get_calendar_events(days)` + `create_calendar_event(...)` via HA calendar integration
-- Tool: `set_input_helper(entity_id, value)` for input_boolean/number/text/select
-- Tool: `send_telegram(chat_id, message)` — Telegram Bot API (proactive + reactive agent actions)
-- Tool: `send_whatsapp(to, message)` — WhatsApp via CallMeBot or similar free gateway
-- Agent action chaining: structured `actions[]` block with sequential/conditional step execution (notify → wait → verify → escalate)
-- HACS official distribution
+### Phase 2 — Sprint Plan (v0.6.x → v0.8.x)
 
-### Phase 3 — Plugin + Canvas (v0.7.x+)
+Development organized in 6 competency-based sprints. **Sprint 0 must ship before any feature sprint.**
+Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMPT.md).
+
+#### Sprint 0 — Critical Bugfixes (v0.6.0)
+*Must fix before any feature work — bugs found in codebase audit:*
+- `handlers_agents.py:137,161` + `handlers_usage.py` — `get("claude_runner")` hardcoded instead of `get("llm_router") or get("claude_runner")` → 503 on usage/reset endpoints when LLMRouter active
+- `task_tools.py` — sync functions called with `await` in dispatcher → `TypeError` at runtime
+- `app/ha_client.py` — orphan stub (no imports anywhere); remove, real impl is `proxy/ha_client.py`
+- `SemanticContextMap` — add JSON persist/load (like `SemanticMap`) so classifications survive restart
+- EUR exchange rate `0.92` — centralize into one constant (currently hardcoded in 6+ places)
+- MQTT: `update_agent()` must call `publish_agent_state()` when `enabled` flag changes
+
+#### Sprint A — HA-Bridge (v0.6.x)
+*Competenza: Python backend + HA WebSocket/MQTT*
+- Complete MQTT 2-way: subscribe `command_topic` (switch on/off, button.run\_now) — closes doc §2A.1
+- Add missing MQTT entities: `last_result`, `budget_remaining_eur`, `tokens_used_today`
+- Tool: `http_request(url, method, headers, body)` with per-agent `allowed_urls`
+- *(§2A.2 REST bridge: defer — Lovelace card already uses REST+SUPERVISOR\_TOKEN)*
+- *(§2A.5 HA Services formal registration: defer to Phase 3)*
+
+#### Sprint B — Tool Expansion (v0.6.x)
+*Competenza: External APIs + Python tool layer*
+- Tool: `create_calendar_event(...)` — small delta, `get_calendar_events` already done
+- Tool: `send_telegram(chat_id, message)` — dedicated proactive bot tool (separate from `send_notification` channel)
+- Tool: `send_whatsapp(to, message)` — CallMeBot gateway
+- Agent action chaining: real sequential `actions[]` execution (notify→wait→verify→escalate), replacing current structured-response-parsing approach
+
+#### Sprint C — Memory-RAG (v0.7.x)
+*Competenza: SQLite + embeddings + AI context*
+- `chat_store.py`: `HISTORY_RETENTION_DAYS` configurable (default 90d, `None` = unlimited)
+- sqlite-vec layer on existing DB: message vectorization + agent memory store
+- Tools: `recall_memory(query, k, tags)` + `save_memory(content, tags)` exposed to Claude
+- RAG injection: inject k relevant memories into system prompt before each Claude call
+- Embedding provider configurable: `openai/text-embedding-3-small` (default) / `ollama/nomic-embed-text`
+
+#### Sprint D — Multi-provider LLM (v0.7.x)
+*Competenza: LLM abstraction layer — requires ADR-0002 first*
+- LiteLLM integration in `backends/` (or custom shim — ADR decides)
+- Advanced LLM Router: strategy `cost_first`/`quality_first`, fallback chain, `task_routing` per agent type
+- `pricing.yaml`: centralized EUR/1M token cost map per model
+
+#### Sprint E — Lovelace + HACS (v0.8.x)
+*Competenza: Web Components + distribution*
+- `hiris-agent-card`: agent status, budget bar, run button, last output (reuses `hiris-chat-card` patterns)
+- HACS packaging (`hacs.json`, `repository.json`)
+- Blueprint YAML starter pack (morning briefing, energy anomaly, door reactive)
+
+### Phase 3 — Plugin + Canvas (v0.9.x+)
 - Canvas drag-and-drop designer (n8n style)
 - ✅ Retro Panel plugin integration (embedded chat in kiosk, shared auth)
+- HA Services formal registration (`hiris.run_agent`, `hiris.chat`, etc.)
 - Multi-user / role support
 
 ### Phase 4 — Integrazioni esterne (futuro)
 - Tool: `send_email(to, subject, body)` via SMTP
+- Vision tool: `analyze_image(image_source)` — camera snapshot → Claude multimodal
+- Telegram bot full (long polling, `/agent`, `/status`, streaming edit)
 
 ---
 
@@ -168,7 +217,7 @@ app/
 - `CLAUDE_API_KEY`: HA add-on option (encrypted by Supervisor), never exposed to browser
 - `SUPERVISOR_TOKEN`: env var injected by HA Supervisor
 - Service call whitelist: configurable per-agent
-- No persistent storage of chat history (in-memory, session-scoped)
+- Chat history persisted in SQLite (`/data/chat_history.db`), session-scoped with configurable retention
 
 ---
 
