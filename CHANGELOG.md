@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.6.8] — 2026-04-28
+
+### Added
+- **fastembed embedding provider**: fully local RAG with no external server or API key required; uses ONNX Runtime (ARM64/amd64 compatible); models cached in `/config/hiris/models/`; default model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` supports 50+ languages including Italian
+- `fastembed>=0.3.0` added to `requirements.txt`
+- Configuration guide updated with Option C (fastembed) section; translations updated with fastembed in provider description
+
 ## [0.6.7] — 2026-04-28
 
 ### Added

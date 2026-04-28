@@ -1,6 +1,6 @@
 # HIRIS — Guida alla Configurazione
 
-> Versione: 0.6.7 · Aggiornato: 2026-04-28
+> Versione: 0.6.8 · Aggiornato: 2026-04-28
 
 Questa guida copre le due aree di configurazione che richiedono una configurazione esterna prima di funzionare:
 **Notifiche (Apprise)** e **Memoria & RAG**.
@@ -24,6 +24,7 @@ Tutte le altre opzioni (chiavi API, selezione modello, livello log, tema) sono a
    - [Come funziona](#come-funziona-1)
    - [Opzione A — Embeddings OpenAI](#opzione-a--embeddings-openai-più-semplice)
    - [Opzione B — Embeddings Ollama (locale, gratuito)](#opzione-b--embeddings-ollama-locale-gratuito)
+   - [Opzione C — fastembed (locale, senza server)](#opzione-c--fastembed-locale-senza-server)
    - [Disabilitare il RAG](#disabilitare-il-rag)
    - [Parametri di ottimizzazione](#parametri-di-ottimizzazione)
 
@@ -273,6 +274,39 @@ memory:
 
 > **Importante:** `local_model.url` è usato sia per i modelli chat Ollama che per gli embeddings Ollama.
 > Non è necessario impostare `local_model.model` solo per usare gli embeddings Ollama.
+
+---
+
+### Opzione C — fastembed (locale, senza server)
+
+Esegue gli embedding direttamente in-process tramite modelli ONNX. Nessun server, nessuna chiave API, nessuna chiamata esterna.
+È la scelta migliore se vuoi il RAG completamente locale senza installare o gestire Ollama.
+
+**Requisiti:** nessuno — il modello viene scaricato automaticamente al primo avvio e messo in cache in `/config/hiris/models/`.
+
+**Primo avvio:** HIRIS scaricherà il modello (~120 MB). Questo avviene una volta sola; gli avvii successivi sono istantanei.
+
+**Configurazione:**
+
+```yaml
+memory:
+  embedding_provider: fastembed
+  embedding_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  rag_k: 5
+  retention_days: 90
+```
+
+**Modelli disponibili:**
+
+| Modello | Dimensione | Lingue | Note |
+|---------|-----------|--------|------|
+| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | ~120 MB | 50+ lingue incluso italiano | ✅ Default consigliato |
+| `BAAI/bge-small-en-v1.5` | ~23 MB | Solo inglese | Più veloce e leggero |
+| `BAAI/bge-base-en-v1.5` | ~110 MB | Solo inglese | Qualità superiore per inglese |
+
+Lascia `embedding_model` vuoto per usare automaticamente il default multilingue.
+
+> **Nota:** fastembed usa ONNX Runtime, compatibile sia con amd64 che aarch64 (Raspberry Pi, NUC, ecc.).
 
 ---
 
