@@ -1,5 +1,34 @@
 # HIRIS — Changelog
 
+## [0.6.1] — 2026-04-28
+
+### Added
+- **Sprint D — Multi-provider LLM**: supporto OpenAI e Ollama per-agente; `OpenAICompatRunner`
+  con loop agentico completo (tool use, `run_with_actions`); `ToolDispatcher` condiviso tra tutti
+  i runner; `LLMRouter` ridisegnato come router reale; endpoint `/api/models` con lista dinamica
+  (fetch live da OpenAI, `/api/tags` per Ollama); dropdown modello con `<optgroup>` per provider;
+  `_PRICING_OAI` per tracking costi OpenAI/Ollama
+- **Sprint C — Memory-RAG**: tabella `agent_memories` in SQLite; tool `recall_memory` / `save_memory`;
+  RAG pre-injection nelle chat; `EmbeddingProvider` Protocol + `OpenAIEmbedder` + `OllamaEmbedder`
+  + `NullEmbedder`; job APScheduler retention 03:00 UTC; config: `memory_embedding_provider`,
+  `memory_embedding_model`, `memory_rag_k`, `memory_retention_days`, `history_retention_days`
+- **Sprint B — Tool Expansion**: tool `create_calendar_event`; layer Apprise (80+ canali via
+  `apprise_urls`); `EVALUATION_ONLY_TOOLS` frozenset; `Agent.trigger_on` + `AgentEngine._execute_agent_actions`;
+  `on_fail: continue|stop` per azione; `TaskEngine` trigger `immediate`; UI: trigger_on checkboxes,
+  on_fail dropdown, editor azioni child (wait/verify)
+- **Sprint A — HA-Bridge**: MQTT 2-way subscribe (`hiris/agents/+/{enabled,run_now}/set`);
+  nuove entità MQTT `last_result`, `budget_remaining_eur`, `tokens_used_today`, `run_now`;
+  tool `http_request` con security strutturata (AllowedEndpoint, DNS pinning, RFC1918 DENY_NETS);
+  `Agent.allowed_endpoints`
+
+### Fixed
+- **Sprint 0 — Bugfixes critici**: `handlers_agents.py` / `handlers_usage.py` usa
+  `get("llm_router") or get("claude_runner")`; stub `app/ha_client.py` rimosso; `SemanticContextMap`
+  persist/load JSON su restart; `EUR_RATE` centralizzato in `config`; MQTT pubblica stato su
+  cambio `enabled`
+- I/O file non bloccante: `_save()`, `_save_usage()`, `SemanticContextMap.save()` via
+  `run_in_executor`
+
 ## [0.5.16] — 2026-04-27
 
 ### Fixed
