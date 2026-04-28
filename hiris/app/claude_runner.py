@@ -31,6 +31,7 @@ from .tools.calendar_tools import (
     get_calendar_events, GET_CALENDAR_EVENTS_TOOL_DEF,
     set_input_helper, SET_INPUT_HELPER_TOOL_DEF,
 )
+from .tools.http_tools import http_request, HTTP_REQUEST_TOOL_DEF
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,9 @@ BASE_SYSTEM_PROMPT = (
     "- list_tasks(agent_id, status): elenca i task pianificati.\n"
     "- cancel_task(task_id): annulla un task pianificato.\n"
     "- get_calendar_events(hours, calendar_entity?): eventi calendario HA nelle prossime N ore.\n"
-    "- set_input_helper(entity_id, value): imposta un input helper HA (boolean/number/text/select).\n\n"
+    "- set_input_helper(entity_id, value): imposta un input helper HA (boolean/number/text/select).\n"
+    "- http_request(url, method?, headers?, body?): chiama un'API esterna o un dispositivo locale"
+    " pre-approvato (solo se configurato nell'agente).\n\n"
     "## Regole fondamentali\n"
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
     "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
@@ -99,6 +102,7 @@ ALL_TOOL_DEFS = [
     CANCEL_TASK_TOOL_DEF,
     GET_CALENDAR_EVENTS_TOOL_DEF,
     SET_INPUT_HELPER_TOOL_DEF,
+    HTTP_REQUEST_TOOL_DEF,
 ]
 
 MODEL = "claude-sonnet-4-6"
@@ -301,18 +305,30 @@ class ClaudeRunner:
         self.usage_last_reset = datetime.now(timezone.utc).isoformat()
         self._save_usage()
 
+    def _ensure_today_reset(self, pau: dict) -> None:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if pau.get("tokens_today_date", "") != today:
+            pau["tokens_today"] = 0
+            pau["tokens_today_date"] = today
+
     def get_agent_usage(self, agent_id: str) -> dict:
         """Return usage stats for a specific agent. Returns zero-filled dict if not found."""
-        return dict(self._per_agent_usage.get(agent_id, {
-            "input_tokens": 0, "output_tokens": 0,
-            "requests": 0, "cost_usd": 0.0, "last_run": None,
-        }))
+        pau = self._per_agent_usage.get(agent_id)
+        if pau is None:
+            return {
+                "input_tokens": 0, "output_tokens": 0,
+                "requests": 0, "cost_usd": 0.0, "last_run": None,
+                "tokens_today": 0, "tokens_today_date": "",
+            }
+        self._ensure_today_reset(pau)
+        return dict(pau)
 
     def reset_agent_usage(self, agent_id: str) -> None:
         """Reset usage counters for a specific agent."""
         self._per_agent_usage[agent_id] = {
             "input_tokens": 0, "output_tokens": 0,
             "requests": 0, "cost_usd": 0.0, "last_run": None,
+            "tokens_today": 0, "tokens_today_date": "",
         }
         self._save_usage()
 
@@ -337,6 +353,7 @@ class ClaudeRunner:
         conversation_history: Optional[list[dict]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
+        allowed_endpoints: Optional[list[dict]] = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
         agent_type: str = "chat",
@@ -350,6 +367,7 @@ class ClaudeRunner:
                 self._per_agent_usage[agent_id] = {
                     "input_tokens": 0, "output_tokens": 0,
                     "requests": 0, "cost_usd": 0.0, "last_run": None,
+                    "tokens_today": 0, "tokens_today_date": "",
                 }
             self._per_agent_usage[agent_id]["requests"] += 1
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
@@ -377,6 +395,8 @@ class ClaudeRunner:
                 system_blocks.append({"type": "text", "text": profile})
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+        if allowed_endpoints is None:
+            tools = [t for t in tools if t["name"] != "http_request"]
         hist = list(conversation_history or [])
         messages: list[dict] = []
         if hist:
@@ -427,6 +447,8 @@ class ClaudeRunner:
                 pau["input_tokens"] += inp + cache_creation + cache_read
                 pau["output_tokens"] += out
                 pau["cost_usd"] += cost
+                self._ensure_today_reset(pau)
+                pau["tokens_today"] = pau.get("tokens_today", 0) + inp + cache_creation + cache_read + out
             self._save_usage()
 
             if response.stop_reason == "end_turn":
@@ -442,6 +464,7 @@ class ClaudeRunner:
                             block.name, block.input,
                             allowed_entities=allowed_entities,
                             allowed_services=allowed_services,
+                            allowed_endpoints=allowed_endpoints,
                             agent_id=agent_id,
                             visible_entity_ids=visible_entity_ids,
                         )
@@ -468,6 +491,7 @@ class ClaudeRunner:
         conversation_history: Optional[list[dict]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
+        allowed_endpoints: Optional[list[dict]] = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
         agent_type: str = "chat",
@@ -498,6 +522,7 @@ class ClaudeRunner:
                 conversation_history=conversation_history,
                 allowed_entities=allowed_entities,
                 allowed_services=allowed_services,
+                allowed_endpoints=allowed_endpoints,
                 model=model,
                 max_tokens=max_tokens,
                 agent_type=agent_type,
@@ -525,6 +550,7 @@ class ClaudeRunner:
         allowed_tools: Optional[list[str]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
+        allowed_endpoints: Optional[list[dict]] = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
         agent_type: str = "monitor",
@@ -562,6 +588,7 @@ class ClaudeRunner:
             allowed_tools=allowed_tools,
             allowed_entities=allowed_entities,
             allowed_services=allowed_services,
+            allowed_endpoints=allowed_endpoints,
             model=model,
             max_tokens=max_tokens,
             agent_type=agent_type,
@@ -590,6 +617,7 @@ class ClaudeRunner:
         inputs: dict,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
+        allowed_endpoints: Optional[list[dict]] = None,
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
     ) -> Any:
@@ -691,6 +719,14 @@ class ClaudeRunner:
                     self._ha,
                     entity_id=eid,
                     value=inputs.get("value"),
+                )
+            if name == "http_request":
+                return await http_request(
+                    url=inputs["url"],
+                    method=inputs.get("method", "GET"),
+                    headers=inputs.get("headers"),
+                    body=inputs.get("body"),
+                    allowed_endpoints=allowed_endpoints,
                 )
             logger.warning("Unknown tool: %s", name)
             return {"error": f"Unknown tool: {name}"}

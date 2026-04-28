@@ -40,6 +40,7 @@ class Agent:
     actions: list[dict] = field(default_factory=list)
     budget_eur_limit: float = 0.0
     max_chat_turns: int = 0
+    allowed_endpoints: Optional[list[dict]] = None
 
 
 class AgentEngine:
@@ -53,6 +54,7 @@ class AgentEngine:
         self._running_agents: set[str] = set()
         self._error_agents: set[str] = set()
         self._mqtt_publisher = None
+        self._pending_mqtt_runs: set[str] = set()
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
@@ -62,6 +64,25 @@ class AgentEngine:
 
     def set_mqtt_publisher(self, publisher) -> None:
         self._mqtt_publisher = publisher
+        publisher.set_command_callback(self._handle_mqtt_command)
+
+    async def _handle_mqtt_command(self, agent_id: str, command: str, payload: str) -> None:
+        agent = self._agents.get(agent_id)
+        if not agent:
+            logger.debug("MQTT command for unknown agent %s", agent_id)
+            return
+        if command == "enabled":
+            new_enabled = payload.upper() == "ON"
+            if agent.enabled != new_enabled:
+                self.update_agent(agent_id, {"enabled": new_enabled})
+                logger.info("Agent %s %s via MQTT", agent_id, "enabled" if new_enabled else "disabled")
+        elif command == "run_now" and payload.upper() == "PRESS":
+            if agent_id in self._running_agents:
+                self._pending_mqtt_runs.add(agent_id)
+                logger.info("Agent %s queued for run (currently running)", agent_id)
+            else:
+                asyncio.create_task(self._run_agent(agent), name=f"mqtt_run_{agent_id}")
+                logger.info("Agent %s triggered via MQTT run_now", agent_id)
 
     async def start(self) -> None:
         self._scheduler.start()
@@ -115,6 +136,7 @@ class AgentEngine:
                     actions=raw.get("actions", []),
                     budget_eur_limit=raw.get("budget_eur_limit", 0.0),
                     max_chat_turns=int(raw.get("max_chat_turns", 0)),
+                    allowed_endpoints=raw.get("allowed_endpoints"),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -289,6 +311,7 @@ class AgentEngine:
             actions=data.get("actions", []),
             budget_eur_limit=float(data.get("budget_eur_limit", 0.0)),
             max_chat_turns=int(data.get("max_chat_turns", 0)),
+            allowed_endpoints=data.get("allowed_endpoints"),
         )
         self._agents[agent.id] = agent
         if self._mqtt_publisher:
@@ -308,7 +331,7 @@ class AgentEngine:
         "name", "type", "trigger", "system_prompt", "allowed_tools", "enabled",
         "strategic_context", "allowed_entities", "allowed_services",
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
-        "actions", "budget_eur_limit", "max_chat_turns",
+        "actions", "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -490,6 +513,7 @@ class AgentEngine:
                     allowed_tools=agent.allowed_tools or None,
                     allowed_entities=agent.allowed_entities or None,
                     allowed_services=agent.allowed_services or None,
+                    allowed_endpoints=agent.allowed_endpoints,
                     model=agent.model,
                     max_tokens=agent.max_tokens,
                     agent_type=agent.type,
@@ -504,6 +528,7 @@ class AgentEngine:
                     allowed_tools=agent.allowed_tools or None,
                     allowed_entities=agent.allowed_entities or None,
                     allowed_services=agent.allowed_services or None,
+                    allowed_endpoints=agent.allowed_endpoints,
                     model=agent.model,
                     max_tokens=agent.max_tokens,
                     agent_type=agent.type,
@@ -563,19 +588,33 @@ class AgentEngine:
             if self._mqtt_publisher:
                 runner = self._claude_runner
                 budget_eur = 0.0
+                tokens_today = 0
                 if runner and hasattr(runner, "get_agent_usage"):
                     try:
                         usage = runner.get_agent_usage(agent.id)
                         budget_eur = round(usage.get("cost_usd", 0.0) * EUR_RATE, 4)
+                        tokens_today = usage.get("tokens_today", 0)
                     except Exception:
                         pass
+                if agent.budget_eur_limit > 0:
+                    remaining: str | float = max(0.0, agent.budget_eur_limit - budget_eur)
+                else:
+                    remaining = "unlimited"
                 final_status = "error" if _had_error else "idle"
                 asyncio.create_task(
                     self._mqtt_publisher.publish_agent_state(
-                        agent, budget_eur=budget_eur, status=final_status
+                        agent,
+                        budget_eur=budget_eur,
+                        status=final_status,
+                        budget_remaining_eur=remaining,
+                        tokens_used_today=tokens_today,
                     ),
                     name=f"mqtt_pub_{agent.id}",
                 )
+            # Check if a run_now was queued while this run was in progress
+            if agent.id in self._pending_mqtt_runs:
+                self._pending_mqtt_runs.discard(agent.id)
+                asyncio.create_task(self._run_agent(agent), name=f"mqtt_queued_{agent.id}")
 
     def _append_execution_log(
         self,
