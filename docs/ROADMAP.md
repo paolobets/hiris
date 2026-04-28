@@ -1,6 +1,6 @@
 # HIRIS — Roadmap
 
-> Last updated: 2026-04-28 | Current version: **v0.6.6**
+> Last updated: 2026-04-28 | Current version: **v0.6.7**
 
 ---
 

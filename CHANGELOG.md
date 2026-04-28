@@ -1,5 +1,11 @@
 # HIRIS — Changelog
 
+## [0.6.7] — 2026-04-28
+
+### Added
+- **Configuration guide** (`docs/configuration-guide.md` / `docs/guida-configurazione.md`): step-by-step setup for Apprise notifications (Telegram, ntfy, Gotify, email, Discord, WhatsApp) and Memory/RAG (OpenAI embeddings, Ollama local embeddings, tuning parameters)
+- README: links to new configuration guide docs
+
 ## [0.6.6] — 2026-04-28
 
 ### Changed

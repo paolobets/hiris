@@ -204,6 +204,8 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 
 | Document | Language |
 |---|---|
+| [Configuration guide — Apprise & Memory/RAG](docs/configuration-guide.md) | 🇬🇧 English |
+| [Guida alla configurazione — Apprise & Memoria/RAG](docs/guida-configurazione.md) | 🇮🇹 Italiano |
 | [How it works — architecture & internals](docs/how-it-works.md) | 🇬🇧 English |
 | [Come funziona — architettura e internals](docs/come-funziona.md) | 🇮🇹 Italiano |
 | [Technical architecture](docs/architecture.md) | 🇬🇧 English |
