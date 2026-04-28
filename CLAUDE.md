@@ -155,22 +155,22 @@ app/
 Development organized in 6 competency-based sprints. **Sprint 0 must ship before any feature sprint.**
 Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMPT.md).
 
-#### Sprint 0 — Critical Bugfixes (v0.6.0)
-*Must fix before any feature work — bugs found in codebase audit:*
-- `handlers_agents.py:137,161` + `handlers_usage.py` — `get("claude_runner")` hardcoded instead of `get("llm_router") or get("claude_runner")` → 503 on usage/reset endpoints when LLMRouter active
-- `task_tools.py` — sync functions called with `await` in dispatcher → `TypeError` at runtime
-- `app/ha_client.py` — orphan stub (no imports anywhere); remove, real impl is `proxy/ha_client.py`
-- `SemanticContextMap` — add JSON persist/load (like `SemanticMap`) so classifications survive restart
-- EUR exchange rate `0.92` — centralize into one constant (currently hardcoded in 6+ places)
-- MQTT: `update_agent()` must call `publish_agent_state()` when `enabled` flag changes
+#### Sprint 0 — Critical Bugfixes ✅ done (v0.6.0)
+- `handlers_agents.py` + `handlers_usage.py` — `get("llm_router") or get("claude_runner")` fix
+- `app/ha_client.py` — orphan stub removed; real impl is `proxy/ha_client.py`
+- `SemanticContextMap` — JSON persist/load so classifications survive restart
+- EUR exchange rate — centralized into `config.EUR_RATE` constant
+- MQTT: `update_agent()` now calls `publish_agent_state()` on `enabled` change
+- Non-blocking file I/O — `_save()` / `_save_usage()` / `SemanticContextMap.save()` use `run_in_executor`
 
-#### Sprint A — HA-Bridge (v0.6.x)
+#### Sprint A — HA-Bridge ✅ done (v0.6.1)
 *Competenza: Python backend + HA WebSocket/MQTT*
-- Complete MQTT 2-way: subscribe `command_topic` (switch on/off, button.run\_now) — closes doc §2A.1
-- Add missing MQTT entities: `last_result`, `budget_remaining_eur`, `tokens_used_today`
-- Tool: `http_request(url, method, headers, body)` with per-agent `allowed_urls`
-- *(§2A.2 REST bridge: defer — Lovelace card already uses REST+SUPERVISOR\_TOKEN)*
-- *(§2A.5 HA Services formal registration: defer to Phase 3)*
+- MQTT 2-way: subscribe `hiris/agents/+/{enabled,run_now}/set`; `AgentEngine._handle_mqtt_command` callback
+- New MQTT entities: `last_result`, `budget_remaining_eur` ("unlimited" when no limit), `tokens_used_today` (daily lazy reset), `run_now` button
+- Tool: `http_request(url, method?, headers?, body?)` — Option C security: structured `AllowedEndpoint`, DNS pinning (`_PinnedResolver`), correct RFC1918 DENY_NETS, `SOCK_STREAM` for Alpine/musl, redirects off by default, 4KB cap, internal header stripping
+- `Agent.allowed_endpoints: list[dict] | None` — tool hidden from Claude when `None`
+- *(§2A.2 REST bridge: deferred — Lovelace card already uses REST+SUPERVISOR\_TOKEN)*
+- *(§2A.5 HA Services formal registration: deferred to Phase 3)*
 
 #### Sprint B — Tool Expansion (v0.6.x)
 *Competenza: External APIs + Python tool layer*
