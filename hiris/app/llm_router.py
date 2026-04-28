@@ -3,7 +3,6 @@ import json
 import logging
 import re
 from typing import Any
-from .backends.ollama import OllamaBackend
 
 logger = logging.getLogger(__name__)
 
@@ -18,67 +17,131 @@ _CLASSIFY_ROLES = (
 )
 
 
+def _is_openai_model(model: str) -> bool:
+    return bool(re.match(r"^(gpt-|o[1-9])", model))
+
+
 class LLMRouter:
-    """Wraps ClaudeRunner with the same public interface + classify_entities() routing."""
+    """Routes LLM calls to the appropriate backend (Claude, OpenAI, Ollama)."""
 
     def __init__(
         self,
-        runner: Any,
-        local_model_url: str = "",
-        local_model_name: str = "",
+        claude: Any = None,
+        openai: Any = None,
+        ollama: Any = None,
     ) -> None:
-        self._runner = runner
-        self._local_model_url = local_model_url.strip()
-        self._local_model_name = local_model_name.strip()
+        self._claude = claude
+        self._openai = openai
+        self._ollama = ollama
+        self._all = [r for r in [claude, openai, ollama] if r is not None]
+
+    def _route(self, model: str) -> Any:
+        if model == "auto":
+            return self._claude or self._openai or self._ollama
+        if model.startswith("claude-"):
+            return self._claude
+        if _is_openai_model(model):
+            return self._openai
+        return self._ollama
+
+    # ------------------------------------------------------------------
+    # LLM interface (mirrors ClaudeRunner)
+    # ------------------------------------------------------------------
 
     async def chat(self, **kwargs) -> str:
-        return await self._runner.chat(**kwargs)
+        runner = self._route(kwargs.get("model", "auto"))
+        if runner is None:
+            return "Nessun provider AI configurato per questo modello."
+        return await runner.chat(**kwargs)
+
+    async def chat_stream(self, **kwargs):
+        runner = self._route(kwargs.get("model", "auto"))
+        if runner is None:
+            yield f'data: {json.dumps({"type": "error", "message": "Provider AI non configurato"})}\n\n'
+            return
+        async for chunk in runner.chat_stream(**kwargs):
+            yield chunk
 
     async def run_with_actions(self, **kwargs):
-        return await self._runner.run_with_actions(**kwargs)
+        runner = self._route(kwargs.get("model", "auto"))
+        if runner is None:
+            return "", None, None
+        return await runner.run_with_actions(**kwargs)
+
+    async def simple_chat(self, messages: list[dict], system: str = "") -> str:
+        runner = self._claude or self._openai or self._ollama
+        if runner is None:
+            return ""
+        return await runner.simple_chat(messages, system=system)
+
+    # ------------------------------------------------------------------
+    # Usage (aggregated across all runners)
+    # ------------------------------------------------------------------
 
     @property
     def last_tool_calls(self) -> list:
-        return getattr(self._runner, "last_tool_calls", [])
+        for r in reversed(self._all):
+            tc = getattr(r, "last_tool_calls", None)
+            if tc:
+                return tc
+        return []
 
     @property
     def total_input_tokens(self) -> int:
-        return getattr(self._runner, "total_input_tokens", 0)
+        return sum(getattr(r, "total_input_tokens", 0) for r in self._all)
 
     @property
     def total_output_tokens(self) -> int:
-        return getattr(self._runner, "total_output_tokens", 0)
+        return sum(getattr(r, "total_output_tokens", 0) for r in self._all)
 
     @property
     def total_requests(self) -> int:
-        return getattr(self._runner, "total_requests", 0)
+        return sum(getattr(r, "total_requests", 0) for r in self._all)
 
     @property
     def total_cost_usd(self) -> float:
-        return getattr(self._runner, "total_cost_usd", 0.0)
+        return sum(getattr(r, "total_cost_usd", 0.0) for r in self._all)
 
     @property
     def total_rate_limit_errors(self) -> int:
-        return getattr(self._runner, "total_rate_limit_errors", 0)
+        return sum(getattr(r, "total_rate_limit_errors", 0) for r in self._all)
 
     @property
     def usage_last_reset(self) -> str:
-        return getattr(self._runner, "usage_last_reset", "")
+        resets = [getattr(r, "usage_last_reset", "") for r in self._all]
+        return min((s for s in resets if s), default="")
 
     def get_agent_usage(self, agent_id: str) -> dict:
-        return self._runner.get_agent_usage(agent_id)
+        result = {
+            "input_tokens": 0, "output_tokens": 0,
+            "requests": 0, "cost_usd": 0.0, "last_run": None,
+            "tokens_today": 0, "tokens_today_date": "",
+        }
+        for r in self._all:
+            u = r.get_agent_usage(agent_id)
+            result["input_tokens"] += u.get("input_tokens", 0)
+            result["output_tokens"] += u.get("output_tokens", 0)
+            result["requests"] += u.get("requests", 0)
+            result["cost_usd"] += u.get("cost_usd", 0.0)
+            result["tokens_today"] += u.get("tokens_today", 0)
+            run_at = u.get("last_run")
+            if run_at and (not result["last_run"] or run_at > result["last_run"]):
+                result["last_run"] = run_at
+        return result
 
     def reset_agent_usage(self, agent_id: str) -> None:
-        self._runner.reset_agent_usage(agent_id)
+        for r in self._all:
+            r.reset_agent_usage(agent_id)
 
     def reset_usage(self) -> None:
-        self._runner.reset_usage()
+        for r in self._all:
+            r.reset_usage()
+
+    # ------------------------------------------------------------------
+    # Entity classification (prefers Ollama for cheap inference)
+    # ------------------------------------------------------------------
 
     async def classify_entities(self, entities: list[dict]) -> dict[str, dict]:
-        """Classify entities via LLM. Routes to Ollama if configured, else Claude.
-
-        Returns {entity_id: {role, label, confidence}}.
-        """
         if not entities:
             return {}
 
@@ -96,12 +159,11 @@ class LLMRouter:
         )
         messages = [{"role": "user", "content": user_msg}]
 
-        if self._local_model_url and self._local_model_name:
-            backend = OllamaBackend(url=self._local_model_url, model=self._local_model_name)
-            raw = await backend.simple_chat(messages, system=_CLASSIFY_SYSTEM)
-        else:
-            raw = await self._runner.simple_chat(messages, system=_CLASSIFY_SYSTEM)
-
+        # Ollama is cheapest; fall back to primary runner
+        runner = self._ollama or self._claude or self._openai
+        if runner is None:
+            return {}
+        raw = await runner.simple_chat(messages, system=_CLASSIFY_SYSTEM)
         return _parse_classify_response(raw)
 
 
@@ -118,7 +180,6 @@ def _parse_classify_response(raw: str) -> dict[str, dict]:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # Scan right-to-left for a valid JSON object (avoids greedy regex matching multiple blobs)
         for m in reversed(list(re.finditer(r'\{', raw))):
             try:
                 data = json.loads(raw[m.start():])

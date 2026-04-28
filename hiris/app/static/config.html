@@ -635,12 +635,10 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
         <fieldset>
           <legend>Modello AI</legend>
-          <p class="hint">Seleziona il modello Claude. <em>auto</em> usa Haiku per monitor/reactive/preventive e Sonnet per chat.</p>
+          <p class="hint" id="model-hint">Seleziona il modello AI. <em>auto</em> sceglie automaticamente in base al tipo agente.</p>
           <label>Modello</label>
           <select id="f-model">
             <option value="auto">auto &mdash; segue tipo agente</option>
-            <option value="claude-haiku-4-5-20251001">Haiku (veloce, economico)</option>
-            <option value="claude-sonnet-4-6">Sonnet (pi&ugrave; capace)</option>
           </select>
           <label>Max token risposta</label>
           <input type="number" id="f-max-tokens" value="4096" min="256" max="16000">
@@ -1138,7 +1136,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-strategic').value = a.strategic_context || '';
       _entitySelectorLoad(a.allowed_entities || []);
       document.getElementById('f-enabled').checked = a.enabled;
-      document.getElementById('f-model').value = a.model || 'auto';
+      _setModelValue(a.model || 'auto');
       document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
       document.getElementById('f-restrict').checked = !!a.restrict_to_home;
       document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
@@ -1179,7 +1177,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-strategic').value = '';
       _entitySelectorLoad([]);
       document.getElementById('f-enabled').checked = true;
-      document.getElementById('f-model').value = 'auto';
+      _setModelValue('auto');
       document.getElementById('f-max-tokens').value = 4096;
       document.getElementById('f-restrict').checked = false;
       document.getElementById('f-require-confirmation').checked = false;
@@ -1300,7 +1298,60 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       }
     };
 
+    async function loadModels() {
+      var sel = document.getElementById('f-model');
+      try {
+        var r = await fetch('api/models');
+        if (!r.ok) return;
+        var d = await r.json();
+        var providers = d.providers || [];
+        // Keep current value to restore after repopulation
+        var current = sel.value;
+        sel.innerHTML = '';
+        providers.forEach(function(p) {
+          var grp = document.createElement('optgroup');
+          grp.label = p.label;
+          p.models.forEach(function(m) {
+            var opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m === 'auto' ? 'auto — segue tipo agente' : m;
+            grp.appendChild(opt);
+          });
+          sel.appendChild(grp);
+        });
+        if (providers.length === 0) {
+          var opt = document.createElement('option');
+          opt.value = 'auto';
+          opt.textContent = 'auto — nessun provider configurato';
+          sel.appendChild(opt);
+        }
+        // Restore previously selected value (or add it if missing)
+        _setModelValue(current || 'auto');
+        // Update hint
+        var hint = document.getElementById('model-hint');
+        if (hint && providers.length > 0) {
+          hint.textContent = 'Seleziona il modello AI. Sono disponibili ' + providers.map(function(p){return p.label;}).join(', ') + '. «auto» sceglie in base al tipo agente.';
+        }
+      } catch(e) {
+        console.warn('loadModels failed:', e);
+      }
+    }
+
+    function _setModelValue(val) {
+      var sel = document.getElementById('f-model');
+      sel.value = val;
+      if (sel.value !== val) {
+        // Model not in list (provider not configured) — add as orphan option
+        var opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = val + ' (provider non configurato)';
+        sel.insertBefore(opt, sel.firstChild);
+        sel.value = val;
+      }
+    }
+
     populateTemplateSelector();
+    loadModels();
     loadAgents();
 
     function fmtNum(n) {

@@ -18,6 +18,7 @@ from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
 from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
 from .api.handlers_tasks import handle_list_tasks, handle_get_task, handle_cancel_task
+from .api.handlers_models import handle_list_models
 from .agent_engine import AgentEngine
 from .task_engine import TaskEngine
 from .version import read_version
@@ -332,7 +333,6 @@ async def _on_startup(app: web.Application) -> None:
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
-    primary_model = os.environ.get("PRIMARY_MODEL", "claude-sonnet-4-6")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
     if local_model_url:
         try:
@@ -385,30 +385,69 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
+    from .tools.dispatcher import ToolDispatcher
+    from .backends.openai_compat_runner import OpenAICompatRunner
+
+    dispatcher = ToolDispatcher(
+        ha_client=ha_client,
+        notify_config=notify_config,
+        entity_cache=entity_cache,
+        semantic_map=semantic_map,
+        memory_store=memory_store,
+        embedding_provider=embedder,
+        memory_retention_days=memory_retention_days,
+    )
+    dispatcher.set_task_engine(task_engine)
+
+    claude_runner = None
     if api_key:
-        runner = ClaudeRunner(
+        claude_runner = ClaudeRunner(
             api_key=api_key,
-            ha_client=ha_client,
-            notify_config=notify_config,
+            dispatcher=dispatcher,
             usage_path=usage_path,
             entity_cache=entity_cache,
             semantic_map=semantic_map,
-            memory_store=memory_store,
-            embedding_provider=embedder,
-            memory_retention_days=memory_retention_days,
         )
+
+    _usage_base, _usage_ext = os.path.splitext(usage_path)
+    _usage_ext = _usage_ext or ".json"
+
+    openai_runner = None
+    if openai_api_key:
+        openai_runner = OpenAICompatRunner(
+            base_url="https://api.openai.com/v1",
+            api_key=openai_api_key,
+            dispatcher=dispatcher,
+            usage_path=f"{_usage_base}_openai{_usage_ext}",
+        )
+
+    ollama_runner = None
+    if local_model_url and local_model_name:
+        ollama_runner = OpenAICompatRunner(
+            base_url=local_model_url.rstrip("/") + "/v1",
+            api_key="ollama",
+            dispatcher=dispatcher,
+            fixed_model=local_model_name,
+            usage_path=f"{_usage_base}_ollama{_usage_ext}",
+        )
+
+    # Store config for /api/models endpoint
+    app["openai_api_key"] = openai_api_key
+    app["local_model_url"] = local_model_url
+    app["local_model_name"] = local_model_name
+
+    if any([claude_runner, openai_runner, ollama_runner]):
         router = LLMRouter(
-            runner=runner,
-            local_model_url=local_model_url,
-            local_model_name=local_model_name,
+            claude=claude_runner,
+            openai=openai_runner,
+            ollama=ollama_runner,
         )
         semantic_map.set_router(router)
-        app["claude_runner"] = runner   # backward compat
+        app["claude_runner"] = claude_runner  # backward compat (may be None)
         app["llm_router"] = router
         engine.set_claude_runner(router)
         engine.set_task_engine(task_engine)
         engine.set_notify_config(notify_config)
-        runner.set_task_engine(task_engine)
 
         # Kick off LLM classification for ambiguous entities (background, non-blocking)
         if ambiguous:
@@ -477,6 +516,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/tasks", handle_list_tasks)
     app.router.add_get("/api/tasks/{task_id}", handle_get_task)
     app.router.add_delete("/api/tasks/{task_id}", handle_cancel_task)
+    app.router.add_get("/api/models", handle_list_models)
 
     return app
 
