@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.6.3] — 2026-04-28
+
+### Added
+- **LLMRouter strategy**: `strategy` param (`balanced` / `quality_first` / `cost_first`) controls backend preference order; wired via `LLM_STRATEGY` env var and `llm_strategy` config option
+- **LLMRouter fallback**: when `model="auto"`, if the primary backend raises an exception the next backend in the strategy chain is tried automatically
+- `backends/pricing.py`: centralized USD/MTok pricing table for all supported models (Claude 4.x, GPT-4o/4.1/o-series, Ollama free); replaces duplicate `_PRICING` dicts in `ClaudeRunner` and `OpenAICompatRunner`
+
 ## [0.6.2] — 2026-04-28
 
 ### Fixed
