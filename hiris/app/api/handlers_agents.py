@@ -5,11 +5,49 @@ from aiohttp import web
 from ..config import EUR_RATE as _EUR_RATE
 
 _AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_VALID_AGENT_TYPES = frozenset({"chat", "monitor", "reactive", "preventive"})
+_VALID_TRIGGER_TYPES = frozenset({"schedule", "state_changed", "manual", "cron"})
 
 
 def _check_agent_id(agent_id: str) -> web.Response | None:
     if not _AGENT_ID_RE.match(agent_id):
         return web.json_response({"error": "invalid agent_id"}, status=400)
+    return None
+
+
+def _validate_agent_payload(body: dict) -> str | None:
+    """Return an error message string if the payload is invalid, else None."""
+    name = body.get("name")
+    if name is not None:
+        if not isinstance(name, str) or not name.strip():
+            return "name must be a non-empty string"
+        if len(name) > 256:
+            return "name too long (max 256 chars)"
+
+    agent_type = body.get("type")
+    if agent_type is not None and agent_type not in _VALID_AGENT_TYPES:
+        return f"type must be one of {sorted(_VALID_AGENT_TYPES)}"
+
+    trigger = body.get("trigger")
+    if trigger is not None:
+        if not isinstance(trigger, dict):
+            return "trigger must be an object"
+        if "type" not in trigger:
+            return "trigger.type is required"
+
+    budget = body.get("budget_eur_limit")
+    if budget is not None:
+        try:
+            if float(budget) < 0:
+                return "budget_eur_limit must be >= 0"
+        except (TypeError, ValueError):
+            return "budget_eur_limit must be a number"
+
+    for list_field in ("allowed_tools", "allowed_entities", "allowed_services"):
+        val = body.get(list_field)
+        if val is not None and not isinstance(val, list):
+            return f"{list_field} must be a list"
+
     return None
 
 
@@ -45,6 +83,9 @@ async def handle_create_agent(request: web.Request) -> web.Response:
     if missing:
         return web.json_response({"error": f"Missing required fields: {missing}"}, status=400)
 
+    if err := _validate_agent_payload(body):
+        return web.json_response({"error": err}, status=400)
+
     engine = request.app["engine"]
     agent = engine.create_agent(body)
     return web.json_response(asdict(agent), status=201)
@@ -69,6 +110,9 @@ async def handle_update_agent(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+    if err := _validate_agent_payload(body):
+        return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]
     agent = engine.update_agent(agent_id, body)

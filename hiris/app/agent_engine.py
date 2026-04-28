@@ -57,7 +57,6 @@ class AgentEngine:
         self._mqtt_publisher = None
         self._pending_mqtt_runs: set[str] = set()
         self._task_engine: Any = None
-        self._notify_config: dict = {}
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
@@ -71,9 +70,6 @@ class AgentEngine:
 
     def set_task_engine(self, engine: Any) -> None:
         self._task_engine = engine
-
-    def set_notify_config(self, config: dict) -> None:
-        self._notify_config = config
 
     async def _handle_mqtt_command(self, agent_id: str, command: str, payload: str) -> None:
         agent = self._agents.get(agent_id)

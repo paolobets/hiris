@@ -62,6 +62,10 @@ def _check_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, host: str) -> N
     for net in _DENY_NETS:
         if ip in net:
             raise BlockedURLError(f"IP {ip} for {host!r} is in denied range {net}")
+    # IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) is not caught by IPv4 network checks above;
+    # extract the embedded IPv4 address and re-check it.
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        _check_ip(ip.ipv4_mapped, host)
 
 
 def validate_endpoint_entry(entry: dict) -> AllowedEndpoint:
@@ -234,7 +238,7 @@ async def http_request(
                 url,
                 headers=clean_headers,
                 data=body.encode("utf-8") if body else None,
-                allow_redirects=ep.follow_redirects,
+                allow_redirects=False,  # redirects bypass _PinnedResolver — never follow
             ) as resp:
                 raw = await resp.content.read(_MAX_RESPONSE_BYTES + 1)
                 truncated = len(raw) > _MAX_RESPONSE_BYTES

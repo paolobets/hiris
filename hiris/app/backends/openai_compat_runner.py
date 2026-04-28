@@ -2,8 +2,19 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional, TYPE_CHECKING
+
+from ..claude_runner import (
+    ALL_TOOL_DEFS,
+    BASE_SYSTEM_PROMPT,
+    EVALUATION_ONLY_TOOLS,
+    RESTRICT_PROMPT,
+    REQUIRE_CONFIRMATION_PROMPT,
+    _parse_structured_response,
+    _build_action_instructions,
+)
 
 if TYPE_CHECKING:
     from ..tools.dispatcher import ToolDispatcher
@@ -84,7 +95,6 @@ class OpenAICompatRunner:
     # ------------------------------------------------------------------
 
     def _load_usage(self) -> None:
-        import os
         if not self._usage_path or not os.path.exists(self._usage_path):
             return
         try:
@@ -101,7 +111,6 @@ class OpenAICompatRunner:
             logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
 
     def _save_usage(self) -> None:
-        import os
         if not self._usage_path:
             return
         data = {
@@ -240,10 +249,6 @@ class OpenAICompatRunner:
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
     ) -> str:
-        from ..claude_runner import (
-            ALL_TOOL_DEFS, BASE_SYSTEM_PROMPT,
-            RESTRICT_PROMPT, REQUIRE_CONFIRMATION_PROMPT,
-        )
         import openai as _openai
 
         if agent_id:
@@ -412,8 +417,6 @@ class OpenAICompatRunner:
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
     ) -> tuple[str, str | None, str | None]:
-        from ..claude_runner import EVALUATION_ONLY_TOOLS, _parse_structured_response, _build_action_instructions
-
         eval_tools = list(EVALUATION_ONLY_TOOLS)
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]

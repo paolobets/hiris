@@ -20,7 +20,6 @@ from .tools.automation_tools import (
     TRIGGER_TOOL_DEF,
     TOGGLE_TOOL_DEF,
 )
-from .proxy.home_profile import get_cached_home_profile
 from .tools.task_tools import (
     CREATE_TASK_TOOL_DEF, LIST_TASKS_TOOL_DEF, CANCEL_TASK_TOOL_DEF,
 )
@@ -259,14 +258,10 @@ class ClaudeRunner:
         api_key: str,
         dispatcher: ToolDispatcher,
         usage_path: str = "",
-        entity_cache=None,
-        semantic_map=None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._dispatcher = dispatcher
         self._usage_path = usage_path
-        self._cache = entity_cache     # for get_cached_home_profile
-        self._semantic_map = semantic_map  # for get_cached_home_profile
         self.last_tool_calls: list[dict] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
@@ -419,10 +414,6 @@ class ClaudeRunner:
             system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
         if require_confirmation:
             system_blocks.append({"type": "text", "text": REQUIRE_CONFIRMATION_PROMPT})
-        if self._cache is not None and self._semantic_map is None:
-            profile = get_cached_home_profile(self._cache)
-            if profile:
-                system_blocks.append({"type": "text", "text": profile})
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         if allowed_endpoints is None:
@@ -625,7 +616,8 @@ class ClaudeRunner:
             "VALUTAZIONE: OK|ATTENZIONE|ANOMALIA\n"
             "Motivazione: [1-2 righe sintetiche]"
         )
-        augmented_prompt = system_prompt + eval_instruction
+        action_block = _build_action_instructions(actions)
+        augmented_prompt = system_prompt + eval_instruction + ("\n\n" + action_block if action_block else "")
 
         raw_result = await self.chat(
             user_message=user_message,

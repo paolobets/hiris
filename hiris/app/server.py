@@ -447,7 +447,6 @@ async def _on_startup(app: web.Application) -> None:
         app["llm_router"] = router
         engine.set_claude_runner(router)
         engine.set_task_engine(task_engine)
-        engine.set_notify_config(notify_config)
 
         # Kick off LLM classification for ambiguous entities (background, non-blocking)
         if ambiguous:

@@ -19,6 +19,16 @@ from .memory_tools import recall_memory as _recall_memory, save_memory as _save_
 logger = logging.getLogger(__name__)
 
 
+def _filter_entities(entities: list[dict], allowed_entities: list[str] | None) -> list[dict]:
+    """Return only entities whose ID matches any allowed_entities glob pattern."""
+    if not allowed_entities:
+        return entities
+    return [
+        e for e in entities
+        if any(fnmatch.fnmatch(e.get("id", e.get("entity_id", "")), pat) for pat in allowed_entities)
+    ]
+
+
 class ToolDispatcher:
     """Executes HIRIS tools. Shared across LLM runners so HA integration stays in one place."""
 
@@ -72,11 +82,14 @@ class ToolDispatcher:
                     ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                 return await get_entity_states(self._ha, ids, entity_cache=self._cache)
             if name == "get_home_status":
-                return get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
+                result = get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
+                return _filter_entities(result, allowed_entities)
             if name == "get_entities_on":
-                return get_entities_on(self._cache) if self._cache else []
+                result = get_entities_on(self._cache) if self._cache else []
+                return _filter_entities(result, allowed_entities)
             if name == "get_entities_by_domain":
-                return get_entities_by_domain(inputs["domain"], self._cache) if self._cache else []
+                result = get_entities_by_domain(inputs["domain"], self._cache) if self._cache else []
+                return _filter_entities(result, allowed_entities)
             if name == "get_energy_history":
                 return await get_energy_history(self._ha, inputs["days"], semantic_map=self._semantic_map)
             if name == "get_weather_forecast":
