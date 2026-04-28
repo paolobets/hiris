@@ -45,6 +45,8 @@ _VERSIONED_DOCS = [
     ROOT / "docs" / "use-cases.md",
     ROOT / "docs" / "casi-duso.md",
     ROOT / "docs" / "ROADMAP.md",
+    ROOT / "docs" / "configuration-guide.md",
+    ROOT / "docs" / "guida-configurazione.md",
 ]
 
 _GREEN = "\033[32m"
