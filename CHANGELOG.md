@@ -1,5 +1,21 @@
 # HIRIS — Changelog
 
+## [0.6.2] — 2026-04-28
+
+### Fixed
+- **SSRF**: `http_tools` now blocks IPv4-mapped IPv6 addresses (`::ffff:127.x`) and always disables redirects (redirects bypassed `_PinnedResolver`)
+- **Entity leakage**: `allowed_entities` filter now applied to `get_home_status`, `get_entities_on`, `get_entities_by_domain` (was only enforced on `get_entity_states`)
+- **Prompt injection**: RAG memories marked as untrusted data in system context; `debug.tools_called` response redacted to tool names only
+- **Path traversal**: `agent_id` validated with regex in chat history handler
+- **Auth bypass**: middleware now denies non-ingress requests by default when no `internal_token` is configured
+- `ClaudeRunner.run_with_actions` now includes action instructions in augmented prompt (was inconsistent with `OpenAICompatRunner`)
+- `openai_compat_runner`: imports hoisted to module top (were dynamic per-call)
+- `handlers_agents`: `_validate_agent_payload()` validates type/name/trigger/budget on create and update
+
+### Removed
+- Dead `entity_cache`/`semantic_map` params from `ClaudeRunner` (unreachable branch in production)
+- Dead `set_notify_config()` / `_notify_config` from `AgentEngine` (written, never read)
+
 ## [0.6.1] — 2026-04-28
 
 ### Added
