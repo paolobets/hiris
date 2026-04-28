@@ -1,0 +1,67 @@
+configuration:
+  claude_api_key:
+    name: "Claude API Key"
+    description: "API key for Anthropic Claude. Required if you want to use Claude as the AI provider. Get it at console.anthropic.com."
+  openai_api_key:
+    name: "OpenAI API Key"
+    description: "API key for OpenAI models (GPT-4o, o1, etc.). Required only if you select an OpenAI model as primary."
+  primary_model:
+    name: "Primary Model"
+    description: "The AI model used by HIRIS for reasoning and responses. Examples: claude-sonnet-4-6, claude-opus-4-7, gpt-4o."
+  llm_strategy:
+    name: "LLM Strategy"
+    description: "How HIRIS selects models when multiple are available. 'balanced' uses cost/quality balance, 'cost_first' prefers cheaper models, 'quality_first' always uses the best."
+  local_model:
+    name: "Local Model (Ollama)"
+    description: "Settings for a locally hosted Ollama model. Leave empty if you do not use Ollama."
+    url:
+      name: "Ollama URL"
+      description: "Base URL of your Ollama instance. Example: http://192.168.1.10:11434"
+    model:
+      name: "Ollama Model Name"
+      description: "Name of the Ollama model to use. Example: llama3, mistral, phi3."
+  mqtt:
+    name: "MQTT"
+    description: "MQTT broker settings for receiving commands and events via message queue. Leave empty if MQTT is not used."
+    host:
+      name: "MQTT Host"
+      description: "Hostname or IP address of your MQTT broker. Example: 192.168.1.10 or core-mosquitto."
+    port:
+      name: "MQTT Port"
+      description: "Port of the MQTT broker. Default is 1883."
+    user:
+      name: "MQTT Username"
+      description: "Username for MQTT authentication. Leave empty if no authentication is required."
+    password:
+      name: "MQTT Password"
+      description: "Password for MQTT authentication. Leave empty if no authentication is required."
+  memory:
+    name: "Memory & RAG"
+    description: "Settings for HIRIS long-term memory and semantic search (RAG). Leave embedding fields empty to disable RAG."
+    embedding_provider:
+      name: "Embedding Provider"
+      description: "Provider used to generate text embeddings for semantic memory. Examples: openai, ollama. Leave empty to disable."
+    embedding_model:
+      name: "Embedding Model"
+      description: "Model used to generate embeddings. Example: text-embedding-3-small (OpenAI), nomic-embed-text (Ollama)."
+    rag_k:
+      name: "RAG Results (k)"
+      description: "Number of relevant memories returned during semantic search. Higher values give more context but increase token usage."
+    retention_days:
+      name: "Memory Retention (days)"
+      description: "How many days to keep memories before automatic deletion. Default is 90 days."
+  internal_token:
+    name: "Internal Token"
+    description: "Secret token used to secure internal API calls between HIRIS components. Leave empty to auto-generate."
+  log_level:
+    name: "Log Level"
+    description: "Verbosity of add-on logs. Use 'debug' for troubleshooting, 'info' for normal operation, 'warning' or 'error' for minimal output."
+  theme:
+    name: "Theme"
+    description: "Color theme for the HIRIS web interface. 'auto' follows your system preference."
+  apprise_urls:
+    name: "Notification URLs (Apprise)"
+    description: "List of Apprise-compatible URLs for sending notifications (e.g. Telegram, WhatsApp, email). See apprise.readthedocs.io for supported formats."
+  history_retention_days:
+    name: "Conversation History Retention (days)"
+    description: "How many days to keep conversation history before automatic deletion. Default is 90 days."

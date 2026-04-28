@@ -1,0 +1,67 @@
+configuration:
+  claude_api_key:
+    name: "Chiave API Claude"
+    description: "Chiave API per Anthropic Claude. Obbligatoria se vuoi usare Claude come provider AI. Ottienila su console.anthropic.com."
+  openai_api_key:
+    name: "Chiave API OpenAI"
+    description: "Chiave API per i modelli OpenAI (GPT-4o, o1, ecc.). Necessaria solo se selezioni un modello OpenAI come modello principale."
+  primary_model:
+    name: "Modello Principale"
+    description: "Il modello AI usato da HIRIS per ragionamento e risposte. Esempi: claude-sonnet-4-6, claude-opus-4-7, gpt-4o."
+  llm_strategy:
+    name: "Strategia LLM"
+    description: "Come HIRIS seleziona i modelli quando ne sono disponibili più di uno. 'balanced' bilancia costo e qualità, 'cost_first' preferisce modelli più economici, 'quality_first' usa sempre il migliore."
+  local_model:
+    name: "Modello Locale (Ollama)"
+    description: "Impostazioni per un modello Ollama ospitato localmente. Lascia vuoto se non usi Ollama."
+    url:
+      name: "URL Ollama"
+      description: "URL base della tua istanza Ollama. Esempio: http://192.168.1.10:11434"
+    model:
+      name: "Nome Modello Ollama"
+      description: "Nome del modello Ollama da usare. Esempio: llama3, mistral, phi3."
+  mqtt:
+    name: "MQTT"
+    description: "Impostazioni del broker MQTT per ricevere comandi ed eventi tramite coda messaggi. Lascia vuoto se non usi MQTT."
+    host:
+      name: "Host MQTT"
+      description: "Hostname o indirizzo IP del tuo broker MQTT. Esempio: 192.168.1.10 o core-mosquitto."
+    port:
+      name: "Porta MQTT"
+      description: "Porta del broker MQTT. Il valore predefinito è 1883."
+    user:
+      name: "Utente MQTT"
+      description: "Username per l'autenticazione MQTT. Lascia vuoto se non è richiesta autenticazione."
+    password:
+      name: "Password MQTT"
+      description: "Password per l'autenticazione MQTT. Lascia vuoto se non è richiesta autenticazione."
+  memory:
+    name: "Memoria & RAG"
+    description: "Impostazioni per la memoria a lungo termine di HIRIS e la ricerca semantica (RAG). Lascia vuoti i campi embedding per disabilitare il RAG."
+    embedding_provider:
+      name: "Provider Embedding"
+      description: "Provider usato per generare gli embedding testuali per la memoria semantica. Esempi: openai, ollama. Lascia vuoto per disabilitare."
+    embedding_model:
+      name: "Modello Embedding"
+      description: "Modello usato per generare gli embedding. Esempio: text-embedding-3-small (OpenAI), nomic-embed-text (Ollama)."
+    rag_k:
+      name: "Risultati RAG (k)"
+      description: "Numero di memorie rilevanti restituite durante la ricerca semantica. Valori più alti danno più contesto ma aumentano l'uso di token."
+    retention_days:
+      name: "Conservazione Memoria (giorni)"
+      description: "Quanti giorni conservare le memorie prima della cancellazione automatica. Predefinito: 90 giorni."
+  internal_token:
+    name: "Token Interno"
+    description: "Token segreto usato per proteggere le chiamate API interne tra i componenti di HIRIS. Lascia vuoto per generarlo automaticamente."
+  log_level:
+    name: "Livello Log"
+    description: "Verbosità dei log dell'add-on. Usa 'debug' per la diagnostica, 'info' per il funzionamento normale, 'warning' o 'error' per output minimale."
+  theme:
+    name: "Tema"
+    description: "Tema colori per l'interfaccia web di HIRIS. 'auto' segue le preferenze del sistema."
+  apprise_urls:
+    name: "URL Notifiche (Apprise)"
+    description: "Elenco di URL compatibili con Apprise per l'invio di notifiche (es. Telegram, WhatsApp, email). Vedi apprise.readthedocs.io per i formati supportati."
+  history_retention_days:
+    name: "Conservazione Cronologia (giorni)"
+    description: "Quanti giorni conservare la cronologia delle conversazioni prima della cancellazione automatica. Predefinito: 90 giorni."

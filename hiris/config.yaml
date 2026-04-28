@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.6.5"
+version: "0.6.6"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -21,44 +21,70 @@ map:
   - config:rw
 hassio_api: true
 homeassistant_api: true
+
 options:
+  # ── AI Providers ──────────────────────────────────────────────────────────
   claude_api_key: ""
+  openai_api_key: ""
+  primary_model: "claude-sonnet-4-6"
+  llm_strategy: "balanced"
+
+  # ── Local Model (Ollama) ──────────────────────────────────────────────────
+  local_model:
+    url: ""
+    model: ""
+
+  # ── MQTT ─────────────────────────────────────────────────────────────────
+  mqtt:
+    host: ""
+    port: 1883
+    user: ""
+    password: ""
+
+  # ── Memory & RAG ──────────────────────────────────────────────────────────
+  memory:
+    embedding_provider: ""
+    embedding_model: ""
+    rag_k: 5
+    retention_days: 90
+
+  # ── General ───────────────────────────────────────────────────────────────
+  internal_token: ""
   log_level: "info"
   theme: "auto"
-  primary_model: "claude-sonnet-4-6"
-  local_model_url: ""
-  local_model_name: ""
-  internal_token: ""
-  mqtt_host: ""
-  mqtt_port: 1883
-  mqtt_user: ""
-  mqtt_password: ""
   apprise_urls: []
-  openai_api_key: ""
-  llm_strategy: "balanced"
-  memory_embedding_provider: ""
-  memory_embedding_model: ""
-  memory_rag_k: 5
-  memory_retention_days: 90
   history_retention_days: 90
+
 schema:
+  # ── AI Providers ──────────────────────────────────────────────────────────
   claude_api_key: password
+  openai_api_key: password
+  primary_model: str
+  llm_strategy: "list(balanced|cost_first|quality_first)"
+
+  # ── Local Model (Ollama) ──────────────────────────────────────────────────
+  local_model:
+    url: str
+    model: str
+
+  # ── MQTT ─────────────────────────────────────────────────────────────────
+  mqtt:
+    host: str
+    port: int
+    user: str
+    password: password
+
+  # ── Memory & RAG ──────────────────────────────────────────────────────────
+  memory:
+    embedding_provider: str
+    embedding_model: str
+    rag_k: int
+    retention_days: int
+
+  # ── General ───────────────────────────────────────────────────────────────
+  internal_token: password
   log_level: "list(debug|info|warning|error)"
   theme: "list(light|dark|auto)"
-  primary_model: str
-  local_model_url: str
-  local_model_name: str
-  internal_token: password
-  mqtt_host: str
-  mqtt_port: int
-  mqtt_user: str
-  mqtt_password: password
   apprise_urls:
     - str
-  openai_api_key: password
-  llm_strategy: "list(balanced|cost_first|quality_first)"
-  memory_embedding_provider: str
-  memory_embedding_model: str
-  memory_rag_k: int
-  memory_retention_days: int
   history_retention_days: int

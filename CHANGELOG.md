@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.6.6] — 2026-04-28
+
+### Changed
+- **Config restructure**: options now grouped into logical nested sections (`local_model`, `mqtt`, `memory`) instead of flat underscore-prefixed keys; HA UI renders each group as a collapsible section
+- **`run.sh`**: updated all `bashio::config` calls to dotted path notation (`mqtt.host`, `local_model.model`, etc.); added missing `LLM_STRATEGY` export (was always defaulting to `balanced` regardless of config UI)
+- **Translations**: added `hiris/translations/en.yaml` and `hiris/translations/it.yaml` with human-readable labels and descriptions for all 18 configuration options in both English and Italian
+
 ## [0.6.5] — 2026-04-28
 
 ### Fixed
