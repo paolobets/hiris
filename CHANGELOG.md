@@ -1,5 +1,10 @@
 # HIRIS — Changelog
 
+## [0.6.10] — 2026-04-28
+
+### Fixed
+- **`run.sh`**: `bashio::config --raw` is not a valid bashio flag and caused 12 jq compile errors on every startup; replaced with `jq -c '.apprise_urls // []' /data/options.json` which reads the array directly from the HA options file — Apprise URLs were being silently ignored before this fix
+
 ## [0.6.9] — 2026-04-28
 
 ### Fixed

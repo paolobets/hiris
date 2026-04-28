@@ -7,7 +7,7 @@ export PRIMARY_MODEL=$(bashio::config 'primary_model' 'claude-sonnet-4-6')
 export LLM_STRATEGY=$(bashio::config 'llm_strategy' 'balanced')
 export THEME=$(bashio::config 'theme' 'auto')
 export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
-export APPRISE_URLS=$(bashio::config --raw 'apprise_urls' '[]')
+export APPRISE_URLS=$(jq -c '.apprise_urls // []' /data/options.json)
 export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 
 export LOCAL_MODEL_URL=$(bashio::config 'local_model.url' '')
