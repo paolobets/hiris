@@ -60,7 +60,16 @@
       "Bash(py -m pytest --co tests/ -q)",
       "Bash(py -m pytest tests/test_api.py -v)",
       "Bash(python -m pytest tests/test_api.py -v)",
-      "Bash(py scripts/release.py --version 0.5.16 --skip-tests)"
+      "Bash(py scripts/release.py --version 0.5.16 --skip-tests)",
+      "Bash(python3)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(python -m py_compile app/backends/embeddings.py app/proxy/memory_store.py app/tools/memory_tools.py app/chat_store.py app/claude_runner.py app/api/handlers_chat.py app/server.py)",
+      "Bash(python3 -m py_compile app/backends/embeddings.py app/proxy/memory_store.py app/tools/memory_tools.py app/chat_store.py app/claude_runner.py app/api/handlers_chat.py app/server.py)",
+      "Bash(python scripts/release.py --version 0.6.1)",
+      "Bash(python3 scripts/release.py --version 0.6.1)",
+      "Bash(where python3.11)",
+      "Bash(py scripts/release.py --version 0.6.1)"
     ]
   }
 }
