@@ -336,6 +336,9 @@ class HirisCard extends HTMLElement {
       </div>`;
     }).join('');
 
+    // Preserve any text the user typed before rebuilding the DOM
+    const _savedInput = this._shadow.getElementById('inp')?.value ?? '';
+
     this._shadow.innerHTML = `
       <style>
         :host { display: block; }
@@ -408,6 +411,13 @@ class HirisCard extends HTMLElement {
           transition: background .15s; }
         .send:hover { opacity: .9; }
         .send:disabled { opacity: .45; cursor: default; }
+        .send.loading svg { display: none; }
+        .send.loading::after {
+          content: ''; width: 14px; height: 14px;
+          border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+          border-radius: 50%; animation: spin 0.7s linear infinite; display: block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .messages::-webkit-scrollbar { width: 3px; }
         .messages::-webkit-scrollbar-track { background: transparent; }
         .messages::-webkit-scrollbar-thumb { background: var(--divider-color,#e0e0e0); border-radius: 2px; }
@@ -431,9 +441,11 @@ class HirisCard extends HTMLElement {
           ${msgs || '<div class="empty">Scrivi un messaggio per iniziare&#x2026;</div>'}
         </div>
         <div class="input-row">
-          <input class="input" id="inp" type="text" placeholder="Scrivi un messaggio&#x2026;"
+          <input class="input" id="inp" type="text"
+            placeholder="${this._loading ? 'Elaborazione…' : 'Scrivi un messaggio…'}"
             ${!this._enabled ? 'disabled' : ''} />
-          <button class="send" id="snd" ${this._loading || !this._enabled ? 'disabled' : ''} title="Invia">
+          <button class="send${this._loading ? ' loading' : ''}" id="snd"
+            ${this._loading || !this._enabled ? 'disabled' : ''} title="${this._loading ? 'Elaborazione…' : 'Invia'}">
             <svg viewBox="0 0 24 24" width="18" height="18">
               <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
             </svg>
@@ -445,6 +457,9 @@ class HirisCard extends HTMLElement {
     const snd = this._shadow.getElementById('snd');
     const tog = this._shadow.getElementById('tog');
     const msgsEl = this._shadow.getElementById('msgs');
+
+    // Restore typed text preserved before innerHTML rebuild
+    if (inp && _savedInput) inp.value = _savedInput;
 
     if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
     if (snd) snd.onclick = () => {

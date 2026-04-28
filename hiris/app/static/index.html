@@ -377,6 +377,18 @@
     #send-btn:hover    { background: var(--accent-hover); }
     #send-btn:active   { background: var(--accent-hover); transform: scale(0.94); }
     #send-btn:disabled { background: var(--accent-muted); cursor: not-allowed; }
+    #send-btn.loading  { background: var(--accent-muted); cursor: default; }
+    #send-btn.loading svg { display: none; }
+    #send-btn.loading::after {
+      content: '';
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     #send-btn svg { width: 18px; height: 18px; fill: white; }
 
     /* SCROLLBAR */
@@ -674,6 +686,7 @@ var activeAgentId = 'hiris-default';
 var hasMessages = false;
 var agentMaxTurns = {};
 var agentTurnCounts = {};
+var _isLoading = false;
 
 function updateTurnCounter() {
   var counter = document.getElementById('turn-counter');
@@ -822,12 +835,18 @@ function showTyping() {
   return row;
 }
 
+function _setLoadingState(loading) {
+  _isLoading = loading;
+  sendBtn.disabled = loading || inputEl.disabled;
+  sendBtn.classList.toggle('loading', loading);
+}
+
 async function sendMessage(text) {
   text = (text !== undefined) ? text : inputEl.value.trim();
-  if (!text) return;
+  if (!text || _isLoading) return;
   inputEl.value = '';
   autoResize();
-  sendBtn.disabled = true;
+  _setLoadingState(true);
   appendMsg('user', text);
   var typing = showTyping();
   try {
@@ -856,10 +875,9 @@ async function sendMessage(text) {
   } catch(e) {
     typing.remove();
     appendMsg('assistant', 'Errore di connessione. Riprova tra poco.');
-  }
-  if (!inputEl.disabled) {
-    sendBtn.disabled = false;
-    inputEl.focus();
+  } finally {
+    _setLoadingState(false);
+    if (!inputEl.disabled) inputEl.focus();
   }
 }
 
