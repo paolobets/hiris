@@ -3,6 +3,7 @@ import fnmatch
 import json
 import logging
 import os
+import re
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -21,36 +22,86 @@ DEFAULT_AGENT_ID = "hiris-default"
 class Agent:
     id: str
     name: str
-    type: str  # monitor | reactive | preventive | chat
-    trigger: dict  # {type: schedule|state_changed|manual, interval_minutes?, entity_id?, cron?}
+    type: str                   # "chat" | "agent"
+    triggers: list              # list of trigger dicts: [{type, interval_minutes?|entity_id?|cron?}]
     system_prompt: str
-    allowed_tools: list[str]
+    allowed_tools: list
     enabled: bool
     last_run: Optional[str] = None
     last_result: Optional[str] = None
     strategic_context: str = ""
-    allowed_entities: list[str] = field(default_factory=list)
-    allowed_services: list[str] = field(default_factory=list)
+    allowed_entities: list = field(default_factory=list)
+    allowed_services: list = field(default_factory=list)
     is_default: bool = False
     model: str = "auto"
     max_tokens: int = 4096
     restrict_to_home: bool = False
-    require_confirmation: bool = False
-    execution_log: list[dict] = field(default_factory=list)
-    actions: list[dict] = field(default_factory=list)
+    require_confirmation: bool = False   # chat only
+    execution_log: list = field(default_factory=list)
     budget_eur_limit: float = 0.0
-    max_chat_turns: int = 0
-    allowed_endpoints: Optional[list[dict]] = None
-    trigger_on: list[str] = field(default_factory=lambda: ["ANOMALIA"])
+    max_chat_turns: int = 0              # chat only
+    allowed_endpoints: Optional[list] = None
+    states: list = field(default_factory=lambda: ["OK", "ATTENZIONE", "ANOMALIA"])
+    action_mode: str = "automatic"       # "automatic" | "configured"
+    rules: list = field(default_factory=list)  # [{states:[...], actions:[...]}]
+    fallback_action: Optional[dict] = None
     response_mode: str = "auto"
-    states: list[str] = field(default_factory=lambda: ["OK", "ATTENZIONE", "ANOMALIA"])
 
+
+# ---------------------------------------------------------------------------
+# Migration helpers
+# ---------------------------------------------------------------------------
+
+def _migrate_agent_raw(raw: dict) -> dict:
+    """Migrate agents.json entries from old schema to new schema. Idempotent."""
+    # 1. type: monitor|reactive|preventive → agent
+    old_type = raw.get("type", "chat")
+    if old_type in ("monitor", "reactive", "preventive"):
+        raw["type"] = "agent"
+
+    # 2. trigger (singular) → triggers (list)
+    if "trigger" in raw and "triggers" not in raw:
+        old_trigger = raw.pop("trigger")
+        t_type = old_trigger.get("type", "manual")
+        # rename old preventive trigger type
+        if t_type == "preventive":
+            old_trigger["type"] = "cron"
+        if t_type == "manual" or raw["type"] == "chat":
+            raw["triggers"] = []
+        else:
+            raw["triggers"] = [old_trigger]
+    elif "triggers" not in raw:
+        raw["triggers"] = []
+
+    # 3. trigger_on + actions → rules
+    if "actions" in raw and "rules" not in raw:
+        old_actions = raw.pop("actions", [])
+        old_trigger_on = raw.pop("trigger_on", ["ANOMALIA"])
+        if old_actions and old_trigger_on:
+            raw["rules"] = [{"states": old_trigger_on, "actions": old_actions}]
+            raw.setdefault("action_mode", "configured")
+        else:
+            raw["rules"] = []
+            raw.setdefault("action_mode", "automatic")
+    else:
+        # Clean up stale fields even if migration already ran partially
+        raw.pop("trigger_on", None)
+        raw.pop("actions", None)
+        raw.setdefault("rules", [])
+        raw.setdefault("action_mode", "automatic")
+
+    return raw
+
+
+# ---------------------------------------------------------------------------
+# Engine
+# ---------------------------------------------------------------------------
 
 class AgentEngine:
     def __init__(self, ha_client: HAClient, data_path: str = DEFAULT_AGENTS_DATA_PATH) -> None:
         self._agents: dict[str, Agent] = {}
         self._scheduler = AsyncIOScheduler()
-        self._claude_runner: Any = None  # set after init via set_claude_runner()
+        self._claude_runner: Any = None
         self._ha = ha_client
         self._data_path = data_path
         self._entity_cache: Any = None
@@ -76,20 +127,16 @@ class AgentEngine:
     async def _handle_mqtt_command(self, agent_id: str, command: str, payload: str) -> None:
         agent = self._agents.get(agent_id)
         if not agent:
-            logger.debug("MQTT command for unknown agent %s", agent_id)
             return
         if command == "enabled":
             new_enabled = payload.upper() == "ON"
             if agent.enabled != new_enabled:
                 self.update_agent(agent_id, {"enabled": new_enabled})
-                logger.info("Agent %s %s via MQTT", agent_id, "enabled" if new_enabled else "disabled")
         elif command == "run_now" and payload.upper() == "PRESS":
             if agent_id in self._running_agents:
                 self._pending_mqtt_runs.add(agent_id)
-                logger.info("Agent %s queued for run (currently running)", agent_id)
             else:
                 asyncio.create_task(self._run_agent(agent), name=f"mqtt_run_{agent_id}")
-                logger.info("Agent %s triggered via MQTT run_now", agent_id)
 
     async def start(self) -> None:
         self._scheduler.start()
@@ -104,7 +151,7 @@ class AgentEngine:
         logger.info("AgentEngine stopped")
 
     def _save(self) -> None:
-        data = {"schema_version": 1, "agents": [asdict(a) for a in self._agents.values()]}
+        data = {"schema_version": 2, "agents": [asdict(a) for a in self._agents.values()]}
         tmp = self._data_path + ".tmp"
 
         def _write() -> None:
@@ -114,7 +161,7 @@ class AgentEngine:
                     json.dump(data, f, indent=2, default=str)
                 os.replace(tmp, self._data_path)
             except Exception as exc:
-                logger.error("Failed to persist agents to %s: %s", self._data_path, exc)
+                logger.error("Failed to persist agents: %s", exc)
 
         try:
             loop = asyncio.get_running_loop()
@@ -129,11 +176,12 @@ class AgentEngine:
             with open(self._data_path, encoding="utf-8") as f:
                 data = json.load(f)
             for raw in data.get("agents", []):
+                raw = _migrate_agent_raw(raw)
                 agent = Agent(
                     id=raw["id"],
                     name=raw["name"],
                     type=raw["type"],
-                    trigger=raw["trigger"],
+                    triggers=raw.get("triggers", []),
                     system_prompt=raw.get("system_prompt", ""),
                     allowed_tools=raw.get("allowed_tools", []),
                     enabled=raw.get("enabled", True),
@@ -148,22 +196,21 @@ class AgentEngine:
                     restrict_to_home=raw.get("restrict_to_home", False),
                     require_confirmation=raw.get("require_confirmation", False),
                     execution_log=raw.get("execution_log", []),
-                    actions=raw.get("actions", []),
                     budget_eur_limit=raw.get("budget_eur_limit", 0.0),
                     max_chat_turns=int(raw.get("max_chat_turns", 0)),
                     allowed_endpoints=raw.get("allowed_endpoints"),
-                    trigger_on=raw.get("trigger_on", ["ANOMALIA"]),
-                    response_mode=raw.get("response_mode", "auto"),
                     states=raw.get("states", ["OK", "ATTENZIONE", "ANOMALIA"]),
+                    action_mode=raw.get("action_mode", "automatic"),
+                    rules=raw.get("rules", []),
+                    fallback_action=raw.get("fallback_action"),
+                    response_mode=raw.get("response_mode", "auto"),
                 )
                 self._agents[agent.id] = agent
-                if agent.enabled and agent.type in ("monitor", "preventive"):
+                if agent.enabled and agent.type == "agent":
                     self._schedule_agent(agent)
         except Exception as exc:
             logger.error("Failed to load agents from %s: %s", self._data_path, exc)
 
-    # Agent-specific instructions only — tool list and base rules are injected
-    # at runtime via BASE_SYSTEM_PROMPT in claude_runner.py.
     _DEFAULT_SYSTEM_PROMPT = (
         "Sei l'assistente principale per la gestione della smart home.\n"
         "Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
@@ -171,111 +218,9 @@ class AgentEngine:
         " usa i tool per valori precisi come temperature e stati correnti."
     )
 
-    # Old factory prompts that can be safely overwritten on upgrade
     _LEGACY_DEFAULT_PROMPTS = {
         "Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente.",
         "You are HIRIS, an AI assistant for smart home management. Respond in the same language as the user.",
-        # v0.0.9: missing trigger/toggle/send_notification, no snapshot note
-        (
-            "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
-            "Strumenti disponibili:\n"
-            "- get_home_status(): panoramica compatta di tutti i dispositivi utili. Usalo come prima chiamata.\n"
-            "- get_entities_on(): tutti i dispositivi attualmente accesi.\n"
-            "- search_entities(query, top_k, domain): ricerca semantica di entità per linguaggio naturale.\n"
-            "- get_entities_by_domain(domain): tutte le entità di un dominio (es. 'light', 'sensor').\n"
-            "- get_entity_states(ids): stato attuale di entità specifiche per ID.\n"
-            "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
-            "- get_ha_automazioni(): elenco delle automazioni.\n"
-            "- get_energy_history(days): storico consumi energetici.\n"
-            "- get_weather_forecast(hours): previsioni meteo.\n"
-            "- call_ha_service(domain, service, data): controlla dispositivi.\n\n"
-            "Regole:\n"
-            "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
-            "- Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
-            "- Non inventare dati: usa gli strumenti.\n"
-            "- Rispondi nella lingua dell'utente."
-        ),
-        # v0.1.7: had search_entities (deleted tool) — must migrate
-        (
-            "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
-            "Strumenti disponibili:\n"
-            "- get_home_status(): panoramica compatta di tutti i dispositivi utili. Usalo come prima chiamata.\n"
-            "- get_entities_on(): tutti i dispositivi attualmente accesi.\n"
-            "- search_entities(query, top_k, domain): ricerca semantica di entità per linguaggio naturale.\n"
-            "- get_entities_by_domain(domain): tutte le entità di un dominio (es. 'light', 'sensor').\n"
-            "- get_entity_states(ids): stato attuale e attributi di entità specifiche per ID."
-            " Per i termostati (climate.*) restituisce anche temperatura attuale e setpoint.\n"
-            "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
-            "- get_ha_automations(): elenco delle automazioni HA.\n"
-            "- trigger_automation(id): esegue manualmente un'automazione.\n"
-            "- toggle_automation(id, enabled): attiva o disattiva un'automazione.\n"
-            "- get_energy_history(days): storico consumi energetici.\n"
-            "- get_weather_forecast(hours): previsioni meteo.\n"
-            "- call_ha_service(domain, service, data): controlla dispositivi.\n"
-            "- send_notification(message, channel): invia notifiche (HA push, Telegram).\n\n"
-            "Regole:\n"
-            "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
-            "- La sezione CASA in fondo a questo prompt è uno snapshot di orientamento (aggiornato ogni 60s):"
-            " usa i tool per valori precisi come temperature, stati correnti, sensori.\n"
-            "- Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
-            "- Non inventare dati: usa gli strumenti.\n"
-            "- Rispondi nella lingua dell'utente."
-        ),
-        # v0.3.13: missing task tools and no-disclaimer rule
-        (
-            "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
-            "Strumenti disponibili:\n"
-            "- get_home_status(): panoramica compatta di tutti i dispositivi utili. Usalo come prima chiamata.\n"
-            "- get_entities_on(): tutti i dispositivi attualmente accesi.\n"
-            "- get_entities_by_domain(domain): tutte le entità di un dominio (es. 'light', 'sensor').\n"
-            "- get_entity_states(ids): stato attuale e attributi di entità specifiche per ID."
-            " Per i termostati (climate.*) restituisce anche temperatura attuale e setpoint.\n"
-            "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
-            "- get_ha_automations(): elenco delle automazioni HA.\n"
-            "- trigger_automation(id): esegue manualmente un'automazione.\n"
-            "- toggle_automation(id, enabled): attiva o disattiva un'automazione.\n"
-            "- get_energy_history(days): storico consumi energetici.\n"
-            "- get_weather_forecast(hours): previsioni meteo.\n"
-            "- call_ha_service(domain, service, data): controlla dispositivi.\n"
-            "- send_notification(message, channel): invia notifiche (HA push, Telegram).\n\n"
-            "Regole:\n"
-            "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
-            "- La sezione CASA in fondo a questo prompt è uno snapshot di orientamento (aggiornato ogni 60s):"
-            " usa i tool per valori precisi come temperature, stati correnti, sensori.\n"
-            "- Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
-            "- Non inventare dati: usa gli strumenti.\n"
-            "- Rispondi nella lingua dell'utente."
-        ),
-        # v0.3.14: full tool list in system_prompt (now moved to BASE_SYSTEM_PROMPT)
-        (
-            "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
-            "Strumenti disponibili:\n"
-            "- get_home_status(): panoramica compatta di tutti i dispositivi utili. Usalo come prima chiamata.\n"
-            "- get_entities_on(): tutti i dispositivi attualmente accesi.\n"
-            "- get_entities_by_domain(domain): tutte le entità di un dominio (es. 'light', 'sensor').\n"
-            "- get_entity_states(ids): stato attuale e attributi di entità specifiche per ID."
-            " Per i termostati (climate.*) restituisce anche temperatura attuale e setpoint.\n"
-            "- get_area_entities(): scopre stanze/aree e i dispositivi associati.\n"
-            "- get_ha_automations(): elenco delle automazioni HA.\n"
-            "- trigger_automation(id): esegue manualmente un'automazione.\n"
-            "- toggle_automation(id, enabled): attiva o disattiva un'automazione.\n"
-            "- get_energy_history(days): storico consumi energetici.\n"
-            "- get_weather_forecast(hours): previsioni meteo.\n"
-            "- call_ha_service(domain, service, data): controlla dispositivi.\n"
-            "- send_notification(message, channel): invia notifiche (HA push, Telegram).\n"
-            "- create_task(label, trigger, actions): pianifica un'azione futura (es. accendi luce tra 30 min).\n"
-            "- list_tasks(agent_id, status): elenca i task pianificati.\n"
-            "- cancel_task(task_id): annulla un task pianificato.\n\n"
-            "Regole:\n"
-            "- Per qualsiasi domanda sulla casa usa SEMPRE gli strumenti per dati reali.\n"
-            "- La sezione CASA in fondo a questo prompt è uno snapshot di orientamento (aggiornato ogni 60s):"
-            " usa i tool per valori precisi come temperature, stati correnti, sensori.\n"
-            "- Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
-            "- Non inventare dati: usa gli strumenti.\n"
-            "- Se hai chiamato uno strumento e ha risposto con successo, l'azione o il dato è reale:"
-            " non aggiungere disclaimers come 'ho inventato', 'ho simulato' o 'non ho eseguito nulla'.\n"
-            "- Rispondi nella lingua dell'utente."
-        ),
     }
 
     def _seed_default_agent(self) -> None:
@@ -284,7 +229,7 @@ class AgentEngine:
                 id=DEFAULT_AGENT_ID,
                 name="HIRIS",
                 type="chat",
-                trigger={"type": "manual"},
+                triggers=[],
                 system_prompt=self._DEFAULT_SYSTEM_PROMPT,
                 allowed_tools=[],
                 enabled=True,
@@ -298,23 +243,25 @@ class AgentEngine:
             if agent.system_prompt in self._LEGACY_DEFAULT_PROMPTS:
                 agent.system_prompt = self._DEFAULT_SYSTEM_PROMPT
                 changed = True
-            # Default agent must always have all tools unrestricted
             if agent.allowed_tools:
                 agent.allowed_tools = []
                 changed = True
             if changed:
                 self._save()
-                logger.info("Migrated default agent to v0.3.15")
 
     def get_default_agent(self) -> Optional[Agent]:
         return self._agents.get(DEFAULT_AGENT_ID)
 
+    _LEGACY_TYPE_MAP = {"monitor": "agent", "reactive": "agent", "preventive": "agent"}
+
     def create_agent(self, data: dict) -> Agent:
+        raw_type = data["type"]
+        normalized_type = self._LEGACY_TYPE_MAP.get(raw_type, raw_type)
         agent = Agent(
             id=str(uuid.uuid4()),
             name=data["name"],
-            type=data["type"],
-            trigger=data["trigger"],
+            type=normalized_type,
+            triggers=data.get("triggers", []),
             system_prompt=data.get("system_prompt", ""),
             allowed_tools=data.get("allowed_tools", []),
             enabled=data.get("enabled", True),
@@ -326,13 +273,14 @@ class AgentEngine:
             max_tokens=min(int(data.get("max_tokens", 4096)), 8192),
             restrict_to_home=bool(data.get("restrict_to_home", False)),
             require_confirmation=bool(data.get("require_confirmation", False)),
-            actions=data.get("actions", []),
             budget_eur_limit=float(data.get("budget_eur_limit", 0.0)),
             max_chat_turns=int(data.get("max_chat_turns", 0)),
             allowed_endpoints=data.get("allowed_endpoints"),
-            trigger_on=data.get("trigger_on", ["ANOMALIA"]),
-            response_mode=data.get("response_mode", "auto"),
             states=data.get("states", ["OK", "ATTENZIONE", "ANOMALIA"]),
+            action_mode=data.get("action_mode", "automatic"),
+            rules=data.get("rules", []),
+            fallback_action=data.get("fallback_action"),
+            response_mode=data.get("response_mode", "auto"),
         )
         self._agents[agent.id] = agent
         if self._mqtt_publisher:
@@ -340,7 +288,7 @@ class AgentEngine:
                 self._mqtt_publisher.publish_discovery(agent),
                 name=f"mqtt_disc_{agent.id}",
             )
-        if agent.enabled:
+        if agent.enabled and agent.type == "agent":
             self._schedule_agent(agent)
         self._save()
         return agent
@@ -349,11 +297,11 @@ class AgentEngine:
         return self._agents.get(agent_id)
 
     UPDATABLE_FIELDS = {
-        "name", "type", "trigger", "system_prompt", "allowed_tools", "enabled",
+        "name", "type", "triggers", "system_prompt", "allowed_tools", "enabled",
         "strategic_context", "allowed_entities", "allowed_services",
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
-        "actions", "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
-        "trigger_on", "response_mode", "states",
+        "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
+        "states", "action_mode", "rules", "fallback_action", "response_mode",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -365,7 +313,6 @@ class AgentEngine:
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
         _FLOAT_FIELDS = {"budget_eur_limit"}
         _INT_FIELDS = {"max_chat_turns"}
-        _MAX_TOKENS_CAP = 8192
         for key in self.UPDATABLE_FIELDS:
             if key in data:
                 if key in _BOOL_FIELDS:
@@ -375,10 +322,10 @@ class AgentEngine:
                 elif key in _INT_FIELDS:
                     setattr(agent, key, int(data[key]))
                 elif key == "max_tokens":
-                    setattr(agent, key, min(int(data[key]), _MAX_TOKENS_CAP))
+                    setattr(agent, key, min(int(data[key]), 8192))
                 else:
                     setattr(agent, key, data[key])
-        if agent.enabled:
+        if agent.enabled and agent.type == "agent":
             self._schedule_agent(agent)
         self._save()
         if self._mqtt_publisher and agent.enabled != enabled_before:
@@ -388,14 +335,12 @@ class AgentEngine:
                     name=f"mqtt_enable_{agent.id}",
                 )
             except RuntimeError:
-                logger.debug("update_agent: no event loop, MQTT publish skipped")
+                pass
         return agent
 
     def delete_agent(self, agent_id: str) -> bool:
         agent = self._agents.get(agent_id)
-        if agent is None:
-            return False
-        if agent.is_default:
+        if agent is None or agent.is_default:
             return False
         self._unschedule_agent(agent_id)
         del self._agents[agent_id]
@@ -413,76 +358,76 @@ class AgentEngine:
             return "running"
         if agent_id in self._error_agents:
             return "error"
-        agent = self._agents.get(agent_id)
-        if agent is None or not agent.enabled:
-            return "idle"
         return "idle"
 
+    # ------------------------------------------------------------------
+    # Scheduling
+    # ------------------------------------------------------------------
+
     def _schedule_agent(self, agent: Agent) -> None:
-        trigger = agent.trigger
-        if trigger["type"] == "schedule":
+        for i, trigger in enumerate(agent.triggers):
+            job_id = f"{agent.id}__{i}"
+            t_type = trigger.get("type")
             try:
-                minutes = trigger.get("interval_minutes", 5)
-                self._scheduler.add_job(
-                    self._run_agent,
-                    "interval",
-                    minutes=minutes,
-                    args=[agent],
-                    id=agent.id,
-                    replace_existing=True,
-                    coalesce=True,
-                )
+                if t_type == "schedule":
+                    minutes = max(1, int(trigger.get("interval_minutes", 5)))
+                    self._scheduler.add_job(
+                        self._run_agent, "interval",
+                        minutes=minutes,
+                        args=[agent, None, trigger],
+                        id=job_id, replace_existing=True, coalesce=True,
+                    )
+                elif t_type == "cron" and trigger.get("cron"):
+                    parts = trigger["cron"].split()
+                    if len(parts) < 2:
+                        logger.error("Invalid cron for agent %s: %s", agent.id, trigger["cron"])
+                        continue
+                    kwargs: dict = {"minute": parts[0], "hour": parts[1]}
+                    if len(parts) >= 3:
+                        kwargs["day"] = parts[2]
+                    if len(parts) >= 4:
+                        kwargs["month"] = parts[3]
+                    if len(parts) >= 5:
+                        kwargs["day_of_week"] = parts[4]
+                    self._scheduler.add_job(
+                        self._run_agent, "cron",
+                        **kwargs,
+                        args=[agent, None, trigger],
+                        id=job_id, replace_existing=True, coalesce=True,
+                        misfire_grace_time=60,
+                    )
             except Exception as exc:
-                logger.error("Failed to schedule agent %s: %s", agent.id, exc)
-        elif trigger["type"] == "preventive" and trigger.get("cron"):
-            try:
-                parts = trigger["cron"].split()
-                if len(parts) < 2:
-                    logger.error("Invalid cron for agent %s: %s", agent.id, trigger["cron"])
-                    return
-                kwargs: dict = {
-                    "minute": parts[0],
-                    "hour": parts[1],
-                }
-                if len(parts) >= 3:
-                    kwargs["day"] = parts[2]
-                if len(parts) >= 4:
-                    kwargs["month"] = parts[3]
-                if len(parts) >= 5:
-                    kwargs["day_of_week"] = parts[4]
-                self._scheduler.add_job(
-                    self._run_agent,
-                    "cron",
-                    **kwargs,
-                    args=[agent],
-                    id=agent.id,
-                    replace_existing=True,
-                    coalesce=True,
-                    misfire_grace_time=60,
-                )
-            except Exception as exc:
-                logger.error("Failed to schedule agent %s: %s", agent.id, exc)
+                logger.error("Failed to schedule agent %s trigger %d: %s", agent.id, i, exc)
 
     def _unschedule_agent(self, agent_id: str) -> None:
-        try:
-            self._scheduler.remove_job(agent_id)
-        except Exception:
-            pass
+        for job in list(self._scheduler.get_jobs()):
+            if job.id == agent_id or job.id.startswith(f"{agent_id}__"):
+                try:
+                    self._scheduler.remove_job(job.id)
+                except Exception:
+                    pass
 
     def _on_state_changed(self, event_data: dict) -> None:
         entity_id = event_data.get("entity_id", "")
         for agent in self._agents.values():
-            if not agent.enabled:
+            if not agent.enabled or agent.type != "agent":
                 continue
-            if agent.trigger.get("type") == "state_changed" and agent.trigger.get("entity_id") == entity_id:
-                task = asyncio.create_task(self._run_agent(agent, context=event_data))
-                def _on_task_done(t: asyncio.Task) -> None:
-                    if not t.cancelled() and (exc := t.exception()):
-                        logger.error("Reactive agent task failed: %s", exc)
-                task.add_done_callback(_on_task_done)
+            for trigger in agent.triggers:
+                if trigger.get("type") == "state_changed" and trigger.get("entity_id") == entity_id:
+                    task = asyncio.create_task(
+                        self._run_agent(agent, context=event_data, trigger_fired=trigger)
+                    )
+                    def _on_done(t: asyncio.Task) -> None:
+                        if not t.cancelled() and (exc := t.exception()):
+                            logger.error("Reactive agent task failed: %s", exc)
+                    task.add_done_callback(_on_done)
+                    break
+
+    # ------------------------------------------------------------------
+    # Context helpers
+    # ------------------------------------------------------------------
 
     def _build_entity_context(self, agent: "Agent") -> str:
-        """Build entity state context string for pre-injection into proactive agent runs."""
         if self._entity_cache is None:
             return ""
         all_entities = self._entity_cache.get_all_useful()
@@ -509,154 +454,298 @@ class AgentEngine:
             usage = self._claude_runner.get_agent_usage(agent.id)
             cost_eur = usage.get("cost_usd", 0.0) * EUR_RATE
             if cost_eur >= agent.budget_eur_limit:
-                logger.warning(
-                    "Agent %s auto-disabled: cost €%.4f >= limit €%.4f",
-                    agent.name, cost_eur, agent.budget_eur_limit,
-                )
+                logger.warning("Agent %s auto-disabled: cost €%.4f >= limit €%.4f",
+                               agent.name, cost_eur, agent.budget_eur_limit)
                 agent.enabled = False
                 self._save()
         except Exception as exc:
             logger.warning("Budget check failed for %s: %s", agent.name, exc)
 
-    async def _execute_agent_actions(
-        self, agent: "Agent", eval_status: Optional[str], claude_text: str
-    ) -> str:
-        """Execute agent.actions via TaskEngine immediate tasks when eval_status matches trigger_on."""
-        if not agent.actions or not eval_status:
-            return ""
-        if eval_status not in agent.trigger_on:
-            return ""
-        if not self._task_engine:
-            logger.warning("_execute_agent_actions: TaskEngine not configured for agent %s", agent.id)
-            return ""
+    # ------------------------------------------------------------------
+    # Action execution
+    # ------------------------------------------------------------------
 
-        results: list[str] = []
-        for action in agent.actions:
-            a_type = action.get("type", "")
-            label = action.get("label", a_type)
-            on_fail = action.get("on_fail", "continue")
+    @staticmethod
+    def _resolve_param(value: str, params: dict, notifica: str, default: Any = None) -> str:
+        """Resolve {{param.X}} and {{notifica}} placeholders in a string."""
+        if not isinstance(value, str):
+            return str(value) if value is not None else (str(default) if default is not None else "")
+        value = re.sub(r'\{\{notifica\}\}', notifica or "", value, flags=re.IGNORECASE)
+        value = re.sub(r'\{\{valutazione\}\}', params.get("__valutazione__", ""), value, flags=re.IGNORECASE)
+        def _repl(m: re.Match) -> str:
+            key = m.group(1)
+            return str(params.get(key, m.group(0)))
+        return re.sub(r'\{\{param\.(\w+)\}\}', _repl, value)
 
-            if a_type == "notify":
-                task_actions = [{
-                    "type": "send_notification",
-                    "message": claude_text,
-                    "channel": action.get("channel", "ha_push"),
-                    "on_fail": on_fail,
-                }]
-                try:
-                    self._task_engine.add_task(
-                        {"label": f"{agent.name} — {label}", "trigger": {"type": "immediate"},
-                         "actions": task_actions, "one_shot": True},
-                        agent_id=agent.id,
-                    )
-                    results.append(f"notify:queued")
-                except Exception as exc:
-                    results.append(f"notify:FAILED({exc})")
+    @staticmethod
+    def _resolve_minutes(raw: Any, params: dict, default: int = 5) -> int:
+        """Resolve a minutes value that may contain {{param.X}}."""
+        if isinstance(raw, (int, float)):
+            return max(1, int(raw))
+        s = AgentEngine._resolve_param(str(raw), params, "", default)
+        try:
+            return max(1, int(float(s)))
+        except (ValueError, TypeError):
+            return max(1, default)
 
-            elif a_type == "call_service":
-                domain = action.get("domain", "")
-                service = action.get("service", "")
-                svc_key = f"{domain}.{service}"
-                if agent.allowed_services and not any(
-                    fnmatch.fnmatch(svc_key, pat) for pat in agent.allowed_services
-                ):
-                    results.append(f"call_service({svc_key}):BLOCKED")
-                    continue
-                entity_pattern = action.get("entity_pattern", "")
-                if entity_pattern and "*" in entity_pattern and self._entity_cache:
-                    all_ids = list(self._entity_cache.get_all_states().keys())
-                    matched = [eid for eid in all_ids if fnmatch.fnmatch(eid, entity_pattern)]
-                    data: dict = {"entity_id": matched} if matched else {}
-                elif entity_pattern:
-                    data = {"entity_id": entity_pattern}
-                else:
-                    data = {}
-                task_actions = [{"type": "call_ha_service", "domain": domain, "service": service,
-                                  "data": data, "on_fail": on_fail}]
-                try:
-                    self._task_engine.add_task(
-                        {"label": f"{agent.name} — {label}", "trigger": {"type": "immediate"},
-                         "actions": task_actions, "one_shot": True},
-                        agent_id=agent.id,
-                    )
-                    results.append(f"call_service({svc_key}):queued")
-                except Exception as exc:
-                    results.append(f"call_service({svc_key}):FAILED({exc})")
-
-            elif a_type == "wait":
-                delay_minutes = max(1, int(action.get("minutes", action.get("delay_minutes", 5))))
-                child_actions = action.get("actions", [])
-                if child_actions:
-                    try:
-                        self._task_engine.add_task(
-                            {"label": f"{agent.name} — {label}",
-                             "trigger": {"type": "delay", "minutes": delay_minutes},
-                             "actions": child_actions, "one_shot": True},
-                            agent_id=agent.id,
-                        )
-                        results.append(f"wait({delay_minutes}min):scheduled")
-                    except Exception as exc:
-                        results.append(f"wait:FAILED({exc})")
-
-            elif a_type == "verify":
-                condition = action.get("condition")
-                child_actions = action.get("actions", [])
-                timeout_minutes = max(1, int(action.get("timeout_minutes", 60)))
-                if not condition or not condition.get("entity_id") or not condition.get("operator") or "value" not in condition:
-                    logger.warning("_execute_agent_actions: verify action %r missing condition for agent %s", label, agent.id)
-                    results.append(f"verify:SKIPPED(invalid condition)")
-                elif child_actions:
-                    from datetime import timedelta
-                    now_dt = datetime.now(timezone.utc)
-                    to_dt = now_dt + timedelta(minutes=timeout_minutes)
-                    try:
-                        self._task_engine.add_task(
-                            {"label": f"{agent.name} — {label}",
-                             "trigger": {"type": "time_window",
-                                          "from": now_dt.strftime("%H:%M"),
-                                          "to": to_dt.strftime("%H:%M")},
-                             "condition": condition,
-                             "actions": child_actions, "one_shot": True},
-                            agent_id=agent.id,
-                        )
-                        results.append(f"verify({condition['entity_id']}):scheduled")
-                    except Exception as exc:
-                        results.append(f"verify:FAILED({exc})")
+    @staticmethod
+    def _split_chain_at_waits(actions: list, params: dict) -> list[tuple[int, list]]:
+        """Split an action list into (cumulative_delay_minutes, [actions]) batches at each wait."""
+        batches: list[tuple[int, list]] = []
+        current_delay = 0
+        current_batch: list = []
+        for action in actions:
+            if action.get("type") == "wait":
+                if current_batch:
+                    batches.append((current_delay, current_batch))
+                    current_batch = []
+                raw = action.get("minutes", action.get("default", 5))
+                current_delay += AgentEngine._resolve_minutes(raw, params, default=int(action.get("default", 5)))
             else:
-                logger.warning("_execute_agent_actions: unknown action type %r for agent %s", a_type, agent.id)
+                current_batch.append(action)
+        if current_batch:
+            batches.append((current_delay, current_batch))
+        return batches
 
+    def _action_to_task_format(self, action: dict, params: dict, notifica: str) -> dict:
+        """Convert a rule action dict to task_engine action format."""
+        a_type = action.get("type", "")
+        resolve = lambda v, d=None: self._resolve_param(str(v) if v is not None else "", params, notifica, d)
+
+        if a_type == "turn_on":
+            return {"type": "call_ha_service", "domain": "homeassistant", "service": "turn_on",
+                    "data": {"entity_id": resolve(action.get("entity_id", ""))}}
+        if a_type == "turn_off":
+            return {"type": "call_ha_service", "domain": "homeassistant", "service": "turn_off",
+                    "data": {"entity_id": resolve(action.get("entity_id", ""))}}
+        if a_type == "set_value":
+            entity_id = resolve(action.get("entity_id", ""))
+            value = resolve(action.get("value", ""))
+            domain = entity_id.split(".")[0] if "." in entity_id else "homeassistant"
+            service = "set_temperature" if domain == "climate" else "turn_on"
+            data: dict = {"entity_id": entity_id}
+            if domain == "climate":
+                try:
+                    data["temperature"] = float(value)
+                except (ValueError, TypeError):
+                    data["temperature"] = value
+            return {"type": "call_ha_service", "domain": domain, "service": service, "data": data}
+        if a_type == "call_service":
+            entity_id = resolve(action.get("entity_id", action.get("entity_pattern", "")))
+            return {"type": "call_ha_service",
+                    "domain": action.get("domain", ""),
+                    "service": action.get("service", ""),
+                    "data": {"entity_id": entity_id} if entity_id else {}}
+        if a_type == "notify":
+            return {"type": "send_notification",
+                    "message": resolve(action.get("message", "{{notifica}}")),
+                    "channel": action.get("channel", "ha_push")}
+        return action  # pass through unknown types
+
+    def _validate_action(self, action: dict, agent: "Agent") -> bool:
+        """Return True if action is permitted by agent's allowed_services and allowed_entities."""
+        a_type = action.get("type", "")
+        if not agent.allowed_services and not agent.allowed_entities:
+            return True
+
+        if a_type in ("turn_on", "turn_off"):
+            svc = f"homeassistant.{a_type}"
+            entity_id = action.get("entity_id", "")
+        elif a_type == "set_value":
+            entity_id = action.get("entity_id", "")
+            domain = entity_id.split(".")[0] if "." in entity_id else "homeassistant"
+            svc = f"{domain}.set_temperature" if domain == "climate" else f"homeassistant.turn_on"
+        elif a_type == "call_service":
+            svc = f"{action.get('domain','')}.{action.get('service','')}"
+            entity_id = action.get("entity_id", action.get("entity_pattern", ""))
+        elif a_type == "notify":
+            return True  # notifications always allowed
+        else:
+            return True
+
+        if agent.allowed_services and not any(fnmatch.fnmatch(svc, p) for p in agent.allowed_services):
+            logger.warning("Action blocked (service not allowed): %s", svc)
+            return False
+        if agent.allowed_entities and entity_id and not any(
+            fnmatch.fnmatch(entity_id, p) for p in agent.allowed_entities
+        ):
+            logger.warning("Action blocked (entity not allowed): %s", entity_id)
+            return False
+        return True
+
+    async def _execute_action_batch(
+        self, agent: "Agent", actions: list, params: dict, notifica: str,
+        delay_minutes: int = 0, label_suffix: str = "",
+    ) -> list[str]:
+        """Schedule a batch of (non-wait) actions via task_engine, optionally delayed."""
+        if not actions or not self._task_engine:
+            return []
+        task_actions = [self._action_to_task_format(a, params, notifica) for a in actions
+                        if self._validate_action(a, agent)]
+        if not task_actions:
+            return ["batch:all_blocked"]
+        trigger = {"type": "delay", "minutes": delay_minutes} if delay_minutes > 0 else {"type": "immediate"}
+        label = f"{agent.name}{label_suffix}"
+        try:
+            self._task_engine.add_task(
+                {"label": label, "trigger": trigger, "actions": task_actions, "one_shot": True},
+                agent_id=agent.id,
+            )
+            return [f"batch({'delayed+' + str(delay_minutes) + 'min' if delay_minutes else 'immediate'}):queued({len(task_actions)})"]
+        except Exception as exc:
+            return [f"batch:FAILED({exc})"]
+
+    async def _execute_action_chain(
+        self, agent: "Agent", actions: list, params: dict, notifica: str,
+    ) -> str:
+        """Execute a sequential action chain, splitting at wait steps into scheduled tasks."""
+        batches = self._split_chain_at_waits(actions, params)
+        results: list[str] = []
+        for i, (delay, batch) in enumerate(batches):
+            suffix = f" — step {i+1}" if len(batches) > 1 else ""
+            batch_results = await self._execute_action_batch(
+                agent, batch, params, notifica, delay_minutes=delay, label_suffix=suffix
+            )
+            results.extend(batch_results)
         return "; ".join(results) if results else ""
 
-    async def _run_agent(self, agent: Agent, context: Optional[dict] = None) -> str:
+    # ------------------------------------------------------------------
+    # Automatic mode: parse AZIONI block from LLM output
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_azioni_lines(lines: list[str]) -> list[dict]:
+        """Parse raw AZIONI command lines (list[str]) into action dicts.
+
+        Each entry in ``lines`` is one command in the format: cmd entity [value]
+        """
+        actions: list[dict] = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(None, 2)
+            cmd = parts[0].lower()
+            if cmd == "turn_on" and len(parts) >= 2:
+                actions.append({"type": "turn_on", "entity_id": parts[1]})
+            elif cmd == "turn_off" and len(parts) >= 2:
+                actions.append({"type": "turn_off", "entity_id": parts[1]})
+            elif cmd == "set_value" and len(parts) >= 3:
+                actions.append({"type": "set_value", "entity_id": parts[1], "value": parts[2]})
+            elif cmd == "call_service" and len(parts) >= 2:
+                svc_parts = parts[1].split(".", 1)
+                domain = svc_parts[0]
+                service = svc_parts[1] if len(svc_parts) > 1 else ""
+                entity_id = parts[2] if len(parts) > 2 else ""
+                actions.append({"type": "call_service", "domain": domain, "service": service, "entity_id": entity_id})
+            elif cmd == "wait" and len(parts) >= 2:
+                try:
+                    minutes = max(1, int(float(parts[1])))
+                except ValueError:
+                    minutes = 5
+                actions.append({"type": "wait", "minutes": minutes})
+            elif cmd == "notify" and len(parts) >= 3:
+                actions.append({"type": "notify", "channel": parts[1], "message": " ".join(parts[2:])})
+        return actions
+
+    async def _execute_automatic_actions(
+        self, agent: "Agent", structured: dict,
+    ) -> str:
+        """Execute AZIONI block (automatic mode) or fallback if absent."""
+        azioni_lines: list[str] = structured.get("azioni", [])
+        notifica = structured.get("notifica", "")
+        params = structured.get("params", {})
+        if not azioni_lines:
+            if agent.fallback_action:
+                result = await self._execute_action_chain(
+                    agent, [agent.fallback_action], params, notifica
+                )
+                return f"fallback:{result}"
+            return ""
+        # Parse raw command lines into action dicts; cap to 20 to prevent runaway
+        azioni = self._parse_azioni_lines(azioni_lines[:20])
+        if not azioni:
+            if azioni_lines:
+                logger.warning(
+                    "Agent %s: AZIONI block had %d line(s) but none were parseable: %s",
+                    agent.id, len(azioni_lines), azioni_lines[:5],
+                )
+            return ""
+        return await self._execute_action_chain(agent, azioni, params, notifica)
+
+    async def _execute_configured_rules(
+        self, agent: "Agent", structured: dict,
+    ) -> str:
+        """Execute configured rules based on VALUTAZIONE (configured mode)."""
+        valutazione = (structured.get("valutazione") or "").strip().upper()
+        notifica = structured.get("notifica", "")
+        params = dict(structured.get("params", {}))
+        params["__valutazione__"] = valutazione
+
+        matched_rule = None
+        for rule in agent.rules:
+            rule_states = [s.strip().upper() for s in rule.get("states", [])]
+            if valutazione in rule_states:
+                matched_rule = rule
+                break
+
+        if matched_rule is None:
+            if agent.fallback_action:
+                result = await self._execute_action_chain(
+                    agent, [agent.fallback_action], params, notifica
+                )
+                return f"fallback:{result}"
+            return ""
+
+        actions = matched_rule.get("actions", [])
+        if not actions:
+            return ""
+        return await self._execute_action_chain(agent, actions, params, notifica)
+
+    async def _execute_actions_for_agent(self, agent: "Agent", structured: dict) -> str:
+        """Dispatch to automatic or configured action execution."""
+        if agent.action_mode == "configured":
+            return await self._execute_configured_rules(agent, structured)
+        return await self._execute_automatic_actions(agent, structured)
+
+    # ------------------------------------------------------------------
+    # Agent run
+    # ------------------------------------------------------------------
+
+    async def _run_agent(
+        self, agent: Agent, context: Optional[dict] = None, trigger_fired: Optional[dict] = None
+    ) -> str:
         if not self._claude_runner:
-            logger.warning("No Claude runner configured")
+            logger.warning("No runner configured")
             return ""
         logger.info("Running agent: %s (%s)", agent.name, agent.id)
         inp_before = getattr(self._claude_runner, "total_input_tokens", 0)
         out_before = getattr(self._claude_runner, "total_output_tokens", 0)
         self._running_agents.add(agent.id)
         _had_error = False
+        structured: dict = {}
         try:
             agent.last_run = datetime.now(timezone.utc).isoformat()
-            if agent.strategic_context:
-                effective_prompt = f"{agent.strategic_context}\n\n---\n\n{agent.system_prompt}"
-            else:
-                effective_prompt = agent.system_prompt
+            effective_prompt = (
+                f"{agent.strategic_context}\n\n---\n\n{agent.system_prompt}"
+                if agent.strategic_context else agent.system_prompt
+            )
             if context:
                 effective_prompt = f"{effective_prompt}\n\nContext: {context}"
-            # Pre-inject current entity states for proactive agents
-            user_message = f"[Agent trigger: {agent.trigger.get('type')}]"
-            if agent.type in ("monitor", "reactive", "preventive"):
+
+            fired_type = (trigger_fired or {}).get("type", "unknown")
+            user_message = f"[Agent trigger: {fired_type}]"
+
+            if agent.type == "agent":
                 entity_ctx = self._build_entity_context(agent)
                 if entity_ctx:
                     user_message = f"{user_message}\n\n{entity_ctx}"
-
-            agent_actions: list = list(getattr(agent, "actions", []) or [])
-            if agent_actions and agent.type != "chat":
-                result, eval_status, action_taken = await self._claude_runner.run_with_actions(
+                result, structured = await self._claude_runner.run_with_actions(
                     user_message=user_message,
                     system_prompt=effective_prompt,
-                    actions=agent_actions,
+                    action_mode=agent.action_mode,
+                    states=agent.states,
+                    rules=agent.rules,
                     allowed_tools=agent.allowed_tools or None,
                     allowed_entities=agent.allowed_entities or None,
                     allowed_services=agent.allowed_services or None,
@@ -665,12 +754,10 @@ class AgentEngine:
                     max_tokens=agent.max_tokens,
                     agent_type=agent.type,
                     restrict_to_home=agent.restrict_to_home,
-                    require_confirmation=agent.require_confirmation,
                     agent_id=agent.id,
-                    response_mode=getattr(agent, "response_mode", "auto"),
-                    states=getattr(agent, "states", None),
+                    response_mode=agent.response_mode,
                 )
-                action_taken = await self._execute_agent_actions(agent, eval_status, result)
+                action_taken = await self._execute_actions_for_agent(agent, structured)
             else:
                 result = await self._claude_runner.chat(
                     user_message=user_message,
@@ -685,14 +772,17 @@ class AgentEngine:
                     restrict_to_home=agent.restrict_to_home,
                     require_confirmation=agent.require_confirmation,
                     agent_id=agent.id,
-                    response_mode=getattr(agent, "response_mode", "auto"),
+                    response_mode=agent.response_mode,
                 )
-                eval_status = None
                 action_taken = None
+
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             agent.last_result = result
-            self._append_execution_log(agent, result, inp_before, out_before, tool_calls_snapshot, success=True,
-                                       eval_status=eval_status, action_taken=action_taken)
+            self._append_execution_log(
+                agent, result, inp_before, out_before, tool_calls_snapshot,
+                success=True, structured=structured, action_taken=action_taken,
+                trigger_fired=trigger_fired,
+            )
             self._save()
             self._check_budget_auto_disable(agent)
             return result
@@ -701,7 +791,9 @@ class AgentEngine:
             _had_error = True
             logger.error("Agent %s failed: %s", agent.name, exc)
             agent.last_result = f"Error: {exc}"
-            self._append_execution_log(agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False)
+            self._append_execution_log(
+                agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False
+            )
             self._save()
             self._check_budget_auto_disable(agent)
             return agent.last_result
@@ -722,22 +814,19 @@ class AgentEngine:
                         tokens_today = usage.get("tokens_today", 0)
                     except Exception:
                         pass
-                if agent.budget_eur_limit > 0:
-                    remaining: str | float = max(0.0, agent.budget_eur_limit - budget_eur)
-                else:
-                    remaining = "unlimited"
-                final_status = "error" if _had_error else "idle"
+                remaining: Any = (
+                    max(0.0, agent.budget_eur_limit - budget_eur)
+                    if agent.budget_eur_limit > 0 else "unlimited"
+                )
                 asyncio.create_task(
                     self._mqtt_publisher.publish_agent_state(
-                        agent,
-                        budget_eur=budget_eur,
-                        status=final_status,
+                        agent, budget_eur=budget_eur,
+                        status="error" if _had_error else "idle",
                         budget_remaining_eur=remaining,
                         tokens_used_today=tokens_today,
                     ),
                     name=f"mqtt_pub_{agent.id}",
                 )
-            # Check if a run_now was queued while this run was in progress
             if agent.id in self._pending_mqtt_runs:
                 self._pending_mqtt_runs.discard(agent.id)
                 asyncio.create_task(self._run_agent(agent), name=f"mqtt_queued_{agent.id}")
@@ -750,21 +839,24 @@ class AgentEngine:
         out_before: int,
         tool_calls_snapshot: list,
         success: bool,
-        eval_status: Optional[str] = None,
+        structured: Optional[dict] = None,
         action_taken: Optional[str] = None,
+        trigger_fired: Optional[dict] = None,
     ) -> None:
         inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
         out_after = getattr(self._claude_runner, "total_output_tokens", 0)
-        tool_calls = [t.get("tool", "") for t in tool_calls_snapshot]
+        s = structured or {}
         record = {
             "timestamp": agent.last_run,
-            "trigger": agent.trigger.get("type", "unknown"),
-            "tool_calls": tool_calls,
+            "trigger": (trigger_fired or {}).get("type", agent.triggers[0].get("type", "unknown") if agent.triggers else "manual"),
+            "tool_calls": [t.get("tool", "") for t in tool_calls_snapshot],
             "input_tokens": inp_after - inp_before,
             "output_tokens": out_after - out_before,
             "result_summary": (result or "")[:1000],
             "success": success and not (result or "").startswith("Error:"),
-            "eval_status": eval_status,
+            "eval_status": s.get("valutazione"),
+            "notifica": s.get("notifica"),
+            "params": s.get("params"),
             "action_taken": action_taken,
         }
         agent.execution_log = (agent.execution_log + [record])[-20:]

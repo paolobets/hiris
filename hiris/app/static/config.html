@@ -578,25 +578,32 @@
           <input type="text" id="f-name" placeholder="Es: Monitor energia">
           <label>Tipo</label>
           <select id="f-type">
-            <option value="monitor">Proactive Monitor &mdash; esecuzione periodica</option>
-            <option value="reactive">Reactive Agent &mdash; reagisce a cambi di stato</option>
-            <option value="preventive">Preventive Scheduler &mdash; cron personalizzato</option>
-            <option value="chat">Chat NL Agent &mdash; risponde a messaggi utente</option>
+            <option value="agent">Agent &mdash; autonomo, trigger-based</option>
+            <option value="chat">Chat &mdash; risponde a messaggi utente</option>
           </select>
-          <div id="trigger-schedule">
-            <label>Intervallo (minuti)</label>
-            <input type="number" id="f-interval" value="5" min="1">
-            <p class="hint">L&apos;agente viene eseguito ogni N minuti.</p>
-          </div>
-          <div id="trigger-state" style="display:none">
-            <label>Entity ID (state_changed)</label>
-            <input type="text" id="f-entity" placeholder="Es: binary_sensor.garage_door">
-            <p class="hint">L&apos;agente si attiva quando questa entit&agrave; cambia stato.</p>
-          </div>
-          <div id="trigger-cron" style="display:none">
-            <label>Cron expression</label>
-            <input type="text" id="f-cron" placeholder="0 16 * * 1-5  (lun-ven alle 16:00)">
-            <p class="hint">Formato CRON (minuto ora [giorno mese weekday]). Es: &quot;0 6&quot; = ogni giorno alle 6:00.</p>
+          <div id="agent-triggers-section">
+            <label style="margin-top:0.75rem">Trigger</label>
+            <p class="hint">L&apos;agente si attiva in risposta a questi eventi. Puoi aggiungere pi&ugrave; trigger.</p>
+            <div id="triggers-list" style="display:flex;flex-wrap:wrap;gap:6px;min-height:10px;margin-bottom:8px"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start">
+              <select id="new-trigger-type" style="flex:0 0 auto">
+                <option value="schedule">Periodico (ogni N min)</option>
+                <option value="state_changed">Cambio stato entit&agrave;</option>
+                <option value="cron">Cron expression</option>
+                <option value="manual">Manuale (solo test run)</option>
+              </select>
+              <div id="nt-schedule-fields" style="display:flex;gap:6px;align-items:center">
+                <input type="number" id="nt-interval" value="5" min="1" style="width:70px;margin-top:0">
+                <span style="font-size:12px;color:var(--text-muted)">min</span>
+              </div>
+              <div id="nt-state-fields" style="display:none">
+                <input type="text" id="nt-entity" placeholder="binary_sensor.door" style="width:200px;margin-top:0">
+              </div>
+              <div id="nt-cron-fields" style="display:none">
+                <input type="text" id="nt-cron" placeholder="0 6 * * *" style="width:160px;margin-top:0">
+              </div>
+              <button type="button" id="btn-add-trigger" style="flex:0 0 auto;margin-top:0;padding:6px 12px">+ Aggiungi</button>
+            </div>
           </div>
         </fieldset>
 
@@ -695,7 +702,14 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         </fieldset>
 
         <fieldset class="form-section" id="actions-fieldset">
-          <legend>Azioni configurate</legend>
+          <legend>Azioni</legend>
+          <label>Modalit&agrave; azioni</label>
+          <select id="f-action-mode">
+            <option value="automatic">Automatica &mdash; il modello decide le azioni</option>
+            <option value="configured">Configurata &mdash; regole esplicite</option>
+          </select>
+          <p class="hint"><strong>Automatica:</strong> il modello scrive un blocco AZIONI nella risposta (TURN_ON, TURN_OFF, NOTIFY&hellip;). <strong>Configurata:</strong> le azioni vengono eseguite solo quando la valutazione corrisponde alle regole definite.</p>
+          <div id="configured-actions-section">
           <div id="trigger-on-section" style="margin-bottom:12px">
             <label>Stati agente</label>
             <p class="hint">Valori che l&apos;agente pu&ograve; produrre come VALUTAZIONE, separati da virgola. Esempi: <em>OK, ATTENZIONE, ANOMALIA</em> oppure <em>SKIP, LEGGERA, PIENA</em></p>
@@ -827,6 +841,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
               <button type="button" id="ae-cancel">Annulla</button>
             </div>
           </div>
+          </div><!-- /configured-actions-section -->
         </fieldset>
 
         <fieldset>
@@ -918,8 +933,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       {
         id: 'irrigation',
         label: 'Irrigazione Giardino',
-        type: 'preventive',
-        cron: '0 5 * * *',
+        type: 'agent',
+        triggers: [{type: 'cron', cron: '0 5 * * *'}],
         states: ['SKIP', 'LEGGERA', 'PIENA'],
         trigger_on: ['LEGGERA', 'PIENA'],
         strategic: 'ZONE DI IRRIGAZIONE:\n[Descrivi qui le zone: es. "Prato nord" switch.irrigazione_prato_nord, "Aiuole" switch.irrigazione_aiuole, "Orto" switch.irrigazione_orto]\n[Indica posizione e tipo di terreno: es. "Prato nord — terreno argilloso, esposizione sole pieno"]\n\nSENSOR METEO:\n- Pioggia recente: search_entities("pioggia") o search_entities("precipitazione")\n- Umidità suolo: search_entities("umidità suolo") per ogni zona se disponibile\n- Meteo: get_weather_forecast(hours=48) per previsioni 2 giorni\n\nSTATI IRRIGAZIONE:\n- SKIP: ha piovuto abbastanza o previste piogge significative oggi/domani\n- LEGGERA: irrigazione breve (10-15 min per zona) — condizioni borderline\n- PIENA: irrigazione completa (20-30 min per zona) — terreno asciutto, nessuna pioggia prevista\n\nSOGLIE PIOGGIA:\n- Pioggia passata 24h > 5mm: SKIP\n- Pioggia passata 48h > 10mm: SKIP o LEGGERA\n- Previsione pioggia oggi > 3mm: SKIP\n- Previsione pioggia domani > 5mm: considera LEGGERA invece di PIENA',
@@ -945,9 +960,9 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         document.getElementById('f-prompt').value = tpl.prompt || '';
         if (tpl.type) {
           document.getElementById('f-type').value = tpl.type;
-          showTriggerFields(tpl.type);
+          showAgentMode(tpl.type);
         }
-        if (tpl.cron) document.getElementById('f-cron').value = tpl.cron;
+        if (tpl.triggers) _triggersLoad(tpl.triggers);
         var tplStates = tpl.states || ['OK', 'ATTENZIONE', 'ANOMALIA'];
         document.getElementById('f-states').value = tplStates.join(', ');
         _buildTriggerOnChecks(tplStates, tpl.trigger_on || ['ANOMALIA']);
@@ -979,7 +994,64 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       { id: 'input_boolean.*', label: 'Input Boolean',  desc: 'Toggle e variabili booleane virtuali' },
       { id: 'script.*',        label: 'Script',         desc: 'Esegui script e automazioni personalizzate' },
     ];
-    var TRIGGER_TYPE_MAP = {monitor: 'schedule', reactive: 'state_changed', preventive: 'preventive', chat: 'manual'};
+    // ── Trigger builder ──────────────────────────────────────────────────────────
+    var _agentTriggers = [];
+
+    function _triggerLabel(t) {
+      if (t.type === 'schedule')     return '⏱ ogni ' + (t.interval_minutes || 5) + ' min';
+      if (t.type === 'state_changed') return '👁 ' + (t.entity_id || 'entity');
+      if (t.type === 'cron')         return '📅 ' + (t.cron || 'cron');
+      if (t.type === 'manual')       return '▶ manuale';
+      return t.type;
+    }
+
+    function _triggersRender() {
+      var el = document.getElementById('triggers-list');
+      el.innerHTML = '';
+      _agentTriggers.forEach(function(t, i) {
+        var chip = document.createElement('span');
+        chip.className = 'entity-chip';
+        chip.innerHTML = esc(_triggerLabel(t)) +
+          ' <span class="chip-remove" data-idx="' + i + '">&times;</span>';
+        el.appendChild(chip);
+      });
+    }
+
+    function _triggersLoad(triggers) {
+      _agentTriggers = Array.isArray(triggers) ? JSON.parse(JSON.stringify(triggers)) : [];
+      _triggersRender();
+    }
+
+    function _triggersValue() {
+      return JSON.parse(JSON.stringify(_agentTriggers));
+    }
+
+    document.getElementById('triggers-list').addEventListener('click', function(e) {
+      var btn = e.target.closest('.chip-remove');
+      if (!btn) return;
+      var idx = parseInt(btn.dataset.idx);
+      _agentTriggers.splice(idx, 1);
+      _triggersRender();
+    });
+
+    document.getElementById('new-trigger-type').addEventListener('change', function() {
+      var v = this.value;
+      document.getElementById('nt-schedule-fields').style.display = v === 'schedule' ? 'flex' : 'none';
+      document.getElementById('nt-state-fields').style.display    = v === 'state_changed' ? '' : 'none';
+      document.getElementById('nt-cron-fields').style.display     = v === 'cron' ? '' : 'none';
+    });
+
+    document.getElementById('btn-add-trigger').addEventListener('click', function() {
+      var ttype = document.getElementById('new-trigger-type').value;
+      var trigger = {type: ttype};
+      if (ttype === 'schedule')      trigger.interval_minutes = parseInt(document.getElementById('nt-interval').value) || 5;
+      else if (ttype === 'state_changed') trigger.entity_id = document.getElementById('nt-entity').value.trim();
+      else if (ttype === 'cron')     trigger.cron = document.getElementById('nt-cron').value.trim();
+      _agentTriggers.push(trigger);
+      _triggersRender();
+      document.getElementById('nt-entity').value = '';
+      document.getElementById('nt-cron').value = '';
+    });
 
     var agents = [];
     var currentId = null;
@@ -998,7 +1070,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       agents.forEach(function(a) {
         var row = document.createElement('div');
         row.className = 'agent-row' + (a.id === currentId ? ' active' : '');
-        row.innerHTML = '<span>' + esc(a.name) + '</span><span class="badge ' + (a.enabled ? '' : 'off') + '">' + (a.enabled ? 'ON' : 'OFF') + '</span>';
+        var typeLabel = (a.type === 'chat') ? 'Chat' : 'Agent';
+        row.innerHTML = '<span>' + esc(a.name) + ' <small style="color:var(--text-muted);font-size:0.7rem">' + typeLabel + '</small></span><span class="badge ' + (a.enabled ? '' : 'off') + '">' + (a.enabled ? 'ON' : 'OFF') + '</span>';
         row.onclick = function() { openAgent(a); };
         el.appendChild(row);
       });
@@ -1116,14 +1189,17 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       return Array.from(document.querySelectorAll('#action-checks input:checked')).map(function(i) { return i.value; });
     }
 
-    function showTriggerFields(type) {
-      document.getElementById('trigger-schedule').style.display = (type === 'monitor') ? '' : 'none';
-      document.getElementById('trigger-state').style.display = (type === 'reactive') ? '' : 'none';
-      document.getElementById('trigger-cron').style.display = (type === 'preventive') ? '' : 'none';
+    function showAgentMode(type) {
+      var isAgent = type === 'agent';
+      document.getElementById('agent-triggers-section').style.display = isAgent ? '' : 'none';
       var maxTurnsRow = document.getElementById('max-turns-row');
       if (maxTurnsRow) maxTurnsRow.style.display = type === 'chat' ? '' : 'none';
-      var triggerOnSection = document.getElementById('trigger-on-section');
-      if (triggerOnSection) triggerOnSection.style.display = type !== 'chat' ? '' : 'none';
+      var actionsFieldset = document.getElementById('actions-fieldset');
+      if (actionsFieldset) actionsFieldset.style.display = isAgent ? '' : 'none';
+    }
+
+    function showActionMode(mode) {
+      document.getElementById('configured-actions-section').style.display = mode === 'configured' ? '' : 'none';
     }
 
     function _defaultStates() {
@@ -1154,7 +1230,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         .map(function(i) { return i.value; });
     }
 
-    document.getElementById('f-type').onchange = function(e) { showTriggerFields(e.target.value); };
+    document.getElementById('f-type').onchange = function(e) { showAgentMode(e.target.value); };
+    document.getElementById('f-action-mode').onchange = function(e) { showActionMode(e.target.value); };
 
     document.getElementById('f-states').addEventListener('blur', function() {
       var current = _triggerOnValue();
@@ -1168,10 +1245,13 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('form').style.display = '';
       document.getElementById('form-title').textContent = a.name;
       document.getElementById('f-name').value = a.name;
-      document.getElementById('f-type').value = a.type;
-      document.getElementById('f-interval').value = (a.trigger && a.trigger.interval_minutes) || 5;
-      document.getElementById('f-entity').value = (a.trigger && a.trigger.entity_id) || '';
-      document.getElementById('f-cron').value = (a.trigger && a.trigger.cron) || '';
+      // Normalize legacy types (monitor/reactive/preventive → agent)
+      var agentType = (a.type === 'chat') ? 'chat' : 'agent';
+      document.getElementById('f-type').value = agentType;
+      // Load triggers (new format) or migrate from legacy single trigger
+      var triggers = a.triggers && a.triggers.length ? a.triggers :
+        (a.trigger ? [a.trigger] : []);
+      _triggersLoad(triggers);
       document.getElementById('f-prompt').value = a.system_prompt || '';
       document.getElementById('f-strategic').value = a.strategic_context || '';
       _entitySelectorLoad(a.allowed_entities || []);
@@ -1182,9 +1262,14 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
       document.getElementById('f-max-chat-turns').value = a.max_chat_turns || 0;
       document.getElementById('f-response-mode').value = a.response_mode || 'auto';
-      document.getElementById('max-turns-row').style.display = a.type === 'chat' ? '' : 'none';
       buildActionChecks(a.allowed_services || []);
-      _actionsLoad(a.actions || []);
+      // Load actions from first rule (configured mode) or legacy actions field
+      var firstRule = a.rules && a.rules.length ? a.rules[0] : null;
+      _actionsLoad(firstRule ? (firstRule.actions || []) : (a.actions || []));
+      // action_mode
+      var actionMode = a.action_mode || 'automatic';
+      document.getElementById('f-action-mode').value = actionMode;
+      showActionMode(actionMode);
       document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
       var ro = document.getElementById('run-output');
       ro.style.display = 'none';
@@ -1192,7 +1277,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       ro.className = '';
       // buildToolChecks must run after buildActionChecks — it owns the final updateServicesVisibility() call
       buildToolChecks(a.allowed_tools || []);
-      showTriggerFields(a.type);
+      showAgentMode(agentType);
       renderList();
       renderExecutionLog(a);
       loadAgentUsage(a.id);
@@ -1202,7 +1287,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('u-ag-budget').value = a.budget_eur_limit || 0;
       var agentStates = (a.states && a.states.length) ? a.states : ['OK', 'ATTENZIONE', 'ANOMALIA'];
       document.getElementById('f-states').value = agentStates.join(', ');
-      _buildTriggerOnChecks(agentStates, a.trigger_on || ['ANOMALIA']);
+      var ruleStates = firstRule ? (firstRule.states || ['ANOMALIA']) : (a.trigger_on || ['ANOMALIA']);
+      _buildTriggerOnChecks(agentStates, ruleStates);
     }
 
     document.getElementById('new-btn').onclick = function() {
@@ -1212,10 +1298,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('form').style.display = '';
       document.getElementById('form-title').textContent = 'Nuovo agente';
       document.getElementById('f-name').value = '';
-      document.getElementById('f-type').value = 'monitor';
-      document.getElementById('f-interval').value = 5;
-      document.getElementById('f-entity').value = '';
-      document.getElementById('f-cron').value = '';
+      document.getElementById('f-type').value = 'agent';
+      _triggersLoad([]);
       document.getElementById('f-prompt').value = '';
       document.getElementById('f-strategic').value = '';
       _entitySelectorLoad([]);
@@ -1226,16 +1310,17 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-require-confirmation').checked = false;
       document.getElementById('f-max-chat-turns').value = 0;
       document.getElementById('f-response-mode').value = 'auto';
-      document.getElementById('max-turns-row').style.display = 'none';
       buildActionChecks([]);
       _actionsLoad([]);
+      document.getElementById('f-action-mode').value = 'automatic';
+      showActionMode('automatic');
       document.getElementById('delete-btn').style.display = 'none';
       var ro = document.getElementById('run-output');
       ro.style.display = 'none';
       ro.textContent = '';
       ro.className = '';
       buildToolChecks([]);
-      showTriggerFields('monitor');
+      showAgentMode('agent');
       renderExecutionLog(null);
       document.getElementById('u-ag-budget').value = 0;
       document.getElementById('f-states').value = 'OK, ATTENZIONE, ANOMALIA';
@@ -1247,14 +1332,17 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     function buildPayload() {
       var type = document.getElementById('f-type').value;
-      var trigger = {type: TRIGGER_TYPE_MAP[type]};
-      if (type === 'monitor')    trigger.interval_minutes = parseInt(document.getElementById('f-interval').value) || 5;
-      if (type === 'reactive')   trigger.entity_id = document.getElementById('f-entity').value;
-      if (type === 'preventive') trigger.cron = document.getElementById('f-cron').value;
+      var actionMode = document.getElementById('f-action-mode').value;
+      var rules = [];
+      if (actionMode === 'configured') {
+        rules = [{states: _triggerOnValue(), actions: _actionsValue()}];
+      }
       return {
         name: document.getElementById('f-name').value,
         type: type,
-        trigger: trigger,
+        triggers: _triggersValue(),
+        action_mode: actionMode,
+        rules: rules,
         system_prompt: document.getElementById('f-prompt').value,
         strategic_context: document.getElementById('f-strategic').value,
         allowed_tools: getSelectedTools(),
@@ -1265,9 +1353,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         restrict_to_home: document.getElementById('f-restrict').checked,
         require_confirmation: document.getElementById('f-require-confirmation').checked,
         enabled: document.getElementById('f-enabled').checked,
-        actions: _actionsValue(),
         states: _defaultStates(),
-        trigger_on: _triggerOnValue(),
         budget_eur_limit: parseFloat(document.getElementById('u-ag-budget').value) || 0,
         max_chat_turns: parseInt(document.getElementById('f-max-chat-turns').value) || 0,
         response_mode: document.getElementById('f-response-mode').value,

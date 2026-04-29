@@ -269,16 +269,12 @@ def test_resolve_model_auto_chat_returns_sonnet():
     assert resolve_model("auto", "chat") == "claude-sonnet-4-6"
 
 
-def test_resolve_model_auto_monitor_returns_haiku():
-    assert resolve_model("auto", "monitor") == "claude-haiku-4-5-20251001"
-
-
-def test_resolve_model_auto_reactive_returns_haiku():
-    assert resolve_model("auto", "reactive") == "claude-haiku-4-5-20251001"
+def test_resolve_model_auto_agent_returns_haiku():
+    assert resolve_model("auto", "agent") == "claude-haiku-4-5-20251001"
 
 
 def test_resolve_model_explicit_overrides_auto():
-    assert resolve_model("claude-sonnet-4-6", "monitor") == "claude-sonnet-4-6"
+    assert resolve_model("claude-sonnet-4-6", "agent") == "claude-sonnet-4-6"
 
 
 def test_resolve_model_auto_unknown_type_defaults_to_sonnet():
@@ -286,14 +282,14 @@ def test_resolve_model_auto_unknown_type_defaults_to_sonnet():
 
 
 @pytest.mark.asyncio
-async def test_chat_uses_resolved_model_for_monitor(runner):
+async def test_chat_uses_resolved_model_for_agent(runner):
     success = MagicMock()
     success.stop_reason = "end_turn"
     success.content = [MagicMock(type="text", text="ok")]
     success.usage.input_tokens = 10
     success.usage.output_tokens = 5
     runner._client.messages.create = AsyncMock(return_value=success)
-    await runner.chat("Test", model="auto", agent_type="monitor")
+    await runner.chat("Test", model="auto", agent_type="agent")
     call_kwargs = runner._client.messages.create.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
 
@@ -426,92 +422,129 @@ async def test_require_confirmation_combines_with_restrict(runner):
     assert idx_restrict < idx_confirm
 
 
-def test_build_action_instructions_notify():
-    from hiris.app.claude_runner import _build_action_instructions
-    actions = [{"type": "notify", "label": "Avvisa via Telegram", "channel": "telegram"}]
-    instructions = _build_action_instructions(actions)
-    assert "VALUTAZIONE:" in instructions
-    assert "AZIONE:" in instructions
-    assert "Avvisa via Telegram" in instructions
-
-
-def test_build_action_instructions_call_service():
-    from hiris.app.claude_runner import _build_action_instructions
-    actions = [
-        {"type": "call_service", "label": "Spegni luci",
-         "domain": "light", "service": "turn_off", "entity_pattern": "light.*"},
-    ]
-    instructions = _build_action_instructions(actions)
-    assert "Spegni luci" in instructions
-    assert "light.turn_off" in instructions
-
-
-def test_build_action_instructions_empty():
-    from hiris.app.claude_runner import _build_action_instructions
-    assert _build_action_instructions([]) == ""
-
-
-def test_parse_structured_response_extracts_fields():
-    from hiris.app.claude_runner import _parse_structured_response
-    raw = "Il sistema è normale.\n\nVALUTAZIONE: OK\nAZIONE: nessuna azione necessaria"
-    text, status, action = _parse_structured_response(raw)
-    assert status == "OK"
-    assert action == "nessuna azione necessaria"
-    assert "VALUTAZIONE:" not in text
-    assert "AZIONE:" not in text
+def test_parse_structured_output_basic():
+    from hiris.app.claude_runner import _parse_structured_output
+    raw = "Il sistema è normale.\n\nVALUTAZIONE: OK\nNOTIFICA: Tutto bene."
+    text, s = _parse_structured_output(raw)
+    assert s["valutazione"] == "OK"
+    assert s["notifica"] == "Tutto bene."
+    assert s["azioni"] == []
+    assert s["params"] == {}
     assert "Il sistema è normale." in text
+    assert "VALUTAZIONE:" not in text
 
 
-def test_parse_structured_response_attenzione():
-    from hiris.app.claude_runner import _parse_structured_response
-    raw = "Anomalia rilevata.\nVALUTAZIONE: ANOMALIA\nAZIONE: Notifica inviata via Telegram"
-    text, status, action = _parse_structured_response(raw)
-    assert status == "ANOMALIA"
-    assert action == "Notifica inviata via Telegram"
+def test_parse_structured_output_anomalia():
+    from hiris.app.claude_runner import _parse_structured_output
+    raw = "Anomalia rilevata.\nVALUTAZIONE: ANOMALIA\nNOTIFICA: Consumo anomalo alle 02:30."
+    text, s = _parse_structured_output(raw)
+    assert s["valutazione"] == "ANOMALIA"
+    assert s["notifica"] == "Consumo anomalo alle 02:30."
 
 
-def test_parse_structured_response_missing_lines():
-    from hiris.app.claude_runner import _parse_structured_response
+def test_parse_structured_output_no_block():
+    from hiris.app.claude_runner import _parse_structured_output
     raw = "Risposta senza struttura"
-    text, status, action = _parse_structured_response(raw)
+    text, s = _parse_structured_output(raw)
     assert text == raw
-    assert status is None
-    assert action is None
+    assert s["valutazione"] is None
+    assert s["notifica"] is None
+    assert s["azioni"] == []
 
 
-def test_parse_structured_response_no_false_positive():
-    from hiris.app.claude_runner import _parse_structured_response
+def test_parse_structured_output_no_false_positive():
+    from hiris.app.claude_runner import _parse_structured_output
     # VALUTAZIONE mid-paragraph should NOT be consumed
-    raw = "La VALUTAZIONE: scarsa dell'impianto è allarmante.\n\nVALUTAZIONE: ANOMALIA\nAZIONE: notifica"
-    text, status, action = _parse_structured_response(raw)
-    assert status == "ANOMALIA"
-    assert action == "notifica"
-    # The mid-body mention should remain in clean text
+    raw = "La VALUTAZIONE: scarsa dell'impianto è allarmante.\n\nVALUTAZIONE: ANOMALIA\nNOTIFICA: notifica"
+    text, s = _parse_structured_output(raw)
+    assert s["valutazione"] == "ANOMALIA"
     assert "VALUTAZIONE: scarsa" in text
 
 
+def test_parse_structured_output_with_azioni():
+    from hiris.app.claude_runner import _parse_structured_output
+    raw = (
+        "Surplus solare rilevato.\n\n"
+        "VALUTAZIONE: OK\n"
+        "NOTIFICA: Scaldabagno acceso per sfruttare il surplus.\n"
+        "AZIONI:\n"
+        "turn_on switch.water_heater\n"
+        "wait 60\n"
+        "turn_off switch.water_heater"
+    )
+    text, s = _parse_structured_output(raw)
+    assert s["valutazione"] == "OK"
+    assert s["azioni"] == ["turn_on switch.water_heater", "wait 60", "turn_off switch.water_heater"]
+    assert "Surplus solare" in text
+
+
+def test_parse_structured_output_with_params():
+    from hiris.app.claude_runner import _parse_structured_output
+    raw = (
+        "Analisi irrigazione.\n\n"
+        "VALUTAZIONE: LEGGERA\n"
+        "NOTIFICA: Irrigazione breve avviata.\n"
+        "PARAM durata_prato: 15\n"
+        "PARAM durata_aiuole: 10\n"
+        "AZIONI:\n"
+        "turn_on switch.irrigation_lawn"
+    )
+    text, s = _parse_structured_output(raw)
+    assert s["params"] == {"durata_prato": "15", "durata_aiuole": "10"}
+    assert s["azioni"] == ["turn_on switch.irrigation_lawn"]
+
+
 @pytest.mark.asyncio
-async def test_run_with_actions_injects_instructions_and_parses():
+async def test_run_with_actions_automatic_mode():
     from unittest.mock import AsyncMock
     from hiris.app.claude_runner import ClaudeRunner
 
     runner = ClaudeRunner.__new__(ClaudeRunner)
-    runner.chat = AsyncMock(return_value="Tutto OK.\n\nVALUTAZIONE: OK\nAZIONE: nessuna azione necessaria")
+    runner.chat = AsyncMock(return_value=(
+        "Tutto OK.\n\nVALUTAZIONE: OK\nNOTIFICA: Nessun problema.\n"
+        "AZIONI:\nturn_on switch.water_heater"
+    ))
 
-    actions = [{"type": "notify", "label": "Test", "channel": "ha"}]
-    text, status, action = await runner.run_with_actions(
+    text, structured = await runner.run_with_actions(
         user_message="test",
         system_prompt="base system",
-        actions=actions,
+        action_mode="automatic",
     )
 
-    assert status == "OK"
-    assert action == "nessuna azione necessaria"
+    assert structured["valutazione"] == "OK"
+    assert structured["notifica"] == "Nessun problema."
+    assert structured["azioni"] == ["turn_on switch.water_heater"]
     assert "Tutto OK." in text
-    # Verify the augmented prompt was passed to chat()
     call_kwargs = runner.chat.call_args.kwargs
     assert "VALUTAZIONE:" in call_kwargs["system_prompt"]
+    assert "AZIONI:" in call_kwargs["system_prompt"]
     assert "base system" in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_run_with_actions_configured_mode():
+    from unittest.mock import AsyncMock
+    from hiris.app.claude_runner import ClaudeRunner
+
+    runner = ClaudeRunner.__new__(ClaudeRunner)
+    runner.chat = AsyncMock(return_value="Analisi.\n\nVALUTAZIONE: ANOMALIA\nNOTIFICA: Consumo anomalo.")
+
+    text, structured = await runner.run_with_actions(
+        user_message="test",
+        system_prompt="base system",
+        action_mode="configured",
+    )
+
+    assert structured["valutazione"] == "ANOMALIA"
+    assert structured["notifica"] == "Consumo anomalo."
+    assert structured["azioni"] == []  # no AZIONI block in configured mode
+    call_kwargs = runner.chat.call_args.kwargs
+    # Configured mode should NOT inject AZIONI instructions
+    assert "AZIONI:" not in call_kwargs["system_prompt"]
+
+
+def test_resolve_model_auto_agent_returns_haiku():
+    assert resolve_model("auto", "agent") == "claude-haiku-4-5-20251001"
 
 
 def test_get_agent_usage_returns_zeros_for_unknown_agent():

@@ -148,31 +148,31 @@ Response: {response, debug: {tools_called}}
 ```
 AgentEngine
     │
-    ├── APScheduler jobs (monitor, preventive)
+    ├── APScheduler jobs (agent type — schedule/cron triggers)
     │       │
     │       └── _run_agent(agent_id)
     │               │
     │               ├── budget check → auto-disable if exceeded
-    │               ├── LLMRouter.run_with_actions()
+    │               ├── LLMRouter.run_with_actions()  [action_mode: automatic|configured]
     │               │       │
     │               │       └── ClaudeRunner / OpenAICompatRunner
     │               │               (EVALUATION_ONLY_TOOLS only for non-chat)
     │               │
-    │               ├── parse VALUTAZIONE: OK|ATTENZIONE|ANOMALIA
+    │               ├── parse structured output: VALUTAZIONE / NOTIFICA / PARAM / AZIONI
     │               │
-    │               ├── if status in agent.trigger_on:
-    │               │       └── _execute_agent_actions()
+    │               ├── automatic mode: _parse_azioni_lines() → _execute_action_chain()
+    │               ├── configured mode: match VALUTAZIONE against rules[i].states
+    │               │       └── _execute_action_chain(rule.actions)
     │               │               │
-    │               │               ├── notify action → ToolDispatcher
-    │               │               ├── call_service action → ToolDispatcher
-    │               │               ├── wait action → TaskEngine.schedule(delay)
-    │               │               └── verify action → re-run agent with verify prompt
+    │               │               ├── notify → ToolDispatcher
+    │               │               ├── call_service → ToolDispatcher
+    │               │               └── wait → asyncio.sleep
     │               │
     │               └── MQTT publish: status, last_result, tokens_used_today
     │
-    ├── HA WebSocket listener (reactive agents)
+    ├── HA WebSocket listener (agent type — state_changed triggers)
     │       │
-    │       └── state_changed events → filter by agent.trigger.entity_id
+    │       └── state_changed events → filter by agent.triggers[*].entity_id
     │               └── _run_agent(agent_id)
     │
     └── MQTT command subscriber
@@ -288,7 +288,7 @@ Every tool call passes through `ToolDispatcher.dispatch()`:
 2. **Service filter** — `allowed_services` glob patterns checked before every `call_ha_service`
 3. **Endpoint filter** — `http_request` hidden from Claude unless `allowed_endpoints` is configured; each call validated against the allowlist
 4. **Budget check** — agent auto-disabled if `total_cost_usd * EUR_RATE > budget_eur_limit`
-5. **Memory scope** — `save_memory` only available to chat agents (monitor/reactive/preventive can only `recall_memory`)
+5. **Memory scope** — `save_memory` only available to chat agents (agent-type agents can only `recall_memory`)
 
 ### SSRF protection (`http_tools.py`)
 

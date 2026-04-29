@@ -137,9 +137,7 @@ RETRY_DELAYS = [5, 15, 45]
 
 AUTO_MODEL_MAP: dict[str, str] = {
     "chat": "claude-sonnet-4-6",
-    "monitor": "claude-haiku-4-5-20251001",
-    "reactive": "claude-haiku-4-5-20251001",
-    "preventive": "claude-haiku-4-5-20251001",
+    "agent": "claude-haiku-4-5-20251001",
 }
 
 from .backends.pricing import PRICING as _PRICING
@@ -165,84 +163,76 @@ REQUIRE_CONFIRMATION_PROMPT = (
 )
 
 
-def _build_action_instructions(actions: list[dict]) -> str:
-    """Return the structured-response instruction block for a list of actions.
+def _parse_structured_output(text: str) -> tuple[str, dict]:
+    """Parse structured output block from the TRAILING section of a Claude response.
 
-    Returns empty string if no actions defined.
-
-    Args:
-        actions: List of action dicts, each with at least ``type`` and ``label``.
-
-    Returns:
-        Formatted instruction block as a string, or empty string.
-    """
-    if not actions:
-        return ""
-    lines = [
-        "---",
-        "ISTRUZIONI DI RISPOSTA:",
-        "Termina SEMPRE la tua risposta con queste due righe esatte:",
-        "VALUTAZIONE: [OK | ATTENZIONE | ANOMALIA]",
-        "AZIONE: [breve descrizione dell'azione intrapresa, oppure \"nessuna azione necessaria\"]",
-        "",
-        "Azioni disponibili per questo agente:",
-    ]
-    for a in actions:
-        if a.get("type") == "notify":
-            lines.append(f"- {a.get('label', 'Notifica')} (canale: {a.get('channel', 'ha')})")
-        elif a.get("type") == "call_service":
-            svc = f"{a.get('domain', '')}.{a.get('service', '')}"
-            pattern = a.get("entity_pattern", "")
-            suffix = f" su {pattern}" if pattern else ""
-            lines.append(f"- {a.get('label', 'Servizio')} ({svc}{suffix})")
-    return "\n".join(lines)
-
-
-def _parse_structured_response(text: str) -> tuple[str, str | None, str | None]:
-    """Parse VALUTAZIONE and AZIONE lines from the TRAILING block of a Claude response.
-
-    Only lines at the very end (after the last real content) are consumed.
-    Mid-paragraph occurrences of VALUTAZIONE: or AZIONE: are left intact.
-
-    Args:
-        text: Raw response text from Claude.
+    Two-pass strategy:
+    1. Locate the AZIONI: marker (last occurrence) and collect all lines after it.
+    2. Scan bottom-up from the marker (or end-of-text) for VALUTAZIONE / NOTIFICA / PARAM.
+       Stop at the first non-blank, non-marker line to avoid consuming mid-text content.
 
     Returns:
-        Tuple of (cleaned_text, eval_status, action_taken).
-        ``eval_status`` and ``action_taken`` are None if not found.
+        Tuple of (clean_text, structured) where structured contains:
+        - valutazione: str | None
+        - notifica: str | None
+        - params: dict[str, str]  — from ``PARAM key: value`` lines
+        - azioni: list[str]       — raw action command lines (one per list entry)
     """
-    eval_status: str | None = None
-    action_taken: str | None = None
+    structured: dict = {
+        "valutazione": None,
+        "notifica": None,
+        "params": {},
+        "azioni": [],
+    }
     lines = text.splitlines()
-    cut = len(lines)
+
+    # Pass 1: locate the AZIONI: marker (last occurrence)
+    azioni_marker_idx: int | None = None
     for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip().startswith("AZIONI:"):
+            azioni_marker_idx = i
+            break
+
+    if azioni_marker_idx is not None:
+        marker_stripped = lines[azioni_marker_idx].strip()
+        inline = marker_stripped[len("AZIONI:"):].strip()
+        azioni_lines: list[str] = []
+        if inline:
+            azioni_lines.append(inline)
+        for j in range(azioni_marker_idx + 1, len(lines)):
+            cmd = lines[j].strip()
+            if cmd:
+                azioni_lines.append(cmd)
+        structured["azioni"] = azioni_lines
+
+    # Pass 2: scan the last 40 lines (before AZIONI marker) for VALUTAZIONE / NOTIFICA / PARAM.
+    # We bound the window instead of using else:break so that a single stray LLM line
+    # between markers does not silently swallow all structured output.
+    scan_end = azioni_marker_idx if azioni_marker_idx is not None else len(lines)
+    scan_start = max(0, scan_end - 40)
+    cut = scan_end
+
+    for i in range(scan_end - 1, scan_start - 1, -1):
         stripped = lines[i].strip()
         if stripped.startswith("VALUTAZIONE:"):
-            eval_status = stripped[len("VALUTAZIONE:"):].strip()
+            structured["valutazione"] = stripped[len("VALUTAZIONE:"):].strip()
             cut = i
-        elif stripped.startswith("AZIONE:"):
-            action_taken = stripped[len("AZIONE:"):].strip()
+        elif stripped.startswith("NOTIFICA:"):
+            structured["notifica"] = stripped[len("NOTIFICA:"):].strip()
+            cut = i
+        elif stripped.startswith("PARAM ") and ":" in stripped:
+            rest = stripped[len("PARAM "):].strip()
+            colon_pos = rest.find(":")
+            if colon_pos > 0:
+                key = rest[:colon_pos].strip()
+                value = rest[colon_pos + 1:].strip()
+                structured["params"][key] = value
             cut = i
         elif not stripped:
-            # Blank lines in the trailing block are fine to consume
-            cut = i
-        else:
-            break  # Hit real content — stop scanning
-    # Fallback: if a stray line interrupted the trailing block (e.g. Claude put text
-    # between VALUTAZIONE and AZIONE), scan the last 6 lines for any still-missing marker.
-    # Uses min(cut, i) so the clean_text boundary is moved to the earliest found marker.
-    if eval_status is None or action_taken is None:
-        window_start = max(0, len(lines) - 6)
-        for i in range(window_start, len(lines)):
-            stripped = lines[i].strip()
-            if eval_status is None and stripped.startswith("VALUTAZIONE:"):
-                eval_status = stripped[len("VALUTAZIONE:"):].strip()
-                cut = min(cut, i)
-            elif action_taken is None and stripped.startswith("AZIONE:"):
-                action_taken = stripped[len("AZIONE:"):].strip()
-                cut = min(cut, i)
+            cut = i  # blank lines in trailing block are consumable
+
     clean_text = "\n".join(lines[:cut]).rstrip()
-    return clean_text, eval_status, action_taken
+    return clean_text, structured
 
 
 class ClaudeRunner:
@@ -572,45 +562,50 @@ class ClaudeRunner:
         self,
         user_message: str,
         system_prompt: str,
-        actions: list[dict],
+        action_mode: str = "automatic",
+        states: Optional[list[str]] = None,
+        rules: Optional[list[dict]] = None,
         allowed_tools: Optional[list[str]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
         allowed_endpoints: Optional[list[dict]] = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
-        agent_type: str = "monitor",
+        agent_type: str = "agent",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
         response_mode: str = "auto",
-        states: Optional[list[str]] = None,
-    ) -> tuple[str, str | None, str | None]:
-        """Like chat() but injects action instructions and parses structured response.
+    ) -> tuple[str, dict]:
+        """Run an autonomous agent evaluation — restrict tools, inject structured-output instructions.
 
-        Builds structured-response instructions from the provided ``actions`` list,
-        appends them to ``system_prompt``, calls :meth:`chat`, then parses
-        ``VALUTAZIONE`` / ``AZIONE`` lines from the reply.
+        Claude gathers data using read-only tools, then produces a structured trailing
+        block (VALUTAZIONE / NOTIFICA / PARAM / AZIONI) that the caller parses and acts on.
 
         Args:
-            user_message: The user/trigger message to send to Claude.
-            system_prompt: Base system prompt for the agent.
-            actions: List of action dicts, each with at least ``type`` and ``label``.
-            allowed_tools: Whitelist of tool names, or None for all.
-            allowed_entities: Entity glob patterns, or None for unrestricted.
-            allowed_services: Service glob patterns, or None for unrestricted.
-            model: Model identifier or ``"auto"``.
-            max_tokens: Maximum tokens for the response.
-            agent_type: Used for model auto-resolution.
-            restrict_to_home: Whether to inject the home-restriction prompt.
-            require_confirmation: Whether to inject the confirmation prompt.
+            user_message: Trigger message (may contain event context or a cron prompt).
+            system_prompt: Agent-specific instructions.
+            action_mode: ``"automatic"`` — LLM writes AZIONI block; ``"configured"`` — user-defined rules.
+            states: Allowed VALUTAZIONE values. Defaults to [OK, ATTENZIONE, ANOMALIA].
+            rules: Pre-configured action rules (used only by caller; included here for completeness).
+            allowed_tools: Whitelist of tool names, or None for all evaluation tools.
+            allowed_entities: Entity glob patterns allowed for this agent.
+            allowed_services: Service patterns allowed for this agent.
+            allowed_endpoints: HTTP endpoint whitelist.
+            model: Model ID or ``"auto"``.
+            max_tokens: Response token budget.
+            agent_type: Used for model auto-resolution (``"agent"`` maps to Haiku).
+            restrict_to_home: Inject home-topic restriction prompt.
+            require_confirmation: Not used for agents; present for API symmetry.
+            agent_id: Agent ID for per-agent usage tracking.
+            response_mode: ``"minimal"`` for terse motivazione, ``"auto"`` for standard.
 
         Returns:
-            Tuple of (cleaned_text, eval_status, action_taken).
+            Tuple of ``(clean_text, structured)`` where ``structured`` contains:
+            ``valutazione``, ``notifica``, ``params``, ``azioni``.
         """
-        # Restrict tools to evaluation-only set for non-chat agents.
-        # Claude may gather data and schedule tasks, but cannot directly
-        # execute HA actions (send_notification, call_ha_service, etc.).
+        # Restrict to evaluation-only tools — Claude may read HA state and schedule
+        # tasks but cannot directly call action services (prevents prompt-injection attacks).
         eval_tools = list(EVALUATION_ONLY_TOOLS)
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]
@@ -618,14 +613,37 @@ class ClaudeRunner:
         _states = states if states else ["OK", "ATTENZIONE", "ANOMALIA"]
         states_str = "|".join(_states)
         motivazione = "1 riga sintetica" if response_mode == "minimal" else "1-2 righe sintetiche"
-        eval_instruction = (
-            "\n\n---\n"
-            "Analizza il contesto e concludi la risposta con:\n"
-            f"VALUTAZIONE: {states_str}\n"
-            f"Motivazione: [{motivazione}]"
-        )
-        action_block = _build_action_instructions(actions)
-        augmented_prompt = system_prompt + eval_instruction + ("\n\n" + action_block if action_block else "")
+
+        if action_mode == "automatic":
+            eval_instruction = (
+                "\n\n---\n"
+                "ISTRUZIONI DI RISPOSTA:\n"
+                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
+                f"VALUTAZIONE: {states_str}\n"
+                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
+                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]\n"
+                "AZIONI:\n"
+                "[una azione per riga — formato: comando entità [valore]]\n\n"
+                "Comandi disponibili:\n"
+                "  turn_on <entity_id>\n"
+                "  turn_off <entity_id>\n"
+                "  set_value <entity_id> <value>\n"
+                "  wait <minuti>\n"
+                "  notify <channel> <message>\n"
+                "  call_service <domain.service> <entity_id> [key=value ...]\n\n"
+                "Se non sono necessarie azioni ometti il blocco AZIONI: completamente."
+            )
+        else:  # configured
+            eval_instruction = (
+                "\n\n---\n"
+                "ISTRUZIONI DI RISPOSTA:\n"
+                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
+                f"VALUTAZIONE: {states_str}\n"
+                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
+                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]"
+            )
+
+        augmented_prompt = system_prompt + eval_instruction
 
         raw_result = await self.chat(
             user_message=user_message,
@@ -642,8 +660,8 @@ class ClaudeRunner:
             agent_id=agent_id,
             response_mode=response_mode,
         )
-        text, eval_status, action_taken = _parse_structured_response(raw_result)
-        return text, eval_status, action_taken
+        clean_text, structured = _parse_structured_output(raw_result)
+        return clean_text, structured
 
     async def _call_api(self, **kwargs) -> Any:
         for attempt in range(MAX_RETRIES + 1):
