@@ -53,14 +53,21 @@ HIRIS: "Done. Current draw: 2.4 kW — oven (1.8 kW), fridge (0.6 kW).
         Solar is producing 0W (it's night)."
 ```
 
-### Four types of autonomous agents
+### Two agent types, four trigger modes
 
-| Type | Trigger | What it does |
-|---|---|---|
-| **Chat** | You send a message | Natural language interface, full tool access |
-| **Monitor** | Every N minutes | Scans the house, detects anomalies, notifies only when needed |
-| **Reactive** | HA `state_changed` event | Reacts instantly to sensor changes |
-| **Preventive** | Fixed cron time | Prepares your day — briefings, energy reports, pre-heating |
+| Type | What it does |
+|---|---|
+| **Chat** | Natural language interface — responds to user messages, full tool access |
+| **Agent** | Autonomous loop — gathers context, reasons, acts or notifies based on a trigger |
+
+Agent-type trigger modes:
+
+| Trigger | Example use case |
+|---|---|
+| **Periodic** (every N min) | Energy anomaly monitor, security sweep |
+| **Reactive** (HA `state_changed`) | Door left open, presence detected |
+| **Cron** (fixed time) | Morning briefing at 7:00, pre-heat at 17:30 |
+| **Manual** (test only) | On-demand test run from the UI |
 
 ### Semantic Home Map
 
@@ -77,7 +84,7 @@ Supported backends: Anthropic Claude, OpenAI (GPT-4o, GPT-4.1, o-series), any Ol
 **When using Claude**, HIRIS selects models automatically by agent type:
 
 - **Chat agents** → Claude Sonnet (highest quality)
-- **Monitor / reactive / preventive** → Claude Haiku (cheaper for high-frequency tasks)
+- **Agent type** (periodic / reactive / cron) → Claude Haiku (cheaper for high-frequency tasks)
 - **Entity classification** → Local Ollama model (free, if configured)
 
 **When using Ollama**, the model is selected per-agent in the agent designer UI. The model dropdown is populated live from your Ollama instance and grouped by provider.
@@ -197,6 +204,7 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 | Phase 1 — Core platform (tools, agents, chat UI, MQTT, Lovelace card) | ✅ v0.6.x |
 | Sprint C — Memory & RAG (SQLite vector store, recall/save memory tools) | ✅ v0.6.x |
 | Sprint D — Multi-provider LLM (OpenAI, Ollama, strategy routing) | ✅ v0.6.3 |
+| Security hardening + agent model refactor (chat vs agent, ACL, CSP) | ✅ v0.7.0 |
 | Sprint E — Lovelace agent card + HACS packaging | 🔜 v0.8.x |
 | Phase 2 — Automation intelligence (proposal workflow, anomaly baseline) | 📋 v0.9.x |
 | Phase 3 — Canvas designer (n8n-style drag-and-drop) | 📋 v1.0 |

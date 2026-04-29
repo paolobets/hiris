@@ -1,6 +1,6 @@
 # HIRIS — Come funziona
 
-> Versione: 0.6.16 · Aggiornato: 2026-04-29
+> Versione: 0.7.0 · Aggiornato: 2026-04-29
 
 ---
 

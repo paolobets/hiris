@@ -1,5 +1,17 @@
 # HIRIS — Changelog
 
+## [0.7.0] — 2026-04-29
+
+### Changed
+- Refactored agent model to two types: **chat** (conversational NL) and **agent** (autonomous agentic loop with structured output)
+- Post-review fixes to two-agent-type migration (naming, validation, UI consistency)
+
+### Fixed
+- Entity ACL bypass: agents can no longer access entities outside their allowed areas
+- Prompt injection protection added to user-supplied fields
+- CSP headers hardened on all aiohttp responses
+- Dead code removed from agent runner and tool dispatcher
+
 ## [0.6.16] — 2026-04-29
 
 ### Added
