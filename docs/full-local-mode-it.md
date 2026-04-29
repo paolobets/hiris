@@ -1,6 +1,6 @@
 # HIRIS — Modalità Completamente Locale (Zero Cloud)
 
-> Versione: 0.6.15 · Aggiornato: 2026-04-29
+> Versione: 0.6.16 · Aggiornato: 2026-04-29
 
 Esegui HIRIS senza dipendenze cloud: tutta l'inferenza AI, gli embedding e i dati rimangono sulla tua rete locale.
 

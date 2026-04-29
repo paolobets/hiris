@@ -1,5 +1,17 @@
 # HIRIS — Changelog
 
+## [0.6.16] — 2026-04-29
+
+### Added
+- **Custom agent states** (`states` field): each non-chat agent can now declare its own VALUTAZIONE vocabulary instead of the fixed `OK|ATTENZIONE|ANOMALIA`; defaults unchanged for existing agents — fully backward compatible
+- **`response_mode` per agent** (`auto` / `compact` / `minimal`): controls verbosity of agent responses; `minimal` uses key:value output for chat and a single-line motivation for non-chat agents
+- **Irrigation agent template** ("Irrigazione Giardino"): preventive agent (`0 5 * * *`) that reads precipitation history + soil moisture + 48h forecast and schedules valve on/off via `create_task()`; uses `SKIP|LEGGERA|PIENA` states
+- **SemanticContextMap**: added `precipitation`, `soil_moisture`, `weather` entity types; added concepts `irrigazione`, `irrigare`, `sprinkler`, `pioggia`, `piovuto`, `precipitazione`, `umidità suolo`, `giardino`, `meteo`, `previsioni`
+- **Docs**: irrigation use case added to `docs/use-cases.md` and `docs/casi-duso.md`; tips sections updated to document custom states
+
+### Changed
+- **config.html**: trigger-on checkboxes are now dynamically generated from the agent's `states` field; "Modalità risposta" dropdown added; template selector now applies `type`, `cron`, `states`, `trigger_on` when a template is chosen; `f-states` blur listener rebuilds checkboxes preserving current selections
+
 ## [0.6.15] — 2026-04-29
 
 ### Changed

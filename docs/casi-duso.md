@@ -1,6 +1,6 @@
 # HIRIS — Casi d'uso ed esempi
 
-> Versione: 0.6.15 · Aggiornato: 2026-04-29
+> Versione: 0.6.16 · Aggiornato: 2026-04-29
 
 Questo documento contiene configurazioni reali di HIRIS con YAML completo degli agenti, conversazioni di esempio e setup step-by-step per ogni scenario.
 
@@ -280,13 +280,58 @@ HIRIS: "Camera ospiti aggiornata a 18°C. Gli altri tre rimangono a 21°C."
 
 ---
 
+## 9. Pianificatore irrigazione intelligente
+
+**Obiettivo:** Ogni mattina alle 5:00, decidere se irrigare e per quanto tempo — in base alle precipitazioni recenti, al meteo odierno e alle previsioni a 2 giorni. Programmare automaticamente accensione e spegnimento delle valvole.
+
+**Tipo agente:** Preventivo (cron `0 5 * * *`)
+
+**Stati personalizzati:** `SKIP | LEGGERA | PIENA`
+- `SKIP` — pioggia recente sufficiente o prevista; nessuna irrigazione
+- `LEGGERA` — condizioni borderline; ciclo breve (10–15 min per zona)
+- `PIENA` — terreno asciutto, nessuna pioggia prevista; ciclo completo (20–30 min per zona)
+
+**Perché stati personalizzati?** I risultati dell'irrigazione non si mappano su OK/ATTENZIONE/ANOMALIA. Stati specifici al dominio rendono la decisione leggibile e la logica di notifica precisa — le azioni scattano solo su `LEGGERA` o `PIENA`.
+
+**Configurazione:**
+```json
+{
+  "name": "Irrigazione Giardino",
+  "type": "preventive",
+  "trigger": { "type": "cron", "cron": "0 5 * * *" },
+  "states": ["SKIP", "LEGGERA", "PIENA"],
+  "trigger_on": ["LEGGERA", "PIENA"],
+  "strategic_context": "ZONE DI IRRIGAZIONE:\n- Prato nord: switch.irrigazione_prato_nord — terreno argilloso, sole pieno\n- Aiuole: switch.irrigazione_aiuole — terreno misto, mezza ombra\n- Orto: switch.irrigazione_orto — terreno sabbioso, richiede più acqua\n\nSENSOR METEO:\n- Pioggia ultimi 24h: sensor.pioggia_24h (mm)\n- Pioggia ultimi 48h: sensor.pioggia_48h (mm)\n- Umidità suolo prato: sensor.umidita_suolo_prato (%)\n\nSOGLIE PIOGGIA:\n- Passate 24h > 5mm → SKIP\n- Passate 48h > 10mm → SKIP o LEGGERA\n- Previsione oggi > 3mm → SKIP\n- Previsione domani > 5mm → preferisci LEGGERA invece di PIENA",
+  "system_prompt": "Valuta se e quanto irrigare oggi.\n1. Leggi le precipitazioni recenti: get_entity_states sui sensori pioggia.\n2. Leggi l'umidità del suolo se disponibile.\n3. Ottieni previsioni meteo 48h: get_weather_forecast(hours=48).\n4. Per ogni zona, decidi la durata in minuti (0 = salta).\n5. Se irrighi, usa create_task() per programmare call_ha_service per ogni zona:\n   - Accensione: ora attuale + 2 min di buffer\n   - Spegnimento: orario accensione + durata zona\n   - Esegui le zone in sequenza per non sovraccaricare la pompa.\nConcluidi con VALUTAZIONE: SKIP | LEGGERA | PIENA e una riga di motivazione.",
+  "allowed_tools": ["get_entity_states", "get_weather_forecast", "search_entities", "send_notification", "create_task"],
+  "allowed_services": ["switch.turn_on", "switch.turn_off"],
+  "actions": [
+    { "type": "notify", "message": "Irrigazione avviata: {{valutazione}}" }
+  ],
+  "model": "auto"
+}
+```
+
+**Come funziona:**
+1. Alle 05:00 l'agente si attiva e legge lo storico piogge + umidità suolo + previsioni 48h.
+2. Ragiona su ogni zona e decide le durate.
+3. Per ogni zona chiama `create_task()` due volte (valvola on, valvola off) — i task vengono accodati in HIRIS ed eseguiti agli orari programmati, anche dopo che l'agente ha terminato.
+4. L'agente conclude con `VALUTAZIONE: LEGGERA` (o `PIENA` o `SKIP`).
+5. Poiché `trigger_on` include `LEGGERA` e `PIENA`, la notifica configurata scatta; `SKIP` non produce notifiche.
+
+**Consiglio — descrivi le zone nel contesto strategico:** includi orientamento, tipo di terreno e note microclima. Il modello usa queste informazioni per calibrare le durate (terreno sabbioso = cicli più lunghi; zone in ombra = meno acqua).
+
+**Consiglio — nessun tool meteo storico per ora:** HIRIS non fornisce ancora un tool `get_weather_history`. Come workaround usa i sensori di precipitazione di HA (es. `sensor.pioggia_24h` dall'integrazione meteo). Un tool dedicato è previsto per la Fase 2.
+
+---
+
 ## Consigli per scrivere system prompt efficaci
 
 **Sii esplicito sulle condizioni:** invece di "notifica se qualcosa non va", scrivi "notifica se il consumo supera 3kW tra le 23:00 e le 07:00".
 
 **Dai contesto sulla tua casa:** includi gli entity ID, i valori di consumo tipici, gli orari della famiglia. Claude usa questo per calibrare il ragionamento.
 
-**Definisci il formato di output per i monitor:** termina sempre i prompt dei monitor con il formato richiesto `VALUTAZIONE: OK|ATTENZIONE|ANOMALIA` — è quello che gestisce l'action chaining.
+**Definisci il formato di output per gli agenti non-chat:** termina sempre i prompt con `VALUTAZIONE: <stati>` — è quello che gestisce l'action chaining. Gli stati predefiniti sono `OK|ATTENZIONE|ANOMALIA`, ma puoi definire stati personalizzati per ogni agente (es. `SKIP|LEGGERA|PIENA` per l'irrigazione). Configurali nel campo "Stati agente" e scegli quali valori attivano le azioni in "Valutazione che attiva le azioni".
 
 **Usa `require_confirmation` per azioni irreversibili:** qualsiasi agente che controlla riscaldamento, elettrodomestici o sicurezza dovrebbe averlo abilitato.
 

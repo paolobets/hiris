@@ -1,6 +1,6 @@
 # HIRIS — Use Cases & Examples
 
-> Version: 0.6.15 · Updated: 2026-04-29
+> Version: 0.6.16 · Updated: 2026-04-29
 
 This document contains real-world HIRIS configurations with full agent YAML, example conversations, and step-by-step setup for each scenario.
 
@@ -279,13 +279,58 @@ HIRIS: "Guest room thermostat updated to 18°C. The other three remain at 21°C.
 
 ---
 
+## 9. Smart Irrigation Scheduler
+
+**Goal:** Every morning at 5:00 AM, decide whether to irrigate and for how long — based on recent rainfall, today's weather, and the 2-day forecast. Schedule valve open/close actions automatically.
+
+**Agent type:** Preventive (cron `0 5 * * *`)
+
+**Custom states:** `SKIP | LEGGERA | PIENA`
+- `SKIP` — sufficient rain recently or forecast; no irrigation needed
+- `LEGGERA` — borderline conditions; short cycle (10–15 min per zone)
+- `PIENA` — dry conditions, no rain forecast; full cycle (20–30 min per zone)
+
+**Why custom states?** Irrigation outcomes don't map to OK/ATTENZIONE/ANOMALIA. Using domain-specific states makes the agent's decision readable and its notification logic precise — actions fire only on `LEGGERA` or `PIENA`.
+
+**Configuration:**
+```json
+{
+  "name": "Irrigazione Giardino",
+  "type": "preventive",
+  "trigger": { "type": "cron", "cron": "0 5 * * *" },
+  "states": ["SKIP", "LEGGERA", "PIENA"],
+  "trigger_on": ["LEGGERA", "PIENA"],
+  "strategic_context": "IRRIGATION ZONES:\n- Lawn (north): switch.irrigation_lawn_north — clay soil, full sun\n- Flower beds: switch.irrigation_flowerbeds — mixed soil, partial shade\n- Vegetable garden: switch.irrigation_vegetable — sandy soil, needs more water\n\nRAIN SENSORS:\n- Last 24h: sensor.rain_24h (mm)\n- Last 48h: sensor.rain_48h (mm)\n- Soil moisture lawn: sensor.soil_moisture_lawn (%)\n\nRAIN THRESHOLDS:\n- Past 24h > 5mm → SKIP\n- Past 48h > 10mm → SKIP or LEGGERA\n- Forecast today > 3mm → SKIP\n- Forecast tomorrow > 5mm → prefer LEGGERA over PIENA",
+  "system_prompt": "Evaluate whether and how much to irrigate today.\n1. Read recent precipitation: get_entity_states on rain sensors.\n2. Read soil moisture if available.\n3. Get 48h weather forecast: get_weather_forecast(hours=48).\n4. For each zone, decide duration in minutes (0 = skip).\n5. If irrigating, use create_task() to schedule call_ha_service for each zone:\n   - Turn on: current time + 2 min buffer\n   - Turn off: turn-on time + zone duration\n   - Run zones sequentially to avoid overloading the pump.\nConclude with VALUTAZIONE: SKIP | LEGGERA | PIENA and a one-line justification.",
+  "allowed_tools": ["get_entity_states", "get_weather_forecast", "search_entities", "send_notification", "create_task"],
+  "allowed_services": ["switch.turn_on", "switch.turn_off"],
+  "actions": [
+    { "type": "notify", "message": "Irrigazione avviata: {{valutazione}}" }
+  ],
+  "model": "auto"
+}
+```
+
+**How it works:**
+1. At 05:00 the agent wakes up and reads rainfall history + soil moisture + 48h forecast.
+2. It reasons about each zone and decides durations.
+3. For each zone it calls `create_task()` twice (valve on, valve off) — tasks are queued in HIRIS and executed at the scheduled times, even after the agent has finished.
+4. The agent concludes with `VALUTAZIONE: LEGGERA` (or `PIENA` or `SKIP`).
+5. Because `trigger_on` includes `LEGGERA` and `PIENA`, the configured notification fires; `SKIP` produces no notification.
+
+**Tip — describe your zones in strategic context:** include orientation, soil type, and micro-climate notes. The model uses this to weight durations correctly (sandy soil needs longer cycles; shaded areas need less water).
+
+**Tip — no historical weather tool yet:** HIRIS does not yet provide a `get_weather_history` tool. Use HA precipitation sensors (e.g. `sensor.rain_24h` from a weather integration) as a workaround. A dedicated tool is planned for Phase 2.
+
+---
+
 ## Tips for writing effective system prompts
 
 **Be explicit about conditions:** instead of "notify if something is wrong", write "notify if consumption exceeds 3kW between 23:00 and 07:00".
 
 **Give context about your home:** include entity IDs, typical consumption values, family schedule. Claude uses this to calibrate its reasoning.
 
-**Define the output format for monitors:** always end monitor prompts with the required `VALUTAZIONE: OK|ATTENZIONE|ANOMALIA` format — this is what drives action chaining.
+**Define the output format for non-chat agents:** always end prompts with `VALUTAZIONE: <states>` — this drives action chaining. The default states are `OK|ATTENZIONE|ANOMALIA`, but you can define custom states per agent (e.g. `SKIP|LEGGERA|PIENA` for irrigation). Configure them in the "Agent states" field and set which values trigger actions in "Trigger on".
 
 **Use `require_confirmation` for irreversible actions:** any agent that controls heating, appliances, or security should have this enabled.
 
