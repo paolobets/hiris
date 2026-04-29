@@ -7,6 +7,7 @@ from .base import LLMBackend
 logger = logging.getLogger(__name__)
 
 _BLOCKED_HOSTS = frozenset({"169.254.169.254", "100.100.100.200", "metadata.google.internal"})
+_DANGEROUS_PORTS = frozenset({22, 23, 25, 110, 143, 3306, 5432, 5672, 6379, 9200, 27017})
 
 
 def _validate_ollama_url(url: str) -> None:
@@ -17,6 +18,10 @@ def _validate_ollama_url(url: str) -> None:
     host = (parsed.hostname or "").lower()
     if host in _BLOCKED_HOSTS:
         raise ValueError(f"LOCAL_MODEL_URL points to a blocked host: {host!r}")
+    port = parsed.port
+    if port is not None and port in _DANGEROUS_PORTS:
+        logger.warning("LOCAL_MODEL_URL uses a dangerous port: %d", port)
+        raise ValueError(f"LOCAL_MODEL_URL uses a dangerous port: {port}")
 
 
 class OllamaBackend(LLMBackend):

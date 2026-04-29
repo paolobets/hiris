@@ -27,8 +27,6 @@ AUTO_MODEL_MAP: dict[str, str] = {
 }
 
 MAX_TOOL_ITERATIONS = 10
-MAX_RETRIES = 3
-RETRY_DELAYS = [5, 15, 45]
 
 
 def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:

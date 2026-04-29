@@ -189,6 +189,7 @@ async def http_request(
     headers: dict | None = None,
     body: str | None = None,
     allowed_endpoints: list[dict] | None = None,
+    agent_id: str = "unknown",
 ) -> dict[str, Any]:
     if allowed_endpoints is None:
         return {"error": "http_request not configured for this agent (set allowed_endpoints)"}
@@ -228,6 +229,7 @@ async def http_request(
         if k.lower() not in _BLOCKED_HEADERS
     }
 
+    logger.info("http_request agent=%s method=%s url=%s", agent_id, method, url)
     timeout = ClientTimeout(connect=_CONNECT_TIMEOUT, total=_TOTAL_TIMEOUT)
     resolver = _PinnedResolver(hostname, pinned_ip)
     connector = TCPConnector(resolver=resolver)

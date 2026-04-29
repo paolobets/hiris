@@ -1,4 +1,5 @@
 import asyncio
+import fnmatch
 import json
 import logging
 import os
@@ -31,6 +32,8 @@ class Task:
     result: Optional[str] = None
     error: Optional[str] = None
     parent_task_id: Optional[str] = None
+    allowed_entities: Optional[list] = None
+    allowed_services: Optional[list] = None
 
 
 class TaskEngine:
@@ -62,7 +65,14 @@ class TaskEngine:
 
     # ── Public API ─────────────────────────────────────────────────────────
 
-    def add_task(self, data: dict, agent_id: str, parent_task_id: Optional[str] = None) -> Task:
+    def add_task(
+        self,
+        data: dict,
+        agent_id: str,
+        parent_task_id: Optional[str] = None,
+        allowed_entities: Optional[list] = None,
+        allowed_services: Optional[list] = None,
+    ) -> Task:
         for key in ("label", "trigger", "actions"):
             if key not in data:
                 raise ValueError(f"Task data missing required field: {key!r}")
@@ -79,6 +89,8 @@ class TaskEngine:
             condition=data.get("condition"),
             one_shot=bool(data.get("one_shot", True)),
             parent_task_id=parent_task_id,
+            allowed_entities=allowed_entities,
+            allowed_services=allowed_services,
         )
         self._tasks[task.id] = task
         self._schedule_task(task)
@@ -114,9 +126,9 @@ class TaskEngine:
 
     # ── Persistence ────────────────────────────────────────────────────────
 
-    def _save(self) -> None:
+    def _do_save(self, snapshot: list) -> None:
         try:
-            data = {"schema_version": 1, "tasks": [asdict(t) for t in self._tasks.values()]}
+            data = {"schema_version": 1, "tasks": snapshot}
             tmp = self._data_path + ".tmp"
             os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
             with open(tmp, "w", encoding="utf-8") as f:
@@ -124,6 +136,14 @@ class TaskEngine:
             os.replace(tmp, self._data_path)
         except Exception as exc:
             logger.error("Failed to save tasks: %s", exc)
+
+    def _save(self) -> None:
+        snapshot = [asdict(t) for t in self._tasks.values()]
+        try:
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, self._do_save, snapshot)
+        except RuntimeError:
+            self._do_save(snapshot)
 
     def _load(self) -> None:
         if not os.path.exists(self._data_path):
@@ -146,6 +166,8 @@ class TaskEngine:
                     result=raw.get("result"),
                     error=raw.get("error"),
                     parent_task_id=raw.get("parent_task_id"),
+                    allowed_entities=raw.get("allowed_entities"),
+                    allowed_services=raw.get("allowed_services"),
                 )
                 self._tasks[task.id] = task
                 if task.status == "pending":
@@ -318,15 +340,38 @@ class TaskEngine:
     async def _run_action(self, action: dict, task: Task) -> Any:
         a_type = action.get("type")
         if a_type == "call_ha_service":
-            return await self._ha.call_service(
-                action["domain"], action["service"], action.get("data", {})
-            )
+            domain = action["domain"]
+            service = action["service"]
+            data = action.get("data", {})
+            if task.allowed_services is not None:
+                svc_key = f"{domain}.{service}"
+                if not any(fnmatch.fnmatch(svc_key, pat) for pat in task.allowed_services):
+                    logger.warning(
+                        "Task %s: service %s blocked by policy", task.label, svc_key
+                    )
+                    return f"skipped: {svc_key} not permitted by policy"
+            if task.allowed_entities is not None:
+                eid = data.get("entity_id") if isinstance(data, dict) else None
+                eids = [eid] if isinstance(eid, str) else (list(eid) if isinstance(eid, list) else [])
+                for e in eids:
+                    if not any(fnmatch.fnmatch(e, pat) for pat in task.allowed_entities):
+                        logger.warning(
+                            "Task %s: entity %s blocked by policy", task.label, e
+                        )
+                        return f"skipped: entity {e!r} not permitted by policy"
+            return await self._ha.call_service(domain, service, data)
         if a_type == "send_notification":
             return await send_notification(
                 self._ha, action["message"], action.get("channel", "ha_push"), self._notify_config
             )
         if a_type == "create_task":
-            child = self.add_task(action["task"], agent_id=task.agent_id, parent_task_id=task.id)
+            child = self.add_task(
+                action["task"],
+                agent_id=task.agent_id,
+                parent_task_id=task.id,
+                allowed_entities=task.allowed_entities,
+                allowed_services=task.allowed_services,
+            )
             return f"created child task {child.id}"
         raise ValueError(f"Unknown action type: {a_type!r}")
 

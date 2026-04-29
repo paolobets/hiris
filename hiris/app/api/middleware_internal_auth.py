@@ -26,6 +26,7 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     token = request.app.get("internal_token", "")
     if not token:
         if _allow_no_token():
+            logger.critical("SECURITY: HIRIS_ALLOW_NO_TOKEN=1 is set — authentication is DISABLED")
             return await handler(request)
         logger.warning(
             "Blocked unauthenticated non-ingress request from %s "

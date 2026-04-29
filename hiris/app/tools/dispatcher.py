@@ -105,12 +105,27 @@ class ToolDispatcher:
             if name == "call_ha_service":
                 domain = inputs["domain"]
                 service = inputs["service"]
+                data = inputs.get("data", {})
+                target = inputs.get("target", {}) or {}
                 if allowed_services:
                     service_key = f"{domain}.{service}"
                     if not any(fnmatch.fnmatch(service_key, pat) for pat in allowed_services):
                         logger.warning("Service %s.%s blocked by policy", domain, service)
                         return {"error": f"Service {domain}.{service} not permitted by policy"}
-                return await self._ha.call_service(domain, service, inputs.get("data", {}))
+                if allowed_entities:
+                    raw_eid = (
+                        data.get("entity_id") if isinstance(data, dict) else None
+                    ) or target.get("entity_id")
+                    eids = (
+                        [raw_eid] if isinstance(raw_eid, str)
+                        else list(raw_eid) if isinstance(raw_eid, list)
+                        else []
+                    )
+                    for eid in eids:
+                        if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
+                            logger.warning("Entity %s blocked by allowed_entities policy", eid)
+                            return {"error": f"Entity {eid!r} not permitted by policy"}
+                return await self._ha.call_service(domain, service, data)
             if name == "create_task":
                 if self._task_engine is None:
                     return {"error": "TaskEngine not available"}
@@ -129,6 +144,8 @@ class ToolDispatcher:
                     condition=inputs.get("condition"),
                     one_shot=inputs.get("one_shot", True),
                     agent_id=agent_id or "hiris-default",
+                    allowed_entities=allowed_entities,
+                    allowed_services=allowed_services,
                 )
             if name == "list_tasks":
                 if self._task_engine is None:
@@ -165,6 +182,10 @@ class ToolDispatcher:
                     ):
                         logger.warning("set_input_helper on %r blocked by allowed_services policy", ih_domain)
                         return {"error": f"Domain {ih_domain!r} not permitted by allowed_services policy"}
+                if allowed_entities and eid:
+                    if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
+                        logger.warning("set_input_helper on %r blocked by allowed_entities policy", eid)
+                        return {"error": f"Entity {eid!r} not permitted by policy"}
                 return await set_input_helper(self._ha, entity_id=eid, value=inputs.get("value"))
             if name == "create_calendar_event":
                 return await create_calendar_event(
