@@ -1,5 +1,10 @@
 # HIRIS — Changelog
 
+## [0.6.15] — 2026-04-29
+
+### Changed
+- **`config.yaml`**: sidebar icon changed from `mdi:robot` to `mdi:home-automation`
+
 ## [0.6.14] — 2026-04-29
 
 ### Added
