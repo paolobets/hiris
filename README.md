@@ -72,14 +72,17 @@ HIRIS automatically builds a semantic model of your home by classifying every en
 
 ### Multi-provider LLM
 
-HIRIS routes to the right model for each task:
+Supported backends: Anthropic Claude, OpenAI (GPT-4o, GPT-4.1, o-series), any Ollama-compatible local model.
+
+**When using Claude**, HIRIS selects models automatically by agent type:
 
 - **Chat agents** → Claude Sonnet (highest quality)
 - **Monitor / reactive / preventive** → Claude Haiku (cheaper for high-frequency tasks)
 - **Entity classification** → Local Ollama model (free, if configured)
-- **Fallback chain** → if the primary backend fails, the next one is tried automatically
 
-Supported backends: Anthropic Claude, OpenAI (GPT-4o, GPT-4.1, o-series), any Ollama-compatible local model.
+**When using Ollama**, the model is selected per-agent in the agent designer UI. The model dropdown is populated live from your Ollama instance and grouped by provider.
+
+**Fallback chain:** when `model="auto"`, if the primary backend is unavailable the next one in the strategy chain is tried automatically (`balanced`: Claude → OpenAI → Ollama; `cost_first`: Ollama → OpenAI → Claude).
 
 ### Memory & RAG
 
@@ -134,16 +137,16 @@ A **chat agent** restricted to lighting and climate only, with `restrict_to_home
 
 | Option | Description |
 |---|---|
-| `claude_api_key` | Anthropic API key — required for AI features |
+| `claude_api_key` | Anthropic API key — required for Claude models |
 | `openai_api_key` | OpenAI API key — optional, enables GPT models |
-| `local_model_url` | Ollama base URL for local inference (e.g. `http://192.168.1.10:11434`) |
-| `local_model_name` | Ollama model name (e.g. `llama3`) |
+| `local_model.url` | Ollama base URL for local inference (e.g. `http://192.168.1.10:11434`) |
+| `local_model.model` | Ollama model name (e.g. `qwen2.5:27b`) |
 | `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first` |
-| `mqtt_host` | MQTT broker for native HA entity publishing (optional) |
+| `mqtt.host` | MQTT broker for native HA entity publishing (optional) |
 | `apprise_urls` | Notification URLs — one per channel (optional) |
 | `internal_token` | Shared secret for inter-addon calls (optional) |
 
-> If `claude_api_key` is empty, HIRIS runs in **local-only mode**: the UI and flow engine work, but AI calls are disabled.
+> If `local_model.url` and `local_model.model` are set, HIRIS runs fully offline using Ollama as the AI backend — the full agentic loop, tool use, and all agent types remain available. No API key is required. If neither a cloud key nor a local model is configured, AI calls are disabled.
 
 ---
 
@@ -206,6 +209,9 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 |---|---|
 | [Configuration guide — Apprise & Memory/RAG](docs/configuration-guide.md) | 🇬🇧 English |
 | [Guida alla configurazione — Apprise & Memoria/RAG](docs/guida-configurazione.md) | 🇮🇹 Italiano |
+| [Full local mode — zero cloud dependencies](docs/full-local-mode.md) | 🇬🇧 English |
+| [Modalità completamente locale — zero cloud](docs/full-local-mode-it.md) | 🇮🇹 Italiano |
+| [MQTT integration — HA entities & automations](docs/mqtt-integration.md) | 🇬🇧 English |
 | [How it works — architecture & internals](docs/how-it-works.md) | 🇬🇧 English |
 | [Come funziona — architettura e internals](docs/come-funziona.md) | 🇮🇹 Italiano |
 | [Technical architecture](docs/architecture.md) | 🇬🇧 English |

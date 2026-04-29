@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## [0.6.13] — 2026-04-29
+
+### Added
+- **`docs/full-local-mode.md`** / **`docs/full-local-mode-it.md`**: new guide for running HIRIS with zero cloud dependencies — Ollama model recommendations (Qwen2.5:27b, Mistral Small 3.1), full configuration example, performance comparison vs Claude, known limitations
+- **`docs/mqtt-integration.md`**: new guide for MQTT auto-discovery — all published entities (`status`, `budget_remaining_eur`, `tokens_used_today`, `enabled`, `last_result`, `run_now`), control via MQTT topics, dashboard example, budget-warning automation example
+
+### Fixed
+- **README.md**: configuration table now uses correct nested key names (`local_model.url`, `local_model.model`, `mqtt.host`) — flat underscore names were stale since v0.6.6
+- **README.md**: local-only mode note corrected — when `local_model.url` + `local_model.model` are set, HIRIS runs fully offline with Ollama (full agentic loop, all agent types); the old note said AI calls were always disabled when `claude_api_key` was empty
+- **README.md**: Multi-provider LLM section clarified — automatic model selection (Sonnet for chat, Haiku for monitors) applies only when Claude is the provider; Ollama model is configured per-agent in the designer UI
+
 ## [0.6.12] — 2026-04-29
 
 ### Added

@@ -47,6 +47,9 @@ _VERSIONED_DOCS = [
     ROOT / "docs" / "ROADMAP.md",
     ROOT / "docs" / "configuration-guide.md",
     ROOT / "docs" / "guida-configurazione.md",
+    ROOT / "docs" / "full-local-mode.md",
+    ROOT / "docs" / "full-local-mode-it.md",
+    ROOT / "docs" / "mqtt-integration.md",
 ]
 
 _GREEN = "\033[32m"
@@ -185,6 +188,7 @@ def check_git_clean() -> None:
         "hiris/app/static/index.html",
         "CHANGELOG.md",
         "README.md",
+        "scripts/release.py",
         *[f"docs/{d.name}" for d in _VERSIONED_DOCS],
     }
 
@@ -228,7 +232,7 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
     # "HEAD:master" is a refspec that fast-forwards remote master to the
     # current commit without requiring a local checkout of master.
     doc_paths = [f"docs/{d.name}" for d in _VERSIONED_DOCS if (ROOT / "docs" / d.name).exists()]
-    extra = [p for p in ["hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "hiris/app/backends/embeddings.py", "hiris/app/static/index.html", "README.md"] if (ROOT / p).exists()]
+    extra = [p for p in ["hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "hiris/app/backends/embeddings.py", "hiris/app/static/index.html", "README.md", "scripts/release.py"] if (ROOT / p).exists()]
     cmds = [
         ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *doc_paths, *extra],
         ["git", "commit", "-m", f"chore: release v{version}"],
