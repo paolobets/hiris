@@ -1202,9 +1202,6 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('configured-actions-section').style.display = mode === 'configured' ? '' : 'none';
     }
 
-    // Legacy alias — keeps calls from openAgent/new-btn working during transition
-    function showTriggerFields(type) { showAgentMode(type); }
-
     function _defaultStates() {
       var raw = (document.getElementById('f-states').value || '');
       var parts = raw.split(',').map(function(s) { return s.trim().toUpperCase(); }).filter(function(s) { return s.length > 0; });

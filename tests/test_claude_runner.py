@@ -269,16 +269,12 @@ def test_resolve_model_auto_chat_returns_sonnet():
     assert resolve_model("auto", "chat") == "claude-sonnet-4-6"
 
 
-def test_resolve_model_auto_monitor_returns_haiku():
-    assert resolve_model("auto", "monitor") == "claude-haiku-4-5-20251001"
-
-
-def test_resolve_model_auto_reactive_returns_haiku():
-    assert resolve_model("auto", "reactive") == "claude-haiku-4-5-20251001"
+def test_resolve_model_auto_agent_returns_haiku():
+    assert resolve_model("auto", "agent") == "claude-haiku-4-5-20251001"
 
 
 def test_resolve_model_explicit_overrides_auto():
-    assert resolve_model("claude-sonnet-4-6", "monitor") == "claude-sonnet-4-6"
+    assert resolve_model("claude-sonnet-4-6", "agent") == "claude-sonnet-4-6"
 
 
 def test_resolve_model_auto_unknown_type_defaults_to_sonnet():
@@ -286,14 +282,14 @@ def test_resolve_model_auto_unknown_type_defaults_to_sonnet():
 
 
 @pytest.mark.asyncio
-async def test_chat_uses_resolved_model_for_monitor(runner):
+async def test_chat_uses_resolved_model_for_agent(runner):
     success = MagicMock()
     success.stop_reason = "end_turn"
     success.content = [MagicMock(type="text", text="ok")]
     success.usage.input_tokens = 10
     success.usage.output_tokens = 5
     runner._client.messages.create = AsyncMock(return_value=success)
-    await runner.chat("Test", model="auto", agent_type="monitor")
+    await runner.chat("Test", model="auto", agent_type="agent")
     call_kwargs = runner._client.messages.create.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
 

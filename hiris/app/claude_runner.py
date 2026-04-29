@@ -138,10 +138,6 @@ RETRY_DELAYS = [5, 15, 45]
 AUTO_MODEL_MAP: dict[str, str] = {
     "chat": "claude-sonnet-4-6",
     "agent": "claude-haiku-4-5-20251001",
-    # legacy type names kept for migration compatibility
-    "monitor": "claude-haiku-4-5-20251001",
-    "reactive": "claude-haiku-4-5-20251001",
-    "preventive": "claude-haiku-4-5-20251001",
 }
 
 from .backends.pricing import PRICING as _PRICING
@@ -209,11 +205,14 @@ def _parse_structured_output(text: str) -> tuple[str, dict]:
                 azioni_lines.append(cmd)
         structured["azioni"] = azioni_lines
 
-    # Pass 2: scan bottom-up for VALUTAZIONE / NOTIFICA / PARAM
+    # Pass 2: scan the last 40 lines (before AZIONI marker) for VALUTAZIONE / NOTIFICA / PARAM.
+    # We bound the window instead of using else:break so that a single stray LLM line
+    # between markers does not silently swallow all structured output.
     scan_end = azioni_marker_idx if azioni_marker_idx is not None else len(lines)
+    scan_start = max(0, scan_end - 40)
     cut = scan_end
 
-    for i in range(scan_end - 1, -1, -1):
+    for i in range(scan_end - 1, scan_start - 1, -1):
         stripped = lines[i].strip()
         if stripped.startswith("VALUTAZIONE:"):
             structured["valutazione"] = stripped[len("VALUTAZIONE:"):].strip()
@@ -231,8 +230,6 @@ def _parse_structured_output(text: str) -> tuple[str, dict]:
             cut = i
         elif not stripped:
             cut = i  # blank lines in trailing block are consumable
-        else:
-            break  # real content reached — stop
 
     clean_text = "\n".join(lines[:cut]).rstrip()
     return clean_text, structured

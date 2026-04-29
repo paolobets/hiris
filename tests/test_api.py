@@ -84,8 +84,8 @@ async def test_chat_endpoint(client):
 async def test_agents_crud(client):
     payload = {
         "name": "Test Monitor",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "type": "agent",
+        "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "Monitor test",
         "allowed_tools": ["get_entity_states"],
         "enabled": False,
@@ -149,8 +149,8 @@ async def test_agent_update(client):
     # Create
     payload = {
         "name": "Update Test",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "type": "agent",
+        "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "original",
         "allowed_tools": [],
         "enabled": False,
@@ -169,8 +169,8 @@ async def test_agent_update(client):
 async def test_agent_run(client):
     payload = {
         "name": "Run Test",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "type": "agent",
+        "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "run test",
         "allowed_tools": [],
         "enabled": False,
@@ -190,7 +190,7 @@ async def test_delete_default_agent_returns_409(client):
     engine = client.app["engine"]
     engine._agents[DEFAULT_AGENT_ID] = Agent(
         id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
-        trigger={"type": "manual"}, system_prompt="",
+        triggers=[], system_prompt="",
         allowed_tools=[], enabled=True, is_default=True,
     )
     resp = await client.delete(f"/api/agents/{DEFAULT_AGENT_ID}")
@@ -205,7 +205,7 @@ async def test_chat_with_agent_id_uses_agent_system_prompt(client):
     engine = client.app["engine"]
     engine._agents["agent-chat-001"] = Agent(
         id="agent-chat-001", name="Energia", type="chat",
-        trigger={"type": "manual"},
+        triggers=[],
         system_prompt="Sei un esperto di energia.",
         allowed_tools=[], enabled=True, is_default=False,
         strategic_context="Contesto: casa a Milano.",
@@ -231,7 +231,7 @@ async def test_chat_without_agent_id_uses_default_agent(client):
     engine = client.app["engine"]
     engine._agents[DEFAULT_AGENT_ID] = Agent(
         id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
-        trigger={"type": "manual"},
+        triggers=[],
         system_prompt="Prompt default HIRIS.",
         allowed_tools=[], enabled=True, is_default=True,
     )
@@ -250,7 +250,7 @@ async def test_chat_with_unknown_agent_id_fallback_to_default(client):
     engine = client.app["engine"]
     engine._agents[DEFAULT_AGENT_ID] = Agent(
         id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
-        trigger={"type": "manual"},
+        triggers=[],
         system_prompt="Fallback prompt.",
         allowed_tools=[], enabled=True, is_default=True,
     )
@@ -280,8 +280,8 @@ async def test_chat_passes_model_to_runner(client):
     from hiris.app.agent_engine import Agent
     engine = client.app["engine"]
     engine._agents["agent-haiku-001"] = Agent(
-        id="agent-haiku-001", name="Haiku Agent", type="monitor",
-        trigger={"type": "manual"}, system_prompt="Monitor test",
+        id="agent-haiku-001", name="Haiku Agent", type="chat",
+        triggers=[], system_prompt="Chat test",
         allowed_tools=[], enabled=True, is_default=False,
         model="claude-haiku-4-5-20251001", max_tokens=1024, restrict_to_home=False,
     )
@@ -293,7 +293,7 @@ async def test_chat_passes_model_to_runner(client):
     call_kwargs = runner.chat.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
     assert call_kwargs["max_tokens"] == 1024
-    assert call_kwargs["agent_type"] == "monitor"
+    assert call_kwargs["agent_type"] == "chat"
 
 
 @pytest.mark.asyncio
@@ -304,7 +304,7 @@ async def test_chat_max_turns_blocks_when_limit_reached(client):
     data_dir = client.app["data_dir"]
     engine._agents["agent-limited"] = Agent(
         id="agent-limited", name="Limited", type="chat",
-        trigger={"type": "manual"},
+        triggers=[],
         system_prompt="test",
         allowed_tools=[], enabled=True, is_default=False,
         max_chat_turns=2,
@@ -336,7 +336,7 @@ async def test_chat_persists_exchange_in_history(client):
     data_dir = client.app["data_dir"]
     engine._agents[DEFAULT_AGENT_ID] = Agent(
         id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
-        trigger={"type": "manual"},
+        triggers=[],
         system_prompt="test",
         allowed_tools=[], enabled=True, is_default=True,
     )
@@ -358,7 +358,7 @@ async def test_chat_context_map_injects_area_context(client):
     engine = client.app["engine"]
     engine._agents[DEFAULT_AGENT_ID] = Agent(
         id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
-        trigger={"type": "manual"}, system_prompt="base prompt",
+        triggers=[], system_prompt="base prompt",
         allowed_tools=[], enabled=True, is_default=True,
     )
 
@@ -392,7 +392,7 @@ async def test_create_task_tool_via_chat(client):
     engine = client.app["engine"]
     engine._agents[DEFAULT_AGENT_ID] = Agent(
         id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
-        trigger={"type": "manual"}, system_prompt="test",
+        triggers=[], system_prompt="test",
         allowed_tools=["create_task"], enabled=True, is_default=True,
     )
 

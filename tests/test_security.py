@@ -246,8 +246,8 @@ def test_cron_job_uses_coalesce():
     agent = Agent(
         id="test",
         name="T",
-        type="preventive",
-        trigger={"type": "preventive", "cron": "0 8"},
+        type="agent",
+        triggers=[{"type": "cron", "cron": "0 8 * * *"}],
         system_prompt="",
         allowed_tools=[],
         enabled=True,

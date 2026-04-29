@@ -252,11 +252,15 @@ class AgentEngine:
     def get_default_agent(self) -> Optional[Agent]:
         return self._agents.get(DEFAULT_AGENT_ID)
 
+    _LEGACY_TYPE_MAP = {"monitor": "agent", "reactive": "agent", "preventive": "agent"}
+
     def create_agent(self, data: dict) -> Agent:
+        raw_type = data["type"]
+        normalized_type = self._LEGACY_TYPE_MAP.get(raw_type, raw_type)
         agent = Agent(
             id=str(uuid.uuid4()),
             name=data["name"],
-            type=data["type"],
+            type=normalized_type,
             triggers=data.get("triggers", []),
             system_prompt=data.get("system_prompt", ""),
             allowed_tools=data.get("allowed_tools", []),
@@ -661,6 +665,11 @@ class AgentEngine:
         # Parse raw command lines into action dicts; cap to 20 to prevent runaway
         azioni = self._parse_azioni_lines(azioni_lines[:20])
         if not azioni:
+            if azioni_lines:
+                logger.warning(
+                    "Agent %s: AZIONI block had %d line(s) but none were parseable: %s",
+                    agent.id, len(azioni_lines), azioni_lines[:5],
+                )
             return ""
         return await self._execute_action_chain(agent, azioni, params, notifica)
 

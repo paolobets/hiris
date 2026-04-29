@@ -22,12 +22,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 AUTO_MODEL_MAP: dict[str, str] = {
-    "chat":        "gpt-4o",
-    "agent":       "gpt-4o-mini",
-    # legacy type names kept for migration compatibility
-    "monitor":     "gpt-4o-mini",
-    "reactive":    "gpt-4o-mini",
-    "preventive":  "gpt-4o-mini",
+    "chat":  "gpt-4o",
+    "agent": "gpt-4o-mini",
 }
 
 MAX_TOOL_ITERATIONS = 10

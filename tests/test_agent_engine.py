@@ -148,12 +148,12 @@ def test_list_agents_includes_new_fields(engine):
 @pytest.mark.asyncio
 async def test_run_agent_injects_strategic_context(engine):
     mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
     engine.set_claude_runner(mock_runner)
     agent = engine.create_agent({
         "name": "Climate Agent",
-        "type": "preventive",
-        "trigger": {"type": "preventive", "cron": "0 6 * * *"},
+        "type": "agent",
+        "triggers": [{"type": "cron", "cron": "0 6 * * *"}],
         "system_prompt": "Analizza il clima.",
         "allowed_tools": [],
         "enabled": False,
@@ -162,7 +162,7 @@ async def test_run_agent_injects_strategic_context(engine):
         "allowed_services": [],
     })
     await engine.run_agent(agent)
-    call_kwargs = mock_runner.chat.call_args
+    call_kwargs = mock_runner.run_with_actions.call_args
     system_prompt_used = call_kwargs.kwargs.get("system_prompt", "")
     assert "---" in system_prompt_used
     assert "Famiglia: 2 adulti." in system_prompt_used
@@ -173,18 +173,18 @@ async def test_run_agent_injects_strategic_context(engine):
 @pytest.mark.asyncio
 async def test_run_agent_no_strategic_context_plain_prompt(engine):
     mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
     engine.set_claude_runner(mock_runner)
     agent = engine.create_agent({
         "name": "Simple Agent",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "type": "agent",
+        "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "Semplice monitor.",
         "allowed_tools": [],
         "enabled": False,
     })
     await engine.run_agent(agent)
-    call_kwargs = mock_runner.chat.call_args
+    call_kwargs = mock_runner.run_with_actions.call_args
     system_prompt_used = call_kwargs.kwargs.get("system_prompt", "")
     assert "---" not in system_prompt_used
     assert system_prompt_used == "Semplice monitor."
@@ -364,24 +364,24 @@ def test_agent_update_model_and_max_tokens(engine):
 @pytest.mark.asyncio
 async def test_run_agent_passes_per_agent_config_to_runner(engine):
     mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="result")
+    mock_runner.run_with_actions = AsyncMock(return_value=("result", {}))
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
     engine.set_claude_runner(mock_runner)
 
     agent = engine.create_agent({
-        "name": "Config Test", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "name": "Config Test", "type": "agent",
+        "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "Test prompt", "allowed_tools": [], "enabled": False,
         "model": "claude-haiku-4-5-20251001", "max_tokens": 512, "restrict_to_home": True,
     })
     await engine._run_agent(agent)
 
-    call_kwargs = mock_runner.chat.call_args.kwargs
+    call_kwargs = mock_runner.run_with_actions.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
     assert call_kwargs["max_tokens"] == 512
-    assert call_kwargs["agent_type"] == "monitor"
+    assert call_kwargs["agent_type"] == "agent"
     assert call_kwargs["restrict_to_home"] is True
 
 
@@ -394,9 +394,10 @@ async def test_run_agent_passes_require_confirmation_to_runner(engine):
     mock_runner.total_output_tokens = 0
     engine.set_claude_runner(mock_runner)
 
+    # require_confirmation is a chat-agent feature; use type="chat" to hit that branch
     agent = engine.create_agent({
-        "name": "Conf Agent", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "name": "Conf Agent", "type": "chat",
+        "triggers": [],
         "system_prompt": "do stuff", "allowed_tools": [], "enabled": False,
         "require_confirmation": True,
     })
@@ -444,15 +445,15 @@ async def test_run_agent_appends_execution_log_record(engine):
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
 
-    async def chat_side_effect(**kwargs):
+    async def run_side_effect(**kwargs):
         mock_runner.total_input_tokens += 120
         mock_runner.total_output_tokens += 30
-        return "Tutto ok, niente da fare."
-    mock_runner.chat = AsyncMock(side_effect=chat_side_effect)
+        return ("Tutto ok, niente da fare.", {})
+    mock_runner.run_with_actions = AsyncMock(side_effect=run_side_effect)
     engine.set_claude_runner(mock_runner)
 
     agent = engine.create_agent({
-        "name": "Log Agent", "type": "monitor",
+        "name": "Log Agent", "type": "agent",
         "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "", "allowed_tools": [], "enabled": False,
     })
@@ -475,12 +476,12 @@ async def test_run_agent_execution_log_caps_at_20(engine):
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
-    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
     engine.set_claude_runner(mock_runner)
 
     agent = engine.create_agent({
-        "name": "Cap Agent", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "name": "Cap Agent", "type": "agent",
+        "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "", "allowed_tools": [], "enabled": False,
     })
     for _ in range(25):
@@ -494,12 +495,12 @@ async def test_run_agent_execution_log_marks_error(engine):
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
-    mock_runner.chat = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_runner.run_with_actions = AsyncMock(side_effect=RuntimeError("boom"))
     engine.set_claude_runner(mock_runner)
 
     agent = engine.create_agent({
-        "name": "Err Agent", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "name": "Err Agent", "type": "agent",
+        "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "", "allowed_tools": [], "enabled": False,
     })
     await engine.run_agent(agent)
@@ -806,13 +807,13 @@ async def test_agent_auto_disabled_when_budget_exceeded(tmp_path):
     await engine.start()
 
     agent = engine.create_agent({
-        "name": "Budget Test", "type": "monitor",
-        "trigger": {"type": "manual"},
+        "name": "Budget Test", "type": "agent",
+        "triggers": [{"type": "manual"}],
         "budget_eur_limit": 0.001,  # €0.001 — very low, will be exceeded
     })
 
     mock_runner = MagicMock()
-    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
@@ -847,13 +848,13 @@ async def test_agent_not_disabled_when_budget_not_exceeded(tmp_path):
     await engine.start()
 
     agent = engine.create_agent({
-        "name": "No Budget Test", "type": "monitor",
-        "trigger": {"type": "manual"},
+        "name": "No Budget Test", "type": "agent",
+        "triggers": [{"type": "manual"}],
         "budget_eur_limit": 10.0,  # high limit — will not be exceeded
     })
 
     mock_runner = MagicMock()
-    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0

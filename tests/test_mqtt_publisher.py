@@ -6,7 +6,7 @@ from hiris.app.agent_engine import Agent
 def _make_agent(**kwargs):
     defaults = dict(
         id="test-001", name="Test Agent", type="chat",
-        trigger={"type": "manual"}, system_prompt="",
+        triggers=[], system_prompt="",
         allowed_tools=[], enabled=True, last_run=None,
         budget_eur_limit=5.0,
     )
