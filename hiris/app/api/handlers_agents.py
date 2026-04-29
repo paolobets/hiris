@@ -5,8 +5,8 @@ from aiohttp import web
 from ..config import EUR_RATE as _EUR_RATE
 
 _AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-_VALID_AGENT_TYPES = frozenset({"chat", "agent", "monitor", "reactive", "preventive"})
-_VALID_TRIGGER_TYPES = frozenset({"schedule", "state_changed", "manual", "cron", "preventive"})
+_VALID_AGENT_TYPES = frozenset({"chat", "agent"})
+_VALID_TRIGGER_TYPES = frozenset({"schedule", "state_changed", "manual", "cron"})
 _VALID_ACTION_MODES = frozenset({"automatic", "configured"})
 
 
@@ -91,6 +91,17 @@ def _validate_agent_payload(body: dict) -> str | None:
             return "states must be a non-empty list of strings"
         if not all(isinstance(s, str) and s.strip() for s in states):
             return "states must be a list of non-empty strings"
+
+    allowed_endpoints = body.get("allowed_endpoints")
+    if allowed_endpoints is not None:
+        if not isinstance(allowed_endpoints, list):
+            return "allowed_endpoints must be a list"
+        for i, ep in enumerate(allowed_endpoints):
+            if not isinstance(ep, dict):
+                return f"allowed_endpoints[{i}] must be an object"
+            url = ep.get("url")
+            if not isinstance(url, str) or not url.startswith("http"):
+                return f"allowed_endpoints[{i}].url must be a string starting with 'http'"
 
     return None
 

@@ -86,11 +86,15 @@ def create_task_tool(
     condition: dict | None = None,
     one_shot: bool = True,
     agent_id: str = "hiris-default",
+    allowed_entities: list | None = None,
+    allowed_services: list | None = None,
 ) -> dict:
     task = task_engine.add_task(
         {"label": label, "trigger": trigger, "actions": actions,
          "condition": condition, "one_shot": one_shot},
         agent_id=agent_id,
+        allowed_entities=allowed_entities,
+        allowed_services=allowed_services,
     )
     return {"task_id": task.id, "label": task.label, "status": task.status}
 

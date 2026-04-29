@@ -480,6 +480,12 @@ async def _security_headers(request: web.Request, handler) -> web.Response:
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     # X-Frame-Options omesso: HA Ingress carica l'UI in un iframe
     response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+    )
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     return response
 
 

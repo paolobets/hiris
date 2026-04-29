@@ -2,12 +2,15 @@ import glob as _glob
 import json
 import logging
 import os
+import re
 import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
+
+_AGENT_ID_RE = re.compile(r'^[\w\-]{1,64}$')
 
 # 0 = unlimited; overridable at startup via configure()
 HISTORY_RETENTION_DAYS: int = int(os.environ.get("HISTORY_RETENTION_DAYS", "90"))
@@ -225,6 +228,9 @@ class ChatStore:
                 agent_id = data.get("agent_id") or (
                     os.path.basename(path)[len("chat_history_"):-len(".json")]
                 )
+                if not _AGENT_ID_RE.match(agent_id):
+                    logger.warning("migrate_from_json: skipping %s — invalid agent_id %r", path, agent_id)
+                    continue
                 messages = data.get("messages", [])
                 if not messages:
                     continue
@@ -243,10 +249,18 @@ class ChatStore:
                         (session_id, agent_id, ts_start, ts_end),
                     )
                     for m in messages:
+                        role = m.get("role")
+                        if role not in {"user", "assistant", "system"}:
+                            logger.warning("migrate_from_json: skipping message with invalid role %r", role)
+                            continue
+                        content = m.get("content", "")
+                        if len(content) > 32768:
+                            logger.warning("migrate_from_json: truncating message content from %d chars", len(content))
+                            content = content[:32768]
                         self._conn.execute(
                             "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) "
                             "VALUES(?,?,?,?,?)",
-                            (agent_id, session_id, m["role"], m["content"], m.get("timestamp", ts_end)),
+                            (agent_id, session_id, role, content, m.get("timestamp", ts_end)),
                         )
                     last_asst = next((m for m in reversed(messages) if m["role"] == "assistant"), None)
                     text = last_asst["content"] if last_asst else "(migrated)"

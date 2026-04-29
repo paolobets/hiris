@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -13,6 +14,18 @@ from .proxy.ha_client import HAClient
 from .config import EUR_RATE
 
 logger = logging.getLogger(__name__)
+
+_INJECTION_RE = re.compile(
+    r'(ignore|forget|disregard|system:|assistant:|<\|im_|SYSTEM\s*PROMPT)',
+    re.IGNORECASE,
+)
+
+
+def _sanitize_ha_value(v: str) -> str:
+    v = v.strip()
+    v = _INJECTION_RE.sub("[FILTERED]", v)
+    return v[:120]
+
 
 DEFAULT_AGENTS_DATA_PATH = "/data/agents.json"
 DEFAULT_AGENT_ID = "hiris-default"
@@ -98,6 +111,8 @@ def _migrate_agent_raw(raw: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 class AgentEngine:
+    _MQTT_RUN_COOLDOWN = 30
+
     def __init__(self, ha_client: HAClient, data_path: str = DEFAULT_AGENTS_DATA_PATH) -> None:
         self._agents: dict[str, Agent] = {}
         self._scheduler = AsyncIOScheduler()
@@ -110,6 +125,7 @@ class AgentEngine:
         self._mqtt_publisher = None
         self._pending_mqtt_runs: set[str] = set()
         self._task_engine: Any = None
+        self._mqtt_last_run: dict[str, float] = {}
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
@@ -133,9 +149,12 @@ class AgentEngine:
             if agent.enabled != new_enabled:
                 self.update_agent(agent_id, {"enabled": new_enabled})
         elif command == "run_now" and payload.upper() == "PRESS":
-            if agent_id in self._running_agents:
+            if time.time() - self._mqtt_last_run.get(agent_id, 0) < self._MQTT_RUN_COOLDOWN:
+                logger.warning("MQTT run_now cooldown active for agent %s, ignoring", agent_id)
+            elif agent_id in self._running_agents:
                 self._pending_mqtt_runs.add(agent_id)
             else:
+                self._mqtt_last_run[agent_id] = time.time()
                 asyncio.create_task(self._run_agent(agent), name=f"mqtt_run_{agent_id}")
 
     async def start(self) -> None:
@@ -440,11 +459,16 @@ class AgentEngine:
             relevant = all_entities
         if not relevant:
             return ""
-        lines = ["[CONTESTO ENTITÀ]"]
+        lines = [
+            "[INIZIO DATI NON AFFIDABILI — fonte: Home Assistant]",
+            "[CONTESTO ENTITÀ]",
+        ]
         for e in relevant[:50]:
-            name = e.get("name") or e["id"]
+            name = _sanitize_ha_value(e.get("name") or e["id"])
+            state = _sanitize_ha_value(str(e.get("state", "")))
             unit = f" {e['unit']}" if e.get("unit") else ""
-            lines.append(f"- {name}: {e['state']}{unit}")
+            lines.append(f"- {name}: {state}{unit}")
+        lines.append("[FINE DATI NON AFFIDABILI]")
         return "\n".join(lines)
 
     def _check_budget_auto_disable(self, agent: "Agent") -> None:
