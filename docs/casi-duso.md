@@ -10,28 +10,19 @@ Questo documento contiene configurazioni reali di HIRIS con YAML completo degli 
 
 **Obiettivo:** Ogni mattina alle 7:00 ricevere un riepilogo dei consumi di ieri, il meteo di oggi e le eventuali anomalie della notte.
 
-**Tipo agente:** Preventive (cron schedulato)
+**Tipo agente:** Agent (cron schedulato)
 
 **Configurazione:**
 ```json
 {
   "name": "Briefing Mattutino",
-  "type": "preventive",
-  "trigger": {
-    "type": "preventive",
-    "cron": "0 7 * * *"
-  },
+  "type": "agent",
+  "triggers": [{"type": "cron", "cron": "0 7 * * *"}],
+  "action_mode": "automatic",
   "system_prompt": "Sei un agente di briefing quotidiano. Ogni mattina recupera i dati energetici di ieri, le previsioni meteo per le prossime 12 ore e qualsiasi evento insolito della notte (porte lasciate aperte, consumi anomali). Scrivi un briefing conciso in 3-4 righe, adatto a una notifica push. Concludi con un suggerimento pratico per la giornata.",
   "strategic_context": "Casa di famiglia, 4 persone, pannelli solari 6kWp, pompa di calore per riscaldamento e acqua calda.",
   "allowed_tools": ["get_energy_history", "get_weather_forecast", "get_home_status", "send_notification"],
-  "model": "auto",
-  "actions": [
-    {
-      "type": "notify",
-      "channel": "ha_push",
-      "message": "{{result}}"
-    }
-  ]
+  "model": "auto"
 }
 ```
 
@@ -49,29 +40,23 @@ Nessuna anomalia notturna.
 
 **Obiettivo:** Rilevare consumi insoliti e avvisare prima che arrivi la bolletta.
 
-**Tipo agente:** Monitor (periodico)
+**Tipo agente:** Agent (periodico)
 
 **Configurazione:**
 ```json
 {
   "name": "Monitor Energia",
-  "type": "monitor",
-  "trigger": {
-    "type": "schedule",
-    "interval_minutes": 20
-  },
+  "type": "agent",
+  "triggers": [{"type": "schedule", "interval_minutes": 20}],
+  "action_mode": "configured",
   "system_prompt": "Sei un agente di monitoraggio energetico. Controlla il consumo attuale della casa. Confrontalo con l'orario e i pattern tipici (descritti nel contesto). Segnala ANOMALIA se: il consumo totale supera 3kW quando nessuno dovrebbe cucinare; lavatrice o lavastoviglie attive dopo mezzanotte; qualsiasi elettrodomestico con consumo superiore all'atteso. Rispondi con VALUTAZIONE: OK se nulla di insolito, VALUTAZIONE: ANOMALIA se serve intervento.",
   "strategic_context": "Consumo notturno normale (23:00-07:00): 200-400W (frigo + standby). Diurno normale: 400-1200W. Picchi cottura: 1500-3500W per 20-40 minuti.",
   "allowed_tools": ["get_home_status", "get_entities_by_domain", "get_energy_history"],
   "allowed_entities": ["sensor.*potenza*", "sensor.*energia*", "switch.*"],
   "model": "auto",
-  "trigger_on": ["ANOMALIA"],
-  "actions": [
-    {
-      "type": "notify",
-      "channel": "ha_push",
-      "message": "⚡ Anomalia energetica: {{result}}"
-    }
+  "states": ["OK", "ANOMALIA"],
+  "rules": [
+    {"states": ["ANOMALIA"], "actions": [{"type": "notify", "channel": "ha_push", "message": "⚡ Anomalia energetica"}]}
   ]
 }
 ```
@@ -89,30 +74,24 @@ Totale attuale: 1,8 kW vs atteso 350 W.
 
 **Obiettivo:** Quando la porta d'ingresso è aperta da più di 5 minuti, verificare il contesto e notificare se necessario.
 
-**Tipo agente:** Reactive (state_changed)
+**Tipo agente:** Agent (state_changed)
 
 **Configurazione:**
 ```json
 {
   "name": "Monitor Porta",
-  "type": "reactive",
-  "trigger": {
-    "type": "state_changed",
-    "entity_id": "binary_sensor.porta_ingresso"
-  },
+  "type": "agent",
+  "triggers": [{"type": "state_changed", "entity_id": "binary_sensor.porta_ingresso"}],
+  "action_mode": "configured",
   "system_prompt": "Lo stato della porta d'ingresso è appena cambiato. Se si è aperta: controlla da quanto è aperta, verifica se c'è qualcuno in casa tramite i sensori di presenza, controlla se è un'ora insolita (tra le 23:00 e le 07:00). Notifica solo se la porta è aperta da più di 5 minuti E nessuno è rilevato dentro OPPURE è notte. Se la porta si è appena chiusa, nessuna azione necessaria.",
   "strategic_context": "Porta ingresso: binary_sensor.porta_ingresso. Sensori presenza: binary_sensor.pir_ingresso, binary_sensor.pir_salotto, binary_sensor.pir_cucina.",
   "allowed_tools": ["get_entity_states", "send_notification"],
   "allowed_entities": ["binary_sensor.porta_ingresso", "binary_sensor.pir_*"],
   "require_confirmation": false,
   "model": "auto",
-  "trigger_on": ["ANOMALIA"],
-  "actions": [
-    {
-      "type": "notify",
-      "channel": "ha_push",
-      "message": "🚪 {{result}}"
-    }
+  "states": ["OK", "ANOMALIA"],
+  "rules": [
+    {"states": ["ANOMALIA"], "actions": [{"type": "notify", "channel": "ha_push", "message": "🚪 Porta aperta"}]}
   ]
 }
 ```
@@ -130,17 +109,15 @@ Ora attuale: 23:42. Situazione insolita — verificare.
 
 **Obiettivo:** Ogni pomeriggio, controlla le previsioni e avvia il riscaldamento in anticipo se farà freddo al rientro.
 
-**Tipo agente:** Preventive (cron)
+**Tipo agente:** Agent (cron)
 
 **Configurazione:**
 ```json
 {
   "name": "Pre-riscaldamento",
-  "type": "preventive",
-  "trigger": {
-    "type": "preventive",
-    "cron": "30 16 * * 1-5"
-  },
+  "type": "agent",
+  "triggers": [{"type": "cron", "cron": "30 16 * * 1-5"}],
+  "action_mode": "automatic",
   "system_prompt": "Sono le 16:30 di un giorno feriale. La famiglia rientra tipicamente verso le 18:30. Controlla le previsioni meteo per le 18:00-19:00. Se la temperatura esterna sarà sotto 10°C e il termostato del soggiorno è in modalità 'away' o 'off', attiva il riscaldamento ora così la casa è calda all'arrivo. Imposta il soggiorno a 21°C. Se già in riscaldamento o temperatura mite (>15°C fuori), nessuna azione.",
   "strategic_context": "Termostato soggiorno: climate.soggiorno. Modalità assenza setpoint: 17°C. Setpoint comfort: 21°C.",
   "allowed_tools": ["get_weather_forecast", "get_entity_states", "call_ha_service"],
@@ -158,29 +135,23 @@ Ora attuale: 23:42. Situazione insolita — verificare.
 
 **Obiettivo:** Ogni sera alle 23:00, verificare che porte e finestre siano chiuse e che non accada nulla di insolito.
 
-**Tipo agente:** Preventive (cron)
+**Tipo agente:** Agent (cron)
 
 **Configurazione:**
 ```json
 {
   "name": "Sicurezza Notturna",
-  "type": "preventive",
-  "trigger": {
-    "type": "preventive",
-    "cron": "0 23 * * *"
-  },
+  "type": "agent",
+  "triggers": [{"type": "cron", "cron": "0 23 * * *"}],
+  "action_mode": "automatic",
   "system_prompt": "Sono le 23:00. Esegui un controllo di sicurezza notturno: 1) elenca tutte le porte e finestre attualmente aperte. 2) verifica se ci sono luci esterne ancora accese. 3) controlla se l'allarme è inserito. Scrivi un report di sicurezza breve. Se tutto è ok, dillo in una riga. Se c'è qualcosa da segnalare, elencalo chiaramente.",
   "strategic_context": "Sensori porta/finestra: binary_sensor.porta_ingresso, binary_sensor.porta_retro, binary_sensor.finestra_cucina, binary_sensor.finestra_camera. Luci esterne: light.giardino, light.garage.",
   "allowed_tools": ["get_entities_by_domain", "get_entity_states", "send_notification"],
   "allowed_entities": ["binary_sensor.*porta*", "binary_sensor.*finestra*", "light.giardino", "light.garage"],
   "model": "auto",
-  "trigger_on": ["ANOMALIA", "ATTENZIONE"],
-  "actions": [
-    {
-      "type": "notify",
-      "channel": "ha_push",
-      "message": "🔒 {{result}}"
-    }
+  "states": ["OK", "ATTENZIONE", "ANOMALIA"],
+  "rules": [
+    {"states": ["ANOMALIA", "ATTENZIONE"], "actions": [{"type": "notify", "channel": "ha_push", "message": "🔒 Controllo sicurezza"}]}
   ]
 }
 ```
@@ -206,7 +177,6 @@ Tutto il resto a posto. Allarme: inserito.
 {
   "name": "Assistente Ospiti",
   "type": "chat",
-  "trigger": { "type": "manual" },
   "system_prompt": "Sei un assistente domotico per gli ospiti. Puoi controllare luci e temperatura della camera ospiti e del soggiorno. Sii sempre cortese e chiedi conferma prima di fare modifiche. Non discutere di costi energetici, abitudini della famiglia o informazioni sulla sicurezza. Se ti chiedono qualcosa al di fuori di luci e temperatura, declina gentilmente.",
   "strategic_context": "Camera ospiti: light.camera_ospiti, climate.camera_ospiti. Soggiorno: light.soggiorno, climate.soggiorno.",
   "allowed_tools": ["get_entity_states", "call_ha_service"],
@@ -237,17 +207,15 @@ HIRIS:  "Sono configurato solo per luci e temperatura. Per altre domande,
 
 **Obiettivo:** Quando la produzione solare è alta, avviare automaticamente gli elettrodomestici ad alto consumo.
 
-**Tipo agente:** Reactive (state_changed sul sensore solare)
+**Tipo agente:** Agent (state_changed sul sensore solare)
 
 **Configurazione:**
 ```json
 {
   "name": "Ottimizzatore Solare",
-  "type": "reactive",
-  "trigger": {
-    "type": "state_changed",
-    "entity_id": "sensor.fotovoltaico"
-  },
+  "type": "agent",
+  "triggers": [{"type": "state_changed", "entity_id": "sensor.fotovoltaico"}],
+  "action_mode": "configured",
   "system_prompt": "La produzione solare è cambiata. Controlla produzione attuale (W) e consumo attuale (W). Calcola il surplus netto (produzione - consumo). Se surplus > 1500W: controlla se lo scaldabagno (switch.scaldabagno) è spento — se sì, accendilo per usare l'energia gratuita. Se il surplus scende sotto 500W: spegni lo scaldabagno per evitare di importare dalla rete. Agisci solo se la variazione di surplus è significativa (>300W rispetto all'ultimo stato).",
   "strategic_context": "Solare: sensor.fotovoltaico. Scambio rete: sensor.potenza_rete (positivo = importo, negativo = esporto). Scaldabagno: switch.scaldabagno (1800W quando acceso).",
   "allowed_tools": ["get_entity_states", "call_ha_service"],
@@ -297,17 +265,15 @@ HIRIS: "Camera ospiti aggiornata a 18°C. Gli altri tre rimangono a 21°C."
 ```json
 {
   "name": "Irrigazione Giardino",
-  "type": "preventive",
-  "trigger": { "type": "cron", "cron": "0 5 * * *" },
+  "type": "agent",
+  "triggers": [{"type": "cron", "cron": "0 5 * * *"}],
+  "action_mode": "configured",
   "states": ["SKIP", "LEGGERA", "PIENA"],
-  "trigger_on": ["LEGGERA", "PIENA"],
+  "rules": [{"states": ["LEGGERA", "PIENA"], "actions": [{"type": "notify", "message": "Irrigazione avviata"}]}],
   "strategic_context": "ZONE DI IRRIGAZIONE:\n- Prato nord: switch.irrigazione_prato_nord — terreno argilloso, sole pieno\n- Aiuole: switch.irrigazione_aiuole — terreno misto, mezza ombra\n- Orto: switch.irrigazione_orto — terreno sabbioso, richiede più acqua\n\nSENSOR METEO:\n- Pioggia ultimi 24h: sensor.pioggia_24h (mm)\n- Pioggia ultimi 48h: sensor.pioggia_48h (mm)\n- Umidità suolo prato: sensor.umidita_suolo_prato (%)\n\nSOGLIE PIOGGIA:\n- Passate 24h > 5mm → SKIP\n- Passate 48h > 10mm → SKIP o LEGGERA\n- Previsione oggi > 3mm → SKIP\n- Previsione domani > 5mm → preferisci LEGGERA invece di PIENA",
   "system_prompt": "Valuta se e quanto irrigare oggi.\n1. Leggi le precipitazioni recenti: get_entity_states sui sensori pioggia.\n2. Leggi l'umidità del suolo se disponibile.\n3. Ottieni previsioni meteo 48h: get_weather_forecast(hours=48).\n4. Per ogni zona, decidi la durata in minuti (0 = salta).\n5. Se irrighi, usa create_task() per programmare call_ha_service per ogni zona:\n   - Accensione: ora attuale + 2 min di buffer\n   - Spegnimento: orario accensione + durata zona\n   - Esegui le zone in sequenza per non sovraccaricare la pompa.\nConcluidi con VALUTAZIONE: SKIP | LEGGERA | PIENA e una riga di motivazione.",
   "allowed_tools": ["get_entity_states", "get_weather_forecast", "search_entities", "send_notification", "create_task"],
   "allowed_services": ["switch.turn_on", "switch.turn_off"],
-  "actions": [
-    { "type": "notify", "message": "Irrigazione avviata: {{valutazione}}" }
-  ],
   "model": "auto"
 }
 ```
@@ -317,7 +283,7 @@ HIRIS: "Camera ospiti aggiornata a 18°C. Gli altri tre rimangono a 21°C."
 2. Ragiona su ogni zona e decide le durate.
 3. Per ogni zona chiama `create_task()` due volte (valvola on, valvola off) — i task vengono accodati in HIRIS ed eseguiti agli orari programmati, anche dopo che l'agente ha terminato.
 4. L'agente conclude con `VALUTAZIONE: LEGGERA` (o `PIENA` o `SKIP`).
-5. Poiché `trigger_on` include `LEGGERA` e `PIENA`, la notifica configurata scatta; `SKIP` non produce notifiche.
+5. Poiché `action_mode` è `configured` e la regola include `LEGGERA` e `PIENA` negli `states`, la notifica scatta; `SKIP` non produce notifiche.
 
 **Consiglio — descrivi le zone nel contesto strategico:** includi orientamento, tipo di terreno e note microclima. Il modello usa queste informazioni per calibrare le durate (terreno sabbioso = cicli più lunghi; zone in ombra = meno acqua).
 

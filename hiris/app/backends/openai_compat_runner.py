@@ -12,8 +12,7 @@ from ..claude_runner import (
     EVALUATION_ONLY_TOOLS,
     RESTRICT_PROMPT,
     REQUIRE_CONFIRMATION_PROMPT,
-    _parse_structured_response,
-    _build_action_instructions,
+    _parse_structured_output,
 )
 from .pricing import PRICING as _PRICING
 
@@ -24,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 AUTO_MODEL_MAP: dict[str, str] = {
     "chat":        "gpt-4o",
+    "agent":       "gpt-4o-mini",
+    # legacy type names kept for migration compatibility
     "monitor":     "gpt-4o-mini",
     "reactive":    "gpt-4o-mini",
     "preventive":  "gpt-4o-mini",
@@ -403,20 +404,21 @@ class OpenAICompatRunner:
         self,
         user_message: str,
         system_prompt: str,
-        actions: list[dict],
+        action_mode: str = "automatic",
+        states: Optional[list[str]] = None,
+        rules: Optional[list[dict]] = None,
         allowed_tools: Optional[list[str]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
         allowed_endpoints: Optional[list[dict]] = None,
         model: str = "auto",
         max_tokens: int = 4096,
-        agent_type: str = "monitor",
+        agent_type: str = "agent",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
         response_mode: str = "auto",
-        states: Optional[list[str]] = None,
-    ) -> tuple[str, str | None, str | None]:
+    ) -> tuple[str, dict]:
         eval_tools = list(EVALUATION_ONLY_TOOLS)
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]
@@ -424,14 +426,37 @@ class OpenAICompatRunner:
         _states = states if states else ["OK", "ATTENZIONE", "ANOMALIA"]
         states_str = "|".join(_states)
         motivazione = "1 riga sintetica" if response_mode == "minimal" else "1-2 righe sintetiche"
-        eval_instruction = (
-            "\n\n---\n"
-            "Analizza il contesto e concludi la risposta con:\n"
-            f"VALUTAZIONE: {states_str}\n"
-            f"Motivazione: [{motivazione}]"
-        )
-        action_block = _build_action_instructions(actions)
-        augmented_prompt = system_prompt + eval_instruction + ("\n\n" + action_block if action_block else "")
+
+        if action_mode == "automatic":
+            eval_instruction = (
+                "\n\n---\n"
+                "ISTRUZIONI DI RISPOSTA:\n"
+                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
+                f"VALUTAZIONE: {states_str}\n"
+                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
+                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]\n"
+                "AZIONI:\n"
+                "[una azione per riga — formato: comando entità [valore]]\n\n"
+                "Comandi disponibili:\n"
+                "  turn_on <entity_id>\n"
+                "  turn_off <entity_id>\n"
+                "  set_value <entity_id> <value>\n"
+                "  wait <minuti>\n"
+                "  notify <channel> <message>\n"
+                "  call_service <domain.service> <entity_id> [key=value ...]\n\n"
+                "Se non sono necessarie azioni ometti il blocco AZIONI: completamente."
+            )
+        else:  # configured
+            eval_instruction = (
+                "\n\n---\n"
+                "ISTRUZIONI DI RISPOSTA:\n"
+                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
+                f"VALUTAZIONE: {states_str}\n"
+                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
+                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]"
+            )
+
+        augmented_prompt = system_prompt + eval_instruction
         raw_result = await self.chat(
             user_message=user_message,
             system_prompt=augmented_prompt,
@@ -447,4 +472,5 @@ class OpenAICompatRunner:
             agent_id=agent_id,
             response_mode=response_mode,
         )
-        return _parse_structured_response(raw_result)
+        clean_text, structured = _parse_structured_output(raw_result)
+        return clean_text, structured
