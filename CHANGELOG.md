@@ -1,5 +1,17 @@
 # HIRIS — Changelog
 
+## [0.6.12] — 2026-04-29
+
+### Added
+- **`model2vec` embedding provider**: fully local, no server, no API key required — the only embedding option compatible with Alpine Linux (HA add-ons); models are downloaded from HuggingFace Hub on first startup and cached in `/config/hiris/models/huggingface/`; recommended model is `minishlab/potion-base-8M` (~30 MB)
+- **`run.sh`**: `HF_HOME` environment variable set to `/config/hiris/models/huggingface` so HuggingFace models persist across add-on restarts
+- **Docs**: `docs/configuration-guide.md` and `docs/guida-configurazione.md` updated — Option C section replaced with model2vec (was fastembed); model2vec marked as recommended local option for HA add-ons
+
+### Changed
+- **`requirements.txt`**: replaced `fastembed>=0.3.0` with `model2vec>=0.8.0`
+- **`Dockerfile`**: removed best-effort fastembed install step (model2vec installs cleanly on Alpine via musllinux wheels)
+- **Translations** (`en.yaml`, `it.yaml`): embedding provider and model descriptions updated to mention model2vec
+
 ## [0.6.11] — 2026-04-29
 
 ### Fixed

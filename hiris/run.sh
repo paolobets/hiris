@@ -23,6 +23,9 @@ export MEMORY_EMBEDDING_MODEL=$(bashio::config 'memory.embedding_model' '')
 export MEMORY_RAG_K=$(bashio::config 'memory.rag_k' '5')
 export MEMORY_RETENTION_DAYS=$(bashio::config 'memory.retention_days' '90')
 
+# HuggingFace model cache → persistent HA config directory
+export HF_HOME=/config/hiris/models/huggingface
+
 bashio::log.info "Starting HIRIS"
 bashio::log.info "Log level: ${LOG_LEVEL}"
 bashio::log.info "Theme: ${THEME}"

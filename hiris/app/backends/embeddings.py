@@ -66,6 +66,46 @@ class OpenAIEmbedder:
         return f"openai/{self._model}"
 
 
+class Model2VecEmbedder:
+    """Local embeddings via model2vec — pure Python, Alpine/musl compatible.
+
+    All dependencies (numpy, tokenizers, safetensors) ship musllinux_1_2 wheels,
+    making this the only fully local option that works on HA add-ons (Alpine 3.21+).
+    Models are downloaded from HuggingFace Hub on first use and cached in HF_HOME.
+    """
+
+    _DEFAULT_MODEL = "minishlab/potion-base-8M"
+
+    def __init__(self, model: str = _DEFAULT_MODEL) -> None:
+        self._model_name = model
+        self._model = None  # lazy — downloaded on first embed()
+        self._dims: int = 0
+
+    def _get_model(self):
+        if self._model is None:
+            from model2vec import StaticModel  # type: ignore[import-untyped]
+            self._model = StaticModel.from_pretrained(self._model_name)
+        return self._model
+
+    def _embed_sync(self, text: str) -> list[float]:
+        return self._get_model().encode([text])[0].tolist()
+
+    async def embed(self, text: str) -> list[float]:
+        import asyncio
+        vec = await asyncio.get_running_loop().run_in_executor(None, self._embed_sync, text)
+        if vec and self._dims == 0:
+            self._dims = len(vec)
+        return vec
+
+    @property
+    def dimensions(self) -> int:
+        return self._dims
+
+    @property
+    def provider_name(self) -> str:
+        return f"model2vec/{self._model_name}"
+
+
 class FastEmbedEmbedder:
     """Local embeddings via fastembed (ONNX, no server required).
 
@@ -148,6 +188,8 @@ def build_embedding_provider(
             logger.warning("memory_embedding_provider=ollama but local_model_url empty — using NullEmbedder")
             return NullEmbedder()
         return OllamaEmbedder(base_url=local_model_url, model=model or "nomic-embed-text")
+    if provider == "model2vec":
+        return Model2VecEmbedder(model=model or Model2VecEmbedder._DEFAULT_MODEL)
     if provider == "fastembed":
         try:
             import fastembed  # noqa: F401 — check availability at startup, not on first embed

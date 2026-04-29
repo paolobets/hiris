@@ -1,6 +1,6 @@
 # HIRIS — Guida alla Configurazione
 
-> Versione: 0.6.11 · Aggiornato: 2026-04-29
+> Versione: 0.6.12 · Aggiornato: 2026-04-29
 
 Questa guida copre le due aree di configurazione che richiedono una configurazione esterna prima di funzionare:
 **Notifiche (Apprise)** e **Memoria & RAG**.
@@ -24,7 +24,7 @@ Tutte le altre opzioni (chiavi API, selezione modello, livello log, tema) sono a
    - [Come funziona](#come-funziona-1)
    - [Opzione A — Embeddings OpenAI](#opzione-a--embeddings-openai-più-semplice)
    - [Opzione B — Embeddings Ollama (locale, gratuito)](#opzione-b--embeddings-ollama-locale-gratuito)
-   - [Opzione C — fastembed (locale, senza server)](#opzione-c--fastembed-locale-senza-server)
+   - [Opzione C — model2vec (locale, senza server)](#opzione-c--model2vec-locale-senza-server)
    - [Disabilitare il RAG](#disabilitare-il-rag)
    - [Parametri di ottimizzazione](#parametri-di-ottimizzazione)
 
@@ -277,36 +277,37 @@ memory:
 
 ---
 
-### Opzione C — fastembed (locale, senza server)
+### Opzione C — model2vec (locale, senza server)
 
-Esegue gli embedding direttamente in-process tramite modelli ONNX. Nessun server, nessuna chiave API, nessuna chiamata esterna.
-È la scelta migliore se vuoi il RAG completamente locale senza installare o gestire Ollama.
+Esegue gli embedding direttamente in-process senza nessun server, nessuna chiave API e nessuna chiamata esterna.
+**Questa è l'opzione locale consigliata per gli add-on Home Assistant** — è l'unica soluzione di embedding completamente locale compatibile con Alpine Linux (la base di tutti gli add-on HA).
 
-**Requisiti:** nessuno — il modello viene scaricato automaticamente al primo avvio e messo in cache in `/config/hiris/models/`.
+**Requisiti:** nessuno — il modello viene scaricato da HuggingFace Hub al primo avvio e messo in cache in `/config/hiris/models/huggingface/`. Gli avvii successivi sono istantanei.
 
-**Primo avvio:** HIRIS scaricherà il modello (~120 MB). Questo avviene una volta sola; gli avvii successivi sono istantanei.
+**Primo avvio:** HIRIS scarica il modello (~30 MB per il default). Questo avviene una volta sola.
 
 **Configurazione:**
 
 ```yaml
 memory:
-  embedding_provider: fastembed
-  embedding_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  embedding_provider: model2vec
+  embedding_model: minishlab/potion-base-8M
   rag_k: 5
   retention_days: 90
 ```
 
+Lascia `embedding_model` vuoto per usare il default (`minishlab/potion-base-8M`) automaticamente.
+
 **Modelli disponibili:**
 
-| Modello | Dimensione | Lingue | Note |
-|---------|-----------|--------|------|
-| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | ~120 MB | 50+ lingue incluso italiano | ✅ Default consigliato |
-| `BAAI/bge-small-en-v1.5` | ~23 MB | Solo inglese | Più veloce e leggero |
-| `BAAI/bge-base-en-v1.5` | ~110 MB | Solo inglese | Qualità superiore per inglese |
+| Modello | Dimensione | Qualità (MTEB) | Note |
+|---------|------------|----------------|------|
+| `minishlab/potion-base-8M` | ~30 MB | 51.1 | ✅ Consigliato — veloce e compatto |
+| `minishlab/potion-base-32M` | ~120 MB | 52.1 | Qualità superiore, più grande |
 
-Lascia `embedding_model` vuoto per usare automaticamente il default multilingue.
-
-> **Nota:** fastembed usa ONNX Runtime, compatibile sia con amd64 che aarch64 (Raspberry Pi, NUC, ecc.).
+> **Nota tecnica:** model2vec usa embedding statici (distillati) implementati in Python puro.
+> Tutte le dipendenze (`numpy`, `tokenizers`, `safetensors`) hanno wheel `musllinux_1_2`,
+> rendendolo l'unica opzione di embedding locale che funziona sugli add-on HA senza modifiche.
 
 ---
 

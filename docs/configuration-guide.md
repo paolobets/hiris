@@ -1,6 +1,6 @@
 # HIRIS — Configuration Guide
 
-> Version: 0.6.11 · Updated: 2026-04-29
+> Version: 0.6.12 · Updated: 2026-04-29
 
 This guide covers the two configuration areas that require external setup before they work:
 **Notifications (Apprise)** and **Memory & RAG**.
@@ -24,7 +24,7 @@ All other options (API keys, model selection, log level, theme) are self-explana
    - [How it works](#how-it-works-1)
    - [Option A — OpenAI embeddings](#option-a--openai-embeddings-simplest)
    - [Option B — Ollama embeddings (local, free)](#option-b--ollama-embeddings-local-free)
-   - [Option C — fastembed (local, no server)](#option-c--fastembed-local-no-server)
+   - [Option C — model2vec (local, no server)](#option-c--model2vec-local-no-server)
    - [Disabling RAG](#disabling-rag)
    - [Tuning parameters](#tuning-parameters)
 
@@ -277,36 +277,39 @@ memory:
 
 ---
 
-### Option C — fastembed (local, no server)
+### Option C — model2vec (local, no server)
 
-Runs embeddings entirely in-process using ONNX models. No server, no API key, no external calls.
-This is the best option if you want fully local RAG without installing or managing Ollama.
+Runs embeddings entirely in-process with no server, no API key, and no external calls.
+**This is the recommended local option for Home Assistant add-ons** — it is the only fully local
+embedding solution compatible with Alpine Linux (the base of all HA add-ons).
 
-**Requirements:** none — the model is downloaded automatically on first startup and cached in `/config/hiris/models/`.
+**Requirements:** none — the model is downloaded from HuggingFace Hub on first startup and cached
+in `/config/hiris/models/huggingface/`. Subsequent startups are instant.
 
-**First startup:** HIRIS will download the model (~120 MB). This happens once; subsequent starts are instant.
+**First startup:** HIRIS downloads the model (~30 MB for the default). This happens once.
 
 **Configuration:**
 
 ```yaml
 memory:
-  embedding_provider: fastembed
-  embedding_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  embedding_provider: model2vec
+  embedding_model: minishlab/potion-base-8M
   rag_k: 5
   retention_days: 90
 ```
 
+Leave `embedding_model` empty to use the default (`minishlab/potion-base-8M`) automatically.
+
 **Available models:**
 
-| Model | Size | Languages | Notes |
-|-------|------|-----------|-------|
-| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | ~120 MB | 50+ languages incl. Italian | ✅ Recommended default |
-| `BAAI/bge-small-en-v1.5` | ~23 MB | English only | Faster, smaller, English only |
-| `BAAI/bge-base-en-v1.5` | ~110 MB | English only | Higher quality for English |
+| Model | Size | Quality (MTEB) | Notes |
+|-------|------|----------------|-------|
+| `minishlab/potion-base-8M` | ~30 MB | 51.1 | ✅ Recommended — fast and compact |
+| `minishlab/potion-base-32M` | ~120 MB | 52.1 | Higher quality, larger |
 
-Leave `embedding_model` empty to use the multilingual default automatically.
-
-> **Note:** fastembed uses ONNX Runtime, which works on both amd64 and aarch64 (Raspberry Pi, NUC, etc.).
+> **Technical note:** model2vec uses static (distilled) embeddings implemented in pure Python.
+> All dependencies (`numpy`, `tokenizers`, `safetensors`) ship Alpine-compatible `musllinux` wheels,
+> making this the only local embedding option that works on HA add-ons without modification.
 
 ---
 

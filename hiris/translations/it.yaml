@@ -40,10 +40,10 @@ configuration:
     description: "Impostazioni per la memoria a lungo termine di HIRIS e la ricerca semantica (RAG). Lascia vuoti i campi embedding per disabilitare il RAG."
     embedding_provider:
       name: "Provider Embedding"
-      description: "Provider per gli embedding della memoria semantica. Opzioni: 'openai' (richiede chiave API), 'ollama' (richiede server locale), 'fastembed' (completamente locale, nessun server). Lascia vuoto per disabilitare il RAG."
+      description: "Provider per gli embedding della memoria semantica. Opzioni: 'openai' (richiede chiave API), 'ollama' (richiede server locale), 'model2vec' (completamente locale, nessun server, compatibile con tutti i sistemi). Lascia vuoto per disabilitare il RAG."
     embedding_model:
       name: "Modello Embedding"
-      description: "Modello per generare gli embedding. openai: text-embedding-3-small. ollama: nomic-embed-text. fastembed: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (lascia vuoto per il default)."
+      description: "Modello per generare gli embedding. openai: text-embedding-3-small. ollama: nomic-embed-text. model2vec: minishlab/potion-base-8M o potion-base-32M (lascia vuoto per il default)."
     rag_k:
       name: "Risultati RAG (k)"
       description: "Numero di memorie rilevanti restituite durante la ricerca semantica. Valori più alti danno più contesto ma aumentano l'uso di token."

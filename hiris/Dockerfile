@@ -5,11 +5,8 @@ FROM $BUILD_FROM
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
-# fastembed requires onnxruntime which has no Alpine (musl) wheels — best-effort only
-RUN pip3 install --no-cache-dir "fastembed>=0.3.0" || echo "[WARN] fastembed not available on this platform — embeddings via ollama or openai still work"
-
 # Bust Docker layer cache on every release — update this string with each version bump
-RUN echo "HIRIS v0.6.11"
+RUN echo "HIRIS v0.6.12"
 
 # Copy application source, manifest, and entrypoint
 COPY app/ /usr/lib/hiris/app/
