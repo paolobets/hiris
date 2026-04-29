@@ -1,5 +1,11 @@
 # HIRIS — Changelog
 
+## [0.6.11] — 2026-04-29
+
+### Fixed
+- **Docker build failure**: `fastembed` depends on `onnxruntime` which has no pre-built wheels for Alpine Linux (musl libc) — the add-on image failed to build on all platforms; removed `fastembed` from `requirements.txt` and moved it to a best-effort `pip install || true` step in `Dockerfile` so the build never fails
+- **`embeddings.py`**: `build_embedding_provider("fastembed")` now checks if fastembed is importable at startup and falls back to `NullEmbedder` with a log warning if not installed, instead of crashing on first use
+
 ## [0.6.10] — 2026-04-28
 
 ### Fixed

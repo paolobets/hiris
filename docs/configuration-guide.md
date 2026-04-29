@@ -1,6 +1,6 @@
 # HIRIS — Configuration Guide
 
-> Version: 0.6.10 · Updated: 2026-04-28
+> Version: 0.6.11 · Updated: 2026-04-29
 
 This guide covers the two configuration areas that require external setup before they work:
 **Notifications (Apprise)** and **Memory & RAG**.

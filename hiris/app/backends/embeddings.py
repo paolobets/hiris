@@ -149,6 +149,14 @@ def build_embedding_provider(
             return NullEmbedder()
         return OllamaEmbedder(base_url=local_model_url, model=model or "nomic-embed-text")
     if provider == "fastembed":
+        try:
+            import fastembed  # noqa: F401 — check availability at startup, not on first embed
+        except ImportError:
+            logger.warning(
+                "fastembed is not installed on this platform (Alpine/musl lacks onnxruntime wheels) "
+                "— falling back to NullEmbedder. Use 'openai' or 'ollama' as embedding_provider instead."
+            )
+            return NullEmbedder()
         return FastEmbedEmbedder(model=model or FastEmbedEmbedder._DEFAULT_MODEL)
     if provider:
         logger.warning("Unknown memory_embedding_provider %r — using NullEmbedder", provider)
