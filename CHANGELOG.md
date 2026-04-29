@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [0.6.14] — 2026-04-29
+
+### Added
+- **`scripts/doc_check.py`**: documentation consistency checker run automatically before every release as step 3c; detects stale config key names (auto-fixes with `--fix`), broken cross-links, missing version headers, untracked docs, and README documentation table gaps; bypass with `--skip-doc-check` for emergencies
+- **`scripts/release.py`**: `--skip-doc-check` flag added; step 3c calls `doc_check.py --fix` before the git-clean check so any auto-fixable stale keys are repaired and committed in the same release commit
+
+### Fixed
+- **`scripts/release.py`**: `_VERSIONED_DOCS` entry `ROADMAP.md` corrected to lowercase `roadmap.md` to match the actual filename (was working on Windows due to case-insensitive FS but would fail on Linux)
+
 ## [0.6.13] — 2026-04-29
 
 ### Added

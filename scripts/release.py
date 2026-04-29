@@ -5,12 +5,14 @@ Usage:
   python scripts/release.py --version X.Y.Z           # standard release
   python scripts/release.py --version X.Y.Z --dry-run  # preview, no git ops
   python scripts/release.py --version X.Y.Z --skip-tests  # hotfix only
+  python scripts/release.py --version X.Y.Z --skip-doc-check  # bypass doc review
 
 Steps (abort on first failure):
   1   Validate semver X.Y.Z
   2   Check config.yaml version matches --version
   3   Check CHANGELOG.md has ## [X.Y.Z] section
   3b  Update version/date headers in all versioned docs
+  3c  Doc consistency check — stale keys, broken links, coverage (skipped with --skip-doc-check)
   4   Check git tree clean (only config.yaml / CHANGELOG.md / docs allowed dirty)
   5   Run pytest (skipped with --skip-tests)
   6   git add + commit chore: release vX.Y.Z (includes docs)
@@ -44,7 +46,7 @@ _VERSIONED_DOCS = [
     ROOT / "docs" / "come-funziona.md",
     ROOT / "docs" / "use-cases.md",
     ROOT / "docs" / "casi-duso.md",
-    ROOT / "docs" / "ROADMAP.md",
+    ROOT / "docs" / "roadmap.md",
     ROOT / "docs" / "configuration-guide.md",
     ROOT / "docs" / "guida-configurazione.md",
     ROOT / "docs" / "full-local-mode.md",
@@ -166,6 +168,29 @@ def update_docs_version(version: str, dry_run: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Step 3c — documentation consistency check
+# ---------------------------------------------------------------------------
+
+def check_docs(skip: bool) -> None:
+    if skip:
+        _info("Skipping doc check (--skip-doc-check)")
+        return
+    _info("Running doc consistency check (--fix applied automatically)…")
+    doc_check = ROOT / "scripts" / "doc_check.py"
+    # Run with --fix so stale key names are repaired in-place before commit
+    result = subprocess.run(
+        [sys.executable, str(doc_check), "--fix"],
+        cwd=ROOT,
+    )
+    if result.returncode != 0:
+        _fail(
+            "Doc check failed — broken links or other unfixable issues found.\n"
+            "  Run  python scripts/doc_check.py  for details."
+        )
+    _ok("Doc check passed")
+
+
+# ---------------------------------------------------------------------------
 # Step 4
 # ---------------------------------------------------------------------------
 
@@ -189,6 +214,7 @@ def check_git_clean() -> None:
         "CHANGELOG.md",
         "README.md",
         "scripts/release.py",
+        "scripts/doc_check.py",
         *[f"docs/{d.name}" for d in _VERSIONED_DOCS],
     }
 
@@ -196,9 +222,10 @@ def check_git_clean() -> None:
         # Strip the 2-char status + space prefix, handle renames
         return line[3:].strip().split(" -> ")[-1]
 
+    _allowed_lower = {p.lower() for p in _ALLOWED}
     dirty = [
         line for line in result.stdout.splitlines()
-        if line.strip() and _extract_path(line) not in _ALLOWED
+        if line.strip() and _extract_path(line).lower() not in _allowed_lower
     ]
     if dirty:
         _fail(
@@ -232,7 +259,7 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
     # "HEAD:master" is a refspec that fast-forwards remote master to the
     # current commit without requiring a local checkout of master.
     doc_paths = [f"docs/{d.name}" for d in _VERSIONED_DOCS if (ROOT / "docs" / d.name).exists()]
-    extra = [p for p in ["hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "hiris/app/backends/embeddings.py", "hiris/app/static/index.html", "README.md", "scripts/release.py"] if (ROOT / p).exists()]
+    extra = [p for p in ["hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "hiris/app/backends/embeddings.py", "hiris/app/static/index.html", "README.md", "scripts/release.py", "scripts/doc_check.py"] if (ROOT / p).exists()]
     cmds = [
         ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *doc_paths, *extra],
         ["git", "commit", "-m", f"chore: release v{version}"],
@@ -303,6 +330,8 @@ def main() -> None:
                         help="Preview steps 6–10, no git/gh operations")
     parser.add_argument("--skip-tests", action="store_true",
                         help="Skip pytest (emergency hotfix only)")
+    parser.add_argument("--skip-doc-check", action="store_true",
+                        help="Skip documentation consistency check (emergency only)")
     args = parser.parse_args()
 
     if args.dry_run:
@@ -312,6 +341,7 @@ def main() -> None:
     check_config_version(args.version)          # step 2
     check_changelog(args.version)               # step 3
     update_docs_version(args.version, args.dry_run)  # step 3b
+    check_docs(args.skip_doc_check)             # step 3c
     check_git_clean()                           # step 4
     if args.skip_tests:
         _info("Skipping pytest (--skip-tests)")
