@@ -42,6 +42,8 @@ class Agent:
     max_chat_turns: int = 0
     allowed_endpoints: Optional[list[dict]] = None
     trigger_on: list[str] = field(default_factory=lambda: ["ANOMALIA"])
+    response_mode: str = "auto"
+    states: list[str] = field(default_factory=lambda: ["OK", "ATTENZIONE", "ANOMALIA"])
 
 
 class AgentEngine:
@@ -151,6 +153,8 @@ class AgentEngine:
                     max_chat_turns=int(raw.get("max_chat_turns", 0)),
                     allowed_endpoints=raw.get("allowed_endpoints"),
                     trigger_on=raw.get("trigger_on", ["ANOMALIA"]),
+                    response_mode=raw.get("response_mode", "auto"),
+                    states=raw.get("states", ["OK", "ATTENZIONE", "ANOMALIA"]),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type in ("monitor", "preventive"):
@@ -327,6 +331,8 @@ class AgentEngine:
             max_chat_turns=int(data.get("max_chat_turns", 0)),
             allowed_endpoints=data.get("allowed_endpoints"),
             trigger_on=data.get("trigger_on", ["ANOMALIA"]),
+            response_mode=data.get("response_mode", "auto"),
+            states=data.get("states", ["OK", "ATTENZIONE", "ANOMALIA"]),
         )
         self._agents[agent.id] = agent
         if self._mqtt_publisher:
@@ -347,7 +353,7 @@ class AgentEngine:
         "strategic_context", "allowed_entities", "allowed_services",
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
         "actions", "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
-        "trigger_on",
+        "trigger_on", "response_mode", "states",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -661,6 +667,8 @@ class AgentEngine:
                     restrict_to_home=agent.restrict_to_home,
                     require_confirmation=agent.require_confirmation,
                     agent_id=agent.id,
+                    response_mode=getattr(agent, "response_mode", "auto"),
+                    states=getattr(agent, "states", None),
                 )
                 action_taken = await self._execute_agent_actions(agent, eval_status, result)
             else:
@@ -677,6 +685,7 @@ class AgentEngine:
                     restrict_to_home=agent.restrict_to_home,
                     require_confirmation=agent.require_confirmation,
                     agent_id=agent.id,
+                    response_mode=getattr(agent, "response_mode", "auto"),
                 )
                 eval_status = None
                 action_taken = None

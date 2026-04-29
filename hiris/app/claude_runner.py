@@ -379,6 +379,7 @@ class ClaudeRunner:
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
+        response_mode: str = "auto",
     ) -> str:
         if agent_id:
             if agent_id not in self._per_agent_usage:
@@ -407,6 +408,13 @@ class ClaudeRunner:
             system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
         if require_confirmation:
             system_blocks.append({"type": "text", "text": REQUIRE_CONFIRMATION_PROMPT})
+        if response_mode == "compact":
+            system_blocks.append({"type": "text", "text": "Rispondi in modo conciso, massimo 2-3 frasi."})
+        elif response_mode == "minimal":
+            system_blocks.append({"type": "text", "text": (
+                "Rispondi SOLO in formato chiave: valore, una riga per dato. "
+                "Esempio:\nStato: acceso\nTemperatura: 21°C"
+            )})
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         if allowed_endpoints is None:
@@ -515,6 +523,7 @@ class ClaudeRunner:
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
         visible_entity_ids=None,
+        response_mode: str = "auto",
     ):
         """Async generator yielding SSE-formatted lines for the chat response.
 
@@ -546,6 +555,7 @@ class ClaudeRunner:
                 require_confirmation=require_confirmation,
                 agent_id=agent_id,
                 visible_entity_ids=visible_entity_ids,
+                response_mode=response_mode,
             )
         except Exception as exc:
             yield f'data: {_json.dumps({"type": "error", "message": str(exc)})}\n\n'
@@ -573,6 +583,8 @@ class ClaudeRunner:
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
+        response_mode: str = "auto",
+        states: Optional[list[str]] = None,
     ) -> tuple[str, str | None, str | None]:
         """Like chat() but injects action instructions and parses structured response.
 
@@ -603,11 +615,14 @@ class ClaudeRunner:
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]
 
+        _states = states if states else ["OK", "ATTENZIONE", "ANOMALIA"]
+        states_str = "|".join(_states)
+        motivazione = "1 riga sintetica" if response_mode == "minimal" else "1-2 righe sintetiche"
         eval_instruction = (
             "\n\n---\n"
             "Analizza il contesto e concludi la risposta con:\n"
-            "VALUTAZIONE: OK|ATTENZIONE|ANOMALIA\n"
-            "Motivazione: [1-2 righe sintetiche]"
+            f"VALUTAZIONE: {states_str}\n"
+            f"Motivazione: [{motivazione}]"
         )
         action_block = _build_action_instructions(actions)
         augmented_prompt = system_prompt + eval_instruction + ("\n\n" + action_block if action_block else "")
@@ -625,6 +640,7 @@ class ClaudeRunner:
             restrict_to_home=restrict_to_home,
             require_confirmation=require_confirmation,
             agent_id=agent_id,
+            response_mode=response_mode,
         )
         text, eval_status, action_taken = _parse_structured_response(raw_result)
         return text, eval_status, action_taken

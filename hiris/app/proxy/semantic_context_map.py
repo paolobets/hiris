@@ -47,6 +47,10 @@ ENTITY_TYPE_SCHEMA: dict[tuple[str, str | None], tuple[str, str]] = {
     ("binary_sensor", "moisture"): ("moisture", "Perdita"),
     ("binary_sensor", "vibration"): ("vibration", "Vibrazione"),
     ("binary_sensor", "connectivity"): ("connectivity", "Connessione"),
+    # Irrigation / outdoor
+    ("sensor", "precipitation"): ("precipitation", "Precipitazione"),
+    ("sensor", "moisture"): ("soil_moisture", "Umidità suolo"),
+    ("weather", None): ("weather", "Meteo"),
 }
 
 _DOMAIN_FALLBACK: dict[str, tuple[str, str]] = {
@@ -93,6 +97,17 @@ CONCEPT_TO_TYPES: dict[str, list[str]] = {
     "gas": ["gas"], "acqua": ["water"], "perdita": ["moisture"],
     "fumo": ["smoke"], "vibrazione": ["vibration"], "connessione": ["connectivity"],
     "scaldabagno": ["water_heater"], "boiler": ["water_heater"],
+    # Irrigation / outdoor
+    "irrigazione": ["switch", "soil_moisture"],
+    "irrigare": ["switch", "soil_moisture"],
+    "sprinkler": ["switch"],
+    "pioggia": ["precipitation", "weather"],
+    "piovuto": ["precipitation", "weather"],
+    "precipitazione": ["precipitation"],
+    "umidità suolo": ["soil_moisture"],
+    "giardino": ["switch", "soil_moisture", "precipitation"],
+    "meteo": ["weather"],
+    "previsioni": ["weather"],
 }
 
 # area_name (or None for unassigned) → entity_type → [entity_ids]

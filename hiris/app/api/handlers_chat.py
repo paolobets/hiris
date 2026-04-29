@@ -137,6 +137,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     agent_type = getattr(agent, "type", "chat") if agent else "chat"
     agent_restrict = getattr(agent, "restrict_to_home", False) if agent else False
     agent_require_confirmation = getattr(agent, "require_confirmation", False) if agent else False
+    agent_response_mode = getattr(agent, "response_mode", "auto") if agent else "auto"
 
     wants_stream = (
         "text/event-stream" in request.headers.get("Accept", "")
@@ -169,6 +170,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             require_confirmation=agent_require_confirmation,
             agent_id=effective_agent_id,
             visible_entity_ids=visible_ids,
+            response_mode=agent_response_mode,
         ):
             await stream_resp.write(chunk.encode())
             try:
@@ -201,6 +203,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         require_confirmation=agent_require_confirmation,
         agent_id=effective_agent_id,
         visible_entity_ids=visible_ids,
+        response_mode=agent_response_mode,
     )
 
     # Persist the new user+assistant exchange

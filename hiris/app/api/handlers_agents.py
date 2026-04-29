@@ -48,6 +48,17 @@ def _validate_agent_payload(body: dict) -> str | None:
         if val is not None and not isinstance(val, list):
             return f"{list_field} must be a list"
 
+    response_mode = body.get("response_mode")
+    if response_mode is not None and response_mode not in ("auto", "compact", "minimal"):
+        return "response_mode must be one of: auto, compact, minimal"
+
+    states = body.get("states")
+    if states is not None:
+        if not isinstance(states, list) or not states:
+            return "states must be a non-empty list of strings"
+        if not all(isinstance(s, str) and s.strip() for s in states):
+            return "states must be a list of non-empty strings"
+
     return None
 
 
