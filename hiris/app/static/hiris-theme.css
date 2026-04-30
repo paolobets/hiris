@@ -1,0 +1,202 @@
+/* ───────────────────────────────────────────────────────────
+   HIRIS — shared theme (Iris brand)
+   Colors derived from the 6-petal logo.
+   Used by: index.html, config.html, hiris-chat-card.js
+   ─────────────────────────────────────────────────────────── */
+
+:root {
+  /* Iris petals (semantic accent palette) */
+  --iris:       oklch(0.66 0.20 280);  /* primary — viola */
+  --iris-2:     oklch(0.68 0.18 270);  /* indigo */
+  --iris-3:     oklch(0.72 0.16 240);  /* blue */
+  --iris-4:     oklch(0.78 0.14 210);  /* cyan */
+  --iris-5:     oklch(0.78 0.13 185);  /* teal */
+  --iris-6:     oklch(0.72 0.20 330);  /* fuchsia */
+  --iris-amber: oklch(0.78 0.15 75);   /* preventive */
+
+  /* Light theme — warm-tinted neutral */
+  --bg:        oklch(0.985 0.005 280);
+  --surface:   oklch(1.00 0 0);
+  --surface-2: oklch(0.97 0.008 280);
+  --surface-3: oklch(0.94 0.012 280);
+  --hover:     oklch(0.95 0.015 280);
+  --border:    oklch(0.91 0.012 280);
+  --border-2:  oklch(0.86 0.018 280);
+  --text:      oklch(0.22 0.02 280);
+  --text-2:    oklch(0.45 0.015 280);
+  --text-3:    oklch(0.62 0.012 280);
+
+  --accent:        var(--iris);
+  --accent-ink:    oklch(0.32 0.18 280);
+  --accent-tint:   oklch(0.96 0.04 280);
+  --accent-tint-2: oklch(0.92 0.07 280);
+  --on-accent:     oklch(0.99 0 0);
+
+  --ok:        oklch(0.70 0.16 155);
+  --ok-tint:   oklch(0.95 0.05 155);
+  --warn:      var(--iris-amber);
+  --warn-tint: oklch(0.96 0.06 75);
+  --err:       oklch(0.62 0.22 25);
+  --err-tint:  oklch(0.95 0.05 25);
+
+  --shadow-sm: 0 1px 2px oklch(0.20 0.05 280 / 0.06);
+  --shadow:    0 4px 16px oklch(0.20 0.05 280 / 0.08);
+  --shadow-lg: 0 16px 48px oklch(0.20 0.05 280 / 0.16);
+
+  --r-sm: 6px;
+  --r:    10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+
+  --font-sans: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+}
+
+[data-theme="dark"] {
+  --bg:        oklch(0.16 0.022 280);
+  --surface:   oklch(0.20 0.025 280);
+  --surface-2: oklch(0.23 0.028 280);
+  --surface-3: oklch(0.27 0.032 280);
+  --hover:     oklch(0.26 0.035 280);
+  --border:    oklch(0.30 0.030 280);
+  --border-2:  oklch(0.36 0.035 280);
+  --text:      oklch(0.96 0.008 280);
+  --text-2:    oklch(0.74 0.018 280);
+  --text-3:    oklch(0.58 0.022 280);
+
+  --accent:        oklch(0.74 0.18 280);
+  --accent-ink:    oklch(0.86 0.14 280);
+  --accent-tint:   oklch(0.28 0.08 280);
+  --accent-tint-2: oklch(0.34 0.10 280);
+  --on-accent:     oklch(0.14 0.04 280);
+
+  --ok-tint:   oklch(0.30 0.08 155);
+  --warn-tint: oklch(0.32 0.09 75);
+  --err-tint:  oklch(0.30 0.09 25);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.30);
+  --shadow:    0 4px 16px oklch(0 0 0 / 0.40);
+  --shadow-lg: 0 16px 48px oklch(0 0 0 / 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    --bg:        oklch(0.16 0.022 280);
+    --surface:   oklch(0.20 0.025 280);
+    --surface-2: oklch(0.23 0.028 280);
+    --surface-3: oklch(0.27 0.032 280);
+    --hover:     oklch(0.26 0.035 280);
+    --border:    oklch(0.30 0.030 280);
+    --border-2:  oklch(0.36 0.035 280);
+    --text:      oklch(0.96 0.008 280);
+    --text-2:    oklch(0.74 0.018 280);
+    --text-3:    oklch(0.58 0.022 280);
+    --accent:        oklch(0.74 0.18 280);
+    --accent-ink:    oklch(0.86 0.14 280);
+    --accent-tint:   oklch(0.28 0.08 280);
+    --accent-tint-2: oklch(0.34 0.10 280);
+    --on-accent:     oklch(0.14 0.04 280);
+    --ok-tint:   oklch(0.30 0.08 155);
+    --warn-tint: oklch(0.32 0.09 75);
+    --err-tint:  oklch(0.30 0.09 25);
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.30);
+    --shadow:    0 4px 16px oklch(0 0 0 / 0.40);
+    --shadow-lg: 0 16px 48px oklch(0 0 0 / 0.55);
+  }
+}
+
+/* ─── Reset & base ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+
+/* ─── Atoms ─── */
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot.on  { background: var(--ok); box-shadow: 0 0 0 3px oklch(0.70 0.16 155 / 0.18); }
+.dot.off { background: var(--text-3); opacity: 0.5; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+.badge.chat       { background: oklch(from var(--iris)   97% 0.04 h); color: oklch(from var(--iris)   38% 0.18 h); }
+.badge.monitor    { background: oklch(from var(--iris-3) 97% 0.04 h); color: oklch(from var(--iris-3) 38% 0.18 h); }
+.badge.reactive   { background: oklch(from var(--iris-5) 96% 0.04 h); color: oklch(from var(--iris-5) 35% 0.13 h); }
+.badge.preventive { background: oklch(from var(--iris-amber) 97% 0.04 h); color: oklch(from var(--iris-amber) 38% 0.13 h); }
+.badge.cron       { background: oklch(from var(--iris-6) 97% 0.04 h); color: oklch(from var(--iris-6) 38% 0.18 h); }
+.badge.off        { background: var(--surface-3); color: var(--text-3); }
+[data-theme="dark"] .badge.chat       { background: oklch(from var(--iris)   28% 0.10 h); color: oklch(from var(--iris)   85% 0.14 h); }
+[data-theme="dark"] .badge.monitor    { background: oklch(from var(--iris-3) 28% 0.10 h); color: oklch(from var(--iris-3) 85% 0.12 h); }
+[data-theme="dark"] .badge.reactive   { background: oklch(from var(--iris-5) 28% 0.08 h); color: oklch(from var(--iris-5) 85% 0.11 h); }
+[data-theme="dark"] .badge.preventive { background: oklch(from var(--iris-amber) 28% 0.08 h); color: oklch(from var(--iris-amber) 85% 0.13 h); }
+[data-theme="dark"] .badge.cron       { background: oklch(from var(--iris-6) 28% 0.10 h); color: oklch(from var(--iris-6) 85% 0.14 h); }
+[data-theme="dark"] .badge.off        { background: var(--surface-3); color: var(--text-3); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px; font-weight: 500;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn:hover { background: var(--hover); color: var(--text); }
+.btn-primary {
+  background: var(--accent); color: var(--on-accent); border-color: transparent;
+}
+.btn-primary:hover { filter: brightness(1.05); background: var(--accent); color: var(--on-accent); }
+.btn-danger { background: var(--err-tint); color: var(--err); border-color: transparent; }
+.btn-danger:hover { background: var(--err); color: #fff; }
+
+.icon-btn {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  border: 1px solid transparent;
+}
+.icon-btn:hover { background: var(--hover); color: var(--text); }
+
+.input, .select, .textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: var(--font-sans);
+}
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+.textarea { resize: vertical; min-height: 80px; line-height: 1.5; font-family: var(--font-mono); font-size: 12px; }
+
+/* Scrollbar */
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }

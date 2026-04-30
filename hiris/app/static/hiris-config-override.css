@@ -1,0 +1,549 @@
+/* ───────────────────────────────────────────────────────────
+   HIRIS — config.html theme override
+   Maps the legacy token vocabulary used in config.html onto
+   the shared Iris design system (hiris-theme.css).
+
+   Usage: include AFTER the inline <style> block in config.html
+     <link rel="stylesheet" href="static/hiris-theme.css">
+     <style> … existing styles … </style>
+     <link rel="stylesheet" href="static/hiris-config-override.css">
+
+   Or simpler: replace the inline <style> with these two
+   stylesheets and remove the legacy :root / [data-theme]
+   blocks (lines 8–172 in the original).
+   ─────────────────────────────────────────────────────────── */
+
+/* ─── Map legacy tokens onto Iris tokens ─────────────────── */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+  --surface-hover:      var(--hover);
+  --input-bg:           var(--surface);
+  --accent-hover:       var(--accent-ink);
+  --danger:             var(--err);
+  --danger-bg:          var(--err-tint);
+  --danger-text:        var(--err);
+  --success:            var(--ok);
+  --legend-text:        var(--accent);
+
+  --link-muted:         var(--accent);
+  --border-subtle:      var(--border);
+  --border-accent:      var(--accent);
+  --surface-4:          var(--surface-3);
+
+  --save-bg:            var(--accent);
+  --save-hover:         var(--accent-ink);
+  --save-color:         var(--on-accent);
+
+  --run-bg:             var(--ok-tint);
+  --run-color:          var(--ok);
+  --run-border:         color-mix(in oklch, var(--ok) 50%, transparent);
+  --run-hover:          color-mix(in oklch, var(--ok-tint) 70%, var(--ok));
+
+  --muted-alt:          var(--text-3);
+
+  --badge-on-bg:        var(--ok-tint);
+  --badge-on-text:      var(--ok);
+  --badge-off-bg:       var(--surface-3);
+  --badge-off-text:     var(--text-3);
+  --badge-off-bg-alt:   var(--surface-3);
+  --badge-off-text-alt: var(--text-3);
+
+  --terminal-bg:        var(--surface-2);
+  --terminal-text:      var(--accent-ink);
+  --terminal-border:    var(--border);
+
+  /* Legacy aliases used by inline rules */
+  --text-muted:         var(--text-2);
+}
+
+/* ─── Page chrome ────────────────────────────────────────── */
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  padding: 32px 28px 64px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 24px;
+  display: flex; align-items: center; gap: 12px;
+}
+h1 img { width: 32px !important; height: 32px !important; margin-right: 0 !important; }
+h1 a {
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  letter-spacing: 0;
+  color: var(--text-3) !important;
+  margin-left: auto !important;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  transition: background 0.15s, color 0.15s;
+}
+h1 a:hover { background: var(--hover); color: var(--text) !important; }
+
+/* ─── Panels ─────────────────────────────────────────────── */
+.panel {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-md) !important;
+  padding: 18px !important;
+  box-shadow: var(--shadow-sm);
+}
+.panel h2 {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3) !important;
+  margin-bottom: 14px !important;
+}
+
+/* ─── Sidebar agent rows ─────────────────────────────────── */
+.agent-row {
+  padding: 10px 12px !important;
+  border-radius: var(--r-sm) !important;
+  font-size: 13px !important;
+  border: 1px solid transparent !important;
+  margin-bottom: 2px;
+  position: relative;
+  transition: background 0.15s, color 0.15s;
+}
+.agent-row:hover { background: var(--hover) !important; border-color: transparent !important; }
+.agent-row.active {
+  background: var(--accent-tint) !important;
+  border-color: transparent !important;
+  color: var(--accent-ink);
+}
+.agent-row.active::before {
+  content: ""; position: absolute; left: -8px; top: 10px; bottom: 10px;
+  width: 2px; border-radius: 2px; background: var(--accent);
+}
+.agent-row > span:first-child { font-weight: 500; }
+.agent-row small {
+  font-family: var(--font-mono); font-size: 10px !important;
+  color: var(--text-3) !important; margin-left: 6px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+.agent-row .badge {
+  font-family: var(--font-mono);
+  font-size: 10px !important;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px !important;
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+.agent-row .badge.off { background: var(--surface-3); color: var(--text-3); }
+
+#new-btn {
+  width: 100%; margin-top: 12px;
+  background: transparent !important;
+  border: 1px dashed var(--border-2) !important;
+  color: var(--text-2) !important;
+  padding: 10px !important;
+  border-radius: var(--r-sm) !important;
+  font-size: 13px !important;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+#new-btn:hover {
+  background: var(--accent-tint) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent) !important;
+  border-style: solid !important;
+}
+
+/* ─── Editor form ────────────────────────────────────────── */
+#no-selection {
+  font-size: 14px !important;
+  color: var(--text-3) !important;
+  padding: 48px 0 !important;
+  text-align: center;
+}
+
+label {
+  display: block;
+  font-size: 12px !important;
+  font-weight: 500;
+  color: var(--text-2) !important;
+  margin-bottom: 6px !important;
+  margin-top: 14px;
+}
+
+input[type=text], input[type=number], select, textarea {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 8px 12px !important;
+  font-size: 13px !important;
+  font-family: var(--font-sans);
+  color: var(--text) !important;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+textarea {
+  font-family: var(--font-mono);
+  font-size: 12px !important;
+  line-height: 1.55;
+}
+input[type=checkbox] { accent-color: var(--accent); }
+
+/* ─── Fieldsets ──────────────────────────────────────────── */
+fieldset {
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-md) !important;
+  padding: 18px 20px !important;
+  margin-top: 18px !important;
+  background: var(--surface);
+}
+legend {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent) !important;
+  padding: 0 8px !important;
+  font-family: var(--font-mono);
+}
+.hint {
+  font-size: 12px !important;
+  color: var(--text-3) !important;
+  line-height: 1.5;
+  margin-top: 4px;
+  text-wrap: pretty;
+}
+
+/* ─── Tool checkboxes ────────────────────────────────────── */
+.tool-checkboxes { gap: 8px !important; }
+.tool-item {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 8px 12px !important;
+  min-width: 160px;
+  transition: border-color 0.15s;
+}
+.tool-item:has(input:checked) { border-color: var(--accent); background: var(--accent-tint); }
+.tool-item label {
+  font-size: 12.5px !important;
+  font-family: var(--font-mono);
+  color: var(--text) !important;
+  margin: 0 !important;
+}
+.tool-desc {
+  font-size: 11px !important;
+  color: var(--text-3) !important;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+/* ─── Action buttons ─────────────────────────────────────── */
+.actions { gap: 8px !important; margin-top: 24px !important; }
+.actions button {
+  padding: 8px 16px !important;
+  border-radius: var(--r-sm) !important;
+  font-size: 13px !important;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  border: 1px solid transparent !important;
+  transition: filter 0.15s, background 0.15s, color 0.15s;
+}
+#save-btn {
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
+}
+#save-btn:hover { background: var(--accent) !important; filter: brightness(1.05); }
+
+#run-btn {
+  background: var(--ok-tint) !important;
+  color: var(--ok) !important;
+  border-color: color-mix(in oklch, var(--ok) 30%, transparent) !important;
+}
+#run-btn:hover { background: var(--ok) !important; color: #fff !important; }
+
+#delete-btn {
+  background: transparent !important;
+  color: var(--err) !important;
+  border-color: var(--border) !important;
+}
+#delete-btn:hover { background: var(--err) !important; color: #fff !important; border-color: transparent !important; }
+
+#run-output {
+  font-family: var(--font-mono) !important;
+  font-size: 12px !important;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  color: var(--accent-ink) !important;
+}
+
+/* ─── Usage panel ────────────────────────────────────────── */
+.usage-panel {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-md) !important;
+  padding: 18px 20px !important;
+  box-shadow: var(--shadow-sm);
+}
+.usage-panel h2 {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3) !important;
+  margin-bottom: 12px !important;
+}
+.usage-stat {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 10px 14px !important;
+}
+.usage-stat .stat-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3) !important;
+}
+.usage-stat .stat-value {
+  font-family: var(--font-mono);
+  font-size: 18px !important;
+  font-weight: 600;
+  color: var(--text) !important;
+  font-variant-numeric: tabular-nums;
+}
+#usage-last-reset {
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  color: var(--text-3) !important;
+}
+#usage-reset-btn {
+  background: transparent !important;
+  color: var(--text-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 6px 14px !important;
+  font-size: 12px !important;
+  font-weight: 500;
+}
+#usage-reset-btn:hover { background: var(--err) !important; color: #fff !important; border-color: transparent !important; }
+
+/* ─── Per-agent usage ────────────────────────────────────── */
+.usage-section {
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-md) !important;
+  margin-top: 16px !important;
+  background: var(--surface);
+}
+.usage-section summary {
+  font-size: 12.5px !important;
+  font-weight: 500;
+  color: var(--text-2) !important;
+  padding: 12px 16px !important;
+}
+.usage-section[open] summary { color: var(--text) !important; border-bottom-color: var(--border) !important; }
+.us-val {
+  font-family: var(--font-mono);
+  font-size: 18px !important;
+  color: var(--accent-ink) !important;
+  font-variant-numeric: tabular-nums;
+}
+.us-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3) !important;
+}
+.usage-grid .usage-stat { background: var(--surface-2) !important; }
+
+/* ─── Token bar ──────────────────────────────────────────── */
+.token-bar {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  font-family: var(--font-mono);
+  font-size: 10.5px !important;
+  padding: 10px 14px !important;
+}
+.token-label { color: var(--text-3) !important; text-transform: uppercase; letter-spacing: 0.04em; }
+.token-val   { color: var(--text) !important; font-variant-numeric: tabular-nums; }
+.token-val.warn { color: var(--warn) !important; }
+
+/* ─── Entity selector ────────────────────────────────────── */
+.domain-pill {
+  background: var(--surface) !important;
+  color: var(--text-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 999px !important;
+  padding: 4px 12px !important;
+  font-size: 11.5px !important;
+  font-family: var(--font-mono);
+}
+.domain-pill:hover {
+  background: var(--accent-tint) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent) !important;
+}
+.entity-chip {
+  background: var(--accent-tint) !important;
+  color: var(--accent-ink) !important;
+  border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent) !important;
+  border-radius: 999px !important;
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  padding: 3px 10px !important;
+}
+
+/* ─── Execution log ──────────────────────────────────────── */
+.log-section {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-md) !important;
+  padding: 4px 16px !important;
+}
+.log-section summary {
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em;
+  color: var(--text-3) !important;
+}
+.log-list li {
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.log-time { color: var(--text-3) !important; }
+.log-success { color: var(--ok) !important; }
+.log-error   { color: var(--err) !important; }
+.log-tokens  { color: var(--text-3) !important; }
+
+.eval-badge {
+  font-family: var(--font-mono);
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px !important;
+}
+.eval-ok    { background: var(--ok-tint) !important;    color: var(--ok) !important;    border: 1px solid color-mix(in oklch, var(--ok) 30%, transparent) !important; }
+.eval-warn  { background: var(--warn-tint) !important;  color: var(--warn) !important;  border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent) !important; }
+.eval-alert { background: var(--err-tint) !important;   color: var(--err) !important;   border: 1px solid color-mix(in oklch, var(--err) 30%, transparent) !important; }
+
+/* ─── Action builder ─────────────────────────────────────── */
+.action-item {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 8px 12px !important;
+  font-size: 12.5px !important;
+}
+.action-item .ai-type {
+  background: var(--accent-tint) !important;
+  color: var(--accent-ink) !important;
+  font-family: var(--font-mono);
+  font-size: 10px !important;
+  padding: 2px 8px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.btn-add-action {
+  background: transparent !important;
+  border: 1px dashed var(--border-2) !important;
+  color: var(--text-2) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 7px 14px !important;
+  font-size: 12px !important;
+}
+.btn-add-action:hover {
+  background: var(--accent-tint) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent) !important;
+  border-style: solid !important;
+}
+.action-editor {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--accent) !important;
+  border-radius: var(--r) !important;
+}
+#ae-confirm {
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
+  border-color: transparent !important;
+}
+#ae-cancel {
+  background: transparent !important;
+  color: var(--text-2) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* ─── Run button spinner uses accent ─────────────────────── */
+#run-btn .spinner {
+  border-color: color-mix(in oklch, var(--ok) 30%, transparent) !important;
+  border-top-color: var(--ok) !important;
+}
+
+/* ─── Per-agent budget controls ──────────────────────────── */
+.btn-usage-reset, .btn-usage-block, .btn-usage-enable {
+  border-radius: var(--r-sm) !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  padding: 6px 14px !important;
+  font-family: var(--font-sans);
+}
+.btn-usage-reset {
+  background: transparent !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-2) !important;
+}
+.btn-usage-reset:hover { background: var(--hover) !important; color: var(--text) !important; }
+.btn-usage-block {
+  background: var(--err-tint) !important;
+  border: 1px solid transparent !important;
+  color: var(--err) !important;
+}
+.btn-usage-block:hover { background: var(--err) !important; color: #fff !important; }
+.btn-usage-enable {
+  background: var(--ok-tint) !important;
+  border: 1px solid transparent !important;
+  color: var(--ok) !important;
+}
+.btn-usage-enable:hover { background: var(--ok) !important; color: #fff !important; }
+
+/* ─── Misc cleanup ───────────────────────────────────────── */
+.context-preview-wrap {
+  border-radius: var(--r-sm) !important;
+  border-color: var(--border) !important;
+}
+.context-preview-wrap summary {
+  background: var(--surface-2) !important;
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  color: var(--text-3) !important;
+}
+.context-preview-wrap pre {
+  background: var(--surface) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  color: var(--text-2) !important;
+}
+
+/* ─── Mobile ─────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  body { padding: 16px 14px 48px; }
+  .grid { grid-template-columns: 1fr !important; }
+  fieldset { padding: 14px !important; }
+}

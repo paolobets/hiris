@@ -5,546 +5,505 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>HIRIS</title>
   <link rel="icon" type="image/svg+xml" href="static/hiris-icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/hiris-theme.css">
   <style>
-    :root {
-      --bg:               #F9FAFB;
-      --surface:          #FFFFFF;
-      --surface-hover:    #F3F4F6;
-      --text:             #111827;
-      --text-muted:       #6B7280;
-      --border:           #E5E7EB;
-      --input-bg:         #F9FAFB;
-      --accent:           #2563EB;
-      --accent-hover:     #1D4ED8;
-      --accent-muted:     #93C5FD;
-      --accent-bg:        #EFF6FF;
-      --accent-bg-hover:  #DBEAFE;
-      --dot-on:           #10B981;
-      --dot-off:          #D1D5DB;
-      --user-bubble-bg:   #2563EB;
-      --user-bubble-text: #FFFFFF;
-      --bot-bubble-bg:    #FFFFFF;
-      --bot-bubble-border:#E5E7EB;
-      --scrollbar:        #E5E7EB;
-      --conn-on:          #10B981;
-      --conn-on-shadow:   #D1FAE5;
-      --conn-off:         #EF4444;
-      --conn-off-shadow:  #FEE2E2;
-      --badge-monitor-bg: #DBEAFE;
-      --badge-monitor-text:#1D4ED8;
-      --badge-reactive-bg:#D1FAE5;
-      --badge-reactive-text:#065F46;
-      --badge-preventive-bg:#FEF3C7;
-      --badge-preventive-text:#92400E;
-      --badge-chat-bg:    #EDE9FE;
-      --badge-chat-text:  #5B21B6;
-      --badge-off-bg:     #F3F4F6;
-      --chip-border:      #BFDBFE;
-      --avatar-bg:        #EDE9FE;
-    }
-
-    [data-theme="dark"] {
-      --bg:               #0F172A;
-      --surface:          #1E293B;
-      --surface-hover:    #334155;
-      --text:             #F1F5F9;
-      --text-muted:       #94A3B8;
-      --border:           #334155;
-      --input-bg:         #1E293B;
-      --accent:           #3B82F6;
-      --accent-hover:     #2563EB;
-      --accent-muted:     #1D4ED8;
-      --accent-bg:        #1E3A5F;
-      --accent-bg-hover:  #1E40AF;
-      --dot-on:           #34D399;
-      --dot-off:          #475569;
-      --user-bubble-bg:   #3B82F6;
-      --user-bubble-text: #FFFFFF;
-      --bot-bubble-bg:    #1E293B;
-      --bot-bubble-border:#334155;
-      --scrollbar:        #334155;
-      --conn-on:          #34D399;
-      --conn-on-shadow:   #064E3B;
-      --conn-off:         #F87171;
-      --conn-off-shadow:  #7F1D1D;
-      --badge-monitor-bg: #1E3A5F;
-      --badge-monitor-text:#93C5FD;
-      --badge-reactive-bg:#064E3B;
-      --badge-reactive-text:#6EE7B7;
-      --badge-preventive-bg:#78350F;
-      --badge-preventive-text:#FCD34D;
-      --badge-chat-bg:    #3B0764;
-      --badge-chat-text:  #C4B5FD;
-      --badge-off-bg:     #334155;
-      --chip-border:      #1D4ED8;
-      --avatar-bg:        #3B0764;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      html:not([data-theme="light"]) {
-        --bg:               #0F172A;
-        --surface:          #1E293B;
-        --surface-hover:    #334155;
-        --text:             #F1F5F9;
-        --text-muted:       #94A3B8;
-        --border:           #334155;
-        --input-bg:         #1E293B;
-        --accent:           #3B82F6;
-        --accent-hover:     #2563EB;
-        --accent-muted:     #1D4ED8;
-        --accent-bg:        #1E3A5F;
-        --accent-bg-hover:  #1E40AF;
-        --dot-on:           #34D399;
-        --dot-off:          #475569;
-        --user-bubble-bg:   #3B82F6;
-        --user-bubble-text: #FFFFFF;
-        --bot-bubble-bg:    #1E293B;
-        --bot-bubble-border:#334155;
-        --scrollbar:        #334155;
-        --conn-on:          #34D399;
-        --conn-on-shadow:   #064E3B;
-        --conn-off:         #F87171;
-        --conn-off-shadow:  #7F1D1D;
-        --badge-monitor-bg: #1E3A5F;
-        --badge-monitor-text:#93C5FD;
-        --badge-reactive-bg:#064E3B;
-        --badge-reactive-text:#6EE7B7;
-        --badge-preventive-bg:#78350F;
-        --badge-preventive-text:#FCD34D;
-        --badge-chat-bg:    #3B0764;
-        --badge-chat-text:  #C4B5FD;
-        --badge-off-bg:     #334155;
-        --chip-border:      #1D4ED8;
-        --avatar-bg:        #3B0764;
-      }
-    }
-
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+    /* ─── App layout ─── */
+    #app {
       height: 100dvh;
-      overflow: hidden;
-      -webkit-tap-highlight-color: transparent;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      background: var(--bg);
     }
-    #app { display: flex; height: 100dvh; }
 
-    /* SIDEBAR */
+    /* ─── Sidebar ─── */
     #sidebar {
-      width: 260px;
       background: var(--surface);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
+      min-width: 0;
       overflow: hidden;
-      flex-shrink: 0;
     }
     #sidebar-header {
-      padding: 1rem;
+      padding: 16px 18px;
       border-bottom: 1px solid var(--border);
     }
     #sidebar-header h2 {
-      font-size: 0.72rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--text-muted);
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-3);
     }
-    #agent-list { flex: 1; overflow-y: auto; padding: 0.5rem; }
+    #agent-list { flex: 1; overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 1px; }
     .agent-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.6rem 0.75rem;
-      border-radius: 8px;
-      font-size: 0.82rem;
-      color: var(--text);
-      transition: background 0.15s;
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px;
+      border-radius: var(--r-sm);
+      font-size: 13.5px;
+      color: var(--text-2);
+      cursor: pointer;
+      position: relative;
+      min-width: 0;
+      transition: background 0.15s, color 0.15s;
     }
-    .agent-item:hover { background: var(--surface-hover); }
-    .agent-item.agent-active { background: var(--accent-bg); }
-    .agent-item.agent-active:hover { background: var(--accent-bg-hover); }
-    .badge {
-      font-size: 0.62rem;
-      font-weight: 600;
-      padding: 0.15rem 0.45rem;
-      border-radius: 999px;
-      margin-left: auto;
-      white-space: nowrap;
+    .agent-item:hover { background: var(--hover); color: var(--text); }
+    .agent-item.agent-active { background: var(--accent-tint); color: var(--accent-ink); }
+    .agent-item.agent-active::before {
+      content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px;
+      width: 2px; border-radius: 2px; background: var(--accent);
     }
-    .badge-monitor    { background: var(--badge-monitor-bg); color: var(--badge-monitor-text); }
-    .badge-reactive   { background: var(--badge-reactive-bg); color: var(--badge-reactive-text); }
-    .badge-preventive { background: var(--badge-preventive-bg); color: var(--badge-preventive-text); }
-    .badge-chat       { background: var(--badge-chat-bg); color: var(--badge-chat-text); }
-    .badge-off        { background: var(--badge-off-bg); color: #9CA3AF; }
-    .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .dot-on  { background: var(--dot-on); }
-    .dot-off { background: var(--dot-off); }
+    .agent-item > span:first-of-type {
+      flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .agent-item .meta {
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--text-3); letter-spacing: 0;
+    }
+
     #sidebar-footer {
-      padding: 0.75rem 1rem;
+      padding: 6px 8px;
       border-top: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
+      display: flex; flex-direction: column; gap: 1px;
     }
-    #sidebar-footer a {
-      color: var(--text-muted);
-      font-size: 0.8rem;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
+    .sb-nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px;
+      border-radius: var(--r-sm);
+      font-size: 13px;
+      color: var(--text-2);
+      cursor: pointer;
     }
-    #sidebar-footer a:hover { color: var(--text); }
+    .sb-nav-item:hover { background: var(--hover); color: var(--text); }
+    .sb-nav-item.active { color: var(--accent-ink); background: var(--accent-tint); }
+    .sb-nav-item .ic { width: 18px; height: 18px; display: grid; place-items: center; color: currentColor; }
+
+    .task-badge {
+      margin-left: auto;
+      background: var(--accent); color: var(--on-accent);
+      font-size: 10px; font-weight: 600;
+      padding: 1px 6px; border-radius: 999px;
+      font-family: var(--font-mono);
+    }
+    .task-badge:empty, .task-badge[data-count="0"] { display: none; }
+
     #usage-widget {
-      font-size: 0.7rem;
-      color: var(--text-muted);
+      padding: 12px 18px 16px;
       border-top: 1px solid var(--border);
-      padding-top: 0.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
+      display: flex; flex-direction: column; gap: 4px;
+      font-size: 11.5px;
     }
-    #usage-widget .usage-row { display: flex; justify-content: space-between; align-items: center; }
-    #usage-widget .usage-label { opacity: 0.7; }
-    #usage-widget .usage-val { font-variant-numeric: tabular-nums; }
+    #usage-widget .usage-title {
+      font-size: 11px; color: var(--text-3);
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      margin-bottom: 4px;
+    }
+    #usage-widget .usage-row { display: flex; justify-content: space-between; align-items: baseline; }
+    #usage-widget .usage-label { color: var(--text-3); }
+    #usage-widget .usage-val { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
 
-    /* MAIN */
-    #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    /* ─── Main ─── */
+    #main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
-    /* HEADER */
+    /* Topbar */
     #header {
-      background: var(--surface);
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 24px;
       border-bottom: 1px solid var(--border);
-      padding: 0.75rem 1.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
+      background: var(--surface);
       flex-shrink: 0;
     }
-    #header-icon { font-size: 1.4rem; }
-    #header-title { font-size: 1rem; font-weight: 600; }
-    #header-subtitle { font-size: 0.72rem; color: #9CA3AF; }
-    #conn-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      margin-left: auto;
-      background: var(--conn-on);
-      box-shadow: 0 0 0 2px var(--conn-on-shadow);
-      transition: background 0.3s, box-shadow 0.3s;
+    #header-icon { width: 28px; height: 28px; flex-shrink: 0; }
+    #header-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    #header-title {
+      font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+      display: flex; align-items: center; gap: 8px;
     }
-    #conn-dot.offline { background: var(--conn-off); box-shadow: 0 0 0 2px var(--conn-off-shadow); }
+    #header-version { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); font-weight: 500; }
+    #header-subtitle { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
+    #header-tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+    #conn-dot {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      background: var(--ok-tint); color: var(--ok);
+    }
+    #conn-dot::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+    }
+    #conn-dot.offline { background: var(--err-tint); color: var(--err); }
 
-    /* MESSAGES */
+    /* Messages */
     #messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
+      flex: 1; overflow-y: auto;
+      padding: 28px 0 12px;
+      display: flex; flex-direction: column; gap: 18px;
       scroll-behavior: smooth;
     }
-
-    /* WELCOME */
-    #welcome {
-      margin: auto;
-      text-align: center;
-      max-width: 360px;
-      padding: 2rem 0;
-    }
-    #welcome .welcome-icon { font-size: 2.5rem; margin-bottom: 0.75rem; display:flex; justify-content:center; }
-    #welcome h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.4rem; }
-    #welcome p  { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem; }
-    .quick-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
-    .chip {
-      background: var(--accent-bg);
-      color: var(--accent-hover);
-      border: 1px solid var(--chip-border);
-      border-radius: 999px;
-      padding: 0.4rem 0.9rem;
-      font-size: 0.8rem;
-      cursor: pointer;
-      transition: background 0.15s;
-      font-family: inherit;
-    }
-    .chip:hover { background: var(--accent-bg-hover); }
-
-    /* BUBBLES */
     .msg-row {
-      display: flex;
-      align-items: flex-end;
-      gap: 0.5rem;
-      max-width: 80%;
+      display: flex; gap: 12px; align-items: flex-start;
+      max-width: 740px;
+      width: 100%;
+      margin-left: auto; margin-right: auto;
+      padding: 0 28px;
     }
-    .msg-row.user      { align-self: flex-end; flex-direction: row-reverse; }
-    .msg-row.assistant { align-self: flex-start; }
+    .msg-row.user { justify-content: flex-end; }
     .avatar {
       width: 28px; height: 28px;
-      border-radius: 50%;
-      background: var(--avatar-bg);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.9rem;
       flex-shrink: 0;
+      border-radius: 50%;
+      overflow: hidden;
     }
+    .avatar.user {
+      background: var(--surface-3); color: var(--text-2);
+      display: grid; place-items: center;
+      font-size: 11px; font-weight: 600;
+      font-family: var(--font-mono);
+    }
+    .msg-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 78%; }
+    .msg-row.user .msg-col { align-items: flex-end; }
     .bubble {
-      padding: 0.65rem 1rem;
-      border-radius: 18px;
+      padding: 10px 14px;
+      border-radius: var(--r-md);
+      font-size: 14px;
       line-height: 1.55;
-      font-size: 0.875rem;
       word-break: break-word;
     }
-    .msg-row.user      .bubble { background: var(--user-bubble-bg); color: var(--user-bubble-text); border-bottom-right-radius: 4px; }
-    .msg-row.assistant .bubble { background: var(--bot-bubble-bg); color: var(--text); border: 1px solid var(--bot-bubble-border); border-bottom-left-radius: 4px; }
-    .msg-col { display: flex; flex-direction: column; }
-    .msg-row.user      .msg-col { align-items: flex-end; }
-    .msg-row.assistant .msg-col { align-items: flex-start; }
-    .msg-time { font-size: 0.65rem; color: #9CA3AF; margin-top: 0.25rem; padding: 0 0.25rem; }
-
-    /* DEBUG TOOLS */
-    .debug-row { align-self: flex-start; margin-left: 36px; margin-top: -0.5rem; }
-    .debug-summary {
-      font-size: 0.68rem; color: var(--text-muted); cursor: pointer;
-      padding: 0.15rem 0.4rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.3rem;
+    .msg-row.assistant .bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top-left-radius: 6px;
+      color: var(--text);
     }
-    .debug-summary:hover { background: var(--surface-hover); }
-    .debug-body {
-      font-size: 0.7rem; color: var(--text-muted); background: var(--surface);
-      border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem;
-      margin-top: 0.25rem; font-family: monospace;
+    .msg-row.user .bubble {
+      background: var(--accent);
+      color: var(--on-accent);
+      border-top-right-radius: 6px;
     }
-    .debug-tool { margin-bottom: 0.25rem; }
-    .debug-tool:last-child { margin-bottom: 0; }
+    .msg-time { font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); padding: 0 4px; }
 
-    /* TYPING */
-    .typing-row { display: flex; align-items: flex-end; gap: 0.5rem; align-self: flex-start; }
+    /* Welcome */
+    #welcome {
+      margin: auto auto;
+      max-width: 740px;
+      width: 100%;
+      padding: 24px 28px;
+    }
+    #welcome .welcome-mark { width: 56px; height: 56px; margin-bottom: 18px; }
+    #welcome h3 {
+      font-size: 28px; font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    #welcome h3 .grad {
+      background: linear-gradient(90deg, var(--iris) 0%, var(--iris-3) 50%, var(--iris-5) 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    #welcome p {
+      color: var(--text-2);
+      font-size: 15px;
+      max-width: 38ch;
+      margin-bottom: 22px;
+      text-wrap: pretty;
+    }
+    .quick-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 560px; }
+    .chip {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 12px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      font-size: 13px; font-weight: 500;
+      color: var(--text-2);
+      text-align: left;
+      transition: border-color 0.15s, transform 0.15s;
+      font-family: inherit;
+    }
+    .chip:hover {
+      border-color: var(--border-2);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+      color: var(--text);
+    }
+
+    /* Tool calls */
+    .debug-row {
+      max-width: 740px; width: 100%;
+      margin: -8px auto 0;
+      padding: 0 28px 0 68px;
+    }
+    .debug-row details {
+      padding: 8px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-2);
+    }
+    .debug-summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); }
+    .debug-summary::-webkit-details-marker { display: none; }
+    .debug-summary::before { content: "▸"; color: var(--accent); transition: transform 0.15s; display: inline-block; }
+    .debug-row details[open] .debug-summary::before { transform: rotate(90deg); }
+    .debug-body { margin-top: 6px; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }
+    .debug-tool b { color: var(--accent); font-weight: 500; }
+
+    /* Typing */
+    .typing-row {
+      max-width: 740px; width: 100%;
+      margin: 0 auto;
+      padding: 0 28px;
+      display: flex; gap: 12px; align-items: flex-start;
+    }
     .typing-bubble {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 18px; border-bottom-left-radius: 4px;
-      padding: 0.75rem 1rem;
-      display: flex; gap: 4px; align-items: center;
+      display: inline-flex; gap: 4px;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      border-top-left-radius: 6px;
     }
     .typing-dot {
       width: 6px; height: 6px; border-radius: 50%;
-      background: #9CA3AF;
+      background: var(--text-3);
       animation: bounce 1.2s ease-in-out infinite;
     }
-    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    .typing-dot:nth-child(2) { animation-delay: 0.15s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.3s; }
     @keyframes bounce {
-      0%, 60%, 100% { transform: translateY(0); }
-      30%            { transform: translateY(-6px); }
+      0%,60%,100% { transform: translateY(0); opacity: 0.4; }
+      30%         { transform: translateY(-5px); opacity: 1; }
     }
 
-    /* INPUT */
+    /* Composer */
     #input-area {
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      padding: 0.75rem 1rem;
-      display: flex;
-      align-items: flex-end;
-      gap: 0.5rem;
       flex-shrink: 0;
+      padding: 8px 28px 18px;
+      background: var(--bg);
+    }
+    #input-inner {
+      max-width: 740px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 8px 8px 8px 14px;
+      display: flex; align-items: flex-end; gap: 6px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      box-shadow: var(--shadow-sm);
+    }
+    #input-inner:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-tint), var(--shadow-sm);
     }
     #input {
-      flex: 1;
-      border: 1px solid var(--border);
-      border-radius: 22px;
-      padding: 0.6rem 1rem;
-      font-size: 1rem;
-      font-family: inherit;
-      color: var(--text);
-      background: var(--input-bg);
-      resize: none;
-      overflow-y: hidden;
-      line-height: 1.5;
-      transition: border-color 0.15s;
-      -webkit-appearance: none;
-      touch-action: manipulation;
+      flex: 1; border: 0; background: transparent; resize: none; outline: none;
+      padding: 8px 0; font-size: 14px; line-height: 1.5; max-height: 160px;
+      font-family: inherit; color: var(--text);
     }
-    #input:focus { outline: none; border-color: var(--accent-muted); background: var(--surface); }
-    #input::placeholder { color: #9CA3AF; }
+    #input::placeholder { color: var(--text-3); }
     #send-btn {
-      width: 44px; height: 44px;
-      background: var(--accent);
-      border: none; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; flex-shrink: 0;
-      transition: background 0.15s;
-      touch-action: manipulation;
+      width: 32px; height: 32px; flex-shrink: 0;
+      border-radius: var(--r-sm);
+      background: var(--accent); color: var(--on-accent);
+      display: grid; place-items: center;
+      transition: filter 0.15s, transform 0.1s;
     }
-    #send-btn:hover    { background: var(--accent-hover); }
-    #send-btn:active   { background: var(--accent-hover); transform: scale(0.94); }
-    #send-btn:disabled { background: var(--accent-muted); cursor: not-allowed; }
-    #send-btn.loading  { background: var(--accent-muted); cursor: default; }
+    #send-btn:hover:not(:disabled) { filter: brightness(1.05); }
+    #send-btn:active:not(:disabled) { transform: scale(0.94); }
+    #send-btn:disabled { background: var(--surface-3); color: var(--text-3); cursor: not-allowed; }
+    #send-btn.loading { background: var(--surface-3); color: var(--text-3); cursor: default; }
     #send-btn.loading svg { display: none; }
     #send-btn.loading::after {
       content: '';
-      width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,0.35);
-      border-top-color: #fff;
+      width: 12px; height: 12px;
+      border: 2px solid var(--text-3);
+      border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
-      display: block;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #send-btn svg { width: 18px; height: 18px; fill: white; }
+    #send-btn svg { width: 14px; height: 14px; fill: currentColor; }
 
-    /* SCROLLBAR */
-    #messages::-webkit-scrollbar { width: 4px; }
-    #messages::-webkit-scrollbar-track { background: transparent; }
-    #messages::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
-
-    /* RESPONSIVE */
-    @media (max-width: 640px) {
-      #sidebar { display: none; }
-      .msg-row { max-width: 92%; }
-      #input-area { padding: 0.5rem 0.75rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
-      #input { font-size: 1rem; }
-      #mobile-task-btn { display: flex; }
+    #turn-counter {
+      font-size: 10.5px; text-align: center;
+      padding: 4px 8px;
+      color: var(--text-3); font-family: var(--font-mono);
     }
+    #session-ended-msg {
+      font-size: 12px; text-align: center;
+      padding: 8px 12px;
+      color: var(--err); background: var(--err-tint);
+      border-top: 1px solid var(--border);
+    }
+
+    /* Tasks panel */
+    #task-panel { display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 28px; min-height: 0; }
+    #task-panel-header { display: none; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    #task-panel-header span { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+    .task-section-title {
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-3);
+      margin: 16px 0 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .task-section-title:first-child { margin-top: 0; }
+    .task-section-title::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .task-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 12px 16px; margin-bottom: 6px;
+    }
+    .task-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 4px;
+    }
+    .task-label { font-weight: 500; font-size: 13.5px; color: var(--text); flex: 1; }
+    .task-status {
+      font-size: 10.5px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      font-family: var(--font-mono);
+      padding: 2px 8px; border-radius: 999px;
+    }
+    .task-status.pending  { background: var(--accent-tint); color: var(--accent-ink); }
+    .task-status.running  { background: var(--ok-tint); color: var(--ok); }
+    .task-status.done     { background: var(--surface-3); color: var(--text-3); }
+    .task-status.skipped,
+    .task-status.expired,
+    .task-status.cancelled{ background: var(--surface-3); color: var(--text-3); }
+    .task-status.failed   { background: var(--err-tint); color: var(--err); }
+    .task-meta { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); margin-top: 2px; }
+    .task-cancel-btn {
+      background: none; border: 1px solid var(--border); color: var(--text-2);
+      border-radius: var(--r-sm); padding: 3px 10px; font-size: 11.5px; cursor: pointer;
+    }
+    .task-cancel-btn:hover { background: var(--hover); color: var(--text); }
+    .task-empty { color: var(--text-3); font-size: 13px; text-align: center; padding: 32px 0; }
+
     #mobile-task-btn {
-      display: none; align-items: center; gap: 4px;
-      background: none; border: 1px solid var(--border); border-radius: 6px;
-      padding: 3px 9px; color: var(--text-muted); font-size: 12px; cursor: pointer;
-      white-space: nowrap; transition: background 0.15s, color 0.15s;
+      display: none; align-items: center; gap: 6px;
+      background: none; border: 1px solid var(--border); border-radius: var(--r-sm);
+      padding: 5px 10px; color: var(--text-2); font-size: 12px; cursor: pointer;
     }
-    #mobile-task-btn:hover { background: var(--surface-hover); color: var(--text); }
+    #mobile-task-btn:hover { background: var(--hover); color: var(--text); }
     #mobile-task-btn.active { color: var(--accent); border-color: var(--accent); }
     #mobile-task-badge {
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 16px; height: 16px; border-radius: 8px;
-      background: var(--accent); color: #fff;
+      background: var(--accent); color: var(--on-accent);
       font-size: 10px; font-weight: 700; padding: 0 4px;
+      font-family: var(--font-mono);
     }
     #mobile-task-badge:empty, #mobile-task-badge[data-count="0"] { display: none; }
-    /* ── Task section ─────────────────────────────── */
-    .task-badge {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-width: 18px; height: 18px; border-radius: 9px;
-      background: var(--accent); color: #fff;
-      font-size: 11px; font-weight: 700; padding: 0 5px; margin-left: 6px;
-    }
-    .task-badge:empty, .task-badge[data-count="0"] { display: none; }
-    .task-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
-    }
-    .task-card-header {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 8px; margin-bottom: 4px;
-    }
-    .task-label { font-weight: 600; font-size: 14px; color: var(--text); flex: 1; }
-    .task-status {
-      font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
-    }
-    .task-status.pending  { background: var(--badge-monitor-bg);    color: var(--badge-monitor-text); }
-    .task-status.running  { background: var(--badge-reactive-bg);   color: var(--badge-reactive-text); }
-    .task-status.done     { background: var(--badge-reactive-bg);   color: var(--badge-reactive-text); }
-    .task-status.skipped  { background: var(--badge-off-bg);        color: var(--text-muted); }
-    .task-status.failed   { background: #FEE2E2;                    color: #DC2626; }
-    .task-status.expired  { background: var(--badge-off-bg);        color: var(--text-muted); }
-    .task-status.cancelled{ background: var(--badge-off-bg);        color: var(--text-muted); }
-    .task-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-    .task-cancel-btn {
-      background: none; border: 1px solid var(--border); color: var(--text-muted);
-      border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer;
-    }
-    .task-cancel-btn:hover { background: var(--surface-hover); color: var(--text); }
-    .task-section-title {
-      font-size: 12px; font-weight: 700; color: var(--text-muted);
-      text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 8px;
-    }
-    .task-empty { color: var(--text-muted); font-size: 14px; text-align: center; padding: 32px 0; }
-    #task-panel {
-      display: none; flex-direction: column; flex: 1; overflow-y: auto;
-      padding: 16px; min-height: 0;
-    }
-    #nav-tasks { cursor: pointer; display: flex; align-items: center; }
-    #nav-tasks.active { color: var(--accent); }
 
     /* Onboarding wizard */
     #onboarding {
       position: fixed; inset: 0; z-index: 1000;
-      background: rgba(0,0,0,0.72); display: flex;
-      align-items: center; justify-content: center;
+      background: oklch(0.10 0.04 280 / 0.55);
+      backdrop-filter: blur(12px) saturate(120%);
+      display: flex; align-items: center; justify-content: center;
       padding: 16px;
+      animation: ob-fade 0.25s ease-out;
     }
+    @keyframes ob-fade { from { opacity: 0; } to { opacity: 1; } }
     .ob-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 16px; padding: 32px 28px; max-width: 480px; width: 100%;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      width: 100%; max-width: 480px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ob-card::before {
+      content: ""; position: absolute;
+      top: -60px; right: -60px;
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, var(--iris-3) 0%, transparent 70%);
+      opacity: 0.16; pointer-events: none;
     }
     .ob-step { display: none; }
     .ob-step.active { display: block; }
-    .ob-icon { font-size: 2.8rem; margin-bottom: 12px; text-align: center; }
-    .ob-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 8px; text-align: center; }
-    .ob-sub { font-size: 0.875rem; color: var(--text-muted); text-align: center; margin-bottom: 24px; line-height: 1.55; }
-    .ob-types { display: flex; gap: 10px; margin-bottom: 24px; }
+    .ob-icon { width: 48px; height: 48px; margin-bottom: 16px; }
+    .ob-title { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .ob-sub { font-size: 13.5px; color: var(--text-2); margin-bottom: 22px; text-wrap: pretty; }
+    .ob-types { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 22px; }
     .ob-type-btn {
-      flex: 1; padding: 14px 8px; border: 2px solid var(--border);
-      border-radius: 10px; background: var(--input-bg); cursor: pointer;
-      text-align: center; transition: border-color 0.15s, background 0.15s;
-      color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--r);
+      padding: 14px 12px; text-align: left;
+      background: var(--surface);
+      transition: border-color 0.15s;
+      display: flex; flex-direction: column; gap: 4px;
+      cursor: pointer; color: var(--text);
     }
-    .ob-type-btn:hover { border-color: var(--accent); background: var(--surface-hover); }
-    .ob-type-btn.selected { border-color: var(--accent); background: rgba(139,92,246,0.12); }
-    .ob-type-btn .ob-type-icon { font-size: 1.6rem; display: block; margin-bottom: 6px; }
-    .ob-type-btn .ob-type-name { font-size: 0.78rem; font-weight: 600; display: block; }
-    .ob-type-btn .ob-type-desc { font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 2px; }
+    .ob-type-btn:hover { border-color: var(--border-2); }
+    .ob-type-btn.selected { border-color: var(--accent); background: var(--accent-tint); }
+    .ob-type-btn .ob-type-icon { font-size: 1.4rem; display: block; margin-bottom: 2px; }
+    .ob-type-btn .ob-type-name { font-size: 13px; font-weight: 600; display: block; color: var(--text); }
+    .ob-type-btn .ob-type-desc { font-size: 11.5px; color: var(--text-3); display: block; line-height: 1.4; }
     .ob-field { margin-bottom: 14px; }
-    .ob-field label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; }
+    .ob-field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 6px; font-weight: 500; }
     .ob-field input, .ob-field textarea {
       width: 100%; box-sizing: border-box;
-      padding: 8px 10px; background: var(--input-bg);
-      border: 1px solid var(--border); border-radius: 6px;
-      color: var(--text); font-size: 0.875rem; font-family: inherit;
+      padding: 8px 12px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--r-sm);
+      color: var(--text); font-size: 13px; font-family: inherit;
+      outline: none; transition: border-color 0.15s, box-shadow 0.15s;
     }
     .ob-field textarea { resize: vertical; min-height: 80px; }
+    .ob-field input:focus, .ob-field textarea:focus {
+      border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint);
+    }
     .ob-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-    .ob-btn-skip {
-      background: none; border: 1px solid var(--border); color: var(--text-muted);
-      border-radius: 7px; padding: 8px 18px; cursor: pointer; font-size: 0.875rem;
+    .ob-btn-skip { padding: 8px 16px; }
+    .ob-btn-next { padding: 8px 16px; }
+    .ob-progress { display: flex; gap: 4px; margin-bottom: 22px; }
+    .ob-dot {
+      flex: 1; height: 3px; border-radius: 2px;
+      background: var(--surface-3);
     }
-    .ob-btn-skip:hover { color: var(--text); background: var(--surface-hover); }
-    .ob-btn-next {
-      background: var(--accent); color: #fff; border: none;
-      border-radius: 7px; padding: 8px 22px; cursor: pointer;
-      font-size: 0.875rem; font-weight: 600;
-    }
-    .ob-btn-next:hover { opacity: 0.9; }
-    .ob-btn-next:disabled { opacity: 0.45; cursor: not-allowed; }
-    .ob-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 20px; }
-    .ob-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
     .ob-dot.active { background: var(--accent); }
+
+    /* Responsive */
+    @media (max-width: 720px) {
+      #app { grid-template-columns: 1fr; }
+      #sidebar { display: none; }
+      .msg-row, .typing-row, #welcome, #input-inner, .debug-row { padding-left: 16px; padding-right: 16px; }
+      #input-area { padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
+      #mobile-task-btn { display: inline-flex; }
+    }
   </style>
 </head>
 <body>
 
-<!-- Onboarding wizard (shown once on first access) -->
+<!-- Onboarding wizard -->
 <div id="onboarding" style="display:none" role="dialog" aria-modal="true" aria-label="Benvenuto in HIRIS">
   <div class="ob-card">
-    <div class="ob-dots">
+    <div class="ob-progress">
       <div class="ob-dot active" id="ob-dot-0"></div>
       <div class="ob-dot" id="ob-dot-1"></div>
       <div class="ob-dot" id="ob-dot-2"></div>
     </div>
 
-    <!-- Step 0: Welcome -->
     <div class="ob-step active" id="ob-step-0">
-      <div class="ob-icon">&#x1F3E0;</div>
-      <div class="ob-title">Benvenuto in HIRIS!</div>
-      <div class="ob-sub">Il tuo assistente AI per la smart home.<br>Creiamo il tuo primo agente in meno di un minuto.</div>
+      <img src="static/hiris-icon.svg" class="ob-icon" alt="HIRIS">
+      <div class="ob-title">Benvenuto in HIRIS</div>
+      <div class="ob-sub">Il tuo assistente AI per Home Assistant.<br>Creiamo il primo agente — meno di un minuto.</div>
       <div class="ob-actions">
-        <button class="ob-btn-skip" onclick="obDismiss()">Salta</button>
-        <button class="ob-btn-next" onclick="obGo(1)">Inizia &#8594;</button>
+        <button class="btn ob-btn-skip" onclick="obDismiss()">Salta</button>
+        <button class="btn btn-primary ob-btn-next" onclick="obGo(1)">Inizia &#8594;</button>
       </div>
     </div>
 
-    <!-- Step 1: Choose type -->
     <div class="ob-step" id="ob-step-1">
-      <div class="ob-title">Che tipo di agente vuoi creare?</div>
-      <div class="ob-sub">Potrai creare altri agenti in seguito dalla pagina di configurazione.</div>
+      <div class="ob-title">Che tipo di agente?</div>
+      <div class="ob-sub">Potrai sempre crearne altri dalla pagina di configurazione.</div>
       <div class="ob-types">
         <button class="ob-type-btn" onclick="obSelectType('monitor', this)">
           <span class="ob-type-icon">&#x1F4CA;</span>
@@ -554,7 +513,7 @@
         <button class="ob-type-btn selected" onclick="obSelectType('chat', this)">
           <span class="ob-type-icon">&#x1F4AC;</span>
           <span class="ob-type-name">Chat</span>
-          <span class="ob-type-desc">Rispondi alle domande</span>
+          <span class="ob-type-desc">Risponde alle domande</span>
         </button>
         <button class="ob-type-btn" onclick="obSelectType('reactive', this)">
           <span class="ob-type-icon">&#x26A1;</span>
@@ -563,94 +522,116 @@
         </button>
       </div>
       <div class="ob-actions">
-        <button class="ob-btn-skip" onclick="obGo(0)">&#8592; Indietro</button>
-        <button class="ob-btn-next" onclick="obGo(2)">Avanti &#8594;</button>
+        <button class="btn ob-btn-skip" onclick="obGo(0)">&#8592; Indietro</button>
+        <button class="btn btn-primary ob-btn-next" onclick="obGo(2)">Avanti &#8594;</button>
       </div>
     </div>
 
-    <!-- Step 2: Name + quick create -->
     <div class="ob-step" id="ob-step-2">
       <div class="ob-title">Configura il tuo agente</div>
-      <div class="ob-sub">Pochi dettagli per iniziare — potrai sempre modificarli in seguito.</div>
+      <div class="ob-sub">Pochi dettagli per iniziare — potrai modificarli in seguito.</div>
       <div class="ob-field">
         <label>Nome agente</label>
-        <input type="text" id="ob-name" placeholder="Es: Assistente Casa, Monitor Energia…" maxlength="60">
+        <input type="text" id="ob-name" placeholder="Es: Iris, Monitor Energia…" maxlength="60">
       </div>
       <div class="ob-field">
         <label>Istruzioni (opzionale)</label>
         <textarea id="ob-prompt" placeholder="Descrivi come deve comportarsi questo agente…"></textarea>
       </div>
       <div class="ob-actions">
-        <button class="ob-btn-skip" onclick="obGo(1)">&#8592; Indietro</button>
-        <button class="ob-btn-next" id="ob-create-btn" onclick="obCreate()">Crea agente &#10003;</button>
+        <button class="btn ob-btn-skip" onclick="obGo(1)">&#8592; Indietro</button>
+        <button class="btn btn-primary ob-btn-next" id="ob-create-btn" onclick="obCreate()">Crea agente &#10003;</button>
       </div>
     </div>
   </div>
 </div>
+
 <div id="app">
   <aside id="sidebar">
-    <div id="sidebar-header"><h2>Agenti attivi</h2></div>
+    <div id="sidebar-header"><h2>Agenti chat</h2></div>
     <div id="agent-list"></div>
     <div id="sidebar-footer">
-      <a href="config">&#9881; Configura agenti</a>
-      <a href="#" id="nav-tasks" onclick="showPanel('tasks'); return false;">&#128336; Task<span class="task-badge" id="task-badge" data-count="0"></span></a>
-      <div id="usage-widget">
-        <div class="usage-row">
-          <span class="usage-label">&#x1F4AC; Token</span>
-          <span class="usage-val" id="u-tokens">—</span>
-        </div>
-        <div class="usage-row">
-          <span class="usage-label">&#x1F4B0; Costo</span>
-          <span class="usage-val" id="u-cost">—</span>
-        </div>
-        <div class="usage-row">
-          <span class="usage-label">&#x1F504; Richieste</span>
-          <span class="usage-val" id="u-reqs">—</span>
-        </div>
+      <a href="config" class="sb-nav-item">
+        <span class="ic">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="2.5"/><path d="M9 1.5v2M9 14.5v2M14.6 3.4l-1.4 1.4M4.8 13.2l-1.4 1.4M16.5 9h-2M3.5 9h-2M14.6 14.6l-1.4-1.4M4.8 4.8 3.4 3.4"/></svg>
+        </span>
+        <span>Configura agenti</span>
+      </a>
+      <a href="#" id="nav-tasks" class="sb-nav-item" onclick="showPanel('tasks'); return false;">
+        <span class="ic">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="6.5"/><path d="M9 5.5V9l2.5 1.5"/></svg>
+        </span>
+        <span>Task pianificati</span>
+        <span class="task-badge" id="task-badge" data-count="0"></span>
+      </a>
+    </div>
+    <div id="usage-widget">
+      <div class="usage-title">Utilizzo</div>
+      <div class="usage-row">
+        <span class="usage-label">Token</span>
+        <span class="usage-val" id="u-tokens">—</span>
+      </div>
+      <div class="usage-row">
+        <span class="usage-label">Costo</span>
+        <span class="usage-val" id="u-cost">—</span>
+      </div>
+      <div class="usage-row">
+        <span class="usage-label">Richieste</span>
+        <span class="usage-val" id="u-reqs">—</span>
       </div>
     </div>
   </aside>
+
   <main id="main">
     <header id="header">
-      <img id="header-icon" src="static/hiris-icon.svg" width="32" height="32" alt="HIRIS" style="border-radius:50%;flex-shrink:0">
-      <div>
-        <div id="header-title">HIRIS <span id="header-version" style="font-size:0.65rem;font-weight:400;color:var(--text-muted);letter-spacing:0"></span></div>
+      <img id="header-icon" src="static/hiris-icon.svg" alt="HIRIS">
+      <div id="header-text">
+        <div id="header-title">HIRIS <span id="header-version"></span></div>
         <div id="header-subtitle">Home Intelligent Reasoning &amp; Integration</div>
       </div>
-
-      <button id="mobile-task-btn" onclick="showPanel('tasks'); return false;" title="Task pianificati">&#128336; Task<span id="mobile-task-badge" data-count="0"></span></button>
-      <button id="new-conv-btn" onclick="clearConversation()" title="Nuova conversazione" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;color:var(--text-muted);font-size:12px;cursor:pointer;white-space:nowrap;transition:background 0.15s,color 0.15s" onmouseover="this.style.background='var(--surface-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='none';this.style.color='var(--text-muted)'">&#x21BA; Nuova conv.</button>
-      <div id="conn-dot" title="Connesso"></div>
+      <div id="header-tools">
+        <button id="mobile-task-btn" onclick="showPanel('tasks'); return false;" title="Task pianificati">
+          Task<span id="mobile-task-badge" data-count="0"></span>
+        </button>
+        <button id="new-conv-btn" class="btn" onclick="clearConversation()" title="Nuova conversazione">
+          <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a7 7 0 0 1 12-5l2 2M16 4v3h-3M16 9a7 7 0 0 1-12 5l-2-2M2 14v-3h3"/></svg>
+          Nuova conv.
+        </button>
+        <div id="conn-dot" title="Connesso">connesso</div>
+      </div>
     </header>
+
     <div id="messages">
       <div id="welcome">
-        <div class="welcome-icon"><img src="static/hiris-icon.svg" width="72" height="72" alt="HIRIS" style="border-radius:50%"></div>
-        <h3>Ciao! Sono HIRIS</h3>
-        <p>Il tuo assistente per la smart home.<br>Chiedimi tutto ci&ograve; di cui hai bisogno.</p>
+        <img src="static/hiris-icon.svg" class="welcome-mark" alt="HIRIS">
+        <h3>Ciao, <span class="grad">come posso aiutarti?</span></h3>
+        <p>Il tuo assistente per la smart home. Chiedimi qualsiasi cosa — interrogo Home Assistant in tempo reale e ragiono prima di rispondere.</p>
         <div class="quick-chips">
-          <button class="chip" onclick="sendQuick('Stato casa')">Stato casa &#x1F3E0;</button>
-          <button class="chip" onclick="sendQuick('Temperatura camere')">Temperatura &#x1F321;&#xFE0F;</button>
-          <button class="chip" onclick="sendQuick('Consumi energia')">Energia &#x26A1;</button>
+          <button class="chip" onclick="sendQuick('Stato casa')">Stato casa</button>
+          <button class="chip" onclick="sendQuick('Temperatura camere')">Temperatura camere</button>
+          <button class="chip" onclick="sendQuick('Consumi energia')">Consumi energia</button>
+          <button class="chip" onclick="sendQuick('Briefing del mattino')">Briefing del mattino</button>
         </div>
       </div>
     </div>
+
     <div id="input-area">
-      <textarea id="input" placeholder="Scrivi un messaggio&#8230;" rows="1"
-        enterkeyhint="send" autocomplete="off" autocorrect="off"
-        autocapitalize="sentences" spellcheck="false"></textarea>
-      <button id="send-btn" title="Invia">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-        </svg>
-      </button>
+      <div id="input-inner">
+        <textarea id="input" placeholder="Scrivi un messaggio…" rows="1"
+          enterkeyhint="send" autocomplete="off" autocorrect="off"
+          autocapitalize="sentences" spellcheck="false"></textarea>
+        <button id="send-btn" title="Invia">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
     </div>
-    <div id="turn-counter" style="display:none;font-size:11px;text-align:right;padding:2px 8px 4px 0;color:var(--text-muted)"></div>
-    <div id="session-ended-msg" style="display:none;font-size:12px;text-align:center;padding:6px 8px;color:var(--conn-off);background:var(--surface);border-top:1px solid var(--border)">Sessione completata &#8212; avvia una nuova conversazione</div>
-    <!-- Task panel -->
+    <div id="turn-counter" style="display:none"></div>
+    <div id="session-ended-msg" style="display:none">Sessione completata — avvia una nuova conversazione</div>
+
     <div id="task-panel">
-      <div id="task-panel-header" style="display:none;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <span style="font-weight:600;font-size:15px">Task pianificati</span>
-        <button onclick="showPanel('chat')" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:4px 8px">&#8592; Chat</button>
+      <div id="task-panel-header">
+        <span>Task pianificati</span>
+        <button class="btn" onclick="showPanel('chat')">&#8592; Chat</button>
       </div>
       <div class="task-section-title">Task attive</div>
       <div id="task-active-list"></div>
@@ -659,10 +640,12 @@
     </div>
   </main>
 </div>
+
 <script>
-/* Iris Petali avatar — inline SVG used for all agent bubbles */
+/* HIRIS petals avatar — used for assistant bubbles */
 var HIRIS_AVATAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="28" height="28" style="display:block;border-radius:50%">'
-  + '<circle cx="50" cy="50" r="50" fill="#1a0533"/>'
+  + '<defs><radialGradient id="hbg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#2a0a4e"/><stop offset="100%" stop-color="#0a0015"/></radialGradient></defs>'
+  + '<circle cx="50" cy="50" r="50" fill="url(#hbg)"/>'
   + '<g transform="translate(50,50)">'
   + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#c084fc"/>'
   + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#818cf8" transform="rotate(60)"/>'
@@ -694,7 +677,7 @@ function updateTurnCounter() {
   var current = agentTurnCounts[activeAgentId] || 0;
   counter.style.display = '';
   counter.textContent = current + ' / ' + max + ' messaggi';
-  counter.style.color = current >= max ? 'var(--conn-off)' : 'var(--text-muted)';
+  counter.style.color = current >= max ? 'var(--err)' : 'var(--text-3)';
 }
 
 function checkTurnLimit() {
@@ -733,22 +716,23 @@ async function loadAgents() {
     if (!r.ok) throw new Error();
     var agents = await r.json();
     connDot.classList.remove('offline');
+    connDot.textContent = 'connesso';
     agentListEl.innerHTML = '';
     var chatAgents = agents.filter(function(a) { return a.type === 'chat'; });
     chatAgents.forEach(function(a) {
       agentMaxTurns[a.id] = a.max_chat_turns || 0;
       var div = document.createElement('div');
       div.className = 'agent-item' + (a.id === activeAgentId ? ' agent-active' : '');
-      div.style.cursor = 'pointer';
       div.onclick = function() { setActiveAgent(a.id, a.name); };
       div.innerHTML =
-        '<div class="status-dot ' + (a.enabled ? 'dot-on' : 'dot-off') + '"></div>' +
-        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.name) + '</span>' +
-        (a.is_default ? '<span style="font-size:0.6rem;color:#9CA3AF;margin-left:0.25rem">default</span>' : '');
+        '<div class="dot ' + (a.enabled ? 'on' : 'off') + '"></div>' +
+        '<span>' + esc(a.name) + '</span>' +
+        (a.is_default ? '<span class="meta">default</span>' : '');
       agentListEl.appendChild(div);
     });
   } catch(e) {
     connDot.classList.add('offline');
+    connDot.textContent = 'offline';
   }
 }
 
@@ -759,7 +743,7 @@ async function setActiveAgent(agentId, agentName) {
   messagesEl.appendChild(welcomeEl);
   welcomeEl.style.display = '';
   hasMessages = false;
-  document.getElementById('header-title').textContent = agentName;
+  document.getElementById('header-title').firstChild.nodeValue = agentName + ' ';
   agentTurnCounts[agentId] = 0;
   updateTurnCounter();
   checkTurnLimit();
@@ -792,14 +776,18 @@ function appendMsg(role, text) {
   var row = document.createElement('div');
   row.className = 'msg-row ' + role;
   var time = nowHHMM();
-  var content = esc(text).replace(/\n/g,'<br>');
+  var content = esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code style="font-family:var(--font-mono);font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border)">$1</code>')
+    .replace(/\n/g,'<br>');
   if (role === 'assistant') {
     row.innerHTML =
       '<div class="avatar">' + HIRIS_AVATAR + '</div>' +
       '<div class="msg-col"><div class="bubble">' + content + '</div><div class="msg-time">' + time + '</div></div>';
   } else {
     row.innerHTML =
-      '<div class="msg-col"><div class="bubble">' + content + '</div><div class="msg-time">' + time + '</div></div>';
+      '<div class="msg-col"><div class="bubble">' + content + '</div><div class="msg-time">' + time + '</div></div>' +
+      '<div class="avatar user">io</div>';
   }
   messagesEl.appendChild(row);
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -810,11 +798,11 @@ function appendDebug(tools) {
   row.className = 'debug-row';
   var body = tools.map(function(t) {
     var inp = JSON.stringify(t.input);
-    return '<div class="debug-tool">&#x1F527; <b>' + esc(t.tool) + '</b>(' + esc(inp) + ')</div>';
+    return '<div class="debug-tool"><b>' + esc(t.tool) + '</b>(' + esc(inp) + ')</div>';
   }).join('');
   row.innerHTML =
     '<details>' +
-    '<summary class="debug-summary">&#x1F50D; ' + tools.length + ' tool' + (tools.length > 1 ? 's' : '') + ' chiamati</summary>' +
+    '<summary class="debug-summary">' + tools.length + ' tool ' + (tools.length > 1 ? 'chiamati' : 'chiamato') + '</summary>' +
     '<div class="debug-body">' + body + '</div>' +
     '</details>';
   messagesEl.appendChild(row);
@@ -852,10 +840,7 @@ async function sendMessage(text) {
     var r = await fetch('api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        message: text,
-        agent_id: activeAgentId,
-      }),
+      body: JSON.stringify({ message: text, agent_id: activeAgentId }),
     });
     var data = await r.json();
     typing.remove();
@@ -884,7 +869,7 @@ function sendQuick(text) { sendMessage(text); }
 
 function autoResize() {
   inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, Math.floor(window.innerHeight * 0.4)) + 'px';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
 }
 
 var _enterSent = false;
@@ -898,7 +883,6 @@ inputEl.addEventListener('keydown', function(e) {
 });
 inputEl.addEventListener('input', function() {
   autoResize();
-  // iOS fallback: WKWebView may insert \n even after preventDefault
   if (!_enterSent && inputEl.value.includes('\n')) {
     var msg = inputEl.value.replace(/\n/g, '').trim();
     inputEl.value = msg;
@@ -913,11 +897,8 @@ async function applyTheme() {
     var r = await fetch('api/config');
     var cfg = await r.json();
     var theme = cfg.theme || 'auto';
-    if (theme === 'light' || theme === 'dark') {
-      document.documentElement.setAttribute('data-theme', theme);
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-    }
+    if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+    else document.documentElement.removeAttribute('data-theme');
   } catch(e) {}
 }
 async function loadUsage() {
@@ -935,7 +916,6 @@ async function loadUsage() {
 }
 
 applyTheme();
-
 fetch('api/health').then(function(r){ return r.json(); }).then(function(d){
   var el = document.getElementById('header-version');
   if (el && d.version) el.textContent = 'v' + d.version;
@@ -946,23 +926,20 @@ loadUsage();
 setInterval(loadAgents, 30000);
 setInterval(loadUsage, 30000);
 
-// ── Task panel ──────────────────────────────────────────────────────────
-
+/* ── Tasks panel ─────────────────────────────────────────── */
 function showPanel(name) {
   var isTask = name === 'tasks';
   document.getElementById('messages').style.display = isTask ? 'none' : '';
   document.getElementById('input-area').style.display = isTask ? 'none' : '';
-  var tc = document.getElementById('turn-counter');
-  if (tc) tc.style.display = isTask ? 'none' : '';
-  var se = document.getElementById('session-ended-msg');
-  if (se) se.style.display = isTask ? 'none' : '';
+  var tc = document.getElementById('turn-counter'); if (tc) tc.style.display = isTask ? 'none' : '';
+  var se = document.getElementById('session-ended-msg'); if (se) se.style.display = isTask ? 'none' : '';
   document.getElementById('task-panel').style.display = isTask ? 'flex' : 'none';
   var navTasks = document.getElementById('nav-tasks');
   if (navTasks) navTasks.classList.toggle('active', isTask);
   var mobileBtn = document.getElementById('mobile-task-btn');
   if (mobileBtn) mobileBtn.classList.toggle('active', isTask);
   var taskHeader = document.getElementById('task-panel-header');
-  if (taskHeader) taskHeader.style.display = (isTask && window.innerWidth <= 640) ? 'flex' : 'none';
+  if (taskHeader) taskHeader.style.display = (isTask && window.innerWidth <= 720) ? 'flex' : 'none';
   if (isTask) loadTasks();
 }
 
@@ -971,20 +948,16 @@ function formatTrigger(trigger) {
   if (trigger.type === 'delay') return 'tra ' + trigger.minutes + ' min';
   if (trigger.type === 'at_time') return 'alle ' + trigger.time;
   if (trigger.type === 'at_datetime') return trigger.datetime;
-  if (trigger.type === 'time_window') return 'finestra ' + trigger.from + '\u2013' + trigger.to;
+  if (trigger.type === 'time_window') return 'finestra ' + trigger.from + '–' + trigger.to;
   return trigger.type;
 }
-
 function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
-
 function renderTask(task) {
   var isPending = task.status === 'pending';
   var safeId = escapeHtml(task.id);
-  var cancelBtn = isPending
-    ? '<button class="task-cancel-btn" onclick="cancelTask(&quot;' + safeId + '&quot;)">Annulla</button>'
-    : '';
+  var cancelBtn = isPending ? '<button class="task-cancel-btn" onclick="cancelTask(&quot;' + safeId + '&quot;)">Annulla</button>' : '';
   var rawMeta = task.result || task.error || formatTrigger(task.trigger);
   var meta = rawMeta ? escapeHtml(rawMeta) : '';
   return '<div class="task-card" id="task-' + safeId + '">'
@@ -993,7 +966,7 @@ function renderTask(task) {
     + '<span class="task-status ' + escapeHtml(task.status) + '">' + escapeHtml(task.status) + '</span>'
     + cancelBtn
     + '</div>'
-    + '<div class="task-meta">' + meta + '</div>'
+    + (meta ? '<div class="task-meta">' + meta + '</div>' : '')
     + '</div>';
 }
 
@@ -1005,22 +978,12 @@ async function loadTasks() {
     var recent = tasks.filter(function(t) { return t.status !== 'pending' && t.status !== 'running'; });
     var activeEl = document.getElementById('task-active-list');
     var recentEl = document.getElementById('task-recent-list');
-    if (activeEl) activeEl.innerHTML = active.length
-      ? active.map(renderTask).join('')
-      : '<div class="task-empty">Nessuna task attiva</div>';
-    if (recentEl) recentEl.innerHTML = recent.length
-      ? recent.map(renderTask).join('')
-      : '<div class="task-empty">Nessuna task recente</div>';
+    if (activeEl) activeEl.innerHTML = active.length ? active.map(renderTask).join('') : '<div class="task-empty">Nessuna task attiva</div>';
+    if (recentEl) recentEl.innerHTML = recent.length ? recent.map(renderTask).join('') : '<div class="task-empty">Nessuna task recente</div>';
     var badge = document.getElementById('task-badge');
-    if (badge) {
-      badge.textContent = active.length || '';
-      badge.dataset.count = active.length;
-    }
+    if (badge) { badge.textContent = active.length || ''; badge.dataset.count = active.length; }
     var mbadge = document.getElementById('mobile-task-badge');
-    if (mbadge) {
-      mbadge.textContent = active.length || '';
-      mbadge.dataset.count = active.length;
-    }
+    if (mbadge) { mbadge.textContent = active.length || ''; mbadge.dataset.count = active.length; }
   } catch(e) { console.error('loadTasks failed', e); }
 }
 
@@ -1032,11 +995,10 @@ async function cancelTask(taskId) {
   } catch(e) { console.error('cancelTask failed', e); }
 }
 
-// Auto-refresh badge every 30s (even when task panel is not visible)
 setInterval(loadTasks, 30000);
 loadTasks();
 
-// ── Onboarding wizard ───────────────────────────────────────────────────
+/* ── Onboarding wizard ───────────────────────────────────── */
 var _obType = 'chat';
 
 async function checkOnboarding() {
@@ -1065,8 +1027,7 @@ function obGo(step) {
 
 function obSelectType(type, btn) {
   _obType = type;
-  var btns = document.querySelectorAll('.ob-type-btn');
-  btns.forEach(function(b) { b.classList.remove('selected'); });
+  document.querySelectorAll('.ob-type-btn').forEach(function(b) { b.classList.remove('selected'); });
   btn.classList.add('selected');
 }
 
@@ -1074,9 +1035,7 @@ async function obCreate() {
   var name = (document.getElementById('ob-name').value || '').trim();
   if (!name) { document.getElementById('ob-name').focus(); return; }
   var prompt = (document.getElementById('ob-prompt').value || '').trim();
-  var trigger = _obType === 'monitor'
-    ? { type: 'schedule', interval_minutes: 60 }
-    : { type: 'manual' };
+  var trigger = _obType === 'monitor' ? { type: 'schedule', interval_minutes: 60 } : { type: 'manual' };
   var payload = { name: name, type: _obType, trigger: trigger };
   if (prompt) payload.system_prompt = prompt;
   var btn = document.getElementById('ob-create-btn');
@@ -1093,55 +1052,35 @@ async function obCreate() {
 
 checkOnboarding();
 
-// ── Mobile keyboard fix ──────────────────────────────────────────────────
-// Shrinks body+#app to the visible area so the flex layout pushes
-// #input-area above the keyboard.
-// Note: in HA's WKWebView, visualViewport.height never changes when the
-// keyboard opens, so Path 1 is a no-op — Path 2 (EST) does all the work.
+/* ── Mobile keyboard fix (preserved from original) ───────── */
 (function () {
   var appEl = document.getElementById('app');
   var isTouchDevice = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
-
   function applyKbH(kbH) {
     var vvh = window.innerHeight - Math.max(0, kbH);
     document.body.style.height = vvh + 'px';
     appEl.style.height = vvh + 'px';
     if (kbH > 50) messagesEl.scrollTop = messagesEl.scrollHeight;
   }
-
-  function resetKbH() {
-    document.body.style.height = '';
-    appEl.style.height = '';
-  }
-
-  // Path 1 — visualViewport API
+  function resetKbH() { document.body.style.height = ''; appEl.style.height = ''; }
   if (window.visualViewport) {
-    function onVV() {
-      applyKbH(window.innerHeight - window.visualViewport.height);
-    }
+    function onVV() { applyKbH(window.innerHeight - window.visualViewport.height); }
     window.visualViewport.addEventListener('resize', onVV);
     window.visualViewport.addEventListener('scroll', onVV);
   }
-
-  // Path 2 — focus/blur fallback (touch only, when VV didn't change)
   inputEl.addEventListener('focus', function () {
     if (!isTouchDevice) return;
     setTimeout(function () {
-      var vvKbH = window.visualViewport
-        ? Math.max(0, window.innerHeight - window.visualViewport.height)
-        : 0;
+      var vvKbH = window.visualViewport ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
       if (vvKbH < 50) {
         var est = Math.min(Math.max(Math.round(window.innerHeight * 0.44), 220), 380);
         applyKbH(est);
       }
     }, 400);
   });
-
   inputEl.addEventListener('blur', function () {
     setTimeout(function () {
-      var vvKbH = window.visualViewport
-        ? Math.max(0, window.innerHeight - window.visualViewport.height)
-        : 0;
+      var vvKbH = window.visualViewport ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
       if (vvKbH < 50) resetKbH();
     }, 300);
   });
