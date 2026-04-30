@@ -41,10 +41,10 @@ class MQTTPublisher:
         if not host:
             logger.info("MQTT host not configured — publisher disabled")
             return
-        self._host = host
+        self._host = host.strip()
         self._port = port
-        self._user = user
-        self._password = password
+        self._user = user.strip()
+        self._password = password.strip()
         self._enabled = True
         self._task = asyncio.create_task(self._connect_loop(), name="mqtt_publisher")
 
@@ -68,11 +68,19 @@ class MQTTPublisher:
         backoff = 1
         while True:
             try:
-                kwargs: dict = {"hostname": self._host, "port": self._port}
+                kwargs: dict = {
+                    "hostname": self._host,
+                    "port": self._port,
+                    "identifier": "hiris",
+                }
                 if self._user:
                     kwargs["username"] = self._user
                 if self._password:
                     kwargs["password"] = self._password
+                logger.debug(
+                    "MQTT connecting to %s:%d user=%r password_len=%d",
+                    self._host, self._port, self._user, len(self._password),
+                )
                 async with aiomqtt.Client(**kwargs) as client:
                     self._connected = True
                     backoff = 1
