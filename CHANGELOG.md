@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.8.3] — 2026-04-30
+
+### Fixed
+- `HealthMonitor`: ogni sezione del refresh (error_log, config_entries, system_info, updates) ora è isolata in un proprio try/except — un endpoint non disponibile non blocca più le altre sezioni
+- `get_error_log()`: gestisce 403/404 gracefully invece di propagare l'eccezione
+- MQTT: strip whitespace dalle credenziali lette da bashio (causa principale del codice 135 "Not Authorized"); client ID fisso `"hiris"` invece di UUID casuale; log di debug con host/user/password_len ad ogni tentativo di connessione
+
 ## [0.8.2] — 2026-04-30
 
 ### Changed
