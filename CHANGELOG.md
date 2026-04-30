@@ -1,5 +1,13 @@
 # HIRIS — Changelog
 
+## [0.8.1] — 2026-04-30
+
+### Changed
+- Iris design system: nuovo `hiris-theme.css` con palette oklch a 6 petali, tipografia Inter Tight + JetBrains Mono, light/dark automatico
+- `index.html` completamente riscritto con il nuovo layout Iris (sidebar 280px, bubble chat, welcome screen con gradient, onboarding con radial glow)
+- `config.html` aggiornato tramite `hiris-config-override.css` — zero modifiche alla logica JS esistente
+- CSP aggiornata per consentire Google Fonts CDN (`fonts.googleapis.com`, `fonts.gstatic.com`)
+
 ## [0.8.0] — 2026-04-30
 
 ### Added
