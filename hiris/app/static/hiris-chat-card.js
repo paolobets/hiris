@@ -13,7 +13,6 @@ const POLL_MS = 30_000;
 const CHAT_TIMEOUT_MS = 30_000;
 
 // HIRIS SVG icon inlined as a data URI to avoid Shadow DOM ID conflicts
-// when multiple card instances are present on the same dashboard.
 const _HIRIS_ICON_DATA = 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
   '<defs>' +
@@ -39,10 +38,62 @@ const _HIRIS_ICON_DATA = 'data:image/svg+xml,' + encodeURIComponent(
   '</svg>'
 );
 
+// Iris design tokens embedded for Shadow DOM.
+// Prefixed --i- to avoid collisions with HA's own CSS variables.
+const IRIS_CSS = `
+  :host {
+    --i-surface:     oklch(1.00 0 0);
+    --i-surface-2:   oklch(0.97 0.008 280);
+    --i-surface-3:   oklch(0.94 0.012 280);
+    --i-hover:       oklch(0.95 0.015 280);
+    --i-border:      oklch(0.91 0.012 280);
+    --i-border-2:    oklch(0.86 0.018 280);
+    --i-text:        oklch(0.22 0.02 280);
+    --i-text-2:      oklch(0.45 0.015 280);
+    --i-text-3:      oklch(0.62 0.012 280);
+    --i-accent:      oklch(0.66 0.20 280);
+    --i-accent-ink:  oklch(0.32 0.18 280);
+    --i-accent-tint: oklch(0.96 0.04 280);
+    --i-on-accent:   oklch(0.99 0 0);
+    --i-ok:          oklch(0.70 0.16 155);
+    --i-ok-tint:     oklch(0.95 0.05 155);
+    --i-err:         oklch(0.62 0.22 25);
+    --i-err-tint:    oklch(0.95 0.05 25);
+    --i-shadow-sm:   0 1px 2px oklch(0.20 0.05 280 / 0.06);
+    --i-shadow:      0 4px 16px oklch(0.20 0.05 280 / 0.08);
+    --i-r-sm:        6px;
+    --i-r:           10px;
+    --i-r-md:        14px;
+    --i-font-sans:   "Inter Tight", "Inter", system-ui, -apple-system, sans-serif;
+    --i-font-mono:   "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+    display: block;
+  }
+  @media (prefers-color-scheme: dark) {
+    :host {
+      --i-surface:     oklch(0.20 0.025 280);
+      --i-surface-2:   oklch(0.23 0.028 280);
+      --i-surface-3:   oklch(0.27 0.032 280);
+      --i-hover:       oklch(0.26 0.035 280);
+      --i-border:      oklch(0.30 0.030 280);
+      --i-border-2:    oklch(0.36 0.035 280);
+      --i-text:        oklch(0.96 0.008 280);
+      --i-text-2:      oklch(0.74 0.018 280);
+      --i-text-3:      oklch(0.58 0.022 280);
+      --i-accent:      oklch(0.74 0.18 280);
+      --i-accent-ink:  oklch(0.86 0.14 280);
+      --i-accent-tint: oklch(0.28 0.08 280);
+      --i-on-accent:   oklch(0.14 0.04 280);
+      --i-ok-tint:     oklch(0.30 0.08 155);
+      --i-err-tint:    oklch(0.30 0.09 25);
+      --i-shadow-sm:   0 1px 2px oklch(0 0 0 / 0.30);
+      --i-shadow:      0 4px 16px oklch(0 0 0 / 0.40);
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+`;
+
 // ---------------------------------------------------------------------------
 // Module-level ingress URL discovery
-// The Supervisor assigns a random token (not the add-on slug) to the ingress
-// path. This function reads hiris-ingress.json written by the add-on at startup.
 // ---------------------------------------------------------------------------
 let _cachedIngressBase;
 
@@ -69,6 +120,15 @@ class HirisCard extends HTMLElement {
   constructor() {
     super();
     this._shadow = this.attachShadow({ mode: 'open' });
+    // Persistent font link — survives container innerHTML resets
+    const fontLink = document.createElement('link');
+    fontLink.rel = 'stylesheet';
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap';
+    this._shadow.appendChild(fontLink);
+    // Render target (allows font link to persist across renders)
+    this._container = document.createElement('div');
+    this._shadow.appendChild(this._container);
+
     this._agentId = null;
     this._slug = 'hiris';
     this._title = 'HIRIS Chat';
@@ -175,7 +235,6 @@ class HirisCard extends HTMLElement {
 
     await _discoverIngressBase(this._slug);
     const controller = new AbortController();
-    // Keep timeout active through the entire streaming lifecycle
     const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
 
     try {
@@ -220,7 +279,6 @@ class HirisCard extends HTMLElement {
             } catch {}
           }
         }
-        // Stream closed — clear flag regardless of whether SSE 'done' event arrived
         assistantMsg.streaming = false;
       } else {
         const data = await resp.json();
@@ -258,13 +316,6 @@ class HirisCard extends HTMLElement {
     }
   }
 
-  _statusColor() {
-    return {
-      idle: '#10b981', running: '#3b82f6', error: '#ef4444',
-      unavailable: '#9ca3af',
-    }[this._status] || '#9ca3af';
-  }
-
   _iconHtml(size) {
     return `<img src="${_HIRIS_ICON_DATA}" width="${size}" height="${size}" style="border-radius:50%;display:block;flex-shrink:0" alt="HIRIS">`;
   }
@@ -273,22 +324,43 @@ class HirisCard extends HTMLElement {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  _statusClass() {
+    return { idle: 'idle', running: 'running', error: 'error', unavailable: 'offline' }[this._status] ?? 'offline';
+  }
+
+  _statusLabel() {
+    return { idle: 'online', running: 'in esecuzione', error: 'errore', unavailable: 'offline' }[this._status] ?? this._status;
+  }
+
   _render() {
-    // Unconfigured state — no agent_id yet (card just added from picker)
+    // Unconfigured state
     if (!this._agentId) {
-      this._shadow.innerHTML = `
+      this._container.innerHTML = `
         <style>
-          :host { display: block; }
-          .card { background: var(--card-background-color,#fff); border-radius: 12px;
-            overflow: hidden; box-shadow: var(--ha-card-box-shadow,0 2px 4px rgba(0,0,0,.1)); }
-          .header { display: flex; align-items: center; gap: 8px;
-            padding: 12px 16px; border-bottom: 1px solid var(--divider-color,#e0e0e0); }
-          .title { font-size: 15px; font-weight: 600; color: var(--primary-text-color,#333); }
-          .unconfigured { padding: 32px 16px; text-align: center;
-            display: flex; flex-direction: column; align-items: center; gap: 12px; }
-          .unconfigured-title { font-size: 13px; font-weight: 600;
-            color: var(--primary-text-color,#374151); }
-          .unconfigured-sub { font-size: 12px; color: var(--secondary-text-color,#9ca3af); }
+          ${IRIS_CSS}
+          .card {
+            background: var(--i-surface);
+            border: 1px solid var(--i-border);
+            border-radius: var(--i-r-md);
+            overflow: hidden;
+            box-shadow: var(--ha-card-box-shadow, var(--i-shadow-sm));
+            font-family: var(--i-font-sans);
+            color: var(--i-text);
+            -webkit-font-smoothing: antialiased;
+          }
+          .header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--i-border);
+          }
+          .title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--i-text); }
+          .unconfigured {
+            padding: 36px 20px;
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+            text-align: center;
+          }
+          .unc-title { font-size: 13px; font-weight: 600; color: var(--i-text); }
+          .unc-sub { font-size: 12px; color: var(--i-text-3); }
         </style>
         <div class="card">
           <div class="header">
@@ -296,10 +368,10 @@ class HirisCard extends HTMLElement {
             <span class="title">${this._esc(this._title)}</span>
           </div>
           <div class="unconfigured">
-            <div style="opacity:.7">${this._iconHtml(40)}</div>
+            <div style="opacity:.7">${this._iconHtml(38)}</div>
             <div>
-              <div class="unconfigured-title">Card non configurata</div>
-              <div class="unconfigured-sub">Clicca ✏️ per selezionare un agente</div>
+              <div class="unc-title">Card non configurata</div>
+              <div class="unc-sub">Clicca ✏️ per selezionare un agente</div>
             </div>
           </div>
         </div>`;
@@ -317,10 +389,9 @@ class HirisCard extends HTMLElement {
           <div class="msg-col"><div class="bubble">${text}</div></div>
         </div>`;
       }
-      // assistant — show typing indicator when waiting for first token
       if (m.streaming && !m.text) {
         return `<div class="typing-row">
-          <div class="avatar">${this._iconHtml(28)}</div>
+          <div class="avatar">${this._iconHtml(26)}</div>
           <div class="typing-bubble">
             <div class="typing-dot"></div>
             <div class="typing-dot"></div>
@@ -329,98 +400,186 @@ class HirisCard extends HTMLElement {
         </div>`;
       }
       return `<div class="msg-row assistant">
-        <div class="avatar">${this._iconHtml(28)}</div>
+        <div class="avatar">${this._iconHtml(26)}</div>
         <div class="msg-col">
           <div class="bubble">${text}${m.streaming ? '<span class="cursor">&#x258C;</span>' : ''}</div>
         </div>
       </div>`;
     }).join('');
 
-    // Preserve any text the user typed before rebuilding the DOM
-    const _savedInput = this._shadow.getElementById('inp')?.value ?? '';
+    const _savedInput = this._container.querySelector('#inp')?.value ?? '';
 
-    this._shadow.innerHTML = `
+    this._container.innerHTML = `
       <style>
-        :host { display: block; }
-        .card { background: var(--card-background-color,#fff); border-radius: 12px;
-          overflow: hidden; box-shadow: var(--ha-card-box-shadow,0 2px 4px rgba(0,0,0,.1)); }
-        .header { display: flex; align-items: center; justify-content: space-between;
-          padding: 12px 16px; border-bottom: 1px solid var(--divider-color,#e0e0e0); }
-        .header-left { display: flex; align-items: center; gap: 8px; }
-        .title { font-size: 15px; font-weight: 600; color: var(--primary-text-color,#333); }
-        .toggle { cursor: pointer; font-size: 18px; background: none; border: none;
-          padding: 0; line-height: 1; opacity: .9; }
-        .toggle:hover { opacity: 1; }
-        .budget-bar { height: 3px; background: var(--divider-color,#eee); }
-        .budget-fill { height: 100%; width: ${pct}%; background: var(--primary-color,#3b82f6);
-          transition: width .3s; }
-        .budget-text { font-size: 11px; color: var(--secondary-text-color,#9ca3af);
-          padding: 2px 16px 4px; }
-        .messages { height: 220px; overflow-y: auto; padding: 12px 16px;
-          display: flex; flex-direction: column; gap: 10px; }
-        /* User message */
-        .msg-row { display: flex; align-items: flex-end; gap: 8px; }
-        .msg-row.user { align-self: flex-end; flex-direction: row-reverse; max-width: 82%; }
-        .msg-row.assistant { align-self: flex-start; max-width: 82%; }
-        .avatar { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
-          display: flex; align-items: center; justify-content: center; }
-        .msg-col { display: flex; flex-direction: column; }
-        .bubble { padding: 8px 12px; border-radius: 18px;
-          font-size: 14px; line-height: 1.5; word-break: break-word; }
-        .msg-row.user .bubble {
-          background: var(--primary-color,#2563eb); color: #fff;
-          border-radius: 18px 18px 4px 18px; }
-        .msg-row.assistant .bubble {
-          background: var(--card-background-color,#fff);
-          color: var(--primary-text-color,#111);
-          border: 1px solid var(--divider-color,#e5e7eb);
-          border-radius: 18px 18px 18px 4px; }
-        /* Typing indicator */
-        .typing-row { display: flex; align-items: flex-end; gap: 8px; align-self: flex-start; }
-        .typing-bubble {
-          background: var(--card-background-color,#fff);
-          border: 1px solid var(--divider-color,#e5e7eb);
-          border-radius: 18px; border-bottom-left-radius: 4px;
-          padding: 10px 14px; display: flex; gap: 4px; align-items: center; }
-        .typing-dot { width: 6px; height: 6px; border-radius: 50%;
-          background: #9ca3af; animation: bounce 1.2s ease-in-out infinite; }
-        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes bounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-6px); }
+        ${IRIS_CSS}
+        .card {
+          background: var(--i-surface);
+          border: 1px solid var(--i-border);
+          border-radius: var(--i-r-md);
+          overflow: hidden;
+          box-shadow: var(--ha-card-box-shadow, var(--i-shadow-sm));
+          font-family: var(--i-font-sans);
+          font-size: 14px;
+          color: var(--i-text);
+          -webkit-font-smoothing: antialiased;
         }
-        /* Streaming cursor */
+        /* ── Header ── */
+        .header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--i-border);
+        }
+        .header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .title {
+          font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+          color: var(--i-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .header-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .status-pill {
+          display: inline-flex; align-items: center; gap: 5px;
+          padding: 3px 9px; border-radius: 999px;
+          font-size: 10.5px; font-weight: 500;
+          font-family: var(--i-font-mono);
+          background: var(--i-ok-tint); color: var(--i-ok);
+        }
+        .status-pill::before {
+          content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+        }
+        .status-pill.running  { background: var(--i-accent-tint); color: var(--i-accent-ink); }
+        .status-pill.error,
+        .status-pill.offline  { background: var(--i-err-tint); color: var(--i-err); }
+        .toggle {
+          cursor: pointer; background: none; border: none; padding: 0;
+          width: 26px; height: 26px; display: grid; place-items: center;
+          border-radius: var(--i-r-sm); color: var(--i-text-3); font-size: 15px;
+          transition: background 0.15s;
+        }
+        .toggle:hover { background: var(--i-hover); color: var(--i-text); }
+        /* ── Budget ── */
+        .budget-wrap { padding: 6px 16px 2px; }
+        .budget-bar {
+          height: 3px; background: var(--i-surface-3);
+          border-radius: 2px; overflow: hidden;
+        }
+        .budget-fill {
+          height: 100%; width: ${pct}%; background: var(--i-accent);
+          border-radius: 2px; transition: width .4s;
+        }
+        .budget-text {
+          font-size: 10.5px; font-family: var(--i-font-mono);
+          color: var(--i-text-3); margin-top: 4px;
+          font-variant-numeric: tabular-nums;
+        }
+        /* ── Error badge ── */
+        .error-badge {
+          padding: 5px 16px;
+          font-size: 11.5px; font-family: var(--i-font-mono);
+          color: var(--i-err); background: var(--i-err-tint);
+          border-bottom: 1px solid var(--i-border);
+          text-align: center;
+        }
+        /* ── Messages ── */
+        .messages {
+          height: 220px; overflow-y: auto;
+          padding: 12px 16px;
+          display: flex; flex-direction: column; gap: 10px;
+          background: var(--i-surface);
+        }
+        .messages::-webkit-scrollbar { width: 4px; }
+        .messages::-webkit-scrollbar-track { background: transparent; }
+        .messages::-webkit-scrollbar-thumb { background: var(--i-border); border-radius: 2px; }
+        .empty {
+          flex: 1; display: flex; align-items: center; justify-content: center;
+          color: var(--i-text-3); font-size: 13px; text-align: center; padding: 24px 0;
+        }
+        /* ── Bubbles — matches index.html ── */
+        .msg-row { display: flex; gap: 8px; align-items: flex-start; }
+        .msg-row.user { justify-content: flex-end; }
+        .avatar { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; overflow: hidden; }
+        .msg-col { display: flex; flex-direction: column; max-width: 80%; }
+        .msg-row.user .msg-col { align-items: flex-end; }
+        .bubble {
+          padding: 8px 12px;
+          border-radius: var(--i-r-md);
+          font-size: 13.5px; line-height: 1.5; word-break: break-word;
+        }
+        .msg-row.assistant .bubble {
+          background: var(--i-surface);
+          border: 1px solid var(--i-border);
+          border-top-left-radius: 4px;
+          color: var(--i-text);
+        }
+        .msg-row.user .bubble {
+          background: var(--i-accent);
+          color: var(--i-on-accent);
+          border-top-right-radius: 4px;
+        }
+        /* ── Typing indicator ── */
+        .typing-row { display: flex; gap: 8px; align-items: flex-start; }
+        .typing-bubble {
+          display: inline-flex; gap: 4px; align-items: center;
+          padding: 10px 14px;
+          background: var(--i-surface);
+          border: 1px solid var(--i-border);
+          border-radius: var(--i-r-md); border-top-left-radius: 4px;
+        }
+        .typing-dot {
+          width: 5px; height: 5px; border-radius: 50%;
+          background: var(--i-text-3);
+          animation: bounce 1.2s ease-in-out infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.15s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.30s; }
+        @keyframes bounce {
+          0%,60%,100% { transform: translateY(0); opacity: 0.4; }
+          30%         { transform: translateY(-5px); opacity: 1; }
+        }
         .cursor { animation: blink 1s step-start infinite; }
         @keyframes blink { 50% { opacity: 0; } }
-        .empty { color: var(--secondary-text-color,#aaa); text-align: center;
-          padding-top: 60px; font-size: 13px; }
-        .error-badge { padding: 8px 16px; color: var(--warning-color,#f59e0b);
-          font-size: 12px; text-align: center; }
-        .input-row { display: flex; gap: 8px; padding: 12px 16px; align-items: center;
-          border-top: 1px solid var(--divider-color,#e0e0e0); }
-        .input { flex: 1; padding: 8px 12px; border: 1px solid var(--divider-color,#e0e0e0);
-          border-radius: 20px; font-size: 14px; outline: none; font-family: inherit;
-          background: var(--secondary-background-color,#f9fafb);
-          color: var(--primary-text-color,#111);
-          transition: border-color .15s; }
-        .input:focus { border-color: var(--primary-color,#3b82f6); }
-        .send { width: 36px; height: 36px; background: var(--primary-color,#2563eb); color: #fff;
-          border: none; border-radius: 50%; cursor: pointer; flex-shrink: 0;
-          display: flex; align-items: center; justify-content: center;
-          transition: background .15s; }
-        .send:hover { opacity: .9; }
-        .send:disabled { opacity: .45; cursor: default; }
+        /* ── Composer — matches index.html #input-inner ── */
+        .input-row {
+          padding: 8px 12px 12px;
+          border-top: 1px solid var(--i-border);
+          background: var(--i-surface);
+        }
+        .input-inner {
+          display: flex; align-items: center; gap: 6px;
+          background: var(--i-surface);
+          border: 1px solid var(--i-border);
+          border-radius: var(--i-r-md);
+          padding: 5px 5px 5px 12px;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .input-inner:focus-within {
+          border-color: var(--i-accent);
+          box-shadow: 0 0 0 3px var(--i-accent-tint);
+        }
+        .input {
+          flex: 1; border: 0; background: transparent; outline: none;
+          padding: 4px 0; font-size: 13.5px; line-height: 1.5;
+          font-family: var(--i-font-sans); color: var(--i-text);
+        }
+        .input::placeholder { color: var(--i-text-3); }
+        .input:disabled { opacity: 0.5; cursor: not-allowed; }
+        .send {
+          width: 30px; height: 30px; flex-shrink: 0;
+          border-radius: var(--i-r-sm);
+          background: var(--i-accent); color: var(--i-on-accent);
+          border: none; cursor: pointer;
+          display: grid; place-items: center;
+          transition: filter 0.15s, transform 0.1s;
+        }
+        .send:hover:not(:disabled) { filter: brightness(1.05); }
+        .send:active:not(:disabled) { transform: scale(0.92); }
+        .send:disabled { background: var(--i-surface-3); color: var(--i-text-3); cursor: not-allowed; }
+        .send.loading { background: var(--i-surface-3); cursor: default; }
         .send.loading svg { display: none; }
         .send.loading::after {
-          content: ''; width: 14px; height: 14px;
-          border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+          content: ''; width: 12px; height: 12px;
+          border: 2px solid var(--i-text-3); border-top-color: var(--i-accent);
           border-radius: 50%; animation: spin 0.7s linear infinite; display: block;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .messages::-webkit-scrollbar { width: 3px; }
-        .messages::-webkit-scrollbar-track { background: transparent; }
-        .messages::-webkit-scrollbar-thumb { background: var(--divider-color,#e0e0e0); border-radius: 2px; }
       </style>
       <div class="card">
         <div class="header">
@@ -428,39 +587,44 @@ class HirisCard extends HTMLElement {
             ${this._iconHtml(22)}
             <span class="title">${this._esc(this._title)}</span>
           </div>
-          <button class="toggle" id="tog" title="${this._enabled ? 'Disabilita agente' : 'Abilita agente'}">
-            ${this._enabled ? '&#x1F7E2;' : '&#x26AA;'}
-          </button>
+          <div class="header-right">
+            <div class="status-pill ${this._statusClass()}">${this._statusLabel()}</div>
+            <button class="toggle" id="tog" title="${this._enabled ? 'Disabilita agente' : 'Abilita agente'}">
+              ${this._enabled ? '&#x1F7E2;' : '&#x26AA;'}
+            </button>
+          </div>
         </div>
         ${this._budgetLimitEur > 0 ? `
-          <div class="budget-bar"><div class="budget-fill"></div></div>
-          <div class="budget-text">&#x20AC;${this._budgetEur.toFixed(2)} / &#x20AC;${this._budgetLimitEur.toFixed(2)}</div>
+          <div class="budget-wrap">
+            <div class="budget-bar"><div class="budget-fill"></div></div>
+            <div class="budget-text">&#x20AC;${this._budgetEur.toFixed(2)} / &#x20AC;${this._budgetLimitEur.toFixed(2)}</div>
+          </div>
         ` : ''}
         ${this._error ? `<div class="error-badge">${this._esc(this._error)}</div>` : ''}
         <div class="messages" id="msgs">
-          ${msgs || '<div class="empty">Scrivi un messaggio per iniziare&#x2026;</div>'}
+          ${msgs || '<div class="empty">Scrivi un messaggio per iniziare…</div>'}
         </div>
         <div class="input-row">
-          <input class="input" id="inp" type="text"
-            placeholder="${this._loading ? 'Elaborazione…' : 'Scrivi un messaggio…'}"
-            ${!this._enabled ? 'disabled' : ''} />
-          <button class="send${this._loading ? ' loading' : ''}" id="snd"
-            ${this._loading || !this._enabled ? 'disabled' : ''} title="${this._loading ? 'Elaborazione…' : 'Invia'}">
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-            </svg>
-          </button>
+          <div class="input-inner">
+            <input class="input" id="inp" type="text"
+              placeholder="${this._loading ? 'Elaborazione…' : 'Scrivi un messaggio…'}"
+              ${!this._enabled ? 'disabled' : ''}>
+            <button class="send${this._loading ? ' loading' : ''}" id="snd"
+              ${this._loading || !this._enabled ? 'disabled' : ''} title="${this._loading ? 'Elaborazione…' : 'Invia'}">
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>`;
 
-    const inp = this._shadow.getElementById('inp');
-    const snd = this._shadow.getElementById('snd');
-    const tog = this._shadow.getElementById('tog');
-    const msgsEl = this._shadow.getElementById('msgs');
+    const inp = this._container.querySelector('#inp');
+    const snd = this._container.querySelector('#snd');
+    const tog = this._container.querySelector('#tog');
+    const msgsEl = this._container.querySelector('#msgs');
 
-    // Restore typed text preserved before innerHTML rebuild
     if (inp && _savedInput) inp.value = _savedInput;
-
     if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
     if (snd) snd.onclick = () => {
       const t = inp?.value.trim();
@@ -481,14 +645,19 @@ class HirisChatCardEditor extends HTMLElement {
   constructor() {
     super();
     this._shadow = this.attachShadow({ mode: 'open' });
+    const fontLink = document.createElement('link');
+    fontLink.rel = 'stylesheet';
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap';
+    this._shadow.appendChild(fontLink);
+    this._container = document.createElement('div');
+    this._shadow.appendChild(this._container);
+
     this._config = {};
     this._hass = null;
-    this._agents = null;   // null = not yet loaded, 'loading' = in-flight, [] = loaded, 'error' = failed
+    this._agents = null;
   }
 
-  connectedCallback() {
-    this._render();
-  }
+  connectedCallback() { this._render(); }
 
   setConfig(config) {
     this._config = { ...config };
@@ -514,7 +683,8 @@ class HirisChatCardEditor extends HTMLElement {
       });
       if (resp.ok) {
         const result = await resp.json();
-        this._agents = Array.isArray(result) ? result : [];
+        // Only chat-type agents are compatible with this card
+        this._agents = Array.isArray(result) ? result.filter(a => a.type === 'chat') : [];
       } else {
         this._agents = 'error';
       }
@@ -542,66 +712,105 @@ class HirisChatCardEditor extends HTMLElement {
 
     let agentField;
     if (this._agents === null || this._agents === 'loading') {
-      agentField = `<select disabled style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#f9fafb;color:#9ca3af;box-sizing:border-box">
-        <option>Caricamento agenti…</option>
-      </select>`;
+      agentField = `<div class="field-loading">Caricamento agenti…</div>`;
     } else if (this._agents === 'error' || this._agents.length === 0) {
-      agentField = `<input id="agentInput" type="text" value="${this._esc(agentId)}"
-        placeholder="es. hiris-default"
-        style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;color:#111;box-sizing:border-box">`;
+      agentField = `<input id="agentInput" class="field-input" type="text"
+        value="${this._esc(agentId)}" placeholder="es. hiris-default">`;
     } else {
       const options = this._agents.map(a => {
         const sel = a.id === agentId ? ' selected' : '';
         return `<option value="${this._esc(a.id)}"${sel}>${this._esc(a.name || a.id)} (${this._esc(a.id)})</option>`;
       }).join('');
-      agentField = `<div style="position:relative">
-        <select id="agentSelect" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;appearance:none;color:#111;box-sizing:border-box">
+      agentField = `<div class="select-wrap">
+        <select id="agentSelect" class="field-select">
           ${options}
         </select>
-        <div style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#9ca3af;font-size:12px">▾</div>
+        <span class="select-arrow">▾</span>
       </div>`;
     }
 
-    this._shadow.innerHTML = `
+    this._container.innerHTML = `
       <style>
-        :host { display: block; }
-        .editor { font-family: var(--paper-font-body1_-_font-family, sans-serif); }
-        .editor-header { display: flex; align-items: center; gap: 10px;
-          padding-bottom: 12px; border-bottom: 1px solid #e5e7eb; margin-bottom: 14px; }
-        .editor-title { font-weight: 700; font-size: 14px; color: #111; }
-        .editor-sub { font-size: 11px; color: #9ca3af; }
+        ${IRIS_CSS}
+        .editor {
+          font-family: var(--i-font-sans);
+          font-size: 13px;
+          color: var(--i-text);
+          -webkit-font-smoothing: antialiased;
+        }
+        .editor-header {
+          display: flex; align-items: center; gap: 10px;
+          padding-bottom: 14px;
+          border-bottom: 1px solid var(--i-border);
+          margin-bottom: 16px;
+        }
+        .editor-title { font-size: 14px; font-weight: 600; color: var(--i-text); }
+        .editor-sub { font-size: 11px; color: var(--i-text-3); font-family: var(--i-font-mono); margin-top: 1px; }
         .field { margin-bottom: 14px; }
-        .field-label { font-size: 11px; font-weight: 600; color: #6b7280;
-          text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
-        .field-hint { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+        .field-label {
+          font-size: 11px; font-weight: 600; font-family: var(--i-font-mono);
+          text-transform: uppercase; letter-spacing: 0.06em;
+          color: var(--i-text-3); margin-bottom: 6px;
+        }
+        .field-hint { font-size: 11px; color: var(--i-text-3); margin-top: 4px; }
+        .field-loading {
+          padding: 9px 12px;
+          background: var(--i-surface-2);
+          border: 1px solid var(--i-border);
+          border-radius: var(--i-r-sm);
+          font-size: 12.5px; color: var(--i-text-3);
+          font-family: var(--i-font-mono);
+        }
+        .field-input, .field-select {
+          width: 100%;
+          padding: 8px 12px;
+          background: var(--i-surface);
+          border: 1px solid var(--i-border);
+          border-radius: var(--i-r-sm);
+          font-size: 13px; font-family: var(--i-font-sans);
+          color: var(--i-text);
+          outline: none;
+          transition: border-color 0.15s, box-shadow 0.15s;
+          box-sizing: border-box;
+          appearance: none;
+        }
+        .field-input:focus, .field-select:focus {
+          border-color: var(--i-accent);
+          box-shadow: 0 0 0 3px var(--i-accent-tint);
+        }
+        .select-wrap { position: relative; }
+        .select-arrow {
+          position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+          pointer-events: none; color: var(--i-text-3); font-size: 11px;
+        }
       </style>
       <div class="editor">
         <div class="editor-header">
-          <img src="${_HIRIS_ICON_DATA}" width="32" height="32"
+          <img src="${_HIRIS_ICON_DATA}" width="30" height="30"
             style="border-radius:50%;flex-shrink:0" alt="HIRIS">
           <div>
             <div class="editor-title">HIRIS Chat</div>
-            <div class="editor-sub">Configurazione card</div>
+            <div class="editor-sub">configurazione card</div>
           </div>
         </div>
 
         <div class="field">
           <div class="field-label">Agente</div>
           ${agentField}
-          <div class="field-hint">Agente che risponde nella chat</div>
+          <div class="field-hint">Solo agenti di tipo Chat</div>
         </div>
 
         <div class="field">
           <div class="field-label">Titolo</div>
-          <input id="titleInput" type="text" value="${this._esc(title)}"
-            style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;color:#111;box-sizing:border-box">
-          <div class="field-hint">Mostrato nell'intestazione</div>
+          <input id="titleInput" class="field-input" type="text"
+            value="${this._esc(title)}">
+          <div class="field-hint">Mostrato nell'intestazione della card</div>
         </div>
       </div>`;
 
-    const agentSelect = this._shadow.getElementById('agentSelect');
-    const agentInput = this._shadow.getElementById('agentInput');
-    const titleInput = this._shadow.getElementById('titleInput');
+    const agentSelect = this._container.querySelector('#agentSelect');
+    const agentInput  = this._container.querySelector('#agentInput');
+    const titleInput  = this._container.querySelector('#titleInput');
 
     if (agentSelect) {
       agentSelect.onchange = (e) => {
@@ -627,7 +836,6 @@ class HirisChatCardEditor extends HTMLElement {
 customElements.define('hiris-chat-card-editor', HirisChatCardEditor);
 customElements.define('hiris-chat-card', HirisCard);
 
-// Register in window.customCards so HA shows the card in the picker
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'hiris-chat-card',
