@@ -1,5 +1,15 @@
 # HIRIS — Changelog
 
+## [0.8.4] — 2026-04-30
+
+### Changed
+- Prompt engineering: `BASE_SYSTEM_PROMPT` ridotto a 5 righe eliminando la lista tool ridondante (già presente negli schemi JSON del parametro `tools`)
+- Tool definitions ora cachate via `cache_control` sull'ultimo tool — risparmio su ogni chiamata con configurazione agente stabile
+- Tool results vecchi nell'agentic loop compressi a 300 char (si mantengono completi solo gli ultimi 2 set) — riduce il context bloat su catene lunghe di tool calls
+- Session summary riscritta come digest conversazionale (ultimi 3 scambi U→A, 120 char ciascuno) invece di troncamento dell'ultima risposta
+- `context_str` strutturato con header espliciti (`## Memoria rilevante`, `## Sessioni precedenti`, `## Contesto casa`) per disambiguare la provenienza dei dati
+- History truncation basata su token stimati (~6000) invece di conteggio fisso a 30 messaggi — evita esplosioni di contesto con risposte lunghe
+
 ## [0.8.3] — 2026-04-30
 
 ### Fixed
