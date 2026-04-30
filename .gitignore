@@ -27,6 +27,7 @@ docs/superpowers/
 
 # Internal planning documents
 docs/HIRIS_CLAUDE_CODE_PROMPT.md
+docs/ROADMAP.md
 
 # Local IDE config
 .claude/launch.json

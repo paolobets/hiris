@@ -77,7 +77,9 @@
       "Bash(xargs grep *)",
       "Bash(py -m pytest tests/test_llm_router.py -v)",
       "Bash(python scripts/release.py --version 0.6.3)",
-      "Bash(py scripts/release.py --version 0.6.3)"
+      "Bash(py scripts/release.py --version 0.6.3)",
+      "Bash(py -m pytest tests/test_handlers_health.py tests/test_handlers_proposals.py -v)",
+      "Bash(py scripts/release.py --version 0.8.0)"
     ]
   }
 }
