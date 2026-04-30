@@ -1,6 +1,6 @@
 # HIRIS — Technical Architecture
 
-> Version: 0.8.1 · Updated: 2026-04-30
+> Version: 0.8.2 · Updated: 2026-04-30
 
 ---
 
