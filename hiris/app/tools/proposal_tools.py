@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
     "name": "create_automation_proposal",
@@ -31,8 +32,8 @@ CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
 
 
 async def create_automation_proposal(
-    proposal_store,
-    type: str,
+    proposal_store: Any,
+    proposal_type: str,
     name: str,
     description: str,
     config: dict,
@@ -43,7 +44,7 @@ async def create_automation_proposal(
     try:
         pid = await proposal_store.save(
             {
-                "type": type,
+                "type": proposal_type,
                 "name": name,
                 "description": description,
                 "config": config,

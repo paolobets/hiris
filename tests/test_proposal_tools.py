@@ -16,7 +16,7 @@ def store(tmp_path):
 
 def _sample_args(**overrides):
     base = {
-        "type": "ha_automation",
+        "proposal_type": "ha_automation",
         "name": "Luci off mezzanotte",
         "description": "Spegne le luci del soggiorno a mezzanotte",
         "config": {"alias": "Luci off", "trigger": [], "action": []},
