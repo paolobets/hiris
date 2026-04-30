@@ -123,10 +123,11 @@ class HAClient:
             all_states: list[dict] = await resp.json()
         updates = []
         for s in all_states:
-            if s["entity_id"].startswith("update.") and s["state"] == "on":
+            entity_id = s.get("entity_id", "")
+            if entity_id.startswith("update.") and s.get("state") == "on":
                 attrs = s.get("attributes", {})
                 updates.append({
-                    "entity_id": s["entity_id"],
+                    "entity_id": entity_id,
                     "name": attrs.get("friendly_name", s["entity_id"]),
                     "current": attrs.get("installed_version", "?"),
                     "available": attrs.get("latest_version", "?"),

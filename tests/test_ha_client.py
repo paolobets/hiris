@@ -248,3 +248,50 @@ async def test_get_updates_returns_update_entities(client):
     assert result[0]["name"] == "Home Assistant Core Update"
     assert result[0]["current"] == "2024.12.1"
     assert result[0]["available"] == "2025.1.0"
+
+
+@pytest.mark.asyncio
+async def test_get_config_entries_filters_loaded(client):
+    """Entries with state 'loaded' should be excluded; error states should be returned."""
+    entries = [
+        {
+            "domain": "hue",
+            "title": "Philips Hue",
+            "state": "loaded",
+            "reason": "",
+        },
+        {
+            "domain": "zwave_js",
+            "title": "Z-Wave JS",
+            "state": "setup_error",
+            "reason": "Connection refused",
+        },
+        {
+            "domain": "mqtt",
+            "title": "MQTT",
+            "state": "not_loaded",
+            "reason": "",
+        },
+    ]
+    session, _ = _make_ws_registry_mock("config/config_entries/get_entries", entries)
+    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
+        result = await client.get_config_entries()
+
+    # "loaded" and "not_loaded" are both filtered out; only "setup_error" survives
+    assert len(result) == 1
+    assert result[0]["integration"] == "zwave_js"
+    assert result[0]["title"] == "Z-Wave JS"
+    assert result[0]["state"] == "setup_error"
+    assert result[0]["error"] == "Connection refused"
+
+
+@pytest.mark.asyncio
+async def test_get_config_entries_returns_empty_on_ws_error(client):
+    """When the WebSocket call fails, get_config_entries() should return []."""
+    session = AsyncMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    session.ws_connect = MagicMock(side_effect=OSError("refused"))
+    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
+        result = await client.get_config_entries()
+    assert result == []
