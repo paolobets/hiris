@@ -70,10 +70,18 @@ class HAClient:
 
     async def get_error_log(self, limit: int = 100) -> dict:
         """Fetch HA error log and return parsed summary."""
+        _empty = {"errors": 0, "warnings": 0, "top_errors": []}
         url = f"{self._base_url}/api/error_log"
-        async with self._session.get(url) as resp:
-            resp.raise_for_status()
-            text = await resp.text()
+        try:
+            async with self._session.get(url) as resp:
+                if resp.status in (403, 404):
+                    logger.debug("get_error_log: endpoint returned %s — skipping", resp.status)
+                    return _empty
+                resp.raise_for_status()
+                text = await resp.text()
+        except Exception as exc:
+            logger.debug("get_error_log: unavailable (%s)", exc)
+            return _empty
         lines = text.strip().splitlines()
         errors, warnings, top_errors = 0, 0, []
         for line in lines[-limit:]:

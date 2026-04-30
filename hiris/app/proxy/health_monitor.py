@@ -74,23 +74,31 @@ class HealthMonitor:
 
     async def refresh(self) -> None:
         """Full refresh di tutte le sezioni dalla HA API."""
-        try:
-            error_log = await self._ha.get_error_log()
-            config_errors = await self._ha.get_config_entries()
-            system_info = await self._ha.get_system_info()
-            updates = await self._ha.get_updates()
+        updated: dict = {"last_updated": datetime.now(timezone.utc).strftime(_TS_FMT)}
 
-            self._snapshot_data.update({
-                "last_updated": datetime.now(timezone.utc).strftime(_TS_FMT),
-                "integration_errors": config_errors,
-                "error_log_summary": error_log,
-                "updates_available": updates,
-                "system_info": system_info,
-            })
-            await self._save()
-            logger.debug("HealthMonitor: snapshot refreshed")
-        except Exception:
-            logger.exception("HealthMonitor: refresh failed")
+        try:
+            updated["error_log_summary"] = await self._ha.get_error_log()
+        except Exception as exc:
+            logger.debug("HealthMonitor: get_error_log skipped (%s)", exc)
+
+        try:
+            updated["integration_errors"] = await self._ha.get_config_entries()
+        except Exception as exc:
+            logger.debug("HealthMonitor: get_config_entries skipped (%s)", exc)
+
+        try:
+            updated["system_info"] = await self._ha.get_system_info()
+        except Exception as exc:
+            logger.debug("HealthMonitor: get_system_info skipped (%s)", exc)
+
+        try:
+            updated["updates_available"] = await self._ha.get_updates()
+        except Exception as exc:
+            logger.debug("HealthMonitor: get_updates skipped (%s)", exc)
+
+        self._snapshot_data.update(updated)
+        await self._save()
+        logger.debug("HealthMonitor: snapshot refreshed")
 
     def on_state_changed(self, event_data: dict) -> None:
         """Callback chiamato da ha_client._ws_loop per ogni state_changed."""
