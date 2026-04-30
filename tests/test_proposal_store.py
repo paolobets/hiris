@@ -9,7 +9,8 @@ def store(tmp_path):
         db_path=str(tmp_path / "proposals.db"),
         scheduler=None,
     )
-    return s
+    yield s
+    s.close()
 
 
 def _sample_proposal(**overrides):
@@ -24,38 +25,42 @@ def _sample_proposal(**overrides):
     return base
 
 
-def test_save_and_get(store):
-    pid = store.save(_sample_proposal())
-    proposal = store.get(pid)
+@pytest.mark.asyncio
+async def test_save_and_get(store):
+    pid = await store.save(_sample_proposal())
+    proposal = await store.get(pid)
     assert proposal is not None
     assert proposal["status"] == "pending"
     assert proposal["name"] == "Luci mezzanotte"
 
 
-def test_list_by_status(store):
-    store.save(_sample_proposal(name="A"))
-    store.save(_sample_proposal(name="B"))
-    proposals = store.list(status="pending")
+@pytest.mark.asyncio
+async def test_list_by_status(store):
+    await store.save(_sample_proposal(name="A"))
+    await store.save(_sample_proposal(name="B"))
+    proposals = await store.list(status="pending")
     assert len(proposals) == 2
 
 
-def test_reject_proposal(store):
-    pid = store.save(_sample_proposal())
-    result = store.reject(pid)
+@pytest.mark.asyncio
+async def test_reject_proposal(store):
+    pid = await store.save(_sample_proposal())
+    result = await store.reject(pid)
     assert result is True
-    assert store.get(pid)["status"] == "rejected"
+    assert (await store.get(pid))["status"] == "rejected"
 
 
-def test_apply_proposal(store):
-    pid = store.save(_sample_proposal())
-    result = store.apply(pid)
+@pytest.mark.asyncio
+async def test_apply_proposal(store):
+    pid = await store.save(_sample_proposal())
+    result = await store.apply(pid)
     assert result is True
-    assert store.get(pid)["status"] == "applied"
+    assert (await store.get(pid))["status"] == "applied"
 
 
-def test_lifecycle_pending_to_archived(store):
-    pid = store.save(_sample_proposal())
-    # Forza created_at a 8 giorni fa
+@pytest.mark.asyncio
+async def test_lifecycle_pending_to_archived(store):
+    pid = await store.save(_sample_proposal())
     cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")
     store._conn.execute(
         "UPDATE automation_proposals SET created_at = ? WHERE id = ?",
@@ -63,11 +68,12 @@ def test_lifecycle_pending_to_archived(store):
     )
     store._conn.commit()
     store._run_lifecycle()
-    assert store.get(pid)["status"] == "archived"
+    assert (await store.get(pid))["status"] == "archived"
 
 
-def test_lifecycle_archived_to_deleted(store):
-    pid = store.save(_sample_proposal())
+@pytest.mark.asyncio
+async def test_lifecycle_archived_to_deleted(store):
+    pid = await store.save(_sample_proposal())
     old_ts = (datetime.now(timezone.utc) - timedelta(days=31)).strftime("%Y-%m-%dT%H:%M:%SZ")
     store._conn.execute(
         "UPDATE automation_proposals SET status = 'archived', created_at = ?, archived_at = ? WHERE id = ?",
@@ -75,11 +81,12 @@ def test_lifecycle_archived_to_deleted(store):
     )
     store._conn.commit()
     store._run_lifecycle()
-    assert store.get(pid) is None
+    assert (await store.get(pid)) is None
 
 
-def test_applied_never_deleted(store):
-    pid = store.save(_sample_proposal())
+@pytest.mark.asyncio
+async def test_applied_never_deleted(store):
+    pid = await store.save(_sample_proposal())
     old_ts = (datetime.now(timezone.utc) - timedelta(days=31)).strftime("%Y-%m-%dT%H:%M:%SZ")
     store._conn.execute(
         "UPDATE automation_proposals SET status = 'applied', created_at = ? WHERE id = ?",
@@ -87,4 +94,38 @@ def test_applied_never_deleted(store):
     )
     store._conn.commit()
     store._run_lifecycle()
-    assert store.get(pid) is not None
+    assert (await store.get(pid)) is not None
+
+
+# ------------------------------------------------------------------
+# Edge-case tests
+# ------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_apply_returns_false_for_missing_id(store):
+    result = await store.apply("nonexistent-id")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_reject_returns_false_for_missing_id(store):
+    result = await store.reject("nonexistent-id")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_list_empty_returns_empty_list(store):
+    result = await store.list()
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_missing_returns_none(store):
+    result = await store.get("does-not-exist")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_save_raises_on_missing_required_fields(store):
+    with pytest.raises(ValueError, match="missing required fields"):
+        await store.save({"name": "Incomplete"})
