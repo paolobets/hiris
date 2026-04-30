@@ -76,3 +76,19 @@ async def test_snapshot_persisted_and_loaded(monitor, mock_ha, tmp_path):
     )
     snap = monitor2.get_snapshot(["system"])
     assert snap["system"]["ha_version"] == "2025.1.0"
+
+
+@pytest.mark.asyncio
+async def test_start_registers_listener_and_schedules_job(mock_ha, tmp_path):
+    sched = MagicMock()
+    m = HealthMonitor(
+        ha_client=mock_ha,
+        data_path=str(tmp_path / "ha_health.json"),
+        scheduler=sched,
+    )
+    await m.start(scheduler=sched)
+    mock_ha.add_state_listener.assert_called_once_with(m.on_state_changed)
+    sched.add_job.assert_called_once()
+    call_kwargs = sched.add_job.call_args
+    assert call_kwargs[1]["minutes"] == 30
+    assert call_kwargs[1]["id"] == "health_monitor_poll"

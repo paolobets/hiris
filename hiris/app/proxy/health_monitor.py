@@ -32,6 +32,7 @@ class HealthMonitor:
             "updates_available": [],
             "system_info": {},
         }
+        os.makedirs(os.path.dirname(os.path.abspath(self._data_path)), exist_ok=True)
         self._load()
 
     def _load(self) -> None:
@@ -54,7 +55,6 @@ class HealthMonitor:
 
     def _save_sync(self) -> None:
         try:
-            os.makedirs(os.path.dirname(os.path.abspath(self._data_path)), exist_ok=True)
             with open(self._data_path, "w", encoding="utf-8") as f:
                 json.dump(self._snapshot_data, f, ensure_ascii=False)
         except Exception as exc:
@@ -91,7 +91,7 @@ class HealthMonitor:
             await self._save()
             logger.debug("HealthMonitor: snapshot refreshed")
         except Exception as exc:
-            logger.warning("HealthMonitor: refresh failed: %s", exc)
+            logger.exception("HealthMonitor: refresh failed")
 
     def on_state_changed(self, event_data: dict) -> None:
         """Callback chiamato da ha_client._ws_loop per ogni state_changed."""
@@ -115,6 +115,13 @@ class HealthMonitor:
             ]
             if len(self._snapshot_data["unavailable_entities"]) < before:
                 logger.debug("HealthMonitor: %s → recovered", entity_id)
+
+        # Persist state changes (fire-and-forget non-blocking save)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, self._save_sync)
+        except RuntimeError:
+            self._save_sync()
 
     def get_snapshot(self, sections: list[str]) -> dict:
         """Ritorna snapshot filtrato per sezioni richieste."""
