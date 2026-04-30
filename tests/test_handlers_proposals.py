@@ -87,3 +87,60 @@ async def test_apply_proposal_returns_ok():
     data = json.loads(resp.body)
     assert data == {"ok": True}
     store.apply.assert_awaited_once_with("abc")
+
+
+@pytest.mark.asyncio
+async def test_reject_proposal_returns_ok():
+    store = _make_store(reject=AsyncMock(return_value=True))
+
+    request = make_mocked_request(
+        "POST", "/api/proposals/abc/reject",
+        match_info={"proposal_id": "abc"},
+        app=_make_app(store),
+    )
+    resp = await handle_reject_proposal(request)
+
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data == {"ok": True}
+    store.reject.assert_awaited_once_with("abc")
+
+
+@pytest.mark.asyncio
+async def test_list_proposals_no_store_returns_503():
+    request = make_mocked_request("GET", "/api/proposals", app=_make_app(None))
+    resp = await handle_list_proposals(request)
+    assert resp.status == 503
+
+
+@pytest.mark.asyncio
+async def test_get_proposal_no_store_returns_503():
+    request = make_mocked_request(
+        "GET", "/api/proposals/x",
+        match_info={"proposal_id": "x"},
+        app=_make_app(None),
+    )
+    resp = await handle_get_proposal(request)
+    assert resp.status == 503
+
+
+@pytest.mark.asyncio
+async def test_apply_proposal_no_store_returns_503():
+    request = make_mocked_request(
+        "POST", "/api/proposals/x/apply",
+        match_info={"proposal_id": "x"},
+        app=_make_app(None),
+    )
+    resp = await handle_apply_proposal(request)
+    assert resp.status == 503
+
+
+@pytest.mark.asyncio
+async def test_reject_proposal_no_store_returns_503():
+    request = make_mocked_request(
+        "POST", "/api/proposals/x/reject",
+        match_info={"proposal_id": "x"},
+        app=_make_app(None),
+    )
+    resp = await handle_reject_proposal(request)
+    assert resp.status == 503
