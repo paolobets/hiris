@@ -542,6 +542,7 @@
     }
     .proposals-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .proposals-empty { color: var(--text-muted); font-size: 13px; padding: 12px 0; }
+    .proposals-error { color: var(--danger); font-size: 13px; padding: 12px 0; }
     .proposal-row {
       display: flex; align-items: flex-start; gap: 12px;
       padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px;
@@ -550,7 +551,7 @@
     .proposal-info { flex: 1; min-width: 0; }
     .proposal-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
     .proposal-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
-    .proposal-desc { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .proposal-desc { font-size: 12px; color: var(--text-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .proposal-reason { font-size: 11px; color: var(--link-muted); margin-top: 3px; font-style: italic; }
     .proposal-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
     .btn-apply {
@@ -1972,7 +1973,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         var data = await r.json();
         renderProposals(data.proposals || [], status);
       } catch(e) {
-        list.innerHTML = '<div class="proposals-empty">Errore caricamento proposte.</div>';
+        list.innerHTML = '<div class="proposals-error">Errore caricamento proposte.</div>';
       }
     }
 
@@ -1985,20 +1986,27 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       list.innerHTML = proposals.map(function(p) {
         var typeLabel = p.type === 'ha_automation' ? 'HA Nativa' : 'Agente HIRIS';
         var date = p.created_at ? p.created_at.substring(0, 10) : '';
+        var safeId = escHtml(p.id);
         var actions = status === 'pending'
-          ? '<button class="btn-apply" onclick="applyProposal(\'' + p.id + '\')">Attiva</button>'
-          + '<button class="btn-reject" onclick="rejectProposal(\'' + p.id + '\')">Rifiuta</button>'
+          ? '<button class="btn-apply" data-pid="' + safeId + '">Attiva</button>'
+          + '<button class="btn-reject" data-pid="' + safeId + '">Rifiuta</button>'
           : '';
-        return '<div class="proposal-row" id="pr-' + p.id + '">'
+        return '<div class="proposal-row" id="pr-' + safeId + '">'
           + '<div class="proposal-info">'
           + '<div class="proposal-name"><span class="type-badge">' + typeLabel + '</span>' + escHtml(p.name) + '</div>'
           + '<div class="proposal-meta">' + date + '</div>'
           + '<div class="proposal-desc">' + escHtml(p.description || '') + '</div>'
-          + '<div class="proposal-reason">' + escHtml(p.routing_reason || '') + '</div>'
+          + '<div class="proposal-reason"><strong>Motivo:</strong> ' + escHtml(p.routing_reason || '') + '</div>'
           + '</div>'
           + (actions ? '<div class="proposal-actions">' + actions + '</div>' : '')
           + '</div>';
       }).join('');
+      list.querySelectorAll('.btn-apply').forEach(function(btn) {
+        btn.addEventListener('click', function() { applyProposal(this.dataset.pid); });
+      });
+      list.querySelectorAll('.btn-reject').forEach(function(btn) {
+        btn.addEventListener('click', function() { rejectProposal(this.dataset.pid); });
+      });
     }
 
     function escHtml(s) {
@@ -2006,28 +2014,44 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
     }
 
     async function applyProposal(id) {
+      if (!confirm('Attivare questa proposta?')) return;
+      var row = document.getElementById('pr-' + id);
       try {
-        var r = await fetch('api/proposals/' + id + '/apply', {method: 'POST'});
+        var r = await fetch('api/proposals/' + id + '/apply', {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}});
         if (!r.ok) { var d = await r.json(); alert(d.error || 'Errore'); return; }
-        document.getElementById('pr-' + id).remove();
-        checkEmptyList();
+        if (row) {
+          row.style.opacity = '0.5';
+          row.querySelector('.proposal-name').innerHTML = '<span style="color:var(--success)">&#10003; Proposta attivata</span>';
+          row.querySelector('.proposal-actions').remove();
+          setTimeout(function() { row.remove(); checkEmptyList(); }, 1200);
+        } else {
+          checkEmptyList();
+        }
       } catch(e) { alert('Errore di rete'); }
     }
 
     async function rejectProposal(id) {
       if (!confirm('Rifiutare questa proposta?')) return;
+      var row = document.getElementById('pr-' + id);
       try {
-        var r = await fetch('api/proposals/' + id + '/reject', {method: 'POST'});
+        var r = await fetch('api/proposals/' + id + '/reject', {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}});
         if (!r.ok) { var d = await r.json(); alert(d.error || 'Errore'); return; }
-        document.getElementById('pr-' + id).remove();
-        checkEmptyList();
+        if (row) {
+          row.style.opacity = '0.5';
+          row.querySelector('.proposal-name').innerHTML = '<span style="color:var(--text-muted)">Proposta rifiutata</span>';
+          row.querySelector('.proposal-actions').remove();
+          setTimeout(function() { row.remove(); checkEmptyList(); }, 1200);
+        } else {
+          checkEmptyList();
+        }
       } catch(e) { alert('Errore di rete'); }
     }
 
     function checkEmptyList() {
       var list = document.getElementById('proposals-list');
       if (!list.querySelector('.proposal-row')) {
-        list.innerHTML = '<div class="proposals-empty">Nessuna proposta in attesa.</div>';
+        var label = _currentProposalTab === 'archived' ? 'archiviata' : 'in attesa';
+        list.innerHTML = '<div class="proposals-empty">Nessuna proposta ' + label + '.</div>';
       }
     }
 

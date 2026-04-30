@@ -296,7 +296,7 @@ async def _on_startup(app: web.Application) -> None:
         data_path=os.path.join(data_dir, "ha_health.json"),
         scheduler=engine._scheduler,
     )
-    await health_monitor.start(engine._scheduler)
+    await health_monitor.start()
     app["health_monitor"] = health_monitor
 
     proposal_store = ProposalStore(

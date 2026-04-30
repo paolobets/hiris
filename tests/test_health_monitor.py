@@ -86,7 +86,7 @@ async def test_start_registers_listener_and_schedules_job(mock_ha, tmp_path):
         data_path=str(tmp_path / "ha_health.json"),
         scheduler=sched,
     )
-    await m.start(scheduler=sched)
+    await m.start()
     mock_ha.add_state_listener.assert_called_once_with(m.on_state_changed)
     sched.add_job.assert_called_once()
     call_kwargs = sched.add_job.call_args

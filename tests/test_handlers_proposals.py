@@ -9,6 +9,8 @@ from hiris.app.api.handlers_proposals import (
     handle_reject_proposal,
 )
 
+_CSRF_HEADERS = {"X-Requested-With": "XMLHttpRequest"}
+
 
 def _make_app(proposal_store=None):
     app = MagicMock()
@@ -37,6 +39,21 @@ async def test_list_proposals_returns_list():
     data = json.loads(resp.body)
     assert data == {"proposals": proposals}
     store.list.assert_awaited_once_with(status=None)
+
+
+@pytest.mark.asyncio
+async def test_list_proposals_invalid_status_returns_400():
+    store = _make_store(list=AsyncMock(return_value=[]))
+
+    request = make_mocked_request(
+        "GET", "/api/proposals?status=bogus",
+        app=_make_app(store),
+    )
+    resp = await handle_list_proposals(request)
+
+    assert resp.status == 400
+    data = json.loads(resp.body)
+    assert "error" in data
 
 
 @pytest.mark.asyncio
@@ -79,6 +96,7 @@ async def test_apply_proposal_returns_ok():
     request = make_mocked_request(
         "POST", "/api/proposals/abc/apply",
         match_info={"proposal_id": "abc"},
+        headers=_CSRF_HEADERS,
         app=_make_app(store),
     )
     resp = await handle_apply_proposal(request)
@@ -90,7 +108,39 @@ async def test_apply_proposal_returns_ok():
 
 
 @pytest.mark.asyncio
+async def test_apply_proposal_missing_csrf_returns_403():
+    store = _make_store(apply=AsyncMock(return_value=True))
+
+    request = make_mocked_request(
+        "POST", "/api/proposals/abc/apply",
+        match_info={"proposal_id": "abc"},
+        app=_make_app(store),
+    )
+    resp = await handle_apply_proposal(request)
+
+    assert resp.status == 403
+
+
+@pytest.mark.asyncio
 async def test_reject_proposal_returns_ok():
+    store = _make_store(reject=AsyncMock(return_value=True))
+
+    request = make_mocked_request(
+        "POST", "/api/proposals/abc/reject",
+        match_info={"proposal_id": "abc"},
+        headers=_CSRF_HEADERS,
+        app=_make_app(store),
+    )
+    resp = await handle_reject_proposal(request)
+
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data == {"ok": True}
+    store.reject.assert_awaited_once_with("abc")
+
+
+@pytest.mark.asyncio
+async def test_reject_proposal_missing_csrf_returns_403():
     store = _make_store(reject=AsyncMock(return_value=True))
 
     request = make_mocked_request(
@@ -100,10 +150,7 @@ async def test_reject_proposal_returns_ok():
     )
     resp = await handle_reject_proposal(request)
 
-    assert resp.status == 200
-    data = json.loads(resp.body)
-    assert data == {"ok": True}
-    store.reject.assert_awaited_once_with("abc")
+    assert resp.status == 403
 
 
 @pytest.mark.asyncio
@@ -129,6 +176,7 @@ async def test_apply_proposal_no_store_returns_503():
     request = make_mocked_request(
         "POST", "/api/proposals/x/apply",
         match_info={"proposal_id": "x"},
+        headers=_CSRF_HEADERS,
         app=_make_app(None),
     )
     resp = await handle_apply_proposal(request)
@@ -140,6 +188,7 @@ async def test_reject_proposal_no_store_returns_503():
     request = make_mocked_request(
         "POST", "/api/proposals/x/reject",
         match_info={"proposal_id": "x"},
+        headers=_CSRF_HEADERS,
         app=_make_app(None),
     )
     resp = await handle_reject_proposal(request)

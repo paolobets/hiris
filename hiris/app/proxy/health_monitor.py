@@ -60,11 +60,10 @@ class HealthMonitor:
         except Exception as exc:
             logger.warning("HealthMonitor: failed to save snapshot: %s", exc)
 
-    async def start(self, scheduler: Any | None = None) -> None:
+    async def start(self) -> None:
         """Avvia il monitor: register WS hook, schedule polling, initial refresh."""
         self._ha.add_state_listener(self.on_state_changed)
-        sched = scheduler or self._scheduler
-        sched.add_job(
+        self._scheduler.add_job(
             self.refresh,
             "interval",
             minutes=30,
@@ -90,7 +89,7 @@ class HealthMonitor:
             })
             await self._save()
             logger.debug("HealthMonitor: snapshot refreshed")
-        except Exception as exc:
+        except Exception:
             logger.exception("HealthMonitor: refresh failed")
 
     def on_state_changed(self, event_data: dict) -> None:
