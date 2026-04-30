@@ -101,9 +101,9 @@ def test_cleanup_removes_old_terminal_tasks(engine):
         {"label": "Old", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
         agent_id="hiris-default",
     )
-    old_ts = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=169)).isoformat()
     engine._tasks[task.id].status = "done"
-    engine._tasks[task.id].executed_at = old_ts
+    engine._tasks[task.id].created_at = old_ts
     engine._cleanup()
     assert task.id not in engine._tasks
 
