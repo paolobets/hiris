@@ -14,7 +14,7 @@ from .tools.notify_tools import send_notification
 logger = logging.getLogger(__name__)
 
 _TERMINAL = frozenset({"done", "skipped", "failed", "expired", "cancelled"})
-_CLEANUP_AFTER_HOURS = 24
+_CLEANUP_AFTER_HOURS = 168  # 7 giorni — coerente con ciclo vita proposte
 
 
 @dataclass

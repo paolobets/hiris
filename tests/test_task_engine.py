@@ -302,3 +302,35 @@ def test_cancel_removes_scheduler_job(engine):
     engine.cancel_task(task.id)
     removed = [c[0][0] for c in engine._scheduler.remove_job.call_args_list]
     assert f"task_{task.id}" in removed
+
+
+def test_cleanup_keeps_tasks_within_7_days(engine):
+    """Tasks terminali più vecchi di 7gg vengono rimossi; quelli entro 7gg no."""
+    from hiris.app.task_engine import _CLEANUP_AFTER_HOURS
+
+    assert _CLEANUP_AFTER_HOURS == 168, "Expected 7 days (168h)"
+
+    old_task = engine.add_task(
+        {"label": "old", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
+        agent_id="test",
+    )
+    old_task.status = "done"
+    old_task.created_at = (
+        datetime.now(timezone.utc) - timedelta(hours=169)
+    ).isoformat()
+    engine._tasks[old_task.id] = old_task
+
+    recent_task = engine.add_task(
+        {"label": "recent", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
+        agent_id="test",
+    )
+    recent_task.status = "done"
+    recent_task.created_at = (
+        datetime.now(timezone.utc) - timedelta(hours=10)
+    ).isoformat()
+    engine._tasks[recent_task.id] = recent_task
+
+    engine._cleanup()
+
+    assert old_task.id not in engine._tasks
+    assert recent_task.id in engine._tasks
