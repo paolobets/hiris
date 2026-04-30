@@ -19,6 +19,13 @@ from .api.handlers_usage import handle_usage, handle_reset_usage
 from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
 from .api.handlers_tasks import handle_list_tasks, handle_get_task, handle_cancel_task
 from .api.handlers_models import handle_list_models
+from .api.handlers_health import handle_get_ha_health, handle_refresh_ha_health
+from .api.handlers_proposals import (
+    handle_list_proposals, handle_get_proposal,
+    handle_apply_proposal, handle_reject_proposal,
+)
+from .proxy.health_monitor import HealthMonitor
+from .proxy.proposal_store import ProposalStore
 from .agent_engine import AgentEngine
 from .task_engine import TaskEngine
 from .version import read_version
@@ -284,6 +291,20 @@ async def _on_startup(app: web.Application) -> None:
     await engine.start()
     app["engine"] = engine
 
+    health_monitor = HealthMonitor(
+        ha_client=ha_client,
+        data_path=os.path.join(data_dir, "ha_health.json"),
+        scheduler=engine._scheduler,
+    )
+    await health_monitor.start(engine._scheduler)
+    app["health_monitor"] = health_monitor
+
+    proposal_store = ProposalStore(
+        db_path=os.path.join(data_dir, "proposals.db"),
+        scheduler=engine._scheduler,
+    )
+    app["proposal_store"] = proposal_store
+
     knowledge_db = KnowledgeDB(
         db_path=os.path.join(data_dir, "hiris_knowledge.db")
     )
@@ -397,6 +418,8 @@ async def _on_startup(app: web.Application) -> None:
         memory_store=memory_store,
         embedding_provider=embedder,
         memory_retention_days=memory_retention_days,
+        health_monitor=health_monitor,
+        proposal_store=proposal_store,
     )
     dispatcher.set_task_engine(task_engine)
 
@@ -467,6 +490,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["knowledge_db"].close()
     if "memory_store" in app:
         app["memory_store"].close()
+    if "proposal_store" in app:
+        app["proposal_store"].close()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()
@@ -522,6 +547,12 @@ def create_app() -> web.Application:
     app.router.add_get("/api/tasks/{task_id}", handle_get_task)
     app.router.add_delete("/api/tasks/{task_id}", handle_cancel_task)
     app.router.add_get("/api/models", handle_list_models)
+    app.router.add_get("/api/health/ha", handle_get_ha_health)
+    app.router.add_post("/api/health/ha/refresh", handle_refresh_ha_health)
+    app.router.add_get("/api/proposals", handle_list_proposals)
+    app.router.add_get("/api/proposals/{proposal_id}", handle_get_proposal)
+    app.router.add_post("/api/proposals/{proposal_id}/apply", handle_apply_proposal)
+    app.router.add_post("/api/proposals/{proposal_id}/reject", handle_reject_proposal)
 
     return app
 

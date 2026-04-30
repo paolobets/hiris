@@ -15,6 +15,8 @@ from .task_tools import create_task_tool, list_tasks_tool, cancel_task_tool
 from .calendar_tools import get_calendar_events, set_input_helper, create_calendar_event
 from .http_tools import http_request
 from .memory_tools import recall_memory as _recall_memory, save_memory as _save_memory
+from .health_tools import get_ha_health
+from .proposal_tools import create_automation_proposal
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,8 @@ class ToolDispatcher:
         memory_store: Any = None,
         embedding_provider: Any = None,
         memory_retention_days: int | None = None,
+        health_monitor: Any = None,
+        proposal_store: Any = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -49,6 +53,8 @@ class ToolDispatcher:
         self._memory_store = memory_store
         self._embedder = embedding_provider
         self._memory_retention_days = memory_retention_days
+        self._health_monitor = health_monitor
+        self._proposal_store = proposal_store
         self._task_engine: Any = None
 
     def set_task_engine(self, engine: Any) -> None:
@@ -229,6 +235,17 @@ class ToolDispatcher:
                     content=inputs["content"],
                     tags=inputs.get("tags") or None,
                     retention_days=self._memory_retention_days,
+                )
+            if name == "get_ha_health":
+                return get_ha_health(self._health_monitor, inputs.get("sections") or ["all"])
+            if name == "create_automation_proposal":
+                return await create_automation_proposal(
+                    self._proposal_store,
+                    proposal_type=inputs["type"],
+                    name=inputs["name"],
+                    description=inputs["description"],
+                    config=inputs["config"],
+                    routing_reason=inputs["routing_reason"],
                 )
             logger.warning("Unknown tool: %s", name)
             return {"error": f"Unknown tool: {name}"}
