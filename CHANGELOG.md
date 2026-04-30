@@ -1,5 +1,11 @@
 # HIRIS — Changelog
 
+## [0.8.2] — 2026-04-30
+
+### Changed
+- `hiris-chat-card`: applicato Iris design system alla Shadow DOM (token `--i-*`, font Inter Tight + JetBrains Mono, bubble chat allineate a `index.html`, composer con focus ring, status pill)
+- `hiris-chat-card`: dropdown agenti filtrato solo su `type === 'chat'` con hint "Solo agenti di tipo Chat"
+
 ## [0.8.1] — 2026-04-30
 
 ### Changed
