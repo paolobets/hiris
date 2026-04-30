@@ -56,12 +56,20 @@ _VERSIONED_NAMES: frozenset[str] = frozenset({
     "come-funziona.md",
     "use-cases.md",
     "casi-duso.md",
-    "roadmap.md",
     "configuration-guide.md",
     "guida-configurazione.md",
     "full-local-mode.md",
     "full-local-mode-it.md",
     "mqtt-integration.md",
+})
+
+# ── Internal / gitignored docs — not tracked, not linked from README ─────────
+# These files exist only on local dev machines; the checker must not warn about
+# them being absent from README or from _VERSIONED_NAMES.
+_INTERNAL_DOCS: frozenset[str] = frozenset({
+    "roadmap.md",
+    "ROADMAP.md",
+    "HIRIS_CLAUDE_CODE_PROMPT.md",
 })
 
 
@@ -189,6 +197,8 @@ def check_version_headers() -> int:
 
 def check_untracked_docs() -> int:
     for path in sorted(DOCS.glob("*.md")):
+        if path.name in _INTERNAL_DOCS:
+            continue  # gitignored internal files — expected to be missing from README
         if path.name not in _VERSIONED_NAMES:
             _warn(f"docs/{path.name}: not in _VERSIONED_DOCS — won't get version "
                   "header on release; add it to scripts/release.py and scripts/doc_check.py")
@@ -202,7 +212,6 @@ def check_readme_coverage() -> int:
         return 0
     readme = README.read_text(encoding="utf-8")
     for name in sorted(_VERSIONED_NAMES):
-        # ROADMAP is linked as docs/roadmap.md (lowercase) in README
         ref = f"docs/{name}"
         ref_lower = f"docs/{name.lower()}"
         if ref not in readme and ref_lower not in readme:

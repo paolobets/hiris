@@ -99,6 +99,14 @@ HIRIS stores and retrieves memories across conversations. Before every Claude ca
 
 Send alerts via Home Assistant push, Telegram, WhatsApp, ntfy, Gotify, Pushover, Slack, and 80+ other channels — all configured through a single `apprise_urls` option.
 
+### HA health monitoring
+
+A live health snapshot of your Home Assistant installation — unavailable entities, integration errors, pending updates, and system info — updated in real time via WebSocket and refreshed every 30 minutes. Accessible to any agent via the `get_ha_health` tool and via `GET /api/health/ha`.
+
+### Automation proposal workflow
+
+Agents can propose new automations (native HA or HIRIS agents) for human review instead of executing changes autonomously. Proposals are queued in a persistent store with pending/applied/rejected/archived lifecycle. The Agent Designer UI shows pending proposals with approve and reject actions, keeping a human in the loop for configuration changes.
+
 ---
 
 ## Use cases
@@ -197,20 +205,6 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 
 ---
 
-## Roadmap
-
-| Milestone | Status |
-|---|---|
-| Phase 1 — Core platform (tools, agents, chat UI, MQTT, Lovelace card) | ✅ v0.6.x |
-| Sprint C — Memory & RAG (SQLite vector store, recall/save memory tools) | ✅ v0.6.x |
-| Sprint D — Multi-provider LLM (OpenAI, Ollama, strategy routing) | ✅ v0.6.3 |
-| Security hardening + agent model refactor (chat vs agent, ACL, CSP) | ✅ v0.7.0 |
-| Sprint E — Lovelace agent card + HACS packaging | 🔜 v0.8.x |
-| Phase 2 — Automation intelligence (proposal workflow, anomaly baseline) | 📋 v0.9.x |
-| Phase 3 — Canvas designer (n8n-style drag-and-drop) | 📋 v1.0 |
-
----
-
 ## Documentation
 
 | Document | Language |
@@ -226,7 +220,6 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 | [Architettura tecnica](docs/architettura.md) | 🇮🇹 Italiano |
 | [Use cases & examples](docs/use-cases.md) | 🇬🇧 English |
 | [Casi d'uso ed esempi](docs/casi-duso.md) | 🇮🇹 Italiano |
-| [Roadmap](docs/roadmap.md) | 🇬🇧 English |
 
 ---
 

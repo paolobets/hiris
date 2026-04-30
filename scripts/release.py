@@ -46,7 +46,6 @@ _VERSIONED_DOCS = [
     ROOT / "docs" / "come-funziona.md",
     ROOT / "docs" / "use-cases.md",
     ROOT / "docs" / "casi-duso.md",
-    ROOT / "docs" / "roadmap.md",
     ROOT / "docs" / "configuration-guide.md",
     ROOT / "docs" / "guida-configurazione.md",
     ROOT / "docs" / "full-local-mode.md",

@@ -1,6 +1,6 @@
 # HIRIS — How It Works
 
-> Version: 0.7.0 · Updated: 2026-04-29
+> Version: 0.8.0 · Updated: 2026-04-30
 
 ---
 
@@ -133,6 +133,8 @@ The loop repeats up to **10 iterations** (infinite loop protection). Claude deci
 | `recall_memory(query, k, tags)` | Search past memories (vector similarity) |
 | `save_memory(content, tags)` | Store a new memory (chat agents only) |
 | `http_request(url, method, headers, body)` | HTTP call to whitelisted external endpoints |
+| `get_ha_health(sections)` | HA health snapshot: unavailable entities, integration errors, pending updates, system info |
+| `create_automation_proposal(type, name, description, config, routing_reason)` | Queue a new automation proposal for human review (chat agents only) |
 
 ---
 
@@ -272,8 +274,10 @@ SSRF protection is enforced on `http_request`: RFC1918 ranges, IPv4-mapped IPv6,
 | `/data/usage.json` | Token counters and costs per agent |
 | `/data/home_semantic_map.json` | Semantic entity classification |
 | `/data/chat_history.db` | SQLite: conversation history + memories |
+| `/data/ha_health.json` | HA health snapshot (HealthMonitor — unavailable entities, integration errors, updates) |
+| `/data/proposals.db` | SQLite: automation proposals with lifecycle (pending → applied/rejected/archived → deleted) |
 
-All files are written atomically (temp file + rename) for crash safety.
+All files are written atomically (temp file + rename or executor-dispatched SQLite commit) for crash safety.
 
 ---
 

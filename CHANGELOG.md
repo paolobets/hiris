@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [0.8.0] — 2026-04-30
+
+### Added
+- **HealthMonitor**: hybrid health snapshot for HA — real-time unavailability tracking via WebSocket `state_changed` + full refresh every 30 minutes via APScheduler; persists to `/data/ha_health.json` across restarts
+- **ProposalStore**: async SQLite store for automation proposals with 7-day archive / 30-day delete lifecycle; states: `pending → applied|rejected` (permanent) or `archived` (after 7d) → deleted (after 30d)
+- **Tool `get_ha_health(sections)`**: reads the HealthMonitor snapshot — unavailable entities, integration errors, error log summary, pending HA updates, system info; available to all agent types (in `EVALUATION_ONLY_TOOLS`)
+- **Tool `create_automation_proposal(...)`**: agents can propose new HA automations or HIRIS agents for human review instead of executing changes directly; chat agents only
+- **REST API**: `GET /api/health/ha`, `POST /api/health/ha/refresh`, `GET /api/proposals`, `GET /api/proposals/{id}`, `POST /api/proposals/{id}/apply`, `POST /api/proposals/{id}/reject`
+- **Agent Designer UI**: "Proposte automazione" section with pending/archived tabs; apply (with confirmation dialog) and reject actions; animated row feedback before removal
+
+### Fixed
+- **Security — XSS**: `renderProposals` replaced inline `onclick` handlers with `data-pid` attributes and `addEventListener`; `p.id` now escaped via `escHtml()` in HTML attribute context
+- **Security — CSRF**: `apply` and `reject` POST endpoints require `X-Requested-With: XMLHttpRequest` header (403 otherwise); frontend fetch calls include the header
+- **Validation**: `GET /api/proposals?status=` returns 400 for values outside `pending|applied|rejected|archived`
+- **Code quality**: `HealthMonitor.start()` simplified — removed redundant `scheduler` parameter, always uses `self._scheduler`; `except Exception as exc:` cleaned to `except Exception:`
+- **UX**: "Attiva" button shows confirmation dialog; `checkEmptyList()` uses active tab label; apply/reject show animated feedback before removing row
+- **UI**: `proposal-desc` upgraded from single-line `white-space: nowrap` to 2-line `-webkit-line-clamp: 2`; load errors shown in red distinct from empty state; routing_reason labeled "Motivo:"
+
+### Changed
+- `docs/ROADMAP.md` removed from git tracking (added to `.gitignore`); Roadmap section removed from README
+- All documentation updated: new tools, new components, new data stores, version headers to 0.8.0
+
 ## [0.7.0] — 2026-04-29
 
 ### Changed

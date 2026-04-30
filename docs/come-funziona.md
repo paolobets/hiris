@@ -1,6 +1,6 @@
 # HIRIS — Come funziona
 
-> Versione: 0.7.0 · Aggiornato: 2026-04-29
+> Versione: 0.8.0 · Aggiornato: 2026-04-30
 
 ---
 
@@ -133,6 +133,8 @@ Il loop si ripete fino a **10 iterazioni** (protezione da loop infiniti). Claude
 | `recall_memory(query, k, tags)` | Ricerca memorie passate (similarità vettoriale) |
 | `save_memory(content, tags)` | Salva una nuova memoria (solo agenti chat) |
 | `http_request(url, method, headers, body)` | Chiamata HTTP verso endpoint approvati |
+| `get_ha_health(sections)` | Snapshot salute HA: entità non disponibili, errori integrazioni, aggiornamenti, info sistema |
+| `create_automation_proposal(type, name, description, config, routing_reason)` | Propone una nuova automazione per revisione umana (solo agenti chat) |
 
 ---
 
@@ -258,8 +260,10 @@ Protezione SSRF su `http_request`: range RFC1918, IPv6 mapped-IPv4, loopback e l
 | `/data/usage.json` | Contatori token e costi per agente |
 | `/data/home_semantic_map.json` | Classificazione semantica entità HA |
 | `/data/chat_history.db` | SQLite: cronologia conversazioni + memorie |
+| `/data/ha_health.json` | Snapshot salute HA (HealthMonitor — entità non disponibili, errori integrazioni, aggiornamenti) |
+| `/data/proposals.db` | SQLite: proposte automazione con lifecycle (pending → applied/rejected/archived → eliminato) |
 
-Tutti i file vengono scritti atomicamente (temp file + rename) per resistere ai crash.
+Tutti i file vengono scritti atomicamente (temp file + rename o commit SQLite via executor) per resistere ai crash.
 
 ---
 

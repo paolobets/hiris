@@ -1,6 +1,6 @@
 # HIRIS — Architettura Tecnica
 
-> Versione: 0.7.0 · Aggiornato: 2026-04-29
+> Versione: 0.8.0 · Aggiornato: 2026-04-30
 
 ---
 
@@ -50,6 +50,8 @@ hiris/app/
 │   ├── handlers_usage.py        GET /api/usage, POST /api/usage/reset
 │   ├── handlers_status.py       GET /api/health, GET /api/status
 │   ├── handlers_models.py       GET /api/models (backend disponibili)
+│   ├── handlers_health.py       GET /api/health/ha, POST /api/health/ha/refresh
+│   ├── handlers_proposals.py    GET /api/proposals, GET/POST /api/proposals/{id}
 │   └── middleware_internal_auth.py  Controllo X-HIRIS-Internal-Token
 │
 ├── backends/
@@ -69,7 +71,9 @@ hiris/app/
 │   ├── calendar_tools.py        get_calendar_events, create_calendar_event
 │   ├── http_tools.py            http_request (protezione SSRF)
 │   ├── memory_tools.py          recall_memory, save_memory
-│   └── task_tools.py            create_task, list_tasks, cancel_task
+│   ├── task_tools.py            create_task, list_tasks, cancel_task
+│   ├── health_tools.py          get_ha_health
+│   └── proposal_tools.py        create_automation_proposal
 │
 ├── proxy/
 │   ├── ha_client.py             Client HA REST + WebSocket + History API
@@ -78,7 +82,9 @@ hiris/app/
 │   ├── semantic_context_map.py  Iniezione contesto con consapevolezza delle aree
 │   ├── memory_store.py          Store vettoriale SQLite (similarità coseno)
 │   ├── knowledge_db.py          Conoscenza strutturata della casa (aree, dispositivi)
-│   └── home_profile.py          Snapshot casa di fallback (quando manca la mappa semantica)
+│   ├── home_profile.py          Snapshot casa di fallback (quando manca la mappa semantica)
+│   ├── health_monitor.py        Snapshot salute HA: WebSocket + polling 30min + persist JSON
+│   └── proposal_store.py        Store SQLite proposte automazione (gestione lifecycle)
 │
 ├── mqtt_publisher.py            Discovery MQTT + pubblicazione stati + subscribe comandi
 └── static/
@@ -230,8 +236,31 @@ La ricerca per similarità usa coseno in Python puro — nessuna estensione nati
 | `agents.json` | `[{id, name, type, trigger, system_prompt, strategic_context, allowed_tools, allowed_entities, allowed_services, allowed_endpoints, model, max_tokens, budget_eur_limit, ...}]` |
 | `usage.json` | `{schema_version, total_input_tokens, total_output_tokens, total_requests, total_cost_usd, last_reset, per_agent: {agent_id: {...}}}` |
 | `home_semantic_map.json` | `{entity_id: {role, label, confidence, classified_at}}` |
+| `ha_health.json` | `{last_updated, unavailable_entities, integration_errors, error_log_summary, updates_available, system_info}` — snapshot HealthMonitor |
 
 Tutti i file JSON sono scritti atomicamente tramite file temporaneo + `os.replace()`.
+
+### SQLite — `/data/proposals.db`
+
+Proposte automazione generate dagli agenti e in attesa di revisione umana.
+
+```sql
+CREATE TABLE automation_proposals (
+    id TEXT PRIMARY KEY,
+    type TEXT,                  -- 'ha_automation' | 'hiris_agent'
+    name TEXT,
+    description TEXT,
+    config TEXT,                -- JSON blob
+    routing_reason TEXT,
+    status TEXT DEFAULT 'pending',   -- pending | applied | rejected | archived
+    created_at TEXT,
+    applied_at TEXT,
+    rejected_at TEXT,
+    archived_at TEXT
+);
+```
+
+Lifecycle: `pending` → `applied`/`rejected` (permanente) o archiviato dopo 7 giorni → eliminato dopo 30 giorni.
 
 ---
 
@@ -408,7 +437,9 @@ server.py: _on_startup(app)
     ├── 13. Inizializzazione TaskEngine
     ├── 14. Auto-deploy card Lovelace in /local/hiris/ via WebSocket HA
     ├── 15. Pianifica job di retention (APScheduler alle 03:00 UTC ogni giorno)
-    └── 16. Background: classifica entità sconosciute (non bloccante)
+    ├── 16. Background: classifica entità sconosciute (non bloccante)
+    ├── 17. Inizializzazione HealthMonitor → carica ha_health.json, sottoscrive state_changed, pianifica polling 30min
+    └── 18. Inizializzazione ProposalStore → apre proposals.db, pianifica job lifecycle
 ```
 
 ---
