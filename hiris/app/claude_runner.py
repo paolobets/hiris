@@ -33,6 +33,8 @@ from .tools.memory_tools import (
     RECALL_MEMORY_TOOL_DEF,
     SAVE_MEMORY_TOOL_DEF,
 )
+from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
+from .tools.proposal_tools import CREATE_AUTOMATION_PROPOSAL_TOOL_DEF
 from .tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
@@ -68,7 +70,11 @@ BASE_SYSTEM_PROMPT = (
     "- recall_memory(query, k?, tags?): cerca nella memoria persistente dell'agente ricordi rilevanti"
     " da sessioni precedenti.\n"
     "- save_memory(content, tags?): salva un'informazione importante in memoria per sessioni future"
-    " (solo per agenti chat).\n\n"
+    " (solo per agenti chat).\n"
+    "- get_ha_health(sections?): restituisce il report di salute di Home Assistant"
+    " (entità non disponibili, errori integrazioni, log, aggiornamenti, info sistema).\n"
+    "- create_automation_proposal(type, name, description, config, routing_reason): propone una nuova"
+    " automazione all'utente in stato disabilitato/pending — richiede approvazione esplicita.\n\n"
     "## Regole fondamentali\n"
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
     "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
@@ -113,6 +119,8 @@ ALL_TOOL_DEFS = [
     HTTP_REQUEST_TOOL_DEF,
     RECALL_MEMORY_TOOL_DEF,
     SAVE_MEMORY_TOOL_DEF,
+    GET_HA_HEALTH_TOOL_DEF,
+    CREATE_AUTOMATION_PROPOSAL_TOOL_DEF,
 ]
 
 # Tools available to non-chat agents in evaluation mode.
@@ -126,7 +134,9 @@ EVALUATION_ONLY_TOOLS = frozenset({
     "get_ha_automations", "get_calendar_events",
     "create_task", "list_tasks", "cancel_task",
     "recall_memory",  # read-only — safe for non-chat agents
+    "get_ha_health",  # read-only cached data — safe for proactive monitors
     # save_memory excluded: write risk in reactive agents (prompt injection via HA state)
+    # create_automation_proposal excluded: writes to store — chat-only
 })
 
 MODEL = "claude-sonnet-4-6"
