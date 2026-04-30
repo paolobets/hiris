@@ -39,42 +39,41 @@ from .tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
 
+_TOOL_RESULT_COMPRESS_LEN = 300  # chars to keep per old tool result
+
+def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None:
+    """Truncate tool_result content in older iterations to save input tokens.
+
+    Keeps the last `keep_last` tool_result sets at full size; earlier ones
+    are truncated because Claude has already processed them and they're only
+    re-sent for conversation continuity, not for reasoning.
+    """
+    tr_indices = [
+        i for i, m in enumerate(messages)
+        if m["role"] == "user"
+        and isinstance(m.get("content"), list)
+        and m["content"]
+        and isinstance(m["content"][0], dict)
+        and m["content"][0].get("type") == "tool_result"
+    ]
+    for idx in tr_indices[:-keep_last] if len(tr_indices) > keep_last else []:
+        compressed = []
+        for block in messages[idx]["content"]:
+            if block.get("type") == "tool_result":
+                raw = block.get("content", "")
+                if isinstance(raw, str) and len(raw) > _TOOL_RESULT_COMPRESS_LEN:
+                    block = {**block, "content": raw[:_TOOL_RESULT_COMPRESS_LEN] + "…[troncato]"}
+            compressed.append(block)
+        messages[idx] = {**messages[idx], "content": compressed}
+
 # ── Base system prompt ─────────────────────────────────────────────────────
 # Always injected at runtime BEFORE any agent-specific instructions.
 # Agents configure WHAT to do and HOW to behave; this layer defines the tools
 # available and the invariant anti-hallucination rules.
 BASE_SYSTEM_PROMPT = (
-    "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n\n"
-    "## Strumenti disponibili\n"
-    "- get_home_status(): panoramica compatta di tutti i dispositivi. Usalo come prima chiamata.\n"
-    "- get_entities_on(): tutti i dispositivi attualmente accesi.\n"
-    "- get_entities_by_domain(domain): entità di un dominio (es. 'light', 'sensor').\n"
-    "- get_entity_states(ids): stato attuale e attributi di entità specifiche.\n"
-    "  Per i termostati (climate.*) restituisce temperatura attuale e setpoint.\n"
-    "- get_area_entities(): aree/stanze e i dispositivi associati.\n"
-    "- get_ha_automations(): elenco automazioni HA.\n"
-    "- trigger_automation(id): esegue manualmente un'automazione.\n"
-    "- toggle_automation(id, enabled): attiva o disattiva un'automazione.\n"
-    "- get_energy_history(days): storico consumi energetici.\n"
-    "- get_weather_forecast(hours): previsioni meteo.\n"
-    "- call_ha_service(domain, service, data): controlla dispositivi.\n"
-    "- send_notification(message, channel): invia notifiche (ha_push, apprise, retropanel).\n"
-    "- create_calendar_event(calendar_entity, summary, event_type, ...): crea un evento nel calendario HA.\n"
-    "- create_task(label, trigger, actions): pianifica un'azione futura.\n"
-    "- list_tasks(agent_id, status): elenca i task pianificati.\n"
-    "- cancel_task(task_id): annulla un task pianificato.\n"
-    "- get_calendar_events(hours, calendar_entity?): eventi calendario HA nelle prossime N ore.\n"
-    "- set_input_helper(entity_id, value): imposta un input helper HA (boolean/number/text/select).\n"
-    "- http_request(url, method?, headers?, body?): chiama un'API esterna o un dispositivo locale"
-    " pre-approvato (solo se configurato nell'agente).\n"
-    "- recall_memory(query, k?, tags?): cerca nella memoria persistente dell'agente ricordi rilevanti"
-    " da sessioni precedenti.\n"
-    "- save_memory(content, tags?): salva un'informazione importante in memoria per sessioni future"
-    " (solo per agenti chat).\n"
-    "- get_ha_health(sections?): restituisce il report di salute di Home Assistant"
-    " (entità non disponibili, errori integrazioni, log, aggiornamenti, info sistema).\n"
-    "- create_automation_proposal(type, name, description, config, routing_reason): propone una nuova"
-    " automazione all'utente in stato disabilitato/pending — richiede approvazione esplicita.\n\n"
+    "Sei HIRIS, assistente AI integrata in Home Assistant con accesso completo alla casa.\n"
+    "Hai a disposizione strumenti per leggere stati, controllare dispositivi, inviare notifiche,"
+    " gestire automazioni, calendario, task, memoria e salute del sistema.\n\n"
     "## Regole fondamentali\n"
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
     "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
@@ -421,6 +420,9 @@ class ClaudeRunner:
             tools = [t for t in tools if t["name"] != "http_request"]
         if not self._dispatcher.has_memory:
             tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
+        # Cache tool definitions — stable per agent config, reused across turns
+        if tools:
+            tools = tools[:-1] + [{**tools[-1], "cache_control": {"type": "ephemeral"}}]
         hist = list(conversation_history or [])
         messages: list[dict] = []
         if hist:
@@ -499,6 +501,7 @@ class ClaudeRunner:
                             "content": json.dumps(result),
                         })
                 messages.append({"role": "user", "content": tool_results})
+                _compress_old_tool_results(messages)
             else:
                 logger.warning("Unexpected stop_reason: %s", response.stop_reason)
                 text_blocks = [b.text for b in response.content if b.type == "text"]

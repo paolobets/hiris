@@ -17,6 +17,8 @@ HISTORY_RETENTION_DAYS: int = int(os.environ.get("HISTORY_RETENTION_DAYS", "90")
 SESSION_GAP_HOURS = 2
 PAST_SESSIONS_LIMIT = 3
 SUMMARY_MAX_CHARS = 200
+_DIGEST_TURNS = 3       # user+assistant pairs to include in the session digest
+_DIGEST_MSG_LEN = 120   # max chars per message in the digest
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 _stores: dict[str, "ChatStore"] = {}
@@ -92,14 +94,29 @@ class ChatStore:
         return None
 
     def _close_session(self, agent_id: str, session_id: str) -> None:
-        row = self._conn.execute(
-            "SELECT content FROM chat_messages WHERE session_id = ? AND role = 'assistant' "
-            "ORDER BY id DESC LIMIT 1",
-            (session_id,),
-        ).fetchone()
-        if row:
-            text = row["content"]
-            summary = text[:SUMMARY_MAX_CHARS] + "…" if len(text) > SUMMARY_MAX_CHARS else text
+        rows = self._conn.execute(
+            "SELECT role, content FROM chat_messages WHERE session_id = ? "
+            "ORDER BY id DESC LIMIT ?",
+            (session_id, _DIGEST_TURNS * 2),
+        ).fetchall()
+        if rows:
+            # Rows are newest-first; reverse to chronological order, then build digest
+            pairs: list[str] = []
+            turns: list[tuple[str, str]] = []
+            cur: dict[str, str] = {}
+            for r in reversed(rows):
+                role, content = r["role"], r["content"]
+                if role == "user":
+                    cur = {"u": content}
+                elif role == "assistant" and cur:
+                    cur["a"] = content
+                    turns.append((cur["u"], cur["a"]))
+                    cur = {}
+            for u, a in turns[-_DIGEST_TURNS:]:
+                u_trunc = u[:_DIGEST_MSG_LEN] + "…" if len(u) > _DIGEST_MSG_LEN else u
+                a_trunc = a[:_DIGEST_MSG_LEN] + "…" if len(a) > _DIGEST_MSG_LEN else a
+                pairs.append(f"U: {u_trunc}\nA: {a_trunc}")
+            summary = "\n---\n".join(pairs) if pairs else rows[0]["content"][:SUMMARY_MAX_CHARS]
         else:
             summary = "(nessuna risposta)"
         self._conn.execute(
