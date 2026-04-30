@@ -529,6 +529,45 @@
       max-height: 260px; overflow-y: auto;
       background: var(--input-bg); color: var(--text);
     }
+    /* Proposals section */
+    .proposals-section {
+      margin-top: 1.5rem;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem;
+    }
+    .proposals-section h2 { margin: 0 0 1rem; font-size: 16px; color: var(--text); }
+    .proposals-tabs { display: flex; gap: 8px; margin-bottom: 1rem; }
+    .proposals-tab {
+      padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text-muted); font-size: 13px; cursor: pointer;
+    }
+    .proposals-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .proposals-empty { color: var(--text-muted); font-size: 13px; padding: 12px 0; }
+    .proposal-row {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px;
+      margin-bottom: 8px; background: var(--surface-2);
+    }
+    .proposal-info { flex: 1; min-width: 0; }
+    .proposal-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+    .proposal-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .proposal-desc { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .proposal-reason { font-size: 11px; color: var(--link-muted); margin-top: 3px; font-style: italic; }
+    .proposal-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+    .btn-apply {
+      padding: 5px 14px; border-radius: 5px; border: none; cursor: pointer; font-size: 12px;
+      background: var(--run-bg); color: var(--run-color); border: 1px solid var(--run-border);
+    }
+    .btn-apply:hover { background: var(--run-hover); }
+    .btn-reject {
+      padding: 5px 14px; border-radius: 5px; border: none; cursor: pointer; font-size: 12px;
+      background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger);
+    }
+    .btn-reject:hover { opacity: 0.8; }
+    .type-badge {
+      display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600;
+      background: var(--surface-4); color: var(--accent); border: 1px solid var(--border-accent);
+      margin-right: 6px;
+    }
   </style>
 </head>
 <body>
@@ -890,6 +929,19 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       </div>
     </div>
   </div>
+
+  <!-- Proposals section -->
+  <div class="proposals-section">
+    <h2>Proposte automazione</h2>
+    <div class="proposals-tabs">
+      <button class="proposals-tab active" id="tab-pending" onclick="switchProposalsTab('pending')">In attesa</button>
+      <button class="proposals-tab" id="tab-archived" onclick="switchProposalsTab('archived')">Archivio</button>
+    </div>
+    <div id="proposals-list">
+      <div class="proposals-empty">Caricamento&hellip;</div>
+    </div>
+  </div>
+
   <script>
     async function applyTheme() {
       try {
@@ -1906,6 +1958,87 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
 
     document.getElementById('f-strategic').addEventListener('input', updateTokenCounter);
     document.getElementById('f-prompt').addEventListener('input', updateTokenCounter);
+
+    // ── Proposals section ────────────────────────────────────────────────
+    var _currentProposalTab = 'pending';
+
+    async function loadProposals(status) {
+      var list = document.getElementById('proposals-list');
+      list.innerHTML = '<div class="proposals-empty">Caricamento&hellip;</div>';
+      try {
+        var url = 'api/proposals' + (status ? '?status=' + status : '');
+        var r = await fetch(url);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var data = await r.json();
+        renderProposals(data.proposals || [], status);
+      } catch(e) {
+        list.innerHTML = '<div class="proposals-empty">Errore caricamento proposte.</div>';
+      }
+    }
+
+    function renderProposals(proposals, status) {
+      var list = document.getElementById('proposals-list');
+      if (!proposals.length) {
+        list.innerHTML = '<div class="proposals-empty">Nessuna proposta ' + (status === 'pending' ? 'in attesa' : 'archiviata') + '.</div>';
+        return;
+      }
+      list.innerHTML = proposals.map(function(p) {
+        var typeLabel = p.type === 'ha_automation' ? 'HA Nativa' : 'Agente HIRIS';
+        var date = p.created_at ? p.created_at.substring(0, 10) : '';
+        var actions = status === 'pending'
+          ? '<button class="btn-apply" onclick="applyProposal(\'' + p.id + '\')">Attiva</button>'
+          + '<button class="btn-reject" onclick="rejectProposal(\'' + p.id + '\')">Rifiuta</button>'
+          : '';
+        return '<div class="proposal-row" id="pr-' + p.id + '">'
+          + '<div class="proposal-info">'
+          + '<div class="proposal-name"><span class="type-badge">' + typeLabel + '</span>' + escHtml(p.name) + '</div>'
+          + '<div class="proposal-meta">' + date + '</div>'
+          + '<div class="proposal-desc">' + escHtml(p.description || '') + '</div>'
+          + '<div class="proposal-reason">' + escHtml(p.routing_reason || '') + '</div>'
+          + '</div>'
+          + (actions ? '<div class="proposal-actions">' + actions + '</div>' : '')
+          + '</div>';
+      }).join('');
+    }
+
+    function escHtml(s) {
+      return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function applyProposal(id) {
+      try {
+        var r = await fetch('api/proposals/' + id + '/apply', {method: 'POST'});
+        if (!r.ok) { var d = await r.json(); alert(d.error || 'Errore'); return; }
+        document.getElementById('pr-' + id).remove();
+        checkEmptyList();
+      } catch(e) { alert('Errore di rete'); }
+    }
+
+    async function rejectProposal(id) {
+      if (!confirm('Rifiutare questa proposta?')) return;
+      try {
+        var r = await fetch('api/proposals/' + id + '/reject', {method: 'POST'});
+        if (!r.ok) { var d = await r.json(); alert(d.error || 'Errore'); return; }
+        document.getElementById('pr-' + id).remove();
+        checkEmptyList();
+      } catch(e) { alert('Errore di rete'); }
+    }
+
+    function checkEmptyList() {
+      var list = document.getElementById('proposals-list');
+      if (!list.querySelector('.proposal-row')) {
+        list.innerHTML = '<div class="proposals-empty">Nessuna proposta in attesa.</div>';
+      }
+    }
+
+    function switchProposalsTab(status) {
+      _currentProposalTab = status;
+      document.getElementById('tab-pending').className = 'proposals-tab' + (status === 'pending' ? ' active' : '');
+      document.getElementById('tab-archived').className = 'proposals-tab' + (status === 'archived' ? ' active' : '');
+      loadProposals(status);
+    }
+
+    loadProposals('pending');
   </script>
 </body>
 </html>
