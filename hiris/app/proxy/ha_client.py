@@ -68,6 +68,72 @@ class HAClient:
             all_states: list[dict] = await resp.json()
         return [s for s in all_states if s["entity_id"].startswith("automation.")]
 
+    async def get_error_log(self, limit: int = 100) -> dict:
+        """Fetch HA error log and return parsed summary."""
+        url = f"{self._base_url}/api/error_log"
+        async with self._session.get(url) as resp:
+            resp.raise_for_status()
+            text = await resp.text()
+        lines = text.strip().splitlines()
+        errors, warnings, top_errors = 0, 0, []
+        for line in lines[-limit:]:
+            if " ERROR " in line:
+                errors += 1
+                if len(top_errors) < 5:
+                    top_errors.append(line[20:120] if len(line) > 20 else line)
+            elif " WARNING " in line:
+                warnings += 1
+        return {"errors": errors, "warnings": warnings, "top_errors": top_errors}
+
+    async def get_config_entries(self) -> list[dict]:
+        """Return HA config entries with error state via WebSocket."""
+        result = await self._ws_call("config/config_entries/get_entries")
+        if not result:
+            return []
+        errors = []
+        for entry in result:
+            state = entry.get("state", "")
+            if state not in ("loaded", "not_loaded", "setup_in_progress"):
+                errors.append({
+                    "integration": entry.get("domain", "unknown"),
+                    "title": entry.get("title", ""),
+                    "state": state,
+                    "error": entry.get("reason", ""),
+                })
+        return errors
+
+    async def get_system_info(self) -> dict:
+        """Return HA system info from /api/config."""
+        url = f"{self._base_url}/api/config"
+        async with self._session.get(url) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+        return {
+            "ha_version": data.get("version", "unknown"),
+            "config_dir": data.get("config_dir", ""),
+            "state": data.get("state", "unknown"),
+            "unit_system": data.get("unit_system", {}).get("length", ""),
+        }
+
+    async def get_updates(self) -> list[dict]:
+        """Return available updates from HA update.* entities."""
+        url = f"{self._base_url}/api/states"
+        async with self._session.get(url) as resp:
+            resp.raise_for_status()
+            all_states: list[dict] = await resp.json()
+        updates = []
+        for s in all_states:
+            if s["entity_id"].startswith("update.") and s["state"] == "on":
+                attrs = s.get("attributes", {})
+                updates.append({
+                    "entity_id": s["entity_id"],
+                    "name": attrs.get("friendly_name", s["entity_id"]),
+                    "current": attrs.get("installed_version", "?"),
+                    "available": attrs.get("latest_version", "?"),
+                    "release_url": attrs.get("release_url"),
+                })
+        return updates
+
     async def get_calendars(self) -> list[dict]:
         """Return list of all calendar entities from HA."""
         url = f"{self._base_url}/api/calendars"

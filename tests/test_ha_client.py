@@ -177,3 +177,74 @@ def test_add_registry_listener():
     callback = MagicMock()
     ha.add_registry_listener(callback)
     assert callback in ha._registry_listeners
+
+
+@pytest.mark.asyncio
+async def test_get_error_log_parses_counts(client):
+    mock_resp = AsyncMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.text = AsyncMock(return_value=(
+        "2026-01-01 ERROR (MainThread) [homeassistant] Something broke\n"
+        "2026-01-01 WARNING (MainThread) [sensor] Minor issue\n"
+        "2026-01-01 WARNING (MainThread) [sensor] Another\n"
+    ))
+    client._session = MagicMock()
+    client._session.get = MagicMock(return_value=AsyncMock(
+        __aenter__=AsyncMock(return_value=mock_resp),
+        __aexit__=AsyncMock(return_value=False),
+    ))
+    result = await client.get_error_log(limit=50)
+    assert result["errors"] == 1
+    assert result["warnings"] == 2
+    assert len(result["top_errors"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_system_info_extracts_version(client):
+    mock_resp = AsyncMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json = AsyncMock(return_value={
+        "version": "2025.1.0",
+        "config_dir": "/config",
+        "state": "RUNNING",
+    })
+    client._session = MagicMock()
+    client._session.get = MagicMock(return_value=AsyncMock(
+        __aenter__=AsyncMock(return_value=mock_resp),
+        __aexit__=AsyncMock(return_value=False),
+    ))
+    result = await client.get_system_info()
+    assert result["ha_version"] == "2025.1.0"
+    assert "state" in result
+
+
+@pytest.mark.asyncio
+async def test_get_updates_returns_update_entities(client):
+    mock_resp = AsyncMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json = AsyncMock(return_value=[
+        {
+            "entity_id": "update.home_assistant_core_update",
+            "state": "on",
+            "attributes": {
+                "friendly_name": "Home Assistant Core Update",
+                "installed_version": "2024.12.1",
+                "latest_version": "2025.1.0",
+            },
+        },
+        {
+            "entity_id": "sensor.temperature",
+            "state": "21.5",
+            "attributes": {},
+        },
+    ])
+    client._session = MagicMock()
+    client._session.get = MagicMock(return_value=AsyncMock(
+        __aenter__=AsyncMock(return_value=mock_resp),
+        __aexit__=AsyncMock(return_value=False),
+    ))
+    result = await client.get_updates()
+    assert len(result) == 1
+    assert result[0]["name"] == "Home Assistant Core Update"
+    assert result[0]["current"] == "2024.12.1"
+    assert result[0]["available"] == "2025.1.0"
