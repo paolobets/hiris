@@ -10,46 +10,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="static/hiris-theme.css">
   <style>
-    :root {
-      --bg:            #0f0f1a;
-      --surface:       #1a1a2e;
-      --surface-2:     #16213e;
-      --surface-hover: #2a2a4a;
-      --text:          #e2e8f0;
-      --text-muted:    #94a3b8;
-      --border:        #2d2d5a;
-      --input-bg:      #0f0f1a;
-      --accent:        #818cf8;
-      --accent-hover:  #6366f1;
-      --danger:        #ef4444;
-      --danger-bg:     #7f1d1d;
-      --success:       #34d399;
-      --legend-text:   #818cf8;
-      --badge-off-bg:  #374151;
-      --badge-off-text:#9ca3af;
-      /* extra tokens not in main mapping */
-      --link-muted:    #7c86b8;
-      --border-subtle: #2d2d4a;
-      --border-accent: #4a4a8a;
-      --surface-3:     #16162a;
-      --surface-4:     #3d3d6a;
-      --save-bg:       #4a4a8a;
-      --save-hover:    #5a5a9a;
-      --danger-text:   #fca5a5;
-      --run-bg:        #1a3a2a;
-      --run-color:     #4ade80;
-      --run-border:    #166534;
-      --run-hover:     #166534;
-      --muted-alt:     #64748b;
-      --badge-on-bg:   #22c55e22;
-      --badge-on-text: #22c55e;
-      --badge-off-bg-alt: #64748b22;
-      --badge-off-text-alt: #64748b;
-      --terminal-bg:   #0d1117;
-      --terminal-text: #58a6ff;
-      --terminal-border:#30363d;
-      --save-color:    #fff;
-    }
 
     /* Entity selector */
     .entity-selector { display: flex; flex-direction: column; gap: 8px; }
@@ -89,89 +49,6 @@
     }
     .entity-chip .chip-remove:hover { color: var(--danger); }
 
-    [data-theme="light"] {
-      --bg:            #F9FAFB;
-      --surface:       #FFFFFF;
-      --surface-2:     #F3F4F6;
-      --surface-hover: #E5E7EB;
-      --text:          #111827;
-      --text-muted:    #6B7280;
-      --border:        #E5E7EB;
-      --input-bg:      #FFFFFF;
-      --accent:        #6366f1;
-      --accent-hover:  #4F46E5;
-      --danger:        #DC2626;
-      --danger-bg:     #FEE2E2;
-      --success:       #059669;
-      --legend-text:   #6366f1;
-      --badge-off-bg:  #E5E7EB;
-      --badge-off-text:#6B7280;
-      /* extra tokens */
-      --link-muted:    #6366f1;
-      --border-subtle: #E5E7EB;
-      --border-accent: #6366f1;
-      --surface-3:     #F3F4F6;
-      --surface-4:     #D1D5DB;
-      --save-bg:       #6366f1;
-      --save-hover:    #4F46E5;
-      --danger-text:   #991b1b;
-      --run-bg:        #ECFDF5;
-      --run-color:     #059669;
-      --run-border:    #A7F3D0;
-      --run-hover:     #D1FAE5;
-      --muted-alt:     #6B7280;
-      --badge-on-bg:   #d1fae5;
-      --badge-on-text: #059669;
-      --badge-off-bg-alt: #F3F4F6;
-      --badge-off-text-alt: #6B7280;
-      --terminal-bg:   #F8FAFC;
-      --terminal-text: #2563EB;
-      --terminal-border:#E2E8F0;
-      --save-color:    #fff;
-    }
-
-    @media (prefers-color-scheme: light) {
-      html:not([data-theme="dark"]) {
-        --bg:            #F9FAFB;
-        --surface:       #FFFFFF;
-        --surface-2:     #F3F4F6;
-        --surface-hover: #E5E7EB;
-        --text:          #111827;
-        --text-muted:    #6B7280;
-        --border:        #E5E7EB;
-        --input-bg:      #FFFFFF;
-        --accent:        #6366f1;
-        --accent-hover:  #4F46E5;
-        --danger:        #DC2626;
-        --danger-bg:     #FEE2E2;
-        --success:       #059669;
-        --legend-text:   #6366f1;
-        --badge-off-bg:  #E5E7EB;
-        --badge-off-text:#6B7280;
-        /* extra tokens */
-        --link-muted:    #6366f1;
-        --border-subtle: #E5E7EB;
-        --border-accent: #6366f1;
-        --surface-3:     #F3F4F6;
-        --surface-4:     #D1D5DB;
-        --save-bg:       #6366f1;
-        --save-hover:    #4F46E5;
-        --danger-text:   #991b1b;
-        --run-bg:        #ECFDF5;
-        --run-color:     #059669;
-        --run-border:    #A7F3D0;
-        --run-hover:     #D1FAE5;
-        --muted-alt:     #6B7280;
-        --badge-on-bg:   #d1fae5;
-        --badge-on-text: #059669;
-        --badge-off-bg-alt: #F3F4F6;
-        --badge-off-text-alt: #6B7280;
-        --terminal-bg:   #F8FAFC;
-        --terminal-text: #2563EB;
-        --terminal-border:#E2E8F0;
-        --save-color:    #fff;
-      }
-    }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
