@@ -541,6 +541,41 @@ legend {
   color: var(--text-2) !important;
 }
 
+/* ─── Tab navigation ─────────────────────────────────────── */
+.agent-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.agent-tabs::-webkit-scrollbar { display: none; }
+.agent-tabs .tab-btn {
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  flex-shrink: 0;
+}
+.agent-tabs .tab-btn:hover:not(.active) { color: var(--text); }
+.agent-tabs .tab-btn.active {
+  color: var(--accent-ink);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+#form fieldset { display: none !important; margin-top: 0 !important; }
+#form fieldset.tab-active { display: block !important; }
+
 /* ─── Mobile ─────────────────────────────────────────────── */
 @media (max-width: 720px) {
   body { padding: 16px 14px 48px; }

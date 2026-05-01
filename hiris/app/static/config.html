@@ -493,7 +493,16 @@
       <div id="form" style="display:none">
         <h2 id="form-title">Nuovo agente</h2>
 
-        <fieldset>
+        <nav class="agent-tabs" id="agent-tabs">
+          <button class="tab-btn active" data-tab="tab-identity">Identità</button>
+          <button class="tab-btn" data-tab="tab-istruzioni">Istruzioni</button>
+          <button class="tab-btn" data-tab="tab-modello">Modello</button>
+          <button class="tab-btn" data-tab="tab-permessi">Permessi</button>
+          <button class="tab-btn" data-tab="tab-azioni">Azioni</button>
+          <button class="tab-btn" data-tab="tab-stato">Stato</button>
+        </nav>
+
+        <fieldset id="tab-identity" class="tab-active">
           <legend>Identit&agrave;</legend>
           <p class="hint">Nome e tipo determinano come l&apos;agente si comporta nel sistema.</p>
           <label>Nome</label>
@@ -529,7 +538,7 @@
           </div>
         </fieldset>
 
-        <fieldset>
+        <fieldset id="tab-istruzioni">
           <legend>Istruzioni</legend>
           <p class="hint">Il Contesto Strategico viene anteposto al System Prompt &mdash; usalo per descrivere la casa e le abitudini della famiglia.</p>
           <label>Template contesto</label>
@@ -562,7 +571,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           </details>
         </fieldset>
 
-        <fieldset>
+        <fieldset id="tab-modello">
           <legend>Modello AI</legend>
           <p class="hint" id="model-hint">Seleziona il modello AI. <em>auto</em> sceglie automaticamente in base al tipo agente.</p>
           <label>Modello</label>
@@ -590,7 +599,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           <p class="hint">Controlla la verbosit&agrave; delle risposte. <em>auto</em> mantiene il comportamento standard.</p>
         </fieldset>
 
-        <fieldset>
+        <fieldset id="tab-permessi">
           <legend>Permessi</legend>
           <p class="hint">Controlla cosa pu&ograve; fare questo agente. Lascia i campi vuoti per nessuna restrizione.</p>
           <label>Strumenti permessi</label>
@@ -623,7 +632,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           </div>
         </fieldset>
 
-        <fieldset class="form-section" id="actions-fieldset">
+        <fieldset class="form-section" id="tab-azioni">
           <legend>Azioni</legend>
           <label>Modalit&agrave; azioni</label>
           <select id="f-action-mode">
@@ -766,7 +775,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           </div><!-- /configured-actions-section -->
         </fieldset>
 
-        <fieldset>
+        <fieldset id="tab-stato">
           <legend>Stato</legend>
           <label style="flex-direction:row;display:flex;align-items:center;gap:0.5rem;margin-top:0">
             <input type="checkbox" id="f-enabled"> Agente abilitato
@@ -1129,8 +1138,13 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('agent-triggers-section').style.display = isAgent ? '' : 'none';
       var maxTurnsRow = document.getElementById('max-turns-row');
       if (maxTurnsRow) maxTurnsRow.style.display = type === 'chat' ? '' : 'none';
-      var actionsFieldset = document.getElementById('actions-fieldset');
-      if (actionsFieldset) actionsFieldset.style.display = isAgent ? '' : 'none';
+      var actionsTabBtn = document.querySelector('#agent-tabs .tab-btn[data-tab="tab-azioni"]');
+      if (actionsTabBtn) {
+        actionsTabBtn.style.display = isAgent ? '' : 'none';
+        if (!isAgent && document.getElementById('tab-azioni') && document.getElementById('tab-azioni').classList.contains('tab-active')) {
+          switchTab('tab-identity');
+        }
+      }
     }
 
     function showActionMode(mode) {
@@ -1178,6 +1192,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-template').value = '';
       document.getElementById('no-selection').style.display = 'none';
       document.getElementById('form').style.display = '';
+      resetToFirstTab();
       document.getElementById('form-title').textContent = a.name;
       document.getElementById('f-name').value = a.name;
       // Normalize legacy types (monitor/reactive/preventive → agent)
@@ -1231,6 +1246,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       document.getElementById('f-template').value = '';
       document.getElementById('no-selection').style.display = 'none';
       document.getElementById('form').style.display = '';
+      resetToFirstTab();
       document.getElementById('form-title').textContent = 'Nuovo agente';
       document.getElementById('f-name').value = '';
       document.getElementById('f-type').value = 'agent';
@@ -1945,6 +1961,25 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
     }
 
     loadProposals('pending');
+
+    function switchTab(tabId) {
+      document.querySelectorAll('#agent-tabs .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('#form fieldset').forEach(function(f) { f.classList.remove('tab-active'); });
+      var btn = document.querySelector('#agent-tabs .tab-btn[data-tab="' + tabId + '"]');
+      var panel = document.getElementById(tabId);
+      if (btn) btn.classList.add('active');
+      if (panel) panel.classList.add('tab-active');
+    }
+
+    function resetToFirstTab() {
+      var firstVisible = document.querySelector('#agent-tabs .tab-btn:not([style*="display: none"])');
+      if (firstVisible) switchTab(firstVisible.dataset.tab);
+    }
+
+    document.getElementById('agent-tabs').addEventListener('click', function(e) {
+      var btn = e.target.closest('.tab-btn');
+      if (btn) switchTab(btn.dataset.tab);
+    });
   </script>
 </body>
 </html>
