@@ -67,3 +67,18 @@ async def test_publish_noop_when_not_connected():
     agent = _make_agent()
     await pub.publish_agent_state(agent, budget_eur=0.0, status="idle")  # must not raise
     await pub.publish_discovery(agent)  # must not raise
+
+
+def test_is_auth_error_detects_known_codes():
+    pub = MQTTPublisher()
+    assert pub._is_auth_error(Exception("[code:135] Not authorized"))
+    assert pub._is_auth_error(Exception("[code:134] Bad user name or password"))
+    assert pub._is_auth_error(Exception("[code:5] Connection Refused, Not Authorized"))
+    assert pub._is_auth_error(Exception("[code:4] Connection Refused, Bad Username"))
+
+
+def test_is_auth_error_ignores_network_errors():
+    pub = MQTTPublisher()
+    assert not pub._is_auth_error(Exception("[code:1] Unacceptable protocol version"))
+    assert not pub._is_auth_error(Exception("Connection refused: server unavailable"))
+    assert not pub._is_auth_error(Exception("TimeoutError"))

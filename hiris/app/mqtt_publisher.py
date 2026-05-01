@@ -58,6 +58,24 @@ class MQTTPublisher:
             self._task = None
         self._connected = False
 
+    # MQTT v5 reason codes that indicate a permanent auth/config failure
+    _AUTH_CODES = frozenset({
+        4,    # MQTT v3: Connection Refused, Bad Username or Password
+        5,    # MQTT v3: Connection Refused, Not Authorized
+        133,  # MQTT v5 0x85: Client Identifier Not Valid
+        134,  # MQTT v5 0x86: Bad User Name or Password
+        135,  # MQTT v5 0x87: Not Authorized
+        151,  # MQTT v5 0x97: Quota Exceeded (broker-side block)
+    })
+
+    @staticmethod
+    def _is_auth_error(exc: Exception) -> bool:
+        msg = str(exc)
+        for code in MQTTPublisher._AUTH_CODES:
+            if f"[code:{code}]" in msg or f"code={code}" in msg:
+                return True
+        return False
+
     async def _connect_loop(self) -> None:
         try:
             import aiomqtt
@@ -77,8 +95,8 @@ class MQTTPublisher:
                     kwargs["username"] = self._user
                 if self._password:
                     kwargs["password"] = self._password
-                logger.debug(
-                    "MQTT connecting to %s:%d user=%r password_len=%d",
+                logger.info(
+                    "MQTT connecting to %s:%d (user=%r, password_len=%d)",
                     self._host, self._port, self._user, len(self._password),
                 )
                 async with aiomqtt.Client(**kwargs) as client:
@@ -117,9 +135,19 @@ class MQTTPublisher:
                 break
             except Exception as exc:
                 self._connected = False
-                logger.warning("MQTT disconnected: %s. Reconnecting in %ds", exc, backoff)
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, _RECONNECT_MAX)
+                if self._is_auth_error(exc):
+                    # Auth errors won't resolve by retrying quickly — use max backoff
+                    logger.error(
+                        "MQTT auth error connecting to %s:%d as user=%r — "
+                        "verifica credenziali nel broker Mosquitto. "
+                        "Prossimo tentativo in %ds. (%s)",
+                        self._host, self._port, self._user, _RECONNECT_MAX, exc,
+                    )
+                    await asyncio.sleep(_RECONNECT_MAX)
+                else:
+                    logger.warning("MQTT disconnected: %s. Reconnecting in %ds", exc, backoff)
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, _RECONNECT_MAX)
 
     async def _on_command(self, topic: str, payload: str) -> None:
         # Expected topic: hiris/agents/{agent_id}/{command}/set
