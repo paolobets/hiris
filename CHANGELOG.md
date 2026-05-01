@@ -1,5 +1,13 @@
 # HIRIS — Changelog
 
+## [0.8.5] — 2026-05-01
+
+### Added
+- Navigazione a schede nel pannello editor agenti: Identità · Istruzioni · Modello · Permessi · Azioni · Stato. Il tab Azioni si nasconde automaticamente per agenti di tipo "chat".
+
+### Fixed
+- Ripristinata palette Iris (OKLch) nella pagina Agent Designer: i blocchi `:root` hex legacy nell'inline `<style>` di `config.html` sovrascrivevano `hiris-theme.css`, rendendo inefficace il restyling grafico.
+
 ## [0.8.4] — 2026-04-30
 
 ### Changed
