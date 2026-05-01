@@ -16,6 +16,7 @@ _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
     "vacuum": ("battery_level",),
     "fan": ("percentage", "preset_mode"),
     "water_heater": ("current_temperature", "temperature", "operation_mode"),
+    "valve": ("current_position", "reports_position"),
 }
 
 

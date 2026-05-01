@@ -560,18 +560,34 @@ def create_app() -> web.Application:
 _NO_CACHE = {"Cache-Control": "no-store"}
 
 
+def _inject_version(html: str, version: str) -> str:
+    """Append ?v=VERSION to local static asset URLs so browsers bust cache on upgrade."""
+    v = f'?v={version}"'
+    return html.replace('.css"', f'.css{v}').replace('.js"', f'.js{v}')
+
+
 async def _serve_index(request: web.Request) -> web.Response:
     path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if not os.path.exists(path):
         return web.Response(text="UI not yet available", status=503)
-    return web.FileResponse(path, headers=_NO_CACHE)
+    html = open(path, encoding="utf-8").read()
+    return web.Response(
+        text=_inject_version(html, read_version()),
+        content_type="text/html",
+        headers=_NO_CACHE,
+    )
 
 
 async def _serve_config(request: web.Request) -> web.Response:
     path = os.path.join(os.path.dirname(__file__), "static", "config.html")
     if not os.path.exists(path):
         return web.Response(text="UI not yet available", status=503)
-    return web.FileResponse(path, headers=_NO_CACHE)
+    html = open(path, encoding="utf-8").read()
+    return web.Response(
+        text=_inject_version(html, read_version()),
+        content_type="text/html",
+        headers=_NO_CACHE,
+    )
 
 
 async def _handle_health(request: web.Request) -> web.Response:

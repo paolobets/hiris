@@ -613,6 +613,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
                 <span class="domain-pill" data-pattern="sensor.*">&#128202; sensori</span>
                 <span class="domain-pill" data-pattern="climate.*">&#127777;&#65039; clima</span>
                 <span class="domain-pill" data-pattern="cover.*">&#129695; tapparelle</span>
+                <span class="domain-pill" data-pattern="valve.*">&#128692; valvole</span>
                 <span class="domain-pill" data-pattern="binary_sensor.*">&#9889; binari</span>
                 <span class="domain-pill" data-pattern="person.*">&#129489; persone</span>
               </div>
@@ -881,8 +882,8 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
         triggers: [{type: 'cron', cron: '0 5 * * *'}],
         states: ['SKIP', 'LEGGERA', 'PIENA'],
         trigger_on: ['LEGGERA', 'PIENA'],
-        strategic: 'ZONE DI IRRIGAZIONE:\n[Descrivi qui le zone: es. "Prato nord" switch.irrigazione_prato_nord, "Aiuole" switch.irrigazione_aiuole, "Orto" switch.irrigazione_orto]\n[Indica posizione e tipo di terreno: es. "Prato nord — terreno argilloso, esposizione sole pieno"]\n\nSENSOR METEO:\n- Pioggia recente: search_entities("pioggia") o search_entities("precipitazione")\n- Umidità suolo: search_entities("umidità suolo") per ogni zona se disponibile\n- Meteo: get_weather_forecast(hours=48) per previsioni 2 giorni\n\nSTATI IRRIGAZIONE:\n- SKIP: ha piovuto abbastanza o previste piogge significative oggi/domani\n- LEGGERA: irrigazione breve (10-15 min per zona) — condizioni borderline\n- PIENA: irrigazione completa (20-30 min per zona) — terreno asciutto, nessuna pioggia prevista\n\nSOGLIE PIOGGIA:\n- Pioggia passata 24h > 5mm: SKIP\n- Pioggia passata 48h > 10mm: SKIP o LEGGERA\n- Previsione pioggia oggi > 3mm: SKIP\n- Previsione pioggia domani > 5mm: considera LEGGERA invece di PIENA',
-        prompt: 'Valuta se e quanto irrigare oggi. Controlla le precipitazioni degli ultimi 3 giorni con get_entity_states sui sensori pioggia, le previsioni meteo con get_weather_forecast(hours=48), e l\'umidità del suolo se disponibile.\n\nPer ogni zona decide durata in minuti (0 = salta).\n\nSe decidi di irrigare, usa create_task() per programmare call_ha_service su ogni switch di zona:\n- Accensione: ora attuale + 2 min di buffer\n- Spegnimento: accensione + durata zona\n- Sequenza: una zona alla volta per non sovraccaricare la pompa\n\nConcluidi con VALUTAZIONE: SKIP | LEGGERA | PIENA e motiva brevemente la scelta.',
+        strategic: 'ZONE DI IRRIGAZIONE:\n[Descrivi qui le zone — usa valve.* se disponibile (HA 2023.9+), altrimenti switch.*]\n[Es. "Prato nord" valve.irrigazione_prato_nord, "Aiuole" valve.irrigazione_aiuole]\n[Indica posizione e tipo di terreno: es. "Prato nord — terreno argilloso, esposizione sole pieno"]\n\nSENSOR METEO:\n- Pioggia recente: search_entities("pioggia") o search_entities("precipitazione")\n- Umidità suolo: search_entities("umidità suolo") per ogni zona se disponibile\n- Meteo: get_weather_forecast(hours=48) per previsioni 2 giorni\n\nSTATI IRRIGAZIONE:\n- SKIP: ha piovuto abbastanza o previste piogge significative oggi/domani\n- LEGGERA: irrigazione breve (10-15 min per zona) — condizioni borderline\n- PIENA: irrigazione completa (20-30 min per zona) — terreno asciutto, nessuna pioggia prevista\n\nSOGLIE PIOGGIA:\n- Pioggia passata 24h > 5mm: SKIP\n- Pioggia passata 48h > 10mm: SKIP o LEGGERA\n- Previsione pioggia oggi > 3mm: SKIP\n- Previsione pioggia domani > 5mm: considera LEGGERA invece di PIENA',
+        prompt: 'Valuta se e quanto irrigare oggi. Controlla le precipitazioni degli ultimi 3 giorni con get_entity_states sui sensori pioggia, le previsioni meteo con get_weather_forecast(hours=48), e l\'umidità del suolo se disponibile.\n\nPer ogni zona decide durata in minuti (0 = salta).\n\nSe decidi di irrigare, usa create_task() per programmare call_ha_service su ogni valvola/switch di zona:\n- Accensione (valve: service=open_valve; switch: service=turn_on): ora attuale + 2 min di buffer\n- Spegnimento (valve: service=close_valve; switch: service=turn_off): accensione + durata zona\n- Sequenza: una zona alla volta per non sovraccaricare la pompa\n\nConcluidi con VALUTAZIONE: SKIP | LEGGERA | PIENA e motiva brevemente la scelta.',
       },
     ];
 
@@ -934,6 +935,7 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
       { id: 'climate.*',       label: 'Clima',          desc: 'Termostati e condizionatori' },
       { id: 'switch.*',        label: 'Switch',         desc: 'Interruttori e prese smart' },
       { id: 'cover.*',         label: 'Tapparelle',     desc: 'Tende, tapparelle e serrande' },
+      { id: 'valve.*',         label: 'Valvole',        desc: 'Valvole irrigazione e controllo fluidi' },
       { id: 'notify.*',        label: 'Notifiche',      desc: 'Servizi di notifica push' },
       { id: 'input_boolean.*', label: 'Input Boolean',  desc: 'Toggle e variabili booleane virtuali' },
       { id: 'script.*',        label: 'Script',         desc: 'Esegui script e automazioni personalizzate' },
