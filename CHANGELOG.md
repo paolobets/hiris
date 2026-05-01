@@ -1,5 +1,22 @@
 # HIRIS — Changelog
 
+## [0.8.6] — 2026-05-01
+
+### Added
+- Cron builder ibrido nell'editor agenti: 13 preset comuni, builder visuale
+  a 5 campi (min/ora/giorno/mese/sett.) e preview live in italiano;
+  i chip nel trigger list mostrano la descrizione leggibile
+- Supporto dominio `valve` (HA 2023.9+): classificazione in SemanticContextMap,
+  attributi `current_position`/`reports_position` in EntityCache, pill "valvole"
+  nel tab Permessi, azione `valve.*` nella whitelist; template irrigazione
+  aggiornato con `open_valve`/`close_valve`
+
+### Fixed
+- MQTT: errori di autenticazione (code 135/134/5/4) ora loggati con livello
+  ERROR e backoff massimo; errori di rete mantengono il backoff esponenziale
+- CSS cache-busting: `?v=VERSION` iniettato nei path CSS/JS al serve time,
+  forza invalidazione cache browser ad ogni release
+
 ## [0.8.5] — 2026-05-01
 
 ### Added
