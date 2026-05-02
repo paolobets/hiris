@@ -1,5 +1,23 @@
 # HIRIS — Changelog
 
+## [0.8.8] — 2026-05-02
+
+### Fixed
+- **Ollama streaming**: `chat_stream` riscritta con `stream=True` e assemblea fragmenti
+  tool-call da chunk SSE — i token ora arrivano in tempo reale invece di buffered
+- **JSON argomenti malformati**: quando un modello locale invia argomenti JSON non validi,
+  viene restituito un errore esplicito al modello invece di passare `{}` al tool
+- **Disambiguazione eval_instruction**: etichetta "Comandi AZIONI" ora include
+  "(vanno scritti in testo nel blocco AZIONI:, NON come tool calls)" — riduce le
+  chiamate spurie come tool OpenAI da parte di Ollama
+- **`misfire_grace_time=60`** sui job interval (era già presente su cron) — evita
+  skip silenzioso se l'agente parte con ritardo
+- **Ollama health check all'avvio**: `server.py` verifica `/api/tags` e logga un warning
+  se Ollama non è raggiungibile o il modello non è scaricato, senza bloccare lo startup
+- **`MAX_TOOL_ITERATIONS`** e **`OLLAMA_MAX_TOOL_ITERATIONS`** configurabili via env
+  (default 10/5)
+- **Usage tracking**: log debug quando un modello locale non ritorna informazioni sui token
+
 ## [0.8.7] — 2026-05-02
 
 ### Fixed
