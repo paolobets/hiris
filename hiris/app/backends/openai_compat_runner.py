@@ -27,7 +27,9 @@ AUTO_MODEL_MAP: dict[str, str] = {
     "agent": "gpt-4o-mini",
 }
 
-MAX_TOOL_ITERATIONS = 10
+MAX_TOOL_ITERATIONS = int(os.environ.get("MAX_TOOL_ITERATIONS", "10"))
+# Ollama tende a fare più iterazioni a vuoto; limite ridotto per contenere la latenza.
+_OLLAMA_MAX_TOOL_ITERATIONS = int(os.environ.get("OLLAMA_MAX_TOOL_ITERATIONS", "5"))
 
 
 def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
@@ -170,6 +172,7 @@ class OpenAICompatRunner:
     def _track_usage(self, response: Any, model: str, agent_id: Optional[str]) -> None:
         usage = getattr(response, "usage", None)
         if not usage:
+            logger.debug("Model %s did not return usage info — token tracking skipped", model)
             return
         inp = getattr(usage, "prompt_tokens", 0) or 0
         out = getattr(usage, "completion_tokens", 0) or 0
@@ -299,7 +302,8 @@ class OpenAICompatRunner:
                 "NON chiamare tool non presenti in questa lista."
             )
 
-        for _ in range(MAX_TOOL_ITERATIONS):
+        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._fixed_model else MAX_TOOL_ITERATIONS
+        for _ in range(max_iter):
             try:
                 kwargs: dict = {
                     "model": effective_model,
@@ -344,8 +348,22 @@ class OpenAICompatRunner:
                 for tc in tool_calls:
                     try:
                         tool_input = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        tool_input = {}
+                    except json.JSONDecodeError as json_exc:
+                        logger.warning(
+                            "Tool %s: argomenti JSON non validi %r: %s",
+                            tc.function.name, tc.function.arguments[:120], json_exc,
+                        )
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps({
+                                "error": (
+                                    f"Argomenti JSON non validi per '{tc.function.name}'. "
+                                    "Correggi il JSON e riprova."
+                                )
+                            }),
+                        })
+                        continue
                     result = await self._dispatcher.dispatch(
                         tc.function.name, tool_input,
                         allowed_entities=allowed_entities,
@@ -384,34 +402,175 @@ class OpenAICompatRunner:
         visible_entity_ids=None,
         response_mode: str = "auto",
     ):
-        try:
-            result = await self.chat(
-                user_message=user_message,
-                system_prompt=system_prompt,
-                context_str=context_str,
-                allowed_tools=allowed_tools,
-                conversation_history=conversation_history,
-                allowed_entities=allowed_entities,
-                allowed_services=allowed_services,
-                allowed_endpoints=allowed_endpoints,
-                model=model,
-                max_tokens=max_tokens,
-                agent_type=agent_type,
-                restrict_to_home=restrict_to_home,
-                require_confirmation=require_confirmation,
-                agent_id=agent_id,
-                visible_entity_ids=visible_entity_ids,
-                response_mode=response_mode,
+        """Vero streaming SSE: i token arrivano mentre il modello genera.
+        Le iterazioni tool-call vengono risolte prima di cedere il controllo
+        al loop successivo; il testo finale è streamato token per token.
+        """
+        import openai as _openai
+
+        self.last_tool_calls = []
+        self.total_requests += 1
+        if agent_id:
+            if agent_id not in self._per_agent_usage:
+                self._per_agent_usage[agent_id] = {
+                    "input_tokens": 0, "output_tokens": 0,
+                    "requests": 0, "cost_usd": 0.0, "last_run": None,
+                    "tokens_today": 0, "tokens_today_date": "",
+                }
+            self._per_agent_usage[agent_id]["requests"] += 1
+            self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
+
+        effective_model = self._resolve_model(model, agent_type)
+        system_parts = [BASE_SYSTEM_PROMPT]
+        if system_prompt:
+            system_parts.append(system_prompt)
+        if context_str:
+            system_parts.append(context_str)
+        if restrict_to_home:
+            system_parts.append(RESTRICT_PROMPT)
+        if require_confirmation:
+            system_parts.append(REQUIRE_CONFIRMATION_PROMPT)
+        if response_mode == "compact":
+            system_parts.append("Rispondi in modo conciso, massimo 2-3 frasi.")
+        elif response_mode == "minimal":
+            system_parts.append(
+                "Rispondi SOLO in formato chiave: valore, una riga per dato. "
+                "Esempio:\nStato: acceso\nTemperatura: 21°C"
             )
+
+        messages: list[dict] = [{"role": "system", "content": "\n\n---\n\n".join(system_parts)}]
+        for msg in (conversation_history or []):
+            messages.append({"role": msg["role"], "content": str(msg["content"])})
+        messages.append({"role": "user", "content": user_message})
+
+        tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+        if allowed_endpoints is None:
+            tools = [t for t in tools if t["name"] != "http_request"]
+        if not self._dispatcher.has_memory:
+            tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
+        oai_tools = _to_openai_tools(tools) if tools else None
+
+        if self._fixed_model and tools:
+            tool_names = ", ".join(t["name"] for t in tools)
+            messages[0]["content"] += (
+                f"\n\n---\n\nTool disponibili: {tool_names}.\n"
+                "NON chiamare tool non presenti in questa lista."
+            )
+
+        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._fixed_model else MAX_TOOL_ITERATIONS
+        try:
+            for _ in range(max_iter):
+                kwargs: dict = {
+                    "model": effective_model,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "stream": True,
+                }
+                if oai_tools:
+                    kwargs["tools"] = oai_tools
+
+                try:
+                    stream = await self._client.chat.completions.create(**kwargs)
+                except _openai.RateLimitError as exc:
+                    self.total_rate_limit_errors += 1
+                    logger.error("OpenAI rate limit (stream): %s", exc)
+                    yield f'data: {json.dumps({"type": "error", "message": "Rate limit — riprova tra poco."})}\n\n'
+                    return
+                except _openai.APIError as exc:
+                    logger.error("OpenAI/Ollama API error (stream): %s", exc)
+                    yield f'data: {json.dumps({"type": "error", "message": "Errore temporaneo del servizio AI."})}\n\n'
+                    return
+
+                collected_text = ""
+                finish_reason: Optional[str] = None
+                # {index: {id, name, args}} — assembla i frammenti tool-call dallo stream
+                tc_fragments: dict[int, dict] = {}
+
+                async for chunk in stream:
+                    if not chunk.choices:
+                        continue
+                    choice = chunk.choices[0]
+                    delta = choice.delta
+
+                    if delta.content:
+                        collected_text += delta.content
+                        yield f'data: {json.dumps({"type": "token", "text": delta.content})}\n\n'
+
+                    if delta.tool_calls:
+                        for tc_delta in delta.tool_calls:
+                            idx = tc_delta.index
+                            if idx not in tc_fragments:
+                                tc_fragments[idx] = {"id": "", "name": "", "args": ""}
+                            if tc_delta.id:
+                                tc_fragments[idx]["id"] = tc_delta.id
+                            if tc_delta.function:
+                                if tc_delta.function.name:
+                                    tc_fragments[idx]["name"] += tc_delta.function.name
+                                if tc_delta.function.arguments:
+                                    tc_fragments[idx]["args"] += tc_delta.function.arguments
+
+                    if choice.finish_reason:
+                        finish_reason = choice.finish_reason
+
+                if not tc_fragments:
+                    # Risposta testuale finale — stream completato
+                    break
+
+                # Ci sono tool calls: eseguili e continua il loop
+                tcs = sorted(tc_fragments.items())
+                assistant_msg: dict = {"role": "assistant"}
+                if collected_text:
+                    assistant_msg["content"] = collected_text
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": d["id"],
+                        "type": "function",
+                        "function": {"name": d["name"], "arguments": d["args"]},
+                    }
+                    for _, d in tcs
+                ]
+                messages.append(assistant_msg)
+
+                for _, tc_data in tcs:
+                    try:
+                        tool_input = json.loads(tc_data["args"])
+                    except json.JSONDecodeError as json_exc:
+                        logger.warning(
+                            "chat_stream tool %s: JSON non valido %r: %s",
+                            tc_data["name"], tc_data["args"][:120], json_exc,
+                        )
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc_data["id"],
+                            "content": json.dumps({
+                                "error": (
+                                    f"Argomenti JSON non validi per '{tc_data['name']}'. "
+                                    "Correggi il JSON e riprova."
+                                )
+                            }),
+                        })
+                        continue
+                    result = await self._dispatcher.dispatch(
+                        tc_data["name"], tool_input,
+                        allowed_entities=allowed_entities,
+                        allowed_services=allowed_services,
+                        allowed_endpoints=allowed_endpoints,
+                        agent_id=agent_id,
+                        visible_entity_ids=visible_entity_ids,
+                    )
+                    self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_data["id"],
+                        "content": json.dumps(result),
+                    })
+
         except Exception as exc:
+            logger.error("chat_stream error: %s", exc)
             yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
             return
 
-        chunk_size = 80
-        for i in range(0, len(result), chunk_size):
-            yield f'data: {json.dumps({"type": "token", "text": result[i:i + chunk_size]})}\n\n'
-        tool_calls = self.last_tool_calls if isinstance(self.last_tool_calls, list) else []
-        yield f'data: {json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": tool_calls})}\n\n'
+        yield f'data: {json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": self.last_tool_calls})}\n\n'
 
     async def run_with_actions(
         self,
@@ -450,7 +609,7 @@ class OpenAICompatRunner:
                 "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]\n"
                 "AZIONI:\n"
                 "[una azione per riga — formato: comando entità [valore]]\n\n"
-                "Comandi disponibili:\n"
+                "Comandi AZIONI (vanno scritti in testo nel blocco AZIONI:, NON come tool calls):\n"
                 "  turn_on <entity_id>\n"
                 "  turn_off <entity_id>\n"
                 "  set_value <entity_id> <value>\n"

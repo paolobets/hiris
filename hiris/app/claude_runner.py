@@ -637,7 +637,7 @@ class ClaudeRunner:
                 "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]\n"
                 "AZIONI:\n"
                 "[una azione per riga — formato: comando entità [valore]]\n\n"
-                "Comandi disponibili:\n"
+                "Comandi AZIONI (vanno scritti in testo nel blocco AZIONI:, NON come tool calls):\n"
                 "  turn_on <entity_id>\n"
                 "  turn_off <entity_id>\n"
                 "  set_value <entity_id> <value>\n"

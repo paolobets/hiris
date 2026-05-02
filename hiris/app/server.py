@@ -452,6 +452,32 @@ async def _on_startup(app: web.Application) -> None:
             fixed_model=local_model_name,
             usage_path=f"{_usage_base}_ollama{_usage_ext}",
         )
+        # Quick reachability check — warn but don't abort startup.
+        try:
+            import aiohttp as _aiohttp
+            async with _aiohttp.ClientSession() as _sess:
+                async with _sess.get(
+                    local_model_url.rstrip("/") + "/api/tags",
+                    timeout=_aiohttp.ClientTimeout(total=5),
+                ) as _r:
+                    if _r.status == 200:
+                        _tags = await _r.json()
+                        _names = [m.get("name", "") for m in _tags.get("models", [])]
+                        if local_model_name in _names:
+                            logger.info("Ollama OK — modello '%s' pronto", local_model_name)
+                        else:
+                            logger.warning(
+                                "Ollama raggiungibile ma il modello '%s' non è nella lista %s — "
+                                "pull potrebbe essere necessario",
+                                local_model_name, _names,
+                            )
+                    else:
+                        logger.warning("Ollama /api/tags ha risposto con status %s", _r.status)
+        except Exception as _exc:
+            logger.warning(
+                "Ollama non raggiungibile a %s (%s) — le richieste al modello locale falliranno",
+                local_model_url, _exc,
+            )
 
     # Store config for /api/models endpoint
     app["openai_api_key"] = openai_api_key

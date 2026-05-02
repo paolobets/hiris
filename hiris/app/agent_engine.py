@@ -399,6 +399,7 @@ class AgentEngine:
                         minutes=minutes,
                         args=[agent, None, trigger],
                         id=job_id, replace_existing=True, coalesce=True,
+                        misfire_grace_time=60,
                     )
                 elif t_type == "cron" and trigger.get("cron"):
                     parts = trigger["cron"].split()
