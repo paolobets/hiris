@@ -1,5 +1,18 @@
 # HIRIS — Changelog
 
+## [0.8.7] — 2026-05-02
+
+### Fixed
+- **Ollama/modelli locali**: `AsyncOpenAI` ora usa `httpx.Timeout(120s)` per Ollama
+  (configurabile via `OLLAMA_REQUEST_TIMEOUT`), eliminando i hang fino a 600s su hardware lento
+- **Agent engine**: `asyncio.wait_for(300s)` su ogni run di agente (configurabile via
+  `AGENT_RUN_TIMEOUT`) come ceiling assoluto; risolve la cascata di
+  `max instances reached` che bloccava APScheduler per ore
+- **Tool dispatcher**: messaggio di errore direttivo per tool sconosciuti (es. `search_entities`)
+  con istruzione esplicita a non inventare nomi; riduce loop di allucinazione sui modelli locali
+- **Ollama tool injection**: lista esplicita dei tool disponibili iniettata nel system prompt
+  per i modelli locali, prevenendo chiamate a tool inesistenti
+
 ## [0.8.6] — 2026-05-01
 
 ### Added
