@@ -248,7 +248,13 @@ class ToolDispatcher:
                     routing_reason=inputs["routing_reason"],
                 )
             logger.warning("Unknown tool: %s", name)
-            return {"error": f"Unknown tool: {name}"}
+            return {
+                "error": (
+                    f"Tool '{name}' non esiste. "
+                    "Usa ESCLUSIVAMENTE i tool elencati nel system prompt. "
+                    "Non inventare nomi di tool."
+                )
+            }
         except Exception as exc:
             logger.error("Tool %s failed: %s", name, exc)
             return {"error": str(exc)}

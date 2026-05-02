@@ -13,6 +13,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
 from .config import EUR_RATE
 
+# Timeout complessivo per un singolo run di agente. Evita che un modello locale
+# lento (Ollama) blocchi APScheduler per ore. Configurabile via env.
+_AGENT_RUN_TIMEOUT = int(os.environ.get("AGENT_RUN_TIMEOUT", "300"))
+
 logger = logging.getLogger(__name__)
 
 _INJECTION_RE = re.compile(
@@ -764,40 +768,56 @@ class AgentEngine:
                 entity_ctx = self._build_entity_context(agent)
                 if entity_ctx:
                     user_message = f"{user_message}\n\n{entity_ctx}"
-                result, structured = await self._claude_runner.run_with_actions(
-                    user_message=user_message,
-                    system_prompt=effective_prompt,
-                    action_mode=agent.action_mode,
-                    states=agent.states,
-                    rules=agent.rules,
-                    allowed_tools=agent.allowed_tools or None,
-                    allowed_entities=agent.allowed_entities or None,
-                    allowed_services=agent.allowed_services or None,
-                    allowed_endpoints=agent.allowed_endpoints,
-                    model=agent.model,
-                    max_tokens=agent.max_tokens,
-                    agent_type=agent.type,
-                    restrict_to_home=agent.restrict_to_home,
-                    agent_id=agent.id,
-                    response_mode=agent.response_mode,
-                )
+                try:
+                    result, structured = await asyncio.wait_for(
+                        self._claude_runner.run_with_actions(
+                            user_message=user_message,
+                            system_prompt=effective_prompt,
+                            action_mode=agent.action_mode,
+                            states=agent.states,
+                            rules=agent.rules,
+                            allowed_tools=agent.allowed_tools or None,
+                            allowed_entities=agent.allowed_entities or None,
+                            allowed_services=agent.allowed_services or None,
+                            allowed_endpoints=agent.allowed_endpoints,
+                            model=agent.model,
+                            max_tokens=agent.max_tokens,
+                            agent_type=agent.type,
+                            restrict_to_home=agent.restrict_to_home,
+                            agent_id=agent.id,
+                            response_mode=agent.response_mode,
+                        ),
+                        timeout=_AGENT_RUN_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    raise RuntimeError(
+                        f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
+                    )
                 action_taken = await self._execute_actions_for_agent(agent, structured)
             else:
-                result = await self._claude_runner.chat(
-                    user_message=user_message,
-                    system_prompt=effective_prompt,
-                    allowed_tools=agent.allowed_tools or None,
-                    allowed_entities=agent.allowed_entities or None,
-                    allowed_services=agent.allowed_services or None,
-                    allowed_endpoints=agent.allowed_endpoints,
-                    model=agent.model,
-                    max_tokens=agent.max_tokens,
-                    agent_type=agent.type,
-                    restrict_to_home=agent.restrict_to_home,
-                    require_confirmation=agent.require_confirmation,
-                    agent_id=agent.id,
-                    response_mode=agent.response_mode,
-                )
+                try:
+                    result = await asyncio.wait_for(
+                        self._claude_runner.chat(
+                            user_message=user_message,
+                            system_prompt=effective_prompt,
+                            allowed_tools=agent.allowed_tools or None,
+                            allowed_entities=agent.allowed_entities or None,
+                            allowed_services=agent.allowed_services or None,
+                            allowed_endpoints=agent.allowed_endpoints,
+                            model=agent.model,
+                            max_tokens=agent.max_tokens,
+                            agent_type=agent.type,
+                            restrict_to_home=agent.restrict_to_home,
+                            require_confirmation=agent.require_confirmation,
+                            agent_id=agent.id,
+                            response_mode=agent.response_mode,
+                        ),
+                        timeout=_AGENT_RUN_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    raise RuntimeError(
+                        f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
+                    )
                 action_taken = None
 
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])

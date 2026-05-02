@@ -5,6 +5,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional, TYPE_CHECKING
+import httpx as _httpx
 
 from ..claude_runner import (
     ALL_TOOL_DEFS,
@@ -59,7 +60,16 @@ class OpenAICompatRunner:
             from ..backends.ollama import _validate_ollama_url
             _validate_ollama_url(base_url)
         import openai as _openai
-        self._client = _openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+        # Ollama su hardware lento: timeout esplicito per evitare hang infiniti.
+        # Cloud OpenAI: 600s (rispetta default SDK per risposte lunghe).
+        if fixed_model:
+            _req_timeout = float(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "120"))
+            _client_timeout = _httpx.Timeout(total=_req_timeout, connect=5.0)
+        else:
+            _client_timeout = _httpx.Timeout(total=600.0, connect=5.0)
+        self._client = _openai.AsyncOpenAI(
+            api_key=api_key, base_url=base_url, timeout=_client_timeout
+        )
         self._dispatcher = dispatcher
         self._fixed_model = fixed_model   # Ollama: always use this model; empty for OpenAI
         self._usage_path = usage_path
@@ -279,6 +289,15 @@ class OpenAICompatRunner:
         if not self._dispatcher.has_memory:
             tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         oai_tools = _to_openai_tools(tools) if tools else None
+
+        # I modelli locali (Ollama) tendono a inventare nomi di tool non presenti nello schema.
+        # Iniettare la lista esplicita nel system prompt riduce fortemente le allucinazioni.
+        if self._fixed_model and tools:
+            tool_names = ", ".join(t["name"] for t in tools)
+            messages[0]["content"] += (
+                f"\n\n---\n\nTool disponibili: {tool_names}.\n"
+                "NON chiamare tool non presenti in questa lista."
+            )
 
         for _ in range(MAX_TOOL_ITERATIONS):
             try:
