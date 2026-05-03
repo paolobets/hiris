@@ -1,5 +1,52 @@
 # HIRIS — Changelog
 
+## [0.9.0] — 2026-05-03
+
+### Changed — Design system v5 (UI overhaul)
+- **Tipografia**: stack passato da Inter Tight a **Geist** (sans + Geist Mono),
+  con fallback graceful su Inter Tight / system. Mono usato solo nei blocchi
+  codice (system prompt, valori tecnici, log).
+- **Palette**: tokens iris OKLCH (`hiris-theme.css`) raffinati; nuovo accent
+  `--iris-glow` per ombre-luce, atom `.toggle` riusabile in stile iOS,
+  petali iris (`--p-violet`/`--p-fuchsia`/…) per gradient send-button.
+- **Top chrome moderno** in `index.html` e `config.html`: logo iris animato
+  (breathing 6s), brand + version + breadcrumb, theme toggle persistente in
+  localStorage (cascade: localStorage > server config > system).
+- **Chat (`index.html`)**: greeting con gradient iris→fucsia su "come posso
+  aiutarti?", suggerimenti come pill rotonde, input bar ovale con send button
+  gradient, bubble user in iris-tint (non più solid accent), theme toggle.
+- **Designer (`config.html`)**: spec sheet con tabs moderne (sliding underline
+  iris), system prompt come blocco code-styled, contesto come chip filled/outlined,
+  azioni primarie con `box-shadow` iris glow, runs timeline.
+- **Lovelace card (`hiris-chat-card.js`)**: Shadow DOM aggiornato — header con
+  iris breath + glow ambient, send button gradient, user bubble in iris-tint,
+  font Geist con fallback.
+
+### Added — Modular split (frontend)
+- **CSS estratto** dagli inline `<style>` in file dedicati:
+  - `static/hiris-chat.css` (549 righe)
+  - `static/hiris-config.css` (1 095 righe — sezione legacy + sezione v5)
+- **JS modulare** del Designer suddiviso in `static/config/`:
+  - `api.js` — fetch + helpers (esc, fmtNum, fmtTok, applyTheme, loadModels, loadUsage)
+  - `templates.js` — TEMPLATES + TOOLS + ACTIONS + populateTemplateSelector
+  - `cron.js` — preset, builder, _cronDesc/Apply/InitUI
+  - `triggers.js` — _agentTriggers + render/load/value
+  - `permessi.js` — buildToolChecks, buildActionChecks, entity selector + domain pills
+  - `action-editor.js` — _agentActions + ae-* editor handlers
+  - `logs.js` — renderExecutionLog, toggleLogRow, token counter, context preview
+  - `usage.js` — loadAgentUsage + budget/toggle/reset handlers
+  - `proposals.js` — pending/archived workflow
+  - `agent-form.js` — CRUD orchestration: openAgent, save/delete/run, buildPayload
+  - `tabs.js` — switchTab, theme toggle, version footer
+  - `main.js` — bootstrap
+- **Risultato**: `config.html` da 2 779 → 473 righe (−83%); logica invariata,
+  solo riorganizzazione di delivery (classic scripts, no bundler, scope globale).
+- **Strategic doc** `PRODUCT.md` aggiunto al root (impeccable design context).
+
+### Fixed
+- `applyTheme()` ora rispetta `localStorage` come prima sorgente, evitando
+  che il config server-side sovrascriva la preferenza utente al refresh.
+
 ## [0.8.9] — 2026-05-03
 
 ### Fixed

@@ -54,7 +54,11 @@ const IRIS_CSS = `
     --i-accent:      oklch(0.66 0.20 280);
     --i-accent-ink:  oklch(0.32 0.18 280);
     --i-accent-tint: oklch(0.96 0.04 280);
+    --i-accent-tint-2: oklch(0.92 0.07 280);
     --i-on-accent:   oklch(0.99 0 0);
+    --i-iris-glow:   oklch(0.78 0.17 280 / 0.18);
+    --i-p-violet:    #8b5cf6;
+    --i-p-fuchsia:   #c026d3;
     --i-ok:          oklch(0.70 0.16 155);
     --i-ok-tint:     oklch(0.95 0.05 155);
     --i-err:         oklch(0.62 0.22 25);
@@ -64,29 +68,33 @@ const IRIS_CSS = `
     --i-r-sm:        6px;
     --i-r:           10px;
     --i-r-md:        14px;
-    --i-font-sans:   "Inter Tight", "Inter", system-ui, -apple-system, sans-serif;
-    --i-font-mono:   "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+    --i-font-sans:   "Geist", "Inter Tight", "Inter", system-ui, -apple-system, sans-serif;
+    --i-font-mono:   "Geist Mono", "JetBrains Mono", "SF Mono", ui-monospace, monospace;
     display: block;
   }
   @media (prefers-color-scheme: dark) {
     :host {
-      --i-surface:     oklch(0.20 0.025 280);
-      --i-surface-2:   oklch(0.23 0.028 280);
-      --i-surface-3:   oklch(0.27 0.032 280);
-      --i-hover:       oklch(0.26 0.035 280);
-      --i-border:      oklch(0.30 0.030 280);
-      --i-border-2:    oklch(0.36 0.035 280);
-      --i-text:        oklch(0.96 0.008 280);
-      --i-text-2:      oklch(0.74 0.018 280);
-      --i-text-3:      oklch(0.58 0.022 280);
-      --i-accent:      oklch(0.74 0.18 280);
+      --i-surface:     oklch(0.205 0.022 280);
+      --i-surface-2:   oklch(0.235 0.025 280);
+      --i-surface-3:   oklch(0.275 0.028 280);
+      --i-hover:       oklch(0.255 0.028 280);
+      --i-border:      oklch(0.295 0.025 280);
+      --i-border-2:    oklch(0.350 0.030 280);
+      --i-text:        oklch(0.97 0.006 280);
+      --i-text-2:      oklch(0.74 0.014 280);
+      --i-text-3:      oklch(0.56 0.018 280);
+      --i-accent:      oklch(0.78 0.17 280);
       --i-accent-ink:  oklch(0.86 0.14 280);
-      --i-accent-tint: oklch(0.28 0.08 280);
-      --i-on-accent:   oklch(0.14 0.04 280);
+      --i-accent-tint: oklch(0.30 0.10 280);
+      --i-accent-tint-2: oklch(0.36 0.12 280);
+      --i-on-accent:   oklch(0.16 0.04 280);
+      --i-iris-glow:   oklch(0.78 0.17 280 / 0.40);
+      --i-p-violet:    #c084fc;
+      --i-p-fuchsia:   #e879f9;
       --i-ok-tint:     oklch(0.30 0.08 155);
       --i-err-tint:    oklch(0.30 0.09 25);
-      --i-shadow-sm:   0 1px 2px oklch(0 0 0 / 0.30);
-      --i-shadow:      0 4px 16px oklch(0 0 0 / 0.40);
+      --i-shadow-sm:   0 1px 2px oklch(0 0 0 / 0.32);
+      --i-shadow:      0 8px 24px oklch(0 0 0 / 0.32);
     }
   }
   *, *::before, *::after { box-sizing: border-box; }
@@ -123,7 +131,7 @@ class HirisCard extends HTMLElement {
     // Persistent font link — survives container innerHTML resets
     const fontLink = document.createElement('link');
     fontLink.rel = 'stylesheet';
-    fontLink.href = 'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap';
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap';
     this._shadow.appendChild(fontLink);
     // Render target (allows font link to persist across renders)
     this._container = document.createElement('div');
@@ -426,12 +434,28 @@ class HirisCard extends HTMLElement {
         /* ── Header ── */
         .header {
           display: flex; align-items: center; justify-content: space-between;
-          padding: 12px 16px;
+          padding: 14px 16px;
           border-bottom: 1px solid var(--i-border);
+          position: relative;
         }
-        .header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .header::before {
+          content: ''; position: absolute; inset: 0;
+          background: radial-gradient(ellipse 80% 100% at 0% 0%, var(--i-iris-glow), transparent 60%);
+          pointer-events: none;
+          border-radius: var(--i-r-md) var(--i-r-md) 0 0;
+        }
+        .header > * { position: relative; z-index: 1; }
+        .header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .header-left img {
+          filter: drop-shadow(0 0 10px var(--i-iris-glow));
+          animation: iris-breathe 6s ease-in-out infinite;
+        }
+        @keyframes iris-breathe {
+          0%, 100% { transform: scale(1); }
+          50%      { transform: scale(1.04); }
+        }
         .title {
-          font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+          font-size: 14.5px; font-weight: 600; letter-spacing: -0.012em;
           color: var(--i-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .header-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
@@ -510,8 +534,9 @@ class HirisCard extends HTMLElement {
           color: var(--i-text);
         }
         .msg-row.user .bubble {
-          background: var(--i-accent);
-          color: var(--i-on-accent);
+          background: var(--i-accent-tint);
+          color: var(--i-text);
+          border: 1px solid var(--i-accent-tint-2);
           border-top-right-radius: 4px;
         }
         /* ── Typing indicator ── */
@@ -562,17 +587,19 @@ class HirisCard extends HTMLElement {
         .input::placeholder { color: var(--i-text-3); }
         .input:disabled { opacity: 0.5; cursor: not-allowed; }
         .send {
-          width: 30px; height: 30px; flex-shrink: 0;
-          border-radius: var(--i-r-sm);
-          background: var(--i-accent); color: var(--i-on-accent);
+          width: 32px; height: 32px; flex-shrink: 0;
+          border-radius: 50%;
+          background: linear-gradient(135deg, var(--i-p-violet), var(--i-p-fuchsia));
+          color: white;
           border: none; cursor: pointer;
           display: grid; place-items: center;
-          transition: filter 0.15s, transform 0.1s;
+          transition: transform 0.15s, box-shadow 0.15s;
+          box-shadow: 0 4px 12px var(--i-iris-glow);
         }
-        .send:hover:not(:disabled) { filter: brightness(1.05); }
+        .send:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px var(--i-iris-glow); }
         .send:active:not(:disabled) { transform: scale(0.92); }
-        .send:disabled { background: var(--i-surface-3); color: var(--i-text-3); cursor: not-allowed; }
-        .send.loading { background: var(--i-surface-3); cursor: default; }
+        .send:disabled { background: var(--i-surface-3); color: var(--i-text-3); cursor: not-allowed; box-shadow: none; }
+        .send.loading { background: var(--i-surface-3); cursor: default; box-shadow: none; }
         .send.loading svg { display: none; }
         .send.loading::after {
           content: ''; width: 12px; height: 12px;
@@ -647,7 +674,7 @@ class HirisChatCardEditor extends HTMLElement {
     this._shadow = this.attachShadow({ mode: 'open' });
     const fontLink = document.createElement('link');
     fontLink.rel = 'stylesheet';
-    fontLink.href = 'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap';
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap';
     this._shadow.appendChild(fontLink);
     this._container = document.createElement('div');
     this._shadow.appendChild(this._container);
