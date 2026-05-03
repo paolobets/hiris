@@ -174,6 +174,55 @@
     #theme-toggle:hover { color: var(--text); border-color: var(--border-2); background: var(--hover); }
     #theme-toggle svg { width: 15px; height: 15px; }
 
+    /* Agent picker pill — shows the active chat agent in the header */
+    #agent-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 12px 5px 5px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 12.5px;
+      color: var(--text);
+      transition: all 160ms ease;
+      max-width: 220px;
+    }
+    #agent-pill:hover { border-color: var(--border-2); }
+    #agent-pill .ap-avatar {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--p-violet), var(--p-fuchsia));
+      color: white;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      box-shadow: 0 0 10px var(--iris-glow);
+      flex-shrink: 0;
+    }
+    #agent-pill .ap-name {
+      font-weight: 500;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #agent-pill .ap-live {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 8px var(--ok);
+      flex-shrink: 0;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    /* chip glyphs (emoji icons in welcome quick-chips) */
+    .chip .chip-glyph {
+      font-size: 14px;
+      line-height: 1;
+      filter: saturate(1.1);
+    }
+
     /* Messages */
     #messages {
       flex: 1; overflow-y: auto;
@@ -317,6 +366,45 @@
     .debug-row details[open] .debug-summary::before { transform: rotate(90deg); }
     .debug-body { margin-top: 7px; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }
     .debug-tool b { color: var(--accent); font-weight: 600; }
+
+    /* Tool chips (v5 inline rendering — sostituisce <details>) */
+    .tool-chips {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .tool-chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 11px 5px 9px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-2);
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 140ms ease;
+    }
+    .tool-chip:hover { border-color: var(--accent); color: var(--text); background: var(--accent-tint); }
+    .tool-chip .tc-ic {
+      width: 12px; height: 12px;
+      color: var(--accent);
+      stroke-width: 2;
+    }
+    .tool-chip .tc-name { letter-spacing: 0; }
+    .tool-args {
+      margin-top: 8px;
+      padding: 9px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-2);
+      word-break: break-word;
+      line-height: 1.5;
+    }
+    .tool-args code { background: transparent; padding: 0; }
+    .tool-args b { color: var(--accent); font-weight: 600; }
 
     /* Typing */
     .typing-row {

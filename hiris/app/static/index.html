@@ -139,6 +139,11 @@
           <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a7 7 0 0 1 12-5l2 2M16 4v3h-3M16 9a7 7 0 0 1-12 5l-2-2M2 14v-3h3"/></svg>
           Nuova conv.
         </button>
+        <div id="agent-pill" title="Agente chat attivo">
+          <span class="ap-avatar" id="ap-avatar">I</span>
+          <span class="ap-name" id="ap-name">Iris</span>
+          <span class="ap-live"></span>
+        </div>
         <button id="theme-toggle" title="Cambia tema chiaro/scuro" aria-label="cambia tema">
           <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
           <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -150,13 +155,13 @@
     <div id="messages">
       <div id="welcome">
         <img src="static/hiris-icon.svg" class="welcome-mark" alt="HIRIS">
-        <h3>Ciao, <span class="grad">come posso aiutarti?</span></h3>
+        <h3 id="welcome-greeting"><span id="welcome-hello">Ciao</span>, <span class="grad">come posso aiutarti?</span></h3>
         <p>Il tuo assistente per la smart home. Chiedimi qualsiasi cosa — interrogo Home Assistant in tempo reale e ragiono prima di rispondere.</p>
         <div class="quick-chips">
-          <button class="chip" onclick="sendQuick('Stato casa')">Stato casa</button>
-          <button class="chip" onclick="sendQuick('Temperatura camere')">Temperatura camere</button>
-          <button class="chip" onclick="sendQuick('Consumi energia')">Consumi energia</button>
-          <button class="chip" onclick="sendQuick('Briefing del mattino')">Briefing del mattino</button>
+          <button class="chip" onclick="sendQuick('Stato casa')"><span class="chip-glyph">⚡</span> Stato casa</button>
+          <button class="chip" onclick="sendQuick('Temperatura camere')"><span class="chip-glyph">🌡</span> Temperatura camere</button>
+          <button class="chip" onclick="sendQuick('Consumi energia')"><span class="chip-glyph">💡</span> Consumi energia</button>
+          <button class="chip" onclick="sendQuick('Briefing del mattino')"><span class="chip-glyph">☀️</span> Briefing del mattino</button>
         </div>
       </div>
     </div>
@@ -256,6 +261,27 @@ async function clearConversation() {
   checkTurnLimit();
 }
 
+function updateAgentPill(agentName) {
+  var pill = document.getElementById('agent-pill');
+  if (!pill) return;
+  var avatar = document.getElementById('ap-avatar');
+  var name = document.getElementById('ap-name');
+  var letter = (agentName || 'I').trim().charAt(0).toUpperCase();
+  if (avatar) avatar.textContent = letter;
+  if (name) name.textContent = agentName || 'Iris';
+}
+
+function updateGreeting() {
+  var hello = document.getElementById('welcome-hello');
+  if (!hello) return;
+  var h = new Date().getHours();
+  var word = (h < 5 || h >= 22) ? 'Buonanotte'
+           : (h < 12)  ? 'Buongiorno'
+           : (h < 18)  ? 'Buon pomeriggio'
+           : 'Buonasera';
+  hello.textContent = word;
+}
+
 async function loadAgents() {
   try {
     var r = await fetch('api/agents');
@@ -276,6 +302,9 @@ async function loadAgents() {
         (a.is_default ? '<span class="meta">default</span>' : '');
       agentListEl.appendChild(div);
     });
+    /* keep pill in sync with active agent */
+    var current = chatAgents.find(function(a) { return a.id === activeAgentId; }) || chatAgents[0];
+    if (current) updateAgentPill(current.name);
   } catch(e) {
     connDot.classList.add('offline');
     connDot.textContent = 'offline';
@@ -290,6 +319,7 @@ async function setActiveAgent(agentId, agentName) {
   welcomeEl.style.display = '';
   hasMessages = false;
   document.getElementById('header-title').firstChild.nodeValue = agentName + ' ';
+  updateAgentPill(agentName);
   agentTurnCounts[agentId] = 0;
   updateTurnCounter();
   checkTurnLimit();
@@ -342,15 +372,32 @@ function appendMsg(role, text) {
 function appendDebug(tools) {
   var row = document.createElement('div');
   row.className = 'debug-row';
-  var body = tools.map(function(t) {
+  /* Render tool calls as inline mono chips. Click to expand/collapse the args. */
+  var chips = tools.map(function(t) {
     var inp = JSON.stringify(t.input);
-    return '<div class="debug-tool"><b>' + esc(t.tool) + '</b>(' + esc(inp) + ')</div>';
+    return '<button class="tool-chip" data-args="' + esc(inp) + '" type="button">'
+         + '<svg viewBox="0 0 24 24" class="tc-ic" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
+         + '<span class="tc-name">' + esc(t.tool) + '</span>'
+         + '</button>';
   }).join('');
-  row.innerHTML =
-    '<details>' +
-    '<summary class="debug-summary">' + tools.length + ' tool ' + (tools.length > 1 ? 'chiamati' : 'chiamato') + '</summary>' +
-    '<div class="debug-body">' + body + '</div>' +
-    '</details>';
+  row.innerHTML = '<div class="tool-chips">' + chips + '</div><div class="tool-args" style="display:none"></div>';
+  /* Toggle args panel on chip click */
+  row.querySelectorAll('.tool-chip').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var panel = row.querySelector('.tool-args');
+      var args = btn.getAttribute('data-args');
+      var name = btn.querySelector('.tc-name').textContent;
+      var open = panel.dataset.openName === name && panel.style.display !== 'none';
+      if (open) {
+        panel.style.display = 'none';
+        panel.dataset.openName = '';
+      } else {
+        panel.innerHTML = '<code><b>' + esc(name) + '</b>(' + esc(args) + ')</code>';
+        panel.style.display = '';
+        panel.dataset.openName = name;
+      }
+    });
+  });
   messagesEl.appendChild(row);
 }
 
@@ -501,8 +548,10 @@ fetch('api/health').then(function(r){ return r.json(); }).then(function(d){
 
 loadAgents();
 loadUsage();
+updateGreeting();
 setInterval(loadAgents, 30000);
 setInterval(loadUsage, 30000);
+setInterval(updateGreeting, 60 * 60 * 1000);  /* refresh greeting every hour */
 
 /* ── Tasks panel ─────────────────────────────────────────── */
 function showPanel(name) {

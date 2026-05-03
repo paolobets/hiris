@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [0.9.1] — 2026-05-03
+
+### Changed — chat surface aligned to v5 mockup
+- **Greeting time-of-day**: l'header del welcome ora dice
+  "Buongiorno / Buon pomeriggio / Buonasera / Buonanotte" in base all'ora,
+  invece del generico "Ciao". Si aggiorna ogni ora.
+- **Agent picker pill** in alto a destra: pillola con avatar gradient
+  (violet → fuchsia, prima lettera del nome agente), nome agente troncato
+  a 140px, dot live verde. Sostituisce il vecchio "header-title plain".
+  Si aggiorna automaticamente quando si seleziona un agente.
+- **Quick chips con icona emoji** sul welcome: ⚡ Stato casa, 🌡 Temperatura
+  camere, 💡 Consumi energia, ☀️ Briefing del mattino. Più riconoscibili
+  a colpo d'occhio.
+- **Tool calls come chip pill mono inline** invece del vecchio `<details>` con
+  freccia espandi. Click sul chip apre/chiude un pannello arg sotto.
+  Allineato al mockup v5.
+
+### Fixed
+- Cache-busting confermato funzionante: tutti gli asset (`hiris-chat.css?v=`,
+  `static/config/*.js?v=`) ricevono il `?v=VERSION` via `_inject_version()`,
+  garantendo refresh dopo upgrade dell'addon.
+
 ## [0.9.0] — 2026-05-03
 
 ### Changed — Design system v5 (UI overhaul)
