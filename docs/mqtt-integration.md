@@ -1,6 +1,6 @@
 # HIRIS — MQTT Integration
 
-> Version: 0.8.8 · Updated: 2026-05-02
+> Version: 0.8.9 · Updated: 2026-05-03
 
 HIRIS publishes native Home Assistant entities via MQTT discovery, making every agent's status, budget, and run controls available as first-class HA entities — usable in dashboards, automations, and scripts without any manual YAML configuration.
 

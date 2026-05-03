@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [0.8.9] — 2026-05-03
+
+### Fixed
+- **Startup crash con OpenAI/Ollama configurato**: `OpenAICompatRunner.__init__`
+  passava `total=` a `httpx.Timeout`, che non accetta quel kwarg
+  (`TypeError: Timeout.__init__() got an unexpected keyword argument 'total'`).
+  Sostituito con argomento posizionale (`httpx.Timeout(timeout, connect=5.0)`),
+  comportamento equivalente all'intent originale. Regressione introdotta in 0.8.7.
+
 ## [0.8.8] — 2026-05-02
 
 ### Fixed

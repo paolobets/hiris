@@ -66,9 +66,9 @@ class OpenAICompatRunner:
         # Cloud OpenAI: 600s (rispetta default SDK per risposte lunghe).
         if fixed_model:
             _req_timeout = float(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "120"))
-            _client_timeout = _httpx.Timeout(total=_req_timeout, connect=5.0)
+            _client_timeout = _httpx.Timeout(_req_timeout, connect=5.0)
         else:
-            _client_timeout = _httpx.Timeout(total=600.0, connect=5.0)
+            _client_timeout = _httpx.Timeout(600.0, connect=5.0)
         self._client = _openai.AsyncOpenAI(
             api_key=api_key, base_url=base_url, timeout=_client_timeout
         )
