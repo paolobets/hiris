@@ -236,3 +236,50 @@ async def test_created_agent_has_all_dashboard_fields(dashboard_client):
     for agent in agents:
         missing = required - set(agent.keys())
         assert not missing, f"Missing fields: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# delete_agent must clean up orphaned data (memory + chat history)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_delete_agent_cleans_memory_and_chat_history():
+    """handle_delete_agent must call memory_store.delete_by_agent + clear_history."""
+    from hiris.app.api.handlers_agents import handle_delete_agent
+
+    engine = MagicMock()
+    fake_agent = MagicMock()
+    fake_agent.is_default = False
+    engine.get_agent.return_value = fake_agent
+    engine.delete_agent.return_value = True
+
+    memory_store = MagicMock()
+    memory_store.delete_by_agent = MagicMock()
+
+    app = MagicMock()
+    app.get = MagicMock(side_effect=lambda k, default=None: {
+        "memory_store": memory_store,
+        "data_dir": "/tmp/hiris_test_data",
+    }.get(k, default))
+    app.__getitem__ = MagicMock(side_effect=lambda k: {
+        "engine": engine,
+    }[k])
+
+    aid = "550e8400-e29b-41d4-a716-446655440000"
+    request = make_mocked_request(
+        "DELETE", f"/api/agents/{aid}",
+        match_info={"agent_id": aid},
+        app=app,
+    )
+
+    # clear_history is imported lazily inside the handler — patch in chat_store
+    with pytest.MonkeyPatch.context() as mp:
+        called = {"clear": None}
+        def fake_clear(agent_id, data_dir):
+            called["clear"] = (agent_id, data_dir)
+        mp.setattr("hiris.app.chat_store.clear_history", fake_clear)
+        resp = await handle_delete_agent(request)
+
+    assert resp.status == 204
+    memory_store.delete_by_agent.assert_called_once_with(aid)
+    assert called["clear"] == (aid, "/tmp/hiris_test_data")
