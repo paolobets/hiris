@@ -128,7 +128,9 @@ class MemoryStore:
             row_dict = dict(r)
             try:
                 row_tags: list = json.loads(row_dict["tags"])
-            except Exception:
+            except Exception as exc:
+                logger.debug("memory tags JSON parse failed for id=%s: %s",
+                             row_dict.get("id"), exc)
                 row_tags = []
             parsed.append((row_dict, row_tags))
 

@@ -425,8 +425,8 @@ class AgentEngine:
             if job.id == agent_id or job.id.startswith(f"{agent_id}__"):
                 try:
                     self._scheduler.remove_job(job.id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("remove_job(%s) failed: %s", job.id, exc)
 
     def _on_state_changed(self, event_data: dict) -> None:
         entity_id = event_data.get("entity_id", "")
@@ -854,8 +854,8 @@ class AgentEngine:
                         usage = runner.get_agent_usage(agent.id)
                         budget_eur = round(usage.get("cost_usd", 0.0) * EUR_RATE, 4)
                         tokens_today = usage.get("tokens_today", 0)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("get_agent_usage(%s) failed: %s", agent.id, exc)
                 remaining: Any = (
                     max(0.0, agent.budget_eur_limit - budget_eur)
                     if agent.budget_eur_limit > 0 else "unlimited"

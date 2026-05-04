@@ -122,7 +122,8 @@ async def handle_list_agents(request: web.Request) -> web.Response:
                 usage = runner.get_agent_usage(agent_id)
                 cost_usd = usage.get("cost_usd", 0.0)
                 budget_eur = round(float(cost_usd) * _EUR_RATE, 4)
-            except Exception:
+            except Exception as exc:
+                logger.warning("get_agent_usage(%s) failed: %s", agent_id, exc)
                 budget_eur = 0.0
         entry["budget_eur"] = budget_eur
         entry["budget_limit_eur"] = float(entry.get("budget_eur_limit", 0.0))

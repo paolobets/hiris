@@ -199,8 +199,8 @@ class TaskEngine:
                     ts = ts.replace(tzinfo=timezone.utc)
                 if ts < cutoff:
                     to_remove.append(task_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("cleanup ts parse failed for task %s: %s", task_id, exc)
         for task_id in to_remove:
             del self._tasks[task_id]
         if to_remove:
@@ -253,8 +253,8 @@ class TaskEngine:
         for job_id in (f"task_{task_id}", f"task_expire_{task_id}"):
             try:
                 self._scheduler.remove_job(job_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("remove_job(%s) failed: %s", job_id, exc)
 
     # ── Condition evaluation ────────────────────────────────────────────────
 

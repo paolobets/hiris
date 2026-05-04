@@ -193,8 +193,9 @@ async def handle_chat(request: web.Request) -> web.Response:
                 evt = json.loads(chunk.removeprefix("data: ").strip())
                 if evt.get("type") == "token":
                     collected_tokens.append(evt.get("text", ""))
-            except Exception:
-                pass
+            except Exception as exc:
+                # Non-JSON chunk (e.g. heartbeat ': keep-alive') is normal in SSE.
+                logger.debug("SSE chunk parse skipped: %s", exc)
         await stream_resp.write_eof()
         full_response = "".join(collected_tokens)
         if effective_agent_id and full_response:
