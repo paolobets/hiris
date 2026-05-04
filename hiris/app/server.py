@@ -243,6 +243,19 @@ async def _on_startup(app: web.Application) -> None:
     from .proxy.semantic_map import SemanticMap
     from .llm_router import LLMRouter
 
+    # Pre-load static HTML so request handlers don't do sync open().read()
+    # per request (would block the event loop). Cache invalidation happens via
+    # _inject_version() on every render anyway.
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    for fname, key in (("index.html", "html_index"), ("config.html", "html_config")):
+        path = os.path.join(static_dir, fname)
+        try:
+            with open(path, encoding="utf-8") as f:
+                app[key] = f.read()
+        except FileNotFoundError:
+            logger.error("Static %s missing at %s", fname, path)
+            app[key] = ""
+
     app["internal_token"] = os.environ.get("INTERNAL_TOKEN", "")
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
@@ -598,10 +611,9 @@ def _inject_version(html: str, version: str) -> str:
 
 
 async def _serve_index(request: web.Request) -> web.Response:
-    path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    if not os.path.exists(path):
+    html = request.app.get("html_index") or ""
+    if not html:
         return web.Response(text="UI not yet available", status=503)
-    html = open(path, encoding="utf-8").read()
     return web.Response(
         text=_inject_version(html, read_version()),
         content_type="text/html",
@@ -610,10 +622,9 @@ async def _serve_index(request: web.Request) -> web.Response:
 
 
 async def _serve_config(request: web.Request) -> web.Response:
-    path = os.path.join(os.path.dirname(__file__), "static", "config.html")
-    if not os.path.exists(path):
+    html = request.app.get("html_config") or ""
+    if not html:
         return web.Response(text="UI not yet available", status=503)
-    html = open(path, encoding="utf-8").read()
     return web.Response(
         text=_inject_version(html, read_version()),
         content_type="text/html",
