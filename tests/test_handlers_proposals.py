@@ -108,20 +108,6 @@ async def test_apply_proposal_returns_ok():
 
 
 @pytest.mark.asyncio
-async def test_apply_proposal_missing_csrf_returns_403():
-    store = _make_store(apply=AsyncMock(return_value=True))
-
-    request = make_mocked_request(
-        "POST", "/api/proposals/abc/apply",
-        match_info={"proposal_id": "abc"},
-        app=_make_app(store),
-    )
-    resp = await handle_apply_proposal(request)
-
-    assert resp.status == 403
-
-
-@pytest.mark.asyncio
 async def test_reject_proposal_returns_ok():
     store = _make_store(reject=AsyncMock(return_value=True))
 
@@ -137,20 +123,6 @@ async def test_reject_proposal_returns_ok():
     data = json.loads(resp.body)
     assert data == {"ok": True}
     store.reject.assert_awaited_once_with("abc")
-
-
-@pytest.mark.asyncio
-async def test_reject_proposal_missing_csrf_returns_403():
-    store = _make_store(reject=AsyncMock(return_value=True))
-
-    request = make_mocked_request(
-        "POST", "/api/proposals/abc/reject",
-        match_info={"proposal_id": "abc"},
-        app=_make_app(store),
-    )
-    resp = await handle_reject_proposal(request)
-
-    assert resp.status == 403
 
 
 @pytest.mark.asyncio

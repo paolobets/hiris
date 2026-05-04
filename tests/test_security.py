@@ -379,3 +379,65 @@ async def test_toggle_automation_allowed_when_whitelisted():
     d._ha.call_service.assert_awaited_once_with(
         "automation", "turn_off", {"entity_id": "automation.morning_briefing"}
     )
+
+
+# ---------------------------------------------------------------------------
+# SEC-025 — CSRF middleware (require X-Requested-With on state-changing API)
+# ---------------------------------------------------------------------------
+
+def _make_csrf_app():
+    """Mini app wired with CSRF middleware to verify behavior in isolation."""
+    from hiris.app.api.middleware_csrf import csrf_middleware
+    app = web.Application(middlewares=[csrf_middleware])
+    app.router.add_post("/api/x", lambda r: web.json_response({"ok": True}))
+    app.router.add_get("/api/x", lambda r: web.json_response({"ok": True}))
+    app.router.add_delete("/api/x", lambda r: web.json_response({"ok": True}))
+    app.router.add_post("/static/x", lambda r: web.json_response({"ok": True}))
+    return app
+
+
+@pytest.fixture
+def csrf_strict(monkeypatch):
+    """Override the test-suite default HIRIS_ALLOW_NO_CSRF=1 so CSRF middleware blocks again."""
+    monkeypatch.setenv("HIRIS_ALLOW_NO_CSRF", "")
+    yield
+
+
+@pytest.mark.asyncio
+async def test_csrf_blocks_post_without_xrw(csrf_strict):
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.post("/api/x")
+        assert resp.status == 403
+        data = await resp.json()
+        assert data["error"] == "csrf_required"
+
+
+@pytest.mark.asyncio
+async def test_csrf_blocks_delete_without_xrw(csrf_strict):
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.delete("/api/x")
+        assert resp.status == 403
+
+
+@pytest.mark.asyncio
+async def test_csrf_allows_get_without_xrw(csrf_strict):
+    """GET is a safe method — must always pass."""
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.get("/api/x")
+        assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_allows_post_with_xrw(csrf_strict):
+    """Any non-empty X-Requested-With value is accepted (browsers block CORS)."""
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.post("/api/x", headers={"X-Requested-With": "fetch"})
+        assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_does_not_apply_to_non_api_paths(csrf_strict):
+    """Static and Lovelace card paths are not protected (no auth surface)."""
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.post("/static/x")
+        assert resp.status == 200

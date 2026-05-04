@@ -36,6 +36,7 @@ from .proxy.semantic_context_map import SemanticContextMap
 from .proxy.memory_store import MemoryStore
 from .backends.embeddings import build_embedding_provider
 from .api.middleware_internal_auth import internal_auth_middleware
+from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
 
 logger = logging.getLogger(__name__)
@@ -541,7 +542,11 @@ async def _security_headers(request: web.Request, handler) -> web.Response:
 
 
 def create_app() -> web.Application:
-    app = web.Application(middlewares=[internal_auth_middleware, _security_headers])
+    app = web.Application(middlewares=[
+        internal_auth_middleware,
+        csrf_middleware,
+        _security_headers,
+    ])
 
     app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)

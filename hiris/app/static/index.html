@@ -250,7 +250,7 @@ function checkTurnLimit() {
 async function clearConversation() {
   if (!activeAgentId) return;
   try {
-    await fetch('api/agents/' + activeAgentId + '/chat-history', { method: 'DELETE' });
+    await fetch('api/agents/' + activeAgentId + '/chat-history', { method: 'DELETE', headers: {'X-Requested-With': 'fetch'} });
   } catch(e) {}
   messagesEl.innerHTML = '';
   messagesEl.appendChild(welcomeEl);
@@ -432,7 +432,7 @@ async function sendMessage(text) {
   try {
     var r = await fetch('api/chat', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'fetch'},
       body: JSON.stringify({ message: text, agent_id: activeAgentId }),
     });
     var data = await r.json();
@@ -617,7 +617,7 @@ async function loadTasks() {
 async function cancelTask(taskId) {
   if (!confirm('Annullare questa task?')) return;
   try {
-    var resp = await fetch('api/tasks/' + taskId, {method: 'DELETE'});
+    var resp = await fetch('api/tasks/' + taskId, {method: 'DELETE', headers: {'X-Requested-With': 'fetch'}});
     if (resp.ok || resp.status === 204) loadTasks();
   } catch(e) { console.error('cancelTask failed', e); }
 }
@@ -674,7 +674,7 @@ async function obCreate() {
   var btn = document.getElementById('ob-create-btn');
   btn.disabled = true;
   try {
-    var r = await fetch('api/agents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    var r = await fetch('api/agents', { method: 'POST', headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload) });
     if (!r.ok) { btn.disabled = false; alert('Errore nella creazione agente. Riprova.'); return; }
     var agent = await r.json();
     await loadAgents();

@@ -208,7 +208,7 @@ document.getElementById('save-btn').onclick = async function() {
   var payload = buildPayload();
   var method = currentId ? 'PUT' : 'POST';
   var url = currentId ? ('api/agents/' + currentId) : 'api/agents';
-  var r = await fetch(url, {method: method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  var r = await fetch(url, {method: method, headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload)});
   var a = await r.json();
   await loadAgents();
   openAgent(a);
@@ -216,7 +216,7 @@ document.getElementById('save-btn').onclick = async function() {
 
 document.getElementById('delete-btn').onclick = async function() {
   if (!currentId || !confirm('Eliminare questo agente?')) return;
-  await fetch('api/agents/' + currentId, {method: 'DELETE'});
+  await fetch('api/agents/' + currentId, {method: 'DELETE', headers: {'X-Requested-With': 'fetch'}});
   currentId = null;
   document.getElementById('form').style.display = 'none';
   document.getElementById('no-selection').style.display = '';
@@ -248,6 +248,7 @@ document.getElementById('run-btn').onclick = async function() {
   try {
     var r = await fetch('api/agents/' + currentId + '/run', {
       method: 'POST',
+      headers: {'X-Requested-With': 'fetch'},
       signal: ctrl.signal,
     });
     clearTimeout(timer);

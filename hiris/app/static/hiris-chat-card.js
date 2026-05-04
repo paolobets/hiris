@@ -252,6 +252,7 @@ class HirisCard extends HTMLElement {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
           'Authorization': `Bearer ${this._authToken()}`,
+          'X-Requested-With': 'fetch',
         },
         body: JSON.stringify({ message: text, agent_id: this._agentId, stream: true }),
         signal: controller.signal,
@@ -315,6 +316,7 @@ class HirisCard extends HTMLElement {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this._authToken()}`,
+          'X-Requested-With': 'fetch',
         },
         body: JSON.stringify({ enabled: !this._enabled }),
       });

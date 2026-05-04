@@ -1,12 +1,9 @@
 from aiohttp import web
 
 _VALID_STATUSES = frozenset({"pending", "applied", "rejected", "archived"})
-_CSRF_HEADER = "X-Requested-With"
-_CSRF_VALUE = "XMLHttpRequest"
 
-
-def _check_csrf(request: web.Request) -> bool:
-    return request.headers.get(_CSRF_HEADER) == _CSRF_VALUE
+# CSRF protection is now provided globally by csrf_middleware (require
+# X-Requested-With on POST/PUT/DELETE under /api/). Removed inline _check_csrf.
 
 
 async def handle_list_proposals(request: web.Request) -> web.Response:
@@ -32,8 +29,6 @@ async def handle_get_proposal(request: web.Request) -> web.Response:
 
 
 async def handle_apply_proposal(request: web.Request) -> web.Response:
-    if not _check_csrf(request):
-        return web.json_response({"error": "Forbidden"}, status=403)
     proposal_store = request.app.get("proposal_store")
     if proposal_store is None:
         return web.json_response({"error": "ProposalStore not initialized"}, status=503)
@@ -47,8 +42,6 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
 
 
 async def handle_reject_proposal(request: web.Request) -> web.Response:
-    if not _check_csrf(request):
-        return web.json_response({"error": "Forbidden"}, status=403)
     proposal_store = request.app.get("proposal_store")
     if proposal_store is None:
         return web.json_response({"error": "ProposalStore not initialized"}, status=503)

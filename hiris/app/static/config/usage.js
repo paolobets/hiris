@@ -31,7 +31,7 @@ function updateAgentUsageToggleBtn(agent) {
 document.getElementById('u-ag-reset-btn').onclick = async function() {
   if (!currentId || !confirm('Azzerare i contatori di consumo per questo agente?')) return;
   try {
-    await fetch('api/agents/' + currentId + '/usage/reset', { method: 'POST' });
+    await fetch('api/agents/' + currentId + '/usage/reset', { method: 'POST', headers: {'X-Requested-With': 'fetch'} });
     await loadAgentUsage(currentId);
   } catch(e) {}
 };
@@ -48,7 +48,7 @@ document.getElementById('u-ag-toggle-btn').onclick = async function() {
   try {
     var r = await fetch('api/agents/' + currentId, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       body: JSON.stringify({ enabled: newEnabled }),
     });
     await r.json();
@@ -64,7 +64,7 @@ document.getElementById('u-ag-budget-save-btn').onclick = async function() {
   try {
     await fetch('api/agents/' + currentId, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       body: JSON.stringify({ budget_eur_limit: budget }),
     });
     alert(budget > 0 ? 'Soglia di budget salvata: €' + budget.toFixed(2) : 'Nessun limite di budget impostato.');
@@ -74,7 +74,7 @@ document.getElementById('u-ag-budget-save-btn').onclick = async function() {
 document.getElementById('usage-reset-btn').onclick = async function() {
   if (!confirm('Azzerare i contatori di utilizzo API?')) return;
   try {
-    var r = await fetch('api/usage/reset', {method: 'POST'});
+    var r = await fetch('api/usage/reset', {method: 'POST', headers: {'X-Requested-With': 'fetch'}});
     if (r.ok) await loadUsage();
   } catch(e) {}
 };
