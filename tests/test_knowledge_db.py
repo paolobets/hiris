@@ -44,23 +44,3 @@ def test_get_annotations_empty(tmp_path):
     db.close()
 
 
-def test_record_correlation_increments_count(tmp_path):
-    db = KnowledgeDB(str(tmp_path / "test.db"))
-    db.record_correlation("climate.bagno", "sensor.temp_bagno", "co-occurs")
-    db.record_correlation("climate.bagno", "sensor.temp_bagno", "co-occurs")
-    rows = db._conn.execute(
-        "SELECT observed_count FROM entity_correlations WHERE entity_a='climate.bagno'"
-    ).fetchone()
-    assert rows[0] == 2
-    db.close()
-
-
-def test_record_query_hit_increments(tmp_path):
-    db = KnowledgeDB(str(tmp_path / "test.db"))
-    db.record_query_hit("climate.bagno", "climate")
-    db.record_query_hit("climate.bagno", "climate")
-    row = db._conn.execute(
-        "SELECT hit_count FROM query_patterns WHERE entity_id='climate.bagno'"
-    ).fetchone()
-    assert row[0] == 2
-    db.close()

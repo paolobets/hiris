@@ -102,37 +102,6 @@ class KnowledgeDB:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def record_correlation(
-        self, entity_a: str, entity_b: str, correlation_type: str, confidence: float = 0.5
-    ) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        self._conn.execute(
-            """
-            INSERT INTO entity_correlations
-                (entity_a, entity_b, correlation_type, confidence, observed_count, last_observed)
-            VALUES (?, ?, ?, ?, 1, ?)
-            ON CONFLICT(entity_a, entity_b, correlation_type) DO UPDATE SET
-                observed_count=observed_count+1,
-                confidence=MIN(1.0, confidence+0.05),
-                last_observed=excluded.last_observed
-            """,
-            (entity_a, entity_b, correlation_type, confidence, now),
-        )
-        self._conn.commit()
-
-    def record_query_hit(self, entity_id: str, concept_type: str) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        self._conn.execute(
-            """
-            INSERT INTO query_patterns (entity_id, concept_type, hit_count, last_hit)
-            VALUES (?, ?, 1, ?)
-            ON CONFLICT(entity_id, concept_type) DO UPDATE SET
-                hit_count=hit_count+1, last_hit=excluded.last_hit
-            """,
-            (entity_id, concept_type, now),
-        )
-        self._conn.commit()
-
     def close(self) -> None:
         self._conn.close()
 

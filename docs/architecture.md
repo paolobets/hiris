@@ -82,7 +82,6 @@ hiris/app/
 │   ├── semantic_context_map.py  Area-aware context injection
 │   ├── memory_store.py          SQLite vector store (cosine similarity)
 │   ├── knowledge_db.py          Structured home knowledge (areas, devices)
-│   ├── home_profile.py          Fallback home snapshot (when semantic map absent)
 │   ├── health_monitor.py        HA health snapshot: WebSocket + 30min polling + JSON persist
 │   └── proposal_store.py        Automation proposals SQLite store (lifecycle management)
 │
