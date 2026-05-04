@@ -617,7 +617,7 @@ async function loadTasks() {
 async function cancelTask(taskId) {
   if (!confirm('Annullare questa task?')) return;
   try {
-    var resp = await fetch('/api/tasks/' + taskId, {method: 'DELETE'});
+    var resp = await fetch('api/tasks/' + taskId, {method: 'DELETE'});
     if (resp.ok || resp.status === 204) loadTasks();
   } catch(e) { console.error('cancelTask failed', e); }
 }
@@ -662,8 +662,14 @@ async function obCreate() {
   var name = (document.getElementById('ob-name').value || '').trim();
   if (!name) { document.getElementById('ob-name').focus(); return; }
   var prompt = (document.getElementById('ob-prompt').value || '').trim();
-  var trigger = _obType === 'monitor' ? { type: 'schedule', interval_minutes: 60 } : { type: 'manual' };
-  var payload = { name: name, type: _obType, trigger: trigger };
+  // Backend types are only 'chat' | 'agent'. Map onboarding intent → backend type.
+  var backendType = _obType === 'chat' ? 'chat' : 'agent';
+  // Triggers must be a list. Monitor preset = schedule every 60 min. Others
+  // start with no triggers and the user wires them up in the Designer.
+  var triggers = _obType === 'monitor'
+    ? [{ type: 'schedule', interval_minutes: 60 }]
+    : [];
+  var payload = { name: name, type: backendType, triggers: triggers };
   if (prompt) payload.system_prompt = prompt;
   var btn = document.getElementById('ob-create-btn');
   btn.disabled = true;
