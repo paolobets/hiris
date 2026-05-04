@@ -1,7 +1,13 @@
 from __future__ import annotations
 import fnmatch
 import logging
+import re
 from typing import Any, Optional
+
+# HA automation IDs are slug-style: lowercase alphanumeric + underscore.
+# Reject anything else before composing entity_id, to avoid injection through
+# automation.{id} in case HA's downstream parser is lenient.
+_AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
 from .ha_tools import (
     get_entity_states, get_area_entities, get_home_status,
@@ -130,10 +136,13 @@ class ToolDispatcher:
                 return await get_ha_automations(self._ha)
             if name == "trigger_automation":
                 automation_id = inputs["automation_id"]
-                entity_id = (
-                    automation_id if automation_id.startswith("automation.")
-                    else f"automation.{automation_id}"
+                bare_id = (
+                    automation_id[len("automation."):]
+                    if automation_id.startswith("automation.") else automation_id
                 )
+                if not _AUTOMATION_ID_RE.match(bare_id):
+                    return {"error": f"invalid automation_id: {automation_id!r}"}
+                entity_id = f"automation.{bare_id}"
                 err = _check_service_allowed("automation.trigger", allowed_services)
                 if err is not None:
                     return err
@@ -144,10 +153,13 @@ class ToolDispatcher:
             if name == "toggle_automation":
                 automation_id = inputs["automation_id"]
                 enabled = inputs["enabled"]
-                entity_id = (
-                    automation_id if automation_id.startswith("automation.")
-                    else f"automation.{automation_id}"
+                bare_id = (
+                    automation_id[len("automation."):]
+                    if automation_id.startswith("automation.") else automation_id
                 )
+                if not _AUTOMATION_ID_RE.match(bare_id):
+                    return {"error": f"invalid automation_id: {automation_id!r}"}
+                entity_id = f"automation.{bare_id}"
                 service_key = "automation.turn_on" if enabled else "automation.turn_off"
                 err = _check_service_allowed(service_key, allowed_services)
                 if err is not None:

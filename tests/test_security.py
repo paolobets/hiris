@@ -382,6 +382,54 @@ async def test_toggle_automation_allowed_when_whitelisted():
 
 
 # ---------------------------------------------------------------------------
+# SEC-022b — automation_id format validated (no path traversal / injection)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("evil_id", [
+    "../etc/passwd",
+    "good_id; DROP TABLE",
+    "  spaces  ",
+    "WithCAPITALS",
+    "with-dash",
+    "with.dot",
+    "",
+])
+@pytest.mark.asyncio
+async def test_trigger_automation_rejects_malformed_id(evil_id):
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": evil_id},
+        agent_id="a",
+        allowed_services=None,
+        allowed_entities=None,
+    )
+    assert isinstance(out, dict)
+    assert "invalid" in (out.get("error") or "").lower()
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.parametrize("evil_id", [
+    "../etc/passwd",
+    "WithCAPITALS",
+    "",
+])
+@pytest.mark.asyncio
+async def test_toggle_automation_rejects_malformed_id(evil_id):
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": evil_id, "enabled": True},
+        agent_id="a",
+        allowed_services=None,
+        allowed_entities=None,
+    )
+    assert isinstance(out, dict)
+    assert "invalid" in (out.get("error") or "").lower()
+    d._ha.call_service.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # SEC-025 — CSRF middleware (require X-Requested-With on state-changing API)
 # ---------------------------------------------------------------------------
 
