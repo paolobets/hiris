@@ -4,6 +4,7 @@ import fnmatch
 import json
 import logging
 import os
+import threading
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -139,6 +140,8 @@ class SemanticContextMap:
         self._map: _MapType = {}
         self._type_to_label: dict[str, str] = {}
         self._cache_path = cache_path
+        # Serialize concurrent save() across executor threads.
+        self._save_lock = threading.Lock()
 
     def save(self) -> None:
         if not self._cache_path:
@@ -150,16 +153,18 @@ class SemanticContextMap:
         data = {"version": "1", "map": serialized_map, "type_to_label": dict(self._type_to_label)}
         tmp = self._cache_path + ".tmp"
         cache_path = self._cache_path
+        lock = self._save_lock
 
         def _write() -> None:
-            try:
-                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                os.replace(tmp, cache_path)
-                logger.debug("SemanticContextMap saved to %s", cache_path)
-            except Exception as exc:
-                logger.warning("SemanticContextMap save failed: %s", exc)
+            with lock:
+                try:
+                    os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    os.replace(tmp, cache_path)
+                    logger.debug("SemanticContextMap saved to %s", cache_path)
+                except Exception as exc:
+                    logger.warning("SemanticContextMap save failed: %s", exc)
 
         try:
             loop = asyncio.get_running_loop()

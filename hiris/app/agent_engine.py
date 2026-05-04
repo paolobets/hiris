@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
@@ -120,6 +121,10 @@ class AgentEngine:
         self._pending_mqtt_runs: set[str] = set()
         self._task_engine: Any = None
         self._mqtt_last_run: dict[str, float] = {}
+        # Serialize tmp-write + os.replace across concurrent _save() calls
+        # (executor uses a thread pool — two fire-and-forget _save() can otherwise
+        # overlap on the same .tmp file and corrupt state).
+        self._save_lock = threading.Lock()
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
@@ -166,15 +171,17 @@ class AgentEngine:
     def _save(self) -> None:
         data = {"schema_version": 2, "agents": [asdict(a) for a in self._agents.values()]}
         tmp = self._data_path + ".tmp"
+        lock = self._save_lock
 
         def _write() -> None:
-            try:
-                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, default=str)
-                os.replace(tmp, self._data_path)
-            except Exception as exc:
-                logger.error("Failed to persist agents: %s", exc)
+            with lock:
+                try:
+                    os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, default=str)
+                    os.replace(tmp, self._data_path)
+                except Exception as exc:
+                    logger.error("Failed to persist agents: %s", exc)
 
         try:
             loop = asyncio.get_running_loop()
