@@ -256,3 +256,126 @@ def test_cron_job_uses_coalesce():
     call_kwargs = mock_scheduler.add_job.call_args[1]
     assert call_kwargs.get("coalesce") is True
     assert call_kwargs.get("misfire_grace_time") == 60
+
+
+# ---------------------------------------------------------------------------
+# SEC-022 — automation tools rispettano allowed_services / allowed_entities
+# ---------------------------------------------------------------------------
+
+def _make_dispatcher():
+    from hiris.app.tools.dispatcher import ToolDispatcher
+    ha = MagicMock()
+    ha.call_service = AsyncMock(return_value=True)
+    return ToolDispatcher(
+        ha_client=ha,
+        notify_config={},
+        entity_cache=MagicMock(),
+        semantic_map=MagicMock(),
+        memory_store=MagicMock(),
+        embedding_provider=None,
+        memory_retention_days=None,
+        health_monitor=MagicMock(),
+        proposal_store=MagicMock(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_blocked_by_allowed_services():
+    """trigger_automation must reject when 'automation.trigger' not whitelisted."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "evil_one"},
+        agent_id="a",
+        allowed_services=["light.turn_on"],
+        allowed_entities=None,
+    )
+    assert isinstance(out, dict)
+    assert "error" in out
+    assert "automation.trigger" in out["error"]
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_blocked_by_allowed_entities():
+    """trigger_automation must reject when target automation not in allowed_entities."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "evil_one"},
+        agent_id="a",
+        allowed_services=None,
+        allowed_entities=["automation.allowed_one"],
+    )
+    assert isinstance(out, dict)
+    assert "error" in out
+    assert "automation.evil_one" in out["error"]
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_allowed_when_whitelisted():
+    """Allowed automation must reach ha_client.call_service."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "morning_briefing"},
+        agent_id="a",
+        allowed_services=["automation.trigger"],
+        allowed_entities=["automation.morning_*"],
+    )
+    assert out is True
+    d._ha.call_service.assert_awaited_once_with(
+        "automation", "trigger", {"entity_id": "automation.morning_briefing"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_blocked_by_allowed_services():
+    """toggle_automation enable must reject when 'automation.turn_on' not whitelisted."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": "x", "enabled": True},
+        agent_id="a",
+        allowed_services=["light.turn_on"],
+        allowed_entities=None,
+    )
+    assert isinstance(out, dict)
+    assert "error" in out
+    assert "automation.turn_on" in out["error"]
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_blocked_by_allowed_entities():
+    """toggle_automation must reject when target automation not in allowed_entities."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": "x", "enabled": False},
+        agent_id="a",
+        allowed_services=None,
+        allowed_entities=["automation.allowed_one"],
+    )
+    assert isinstance(out, dict)
+    assert "error" in out
+    assert "automation.x" in out["error"]
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_allowed_when_whitelisted():
+    """Allowed toggle off must reach ha_client.call_service."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": "morning_briefing", "enabled": False},
+        agent_id="a",
+        allowed_services=["automation.turn_off"],
+        allowed_entities=["automation.morning_*"],
+    )
+    assert out is True
+    d._ha.call_service.assert_awaited_once_with(
+        "automation", "turn_off", {"entity_id": "automation.morning_briefing"}
+    )
