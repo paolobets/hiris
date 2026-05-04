@@ -323,10 +323,15 @@ async function setActiveAgent(agentId, agentName) {
   agentTurnCounts[agentId] = 0;
   updateTurnCounter();
   checkTurnLimit();
+  // Capture local id: if the user clicks another agent before history loads,
+  // a stale response would otherwise rewrite the new agent's empty chat.
+  var localId = agentId;
   try {
     var r = await fetch('api/agents/' + agentId + '/chat-history');
+    if (localId !== activeAgentId) return;
     if (r.ok) {
       var data = await r.json();
+      if (localId !== activeAgentId) return;
       var msgs = data.messages || [];
       msgs.forEach(function(m) {
         appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
