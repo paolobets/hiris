@@ -1,5 +1,74 @@
 # HIRIS — Changelog
 
+## [0.9.2] — 2026-05-04
+
+### Fixed (security)
+- **SEC-022** `trigger_automation` / `toggle_automation` ora rispettano
+  `allowed_services` e `allowed_entities` per agente. Prima un agente con
+  whitelist limitata (es. `light.*`) poteva firare qualsiasi automation HA.
+- **SEC-022b** `automation_id` validato contro injection: regex `^[a-z0-9_]+$`
+  prima di costruire `entity_id` per call_service.
+- **SEC-023** Middleware auth interno non si fida più della sola presenza
+  dell'header `X-Ingress-Path`: ora valida il pattern reale di HA Supervisor
+  (`/api/hassio_ingress/<token>/...`).
+- **SEC-024** `SemanticContextMap` ora sanitizza `friendly_name`, `state`,
+  `hvac_mode`, `media_title`, area name, e knowledge_db annotations da HA
+  prima di iniettarle nel system prompt della chat (prima il filtro era
+  applicato solo agli agent autonomi → vector di prompt-injection persistente).
+- **SEC-025** Nuovo CSRF middleware globale: richiede `X-Requested-With` su
+  POST/PUT/DELETE `/api/*`. Tutti i fetch client lato HIRIS lo inviano.
+- `tools/http_tools.py` non logga più la query string dell'URL (token leak).
+
+### Fixed (bug)
+- **F-CRIT-1** Task DELETE usa path relativo `api/tasks/...` invece di assoluto
+  `/api/tasks/...` (sotto HA Ingress il path assoluto faceva 404).
+- **F-CRIT-2** Onboarding: tipi agent allineati a backend (`chat`/`agent`),
+  payload `triggers` (plurale) corretto invece di `trigger`. Prima i Monitor
+  preset venivano creati senza alcun trigger schedulato.
+- **F-ALTO-1** Race condition in `setActiveAgent`: switching rapido tra agenti
+  prima del completamento della fetch history non popola più la chat sbagliata.
+- `agent_engine.delete_agent` ora pulisce `memory_store` e chat history
+  associati (no più dati orfani in `/data/hiris_memory.db` e `/data/chat_history.db`).
+- Locking thread-safe per `_save()` JSON in `agent_engine`, `task_engine`,
+  `health_monitor`, `semantic_context_map`: due chiamate concorrenti non
+  corrompono più il file `.tmp` durante `os.replace`.
+
+### Changed (perf)
+- HTML statici (`index.html`, `config.html`) cached a startup invece di
+  `open().read()` sync per request — non blocca più l'event loop.
+
+### Removed (dead code)
+- `hiris/app/backends/claude.py` (`ClaudeBackend` mai importato in produzione).
+- `hiris/app/proxy/home_profile.py` (sostituito da `SemanticContextMap`).
+- `KnowledgeDB.record_correlation` / `record_query_hit` mai chiamati.
+- `SemanticContextMap.add_entity` / `remove_entity` mai chiamati.
+- Selettori CSS `.badge.{chat,monitor,reactive,preventive,cron}` mai emessi.
+- Token CSS `--p-indigo` / `--p-blue` / `--p-cyan` / `--p-teal` mai referenziati.
+
+### Improved (a11y)
+- Tap target ≥44px (WCAG 2.5.5) su touch device per `#theme-toggle`,
+  `.task-cancel-btn`, `.entity-chip .chip-remove`, `.action-item .ai-remove`.
+- Lovelace card rispetta `prefers-reduced-motion` (animazione `iris-breathe`,
+  `bounce`, `spin` disattivate via media query nel template Shadow DOM).
+
+### Improved (qualità)
+- `addEventListener` al posto di `.onclick` / `.onchange` in `agent-form.js`
+  (no overwrite silenzioso se più handler vengono attaccati).
+- Save / delete agent nel designer mostra ora un messaggio di errore se la
+  fetch fallisce (prima falliva in silenzio).
+- 7 punti `except Exception: pass` ora loggano almeno a debug/warning.
+- Funzione `escapeHtml()` deduplicata in `index.html` (rimasta solo `esc()`).
+- Cleanup git: rimossi 4 worktree e 4 branch locali integrati + 4 branch
+  remoti orfani (`origin/claude/*`); repo ora ha solo `master`.
+
+### Tests
+- Nuovo `tests/test_handlers_smoke.py` (14 test) per handler API senza
+  copertura: `status`, `config`, `tasks`, `health`, `run_agent`.
+- Nuovi test in `tests/test_security.py` per SEC-022, SEC-022b, SEC-025.
+- Nuovi test in `tests/test_internal_auth_middleware.py` per SEC-023.
+- Nuovi test in `tests/test_semantic_context_map.py` per SEC-024.
+- Suite passata da 446 a 469 test (+23 net; +25 added, –2 obsoleti).
+
 ## [0.9.1] — 2026-05-03
 
 ### Changed — chat surface aligned to v5 mockup
