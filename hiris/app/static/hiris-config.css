@@ -43,6 +43,14 @@
       padding: 0 1px;
     }
     .entity-chip .chip-remove:hover { color: var(--danger); }
+    /* Touch devices: enlarge tap target without changing visual layout (WCAG 2.5.5) */
+    @media (pointer: coarse) {
+      .entity-chip .chip-remove {
+        min-width: 44px; min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+        margin: -10px -8px;
+      }
+    }
 
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -306,6 +314,13 @@
       cursor: pointer; color: var(--text-muted); font-size: 16px; line-height: 1;
     }
     .action-item .ai-remove:hover { color: var(--danger); }
+    @media (pointer: coarse) {
+      .action-item .ai-remove {
+        min-width: 44px; min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+        margin: -10px -8px;
+      }
+    }
     .btn-add-action {
       background: var(--surface-4); border: 1px dashed var(--border-accent);
       color: var(--accent); font-size: 12px; padding: 5px 12px; border-radius: 6px;
@@ -527,6 +542,10 @@
     }
     #theme-toggle:hover { color: var(--text); border-color: var(--border-2); background: var(--hover); }
     #theme-toggle svg { width: 15px; height: 15px; }
+    /* Touch devices: ≥44×44px tap target (WCAG 2.5.5) */
+    @media (pointer: coarse) {
+      #theme-toggle { width: 44px; height: 44px; }
+    }
 
     /* Hide original h1 (replaced by chrome bar) */
     body > h1 { display: none; }
