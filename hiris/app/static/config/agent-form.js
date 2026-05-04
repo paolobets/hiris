@@ -21,7 +21,7 @@ function renderList() {
     row.className = 'agent-row' + (a.id === currentId ? ' active' : '');
     var typeLabel = (a.type === 'chat') ? 'Chat' : 'Agent';
     row.innerHTML = '<span>' + esc(a.name) + ' <small style="color:var(--text-muted);font-size:0.7rem">' + typeLabel + '</small></span><span class="badge ' + (a.enabled ? '' : 'off') + '">' + (a.enabled ? 'ON' : 'OFF') + '</span>';
-    row.onclick = function() { openAgent(a); };
+    row.addEventListener('click', function() { openAgent(a); });
     el.appendChild(row);
   });
 }
@@ -72,8 +72,8 @@ function _triggerOnValue() {
     .map(function(i) { return i.value; });
 }
 
-document.getElementById('f-type').onchange = function(e) { showAgentMode(e.target.value); };
-document.getElementById('f-action-mode').onchange = function(e) { showActionMode(e.target.value); };
+document.getElementById('f-type').addEventListener('change', function(e) { showAgentMode(e.target.value); });
+document.getElementById('f-action-mode').addEventListener('change', function(e) { showActionMode(e.target.value); });
 
 document.getElementById('f-states').addEventListener('blur', function() {
   var current = _triggerOnValue();
@@ -134,7 +134,7 @@ function openAgent(a) {
   _buildTriggerOnChecks(agentStates, ruleStates);
 }
 
-document.getElementById('new-btn').onclick = function() {
+document.getElementById('new-btn').addEventListener('click', function() {
   currentId = null;
   document.getElementById('f-template').value = '';
   document.getElementById('no-selection').style.display = 'none';
@@ -172,7 +172,7 @@ document.getElementById('new-btn').onclick = function() {
   updateTokenCounter();
   document.getElementById('tc-context').textContent = '—';
   document.getElementById('context-preview-wrap').style.display = 'none';
-};
+});
 
 function buildPayload() {
   var type = document.getElementById('f-type').value;
@@ -204,24 +204,44 @@ function buildPayload() {
   };
 }
 
-document.getElementById('save-btn').onclick = async function() {
+document.getElementById('save-btn').addEventListener('click', async function() {
   var payload = buildPayload();
   var method = currentId ? 'PUT' : 'POST';
   var url = currentId ? ('api/agents/' + currentId) : 'api/agents';
-  var r = await fetch(url, {method: method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)});
-  var a = await r.json();
-  await loadAgents();
-  openAgent(a);
-};
+  try {
+    var r = await fetch(url, {method: method, headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload)});
+    if (!r.ok) {
+      var msg = 'Errore salvataggio agente (HTTP ' + r.status + ')';
+      try { var d = await r.json(); if (d.error) msg = d.error; } catch (e) {}
+      alert(msg);
+      return;
+    }
+    var a = await r.json();
+    await loadAgents();
+    openAgent(a);
+  } catch (e) {
+    alert('Errore di rete durante il salvataggio: ' + (e && e.message ? e.message : e));
+  }
+});
 
-document.getElementById('delete-btn').onclick = async function() {
+document.getElementById('delete-btn').addEventListener('click', async function() {
   if (!currentId || !confirm('Eliminare questo agente?')) return;
-  await fetch('api/agents/' + currentId, {method: 'DELETE'});
-  currentId = null;
-  document.getElementById('form').style.display = 'none';
-  document.getElementById('no-selection').style.display = '';
-  await loadAgents();
-};
+  try {
+    var r = await fetch('api/agents/' + currentId, {method: 'DELETE', headers: {'X-Requested-With': 'fetch'}});
+    if (!r.ok && r.status !== 204) {
+      var msg = 'Errore eliminazione agente (HTTP ' + r.status + ')';
+      try { var d = await r.json(); if (d.error) msg = d.error; } catch (e) {}
+      alert(msg);
+      return;
+    }
+    currentId = null;
+    document.getElementById('form').style.display = 'none';
+    document.getElementById('no-selection').style.display = '';
+    await loadAgents();
+  } catch (e) {
+    alert('Errore di rete durante l eliminazione: ' + (e && e.message ? e.message : e));
+  }
+});
 
 function highlightOutput(text) {
   return text
@@ -230,7 +250,7 @@ function highlightOutput(text) {
     .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span style="color:#a5d6a7">$1</span>');
 }
 
-document.getElementById('run-btn').onclick = async function() {
+document.getElementById('run-btn').addEventListener('click', async function() {
   if (!currentId) return;
   var btn = document.getElementById('run-btn');
   var out = document.getElementById('run-output');
@@ -248,6 +268,7 @@ document.getElementById('run-btn').onclick = async function() {
   try {
     var r = await fetch('api/agents/' + currentId + '/run', {
       method: 'POST',
+      headers: {'X-Requested-With': 'fetch'},
       signal: ctrl.signal,
     });
     clearTimeout(timer);
@@ -273,4 +294,4 @@ document.getElementById('run-btn').onclick = async function() {
     btn.disabled = false;
     out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
-};
+});

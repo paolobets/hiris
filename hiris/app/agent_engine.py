@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
@@ -11,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
+from .proxy._sanitize import sanitize_ha_value as _sanitize_ha_value
 from .config import EUR_RATE
 
 # Timeout complessivo per un singolo run di agente. Evita che un modello locale
@@ -18,17 +20,6 @@ from .config import EUR_RATE
 _AGENT_RUN_TIMEOUT = int(os.environ.get("AGENT_RUN_TIMEOUT", "300"))
 
 logger = logging.getLogger(__name__)
-
-_INJECTION_RE = re.compile(
-    r'(ignore|forget|disregard|system:|assistant:|<\|im_|SYSTEM\s*PROMPT)',
-    re.IGNORECASE,
-)
-
-
-def _sanitize_ha_value(v: str) -> str:
-    v = v.strip()
-    v = _INJECTION_RE.sub("[FILTERED]", v)
-    return v[:120]
 
 
 DEFAULT_AGENTS_DATA_PATH = "/data/agents.json"
@@ -130,6 +121,10 @@ class AgentEngine:
         self._pending_mqtt_runs: set[str] = set()
         self._task_engine: Any = None
         self._mqtt_last_run: dict[str, float] = {}
+        # Serialize tmp-write + os.replace across concurrent _save() calls
+        # (executor uses a thread pool — two fire-and-forget _save() can otherwise
+        # overlap on the same .tmp file and corrupt state).
+        self._save_lock = threading.Lock()
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
@@ -176,15 +171,17 @@ class AgentEngine:
     def _save(self) -> None:
         data = {"schema_version": 2, "agents": [asdict(a) for a in self._agents.values()]}
         tmp = self._data_path + ".tmp"
+        lock = self._save_lock
 
         def _write() -> None:
-            try:
-                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, default=str)
-                os.replace(tmp, self._data_path)
-            except Exception as exc:
-                logger.error("Failed to persist agents: %s", exc)
+            with lock:
+                try:
+                    os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, default=str)
+                    os.replace(tmp, self._data_path)
+                except Exception as exc:
+                    logger.error("Failed to persist agents: %s", exc)
 
         try:
             loop = asyncio.get_running_loop()
@@ -428,8 +425,8 @@ class AgentEngine:
             if job.id == agent_id or job.id.startswith(f"{agent_id}__"):
                 try:
                     self._scheduler.remove_job(job.id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("remove_job(%s) failed: %s", job.id, exc)
 
     def _on_state_changed(self, event_data: dict) -> None:
         entity_id = event_data.get("entity_id", "")
@@ -857,8 +854,8 @@ class AgentEngine:
                         usage = runner.get_agent_usage(agent.id)
                         budget_eur = round(usage.get("cost_usd", 0.0) * EUR_RATE, 4)
                         tokens_today = usage.get("tokens_today", 0)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("get_agent_usage(%s) failed: %s", agent.id, exc)
                 remaining: Any = (
                     max(0.0, agent.budget_eur_limit - budget_eur)
                     if agent.budget_eur_limit > 0 else "unlimited"

@@ -1,7 +1,13 @@
 from __future__ import annotations
 import fnmatch
 import logging
+import re
 from typing import Any, Optional
+
+# HA automation IDs are slug-style: lowercase alphanumeric + underscore.
+# Reject anything else before composing entity_id, to avoid injection through
+# automation.{id} in case HA's downstream parser is lenient.
+_AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
 from .ha_tools import (
     get_entity_states, get_area_entities, get_home_status,
@@ -29,6 +35,30 @@ def _filter_entities(entities: list[dict], allowed_entities: list[str] | None) -
         e for e in entities
         if any(fnmatch.fnmatch(e.get("id", e.get("entity_id", "")), pat) for pat in allowed_entities)
     ]
+
+
+def _check_service_allowed(
+    service_key: str, allowed_services: list[str] | None
+) -> dict | None:
+    """Return error dict if service blocked, None if allowed."""
+    if allowed_services and not any(
+        fnmatch.fnmatch(service_key, pat) for pat in allowed_services
+    ):
+        logger.warning("Service %s blocked by policy", service_key)
+        return {"error": f"Service {service_key} not permitted by policy"}
+    return None
+
+
+def _check_entity_allowed(
+    entity_id: str, allowed_entities: list[str] | None
+) -> dict | None:
+    """Return error dict if entity blocked, None if allowed."""
+    if allowed_entities and not any(
+        fnmatch.fnmatch(entity_id, pat) for pat in allowed_entities
+    ):
+        logger.warning("Entity %s blocked by allowed_entities policy", entity_id)
+        return {"error": f"Entity {entity_id!r} not permitted by policy"}
+    return None
 
 
 class ToolDispatcher:
@@ -105,9 +135,39 @@ class ToolDispatcher:
             if name == "get_ha_automations":
                 return await get_ha_automations(self._ha)
             if name == "trigger_automation":
-                return await trigger_automation(self._ha, inputs["automation_id"])
+                automation_id = inputs["automation_id"]
+                bare_id = (
+                    automation_id[len("automation."):]
+                    if automation_id.startswith("automation.") else automation_id
+                )
+                if not _AUTOMATION_ID_RE.match(bare_id):
+                    return {"error": f"invalid automation_id: {automation_id!r}"}
+                entity_id = f"automation.{bare_id}"
+                err = _check_service_allowed("automation.trigger", allowed_services)
+                if err is not None:
+                    return err
+                err = _check_entity_allowed(entity_id, allowed_entities)
+                if err is not None:
+                    return err
+                return await trigger_automation(self._ha, automation_id)
             if name == "toggle_automation":
-                return await toggle_automation(self._ha, inputs["automation_id"], inputs["enabled"])
+                automation_id = inputs["automation_id"]
+                enabled = inputs["enabled"]
+                bare_id = (
+                    automation_id[len("automation."):]
+                    if automation_id.startswith("automation.") else automation_id
+                )
+                if not _AUTOMATION_ID_RE.match(bare_id):
+                    return {"error": f"invalid automation_id: {automation_id!r}"}
+                entity_id = f"automation.{bare_id}"
+                service_key = "automation.turn_on" if enabled else "automation.turn_off"
+                err = _check_service_allowed(service_key, allowed_services)
+                if err is not None:
+                    return err
+                err = _check_entity_allowed(entity_id, allowed_entities)
+                if err is not None:
+                    return err
+                return await toggle_automation(self._ha, automation_id, enabled)
             if name == "call_ha_service":
                 domain = inputs["domain"]
                 service = inputs["service"]

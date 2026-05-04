@@ -1,9 +1,16 @@
 import hmac
 import logging
 import os
+import re
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
+
+# Supervisor adds X-Ingress-Path = "/api/hassio_ingress/<token>/..." to every
+# proxied request. Validate the pattern so an attacker forwarded through a
+# different proxy cannot just attach the header with an arbitrary value.
+_INGRESS_PATH_RE = re.compile(r"^/api/hassio_ingress/[A-Za-z0-9_\-]+(/.*)?$")
+
 
 def _allow_no_token() -> bool:
     """Re-read env var at each request so tests can patch it without import-order issues."""
@@ -14,13 +21,13 @@ def _allow_no_token() -> bool:
 async def internal_auth_middleware(request: web.Request, handler) -> web.Response:
     """Validate X-HIRIS-Internal-Token for non-Ingress requests.
 
-    Requests via HA Supervisor Ingress (X-Ingress-Path present) always pass.
-    Non-ingress requests require a matching X-HIRIS-Internal-Token; when no
-    token is configured they are denied by default (set HIRIS_ALLOW_NO_TOKEN=1
-    to disable this during local development).
+    Requests via HA Supervisor Ingress (X-Ingress-Path matches the Supervisor
+    pattern) always pass. Non-ingress requests require a matching
+    X-HIRIS-Internal-Token; when no token is configured they are denied by
+    default (set HIRIS_ALLOW_NO_TOKEN=1 to disable this during local development).
     """
-    # X-Ingress-Path is set by HA Supervisor's reverse proxy on all ingress traffic.
-    if request.headers.get("X-Ingress-Path"):
+    ingress_path = request.headers.get("X-Ingress-Path", "")
+    if ingress_path and _INGRESS_PATH_RE.match(ingress_path):
         return await handler(request)
 
     token = request.app.get("internal_token", "")

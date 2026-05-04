@@ -256,3 +256,236 @@ def test_cron_job_uses_coalesce():
     call_kwargs = mock_scheduler.add_job.call_args[1]
     assert call_kwargs.get("coalesce") is True
     assert call_kwargs.get("misfire_grace_time") == 60
+
+
+# ---------------------------------------------------------------------------
+# SEC-022 — automation tools rispettano allowed_services / allowed_entities
+# ---------------------------------------------------------------------------
+
+def _make_dispatcher():
+    from hiris.app.tools.dispatcher import ToolDispatcher
+    ha = MagicMock()
+    ha.call_service = AsyncMock(return_value=True)
+    return ToolDispatcher(
+        ha_client=ha,
+        notify_config={},
+        entity_cache=MagicMock(),
+        semantic_map=MagicMock(),
+        memory_store=MagicMock(),
+        embedding_provider=None,
+        memory_retention_days=None,
+        health_monitor=MagicMock(),
+        proposal_store=MagicMock(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_blocked_by_allowed_services():
+    """trigger_automation must reject when 'automation.trigger' not whitelisted."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "evil_one"},
+        agent_id="a",
+        allowed_services=["light.turn_on"],
+        allowed_entities=None,
+    )
+    assert isinstance(out, dict)
+    assert "error" in out
+    assert "automation.trigger" in out["error"]
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_blocked_by_allowed_entities():
+    """trigger_automation must reject when target automation not in allowed_entities."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "evil_one"},
+        agent_id="a",
+        allowed_services=None,
+        allowed_entities=["automation.allowed_one"],
+    )
+    assert isinstance(out, dict)
+    assert "error" in out
+    assert "automation.evil_one" in out["error"]
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_allowed_when_whitelisted():
+    """Allowed automation must reach ha_client.call_service."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "morning_briefing"},
+        agent_id="a",
+        allowed_services=["automation.trigger"],
+        allowed_entities=["automation.morning_*"],
+    )
+    assert out is True
+    d._ha.call_service.assert_awaited_once_with(
+        "automation", "trigger", {"entity_id": "automation.morning_briefing"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_blocked_by_allowed_services():
+    """toggle_automation enable must reject when 'automation.turn_on' not whitelisted."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": "x", "enabled": True},
+        agent_id="a",
+        allowed_services=["light.turn_on"],
+        allowed_entities=None,
+    )
+    assert isinstance(out, dict)
+    assert "error" in out
+    assert "automation.turn_on" in out["error"]
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_blocked_by_allowed_entities():
+    """toggle_automation must reject when target automation not in allowed_entities."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": "x", "enabled": False},
+        agent_id="a",
+        allowed_services=None,
+        allowed_entities=["automation.allowed_one"],
+    )
+    assert isinstance(out, dict)
+    assert "error" in out
+    assert "automation.x" in out["error"]
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_allowed_when_whitelisted():
+    """Allowed toggle off must reach ha_client.call_service."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": "morning_briefing", "enabled": False},
+        agent_id="a",
+        allowed_services=["automation.turn_off"],
+        allowed_entities=["automation.morning_*"],
+    )
+    assert out is True
+    d._ha.call_service.assert_awaited_once_with(
+        "automation", "turn_off", {"entity_id": "automation.morning_briefing"}
+    )
+
+
+# ---------------------------------------------------------------------------
+# SEC-022b — automation_id format validated (no path traversal / injection)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("evil_id", [
+    "../etc/passwd",
+    "good_id; DROP TABLE",
+    "  spaces  ",
+    "WithCAPITALS",
+    "with-dash",
+    "with.dot",
+    "",
+])
+@pytest.mark.asyncio
+async def test_trigger_automation_rejects_malformed_id(evil_id):
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": evil_id},
+        agent_id="a",
+        allowed_services=None,
+        allowed_entities=None,
+    )
+    assert isinstance(out, dict)
+    assert "invalid" in (out.get("error") or "").lower()
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.parametrize("evil_id", [
+    "../etc/passwd",
+    "WithCAPITALS",
+    "",
+])
+@pytest.mark.asyncio
+async def test_toggle_automation_rejects_malformed_id(evil_id):
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": evil_id, "enabled": True},
+        agent_id="a",
+        allowed_services=None,
+        allowed_entities=None,
+    )
+    assert isinstance(out, dict)
+    assert "invalid" in (out.get("error") or "").lower()
+    d._ha.call_service.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# SEC-025 — CSRF middleware (require X-Requested-With on state-changing API)
+# ---------------------------------------------------------------------------
+
+def _make_csrf_app():
+    """Mini app wired with CSRF middleware to verify behavior in isolation."""
+    from hiris.app.api.middleware_csrf import csrf_middleware
+    app = web.Application(middlewares=[csrf_middleware])
+    app.router.add_post("/api/x", lambda r: web.json_response({"ok": True}))
+    app.router.add_get("/api/x", lambda r: web.json_response({"ok": True}))
+    app.router.add_delete("/api/x", lambda r: web.json_response({"ok": True}))
+    app.router.add_post("/static/x", lambda r: web.json_response({"ok": True}))
+    return app
+
+
+@pytest.fixture
+def csrf_strict(monkeypatch):
+    """Override the test-suite default HIRIS_ALLOW_NO_CSRF=1 so CSRF middleware blocks again."""
+    monkeypatch.setenv("HIRIS_ALLOW_NO_CSRF", "")
+    yield
+
+
+@pytest.mark.asyncio
+async def test_csrf_blocks_post_without_xrw(csrf_strict):
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.post("/api/x")
+        assert resp.status == 403
+        data = await resp.json()
+        assert data["error"] == "csrf_required"
+
+
+@pytest.mark.asyncio
+async def test_csrf_blocks_delete_without_xrw(csrf_strict):
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.delete("/api/x")
+        assert resp.status == 403
+
+
+@pytest.mark.asyncio
+async def test_csrf_allows_get_without_xrw(csrf_strict):
+    """GET is a safe method — must always pass."""
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.get("/api/x")
+        assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_allows_post_with_xrw(csrf_strict):
+    """Any non-empty X-Requested-With value is accepted (browsers block CORS)."""
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.post("/api/x", headers={"X-Requested-With": "fetch"})
+        assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_does_not_apply_to_non_api_paths(csrf_strict):
+    """Static and Lovelace card paths are not protected (no auth surface)."""
+    async with TestClient(TestServer(_make_csrf_app())) as c:
+        resp = await c.post("/static/x")
+        assert resp.status == 200

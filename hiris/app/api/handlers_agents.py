@@ -1,8 +1,11 @@
 # hiris/app/api/handlers_agents.py
+import logging
 import re
 from dataclasses import asdict
 from aiohttp import web
 from ..config import EUR_RATE as _EUR_RATE
+
+logger = logging.getLogger(__name__)
 
 _AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 _VALID_AGENT_TYPES = frozenset({"chat", "agent"})
@@ -119,7 +122,8 @@ async def handle_list_agents(request: web.Request) -> web.Response:
                 usage = runner.get_agent_usage(agent_id)
                 cost_usd = usage.get("cost_usd", 0.0)
                 budget_eur = round(float(cost_usd) * _EUR_RATE, 4)
-            except Exception:
+            except Exception as exc:
+                logger.warning("get_agent_usage(%s) failed: %s", agent_id, exc)
                 budget_eur = 0.0
         entry["budget_eur"] = budget_eur
         entry["budget_limit_eur"] = float(entry.get("budget_eur_limit", 0.0))
@@ -187,6 +191,20 @@ async def handle_delete_agent(request: web.Request) -> web.Response:
     deleted = engine.delete_agent(agent_id)
     if not deleted:
         return web.json_response({"error": "Not found"}, status=404)
+    # Clean up orphaned data: long-term memories and persisted chat history.
+    memory_store = request.app.get("memory_store")
+    if memory_store is not None:
+        try:
+            memory_store.delete_by_agent(agent_id)
+        except Exception as exc:
+            logger.warning("memory_store.delete_by_agent(%s) failed: %s", agent_id, exc)
+    data_dir = request.app.get("data_dir")
+    if data_dir:
+        try:
+            from ..chat_store import clear_history
+            clear_history(agent_id, data_dir)
+        except Exception as exc:
+            logger.warning("clear_history(%s) failed: %s", agent_id, exc)
     return web.Response(status=204)
 
 

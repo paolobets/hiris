@@ -36,6 +36,7 @@ from .proxy.semantic_context_map import SemanticContextMap
 from .proxy.memory_store import MemoryStore
 from .backends.embeddings import build_embedding_provider
 from .api.middleware_internal_auth import internal_auth_middleware
+from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
 
 logger = logging.getLogger(__name__)
@@ -241,6 +242,19 @@ async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner
     from .proxy.semantic_map import SemanticMap
     from .llm_router import LLMRouter
+
+    # Pre-load static HTML so request handlers don't do sync open().read()
+    # per request (would block the event loop). Cache invalidation happens via
+    # _inject_version() on every render anyway.
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    for fname, key in (("index.html", "html_index"), ("config.html", "html_config")):
+        path = os.path.join(static_dir, fname)
+        try:
+            with open(path, encoding="utf-8") as f:
+                app[key] = f.read()
+        except FileNotFoundError:
+            logger.error("Static %s missing at %s", fname, path)
+            app[key] = ""
 
     app["internal_token"] = os.environ.get("INTERNAL_TOKEN", "")
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
@@ -541,7 +555,11 @@ async def _security_headers(request: web.Request, handler) -> web.Response:
 
 
 def create_app() -> web.Application:
-    app = web.Application(middlewares=[internal_auth_middleware, _security_headers])
+    app = web.Application(middlewares=[
+        internal_auth_middleware,
+        csrf_middleware,
+        _security_headers,
+    ])
 
     app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)
@@ -593,10 +611,9 @@ def _inject_version(html: str, version: str) -> str:
 
 
 async def _serve_index(request: web.Request) -> web.Response:
-    path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    if not os.path.exists(path):
+    html = request.app.get("html_index") or ""
+    if not html:
         return web.Response(text="UI not yet available", status=503)
-    html = open(path, encoding="utf-8").read()
     return web.Response(
         text=_inject_version(html, read_version()),
         content_type="text/html",
@@ -605,10 +622,9 @@ async def _serve_index(request: web.Request) -> web.Response:
 
 
 async def _serve_config(request: web.Request) -> web.Response:
-    path = os.path.join(os.path.dirname(__file__), "static", "config.html")
-    if not os.path.exists(path):
+    html = request.app.get("html_config") or ""
+    if not html:
         return web.Response(text="UI not yet available", status=503)
-    html = open(path, encoding="utf-8").read()
     return web.Response(
         text=_inject_version(html, read_version()),
         content_type="text/html",

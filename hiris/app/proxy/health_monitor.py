@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -32,6 +33,8 @@ class HealthMonitor:
             "updates_available": [],
             "system_info": {},
         }
+        # Serialize concurrent _save_sync() between scheduler refresh and WS callbacks.
+        self._save_lock = threading.Lock()
         os.makedirs(os.path.dirname(os.path.abspath(self._data_path)), exist_ok=True)
         self._load()
 
@@ -54,11 +57,12 @@ class HealthMonitor:
             self._save_sync()
 
     def _save_sync(self) -> None:
-        try:
-            with open(self._data_path, "w", encoding="utf-8") as f:
-                json.dump(self._snapshot_data, f, ensure_ascii=False)
-        except Exception as exc:
-            logger.warning("HealthMonitor: failed to save snapshot: %s", exc)
+        with self._save_lock:
+            try:
+                with open(self._data_path, "w", encoding="utf-8") as f:
+                    json.dump(self._snapshot_data, f, ensure_ascii=False)
+            except Exception as exc:
+                logger.warning("HealthMonitor: failed to save snapshot: %s", exc)
 
     async def start(self) -> None:
         """Avvia il monitor: register WS hook, schedule polling, initial refresh."""

@@ -3,6 +3,7 @@ import fnmatch
 import json
 import logging
 import os
+import threading
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import date, datetime, time, timedelta, timezone
@@ -50,6 +51,8 @@ class TaskEngine:
         self._data_path = data_path
         self._tasks: dict[str, Task] = {}
         self._scheduler = AsyncIOScheduler()
+        # Serialize concurrent _do_save() across executor threads.
+        self._save_lock = threading.Lock()
 
     async def start(self) -> None:
         self._scheduler.start()
@@ -127,15 +130,16 @@ class TaskEngine:
     # ── Persistence ────────────────────────────────────────────────────────
 
     def _do_save(self, snapshot: list) -> None:
-        try:
-            data = {"schema_version": 1, "tasks": snapshot}
-            tmp = self._data_path + ".tmp"
-            os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, default=str)
-            os.replace(tmp, self._data_path)
-        except Exception as exc:
-            logger.error("Failed to save tasks: %s", exc)
+        with self._save_lock:
+            try:
+                data = {"schema_version": 1, "tasks": snapshot}
+                tmp = self._data_path + ".tmp"
+                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, default=str)
+                os.replace(tmp, self._data_path)
+            except Exception as exc:
+                logger.error("Failed to save tasks: %s", exc)
 
     def _save(self) -> None:
         snapshot = [asdict(t) for t in self._tasks.values()]
@@ -195,8 +199,8 @@ class TaskEngine:
                     ts = ts.replace(tzinfo=timezone.utc)
                 if ts < cutoff:
                     to_remove.append(task_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("cleanup ts parse failed for task %s: %s", task_id, exc)
         for task_id in to_remove:
             del self._tasks[task_id]
         if to_remove:
@@ -249,8 +253,8 @@ class TaskEngine:
         for job_id in (f"task_{task_id}", f"task_expire_{task_id}"):
             try:
                 self._scheduler.remove_job(job_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("remove_job(%s) failed: %s", job_id, exc)
 
     # ── Condition evaluation ────────────────────────────────────────────────
 

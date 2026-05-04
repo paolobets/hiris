@@ -250,7 +250,7 @@ function checkTurnLimit() {
 async function clearConversation() {
   if (!activeAgentId) return;
   try {
-    await fetch('api/agents/' + activeAgentId + '/chat-history', { method: 'DELETE' });
+    await fetch('api/agents/' + activeAgentId + '/chat-history', { method: 'DELETE', headers: {'X-Requested-With': 'fetch'} });
   } catch(e) {}
   messagesEl.innerHTML = '';
   messagesEl.appendChild(welcomeEl);
@@ -323,10 +323,15 @@ async function setActiveAgent(agentId, agentName) {
   agentTurnCounts[agentId] = 0;
   updateTurnCounter();
   checkTurnLimit();
+  // Capture local id: if the user clicks another agent before history loads,
+  // a stale response would otherwise rewrite the new agent's empty chat.
+  var localId = agentId;
   try {
     var r = await fetch('api/agents/' + agentId + '/chat-history');
+    if (localId !== activeAgentId) return;
     if (r.ok) {
       var data = await r.json();
+      if (localId !== activeAgentId) return;
       var msgs = data.messages || [];
       msgs.forEach(function(m) {
         appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
@@ -432,7 +437,7 @@ async function sendMessage(text) {
   try {
     var r = await fetch('api/chat', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'fetch'},
       body: JSON.stringify({ message: text, agent_id: activeAgentId }),
     });
     var data = await r.json();
@@ -578,19 +583,16 @@ function formatTrigger(trigger) {
   if (trigger.type === 'time_window') return 'finestra ' + trigger.from + '–' + trigger.to;
   return trigger.type;
 }
-function escapeHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
 function renderTask(task) {
   var isPending = task.status === 'pending';
-  var safeId = escapeHtml(task.id);
+  var safeId = esc(task.id);
   var cancelBtn = isPending ? '<button class="task-cancel-btn" onclick="cancelTask(&quot;' + safeId + '&quot;)">Annulla</button>' : '';
   var rawMeta = task.result || task.error || formatTrigger(task.trigger);
-  var meta = rawMeta ? escapeHtml(rawMeta) : '';
+  var meta = rawMeta ? esc(rawMeta) : '';
   return '<div class="task-card" id="task-' + safeId + '">'
     + '<div class="task-card-header">'
-    + '<span class="task-label">' + escapeHtml(task.label) + '</span>'
-    + '<span class="task-status ' + escapeHtml(task.status) + '">' + escapeHtml(task.status) + '</span>'
+    + '<span class="task-label">' + esc(task.label) + '</span>'
+    + '<span class="task-status ' + esc(task.status) + '">' + esc(task.status) + '</span>'
     + cancelBtn
     + '</div>'
     + (meta ? '<div class="task-meta">' + meta + '</div>' : '')
@@ -617,7 +619,7 @@ async function loadTasks() {
 async function cancelTask(taskId) {
   if (!confirm('Annullare questa task?')) return;
   try {
-    var resp = await fetch('/api/tasks/' + taskId, {method: 'DELETE'});
+    var resp = await fetch('api/tasks/' + taskId, {method: 'DELETE', headers: {'X-Requested-With': 'fetch'}});
     if (resp.ok || resp.status === 204) loadTasks();
   } catch(e) { console.error('cancelTask failed', e); }
 }
@@ -662,13 +664,19 @@ async function obCreate() {
   var name = (document.getElementById('ob-name').value || '').trim();
   if (!name) { document.getElementById('ob-name').focus(); return; }
   var prompt = (document.getElementById('ob-prompt').value || '').trim();
-  var trigger = _obType === 'monitor' ? { type: 'schedule', interval_minutes: 60 } : { type: 'manual' };
-  var payload = { name: name, type: _obType, trigger: trigger };
+  // Backend types are only 'chat' | 'agent'. Map onboarding intent → backend type.
+  var backendType = _obType === 'chat' ? 'chat' : 'agent';
+  // Triggers must be a list. Monitor preset = schedule every 60 min. Others
+  // start with no triggers and the user wires them up in the Designer.
+  var triggers = _obType === 'monitor'
+    ? [{ type: 'schedule', interval_minutes: 60 }]
+    : [];
+  var payload = { name: name, type: backendType, triggers: triggers };
   if (prompt) payload.system_prompt = prompt;
   var btn = document.getElementById('ob-create-btn');
   btn.disabled = true;
   try {
-    var r = await fetch('api/agents', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    var r = await fetch('api/agents', { method: 'POST', headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload) });
     if (!r.ok) { btn.disabled = false; alert('Errore nella creazione agente. Riprova.'); return; }
     var agent = await r.json();
     await loadAgents();

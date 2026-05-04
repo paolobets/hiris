@@ -1,11 +1,14 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import asyncio
 import fnmatch
 import json
 import logging
 import os
+import threading
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
+
+from ._sanitize import sanitize_ha_value
 
 if TYPE_CHECKING:
     from .entity_cache import EntityCache
@@ -27,12 +30,12 @@ ENTITY_TYPE_SCHEMA: dict[tuple[str, str | None], tuple[str, str]] = {
     ("switch", None): ("switch", "Interruttore"),
     ("input_boolean", None): ("switch", "Interruttore"),
     ("sensor", "temperature"): ("temperature", "Temperatura"),
-    ("sensor", "humidity"): ("humidity", "Umidità"),
+    ("sensor", "humidity"): ("humidity", "UmiditÃ "),
     ("sensor", "power"): ("power", "Potenza"),
     ("sensor", "energy"): ("energy", "Energia"),
     ("sensor", "battery"): ("battery", "Batteria"),
-    ("sensor", "illuminance"): ("illuminance", "Luminosità"),
-    ("sensor", "co2"): ("co2", "CO₂"),
+    ("sensor", "illuminance"): ("illuminance", "LuminositÃ "),
+    ("sensor", "co2"): ("co2", "COâ‚‚"),
     ("sensor", "pm25"): ("pm25", "PM2.5"),
     ("sensor", "pressure"): ("pressure", "Pressione"),
     ("sensor", "voltage"): ("voltage", "Tensione"),
@@ -50,7 +53,7 @@ ENTITY_TYPE_SCHEMA: dict[tuple[str, str | None], tuple[str, str]] = {
     ("binary_sensor", "connectivity"): ("connectivity", "Connessione"),
     # Irrigation / outdoor
     ("sensor", "precipitation"): ("precipitation", "Precipitazione"),
-    ("sensor", "moisture"): ("soil_moisture", "Umidità suolo"),
+    ("sensor", "moisture"): ("soil_moisture", "UmiditÃ  suolo"),
     ("weather", None): ("weather", "Meteo"),
 }
 
@@ -59,7 +62,7 @@ _DOMAIN_FALLBACK: dict[str, tuple[str, str]] = {
     "binary_sensor": ("binary", "Sensore"),
 }
 
-# Superset of entity_cache.NOISE_DOMAINS — keep in sync when adding noise domains.
+# Superset of entity_cache.NOISE_DOMAINS â€” keep in sync when adding noise domains.
 _EXCLUDED_DOMAINS = frozenset({
     "update", "button", "tag", "event", "ai_task", "todo", "conversation",
     "device_tracker", "persistent_notification", "scene", "script",
@@ -85,14 +88,14 @@ CONCEPT_TO_TYPES: dict[str, list[str]] = {
     "tenda": ["cover"], "avvolgibile": ["cover"],
     "tv": ["media_player"], "televisione": ["media_player"],
     "musica": ["media_player"], "volume": ["media_player"],
-    "umidità": ["humidity"],
+    "umiditÃ ": ["humidity"],
     "serratura": ["lock"], "chiave": ["lock"],
     "allarme": ["alarm"], "sicurezza": ["alarm"],
     "robot": ["vacuum"], "aspirapolvere": ["vacuum"],
     "lavatrice": ["switch"], "lavastoviglie": ["switch"],
     "interruttore": ["switch"],
     "ventilatore": ["fan"], "co2": ["co2"], "anidride": ["co2"],
-    "batteria": ["battery"], "luminosità": ["illuminance"], "lux": ["illuminance"],
+    "batteria": ["battery"], "luminositÃ ": ["illuminance"], "lux": ["illuminance"],
     "pm25": ["pm25"], "polveri": ["pm25"],
     "pressione": ["pressure"], "tensione": ["voltage"], "corrente": ["current"],
     "gas": ["gas"], "acqua": ["water"], "perdita": ["moisture"],
@@ -106,13 +109,13 @@ CONCEPT_TO_TYPES: dict[str, list[str]] = {
     "pioggia": ["precipitation", "weather"],
     "piovuto": ["precipitation", "weather"],
     "precipitazione": ["precipitation"],
-    "umidità suolo": ["soil_moisture"],
+    "umiditÃ  suolo": ["soil_moisture"],
     "giardino": ["switch", "soil_moisture", "precipitation"],
     "meteo": ["weather"],
     "previsioni": ["weather"],
 }
 
-# area_name (or None for unassigned) → entity_type → [entity_ids]
+# area_name (or None for unassigned) â†’ entity_type â†’ [entity_ids]
 _MapType = dict[str | None, dict[str, list[str]]]
 
 
@@ -137,6 +140,8 @@ class SemanticContextMap:
         self._map: _MapType = {}
         self._type_to_label: dict[str, str] = {}
         self._cache_path = cache_path
+        # Serialize concurrent save() across executor threads.
+        self._save_lock = threading.Lock()
 
     def save(self) -> None:
         if not self._cache_path:
@@ -148,16 +153,18 @@ class SemanticContextMap:
         data = {"version": "1", "map": serialized_map, "type_to_label": dict(self._type_to_label)}
         tmp = self._cache_path + ".tmp"
         cache_path = self._cache_path
+        lock = self._save_lock
 
         def _write() -> None:
-            try:
-                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                os.replace(tmp, cache_path)
-                logger.debug("SemanticContextMap saved to %s", cache_path)
-            except Exception as exc:
-                logger.warning("SemanticContextMap save failed: %s", exc)
+            with lock:
+                try:
+                    os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    os.replace(tmp, cache_path)
+                    logger.debug("SemanticContextMap saved to %s", cache_path)
+                except Exception as exc:
+                    logger.warning("SemanticContextMap save failed: %s", exc)
 
         try:
             loop = asyncio.get_running_loop()
@@ -242,15 +249,19 @@ class SemanticContextMap:
         return self._type_to_label.get(entity_type, entity_type)
 
     def _format_state(self, entity_type: str, entity_data: dict) -> str:
-        state = entity_data.get("state", "")
+        # Sanitize all HA-derived strings before they reach the LLM context.
+        # Free-text fields (state, hvac_mode, media_title) and unit can carry
+        # prompt-injection markers if a user has renamed entities or attackers
+        # have written to them via integrations.
+        state = sanitize_ha_value(entity_data.get("state", ""))
         attrs = entity_data.get("attributes") or {}
         if entity_type == "climate":
             cur = attrs.get("current_temperature", "?")
             sp = attrs.get("temperature", "?")
-            mode = attrs.get("hvac_mode", state)
-            action = attrs.get("hvac_action", "")
-            action_str = f" · {action}" if action and action not in ("idle", "off") else ""
-            return f"{mode} · {cur}°C → {sp}°C{action_str}"
+            mode = sanitize_ha_value(attrs.get("hvac_mode", state))
+            action = sanitize_ha_value(attrs.get("hvac_action", ""))
+            action_str = f" Â· {action}" if action and action not in ("idle", "off") else ""
+            return f"{mode} Â· {cur}Â°C â†’ {sp}Â°C{action_str}"
         if entity_type == "light":
             if state == "off":
                 return "spenta"
@@ -262,10 +273,10 @@ class SemanticContextMap:
         if entity_type == "media_player":
             if state in ("off", "standby", "idle"):
                 return state
-            title = attrs.get("media_title", "")
+            title = sanitize_ha_value(attrs.get("media_title", ""))
             vol = attrs.get("volume_level")
             vol_str = f" vol:{round(vol * 100)}%" if vol is not None else ""
-            return f"{state} · {title}{vol_str}" if title else f"{state}{vol_str}"
+            return f"{state} Â· {title}{vol_str}" if title else f"{state}{vol_str}"
         if entity_type in ("motion", "presence"):
             return "rilevato" if state == "on" else "assente"
         if entity_type == "door":
@@ -274,7 +285,7 @@ class SemanticContextMap:
             return "aperta" if state == "on" else "chiusa"
         if entity_type == "switch":
             return "acceso" if state == "on" else "spento"
-        unit = entity_data.get("unit", "")
+        unit = sanitize_ha_value(entity_data.get("unit", ""))
         return f"{state} {unit}".strip() if unit else state
 
     def _filter_by_allowed(self, allowed_entities: list[str] | None) -> _MapType:
@@ -294,16 +305,17 @@ class SemanticContextMap:
     def _format_overview(self, filtered: _MapType, now: str) -> str:
         named = {k: v for k, v in filtered.items() if k is not None}
         unassigned = filtered.get(None, {})
-        lines = [f"CASA — {len(named)} aree [agg. {now}]"]
+        lines = [f"CASA â€” {len(named)} aree [agg. {now}]"]
         for area in sorted(named):
             parts = []
             for et, eids in sorted(named[area].items()):
                 label = self._get_label(et)
-                parts.append(f"{label}×{len(eids)}" if len(eids) > 1 else label)
-            lines.append(f"  {area}: {' · '.join(parts)}")
+                parts.append(f"{label}Ã—{len(eids)}" if len(eids) > 1 else label)
+            # Area names come from HA â€” sanitize before placing in LLM context.
+            lines.append(f"  {sanitize_ha_value(area)}: {' Â· '.join(parts)}")
         if unassigned:
             ua = [self._get_label(et) for et in unassigned]
-            lines.append(f"[Non assegnate: {' · '.join(ua)}]")
+            lines.append(f"[Non assegnate: {' Â· '.join(ua)}]")
         return "\n".join(lines)
 
     def _format_detail(
@@ -324,7 +336,7 @@ class SemanticContextMap:
             }
             if not relevant:
                 continue
-            header = (area or "Non assegnate").upper()
+            header = sanitize_ha_value(area or "Non assegnate").upper()
             lines = [f"{header} [agg. {now}]"]
             for et, eids in relevant.items():
                 label = self._get_label(et)
@@ -334,13 +346,13 @@ class SemanticContextMap:
                         logger.debug("get_state returned None for %s (cache/map desync?)", eid)
                         continue
                     state_str = self._format_state(et, ed)
-                    name = ed.get("name") or eid
+                    name = sanitize_ha_value(ed.get("name") or eid)
                     lines.append(f"  {label:<14} {name:<32} {state_str}")
                     if knowledge_db:
                         for annot in knowledge_db.get_annotations(eid)[:1]:
-                            lines.append(
-                                f"    [Nota: {annot['annotation']} — {annot['source']}]"
-                            )
+                            ann_text = sanitize_ha_value(annot.get("annotation", ""))
+                            ann_src = sanitize_ha_value(annot.get("source", ""))
+                            lines.append(f"    [Nota: {ann_text} â€” {ann_src}]")
             if len(lines) > 1:
                 sections.append("\n".join(lines))
         return "\n\n".join(sections)
@@ -376,28 +388,3 @@ class SemanticContextMap:
         else:
             context = overview
         return context, visible_ids
-
-    def add_entity(
-        self,
-        entity_id: str,
-        domain: str,
-        device_class: str | None,
-        area: str | None,
-        knowledge_db: Optional[KnowledgeDB] = None,
-    ) -> None:
-        if domain in _EXCLUDED_DOMAINS:
-            return
-        entity_type, label_it = classify_entity(domain, device_class)
-        if entity_type == "other":
-            return
-        self._type_to_label[entity_type] = label_it
-        bucket = self._map.setdefault(area, {}).setdefault(entity_type, [])
-        if entity_id not in bucket:
-            bucket.append(entity_id)
-
-    def remove_entity(self, entity_id: str) -> None:
-        for area_types in self._map.values():
-            for eids in area_types.values():
-                if entity_id in eids:
-                    eids.remove(entity_id)
-                    return

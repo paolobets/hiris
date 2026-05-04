@@ -252,6 +252,7 @@ class HirisCard extends HTMLElement {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
           'Authorization': `Bearer ${this._authToken()}`,
+          'X-Requested-With': 'fetch',
         },
         body: JSON.stringify({ message: text, agent_id: this._agentId, stream: true }),
         signal: controller.signal,
@@ -315,6 +316,7 @@ class HirisCard extends HTMLElement {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this._authToken()}`,
+          'X-Requested-With': 'fetch',
         },
         body: JSON.stringify({ enabled: !this._enabled }),
       });
@@ -453,6 +455,11 @@ class HirisCard extends HTMLElement {
         @keyframes iris-breathe {
           0%, 100% { transform: scale(1); }
           50%      { transform: scale(1.04); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .header-left img,
+          .typing-dots span,
+          .spinner { animation: none !important; }
         }
         .title {
           font-size: 14.5px; font-weight: 600; letter-spacing: -0.012em;

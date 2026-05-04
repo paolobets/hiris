@@ -82,7 +82,6 @@ hiris/app/
 │   ├── semantic_context_map.py  Iniezione contesto con consapevolezza delle aree
 │   ├── memory_store.py          Store vettoriale SQLite (similarità coseno)
 │   ├── knowledge_db.py          Conoscenza strutturata della casa (aree, dispositivi)
-│   ├── home_profile.py          Snapshot casa di fallback (quando manca la mappa semantica)
 │   ├── health_monitor.py        Snapshot salute HA: WebSocket + polling 30min + persist JSON
 │   └── proposal_store.py        Store SQLite proposte automazione (gestione lifecycle)
 │

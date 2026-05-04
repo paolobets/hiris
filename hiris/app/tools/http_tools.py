@@ -229,7 +229,11 @@ async def http_request(
         if k.lower() not in _BLOCKED_HEADERS
     }
 
-    logger.info("http_request agent=%s method=%s url=%s", agent_id, method, url)
+    # Log URL stripped of query string: query params can carry api keys / tokens
+    # (e.g. ?api_key=...) and end up in addon logs — sensitive material.
+    _u = urlparse(url)
+    _safe_url = f"{_u.scheme}://{_u.netloc}{_u.path}"
+    logger.info("http_request agent=%s method=%s url=%s", agent_id, method, _safe_url)
     timeout = ClientTimeout(connect=_CONNECT_TIMEOUT, total=_TOTAL_TIMEOUT)
     resolver = _PinnedResolver(hostname, pinned_ip)
     connector = TCPConnector(resolver=resolver)

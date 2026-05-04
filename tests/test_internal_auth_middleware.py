@@ -78,9 +78,44 @@ async def test_missing_token_rejected(client_with_token):
 
 @pytest.mark.asyncio
 async def test_ingress_path_header_bypasses_auth(client_with_token):
-    """Requests with X-Ingress-Path (from HA Supervisor) bypass token check."""
+    """Requests with valid HA Supervisor X-Ingress-Path bypass token check."""
     resp = await client_with_token.get(
         "/api/health",
         headers={"X-Ingress-Path": "/api/hassio_ingress/hiris"},
+    )
+    assert resp.status == 200
+
+
+# ---------------------------------------------------------------------------
+# SEC-023 — X-Ingress-Path must match Supervisor pattern, not any non-empty value
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ingress_path_empty_string_does_not_bypass(client_with_token):
+    """An empty X-Ingress-Path must not bypass auth."""
+    resp = await client_with_token.get(
+        "/api/health",
+        headers={"X-Ingress-Path": ""},
+    )
+    assert resp.status == 401
+
+
+@pytest.mark.asyncio
+async def test_ingress_path_arbitrary_value_does_not_bypass(client_with_token):
+    """X-Ingress-Path with arbitrary value (not Supervisor format) must not bypass."""
+    resp = await client_with_token.get(
+        "/api/health",
+        headers={"X-Ingress-Path": "/foo/bar"},
+    )
+    assert resp.status == 401
+
+
+@pytest.mark.asyncio
+async def test_ingress_path_real_supervisor_token_pattern_passes(client_with_token):
+    """Real Supervisor format /api/hassio_ingress/<random-token>/ passes."""
+    resp = await client_with_token.get(
+        "/api/health",
+        headers={"X-Ingress-Path": "/api/hassio_ingress/AbCdEf123-XyZ_456/"},
     )
     assert resp.status == 200
