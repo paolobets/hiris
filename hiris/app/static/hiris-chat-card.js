@@ -456,6 +456,11 @@ class HirisCard extends HTMLElement {
           0%, 100% { transform: scale(1); }
           50%      { transform: scale(1.04); }
         }
+        @media (prefers-reduced-motion: reduce) {
+          .header-left img,
+          .typing-dots span,
+          .spinner { animation: none !important; }
+        }
         .title {
           font-size: 14.5px; font-weight: 600; letter-spacing: -0.012em;
           color: var(--i-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
