@@ -1,5 +1,46 @@
 # HIRIS — Changelog
 
+## [0.9.3] — 2026-05-04
+
+### Fixed (security)
+- **CVE-2026-22815, 34513-34520, 34525**: bump `aiohttp` da `>=3.10.11` a
+  `>=3.13.4`. Chiude 10 CVE pubblicati il 2026-04-01: trailer DoS,
+  DNS cache DoS, CRLF injection multipart, Windows UNC SSRF/NTLMv2 leak,
+  multipart bypass DoS, multipart memory DoS, cookie/proxy-auth leak su
+  cross-origin redirect, response splitting, null byte/control char in
+  response headers, duplicate Host headers.
+- **CVE-2026-28684**: bump `python-dotenv` da `==1.0.1` a `>=1.1.0`.
+  Chiude vulnerabilità Link Following.
+
+### Changed (deps refresh)
+- `anthropic` da `==0.40.0` (pinned, 57 release indietro) a
+  `>=0.55.0,<1.0.0`. Le API in uso (`AsyncAnthropic`, `messages.create`,
+  `APIStatusError`) sono stabili da 0.30+, no breaking attesi.
+- `apscheduler` da `==3.10.4` a `>=3.11.0,<4.0.0` (3.x stable, 4.x ancora alpha).
+- `pytest` da `==8.3.2` a `>=9.0.0,<10.0.0`.
+- `pytest-asyncio` da `==0.23.8` a `>=1.0.0,<2.0.0`. La suite usa già
+  `@pytest.mark.asyncio` esplicito su ogni test → strict mode 1.x compat.
+- `pytest-aiohttp` da `==1.0.5` a `>=1.1.0,<2.0.0`.
+- `openai` da `>=1.0.0` (range troppo ampio) a `>=2.0.0,<3.0.0`. API in
+  uso (`AsyncOpenAI` con api_key/base_url/timeout) invariata tra 1.x e 2.x.
+- `httpx` da `>=0.27.0` a `>=0.28.0,<1.0.0`.
+
+### Removed (dead deps)
+- `aiohttp-cors` rimosso dai requirements: era pinned a `==0.7.0` ma mai
+  importato dal codice (zero match grep su `aiohttp_cors` / `aiohttp.cors`
+  in `hiris/app/`).
+
+### Improved
+- `Dockerfile` cache buster aggiornato da `"HIRIS v0.6.12"` (stantio dalle
+  release 0.7→0.9.2) a `"HIRIS v0.9.3 — full deps refresh"`. Forza il
+  rebuild del layer pip install nel container HA Supervisor in modo che
+  le nuove versioni vengano effettivamente installate.
+
+### Verified
+- Suite di test 469/469 pass su environment locale che gira già le
+  versioni target (aiohttp 3.13.3, openai 2.33.0, httpx 0.28.1,
+  pytest 9.0.2, pytest-asyncio 1.3.0).
+
 ## [0.9.2] — 2026-05-04
 
 ### Fixed (security)
