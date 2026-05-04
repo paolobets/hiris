@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
+from .proxy._sanitize import sanitize_ha_value as _sanitize_ha_value
 from .config import EUR_RATE
 
 # Timeout complessivo per un singolo run di agente. Evita che un modello locale
@@ -18,17 +19,6 @@ from .config import EUR_RATE
 _AGENT_RUN_TIMEOUT = int(os.environ.get("AGENT_RUN_TIMEOUT", "300"))
 
 logger = logging.getLogger(__name__)
-
-_INJECTION_RE = re.compile(
-    r'(ignore|forget|disregard|system:|assistant:|<\|im_|SYSTEM\s*PROMPT)',
-    re.IGNORECASE,
-)
-
-
-def _sanitize_ha_value(v: str) -> str:
-    v = v.strip()
-    v = _INJECTION_RE.sub("[FILTERED]", v)
-    return v[:120]
 
 
 DEFAULT_AGENTS_DATA_PATH = "/data/agents.json"

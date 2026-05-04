@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
+from ._sanitize import sanitize_ha_value
+
 if TYPE_CHECKING:
     from .entity_cache import EntityCache
     from .knowledge_db import KnowledgeDB
@@ -242,13 +244,17 @@ class SemanticContextMap:
         return self._type_to_label.get(entity_type, entity_type)
 
     def _format_state(self, entity_type: str, entity_data: dict) -> str:
-        state = entity_data.get("state", "")
+        # Sanitize all HA-derived strings before they reach the LLM context.
+        # Free-text fields (state, hvac_mode, media_title) and unit can carry
+        # prompt-injection markers if a user has renamed entities or attackers
+        # have written to them via integrations.
+        state = sanitize_ha_value(entity_data.get("state", ""))
         attrs = entity_data.get("attributes") or {}
         if entity_type == "climate":
             cur = attrs.get("current_temperature", "?")
             sp = attrs.get("temperature", "?")
-            mode = attrs.get("hvac_mode", state)
-            action = attrs.get("hvac_action", "")
+            mode = sanitize_ha_value(attrs.get("hvac_mode", state))
+            action = sanitize_ha_value(attrs.get("hvac_action", ""))
             action_str = f" · {action}" if action and action not in ("idle", "off") else ""
             return f"{mode} · {cur}°C → {sp}°C{action_str}"
         if entity_type == "light":
@@ -262,7 +268,7 @@ class SemanticContextMap:
         if entity_type == "media_player":
             if state in ("off", "standby", "idle"):
                 return state
-            title = attrs.get("media_title", "")
+            title = sanitize_ha_value(attrs.get("media_title", ""))
             vol = attrs.get("volume_level")
             vol_str = f" vol:{round(vol * 100)}%" if vol is not None else ""
             return f"{state} · {title}{vol_str}" if title else f"{state}{vol_str}"
@@ -274,7 +280,7 @@ class SemanticContextMap:
             return "aperta" if state == "on" else "chiusa"
         if entity_type == "switch":
             return "acceso" if state == "on" else "spento"
-        unit = entity_data.get("unit", "")
+        unit = sanitize_ha_value(entity_data.get("unit", ""))
         return f"{state} {unit}".strip() if unit else state
 
     def _filter_by_allowed(self, allowed_entities: list[str] | None) -> _MapType:
@@ -300,7 +306,8 @@ class SemanticContextMap:
             for et, eids in sorted(named[area].items()):
                 label = self._get_label(et)
                 parts.append(f"{label}×{len(eids)}" if len(eids) > 1 else label)
-            lines.append(f"  {area}: {' · '.join(parts)}")
+            # Area names come from HA — sanitize before placing in LLM context.
+            lines.append(f"  {sanitize_ha_value(area)}: {' · '.join(parts)}")
         if unassigned:
             ua = [self._get_label(et) for et in unassigned]
             lines.append(f"[Non assegnate: {' · '.join(ua)}]")
@@ -324,7 +331,7 @@ class SemanticContextMap:
             }
             if not relevant:
                 continue
-            header = (area or "Non assegnate").upper()
+            header = sanitize_ha_value(area or "Non assegnate").upper()
             lines = [f"{header} [agg. {now}]"]
             for et, eids in relevant.items():
                 label = self._get_label(et)
@@ -334,13 +341,13 @@ class SemanticContextMap:
                         logger.debug("get_state returned None for %s (cache/map desync?)", eid)
                         continue
                     state_str = self._format_state(et, ed)
-                    name = ed.get("name") or eid
+                    name = sanitize_ha_value(ed.get("name") or eid)
                     lines.append(f"  {label:<14} {name:<32} {state_str}")
                     if knowledge_db:
                         for annot in knowledge_db.get_annotations(eid)[:1]:
-                            lines.append(
-                                f"    [Nota: {annot['annotation']} — {annot['source']}]"
-                            )
+                            ann_text = sanitize_ha_value(annot.get("annotation", ""))
+                            ann_src = sanitize_ha_value(annot.get("source", ""))
+                            lines.append(f"    [Nota: {ann_text} — {ann_src}]")
             if len(lines) > 1:
                 sections.append("\n".join(lines))
         return "\n\n".join(sections)
