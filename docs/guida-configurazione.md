@@ -2,15 +2,19 @@
 
 > Versione: 0.9.5 · Aggiornato: 2026-05-05
 
-Questa guida copre le due aree di configurazione che richiedono una configurazione esterna prima di funzionare:
-**Notifiche (Apprise)** e **Memoria & RAG**.
-Tutte le altre opzioni (chiavi API, selezione modello, livello log, tema) sono auto-esplicative dall'interfaccia dell'add-on.
+Questa guida copre le aree di configurazione che richiedono una scelta consapevole:
+**Provider AI e privacy**, **Notifiche (Apprise)** e **Memoria & RAG**.
 
 ---
 
 ## Indice
 
-1. [Notifiche (Apprise)](#1-notifiche-apprise)
+1. [Provider AI e privacy](#1-provider-ai-e-privacy)
+   - [Quale provider scegliere](#quale-provider-scegliere)
+   - [Tabella privacy per provider](#tabella-privacy-per-provider)
+   - [OpenRouter — proxy unificato](#openrouter--proxy-unificato-200-modelli-1-chiave)
+   - [Modelli locali (Ollama)](#modelli-locali-ollama)
+2. [Notifiche (Apprise)](#2-notifiche-apprise)
    - [Come funziona](#come-funziona)
    - [Telegram](#telegram-consigliato)
    - [ntfy (push self-hosted)](#ntfy-push-self-hosted)
@@ -20,7 +24,7 @@ Tutte le altre opzioni (chiavi API, selezione modello, livello log, tema) sono a
    - [WhatsApp (Twilio)](#whatsapp-twilio)
    - [Più canali contemporaneamente](#più-canali-contemporaneamente)
    - [Verificare la configurazione](#verificare-la-configurazione)
-2. [Memoria & RAG](#2-memoria--rag)
+3. [Memoria & RAG](#3-memoria--rag)
    - [Come funziona](#come-funziona-1)
    - [Opzione A — Embeddings OpenAI](#opzione-a--embeddings-openai-più-semplice)
    - [Opzione B — Embeddings Ollama (locale, gratuito)](#opzione-b--embeddings-ollama-locale-gratuito)
@@ -30,7 +34,90 @@ Tutte le altre opzioni (chiavi API, selezione modello, livello log, tema) sono a
 
 ---
 
-## 1. Notifiche (Apprise)
+## 1. Provider AI e privacy
+
+HIRIS supporta quattro provider AI. Questa sezione spiega cosa esce dalla tua casa
+con ognuno, così puoi scegliere consapevolmente.
+
+### Quale provider scegliere
+
+| Caso d'uso | Provider consigliato |
+|------------|----------------------|
+| Massima qualità, no privacy concern | **Claude (Anthropic)** |
+| Famiglia che usa la chat in italiano | **Claude** o **OpenAI GPT** |
+| Vuoi 200+ modelli con 1 chiave + opzione free | **OpenRouter** |
+| Privacy assoluta, niente esce di casa | **Ollama** (locale) |
+| Mix: chat famiglia su cloud, agent autonomi su Ollama | combina |
+
+### Tabella privacy per provider
+
+| Provider | Cosa esce di casa | Giurisdizione | Costo | Privacy policy |
+|----------|-------------------|---------------|-------|----------------|
+| **Claude** (Anthropic) | Messaggi utente + system prompt + tool args + risposte HA | 🇺🇸 USA | Pay-per-token | [anthropic.com/privacy](https://www.anthropic.com/legal/privacy) |
+| **OpenAI** (GPT) | idem | 🇺🇸 USA | Pay-per-token | [openai.com/policies](https://openai.com/policies/) |
+| **OpenRouter** | idem (passano da OpenRouter US + provider del modello scelto) | 🇺🇸 USA + variabile | Pay-per-token, **modelli :free** disponibili | [openrouter.ai/privacy](https://openrouter.ai/privacy) |
+| **Ollama** (locale) | **Niente — tutto resta sulla LAN** | 🏠 Casa tua | Free (consumo elettrico HW) | N/A |
+
+**Cosa intende HIRIS per "messaggi"**:
+- Per **chat agent**: il testo digitato dall'utente, la cronologia recente,
+  e il contesto entità HA che il `SemanticContextMap` allega (nomi sensori,
+  stati, area di appartenenza).
+- Per **agent autonomi**: il system prompt + lo strategic context + la
+  rappresentazione testuale degli stati HA filtrati dai tool che l'agente
+  invoca (`get_entity_states`, `get_home_status`, ecc.).
+
+**Cosa NON esce mai (per nessun provider)**:
+- Le tue API key di altri servizi (Anthropic, OpenAI, ecc. — risiedono solo
+  in `/data/options.json` interno all'add-on)
+- Token di Home Assistant (`SUPERVISOR_TOKEN`)
+- I dati `/config/.storage/` di HA
+- I database SQLite di HIRIS (`hiris_memory.db`, `chat_history.db`,
+  `hiris_knowledge.db`, `proposals.db`) — **mai inviati come tali**;
+  ne esce solo il contenuto richiesto come contesto a una richiesta specifica.
+
+### OpenRouter — proxy unificato 200+ modelli, 1 chiave
+
+OpenRouter è un servizio che ti dà accesso a 200+ modelli da decine di
+provider (Anthropic, OpenAI, Google, Meta, Mistral, Qwen, DeepSeek, ...)
+con una **singola API key**. Caratteristiche:
+
+- **Modelli gratuiti** marcati `:free` (rate-limitato ma $0): Llama 3.3 70B,
+  Gemma 3 27B, Qwen 2.5 72B, DeepSeek Chat, Mistral Nemo, Hermes 3 405B
+- **Failover automatico** lato OpenRouter: se un modello è temporaneamente
+  giù, OpenRouter ridireziona al backup
+- **Pagamento unificato**: paghi OpenRouter, OpenRouter paga i provider
+
+**Configurazione**:
+1. Registrati su [openrouter.ai](https://openrouter.ai/) e crea una API key
+2. Inserisci la chiave in HIRIS → opzioni add-on → **OpenRouter API Key**
+3. Nel Designer agente → campo **Modello** → digita `openrouter:provider/model`
+   - Esempio free: `openrouter:meta-llama/llama-3.3-70b-instruct:free`
+   - Esempio paid: `openrouter:anthropic/claude-sonnet-4-6`
+
+**Trade-off privacy**: i tuoi messaggi passano da OpenRouter (USA) **e** dal
+provider del modello scelto. Doppio passaggio rispetto a Claude/OpenAI diretti.
+Per chi ha vincoli GDPR rigidi, valuta provider con presenza UE (Mistral La
+Plateforme direct) o Ollama locale.
+
+### Modelli locali (Ollama)
+
+Vedi [`docs/full-local-mode-it.md`](full-local-mode-it.md) per la guida
+completa al setup. Riassunto rapido:
+
+1. Installa Ollama su un host raggiungibile via LAN
+2. `ollama pull <modello>` per scaricare (es. `gemma3:9b`, `mistral-nemo:12b`,
+   `qwen2.5:14b`)
+3. In HIRIS opzioni → **URL Ollama** (es. `http://192.168.1.74:11434`) e
+   **Nome Modello Ollama** (es. `gemma3:9b`)
+
+**Modelli con thinking di default** (Gemma 4, Qwen QwQ, DeepSeek R1, ecc.):
+HIRIS dalla v0.9.6 disabilita automaticamente il thinking via parametro
+`think: false` per evitare timeout — il modello risponde direttamente senza
+emettere lo "stream of consciousness".
+
+---
+
+## 2. Notifiche (Apprise)
 
 ### Come funziona
 
@@ -195,7 +282,7 @@ Se non arriva nulla, controlla il log dell'add-on (**Supervisor → HIRIS → Lo
 
 ---
 
-## 2. Memoria & RAG
+## 3. Memoria & RAG
 
 ### Come funziona
 
