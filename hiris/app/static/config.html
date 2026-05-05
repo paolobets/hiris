@@ -202,6 +202,21 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           <label>Max token risposta</label>
           <input type="number" id="f-max-tokens" value="4096" min="256" max="16000">
           <p class="hint">Limita la lunghezza massima della risposta. Default: 4096.</p>
+          <label style="margin-top:0.75rem">Extended Thinking budget</label>
+          <select id="f-thinking-budget">
+            <option value="0">disabilitato</option>
+            <option value="2048">2048 token (light reasoning)</option>
+            <option value="4096">4096 token (standard reasoning)</option>
+            <option value="8192">8192 token (deep reasoning)</option>
+            <option value="16384">16384 token (massimo)</option>
+          </select>
+          <p class="hint">
+            Espone il chain-of-thought di Claude prima della risposta finale. Utile per agenti
+            autonomi e query complesse: migliora qualit&agrave; di reasoning e debuggability
+            (i blocchi thinking compaiono nel registro esecuzioni). Richiede modello
+            <code>claude-sonnet-4-5+</code> o <code>claude-opus-4+</code>; con altri modelli
+            viene ignorato. Il budget deve essere inferiore al max token risposta.
+          </p>
           <div id="max-turns-row" style="display:none">
             <label>Max messaggi per sessione</label>
             <input type="number" id="f-max-chat-turns" value="0" min="0" max="9999">

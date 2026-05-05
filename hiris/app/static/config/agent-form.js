@@ -105,6 +105,7 @@ function openAgent(a) {
   document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
   document.getElementById('f-max-chat-turns').value = a.max_chat_turns || 0;
   document.getElementById('f-response-mode').value = a.response_mode || 'auto';
+  document.getElementById('f-thinking-budget').value = String(a.thinking_budget || 0);
   buildActionChecks(a.allowed_services || []);
   /* Load actions from first rule (configured mode) or legacy actions field */
   var firstRule = a.rules && a.rules.length ? a.rules[0] : null;
@@ -154,6 +155,7 @@ document.getElementById('new-btn').addEventListener('click', function() {
   document.getElementById('f-require-confirmation').checked = false;
   document.getElementById('f-max-chat-turns').value = 0;
   document.getElementById('f-response-mode').value = 'auto';
+  document.getElementById('f-thinking-budget').value = '0';
   buildActionChecks([]);
   _actionsLoad([]);
   document.getElementById('f-action-mode').value = 'automatic';
@@ -201,6 +203,7 @@ function buildPayload() {
     budget_eur_limit: parseFloat(document.getElementById('u-ag-budget').value) || 0,
     max_chat_turns: parseInt(document.getElementById('f-max-chat-turns').value) || 0,
     response_mode: document.getElementById('f-response-mode').value,
+    thinking_budget: parseInt(document.getElementById('f-thinking-budget').value) || 0,
   };
 }
 
