@@ -111,3 +111,76 @@ async def test_openai_cloud_chat_omits_extra_body(dispatcher, tmp_path):
 
     kwargs = runner._client.chat.completions.create.call_args.kwargs
     assert "extra_body" not in kwargs
+
+
+# ---------------------------------------------------------------------------
+# Regression: LLMRouter passes thinking_budget kwarg to all runners (v0.9.5).
+# OpenAICompatRunner / OpenRouterRunner must accept it (and ignore it) to not
+# crash with TypeError. This bug shipped in v0.9.6 — fixed in v0.9.7.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_chat_accepts_thinking_budget_kwarg_silently(dispatcher, tmp_path):
+    """OpenAI-compat chat() must accept thinking_budget without raising."""
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        dispatcher=dispatcher,
+        usage_path=str(tmp_path / "u.json"),
+    )
+    msg = MagicMock()
+    msg.content = "ok"
+    msg.tool_calls = None
+    choice = MagicMock(finish_reason="stop", message=msg)
+    response = MagicMock(choices=[choice])
+    response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
+    runner._client.chat.completions.create = AsyncMock(return_value=response)
+
+    # Must not raise — the LLMRouter forwards thinking_budget to every runner
+    out = await runner.chat(user_message="hi", model="gpt-4o", thinking_budget=2048)
+    assert out == "ok"
+
+
+@pytest.mark.asyncio
+async def test_run_with_actions_accepts_thinking_budget_kwarg_silently(dispatcher, tmp_path):
+    """OpenAI-compat run_with_actions() must accept thinking_budget."""
+    runner = OpenAICompatRunner(
+        base_url="http://192.168.1.50:11434/v1",
+        api_key="ollama",
+        dispatcher=dispatcher,
+        fixed_model="gemma4:e4b",
+        usage_path=str(tmp_path / "u.json"),
+    )
+    msg = MagicMock()
+    msg.content = "VALUTAZIONE: OK\nNOTIFICA: -"
+    msg.tool_calls = None
+    choice = MagicMock(finish_reason="stop", message=msg)
+    response = MagicMock(choices=[choice])
+    response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
+    runner._client.chat.completions.create = AsyncMock(return_value=response)
+
+    # Must not raise — this is exactly the call path that broke in v0.9.6:
+    # agent_engine -> LLMRouter.run_with_actions(**kwargs incl thinking_budget)
+    # -> Ollama runner.run_with_actions
+    out = await runner.run_with_actions(
+        user_message="check",
+        system_prompt="be brief",
+        thinking_budget=4096,
+    )
+    assert isinstance(out, tuple) and len(out) == 2
+
+
+def test_openrouter_runner_accepts_thinking_budget_kwarg(tmp_path):
+    """OpenRouterRunner inherits the silent-accept behaviour from OpenAICompatRunner."""
+    from hiris.app.backends.openrouter_runner import OpenRouterRunner
+    runner = OpenRouterRunner(
+        api_key="sk-or-test",
+        dispatcher=MagicMock(),
+        usage_path=str(tmp_path / "u.json"),
+    )
+    # Just verify the method signature accepts thinking_budget (introspection)
+    import inspect
+    sig = inspect.signature(runner.chat)
+    assert "thinking_budget" in sig.parameters
+    sig2 = inspect.signature(runner.run_with_actions)
+    assert "thinking_budget" in sig2.parameters
