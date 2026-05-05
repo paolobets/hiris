@@ -255,7 +255,16 @@ class OpenAICompatRunner:
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
         response_mode: str = "auto",
+        thinking_budget: int = 0,
     ) -> str:
+        # thinking_budget is part of the runner contract since v0.9.5 because
+        # ClaudeRunner uses it for Anthropic Extended Thinking. OpenAI/Ollama/
+        # OpenRouter don't surface a comparable per-request budget knob in the
+        # OpenAI-compatible spec — Ollama uses `extra_body={"think": False}`
+        # for reasoning-default models, applied unconditionally below.
+        # The kwarg is accepted to match the LLMRouter common signature; it
+        # is intentionally ignored here (no warning: legitimately unused).
+        del thinking_budget
         import openai as _openai
 
         if agent_id:
@@ -437,11 +446,14 @@ class OpenAICompatRunner:
         agent_id: Optional[str] = None,
         visible_entity_ids=None,
         response_mode: str = "auto",
+        thinking_budget: int = 0,
     ):
         """Vero streaming SSE: i token arrivano mentre il modello genera.
         Le iterazioni tool-call vengono risolte prima di cedere il controllo
         al loop successivo; il testo finale è streamato token per token.
         """
+        # See chat() for rationale on accepting+ignoring thinking_budget here.
+        del thinking_budget
         import openai as _openai
 
         self.last_tool_calls = []
@@ -629,7 +641,12 @@ class OpenAICompatRunner:
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
         response_mode: str = "auto",
+        thinking_budget: int = 0,
     ) -> tuple[str, dict]:
+        # thinking_budget accepted for runner-contract symmetry with
+        # ClaudeRunner; not applicable on OpenAI-compat APIs (Ollama uses
+        # extra_body think:false instead, applied unconditionally in chat()).
+        del thinking_budget
         eval_tools = list(EVALUATION_ONLY_TOOLS)
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]
