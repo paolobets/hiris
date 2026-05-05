@@ -391,29 +391,45 @@ class ClaudeRunner:
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         # ── System prompt blocks with prompt caching ─────────────────────────
+        # Anthropic prompt caching is *cumulative*: a cache_control breakpoint
+        # caches everything from the start up to that breakpoint. Since blocks
+        # must therefore appear in order [stable …][volatile …], we put ALL
+        # stable per-agent content (BASE, agent prompt, behaviour modifiers)
+        # before the query-dependent context_str.
+        #
         # Block 1 — BASE (always cached): tool list + anti-hallucination rules.
-        # Block 2 — agent prompt (cached): strategic_context + system_prompt,
-        #           stable per agent across queries → reused from cache.
-        # Block 3 — context_str (NOT cached): SemanticContextMap output,
-        #           query-dependent → different content each request → no reuse.
+        # Block 2 — agent prompt (cached): strategic_context + system_prompt.
+        # Block 3 — behaviour modifiers (cached): RESTRICT, REQUIRE_CONFIRMATION,
+        #           response_mode prompts. Stable per agent config; before v0.9.5
+        #           they sat after context_str and never reached the cache.
+        # Block 4 — context_str (NOT cached): SemanticContextMap query output.
         system_blocks: list[dict] = [
             {"type": "text", "text": BASE_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
         ]
         if system_prompt:
             system_blocks.append({"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}})
-        if context_str:
-            system_blocks.append({"type": "text", "text": context_str})
+        # Behaviour modifiers — stable per agent config, must precede context_str
+        # so the cache breakpoint placed on the *last* one of them captures them all.
+        modifier_blocks: list[dict] = []
         if restrict_to_home:
-            system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
+            modifier_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
         if require_confirmation:
-            system_blocks.append({"type": "text", "text": REQUIRE_CONFIRMATION_PROMPT})
+            modifier_blocks.append({"type": "text", "text": REQUIRE_CONFIRMATION_PROMPT})
         if response_mode == "compact":
-            system_blocks.append({"type": "text", "text": "Rispondi in modo conciso, massimo 2-3 frasi."})
+            modifier_blocks.append({"type": "text", "text": "Rispondi in modo conciso, massimo 2-3 frasi."})
         elif response_mode == "minimal":
-            system_blocks.append({"type": "text", "text": (
+            modifier_blocks.append({"type": "text", "text": (
                 "Rispondi SOLO in formato chiave: valore, una riga per dato. "
                 "Esempio:\nStato: acceso\nTemperatura: 21°C"
             )})
+        if modifier_blocks:
+            # Add cache_control on the last modifier so the cumulative cache
+            # extends through them. Without modifiers the breakpoint stays on
+            # block 2 (agent prompt) — same behaviour as pre-v0.9.5.
+            modifier_blocks[-1] = {**modifier_blocks[-1], "cache_control": {"type": "ephemeral"}}
+            system_blocks.extend(modifier_blocks)
+        if context_str:
+            system_blocks.append({"type": "text", "text": context_str})
         effective_model = resolve_model(model, agent_type)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         if allowed_endpoints is None:
