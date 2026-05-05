@@ -1,5 +1,20 @@
 # HIRIS — Changelog
 
+## [0.9.4] — 2026-05-05
+
+### Fixed (security)
+- **CVE-2026-34450** + **CVE-2026-34452**: bump floor `anthropic` da
+  `>=0.55.0` a `>=0.87.0`. I due CVE affettano il "Local Filesystem
+  Memory Tool" della SDK anthropic nelle versioni 0.55-0.86:
+  - CVE-2026-34450 (file permissions 0o666 → leak state agente)
+  - CVE-2026-34452 (path validation race → sandbox escape via symlink)
+
+  HIRIS non usa `client.beta.memory.*` (il nostro `memory_tool` è un
+  MemoryStore SQLite custom indipendente dall'SDK), quindi non eravamo
+  direttamente vulnerabili. Tuttavia il range `>=0.55,<1.0` permetteva
+  l'installazione di SDK con la feature vulnerabile presente. Floor
+  alzato per igiene security.
+
 ## [0.9.3] — 2026-05-04
 
 ### Fixed (security)
