@@ -157,6 +157,50 @@ def resolve_model(model: str, agent_type: str) -> str:
         return AUTO_MODEL_MAP.get(agent_type, MODEL)
     return model
 
+# Models that support Anthropic Extended Thinking. For others (e.g. Haiku 4.5,
+# Sonnet < 4.5) the API errors with 400 if `thinking` is supplied. Pattern-based
+# so future model strings (claude-sonnet-4-7, claude-opus-4-8 ...) work without
+# editing this list.
+_THINKING_CAPABLE_PATTERNS = ("sonnet-4-5", "sonnet-4-6", "sonnet-4-7", "opus-4")
+
+
+def _build_thinking_param(
+    thinking_budget: int, effective_model: str, max_tokens: int
+) -> Optional[dict]:
+    """Build the `thinking` kwarg for Anthropic messages.create, or None.
+
+    Returns None when thinking is disabled / unsupported by the model.
+    The runner silently disables thinking on non-capable models to avoid
+    surprising the user with an API 400 — frontend validation already prevents
+    this for new agents but legacy agents.json may carry stale combos.
+    """
+    if thinking_budget <= 0:
+        return None
+    if not any(p in effective_model for p in _THINKING_CAPABLE_PATTERNS):
+        logger.warning(
+            "thinking_budget=%d but model %s is not thinking-capable — disabling",
+            thinking_budget, effective_model,
+        )
+        return None
+    if thinking_budget < 1024:
+        logger.warning("thinking_budget=%d below Anthropic minimum 1024 — disabling", thinking_budget)
+        return None
+    if thinking_budget >= max_tokens:
+        clamped = max_tokens - 1
+        if clamped < 1024:
+            logger.warning(
+                "thinking_budget=%d >= max_tokens=%d and max_tokens too small for minimum 1024 — disabling",
+                thinking_budget, max_tokens,
+            )
+            return None
+        logger.warning(
+            "thinking_budget=%d >= max_tokens=%d — clamping to %d",
+            thinking_budget, max_tokens, clamped,
+        )
+        thinking_budget = clamped
+    return {"type": "enabled", "budget_tokens": thinking_budget}
+
+
 RESTRICT_PROMPT = (
     "Sei HIRIS, assistente per la smart home. "
     "Rispondi SOLO a domande relative alla casa, domotica, energia, clima, sicurezza. "
@@ -255,6 +299,9 @@ class ClaudeRunner:
         self._dispatcher = dispatcher
         self._usage_path = usage_path
         self.last_tool_calls: list[dict] = []
+        # Captured thinking blocks from the most recent run (extended thinking).
+        # Empty list when thinking is disabled or model returns no thinking.
+        self.last_thinking_blocks: list[str] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
         self.total_requests: int = 0
@@ -379,6 +426,7 @@ class ClaudeRunner:
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
         response_mode: str = "auto",
+        thinking_budget: int = 0,
     ) -> str:
         if agent_id:
             if agent_id not in self._per_agent_usage:
@@ -457,18 +505,30 @@ class ClaudeRunner:
         messages.append({"role": "user", "content": user_message})
         self.total_requests += 1  # one per user exchange, regardless of tool iterations
 
+        thinking_param = _build_thinking_param(thinking_budget, effective_model, max_tokens)
+        # Collect thinking blocks across all tool-use iterations for downstream
+        # surfacing in the execution log / chat debug panel.
+        self.last_thinking_blocks = []
+
         for _ in range(MAX_TOOL_ITERATIONS):
             try:
-                response = await self._call_api(
-                    model=effective_model,
-                    max_tokens=max_tokens,
-                    system=system_blocks,
-                    tools=tools,
-                    messages=messages,
-                )
+                _api_kwargs: dict = {
+                    "model": effective_model,
+                    "max_tokens": max_tokens,
+                    "system": system_blocks,
+                    "tools": tools,
+                    "messages": messages,
+                }
+                if thinking_param is not None:
+                    _api_kwargs["thinking"] = thinking_param
+                response = await self._call_api(**_api_kwargs)
             except anthropic.APIError as exc:
                 logger.error("Claude API error: %s", exc)
                 return "Errore temporaneo del servizio AI. Riprova tra poco."
+
+            for block in response.content:
+                if getattr(block, "type", None) == "thinking":
+                    self.last_thinking_blocks.append(getattr(block, "thinking", ""))
 
             inp = response.usage.input_tokens
             out = response.usage.output_tokens
@@ -543,6 +603,7 @@ class ClaudeRunner:
         agent_id: Optional[str] = None,
         visible_entity_ids=None,
         response_mode: str = "auto",
+        thinking_budget: int = 0,
     ):
         """Async generator yielding SSE-formatted lines for the chat response.
 
@@ -575,6 +636,7 @@ class ClaudeRunner:
                 agent_id=agent_id,
                 visible_entity_ids=visible_entity_ids,
                 response_mode=response_mode,
+                thinking_budget=thinking_budget,
             )
         except Exception as exc:
             yield f'data: {_json.dumps({"type": "error", "message": str(exc)})}\n\n'
@@ -605,6 +667,7 @@ class ClaudeRunner:
         require_confirmation: bool = False,
         agent_id: Optional[str] = None,
         response_mode: str = "auto",
+        thinking_budget: int = 0,
     ) -> tuple[str, dict]:
         """Run an autonomous agent evaluation — restrict tools, inject structured-output instructions.
 
@@ -688,6 +751,7 @@ class ClaudeRunner:
             require_confirmation=require_confirmation,
             agent_id=agent_id,
             response_mode=response_mode,
+            thinking_budget=thinking_budget,
         )
         clean_text, structured = _parse_structured_output(raw_result)
         return clean_text, structured

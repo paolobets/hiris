@@ -93,7 +93,7 @@ async def test_allowed_entities_filters_get_entity_states(runner):
     text_block = MagicMock(type="text", text="Filtrato")
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("Query entità", allowed_entities=["climate.*"])
+    await runner.chat("Query entit-", allowed_entities=["climate.*"])
     call_args = runner._ha.get_states.call_args[0][0]
     assert "climate.soggiorno" in call_args
     assert "light.cucina" not in call_args
@@ -147,7 +147,7 @@ async def test_allowed_services_permits_matching_service(runner):
     text_block = MagicMock(type="text", text="Temperatura impostata")
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("Imposta 21°C", allowed_services=["climate.*"])
+    await runner.chat("Imposta 21-C", allowed_services=["climate.*"])
     runner._ha.call_service.assert_called_once_with("climate", "set_temperature", {"temperature": 21})
 
 
@@ -424,13 +424,13 @@ async def test_require_confirmation_combines_with_restrict(runner):
 
 def test_parse_structured_output_basic():
     from hiris.app.claude_runner import _parse_structured_output
-    raw = "Il sistema è normale.\n\nVALUTAZIONE: OK\nNOTIFICA: Tutto bene."
+    raw = "Il sistema - normale.\n\nVALUTAZIONE: OK\nNOTIFICA: Tutto bene."
     text, s = _parse_structured_output(raw)
     assert s["valutazione"] == "OK"
     assert s["notifica"] == "Tutto bene."
     assert s["azioni"] == []
     assert s["params"] == {}
-    assert "Il sistema è normale." in text
+    assert "Il sistema - normale." in text
     assert "VALUTAZIONE:" not in text
 
 
@@ -455,7 +455,7 @@ def test_parse_structured_output_no_block():
 def test_parse_structured_output_no_false_positive():
     from hiris.app.claude_runner import _parse_structured_output
     # VALUTAZIONE mid-paragraph should NOT be consumed
-    raw = "La VALUTAZIONE: scarsa dell'impianto è allarmante.\n\nVALUTAZIONE: ANOMALIA\nNOTIFICA: notifica"
+    raw = "La VALUTAZIONE: scarsa dell'impianto - allarmante.\n\nVALUTAZIONE: ANOMALIA\nNOTIFICA: notifica"
     text, s = _parse_structured_output(raw)
     assert s["valutazione"] == "ANOMALIA"
     assert "VALUTAZIONE: scarsa" in text
@@ -717,12 +717,12 @@ async def test_dispatch_set_input_helper_boolean_on(runner):
     tool_block = MagicMock(type="tool_use", id="tu_ih1",
                            input={"entity_id": "input_boolean.guest_mode", "value": True})
     tool_block.name = "set_input_helper"
-    text_block = MagicMock(type="text", text="Modalità ospite attivata.")
+    text_block = MagicMock(type="text", text="Modalit- ospite attivata.")
     msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    result = await runner.chat("Attiva la modalità ospite.")
-    assert result == "Modalità ospite attivata."
+    result = await runner.chat("Attiva la modalit- ospite.")
+    assert result == "Modalit- ospite attivata."
     runner._ha.call_service.assert_awaited_once_with(
         "input_boolean", "turn_on", {"entity_id": "input_boolean.guest_mode"}
     )
@@ -734,12 +734,12 @@ async def test_dispatch_set_input_helper_number(runner):
     tool_block = MagicMock(type="tool_use", id="tu_ih2",
                            input={"entity_id": "input_number.target_temp", "value": 21.5})
     tool_block.name = "set_input_helper"
-    text_block = MagicMock(type="text", text="Temperatura impostata a 21.5°C.")
+    text_block = MagicMock(type="text", text="Temperatura impostata a 21.5-C.")
     msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
     result = await runner.chat("Imposta temperatura target a 21.5.")
-    assert result == "Temperatura impostata a 21.5°C."
+    assert result == "Temperatura impostata a 21.5-C."
     runner._ha.call_service.assert_awaited_once_with(
         "input_number", "set_value", {"entity_id": "input_number.target_temp", "value": 21.5}
     )
@@ -751,12 +751,12 @@ async def test_dispatch_set_input_helper_select(runner):
     tool_block = MagicMock(type="tool_use", id="tu_ih3",
                            input={"entity_id": "input_select.house_mode", "value": "Away"})
     tool_block.name = "set_input_helper"
-    text_block = MagicMock(type="text", text="Modalità impostata su Away.")
+    text_block = MagicMock(type="text", text="Modalit- impostata su Away.")
     msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    result = await runner.chat("Imposta modalità casa su Away.")
-    assert result == "Modalità impostata su Away."
+    result = await runner.chat("Imposta modalit- casa su Away.")
+    assert result == "Modalit- impostata su Away."
     runner._ha.call_service.assert_awaited_once_with(
         "input_select", "select_option", {"entity_id": "input_select.house_mode", "option": "Away"}
     )
@@ -774,3 +774,85 @@ async def test_set_input_helper_blocked_by_allowed_services(runner):
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
     await runner.chat("Attiva guest mode.", allowed_services=["light.*", "climate.*"])
     runner._ha.call_service.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Extended Thinking - _build_thinking_param + chat() integration
+# ---------------------------------------------------------------------------
+
+def test_build_thinking_param_disabled_when_zero():
+    from hiris.app.claude_runner import _build_thinking_param
+    assert _build_thinking_param(0, "claude-sonnet-4-6", 4096) is None
+
+
+def test_build_thinking_param_enabled_on_sonnet_4_6():
+    from hiris.app.claude_runner import _build_thinking_param
+    out = _build_thinking_param(2048, "claude-sonnet-4-6", 4096)
+    assert out == {"type": "enabled", "budget_tokens": 2048}
+
+
+def test_build_thinking_param_enabled_on_opus_4_7():
+    from hiris.app.claude_runner import _build_thinking_param
+    out = _build_thinking_param(2048, "claude-opus-4-7", 4096)
+    assert out == {"type": "enabled", "budget_tokens": 2048}
+
+
+def test_build_thinking_param_disabled_on_haiku():
+    from hiris.app.claude_runner import _build_thinking_param
+    assert _build_thinking_param(2048, "claude-haiku-4-5-20251001", 4096) is None
+
+
+def test_build_thinking_param_disabled_below_anthropic_minimum():
+    from hiris.app.claude_runner import _build_thinking_param
+    assert _build_thinking_param(512, "claude-sonnet-4-6", 4096) is None
+
+
+def test_build_thinking_param_clamps_when_geq_max_tokens():
+    from hiris.app.claude_runner import _build_thinking_param
+    out = _build_thinking_param(8000, "claude-sonnet-4-6", 4000)
+    assert out == {"type": "enabled", "budget_tokens": 3999}
+
+
+def test_build_thinking_param_returns_none_if_clamp_drops_below_minimum():
+    from hiris.app.claude_runner import _build_thinking_param
+    # max_tokens too small: even after clamp budget < 1024 -> disabled
+    assert _build_thinking_param(2048, "claude-sonnet-4-6", 1024) is None
+
+
+@pytest.mark.asyncio
+async def test_chat_passes_thinking_param_when_capable(runner):
+    """chat() with thinking_budget>0 on capable model passes thinking= to API."""
+    text_block = MagicMock(type="text", text="ok")
+    msg = MagicMock(stop_reason="end_turn", content=[text_block])
+    msg.usage = MagicMock(input_tokens=10, output_tokens=5,
+                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
+    runner._client.messages.create = AsyncMock(return_value=msg)
+    await runner.chat("ciao", model="claude-sonnet-4-6", max_tokens=4096, thinking_budget=2048)
+    kwargs = runner._client.messages.create.call_args.kwargs
+    assert kwargs.get("thinking") == {"type": "enabled", "budget_tokens": 2048}
+
+
+@pytest.mark.asyncio
+async def test_chat_no_thinking_param_when_disabled(runner):
+    """chat() with thinking_budget=0 omits thinking= entirely."""
+    text_block = MagicMock(type="text", text="ok")
+    msg = MagicMock(stop_reason="end_turn", content=[text_block])
+    msg.usage = MagicMock(input_tokens=10, output_tokens=5,
+                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
+    runner._client.messages.create = AsyncMock(return_value=msg)
+    await runner.chat("ciao", model="claude-sonnet-4-6", thinking_budget=0)
+    kwargs = runner._client.messages.create.call_args.kwargs
+    assert "thinking" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_chat_collects_thinking_blocks(runner):
+    """Thinking blocks in response.content are captured in last_thinking_blocks."""
+    thinking_block = MagicMock(type="thinking", thinking="step 1: check state\nstep 2: decide")
+    text_block = MagicMock(type="text", text="ok")
+    msg = MagicMock(stop_reason="end_turn", content=[thinking_block, text_block])
+    msg.usage = MagicMock(input_tokens=10, output_tokens=5,
+                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
+    runner._client.messages.create = AsyncMock(return_value=msg)
+    await runner.chat("ciao", model="claude-sonnet-4-6", thinking_budget=2048)
+    assert runner.last_thinking_blocks == ["step 1: check state\nstep 2: decide"]
