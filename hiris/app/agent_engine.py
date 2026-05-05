@@ -54,6 +54,10 @@ class Agent:
     rules: list = field(default_factory=list)  # [{states:[...], actions:[...]}]
     fallback_action: Optional[dict] = None
     response_mode: str = "auto"
+    # Extended Thinking budget tokens (0 = disabled).
+    # When >0, Claude returns thinking blocks alongside the answer (sonnet-4.5+/
+    # opus-4+ only). The runner clamps to max_tokens-1 if invalid.
+    thinking_budget: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +228,7 @@ class AgentEngine:
                     rules=raw.get("rules", []),
                     fallback_action=raw.get("fallback_action"),
                     response_mode=raw.get("response_mode", "auto"),
+                    thinking_budget=int(raw.get("thinking_budget", 0) or 0),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type == "agent":
@@ -301,6 +306,7 @@ class AgentEngine:
             rules=data.get("rules", []),
             fallback_action=data.get("fallback_action"),
             response_mode=data.get("response_mode", "auto"),
+            thinking_budget=max(0, int(data.get("thinking_budget", 0) or 0)),
         )
         self._agents[agent.id] = agent
         if self._mqtt_publisher:
@@ -322,6 +328,7 @@ class AgentEngine:
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
         "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
         "states", "action_mode", "rules", "fallback_action", "response_mode",
+        "thinking_budget",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -784,6 +791,7 @@ class AgentEngine:
                             restrict_to_home=agent.restrict_to_home,
                             agent_id=agent.id,
                             response_mode=agent.response_mode,
+                            thinking_budget=agent.thinking_budget,
                         ),
                         timeout=_AGENT_RUN_TIMEOUT,
                     )
@@ -809,6 +817,7 @@ class AgentEngine:
                             require_confirmation=agent.require_confirmation,
                             agent_id=agent.id,
                             response_mode=agent.response_mode,
+                            thinking_budget=agent.thinking_budget,
                         ),
                         timeout=_AGENT_RUN_TIMEOUT,
                     )
@@ -888,6 +897,11 @@ class AgentEngine:
         inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
         out_after = getattr(self._claude_runner, "total_output_tokens", 0)
         s = structured or {}
+        # Capture extended-thinking blocks if any. Truncate per-block to keep
+        # the agents.json file from growing unbounded — full reasoning is
+        # rarely needed in the UI, just the gist for debug.
+        thinking_blocks = list(getattr(self._claude_runner, "last_thinking_blocks", None) or [])
+        thinking_blocks = [(t or "")[:2000] for t in thinking_blocks]
         record = {
             "timestamp": agent.last_run,
             "trigger": (trigger_fired or {}).get("type", agent.triggers[0].get("type", "unknown") if agent.triggers else "manual"),
@@ -900,5 +914,6 @@ class AgentEngine:
             "notifica": s.get("notifica"),
             "params": s.get("params"),
             "action_taken": action_taken,
+            "thinking_blocks": thinking_blocks,
         }
         agent.execution_log = (agent.execution_log + [record])[-20:]

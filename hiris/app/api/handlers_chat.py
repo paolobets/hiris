@@ -154,6 +154,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     agent_restrict = getattr(agent, "restrict_to_home", False) if agent else False
     agent_require_confirmation = getattr(agent, "require_confirmation", False) if agent else False
     agent_response_mode = getattr(agent, "response_mode", "auto") if agent else "auto"
+    agent_thinking_budget = getattr(agent, "thinking_budget", 0) if agent else 0
 
     wants_stream = (
         "text/event-stream" in request.headers.get("Accept", "")
@@ -187,6 +188,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             agent_id=effective_agent_id,
             visible_entity_ids=visible_ids,
             response_mode=agent_response_mode,
+            thinking_budget=agent_thinking_budget,
         ):
             await stream_resp.write(chunk.encode())
             try:
@@ -221,6 +223,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         agent_id=effective_agent_id,
         visible_entity_ids=visible_ids,
         response_mode=agent_response_mode,
+        thinking_budget=agent_thinking_budget,
     )
 
     # Persist the new user+assistant exchange
@@ -232,4 +235,9 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     raw = getattr(runner, "last_tool_calls", None)
     tools_called = [t.get("name") for t in raw if isinstance(t, dict)] if isinstance(raw, list) else []
-    return web.json_response({"response": response, "debug": {"tools_called": tools_called}})
+    raw_thinking = getattr(runner, "last_thinking_blocks", None)
+    thinking_blocks = list(raw_thinking) if isinstance(raw_thinking, list) else []
+    debug_payload: dict = {"tools_called": tools_called}
+    if thinking_blocks:
+        debug_payload["thinking_blocks"] = thinking_blocks
+    return web.json_response({"response": response, "debug": debug_payload})
