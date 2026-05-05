@@ -54,6 +54,10 @@ class Agent:
     rules: list = field(default_factory=list)  # [{states:[...], actions:[...]}]
     fallback_action: Optional[dict] = None
     response_mode: str = "auto"
+    # Extended Thinking budget tokens (0 = disabled).
+    # When >0, Claude returns thinking blocks alongside the answer (sonnet-4.5+/
+    # opus-4+ only). The runner clamps to max_tokens-1 if invalid.
+    thinking_budget: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +228,7 @@ class AgentEngine:
                     rules=raw.get("rules", []),
                     fallback_action=raw.get("fallback_action"),
                     response_mode=raw.get("response_mode", "auto"),
+                    thinking_budget=int(raw.get("thinking_budget", 0) or 0),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type == "agent":
@@ -301,6 +306,7 @@ class AgentEngine:
             rules=data.get("rules", []),
             fallback_action=data.get("fallback_action"),
             response_mode=data.get("response_mode", "auto"),
+            thinking_budget=max(0, int(data.get("thinking_budget", 0) or 0)),
         )
         self._agents[agent.id] = agent
         if self._mqtt_publisher:
@@ -322,6 +328,7 @@ class AgentEngine:
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
         "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
         "states", "action_mode", "rules", "fallback_action", "response_mode",
+        "thinking_budget",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:

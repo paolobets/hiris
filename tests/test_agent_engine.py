@@ -106,6 +106,46 @@ def test_create_agent_new_fields_default_empty(engine):
     assert agent.allowed_services == []
 
 
+def test_create_agent_thinking_budget_default_zero(engine):
+    """thinking_budget defaults to 0 (extended thinking disabled)."""
+    agent = engine.create_agent({
+        "name": "X", "type": "chat",
+        "triggers": [], "system_prompt": "", "allowed_tools": [],
+    })
+    assert agent.thinking_budget == 0
+
+
+def test_create_agent_thinking_budget_persists(engine):
+    """thinking_budget is stored from create payload."""
+    agent = engine.create_agent({
+        "name": "Reasoner", "type": "agent",
+        "triggers": [], "system_prompt": "",
+        "allowed_tools": [],
+        "thinking_budget": 4096,
+    })
+    assert agent.thinking_budget == 4096
+
+
+def test_update_agent_thinking_budget(engine):
+    """thinking_budget can be updated."""
+    agent = engine.create_agent({
+        "name": "X", "type": "chat",
+        "triggers": [], "system_prompt": "", "allowed_tools": [],
+    })
+    updated = engine.update_agent(agent.id, {"thinking_budget": 2048})
+    assert updated.thinking_budget == 2048
+
+
+def test_create_agent_thinking_budget_negative_clamped_to_zero(engine):
+    """Negative thinking_budget is clamped to 0 by create_agent (defensive)."""
+    agent = engine.create_agent({
+        "name": "X", "type": "chat",
+        "triggers": [], "system_prompt": "", "allowed_tools": [],
+        "thinking_budget": -1,
+    })
+    assert agent.thinking_budget == 0
+
+
 def test_update_agent_new_fields(engine):
     agent = engine.create_agent({
         "name": "Test Agent",

@@ -88,6 +88,27 @@ def _validate_agent_payload(body: dict) -> str | None:
     if response_mode is not None and response_mode not in ("auto", "compact", "minimal"):
         return "response_mode must be one of: auto, compact, minimal"
 
+    # Extended Thinking budget. 0 disables; otherwise Anthropic requires
+    # 1024 ≤ budget < max_tokens. We enforce the lower bound and the
+    # cross-field upper bound here so the runner can pass it through cleanly.
+    tb = body.get("thinking_budget")
+    if tb is not None:
+        try:
+            tb_int = int(tb)
+        except (TypeError, ValueError):
+            return "thinking_budget must be an integer"
+        if tb_int < 0:
+            return "thinking_budget must be >= 0"
+        if 0 < tb_int < 1024:
+            return "thinking_budget must be 0 (disabled) or >= 1024"
+        max_t = body.get("max_tokens")
+        if max_t is not None:
+            try:
+                if tb_int >= int(max_t):
+                    return "thinking_budget must be < max_tokens"
+            except (TypeError, ValueError):
+                pass
+
     states = body.get("states")
     if states is not None:
         if not isinstance(states, list) or not states:
