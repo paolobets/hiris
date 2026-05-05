@@ -1,5 +1,59 @@
 # HIRIS — Changelog
 
+## [0.9.6] — 2026-05-05
+
+### Added — OpenRouter provider
+- Nuovo backend **OpenRouter** (`hiris/app/backends/openrouter_runner.py`)
+  come quarto provider HIRIS, accanto a Claude / OpenAI / Ollama.
+  OpenRouter ([openrouter.ai](https://openrouter.ai/)) è un proxy unificato
+  che dà accesso a 200+ modelli con una sola API key, inclusi modelli
+  gratuiti marcati `:free` (Llama 3.3 70B, Gemma 3 27B, Qwen 2.5 72B,
+  DeepSeek Chat, Mistral Nemo, Hermes 3 405B).
+- Configurazione: nuovo campo `openrouter_api_key` nelle opzioni dell'addon
+  (`config.yaml` + `run.sh` + `translations/{en,it}.yaml`).
+- Routing: il prefix `openrouter:` o `openrouter/` davanti al model name
+  (es. `openrouter:meta-llama/llama-3.3-70b-instruct:free`) instrada a
+  OpenRouter via `LLMRouter`. Strategy chain aggiornata a
+  `claude > openai > openrouter > ollama` (balanced/quality_first) e
+  `ollama > openrouter > openai > claude` (cost_first).
+- `/api/models` espone la lista live dei modelli OpenRouter disponibili
+  con preset curati (12 modelli più richiesti) + tutti i `:free` aggiuntivi.
+
+### Fixed — Ollama hang con modelli reasoning (Gemma 4, Qwen QwQ, DeepSeek R1...)
+- Bug: agent autonomi configurati su modelli Ollama con thinking-by-default
+  timeoutavano dopo 300s con 0/0 token e nessun log diagnostico — il modello
+  restava bloccato emettendo solo blocchi `thinking` mentre `content` restava
+  vuoto, fino a quando httpx 120s + 2 retry SDK (~360s) superavano il wrapper
+  `agent_engine` 300s.
+- Fix: tre interventi in `OpenAICompatRunner` quando `fixed_model` (Ollama):
+  1. `extra_body={"think": False}` passato via OpenAI SDK a tutte le chiamate
+     (`chat`, `chat_stream`, `simple_chat`). I modelli senza thinking lo
+     ignorano, quelli con thinking lo disattivano.
+  2. `max_retries=0` sul AsyncOpenAI client per Ollama (default SDK = 2).
+     Il primo errore/timeout viene loggato e ritornato invece di hang × 2.
+     Cloud OpenAI mantiene il retry default (rete cloud più affidabile).
+  3. Logging info pre/post chiamata Ollama (model, iter, agent, tools,
+     msg_chars, finish_reason, content_len, tool_calls). Per future indagini.
+
+### Added — Documentazione privacy
+- Nuova sezione **"Provider AI e privacy"** in `docs/guida-configurazione.md`
+  e `docs/configuration-guide.md`, con:
+  - Tabella decisione "quale provider scegliere" per use case
+  - Tabella privacy per provider (cosa esce di casa, giurisdizione, costo,
+    link policy) per Claude / OpenAI / OpenRouter / Ollama
+  - Definizione di "cosa intende HIRIS per messages" per chat vs agent autonomi
+  - Lista esplicita di "cosa NON esce mai" per nessun provider
+- Disclaimer privacy aggiunto alle descrizioni dei campi cloud nelle
+  translations IT/EN: l'utente vede in UI HA addon il dettaglio "i dati
+  passano da X (giurisdizione Y) — vedi policy Z".
+
+### Tests
+- 4 nuovi test in `test_openai_compat_runner.py` (max_retries 0/2,
+  extra_body presence/absence per Ollama vs OpenAI cloud)
+- 6 nuovi test in `test_llm_router.py` (routing prefix colon/slash,
+  Claude precedence, strategy chain, prefix strip helper, runner init)
+- Suite ora 493/493 pass
+
 ## [0.9.5] — 2026-05-05
 
 ### Added
