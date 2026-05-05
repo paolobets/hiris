@@ -69,8 +69,15 @@ class OpenAICompatRunner:
             _client_timeout = _httpx.Timeout(_req_timeout, connect=5.0)
         else:
             _client_timeout = _httpx.Timeout(600.0, connect=5.0)
+        # Ollama: disabilita auto-retry SDK. Default openai 2.x = 2 retry, che
+        # cumulativamente possono superare il wrapper agent_engine 300s
+        # producendo "Timeout dopo 300s" generico senza log specifici. Con
+        # max_retries=0 il primo APIError/Timeout viene loggato e ritornato.
+        # Cloud OpenAI: lascia il default (2) — la rete cloud è meno volatile.
+        _max_retries = 0 if fixed_model else 2
         self._client = _openai.AsyncOpenAI(
-            api_key=api_key, base_url=base_url, timeout=_client_timeout
+            api_key=api_key, base_url=base_url,
+            timeout=_client_timeout, max_retries=_max_retries,
         )
         self._dispatcher = dispatcher
         self._fixed_model = fixed_model   # Ollama: always use this model; empty for OpenAI
@@ -217,11 +224,14 @@ class OpenAICompatRunner:
             msgs.append({"role": "system", "content": system})
         msgs.extend(messages)
         try:
-            resp = await self._client.chat.completions.create(
-                model=self._fixed_model or "gpt-4o-mini",
-                messages=msgs,
-                max_tokens=1024,
-            )
+            kwargs: dict = {
+                "model": self._fixed_model or "gpt-4o-mini",
+                "messages": msgs,
+                "max_tokens": 1024,
+            }
+            if self._fixed_model:
+                kwargs["extra_body"] = {"think": False}
+            resp = await self._client.chat.completions.create(**kwargs)
             return resp.choices[0].message.content or ""
         except Exception as exc:
             logger.error("simple_chat failed: %s", exc)
@@ -303,7 +313,7 @@ class OpenAICompatRunner:
             )
 
         max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._fixed_model else MAX_TOOL_ITERATIONS
-        for _ in range(max_iter):
+        for iter_idx in range(max_iter):
             try:
                 kwargs: dict = {
                     "model": effective_model,
@@ -312,7 +322,33 @@ class OpenAICompatRunner:
                 }
                 if oai_tools:
                     kwargs["tools"] = oai_tools
+                # Ollama-specific: disabilita reasoning/thinking di default per
+                # modelli che lo abilitano on-by-default (Gemma 4, Qwen QwQ,
+                # DeepSeek R1, ecc.). Questi modelli emettono token "thinking"
+                # per molti secondi prima di emettere "content"; in modalita'
+                # non-streaming la risposta non arriva mai entro il timeout
+                # HTTP e la chiamata HIRIS finisce in timeout 300s senza log
+                # specifici. `think: false` e' un parametro non-OpenAI che
+                # viene passato via extra_body al body JSON: i modelli senza
+                # thinking lo ignorano, quelli con thinking lo disattivano.
+                if self._fixed_model:
+                    kwargs["extra_body"] = {"think": False}
+                if self._fixed_model:
+                    msg_chars = sum(len(str(m.get("content", ""))) for m in messages)
+                    logger.info(
+                        "Ollama call: model=%s iter=%d/%d agent=%s tools=%d msg_chars=%d",
+                        effective_model, iter_idx + 1, max_iter,
+                        agent_id or "-", len(oai_tools or []), msg_chars,
+                    )
                 response = await self._client.chat.completions.create(**kwargs)
+                if self._fixed_model:
+                    _content = (response.choices[0].message.content or "") if response.choices else ""
+                    logger.info(
+                        "Ollama response: finish=%s content_len=%d tools=%d",
+                        response.choices[0].finish_reason if response.choices else "?",
+                        len(_content),
+                        len(response.choices[0].message.tool_calls or []) if response.choices else 0,
+                    )
             except _openai.RateLimitError as exc:
                 self.total_rate_limit_errors += 1
                 logger.error("OpenAI rate limit: %s", exc)
@@ -468,6 +504,9 @@ class OpenAICompatRunner:
                 }
                 if oai_tools:
                     kwargs["tools"] = oai_tools
+                # Ollama-specific: vedi commento in chat() per think:false.
+                if self._fixed_model:
+                    kwargs["extra_body"] = {"think": False}
 
                 try:
                     stream = await self._client.chat.completions.create(**kwargs)
