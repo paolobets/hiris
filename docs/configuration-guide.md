@@ -2,15 +2,19 @@
 
 > Version: 0.9.5 · Updated: 2026-05-05
 
-This guide covers the two configuration areas that require external setup before they work:
-**Notifications (Apprise)** and **Memory & RAG**.
-All other options (API keys, model selection, log level, theme) are self-explanatory from the add-on UI.
+This guide covers configuration areas that require a conscious choice:
+**AI providers and privacy**, **Notifications (Apprise)** and **Memory & RAG**.
 
 ---
 
 ## Table of Contents
 
-1. [Notifications (Apprise)](#1-notifications-apprise)
+1. [AI providers and privacy](#1-ai-providers-and-privacy)
+   - [Which provider to choose](#which-provider-to-choose)
+   - [Privacy table per provider](#privacy-table-per-provider)
+   - [OpenRouter — unified proxy](#openrouter--unified-proxy-200-models-1-key)
+   - [Local models (Ollama)](#local-models-ollama)
+2. [Notifications (Apprise)](#2-notifications-apprise)
    - [How it works](#how-it-works)
    - [Telegram](#telegram-recommended)
    - [ntfy (self-hosted push)](#ntfy-self-hosted-push)
@@ -20,7 +24,7 @@ All other options (API keys, model selection, log level, theme) are self-explana
    - [WhatsApp (Twilio)](#whatsapp-twilio)
    - [Multiple channels](#multiple-channels)
    - [Testing the configuration](#testing-the-configuration)
-2. [Memory & RAG](#2-memory--rag)
+3. [Memory & RAG](#3-memory--rag)
    - [How it works](#how-it-works-1)
    - [Option A — OpenAI embeddings](#option-a--openai-embeddings-simplest)
    - [Option B — Ollama embeddings (local, free)](#option-b--ollama-embeddings-local-free)
@@ -30,7 +34,90 @@ All other options (API keys, model selection, log level, theme) are self-explana
 
 ---
 
-## 1. Notifications (Apprise)
+## 1. AI providers and privacy
+
+HIRIS supports four AI providers. This section explains what leaves your home
+with each, so you can choose consciously.
+
+### Which provider to choose
+
+| Use case | Recommended provider |
+|----------|----------------------|
+| Maximum quality, no privacy concern | **Claude (Anthropic)** |
+| Family chat in italian/english | **Claude** or **OpenAI GPT** |
+| Want 200+ models with 1 key + free tier option | **OpenRouter** |
+| Absolute privacy, nothing leaves home | **Ollama** (local) |
+| Mix: family chat on cloud, autonomous agents on Ollama | combine |
+
+### Privacy table per provider
+
+| Provider | What leaves home | Jurisdiction | Cost | Privacy policy |
+|----------|------------------|--------------|------|----------------|
+| **Claude** (Anthropic) | User messages + system prompt + tool args + HA responses | 🇺🇸 US | Pay-per-token | [anthropic.com/privacy](https://www.anthropic.com/legal/privacy) |
+| **OpenAI** (GPT) | same | 🇺🇸 US | Pay-per-token | [openai.com/policies](https://openai.com/policies/) |
+| **OpenRouter** | same (flows through OpenRouter US + chosen model's provider) | 🇺🇸 US + variable | Pay-per-token, **':free'** models available | [openrouter.ai/privacy](https://openrouter.ai/privacy) |
+| **Ollama** (local) | **Nothing — everything stays on LAN** | 🏠 Your home | Free (HW power consumption) | N/A |
+
+**What HIRIS means by "messages"**:
+- For **chat agents**: text typed by the user, recent history, and the HA
+  entity context that `SemanticContextMap` attaches (sensor names, states,
+  area assignment).
+- For **autonomous agents**: the system prompt + strategic context + textual
+  representation of HA states filtered by the tools the agent invokes
+  (`get_entity_states`, `get_home_status`, etc.).
+
+**What NEVER leaves (for any provider)**:
+- Your other service API keys (Anthropic, OpenAI, etc. — they live only in
+  add-on internal `/data/options.json`)
+- Home Assistant tokens (`SUPERVISOR_TOKEN`)
+- HA `/config/.storage/` data
+- HIRIS SQLite DBs (`hiris_memory.db`, `chat_history.db`,
+  `hiris_knowledge.db`, `proposals.db`) — **never sent as such**;
+  only the content requested as context for a specific request leaves.
+
+### OpenRouter — unified proxy 200+ models, 1 key
+
+OpenRouter is a service giving you access to 200+ models from dozens of
+providers (Anthropic, OpenAI, Google, Meta, Mistral, Qwen, DeepSeek, ...)
+with a **single API key**. Features:
+
+- **Free models** marked `:free` (rate-limited but $0): Llama 3.3 70B,
+  Gemma 3 27B, Qwen 2.5 72B, DeepSeek Chat, Mistral Nemo, Hermes 3 405B
+- **Automatic failover** on OpenRouter's side: if a model is temporarily
+  down, OpenRouter reroutes to backup
+- **Unified billing**: you pay OpenRouter, OpenRouter pays providers
+
+**Setup**:
+1. Sign up at [openrouter.ai](https://openrouter.ai/) and create an API key
+2. Paste the key in HIRIS → add-on options → **OpenRouter API Key**
+3. In Agent Designer → **Model** field → type `openrouter:provider/model`
+   - Free example: `openrouter:meta-llama/llama-3.3-70b-instruct:free`
+   - Paid example: `openrouter:anthropic/claude-sonnet-4-6`
+
+**Privacy trade-off**: your messages flow through OpenRouter (US) **and**
+the chosen model's provider. Double hop vs. direct Claude/OpenAI. For strict
+GDPR concerns, prefer EU-based providers (Mistral La Plateforme direct) or
+local Ollama.
+
+### Local models (Ollama)
+
+See [`docs/full-local-mode.md`](full-local-mode.md) for the full setup guide.
+Quick summary:
+
+1. Install Ollama on a LAN-reachable host
+2. `ollama pull <model>` to download (e.g. `gemma3:9b`, `mistral-nemo:12b`,
+   `qwen2.5:14b`)
+3. In HIRIS options → **Ollama URL** (e.g. `http://192.168.1.74:11434`) and
+   **Ollama Model Name** (e.g. `gemma3:9b`)
+
+**Models with thinking-by-default** (Gemma 4, Qwen QwQ, DeepSeek R1, ...):
+since v0.9.6 HIRIS auto-disables thinking via `think: false` parameter to
+avoid timeouts — the model answers directly without emitting its
+"stream of consciousness".
+
+---
+
+## 2. Notifications (Apprise)
 
 ### How it works
 
@@ -195,7 +282,7 @@ If nothing arrives, check the add-on log (**Supervisor → HIRIS → Log**) for 
 
 ---
 
-## 2. Memory & RAG
+## 3. Memory & RAG
 
 ### How it works
 
