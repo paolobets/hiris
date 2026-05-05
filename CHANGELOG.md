@@ -1,5 +1,39 @@
 # HIRIS — Changelog
 
+## [0.9.5] — 2026-05-05
+
+### Added
+- **Extended Thinking** support per agente. Nuovo campo `thinking_budget`
+  sull'Agent (default 0 = disabilitato). Quando >0 e il modello e'
+  thinking-capable (sonnet-4.5+/opus-4+) il runner passa
+  `thinking={"type":"enabled","budget_tokens":N}` a `messages.create`.
+  - I thinking blocks vengono catturati dal runner e salvati in
+    `execution_log[].thinking_blocks` (troncati a 2000 char/block).
+  - Designer UI: nuovo `<select>` Extended Thinking budget con preset
+    0 / 2048 / 4096 / 8192 / 16384.
+  - Execution log UI: chip pill `💭 thinking` accanto a ogni row con
+    blocchi presenti; click apre un pannello mono con il chain-of-thought
+    numerato per step.
+  - Validation difensiva (handlers + runner): blocca budget < 1024 o
+    >= max_tokens, ignora silenziosamente su modelli non capable invece
+    di fallire con un 400 Anthropic.
+  - Chat handler include `debug.thinking_blocks[]` nella response JSON
+    quando thinking e' attivo (consumabile dal client per debug).
+
+### Changed (perf)
+- **Prompt cache reorder** in `claude_runner.chat()`: i prompt di
+  comportamento (`RESTRICT_PROMPT`, `REQUIRE_CONFIRMATION_PROMPT`,
+  `response_mode` prompts) ora precedono il `context_str` query-dependent.
+  Anthropic richiede cache contigue dall'inizio: prima questi blocchi
+  cadevano *dopo* il context_str non-cached e venivano riemessi fresh.
+  Ora il cache breakpoint si estende a includerli (cumulativo). Risparmio
+  tipico: ~250 input token aggiuntivi cached per richiesta su agenti con
+  `restrict_to_home` + `response_mode='compact'`.
+
+### Tests
+- 14 nuovi test (4 dataclass `thinking_budget`, 10 runner
+  `_build_thinking_param` + integration). Suite ora 483 pass.
+
 ## [0.9.4] — 2026-05-05
 
 ### Fixed (security)

@@ -6,7 +6,7 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 # Bust Docker layer cache on every release — update this string with each version bump
-RUN echo "HIRIS v0.9.4 — anthropic floor 0.87.0+ (CVE-2026-34450 + CVE-2026-34452 memory tool)"
+RUN echo "HIRIS v0.9.5 — Extended Thinking + cache opt"
 
 # Copy application source, manifest, and entrypoint
 COPY app/ /usr/lib/hiris/app/
