@@ -3,7 +3,10 @@ import logging
 
 from aiohttp import web
 
-from ..chat_store import load_history, append_messages, get_past_summaries, count_user_turns
+from ..chat_store import (
+    load_history, append_messages, get_past_summaries, count_user_turns,
+    _is_toxic_assistant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +209,12 @@ async def handle_chat(request: web.Request) -> web.Response:
                 logger.debug("SSE chunk parse skipped: %s", exc)
         await stream_resp.write_eof()
         full_response = "".join(collected_tokens)
-        if effective_agent_id and full_response:
+        # Skip persistence for toxic / synthetic-error responses so the next
+        # turn does not see a poisoned history. discard_collected already
+        # zeroes collected_tokens for tool-call leaks; this also covers the
+        # rare case where the runner returns a known-bad payload some other
+        # way (e.g. partial leak that slipped past detection).
+        if effective_agent_id and full_response and not _is_toxic_assistant(full_response):
             append_messages(effective_agent_id, [
                 {"role": "user", "content": message},
                 {"role": "assistant", "content": full_response},
@@ -232,8 +240,11 @@ async def handle_chat(request: web.Request) -> web.Response:
         thinking_budget=agent_thinking_budget,
     )
 
-    # Persist the new user+assistant exchange
-    if effective_agent_id:
+    # Persist the new user+assistant exchange — but skip when the runner
+    # returned a synthetic error / leak sentinel, so the next turn doesn't
+    # inherit a degraded history. The user retains the visible error in the
+    # current response payload.
+    if effective_agent_id and not _is_toxic_assistant(response):
         append_messages(effective_agent_id, [
             {"role": "user", "content": message},
             {"role": "assistant", "content": response},

@@ -12,6 +12,56 @@ logger = logging.getLogger(__name__)
 
 _AGENT_ID_RE = re.compile(r'^[\w\-]{1,64}$')
 
+# Identifies historical assistant turns that should NOT be replayed back to the
+# model on the next chat call because they would degrade the response. Kept in
+# this module (rather than imported from backends.openai_compat_runner) because
+# chat_store has no other dependency on backends and we want a tight separation.
+#
+# Patterns covered:
+# 1. Tool-call leaked as raw text by some Mistral/Hermes routings on OpenRouter
+#    (identifier + non-ASCII separator like Hebrew/Vietnamese codepoints), e.g.
+#    `get_ha_healthיׂ{"sections":["all"]}`. The runner now intercepts these on
+#    the way out (v0.9.8) but turns saved BEFORE the upgrade are still in
+#    chat_history.db and would otherwise be re-served to every new chat.
+# 2. Synthetic error sentinels persisted by the chat handler when an upstream
+#    call failed ("Errore temporaneo del servizio AI...", rate-limit message,
+#    402-credit message). These add no information and dilute the prompt.
+_TOXIC_ASSISTANT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}[^\x00-\x7F\s]")
+_TOXIC_ASSISTANT_EXACT = frozenset({
+    "Errore temporaneo del servizio AI. Riprova tra poco.",
+    "Rate limit — riprova tra poco.",
+    "",
+})
+_TOXIC_ASSISTANT_PREFIXES = (
+    "Crediti OpenRouter insufficienti",
+    "Il modello selezionato non gestisce correttamente i tool",
+)
+
+
+def _is_toxic_assistant(content: str) -> bool:
+    """Return True if this assistant content should be filtered from history."""
+    if content in _TOXIC_ASSISTANT_EXACT:
+        return True
+    if _TOXIC_ASSISTANT_RE.match(content):
+        return True
+    return any(content.startswith(p) for p in _TOXIC_ASSISTANT_PREFIXES)
+
+
+def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
+    """Drop assistant turns matching the toxic patterns AND their preceding user
+    turn (so we don't leave dangling user messages with no answer in context).
+
+    Operates in-order, single pass. Empty assistant content also counts as toxic.
+    """
+    out: list[dict] = []
+    for msg in messages:
+        if msg.get("role") == "assistant" and _is_toxic_assistant(msg.get("content", "")):
+            if out and out[-1].get("role") == "user":
+                out.pop()
+            continue
+        out.append(msg)
+    return out
+
 # 0 = unlimited; overridable at startup via configure()
 HISTORY_RETENTION_DAYS: int = int(os.environ.get("HISTORY_RETENTION_DAYS", "90"))
 SESSION_GAP_HOURS = 2
@@ -180,6 +230,11 @@ class ChatStore:
                     (sid,),
                 ).fetchall()
             messages = [{"role": r["role"], "content": r["content"]} for r in rows]
+            # Strip toxic assistant turns (and their dangling user pair) before
+            # the model ever sees them — protects against the leaked-tool-call
+            # poisoning observed pre-v0.9.8 and against repeated synthetic
+            # error sentinels.
+            messages = _purge_toxic_turns(messages)
             if len(messages) > max_turns * 2:
                 messages = messages[-(max_turns * 2):]
             return messages

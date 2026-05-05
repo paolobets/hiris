@@ -309,3 +309,104 @@ def test_summary_truncated_to_200_chars(tmp_path):
     assert row["summary"] is not None
     assert len(row["summary"]) <= 201  # 200 + ellipsis char
     store.close()
+
+
+# ---------------------------------------------------------------------------
+# Regression: filter toxic assistant turns on history load (v0.9.9)
+# Pre-v0.9.8, some Mistral/Hermes routings on OpenRouter leaked tool calls as
+# raw text content (e.g. `get_ha_healthיׂ{...}`); the chat handler also
+# persisted generic synthetic errors ("Errore temporaneo del servizio AI...").
+# Both poison the history sent to subsequent turns. load_history must purge
+# them so existing users recover automatically without manual cleanup.
+# ---------------------------------------------------------------------------
+
+from hiris.app.chat_store import _purge_toxic_turns, _is_toxic_assistant
+
+
+def test_is_toxic_detects_mistral_leak_pattern():
+    assert _is_toxic_assistant("get_ha_healthיׂ{\"sections\":[\"all\"]}") is True
+    assert _is_toxic_assistant("await_user_confirmationיׄ**Confermi?**") is True
+    assert _is_toxic_assistant("get_ha_healthớ{}") is True
+
+
+def test_is_toxic_detects_synthetic_error_strings():
+    assert _is_toxic_assistant("Errore temporaneo del servizio AI. Riprova tra poco.") is True
+    assert _is_toxic_assistant("Rate limit — riprova tra poco.") is True
+    assert _is_toxic_assistant("") is True
+    assert _is_toxic_assistant(
+        "Crediti OpenRouter insufficienti per max_tokens=4096. Riduci..."
+    ) is True
+    assert _is_toxic_assistant(
+        "Il modello selezionato non gestisce correttamente i tool tramite questo provider..."
+    ) is True
+
+
+def test_is_toxic_does_not_match_legit_responses():
+    legit = [
+        "Tutto ok, la casa è in buone condizioni.",
+        "La temperatura in salotto è 21°C.",
+        "Posso aiutarti — dimmi cosa serve.",
+        "**Riepilogo consumi:**\n- Potenza: 550W",
+    ]
+    for s in legit:
+        assert _is_toxic_assistant(s) is False, f"false positive on {s!r}"
+
+
+def test_purge_drops_toxic_assistant_and_preceding_user():
+    msgs = [
+        {"role": "user", "content": "verifica salute HA"},
+        {"role": "assistant", "content": "get_ha_healthיׂ{\"sections\":[\"all\"]}"},
+        {"role": "user", "content": "che luci hai?"},
+        {"role": "assistant", "content": "Errore temporaneo del servizio AI. Riprova tra poco."},
+        {"role": "user", "content": "ciao"},
+        {"role": "assistant", "content": "Ciao! Come stai?"},
+    ]
+    out = _purge_toxic_turns(msgs)
+    assert out == [
+        {"role": "user", "content": "ciao"},
+        {"role": "assistant", "content": "Ciao! Come stai?"},
+    ]
+
+
+def test_purge_preserves_clean_history_unchanged():
+    msgs = [
+        {"role": "user", "content": "U1"},
+        {"role": "assistant", "content": "A1"},
+        {"role": "user", "content": "U2"},
+        {"role": "assistant", "content": "A2"},
+    ]
+    assert _purge_toxic_turns(msgs) == msgs
+
+
+def test_purge_handles_leading_toxic_assistant_with_no_preceding_user():
+    """Edge case: assistant comes first (shouldn't happen but be safe)."""
+    msgs = [
+        {"role": "assistant", "content": "Errore temporaneo del servizio AI. Riprova tra poco."},
+        {"role": "user", "content": "ciao"},
+        {"role": "assistant", "content": "ciao!"},
+    ]
+    out = _purge_toxic_turns(msgs)
+    assert out == [
+        {"role": "user", "content": "ciao"},
+        {"role": "assistant", "content": "ciao!"},
+    ]
+
+
+def test_load_history_purges_pre_v098_corrupted_history(tmp_path):
+    """End-to-end: existing chat with leaked tool calls + error messages comes
+    out clean, simulating what happens for users upgrading from v0.9.7."""
+    msgs = [
+        {"role": "user", "content": "check HA"},
+        {"role": "assistant", "content": "get_ha_healthיׂ{\"sections\":[\"all\"]}"},
+        {"role": "user", "content": "luci?"},
+        {"role": "assistant", "content": "Errore temporaneo del servizio AI. Riprova tra poco."},
+        {"role": "user", "content": "ora?"},
+        {"role": "assistant", "content": "**Tutto ok**"},
+    ]
+    append_messages("ag-corrupt", msgs, str(tmp_path))
+    out = load_history("ag-corrupt", str(tmp_path))
+    # Two corrupted pairs dropped, only the last clean one survives
+    assert out == [
+        {"role": "user", "content": "ora?"},
+        {"role": "assistant", "content": "**Tutto ok**"},
+    ]

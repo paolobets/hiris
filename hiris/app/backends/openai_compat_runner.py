@@ -112,6 +112,42 @@ def parse_afford_limit(exc: Any) -> Optional[int]:
     return max(1, int(affordable * 0.95))
 
 
+# OpenRouter free-tier rate-limit messages embed the upstream provider error
+# verbatim under metadata.raw, e.g.:
+#   "qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream.
+#    Please retry shortly, or add your own key..."
+# We surface this clearer message instead of the opaque "Errore temporaneo".
+_UPSTREAM_RATELIMIT_RE = re.compile(
+    r"([\w\-./]+:free)\s+is\s+temporarily\s+rate-limited\s+upstream",
+    re.IGNORECASE,
+)
+
+
+def parse_upstream_rate_limit(exc: Any) -> Optional[str]:
+    """Detect free-tier upstream rate limit and return an actionable Italian
+    message. Returns ``None`` if the exception is not this specific case.
+    """
+    msg = getattr(exc, "message", None) or str(exc) or ""
+    m = _UPSTREAM_RATELIMIT_RE.search(msg)
+    if not m:
+        # Some providers emit the plain phrase without naming the model.
+        if "rate-limited upstream" in msg.lower():
+            return (
+                "Il modello :free selezionato ha esaurito il rate limit "
+                "upstream. Riprova tra qualche minuto oppure passa a un "
+                "modello a pagamento (o aggiungi una tua API key del provider "
+                "su openrouter.ai/settings/integrations)."
+            )
+        return None
+    model_name = m.group(1)
+    return (
+        f"Il modello {model_name} ha esaurito il rate limit upstream. "
+        "Riprova tra qualche minuto oppure passa a un modello a pagamento "
+        "(o aggiungi una tua API key del provider su "
+        "openrouter.ai/settings/integrations)."
+    )
+
+
 class OpenAICompatRunner:
     """Agentic LLM runner for OpenAI-compatible APIs (OpenAI cloud + Ollama local)."""
 
@@ -428,7 +464,8 @@ class OpenAICompatRunner:
             except _openai.RateLimitError as exc:
                 self.total_rate_limit_errors += 1
                 logger.error("OpenAI rate limit: %s", exc)
-                return "Errore temporaneo del servizio AI. Riprova tra poco."
+                upstream = parse_upstream_rate_limit(exc)
+                return upstream or "Errore temporaneo del servizio AI. Riprova tra poco."
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
                 # current max_tokens. The error message tells us the highest
@@ -636,7 +673,9 @@ class OpenAICompatRunner:
                 except _openai.RateLimitError as exc:
                     self.total_rate_limit_errors += 1
                     logger.error("OpenAI rate limit (stream): %s", exc)
-                    yield f'data: {json.dumps({"type": "error", "message": "Rate limit — riprova tra poco."})}\n\n'
+                    upstream = parse_upstream_rate_limit(exc)
+                    err_msg = upstream or "Rate limit — riprova tra poco."
+                    yield f'data: {json.dumps({"type": "error", "message": err_msg})}\n\n'
                     return
                 except _openai.APIError as exc:
                     # OpenRouter 402: see chat() for full rationale.

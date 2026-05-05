@@ -283,3 +283,124 @@ async def test_delete_agent_cleans_memory_and_chat_history():
     assert resp.status == 204
     memory_store.delete_by_agent.assert_called_once_with(aid)
     assert called["clear"] == (aid, "/tmp/hiris_test_data")
+
+
+# ---------------------------------------------------------------------------
+# Regression: PUT/POST agent rejects non-tool-capable OpenRouter model (v0.9.9)
+# ---------------------------------------------------------------------------
+
+from hiris.app.api.handlers_agents import handle_create_agent, handle_update_agent
+
+
+@pytest.mark.asyncio
+async def test_create_agent_rejects_broken_openrouter_model(monkeypatch):
+    """Saving an agent with hermes-3 must return 400, not silently accept."""
+    body = {
+        "name": "test",
+        "type": "chat",
+        "model": "openrouter:nousresearch/hermes-3-llama-3.1-405b:free",
+    }
+
+    async def fake_capability(model, key):
+        return False  # broken model
+
+    monkeypatch.setattr(
+        "hiris.app.api.handlers_models.is_openrouter_model_tool_capable",
+        fake_capability,
+    )
+
+    engine = MagicMock()
+    app = MagicMock()
+    app.get = MagicMock(side_effect=lambda k, d=None: {
+        "openrouter_api_key": "sk-or-test",
+    }.get(k, d))
+    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
+
+    req = make_mocked_request("POST", "/api/agents", app=app)
+    req.json = AsyncMock(return_value=body)
+
+    resp = await handle_create_agent(req)
+    assert resp.status == 400
+    payload = json.loads(resp.body)
+    assert "tool" in payload["error"].lower()
+    assert "hermes-3" in payload["error"]
+    engine.create_agent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_agent_accepts_tool_capable_openrouter_model(monkeypatch):
+    """Tool-capable OpenRouter model passes validation cleanly."""
+    body = {"name": "x", "type": "chat", "model": "openrouter:anthropic/claude-sonnet-4-6"}
+
+    async def fake_capability(model, key):
+        return True
+
+    monkeypatch.setattr(
+        "hiris.app.api.handlers_models.is_openrouter_model_tool_capable",
+        fake_capability,
+    )
+
+    from dataclasses import dataclass
+    @dataclass
+    class _Agent:
+        id: str = "a-uuid"
+        name: str = "x"
+        type: str = "chat"
+
+    engine = MagicMock()
+    engine.update_agent = MagicMock(return_value=_Agent())
+    app = MagicMock()
+    app.get = MagicMock(side_effect=lambda k, d=None: {
+        "openrouter_api_key": "sk-or-test",
+    }.get(k, d))
+    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
+
+    aid = "550e8400-e29b-41d4-a716-446655440000"
+    req = make_mocked_request(
+        "PUT", f"/api/agents/{aid}",
+        match_info={"agent_id": aid},
+        app=app,
+    )
+    req.json = AsyncMock(return_value=body)
+    resp = await handle_update_agent(req)
+    assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_update_agent_skips_check_for_non_openrouter_models(monkeypatch):
+    """Claude / OpenAI / Ollama models must NOT trigger an OpenRouter API call."""
+    body = {"name": "x", "type": "chat", "model": "claude-sonnet-4-6"}
+
+    cap_called = {"n": 0}
+    async def fake_capability(model, key):
+        cap_called["n"] += 1
+        return None
+
+    monkeypatch.setattr(
+        "hiris.app.api.handlers_models.is_openrouter_model_tool_capable",
+        fake_capability,
+    )
+
+    from dataclasses import dataclass
+    @dataclass
+    class _Agent:
+        id: str = "a-uuid"
+        name: str = "x"
+        type: str = "chat"
+
+    engine = MagicMock()
+    engine.update_agent = MagicMock(return_value=_Agent())
+    app = MagicMock()
+    app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
+    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
+
+    aid = "550e8400-e29b-41d4-a716-446655440000"
+    req = make_mocked_request(
+        "PUT", f"/api/agents/{aid}",
+        match_info={"agent_id": aid},
+        app=app,
+    )
+    req.json = AsyncMock(return_value=body)
+    resp = await handle_update_agent(req)
+    assert resp.status == 200
+    assert cap_called["n"] == 0  # No OpenRouter call for Claude models

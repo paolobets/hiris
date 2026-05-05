@@ -442,3 +442,69 @@ async def test_chat_non_402_api_error_still_returns_generic_message(dispatcher, 
     assert "Errore temporaneo" in out
     # Verify no retry happened
     assert runner._client.chat.completions.create.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Regression: clearer message for OpenRouter free-tier upstream rate limit
+# (v0.9.9). Previously caught as RateLimitError → opaque "Errore temporaneo".
+# ---------------------------------------------------------------------------
+
+from hiris.app.backends.openai_compat_runner import parse_upstream_rate_limit
+
+
+def test_parse_upstream_rate_limit_with_model_name():
+    """Real OpenRouter free-tier message extracts the model id."""
+    class _Err:
+        message = (
+            "Provider returned error qwen/qwen3-next-80b-a3b-instruct:free is "
+            "temporarily rate-limited upstream. Please retry shortly..."
+        )
+    out = parse_upstream_rate_limit(_Err())
+    assert out is not None
+    assert "qwen/qwen3-next-80b-a3b-instruct:free" in out
+    assert "rate limit" in out.lower()
+    assert "openrouter.ai" in out  # actionable link
+
+
+def test_parse_upstream_rate_limit_generic_phrase():
+    """Fallback when the message has the phrase but no model name."""
+    class _Err:
+        message = "Some upstream provider is rate-limited upstream"
+    out = parse_upstream_rate_limit(_Err())
+    assert out is not None
+    assert "rate limit" in out.lower()
+
+
+def test_parse_upstream_rate_limit_no_match():
+    class _Err:
+        message = "Account has exceeded daily quota"
+    assert parse_upstream_rate_limit(_Err()) is None
+
+
+@pytest.mark.asyncio
+async def test_chat_returns_clear_message_on_upstream_rate_limit(dispatcher, tmp_path):
+    """RateLimitError carrying upstream model name → actionable message,
+    not the opaque 'Errore temporaneo'."""
+    import openai as _openai
+    runner = OpenAICompatRunner(
+        base_url="https://openrouter.ai/api/v1",
+        api_key="sk-or-test",
+        dispatcher=dispatcher,
+        usage_path=str(tmp_path / "u.json"),
+    )
+    runner._dispatcher.has_memory = False
+    # Use a real OpenRouter-shaped exception body so the runner sees the
+    # provider-specific message inside the standard RateLimitError.
+    err = _openai.RateLimitError(
+        message=(
+            "Error code: 429 - {'error': {'message': 'Provider returned error', "
+            "'metadata': {'raw': 'qwen/qwen3-next-80b-a3b-instruct:free is "
+            "temporarily rate-limited upstream...'}}}"
+        ),
+        response=MagicMock(),
+        body=None,
+    )
+    runner._client.chat.completions.create = AsyncMock(side_effect=err)
+    out = await runner.chat(user_message="hi", model="qwen/qwen3-next-80b-a3b-instruct:free")
+    assert "qwen/qwen3-next-80b-a3b-instruct:free" in out
+    assert "Errore temporaneo" not in out

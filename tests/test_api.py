@@ -351,6 +351,55 @@ async def test_chat_persists_exchange_in_history(client):
 
 
 @pytest.mark.asyncio
+async def test_chat_does_not_persist_toxic_response(client):
+    """Regression v0.9.9: synthetic-error responses (rate limit, leaked
+    tool calls, etc.) must not be persisted to chat history — they would
+    poison subsequent turns and the user already sees the error in the
+    current response payload."""
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chat_store import load_history
+    engine = client.app["engine"]
+    data_dir = client.app["data_dir"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        triggers=[], system_prompt="test",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(
+        return_value="Errore temporaneo del servizio AI. Riprova tra poco."
+    )
+
+    await client.post("/api/chat", json={"message": "fail me"})
+
+    history = load_history(DEFAULT_AGENT_ID, data_dir)
+    assert history == []  # nothing persisted
+
+
+@pytest.mark.asyncio
+async def test_chat_does_not_persist_leaked_tool_call_response(client):
+    """Same protection for the TOOL_LEAK_USER_MSG sentinel returned by the
+    runner when a model emits a tool call as raw text content."""
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chat_store import load_history
+    from hiris.app.backends.openai_compat_runner import TOOL_LEAK_USER_MSG
+    engine = client.app["engine"]
+    data_dir = client.app["data_dir"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        triggers=[], system_prompt="test",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value=TOOL_LEAK_USER_MSG)
+
+    await client.post("/api/chat", json={"message": "leak me"})
+
+    history = load_history(DEFAULT_AGENT_ID, data_dir)
+    assert history == []
+
+
+@pytest.mark.asyncio
 async def test_chat_context_map_injects_area_context(client):
     from unittest.mock import MagicMock
     from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent

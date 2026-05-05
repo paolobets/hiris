@@ -1,5 +1,42 @@
 # HIRIS — Changelog
 
+## [0.9.9] — 2026-05-05
+
+### Fixed — Tre buchi residui dopo v0.9.8 (validazione, history, UX errori)
+
+v0.9.8 ha fermato la creazione di nuovi turni "tossici" ma:
+- la **chat history già salvata** prima dell'upgrade continuava a essere
+  rispedita al modello ad ogni turno → degradazione persistente,
+- gli **agenti già configurati** con `nousresearch/hermes-3-llama-3.1-405b:free`
+  continuavano a fallire con HTTP 404 finché l'utente non cambiava modello,
+- gli errori `429 rate-limited upstream` dei modelli OpenRouter `:free` si
+  presentavano come opaco "Errore temporaneo del servizio AI" senza
+  istruzioni utili.
+
+#### Fix
+- **`chat_store.load_history()`**: filtra automaticamente i messaggi assistant
+  tossici (tool-call leakate via pattern `<id><non-ASCII>`, errori sintetici
+  noti, prefissi credit-exhausted / tool-leak). Quando un assistant è
+  scartato anche il suo user immediatamente precedente viene rimosso, per
+  non lasciare turni orfani senza risposta. **Nessuna azione richiesta agli
+  utenti**: chat esistenti si auto-puliscono al prossimo caricamento.
+- **`PUT/POST /api/agents`**: nuovo `is_openrouter_model_tool_capable()` in
+  `handlers_models.py` consulta il campo `supported_parameters` di
+  OpenRouter. Se il modello non supporta i tool, il save viene rifiutato
+  con HTTP 400 e un messaggio che spiega perché e suggerisce alternative.
+  Modelli non-OpenRouter (Claude/OpenAI/Ollama) non triggherano nessuna
+  chiamata di rete extra.
+- **`handlers_chat.py`**: dopo `runner.chat()` / streaming, se la response
+  matcha il filtro tossico, NON viene persistita in chat_store (né user
+  né assistant). Future turni non ereditano più storia degradata.
+- **`OpenAICompatRunner`**: nuovo `parse_upstream_rate_limit()` traduce
+  `qwen/...:free is temporarily rate-limited upstream` in messaggio
+  italiano azionabile (suggerisce retry, modello a pagamento, o aggiunta
+  API key del provider su openrouter.ai).
+
+### Test
+- Suite: 521 + 22 nuovi = 543 test, tutti pass.
+
 ## [0.9.8] — 2026-05-05
 
 ### Fixed — OpenRouter quality regressions (multi-causa)

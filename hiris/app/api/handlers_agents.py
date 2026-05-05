@@ -152,6 +152,28 @@ async def handle_list_agents(request: web.Request) -> web.Response:
     return web.json_response(result)
 
 
+async def _validate_openrouter_model(request: web.Request, body: dict) -> str | None:
+    """Reject save when the agent's model is an OpenRouter id that does not
+    advertise tool support (e.g. the broken hermes-3-llama-3.1-405b:free).
+    Returns an error message string, or None if the model is OK / not OpenRouter.
+    """
+    model = body.get("model")
+    if not isinstance(model, str):
+        return None
+    if not (model.startswith("openrouter:") or model.startswith("openrouter/")):
+        return None
+    api_key = request.app.get("openrouter_api_key", "")
+    from .handlers_models import is_openrouter_model_tool_capable
+    capable = await is_openrouter_model_tool_capable(model, api_key)
+    if capable is False:
+        return (
+            f"Modello OpenRouter '{model}' non supporta i tool: HIRIS richiede "
+            "tool use per ogni agente. Scegli un altro modello (Claude, GPT-4o, "
+            "Mistral Large, Llama 3.3 70B free, Qwen 2.5 72B free, …)."
+        )
+    return None
+
+
 async def handle_create_agent(request: web.Request) -> web.Response:
     try:
         body = await request.json()
@@ -164,6 +186,9 @@ async def handle_create_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": f"Missing required fields: {missing}"}, status=400)
 
     if err := _validate_agent_payload(body):
+        return web.json_response({"error": err}, status=400)
+
+    if err := await _validate_openrouter_model(request, body):
         return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]
@@ -192,6 +217,9 @@ async def handle_update_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
 
     if err := _validate_agent_payload(body):
+        return web.json_response({"error": err}, status=400)
+
+    if err := await _validate_openrouter_model(request, body):
         return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]

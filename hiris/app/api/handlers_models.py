@@ -163,6 +163,49 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
         return _OPENROUTER_PRESETS
 
 
+async def is_openrouter_model_tool_capable(model: str, api_key: str) -> bool | None:
+    """Validate that an OpenRouter model exists in the live capability list and
+    advertises tool support.
+
+    Args:
+        model: HIRIS-tagged model id (e.g. ``openrouter:anthropic/claude-sonnet-4-6``).
+        api_key: OpenRouter API key (required to call the models endpoint).
+
+    Returns:
+        True if the model is tool-capable per OpenRouter's live capability data.
+        False if it is in the catalogue but does not support tools.
+        None if the live capability check could not be performed (no key, network
+        error, missing capability field) — caller should allow the save and let
+        the runtime surface any failure.
+    """
+    if not api_key:
+        return None
+    raw_id = model.removeprefix("openrouter:").removeprefix("openrouter/")
+    if not raw_id:
+        return False
+    headers = {"Authorization": f"Bearer {api_key}"}
+    timeout = aiohttp.ClientTimeout(total=5)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get("https://openrouter.ai/api/v1/models", headers=headers) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        "OpenRouter capability check returned %s — allowing save",
+                        resp.status,
+                    )
+                    return None
+                data = await resp.json()
+        for entry in data.get("data", []):
+            if entry.get("id") == raw_id:
+                return _supports_tools(entry)
+        # Model id not found in catalogue — explicit rejection (probably retired
+        # or typo'd).
+        return False
+    except Exception as exc:
+        logger.warning("OpenRouter capability check failed: %s — allowing save", exc)
+        return None
+
+
 async def handle_list_models(request: web.Request) -> web.Response:
     providers = []
 
