@@ -378,6 +378,7 @@ async def _on_startup(app: web.Application) -> None:
             local_model_url = ""
     local_model_name = os.environ.get("LOCAL_MODEL_NAME", "")
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
+    openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
     llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
 
     # Memory / RAG config
@@ -423,6 +424,7 @@ async def _on_startup(app: web.Application) -> None:
 
     from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
+    from .backends.openrouter_runner import OpenRouterRunner
 
     dispatcher = ToolDispatcher(
         ha_client=ha_client,
@@ -493,15 +495,26 @@ async def _on_startup(app: web.Application) -> None:
                 local_model_url, _exc,
             )
 
+    openrouter_runner = None
+    if openrouter_api_key:
+        openrouter_runner = OpenRouterRunner(
+            api_key=openrouter_api_key,
+            dispatcher=dispatcher,
+            usage_path=f"{_usage_base}_openrouter{_usage_ext}",
+        )
+        logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
+
     # Store config for /api/models endpoint
     app["openai_api_key"] = openai_api_key
+    app["openrouter_api_key"] = openrouter_api_key
     app["local_model_url"] = local_model_url
     app["local_model_name"] = local_model_name
 
-    if any([claude_runner, openai_runner, ollama_runner]):
+    if any([claude_runner, openai_runner, openrouter_runner, ollama_runner]):
         router = LLMRouter(
             claude=claude_runner,
             openai=openai_runner,
+            openrouter=openrouter_runner,
             ollama=ollama_runner,
             strategy=llm_strategy,
         )

@@ -26,6 +26,7 @@ options:
   # ── AI Providers ──────────────────────────────────────────────────────────
   claude_api_key: ""
   openai_api_key: ""
+  openrouter_api_key: ""
   primary_model: "claude-sonnet-4-6"
   llm_strategy: "balanced"
 
@@ -59,6 +60,7 @@ schema:
   # ── AI Providers ──────────────────────────────────────────────────────────
   claude_api_key: password
   openai_api_key: password
+  openrouter_api_key: password
   primary_model: str
   llm_strategy: "list(balanced|cost_first|quality_first)"
 

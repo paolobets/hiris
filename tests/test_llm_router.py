@@ -132,3 +132,80 @@ async def test_router_chat_all_fail_returns_error_message(mock_runner):
     router = LLMRouter(claude=failing_runner, strategy="balanced")
     result = await router.chat(user_message="hello", model="auto")
     assert "non disponibili" in result
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter routing (v0.9.6)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_router_routes_openrouter_prefix_colon(mock_runner):
+    or_runner = MagicMock()
+    or_runner.chat = AsyncMock(return_value="from openrouter")
+    or_runner.last_tool_calls = []
+    router = LLMRouter(openrouter=or_runner, strategy="balanced")
+    result = await router.chat(
+        user_message="hi",
+        model="openrouter:meta-llama/llama-3.3-70b-instruct:free",
+    )
+    assert result == "from openrouter"
+    or_runner.chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_router_routes_openrouter_prefix_slash(mock_runner):
+    or_runner = MagicMock()
+    or_runner.chat = AsyncMock(return_value="from openrouter")
+    or_runner.last_tool_calls = []
+    router = LLMRouter(openrouter=or_runner, strategy="balanced")
+    result = await router.chat(
+        user_message="hi",
+        model="openrouter/anthropic/claude-sonnet-4-6",
+    )
+    assert result == "from openrouter"
+    or_runner.chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_router_claude_prefix_skips_openrouter(mock_runner):
+    """Plain 'claude-*' must still route to Claude runner, not OpenRouter."""
+    claude_runner = MagicMock()
+    claude_runner.chat = AsyncMock(return_value="from claude")
+    claude_runner.last_tool_calls = []
+    or_runner = MagicMock()
+    or_runner.chat = AsyncMock()
+    or_runner.last_tool_calls = []
+    router = LLMRouter(claude=claude_runner, openrouter=or_runner, strategy="balanced")
+    result = await router.chat(user_message="hi", model="claude-sonnet-4-6")
+    assert result == "from claude"
+    or_runner.chat.assert_not_awaited()
+
+
+def test_router_strategy_includes_openrouter_in_chain():
+    or_runner = MagicMock()
+    claude_runner = MagicMock()
+    router = LLMRouter(claude=claude_runner, openrouter=or_runner, strategy="balanced")
+    backends = router._ordered_backends()
+    # balanced: claude > openai > openrouter > ollama
+    assert backends[0] is claude_runner
+    assert or_runner in backends
+
+
+def test_openrouter_runner_strips_prefix_in_resolve_model():
+    from hiris.app.backends.openrouter_runner import OpenRouterRunner, _strip_openrouter_prefix
+    assert _strip_openrouter_prefix("openrouter:foo/bar:free") == "foo/bar:free"
+    assert _strip_openrouter_prefix("openrouter/foo/bar") == "foo/bar"
+    assert _strip_openrouter_prefix("anthropic/claude-sonnet-4-6") == "anthropic/claude-sonnet-4-6"
+
+
+def test_openrouter_runner_init(tmp_path):
+    """OpenRouterRunner constructs with OpenRouter base URL + max_retries default."""
+    from hiris.app.backends.openrouter_runner import OpenRouterRunner
+    runner = OpenRouterRunner(
+        api_key="sk-or-test",
+        dispatcher=MagicMock(),
+        usage_path=str(tmp_path / "u.json"),
+    )
+    assert "openrouter.ai/api/v1" in str(runner._client.base_url)
+    # No fixed_model -> cloud retry profile
+    assert runner._client.max_retries == 2

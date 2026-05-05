@@ -21,41 +21,65 @@ def _is_openai_model(model: str) -> bool:
     return bool(re.match(r"^(gpt-|o[1-9])", model))
 
 
+def _is_openrouter_model(model: str) -> bool:
+    """User-facing prefix to route a model through OpenRouter.
+
+    Accepts both 'openrouter:provider/model' and 'openrouter/provider/model'
+    so users coming from LiteLLM-style naming feel at home.
+    """
+    return model.startswith("openrouter:") or model.startswith("openrouter/")
+
+
 _STRATEGY_ORDER = {
     # cost_first: prefer free local (Ollama) → cheap cloud → full cloud
-    "cost_first":    ["ollama", "openai", "claude"],
+    "cost_first":    ["ollama", "openrouter", "openai", "claude"],
     # quality_first: prefer most capable first
-    "quality_first": ["claude", "openai", "ollama"],
+    "quality_first": ["claude", "openai", "openrouter", "ollama"],
     # balanced (default): same as quality_first
-    "balanced":      ["claude", "openai", "ollama"],
+    "balanced":      ["claude", "openai", "openrouter", "ollama"],
 }
 
 
 class LLMRouter:
-    """Routes LLM calls to the appropriate backend (Claude, OpenAI, Ollama).
+    """Routes LLM calls to the appropriate backend.
+
+    Backends: Claude (anthropic), OpenAI cloud, OpenRouter proxy, Ollama local.
 
     strategy controls the backend preference order when model="auto":
-      - "balanced" / "quality_first": Claude → OpenAI → Ollama
-      - "cost_first": Ollama → OpenAI → Claude
+      - "balanced" / "quality_first": Claude → OpenAI → OpenRouter → Ollama
+      - "cost_first": Ollama → OpenRouter → OpenAI → Claude
     Fallback: if the primary backend raises an exception and model="auto",
     the next backend in the strategy chain is tried automatically.
+
+    Explicit model routing (when model != "auto"):
+      - 'claude-*'                  → Claude runner
+      - 'gpt-*' or 'o[1-9]'         → OpenAI runner
+      - 'openrouter:*' or 'openrouter/*' → OpenRouter runner (prefix stripped)
+      - anything else               → Ollama runner
     """
 
     def __init__(
         self,
         claude: Any = None,
         openai: Any = None,
+        openrouter: Any = None,
         ollama: Any = None,
         strategy: str = "balanced",
     ) -> None:
         self._claude = claude
         self._openai = openai
+        self._openrouter = openrouter
         self._ollama = ollama
         self._strategy = strategy if strategy in _STRATEGY_ORDER else "balanced"
-        self._all = [r for r in [claude, openai, ollama] if r is not None]
+        self._all = [r for r in [claude, openai, openrouter, ollama] if r is not None]
 
     def _backend_map(self) -> dict[str, Any]:
-        return {"claude": self._claude, "openai": self._openai, "ollama": self._ollama}
+        return {
+            "claude": self._claude,
+            "openai": self._openai,
+            "openrouter": self._openrouter,
+            "ollama": self._ollama,
+        }
 
     def _ordered_backends(self) -> list[Any]:
         """Return available backends in strategy priority order."""
@@ -67,6 +91,8 @@ class LLMRouter:
         if model == "auto":
             backends = self._ordered_backends()
             return backends[0] if backends else None
+        if _is_openrouter_model(model):
+            return self._openrouter
         if model.startswith("claude-"):
             return self._claude
         if _is_openai_model(model):
@@ -206,7 +232,7 @@ class LLMRouter:
         messages = [{"role": "user", "content": user_msg}]
 
         # Ollama is cheapest; fall back to primary runner
-        runner = self._ollama or self._claude or self._openai
+        runner = self._ollama or self._openrouter or self._claude or self._openai
         if runner is None:
             return {}
         raw = await runner.simple_chat(messages, system=_CLASSIFY_SYSTEM)
