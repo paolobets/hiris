@@ -791,6 +791,7 @@ class AgentEngine:
                             restrict_to_home=agent.restrict_to_home,
                             agent_id=agent.id,
                             response_mode=agent.response_mode,
+                            thinking_budget=agent.thinking_budget,
                         ),
                         timeout=_AGENT_RUN_TIMEOUT,
                     )
@@ -816,6 +817,7 @@ class AgentEngine:
                             require_confirmation=agent.require_confirmation,
                             agent_id=agent.id,
                             response_mode=agent.response_mode,
+                            thinking_budget=agent.thinking_budget,
                         ),
                         timeout=_AGENT_RUN_TIMEOUT,
                     )
@@ -895,6 +897,11 @@ class AgentEngine:
         inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
         out_after = getattr(self._claude_runner, "total_output_tokens", 0)
         s = structured or {}
+        # Capture extended-thinking blocks if any. Truncate per-block to keep
+        # the agents.json file from growing unbounded — full reasoning is
+        # rarely needed in the UI, just the gist for debug.
+        thinking_blocks = list(getattr(self._claude_runner, "last_thinking_blocks", None) or [])
+        thinking_blocks = [(t or "")[:2000] for t in thinking_blocks]
         record = {
             "timestamp": agent.last_run,
             "trigger": (trigger_fired or {}).get("type", agent.triggers[0].get("type", "unknown") if agent.triggers else "manual"),
@@ -907,5 +914,6 @@ class AgentEngine:
             "notifica": s.get("notifica"),
             "params": s.get("params"),
             "action_taken": action_taken,
+            "thinking_blocks": thinking_blocks,
         }
         agent.execution_log = (agent.execution_log + [record])[-20:]
