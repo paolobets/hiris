@@ -284,6 +284,20 @@
     .log-expand-btn:hover { text-decoration: underline; }
     .log-full { display: none; white-space: pre-wrap; margin-top: 4px; font-size: 11px; color: var(--text-muted); }
     .log-preview { }
+    .log-thinking-btn {
+      background: none; border: 1px solid var(--border); color: var(--text-muted);
+      font-size: 10.5px; cursor: pointer; padding: 1px 6px; margin-left: 6px;
+      border-radius: 999px; line-height: 1.6;
+    }
+    .log-thinking-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .log-thinking-btn.open { background: var(--surface-3); color: var(--text); }
+    .log-thinking-panel {
+      display: none; white-space: pre-wrap; margin-top: 6px;
+      padding: 8px 10px; background: var(--surface-3); border-radius: 6px;
+      border-left: 2px solid var(--accent);
+      font-size: 11px; color: var(--text-2); font-family: var(--font-mono);
+      max-height: 400px; overflow-y: auto;
+    }
 
     /* Run button spinner */
     #run-btn { position: relative; min-width: 90px; }

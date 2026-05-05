@@ -28,11 +28,24 @@ function renderExecutionLog(a) {
     var actionLine = r.action_taken
       ? '<div class="log-action-taken">↳ ' + esc(r.action_taken) + '</div>'
       : '';
+    var thinkingBlocks = (r.thinking_blocks && r.thinking_blocks.length) ? r.thinking_blocks : null;
+    var thinkingBtn = thinkingBlocks
+      ? '<button class="log-thinking-btn" data-row-id="' + esc(rowId) + '" title="Mostra/nasconde il chain-of-thought">💭 thinking</button>'
+      : '';
+    var thinkingPanel = thinkingBlocks
+      ? '<pre class="log-thinking-panel" style="display:none">' +
+          thinkingBlocks.map(function(tb, i) {
+            return '— step ' + (i + 1) + ' —\n' + esc(tb);
+          }).join('\n\n') +
+        '</pre>'
+      : '';
     var summaryHtml = evalBadge +
       '<span class="log-preview">' + esc(preview || tools || '—') + '</span>' +
       (isLong ? '<span class="log-full" style="display:none">' + esc(summary) + '</span>' +
         '<button class="log-expand-btn" data-row-id="' + esc(rowId) + '">▼ espandi</button>' : '') +
-      actionLine;
+      thinkingBtn +
+      actionLine +
+      thinkingPanel;
     return '<li id="' + rowId + '">' +
       '<span class="log-time">' + esc(timeStr) + '</span>' +
       '<span class="' + statusCls + '">' + statusTxt + '</span>' +
@@ -58,9 +71,21 @@ function toggleLogRow(rowId) {
 
 document.getElementById('log-body').addEventListener('click', function(e) {
   var btn = e.target.closest('.log-expand-btn');
-  if (!btn) return;
-  var rowId = btn.dataset.rowId;
-  if (rowId) toggleLogRow(rowId);
+  if (btn) {
+    var rowId = btn.dataset.rowId;
+    if (rowId) toggleLogRow(rowId);
+    return;
+  }
+  var thBtn = e.target.closest('.log-thinking-btn');
+  if (thBtn) {
+    var thRow = document.getElementById(thBtn.dataset.rowId);
+    if (!thRow) return;
+    var panel = thRow.querySelector('.log-thinking-panel');
+    if (!panel) return;
+    var open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : 'block';
+    thBtn.classList.toggle('open', !open);
+  }
 });
 
 /* ── Token counter ─────────────────────────── */
