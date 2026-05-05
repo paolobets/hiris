@@ -1,5 +1,21 @@
 # HIRIS — Changelog
 
+## [0.9.7] — 2026-05-05
+
+### Fixed (regression hotfix)
+- **TypeError su agent non-Claude**: agent autonomi configurati su modelli
+  Ollama / OpenAI / OpenRouter crashavano con `TypeError:
+  OpenAICompatRunner.chat() got an unexpected keyword argument
+  'thinking_budget'` al primo trigger. Regressione introdotta in v0.9.5
+  quando il parametro `thinking_budget` è stato aggiunto a `ClaudeRunner`
+  per Anthropic Extended Thinking; `LLMRouter` forward `**kwargs` a tutti i
+  runner ma `OpenAICompatRunner` non aveva il parametro nella firma.
+  Fix: `OpenAICompatRunner.chat`/`chat_stream`/`run_with_actions` ora
+  accettano `thinking_budget: int = 0` come parametro silentemente
+  ignorato (non esiste un equivalente nell'API OpenAI-compatible).
+  `OpenRouterRunner` eredita da `OpenAICompatRunner` → fix automatica.
+- 3 test regressivi aggiunti in `test_openai_compat_runner.py`.
+
 ## [0.9.6] — 2026-05-05
 
 ### Added — OpenRouter provider
