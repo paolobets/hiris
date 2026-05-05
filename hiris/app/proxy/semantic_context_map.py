@@ -30,12 +30,12 @@ ENTITY_TYPE_SCHEMA: dict[tuple[str, str | None], tuple[str, str]] = {
     ("switch", None): ("switch", "Interruttore"),
     ("input_boolean", None): ("switch", "Interruttore"),
     ("sensor", "temperature"): ("temperature", "Temperatura"),
-    ("sensor", "humidity"): ("humidity", "UmiditÃ "),
+    ("sensor", "humidity"): ("humidity", "Umidità"),
     ("sensor", "power"): ("power", "Potenza"),
     ("sensor", "energy"): ("energy", "Energia"),
     ("sensor", "battery"): ("battery", "Batteria"),
-    ("sensor", "illuminance"): ("illuminance", "LuminositÃ "),
-    ("sensor", "co2"): ("co2", "COâ‚‚"),
+    ("sensor", "illuminance"): ("illuminance", "Luminosità"),
+    ("sensor", "co2"): ("co2", "CO₂"),
     ("sensor", "pm25"): ("pm25", "PM2.5"),
     ("sensor", "pressure"): ("pressure", "Pressione"),
     ("sensor", "voltage"): ("voltage", "Tensione"),
@@ -53,7 +53,7 @@ ENTITY_TYPE_SCHEMA: dict[tuple[str, str | None], tuple[str, str]] = {
     ("binary_sensor", "connectivity"): ("connectivity", "Connessione"),
     # Irrigation / outdoor
     ("sensor", "precipitation"): ("precipitation", "Precipitazione"),
-    ("sensor", "moisture"): ("soil_moisture", "UmiditÃ  suolo"),
+    ("sensor", "moisture"): ("soil_moisture", "Umidità suolo"),
     ("weather", None): ("weather", "Meteo"),
 }
 
@@ -62,7 +62,7 @@ _DOMAIN_FALLBACK: dict[str, tuple[str, str]] = {
     "binary_sensor": ("binary", "Sensore"),
 }
 
-# Superset of entity_cache.NOISE_DOMAINS â€” keep in sync when adding noise domains.
+# Superset of entity_cache.NOISE_DOMAINS — keep in sync when adding noise domains.
 _EXCLUDED_DOMAINS = frozenset({
     "update", "button", "tag", "event", "ai_task", "todo", "conversation",
     "device_tracker", "persistent_notification", "scene", "script",
@@ -88,14 +88,14 @@ CONCEPT_TO_TYPES: dict[str, list[str]] = {
     "tenda": ["cover"], "avvolgibile": ["cover"],
     "tv": ["media_player"], "televisione": ["media_player"],
     "musica": ["media_player"], "volume": ["media_player"],
-    "umiditÃ ": ["humidity"],
+    "umidità": ["humidity"],
     "serratura": ["lock"], "chiave": ["lock"],
     "allarme": ["alarm"], "sicurezza": ["alarm"],
     "robot": ["vacuum"], "aspirapolvere": ["vacuum"],
     "lavatrice": ["switch"], "lavastoviglie": ["switch"],
     "interruttore": ["switch"],
     "ventilatore": ["fan"], "co2": ["co2"], "anidride": ["co2"],
-    "batteria": ["battery"], "luminositÃ ": ["illuminance"], "lux": ["illuminance"],
+    "batteria": ["battery"], "luminosità": ["illuminance"], "lux": ["illuminance"],
     "pm25": ["pm25"], "polveri": ["pm25"],
     "pressione": ["pressure"], "tensione": ["voltage"], "corrente": ["current"],
     "gas": ["gas"], "acqua": ["water"], "perdita": ["moisture"],
@@ -109,13 +109,13 @@ CONCEPT_TO_TYPES: dict[str, list[str]] = {
     "pioggia": ["precipitation", "weather"],
     "piovuto": ["precipitation", "weather"],
     "precipitazione": ["precipitation"],
-    "umiditÃ  suolo": ["soil_moisture"],
+    "umidità suolo": ["soil_moisture"],
     "giardino": ["switch", "soil_moisture", "precipitation"],
     "meteo": ["weather"],
     "previsioni": ["weather"],
 }
 
-# area_name (or None for unassigned) â†’ entity_type â†’ [entity_ids]
+# area_name (or None for unassigned) → entity_type → [entity_ids]
 _MapType = dict[str | None, dict[str, list[str]]]
 
 
@@ -260,8 +260,8 @@ class SemanticContextMap:
             sp = attrs.get("temperature", "?")
             mode = sanitize_ha_value(attrs.get("hvac_mode", state))
             action = sanitize_ha_value(attrs.get("hvac_action", ""))
-            action_str = f" Â· {action}" if action and action not in ("idle", "off") else ""
-            return f"{mode} Â· {cur}Â°C â†’ {sp}Â°C{action_str}"
+            action_str = f" · {action}" if action and action not in ("idle", "off") else ""
+            return f"{mode} · {cur}°C → {sp}°C{action_str}"
         if entity_type == "light":
             if state == "off":
                 return "spenta"
@@ -276,7 +276,7 @@ class SemanticContextMap:
             title = sanitize_ha_value(attrs.get("media_title", ""))
             vol = attrs.get("volume_level")
             vol_str = f" vol:{round(vol * 100)}%" if vol is not None else ""
-            return f"{state} Â· {title}{vol_str}" if title else f"{state}{vol_str}"
+            return f"{state} · {title}{vol_str}" if title else f"{state}{vol_str}"
         if entity_type in ("motion", "presence"):
             return "rilevato" if state == "on" else "assente"
         if entity_type == "door":
@@ -305,17 +305,17 @@ class SemanticContextMap:
     def _format_overview(self, filtered: _MapType, now: str) -> str:
         named = {k: v for k, v in filtered.items() if k is not None}
         unassigned = filtered.get(None, {})
-        lines = [f"CASA â€” {len(named)} aree [agg. {now}]"]
+        lines = [f"CASA — {len(named)} aree [agg. {now}]"]
         for area in sorted(named):
             parts = []
             for et, eids in sorted(named[area].items()):
                 label = self._get_label(et)
-                parts.append(f"{label}Ã—{len(eids)}" if len(eids) > 1 else label)
-            # Area names come from HA â€” sanitize before placing in LLM context.
-            lines.append(f"  {sanitize_ha_value(area)}: {' Â· '.join(parts)}")
+                parts.append(f"{label}×{len(eids)}" if len(eids) > 1 else label)
+            # Area names come from HA — sanitize before placing in LLM context.
+            lines.append(f"  {sanitize_ha_value(area)}: {' · '.join(parts)}")
         if unassigned:
             ua = [self._get_label(et) for et in unassigned]
-            lines.append(f"[Non assegnate: {' Â· '.join(ua)}]")
+            lines.append(f"[Non assegnate: {' · '.join(ua)}]")
         return "\n".join(lines)
 
     def _format_detail(
@@ -352,7 +352,7 @@ class SemanticContextMap:
                         for annot in knowledge_db.get_annotations(eid)[:1]:
                             ann_text = sanitize_ha_value(annot.get("annotation", ""))
                             ann_src = sanitize_ha_value(annot.get("source", ""))
-                            lines.append(f"    [Nota: {ann_text} â€” {ann_src}]")
+                            lines.append(f"    [Nota: {ann_text} — {ann_src}]")
             if len(lines) > 1:
                 sections.append("\n".join(lines))
         return "\n\n".join(sections)

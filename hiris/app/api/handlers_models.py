@@ -70,6 +70,12 @@ async def _fetch_ollama_models(local_model_url: str, local_model_name: str) -> l
 # requested presets so the dropdown stays usable. Free-tier models marked
 # ':free' have rate limits but no charge. User can still type any model
 # manually with prefix 'openrouter:provider/model[:variant]'.
+#
+# All entries SHOULD support tool use — HIRIS always sends the tool schema in
+# chat requests. Models without tool support fail with HTTP 404
+# "No endpoints found that support tool use" (see hermes-3-llama-3.1-405b:free,
+# removed in v0.9.8 after observed failures). The live filter in
+# `_fetch_openrouter_models` is authoritative when available.
 _OPENROUTER_PRESETS = [
     # Free tier (rate-limited but $0)
     "openrouter:meta-llama/llama-3.3-70b-instruct:free",
@@ -77,7 +83,6 @@ _OPENROUTER_PRESETS = [
     "openrouter:qwen/qwen-2.5-72b-instruct:free",
     "openrouter:deepseek/deepseek-chat:free",
     "openrouter:mistralai/mistral-nemo:free",
-    "openrouter:nousresearch/hermes-3-llama-3.1-405b:free",
     # Popular paid models accessible through OpenRouter
     "openrouter:anthropic/claude-sonnet-4-6",
     "openrouter:anthropic/claude-opus-4-7",
@@ -88,10 +93,28 @@ _OPENROUTER_PRESETS = [
 ]
 
 
-async def _fetch_openrouter_models(api_key: str) -> list[str]:
-    """Fetch the full OpenRouter model list and filter to a usable subset.
+def _supports_tools(entry: dict) -> bool:
+    """Return True if an OpenRouter model entry advertises tool/function support.
 
-    Falls back to _OPENROUTER_PRESETS if the API call fails.
+    OpenRouter exposes per-model capability via the ``supported_parameters``
+    array. Models without ``tools`` (or the legacy ``function_calling``) in
+    that list will reject any HIRIS chat request with HTTP 404
+    ``"No endpoints found that support tool use"`` — exactly the failure
+    mode reported on hermes-3-llama-3.1-405b:free. We hide them at list
+    time so users can't accidentally pick them.
+    """
+    params = entry.get("supported_parameters") or []
+    if not isinstance(params, list):
+        return False
+    params_set = {str(p).lower() for p in params}
+    return "tools" in params_set or "function_calling" in params_set
+
+
+async def _fetch_openrouter_models(api_key: str) -> list[str]:
+    """Fetch the full OpenRouter model list and filter to a usable, tool-capable subset.
+
+    Falls back to _OPENROUTER_PRESETS (best-effort, may include tool-incapable
+    models) only if the live capability check cannot be performed.
     """
     headers = {"Authorization": f"Bearer {api_key}"}
     timeout = aiohttp.ClientTimeout(total=5)
@@ -102,19 +125,35 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
                     logger.warning("OpenRouter models list returned %s", resp.status)
                     return _OPENROUTER_PRESETS
                 data = await resp.json()
-        # Build curated list: keep our presets first (in order), then free
-        # variants of any other model OpenRouter exposes. Avoids overwhelming
-        # the dropdown while letting the user pick free options not pre-listed.
-        live_ids = {m.get("id") for m in data.get("data", []) if m.get("id")}
-        # Validate presets still exist live (some may be retired)
+
+        # Build live capability index. Tool support is required because every
+        # HIRIS agent ships with the standard tool schema in the chat request;
+        # picking a non-tool-capable model produces immediate API errors.
+        tool_capable_ids: set[str] = set()
+        for entry in data.get("data", []):
+            mid = entry.get("id")
+            if mid and _supports_tools(entry):
+                tool_capable_ids.add(mid)
+
+        if not tool_capable_ids:
+            # OpenRouter response shape changed or capability data missing —
+            # don't silently degrade to a list users cannot use; return
+            # presets and let runtime errors surface.
+            logger.warning(
+                "OpenRouter returned no tool-capable models (capability "
+                "field missing?). Falling back to presets."
+            )
+            return _OPENROUTER_PRESETS
+
+        # Keep curated presets first (in order), filtered by capability.
         result = [
             m for m in _OPENROUTER_PRESETS
-            if m.removeprefix("openrouter:") in live_ids
+            if m.removeprefix("openrouter:") in tool_capable_ids
         ]
-        # Add any other ':free' models not already in presets
+        # Add any other ':free' tool-capable models not already in presets.
         for entry in data.get("data", []):
             mid = entry.get("id", "")
-            if mid.endswith(":free"):
+            if mid.endswith(":free") and mid in tool_capable_ids:
                 tagged = f"openrouter:{mid}"
                 if tagged not in result:
                     result.append(tagged)

@@ -1,5 +1,52 @@
 # HIRIS — Changelog
 
+## [0.9.8] — 2026-05-05
+
+### Fixed — OpenRouter quality regressions (multi-causa)
+Quattro bug indipendenti emersi insieme su agenti chat con OpenRouter
+(`mistralai/mistral-large` e modelli `:free`) causavano risposte degradate
+o incoerenti turno dopo turno. Tutti corretti in un singolo release.
+
+- **Tool-call leakati come testo** (CRITICO): alcuni provider routati da
+  OpenRouter (Mistral, Hermes) non traducono i token speciali nativi del
+  modello (es. `[TOOL_CALLS]`) nello schema OpenAI `tool_calls`. La risposta
+  arrivava come `content` testuale del tipo `get_ha_healthיׂ{"sections":["all"]}`
+  e veniva persistita pari pari in chat history, inquinando il prompt dei
+  turni successivi (il modello vedeva la propria robaccia e degradava
+  ulteriormente). Fix: nuovo helper `detect_leaked_tool_call()` in
+  `OpenAICompatRunner` rileva il pattern `<tool_name><non-ASCII>` e — se il
+  nome combacia con un tool effettivamente disponibile — sostituisce la
+  risposta con un messaggio chiaro all'utente (cambia modello / disattiva
+  tool). Stesso check anche in `chat_stream` con evento SSE
+  `discard_collected` per pulire i token già renderizzati nella Lovelace
+  card. 8 test regressivi.
+- **Mojibake nel context casa**: `proxy/semantic_context_map.py` conteneva
+  letterali doppio-encodati (UTF-8 bytes letti come CP1252 e ri-encodati
+  come UTF-8): `Umidità` → `UmiditÃ\xa0`, `·` → `Â·`, `°` → `Â°`,
+  `→` → `â†→`, `—` → `â€—`, `₂` → `â‚‚`, `×` → `Ã—`. 22 sostituzioni
+  applicate. Il context era visibile direttamente nel system prompt di
+  ogni turno e degradava le risposte. 3 test di regressione che vietano
+  marker mojibake nelle label `ENTITY_TYPE_SCHEMA`, nei concept
+  `CONCEPT_TO_TYPES` e nell'output di `get_context()`.
+- **Modelli OpenRouter senza tool support nei suggeriti**: il preset
+  includeva `nousresearch/hermes-3-llama-3.1-405b:free` che fallisce con
+  HTTP 404 `"No endpoints found that support tool use"` su ogni chiamata.
+  Fix: `_fetch_openrouter_models` ora filtra usando il campo
+  `supported_parameters` di OpenRouter (`tools` o `function_calling`).
+  Il preset hermes-3 è stato rimosso. Nuovo file
+  `tests/test_handlers_models_openrouter.py` con 8 test.
+- **`max_tokens=4096` rigido vs credito OpenRouter limitato**:
+  l'errore HTTP 402 `"can only afford 3907"` si propagava come
+  `"Errore temporaneo del servizio AI"` opaco. Fix: nuovo
+  `parse_afford_limit()` estrae il limite affrontabile dal messaggio,
+  e `chat()` / `chat_stream()` riprovano una volta con `max_tokens`
+  clampato (-5% safety). Se anche il retry fallisce, errore esplicito
+  che indica all'utente di abbassare `max_tokens` dell'agente o
+  aggiungere credito.
+
+### Test
+- Suite: 496 + 25 nuovi = 521 test, tutti pass.
+
 ## [0.9.7] — 2026-05-05
 
 ### Fixed (regression hotfix)

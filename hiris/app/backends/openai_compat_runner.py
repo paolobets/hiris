@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional, TYPE_CHECKING
 import httpx as _httpx
@@ -44,6 +45,71 @@ def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
         }
         for t in tool_defs
     ]
+
+
+# Heuristic: identifier of 3+ chars at the start of content immediately
+# followed by a non-ASCII non-whitespace codepoint. Some Mistral/Hermes
+# routings on OpenRouter fail to translate the model's native special tool
+# tokens (e.g. [TOOL_CALLS], rendered as isolated Hebrew/Vietnamese
+# codepoints in UTF-8) into the OpenAI tool_calls schema, so the response
+# arrives as plain text content like:
+#   get_ha_healthיׂ{"sections":["all"]}
+#   await_user_confirmationיׄ**Confermi di...**
+# Persisting this verbatim into chat history poisons later turns.
+_TOOL_LEAK_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]{2,})[^\x00-\x7F\s]")
+
+TOOL_LEAK_USER_MSG = (
+    "Il modello selezionato non gestisce correttamente i tool tramite questo "
+    "provider (la chiamata al tool è arrivata come testo invece che come "
+    "tool_call). Cambia modello — preferisci quelli con tool use nativo "
+    "OpenAI — oppure disattiva i tool dell'agente."
+)
+
+
+def detect_leaked_tool_call(content: str, tool_names) -> Optional[str]:
+    """Return the matched tool name if `content` is a leaked tool call, else None.
+
+    The identifier must exactly match one of the runner's currently-available
+    tool names so legitimate prose mentioning Latin punctuation/em-dashes does
+    not trigger.
+    """
+    if not content or not tool_names:
+        return None
+    if not isinstance(tool_names, (set, frozenset)):
+        tool_names = frozenset(tool_names)
+    m = _TOOL_LEAK_RE.match(content)
+    if not m:
+        return None
+    candidate = m.group(1)
+    return candidate if candidate in tool_names else None
+
+
+# OpenRouter 402 'Payment Required' messages embed the maximum affordable
+# completion tokens for the current API-key credit balance, e.g.:
+#   "You requested up to 4096 tokens, but can only afford 3907."
+# (Note: real messages have no 'tokens' word after the number — just the
+# integer followed by a period.) We parse this once and retry the same call
+# with a clamped value so a transient credit shortage does not produce an
+# opaque "Errore temporaneo".
+_AFFORD_RE = re.compile(r"can only afford (\d+)", re.IGNORECASE)
+
+
+def parse_afford_limit(exc: Any) -> Optional[int]:
+    """If `exc` carries an OpenRouter 402 'afford X tokens' message, return X
+    reduced by a small safety margin. Returns ``None`` if the message does
+    not match — caller falls back to generic error handling.
+    """
+    msg = getattr(exc, "message", None) or str(exc) or ""
+    m = _AFFORD_RE.search(msg)
+    if not m:
+        return None
+    try:
+        affordable = int(m.group(1))
+    except ValueError:
+        return None
+    # 5% margin leaves room for tokeniser variation between request and
+    # OpenRouter's own counting.
+    return max(1, int(affordable * 0.95))
 
 
 class OpenAICompatRunner:
@@ -311,6 +377,7 @@ class OpenAICompatRunner:
         if not self._dispatcher.has_memory:
             tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         oai_tools = _to_openai_tools(tools) if tools else None
+        tool_name_set = frozenset(t["name"] for t in tools)
 
         # I modelli locali (Ollama) tendono a inventare nomi di tool non presenti nello schema.
         # Iniettare la lista esplicita nel system prompt riduce fortemente le allucinazioni.
@@ -363,14 +430,48 @@ class OpenAICompatRunner:
                 logger.error("OpenAI rate limit: %s", exc)
                 return "Errore temporaneo del servizio AI. Riprova tra poco."
             except _openai.APIError as exc:
-                logger.error("OpenAI/Ollama API error: %s", exc)
-                return "Errore temporaneo del servizio AI. Riprova tra poco."
+                # OpenRouter 402: the API key has insufficient credit for the
+                # current max_tokens. The error message tells us the highest
+                # affordable budget — retry once with that lower value before
+                # giving up so a transient credit shortage doesn't kill the
+                # turn with an opaque "Errore temporaneo".
+                affordable = parse_afford_limit(exc)
+                if affordable and affordable < kwargs.get("max_tokens", 0):
+                    logger.warning(
+                        "OpenRouter 402 on %s: requested max_tokens=%d, "
+                        "retrying with %d (key credit limit).",
+                        effective_model, kwargs["max_tokens"], affordable,
+                    )
+                    kwargs["max_tokens"] = affordable
+                    try:
+                        response = await self._client.chat.completions.create(**kwargs)
+                    except _openai.APIError as retry_exc:
+                        logger.error(
+                            "OpenRouter 402 retry failed: %s", retry_exc,
+                        )
+                        return (
+                            f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
+                            f"Riduci max_tokens dell'agente sotto {affordable} "
+                            f"oppure aggiungi credito su openrouter.ai."
+                        )
+                else:
+                    logger.error("OpenAI/Ollama API error: %s", exc)
+                    return "Errore temporaneo del servizio AI. Riprova tra poco."
 
             self._track_usage(response, effective_model, agent_id)
             choice = response.choices[0]
 
             if choice.finish_reason == "stop":
-                return choice.message.content or ""
+                raw_content = choice.message.content or ""
+                leaked = detect_leaked_tool_call(raw_content, tool_name_set)
+                if leaked:
+                    logger.warning(
+                        "Model %s leaked tool call '%s' as text content "
+                        "(provider does not translate native tool tokens). Sample: %r",
+                        effective_model, leaked, raw_content[:160],
+                    )
+                    return TOOL_LEAK_USER_MSG
+                return raw_content
 
             if choice.finish_reason == "tool_calls":
                 tool_calls = choice.message.tool_calls or []
@@ -424,7 +525,16 @@ class OpenAICompatRunner:
                         "content": json.dumps(result),
                     })
             else:
-                return choice.message.content or f"Stopped: {choice.finish_reason}"
+                raw_content = choice.message.content or f"Stopped: {choice.finish_reason}"
+                leaked = detect_leaked_tool_call(raw_content, tool_name_set)
+                if leaked:
+                    logger.warning(
+                        "Model %s leaked tool call '%s' as text content "
+                        "(finish_reason=%s). Sample: %r",
+                        effective_model, leaked, choice.finish_reason, raw_content[:160],
+                    )
+                    return TOOL_LEAK_USER_MSG
+                return raw_content
 
         return "Max tool iterations reached."
 
@@ -497,6 +607,7 @@ class OpenAICompatRunner:
         if not self._dispatcher.has_memory:
             tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         oai_tools = _to_openai_tools(tools) if tools else None
+        tool_name_set = frozenset(t["name"] for t in tools)
 
         if self._fixed_model and tools:
             tool_names = ", ".join(t["name"] for t in tools)
@@ -528,9 +639,32 @@ class OpenAICompatRunner:
                     yield f'data: {json.dumps({"type": "error", "message": "Rate limit — riprova tra poco."})}\n\n'
                     return
                 except _openai.APIError as exc:
-                    logger.error("OpenAI/Ollama API error (stream): %s", exc)
-                    yield f'data: {json.dumps({"type": "error", "message": "Errore temporaneo del servizio AI."})}\n\n'
-                    return
+                    # OpenRouter 402: see chat() for full rationale.
+                    affordable = parse_afford_limit(exc)
+                    if affordable and affordable < kwargs.get("max_tokens", 0):
+                        logger.warning(
+                            "OpenRouter 402 stream on %s: requested max_tokens=%d, "
+                            "retrying with %d (key credit limit).",
+                            effective_model, kwargs["max_tokens"], affordable,
+                        )
+                        kwargs["max_tokens"] = affordable
+                        try:
+                            stream = await self._client.chat.completions.create(**kwargs)
+                        except _openai.APIError as retry_exc:
+                            logger.error(
+                                "OpenRouter 402 stream retry failed: %s", retry_exc,
+                            )
+                            err = (
+                                f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
+                                f"Riduci max_tokens dell'agente sotto {affordable} "
+                                f"oppure aggiungi credito su openrouter.ai."
+                            )
+                            yield f'data: {json.dumps({"type": "error", "message": err})}\n\n'
+                            return
+                    else:
+                        logger.error("OpenAI/Ollama API error (stream): %s", exc)
+                        yield f'data: {json.dumps({"type": "error", "message": "Errore temporaneo del servizio AI."})}\n\n'
+                        return
 
                 collected_text = ""
                 finish_reason: Optional[str] = None
@@ -564,7 +698,22 @@ class OpenAICompatRunner:
                         finish_reason = choice.finish_reason
 
                 if not tc_fragments:
-                    # Risposta testuale finale — stream completato
+                    # Risposta testuale finale — stream completato.
+                    # Verifica leak di tool call come testo (Mistral/Hermes su
+                    # OpenRouter): se rilevato, dì al frontend di scartare i
+                    # token già renderizzati e mostra un errore esplicito,
+                    # così la chat history non viene avvelenata al prossimo
+                    # turno.
+                    leaked = detect_leaked_tool_call(collected_text, tool_name_set)
+                    if leaked:
+                        logger.warning(
+                            "Stream from %s leaked tool call '%s' as text content. "
+                            "Sample: %r",
+                            effective_model, leaked, collected_text[:160],
+                        )
+                        yield f'data: {json.dumps({"type": "discard_collected"})}\n\n'
+                        yield f'data: {json.dumps({"type": "error", "message": TOOL_LEAK_USER_MSG})}\n\n'
+                        return
                     break
 
                 # Ci sono tool calls: eseguili e continua il loop

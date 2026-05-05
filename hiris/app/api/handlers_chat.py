@@ -193,8 +193,14 @@ async def handle_chat(request: web.Request) -> web.Response:
             await stream_resp.write(chunk.encode())
             try:
                 evt = json.loads(chunk.removeprefix("data: ").strip())
-                if evt.get("type") == "token":
+                etype = evt.get("type")
+                if etype == "token":
                     collected_tokens.append(evt.get("text", ""))
+                elif etype == "discard_collected":
+                    # Runner detected a leaked tool-call rendered as text and
+                    # asked us to drop the polluted assistant turn before it
+                    # reaches chat_store (would corrupt next turn's history).
+                    collected_tokens.clear()
             except Exception as exc:
                 # Non-JSON chunk (e.g. heartbeat ': keep-alive') is normal in SSE.
                 logger.debug("SSE chunk parse skipped: %s", exc)

@@ -280,6 +280,7 @@ class HirisCard extends HTMLElement {
             try {
               const evt = JSON.parse(line.slice(6));
               if (evt.type === 'token') { assistantMsg.text += evt.text; this._render(); }
+              if (evt.type === 'discard_collected') { assistantMsg.text = ''; this._render(); }
               if (evt.type === 'done') { assistantMsg.streaming = false; }
               if (evt.type === 'error') {
                 assistantMsg.text = `Errore: ${evt.message}`;
