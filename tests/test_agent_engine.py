@@ -1111,3 +1111,111 @@ async def test_run_agent_execution_log_includes_structured_fields(engine):
     rec = agent.execution_log[0]
     assert rec["eval_status"] == "ANOMALIA"
     assert rec["notifica"] == "Consumo alto."
+
+
+# ---------------------------------------------------------------------------
+# Regression: per-agent rate-limit backoff (v0.9.10)
+# When an agent on an OpenRouter :free model gets rate-limited by the upstream
+# provider repeatedly, AgentEngine pauses scheduled runs for a cooldown so we
+# don't burn the daily quota on triggers that will all fail.
+# ---------------------------------------------------------------------------
+
+import time as _time
+from hiris.app.agent_engine import (
+    _RATE_LIMIT_THRESHOLD, _RATE_LIMIT_WINDOW_SEC, _RATE_LIMIT_COOLDOWN_SEC,
+)
+
+
+def test_is_rate_limited_detects_upstream_message():
+    eng = AgentEngine(ha_client=AsyncMock())
+    msg = (
+        "Il modello qwen/qwen3-next-80b-a3b-instruct:free ha esaurito il "
+        "rate limit upstream. Riprova tra qualche minuto..."
+    )
+    assert eng._is_rate_limited(msg) is True
+
+
+def test_is_rate_limited_does_not_match_normal_text():
+    eng = AgentEngine(ha_client=AsyncMock())
+    assert eng._is_rate_limited("Tutto ok, nessun problema.") is False
+    assert eng._is_rate_limited("") is False
+    assert eng._is_rate_limited(None) is False
+
+
+def test_record_failures_below_threshold_does_not_pause():
+    eng = AgentEngine(ha_client=AsyncMock())
+    for _ in range(_RATE_LIMIT_THRESHOLD - 1):
+        eng._record_rate_limit_failure("ag-x")
+    assert eng._is_in_rate_limit_pause("ag-x") is False
+
+
+def test_record_failures_at_threshold_triggers_pause():
+    eng = AgentEngine(ha_client=AsyncMock())
+    for _ in range(_RATE_LIMIT_THRESHOLD):
+        eng._record_rate_limit_failure("ag-x")
+    assert eng._is_in_rate_limit_pause("ag-x") is True
+
+
+def test_pause_auto_clears_after_cooldown(monkeypatch):
+    eng = AgentEngine(ha_client=AsyncMock())
+    # Start time t0; record failures
+    t = [1000.0]
+    monkeypatch.setattr("hiris.app.agent_engine.time.monotonic", lambda: t[0])
+    for _ in range(_RATE_LIMIT_THRESHOLD):
+        eng._record_rate_limit_failure("ag-x")
+    assert eng._is_in_rate_limit_pause("ag-x") is True
+    # Advance past the cooldown
+    t[0] += _RATE_LIMIT_COOLDOWN_SEC + 1
+    assert eng._is_in_rate_limit_pause("ag-x") is False
+
+
+def test_old_failures_outside_window_do_not_count(monkeypatch):
+    eng = AgentEngine(ha_client=AsyncMock())
+    t = [1000.0]
+    monkeypatch.setattr("hiris.app.agent_engine.time.monotonic", lambda: t[0])
+    # First failure
+    eng._record_rate_limit_failure("ag-x")
+    # Advance past the window
+    t[0] += _RATE_LIMIT_WINDOW_SEC + 1
+    # Now record _RATE_LIMIT_THRESHOLD - 1 more — should NOT trigger pause
+    for _ in range(_RATE_LIMIT_THRESHOLD - 1):
+        eng._record_rate_limit_failure("ag-x")
+    assert eng._is_in_rate_limit_pause("ag-x") is False
+
+
+def test_clear_failures_after_success(monkeypatch):
+    """A successful run between failures resets the counter."""
+    eng = AgentEngine(ha_client=AsyncMock())
+    eng._record_rate_limit_failure("ag-x")
+    eng._record_rate_limit_failure("ag-x")
+    eng._clear_rate_limit_failures("ag-x")
+    eng._record_rate_limit_failure("ag-x")
+    assert eng._is_in_rate_limit_pause("ag-x") is False
+
+
+@pytest.mark.asyncio
+async def test_run_agent_short_circuits_during_pause():
+    """When an agent is in rate-limit cooldown, _run_agent must skip
+    immediately without invoking the runner — preserves OpenRouter quota."""
+    eng = AgentEngine(ha_client=AsyncMock())
+    runner = MagicMock()
+    runner.run_with_actions = AsyncMock(return_value=("ok", {}))
+    runner.chat = AsyncMock(return_value="ok")
+    eng.set_claude_runner(runner)
+
+    agent = eng.create_agent({
+        "name": "Energy",
+        "type": "agent",
+        "trigger": {"type": "schedule", "interval_minutes": 5},
+        "system_prompt": "...",
+        "allowed_tools": [],
+    })
+    # Force pause
+    for _ in range(_RATE_LIMIT_THRESHOLD):
+        eng._record_rate_limit_failure(agent.id)
+
+    result = await eng._run_agent(agent)
+    assert "skipped" in result.lower()
+    assert "cooldown" in result.lower()
+    runner.run_with_actions.assert_not_called()
+    runner.chat.assert_not_called()

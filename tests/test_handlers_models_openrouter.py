@@ -208,3 +208,67 @@ async def test_capability_check_handles_or_slash_prefix():
             "openrouter/anthropic/claude-sonnet-4-6", "sk-or-test"
         )
     assert result is True
+
+
+# ---------------------------------------------------------------------------
+# Regression: HIRIS_HIDE_FREE_MODELS env var hides :free models from dropdown
+# (v0.9.10). For installers who have OpenRouter credit and want only the
+# stable, paid catalogue.
+# ---------------------------------------------------------------------------
+
+
+def test_hide_free_models_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("HIRIS_HIDE_FREE_MODELS", raising=False)
+    assert handlers_models._hide_free_models_enabled() is False
+
+
+def test_hide_free_models_recognises_truthy_values(monkeypatch):
+    for v in ["1", "true", "TRUE", "yes", "ON"]:
+        monkeypatch.setenv("HIRIS_HIDE_FREE_MODELS", v)
+        assert handlers_models._hide_free_models_enabled() is True, f"failed for {v!r}"
+
+
+def test_hide_free_models_ignores_falsy_strings(monkeypatch):
+    for v in ["0", "false", "no", "off", ""]:
+        monkeypatch.setenv("HIRIS_HIDE_FREE_MODELS", v)
+        assert handlers_models._hide_free_models_enabled() is False, f"failed for {v!r}"
+
+
+@pytest.mark.asyncio
+async def test_fetch_excludes_free_models_when_env_set(monkeypatch):
+    """With HIRIS_HIDE_FREE_MODELS=1, no :free model appears in the dropdown."""
+    monkeypatch.setenv("HIRIS_HIDE_FREE_MODELS", "1")
+    payload = {
+        "data": [
+            {"id": "anthropic/claude-sonnet-4-6",
+             "supported_parameters": ["tools"]},
+            {"id": "meta-llama/llama-3.3-70b-instruct:free",
+             "supported_parameters": ["tools"]},
+            {"id": "deepseek/deepseek-chat:free",
+             "supported_parameters": ["tools"]},
+        ],
+    }
+    session_cm = _mock_openrouter_response(payload)
+    with patch("aiohttp.ClientSession", return_value=session_cm):
+        models = await handlers_models._fetch_openrouter_models("sk-or-test")
+
+    assert "openrouter:anthropic/claude-sonnet-4-6" in models
+    for m in models:
+        assert not m.endswith(":free"), f":free model leaked through: {m}"
+
+
+@pytest.mark.asyncio
+async def test_fetch_keeps_free_models_when_env_unset(monkeypatch):
+    """Default behaviour: :free models remain visible."""
+    monkeypatch.delenv("HIRIS_HIDE_FREE_MODELS", raising=False)
+    payload = {
+        "data": [
+            {"id": "meta-llama/llama-3.3-70b-instruct:free",
+             "supported_parameters": ["tools"]},
+        ],
+    }
+    session_cm = _mock_openrouter_response(payload)
+    with patch("aiohttp.ClientSession", return_value=session_cm):
+        models = await handlers_models._fetch_openrouter_models("sk-or-test")
+
+    assert "openrouter:meta-llama/llama-3.3-70b-instruct:free" in models

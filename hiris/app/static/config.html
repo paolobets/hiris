@@ -199,6 +199,18 @@ Es: Analizza i consumi energetici dell&apos;ultima ora. Se rilevi un consumo ano
           <select id="f-model">
             <option value="auto">auto &mdash; segue tipo agente</option>
           </select>
+          <div id="confirm-free-row" style="display:none;margin-top:0.5rem">
+            <label style="flex-direction:row;display:flex;align-items:center;gap:0.5rem">
+              <input type="checkbox" id="f-confirm-free"> Accetto i rischi del modello :free per agente schedulato
+            </label>
+            <p class="hint">
+              I modelli <code>:free</code> di OpenRouter hanno quota giornaliera bassa
+              (specialmente con account a $0 di credito) e vengono spesso rate-limited
+              upstream. Un agente schedulato che gira ogni N minuti la consuma in poche ore.
+              Consigliato un modello a pagamento; se vuoi procedere comunque, spunta questa
+              casella.
+            </p>
+          </div>
           <label>Max token risposta</label>
           <input type="number" id="f-max-tokens" value="4096" min="256" max="16000">
           <p class="hint">Limita la lunghezza massima della risposta. Default: 4096.</p>

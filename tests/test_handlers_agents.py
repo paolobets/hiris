@@ -404,3 +404,89 @@ async def test_update_agent_skips_check_for_non_openrouter_models(monkeypatch):
     resp = await handle_update_agent(req)
     assert resp.status == 200
     assert cap_called["n"] == 0  # No OpenRouter call for Claude models
+
+
+# ---------------------------------------------------------------------------
+# Regression: warn at save when an autonomous (scheduled) agent is configured
+# with a :free OpenRouter model (v0.9.10). User can override with
+# confirm_free_for_agent: true. Chat agents on :free are fine.
+# ---------------------------------------------------------------------------
+
+from hiris.app.api.handlers_agents import _validate_free_model_for_agent_type
+
+
+def test_free_model_warning_blocks_autonomous_agent_by_default():
+    body = {
+        "name": "monitor",
+        "type": "agent",
+        "model": "openrouter:meta-llama/llama-3.3-70b-instruct:free",
+    }
+    err = _validate_free_model_for_agent_type(body)
+    assert err is not None
+    assert "free" in err.lower()
+    assert "confirm_free_for_agent" in err
+
+
+def test_free_model_warning_passes_with_explicit_confirm():
+    body = {
+        "name": "monitor",
+        "type": "agent",
+        "model": "openrouter:meta-llama/llama-3.3-70b-instruct:free",
+        "confirm_free_for_agent": True,
+    }
+    assert _validate_free_model_for_agent_type(body) is None
+
+
+def test_free_model_warning_skipped_for_chat_agent():
+    body = {
+        "name": "chat",
+        "type": "chat",
+        "model": "openrouter:meta-llama/llama-3.3-70b-instruct:free",
+    }
+    assert _validate_free_model_for_agent_type(body) is None
+
+
+def test_free_model_warning_skipped_for_paid_model():
+    body = {
+        "name": "monitor",
+        "type": "agent",
+        "model": "openrouter:anthropic/claude-sonnet-4-6",
+    }
+    assert _validate_free_model_for_agent_type(body) is None
+
+
+def test_free_model_warning_skipped_for_non_free_suffix():
+    body = {"name": "monitor", "type": "agent", "model": "claude-sonnet-4-6"}
+    assert _validate_free_model_for_agent_type(body) is None
+
+
+@pytest.mark.asyncio
+async def test_create_agent_blocks_autonomous_on_free_without_confirm(monkeypatch):
+    """End-to-end: POST /api/agents rejects autonomous agent on :free model."""
+    body = {
+        "name": "monitor",
+        "type": "agent",
+        "model": "openrouter:meta-llama/llama-3.3-70b-instruct:free",
+    }
+
+    async def fake_capability(model, key):
+        return True
+
+    monkeypatch.setattr(
+        "hiris.app.api.handlers_models.is_openrouter_model_tool_capable",
+        fake_capability,
+    )
+
+    engine = MagicMock()
+    app = MagicMock()
+    app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
+    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
+
+    req = make_mocked_request("POST", "/api/agents", app=app)
+    req.json = AsyncMock(return_value=body)
+
+    resp = await handle_create_agent(req)
+    assert resp.status == 400
+    payload = json.loads(resp.body)
+    assert "free" in payload["error"].lower()
+    engine.create_agent.assert_not_called()

@@ -6,6 +6,10 @@ export OPENAI_API_KEY=$(bashio::config 'openai_api_key' '')
 export OPENROUTER_API_KEY=$(bashio::config 'openrouter_api_key' '')
 export PRIMARY_MODEL=$(bashio::config 'primary_model' 'claude-sonnet-4-6')
 export LLM_STRATEGY=$(bashio::config 'llm_strategy' 'balanced')
+# Hide :free OpenRouter models from the model dropdown. Useful for users
+# with paid credit who want to avoid the low daily quota / upstream
+# rate-limits that come with the free tier.
+export HIRIS_HIDE_FREE_MODELS=$(bashio::config 'hide_free_models' 'false')
 export THEME=$(bashio::config 'theme' 'auto')
 export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
 export APPRISE_URLS=$(jq -c '.apprise_urls // []' /data/options.json)
@@ -13,6 +17,10 @@ export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 
 export LOCAL_MODEL_URL=$(bashio::config 'local_model.url' '')
 export LOCAL_MODEL_NAME=$(bashio::config 'local_model.model' '')
+# Per-request HTTP timeout for the Ollama backend, in seconds. Default 120.
+# Bump for slow hardware running large local models (gemma4:e4b on Pi5 may
+# need 240–300s before completion).
+export OLLAMA_REQUEST_TIMEOUT=$(bashio::config 'local_model.request_timeout' '120')
 
 export MQTT_HOST=$(bashio::config 'mqtt.host' '')
 export MQTT_PORT=$(bashio::config 'mqtt.port' '1883')

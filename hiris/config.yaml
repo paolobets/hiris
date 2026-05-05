@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.9.9"
+version: "0.9.10"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -27,6 +27,7 @@ options:
   claude_api_key: ""
   openai_api_key: ""
   openrouter_api_key: ""
+  hide_free_models: false
   primary_model: "claude-sonnet-4-6"
   llm_strategy: "balanced"
 
@@ -34,6 +35,7 @@ options:
   local_model:
     url: ""
     model: ""
+    request_timeout: 120
 
   # ── MQTT ─────────────────────────────────────────────────────────────────
   mqtt:
@@ -61,6 +63,7 @@ schema:
   claude_api_key: password
   openai_api_key: password
   openrouter_api_key: password
+  hide_free_models: bool?
   primary_model: str
   llm_strategy: "list(balanced|cost_first|quality_first)"
 
@@ -68,6 +71,7 @@ schema:
   local_model:
     url: str
     model: str
+    request_timeout: int(10,1800)?
 
   # ── MQTT ─────────────────────────────────────────────────────────────────
   mqtt:

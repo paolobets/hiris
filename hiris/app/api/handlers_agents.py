@@ -174,6 +174,34 @@ async def _validate_openrouter_model(request: web.Request, body: dict) -> str | 
     return None
 
 
+def _validate_free_model_for_agent_type(body: dict) -> str | None:
+    """Reject save when an autonomous (scheduled) agent is configured with a
+    ':free' OpenRouter model. Free models have a daily request quota
+    (especially low for accounts with $0 credit) and routinely get
+    rate-limited upstream by the underlying provider — a scheduled agent
+    burns the quota in a few hours. The user can override with the
+    ``confirm_free_for_agent: true`` flag.
+
+    Chat agents are fine on :free (low volume, user-paced).
+    """
+    model = body.get("model", "")
+    if not isinstance(model, str) or not model.endswith(":free"):
+        return None
+    if body.get("type") != "agent":
+        return None  # chat agents on :free are fine
+    if body.get("confirm_free_for_agent") is True:
+        return None  # explicit override
+    return (
+        f"Agente autonomo configurato su modello ':free' ({model}). "
+        "I modelli :free hanno quota giornaliera molto bassa (specialmente con "
+        "account OpenRouter a $0 di credito) e vengono spesso rate-limited "
+        "upstream — un agente che gira ogni N minuti la consuma in poche ore. "
+        "Consigliato un modello a pagamento per agenti schedulati (Claude "
+        "Haiku, GPT-4o-mini). Per accettare il rischio e salvare comunque, "
+        "imposta confirm_free_for_agent: true nel payload."
+    )
+
+
 async def handle_create_agent(request: web.Request) -> web.Response:
     try:
         body = await request.json()
@@ -189,6 +217,9 @@ async def handle_create_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": err}, status=400)
 
     if err := await _validate_openrouter_model(request, body):
+        return web.json_response({"error": err}, status=400)
+
+    if err := _validate_free_model_for_agent_type(body):
         return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]
@@ -220,6 +251,9 @@ async def handle_update_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": err}, status=400)
 
     if err := await _validate_openrouter_model(request, body):
+        return web.json_response({"error": err}, status=400)
+
+    if err := _validate_free_model_for_agent_type(body):
         return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]

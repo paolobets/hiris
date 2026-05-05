@@ -8,6 +8,9 @@ configuration:
   openrouter_api_key:
     name: "Chiave API OpenRouter"
     description: "Chiave API per OpenRouter — un proxy unificato che da' accesso a 200+ modelli (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ecc.) con un'unica chiave. Ottienila su openrouter.ai. Sono disponibili modelli gratuiti (suffisso ':free' es. 'meta-llama/llama-3.3-70b-instruct:free'). Per usarli, imposta in 'Modello Principale' o nel campo modello di un agente il formato 'openrouter:provider/nome-modello'. PRIVACY: i messaggi passano da OpenRouter (USA) e poi dal provider del modello scelto — vedi openrouter.ai/privacy."
+  hide_free_models:
+    name: "Nascondi modelli :free di OpenRouter"
+    description: "Se attivo, i modelli ':free' di OpenRouter non compaiono nel menu modelli del Designer agente. Utile se hai acquistato credito OpenRouter e preferisci evitare la quota giornaliera bassa e i frequenti rate-limit upstream del tier gratuito."
   primary_model:
     name: "Modello Principale"
     description: "Il modello AI usato da HIRIS per ragionamento e risposte. Esempi: claude-sonnet-4-6, claude-opus-4-7, gpt-4o."
@@ -23,6 +26,9 @@ configuration:
     model:
       name: "Nome Modello Ollama"
       description: "Nome del modello Ollama da usare. Esempio: llama3, mistral, phi3."
+    request_timeout:
+      name: "Timeout richiesta Ollama (secondi)"
+      description: "Tempo massimo di attesa per una singola chiamata Ollama. Default 120s. Aumenta se hai hardware lento con modelli grandi (Pi 5 con gemma2:9b può richiedere 240–300s). Range: 10–1800."
   mqtt:
     name: "MQTT"
     description: "Impostazioni del broker MQTT per ricevere comandi ed eventi tramite coda messaggi. Lascia vuoto se non usi MQTT."

@@ -72,8 +72,26 @@ function _triggerOnValue() {
     .map(function(i) { return i.value; });
 }
 
-document.getElementById('f-type').addEventListener('change', function(e) { showAgentMode(e.target.value); });
+document.getElementById('f-type').addEventListener('change', function(e) {
+  showAgentMode(e.target.value);
+  updateConfirmFreeVisibility();
+});
 document.getElementById('f-action-mode').addEventListener('change', function(e) { showActionMode(e.target.value); });
+document.getElementById('f-model').addEventListener('change', updateConfirmFreeVisibility);
+
+/* Show the "accept :free risks" checkbox only for autonomous agents on a
+   :free OpenRouter model. The server enforces the same rule with HTTP 400
+   (handlers_agents._validate_free_model_for_agent_type); the UI mirrors it
+   so the user gets the warning before clicking save. When the field is
+   hidden the checkbox stays unchecked and is omitted from the save payload. */
+function updateConfirmFreeVisibility() {
+  var row = document.getElementById('confirm-free-row');
+  if (!row) return;
+  var type = document.getElementById('f-type').value;
+  var model = document.getElementById('f-model').value || '';
+  var shouldShow = (type === 'agent') && /:free$/.test(model);
+  row.style.display = shouldShow ? '' : 'none';
+}
 
 document.getElementById('f-states').addEventListener('blur', function() {
   var current = _triggerOnValue();
@@ -100,6 +118,11 @@ function openAgent(a) {
   _entitySelectorLoad(a.allowed_entities || []);
   document.getElementById('f-enabled').checked = a.enabled;
   _setModelValue(a.model || 'auto');
+  /* Pre-check confirm-free if existing agent is already saved on a :free
+     model — that means the user already accepted the warning at some point
+     (otherwise the server would have rejected the save). */
+  document.getElementById('f-confirm-free').checked = /:free$/.test(a.model || '');
+  updateConfirmFreeVisibility();
   document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
   document.getElementById('f-restrict').checked = !!a.restrict_to_home;
   document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
@@ -150,6 +173,8 @@ document.getElementById('new-btn').addEventListener('click', function() {
   _entitySelectorLoad([]);
   document.getElementById('f-enabled').checked = true;
   _setModelValue('auto');
+  document.getElementById('f-confirm-free').checked = false;
+  updateConfirmFreeVisibility();
   document.getElementById('f-max-tokens').value = 4096;
   document.getElementById('f-restrict').checked = false;
   document.getElementById('f-require-confirmation').checked = false;
@@ -183,7 +208,7 @@ function buildPayload() {
   if (actionMode === 'configured') {
     rules = [{states: _triggerOnValue(), actions: _actionsValue()}];
   }
-  return {
+  var payload = {
     name: document.getElementById('f-name').value,
     type: type,
     triggers: _triggersValue(),
@@ -205,6 +230,16 @@ function buildPayload() {
     response_mode: document.getElementById('f-response-mode').value,
     thinking_budget: parseInt(document.getElementById('f-thinking-budget').value) || 0,
   };
+  /* Only include the bypass flag when the user has explicitly checked it
+     AND the row is visible (autonomous agent on a :free model). The server
+     ignores it for other combinations, but keeping the payload clean makes
+     intent obvious in the request log. */
+  var confirmRow = document.getElementById('confirm-free-row');
+  if (confirmRow && confirmRow.style.display !== 'none' &&
+      document.getElementById('f-confirm-free').checked) {
+    payload.confirm_free_for_agent = true;
+  }
+  return payload;
 }
 
 document.getElementById('save-btn').addEventListener('click', async function() {

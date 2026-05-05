@@ -1,5 +1,58 @@
 # HIRIS — Changelog
 
+## [0.9.10] — 2026-05-05
+
+### Added — Gestione consapevole modelli OpenRouter `:free`
+
+OpenRouter è il provider HIRIS dedicato all'uso gratuito. I modelli `:free`
+hanno però quote giornaliere basse (specialmente con account a $0 di
+credito) e vengono routinariamente rate-limited dai provider upstream
+(Venice, Together, ecc.). v0.9.10 introduce tre meccanismi per non
+bruciare quota e per dare visibilità all'utente:
+
+- **Badge `• free` nel dropdown modelli** (`static/config/api.js`): ogni
+  modello con suffisso `:free` viene mostrato con marker visibile + tooltip
+  *"quota giornaliera bassa e rate-limit upstream frequenti, sconsigliato
+  per agenti schedulati"*.
+- **Warning bloccante al save di agente autonomo su `:free`**
+  (`handlers_agents._validate_free_model_for_agent_type`): `POST/PUT
+  /api/agents` rifiuta con HTTP 400 se `agent.type == "agent"` e
+  `agent.model.endswith(":free")`. L'utente può accettare il rischio
+  ripetendo il save con `confirm_free_for_agent: true` nel payload. Chat
+  agent su `:free` restano consentiti senza attriti (uso a basso volume).
+- **Backoff automatico per agente su rate-limit ripetuti**
+  (`agent_engine`): nuovo `_record_rate_limit_failure()` /
+  `_is_in_rate_limit_pause()`. Quando un agente schedulato riceve
+  `AGENT_RATE_LIMIT_THRESHOLD=3` risposte rate-limited entro
+  `AGENT_RATE_LIMIT_WINDOW_SEC=600s`, viene messo in **cooldown** per
+  `AGENT_RATE_LIMIT_COOLDOWN_SEC=3600s`. Le esecuzioni schedulate durante
+  il cooldown vengono saltate (no chiamata al runner) e logged.
+- **Toggle "Nascondi modelli :free di OpenRouter"** in *Settings →
+  Add-ons → HIRIS → Configurazione*, posizionato subito sotto la chiave
+  OpenRouter. Quando attivo, i `:free` non compaiono affatto nel dropdown
+  modelli. Implementato come `hide_free_models: bool` in `config.yaml`,
+  esportato come `HIRIS_HIDE_FREE_MODELS` da `run.sh`. Stessa env var
+  resta disponibile per chi preferisce gestirla via shell.
+- **UI checkbox "accetto rischi free-tier"** nel Designer agente
+  (`config.html` + `agent-form.js`): nel tab Modello compare un checkbox
+  visibile solo quando `type=agent` E `model` termina con `:free`. Quando
+  spuntato il save include `confirm_free_for_agent: true` bypassando il
+  warning server-side. Caricamento di agente esistente con `:free` →
+  pre-checkato (perché il save passato è andato a buon fine).
+
+### Added — Configurazione timeout Ollama da addon UI
+- Nuovo campo `local_model.request_timeout` (int, default 120, range
+  10–1800) in `config.yaml` schema/options. `run.sh` lo esporta come
+  `OLLAMA_REQUEST_TIMEOUT` letto da `OpenAICompatRunner`. Compare
+  automaticamente in *Settings → Add-ons → HIRIS → Configurazione*. Utile
+  per hardware lento (Pi 5 con `gemma2:9b` in genere richiede 240–300s
+  contro il default 120). Translations IT/EN aggiornate.
+
+### Test
+- Suite: 543 + 19 nuovi = 562 test, tutti pass.
+- Fix #11 e #12 sono modifiche solo a UI/config addon (no logica Python
+  nuova) → nessun test aggiunto, copertura esistente sufficiente.
+
 ## [0.9.9] — 2026-05-05
 
 ### Fixed — Tre buchi residui dopo v0.9.8 (validazione, history, UX errori)

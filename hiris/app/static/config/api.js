@@ -71,7 +71,18 @@ async function loadModels() {
       p.models.forEach(function(m) {
         var opt = document.createElement('option');
         opt.value = m;
-        opt.textContent = m === 'auto' ? 'auto — segue tipo agente' : m;
+        var isFree = /:free$/.test(m);
+        if (m === 'auto') {
+          opt.textContent = 'auto — segue tipo agente';
+        } else if (isFree) {
+          /* Visual hint that the model carries OpenRouter's free-tier
+             constraints (low daily quota, frequent upstream rate-limits).
+             Tooltip explains the implications for scheduled agents. */
+          opt.textContent = m + '  • free';
+          opt.title = 'Modello gratuito: quota giornaliera bassa e rate-limit upstream frequenti. Adatto a chat occasionale, sconsigliato per agenti schedulati.';
+        } else {
+          opt.textContent = m;
+        }
         grp.appendChild(opt);
       });
       sel.appendChild(grp);

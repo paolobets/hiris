@@ -1,11 +1,25 @@
 from __future__ import annotations
 import logging
+import os
 import re
 
 import aiohttp
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
+
+
+def _hide_free_models_enabled() -> bool:
+    """Return True if HIRIS_HIDE_FREE_MODELS is set to a truthy value.
+
+    Use case: an installer who has paid OpenRouter credit and wants the
+    dropdown to surface only paid (more reliable) models — useful when the
+    free :free models would otherwise tempt usage but their daily quota /
+    upstream rate-limits make them unsuitable for the user's workflow.
+    """
+    return os.environ.get("HIRIS_HIDE_FREE_MODELS", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
 # Recent Claude models (Anthropic doesn't expose a public list-models endpoint)
 _CLAUDE_MODELS = [
@@ -145,18 +159,23 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
             )
             return _OPENROUTER_PRESETS
 
+        hide_free = _hide_free_models_enabled()
+
         # Keep curated presets first (in order), filtered by capability.
         result = [
             m for m in _OPENROUTER_PRESETS
             if m.removeprefix("openrouter:") in tool_capable_ids
+            and not (hide_free and m.endswith(":free"))
         ]
         # Add any other ':free' tool-capable models not already in presets.
-        for entry in data.get("data", []):
-            mid = entry.get("id", "")
-            if mid.endswith(":free") and mid in tool_capable_ids:
-                tagged = f"openrouter:{mid}"
-                if tagged not in result:
-                    result.append(tagged)
+        # Skip them entirely if HIRIS_HIDE_FREE_MODELS is set.
+        if not hide_free:
+            for entry in data.get("data", []):
+                mid = entry.get("id", "")
+                if mid.endswith(":free") and mid in tool_capable_ids:
+                    tagged = f"openrouter:{mid}"
+                    if tagged not in result:
+                        result.append(tagged)
         return result if result else _OPENROUTER_PRESETS
     except Exception as exc:
         logger.warning("Could not fetch OpenRouter models: %s", exc)

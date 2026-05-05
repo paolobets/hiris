@@ -19,6 +19,15 @@ from .config import EUR_RATE
 # lento (Ollama) blocchi APScheduler per ore. Configurabile via env.
 _AGENT_RUN_TIMEOUT = int(os.environ.get("AGENT_RUN_TIMEOUT", "300"))
 
+# Rate-limit auto-backoff per agente (v0.9.10). Quando un agente schedulato
+# riceve N risposte indicanti rate-limit upstream entro la finestra, lo
+# pausiamo per il cooldown indicato — evita di bruciare la quota giornaliera
+# OpenRouter free-tier su trigger ripetuti che falliranno tutti.
+_RATE_LIMIT_THRESHOLD = int(os.environ.get("AGENT_RATE_LIMIT_THRESHOLD", "3"))
+_RATE_LIMIT_WINDOW_SEC = int(os.environ.get("AGENT_RATE_LIMIT_WINDOW_SEC", "600"))
+_RATE_LIMIT_COOLDOWN_SEC = int(os.environ.get("AGENT_RATE_LIMIT_COOLDOWN_SEC", "3600"))
+_RATE_LIMIT_RE = re.compile(r"rate[\s\-]?limit", re.IGNORECASE)
+
 logger = logging.getLogger(__name__)
 
 
@@ -129,6 +138,15 @@ class AgentEngine:
         # (executor uses a thread pool — two fire-and-forget _save() can otherwise
         # overlap on the same .tmp file and corrupt state).
         self._save_lock = threading.Lock()
+        # Per-agent backoff for upstream rate-limit / generic API errors.
+        # _rate_limit_failures[agent_id] = list of monotonic-second timestamps.
+        # _rate_limit_paused_until[agent_id] = monotonic seconds, or None.
+        # When N=_RATE_LIMIT_THRESHOLD failures occur within
+        # _RATE_LIMIT_WINDOW_SEC, the agent is paused for
+        # _RATE_LIMIT_COOLDOWN_SEC. Schedule keeps firing but _run_agent
+        # short-circuits during the cooldown — quota is preserved.
+        self._rate_limit_failures: dict[str, list[float]] = {}
+        self._rate_limit_paused_until: dict[str, float] = {}
 
     def set_claude_runner(self, runner: Any) -> None:
         self._claude_runner = runner
@@ -745,12 +763,68 @@ class AgentEngine:
     # Agent run
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Rate-limit backoff helpers (v0.9.10)
+    # ------------------------------------------------------------------
+
+    def _is_rate_limited(self, result: str) -> bool:
+        """Return True if `result` looks like an upstream rate-limit reply."""
+        if not isinstance(result, str):
+            return False
+        return bool(_RATE_LIMIT_RE.search(result))
+
+    def _record_rate_limit_failure(self, agent_id: str) -> None:
+        """Track a rate-limit failure timestamp; pause the agent if the
+        threshold is crossed inside the window."""
+        now = time.monotonic()
+        # Drop timestamps outside the window
+        recent = [
+            ts for ts in self._rate_limit_failures.get(agent_id, [])
+            if now - ts <= _RATE_LIMIT_WINDOW_SEC
+        ]
+        recent.append(now)
+        self._rate_limit_failures[agent_id] = recent
+        if len(recent) >= _RATE_LIMIT_THRESHOLD:
+            paused_until = now + _RATE_LIMIT_COOLDOWN_SEC
+            self._rate_limit_paused_until[agent_id] = paused_until
+            logger.warning(
+                "Agent %s: %d rate-limit failures in %ds — pausing for %ds. "
+                "Considera passare a un modello a pagamento per agenti schedulati.",
+                agent_id, len(recent), _RATE_LIMIT_WINDOW_SEC, _RATE_LIMIT_COOLDOWN_SEC,
+            )
+            # Clear the failure list so the next pause requires fresh evidence
+            # after the cooldown — otherwise old failures would re-trigger.
+            self._rate_limit_failures[agent_id] = []
+
+    def _clear_rate_limit_failures(self, agent_id: str) -> None:
+        """Reset failure history after a successful (non-rate-limited) run."""
+        self._rate_limit_failures.pop(agent_id, None)
+
+    def _is_in_rate_limit_pause(self, agent_id: str) -> bool:
+        """Return True if the agent is currently in cooldown after too many
+        rate-limit failures. Auto-clears expired pauses."""
+        until = self._rate_limit_paused_until.get(agent_id)
+        if until is None:
+            return False
+        if time.monotonic() >= until:
+            self._rate_limit_paused_until.pop(agent_id, None)
+            logger.info("Agent %s: rate-limit cooldown expired, resuming.", agent_id)
+            return False
+        return True
+
     async def _run_agent(
         self, agent: Agent, context: Optional[dict] = None, trigger_fired: Optional[dict] = None
     ) -> str:
         if not self._claude_runner:
             logger.warning("No runner configured")
             return ""
+        if self._is_in_rate_limit_pause(agent.id):
+            remaining = int(self._rate_limit_paused_until[agent.id] - time.monotonic())
+            logger.info(
+                "Agent %s: skipping run, in rate-limit cooldown for %ds more.",
+                agent.id, remaining,
+            )
+            return f"[skipped: rate-limit cooldown, retry in {remaining}s]"
         logger.info("Running agent: %s (%s)", agent.name, agent.id)
         inp_before = getattr(self._claude_runner, "total_input_tokens", 0)
         out_before = getattr(self._claude_runner, "total_output_tokens", 0)
@@ -829,6 +903,12 @@ class AgentEngine:
 
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             agent.last_result = result
+            # Track upstream rate-limit replies and pause the agent if they
+            # repeat — protects the daily quota on OpenRouter free models.
+            if self._is_rate_limited(result):
+                self._record_rate_limit_failure(agent.id)
+            else:
+                self._clear_rate_limit_failures(agent.id)
             self._append_execution_log(
                 agent, result, inp_before, out_before, tool_calls_snapshot,
                 success=True, structured=structured, action_taken=action_taken,
