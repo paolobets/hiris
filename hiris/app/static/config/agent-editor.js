@@ -4,7 +4,7 @@
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
      non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.10.2';
+  var V6_CACHE_BUST = '0.10.3';
 
   var legacyLoaded = false;
   var LEGACY_SCRIPTS = [
@@ -269,19 +269,42 @@
     });
 
     btnSave.addEventListener('click', function() {
+      console.log('[v6] Save clicked, agentId=' + agentId + ' saveAgent=' + (typeof saveAgent) + ' buildPayload=' + (typeof buildPayload));
       if (typeof saveAgent === 'function') {
-        try { var p = saveAgent(); if (p && p.then) p.then(markClean); else markClean(); } catch(e) { console.error(e); }
-      } else { markClean(); }
+        try {
+          var p = saveAgent();
+          console.log('[v6] saveAgent returned:', p);
+          if (p && p.then) p.then(function(res) { console.log('[v6] save resolved:', res); markClean(); }).catch(function(err) { console.error('[v6] save rejected:', err); });
+          else markClean();
+        } catch(e) { console.error('[v6] saveAgent threw:', e); alert('Save error: ' + (e.message || e)); }
+      } else {
+        console.warn('[v6] saveAgent not defined — markClean only');
+        alert('window.saveAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
+        markClean();
+      }
     });
     btnCancel.addEventListener('click', function() {
+      console.log('[v6] Cancel clicked');
       if (HirisState.get('unsaved') && !confirm('Annullare le modifiche non salvate?')) return;
       window.location.hash = '#/agents';
     });
     btnTestRun.addEventListener('click', function() {
-      if (typeof runAgent === 'function') runAgent();
+      console.log('[v6] TestRun clicked, runAgent=' + (typeof runAgent) + ' currentId=' + (typeof window !== 'undefined' ? window.currentId : '?'));
+      if (typeof runAgent === 'function') {
+        try { runAgent(); } catch(e) { console.error('[v6] runAgent threw:', e); alert('TestRun error: ' + (e.message || e)); }
+      } else {
+        console.warn('[v6] runAgent not defined');
+        alert('window.runAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
+      }
     });
     btnDelete.addEventListener('click', function() {
-      if (typeof deleteAgent === 'function') deleteAgent();
+      console.log('[v6] Delete clicked, deleteAgent=' + (typeof deleteAgent));
+      if (typeof deleteAgent === 'function') {
+        try { deleteAgent(); } catch(e) { console.error('[v6] deleteAgent threw:', e); alert('Delete error: ' + (e.message || e)); }
+      } else {
+        console.warn('[v6] deleteAgent not defined');
+        alert('window.deleteAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
+      }
     });
 
     btnDelete.style.display = agentId ? '' : 'none';

@@ -1590,7 +1590,12 @@
   background: var(--surface);
 }
 
+/* Default: log-row collapsed = .lr-detail nascosto.
+   Mostrato solo quando .log-row ha la classe .expanded (toggle on click). */
 .lr-detail {
+  display: none;
+}
+.log-row.expanded .lr-detail {
   margin-top: var(--sp-3);
   padding-top: var(--sp-3);
   border-top: 1px dashed var(--border);

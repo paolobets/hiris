@@ -1,5 +1,64 @@
 # HIRIS — Changelog
 
+## v0.10.3 — Log row collapse di default + diagnostic buttons (2026-05-07)
+
+Due bug user reportati:
+1. Sezione log dell'editor appariva ESPLOSA con tutti i dettagli visibili
+   invece di compatta + apribile su click.
+2. Pulsanti Test Run, Salva, Elimina sembravano non funzionare.
+
+### Fix bug 1 — Log row collapse default
+
+CSS bug in hiris-config.css: `.lr-detail` era `display: flex` di default
+invece di `display: none`. La classe `.log-row.expanded` aggiungeva solo
+gli stili visivi accent ma il dettaglio era sempre visibile.
+
+### Causa root
+
+Il CSS atom `.lr-detail` (in `hiris-config.css` riga 1593) era `display: flex`
+di default invece di `display: none`. La classe `.log-row.expanded` aggiungeva
+solo gli stili visivi accent (border + box-shadow) ma il dettaglio era già
+visibile, quindi tutti i log apparivano espansi all'apertura.
+
+### Fix
+
+```css
+.lr-detail {
+  display: none;             /* nascosto di default */
+}
+.log-row.expanded .lr-detail {
+  display: flex;             /* visibile solo quando il row è espanso */
+  margin-top, padding-top, border-top, animation… (immutati)
+}
+```
+
+Click sulla riga aggiunge `.expanded` (logica già in log-row.js) → detail
+diventa visibile con animazione slideIn. Click su altra riga collapse la
+prima e espande la seconda (accordion). ESC chiude.
+
+### Fix bug 2 — Diagnostic logging pulsanti sticky-actions
+
+Code review statico ha confermato che `window.saveAgent`/`runAgent`/
+`deleteAgent` sono correttamente definiti dentro l'IIFE di `agent-editor.js`
+(prima della chiusura). I click handler in `setupStickyActions` chiamano
+`if (typeof saveAgent === 'function') saveAgent()` che dovrebbe risolvere via
+window. Tuttavia user reports che i pulsanti "non funzionano" — diagnosi
+necessaria run-time.
+
+Aggiunto **diagnostic console.log** in OGNI click handler:
+- Save: logga agentId, typeof saveAgent, typeof buildPayload, return value, promise resolve/reject
+- Test Run: logga typeof runAgent, currentId, errori try/catch
+- Delete: logga typeof deleteAgent, errori try/catch
+
+Se la funzione globale non è definita, alert + console.warn istruisce su
+hard reload (cache stale). Se la funzione throw, alert con messaggio.
+
+Aprendo DevTools console (F12) e cliccando un pulsante, l'output dirà
+ESATTAMENTE cosa fallisce: typeof check, throw nella funzione, fetch failure,
+ecc. Future debug saranno immediati.
+
+Bump version 0.10.2 → 0.10.3 + V6_CACHE_BUST sync.
+
 ## v0.10.2 — Defensive guards + cache-bust + chat link fix (2026-05-07)
 
 User segnala che v0.10.1 aveva ancora il banner "Errore caricamento editor:
