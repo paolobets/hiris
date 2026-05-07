@@ -1,47 +1,108 @@
-/* HIRIS · Designer · bootstrap (Phase 2.3 stub routes) */
+/* HIRIS · Designer · bootstrap (Phase 4.1: chrome + nav active state) */
 (function() {
-  /* Route handlers — placeholder. Real implementations in Phase 4-9. */
+  function mountChrome() {
+    var sn = document.getElementById('side-nav');
+    var pc = document.getElementById('page-chrome');
+    sn.innerHTML = '';
+    sn.appendChild(document.getElementById('tpl-side-nav').content.cloneNode(true));
+    pc.innerHTML = '';
+    pc.appendChild(document.getElementById('tpl-page-chrome').content.cloneNode(true));
+
+    /* Theme toggle */
+    var btn = document.getElementById('theme-toggle');
+    var moon = document.getElementById('ic-moon');
+    var sun = document.getElementById('ic-sun');
+    function paint(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('hiris-theme', t); } catch(e) {}
+      if (moon) moon.style.display = t === 'dark' ? 'none' : '';
+      if (sun) sun.style.display = t === 'dark' ? '' : 'none';
+    }
+    var current = document.documentElement.getAttribute('data-theme') ||
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    paint(current);
+    if (btn) btn.addEventListener('click', function() {
+      paint(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+
+    /* Update agent count badge from API (best-effort) */
+    if (typeof loadAgents === 'function') {
+      loadAgents().then(function(agents) {
+        var el = document.getElementById('nav-agents-count');
+        if (el) el.textContent = agents.length;
+        HirisState.set('agents', agents);
+      }).catch(function() { /* silent */ });
+    }
+
+    /* Update proposals count badge */
+    fetch('api/proposals?status=pending').then(function(r) { return r.json(); }).then(function(d) {
+      var el = document.getElementById('nav-proposals-count');
+      if (el) el.textContent = (d.proposals || []).length;
+    }).catch(function() { /* silent */ });
+  }
+
+  function updateNavActive() {
+    var hash = window.location.hash || '#/';
+    document.querySelectorAll('.nav-item[data-route]').forEach(function(item) {
+      var route = item.getAttribute('data-route');
+      var isActive =
+        (route === 'dashboard' && (hash === '#/' || hash === '')) ||
+        (route === 'agents' && hash.indexOf('#/agents') === 0) ||
+        (route === 'proposals' && hash.indexOf('#/proposals') === 0) ||
+        (route === 'usage' && hash.indexOf('#/usage') === 0) ||
+        (route === 'settings' && hash.indexOf('#/settings') === 0);
+      item.classList.toggle('active', isActive);
+    });
+  }
+
+  function setCrumbHere(text) {
+    var here = document.getElementById('chrome-here');
+    if (here) here.textContent = text;
+  }
+
+  /* Route handlers — placeholder (real implementations Phase 4.2-9) */
   HirisRouter.register(/^#\/?$/, function() {
+    setCrumbHere('Dashboard');
     document.getElementById('route-outlet').innerHTML =
-      '<div style="padding:24px"><h2>Dashboard</h2><p>Route #/ — implementata in Phase 8.</p></div>';
+      '<div class="page-title">Dashboard</div><p class="page-subtitle">Implementata in Phase 8.</p>';
   });
   HirisRouter.register(/^#\/agents\/?$/, function() {
+    setCrumbHere('Agenti');
     document.getElementById('route-outlet').innerHTML =
-      '<div style="padding:24px"><h2>Lista agenti</h2><p>Route #/agents — implementata in Phase 4.</p></div>';
+      '<div class="page-title">Lista agenti</div><p class="page-subtitle">Implementata in Phase 4.0/4.2.</p>';
   });
   HirisRouter.register(/^#\/agents\/new\/?$/, function() {
+    setCrumbHere('Agenti / Nuovo');
     document.getElementById('route-outlet').innerHTML =
-      '<div style="padding:24px"><h2>Nuovo agente</h2><p>Route #/agents/new — implementata in Phase 4.</p></div>';
+      '<div class="page-title">Nuovo agente</div><p class="page-subtitle">Implementato in Phase 4.2.</p>';
   });
   HirisRouter.register(/^#\/agents\/([^/]+)$/, function(m) {
+    setCrumbHere('Agenti / ' + m[1]);
+    HirisState.set('activeAgentId', m[1]);
     document.getElementById('route-outlet').innerHTML =
-      '<div style="padding:24px"><h2>Editor agente: ' + m[1] + '</h2><p>Route #/agents/:id — implementata in Phase 4.</p></div>';
+      '<div class="page-title">Editor agente: ' + m[1] + '</div><p class="page-subtitle">Implementato in Phase 4.2.</p>';
   });
   HirisRouter.register(/^#\/proposals\/?$/, function() {
+    setCrumbHere('Proposte');
     document.getElementById('route-outlet').innerHTML =
-      '<div style="padding:24px"><h2>Proposte</h2><p>Route #/proposals — implementata in Phase 9.</p></div>';
+      '<div class="page-title">Proposte</div><p class="page-subtitle">Implementata in Phase 9.</p>';
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {
+    setCrumbHere('Consumi');
     document.getElementById('route-outlet').innerHTML =
-      '<div style="padding:24px"><h2>Consumi</h2><p>Route #/usage — implementata in Phase 9.</p></div>';
+      '<div class="page-title">Consumi</div><p class="page-subtitle">Implementata in Phase 9.</p>';
   });
   HirisRouter.register(/^#\/settings\/?$/, function() {
+    setCrumbHere('Impostazioni');
     document.getElementById('route-outlet').innerHTML =
-      '<div style="padding:24px"><h2>Impostazioni</h2><p>Route #/settings — implementata in Phase 11.</p></div>';
+      '<div class="page-title">Impostazioni</div><p class="page-subtitle">Implementata in Phase 11.</p>';
   });
 
-  /* Provisional side-nav (sostituito da template clone in Phase 4.1) */
-  document.getElementById('side-nav').innerHTML =
-    '<div style="padding:16px;font-weight:600">HIRIS</div>' +
-    '<a href="#/" style="display:block;padding:8px 16px">Dashboard</a>' +
-    '<a href="#/agents" style="display:block;padding:8px 16px">Agenti</a>' +
-    '<a href="#/proposals" style="display:block;padding:8px 16px">Proposte</a>' +
-    '<a href="#/usage" style="display:block;padding:8px 16px">Consumi</a>' +
-    '<a href="#/settings" style="display:block;padding:8px 16px">Impostazioni</a>';
-
-  /* Provisional page-chrome (sostituito in Phase 4.1) */
-  document.getElementById('page-chrome').innerHTML =
-    '<div style="padding:16px">HIRIS Agent Designer</div>';
-
-  HirisRouter.start();
+  document.addEventListener('DOMContentLoaded', function() {
+    mountChrome();
+    window.addEventListener('hashchange', updateNavActive);
+    HirisState.subscribe('route', updateNavActive);
+    HirisRouter.start();
+    updateNavActive();
+  });
 })();
