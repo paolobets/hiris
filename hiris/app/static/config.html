@@ -99,6 +99,78 @@
     </div>
   </template>
 
+  <template id="tpl-agent-editor">
+    <div class="editor-grid">
+      <div class="editor-content">
+        <section class="section-card" id="sec-identita">
+          <div class="sc-header"><span class="sc-num">01</span><h2 class="sc-title">Identità &amp; Trigger</h2></div>
+          <p class="sc-desc">Nome, tipo e quando l'agente si attiva.</p>
+          <div class="sc-body" id="sc-body-identita"></div>
+        </section>
+        <section class="section-card" id="sec-istruzioni">
+          <div class="sc-header"><span class="sc-num">02</span><h2 class="sc-title">Istruzioni</h2></div>
+          <p class="sc-desc">Cosa l'agente sa della casa e cosa deve fare.</p>
+          <div class="sc-body" id="sc-body-istruzioni"></div>
+        </section>
+        <section class="section-card" id="sec-modello">
+          <div class="sc-header"><span class="sc-num">03</span><h2 class="sc-title">Modello AI</h2></div>
+          <p class="sc-desc">Quale modello usa, budget token, livello reasoning.</p>
+          <div class="sc-body" id="sc-body-modello"></div>
+        </section>
+        <section class="section-card" id="sec-permessi">
+          <div class="sc-header"><span class="sc-num">04</span><h2 class="sc-title">Permessi</h2></div>
+          <p class="sc-desc">Quali tool e quali entità HA può leggere o usare.</p>
+          <div class="sc-body" id="sc-body-permessi"></div>
+        </section>
+        <section class="section-card" id="sec-azioni">
+          <div class="sc-header"><span class="sc-num">05</span><h2 class="sc-title">Azioni</h2></div>
+          <p class="sc-desc">Cosa fa l'agente quando la valutazione attiva una regola.</p>
+          <div class="sc-body" id="sc-body-azioni"></div>
+        </section>
+        <section class="section-card" id="sec-stato">
+          <div class="sc-header"><span class="sc-num">06</span><h2 class="sc-title">Abilitazione</h2></div>
+          <p class="sc-desc">Quando l'agente è abilitato e se chiede conferma.</p>
+          <div class="sc-body" id="sc-body-stato"></div>
+        </section>
+        <section class="section-card" id="sec-log">
+          <div class="sc-header"><span class="sc-num">07</span><h2 class="sc-title">Log esecuzioni</h2></div>
+          <p class="sc-desc">Ultimi 20 run. Click su una riga per il dettaglio.</p>
+          <div class="sc-body" id="sc-body-log"></div>
+        </section>
+        <section class="section-card" id="sec-run">
+          <div class="sc-header"><span class="sc-num">08</span><h2 class="sc-title">Test Run</h2></div>
+          <p class="sc-desc">Ultimo Test Run lanciato manualmente. Non esegue azioni reali.</p>
+          <div class="sc-body" id="sc-body-run"></div>
+        </section>
+        <section class="section-card" id="sec-consumi">
+          <div class="sc-header"><span class="sc-num">09</span><h2 class="sc-title">Consumi agente</h2></div>
+          <p class="sc-desc">Conteggio richieste, token e costo stimato.</p>
+          <div class="sc-body" id="sc-body-consumi"></div>
+        </section>
+        <div class="sticky-actions" id="sticky-actions">
+          <span class="sa-status" id="sa-status">Salvato ✓</span>
+          <span class="sa-spacer"></span>
+          <button class="btn btn-ghost" id="btn-cancel">Annulla</button>
+          <button class="btn" id="btn-test-run"><span class="spinner"></span>▶ Test Run</button>
+          <button class="btn btn-danger" id="btn-delete" style="display:none">Elimina</button>
+          <button class="btn btn-primary" id="btn-save" disabled>Salva</button>
+        </div>
+      </div>
+      <aside class="anchor-nav" id="anchor-nav">
+        <div class="an-label">Indice</div>
+        <a class="anchor-link" href="#sec-identita"><span>01</span><span>Identità &amp; Trigger</span></a>
+        <a class="anchor-link" href="#sec-istruzioni"><span>02</span><span>Istruzioni</span></a>
+        <a class="anchor-link" href="#sec-modello"><span>03</span><span>Modello AI</span></a>
+        <a class="anchor-link" href="#sec-permessi"><span>04</span><span>Permessi</span></a>
+        <a class="anchor-link" href="#sec-azioni"><span>05</span><span>Azioni</span></a>
+        <a class="anchor-link" href="#sec-stato"><span>06</span><span>Abilitazione</span></a>
+        <a class="anchor-link" href="#sec-log"><span>07</span><span>Log esecuzioni</span></a>
+        <a class="anchor-link" href="#sec-run"><span>08</span><span>Test Run</span></a>
+        <a class="anchor-link" href="#sec-consumi"><span>09</span><span>Consumi agente</span></a>
+      </aside>
+    </div>
+  </template>
+
   <!-- Drawer + Popover container (mounted by atom modules in Phase 3) -->
   <div id="drawer-container"></div>
   <div id="popover-container"></div>
@@ -112,6 +184,7 @@
   <script src="static/config/state.js"></script>
   <script src="static/config/router.js"></script>
   <script src="static/config/api.js"></script>
+  <script src="static/config/agent-editor.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>

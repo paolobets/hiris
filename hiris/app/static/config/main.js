@@ -73,14 +73,13 @@
   });
   HirisRouter.register(/^#\/agents\/new\/?$/, function() {
     setCrumbHere('Agenti / Nuovo');
-    document.getElementById('route-outlet').innerHTML =
-      '<div class="page-title">Nuovo agente</div><p class="page-subtitle">Implementato in Phase 4.2.</p>';
+    HirisState.set('activeAgentId', null);
+    HirisAgentEditor.mount(null);
   });
   HirisRouter.register(/^#\/agents\/([^/]+)$/, function(m) {
     setCrumbHere('Agenti / ' + m[1]);
     HirisState.set('activeAgentId', m[1]);
-    document.getElementById('route-outlet').innerHTML =
-      '<div class="page-title">Editor agente: ' + m[1] + '</div><p class="page-subtitle">Implementato in Phase 4.2.</p>';
+    HirisAgentEditor.mount(m[1]);
   });
   HirisRouter.register(/^#\/proposals\/?$/, function() {
     setCrumbHere('Proposte');
