@@ -72,8 +72,11 @@
   });
   HirisRouter.register(/^#\/agents\/?$/, function() {
     setCrumbHere('Agenti');
-    document.getElementById('route-outlet').innerHTML =
-      '<div class="page-title">Lista agenti</div><p class="page-subtitle">Implementata in Phase 4.0/4.2.</p>';
+    if (window.HirisAgentsList) {
+      HirisAgentsList.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Lista agenti</div>';
+    }
   });
   HirisRouter.register(/^#\/agents\/new\/?$/, function() {
     setCrumbHere('Agenti / Nuovo');
@@ -87,13 +90,36 @@
   });
   HirisRouter.register(/^#\/proposals\/?$/, function() {
     setCrumbHere('Proposte');
-    document.getElementById('route-outlet').innerHTML =
-      '<div class="page-title">Proposte</div><p class="page-subtitle">Implementata in Phase 9.</p>';
+    if (window.HirisProposalsRoute) {
+      HirisProposalsRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Proposte</div>';
+    }
+    /* proposals.js è in LEGACY_SCRIPTS — lo carichiamo on-demand qui */
+    if (typeof loadProposals !== 'function' && window.HirisAgentEditor) {
+      /* Reuse the legacy loader from agent-editor.js by triggering a no-op mount path? */
+      /* Simpler: load proposals.js directly */
+      var s = document.querySelector('script[data-legacy="static/config/proposals.js"]');
+      if (!s) {
+        s = document.createElement('script');
+        s.src = 'static/config/proposals.js';
+        s.dataset.legacy = 'static/config/proposals.js';
+        s.onload = function() {
+          if (typeof loadProposals === 'function' && window.HirisProposalsRoute) {
+            loadProposals('pending');
+          }
+        };
+        document.head.appendChild(s);
+      }
+    }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {
     setCrumbHere('Consumi');
-    document.getElementById('route-outlet').innerHTML =
-      '<div class="page-title">Consumi</div><p class="page-subtitle">Implementata in Phase 9.</p>';
+    if (window.HirisUsageRoute) {
+      HirisUsageRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Consumi</div>';
+    }
   });
   HirisRouter.register(/^#\/settings\/?$/, function() {
     setCrumbHere('Impostazioni');

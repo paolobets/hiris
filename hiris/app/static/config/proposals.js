@@ -24,7 +24,7 @@ function renderProposals(proposals, status) {
     return;
   }
   list.innerHTML = proposals.map(function(p) {
-    var typeLabel = p.type === 'ha_automation' ? 'HA Nativa' : 'Agente HIRIS';
+    var typeLabel = '→ automazione HA';
     var date = p.created_at ? p.created_at.substring(0, 10) : '';
     var safeId = escHtml(p.id);
     var actions = status === 'pending'
@@ -33,7 +33,7 @@ function renderProposals(proposals, status) {
       : '';
     return '<div class="proposal-row" id="pr-' + safeId + '">'
       + '<div class="proposal-info">'
-      + '<div class="proposal-name"><span class="type-badge">' + typeLabel + '</span>' + escHtml(p.name) + '</div>'
+      + '<div class="proposal-name"><span class="type-badge" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;background:var(--accent-tint);color:var(--accent-ink);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);margin-right:6px;vertical-align:middle">' + typeLabel + '</span>' + escHtml(p.name) + '</div>'
       + '<div class="proposal-meta">' + date + '</div>'
       + '<div class="proposal-desc">' + escHtml(p.description || '') + '</div>'
       + '<div class="proposal-reason"><strong>Motivo:</strong> ' + escHtml(p.routing_reason || '') + '</div>'
