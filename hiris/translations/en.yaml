@@ -74,3 +74,74 @@ configuration:
   history_retention_days:
     name: "Conversation History Retention (days)"
     description: "How many days to keep conversation history before automatic deletion. Default is 90 days."
+
+# v6 designer redesign (2026-05-07)
+designer:
+  nav:
+    dashboard: Dashboard
+    agents: Agents
+    proposals: Proposals
+    usage: Usage
+    settings: Settings
+    chat: Open chat
+  dash:
+    welcome: Welcome to HIRIS
+    stat_active_agents: Active agents
+    stat_exec_24h: Executions 24h
+    stat_tokens_today: Tokens today
+    stat_cost_month: Monthly cost
+    last_logs: Last logs
+    proposals_pending: Pending proposals
+    next_triggers: Next triggers
+    next_triggers_p2: "Coming soon — next triggers requires a backend endpoint (P2)."
+  editor:
+    section_identity: Identity & Triggers
+    section_instructions: Instructions
+    section_model: AI Model
+    section_permissions: Permissions
+    section_actions: Actions
+    section_enable: Enabling
+    section_log: Execution log
+    section_testrun: Test Run
+    section_usage: Agent usage
+    unsaved: Unsaved changes
+    saved: Saved
+    save: Save
+    cancel: Cancel
+    delete: Delete
+    test_run: Test Run
+  log:
+    filter_all: all
+    filter_ok: ok
+    filter_err: err
+    filter_thinking: thinking
+    refresh: refresh
+    copy_summary: copy summary
+    copy_raw: copy raw JSON
+    show_thinking: show thinking
+    hide_thinking: hide thinking
+    empty: No executions recorded.
+  action:
+    type_notify: Notify
+    type_script: Run HA script
+    type_call_service: Call HA service (advanced)
+    type_wait: Wait (delay)
+    type_verify: Verify condition
+    script_picker: Home Assistant script
+    script_variables: Variables (optional)
+    on_fail_continue: Continue sequence
+    on_fail_stop: Stop execution
+    add: Add action
+  proposal:
+    type_ha_automation: "→ HA automation"
+    activate: Activate
+    reject: Reject
+    pending: Pending
+    archived: Archived
+  cron:
+    preset_hourly: Hourly
+    preset_morning: Every morning 06:00
+    preset_evening: Every evening 20:00
+    preset_weekday: Mondays only 09:00
+    preset_weekend: Weekends 10:00
+    preset_custom: "Custom…"

@@ -1,5 +1,65 @@
 # HIRIS — Changelog
 
+## v0.10.0 — Agent Designer v6 redesign (2026-05-07)
+
+Refactor completo della pagina `config.html` (Agent Designer) come applicazione
+multi-route con long-form editor.
+
+### Highlights
+
+- **Multi-route hash router** (`#/`, `#/agents`, `#/agents/:id`, `#/proposals`,
+  `#/usage`, `#/settings`) — deep-link supportato, navigazione naturale.
+- **Long-form editor** — i 6 tab orizzontali sostituiti da 9 section-card
+  scrollabili con anchor nav a destra (IntersectionObserver active state) e
+  sticky save bar in fondo.
+- **Log row v6** — click ovunque sulla riga espande inline (accordion, una sola
+  aperta), mid-truncation per testo lungo, filter chips
+  (tutti / ok / err / thinking), copia summary + copia raw JSON, ESC chiude.
+- **Action editor in drawer** — il builder azioni esce dall'inline e si apre
+  come drawer da destra full-height.
+- **Nuovo tipo azione "▶ Esegui script HA"** — wrapper friendly su
+  `call_service domain=script` con script picker + variables JSON.
+- **Cron chip + popover** — i 5 select inline diventano un chip
+  `Ogni giorno alle 06:00` che apre un popover con 6 preset
+  (orario/mattino/sera/lunedì/weekend/custom).
+- **Dashboard adaptive** — stato vuoto = onboarding + template gallery, stato
+  popolato = 4 stat tile + log cross-agent + proposte peek + prossimi trigger.
+- **Proposte automazione** — terminologia allineata: badge `→ automazione HA`,
+  buttons `Attiva` / `Rifiuta`, una proposta attivata genera una automation HA
+  nativa (semantica esistente, ora chiara nella UI).
+
+### Internal
+
+- 13 nuovi moduli JS in `hiris/app/static/config/`: `state.js`, `router.js`,
+  `dashboard.js`, `agent-editor.js`, `agents-list.js`, `log-row.js`,
+  `drawer.js`, `popover.js`, `script-action.js`, `cron-popover.js`,
+  `proposals-route.js`, `usage-route.js`.
+- Token v6 additivi in `hiris-theme.css` (spacing scale 4-base, typography
+  ramp, layout dims, elevations). Zero rinomine v5.
+- Atom CSS v6 in `hiris-config.css`: `.app-shell`, `.section-card`,
+  `.anchor-nav`, `.sticky-actions`, `.drawer`, `.popover`, `.log-row`, ecc.
+- Translations IT+EN: ~50 nuove chiavi sotto namespace `designer.*`.
+- Test browser-based in `tests/static/test_*.html` per moduli JS chiave
+  (state, router, drawer, popover, log-row).
+- Backend Python: zero modifiche. Suite 562/562 passed invariata.
+- Chat surface (`index.html`, `hiris-chat-card.js`): zero impatto.
+
+### Migration
+
+- Nessuna migration richiesta. Schema agent invariato.
+- URL `config.html` → ridireziona a `#/`. Bookmark `#/proposals` etc. valido.
+- Action `script` salvata come `call_service domain=script`, retro-compat completa.
+
+### Removed
+
+- File backup `config.legacy.html` (era temporaneo per consultazione).
+- Regole CSS legacy obsolete (`.tab-btn`, `.agent-tabs`).
+
+### Reference
+
+- Design doc: `docs/superpowers/specs/2026-05-07-hiris-agent-designer-v6-design.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-07-hiris-agent-designer-v6.md`
+
 ## [0.9.10] — 2026-05-05
 
 ### Added — Gestione consapevole modelli OpenRouter `:free`

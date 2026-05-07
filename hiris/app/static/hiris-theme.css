@@ -248,3 +248,44 @@ a { color: inherit; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ────────────────────────────────────────────────────────────
+   v6 additions — Agent Designer redesign
+   Additivi su v5. NON rinomina nessun token v5.
+   Chat surface (index.html) ignora questi token e continua a renderizzare con v5.
+   ──────────────────────────────────────────────────────────── */
+
+:root {
+  /* v6 spacing scale (4-base) */
+  --sp-1: 4px;   --sp-2: 8px;   --sp-3: 12px;
+  --sp-4: 16px;  --sp-5: 20px;  --sp-6: 24px;
+  --sp-7: 28px;  --sp-8: 32px;  --sp-10: 40px;
+  --sp-12: 48px; --sp-16: 64px; --sp-20: 80px;
+
+  /* v6 typography ramp */
+  --fs-12: 12px; --fs-13: 13px; --fs-14: 14px;
+  --fs-15: 15px; --fs-17: 17px; --fs-20: 20px;
+  --fs-24: 24px; --fs-32: 32px;
+  --lh-tight: 1.25; --lh-snug: 1.4; --lh-normal: 1.55;
+
+  /* v6 layout dims */
+  --shell-sidebar-w: 232px;
+  --shell-sidebar-w-collapsed: 64px;
+  --shell-content-max: 1140px;
+  --shell-anchor-w: 200px;
+
+  /* v6 elevations */
+  --elev-1: 0 1px 2px oklch(0.20 0.05 280 / 0.05);
+  --elev-2: 0 4px 12px oklch(0.20 0.05 280 / 0.08);
+  --elev-3: 0 12px 32px oklch(0.20 0.05 280 / 0.12);
+  --elev-pop: 0 12px 28px oklch(0.20 0.05 280 / 0.20);
+  --elev-drawer: -16px 0 48px oklch(0.20 0.05 280 / 0.18);
+}
+
+[data-theme="dark"] {
+  --elev-1: 0 1px 2px oklch(0 0 0 / 0.32);
+  --elev-2: 0 4px 12px oklch(0 0 0 / 0.36);
+  --elev-3: 0 12px 32px oklch(0 0 0 / 0.40);
+  --elev-pop: 0 12px 28px oklch(0 0 0 / 0.50);
+  --elev-drawer: -16px 0 48px oklch(0 0 0 / 0.55);
+}

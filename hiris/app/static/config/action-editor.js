@@ -6,12 +6,20 @@ var _agentActions = [];
 
 function _actionsRender() {
   var list = document.getElementById('actions-list');
+  if (!list) return;
   list.innerHTML = '';
   var TYPE_LABELS = { notify: 'Notifica', call_service: 'Servizio', wait: 'Attendi', verify: 'Verifica' };
   _agentActions.forEach(function(a, i) {
-    var typeLabel = TYPE_LABELS[a.type] || a.type;
+    var isScript = !!(window.HirisScriptAction && window.HirisScriptAction.isScriptAction && window.HirisScriptAction.isScriptAction(a));
+    var typeLabel = isScript ? 'Script' : (TYPE_LABELS[a.type] || a.type);
     var detail;
-    if (a.type === 'notify') {
+    if (isScript) {
+      detail = '▶ script.' + esc(a.service || '');
+      var vars = a.service_data && a.service_data.variables;
+      if (vars && typeof vars === 'object' && Object.keys(vars).length) {
+        detail += ' (' + Object.keys(vars).length + ' var)';
+      }
+    } else if (a.type === 'notify') {
       detail = 'canale: ' + esc(a.channel || 'ha_push');
     } else if (a.type === 'call_service') {
       detail = esc(a.domain || '') + '.' + esc(a.service || '') + (a.entity_pattern ? ' su ' + esc(a.entity_pattern) : '');
@@ -55,14 +63,21 @@ function _actionsRender() {
 function _actionsLoad(actions) {
   _agentActions = Array.isArray(actions) ? JSON.parse(JSON.stringify(actions)) : [];
   _actionsRender();
-  document.getElementById('action-editor').style.display = 'none';
+  var ae = document.getElementById('action-editor');
+  if (ae) ae.style.display = 'none';
 }
 
 function _actionsValue() {
   return JSON.parse(JSON.stringify(_agentActions));
 }
 
-document.getElementById('btn-add-action').addEventListener('click', function() {
+/* Legacy inline-editor wiring — only attach when the inline form fields
+   exist (pre-Phase-6 markup). Phase 6 mounts a drawer-based editor in
+   script-action.js and this block becomes a no-op. */
+var _btnAdd = document.getElementById('btn-add-action');
+var _aeType = document.getElementById('ae-type');
+if (_btnAdd && _aeType) {
+_btnAdd.addEventListener('click', function() {
   document.getElementById('action-editor').style.display = 'block';
   document.getElementById('ae-type').value = 'notify';
   document.getElementById('ae-label').value = '';
@@ -89,7 +104,7 @@ document.getElementById('btn-add-action').addEventListener('click', function() {
   document.getElementById('ae-then-service-fields').style.display = 'none';
 });
 
-document.getElementById('ae-type').addEventListener('change', function() {
+_aeType.addEventListener('change', function() {
   var v = this.value;
   document.getElementById('ae-notify-fields').style.display  = v === 'notify'       ? '' : 'none';
   document.getElementById('ae-service-fields').style.display = v === 'call_service' ? '' : 'none';
@@ -155,3 +170,4 @@ document.getElementById('ae-confirm').addEventListener('click', function() {
 document.getElementById('ae-cancel').addEventListener('click', function() {
   document.getElementById('action-editor').style.display = 'none';
 });
+} /* end legacy inline-editor wiring guard */

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>popover atom smoke</title>
+<style>
+.popover { background:#fff;border:1px solid #999;border-radius:8px;padding:12px;width:280px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:50; }
+.pop-arrow { position:absolute;top:-7px;left:24px;width:12px;height:12px;background:#fff;
+  border-left:1px solid #999;border-top:1px solid #999;transform:rotate(45deg); }
+.btn { padding:6px 12px;border:1px solid #ccc;background:#fafafa;cursor:pointer; }
+</style>
+</head><body style="padding:120px;font-family:sans-serif">
+<h1>Popover smoke</h1>
+<pre id="out"></pre>
+<button id="trigger" class="btn">Click me</button>
+<div id="popover-container"></div>
+<script src="../../hiris/app/static/config/popover.js"></script>
+<script>
+var out = document.getElementById('out');
+var log = [];
+function ok(label, cond) { log.push((cond ? 'PASS' : 'FAIL') + ' · ' + label); out.textContent = log.join('\n'); }
+
+ok('HirisPopover exists', typeof HirisPopover === 'object');
+ok('isOpen() false initially', HirisPopover.isOpen() === false);
+
+document.getElementById('trigger').onclick = function(e) {
+  e.stopPropagation();
+  HirisPopover.open({
+    anchor: this,
+    body: '<div><strong>Hello popover</strong><br><button id="inner-btn" class="btn">Inner</button></div>',
+    onClose: function() { ok('onClose fired', true); },
+  });
+  setTimeout(function() {
+    ok('popover DOM mounted', document.querySelector('.popover') !== null);
+    ok('isOpen() true after open', HirisPopover.isOpen() === true);
+    ok('positioned absolute', document.querySelector('.popover').style.position === 'absolute');
+  }, 50);
+};
+</script>
+<p style="color:#888;font-size:12px;margin-top:24px">Click "Click me" → popover appare. Click outside o ESC chiude. Verifica output.</p>
+</body></html>

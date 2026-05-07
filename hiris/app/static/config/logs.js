@@ -3,57 +3,12 @@
 function renderExecutionLog(a) {
   var body = document.getElementById('log-body');
   if (!body) return;
-  var log = (a && a.execution_log) || [];
-  if (log.length === 0) {
-    body.innerHTML = '<div class="log-empty">Nessuna esecuzione registrata.</div>';
-    return;
+  if (window.HirisLogRow) {
+    HirisLogRow.render(body, a);
+  } else {
+    /* Fallback shouldn't happen if log-row.js is loaded; keep minimal no-op */
+    body.innerHTML = '<div class="log-empty">log-row.js non caricato</div>';
   }
-  var rows = log.slice().reverse().map(function(r) {
-    var t = r.timestamp ? new Date(r.timestamp) : null;
-    var timeStr = t ? t.toLocaleString('it-IT', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—';
-    var statusCls = r.success ? 'log-success' : 'log-error';
-    var statusTxt = r.success ? '✓ ok' : '✗ err';
-    var tools = (r.tool_calls || []).join(', ');
-    var summary = r.result_summary || '';
-    var titleAttr = esc(summary) + (tools ? (' — tools: ' + esc(tools)) : '');
-    var tokens = (r.input_tokens || 0) + '↓ / ' + (r.output_tokens || 0) + '↑';
-    var rowId = 'lr-' + Math.random().toString(36).slice(2, 9);
-    var isLong = summary.length > 120;
-    var preview = isLong ? summary.slice(0, 120) + '…' : summary;
-    var EVAL_CLASS = { 'OK': 'eval-ok', 'ATTENZIONE': 'eval-warn', 'ANOMALIA': 'eval-alert' };
-    var evalStatus = r.eval_status || null;
-    var evalBadge = evalStatus
-      ? '<span class="eval-badge ' + (EVAL_CLASS[evalStatus] || '') + '">' + esc(evalStatus) + '</span>'
-      : '';
-    var actionLine = r.action_taken
-      ? '<div class="log-action-taken">↳ ' + esc(r.action_taken) + '</div>'
-      : '';
-    var thinkingBlocks = (r.thinking_blocks && r.thinking_blocks.length) ? r.thinking_blocks : null;
-    var thinkingBtn = thinkingBlocks
-      ? '<button class="log-thinking-btn" data-row-id="' + esc(rowId) + '" title="Mostra/nasconde il chain-of-thought">💭 thinking</button>'
-      : '';
-    var thinkingPanel = thinkingBlocks
-      ? '<pre class="log-thinking-panel" style="display:none">' +
-          thinkingBlocks.map(function(tb, i) {
-            return '— step ' + (i + 1) + ' —\n' + esc(tb);
-          }).join('\n\n') +
-        '</pre>'
-      : '';
-    var summaryHtml = evalBadge +
-      '<span class="log-preview">' + esc(preview || tools || '—') + '</span>' +
-      (isLong ? '<span class="log-full" style="display:none">' + esc(summary) + '</span>' +
-        '<button class="log-expand-btn" data-row-id="' + esc(rowId) + '">▼ espandi</button>' : '') +
-      thinkingBtn +
-      actionLine +
-      thinkingPanel;
-    return '<li id="' + rowId + '">' +
-      '<span class="log-time">' + esc(timeStr) + '</span>' +
-      '<span class="' + statusCls + '">' + statusTxt + '</span>' +
-      '<span class="log-summary" title="' + titleAttr + '">' + summaryHtml + '</span>' +
-      '<span class="log-tokens">' + esc(tokens) + '</span>' +
-    '</li>';
-  }).join('');
-  body.innerHTML = '<ul class="log-list">' + rows + '</ul>';
 }
 
 function toggleLogRow(rowId) {
