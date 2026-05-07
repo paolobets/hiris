@@ -705,36 +705,6 @@
       text-transform: none;
     }
 
-    /* AGENT TABS — modern with iris underline */
-    .agent-tabs {
-      display: flex; gap: 0; flex-wrap: wrap;
-      border-bottom: 1px solid var(--border);
-      margin: 18px 0 24px;
-      overflow-x: auto;
-      scrollbar-width: none;
-    }
-    .agent-tabs::-webkit-scrollbar { display: none; }
-    .tab-btn {
-      padding: 10px 16px;
-      background: transparent;
-      border: 0;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-      color: var(--text-2);
-      font-family: var(--font-sans);
-      font-size: 13.5px;
-      font-weight: 500;
-      cursor: pointer;
-      letter-spacing: -0.005em;
-      transition: color 0.16s, border-color 0.16s;
-      white-space: nowrap;
-    }
-    .tab-btn:hover { color: var(--text); }
-    .tab-btn.active {
-      color: var(--text);
-      border-bottom-color: var(--accent);
-    }
-
     /* FIELDSETS — flat, modern */
     fieldset {
       border: 0 !important;

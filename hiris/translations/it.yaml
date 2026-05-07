@@ -74,3 +74,74 @@ configuration:
   history_retention_days:
     name: "Conservazione Cronologia (giorni)"
     description: "Quanti giorni conservare la cronologia delle conversazioni prima della cancellazione automatica. Predefinito: 90 giorni."
+
+# v6 designer redesign (2026-05-07)
+designer:
+  nav:
+    dashboard: Dashboard
+    agents: Agenti
+    proposals: Proposte
+    usage: Consumi
+    settings: Impostazioni
+    chat: Vai alla chat
+  dash:
+    welcome: Benvenuto in HIRIS
+    stat_active_agents: Agenti attivi
+    stat_exec_24h: Esecuzioni 24h
+    stat_tokens_today: Token oggi
+    stat_cost_month: Costo mese
+    last_logs: Ultimi log
+    proposals_pending: Proposte pending
+    next_triggers: Prossimi trigger
+    next_triggers_p2: "Coming soon — implementazione next triggers richiede endpoint backend (P2)."
+  editor:
+    section_identity: Identità & Trigger
+    section_instructions: Istruzioni
+    section_model: Modello AI
+    section_permissions: Permessi
+    section_actions: Azioni
+    section_enable: Abilitazione
+    section_log: Log esecuzioni
+    section_testrun: Test Run
+    section_usage: Consumi agente
+    unsaved: Modifiche non salvate
+    saved: Salvato
+    save: Salva
+    cancel: Annulla
+    delete: Elimina
+    test_run: Test Run
+  log:
+    filter_all: tutti
+    filter_ok: ok
+    filter_err: err
+    filter_thinking: thinking
+    refresh: aggiorna
+    copy_summary: copia summary
+    copy_raw: copia raw JSON
+    show_thinking: mostra thinking
+    hide_thinking: nascondi thinking
+    empty: Nessuna esecuzione registrata.
+  action:
+    type_notify: Notifica
+    type_script: Esegui script HA
+    type_call_service: Chiama servizio HA (avanzato)
+    type_wait: Attendi (delay)
+    type_verify: Verifica condizione
+    script_picker: Script Home Assistant
+    script_variables: Variabili (opzionale)
+    on_fail_continue: Continua sequenza
+    on_fail_stop: Ferma esecuzione
+    add: Aggiungi azione
+  proposal:
+    type_ha_automation: "→ automazione HA"
+    activate: Attiva
+    reject: Rifiuta
+    pending: In attesa
+    archived: Archivio
+  cron:
+    preset_hourly: Ogni ora
+    preset_morning: Ogni mattina 06:00
+    preset_evening: Ogni sera 20:00
+    preset_weekday: Solo lunedì 09:00
+    preset_weekend: Weekend 10:00
+    preset_custom: "Custom…"
