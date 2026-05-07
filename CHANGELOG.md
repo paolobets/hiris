@@ -1,5 +1,62 @@
 # HIRIS — Changelog
 
+## v0.10.1 — Hotfix wiring legacy↔v6 (2026-05-07)
+
+Fix comprehensive di **9 bug** di disconnessione tra il long-form v6 e i moduli
+legacy (templates, triggers, permessi, action-editor, logs, usage, agent-form):
+
+### Bug fixed
+
+1. **Crash apertura agente** (Cannot read properties of null reading 'style'):
+   `agent-form.js openAgent()` accedeva a ID legacy non più presenti
+   (`#no-selection`, `#form`, `#form-title`, `#delete-btn`, `#agent-list`,
+   `#agent-tabs`, `#tab-azioni`). + `agent-editor.js` passava string id
+   invece di agent object.
+2. **Templates dropdown vuota**: `populateTemplateSelector()` non veniva
+   mai chiamato dal v6 boot (era nel vecchio `main.js` rimosso).
+3. **Trigger type switch non funziona**: listener `change` su
+   `#new-trigger-type` bound IIFE-time alla prima istanza del nodo, stale
+   ad ogni successivo mount perché populate ricrea l'innerHTML del sc-body.
+4. **Form si congela al 2° open editor**: stesso pattern del bug 3 affetta
+   tutti i 23 listener IIFE-time (triggers, permessi domain pills, entity
+   search, f-type/f-action-mode/f-model/f-states change, token counter,
+   usage budget buttons).
+5. **Save/TestRun/Delete sticky-actions inerti**: `agent-form.js:245` faceva
+   `getElementById('save-btn').addEventListener` ma v6 usa `#btn-save`
+   → TypeError → IIFE crashava prima di registrare anche `run-btn` /
+   `delete-btn`. setupStickyActions cercava `saveAgent`/`runAgent`/
+   `deleteAgent` come globali che non venivano definite.
+6. **Crash IIFE su `#usage-reset-btn`**: `usage.js:74` setava `.onclick`
+   su id legacy global rimosso in v6 → TypeError.
+7. **Crash IIFE su `#run-btn`**: stesso pattern, v6 usa `#btn-test-run`.
+8. **Path "Nuovo agente" form vuoto**: la sequenza di reset (clear fields,
+   `_triggersLoad([])`, `_entitySelectorLoad([])`, `_actionsLoad([])`,
+   `buildToolChecks([])`, `buildActionChecks([])`, `_buildTriggerOnChecks`,
+   `showAgentMode('agent')`, ecc) era nel `#new-btn` IIFE handler, mai
+   chiamato in v6.
+9. **Model dropdown vuota**: `loadModels()` non veniva mai chiamato.
+
+### Fix (tutti in `agent-editor.js`)
+
+- **`addLegacyShims` esteso** con `save-btn`, `run-btn`, `usage-reset-btn`
+  per evitare TypeError IIFE.
+- **`rewireLegacyAfterMount()`**: rebinda via `.onchange/.onclick/.oninput`
+  i 23 listener IIFE-time sui nodi v6 attuali ad ogni mount.
+- **`populateTemplateSelector()` + `loadModels()`** chiamati dopo
+  `ensureLegacy()` (idempotenti, OK al re-mount).
+- **`initNewAgent()`** replica la sequenza di reset del vecchio `#new-btn`
+  IIFE handler quando `mount(null)`.
+- **Globali `window.saveAgent` / `runAgent` / `deleteAgent`** definite in
+  agent-editor.js (riusano `buildPayload()` da agent-form.js) — sticky-actions
+  callback ora collegate a logica reale.
+- **`resolveAgent(agentId)`**: id → agent object via HirisState cache o
+  fetch `api/agents`, popola anche `window.agents` per renderList() legacy.
+
+### Test
+
+- pytest 562/562 passed (zero regressioni backend)
+- node -c syntax OK su agent-editor.js (733 LOC, +400 vs v0.10.0)
+
 ## v0.10.0 — Agent Designer v6 redesign (2026-05-07)
 
 Refactor completo della pagina `config.html` (Agent Designer) come applicazione
