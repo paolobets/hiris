@@ -1,6 +1,11 @@
 /* HIRIS · Designer · agent editor mount (long-form, Phase 4.2)
    Mount delle 9 section-card e bridge alla logica legacy in agent-form.js. */
 (function() {
+  /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
+     Necessario perché _inject_version backend agisce solo sul HTML response,
+     non sui <script> creati lato client da loadScript(). */
+  var V6_CACHE_BUST = '0.10.2';
+
   var legacyLoaded = false;
   var LEGACY_SCRIPTS = [
     'static/config/templates.js',
@@ -23,7 +28,7 @@
         resolve(); return;
       }
       var s = document.createElement('script');
-      s.src = src;
+      s.src = src + (src.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(V6_CACHE_BUST);
       s.dataset.legacy = src;
       s.onload = resolve;
       s.onerror = function() { reject(new Error('failed to load ' + src)); };
@@ -682,50 +687,87 @@
       });
   }
 
+  /* Wrap a step in try/catch with named logging. Re-throws to bubble to mount catch
+     but prepends the step name so we can pinpoint which step crashed. */
+  function step(name, fn) {
+    try {
+      return fn();
+    } catch(e) {
+      var msg = (e && e.message) ? e.message : String(e);
+      var wrapped = new Error('[' + name + '] ' + msg);
+      wrapped.cause = e;
+      wrapped.step = name;
+      console.error('Step "' + name + '" failed:', e);
+      throw wrapped;
+    }
+  }
+
   function mount(agentId) {
+    console.log('[HirisAgentEditor] mount v' + V6_CACHE_BUST + ' agentId=' + agentId);
     var outlet = document.getElementById('route-outlet');
-    outlet.innerHTML = '';
-    outlet.appendChild(document.getElementById('tpl-agent-editor').content.cloneNode(true));
-    populateIdentita();
-    populateIstruzioni();
-    populateModello();
-    populatePermessi();
-    populateAzioni();
-    populateStato();
-    populateLog();
-    populateRun();
-    populateConsumi();
-    setupAnchorNav();
-    addLegacyShims();
+    if (!outlet) {
+      console.error('route-outlet element missing — config.html broken');
+      return;
+    }
 
-    /* Load legacy modules dynamically (only first time, then cached) */
-    ensureLegacy().then(function() {
-      /* Bootstrap functions never called by v6 (vecchio main.js le chiamava) */
-      if (typeof populateTemplateSelector === 'function') {
-        try { populateTemplateSelector(); } catch(e) { console.error('populateTemplateSelector', e); }
-      }
-      if (typeof loadModels === 'function') {
-        try { loadModels(); } catch(e) { console.error('loadModels', e); }
-      }
-
-      /* Rebind IIFE-time legacy listeners ai nodi v6 (necessario ad ogni mount
-         perché populate*() ricrea il DOM con gli stessi ID ma nodi diversi) */
-      rewireLegacyAfterMount();
-
-      setupStickyActions(agentId);
+    /* Use Promise chain so all steps fall into the .catch with named errors */
+    Promise.resolve().then(function() {
+      step('clear outlet', function() { outlet.innerHTML = ''; });
+      step('clone template', function() {
+        var tpl = document.getElementById('tpl-agent-editor');
+        if (!tpl) throw new Error('tpl-agent-editor not in config.html — BROKEN BUILD');
+        outlet.appendChild(tpl.content.cloneNode(true));
+      });
+      step('populateIdentita', populateIdentita);
+      step('populateIstruzioni', populateIstruzioni);
+      step('populateModello', populateModello);
+      step('populatePermessi', populatePermessi);
+      step('populateAzioni', populateAzioni);
+      step('populateStato', populateStato);
+      step('populateLog', populateLog);
+      step('populateRun', populateRun);
+      step('populateConsumi', populateConsumi);
+      step('setupAnchorNav', setupAnchorNav);
+      step('addLegacyShims', addLegacyShims);
+    }).then(function() {
+      return ensureLegacy();
+    }).then(function() {
+      step('populateTemplateSelector', function() {
+        if (typeof populateTemplateSelector === 'function') populateTemplateSelector();
+      });
+      step('loadModels', function() {
+        if (typeof loadModels === 'function') loadModels();
+      });
+      step('rewireLegacyAfterMount', rewireLegacyAfterMount);
+      step('setupStickyActions', function() { setupStickyActions(agentId); });
 
       if (agentId && typeof openAgent === 'function') {
         return resolveAgent(agentId).then(function(agentObj) {
-          openAgent(agentObj);
+          step('openAgent', function() { openAgent(agentObj); });
         });
       } else if (!agentId) {
-        /* New agent — replicate vecchio #new-btn IIFE handler reset */
-        initNewAgent();
+        step('initNewAgent', initNewAgent);
       }
     }).catch(function(e) {
-      console.error('Failed to load legacy modules or open agent', e);
-      var outlet = document.getElementById('route-outlet');
-      outlet.innerHTML = '<div style="padding:24px;color:var(--err)"><h2>Errore caricamento editor</h2><p>' + (e && e.message ? e.message : String(e)) + '</p></div>';
+      console.error('[HirisAgentEditor] mount failed:', e);
+      var outlet2 = document.getElementById('route-outlet');
+      if (outlet2) {
+        var msg = (e && e.message) ? e.message : String(e);
+        var stepName = e && e.step ? e.step : 'unknown';
+        outlet2.innerHTML =
+          '<div style="padding:24px;color:var(--err)">' +
+            '<h2>Errore caricamento editor</h2>' +
+            '<p>' + msg + '</p>' +
+            '<p style="font-size:12px;color:var(--text-3);font-family:var(--font-mono);margin-top:16px">' +
+              'Step: <strong>' + stepName + '</strong> · v' + V6_CACHE_BUST +
+            '</p>' +
+            '<p style="font-size:12px;color:var(--text-3)">' +
+              'Se questo errore persiste dopo l\'aggiornamento dell\'addon HIRIS, fai <strong>hard reload</strong>: ' +
+              'su PC <code>Ctrl+Shift+R</code>, su tablet pulisci cache da Impostazioni → App → Browser → Cancella dati. ' +
+              'Apri DevTools console per stack trace completo.' +
+            '</p>' +
+          '</div>';
+      }
     });
   }
 

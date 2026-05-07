@@ -80,7 +80,7 @@
         '</div>' +
         '<div style="display:flex;gap:8px">' +
           '<a class="btn btn-primary" href="#/agents/new">+ Nuovo agente</a>' +
-          '<a class="btn btn-ghost" href="./" target="_top">Vai alla chat</a>' +
+          '<a class="btn btn-ghost" href="./">Vai alla chat</a>' +
         '</div>' +
       '</div>' +
 

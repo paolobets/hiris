@@ -1,5 +1,59 @@
 # HIRIS — Changelog
 
+## v0.10.2 — Defensive guards + cache-bust + chat link fix (2026-05-07)
+
+User segnala che v0.10.1 aveva ancora il banner "Errore caricamento editor:
+Cannot read properties of null (reading 'style')" e un nuovo bug: il bottone
+"Vai alla chat" usciva dall'iframe Ingress di Home Assistant.
+
+### Diagnosi
+
+Audit statico ha confermato che il codice v0.10.1 è clean: tutti gli `.style`
+access nei moduli legacy puntano a ID coperti dallo shim oppure creati dai
+populate*() di agent-editor.js. Il TypeError persistente è quasi certamente
+**browser cache stale**: il tablet HA serviva ancora `agent-editor.js` v0.10.0
+(senza `addLegacyShims`) anche dopo l'update dell'addon a v0.10.1.
+
+Causa root: la cache-bust HIRIS (`_inject_version` che appende `?v=VERSION`)
+agisce solo sui `<script>` del HTML response. Gli script caricati DINAMICAMENTE
+da `agent-editor.js loadScript()` (templates, cron, triggers, agent-form, ecc)
+NON ricevevano il cache-bust → browser caching aggressivo li manteneva alla
+versione precedente.
+
+### Fix
+
+- **Cache-bust client-side** in `agent-editor.js loadScript()`: appende
+  `?v=V6_CACHE_BUST` a OGNI dynamic-loaded script. La costante è hardcoded
+  in `agent-editor.js` (top) e va bumpata ad ogni release. Forza re-fetch
+  sicuro anche con caching aggressivo.
+- **Diagnostic logging step-by-step** in `mount()`: ogni passo (clear outlet,
+  clone template, populate*, addLegacyShims, ensureLegacy, populateTemplateSelector,
+  loadModels, rewireLegacyAfterMount, setupStickyActions, openAgent) è wrapped
+  in `step(name, fn)` che logga su console.error il nome dello step se throw,
+  e il banner errore mostra "Step: <stepName> · v0.10.2" + suggerimento hard
+  reload. Future debug saranno immediati.
+- **Null guards difensivi** in `agent-form.js` openAgent + new-btn handler +
+  save-btn/delete-btn/run-btn IIFE binding: TUTTI i `getElementById(...).style`
+  e `.addEventListener` ora protetti con `var x = getElementById(...); if (x)`.
+  Belt-and-suspenders: anche con cache stale, l'app degrada gracefully invece
+  di throware.
+- **Chat link `target="_top"` rimosso** da side-nav (config.html) e dashboard
+  (dashboard.js): il link "Vai alla chat" navigava la TOP frame causando
+  uscita dall'iframe Ingress di HA. Senza target, naviga nell'iframe → resta
+  in HA.
+
+### Test
+
+- pytest 562/562 passed
+- node -c syntax OK su agent-editor.js, agent-form.js, dashboard.js
+
+### User action
+
+Per chi era su v0.10.1 con cache stale: dopo update a v0.10.2 fare hard reload
+del browser (Ctrl+Shift+R su PC, clear cache via Settings su tablet) per
+forzare fetch del nuovo agent-editor.js. Da v0.10.2 in poi, il cache-bust
+client-side previene la ricomparsa del problema.
+
 ## v0.10.1 — Hotfix wiring legacy↔v6 (2026-05-07)
 
 Fix comprehensive di **9 bug** di disconnessione tra il long-form v6 e i moduli

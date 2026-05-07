@@ -100,12 +100,15 @@ document.getElementById('f-states').addEventListener('blur', function() {
 
 function openAgent(a) {
   currentId = a.id;
-  document.getElementById('f-template').value = '';
-  document.getElementById('no-selection').style.display = 'none';
-  document.getElementById('form').style.display = '';
-  resetToFirstTab();
-  document.getElementById('form-title').textContent = a.name;
-  document.getElementById('f-name').value = a.name;
+  /* v0.10.2 defensive guards: tutti i getElementById(...).style/.textContent
+     che toccavano ID legacy ora protetti per evitare TypeError se la pagina
+     v6 è caricata da cache stale senza shim. */
+  var _ftpl = document.getElementById('f-template'); if (_ftpl) _ftpl.value = '';
+  var _ns = document.getElementById('no-selection'); if (_ns) _ns.style.display = 'none';
+  var _fm = document.getElementById('form'); if (_fm) _fm.style.display = '';
+  if (typeof resetToFirstTab === 'function') resetToFirstTab();
+  var _ft = document.getElementById('form-title'); if (_ft) _ft.textContent = a.name;
+  var _fn = document.getElementById('f-name'); if (_fn) _fn.value = a.name;
   /* Normalize legacy types (monitor/reactive/preventive → agent) */
   var agentType = (a.type === 'chat') ? 'chat' : 'agent';
   document.getElementById('f-type').value = agentType;
@@ -137,11 +140,10 @@ function openAgent(a) {
   var actionMode = a.action_mode || 'automatic';
   document.getElementById('f-action-mode').value = actionMode;
   showActionMode(actionMode);
-  document.getElementById('delete-btn').style.display = a.is_default ? 'none' : '';
+  var _db = document.getElementById('delete-btn');
+  if (_db) _db.style.display = a.is_default ? 'none' : '';
   var ro = document.getElementById('run-output');
-  ro.style.display = 'none';
-  ro.textContent = '';
-  ro.className = '';
+  if (ro) { ro.style.display = 'none'; ro.textContent = ''; ro.className = ''; }
   /* buildToolChecks must run after buildActionChecks — it owns the final updateServicesVisibility() call */
   buildToolChecks(a.allowed_tools || []);
   showAgentMode(agentType);
@@ -158,14 +160,19 @@ function openAgent(a) {
   _buildTriggerOnChecks(agentStates, ruleStates);
 }
 
-document.getElementById('new-btn').addEventListener('click', function() {
+/* v0.10.2: questo handler è inerte in v6 (new-btn è solo uno shim div).
+   Il path "Nuovo agente" v6 passa per HirisAgentEditor.initNewAgent() in
+   agent-editor.js. Lasciato per backward compat nel caso il vecchio markup
+   venga ripristinato. Tutti i .style protetti con guard for safety. */
+var _nb = document.getElementById('new-btn');
+if (_nb) _nb.addEventListener('click', function() {
   currentId = null;
-  document.getElementById('f-template').value = '';
-  document.getElementById('no-selection').style.display = 'none';
-  document.getElementById('form').style.display = '';
-  resetToFirstTab();
-  document.getElementById('form-title').textContent = 'Nuovo agente';
-  document.getElementById('f-name').value = '';
+  var _e1 = document.getElementById('f-template'); if (_e1) _e1.value = '';
+  var _e2 = document.getElementById('no-selection'); if (_e2) _e2.style.display = 'none';
+  var _e3 = document.getElementById('form'); if (_e3) _e3.style.display = '';
+  if (typeof resetToFirstTab === 'function') resetToFirstTab();
+  var _e4 = document.getElementById('form-title'); if (_e4) _e4.textContent = 'Nuovo agente';
+  var _e5 = document.getElementById('f-name'); if (_e5) _e5.value = '';
   document.getElementById('f-type').value = 'agent';
   _triggersLoad([]);
   document.getElementById('f-prompt').value = '';
@@ -185,11 +192,10 @@ document.getElementById('new-btn').addEventListener('click', function() {
   _actionsLoad([]);
   document.getElementById('f-action-mode').value = 'automatic';
   showActionMode('automatic');
-  document.getElementById('delete-btn').style.display = 'none';
+  var _db2 = document.getElementById('delete-btn');
+  if (_db2) _db2.style.display = 'none';
   var ro = document.getElementById('run-output');
-  ro.style.display = 'none';
-  ro.textContent = '';
-  ro.className = '';
+  if (ro) { ro.style.display = 'none'; ro.textContent = ''; ro.className = ''; }
   buildToolChecks([]);
   showAgentMode('agent');
   renderExecutionLog(null);
@@ -197,8 +203,8 @@ document.getElementById('new-btn').addEventListener('click', function() {
   document.getElementById('f-states').value = 'OK, ATTENZIONE, ANOMALIA';
   _buildTriggerOnChecks(['OK', 'ATTENZIONE', 'ANOMALIA'], ['ANOMALIA']);
   updateTokenCounter();
-  document.getElementById('tc-context').textContent = '—';
-  document.getElementById('context-preview-wrap').style.display = 'none';
+  var _tc = document.getElementById('tc-context'); if (_tc) _tc.textContent = '—';
+  var _cw = document.getElementById('context-preview-wrap'); if (_cw) _cw.style.display = 'none';
 });
 
 function buildPayload() {
@@ -242,7 +248,13 @@ function buildPayload() {
   return payload;
 }
 
-document.getElementById('save-btn').addEventListener('click', async function() {
+/* v0.10.2: save-btn/delete-btn/run-btn id legacy. In v6 i pulsanti reali sono
+   #btn-save/#btn-delete/#btn-test-run e i loro handler sono installati da
+   agent-editor.js setupStickyActions() che chiama window.saveAgent/deleteAgent/
+   runAgent (definiti in agent-editor.js, riusano buildPayload da qui).
+   I binding sotto sono inerti ma protetti da null guard per safety. */
+var _sb = document.getElementById('save-btn');
+if (_sb) _sb.addEventListener('click', async function() {
   var payload = buildPayload();
   var method = currentId ? 'PUT' : 'POST';
   var url = currentId ? ('api/agents/' + currentId) : 'api/agents';
@@ -262,7 +274,8 @@ document.getElementById('save-btn').addEventListener('click', async function() {
   }
 });
 
-document.getElementById('delete-btn').addEventListener('click', async function() {
+var _delb = document.getElementById('delete-btn');
+if (_delb) _delb.addEventListener('click', async function() {
   if (!currentId || !confirm('Eliminare questo agente?')) return;
   try {
     var r = await fetch('api/agents/' + currentId, {method: 'DELETE', headers: {'X-Requested-With': 'fetch'}});
@@ -273,8 +286,8 @@ document.getElementById('delete-btn').addEventListener('click', async function()
       return;
     }
     currentId = null;
-    document.getElementById('form').style.display = 'none';
-    document.getElementById('no-selection').style.display = '';
+    var _f3 = document.getElementById('form'); if (_f3) _f3.style.display = 'none';
+    var _ns3 = document.getElementById('no-selection'); if (_ns3) _ns3.style.display = '';
     await loadAgents();
   } catch (e) {
     alert('Errore di rete durante l eliminazione: ' + (e && e.message ? e.message : e));
@@ -288,10 +301,12 @@ function highlightOutput(text) {
     .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span style="color:#a5d6a7">$1</span>');
 }
 
-document.getElementById('run-btn').addEventListener('click', async function() {
+var _rb = document.getElementById('run-btn');
+if (_rb) _rb.addEventListener('click', async function() {
   if (!currentId) return;
   var btn = document.getElementById('run-btn');
   var out = document.getElementById('run-output');
+  if (!btn || !out) return;
 
   btn.classList.add('running');
   btn.disabled = true;
