@@ -139,7 +139,8 @@ function openAgent(a) {
   /* buildToolChecks must run after buildActionChecks — it owns the final updateServicesVisibility() call */
   buildToolChecks(a.allowed_tools || []);
   showAgentMode(agentType);
-  renderList();
+  /* v0.10.5: niente renderList (rimosso in cleanup, lista agenti gestita
+     da agents-list.js sulla route #/agents) */
   renderExecutionLog(a);
   loadAgentUsage(a.id);
   updateAgentUsageToggleBtn(a);

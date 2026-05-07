@@ -1,5 +1,36 @@
 # HIRIS — Changelog
 
+## v0.10.6 — Hotfix regressione cleanup v0.10.5 (2026-05-07)
+
+User report v0.10.5 console: due regressioni introdotte dal cleanup.
+
+### Bug 1: `ReferenceError: renderList is not defined`
+
+`agent-form.js openAgent()` linea 142 chiamava ancora `renderList()` ma la
+funzione era stata rimossa dal cleanup v0.10.5 (target #agent-list shim
+invisibile). Il banner errore "Step openAgent failed" appariva all'apertura
+di ogni agente.
+
+**Fix:** rimossa anche la call `renderList()` da openAgent. Commento aggiunto
+per spiegare che la lista agenti è ora gestita da agents-list.js sulla
+route #/agents.
+
+### Bug 2: `TypeError: Cannot set properties of null (setting 'value')` in `_setModelValue`
+
+`api.js _setModelValue()` (linea 48) faceva `sel.value = val` senza null
+guard. Quando `loadModels()` fetch async era in flight e l'utente cambiava
+route, `#f-model` veniva rimosso dal DOM e `sel` diventava null al callback.
+
+**Fix:** added `if (!sel) return` guards in `_setModelValue` e all'inizio
+di `loadModels`. La function diventa no-op se l'editor non è montato.
+
+### Test
+
+- pytest 562/562 passed
+- node -c syntax OK
+
+Bump 0.10.5 → 0.10.6 + V6_CACHE_BUST sync.
+
 ## v0.10.5 — Drawer/popover loading + anchor nav + sidebar count + settings + sticky align (2026-05-07)
 
 User feedback su v0.10.4 + console output. Audit systematic-debugging ha

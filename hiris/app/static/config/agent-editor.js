@@ -4,7 +4,7 @@
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
      non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.10.5';
+  var V6_CACHE_BUST = '0.10.6';
 
   var legacyLoaded = false;
   var LEGACY_SCRIPTS = [

@@ -45,6 +45,10 @@ async function applyTheme() {
 
 function _setModelValue(val) {
   var sel = document.getElementById('f-model');
+  /* v0.10.6 guard: chiamato anche fuori dal contesto agent-editor (es.
+     loadModels async in flight quando user naviga via). Senza il guard:
+     TypeError: Cannot set properties of null (setting 'value'). */
+  if (!sel) return;
   sel.value = val;
   if (sel.value !== val) {
     /* Model not in list (provider not configured) — add as orphan option */
@@ -58,6 +62,7 @@ function _setModelValue(val) {
 
 async function loadModels() {
   var sel = document.getElementById('f-model');
+  if (!sel) return;
   try {
     var r = await fetch('api/models');
     if (!r.ok) return;
