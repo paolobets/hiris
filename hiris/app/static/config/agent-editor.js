@@ -4,7 +4,7 @@
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
      non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.10.8';
+  var V6_CACHE_BUST = '0.10.9';
 
   var legacyLoaded = false;
   var LEGACY_SCRIPTS = [
@@ -671,7 +671,7 @@
       sb.innerHTML =
         '<div class="run-running-banner" id="run-running-banner">' +
           '<span class="spinner"></span>' +
-          '<span><strong>Test Run in corso…</strong> &nbsp;l\'agente sta elaborando, attendere fino a 90s.</span>' +
+          '<span><strong>Test Run in corso…</strong> &nbsp;l\'agente sta elaborando, attendere fino a 10 minuti.</span>' +
         '</div>' +
         '<pre id="run-output" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;white-space:pre-wrap;min-height:60px;font-family:var(--font-mono);font-size:12px"></pre>';
       out = document.getElementById('run-output');
@@ -688,8 +688,14 @@
       });
     }
 
+    /* v0.10.9: timeout frontend 90s → 600s (10 min). Allineato al backend
+       AGENT_RUN_TIMEOUT che fallback su OLLAMA_REQUEST_TIMEOUT * 1.2 (default
+       600 con local_model.request_timeout=500). User con agente locale
+       (es. IRRIGAZIONE su gemma4:e4b) e setting 600/800s vedeva fetch
+       abortita lato frontend a 90s anche se backend era configurato per più. */
     var ctrl = new AbortController();
-    var timer = setTimeout(function() { ctrl.abort(); }, 90000);
+    var FRONTEND_RUN_TIMEOUT_MS = 600000; /* 10 min */
+    var timer = setTimeout(function() { ctrl.abort(); }, FRONTEND_RUN_TIMEOUT_MS);
 
     function cleanupRunning() {
       _runInFlight = false;
@@ -742,7 +748,7 @@
       if (out) {
         out.className = 'run-error-text';
         out.textContent = e.name === 'AbortError'
-          ? '⏱ Timeout: l\'agente non ha risposto entro 90 secondi.'
+          ? '⏱ Timeout: l\'agente non ha risposto entro 10 minuti. Il modello locale potrebbe essere troppo lento o stuck — verifica i log Ollama.'
           : '✗ Errore: ' + (e.message || e);
       }
     });

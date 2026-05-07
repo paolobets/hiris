@@ -1,5 +1,32 @@
 # HIRIS — Changelog
 
+## v0.10.9 — Frontend runAgent timeout 90s → 600s (2026-05-07)
+
+User console v0.10.8: `[v6] runAgent error: AbortError: signal is aborted
+without reason at agent-editor.js:692:46`. Test Run su agente IRRIGAZIONE
+con modello locale gemma4:e4b abortiva al frontend dopo 90s.
+
+### Root cause
+
+`window.runAgent` aveva hardcoded `setTimeout(ctrl.abort, 90000)` (90s)
+ma backend è configurato per timeout molto più lunghi:
+- `_AGENT_RUN_TIMEOUT` fallback su `OLLAMA_REQUEST_TIMEOUT * 1.2` (v0.10.4)
+- User `local_model.request_timeout=600` o `800` → backend permette 720-960s
+- Frontend cuttava a 90s anche se backend lavorava → AbortError visibile
+
+### Fix
+
+- `FRONTEND_RUN_TIMEOUT_MS = 600000` (10 min) — allineato al backend.
+- Banner "attendere fino a 10 minuti" (era 90s).
+- Timeout error message aggiornato con suggerimento debug (Ollama logs).
+
+### Test
+
+- pytest 562/562 passed
+- node -c syntax OK
+
+Bump 0.10.8 → 0.10.9 + V6_CACHE_BUST sync.
+
 ## v0.10.8 — Test Run feedback visivo + sidebar/sticky-bar redesign (2026-05-07)
 
 Due richieste user combinate in unica release:
