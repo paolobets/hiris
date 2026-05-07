@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>router.js smoke</title></head><body>
+<h1>Router smoke test</h1>
+<pre id="out"></pre>
+<div id="route-outlet"></div>
+<script src="../../hiris/app/static/config/state.js"></script>
+<script src="../../hiris/app/static/config/router.js"></script>
+<script>
+var out = document.getElementById('out');
+var log = [];
+function ok(label, cond) { log.push((cond ? 'PASS' : 'FAIL') + ' · ' + label); out.textContent = log.join('\n'); }
+
+var calls = [];
+HirisRouter.register(/^#\/?$/,             function(){ calls.push(['root']); });
+HirisRouter.register(/^#\/agents\/?$/,     function(){ calls.push(['list']); });
+HirisRouter.register(/^#\/agents\/([^/]+)$/, function(m){ calls.push(['detail', m[1]]); });
+
+HirisRouter.start();
+ok('start with no hash → calls root', JSON.stringify(calls[0]) === JSON.stringify(['root']));
+
+calls = [];
+window.location.hash = '#/agents';
+setTimeout(function() {
+  ok('navigate #/agents → calls list', JSON.stringify(calls[0]) === JSON.stringify(['list']));
+
+  calls = [];
+  window.location.hash = '#/agents/abc123';
+  setTimeout(function() {
+    ok('navigate #/agents/abc123 → calls detail with id', JSON.stringify(calls[0]) === JSON.stringify(['detail', 'abc123']));
+    out.textContent = log.join('\n');
+    console.log(log.join('\n'));
+  }, 50);
+}, 50);
+</script>
+</body></html>
