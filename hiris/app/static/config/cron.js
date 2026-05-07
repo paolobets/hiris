@@ -41,9 +41,14 @@ function _cronDesc(cron) {
 var _cronBuilt = false;
 function _cronBuildSelects() {
   if (_cronBuilt) return;
+  /* Guard: legacy markup (5 selects + preset) replaced by chip+popover in v6.
+     If those elements don't exist, skip without throwing. */
+  var presetSel = document.getElementById('nt-cron-preset');
+  if (!presetSel) { _cronBuilt = true; return; }
   _cronBuilt = true;
   function _opts(selId, items) {
     var sel = document.getElementById(selId);
+    if (!sel) return;
     sel.innerHTML = '';
     items.forEach(function(item) { var o = document.createElement('option'); o.value = item[0]; o.textContent = item[1]; sel.appendChild(o); });
   }
@@ -58,21 +63,25 @@ function _cronBuildSelects() {
   _opts('nt-cron-dom',   domItems);
   _opts('nt-cron-month', _CRON_MONTH);
   _opts('nt-cron-dow',   _CRON_DOW);
-  var presetSel = document.getElementById('nt-cron-preset');
   presetSel.innerHTML = '';
   _CRON_PRESETS.forEach(function(item) { var o = document.createElement('option'); o.value = item[0]; o.textContent = item[1]; presetSel.appendChild(o); });
   var adv = document.createElement('option'); adv.value = 'custom'; adv.textContent = 'Avanzato…'; presetSel.appendChild(adv);
   presetSel.addEventListener('change', function() {
+    var builder = document.getElementById('nt-cron-builder');
     if (this.value === 'custom') {
-      document.getElementById('nt-cron-builder').style.display = 'flex';
+      if (builder) builder.style.display = 'flex';
     } else {
-      document.getElementById('nt-cron-builder').style.display = 'none';
+      if (builder) builder.style.display = 'none';
       _cronApply(this.value);
     }
   });
   ['nt-cron-min','nt-cron-hour','nt-cron-dom','nt-cron-month','nt-cron-dow'].forEach(function(id) {
-    document.getElementById(id).addEventListener('change', function() {
-      var raw = ['nt-cron-min','nt-cron-hour','nt-cron-dom','nt-cron-month','nt-cron-dow'].map(function(i){ return document.getElementById(i).value; }).join(' ');
+    var el_ = document.getElementById(id);
+    if (!el_) return;
+    el_.addEventListener('change', function() {
+      var raw = ['nt-cron-min','nt-cron-hour','nt-cron-dom','nt-cron-month','nt-cron-dow'].map(function(i){
+        var e = document.getElementById(i); return e ? e.value : '*';
+      }).join(' ');
       _cronApply(raw, true);
     });
   });
@@ -81,22 +90,38 @@ function _cronBuildSelects() {
 function _cronApply(cron, fromBuilder) {
   var p = (cron || '0 6 * * *').trim().split(/\s+/);
   if (p.length !== 5) return;
-  document.getElementById('nt-cron').value = cron;
-  document.getElementById('nt-cron-raw').textContent = cron;
-  document.getElementById('nt-cron-desc').textContent = _cronDesc(cron);
+  var hidden = document.getElementById('nt-cron');
+  if (hidden) hidden.value = cron;
+  var rawEl = document.getElementById('nt-cron-raw');
+  if (rawEl) rawEl.textContent = cron;
+  var descEl = document.getElementById('nt-cron-desc');
+  if (descEl) descEl.textContent = _cronDesc(cron);
+  /* v6: also update chip atoms when present */
+  var chipLabel = document.getElementById('nt-cron-chip-label');
+  if (chipLabel) chipLabel.textContent = _cronDesc(cron);
+  var chipExpr = document.getElementById('nt-cron-chip-expr');
+  if (chipExpr) chipExpr.textContent = cron;
   if (!fromBuilder) {
-    function _setOpt(id, val) { var s = document.getElementById(id); for (var i=0;i<s.options.length;i++) { if (s.options[i].value===val){s.value=val;return;} } }
+    function _setOpt(id, val) { var s = document.getElementById(id); if (!s) return; for (var i=0;i<s.options.length;i++) { if (s.options[i].value===val){s.value=val;return;} } }
     _setOpt('nt-cron-min',p[0]); _setOpt('nt-cron-hour',p[1]); _setOpt('nt-cron-dom',p[2]); _setOpt('nt-cron-month',p[3]); _setOpt('nt-cron-dow',p[4]);
   }
   var ps = document.getElementById('nt-cron-preset');
+  if (!ps) return;
   var matched = false;
   for (var i=0; i<ps.options.length; i++) { if (ps.options[i].value === cron) { ps.value = cron; matched = true; break; } }
-  if (!matched) { ps.value = 'custom'; if (!fromBuilder) document.getElementById('nt-cron-builder').style.display = 'flex'; }
+  if (!matched) {
+    ps.value = 'custom';
+    if (!fromBuilder) {
+      var builder = document.getElementById('nt-cron-builder');
+      if (builder) builder.style.display = 'flex';
+    }
+  }
 }
 
 function _cronInitUI(cron) {
   _cronBuildSelects();
   _cronApply(cron || '0 6 * * *');
   var ps = document.getElementById('nt-cron-preset');
-  document.getElementById('nt-cron-builder').style.display = (ps.value === 'custom') ? 'flex' : 'none';
+  var builder = document.getElementById('nt-cron-builder');
+  if (ps && builder) builder.style.display = (ps.value === 'custom') ? 'flex' : 'none';
 }

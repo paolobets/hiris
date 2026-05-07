@@ -5,6 +5,7 @@
   var LEGACY_SCRIPTS = [
     'static/config/templates.js',
     'static/config/cron.js',
+    'static/config/cron-popover.js',
     'static/config/triggers.js',
     'static/config/permessi.js',
     'static/config/action-editor.js',
@@ -67,19 +68,10 @@
           '<div id="nt-state-fields" style="display:none">' +
             '<input class="input" type="text" id="nt-entity" placeholder="binary_sensor.door" style="width:240px">' +
           '</div>' +
-          '<div id="nt-cron-fields" style="display:none;flex-direction:column;gap:6px;width:100%">' +
-            '<select id="nt-cron-preset" class="select" style="max-width:280px"></select>' +
-            '<div id="nt-cron-builder" style="display:none;flex-wrap:wrap;gap:6px;align-items:flex-end">' +
-              '<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:var(--text-2)">Minuto</span><select id="nt-cron-min" style="width:110px;font-size:12px"></select></div>' +
-              '<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:var(--text-2)">Ora</span><select id="nt-cron-hour" style="width:110px;font-size:12px"></select></div>' +
-              '<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:var(--text-2)">Giorno mese</span><select id="nt-cron-dom" style="width:110px;font-size:12px"></select></div>' +
-              '<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:var(--text-2)">Mese</span><select id="nt-cron-month" style="width:110px;font-size:12px"></select></div>' +
-              '<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:var(--text-2)">Giorno sett.</span><select id="nt-cron-dow" style="width:130px;font-size:12px"></select></div>' +
-            '</div>' +
-            '<div style="display:flex;align-items:center;gap:10px">' +
-              '<code id="nt-cron-raw" style="font-size:11px;background:var(--surface-2);padding:2px 8px;border-radius:4px;color:var(--accent-ink)">0 6 * * *</code>' +
-              '<span id="nt-cron-desc" style="font-size:12px;color:var(--text-2)">Ogni giorno alle 06:00</span>' +
-            '</div>' +
+          '<div id="nt-cron-fields" style="display:none">' +
+            '<span class="cron-chip" id="nt-cron-chip" tabindex="0">' +
+              '<span>🕐</span><span id="nt-cron-chip-label">Ogni giorno alle 06:00</span><code id="nt-cron-chip-expr">0 6 * * *</code><span>▾</span>' +
+            '</span>' +
             '<input type="hidden" id="nt-cron" value="0 6 * * *">' +
           '</div>' +
           '<button type="button" id="btn-add-trigger" class="btn btn-sm">+ Aggiungi</button>' +
