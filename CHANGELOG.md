@@ -1,5 +1,48 @@
 # HIRIS — Changelog
 
+## v0.10.7 — Route #/tasks per Task pianificati (2026-05-07)
+
+User feedback: "in tutto questo aggiornamento/restyle dove sono finiti i task?"
+
+Gap del v6 redesign: i Task pianificati esistono in chat (`index.html`
+sidebar "Task pianificati") + backend (`handlers_tasks.py` + `task_engine.py`)
+ma il designer v6 (`config.html`) **non aveva alcuna route** per loro.
+Mea culpa nel design doc originale.
+
+### Implementato
+
+- **Voce side-nav "Task"** con icon clock + badge `nav-tasks-count` (count
+  task pending), inserita sotto "Consumi" prima del nav-spacer.
+- **Route `#/tasks`** mount via `HirisTasksRoute.mount()`:
+  - 5 filter chip: tutti / ⏱ in attesa / ✓ eseguiti / ✗ falliti / ⊘ cancellati
+    con counter dinamici aggiornati ad ogni render.
+  - Lista task: time created / status / agent name / label / trigger summary.
+  - Click row → expand inline (pattern log-row v6, accordion).
+  - Detail mostra: meta-chip trigger/actions/executed-at/error/parent-task,
+    block result (preformattato) se presente, bottone "⊘ Cancella" SOLO per
+    task pending, bottone "{} copia raw JSON" sempre.
+  - Refresh on demand (↻ aggiorna).
+  - Sort: pending+failed prima, poi by created_at desc.
+- **Side-nav badge sync**: `nav-tasks-count` aggiornato anche dopo cancel
+  (no full reload necessario).
+
+### Backend
+
+- **Zero modifiche**. Endpoints esistenti (`api/tasks` GET con filtri,
+  `api/tasks/:id` GET single, `api/tasks/:id` DELETE cancel) usati as-is.
+
+### File
+
+- **Nuovo**: `hiris/app/static/config/tasks-route.js` (~210 LOC)
+- **Modificati**: `config.html` (nav voice + script include), `main.js`
+  (route handler + nav active 'tasks' + badge fetch), `agent-editor.js`
+  (V6_CACHE_BUST 0.10.6 → 0.10.7), `config.yaml` (version bump)
+
+### Test
+
+- pytest 562/562 passed
+- node -c syntax OK
+
 ## v0.10.6 — Hotfix regressione cleanup v0.10.5 (2026-05-07)
 
 User report v0.10.5 console: due regressioni introdotte dal cleanup.

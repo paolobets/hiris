@@ -45,6 +45,13 @@
       var el = document.getElementById('nav-proposals-count');
       if (el) el.textContent = (d.proposals || []).length;
     }).catch(function() { /* silent */ });
+
+    /* Update tasks count badge — pending tasks come default */
+    fetch('api/tasks?status=pending').then(function(r) { return r.ok ? r.json() : []; })
+      .then(function(tasks) {
+        var el = document.getElementById('nav-tasks-count');
+        if (el) el.textContent = (tasks || []).length;
+      }).catch(function() { /* silent */ });
   }
 
   function updateNavActive() {
@@ -56,6 +63,7 @@
         (route === 'agents' && hash.indexOf('#/agents') === 0) ||
         (route === 'proposals' && hash.indexOf('#/proposals') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
+        (route === 'tasks' && hash.indexOf('#/tasks') === 0) ||
         (route === 'settings' && hash.indexOf('#/settings') === 0);
       item.classList.toggle('active', isActive);
     });
@@ -125,6 +133,14 @@
       HirisUsageRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Consumi</div>';
+    }
+  });
+  HirisRouter.register(/^#\/tasks\/?$/, function() {
+    setCrumbHere('Task pianificati');
+    if (window.HirisTasksRoute) {
+      HirisTasksRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Task</div>';
     }
   });
   /* v0.10.5: rimosso route /settings — la nav voce è stata tolta da config.html
