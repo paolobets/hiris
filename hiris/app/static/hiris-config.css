@@ -1438,6 +1438,95 @@
 }
 @media (max-width: 1023px) { .dash-cols { grid-template-columns: 1fr; } }
 
+/* Dashboard list atom (last logs / proposals / next triggers) */
+.dash-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.dash-list h3 {
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-13); font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: var(--sp-2);
+  margin: 0;
+}
+.dash-list h3 .right {
+  margin-left: auto;
+  font-weight: 400; text-transform: none;
+  letter-spacing: normal; font-size: var(--fs-12);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+.dl-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-13);
+  cursor: pointer;
+  transition: background 0.12s;
+  text-decoration: none;
+  color: inherit;
+}
+.dl-row:last-child { border-bottom: none; }
+.dl-row:hover { background: var(--hover); }
+.dl-row .dl-time {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-3);
+  width: 86px;
+}
+.dl-row .dl-content {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0;
+}
+.dl-row .dl-agent {
+  font-size: var(--fs-12);
+  color: var(--accent-ink); font-weight: 500;
+}
+.dl-row .dl-text {
+  color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dl-row .dl-status {
+  font-family: var(--font-mono); font-size: var(--fs-12);
+  font-weight: 600;
+}
+.prop-card {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+.prop-card:last-child { border-bottom: none; }
+.prop-card .prop-title {
+  font-size: var(--fs-13); font-weight: 500;
+  color: var(--text); margin-bottom: 2px;
+}
+.prop-card .prop-desc {
+  font-size: var(--fs-12); color: var(--text-3);
+  line-height: 1.5; margin-bottom: var(--sp-2);
+}
+.prop-card .prop-actions { display: flex; gap: var(--sp-1); }
+.next-trigger {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--sp-3); align-items: center;
+}
+.next-trigger:last-child { border-bottom: none; }
+.next-trigger .nt-when {
+  font-family: var(--font-mono); font-size: var(--fs-12);
+  color: var(--accent-ink); font-weight: 500;
+}
+.next-trigger .nt-agent { font-size: var(--fs-13); color: var(--text); }
+.next-trigger .nt-rel { font-size: var(--fs-12); color: var(--text-3); }
+
 /* ────────────────────────────────────────────────────────────
    Log row v2 — pain 4
    ──────────────────────────────────────────────────────────── */

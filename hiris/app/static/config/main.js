@@ -63,8 +63,12 @@
   /* Route handlers — placeholder (real implementations Phase 4.2-9) */
   HirisRouter.register(/^#\/?$/, function() {
     setCrumbHere('Dashboard');
-    document.getElementById('route-outlet').innerHTML =
-      '<div class="page-title">Dashboard</div><p class="page-subtitle">Implementata in Phase 8.</p>';
+    if (window.HirisDashboard) {
+      HirisDashboard.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML =
+        '<div class="page-title">Dashboard</div><p class="page-subtitle">Caricamento…</p>';
+    }
   });
   HirisRouter.register(/^#\/agents\/?$/, function() {
     setCrumbHere('Agenti');
