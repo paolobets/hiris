@@ -4,7 +4,7 @@
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
      non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.10.7';
+  var V6_CACHE_BUST = '0.10.8';
 
   var legacyLoaded = false;
   var LEGACY_SCRIPTS = [
@@ -263,17 +263,16 @@
     var btnCancel = document.getElementById('btn-cancel');
     var btnTestRun = document.getElementById('btn-test-run');
     var btnDelete = document.getElementById('btn-delete');
-    var status = document.getElementById('sa-status');
+    /* v0.10.8: rimosso sa-status. Lo stato dirty/saved è indicato dal solo
+       pulsante Salva (disabled = saved, enabled = changes pending). */
 
     function markDirty() {
       HirisState.set('unsaved', true);
-      status.textContent = 'Modifiche non salvate ●';
-      btnSave.disabled = false;
+      if (btnSave) btnSave.disabled = false;
     }
     function markClean() {
       HirisState.set('unsaved', false);
-      status.textContent = 'Salvato ✓';
-      btnSave.disabled = true;
+      if (btnSave) btnSave.disabled = true;
     }
 
     document.querySelectorAll('.section-card input, .section-card select, .section-card textarea').forEach(function(el) {
@@ -634,52 +633,118 @@
     });
   };
 
+  /* v0.10.8: flag globale anti-doppio-click (button.disabled non basta, il
+     click handler in setupStickyActions ha console.log PRIMA del check). */
+  var _runInFlight = false;
   window.runAgent = function() {
+    if (_runInFlight) {
+      console.warn('[v6] runAgent già in flight — click ignorato');
+      return Promise.resolve();
+    }
     var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeAgentId');
-    if (!cid) return;
+    if (!cid) {
+      console.warn('[v6] runAgent: nessun agentId attivo');
+      return Promise.resolve();
+    }
+
+    _runInFlight = true;
+
     var btn = document.getElementById('btn-test-run');
+    var btnOriginalText = btn ? btn.textContent : '';
+    var section = document.getElementById('sec-run');
+    var sb = document.getElementById('sc-body-run');
     var out = document.getElementById('run-output');
-    if (btn) { btn.classList.add('running'); btn.disabled = true; }
-    if (out) { out.style.display = ''; out.className = ''; out.textContent = 'Avvio esecuzione…'; }
+
+    /* v0.10.8: feedback visivo IMMEDIATO PRIMA del fetch:
+       - Banner "Test Run in corso" in cima alla section sec-run
+       - Spinner sul bottone (CSS .running) + label change "⏱ In esecuzione…"
+       - Scroll smooth alla section sec-run cosicché user veda il banner
+       - Pulsante disabled */
+    if (btn) {
+      btn.classList.add('running');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>⏱ In esecuzione…';
+    }
+
+    /* Inietta banner + reset run-output dentro sc-body-run */
+    if (sb) {
+      sb.innerHTML =
+        '<div class="run-running-banner" id="run-running-banner">' +
+          '<span class="spinner"></span>' +
+          '<span><strong>Test Run in corso…</strong> &nbsp;l\'agente sta elaborando, attendere fino a 90s.</span>' +
+        '</div>' +
+        '<pre id="run-output" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;white-space:pre-wrap;min-height:60px;font-family:var(--font-mono);font-size:12px"></pre>';
+      out = document.getElementById('run-output');
+    }
+    if (out) {
+      out.className = '';
+      out.textContent = 'Avvio esecuzione…';
+    }
+
+    /* Scroll alla section dopo che il banner è in DOM (rAF garantisce paint) */
+    if (section) {
+      requestAnimationFrame(function() {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
 
     var ctrl = new AbortController();
     var timer = setTimeout(function() { ctrl.abort(); }, 90000);
+
+    function cleanupRunning() {
+      _runInFlight = false;
+      if (btn) {
+        btn.classList.remove('running');
+        btn.disabled = false;
+        btn.innerHTML = '<span class="spinner"></span>▶ Test Run';
+      }
+      var banner = document.getElementById('run-running-banner');
+      if (banner) banner.remove();
+    }
+
+    console.log('[v6] runAgent fetch starting agentId=' + cid);
+
     return fetch('api/agents/' + encodeURIComponent(cid) + '/run', {
       method: 'POST', headers: { 'X-Requested-With': 'fetch' }, signal: ctrl.signal,
-    }).then(function(r) { return r.json(); }).then(function(data) {
+    }).then(function(r) {
+      console.log('[v6] runAgent fetch response status=' + r.status);
+      return r.json();
+    }).then(function(data) {
       clearTimeout(timer);
+      cleanupRunning();
       var raw = (data.result || data.error || '').trim();
+      var hasError = !!data.error;
       if (out) {
         if (!raw) {
           out.className = 'run-empty';
           out.textContent = '(nessun risultato restituito dall\'agente)';
+        } else if (hasError) {
+          out.className = 'run-error-text';
+          out.textContent = '✗ ' + raw;
         } else if (typeof highlightOutput === 'function' && typeof esc === 'function') {
-          out.innerHTML = highlightOutput(esc(raw));
+          out.className = '';
+          out.innerHTML = '<div style="color:var(--ok);font-size:11px;font-weight:600;margin-bottom:6px;font-family:var(--font-sans)">✓ ESEGUITO</div>' + highlightOutput(esc(raw));
         } else {
-          out.textContent = raw;
+          out.className = '';
+          out.textContent = '✓ ' + raw;
         }
       }
       /* Refresh log + usage after run */
-      if (typeof openAgent === 'function' && typeof window.agents !== 'undefined') {
-        var found = window.agents.filter(function(a){return a.id===cid;})[0];
-        if (typeof renderExecutionLog === 'function' && found) {
-          /* Fetch fresh agent for updated execution_log */
-          fetch('api/agents/' + encodeURIComponent(cid)).then(function(r){return r.ok?r.json():null;}).then(function(a){
-            if (a && typeof renderExecutionLog === 'function') renderExecutionLog(a);
-            if (a && typeof loadAgentUsage === 'function') loadAgentUsage(cid);
-          });
-        }
-      }
+      fetch('api/agents/' + encodeURIComponent(cid)).then(function(r){return r.ok?r.json():null;}).then(function(a){
+        if (a && typeof renderExecutionLog === 'function') renderExecutionLog(a);
+        if (a && typeof loadAgentUsage === 'function') loadAgentUsage(cid);
+      }).catch(function(){});
+      console.log('[v6] runAgent done');
     }).catch(function(e) {
       clearTimeout(timer);
+      cleanupRunning();
+      console.error('[v6] runAgent error:', e);
       if (out) {
         out.className = 'run-error-text';
         out.textContent = e.name === 'AbortError'
           ? '⏱ Timeout: l\'agente non ha risposto entro 90 secondi.'
-          : 'Errore: ' + (e.message || e);
+          : '✗ Errore: ' + (e.message || e);
       }
-    }).then(function() {
-      if (btn) { btn.classList.remove('running'); btn.disabled = false; }
     });
   };
 

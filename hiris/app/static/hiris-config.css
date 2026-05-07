@@ -299,18 +299,47 @@
       max-height: 400px; overflow-y: auto;
     }
 
-    /* Run button spinner */
-    #run-btn { position: relative; min-width: 90px; }
-    #run-btn.running { opacity: 0.7; cursor: not-allowed; }
-    #run-btn .spinner {
-      display: none; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite;
-      vertical-align: middle; margin-right: 5px;
+    /* Run button spinner — v0.10.8: regole per #btn-test-run v6 oltre al
+       legacy #run-btn. Senza queste lo spinner restava sempre nascosto in v6
+       → user no visual feedback → click multipli. */
+    #run-btn, #btn-test-run { position: relative; min-width: 90px; }
+    #run-btn.running, #btn-test-run.running {
+      opacity: 0.7; cursor: not-allowed; pointer-events: none;
     }
-    #run-btn.running .spinner { display: inline-block; }
+    #run-btn .spinner, #btn-test-run .spinner {
+      display: none; width: 13px; height: 13px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 5px;
+      opacity: 0.8;
+    }
+    #run-btn.running .spinner, #btn-test-run.running .spinner { display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .run-empty { color: var(--text-muted); font-style: italic; }
     .run-error-text { color: var(--danger); }
+    /* Banner "Test Run in corso" all'interno di section sec-run mentre runAgent
+       è in flight. v0.10.8. Reso visibile via inline style da window.runAgent. */
+    .run-running-banner {
+      display: flex; align-items: center; gap: var(--sp-3);
+      padding: var(--sp-3) var(--sp-4);
+      background: var(--accent-tint);
+      border: 1px solid var(--accent-tint-2);
+      border-radius: var(--r-sm);
+      color: var(--accent-ink);
+      font-size: var(--fs-13);
+      margin-bottom: var(--sp-3);
+    }
+    .run-running-banner .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
 
     /* Action builder */
     .actions-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
@@ -1351,50 +1380,40 @@
 /* ────────────────────────────────────────────────────────────
    Sticky save bar
    ──────────────────────────────────────────────────────────── */
-/* v0.10.5: sticky-actions fixed al viewport ma con width allineata al
-   page-main effettivo (max-width: var(--shell-content-max), centrato).
-   Calcolo: left = sidebar-w + (viewport-content-max)/2 max(0), però per
-   semplicità usiamo position:fixed left:sidebar-w right:0 e centriamo
-   il contenuto interno con max-width + auto margins.
-   Padding-bottom su .editor-content evita che la bar copra l'ultima section. */
-.sticky-actions {
+/* v0.10.8: sticky-actions con wrap pattern.
+   - .sticky-actions-wrap: position fixed al bottom, full-width (sidebar a right).
+     Background + blur + border-top — costituisce la "barra" visiva.
+   - .sticky-actions: inner box max-width centrato → contenuto allineato al
+     page-main centrato (simmetria visiva).
+   Layout interno: Annulla a sinistra | spacer flex | TestRun/Elimina/Salva a destra. */
+.sticky-actions-wrap {
   position: fixed;
   bottom: 0;
   left: var(--shell-sidebar-w);
   right: 0;
   z-index: 20;
   background: oklch(from var(--surface) l c h / 0.96);
-  backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
-  margin: 0;
-}
-.sticky-actions::before {
-  /* invisible spacer to enable max-width centering */
-  content: '';
-  display: block;
-  height: 0;
 }
 .sticky-actions {
+  max-width: var(--shell-content-max);
+  margin: 0 auto;
+  padding: var(--sp-3) var(--sp-6);
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-6);
 }
-/* Centrare il contenuto sticky alla stessa max-width del page-main */
-@media (min-width: 1024px) {
-  .sticky-actions {
-    padding-left: max(var(--sp-6), calc((100vw - var(--shell-sidebar-w) - var(--shell-content-max)) / 2 + var(--sp-6)));
-    padding-right: max(var(--sp-6), calc((100vw - var(--shell-sidebar-w) - var(--shell-content-max)) / 2 + var(--sp-6)));
-  }
-}
+.sticky-actions .sa-spacer { flex: 1; }
 @media (max-width: 1023px) {
-  .sticky-actions { left: var(--shell-sidebar-w-collapsed); }
+  .sticky-actions-wrap { left: var(--shell-sidebar-w-collapsed); }
 }
 @media (max-width: 768px) {
-  .sticky-actions { left: 0; }
+  .sticky-actions-wrap { left: 0; }
 }
 .editor-content {
+  /* Spazio in fondo per non far coprire l'ultima section dalla sticky bar */
   padding-bottom: 96px;
 }
 .sticky-actions .sa-status {

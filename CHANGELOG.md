@@ -1,5 +1,94 @@
 # HIRIS — Changelog
 
+## v0.10.8 — Test Run feedback visivo + sidebar/sticky-bar redesign (2026-05-07)
+
+Due richieste user combinate in unica release:
+
+1. Test Run "logga in console l'avvio ma 1) nessuna evidenza del test in
+   corso 2) la sezione test non si compila 3) posso premere N volte il
+   pulsante 4) non sono certo il test venga lanciato".
+
+2. Sidebar footer "non esteticamente corretto": rimuovi voce duplicata
+   "Vai alla chat" + icona luna sbagliata. Sposta link Chat in cima
+   (sotto HIRIS, sopra Configurazione). Stringi sticky bar simmetrica
+   alla parte centrale del page-main: Annulla a sinistra, TestRun/
+   Elimina/Salva a destra.
+
+### Root cause (systematic debugging Phase 1)
+
+CSS spinner usava selector legacy `#run-btn`:
+```css
+#run-btn.running .spinner { display: inline-block; }
+```
+Ma in v6 il bottone è `#btn-test-run`. Lo spinner non veniva MAI mostrato →
+zero feedback visivo. User vedeva solo log console + nessuna animazione →
+impressione di "non funziona" → click multipli.
+
+Inoltre `runAgent` non scrollava alla sezione Test Run, quindi l'output
+appariva sotto il viewport user (sezione 08, dopo Log esecuzioni in 07).
+
+### Fix
+
+1. **CSS spinner**: regole estese a `#btn-test-run` (oltre `#run-btn` legacy):
+   - `.running` → opacity ridotta + cursor not-allowed + **pointer-events:none**
+     (impedisce nativamente click multipli)
+   - `.spinner` visibile via `inline-block` quando `.running` aggiunto
+   - Border-color usa `currentColor` (funziona su qualsiasi tema/colore bottone)
+
+2. **Banner "Test Run in corso"**: nuovo atom CSS `.run-running-banner`
+   con icon spinner + testo "Test Run in corso… l'agente sta elaborando,
+   attendere fino a 90s." Inserito in cima a `sc-body-run` quando user clicca.
+   Il banner viene rimosso a fine esecuzione (success/error/timeout).
+
+3. **JS `window.runAgent`**:
+   - Flag `_runInFlight` globale → previene esecuzione doppia anche se click
+     handler logga prima del check (race condition).
+   - Bottone label cambia in `⏱ In esecuzione…` (visivamente diverso dal
+     `▶ Test Run` di base).
+   - `requestAnimationFrame` + `scrollIntoView({behavior:'smooth',block:'start'})`
+     IMMEDIATO → user vede subito il banner + section Test Run.
+   - Console.log esteso (`fetch starting`, `response status=N`, `done`/`error`)
+     per debug futuro.
+   - Gestione errori: response con `data.error` colorata `run-error-text`,
+     prefisso `✗`. Success colorato `✓ ESEGUITO` in verde.
+   - `cleanupRunning()` reset stato bottone in TUTTI i path
+     (success/error/timeout) — niente più bottone bloccato in stato running.
+   - Pre/post output: `<pre>` ora ha sfondo + padding + min-height 60px →
+     visibile anche con output vuoto/errore.
+
+### Sidebar redesign
+
+- **Chat link in cima**: voce nav `<a href="./">` con icona speech-bubble,
+  inserita SOTTO il brand HIRIS, SOPRA il label "Configurazione".
+- **Rimossa voce duplicata in fondo**: vecchia "Vai alla chat" con icona luna
+  (sbagliata, era theme toggle icon) eliminata. Niente più nav-spacer.
+- **Niente più sezione "Sistema"** vuota (la voce Settings era stata già
+  rimossa in v0.10.5).
+
+### Sticky bar redesign — wrap pattern + simmetria
+
+- **Outer `.sticky-actions-wrap`**: position fixed bottom, full-width da
+  sidebar a viewport-right. Background blur + border-top → la "barra"
+  visiva continua per tutta la larghezza.
+- **Inner `.sticky-actions`**: `max-width: var(--shell-content-max)` (1140px)
+  + `margin: 0 auto` → contenuto centrato simmetricamente alla `.editor-content`.
+- **Layout interno**:
+  ```
+  [Annulla]  ........spacer.........  [▶ Test Run] [Elimina] [Salva]
+  ```
+- **Rimosso "Salvato ✓" / "Modifiche non salvate" status text** dalla bar.
+  Lo stato dirty/saved è ora indicato dal solo pulsante Salva (`disabled` =
+  saved, enabled = pending). Pattern Stripe/Linear: visivamente più pulito,
+  meno rumore. `setupStickyActions` aggiornato (`var status` rimosso, guard
+  `if (btnSave)` aggiunto).
+
+### Test
+
+- pytest 562/562 passed
+- node -c syntax OK
+
+Bump 0.10.7 → 0.10.8 + V6_CACHE_BUST sync.
+
 ## v0.10.7 — Route #/tasks per Task pianificati (2026-05-07)
 
 User feedback: "in tutto questo aggiornamento/restyle dove sono finiti i task?"

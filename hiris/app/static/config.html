@@ -41,6 +41,14 @@
       <img src="static/hiris-icon.svg" alt="HIRIS">
       <span class="brand-name">HIRIS<small id="hc-version-side"></small></span>
     </div>
+    <!-- v0.10.8: Chat in cima, sotto brand, sopra label Configurazione.
+         Icona speech-bubble appropriata. Rimossa duplicate voce in fondo. -->
+    <a class="nav-item" href="./" title="Chat con HIRIS">
+      <span class="nav-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </span>
+      <span class="nav-label">Chat</span>
+    </a>
     <div class="nav-section-label">Configurazione</div>
     <a class="nav-item" href="#/" data-route="dashboard">
       <span class="nav-icon">
@@ -75,15 +83,8 @@
       <span class="nav-label">Task</span>
       <span class="nav-badge" id="nav-tasks-count">—</span>
     </a>
-    <div class="nav-spacer"></div>
-    <!-- v0.10.5: rimosso Settings nav (era solo placeholder "Implementata in
-         Phase 11" → confondeva l'utente). Sarà aggiunto quando avrà contenuto reale. -->
-    <a class="nav-item" href="./" title="Vai alla chat">
-      <span class="nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-      </span>
-      <span class="nav-label">Vai alla chat</span>
-    </a>
+    <!-- v0.10.8: rimossi nav-spacer + voce duplicata "Vai alla chat" in fondo
+         (icona luna sbagliata + duplicava il link Chat ora in cima alla sidebar). -->
   </template>
 
   <template id="tpl-page-chrome">
@@ -148,13 +149,19 @@
           <p class="sc-desc">Conteggio richieste, token e costo stimato.</p>
           <div class="sc-body" id="sc-body-consumi"></div>
         </section>
-        <div class="sticky-actions" id="sticky-actions">
-          <span class="sa-status" id="sa-status">Salvato ✓</span>
-          <span class="sa-spacer"></span>
-          <button class="btn btn-ghost" id="btn-cancel">Annulla</button>
-          <button class="btn" id="btn-test-run"><span class="spinner"></span>▶ Test Run</button>
-          <button class="btn btn-danger" id="btn-delete" style="display:none">Elimina</button>
-          <button class="btn btn-primary" id="btn-save" disabled>Salva</button>
+        <!-- v0.10.8: sticky-actions con wrap pattern. Outer wrap fixed full-width
+             (background+blur+border-top). Inner box max-width centrato simmetrico
+             a page-main. Layout: Annulla left | spacer | TestRun/Elimina/Salva right.
+             Stato salvataggio indicato dal solo bottone Salva (disabled = saved,
+             enabled = pending). Niente più "Salvato ✓" text inline. -->
+        <div class="sticky-actions-wrap" id="sticky-actions-wrap">
+          <div class="sticky-actions" id="sticky-actions">
+            <button class="btn btn-ghost" id="btn-cancel">Annulla</button>
+            <span class="sa-spacer"></span>
+            <button class="btn" id="btn-test-run"><span class="spinner"></span>▶ Test Run</button>
+            <button class="btn btn-danger" id="btn-delete" style="display:none">Elimina</button>
+            <button class="btn btn-primary" id="btn-save" disabled>Salva</button>
+          </div>
         </div>
       </div>
       <aside class="anchor-nav" id="anchor-nav">
