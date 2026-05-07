@@ -40,21 +40,15 @@
   <div id="drawer-container"></div>
   <div id="popover-container"></div>
 
-  <!-- Scripts (ordine importante: state → router → api → modules legacy → main) -->
+  <!-- Scripts (ordine importante: state → router → api → main).
+       I moduli legacy (templates, cron, triggers, permessi, action-editor,
+       logs, usage, proposals, agent-form) hanno DOM access top-level ai
+       loro target del vecchio markup e qui andrebbero in TypeError.
+       Saranno ri-caricati quando le route reali (Phase 4-9) montano i
+       relativi target DOM nelle template, oppure rifattorizzati inline. -->
   <script src="static/config/state.js"></script>
   <script src="static/config/router.js"></script>
   <script src="static/config/api.js"></script>
-  <!-- Modules legacy mantenuti per compatibilità durante migrazione (rimossi in Phase 11) -->
-  <script src="static/config/templates.js"></script>
-  <script src="static/config/cron.js"></script>
-  <script src="static/config/triggers.js"></script>
-  <script src="static/config/permessi.js"></script>
-  <script src="static/config/action-editor.js"></script>
-  <script src="static/config/logs.js"></script>
-  <script src="static/config/usage.js"></script>
-  <script src="static/config/proposals.js"></script>
-  <script src="static/config/agent-form.js"></script>
-  <!-- Bootstrap -->
   <script src="static/config/main.js"></script>
 </body>
 </html>
