@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>state.js smoke</title></head><body>
+<h1>State module smoke test</h1>
+<pre id="out"></pre>
+<script src="../../hiris/app/static/config/state.js"></script>
+<script>
+var out = document.getElementById('out');
+var log = [];
+function ok(label, cond) { log.push((cond ? 'PASS' : 'FAIL') + ' · ' + label); }
+
+ok('HirisState exists', typeof window.HirisState === 'object');
+ok('set/get works', (function(){ HirisState.set('foo', 42); return HirisState.get('foo') === 42; })());
+ok('subscribe fires on set', (function(){
+  var fired = false;
+  var unsub = HirisState.subscribe('bar', function(v) { fired = (v === 'baz'); });
+  HirisState.set('bar', 'baz');
+  unsub();
+  return fired;
+})());
+ok('unsubscribe stops firing', (function(){
+  var count = 0;
+  var unsub = HirisState.subscribe('q', function(){ count++; });
+  HirisState.set('q', 1);
+  unsub();
+  HirisState.set('q', 2);
+  return count === 1;
+})());
+ok('dirty flag default false', HirisState.get('unsaved') === false);
+
+out.textContent = log.join('\n');
+console.log(log.join('\n'));
+</script>
+</body></html>
