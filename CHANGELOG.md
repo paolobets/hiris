@@ -1,5 +1,111 @@
 # HIRIS — Changelog
 
+## v0.10.4 — 300s timeout + sticky bar + theme toggle + chat redundant badge (2026-05-07)
+
+User segnala 5 categorie bug. Audit deep ha individuato root cause per ognuno
++ extra dead code. Fix mirati:
+
+### 1. **Bug critico — 300s timeout sui modelli locali ignorato** (HIGH)
+
+User imposta `local_model.request_timeout` a 600 → 800s in HA addon ma riceve
+sempre "Timeout dopo 300s — il modello non ha risposto in tempo".
+
+**Root cause** (`hiris/app/agent_engine.py:20`):
+```python
+_AGENT_RUN_TIMEOUT = int(os.environ.get("AGENT_RUN_TIMEOUT", "300"))
+```
+La env var `AGENT_RUN_TIMEOUT` è **mai esportata in `run.sh`** → cade sempre
+sul default 300. La user setting `local_model.request_timeout` viene
+correttamente esportata come `OLLAMA_REQUEST_TIMEOUT` (usata dall'OpenAI SDK
+client) ma **non viene letta dal wrapper outer `asyncio.wait_for`**, che cuttava
+sempre a 300s anche se il modello locale completava in 500s.
+
+**Fix:** `_AGENT_RUN_TIMEOUT` ora cade su `OLLAMA_REQUEST_TIMEOUT × 1.2` (con
+floor 300s) quando `AGENT_RUN_TIMEOUT` non è esplicitamente settata. User che
+imposta `local_model.request_timeout=800` ora ha `_AGENT_RUN_TIMEOUT=960`
+(800 × 1.2). Margin 20% garantisce che il client SDK timeout scatti per
+primo (errore localizzato) invece dell'asyncio wrapper outer (errore generico).
+
+### 2. **Sticky-actions bar layout broken**
+
+CSS bug: `.sticky-actions { position: sticky; bottom: 0; margin: ... -X -X -X }`
+dentro `.editor-content` con `align-items:start` causava posizionamento
+sbagliato + flicker.
+
+**Fix:** `position: fixed` con `left: var(--shell-sidebar-w)` allinea la bar
+alla sidebar v6 (responsive a viewport). `padding-bottom: 80px` su
+`.editor-content` previene che la bar copra l'ultima section-card.
+
+### 3. **Log row ANCORA esploso** (defense-in-depth)
+
+Audit conferma codice CSS corretto v0.10.3 — il problema era cache stale.
+Ora belt-and-suspenders triplo:
+- `.lr-detail { display: none !important }` (CSS)
+- `.log-row.expanded .lr-detail { display: flex !important }` (CSS specifico)
+- `<div class="lr-detail" style="display:none">` inline (log-row.js)
+
+Anche con cache stale di v0.10.2, il pattern `display:none` inline sul
+container resta. La nuova regola `!important + .expanded .lr-detail` sblocca
+solo quando expanded.
+
+### 4. **Theme toggle "quadrato" + FOUC** (designer + chat)
+
+- **Designer**: nuovo atom `.btn-icon-only` (36px circolare, transparent,
+  hover background). Template `tpl-page-chrome` ora usa questo invece di
+  `.btn .btn-ghost`. Icone partono `style="visibility:hidden"` invece di
+  `display:none` — `paint()` setta `visibility: visible/hidden` per la icona
+  giusta, eliminando FOUC.
+- **Chat**: `#theme-toggle` da `border-radius: var(--r-sm)` (quadrato) a
+  `border-radius: 50%` (circolare), no border default, hover state coerente
+  con designer.
+
+### 5. **Chat — badge "connesso" ridondante**
+
+`#agent-pill` mostrava già il pallino verde "live" indicando connessione.
+Il `#conn-dot` con testo "connesso" duplicava info → rumore visivo.
+
+**Fix:** `#conn-dot { display: none }` di default. La classe `.offline` lo
+rivela come error chip. Quindi il badge appare SOLO quando offline, mentre
+in stato normale (happy path) la connessione è indicata implicitamente
+dall'avatar verde dell'agent-pill.
+
+### 6. **Breadcrumb mostra ID invece di nome agente** (cosmetico)
+
+`agent-editor.js mount()` aggiorna ora `chrome-here` con `'Agenti / ' + agent.name`
+dopo che `resolveAgent` carica l'oggetto. Il bare ID rimane fallback solo
+durante il caricamento iniziale di pochi ms.
+
+### 7. **Audit dead code (info, fix in v0.10.5+)**
+
+Identificato:
+- `tabs.js` mai più caricato — pronto per cancellazione
+- `agent-form.js` IIFE handlers `#save-btn`/`#delete-btn`/`#run-btn`/`#new-btn` —
+  shimmati ma puntano a div invisibili → dead. setupStickyActions chiama
+  saveAgent/runAgent/deleteAgent globali che è il path live.
+- `agent-form.js` `renderList` — `#agent-list` è shim → dead path.
+- `logs.js` `toggleLogRow` + click delegate su `.log-expand-btn` — quelle
+  classi non esistono in v6, dead.
+- `api/scripts` endpoint **non implementato backend** — `script-action.js`
+  fa fetch e fallisce silenziosamente. Picker script vuoto.
+- 2 campi Agent dataclass orphan: `fallback_action`, `allowed_endpoints` —
+  esistono backend, no UI.
+
+Cleanup pianificato per v0.10.5+ insieme a `api/scripts` decision.
+
+### Test
+
+- pytest 562/562 passed
+- node -c syntax OK su tutti i file modificati
+- Backend agent_engine.py modifica: prima volta che tocchiamo backend in v6
+  redesign. Solo 1 cambio (calcolo default `_AGENT_RUN_TIMEOUT`),
+  retro-compat completa (env var override prevale).
+
+### User action
+
+Hard reload browser (Ctrl+Shift+R) post-update per forzare fetch CSS/JS
+freschi. Da v0.10.4 il client-side cache-bust più aggressivo previene la
+ricomparsa.
+
 ## v0.10.3 — Log row collapse di default + diagnostic buttons (2026-05-07)
 
 Due bug user reportati:

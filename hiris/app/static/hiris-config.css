@@ -1351,15 +1351,36 @@
 /* ────────────────────────────────────────────────────────────
    Sticky save bar
    ──────────────────────────────────────────────────────────── */
+/* v0.10.4: fix layout sticky-actions.
+   Problema precedente: position:sticky dentro .editor-content (grid item con
+   align-items:start) sticky-zone era ridotta all'altezza del contenuto, +
+   margin negativi generavano flicker/posizione sbagliata.
+   Fix: position:fixed in fondo viewport, larghezza calcolata via padding
+   simmetrico al sidebar v6 (232px) + max-width della pagina centrata. */
 .sticky-actions {
-  position: sticky; bottom: 0; z-index: 20;
-  margin: var(--sp-6) calc(var(--sp-6) * -1) calc(var(--sp-6) * -1);
-  padding: var(--sp-4) var(--sp-6);
-  background: oklch(from var(--surface) l c h / 0.92);
+  position: fixed;
+  bottom: 0;
+  left: var(--shell-sidebar-w);
+  right: 0;
+  z-index: 20;
+  padding: var(--sp-3) var(--sp-6);
+  background: oklch(from var(--surface) l c h / 0.95);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
   display: flex; align-items: center; gap: var(--sp-3);
-  border-radius: 0 0 var(--r-md) var(--r-md);
+  margin: 0; /* clear precedent negative-margin hack */
+}
+@media (max-width: 1023px) {
+  .sticky-actions { left: var(--shell-sidebar-w-collapsed); }
+}
+@media (max-width: 768px) {
+  .sticky-actions { left: 0; }
+}
+/* Spazio in fondo all'editor per evitare che la sticky bar copra l'ultima
+   section-card o le sue azioni interne. */
+.editor-content {
+  padding-bottom: 80px;
 }
 .sticky-actions .sa-status {
   font-size: var(--fs-12); color: var(--text-3);
@@ -1590,16 +1611,44 @@
   background: var(--surface);
 }
 
+/* v0.10.4: btn-icon-only — atom per pulsanti circolari icon-only (theme toggle) */
+.btn-icon-only {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+  position: relative;
+}
+.btn-icon-only:hover {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+.btn-icon-only svg {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 16px; height: 16px;
+}
+
 /* Default: log-row collapsed = .lr-detail nascosto.
-   Mostrato solo quando .log-row ha la classe .expanded (toggle on click). */
+   Mostrato SOLO quando .log-row ha la classe .expanded (toggle on click).
+   !important + inline style="display:none" in log-row.js per battere cache
+   stale e specificità da regole legacy. */
 .lr-detail {
-  display: none;
+  display: none !important;
 }
 .log-row.expanded .lr-detail {
   margin-top: var(--sp-3);
   padding-top: var(--sp-3);
   border-top: 1px dashed var(--border);
-  display: flex; flex-direction: column; gap: var(--sp-3);
+  display: flex !important;
+  flex-direction: column;
+  gap: var(--sp-3);
   animation: slideIn 0.18s ease-out;
 }
 @keyframes slideIn {

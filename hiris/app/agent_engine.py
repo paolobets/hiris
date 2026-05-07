@@ -17,7 +17,20 @@ from .config import EUR_RATE
 
 # Timeout complessivo per un singolo run di agente. Evita che un modello locale
 # lento (Ollama) blocchi APScheduler per ore. Configurabile via env.
-_AGENT_RUN_TIMEOUT = int(os.environ.get("AGENT_RUN_TIMEOUT", "300"))
+#
+# v0.10.4 fix: il default deve almeno coprire il timeout configurato dall'utente
+# per il modello locale via local_model.request_timeout (esportato da run.sh
+# come OLLAMA_REQUEST_TIMEOUT). Senza questo fallback, anche se l'utente alza
+# OLLAMA_REQUEST_TIMEOUT a 600/800s, l'asyncio.wait_for esterno cuttava sempre
+# a 300s perché AGENT_RUN_TIMEOUT non è esportato da run.sh. Margine 1.2x
+# garantisce che il run completi prima dell'aborto outer.
+_OLLAMA_REQUEST_TIMEOUT_FALLBACK = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "120"))
+_AGENT_RUN_TIMEOUT = int(
+    os.environ.get(
+        "AGENT_RUN_TIMEOUT",
+        str(max(int(_OLLAMA_REQUEST_TIMEOUT_FALLBACK * 1.2), 300)),
+    )
+)
 
 # Rate-limit auto-backoff per agente (v0.9.10). Quando un agente schedulato
 # riceve N risposte indicanti rate-limit upstream entro la finestra, lo

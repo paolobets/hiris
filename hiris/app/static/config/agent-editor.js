@@ -4,7 +4,7 @@
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
      non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.10.3';
+  var V6_CACHE_BUST = '0.10.4';
 
   var legacyLoaded = false;
   var LEGACY_SCRIPTS = [
@@ -767,6 +767,11 @@
       if (agentId && typeof openAgent === 'function') {
         return resolveAgent(agentId).then(function(agentObj) {
           step('openAgent', function() { openAgent(agentObj); });
+          /* Update breadcrumb with agent name instead of bare id */
+          var hereEl = document.getElementById('chrome-here');
+          if (hereEl && agentObj && agentObj.name) {
+            hereEl.textContent = 'Agenti / ' + agentObj.name;
+          }
         });
       } else if (!agentId) {
         step('initNewAgent', initNewAgent);

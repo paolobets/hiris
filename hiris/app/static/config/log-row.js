@@ -146,7 +146,10 @@
         '</pre>';
     }
 
-    return '<div class="lr-detail">' +
+    /* style="display:none" inline come belt-and-suspenders contro cache stale CSS;
+       il rule .log-row.expanded .lr-detail { display: flex !important } in
+       hiris-config.css lo override quando il row ha la classe .expanded. */
+    return '<div class="lr-detail" style="display:none">' +
       '<p class="lrd-summary">' + evalBadge + escHtml(summary) + '</p>' +
       '<div class="lrd-meta">' + meta.join('') + '</div>' +
       '<div class="lrd-actions" data-raw=\'' + escHtml(JSON.stringify(r)) + '\'>' + actions + '</div>' +

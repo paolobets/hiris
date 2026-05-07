@@ -15,8 +15,10 @@
     function paint(t) {
       document.documentElement.setAttribute('data-theme', t);
       try { localStorage.setItem('hiris-theme', t); } catch(e) {}
-      if (moon) moon.style.display = t === 'dark' ? 'none' : '';
-      if (sun) sun.style.display = t === 'dark' ? '' : 'none';
+      /* v0.10.4: usa visibility (non display) per evitare FOUC.
+         Template inizia con entrambe icone hidden via style="visibility:hidden". */
+      if (moon) moon.style.visibility = t === 'dark' ? 'hidden' : 'visible';
+      if (sun) sun.style.visibility = t === 'dark' ? 'visible' : 'hidden';
     }
     var current = document.documentElement.getAttribute('data-theme') ||
       (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');

@@ -160,19 +160,35 @@
       animation: pulse 2s ease-in-out infinite;
     }
     @keyframes pulse { 50% { opacity: 0.4; } }
-    #conn-dot.offline { background: var(--err-tint); color: var(--err); }
+    /* v0.10.4: conn-dot mostrato SOLO quando offline. Lo stato "connesso"
+       è già indicato dal pallino verde live nell'agent-pill — il badge
+       "connesso" extra era ridondante. */
+    #conn-dot {
+      display: none;
+    }
+    #conn-dot.offline {
+      display: inline-flex;
+      background: var(--err-tint);
+      color: var(--err);
+    }
+    /* v0.10.4: theme-toggle circolare invece di quadrato. Stile coerente
+       con .btn-icon-only del designer v6. */
     #theme-toggle {
-      width: 34px; height: 34px;
-      border-radius: var(--r-sm);
-      border: 1px solid var(--border);
-      background: var(--surface);
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 1px solid transparent;
+      background: transparent;
       color: var(--text-2);
       display: grid; place-items: center;
       cursor: pointer;
-      transition: all 160ms ease;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
     }
-    #theme-toggle:hover { color: var(--text); border-color: var(--border-2); background: var(--hover); }
-    #theme-toggle svg { width: 15px; height: 15px; }
+    #theme-toggle:hover {
+      color: var(--text);
+      background: var(--hover);
+      border-color: var(--border);
+    }
+    #theme-toggle svg { width: 16px; height: 16px; }
     /* Touch devices: ≥44×44px tap target (WCAG 2.5.5) */
     @media (pointer: coarse) {
       #theme-toggle { width: 44px; height: 44px; }
