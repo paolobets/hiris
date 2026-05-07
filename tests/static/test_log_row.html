@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>log-row smoke</title>
+<style>
+.log-toolbar { display:flex;gap:8px;padding:8px;border-bottom:1px solid #ddd;margin-bottom:8px; }
+.filter-chip { padding:4px 10px;border:1px solid transparent;border-radius:999px;background:#f0f0f0;font-size:12px;cursor:pointer; }
+.filter-chip.active { background:#e0e0ff; }
+.fc-count { background:#fff;padding:0 5px;border-radius:6px;margin-left:4px;font-size:10px; }
+.log-list-v2 { list-style:none;padding:0;margin:0; }
+.log-row { background:#fff;border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:4px;cursor:pointer; }
+.log-row.expanded { border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,0.15); }
+.lr-collapsed { display:grid;grid-template-columns:96px 56px 1fr auto auto;gap:12px;align-items:center;font-size:13px; }
+.lr-detail { display:none;margin-top:12px;padding-top:12px;border-top:1px dashed #ddd; }
+.log-row.expanded .lr-detail { display:flex;flex-direction:column;gap:12px; }
+.meta-chip { display:inline-flex;padding:3px 8px;background:#f0f0f0;border-radius:4px;font-size:12px;margin-right:6px; }
+.eval-badge { padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700; }
+.eval-badge.ok { background:#d1fae5;color:#059669; }
+.eval-badge.warn { background:#fef3c7;color:#d97706; }
+.eval-badge.err { background:#fee2e2;color:#dc2626; }
+.btn { padding:4px 10px;border:1px solid #ccc;background:#fafafa;cursor:pointer;font-size:12px; }
+.thinking-block { display:none;background:#f5f5f5;padding:8px;border-radius:4px;font-family:monospace;font-size:11px;white-space:pre-wrap; }
+.lr-summary { white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+</style>
+</head><body style="font-family:sans-serif;padding:24px">
+<h1>Log row smoke</h1>
+<pre id="out"></pre>
+<div id="log-body" style="max-width:900px;margin-top:16px"></div>
+<script src="../../hiris/app/static/config/log-row.js"></script>
+<script>
+var out = document.getElementById('out');
+var log = [];
+function ok(label, cond) { log.push((cond ? 'PASS' : 'FAIL') + ' · ' + label); out.textContent = log.join('\n'); }
+
+ok('HirisLogRow exists', typeof HirisLogRow === 'object');
+ok('midTruncate short string', HirisLogRow.midTruncate('hello', 80) === 'hello');
+ok('midTruncate long string with ellipsis', (function(){
+  var r = HirisLogRow.midTruncate('a'.repeat(200), 20);
+  return r.length === 20 && r.indexOf('…') > 0;
+})());
+
+var fakeAgent = {
+  id: 'test-agent',
+  execution_log: [
+    { timestamp: '2026-05-05T14:23:00Z', success: true, eval_status: 'OK',
+      result_summary: 'Acceso luci salotto al 50% perché Paolo è rientrato e il sole tramonta tra 12 minuti.',
+      tool_calls: ['get_state', 'call_service'], input_tokens: 1234, output_tokens: 567 },
+    { timestamp: '2026-05-05T14:18:00Z', success: false, eval_status: 'ANOMALIA',
+      result_summary: 'Errore breve.', input_tokens: 0, output_tokens: 0 },
+    { timestamp: '2026-05-05T14:13:00Z', success: true, eval_status: 'ATTENZIONE',
+      result_summary: 'Consumo elettrico anomalo rilevato.',
+      tool_calls: ['get_history'], input_tokens: 800, output_tokens: 300,
+      thinking_blocks: ['step 1 thinking', 'step 2 thinking'] },
+  ],
+};
+HirisLogRow.render(document.getElementById('log-body'), fakeAgent);
+ok('renders 3 rows', document.querySelectorAll('.log-row').length === 3);
+ok('renders toolbar with filter chips', document.querySelectorAll('.filter-chip').length >= 3);
+
+document.querySelector('.log-row').click();
+ok('click expands first row', document.querySelectorAll('.log-row.expanded').length === 1);
+
+document.querySelectorAll('.log-row')[1].click();
+ok('clicking another collapses first', (function(){
+  var expanded = document.querySelectorAll('.log-row.expanded');
+  return expanded.length === 1 && expanded[0] === document.querySelectorAll('.log-row')[1];
+})());
+
+setTimeout(function() {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  setTimeout(function() {
+    ok('ESC closes expanded', document.querySelectorAll('.log-row.expanded').length === 0);
+  }, 50);
+}, 50);
+</script>
+</body></html>

@@ -8,6 +8,7 @@
     'static/config/triggers.js',
     'static/config/permessi.js',
     'static/config/action-editor.js',
+    'static/config/log-row.js',
     'static/config/logs.js',
     'static/config/usage.js',
     'static/config/proposals.js',
