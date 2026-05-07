@@ -126,13 +126,24 @@
     });
   }
 
-  /* Delegated click handler on chip */
+  /* Delegated click handler on chip. v0.10.10: diagnostic logging.
+     User reportava che cron chip "non si apriva". Possibili cause: HirisPopover
+     undefined (prima di v0.10.5 era), event blocked da altro listener, ecc. */
   document.addEventListener('click', function(e) {
     var chip = e.target.closest('#nt-cron-chip');
     if (chip) {
+      console.log('[v6] cron chip clicked, HirisPopover=' + (typeof HirisPopover));
       e.preventDefault();
       e.stopPropagation();
-      openCronPopover(chip);
+      if (typeof HirisPopover !== 'object' || !HirisPopover) {
+        alert('HirisPopover non caricato — cache stale? Hard reload Ctrl+Shift+R.');
+        return;
+      }
+      try { openCronPopover(chip); }
+      catch(err) {
+        console.error('[v6] cron popover open error:', err);
+        alert('Errore apertura cron popover: ' + (err.message || err));
+      }
     }
   });
 

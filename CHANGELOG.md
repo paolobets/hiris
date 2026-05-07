@@ -1,5 +1,39 @@
 # HIRIS — Changelog
 
+## v0.10.10 — Trigger UI fixes (2026-05-07)
+
+User report 4 bug nella sezione Trigger:
+1. **Periodico**: input number con arrows native non in linea col design
+2. **Cambio stato entità**: campo stringa free-text — utente vuole autocomplete
+3. **Cron**: chip "Ogni giorno alle 06:00" appare ma non cliccabile/modificabile
+4. **Manuale**: option mai implementata, da rimuovere
+
+### Fix
+
+1. **Periodico CSS** (`hiris-config.css`): `.nt-num-input` rimuove arrows
+   native via `appearance: textfield` + `::-webkit-inner/outer-spin-button`.
+   Width 80px center-aligned. Range `min=1 max=1440` (24h).
+2. **Cambio stato entità autocomplete** (`agent-editor.js populateIdentita`
+   + `rewireLegacyAfterMount`): input ora ha dropdown suggestions sotto.
+   Pattern stesso di permessi.js entity-search ma scope locale.
+   Fetch `api/entities?q=` con debounce 250ms, max 30 risultati.
+   Click suggestion fill input. Outside-click + ESC chiudono.
+   CSS `.nt-entity-suggestions` con max-height + scroll.
+3. **Cron chip diagnostic** (`cron-popover.js`): aggiunto console.log su
+   click + try/catch + alert se `HirisPopover` undefined o errore.
+   Future debug istantaneo. Se persiste in v0.10.10 → user vede output
+   console + alert con causa.
+4. **Manuale rimosso**: `<option value="manual">` eliminato dal select
+   `#new-trigger-type`. Triggers esistenti con `type='manual'` non
+   vengono toccati lato backend.
+
+### Test
+
+- pytest 562/562 passed
+- node -c syntax OK
+
+Bump 0.10.9 → 0.10.10 + V6_CACHE_BUST sync.
+
 ## v0.10.9 — Frontend runAgent timeout 90s → 600s (2026-05-07)
 
 User console v0.10.8: `[v6] runAgent error: AbortError: signal is aborted

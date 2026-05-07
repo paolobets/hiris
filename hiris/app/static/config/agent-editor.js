@@ -4,7 +4,7 @@
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
      non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.10.9';
+  var V6_CACHE_BUST = '0.10.10';
 
   var legacyLoaded = false;
   var LEGACY_SCRIPTS = [
@@ -60,18 +60,21 @@
         '<p class="field-hint">L\'agente si attiva in risposta a questi eventi.</p>' +
         '<div id="triggers-list" style="display:flex;flex-wrap:wrap;gap:6px;min-height:10px;margin-bottom:8px"></div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start">' +
+          /* v0.10.10: rimosso "Manuale" (mai implementato lato backend, confondeva user) */
           '<select id="new-trigger-type" class="select" style="width:auto">' +
             '<option value="schedule">Periodico (ogni N min)</option>' +
             '<option value="state_changed">Cambio stato entità</option>' +
             '<option value="cron">Cron expression</option>' +
-            '<option value="manual">Manuale (solo test run)</option>' +
           '</select>' +
+          /* v0.10.10: width più ampio + classe per nascondere arrows native */
           '<div id="nt-schedule-fields" style="display:flex;gap:6px;align-items:center">' +
-            '<input class="input" type="number" id="nt-interval" value="5" min="1" style="width:90px">' +
+            '<input class="input nt-num-input" type="number" id="nt-interval" value="5" min="1" max="1440" style="width:80px;text-align:center">' +
             '<span style="font-size:12px;color:var(--text-3)">min</span>' +
           '</div>' +
-          '<div id="nt-state-fields" style="display:none">' +
-            '<input class="input" type="text" id="nt-entity" placeholder="binary_sensor.door" style="width:240px">' +
+          /* v0.10.10: state-fields ora con autocomplete dropdown invece di stringa free-text */
+          '<div id="nt-state-fields" style="display:none;position:relative">' +
+            '<input class="input" type="text" id="nt-entity" placeholder="Cerca entità (es. binary_sensor.porta)" style="width:280px" autocomplete="off">' +
+            '<div id="nt-entity-suggestions" class="nt-entity-suggestions" style="display:none"></div>' +
           '</div>' +
           '<div id="nt-cron-fields" style="display:none">' +
             '<span class="cron-chip" id="nt-cron-chip" tabindex="0">' +
@@ -387,6 +390,52 @@
           try { _cronInitUI(); } catch(e) {}
         }
       };
+    }
+
+    /* v0.10.10: autocomplete su #nt-entity (trigger "Cambio stato entità").
+       Pattern stesso di permessi.js entity-search ma scope locale al trigger. */
+    var ntEntity = document.getElementById('nt-entity');
+    var ntSugg = document.getElementById('nt-entity-suggestions');
+    if (ntEntity && ntSugg) {
+      var ntEntityTimer = null;
+      ntEntity.oninput = function() {
+        clearTimeout(ntEntityTimer);
+        var q = ntEntity.value.trim();
+        if (!q) { ntSugg.style.display = 'none'; return; }
+        ntEntityTimer = setTimeout(function() {
+          fetch('api/entities?q=' + encodeURIComponent(q))
+            .then(function(r) { return r.json(); })
+            .then(function(items) {
+              if (!items || !items.length) { ntSugg.style.display = 'none'; return; }
+              ntSugg.innerHTML = items.slice(0, 30).map(function(e) {
+                var id = (e.id || '').replace(/[<>&"]/g, '');
+                var name = (e.name || '').replace(/[<>&"]/g, '');
+                return '<div class="suggestion-item" data-eid="' + id + '">' +
+                  '<span class="s-id">' + id + '</span>' +
+                  (name ? '<span class="s-name">' + name + '</span>' : '') +
+                '</div>';
+              }).join('');
+              ntSugg.style.display = 'block';
+              ntSugg.querySelectorAll('.suggestion-item').forEach(function(item) {
+                item.addEventListener('click', function() {
+                  ntEntity.value = item.dataset.eid;
+                  ntSugg.style.display = 'none';
+                });
+              });
+            })
+            .catch(function() { ntSugg.style.display = 'none'; });
+        }, 250);
+      };
+      ntEntity.onkeydown = function(e) {
+        if (e.key === 'Escape') { ntSugg.style.display = 'none'; }
+      };
+      /* Outside-click chiude suggestions */
+      document.addEventListener('mousedown', function(e) {
+        if (!ntEntity || !ntSugg) return;
+        if (!ntEntity.contains(e.target) && !ntSugg.contains(e.target)) {
+          ntSugg.style.display = 'none';
+        }
+      }, { once: false });
     }
     /* triggers.js — btn-add-trigger */
     var bat = document.getElementById('btn-add-trigger');

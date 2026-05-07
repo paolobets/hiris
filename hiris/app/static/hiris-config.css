@@ -1645,6 +1645,48 @@
   background: var(--surface);
 }
 
+/* v0.10.10: trigger UI improvements
+   - .nt-num-input: input type=number senza arrows native (puliti, design coerente)
+   - .nt-entity-suggestions: dropdown autocomplete per ricerca entità HA */
+.nt-num-input::-webkit-inner-spin-button,
+.nt-num-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.nt-num-input { -moz-appearance: textfield; appearance: textfield; }
+.nt-entity-suggestions {
+  position: absolute;
+  top: 100%; left: 0;
+  margin-top: 4px;
+  width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm);
+  box-shadow: var(--elev-pop);
+  z-index: 30;
+}
+.nt-entity-suggestions .suggestion-item {
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+  font-size: var(--fs-13);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.nt-entity-suggestions .suggestion-item:last-child { border-bottom: none; }
+.nt-entity-suggestions .suggestion-item:hover { background: var(--hover); }
+.nt-entity-suggestions .suggestion-item .s-id {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.nt-entity-suggestions .suggestion-item .s-name {
+  font-size: var(--fs-12);
+  color: var(--text-3);
+}
+
 /* v0.10.4: btn-icon-only — atom per pulsanti circolari icon-only (theme toggle) */
 .btn-icon-only {
   width: 36px; height: 36px;
