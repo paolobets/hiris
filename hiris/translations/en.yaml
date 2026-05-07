@@ -74,6 +74,15 @@ configuration:
   history_retention_days:
     name: "Conversation History Retention (days)"
     description: "How many days to keep conversation history before automatic deletion. Default is 90 days."
+  debug_expose_port:
+    name: "🛠 Debug — expose port (DEV ONLY)"
+    description: >-
+      ⚠️ ENABLE ONLY FOR DEV/DIAGNOSTICS. When enabled, a warning is logged
+      at every addon startup. To actually expose port 8099 on LAN: go to
+      'Network' (below this section) and set '8099/tcp' = 8099, then Save +
+      Restart. Disable and clear the port mapping when done. Without HTTPS,
+      anyone on the LAN can call /api/* (only internal_token as a barrier).
+      DO NOT leave enabled in production.
 
 # v6 designer redesign (2026-05-07)
 designer:

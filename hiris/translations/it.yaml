@@ -74,6 +74,15 @@ configuration:
   history_retention_days:
     name: "Conservazione Cronologia (giorni)"
     description: "Quanti giorni conservare la cronologia delle conversazioni prima della cancellazione automatica. Predefinito: 90 giorni."
+  debug_expose_port:
+    name: "🛠 Debug — esposizione porta (DEV ONLY)"
+    description: >-
+      ⚠️ ATTIVA SOLO PER DEV/DIAGNOSTICA. Quando attivo, logga un warning ad
+      ogni avvio addon. Per esporre realmente la porta 8099 sulla LAN:
+      vai in 'Network' (sotto questa sezione) e imposta '8099/tcp' = 8099,
+      poi Save + Restart. Disattiva e svuota il port mapping quando finito.
+      Senza HTTPS chiunque sulla LAN può chiamare /api/* (solo internal_token
+      come barriera). NON lasciare attivo in produzione.
 
 # v6 designer redesign (2026-05-07)
 designer:

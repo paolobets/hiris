@@ -35,6 +35,22 @@ export MEMORY_RETENTION_DAYS=$(bashio::config 'memory.retention_days' '90')
 # HuggingFace model cache → persistent HA config directory
 export HF_HOME=/config/hiris/models/huggingface
 
+# v0.10.11: debug expose port — logging only. Il port mapping effettivo è
+# controllato dalla sezione Network in HA Settings → Add-ons → HIRIS.
+# L'opzione qui sotto serve a ricordare all'utente di impostare e ripulire
+# il port mapping, e a loggare un warning chiaro se attivo in produzione.
+export HIRIS_DEBUG_EXPOSE_PORT=$(bashio::config 'debug_expose_port' 'false')
+if [[ "$HIRIS_DEBUG_EXPOSE_PORT" == "true" ]]; then
+  bashio::log.warning "============================================================"
+  bashio::log.warning "🚨 DEBUG MODE ACTIVE — debug_expose_port=true"
+  bashio::log.warning "Per esporre la porta sulla LAN: HA → Add-ons → HIRIS →"
+  bashio::log.warning "Configuration → Network → '8099/tcp' = 8099 → Save → Restart"
+  bashio::log.warning "ATTENZIONE: chiunque sulla LAN può chiamare /api/*"
+  bashio::log.warning "(protetto solo da internal_token se settato). Solo HTTP, no HTTPS."
+  bashio::log.warning "Disattiva debug_expose_port + svuota Network port quando finito."
+  bashio::log.warning "============================================================"
+fi
+
 bashio::log.info "Starting HIRIS"
 bashio::log.info "Log level: ${LOG_LEVEL}"
 bashio::log.info "Theme: ${THEME}"

@@ -1,5 +1,52 @@
 # HIRIS — Changelog
 
+## v0.10.11 — Debug expose port toggle (per testing esterno) (2026-05-07)
+
+User: "Possiamo inserire una modalità DEBUG attivabile dal config che
+espone la porta? Se la disattivo la porta viene chiusa".
+
+Aggiunto toggle UI per esporre temporaneamente la porta 8099 sulla LAN per
+sessioni di sviluppo / diagnostica esterna (es. Playwright headless da host
+esterno, curl da workstation, debug da remoto).
+
+### Implementazione
+
+- `config.yaml`:
+  - `ports: {"8099/tcp": null}` — port mappable da HA UI (default null = non
+    esposta). User imposta `8099` come host port nella sezione Network di
+    HA Settings → Add-ons → HIRIS → Configuration.
+  - `ports_description`: spiegazione inline visibile in HA UI sezione Network.
+  - Nuova opzione `debug_expose_port: false` (toggle) + schema `bool`.
+- `run.sh`: legge `debug_expose_port`, se `true` logga warning multilinea ad
+  ogni avvio addon con istruzioni complete (set port mapping + risk note).
+- `translations/{it,en}.yaml`: nome opzione `🛠 Debug — esposizione porta
+  (DEV ONLY)` + descrizione completa con warning sicurezza.
+
+### UX flow
+
+**Per attivare debug** (utente):
+1. Settings → Add-ons → HIRIS → Configuration
+2. Scroll a `🛠 Debug — esposizione porta` → toggle ON
+3. Sezione **Network** sotto → imposta `8099/tcp` = `8099`
+4. Save → Restart addon
+5. Verifica: `curl http://<ha-host-ip>:8099/config.html` ritorna 200
+
+**Per disattivare** (post-debug):
+1. Toggle OFF
+2. Sezione Network → svuota campo `8099/tcp`
+3. Save → Restart
+
+### Sicurezza
+
+Esponendo la porta in HTTP plain (no HTTPS), chiunque sulla LAN può chiamare
+`/api/*`. L'unica barriera è `internal_token` se settato. Default off + log
+warning chiaro + descrizione UI esplicita evitano misuse.
+
+### Test
+
+- pytest 562/562 passed
+- Schema yaml validato (HA Hass.io schema validator)
+
 ## v0.10.10 — Trigger UI fixes (2026-05-07)
 
 User report 4 bug nella sezione Trigger:

@@ -221,16 +221,28 @@ def test_update_agent_caps_max_tokens():
 # ---------------------------------------------------------------------------
 
 def test_config_yaml_no_direct_port():
+    """SEC-001 — ensure addon non espone porte di default.
+
+    v0.10.11: rilassato — `ports:` può essere declared ma TUTTI i valori
+    devono essere `null` (port mappable solo se l'utente attiva esplicitamente
+    debug_expose_port + imposta host port nella sezione Network di HA UI).
+    Questo permette il toggle "Debug expose port" senza esporre nulla di
+    default. Valori non-null = auto-binding = REJECT.
+    """
     import yaml
     import os
     config_path = os.path.join(
         os.path.dirname(__file__), "..", "hiris", "config.yaml"
     )
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    assert "ports" not in config, (
-        "config.yaml must not expose ports directly — use Ingress only"
-    )
+    ports = config.get("ports")
+    if ports is not None:
+        for port_spec, host_port in ports.items():
+            assert host_port is None, (
+                f"config.yaml ports[{port_spec}] must be null (not auto-bound). "
+                f"Got: {host_port!r}. User opts-in via HA UI Network section."
+            )
 
 
 # ---------------------------------------------------------------------------
