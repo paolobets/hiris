@@ -1,5 +1,69 @@
 # HIRIS — Changelog
 
+## v0.10.5 — Drawer/popover loading + anchor nav + sidebar count + settings + sticky align (2026-05-07)
+
+User feedback su v0.10.4 + console output. Audit systematic-debugging ha
+trovato **bug critico mai notato**: drawer.js e popover.js NON ERANO MAI
+CARICATI dalla v0.10.0 in poi. Spiegava perché +Aggiungi azione e cron chip
+popover non funzionavano.
+
+### Bug critici fixati
+
+1. **`drawer.js` + `popover.js` mai caricati** (CRITICAL, presente fin da v0.10.0)
+   - `config.html` non aveva i `<script>` static per questi atom
+   - `agent-editor.js LEGACY_SCRIPTS` aveva solo `cron-popover.js`, NON
+     i base atom `popover.js` né `drawer.js`
+   - Conseguenza: `HirisDrawer` e `HirisPopover` erano `undefined`
+   - **+Aggiungi azione** non apriva nulla (script-action.js HirisActionDrawer.open fallisce silently)
+   - **Cron chip click** non apriva il popover preset (cron-popover.js HirisPopover.open fallisce)
+   - Bug mai catturato perché test browser-based di Phase 3 testavano i moduli isolati ma nessun test integration end-to-end ne ha verificato il caricamento globale
+   - **Fix**: aggiunti `<script src="static/config/drawer.js">` e
+     `<script src="static/config/popover.js">` in config.html PRIMA di
+     agent-editor.js
+
+2. **Anchor nav causa router warnings + service worker errors + remount loop**
+   - Click `<a class="anchor-link" href="#sec-X">` cambiava URL hash
+   - Browser fires `hashchange` → router.resolveRoute → no route match per `#sec-X` → console.warn
+   - HA Ingress service worker prova a fetch `config#sec-X` → 404 → "Uncaught (in promise) Object"
+   - Quando user navigava back → remount agent-editor → invalidava reference a `#run-output` → output Test Run non appariva
+   - **Fix**: `setupAnchorNav` ora intercetta click anchor con `e.preventDefault()` + `scrollIntoView({behavior:'smooth'})`. Hash invariato, nessun service worker hit, no remount.
+
+3. **Sidebar "Agenti" badge "—" invece del count**
+   - main.js mountChrome usava `loadAgents()` (in agent-form.js, legacy)
+   - Legacy modules sono caricati solo quando user apre l'editor → al boot `loadAgents` undefined → typeof check skip → badge resta "—"
+   - **Fix**: fetch diretto `api/agents` in mountChrome, popola badge + HirisState + window.agents global
+
+4. **Settings menu placeholder "Implementata in Phase 11" confondeva**
+   - **Fix**: rimosso voce nav "Impostazioni" da config.html. Re-aggiungeremo quando avrà contenuto reale.
+
+5. **Sticky-actions bar misaligned**
+   - v0.10.4 fix usava `left: var(--shell-sidebar-w); right: 0` che spannava la bar da sidebar-edge a viewport-right-edge ignorando il max-width centrato del page-main (1140px)
+   - **Fix**: padding-left/right calcolato dinamicamente per allineare il contenuto della bar al page-main centrato.
+
+### Test Run output
+
+Bug Test Run "non si popola" è probabilmente effetto collaterale del **remount loop** causato dall'anchor nav (#3 sopra). Risolto il remount, `out` reference resta valida durante l'intera vita del fetch → output appare.
+
+Se persiste in v0.10.5, il diagnostic logging in console.log `[v6] TestRun clicked, ...` mostra runAgent=function — andremo a debug interno della funzione.
+
+### Dead code cleanup (eseguito in v0.10.5)
+
+- **`tabs.js` ELIMINATO** (~50 LOC): file mai più caricato dopo Phase 4 v6 long-form. Conteneva `switchTab`, `resetToFirstTab`, theme toggle duplicato, version footer fetcher.
+- **`agent-form.js` ridotto 333 → 211 LOC** (-122): rimossi handler IIFE `#new-btn`/`#save-btn`/`#delete-btn`/`#run-btn` (erano shimmati a div invisibili, sostituiti da `window.saveAgent`/`runAgent`/`deleteAgent` in agent-editor.js + `initNewAgent` path), rimossa funzione `renderList` (target `#agent-list` shim), rimossa querySelector `#agent-tabs .tab-btn` (markup tab orizzontale rimosso in v6). `loadAgents` resta ma non chiama più `renderList`. `showAgentMode` ora target `#sec-azioni` v6 invece del `#tab-azioni` legacy.
+- **`logs.js` ridotto 87 → 60 LOC** (-27): rimossi `toggleLogRow` e click delegate su `#log-body` per `.log-expand-btn`/`.log-thinking-btn` (classi non esistono in v6 — `HirisLogRow.render` produce markup `.log-row`/`.lr-collapsed`/`.lr-detail` con click handler proprio). Rimossi IIFE listener `input` su `#f-strategic`/`#f-prompt` (gestiti ora da `rewireLegacyAfterMount`). Funzioni `updateTokenCounter` e `loadContextPreview` ora null-safe.
+- **`addLegacyShims` ridotto da 11 a 5 ID stub** (`no-selection`, `form`, `form-title`, `delete-btn`, `usage-reset-btn`). Rimossi `new-btn`/`save-btn`/`run-btn`/`agent-list`/`agent-tabs`/`tab-azioni` perché i loro consumatori legacy sono stati eliminati.
+- **Visibility `btn-delete` per default agents**: aggiornato `agent-editor.js mount()` post-resolveAgent per nascondere il pulsante Elimina su agenti default (es. HIRIS, `is_default=true`).
+
+### Pending v0.10.6+ (se servono)
+
+- `api/scripts` endpoint backend (script picker oggi vuoto, fallback input text)
+- Field UI per `fallback_action` e `allowed_endpoints` (orphan in dataclass) — o rimozione dal backend
+
+### Test
+
+- pytest 562/562 passed
+- node -c syntax OK su tutti i file modificati
+
 ## v0.10.4 — 300s timeout + sticky bar + theme toggle + chat redundant badge (2026-05-07)
 
 User segnala 5 categorie bug. Audit deep ha individuato root cause per ognuno

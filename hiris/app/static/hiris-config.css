@@ -1351,25 +1351,42 @@
 /* ────────────────────────────────────────────────────────────
    Sticky save bar
    ──────────────────────────────────────────────────────────── */
-/* v0.10.4: fix layout sticky-actions.
-   Problema precedente: position:sticky dentro .editor-content (grid item con
-   align-items:start) sticky-zone era ridotta all'altezza del contenuto, +
-   margin negativi generavano flicker/posizione sbagliata.
-   Fix: position:fixed in fondo viewport, larghezza calcolata via padding
-   simmetrico al sidebar v6 (232px) + max-width della pagina centrata. */
+/* v0.10.5: sticky-actions fixed al viewport ma con width allineata al
+   page-main effettivo (max-width: var(--shell-content-max), centrato).
+   Calcolo: left = sidebar-w + (viewport-content-max)/2 max(0), però per
+   semplicità usiamo position:fixed left:sidebar-w right:0 e centriamo
+   il contenuto interno con max-width + auto margins.
+   Padding-bottom su .editor-content evita che la bar copra l'ultima section. */
 .sticky-actions {
   position: fixed;
   bottom: 0;
   left: var(--shell-sidebar-w);
   right: 0;
   z-index: 20;
-  padding: var(--sp-3) var(--sp-6);
-  background: oklch(from var(--surface) l c h / 0.95);
+  background: oklch(from var(--surface) l c h / 0.96);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
-  display: flex; align-items: center; gap: var(--sp-3);
-  margin: 0; /* clear precedent negative-margin hack */
+  margin: 0;
+}
+.sticky-actions::before {
+  /* invisible spacer to enable max-width centering */
+  content: '';
+  display: block;
+  height: 0;
+}
+.sticky-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6);
+}
+/* Centrare il contenuto sticky alla stessa max-width del page-main */
+@media (min-width: 1024px) {
+  .sticky-actions {
+    padding-left: max(var(--sp-6), calc((100vw - var(--shell-sidebar-w) - var(--shell-content-max)) / 2 + var(--sp-6)));
+    padding-right: max(var(--sp-6), calc((100vw - var(--shell-sidebar-w) - var(--shell-content-max)) / 2 + var(--sp-6)));
+  }
 }
 @media (max-width: 1023px) {
   .sticky-actions { left: var(--shell-sidebar-w-collapsed); }
@@ -1377,10 +1394,8 @@
 @media (max-width: 768px) {
   .sticky-actions { left: 0; }
 }
-/* Spazio in fondo all'editor per evitare che la sticky bar copra l'ultima
-   section-card o le sue azioni interne. */
 .editor-content {
-  padding-bottom: 80px;
+  padding-bottom: 96px;
 }
 .sticky-actions .sa-status {
   font-size: var(--fs-12); color: var(--text-3);

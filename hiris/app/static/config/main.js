@@ -27,14 +27,18 @@
       paint(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
 
-    /* Update agent count badge from API (best-effort) */
-    if (typeof loadAgents === 'function') {
-      loadAgents().then(function(agents) {
+    /* v0.10.5: fetch diretto invece di loadAgents() (in agent-form.js, caricato
+       solo quando user apre editor). Al boot loadAgents non è ancora definito,
+       quindi badge restava "—" finché user non apriva un agente. */
+    fetch('api/agents').then(function(r) { return r.ok ? r.json() : []; })
+      .then(function(d) {
+        var agents = Array.isArray(d) ? d : (d.agents || []);
         var el = document.getElementById('nav-agents-count');
         if (el) el.textContent = agents.length;
         HirisState.set('agents', agents);
+        /* Anche populate window.agents per legacy compat */
+        if (typeof window !== 'undefined') window.agents = agents;
       }).catch(function() { /* silent */ });
-    }
 
     /* Update proposals count badge */
     fetch('api/proposals?status=pending').then(function(r) { return r.json(); }).then(function(d) {
@@ -123,11 +127,9 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Consumi</div>';
     }
   });
-  HirisRouter.register(/^#\/settings\/?$/, function() {
-    setCrumbHere('Impostazioni');
-    document.getElementById('route-outlet').innerHTML =
-      '<div class="page-title">Impostazioni</div><p class="page-subtitle">Implementata in Phase 11.</p>';
-  });
+  /* v0.10.5: rimosso route /settings — la nav voce è stata tolta da config.html
+     (era solo placeholder "Implementata in Phase 11"). Re-aggiungere quando
+     ci sarà contenuto reale (theme persist, version info, diagnostic export). */
 
   document.addEventListener('DOMContentLoaded', function() {
     mountChrome();

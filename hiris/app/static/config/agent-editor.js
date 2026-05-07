@@ -4,7 +4,7 @@
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
      non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.10.4';
+  var V6_CACHE_BUST = '0.10.5';
 
   var legacyLoaded = false;
   var LEGACY_SCRIPTS = [
@@ -232,6 +232,19 @@
     var links = {};
     document.querySelectorAll('.anchor-link[href^="#sec-"]').forEach(function(l) {
       links[l.getAttribute('href').slice(1)] = l;
+      /* v0.10.5: intercetta click anchor per evitare cambio di hash.
+         Click <a href="#sec-X"> nativo cambia URL hash → router fires
+         hashchange → no route matched → service worker HA Ingress prova
+         fetch del nuovo URL e fallisce ("Uncaught (in promise) Object").
+         Più: history pollution + remount loop quando user torna su #/agents/<id>. */
+      l.addEventListener('click', function(e) {
+        e.preventDefault();
+        var targetId = l.getAttribute('href').slice(1);
+        var target = document.getElementById(targetId);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
     });
     if (!('IntersectionObserver' in window)) return;
     var io = new IntersectionObserver(function(entries) {
@@ -322,18 +335,20 @@
     shim.id = 'legacy-shim-container';
     shim.style.display = 'none';
     shim.setAttribute('aria-hidden', 'true');
+    /* v0.10.5 cleanup: ridotto stub list a soli ID ancora referenziati dal
+       codice legacy live (openAgent + usage.js IIFE).
+       Rimossi: new-btn/save-btn/run-btn (handler IIFE eliminati in cleanup),
+       agent-list/agent-tabs/tab-azioni (renderList + #agent-tabs querySelector
+       eliminati).
+       delete-btn ancora qui perché openAgent setta is_default visibility su
+       quel ID (legacy markup); il vero pulsante v6 è #btn-delete e la sua
+       visibility è gestita da setupStickyActions + resolveAgent then-block. */
     var stubIds = [
-      'no-selection',     /* agent-form.js openAgent line 104 */
-      'form',             /* agent-form.js openAgent line 105 */
-      'form-title',       /* agent-form.js openAgent line 107 */
-      'delete-btn',       /* agent-form.js openAgent line 140 + IIFE 265 (!= v6 #btn-delete) */
-      'new-btn',          /* agent-form.js IIFE line 161 addEventListener */
-      'agent-list',       /* agent-form.js renderList */
-      'agent-tabs',       /* agent-form.js showAgentMode querySelector */
-      'tab-azioni',       /* agent-form.js showAgentMode classList check */
-      'save-btn',         /* agent-form.js IIFE line 245 — sennò TypeError ferma IIFE */
-      'run-btn',          /* agent-form.js IIFE line 291 — idem */
-      'usage-reset-btn',  /* usage.js IIFE line 74 — id legacy global panel rimosso in v6 */
+      'no-selection',     /* agent-form.js openAgent legacy compat */
+      'form',             /* agent-form.js openAgent legacy compat */
+      'form-title',       /* agent-form.js openAgent legacy compat */
+      'delete-btn',       /* agent-form.js openAgent is_default check (legacy) */
+      'usage-reset-btn',  /* usage.js IIFE — id legacy global panel rimosso in v6 */
     ];
     stubIds.forEach(function(id) {
       if (document.getElementById(id)) return;
@@ -767,10 +782,15 @@
       if (agentId && typeof openAgent === 'function') {
         return resolveAgent(agentId).then(function(agentObj) {
           step('openAgent', function() { openAgent(agentObj); });
-          /* Update breadcrumb with agent name instead of bare id */
+          /* Update breadcrumb con nome agente invece di id bare */
           var hereEl = document.getElementById('chrome-here');
           if (hereEl && agentObj && agentObj.name) {
             hereEl.textContent = 'Agenti / ' + agentObj.name;
+          }
+          /* v0.10.5: hide btn-delete per default agents (HIRIS) */
+          var btnDel = document.getElementById('btn-delete');
+          if (btnDel && agentObj && agentObj.is_default) {
+            btnDel.style.display = 'none';
           }
         });
       } else if (!agentId) {

@@ -1,4 +1,10 @@
-/* HIRIS · Designer · execution log + token counter + context preview */
+/* HIRIS · Designer · execution log + token counter + context preview
+   v0.10.5 cleanup: rimossi toggleLogRow + click delegate su #log-body
+   (gestiti markup legacy .log-preview/.log-full/.log-expand-btn che non
+   esistono in v6 — HirisLogRow.render in log-row.js produce il markup
+   v6 .log-row/.lr-collapsed/.lr-detail con il proprio click handler).
+   IIFE listeners su #f-strategic/#f-prompt rimossi: ora gestiti da
+   rewireLegacyAfterMount in agent-editor.js (rebind ad ogni mount). */
 
 function renderExecutionLog(a) {
   var body = document.getElementById('log-body');
@@ -6,81 +12,49 @@ function renderExecutionLog(a) {
   if (window.HirisLogRow) {
     HirisLogRow.render(body, a);
   } else {
-    /* Fallback shouldn't happen if log-row.js is loaded; keep minimal no-op */
     body.innerHTML = '<div class="log-empty">log-row.js non caricato</div>';
   }
 }
-
-function toggleLogRow(rowId) {
-  var row = document.getElementById(rowId);
-  if (!row) return;
-  var preview = row.querySelector('.log-preview');
-  var full = row.querySelector('.log-full');
-  var btn = row.querySelector('.log-expand-btn');
-  var expanded = full && full.style.display !== 'none';
-  if (preview) preview.style.display = expanded ? '' : 'none';
-  if (full) full.style.display = expanded ? 'none' : 'block';
-  if (btn) btn.textContent = expanded ? '▼ espandi' : '▲ comprimi';
-  row.classList.toggle('expanded', !expanded);
-}
-
-document.getElementById('log-body').addEventListener('click', function(e) {
-  var btn = e.target.closest('.log-expand-btn');
-  if (btn) {
-    var rowId = btn.dataset.rowId;
-    if (rowId) toggleLogRow(rowId);
-    return;
-  }
-  var thBtn = e.target.closest('.log-thinking-btn');
-  if (thBtn) {
-    var thRow = document.getElementById(thBtn.dataset.rowId);
-    if (!thRow) return;
-    var panel = thRow.querySelector('.log-thinking-panel');
-    if (!panel) return;
-    var open = panel.style.display !== 'none';
-    panel.style.display = open ? 'none' : 'block';
-    thBtn.classList.toggle('open', !open);
-  }
-});
 
 /* ── Token counter ─────────────────────────── */
 var BASE_TOK = 1800; /* rough estimate of BASE_SYSTEM_PROMPT size in tokens */
 
 function updateTokenCounter() {
-  var strategic = document.getElementById('f-strategic').value;
-  var prompt    = document.getElementById('f-prompt').value;
-  var tStrat  = estimateTok(strategic);
-  var tPrompt = estimateTok(prompt);
+  var strategic = document.getElementById('f-strategic');
+  var prompt    = document.getElementById('f-prompt');
+  if (!strategic || !prompt) return;
+  var tStrat  = estimateTok(strategic.value);
+  var tPrompt = estimateTok(prompt.value);
   var tTotal  = BASE_TOK + tStrat + tPrompt;
-  document.getElementById('tc-strategic').textContent = fmtTok(tStrat);
-  document.getElementById('tc-prompt').textContent    = fmtTok(tPrompt);
+  var tcStrat = document.getElementById('tc-strategic');
+  var tcPrompt = document.getElementById('tc-prompt');
+  if (tcStrat) tcStrat.textContent = fmtTok(tStrat);
+  if (tcPrompt) tcPrompt.textContent = fmtTok(tPrompt);
   var totalEl = document.getElementById('tc-total');
-  totalEl.textContent = '~' + fmtTok(tTotal);
-  totalEl.className = 'token-val' + (tTotal > 6000 ? ' warn' : '');
+  if (totalEl) {
+    totalEl.textContent = '~' + fmtTok(tTotal);
+    totalEl.className = 'token-val' + (tTotal > 6000 ? ' warn' : '');
+  }
 }
 
-var _ctxPreviewTimer = null;
 async function loadContextPreview(agentId) {
-  if (!agentId) { document.getElementById('tc-context').textContent = '—'; return; }
+  var ctxEl = document.getElementById('tc-context');
+  var wrap  = document.getElementById('context-preview-wrap');
+  var pre   = document.getElementById('context-preview-content');
+  if (!agentId) { if (ctxEl) ctxEl.textContent = '—'; return; }
   try {
     var r = await fetch('api/agents/' + agentId + '/context-preview');
     if (!r.ok) throw new Error();
     var d = await r.json();
-    var ctxEl = document.getElementById('tc-context');
-    ctxEl.textContent = d.token_estimate > 0 ? '~' + fmtTok(d.token_estimate) : '—';
-    var wrap = document.getElementById('context-preview-wrap');
-    var pre  = document.getElementById('context-preview-content');
-    if (d.context_str) {
+    if (ctxEl) ctxEl.textContent = d.token_estimate > 0 ? '~' + fmtTok(d.token_estimate) : '—';
+    if (d.context_str && wrap && pre) {
       pre.textContent = d.context_str;
       wrap.style.display = '';
-    } else {
+    } else if (wrap) {
       wrap.style.display = 'none';
     }
   } catch(e) {
-    document.getElementById('tc-context').textContent = '—';
-    document.getElementById('context-preview-wrap').style.display = 'none';
+    if (ctxEl) ctxEl.textContent = '—';
+    if (wrap) wrap.style.display = 'none';
   }
 }
-
-document.getElementById('f-strategic').addEventListener('input', updateTokenCounter);
-document.getElementById('f-prompt').addEventListener('input', updateTokenCounter);

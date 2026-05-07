@@ -1,6 +1,12 @@
 /* HIRIS · Designer · agent form (CRUD + run)
-   Glues the tabs, list, save/delete/run. Calls into permessi.js, triggers.js,
-   action-editor.js, logs.js, usage.js. */
+   v0.10.5 cleanup: rimossi renderList (target #agent-list shim invisibile in v6 —
+   la lista è gestita da agents-list.js), querySelector #agent-tabs/.tab-btn
+   (markup tab orizzontale rimosso in v6), e gli IIFE handler di
+   #new-btn/#save-btn/#delete-btn/#run-btn (shimmati a div invisibili,
+   sostituiti da window.saveAgent/runAgent/deleteAgent in agent-editor.js
+   + initNewAgent path). Restano: openAgent, buildPayload, showAgentMode
+   (essenziali per il form long-form v6).
+   Calls into permessi.js, triggers.js, action-editor.js, logs.js, usage.js. */
 
 var agents = [];
 var currentId = null;
@@ -9,35 +15,21 @@ async function loadAgents() {
   try {
     var r = await fetch('api/agents');
     agents = await r.json();
-    renderList();
+    /* v0.10.5: niente renderList — la lista agenti è renderizzata da
+       agents-list.js sulla route #/agents. agents global resta popolata
+       per le chiamate downstream (openAgent, ecc.). */
   } catch(e) {}
-}
-
-function renderList() {
-  var el = document.getElementById('agent-list');
-  el.innerHTML = '';
-  agents.forEach(function(a) {
-    var row = document.createElement('div');
-    row.className = 'agent-row' + (a.id === currentId ? ' active' : '');
-    var typeLabel = (a.type === 'chat') ? 'Chat' : 'Agent';
-    row.innerHTML = '<span>' + esc(a.name) + ' <small style="color:var(--text-muted);font-size:0.7rem">' + typeLabel + '</small></span><span class="badge ' + (a.enabled ? '' : 'off') + '">' + (a.enabled ? 'ON' : 'OFF') + '</span>';
-    row.addEventListener('click', function() { openAgent(a); });
-    el.appendChild(row);
-  });
 }
 
 function showAgentMode(type) {
   var isAgent = type === 'agent';
-  document.getElementById('agent-triggers-section').style.display = isAgent ? '' : 'none';
+  var triggersSec = document.getElementById('agent-triggers-section');
+  if (triggersSec) triggersSec.style.display = isAgent ? '' : 'none';
   var maxTurnsRow = document.getElementById('max-turns-row');
   if (maxTurnsRow) maxTurnsRow.style.display = type === 'chat' ? '' : 'none';
-  var actionsTabBtn = document.querySelector('#agent-tabs .tab-btn[data-tab="tab-azioni"]');
-  if (actionsTabBtn) {
-    actionsTabBtn.style.display = isAgent ? '' : 'none';
-    if (!isAgent && document.getElementById('tab-azioni') && document.getElementById('tab-azioni').classList.contains('tab-active')) {
-      switchTab('tab-identity');
-    }
-  }
+  /* Sezione Azioni: nascosta per chat agents. Target la section-card v6. */
+  var azioniSection = document.getElementById('sec-azioni');
+  if (azioniSection) azioniSection.style.display = isAgent ? '' : 'none';
 }
 
 function showActionMode(mode) {
@@ -160,52 +152,9 @@ function openAgent(a) {
   _buildTriggerOnChecks(agentStates, ruleStates);
 }
 
-/* v0.10.2: questo handler è inerte in v6 (new-btn è solo uno shim div).
-   Il path "Nuovo agente" v6 passa per HirisAgentEditor.initNewAgent() in
-   agent-editor.js. Lasciato per backward compat nel caso il vecchio markup
-   venga ripristinato. Tutti i .style protetti con guard for safety. */
-var _nb = document.getElementById('new-btn');
-if (_nb) _nb.addEventListener('click', function() {
-  currentId = null;
-  var _e1 = document.getElementById('f-template'); if (_e1) _e1.value = '';
-  var _e2 = document.getElementById('no-selection'); if (_e2) _e2.style.display = 'none';
-  var _e3 = document.getElementById('form'); if (_e3) _e3.style.display = '';
-  if (typeof resetToFirstTab === 'function') resetToFirstTab();
-  var _e4 = document.getElementById('form-title'); if (_e4) _e4.textContent = 'Nuovo agente';
-  var _e5 = document.getElementById('f-name'); if (_e5) _e5.value = '';
-  document.getElementById('f-type').value = 'agent';
-  _triggersLoad([]);
-  document.getElementById('f-prompt').value = '';
-  document.getElementById('f-strategic').value = '';
-  _entitySelectorLoad([]);
-  document.getElementById('f-enabled').checked = true;
-  _setModelValue('auto');
-  document.getElementById('f-confirm-free').checked = false;
-  updateConfirmFreeVisibility();
-  document.getElementById('f-max-tokens').value = 4096;
-  document.getElementById('f-restrict').checked = false;
-  document.getElementById('f-require-confirmation').checked = false;
-  document.getElementById('f-max-chat-turns').value = 0;
-  document.getElementById('f-response-mode').value = 'auto';
-  document.getElementById('f-thinking-budget').value = '0';
-  buildActionChecks([]);
-  _actionsLoad([]);
-  document.getElementById('f-action-mode').value = 'automatic';
-  showActionMode('automatic');
-  var _db2 = document.getElementById('delete-btn');
-  if (_db2) _db2.style.display = 'none';
-  var ro = document.getElementById('run-output');
-  if (ro) { ro.style.display = 'none'; ro.textContent = ''; ro.className = ''; }
-  buildToolChecks([]);
-  showAgentMode('agent');
-  renderExecutionLog(null);
-  document.getElementById('u-ag-budget').value = 0;
-  document.getElementById('f-states').value = 'OK, ATTENZIONE, ANOMALIA';
-  _buildTriggerOnChecks(['OK', 'ATTENZIONE', 'ANOMALIA'], ['ANOMALIA']);
-  updateTokenCounter();
-  var _tc = document.getElementById('tc-context'); if (_tc) _tc.textContent = '—';
-  var _cw = document.getElementById('context-preview-wrap'); if (_cw) _cw.style.display = 'none';
-});
+/* v0.10.5 cleanup: rimosso handler #new-btn (era IIFE su shim div invisibile).
+   Il path "Nuovo agente" v6 è gestito da HirisAgentEditor.initNewAgent() in
+   agent-editor.js (chiamato dal route #/agents/new). */
 
 function buildPayload() {
   var type = document.getElementById('f-type').value;
@@ -248,51 +197,11 @@ function buildPayload() {
   return payload;
 }
 
-/* v0.10.2: save-btn/delete-btn/run-btn id legacy. In v6 i pulsanti reali sono
-   #btn-save/#btn-delete/#btn-test-run e i loro handler sono installati da
-   agent-editor.js setupStickyActions() che chiama window.saveAgent/deleteAgent/
-   runAgent (definiti in agent-editor.js, riusano buildPayload da qui).
-   I binding sotto sono inerti ma protetti da null guard per safety. */
-var _sb = document.getElementById('save-btn');
-if (_sb) _sb.addEventListener('click', async function() {
-  var payload = buildPayload();
-  var method = currentId ? 'PUT' : 'POST';
-  var url = currentId ? ('api/agents/' + currentId) : 'api/agents';
-  try {
-    var r = await fetch(url, {method: method, headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload)});
-    if (!r.ok) {
-      var msg = 'Errore salvataggio agente (HTTP ' + r.status + ')';
-      try { var d = await r.json(); if (d.error) msg = d.error; } catch (e) {}
-      alert(msg);
-      return;
-    }
-    var a = await r.json();
-    await loadAgents();
-    openAgent(a);
-  } catch (e) {
-    alert('Errore di rete durante il salvataggio: ' + (e && e.message ? e.message : e));
-  }
-});
-
-var _delb = document.getElementById('delete-btn');
-if (_delb) _delb.addEventListener('click', async function() {
-  if (!currentId || !confirm('Eliminare questo agente?')) return;
-  try {
-    var r = await fetch('api/agents/' + currentId, {method: 'DELETE', headers: {'X-Requested-With': 'fetch'}});
-    if (!r.ok && r.status !== 204) {
-      var msg = 'Errore eliminazione agente (HTTP ' + r.status + ')';
-      try { var d = await r.json(); if (d.error) msg = d.error; } catch (e) {}
-      alert(msg);
-      return;
-    }
-    currentId = null;
-    var _f3 = document.getElementById('form'); if (_f3) _f3.style.display = 'none';
-    var _ns3 = document.getElementById('no-selection'); if (_ns3) _ns3.style.display = '';
-    await loadAgents();
-  } catch (e) {
-    alert('Errore di rete durante l eliminazione: ' + (e && e.message ? e.message : e));
-  }
-});
+/* v0.10.5 cleanup: rimossi handler IIFE per #save-btn, #delete-btn, #run-btn.
+   Erano inerti su shim div invisibili. La logica equivalente è in
+   window.saveAgent / window.deleteAgent / window.runAgent definite in
+   agent-editor.js (chiamate da setupStickyActions sui veri pulsanti
+   #btn-save / #btn-delete / #btn-test-run del template v6). */
 
 function highlightOutput(text) {
   return text
@@ -300,51 +209,3 @@ function highlightOutput(text) {
     .replace(/("[\w_]+")\s*:/g, '<span style="color:#79c0ff">$1</span>:')
     .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span style="color:#a5d6a7">$1</span>');
 }
-
-var _rb = document.getElementById('run-btn');
-if (_rb) _rb.addEventListener('click', async function() {
-  if (!currentId) return;
-  var btn = document.getElementById('run-btn');
-  var out = document.getElementById('run-output');
-  if (!btn || !out) return;
-
-  btn.classList.add('running');
-  btn.disabled = true;
-  out.style.display = '';
-  out.className = '';
-  out.textContent = 'Avvio esecuzione…';
-
-  var timeout = 90000;
-  var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, timeout);
-
-  try {
-    var r = await fetch('api/agents/' + currentId + '/run', {
-      method: 'POST',
-      headers: {'X-Requested-With': 'fetch'},
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    var data = await r.json();
-    var raw = (data.result || data.error || '').trim();
-    if (!raw) {
-      out.className = 'run-empty';
-      out.textContent = '(nessun risultato restituito dall\'agente)';
-    } else {
-      out.className = '';
-      out.innerHTML = highlightOutput(esc(raw));
-    }
-  } catch(e) {
-    clearTimeout(timer);
-    out.className = 'run-error-text';
-    if (e.name === 'AbortError') {
-      out.textContent = '⏱ Timeout: l\'agente non ha risposto entro 90 secondi.';
-    } else {
-      out.textContent = 'Errore: ' + e.message;
-    }
-  } finally {
-    btn.classList.remove('running');
-    btn.disabled = false;
-    out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-});
