@@ -506,6 +506,57 @@ async function _discoverIngressBase(slug) {
 }
 
 // ---------------------------------------------------------------------------
+// HA Supervisor Ingress session — required for /api/hassio_ingress/<token>/...
+//
+// Routes under /api/hassio_ingress/ are NOT authenticated by the user's HA
+// access token (Authorization: Bearer). They require the `ingress_session`
+// cookie set by HA core via POST /api/hassio/ingress/session. The HA frontend
+// auto-creates this when the user opens an add-on panel and refreshes it
+// every ~5 minutes; a custom Lovelace card has no such automatic plumbing.
+//
+// Symptom of missing this call: every fetch returns 401 right after the
+// add-on is restarted (Supervisor invalidates old sessions on container
+// restart) until the user re-opens the HIRIS sidebar panel.
+// ---------------------------------------------------------------------------
+const SESSION_REFRESH_MS = 4 * 60 * 1000;
+let _lastSessionRefresh = 0;
+let _sessionInflight = null;
+
+async function _ensureIngressSession(hass, force = false) {
+  if (!hass || typeof hass.callApi !== 'function') return;
+  const now = Date.now();
+  if (!force && now - _lastSessionRefresh < SESSION_REFRESH_MS) return;
+  if (_sessionInflight) return _sessionInflight;
+  _sessionInflight = (async () => {
+    try {
+      await hass.callApi('POST', 'hassio/ingress/session');
+      _lastSessionRefresh = Date.now();
+    } catch (e) {
+      // Network or HA-side error — fetch may still work if cookie was
+      // already set recently; do not block the call. Log once.
+      console.warn('[HIRIS] hassio/ingress/session failed:', e);
+    } finally {
+      _sessionInflight = null;
+    }
+  })();
+  return _sessionInflight;
+}
+
+// Wrapper around fetch() that ensures an active ingress session before the
+// call and, on 401, force-refreshes it once and retries. `credentials` is
+// forced to 'same-origin' so the browser sends the ingress_session cookie.
+async function _hirisFetch(hass, url, opts) {
+  await _ensureIngressSession(hass);
+  const finalOpts = { credentials: 'same-origin', ...(opts || {}) };
+  let resp = await fetch(url, finalOpts);
+  if (resp.status === 401) {
+    await _ensureIngressSession(hass, true);
+    resp = await fetch(url, finalOpts);
+  }
+  return resp;
+}
+
+// ---------------------------------------------------------------------------
 // HirisCard — main card element
 // ---------------------------------------------------------------------------
 
@@ -579,14 +630,24 @@ class HirisCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const firstHass = !this._hass;
     this._hass = hass;
+    // Pre-create ingress session as soon as we get a hass reference (after a
+    // restart of the add-on the previous session is invalidated, so this
+    // guarantees the next fetch carries a fresh cookie).
+    if (firstHass) _ensureIngressSession(hass);
     const statusKey = `sensor.hiris_${this._agentId}_status`;
     if (hass.states[statusKey]) {
       this._status = hass.states[statusKey].state || 'idle';
       const budgetKey = `sensor.hiris_${this._agentId}_budget_eur`;
       this._budgetEur = parseFloat(hass.states[budgetKey]?.state || '0');
+      // Only read the switch state if the entity is actually present and in
+      // a definite on/off state. 'unavailable'/'unknown'/missing → keep the
+      // optimistic default of enabled=true, so the user is never forced to
+      // manually toggle the agent on after an add-on restart.
       const switchKey = `switch.hiris_${this._agentId}_enabled`;
-      this._enabled = hass.states[switchKey]?.state !== 'off';
+      const swState = hass.states[switchKey]?.state;
+      this._enabled = swState === 'off' ? false : true;
       this._render();
     } else if (this._agentId && !this._polling) {
       this._startPolling();
@@ -597,6 +658,10 @@ class HirisCard extends HTMLElement {
 
   connectedCallback() {
     this._render();
+    // Kick off ingress session creation as soon as we have a hass reference.
+    // Without this, the first /api/hassio_ingress/... call after an add-on
+    // restart returns 401 (see _ensureIngressSession header comment).
+    if (this._hass) _ensureIngressSession(this._hass);
     if (this._agentId && !this._polling) this._startPolling();
     // (H2) Pause polling when the dashboard tab is hidden — saves OpenRouter
     // :free quota and avoids waking sleeping HA instances. Resume + immediate
@@ -606,6 +671,9 @@ class HirisCard extends HTMLElement {
         if (document.hidden) {
           if (this._polling) { clearInterval(this._polling); this._polling = null; }
         } else if (this._agentId && !this._polling) {
+          // Refresh session on tab visibility change — old cookie may have
+          // expired while the tab was hidden.
+          if (this._hass) _ensureIngressSession(this._hass, true);
           this._startPolling();
         }
       };
@@ -643,7 +711,7 @@ class HirisCard extends HTMLElement {
     if (!this._hass) return;
     await _discoverIngressBase(this._slug);
     try {
-      const resp = await fetch(this._hirisUrl('api/agents'), {
+      const resp = await _hirisFetch(this._hass, this._hirisUrl('api/agents'), {
         headers: { 'Authorization': `Bearer ${this._authToken()}` },
       });
       if (!resp.ok) {
@@ -683,7 +751,7 @@ class HirisCard extends HTMLElement {
     const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
 
     try {
-      const resp = await fetch(this._hirisUrl('api/chat'), {
+      const resp = await _hirisFetch(this._hass, this._hirisUrl('api/chat'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -780,7 +848,7 @@ class HirisCard extends HTMLElement {
     this._render();
     await _discoverIngressBase(this._slug);
     try {
-      const resp = await fetch(this._hirisUrl(`api/agents/${this._agentId}`), {
+      const resp = await _hirisFetch(this._hass, this._hirisUrl(`api/agents/${this._agentId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1118,7 +1186,7 @@ class HirisChatCardEditor extends HTMLElement {
     const auth = this._hass?.connection?.options?.auth;
     const token = auth?.accessToken ?? auth?.data?.access_token ?? '';
     try {
-      const resp = await fetch(`${base}api/agents`, {
+      const resp = await _hirisFetch(this._hass, `${base}api/agents`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (resp.ok) {

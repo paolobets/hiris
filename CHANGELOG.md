@@ -1,5 +1,39 @@
 # HIRIS — Changelog
 
+## v0.10.15 — Fix HTTP 401 nella Lovelace card (ingress session) (2026-05-08)
+
+User: "Errore: HTTP 401" sulla custom card dopo l'aggiornamento. Diagnosi:
+le rotte `/api/hassio_ingress/<token>/...` non sono autenticate dal Bearer
+token utente — richiedono il cookie `ingress_session` creato da
+`POST /api/hassio/ingress/session`. Il riavvio del container al deploy di
+v0.10.14 ha invalidato la sessione esistente nel browser → 401 finché l'utente
+non riapriva il pannello sidebar dell'addon.
+
+### Card fix
+
+- `_ensureIngressSession(hass)`: helper module-level che chiama
+  `hass.callApi('POST', 'hassio/ingress/session')` con cache 4 minuti
+  (stesso intervallo del refresh che fa HA frontend). Coalesce su singolo
+  in-flight per evitare race su mount multiplo.
+- `_hirisFetch(hass, url, opts)`: wrapper attorno a `fetch()` che chiama
+  `_ensureIngressSession()` prima della call e, su 401, force-refresh della
+  sessione + retry una volta. `credentials: 'same-origin'` esplicito così il
+  browser invia sempre il cookie ingress.
+- Sostituite le 4 fetch ingress (`_fetchStatus`, `_sendMessage`,
+  `_toggleAgent`, editor `_loadAgents`) col wrapper.
+- `connectedCallback` + primo `set hass()` triggerano subito la creazione
+  sessione, così la prima POST/GET dopo un restart parte autenticata.
+- Visibility change da hidden→visible → force-refresh sessione (cookie può
+  scadere mentre la tab è in background).
+
+### Default attivo dopo restart
+
+- `set hass()`: lo switch HA viene letto solo se in stato definito
+  (`'on'`/`'off'`). `'unavailable'`/`'unknown'`/missing → `_enabled = true`
+  ottimistico, così l'utente non deve mai abilitare manualmente l'agente
+  dopo un restart dell'addon. Backend già parte con `enabled=True` di
+  default, ora la UI riflette quell'intento esplicitamente.
+
 ## v0.10.14 — Lovelace card overhaul: persistence, markdown, switch (2026-05-08)
 
 User: "prendiamo la card Lovelace, fai un'analisi front end UI UX se è
