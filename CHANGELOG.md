@@ -1,5 +1,82 @@
 # HIRIS — Changelog
 
+## v0.10.14 — Lovelace card overhaul: persistence, markdown, switch (2026-05-08)
+
+User: "prendiamo la card Lovelace, fai un'analisi front end UI UX se è
+migliorabile" → audit con 19 punti → "fai la 10.14 fixando tutto".
+
+`hiris-chat-card.js` riscrittura sostanziale (custom element + editor):
+
+### High
+
+- **Storia chat persistente** (H1): conversazione salvata in `localStorage`
+  per `(slug, agent_id)`, retention max 60 messaggi. Sopravvive a refresh
+  dashboard / mount/unmount card. Nuovo bottone "↺ pulisci conversazione".
+- **Polling visibility-aware** (H2): listener `visibilitychange` sospende
+  il polling 30s quando la tab è hidden, riprende su visible con refresh
+  immediato. Risparmia quote API (specie OpenRouter `:free`).
+- **Toggle come switch HA-style** (H3): track + thumb, `role="switch"` +
+  `aria-checked`. Sostituisce le emoji 🟢/⚪ poco discoverable.
+- **Budget bar threshold colors** (H4): verde fino 50%, accent fino 80%,
+  ambra 80-94%, rosso ≥95%. Percentuale numerica leggibile.
+- **Markdown rendering safe** (H5): `**bold**`, `*italic*`, `` `code` ``,
+  newlines preservati. Parser su testo già escapato → nessuna XSS surface.
+- **Accessibility** (H6): `role="log" aria-live="polite"` su area messaggi,
+  `aria-label` su bottoni icon-only (toggle, send, copy, regen, clear),
+  `role="meter"` con `aria-valuemin/max/now` su budget, `aria-hidden` su
+  SVG decorative, `aria-label` su tutti i field dell'editor.
+
+### Medium
+
+- **Composer textarea auto-grow** (M1): da `<input>` a `<textarea>` che
+  cresce 1→6 righe. Enter invia, Shift+Enter (o Cmd/Ctrl/Alt) nuova riga.
+- **Avatar grouping** (M2): l'icona HIRIS appare solo sul primo bubble
+  della raffica assistant — riduce visual noise nelle risposte multi-blocco.
+- **Messages height responsive** (M3): da `220px` fisso a `max-height: 60vh`
+  con `min-height: 180px`. Override via config `height: <css>`.
+- **Quick replies onboarding** (M4): nuovo campo `suggestions: [...]`
+  configurabile (max 6) → chip cliccabili nello stato vuoto. Stub
+  predefinito con 3 prompt italiani.
+- **Toggle undo snackbar** (M5): optimistic UI + snackbar 5s con "Annulla"
+  per ripristinare lo stato precedente. Niente più click accidentali
+  irrecuperabili.
+- **Copy / Regenerate** (M6): hover su bubble assistant mostra "📋 copia"
+  e "🔄 rigenera" che ri-invia il prompt utente corrispondente.
+- **Stato di errore visibile sui bubble** (M6 bonus): assistant bubble con
+  testo errore ottiene background rosso tinted + border, vs prima testo
+  generico nello stesso stile dei messaggi normali.
+
+### Low / Cosmetic
+
+- **Font Google caricato 1 volta** (L1): module-level injection su
+  `document.head`, deduplicato via `data-hiris-font` flag. Era replicato
+  in HirisCard + Editor.
+- **Stylesheet montato 1 volta** (L2): `<style>` mosso da `_render()` a
+  `connectedCallback()` — niente più re-parse del CSS ad ogni token SSE.
+- **Unconfigured copy** (L3): "Apri il menu della card (… in alto a destra)
+  e seleziona Modifica" invece di "Clicca ✏️" (non sempre visibile mobile).
+- **Mobile portrait <360px** (L4): nasconde title nel header, padding
+  ridotto su composer + header.
+- **Status pill labels italiano** (L5): `idle → pronto`, `running → in
+  esecuzione`, `error → errore`, `unavailable → offline` (era misto IT/EN).
+- **SVG send con `aria-hidden`** (L6): decorative, non viene letto da SR.
+- **Editor: nuovi field "Suggerimenti iniziali" + "Altezza area chat"**.
+
+### Tooling
+
+- `.smoke-test/card-mockup.html`: pagina HTML standalone con 4 stati
+  della card (light/dark × empty/populated/disabled/error) per validazione
+  visiva senza HA. Utile per regression test rapidi senza rebuild addon.
+
+### Files toccati
+
+- `hiris/config.yaml`: bump `0.10.14`
+- `hiris/app/static/hiris-chat-card.js`: refactor completo (~1100 LOC)
+- `hiris/app/static/config/agent-editor.js`: V6_CACHE_BUST `0.10.14`
+- `.smoke-test/card-mockup.html`: dev tool
+
+---
+
 ## v0.10.13 — Audit UX: status visibility, label/typo cleanup (2026-05-08)
 
 User: "Se apri la tab agenti capisci subito quali sono attivi?" → audit

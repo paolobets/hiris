@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>HIRIS Chat Card — mockup</title>
+<style>
+  body { background: #f5f3ff; font-family: system-ui; margin: 0; padding: 32px;
+         display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1200px; margin: 0 auto; }
+  .col { display: flex; flex-direction: column; gap: 16px; }
+  .col h3 { font-size: 13px; color: #555; margin: 0; font-weight: 600; }
+  .dark { background: #1a1530; padding: 16px; border-radius: 12px; }
+  .dark h3 { color: #aaa; }
+</style>
+</head>
+<body>
+  <div class="col">
+    <h3>LIGHT — empty state with suggestions</h3>
+    <hiris-chat-card id="card1"></hiris-chat-card>
+
+    <h3>LIGHT — populated, with budget warning</h3>
+    <hiris-chat-card id="card2"></hiris-chat-card>
+  </div>
+  <div class="col dark">
+    <h3>DARK — disabled banner</h3>
+    <hiris-chat-card id="card3"></hiris-chat-card>
+
+    <h3>DARK — error banner</h3>
+    <hiris-chat-card id="card4"></hiris-chat-card>
+  </div>
+
+  <script type="module">
+    // Shim minimo per HA hass object
+    const fakeHass = (statusKey, status, enabled, budgetEur) => ({
+      states: {
+        [`sensor.hiris_demo_status`]: { state: status },
+        [`sensor.hiris_demo_budget_eur`]: { state: String(budgetEur) },
+        [`switch.hiris_demo_enabled`]: { state: enabled ? 'on' : 'off' },
+      },
+      connection: { options: { hassUrl: 'http://localhost', auth: { accessToken: '' } } },
+    });
+
+    // Servire da repo root (es. python -m http.server 8770) e copiare prima
+    // hiris/app/static/hiris-chat-card.js in .smoke-test/, oppure rilanciare
+    // con --directory hiris/app/static e adattare l'import.
+    await import('/hiris-chat-card.js');
+
+    // Card 1: empty + suggestions
+    const c1 = document.getElementById('card1');
+    c1.setConfig({ agent_id: 'demo', title: 'HIRIS Chat', hiris_slug: 'hiris',
+      suggestions: ['Spegni le luci', 'Consumi oggi', 'Riassumi gli eventi'] });
+    c1.hass = fakeHass('idle', 'idle', true, 0);
+    c1._budgetLimitEur = 5;
+    c1._budgetEur = 0.42;
+    c1._render();
+
+    // Card 2: populated with markdown + budget warn
+    const c2 = document.getElementById('card2');
+    c2.setConfig({ agent_id: 'demo', title: 'Assistente Casa', hiris_slug: 'hiris' });
+    c2._messages = [
+      { role: 'user', text: 'Quali luci sono accese?' },
+      { role: 'assistant', text: 'Sono accese **3 luci**:\n- Salotto\n- Cucina\n- Camera\nVuoi spegnerle? Usa `light.turn_off`.' },
+      { role: 'user', text: 'Spegni cucina e camera' },
+      { role: 'assistant', text: 'Fatto: spente *Cucina* e *Camera*. Resta accesa solo Salotto.' },
+    ];
+    c2._enabled = true;
+    c2._budgetLimitEur = 3;
+    c2._budgetEur = 2.68;
+    c2._render();
+
+    // Card 3: disabled
+    const c3 = document.getElementById('card3');
+    c3.setConfig({ agent_id: 'demo3', title: 'Agente in pausa', hiris_slug: 'hiris' });
+    c3._enabled = false;
+    c3._budgetLimitEur = 2;
+    c3._budgetEur = 1.92;  // crit
+    c3._render();
+
+    // Card 4: error
+    const c4 = document.getElementById('card4');
+    c4.setConfig({ agent_id: 'demo4', title: 'Demo errore', hiris_slug: 'hiris' });
+    c4._error = '⚠ HIRIS non disponibile (502)';
+    c4._enabled = true;
+    c4._messages = [
+      { role: 'user', text: 'Ciao' },
+      { role: 'assistant', text: 'Errore: timeout upstream', error: true },
+    ];
+    c4._render();
+
+    // Force dark theme on right column via prefers-color-scheme media query trick
+    document.querySelectorAll('.dark hiris-chat-card').forEach(card => {
+      // Inject [data-theme=dark] equivalent via style override on shadow root
+      const style = document.createElement('style');
+      style.textContent = `:host { color-scheme: dark; }
+        :host {
+          --i-surface: oklch(0.205 0.022 280);
+          --i-surface-2: oklch(0.235 0.025 280);
+          --i-surface-3: oklch(0.275 0.028 280);
+          --i-hover: oklch(0.255 0.028 280);
+          --i-border: oklch(0.295 0.025 280);
+          --i-border-2: oklch(0.350 0.030 280);
+          --i-text: oklch(0.97 0.006 280);
+          --i-text-2: oklch(0.74 0.014 280);
+          --i-text-3: oklch(0.56 0.018 280);
+          --i-accent: oklch(0.78 0.17 280);
+          --i-accent-ink: oklch(0.86 0.14 280);
+          --i-accent-tint: oklch(0.30 0.10 280);
+          --i-accent-tint-2: oklch(0.36 0.12 280);
+          --i-on-accent: oklch(0.16 0.04 280);
+          --i-iris-glow: oklch(0.78 0.17 280 / 0.40);
+          --i-ok-tint: oklch(0.30 0.08 155);
+          --i-err-tint: oklch(0.30 0.09 25);
+        }`;
+      card.shadowRoot.appendChild(style);
+      card._render();
+    });
+  </script>
+</body>
+</html>
