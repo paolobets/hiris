@@ -80,7 +80,7 @@
         '</div>' +
         '<div style="display:flex;gap:8px">' +
           '<a class="btn btn-primary" href="#/agents/new">+ Nuovo agente</a>' +
-          '<a class="btn btn-ghost" href="./">Vai alla chat</a>' +
+          '<a class="btn" href="./">Vai alla chat</a>' +
         '</div>' +
       '</div>' +
 
@@ -88,7 +88,7 @@
         '<div class="stat-tile">' +
           '<div class="st-label">Agenti attivi</div>' +
           '<div class="st-value">' + enabled + '<span class="text-muted" style="font-weight:400;font-size:var(--fs-15)"> / ' + agents.length + '</span></div>' +
-          '<div class="st-delta">' + paused + ' in pausa, ' + disabled + ' disabilitato' + (disabled !== 1 ? 'i' : '') + '</div>' +
+          '<div class="st-delta">' + paused + ' in pausa, ' + disabled + ' disabilitat' + (disabled !== 1 ? 'i' : 'o') + '</div>' +
         '</div>' +
         '<div class="stat-tile">' +
           '<div class="st-label">Esecuzioni 24h</div>' +
@@ -120,8 +120,8 @@
             '<div id="dash-proposals-body"><div style="padding:16px;color:var(--text-3)">Caricamento…</div></div>' +
           '</div>' +
           '<div class="dash-list">' +
-            '<h3>Prossimi trigger <span class="right">P2</span></h3>' +
-            '<div style="padding:16px;color:var(--text-3);font-size:var(--fs-12)">Coming soon — implementazione next triggers richiede endpoint backend (P2).</div>' +
+            '<h3>Prossimi trigger <span class="right">presto</span></h3>' +
+            '<div style="padding:16px;color:var(--text-3);font-size:var(--fs-12)">In arrivo — vista calendaristica dei prossimi trigger schedulati.</div>' +
           '</div>' +
         '</div>' +
       '</div>';

@@ -922,9 +922,16 @@ class AgentEngine:
                 self._record_rate_limit_failure(agent.id)
             else:
                 self._clear_rate_limit_failures(agent.id)
+            # Detect upstream API failures returned as a string by the runner
+            # (no exception raised). Without this the row would log success=True
+            # while the summary reads "Errore temporaneo del servizio AI…".
+            _is_upstream_err = isinstance(result, str) and (
+                "Errore temporaneo del servizio AI" in result
+                or self._is_rate_limited(result)
+            )
             self._append_execution_log(
                 agent, result, inp_before, out_before, tool_calls_snapshot,
-                success=True, structured=structured, action_taken=action_taken,
+                success=not _is_upstream_err, structured=structured, action_taken=action_taken,
                 trigger_fired=trigger_fired,
             )
             self._save()

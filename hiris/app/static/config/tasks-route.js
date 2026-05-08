@@ -78,7 +78,7 @@
       '<div class="lr-collapsed">' +
         '<span class="lr-time">' + escHtml(fmtDate(t.created_at)) + '</span>' +
         '<span class="lr-status ' + statusCls + '">' + escHtml(statusLabel) + '</span>' +
-        '<span class="lr-summary"><strong>' + escHtml(agentName) + '</strong> · ' + escHtml(t.label || '(senza etichetta)') + '</span>' +
+        '<span class="lr-summary"><strong>' + escHtml(agentName) + '</strong>' + (t.label && t.label !== agentName ? ' · ' + escHtml(t.label) : '') + '</span>' +
         '<span class="lr-tokens">' + escHtml(triggerDesc) + '</span>' +
         '<span class="lr-chev">▼</span>' +
       '</div>' +
@@ -116,9 +116,12 @@
           var el = document.getElementById('tasks-count-' + k);
           if (el) el.textContent = counts[k];
         });
-        /* Sync sidenav badge with pending count */
+        /* Sync sidenav badge with pending count (hide when 0) */
         var navBadge = document.getElementById('nav-tasks-count');
-        if (navBadge) navBadge.textContent = counts.pending;
+        if (navBadge) {
+          navBadge.textContent = counts.pending;
+          navBadge.classList.toggle('is-empty', counts.pending === 0);
+        }
       });
 
       if (!tasks.length) {

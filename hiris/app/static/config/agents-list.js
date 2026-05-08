@@ -29,20 +29,40 @@
         body.innerHTML = '<div style="padding:24px;color:var(--text-3);text-align:center">Nessun agente configurato. <a href="#/agents/new">Crea il primo</a>.</div>';
         return;
       }
-      body.innerHTML = agents.map(function(a) {
-        var dotCls = a._rate_limit_paused ? 'iris' : (a.enabled ? 'on' : 'off');
+      var sorted = agents.slice().sort(function(a, b) {
+        var ea = a.enabled ? 1 : 0, eb = b.enabled ? 1 : 0;
+        if (eb !== ea) return eb - ea;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      var nActive = agents.filter(function(a){return a.enabled;}).length;
+      var nDisabled = agents.length - nActive;
+      var summary = '<div class="agents-summary">' +
+        '<span class="chip chip-on">✓ attivi ' + nActive + '</span>' +
+        '<span class="chip chip-off">⏸ disabilitati ' + nDisabled + '</span>' +
+        '</div>';
+      body.innerHTML = summary + sorted.map(function(a) {
+        var paused = !!a._rate_limit_paused;
+        var enabled = !!a.enabled;
+        var dotCls = paused ? 'iris' : (enabled ? 'on' : 'off');
+        var rowCls = 'dl-row agent-row' + (enabled ? '' : ' is-disabled') + (paused ? ' is-paused' : '');
+        var badge = paused
+          ? '<span class="agent-badge badge-paused">⏸ in pausa</span>'
+          : (enabled
+              ? '<span class="agent-badge badge-on">● Attivo</span>'
+              : '<span class="agent-badge badge-off">○ Disabilitato</span>');
         var typeLabel = a.type || 'agent';
         var modelLabel = a.model || 'auto';
         var triggerCount = (a.triggers || []).length;
         var lastLog = (a.execution_log || [])[a.execution_log ? a.execution_log.length - 1 : -1];
         var lastLogText = lastLog ? ('ultima esec ' + new Date(lastLog.timestamp).toLocaleTimeString('it-IT', {hour:'2-digit',minute:'2-digit'}) + (lastLog.success ? ' ✓' : ' ✗')) : 'mai eseguito';
-        return '<a class="dl-row" href="#/agents/' + escHtml(a.id) + '">' +
+        return '<a class="' + rowCls + '" href="#/agents/' + escHtml(a.id) + '">' +
           '<span class="dl-time"><span class="dot ' + dotCls + '"></span></span>' +
           '<span class="dl-content">' +
             '<span class="dl-agent">' + escHtml(a.name) + '</span>' +
             '<span class="dl-text">' + escHtml(typeLabel) + ' · ' + escHtml(modelLabel) + ' · ' + triggerCount + ' trigger · ' + lastLogText + '</span>' +
           '</span>' +
-          '<span style="color:var(--text-4)">→</span>' +
+          badge +
+          '<span class="dl-arrow">→</span>' +
         '</a>';
       }).join('');
     });

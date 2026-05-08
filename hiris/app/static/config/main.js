@@ -40,17 +40,23 @@
         if (typeof window !== 'undefined') window.agents = agents;
       }).catch(function() { /* silent */ });
 
-    /* Update proposals count badge */
+    /* Update proposals count badge — hide when 0 (no work pending) */
     fetch('api/proposals?status=pending').then(function(r) { return r.json(); }).then(function(d) {
       var el = document.getElementById('nav-proposals-count');
-      if (el) el.textContent = (d.proposals || []).length;
+      if (!el) return;
+      var n = (d.proposals || []).length;
+      el.textContent = n;
+      el.classList.toggle('is-empty', n === 0);
     }).catch(function() { /* silent */ });
 
-    /* Update tasks count badge — pending tasks come default */
+    /* Update tasks count badge — pending tasks come default; hide when 0 */
     fetch('api/tasks?status=pending').then(function(r) { return r.ok ? r.json() : []; })
       .then(function(tasks) {
         var el = document.getElementById('nav-tasks-count');
-        if (el) el.textContent = (tasks || []).length;
+        if (!el) return;
+        var n = (tasks || []).length;
+        el.textContent = n;
+        el.classList.toggle('is-empty', n === 0);
       }).catch(function() { /* silent */ });
   }
 

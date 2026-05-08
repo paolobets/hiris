@@ -24,7 +24,7 @@
         '<div class="stat-tile"><div class="st-label">Costo</div><div class="st-value">—</div></div>' +
       '</div>' +
       '<div style="margin-top:24px;display:flex;gap:8px">' +
-        '<button class="btn" id="usage-reset-global">↺ Azzera contatori globali</button>' +
+        '<button class="btn btn-danger" id="usage-reset-global">↺ Azzera contatori globali</button>' +
       '</div>' +
       '<div class="dash-list" style="margin-top:24px">' +
         '<h3>Per agente <span class="right" id="usage-per-agent-count">—</span></h3>' +
@@ -58,21 +58,35 @@
         body.innerHTML = '<div style="padding:24px;color:var(--text-3)">Nessun agente configurato.</div>';
         return;
       }
-      body.innerHTML = list.map(function(a) {
+      var sorted = list.slice().sort(function(a, b) {
+        var ea = a.enabled ? 1 : 0, eb = b.enabled ? 1 : 0;
+        if (eb !== ea) return eb - ea;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      body.innerHTML = sorted.map(function(a) {
         var u = a.usage || {};
         var tin = u.input_tokens || 0;
         var tout = u.output_tokens || 0;
         var cost = u.cost_eur || 0;
         var reqs = u.requests || 0;
-        var budget = a.usage_budget_eur || 0;
+        var budget = a.budget_limit_eur || a.usage_budget_eur || 0;
         var pct = budget > 0 ? Math.round((cost / budget) * 100) : 0;
-        return '<a class="dl-row" href="#/agents/' + escHtml(a.id) + '">' +
-          '<span class="dl-time">' + (a.enabled ? '●' : '○') + '</span>' +
+        var paused = !!a._rate_limit_paused;
+        var enabled = !!a.enabled;
+        var rowCls = 'dl-row agent-row' + (enabled ? '' : ' is-disabled') + (paused ? ' is-paused' : '');
+        var badge = paused
+          ? '<span class="agent-badge badge-paused">⏸ in pausa</span>'
+          : (enabled
+              ? '<span class="agent-badge badge-on">● Attivo</span>'
+              : '<span class="agent-badge badge-off">○ Disabilitato</span>');
+        return '<a class="' + rowCls + '" href="#/agents/' + escHtml(a.id) + '">' +
+          '<span class="dl-time"><span class="dot ' + (paused ? 'iris' : (enabled ? 'on' : 'off')) + '"></span></span>' +
           '<span class="dl-content">' +
             '<span class="dl-agent">' + escHtml(a.name) + '</span>' +
             '<span class="dl-text">' + reqs + ' run · ' + formatTokens(tin + tout) + ' tok · €' + Number(cost).toFixed(3) + (budget > 0 ? ' / €' + budget + ' (' + pct + '%)' : '') + '</span>' +
           '</span>' +
-          '<span style="color:var(--text-4)">→</span>' +
+          badge +
+          '<span class="dl-arrow">→</span>' +
         '</a>';
       }).join('');
     });

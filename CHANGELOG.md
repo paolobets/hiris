@@ -1,5 +1,71 @@
 # HIRIS — Changelog
 
+## v0.10.13 — Audit UX: status visibility, label/typo cleanup (2026-05-08)
+
+User: "Se apri la tab agenti capisci subito quali sono attivi?" → audit
+completo grafico app reale + "Chiudi tutti i bug segnalati".
+
+### Critical / High
+
+- **Log status mismatch** (`agent_engine.py:925`): agente che riceve
+  "Errore temporaneo del servizio AI…" (string return su `APIError`) veniva
+  loggato con `success=True`. Aggiunto check upstream-error che marca il
+  record come fail (✗ rosso invece di ✓ verde nei log dashboard + editor).
+- **Sidebar badge "0"**: `nav-tasks-count` / `nav-proposals-count` ora si
+  nascondono quando count=0 (classe `.is-empty` in `hiris-config.css`,
+  toggle in `main.js` + `tasks-route.js`). Niente più "Task 0" che fa
+  pensare a tab vuota.
+- **Lista agenti** (già v0.10.12): badge `● Attivo / ○ Disabilitato /
+  ⏸ in pausa`, opacity 0.55 sui disabled, sort attivi-prima, summary chips.
+- **Consumi per agente**: `/api/agents` ora include `usage` per-agent
+  (`requests / input_tokens / output_tokens / cost_eur / last_run`) letto
+  dal runner — fixa "0 run · 0 tok" su tutti gli agenti.
+- **Dashboard typo**: `disabilitatoi` → `disabilitati` (plurale italiano).
+- **"Vai alla chat" unstyled**: `btn-ghost` → `btn` (ora ha border
+  visibile come secondary action accanto al primary "+ Nuovo agente").
+- **"P2" label** in tile "Prossimi trigger" → "presto" + descrizione
+  user-friendly invece di reference roadmap interna.
+
+### Medium
+
+- **Consumi page**: stesso pattern badge della lista agenti (Attivo /
+  Disabilitato / pausa) applicato anche al breakdown per-agente, con sort.
+- **Btn-danger sul reset contatori globali** (era neutro).
+- **Proposals tab**: count inline "In attesa N / Archivio N" visibile.
+- **Tasks row dedupe**: `agentName · label` mostra label solo se diversa
+  dal nome agente (era "Monitor energia · Monitor energia").
+- **Drawer Notifica**: aggiunto campo `Destinatario` (es. notify.mobile_app_*
+  per HA push, vuoto = URLs Apprise globali) — prima la action `notify`
+  non aveva modo di specificare target nel drawer UI.
+
+### Files toccati
+
+- `hiris/config.yaml`: bump `0.10.13`
+- `hiris/app/agent_engine.py`: success-flag fix per upstream-error string
+- `hiris/app/api/handlers_agents.py`: include `usage` payload nel response
+- `hiris/app/static/config/agent-editor.js`: V6_CACHE_BUST `0.10.13`
+- `hiris/app/static/config/dashboard.js`: typo, btn-ghost→btn, P2→presto
+- `hiris/app/static/config/main.js`: nav badge `.is-empty` toggle
+- `hiris/app/static/config/usage-route.js`: badge stato + btn-danger + sort
+- `hiris/app/static/config/proposals-route.js`: count nei tab
+- `hiris/app/static/config/tasks-route.js`: dedupe label + nav-badge empty
+- `hiris/app/static/config/script-action.js`: campo Destinatario su notify
+- `hiris/app/static/hiris-config.css`: `.nav-badge.is-empty`
+
+---
+
+## v0.10.12 — Lista agenti: badge stato esplicito (2026-05-08)
+
+User: "Se apri la tab agenti capisci subito quali sono attivi?" → no.
+Dot 8x8px quasi invisibile, nessun badge testuale, no row dimming, no toggle.
+
+- `agents-list.js`: badge esplicito `● Attivo / ○ Disabilitato / ⏸ in pausa`,
+  opacity 0.55 sui disabled, sort attivi-prima, summary chips count.
+- `hiris-config.css`: stili `.agent-badge`, `.agents-summary .chip`, grid
+  4-column su `.dl-row.agent-row`.
+
+---
+
 ## v0.10.11 — Debug expose port toggle (per testing esterno) (2026-05-07)
 
 User: "Possiamo inserire una modalità DEBUG attivabile dal config che

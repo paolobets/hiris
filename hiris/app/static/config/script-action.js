@@ -118,6 +118,10 @@
           '<option value="ha_push"' + (action && action.channel === 'ha_push' ? ' selected' : '') + '>Home Assistant push</option>' +
           '<option value="apprise"' + (action && action.channel === 'apprise' ? ' selected' : '') + '>Apprise (Telegram, WhatsApp, ntfy…)</option>' +
         '</select></div>' +
+        '<div class="field"><label>Destinatario</label>' +
+          '<input class="input" type="text" id="ae6-target" value="' + escAttr((action && action.target) || '') + '" placeholder="es. notify.mobile_app_paolo o config Apprise">' +
+          '<p class="field-hint">HA push: nome notify.* del dispositivo. Apprise: lascia vuoto per usare gli URL globali da configurazione.</p>' +
+        '</div>' +
       '</div>' +
       /* script */
       '<div data-form-type="script" style="display:none">' +
@@ -187,6 +191,8 @@
 
     if (t === 'notify') {
       a = { type: 'notify', label: label, channel: container.querySelector('#ae6-channel').value };
+      var tgt = container.querySelector('#ae6-target');
+      if (tgt && tgt.value.trim()) a.target = tgt.value.trim();
     } else if (t === 'script') {
       var scriptId = container.querySelector('#ae6-script').value;
       var varsRaw = container.querySelector('#ae6-script-vars').value.trim();

@@ -138,16 +138,25 @@ async def handle_list_agents(request: web.Request) -> web.Response:
         entry = dict(agent_data)
         entry["status"] = engine.get_agent_status(agent_id)
         budget_eur = 0.0
+        usage_payload: dict = {}
         if runner:
             try:
-                usage = runner.get_agent_usage(agent_id)
+                usage = runner.get_agent_usage(agent_id) or {}
                 cost_usd = usage.get("cost_usd", 0.0)
                 budget_eur = round(float(cost_usd) * _EUR_RATE, 4)
+                usage_payload = {
+                    "requests": int(usage.get("requests", 0)),
+                    "input_tokens": int(usage.get("input_tokens", 0)),
+                    "output_tokens": int(usage.get("output_tokens", 0)),
+                    "cost_eur": budget_eur,
+                    "last_run": usage.get("last_run"),
+                }
             except Exception as exc:
                 logger.warning("get_agent_usage(%s) failed: %s", agent_id, exc)
                 budget_eur = 0.0
         entry["budget_eur"] = budget_eur
         entry["budget_limit_eur"] = float(entry.get("budget_eur_limit", 0.0))
+        entry["usage"] = usage_payload
         result.append(entry)
     return web.json_response(result)
 
