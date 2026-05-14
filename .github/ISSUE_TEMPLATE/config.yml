@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability (private)
+    url: https://github.com/paolobets/hiris/security/policy
+    about: Please report security issues privately. Do NOT open a public issue.
+  - name: Home Assistant Community
+    url: https://community.home-assistant.io/
+    about: For general Home Assistant questions not specific to HIRIS.
