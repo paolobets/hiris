@@ -1,4 +1,4 @@
-aiohttp>=3.13.4
+aiohttp>=3.13.5
 anthropic>=0.87.0,<1.0.0
 apscheduler>=3.11.2,<4.0.0
 python-dotenv>=1.2.2
