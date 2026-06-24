@@ -164,12 +164,12 @@ class KnowledgeStore:
             clauses.append("kind IN (%s)" % ",".join("?" * len(kinds)))
             params.extend(kinds)
         sql = "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
+        scored = []
         with self._mu:
             rows = self._conn.execute(sql, params).fetchall()
-        scored = []
-        for r in rows:
-            sim = cosine_similarity(query_vec, blob_to_vec(r["embedding"]))
-            scored.append((sim, r))
+            for r in rows:
+                sim = cosine_similarity(query_vec, blob_to_vec(r["embedding"]))
+                scored.append((sim, r))
         scored.sort(key=lambda x: x[0], reverse=True)
         out = []
         for sim, r in scored[:k]:
@@ -197,7 +197,11 @@ class KnowledgeStore:
             ).fetchall()
         out = []
         for r in rows:
-            d = dict(r); d.pop("embedding", None); d.pop("data", None)
+            d = dict(r); d.pop("embedding", None)
+            try:
+                d["data"] = json.loads(d["data"])
+            except Exception:
+                d["data"] = {}
             out.append(d)
         return out
 

@@ -69,6 +69,25 @@ def test_structured_queries(tmp_path):
     store.close()
 
 
+def test_upcoming_obligations_returns_parsed_data(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    store.add_item(
+        kind="obligation", content="IMU",
+        due_date="2026-06-30", data={"note": "prima rata"},
+    )
+    store.add_item(
+        kind="obligation", content="Bolletta gas",
+        due_date="2026-07-15", data={"note": "bolletta estiva"},
+    )
+    due = store.upcoming_obligations(before="2026-07-01")
+    assert len(due) == 1
+    item = due[0]
+    assert "data" in item, "upcoming_obligations deve restituire il campo 'data'"
+    assert isinstance(item["data"], dict), "'data' deve essere un dict"
+    assert item["data"] == {"note": "prima rata"}
+    store.close()
+
+
 def test_links_and_neighbors(tmp_path):
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     a = store.add_item(kind="expense", content="Cena")
