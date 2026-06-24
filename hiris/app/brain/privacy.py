@@ -78,7 +78,7 @@ class VaultStore:
 _PII_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("iban", re.compile(r"\bIT\d{2}[A-Z]\d{10}[0-9A-Za-z]{12}\b")),
     ("codice_fiscale", re.compile(r"\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b")),
-    ("card", re.compile(r"\b(?:\d[ -]?){13,16}\b")),
+    ("card", re.compile(r"\b(?:\d[ -]?){12,15}\d\b")),
     ("email", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
     ("phone", re.compile(r"(?:\+39\s?)?\b3\d{2}[\s.-]?\d{6,7}\b")),
 ]

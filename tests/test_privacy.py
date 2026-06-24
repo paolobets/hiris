@@ -21,6 +21,15 @@ def test_detect_pii_italian():
     assert {"iban", "codice_fiscale", "card", "email", "phone"} <= found
 
 
+def test_detect_pii_card_no_trailing_separator():
+    from hiris.app.brain.privacy import detect_pii
+    spans = [s for s in detect_pii("carta 4111 1111 1111 1111 next") if s[2] == "card"]
+    assert spans, "card not detected"
+    value = spans[0][3]
+    assert value == "4111 1111 1111 1111"   # no trailing space
+    assert not value.endswith(" ")
+
+
 def test_token_for_is_stable_and_typed(tmp_path):
     v = VaultStore(str(tmp_path / "vault.db"))
     t1 = v.token_for("iban", "IT60X0542811101000000123456")
