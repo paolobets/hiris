@@ -435,6 +435,58 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
+    # ── Mayan EDMS polling ingestion job (second-brain phase-3, Task 6) ────────
+    # Read config from env vars exported by run.sh (bashio::config 'mayan.*').
+    mayan_url = os.environ.get("MAYAN_URL", "").strip()
+    mayan_token = os.environ.get("MAYAN_TOKEN", "").strip()
+    mayan_tag_id = int(os.environ.get("MAYAN_TAG_ID", "0") or "0")
+    mayan_sensitivity = os.environ.get("MAYAN_SENSITIVITY", "sensitive").strip() or "sensitive"
+    mayan_poll_minutes = max(5, int(os.environ.get("MAYAN_POLL_MINUTES", "60") or "60"))
+
+    if mayan_url and mayan_token and mayan_tag_id > 0:
+        from .brain.mayan_client import MayanClient
+        from .brain.mayan_ingest import ingest_tag as _mayan_ingest_tag
+
+        mayan_client = MayanClient(mayan_url, mayan_token)
+        app["mayan_client"] = mayan_client
+        logger.info(
+            "Mayan EDMS enabled — url=%s tag_id=%d poll_minutes=%d sensitivity=%s",
+            mayan_url, mayan_tag_id, mayan_poll_minutes, mayan_sensitivity,
+        )
+
+        async def _run_mayan_ingest() -> None:
+            client = app.get("mayan_client")
+            store = app.get("knowledge_store")
+            embedder = app.get("embedding_provider")
+            if client is None or store is None or embedder is None:
+                return
+            try:
+                n = await _mayan_ingest_tag(
+                    client, store, embedder,
+                    tag_id=mayan_tag_id,
+                    sensitivity=mayan_sensitivity,
+                )
+                if n:
+                    logger.info("Mayan ingest: %d new document(s) ingested", n)
+            except Exception as exc:
+                logger.error("Mayan ingest job failed: %s", exc, exc_info=True)
+
+        engine._scheduler.add_job(
+            _run_mayan_ingest,
+            trigger="interval",
+            minutes=mayan_poll_minutes,
+            id="hiris_mayan_ingest",
+            replace_existing=True,
+            misfire_grace_time=300,
+        )
+        # Also run one initial ingestion shortly after startup (non-blocking)
+        asyncio.create_task(_run_mayan_ingest(), name="mayan_ingest_initial")
+    else:
+        logger.debug(
+            "Mayan EDMS disabled (url=%r, token set=%s, tag_id=%d)",
+            mayan_url, bool(mayan_token), mayan_tag_id,
+        )
+
     # Daily due-date reminders job (second-brain phase-1, Task 10).
     # Runs at 08:00 every day. Sends one notification per due obligation via the
     # existing send_notification path (ha_push by default). Once-per-day cadence
@@ -597,6 +649,8 @@ async def _on_startup(app: web.Application) -> None:
 
 async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
+    if app.get("mayan_client") is not None:
+        await app["mayan_client"].aclose()
     if "mqtt_publisher" in app:
         await app["mqtt_publisher"].stop()
     if "knowledge_db" in app:

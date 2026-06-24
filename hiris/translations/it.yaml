@@ -74,6 +74,24 @@ configuration:
   history_retention_days:
     name: "Conservazione Cronologia (giorni)"
     description: "Quanti giorni conservare la cronologia delle conversazioni prima della cancellazione automatica. Predefinito: 90 giorni."
+  mayan:
+    name: "Mayan EDMS (documenti)"
+    description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."
+    url:
+      name: "URL Mayan"
+      description: "URL base dell'API Mayan EDMS v4. Esempio: http://192.168.1.31:8090/api/v4"
+    token:
+      name: "Token API Mayan"
+      description: "Token API per l'autenticazione Mayan. Generalo in Mayan → Account → API Tokens."
+    tag_id:
+      name: "ID Tag"
+      description: "ID del tag Mayan da ingerire (es. il tag 'HIRIS'). Imposta 0 per disabilitare."
+    sensitivity:
+      name: "Sensibilità Documenti"
+      description: "Livello di privacy per i documenti ingeriti. 'sensitive' (default, consigliato per estratti conto, fatture) nasconde il contenuto all'AI cloud. 'normal' permette il recall RAG completo."
+    poll_minutes:
+      name: "Intervallo Polling (minuti)"
+      description: "Con quale frequenza HIRIS interroga Mayan per nuovi documenti. Default 60. Range: 5–1440."
   debug_expose_port:
     name: "🛠 Debug — esposizione porta (DEV ONLY)"
     description: >-

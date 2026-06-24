@@ -32,6 +32,12 @@ export MEMORY_EMBEDDING_MODEL=$(bashio::config 'memory.embedding_model' '')
 export MEMORY_RAG_K=$(bashio::config 'memory.rag_k' '5')
 export MEMORY_RETENTION_DAYS=$(bashio::config 'memory.retention_days' '90')
 
+export MAYAN_URL=$(bashio::config 'mayan.url' '')
+export MAYAN_TOKEN=$(bashio::config 'mayan.token' '')
+export MAYAN_TAG_ID=$(bashio::config 'mayan.tag_id' '0')
+export MAYAN_SENSITIVITY=$(bashio::config 'mayan.sensitivity' 'sensitive')
+export MAYAN_POLL_MINUTES=$(bashio::config 'mayan.poll_minutes' '60')
+
 # HuggingFace model cache → persistent HA config directory
 export HF_HOME=/config/hiris/models/huggingface
 

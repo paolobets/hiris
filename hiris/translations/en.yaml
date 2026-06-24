@@ -74,6 +74,24 @@ configuration:
   history_retention_days:
     name: "Conversation History Retention (days)"
     description: "How many days to keep conversation history before automatic deletion. Default is 90 days."
+  mayan:
+    name: "Mayan EDMS (documents)"
+    description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."
+    url:
+      name: "Mayan URL"
+      description: "Base URL of the Mayan EDMS API v4. Example: http://192.168.1.31:8090/api/v4"
+    token:
+      name: "Mayan API Token"
+      description: "API token for Mayan authentication. Generate it in Mayan → Account → API Tokens."
+    tag_id:
+      name: "Tag ID"
+      description: "ID of the Mayan tag to ingest (e.g. the 'HIRIS' tag). Set to 0 to disable ingestion."
+    sensitivity:
+      name: "Document Sensitivity"
+      description: "Privacy level for ingested documents. 'sensitive' (default, recommended for bank statements, invoices) hides content from cloud AI. 'normal' allows full RAG recall."
+    poll_minutes:
+      name: "Poll Interval (minutes)"
+      description: "How often HIRIS polls Mayan for new documents. Default 60. Range: 5–1440."
   debug_expose_port:
     name: "🛠 Debug — expose port (DEV ONLY)"
     description: >-
