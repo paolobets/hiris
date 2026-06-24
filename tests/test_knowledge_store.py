@@ -52,3 +52,18 @@ def test_search_ranks_by_cosine_and_excludes_sensitive(tmp_path):
     assert contents[0] == "vicino"          # cosine = 1.0
     assert "segreto" not in contents        # sensitive escluso
     store.close()
+
+
+def test_structured_queries(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    store.add_item(kind="obligation", content="TARI", due_date="2026-07-01")
+    store.add_item(kind="obligation", content="Bollo", due_date="2026-12-31")
+    store.add_item(kind="expense", content="Spesa", amount=42.0, category="cibo")
+    store.add_item(kind="expense", content="Cena", amount=8.0, category="cibo")
+
+    due = store.upcoming_obligations(before="2026-08-01")
+    assert [d["content"] for d in due] == ["TARI"]
+
+    agg = store.expenses_by_category()
+    assert agg["cibo"] == 50.0
+    store.close()

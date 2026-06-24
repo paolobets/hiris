@@ -182,6 +182,38 @@ class KnowledgeStore:
             out.append(d)
         return out
 
+    def upcoming_obligations(
+        self, *, before: str, owner: str | None = None,
+    ) -> list[dict]:
+        clauses = ["kind='obligation'", "status='approved'",
+                   "due_date IS NOT NULL", "due_date <= ?"]
+        params: list = [before]
+        if owner is not None:
+            clauses.append("(owner=? OR owner='home')"); params.append(owner)
+        with self._mu:
+            rows = self._conn.execute(
+                "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
+                + " ORDER BY due_date ASC", params,
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r); d.pop("embedding", None); d.pop("data", None)
+            out.append(d)
+        return out
+
+    def expenses_by_category(self, *, owner: str | None = None) -> dict[str, float]:
+        clauses = ["kind='expense'", "status='approved'", "amount IS NOT NULL"]
+        params: list = []
+        if owner is not None:
+            clauses.append("(owner=? OR owner='home')"); params.append(owner)
+        with self._mu:
+            rows = self._conn.execute(
+                "SELECT COALESCE(category,'(nessuna)') AS cat, SUM(amount) AS tot"
+                " FROM knowledge_items WHERE " + " AND ".join(clauses)
+                + " GROUP BY cat", params,
+            ).fetchall()
+        return {r["cat"]: float(r["tot"]) for r in rows}
+
     def close(self) -> None:
         with self._mu:
             self._conn.close()
