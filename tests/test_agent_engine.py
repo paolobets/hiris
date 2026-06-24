@@ -1221,6 +1221,16 @@ def test_clear_failures_after_success(monkeypatch):
     assert eng._is_in_rate_limit_pause("ag-x") is False
 
 
+def test_agent_knowledge_access_default_and_update(engine):
+    a = engine.create_agent({
+        "name": "Chat", "type": "chat", "triggers": [],
+        "system_prompt": "x", "allowed_tools": [], "enabled": True,
+    })
+    assert a.knowledge_access == {"allow_sensitive": False, "kinds": "all"}
+    engine.update_agent(a.id, {"knowledge_access": {"allow_sensitive": True, "kinds": "all"}})
+    assert engine.get_agent(a.id).knowledge_access["allow_sensitive"] is True
+
+
 @pytest.mark.asyncio
 async def test_run_agent_short_circuits_during_pause():
     """When an agent is in rate-limit cooldown, _run_agent must skip

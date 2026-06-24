@@ -80,6 +80,7 @@ class Agent:
     # When >0, Claude returns thinking blocks alongside the answer (sonnet-4.5+/
     # opus-4+ only). The runner clamps to max_tokens-1 if invalid.
     thinking_budget: int = 0
+    knowledge_access: dict = field(default_factory=lambda: {"allow_sensitive": False, "kinds": "all"})
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +261,7 @@ class AgentEngine:
                     fallback_action=raw.get("fallback_action"),
                     response_mode=raw.get("response_mode", "auto"),
                     thinking_budget=int(raw.get("thinking_budget", 0) or 0),
+                    knowledge_access=raw.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
                 )
                 self._agents[agent.id] = agent
                 if agent.enabled and agent.type == "agent":
@@ -338,6 +340,7 @@ class AgentEngine:
             fallback_action=data.get("fallback_action"),
             response_mode=data.get("response_mode", "auto"),
             thinking_budget=max(0, int(data.get("thinking_budget", 0) or 0)),
+            knowledge_access=data.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
         )
         self._agents[agent.id] = agent
         if self._mqtt_publisher:
@@ -359,7 +362,7 @@ class AgentEngine:
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
         "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
         "states", "action_mode", "rules", "fallback_action", "response_mode",
-        "thinking_budget",
+        "thinking_budget", "knowledge_access",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
