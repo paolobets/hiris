@@ -501,3 +501,53 @@ async def test_list_tasks_api_empty(client):
     assert resp.status == 200
     data = await resp.json()
     assert isinstance(data, list)
+
+
+@pytest.mark.asyncio
+async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
+    """Task 7 — de-tokenize: the handler must replace vault tokens in the
+    runner's reply with real PII values before returning the JSON response."""
+    from hiris.app.brain.privacy import VaultStore, Pseudonymizer
+
+    # Build a vault with one mapping: [IBAN_1] -> real IBAN
+    vault = VaultStore(str(tmp_path / "vault.db"))
+    vault.token_for("iban", "IT60X0542811101000000123456")  # creates [IBAN_1]
+    pseudonymizer = Pseudonymizer(vault)
+
+    app = create_app()
+
+    mock_ha = AsyncMock()
+    mock_ha.get_states = AsyncMock(return_value=[])
+    mock_ha.start = AsyncMock()
+    mock_ha.stop = AsyncMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine.start = AsyncMock()
+    engine.stop = AsyncMock()
+
+    mock_runner = AsyncMock()
+    # Runner returns a response that contains the vault token (not the real IBAN)
+    mock_runner.chat = AsyncMock(return_value="Saldo su [IBAN_1].")
+    mock_runner.last_tool_calls = []
+    engine.set_claude_runner(mock_runner)
+
+    app["ha_client"] = mock_ha
+    app["engine"] = engine
+    app["claude_runner"] = mock_runner
+    app["theme"] = "auto"
+    app["data_dir"] = str(tmp_path)
+    app["pseudonymizer"] = pseudonymizer
+
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+
+    c = await aiohttp_client(app)
+    resp = await c.post("/api/chat", json={"message": "qual è il mio IBAN?"})
+    assert resp.status == 200
+    data = await resp.json()
+    # The token must be replaced with the real value
+    assert "IT60X0542811101000000123456" in data["response"]
+    assert "[IBAN_1]" not in data["response"]
+    vault.close()

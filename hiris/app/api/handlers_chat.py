@@ -213,6 +213,14 @@ async def handle_chat(request: web.Request) -> web.Response:
                 logger.debug("SSE chunk parse skipped: %s", exc)
         await stream_resp.write_eof()
         full_response = "".join(collected_tokens)
+        # De-tokenize pseudonymized tokens in the accumulated response so
+        # persisted history holds real values (consistent with what the user
+        # sees in the non-streaming path).
+        # Note: individual SSE chunks streamed to the client may still show
+        # tokens until a future streaming refactor re-emits de-tokenized text.
+        pseudonymizer = request.app.get("pseudonymizer")
+        if pseudonymizer is not None and full_response:
+            full_response = pseudonymizer.detokenize(full_response)
         # Skip persistence for toxic / synthetic-error responses so the next
         # turn does not see a poisoned history. discard_collected already
         # zeroes collected_tokens for tool-call leaks; this also covers the
@@ -244,6 +252,13 @@ async def handle_chat(request: web.Request) -> web.Response:
         thinking_budget=agent_thinking_budget,
         knowledge_allow_sensitive=allow_sensitive,
     )
+
+    # De-tokenize pseudonymized tokens before toxicity check, persistence,
+    # and serialization so both the stored history and the returned JSON
+    # contain real values rather than vault tokens.
+    pseudonymizer = request.app.get("pseudonymizer")
+    if pseudonymizer is not None and isinstance(response, str) and response:
+        response = pseudonymizer.detokenize(response)
 
     # Persist the new user+assistant exchange — but skip when the runner
     # returned a synthetic error / leak sentinel, so the next turn doesn't
