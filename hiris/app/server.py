@@ -435,7 +435,7 @@ async def _on_startup(app: web.Application) -> None:
     # is the dedup strategy — no persistent dedup state is maintained.
     async def _notify_due_obligations() -> None:
         from datetime import date as _date
-        from .brain.reminders import due_obligations_to_notify as _due_obligations
+        from .brain.reminders import run_due_reminders as _run_due_reminders
         from .tools.notify_tools import send_notification as _send_notification
 
         store = app.get("knowledge_store")
@@ -445,12 +445,8 @@ async def _on_startup(app: web.Application) -> None:
         n_cfg = app.get("_notify_config_ref")
         if ha is None or n_cfg is None:
             return
-        try:
-            items = _due_obligations(store, today=_date.today(), horizon_days=7)
-        except Exception as exc:
-            logger.error("Due-date reminders: error querying obligations: %s", exc)
-            return
-        for item in items:
+
+        async def _notify_one(item: dict) -> None:
             due = item.get("due_date", "?")
             content = item.get("content", "")
             message = f"Scadenza imminente: {content} (entro {due})"
@@ -458,6 +454,11 @@ async def _on_startup(app: web.Application) -> None:
                 await _send_notification(ha, message, "ha_push", n_cfg)
             except Exception as exc:
                 logger.error("Due-date reminders: notification failed for %r: %s", content, exc)
+
+        try:
+            await _run_due_reminders(store, _notify_one, today=_date.today())
+        except Exception as exc:
+            logger.error("Due-date reminders: error querying obligations: %s", exc)
 
     # Stash notify_config reference so the job closure can access it after startup
     app["_notify_config_ref"] = notify_config
