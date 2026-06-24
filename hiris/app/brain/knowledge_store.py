@@ -64,6 +64,47 @@ class KnowledgeStore:
     def _now(self) -> str:
         return datetime.now(timezone.utc).strftime(_TS_FMT)
 
+    def add_item(
+        self, *, kind: str, content: str, owner: str = "home",
+        title: str = "", data: dict | None = None,
+        amount: float | None = None, due_date: str | None = None,
+        category: str | None = None, embedding: list[float] | None = None,
+        sensitivity: str = "normal", source: str = "manual",
+        source_ref: str | None = None, confidence: float = 1.0,
+        status: str = "approved", valid_from: str | None = None,
+        valid_until: str | None = None,
+    ) -> int:
+        now = self._now()
+        blob = vec_to_blob(embedding) if embedding else None
+        with self._mu:
+            cur = self._conn.execute(
+                "INSERT INTO knowledge_items"
+                "(kind, owner, title, content, data, amount, due_date, category,"
+                " embedding, sensitivity, source, source_ref, confidence, status,"
+                " valid_from, valid_until, created_at, updated_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (kind, owner, title, content, json.dumps(data or {}), amount,
+                 due_date, category, blob, sensitivity, source, source_ref,
+                 confidence, status, valid_from, valid_until, now, now),
+            )
+            self._conn.commit()
+            return cur.lastrowid or 0
+
+    def get_item(self, item_id: int) -> dict | None:
+        with self._mu:
+            row = self._conn.execute(
+                "SELECT * FROM knowledge_items WHERE id=?", (item_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        d.pop("embedding", None)
+        try:
+            d["data"] = json.loads(d["data"])
+        except Exception:
+            d["data"] = {}
+        return d
+
     def close(self) -> None:
         with self._mu:
             self._conn.close()

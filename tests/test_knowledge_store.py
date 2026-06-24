@@ -11,3 +11,19 @@ def test_init_creates_tables(tmp_path):
     assert "knowledge_items" in names
     assert "knowledge_links" in names
     store.close()
+
+
+def test_add_and_get_item(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    item_id = store.add_item(
+        kind="preference", owner="home",
+        title="Intolleranza lattosio",
+        content="Paolo è intollerante al lattosio",
+        embedding=[0.1, 0.2, 0.3],
+        sensitivity="normal", source="manual", status="approved",
+    )
+    got = store.get_item(item_id)
+    assert got["kind"] == "preference"
+    assert got["content"] == "Paolo è intollerante al lattosio"
+    assert got["status"] == "approved"
+    store.close()
