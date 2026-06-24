@@ -24,6 +24,9 @@ from .api.handlers_proposals import (
     handle_list_proposals, handle_get_proposal,
     handle_apply_proposal, handle_reject_proposal,
 )
+from .api.handlers_knowledge import (
+    handle_list_pending, handle_approve, handle_reject, handle_manual_add,
+)
 from .proxy.health_monitor import HealthMonitor
 from .proxy.proposal_store import ProposalStore
 from .agent_engine import AgentEngine
@@ -35,6 +38,7 @@ from .proxy.knowledge_db import KnowledgeDB
 from .proxy.semantic_context_map import SemanticContextMap
 from .proxy.memory_store import MemoryStore
 from .backends.embeddings import build_embedding_provider
+from .brain.knowledge_store import KnowledgeStore
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
@@ -399,6 +403,9 @@ async def _on_startup(app: web.Application) -> None:
     app["embedding_provider"] = embedder
     app["memory_rag_k"] = memory_rag_k
 
+    knowledge_store = KnowledgeStore(os.path.join(data_dir, "knowledge.db"))
+    app["knowledge_store"] = knowledge_store
+
     # Daily retention job (chat messages + expired memories)
     from .chat_store import delete_old_messages as _delete_old_messages
 
@@ -436,6 +443,8 @@ async def _on_startup(app: web.Application) -> None:
         memory_retention_days=memory_retention_days,
         health_monitor=health_monitor,
         proposal_store=proposal_store,
+        knowledge_store=knowledge_store,
+        embedder=embedder,
     )
     dispatcher.set_task_engine(task_engine)
 
@@ -541,6 +550,8 @@ async def _on_cleanup(app: web.Application) -> None:
         await app["mqtt_publisher"].stop()
     if "knowledge_db" in app:
         app["knowledge_db"].close()
+    if "knowledge_store" in app:
+        app["knowledge_store"].close()
     if "memory_store" in app:
         app["memory_store"].close()
     if "proposal_store" in app:
@@ -610,6 +621,10 @@ def create_app() -> web.Application:
     app.router.add_get("/api/proposals/{proposal_id}", handle_get_proposal)
     app.router.add_post("/api/proposals/{proposal_id}/apply", handle_apply_proposal)
     app.router.add_post("/api/proposals/{proposal_id}/reject", handle_reject_proposal)
+    app.router.add_get("/api/knowledge/pending", handle_list_pending)
+    app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
+    app.router.add_post("/api/knowledge/{id}/reject", handle_reject)
+    app.router.add_post("/api/knowledge", handle_manual_add)
 
     return app
 
