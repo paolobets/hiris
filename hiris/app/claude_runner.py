@@ -443,6 +443,7 @@ class ClaudeRunner:
         visible_entity_ids: Optional[frozenset] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
+        knowledge_allow_sensitive: bool = False,
     ) -> str:
         if agent_id:
             if agent_id not in self._per_agent_usage:
@@ -580,6 +581,8 @@ class ClaudeRunner:
                             allowed_endpoints=allowed_endpoints,
                             agent_id=agent_id,
                             visible_entity_ids=visible_entity_ids,
+                            knowledge_allow_sensitive=knowledge_allow_sensitive,
+                            model=effective_model,
                         )
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({
@@ -615,6 +618,7 @@ class ClaudeRunner:
         visible_entity_ids=None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
+        knowledge_allow_sensitive: bool = False,
     ):
         """Async generator yielding SSE-formatted lines for the chat response.
 
@@ -648,6 +652,7 @@ class ClaudeRunner:
                 visible_entity_ids=visible_entity_ids,
                 response_mode=response_mode,
                 thinking_budget=thinking_budget,
+                knowledge_allow_sensitive=knowledge_allow_sensitive,
             )
         except Exception as exc:
             yield f'data: {_json.dumps({"type": "error", "message": str(exc)})}\n\n'
@@ -679,6 +684,7 @@ class ClaudeRunner:
         agent_id: Optional[str] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
+        knowledge_allow_sensitive: bool = False,
     ) -> tuple[str, dict]:
         """Run an autonomous agent evaluation — restrict tools, inject structured-output instructions.
 
@@ -763,6 +769,7 @@ class ClaudeRunner:
             agent_id=agent_id,
             response_mode=response_mode,
             thinking_budget=thinking_budget,
+            knowledge_allow_sensitive=knowledge_allow_sensitive,
         )
         clean_text, structured = _parse_structured_output(raw_result)
         return clean_text, structured

@@ -39,6 +39,7 @@ from .proxy.semantic_context_map import SemanticContextMap
 from .proxy.memory_store import MemoryStore
 from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
+from .brain.privacy import VaultStore, Pseudonymizer
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
@@ -406,6 +407,11 @@ async def _on_startup(app: web.Application) -> None:
     knowledge_store = KnowledgeStore(os.path.join(data_dir, "knowledge.db"))
     app["knowledge_store"] = knowledge_store
 
+    vault = VaultStore(os.path.join(data_dir, "vault.db"))
+    pseudonymizer = Pseudonymizer(vault)
+    app["vault"] = vault
+    app["pseudonymizer"] = pseudonymizer
+
     # Daily retention job (chat messages + expired memories)
     from .chat_store import delete_old_messages as _delete_old_messages
 
@@ -489,6 +495,7 @@ async def _on_startup(app: web.Application) -> None:
         proposal_store=proposal_store,
         knowledge_store=knowledge_store,
         embedder=embedder,
+        pseudonymizer=pseudonymizer,
     )
     dispatcher.set_task_engine(task_engine)
 
@@ -596,6 +603,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["knowledge_db"].close()
     if "knowledge_store" in app:
         app["knowledge_store"].close()
+    if "vault" in app:
+        app["vault"].close()
     if "memory_store" in app:
         app["memory_store"].close()
     if "proposal_store" in app:

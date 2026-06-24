@@ -92,6 +92,8 @@ async def handle_recall_knowledge(
     *,
     owner: str,
     allow_sensitive: bool = False,
+    pseudonymizer: Any = None,
+    cloud: bool = True,
 ) -> dict:
     try:
         qv = await embedder.embed(tool_input["query"])
@@ -109,11 +111,14 @@ async def handle_recall_knowledge(
             allow_sensitive=allow_sensitive,
         ),
     )
-    return {
-        "results": [
-            {"id": r["id"], "kind": r["kind"], "content": r["content"]} for r in res
-        ]
-    }
+    out = []
+    for r in res:
+        content = r["content"]
+        is_sensitive = r.get("sensitivity") == "sensitive"
+        if is_sensitive and cloud and pseudonymizer is not None:
+            content = pseudonymizer.pseudonymize(content)
+        out.append({"id": r["id"], "kind": r["kind"], "content": content})
+    return {"results": out}
 
 
 async def handle_link_knowledge(store: Any, tool_input: dict) -> dict:

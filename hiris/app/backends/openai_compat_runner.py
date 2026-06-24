@@ -417,6 +417,7 @@ class OpenAICompatRunner:
         visible_entity_ids: Optional[frozenset] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
+        knowledge_allow_sensitive: bool = False,
     ) -> str:
         # thinking_budget is part of the runner contract since v0.9.5 because
         # ClaudeRunner uses it for Anthropic Extended Thinking. OpenAI/Ollama/
@@ -613,6 +614,8 @@ class OpenAICompatRunner:
                         allowed_endpoints=allowed_endpoints,
                         agent_id=agent_id,
                         visible_entity_ids=visible_entity_ids,
+                        knowledge_allow_sensitive=knowledge_allow_sensitive,
+                        model=effective_model,
                     )
                     self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
                     messages.append({
@@ -653,6 +656,7 @@ class OpenAICompatRunner:
         visible_entity_ids=None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
+        knowledge_allow_sensitive: bool = False,
     ):
         """Vero streaming SSE: i token arrivano mentre il modello genera.
         Le iterazioni tool-call vengono risolte prima di cedere il controllo
@@ -855,6 +859,8 @@ class OpenAICompatRunner:
                         allowed_endpoints=allowed_endpoints,
                         agent_id=agent_id,
                         visible_entity_ids=visible_entity_ids,
+                        knowledge_allow_sensitive=knowledge_allow_sensitive,
+                        model=effective_model,
                     )
                     self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
                     messages.append({
@@ -889,6 +895,7 @@ class OpenAICompatRunner:
         agent_id: Optional[str] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
+        knowledge_allow_sensitive: bool = False,
     ) -> tuple[str, dict]:
         # thinking_budget accepted for runner-contract symmetry with
         # ClaudeRunner; not applicable on OpenAI-compat APIs (Ollama uses
@@ -946,6 +953,7 @@ class OpenAICompatRunner:
             require_confirmation=require_confirmation,
             agent_id=agent_id,
             response_mode=response_mode,
+            knowledge_allow_sensitive=knowledge_allow_sensitive,
         )
         clean_text, structured = _parse_structured_output(raw_result)
         return clean_text, structured

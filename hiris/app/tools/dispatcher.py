@@ -26,6 +26,7 @@ from .proposal_tools import create_automation_proposal
 from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
+from ..llm_router import backend_is_cloud
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,7 @@ class ToolDispatcher:
         proposal_store: Any = None,
         knowledge_store: Any = None,
         embedder: Any = None,
+        pseudonymizer: Any = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -93,6 +95,7 @@ class ToolDispatcher:
         self._knowledge_store = knowledge_store
         # Use dedicated embedder if provided, otherwise fall back to the memory embedder
         self._knowledge_embedder = embedder if embedder is not None else embedding_provider
+        self._pseudonymizer = pseudonymizer
         self._task_engine: Any = None
 
     def set_task_engine(self, engine: Any) -> None:
@@ -111,6 +114,8 @@ class ToolDispatcher:
         allowed_endpoints: Optional[list[dict]] = None,
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
+        knowledge_allow_sensitive: bool = False,
+        model: str = "auto",
     ) -> Any:
         _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
@@ -320,8 +325,12 @@ class ToolDispatcher:
                     self._knowledge_store, self._knowledge_embedder, inputs, owner="home"
                 )
             if name == "recall_knowledge" and self._knowledge_store:
+                cloud = backend_is_cloud(model)
                 return await handle_recall_knowledge(
-                    self._knowledge_store, self._knowledge_embedder, inputs, owner="home"
+                    self._knowledge_store, self._knowledge_embedder, inputs, owner="home",
+                    allow_sensitive=knowledge_allow_sensitive,
+                    pseudonymizer=self._pseudonymizer,
+                    cloud=cloud,
                 )
             if name == "link_knowledge" and self._knowledge_store:
                 return await handle_link_knowledge(self._knowledge_store, inputs)
