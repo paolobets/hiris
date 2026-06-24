@@ -96,3 +96,19 @@ def test_links_and_neighbors(tmp_path):
     nb = store.neighbors(a)
     assert [n["content"] for n in nb] == ["Pizza"]
     store.close()
+
+
+def test_document_chunks_add_search_exists(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "b.db"))
+    doc = store.add_item(kind="document", content="Estratto conto giugno",
+                         source="mayan", source_ref="42", sensitivity="sensitive")
+    store.add_document_chunk(item_id=doc, mayan_doc_id="42", chunk_index=0,
+                             content="bonifico 50 euro", embedding=[1.0, 0.0])
+    store.add_document_chunk(item_id=doc, mayan_doc_id="42", chunk_index=1,
+                             content="prelievo bancomat", embedding=[0.0, 1.0])
+    assert store.document_exists("42") is True
+    assert store.document_exists("99") is False
+    hits = store.search_chunks(query_vec=[1.0, 0.0], k=1, allow_sensitive=True)
+    assert hits[0]["content"] == "bonifico 50 euro"
+    assert hits[0]["sensitivity"] == "sensitive"
+    store.close()

@@ -48,6 +48,18 @@ CREATE TABLE IF NOT EXISTS knowledge_links (
 );
 CREATE INDEX IF NOT EXISTS idx_kl_src ON knowledge_links(src_id);
 CREATE INDEX IF NOT EXISTS idx_kl_dst ON knowledge_links(dst_id);
+
+CREATE TABLE IF NOT EXISTS document_chunks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id       INTEGER NOT NULL,
+    mayan_doc_id  TEXT NOT NULL,
+    chunk_index   INTEGER NOT NULL,
+    content       TEXT NOT NULL,
+    embedding     BLOB,
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dc_item ON document_chunks(item_id);
+CREATE INDEX IF NOT EXISTS idx_dc_doc  ON document_chunks(mayan_doc_id);
 """
 
 
@@ -246,6 +258,53 @@ class KnowledgeStore:
             except Exception:
                 d["data"] = {}
             out.append(d)
+        return out
+
+    def add_document_chunk(self, *, item_id: int, mayan_doc_id: str,
+                           chunk_index: int, content: str,
+                           embedding: list[float] | None = None) -> int:
+        blob = vec_to_blob(embedding) if embedding else None
+        with self._mu:
+            cur = self._conn.execute(
+                "INSERT INTO document_chunks"
+                "(item_id, mayan_doc_id, chunk_index, content, embedding, created_at)"
+                " VALUES(?,?,?,?,?,?)",
+                (item_id, mayan_doc_id, chunk_index, content, blob, self._now()),
+            )
+            self._conn.commit()
+            return cur.lastrowid or 0
+
+    def document_exists(self, mayan_doc_id: str) -> bool:
+        with self._mu:
+            row = self._conn.execute(
+                "SELECT 1 FROM knowledge_items"
+                " WHERE kind='document' AND source='mayan' AND source_ref=? LIMIT 1",
+                (mayan_doc_id,),
+            ).fetchone()
+        return row is not None
+
+    def search_chunks(self, *, query_vec: list[float], k: int = 5,
+                      owner: str | None = None, allow_sensitive: bool = False) -> list[dict]:
+        clauses = ["c.embedding IS NOT NULL", "i.status='approved'"]
+        params: list = []
+        if owner is not None:
+            clauses.append("(i.owner=? OR i.owner='home')"); params.append(owner)
+        if not allow_sensitive:
+            clauses.append("i.sensitivity='normal'")
+        sql = ("SELECT c.id, c.content, c.embedding, c.mayan_doc_id, c.item_id,"
+               " i.sensitivity, i.owner FROM document_chunks c"
+               " JOIN knowledge_items i ON i.id = c.item_id"
+               " WHERE " + " AND ".join(clauses))
+        with self._mu:
+            rows = self._conn.execute(sql, params).fetchall()
+            scored = [(cosine_similarity(query_vec, blob_to_vec(r["embedding"])), r)
+                      for r in rows]
+        scored.sort(key=lambda x: x[0], reverse=True)
+        out = []
+        for sim, r in scored[:k]:
+            out.append({"id": r["id"], "content": r["content"],
+                        "mayan_doc_id": r["mayan_doc_id"], "item_id": r["item_id"],
+                        "sensitivity": r["sensitivity"], "score": sim})
         return out
 
     def close(self) -> None:
