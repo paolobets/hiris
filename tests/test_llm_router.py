@@ -211,6 +211,16 @@ def test_openrouter_runner_init(tmp_path):
     assert runner._client.max_retries == 2
 
 
+def test_backend_is_cloud():
+    from hiris.app.llm_router import backend_is_cloud
+    assert backend_is_cloud("claude-sonnet-4-6") is True
+    assert backend_is_cloud("gpt-4o-mini") is True
+    assert backend_is_cloud("openrouter:meta/llama") is True
+    assert backend_is_cloud("llama3.1:8b") is False   # Ollama locale
+    # 'auto' è cloud-first nelle strategie default → trattato come cloud (prudente)
+    assert backend_is_cloud("auto") is True
+
+
 @pytest.mark.asyncio
 async def test_classify_entities_empty_response_returns_empty():
     """An empty backend reply (down / circuit open) returns {} without routing

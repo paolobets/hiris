@@ -30,6 +30,21 @@ def _is_openrouter_model(model: str) -> bool:
     return model.startswith("openrouter:") or model.startswith("openrouter/")
 
 
+def backend_is_cloud(model: str) -> bool:
+    """True se il modello esce verso un provider cloud (claude/openai/openrouter).
+    Ollama (e modelli senza prefisso noto) sono locali. 'auto' è trattato come
+    cloud per prudenza (le strategie default partono dal cloud)."""
+    if model == "auto":
+        return True
+    if model.startswith("claude-"):
+        return True
+    if _is_openrouter_model(model):
+        return True
+    if _is_openai_model(model):
+        return True
+    return False
+
+
 _STRATEGY_ORDER = {
     # cost_first: prefer free local (Ollama) → cheap cloud → full cloud
     "cost_first":    ["ollama", "openrouter", "openai", "claude"],
