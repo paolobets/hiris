@@ -27,3 +27,15 @@ def test_add_and_get_item(tmp_path):
     assert got["content"] == "Paolo è intollerante al lattosio"
     assert got["status"] == "approved"
     store.close()
+
+
+def test_list_approve_delete(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    pid = store.add_item(kind="fact", content="proposto", status="pending")
+    assert [i["id"] for i in store.list_items(status="pending")] == [pid]
+    store.approve(pid)
+    assert store.get_item(pid)["status"] == "approved"
+    assert store.list_items(status="pending") == []
+    store.delete_item(pid)
+    assert store.get_item(pid) is None
+    store.close()

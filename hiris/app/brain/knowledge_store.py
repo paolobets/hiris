@@ -105,6 +105,50 @@ class KnowledgeStore:
             d["data"] = {}
         return d
 
+    def list_items(
+        self, *, status: str | None = None, owner: str | None = None,
+        kind: str | None = None, limit: int = 100,
+    ) -> list[dict]:
+        clauses, params = [], []
+        if status is not None:
+            clauses.append("status=?"); params.append(status)
+        if owner is not None:
+            clauses.append("owner=?"); params.append(owner)
+        if kind is not None:
+            clauses.append("kind=?"); params.append(kind)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        with self._mu:
+            rows = self._conn.execute(
+                "SELECT * FROM knowledge_items" + where
+                + " ORDER BY created_at DESC LIMIT ?", (*params, limit),
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r); d.pop("embedding", None)
+            try:
+                d["data"] = json.loads(d["data"])
+            except Exception:
+                d["data"] = {}
+            out.append(d)
+        return out
+
+    def approve(self, item_id: int) -> None:
+        with self._mu:
+            self._conn.execute(
+                "UPDATE knowledge_items SET status='approved', updated_at=? WHERE id=?",
+                (self._now(), item_id),
+            )
+            self._conn.commit()
+
+    def delete_item(self, item_id: int) -> None:
+        with self._mu:
+            self._conn.execute("DELETE FROM knowledge_items WHERE id=?", (item_id,))
+            self._conn.execute(
+                "DELETE FROM knowledge_links WHERE src_id=? OR dst_id=?",
+                (item_id, item_id),
+            )
+            self._conn.commit()
+
     def close(self) -> None:
         with self._mu:
             self._conn.close()
