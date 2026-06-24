@@ -39,3 +39,16 @@ def test_list_approve_delete(tmp_path):
     store.delete_item(pid)
     assert store.get_item(pid) is None
     store.close()
+
+
+def test_search_ranks_by_cosine_and_excludes_sensitive(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    store.add_item(kind="fact", content="vicino", embedding=[1.0, 0.0])
+    store.add_item(kind="fact", content="lontano", embedding=[0.0, 1.0])
+    store.add_item(kind="fact", content="segreto", embedding=[1.0, 0.0],
+                   sensitivity="sensitive")
+    res = store.search(query_vec=[1.0, 0.0], k=5, allow_sensitive=False)
+    contents = [r["content"] for r in res]
+    assert contents[0] == "vicino"          # cosine = 1.0
+    assert "segreto" not in contents        # sensitive escluso
+    store.close()

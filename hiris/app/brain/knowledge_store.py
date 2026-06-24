@@ -149,6 +149,39 @@ class KnowledgeStore:
             )
             self._conn.commit()
 
+    def search(
+        self, *, query_vec: list[float], k: int = 5,
+        owner: str | None = None, allow_sensitive: bool = False,
+        kinds: list[str] | None = None,
+    ) -> list[dict]:
+        clauses = ["status='approved'", "embedding IS NOT NULL"]
+        params: list = []
+        if owner is not None:
+            clauses.append("(owner=? OR owner='home')"); params.append(owner)
+        if not allow_sensitive:
+            clauses.append("sensitivity='normal'")
+        if kinds:
+            clauses.append("kind IN (%s)" % ",".join("?" * len(kinds)))
+            params.extend(kinds)
+        sql = "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
+        with self._mu:
+            rows = self._conn.execute(sql, params).fetchall()
+        scored = []
+        for r in rows:
+            sim = cosine_similarity(query_vec, blob_to_vec(r["embedding"]))
+            scored.append((sim, r))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        out = []
+        for sim, r in scored[:k]:
+            d = dict(r); d.pop("embedding", None)
+            try:
+                d["data"] = json.loads(d["data"])
+            except Exception:
+                d["data"] = {}
+            d["score"] = sim
+            out.append(d)
+        return out
+
     def close(self) -> None:
         with self._mu:
             self._conn.close()
