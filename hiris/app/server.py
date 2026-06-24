@@ -429,6 +429,49 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
+    # Daily due-date reminders job (second-brain phase-1, Task 10).
+    # Runs at 08:00 every day. Sends one notification per due obligation via the
+    # existing send_notification path (ha_push by default). Once-per-day cadence
+    # is the dedup strategy — no persistent dedup state is maintained.
+    async def _notify_due_obligations() -> None:
+        from datetime import date as _date
+        from .brain.reminders import due_obligations_to_notify as _due_obligations
+        from .tools.notify_tools import send_notification as _send_notification
+
+        store = app.get("knowledge_store")
+        if store is None:
+            return
+        ha = app.get("ha_client")
+        n_cfg = app.get("_notify_config_ref")
+        if ha is None or n_cfg is None:
+            return
+        try:
+            items = _due_obligations(store, today=_date.today(), horizon_days=7)
+        except Exception as exc:
+            logger.error("Due-date reminders: error querying obligations: %s", exc)
+            return
+        for item in items:
+            due = item.get("due_date", "?")
+            content = item.get("content", "")
+            message = f"Scadenza imminente: {content} (entro {due})"
+            try:
+                await _send_notification(ha, message, "ha_push", n_cfg)
+            except Exception as exc:
+                logger.error("Due-date reminders: notification failed for %r: %s", content, exc)
+
+    # Stash notify_config reference so the job closure can access it after startup
+    app["_notify_config_ref"] = notify_config
+
+    engine._scheduler.add_job(
+        _notify_due_obligations,
+        trigger="cron",
+        hour=8,
+        minute=0,
+        id="hiris_due_reminders",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
     from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
