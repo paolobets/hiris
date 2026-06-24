@@ -845,6 +845,82 @@ async def test_chat_no_thinking_param_when_disabled(runner):
     assert "thinking" not in kwargs
 
 
+def _count_cache_breakpoints(kwargs: dict) -> int:
+    """Count cache_control blocks across system, tools and message content."""
+    def _count(blocks) -> int:
+        if not isinstance(blocks, list):
+            return 0
+        return sum(1 for b in blocks if isinstance(b, dict) and b.get("cache_control"))
+    n = _count(kwargs.get("system")) + _count(kwargs.get("tools"))
+    for msg in kwargs.get("messages", []):
+        n += _count(msg.get("content"))
+    return n
+
+
+@pytest.mark.asyncio
+async def test_cache_control_within_limit_with_modifiers_and_history(runner):
+    """Worst-case config must stay within Anthropic's hard cap of 4 cache_control.
+
+    Regression for the v0.9.5 overflow: BASE + agent prompt + last modifier each
+    carried their own breakpoint (3), which together with the tool-defs and the
+    conversation-history breakpoints reached 5 on a follow-up turn and made the
+    API return a 400 — surfaced to the user as the generic
+    "Errore temporaneo del servizio AI" on the 2nd message of a chat.
+    """
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs)
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage = MagicMock(input_tokens=5, output_tokens=2,
+                            cache_creation_input_tokens=0, cache_read_input_tokens=0)
+        return m
+
+    runner._client.messages.create = capture
+    await runner.chat(
+        "Domanda di follow-up",
+        system_prompt="Prompt agente",
+        context_str="## Contesto casa\nluce: accesa",
+        conversation_history=[
+            {"role": "user", "content": "prima domanda"},
+            {"role": "assistant", "content": "prima risposta"},
+        ],
+        restrict_to_home=True,
+        require_confirmation=True,
+        response_mode="compact",
+    )
+    n = _count_cache_breakpoints(captured[0])
+    assert n <= 4, f"too many cache_control breakpoints: {n}"
+
+
+@pytest.mark.asyncio
+async def test_cache_control_single_system_breakpoint(runner):
+    """All stable system content shares ONE cumulative breakpoint, not one each."""
+    captured = []
+
+    async def capture(**kwargs):
+        captured.append(kwargs)
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage = MagicMock(input_tokens=5, output_tokens=2,
+                            cache_creation_input_tokens=0, cache_read_input_tokens=0)
+        return m
+
+    runner._client.messages.create = capture
+    await runner.chat(
+        "Ciao",
+        system_prompt="Prompt agente",
+        restrict_to_home=True,
+        require_confirmation=True,
+    )
+    system = captured[0]["system"]
+    n_system = sum(1 for b in system if isinstance(b, dict) and b.get("cache_control"))
+    assert n_system == 1
+
+
 @pytest.mark.asyncio
 async def test_chat_collects_thinking_blocks(runner):
     """Thinking blocks in response.content are captured in last_thinking_blocks."""

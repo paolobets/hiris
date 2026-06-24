@@ -439,43 +439,38 @@ class ClaudeRunner:
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         # ── System prompt blocks with prompt caching ─────────────────────────
-        # Anthropic prompt caching is *cumulative*: a cache_control breakpoint
-        # caches everything from the start up to that breakpoint. Since blocks
-        # must therefore appear in order [stable …][volatile …], we put ALL
-        # stable per-agent content (BASE, agent prompt, behaviour modifiers)
-        # before the query-dependent context_str.
+        # Anthropic prompt caching is *cumulative*: a single cache_control
+        # breakpoint caches everything from the start of the request up to that
+        # point. So all stable per-agent content (BASE, agent prompt, behaviour
+        # modifiers) is emitted WITHOUT individual breakpoints, and ONE
+        # breakpoint on the last stable block captures them all. The volatile,
+        # query-dependent context_str is appended after it, uncached.
         #
-        # Block 1 — BASE (always cached): tool list + anti-hallucination rules.
-        # Block 2 — agent prompt (cached): strategic_context + system_prompt.
-        # Block 3 — behaviour modifiers (cached): RESTRICT, REQUIRE_CONFIRMATION,
-        #           response_mode prompts. Stable per agent config; before v0.9.5
-        #           they sat after context_str and never reached the cache.
-        # Block 4 — context_str (NOT cached): SemanticContextMap query output.
-        system_blocks: list[dict] = [
-            {"type": "text", "text": BASE_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
-        ]
+        # This keeps the request within Anthropic's hard cap of 4 cache_control
+        # breakpoints. Previously BASE, the agent prompt and the last modifier
+        # each carried their own breakpoint (3); together with the tool-defs
+        # breakpoint and the conversation-history breakpoint that reached 5 on
+        # follow-up turns, and the API rejected the request with a 400
+        # (regression introduced in v0.9.5, surfaced to the user as a generic
+        # "Errore temporaneo del servizio AI" on the 2nd message of a chat).
+        system_blocks: list[dict] = [{"type": "text", "text": BASE_SYSTEM_PROMPT}]
         if system_prompt:
-            system_blocks.append({"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}})
-        # Behaviour modifiers — stable per agent config, must precede context_str
-        # so the cache breakpoint placed on the *last* one of them captures them all.
-        modifier_blocks: list[dict] = []
+            system_blocks.append({"type": "text", "text": system_prompt})
+        # Behaviour modifiers — stable per agent config, must precede context_str.
         if restrict_to_home:
-            modifier_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
+            system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
         if require_confirmation:
-            modifier_blocks.append({"type": "text", "text": REQUIRE_CONFIRMATION_PROMPT})
+            system_blocks.append({"type": "text", "text": REQUIRE_CONFIRMATION_PROMPT})
         if response_mode == "compact":
-            modifier_blocks.append({"type": "text", "text": "Rispondi in modo conciso, massimo 2-3 frasi."})
+            system_blocks.append({"type": "text", "text": "Rispondi in modo conciso, massimo 2-3 frasi."})
         elif response_mode == "minimal":
-            modifier_blocks.append({"type": "text", "text": (
+            system_blocks.append({"type": "text", "text": (
                 "Rispondi SOLO in formato chiave: valore, una riga per dato. "
                 "Esempio:\nStato: acceso\nTemperatura: 21°C"
             )})
-        if modifier_blocks:
-            # Add cache_control on the last modifier so the cumulative cache
-            # extends through them. Without modifiers the breakpoint stays on
-            # block 2 (agent prompt) — same behaviour as pre-v0.9.5.
-            modifier_blocks[-1] = {**modifier_blocks[-1], "cache_control": {"type": "ephemeral"}}
-            system_blocks.extend(modifier_blocks)
+        # Single cumulative cache breakpoint on the last stable block (captures
+        # BASE + agent prompt + modifiers), placed before the volatile context_str.
+        system_blocks[-1] = {**system_blocks[-1], "cache_control": {"type": "ephemeral"}}
         if context_str:
             system_blocks.append({"type": "text", "text": context_str})
         effective_model = resolve_model(model, agent_type)
