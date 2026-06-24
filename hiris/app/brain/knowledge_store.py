@@ -214,6 +214,36 @@ class KnowledgeStore:
             ).fetchall()
         return {r["cat"]: float(r["tot"]) for r in rows}
 
+    def add_link(
+        self, *, src_id: int, dst_id: int, relation: str,
+        weight: float = 1.0, source: str = "manual",
+    ) -> None:
+        with self._mu:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO knowledge_links"
+                "(src_id, dst_id, relation, weight, source, created_at)"
+                " VALUES(?,?,?,?,?,?)",
+                (src_id, dst_id, relation, weight, source, self._now()),
+            )
+            self._conn.commit()
+
+    def neighbors(self, item_id: int) -> list[dict]:
+        with self._mu:
+            rows = self._conn.execute(
+                "SELECT i.* FROM knowledge_items i"
+                " JOIN knowledge_links l ON l.dst_id = i.id"
+                " WHERE l.src_id = ? AND i.status='approved'", (item_id,),
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r); d.pop("embedding", None)
+            try:
+                d["data"] = json.loads(d["data"])
+            except Exception:
+                d["data"] = {}
+            out.append(d)
+        return out
+
     def close(self) -> None:
         with self._mu:
             self._conn.close()

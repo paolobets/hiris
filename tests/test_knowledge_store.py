@@ -67,3 +67,13 @@ def test_structured_queries(tmp_path):
     agg = store.expenses_by_category()
     assert agg["cibo"] == 50.0
     store.close()
+
+
+def test_links_and_neighbors(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    a = store.add_item(kind="expense", content="Cena")
+    b = store.add_item(kind="preference", content="Pizza")
+    store.add_link(src_id=a, dst_id=b, relation="related")
+    nb = store.neighbors(a)
+    assert [n["content"] for n in nb] == ["Pizza"]
+    store.close()
