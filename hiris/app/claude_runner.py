@@ -34,6 +34,11 @@ from .tools.memory_tools import (
     RECALL_MEMORY_TOOL_DEF,
     SAVE_MEMORY_TOOL_DEF,
 )
+from .tools.knowledge_tools import (
+    SAVE_KNOWLEDGE_TOOL_DEF,
+    RECALL_KNOWLEDGE_TOOL_DEF,
+    LINK_KNOWLEDGE_TOOL_DEF,
+)
 from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
 from .tools.proposal_tools import CREATE_AUTOMATION_PROPOSAL_TOOL_DEF
 from .tools.dispatcher import ToolDispatcher
@@ -121,6 +126,9 @@ ALL_TOOL_DEFS = [
     SAVE_MEMORY_TOOL_DEF,
     GET_HA_HEALTH_TOOL_DEF,
     CREATE_AUTOMATION_PROPOSAL_TOOL_DEF,
+    SAVE_KNOWLEDGE_TOOL_DEF,
+    RECALL_KNOWLEDGE_TOOL_DEF,
+    LINK_KNOWLEDGE_TOOL_DEF,
 ]
 
 # Tools available to non-chat agents in evaluation mode.

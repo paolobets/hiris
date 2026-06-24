@@ -23,6 +23,9 @@ from .http_tools import http_request
 from .memory_tools import recall_memory as _recall_memory, save_memory as _save_memory
 from .health_tools import get_ha_health
 from .proposal_tools import create_automation_proposal
+from .knowledge_tools import (
+    handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +78,8 @@ class ToolDispatcher:
         memory_retention_days: int | None = None,
         health_monitor: Any = None,
         proposal_store: Any = None,
+        knowledge_store: Any = None,
+        embedder: Any = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -85,6 +90,9 @@ class ToolDispatcher:
         self._memory_retention_days = memory_retention_days
         self._health_monitor = health_monitor
         self._proposal_store = proposal_store
+        self._knowledge_store = knowledge_store
+        # Use dedicated embedder if provided, otherwise fall back to the memory embedder
+        self._knowledge_embedder = embedder if embedder is not None else embedding_provider
         self._task_engine: Any = None
 
     def set_task_engine(self, engine: Any) -> None:
@@ -307,6 +315,16 @@ class ToolDispatcher:
                     config=inputs["config"],
                     routing_reason=inputs["routing_reason"],
                 )
+            if name == "save_knowledge" and self._knowledge_store:
+                return await handle_save_knowledge(
+                    self._knowledge_store, self._knowledge_embedder, inputs, owner="home"
+                )
+            if name == "recall_knowledge" and self._knowledge_store:
+                return await handle_recall_knowledge(
+                    self._knowledge_store, self._knowledge_embedder, inputs, owner="home"
+                )
+            if name == "link_knowledge" and self._knowledge_store:
+                return await handle_link_knowledge(self._knowledge_store, inputs)
             logger.warning("Unknown tool: %s", name)
             return {
                 "error": (
