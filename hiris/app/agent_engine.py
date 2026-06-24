@@ -831,6 +831,18 @@ class AgentEngine:
         if not self._claude_runner:
             logger.warning("No runner configured")
             return ""
+        # Per-agent concurrency guard. _run_agent is reachable from four sources:
+        # the APScheduler interval/cron jobs, state-change reactions, the manual
+        # API (run_agent), and the MQTT run_now handler. APScheduler's
+        # max_instances=1 only stops a *single* job overlapping itself — it does
+        # not stop a cron job overlapping the interval job, nor a reactive or
+        # manual run landing while another is already in flight. Overlap
+        # double-executes actions and races on the shared ClaudeRunner state
+        # (last_tool_calls, usage). Skip the overlapping trigger; the MQTT path
+        # already queues a follow-up run for this case via _pending_mqtt_runs.
+        if agent.id in self._running_agents:
+            logger.info("Agent %s already running — skipping overlapping trigger", agent.id)
+            return "[skipped: already running]"
         if self._is_in_rate_limit_pause(agent.id):
             remaining = int(self._rate_limit_paused_until[agent.id] - time.monotonic())
             logger.info(

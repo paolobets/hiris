@@ -508,3 +508,47 @@ async def test_chat_returns_clear_message_on_upstream_rate_limit(dispatcher, tmp
     out = await runner.chat(user_message="hi", model="qwen/qwen3-next-80b-a3b-instruct:free")
     assert "qwen/qwen3-next-80b-a3b-instruct:free" in out
     assert "Errore temporaneo" not in out
+
+
+@pytest.mark.asyncio
+async def test_simple_chat_circuit_breaker_skips_dead_backend(dispatcher, tmp_path):
+    """After N consecutive connection failures the breaker opens and further
+    calls skip the network — stops a dead backend (stale Ollama tunnel) from
+    flooding the log once per classify_entities call."""
+    from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
+    runner = OpenAICompatRunner(
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama",
+        dispatcher=dispatcher, fixed_model="llama3.1:8b",
+        usage_path=str(tmp_path / "u.json"),
+    )
+    create = AsyncMock(side_effect=httpx.ConnectError("name does not resolve"))
+    runner._client.chat.completions.create = create
+
+    for _ in range(_CIRCUIT_THRESHOLD + 10):
+        assert await runner.simple_chat([{"role": "user", "content": "x"}]) == ""
+
+    # Network was hit only until the breaker opened; later calls were skipped.
+    assert create.call_count == _CIRCUIT_THRESHOLD
+    assert runner._circuit_is_open()
+
+
+@pytest.mark.asyncio
+async def test_simple_chat_circuit_resets_on_success(dispatcher, tmp_path):
+    """A success before the threshold resets the failure counter (no premature
+    open, recovers cleanly)."""
+    runner = OpenAICompatRunner(
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama",
+        dispatcher=dispatcher, fixed_model="llama3.1:8b",
+        usage_path=str(tmp_path / "u2.json"),
+    )
+    ok = MagicMock()
+    ok.choices = [MagicMock(message=MagicMock(content="hi"))]
+    runner._client.chat.completions.create = AsyncMock(side_effect=[
+        httpx.ConnectError("x"), httpx.ConnectError("x"), ok,
+    ])
+
+    assert await runner.simple_chat([{"role": "user", "content": "x"}]) == ""
+    assert await runner.simple_chat([{"role": "user", "content": "x"}]) == ""
+    assert await runner.simple_chat([{"role": "user", "content": "x"}]) == "hi"
+    assert runner._conn_fail_count == 0
+    assert not runner._circuit_is_open()

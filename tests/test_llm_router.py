@@ -209,3 +209,19 @@ def test_openrouter_runner_init(tmp_path):
     assert "openrouter.ai/api/v1" in str(runner._client.base_url)
     # No fixed_model -> cloud retry profile
     assert runner._client.max_retries == 2
+
+
+@pytest.mark.asyncio
+async def test_classify_entities_empty_response_returns_empty():
+    """An empty backend reply (down / circuit open) returns {} without routing
+    through the JSON parser — avoids the 'could not parse' log flood."""
+    from unittest.mock import AsyncMock, MagicMock
+    from hiris.app.llm_router import LLMRouter
+
+    ollama = MagicMock()
+    ollama.simple_chat = AsyncMock(return_value="")
+    router = LLMRouter(ollama=ollama)
+
+    result = await router.classify_entities([{"id": "sensor.x", "state": "1", "name": "X"}])
+    assert result == {}
+    ollama.simple_chat.assert_awaited_once()

@@ -236,6 +236,11 @@ class LLMRouter:
         if runner is None:
             return {}
         raw = await runner.simple_chat(messages, system=_CLASSIFY_SYSTEM)
+        # Empty reply = backend down / circuit open. Return early instead of
+        # routing it through the JSON parser, which would log a "could not parse"
+        # warning on every call and flood the log when a backend is unreachable.
+        if not raw or not raw.strip():
+            return {}
         return _parse_classify_response(raw)
 
 

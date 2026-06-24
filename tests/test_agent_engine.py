@@ -56,6 +56,34 @@ def test_delete_agent_removes_agent(engine):
 
 
 @pytest.mark.asyncio
+async def test_run_agent_skips_when_already_running(engine):
+    """Per-agent concurrency guard: a trigger that arrives while the agent is
+    already in flight is skipped, not run concurrently.
+
+    Without this, the scheduler (interval+cron), state-change reactions and the
+    manual API can overlap the same agent — double-executing actions and racing
+    on the shared ClaudeRunner state.
+    """
+    agent = engine.create_agent({
+        "name": "Busy", "type": "agent",
+        "triggers": [], "system_prompt": "x",
+        "allowed_tools": [], "enabled": False,
+    })
+    runner = MagicMock()
+    runner.chat = AsyncMock(return_value="ok")
+    runner.run_with_actions = AsyncMock(return_value=("ok", {}))
+    engine.set_claude_runner(runner)
+
+    # Simulate the agent already in flight from another trigger source.
+    engine._running_agents.add(agent.id)
+    result = await engine.run_agent(agent)
+
+    assert "already running" in result
+    runner.chat.assert_not_called()
+    runner.run_with_actions.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_state_changed_triggers_reactive_agent(engine, mock_ha):
     agent = engine.create_agent({
         "name": "Garage Watcher",

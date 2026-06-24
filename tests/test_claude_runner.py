@@ -932,3 +932,37 @@ async def test_chat_collects_thinking_blocks(runner):
     runner._client.messages.create = AsyncMock(return_value=msg)
     await runner.chat("ciao", model="claude-sonnet-4-6", thinking_budget=2048)
     assert runner.last_thinking_blocks == ["step 1: check state\nstep 2: decide"]
+
+
+def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):
+    """Concurrent _save_usage() calls must not corrupt usage.json.
+
+    _save_usage runs on every API response and is reachable from multiple
+    concurrent agent runs / chats; without the write lock two threads race on
+    the same .tmp path and leave invalid JSON on disk.
+    """
+    import json as _json
+    import threading
+    from unittest.mock import MagicMock
+    from hiris.app.claude_runner import ClaudeRunner
+
+    runner = ClaudeRunner(
+        api_key="test",
+        dispatcher=ToolDispatcher(MagicMock(), {}),
+        usage_path=str(tmp_path / "usage.json"),
+    )
+
+    def worker():
+        for _ in range(25):
+            runner.total_requests += 1
+            runner._save_usage()
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    with open(runner._usage_path, encoding="utf-8") as f:
+        data = _json.load(f)  # corrupt file would raise here
+    assert data["total_requests"] >= 25

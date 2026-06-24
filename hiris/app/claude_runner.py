@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
 import anthropic
@@ -309,6 +310,12 @@ class ClaudeRunner:
         self.total_rate_limit_errors: int = 0
         self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
         self._per_agent_usage: dict[str, dict] = {}
+        # Serialize tmp-write + os.replace across concurrent _save_usage() calls.
+        # _save_usage runs on every API response and is reachable from multiple
+        # concurrent agent runs / chats; without this two writers race on the
+        # same .tmp path and can corrupt usage.json (agent_engine._save already
+        # guards its own save the same way).
+        self._save_lock = threading.Lock()
         self._load_usage()
 
     def set_task_engine(self, engine: Any) -> None:
@@ -346,13 +353,14 @@ class ClaudeRunner:
         tmp = self._usage_path + ".tmp"
 
         def _write() -> None:
-            try:
-                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                os.replace(tmp, self._usage_path)
-            except Exception as exc:
-                logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
+            with self._save_lock:
+                try:
+                    os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    os.replace(tmp, self._usage_path)
+                except Exception as exc:
+                    logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
 
         try:
             loop = asyncio.get_running_loop()

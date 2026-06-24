@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Optional, TYPE_CHECKING
 import httpx as _httpx
@@ -17,6 +19,25 @@ from ..claude_runner import (
     _parse_structured_output,
 )
 from .pricing import PRICING as _PRICING
+
+# Circuit-breaker: after this many consecutive connection-class failures, skip
+# the backend for the cooldown instead of hammering a dead endpoint. The
+# observed failure mode was a stale Ollama tunnel (DNS no longer resolving)
+# flooding the log with "Connection error" once per classify_entities call.
+_CIRCUIT_THRESHOLD = 3
+_CIRCUIT_COOLDOWN_SEC = 60
+
+
+def _is_conn_error(exc: Exception) -> bool:
+    """True for connection/timeout-class errors (endpoint unreachable), as
+    opposed to API/validation errors which should NOT trip the breaker."""
+    try:
+        import openai
+        if isinstance(exc, (openai.APIConnectionError, openai.APITimeoutError)):
+            return True
+    except Exception:
+        pass
+    return isinstance(exc, (_httpx.ConnectError, _httpx.ConnectTimeout, ConnectionError))
 
 if TYPE_CHECKING:
     from ..tools.dispatcher import ToolDispatcher
@@ -184,6 +205,12 @@ class OpenAICompatRunner:
         self._dispatcher = dispatcher
         self._fixed_model = fixed_model   # Ollama: always use this model; empty for OpenAI
         self._usage_path = usage_path
+        self._base_url = base_url
+        # Serialize usage.json writes (see ClaudeRunner._save_lock for rationale).
+        self._save_lock = threading.Lock()
+        # Circuit-breaker state for connection-class failures (dead endpoint).
+        self._conn_fail_count = 0
+        self._circuit_open_until = 0.0
         self.last_tool_calls: list[dict] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
@@ -230,13 +257,14 @@ class OpenAICompatRunner:
         tmp = self._usage_path + ".tmp"
 
         def _write() -> None:
-            try:
-                os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                os.replace(tmp, self._usage_path)
-            except Exception as exc:
-                logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
+            with self._save_lock:
+                try:
+                    os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    os.replace(tmp, self._usage_path)
+                except Exception as exc:
+                    logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
 
         try:
             loop = asyncio.get_running_loop()
@@ -320,7 +348,30 @@ class OpenAICompatRunner:
     # Public API
     # ------------------------------------------------------------------
 
+    def _circuit_is_open(self) -> bool:
+        return time.monotonic() < self._circuit_open_until
+
+    def _record_conn_failure(self) -> None:
+        self._conn_fail_count += 1
+        if self._conn_fail_count >= _CIRCUIT_THRESHOLD and not self._circuit_is_open():
+            self._circuit_open_until = time.monotonic() + _CIRCUIT_COOLDOWN_SEC
+            logger.warning(
+                "Backend %s unreachable (%d consecutive connection failures) — "
+                "circuit open for %ds, skipping calls.",
+                self._base_url, self._conn_fail_count, _CIRCUIT_COOLDOWN_SEC,
+            )
+
+    def _record_success(self) -> None:
+        if self._conn_fail_count or self._circuit_open_until:
+            self._conn_fail_count = 0
+            self._circuit_open_until = 0.0
+
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
+        # Skip the network entirely while the breaker is open — this is what
+        # stops a dead backend (e.g. a stale Ollama tunnel) from flooding the
+        # log and wasting connect timeouts once per classify_entities call.
+        if self._circuit_is_open():
+            return ""
         msgs: list[dict] = []
         if system:
             msgs.append({"role": "system", "content": system})
@@ -334,9 +385,17 @@ class OpenAICompatRunner:
             if self._fixed_model:
                 kwargs["extra_body"] = {"think": False}
             resp = await self._client.chat.completions.create(**kwargs)
+            self._record_success()
             return resp.choices[0].message.content or ""
         except Exception as exc:
-            logger.error("simple_chat failed: %s", exc)
+            if _is_conn_error(exc):
+                self._record_conn_failure()
+                # Log the first failures, then go quiet (the open-circuit warning
+                # is logged once) so a dead endpoint doesn't flood the log.
+                if self._conn_fail_count < _CIRCUIT_THRESHOLD:
+                    logger.warning("simple_chat connection error: %s", exc)
+            else:
+                logger.error("simple_chat failed: %s", exc)
             return ""
 
     async def chat(
