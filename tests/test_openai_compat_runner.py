@@ -552,3 +552,44 @@ async def test_simple_chat_circuit_resets_on_success(dispatcher, tmp_path):
     assert await runner.simple_chat([{"role": "user", "content": "x"}]) == "hi"
     assert runner._conn_fail_count == 0
     assert not runner._circuit_is_open()
+
+
+# ---------------------------------------------------------------------------
+# Regression: runner-declared cloud egress signal (second-brain Phase 2).
+# OpenRouterRunner strips its prefix before the model string reaches dispatch,
+# so backend_is_cloud(model) would misclassify the egress as local. The runner
+# now declares _is_cloud directly at construction time.
+# ---------------------------------------------------------------------------
+
+def test_openai_compat_runner_ollama_is_not_cloud(dispatcher, tmp_path):
+    """Ollama runner (fixed_model set) must declare _is_cloud=False."""
+    runner = OpenAICompatRunner(
+        base_url="http://192.168.1.50:11434/v1",
+        api_key="ollama",
+        dispatcher=dispatcher,
+        fixed_model="llama3.1:8b",
+        usage_path=str(tmp_path / "u.json"),
+    )
+    assert runner._is_cloud is False
+
+
+def test_openai_compat_runner_cloud_is_cloud(dispatcher, tmp_path):
+    """OpenAI cloud runner (no fixed_model) must declare _is_cloud=True."""
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        dispatcher=dispatcher,
+        usage_path=str(tmp_path / "u.json"),
+    )
+    assert runner._is_cloud is True
+
+
+def test_openrouter_runner_is_cloud(tmp_path):
+    """OpenRouterRunner must always declare _is_cloud=True (US cloud proxy)."""
+    from hiris.app.backends.openrouter_runner import OpenRouterRunner
+    runner = OpenRouterRunner(
+        api_key="sk-or-test",
+        dispatcher=MagicMock(),
+        usage_path=str(tmp_path / "u.json"),
+    )
+    assert runner._is_cloud is True

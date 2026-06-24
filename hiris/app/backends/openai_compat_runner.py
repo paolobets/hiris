@@ -204,6 +204,7 @@ class OpenAICompatRunner:
         )
         self._dispatcher = dispatcher
         self._fixed_model = fixed_model   # Ollama: always use this model; empty for OpenAI
+        self._is_cloud = not bool(fixed_model)  # True = cloud (OpenAI); False = local (Ollama)
         self._usage_path = usage_path
         self._base_url = base_url
         # Serialize usage.json writes (see ClaudeRunner._save_lock for rationale).
@@ -615,7 +616,7 @@ class OpenAICompatRunner:
                         agent_id=agent_id,
                         visible_entity_ids=visible_entity_ids,
                         knowledge_allow_sensitive=knowledge_allow_sensitive,
-                        model=effective_model,
+                        cloud=self._is_cloud,
                     )
                     self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
                     messages.append({
@@ -860,7 +861,7 @@ class OpenAICompatRunner:
                         agent_id=agent_id,
                         visible_entity_ids=visible_entity_ids,
                         knowledge_allow_sensitive=knowledge_allow_sensitive,
-                        model=effective_model,
+                        cloud=self._is_cloud,
                     )
                     self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
                     messages.append({

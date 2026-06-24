@@ -875,6 +875,8 @@ class AgentEngine:
                 entity_ctx = self._build_entity_context(agent)
                 if entity_ctx:
                     user_message = f"{user_message}\n\n{entity_ctx}"
+                _ka = (agent.knowledge_access or {}) if isinstance(agent.knowledge_access, dict) else {}
+                _allow_sensitive = bool(_ka.get("allow_sensitive", False))
                 try:
                     result, structured = await asyncio.wait_for(
                         self._claude_runner.run_with_actions(
@@ -894,6 +896,7 @@ class AgentEngine:
                             agent_id=agent.id,
                             response_mode=agent.response_mode,
                             thinking_budget=agent.thinking_budget,
+                            knowledge_allow_sensitive=_allow_sensitive,
                         ),
                         timeout=_AGENT_RUN_TIMEOUT,
                     )
@@ -903,6 +906,8 @@ class AgentEngine:
                     )
                 action_taken = await self._execute_actions_for_agent(agent, structured)
             else:
+                _ka = (agent.knowledge_access or {}) if isinstance(agent.knowledge_access, dict) else {}
+                _allow_sensitive = bool(_ka.get("allow_sensitive", False))
                 try:
                     result = await asyncio.wait_for(
                         self._claude_runner.chat(
@@ -920,6 +925,7 @@ class AgentEngine:
                             agent_id=agent.id,
                             response_mode=agent.response_mode,
                             thinking_budget=agent.thinking_budget,
+                            knowledge_allow_sensitive=_allow_sensitive,
                         ),
                         timeout=_AGENT_RUN_TIMEOUT,
                     )

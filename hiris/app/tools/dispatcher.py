@@ -26,7 +26,6 @@ from .proposal_tools import create_automation_proposal
 from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
-from ..llm_router import backend_is_cloud
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +114,7 @@ class ToolDispatcher:
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
         knowledge_allow_sensitive: bool = False,
-        model: str = "auto",
+        cloud: bool = True,
     ) -> Any:
         _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
@@ -325,7 +324,6 @@ class ToolDispatcher:
                     self._knowledge_store, self._knowledge_embedder, inputs, owner="home"
                 )
             if name == "recall_knowledge" and self._knowledge_store:
-                cloud = backend_is_cloud(model)
                 return await handle_recall_knowledge(
                     self._knowledge_store, self._knowledge_embedder, inputs, owner="home",
                     allow_sensitive=knowledge_allow_sensitive,

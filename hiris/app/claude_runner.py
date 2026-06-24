@@ -307,6 +307,7 @@ class ClaudeRunner:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._dispatcher = dispatcher
         self._usage_path = usage_path
+        self._is_cloud = True  # Anthropic cloud — always pseudonymize sensitive content
         self.last_tool_calls: list[dict] = []
         # Captured thinking blocks from the most recent run (extended thinking).
         # Empty list when thinking is disabled or model returns no thinking.
@@ -582,7 +583,7 @@ class ClaudeRunner:
                             agent_id=agent_id,
                             visible_entity_ids=visible_entity_ids,
                             knowledge_allow_sensitive=knowledge_allow_sensitive,
-                            model=effective_model,
+                            cloud=self._is_cloud,
                         )
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({

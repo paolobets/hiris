@@ -158,9 +158,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     agent_require_confirmation = getattr(agent, "require_confirmation", False) if agent else False
     agent_response_mode = getattr(agent, "response_mode", "auto") if agent else "auto"
     agent_thinking_budget = getattr(agent, "thinking_budget", 0) if agent else 0
-    allow_sensitive = bool(
-        getattr(agent, "knowledge_access", {}).get("allow_sensitive", False)
-    ) if agent else False
+    ka = getattr(agent, "knowledge_access", {}) if agent else {}
+    allow_sensitive = bool(ka.get("allow_sensitive", False)) if isinstance(ka, dict) else False
 
     wants_stream = (
         "text/event-stream" in request.headers.get("Accept", "")

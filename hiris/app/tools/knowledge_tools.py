@@ -111,13 +111,20 @@ async def handle_recall_knowledge(
             allow_sensitive=allow_sensitive,
         ),
     )
-    out = []
-    for r in res:
+    def _build(r: dict) -> dict:
         content = r["content"]
         is_sensitive = r.get("sensitivity") == "sensitive"
-        if is_sensitive and cloud and pseudonymizer is not None:
-            content = pseudonymizer.pseudonymize(content)
-        out.append({"id": r["id"], "kind": r["kind"], "content": content})
+        if is_sensitive and cloud:
+            if pseudonymizer is not None:
+                content = pseudonymizer.pseudonymize(content)
+            else:
+                content = "[contenuto sensibile non disponibile]"
+        return {"id": r["id"], "kind": r["kind"], "content": content}
+
+    out = []
+    for r in res:
+        item = await loop.run_in_executor(None, lambda _r=r: _build(_r))
+        out.append(item)
     return {"results": out}
 
 

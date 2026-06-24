@@ -63,6 +63,10 @@ class OpenRouterRunner(OpenAICompatRunner):
             dispatcher=dispatcher,
             usage_path=usage_path,
         )
+        # OpenRouter is always a US cloud proxy — override the parent default
+        # (_is_cloud = not bool(fixed_model) would yield True since fixed_model=""
+        # here too, but we set it explicitly for clarity and correctness).
+        self._is_cloud = True
 
     def _resolve_model(self, model: str, agent_type: str) -> str:
         """Strip 'openrouter:' / 'openrouter/' prefix before sending to OR."""
