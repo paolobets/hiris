@@ -101,30 +101,43 @@ async def handle_recall_knowledge(
         qv = []
     if not qv:
         return {"results": []}
+    k = int(tool_input.get("k", 5))
     loop = asyncio.get_running_loop()
-    res = await loop.run_in_executor(
-        None,
-        lambda: store.search(
+
+    def _search_and_merge() -> list[dict]:
+        items = store.search(
             query_vec=qv,
-            k=int(tool_input.get("k", 5)),
+            k=k,
             owner=owner,
             allow_sensitive=allow_sensitive,
-        ),
-    )
-    def _build(r: dict) -> dict:
-        content = r["content"]
-        is_sensitive = r.get("sensitivity") == "sensitive"
-        if is_sensitive and cloud:
-            if pseudonymizer is not None:
-                content = pseudonymizer.pseudonymize(content)
-            else:
-                content = "[contenuto sensibile non disponibile]"
-        return {"id": r["id"], "kind": r["kind"], "content": content}
+        )
+        chunks = store.search_chunks(
+            query_vec=qv,
+            k=k,
+            owner=owner,
+            allow_sensitive=allow_sensitive,
+        )
+        # Merge: items carry their own "kind"; chunks use kind="document_chunk"
+        merged: list[tuple[float, int, str, str, str | None]] = []
+        for r in items:
+            merged.append((r.get("score", 0.0), r["id"], r["kind"],
+                           r["content"], r.get("sensitivity")))
+        for c in chunks:
+            merged.append((c.get("score", 0.0), c["id"], "document_chunk",
+                           c["content"], c.get("sensitivity")))
+        merged.sort(key=lambda x: x[0], reverse=True)
+        out = []
+        for _score, _id, kind, content, sens in merged[:k]:
+            is_sensitive = sens == "sensitive"
+            if is_sensitive and cloud:
+                if pseudonymizer is not None:
+                    content = pseudonymizer.pseudonymize(content)
+                else:
+                    content = "[contenuto sensibile non disponibile]"
+            out.append({"id": _id, "kind": kind, "content": content})
+        return out
 
-    out = []
-    for r in res:
-        item = await loop.run_in_executor(None, lambda _r=r: _build(_r))
-        out.append(item)
+    out = await loop.run_in_executor(None, _search_and_merge)
     return {"results": out}
 
 
