@@ -465,6 +465,34 @@ async def test_create_task_tool_via_chat(client):
 
 
 @pytest.mark.asyncio
+async def test_chat_debug_tools_called_returns_objects(client):
+    """debug.tools_called must carry {tool, input} objects so the panel's
+    appendDebug() can render chips without crashing.
+
+    Regression: the handler used t.get("name") but last_tool_calls keys are
+    "tool"/"input", so every entry was None. index.html appendDebug() then
+    threw on t.input AFTER the answer had already rendered, surfacing a
+    spurious "Errore di connessione. Riprova tra poco." with no backend error.
+    """
+    from unittest.mock import AsyncMock
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="Ecco i consumi energia")
+    runner.last_tool_calls = [
+        {"tool": "get_energy_history", "input": {"hours": 24}},
+        {"tool": "get_home_status", "input": {}},
+    ]
+
+    resp = await client.post("/api/chat", json={"message": "consumi energia"})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["debug"]["tools_called"] == [
+        {"tool": "get_energy_history", "input": {"hours": 24}},
+        {"tool": "get_home_status", "input": {}},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_list_tasks_api_empty(client):
     mock_te = MagicMock()
     mock_te.list_tasks = MagicMock(return_value=[])

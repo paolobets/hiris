@@ -379,12 +379,16 @@ function appendDebug(tools) {
   row.className = 'debug-row';
   /* Render tool calls as inline mono chips. Click to expand/collapse the args. */
   var chips = tools.map(function(t) {
-    var inp = JSON.stringify(t.input);
+    // Defensive: never let a malformed debug payload throw here — an exception
+    // would be swallowed by sendMessage()'s catch and mislabeled as a
+    // connection error, AFTER the answer has already rendered.
+    if (!t || typeof t !== 'object') return '';
+    var inp = JSON.stringify(t.input !== undefined && t.input !== null ? t.input : {});
     return '<button class="tool-chip" data-args="' + esc(inp) + '" type="button">'
          + '<svg viewBox="0 0 24 24" class="tc-ic" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
-         + '<span class="tc-name">' + esc(t.tool) + '</span>'
+         + '<span class="tc-name">' + esc(t.tool || '') + '</span>'
          + '</button>';
-  }).join('');
+  }).filter(Boolean).join('');
   row.innerHTML = '<div class="tool-chips">' + chips + '</div><div class="tool-args" style="display:none"></div>';
   /* Toggle args panel on chip click */
   row.querySelectorAll('.tool-chip').forEach(function(btn) {

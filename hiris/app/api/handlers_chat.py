@@ -251,7 +251,15 @@ async def handle_chat(request: web.Request) -> web.Response:
         ], data_dir)
 
     raw = getattr(runner, "last_tool_calls", None)
-    tools_called = [t.get("name") for t in raw if isinstance(t, dict)] if isinstance(raw, list) else []
+    # Pass the raw tool-call objects ({tool, input}) — the shape the panel's
+    # appendDebug() and the SSE done-event both expect. Previously this used
+    # t.get("name"), but last_tool_calls keys are "tool"/"input", so every entry
+    # was None; appendDebug then threw on t.input AFTER the answer had rendered,
+    # surfacing a spurious "Errore di connessione" with no backend-side error.
+    tools_called = [
+        {"tool": t.get("tool", ""), "input": t.get("input")}
+        for t in raw if isinstance(t, dict)
+    ] if isinstance(raw, list) else []
     raw_thinking = getattr(runner, "last_thinking_blocks", None)
     thinking_blocks = list(raw_thinking) if isinstance(raw_thinking, list) else []
     debug_payload: dict = {"tools_called": tools_called}
