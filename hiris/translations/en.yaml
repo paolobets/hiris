@@ -62,6 +62,15 @@ configuration:
   internal_token:
     name: "Internal Token"
     description: "Secret token used to secure internal API calls between HIRIS components. Leave empty to auto-generate."
+  execute_api_tools:
+    name: "Execute-API: exposed tools"
+    description: "CSV allowlist of tool names the MCP gateway may run via /api/execute (e.g. get_home_status,get_entity_states). Empty = none (fail-closed)."
+  execute_api_entities:
+    name: "Execute-API: entity whitelist"
+    description: "CSV of entity_id globs (e.g. light.*) the execute-API may target. Empty = no extra entity filter."
+  execute_api_services:
+    name: "Execute-API: service whitelist"
+    description: "CSV of domain.service globs (e.g. light.*) the execute-API may call. Empty = no extra service filter."
   log_level:
     name: "Log Level"
     description: "Verbosity of add-on logs. Use 'debug' for troubleshooting, 'info' for normal operation, 'warning' or 'error' for minimal output."

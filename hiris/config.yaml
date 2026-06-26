@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.13.0"
+version: "0.14.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -64,6 +64,13 @@ options:
 
   # ── General ───────────────────────────────────────────────────────────────
   internal_token: ""
+  # ── Execute-API (MCP gateway) ─────────────────────────────────────────────
+  # Allowlist server-side dei tool eseguibili via POST /api/execute (gated da
+  # internal_token). Vuoto = nessun tool esposto (fail-closed). Le whitelist
+  # entità/servizi (glob CSV, es. light.*) vincolano ulteriormente il gateway.
+  execute_api_tools: ""
+  execute_api_entities: ""
+  execute_api_services: ""
   log_level: "info"
   theme: "auto"
   apprise_urls: []
@@ -115,6 +122,9 @@ schema:
 
   # ── General ───────────────────────────────────────────────────────────────
   internal_token: password
+  execute_api_tools: "str?"
+  execute_api_entities: "str?"
+  execute_api_services: "str?"
   log_level: "list(debug|info|warning|error)"
   theme: "list(light|dark|auto)"
   apprise_urls:

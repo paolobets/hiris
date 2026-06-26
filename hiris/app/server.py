@@ -262,6 +262,12 @@ async def _on_startup(app: web.Application) -> None:
             app[key] = ""
 
     app["internal_token"] = os.environ.get("INTERNAL_TOKEN", "")
+    from .api.handlers_execute import parse_execute_policy
+    app["execute_policy"] = parse_execute_policy(
+        tools=os.environ.get("EXECUTE_API_TOOLS", ""),
+        entities=os.environ.get("EXECUTE_API_ENTITIES", ""),
+        services=os.environ.get("EXECUTE_API_SERVICES", ""),
+    )
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
         logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
@@ -550,6 +556,7 @@ async def _on_startup(app: web.Application) -> None:
         pseudonymizer=pseudonymizer,
     )
     dispatcher.set_task_engine(task_engine)
+    app["tool_dispatcher"] = dispatcher
 
     claude_runner = None
     if api_key:
@@ -732,6 +739,9 @@ def create_app() -> web.Application:
     app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
     app.router.add_post("/api/knowledge/{id}/reject", handle_reject)
     app.router.add_post("/api/knowledge", handle_manual_add)
+
+    from .api.handlers_execute import handle_execute
+    app.router.add_post("/api/execute", handle_execute)
 
     return app
 
