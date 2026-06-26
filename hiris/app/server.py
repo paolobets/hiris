@@ -310,6 +310,9 @@ async def _on_startup(app: web.Application) -> None:
     data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
     data_dir = os.path.dirname(os.path.abspath(data_path))
     app["data_dir"] = data_dir
+    # If the user manages the gateway policy from the UI, it overrides the env CSV.
+    from .api.handlers_gateway_policy import apply_saved_policy
+    apply_saved_policy(app)
 
     # Build semantic map
     semantic_map = SemanticMap(data_dir=data_dir)
@@ -749,6 +752,12 @@ def create_app() -> web.Application:
 
     from .api.handlers_execute import handle_execute
     app.router.add_post("/api/execute", handle_execute)
+
+    from .api.handlers_gateway_policy import (
+        handle_get_gateway_policy, handle_save_gateway_policy,
+    )
+    app.router.add_get("/api/gateway/policy", handle_get_gateway_policy)
+    app.router.add_post("/api/gateway/policy", handle_save_gateway_policy)
 
     return app
 

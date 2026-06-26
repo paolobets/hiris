@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HIRIS — Agent Designer</title>
+  <title>HIRIS — Configurazione</title>
   <link rel="icon" type="image/svg+xml" href="static/hiris-icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -82,6 +82,12 @@
       </span>
       <span class="nav-label">Task</span>
       <span class="nav-badge" id="nav-tasks-count">—</span>
+    </a>
+    <a class="nav-item" href="#/gateway" data-route="gateway">
+      <span class="nav-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+      </span>
+      <span class="nav-label">Accessi Gateway</span>
     </a>
     <!-- v0.10.8: rimossi nav-spacer + voce duplicata "Vai alla chat" in fondo
          (icona luna sbagliata + duplicava il link Chat ora in cima alla sidebar). -->
@@ -203,6 +209,7 @@
   <script src="static/config/proposals-route.js"></script>
   <script src="static/config/usage-route.js"></script>
   <script src="static/config/tasks-route.js"></script>
+  <script src="static/config/gateway-route.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>

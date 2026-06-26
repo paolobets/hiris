@@ -271,7 +271,7 @@ a { color: inherit; text-decoration: none; }
   /* v6 layout dims */
   --shell-sidebar-w: 232px;
   --shell-sidebar-w-collapsed: 64px;
-  --shell-content-max: 1140px;
+  --shell-content-max: 1440px;
   --shell-anchor-w: 200px;
 
   /* v6 elevations */

@@ -1,5 +1,30 @@
 # HIRIS — Changelog
 
+## v0.14.2 — Pagina "Accessi Gateway" (permessi a categorie) (2026-06-26)
+
+Nuova sezione nell'interfaccia `/config` per scegliere **a click** cosa il
+gateway MCP (Claude) puo' comandare, per **categoria** (Luci, Climatizzazione,
+Scene…), al posto del CSV nelle opzioni dell'add-on.
+
+### UI
+
+- Voce di menu **"Accessi Gateway"** + rotta `#/gateway` + pagina dedicata:
+  ogni categoria con scelta **🟢 Verde / Off**, salvataggio, nomi leggibili.
+- Branding `Agent Designer` → **Configurazione**; larghezza contenuto
+  `/config` 1140 → 1440px.
+
+### Backend
+
+- `GET/POST /api/gateway/policy` + persistenza `/data/gateway_policy.json`.
+- La policy UI deriva l'`execute_policy` (categoria Verde → `dominio.*`
+  eseguibile) e **sovrascrive il CSV** delle opzioni; caricata all'avvio e
+  aggiornata al salvataggio (mutazione in place, no deprecation aiohttp).
+- v1: livelli Verde/Off; 🟡 Giallo / 🔴 Rosso (notifica/conferma) in arrivo.
+
+### Test
+
+- `tests/test_gateway_policy.py` (derivazione, persistenza, endpoint). Suite: 635 passati.
+
 ## v0.14.1 — Hardening auth per esposizione a tunnel (CR-1 + CSRF) (2026-06-26)
 
 Preparazione sicura all'accesso dell'execute-API da un secondo host (gateway MCP

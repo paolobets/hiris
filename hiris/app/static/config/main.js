@@ -70,6 +70,7 @@
         (route === 'proposals' && hash.indexOf('#/proposals') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'tasks' && hash.indexOf('#/tasks') === 0) ||
+        (route === 'gateway' && hash.indexOf('#/gateway') === 0) ||
         (route === 'settings' && hash.indexOf('#/settings') === 0);
       item.classList.toggle('active', isActive);
     });
@@ -147,6 +148,14 @@
       HirisTasksRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Task</div>';
+    }
+  });
+  HirisRouter.register(/^#\/gateway\/?$/, function() {
+    setCrumbHere('Accessi Gateway');
+    if (window.HirisGatewayRoute) {
+      HirisGatewayRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Accessi Gateway</div>';
     }
   });
   /* v0.10.5: rimosso route /settings — la nav voce è stata tolta da config.html
