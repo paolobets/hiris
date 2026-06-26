@@ -1,5 +1,32 @@
 # HIRIS — Changelog
 
+## v0.14.0 — Execute-API per il gateway MCP (2026-06-26)
+
+Aggiunta una piccola **execute-API non-LLM** che permette al gateway MCP
+(app separata su .31) di pilotare tool HIRIS curati a IA = zero. HIRIS resta
+l'unico punto di enforcement: rivalida ogni chiamata, il gateway non può
+ampliare i privilegi.
+
+### Nuovo endpoint
+
+- `POST /api/execute` — gated da `internal_token` (confronto timing-safe
+  `hmac.compare_digest`, fail-closed se il token non è impostato). Applica una
+  **allowlist server-side** dei tool eseguibili (vuota = nessuno) e le whitelist
+  `allowed_entities` / `allowed_services`, poi chiama `ToolDispatcher.dispatch`
+  (`cloud=True`). Valida il body JSON e la forma di `tool`/`input`.
+- `app["execute_policy"]` e `app["tool_dispatcher"]` esposti su `create_app`.
+
+### Configurazione addon
+
+- Nuove opzioni `execute_api_tools` / `execute_api_entities` /
+  `execute_api_services` (CSV) + schema + export in `run.sh` + label IT/EN.
+- Versione `0.13.0` → `0.14.0`.
+
+### Test
+
+- `tests/test_execute_api.py`: 9 casi (auth, allowlist 403, pass-through
+  whitelist, fail-closed, JSON/input non validi). Suite completa: 623 passati.
+
 ## v0.10.15 — Fix HTTP 401 nella Lovelace card (ingress session) (2026-05-08)
 
 User: "Errore: HTTP 401" sulla custom card dopo l'aggiornamento. Diagnosi:
