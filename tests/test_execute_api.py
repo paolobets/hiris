@@ -42,7 +42,7 @@ def _make_app(policy, token="secret"):
 
 
 async def _post(client, body, token="secret"):
-    headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
+    headers = {"X-HIRIS-Internal-Token": token} if token is not None else {}
     return await client.post("/api/execute", json=body, headers=headers)
 
 
@@ -100,7 +100,7 @@ async def test_execute_rejects_invalid_json(aiohttp_client):
     app = _make_app({"tools": ["get_home_status"], "allowed_entities": None, "allowed_services": None})
     client = await aiohttp_client(app)
     resp = await client.post("/api/execute", data="not json",
-                             headers={"Authorization": "Bearer secret"})
+                             headers={"X-HIRIS-Internal-Token": "secret"})
     assert resp.status == 400
 
 

@@ -71,6 +71,9 @@ configuration:
   execute_api_services:
     name: "Execute-API: service whitelist"
     description: "CSV of domain.service globs (e.g. light.*) the execute-API may call. Empty = no extra service filter."
+  supervisor_ingress_cidr:
+    name: "Trusted Supervisor ingress CIDR"
+    description: "Source IP range(s) treated as genuine HA Supervisor ingress for the X-Ingress-Path bypass (CR-1). Everything else needs the internal token. Default 172.30.32.0/23; tighten (e.g. 172.30.32.2/32) if exposing the API to a tunnel."
   log_level:
     name: "Log Level"
     description: "Verbosity of add-on logs. Use 'debug' for troubleshooting, 'info' for normal operation, 'warning' or 'error' for minimal output."

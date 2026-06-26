@@ -71,6 +71,9 @@ configuration:
   execute_api_services:
     name: "Execute-API: whitelist servizi"
     description: "CSV di glob dominio.servizio (es. light.*) che l'execute-API può chiamare. Vuoto = nessun filtro servizio aggiuntivo."
+  supervisor_ingress_cidr:
+    name: "CIDR ingress Supervisor fidata"
+    description: "Range IP sorgente trattati come vero ingress del Supervisor HA per il bypass X-Ingress-Path (CR-1). Tutto il resto richiede il token interno. Default 172.30.32.0/23; restringi (es. 172.30.32.2/32) se esponi la API a un tunnel."
   log_level:
     name: "Livello Log"
     description: "Verbosità dei log dell'add-on. Usa 'debug' per la diagnostica, 'info' per il funzionamento normale, 'warning' o 'error' per output minimale."

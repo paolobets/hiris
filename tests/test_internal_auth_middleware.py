@@ -12,7 +12,7 @@ def reset_chat_stores():
     close_all_stores()
 
 
-def _make_app(tmp_path, token):
+def _make_app(tmp_path, token, cidrs=None):
     app = create_app()
     mock_ha = AsyncMock()
     mock_ha.start = AsyncMock()
@@ -28,6 +28,10 @@ def _make_app(tmp_path, token):
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
     app["internal_token"] = token
+    # on_startup is cleared below, so wire the CR-1 trusted-CIDR list manually.
+    # Default 172.30.32.0/23 does NOT include the test client's loopback IP, so
+    # X-Ingress-Path alone must not bypass auth (that is the CR-1 fix).
+    app["supervisor_ingress_cidrs"] = cidrs or ["172.30.32.0/23"]
     app.on_startup.clear()
     app.on_cleanup.clear()
     return app
@@ -41,6 +45,15 @@ async def client_no_token(aiohttp_client, tmp_path):
 @pytest_asyncio.fixture
 async def client_with_token(aiohttp_client, tmp_path):
     return await aiohttp_client(_make_app(tmp_path, "secret-token-abc"))
+
+
+@pytest_asyncio.fixture
+async def client_trust_loopback(aiohttp_client, tmp_path):
+    """Client whose trusted Supervisor CIDR includes the test loopback, so a
+    genuine ingress request (header + trusted source IP) bypasses auth."""
+    return await aiohttp_client(
+        _make_app(tmp_path, "secret-token-abc", cidrs=["127.0.0.0/8", "::1/128"])
+    )
 
 
 @pytest.mark.asyncio
@@ -77,11 +90,37 @@ async def test_missing_token_rejected(client_with_token):
 
 
 @pytest.mark.asyncio
-async def test_ingress_path_header_bypasses_auth(client_with_token):
-    """Requests with valid HA Supervisor X-Ingress-Path bypass token check."""
-    resp = await client_with_token.get(
+async def test_ingress_path_from_trusted_source_bypasses_auth(client_trust_loopback):
+    """Genuine ingress (valid X-Ingress-Path AND source IP in a trusted
+    Supervisor CIDR) bypasses the token check."""
+    resp = await client_trust_loopback.get(
         "/api/health",
         headers={"X-Ingress-Path": "/api/hassio_ingress/hiris"},
+    )
+    assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_cr1_ingress_path_from_untrusted_ip_does_not_bypass(client_with_token):
+    """CR-1: a forged X-Ingress-Path from a non-Supervisor source IP must NOT
+    bypass auth — it still requires the internal token (401)."""
+    resp = await client_with_token.get(
+        "/api/health",
+        headers={"X-Ingress-Path": "/api/hassio_ingress/anything"},
+    )
+    assert resp.status == 401
+
+
+@pytest.mark.asyncio
+async def test_cr1_forged_ingress_with_valid_token_still_passes(client_with_token):
+    """A request from an untrusted IP that carries the real token passes via the
+    token branch (not the ingress bypass) — proving the token path is intact."""
+    resp = await client_with_token.get(
+        "/api/health",
+        headers={
+            "X-Ingress-Path": "/api/hassio_ingress/forged",
+            "X-HIRIS-Internal-Token": "secret-token-abc",
+        },
     )
     assert resp.status == 200
 
@@ -112,9 +151,10 @@ async def test_ingress_path_arbitrary_value_does_not_bypass(client_with_token):
 
 
 @pytest.mark.asyncio
-async def test_ingress_path_real_supervisor_token_pattern_passes(client_with_token):
-    """Real Supervisor format /api/hassio_ingress/<random-token>/ passes."""
-    resp = await client_with_token.get(
+async def test_ingress_path_real_supervisor_token_pattern_passes(client_trust_loopback):
+    """Real Supervisor format /api/hassio_ingress/<random-token>/ from a trusted
+    source passes."""
+    resp = await client_trust_loopback.get(
         "/api/health",
         headers={"X-Ingress-Path": "/api/hassio_ingress/AbCdEf123-XyZ_456/"},
     )

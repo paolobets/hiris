@@ -501,3 +501,32 @@ async def test_csrf_does_not_apply_to_non_api_paths(csrf_strict):
     async with TestClient(TestServer(_make_csrf_app())) as c:
         resp = await c.post("/static/x")
         assert resp.status == 200
+
+
+def _make_csrf_app_with_token(token="srv-secret"):
+    """CSRF app that also carries an internal_token, to exercise the
+    server-to-server exemption."""
+    from aiohttp import web
+    from hiris.app.api.middleware_csrf import csrf_middleware
+    app = web.Application(middlewares=[csrf_middleware])
+    app["internal_token"] = token
+    app.router.add_post("/api/x", lambda r: web.json_response({"ok": True}))
+    return app
+
+
+@pytest.mark.asyncio
+async def test_csrf_exempts_valid_internal_token_without_xrw(csrf_strict):
+    """A server-to-server client with a valid X-HIRIS-Internal-Token is exempt
+    from CSRF (it is not a browser, and it already proves the shared secret).
+    This is what lets the MCP gateway and the Retro Panel proxy POST/PUT."""
+    async with TestClient(TestServer(_make_csrf_app_with_token())) as c:
+        resp = await c.post("/api/x", headers={"X-HIRIS-Internal-Token": "srv-secret"})
+        assert resp.status == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_wrong_internal_token_not_exempt(csrf_strict):
+    """An invalid token does not earn the CSRF exemption."""
+    async with TestClient(TestServer(_make_csrf_app_with_token())) as c:
+        resp = await c.post("/api/x", headers={"X-HIRIS-Internal-Token": "wrong"})
+        assert resp.status == 403

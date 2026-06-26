@@ -40,11 +40,18 @@ def parse_execute_policy(tools: str, entities: str, services: str) -> dict:
 
 
 def _check_token(request: web.Request) -> bool:
+    """Independent token check for /api/execute (defense-in-depth).
+
+    Uses the same X-HIRIS-Internal-Token header as the rest of HIRIS so a single
+    credential works through the global middleware and here. This handler-level
+    check is deliberately independent of the X-Ingress-Path branch: even if a
+    forged ingress header slipped past the global middleware, /api/execute still
+    requires the internal_token.
+    """
     expected = request.app.get("internal_token") or ""
     if not expected:                       # fail closed when unset
         return False
-    auth = request.headers.get("Authorization", "")
-    presented = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
+    presented = request.headers.get("X-HIRIS-Internal-Token", "")
     if not presented:
         return False
     return hmac.compare_digest(presented, expected)

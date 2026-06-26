@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.14.0"
+version: "0.14.1"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -71,6 +71,11 @@ options:
   execute_api_tools: ""
   execute_api_entities: ""
   execute_api_services: ""
+  # CR-1: CIDR sorgenti fidate per il bypass-ingress (X-Ingress-Path). Solo le
+  # richieste da questi range sono trattate come ingress del Supervisor; tutto
+  # il resto richiede internal_token. Default = rete Docker standard del
+  # Supervisor. Restringi (es. 172.30.32.2/32) se esponi la API a un tunnel.
+  supervisor_ingress_cidr: "172.30.32.0/23"
   log_level: "info"
   theme: "auto"
   apprise_urls: []
@@ -125,6 +130,7 @@ schema:
   execute_api_tools: "str?"
   execute_api_entities: "str?"
   execute_api_services: "str?"
+  supervisor_ingress_cidr: "str?"
   log_level: "list(debug|info|warning|error)"
   theme: "list(light|dark|auto)"
   apprise_urls:

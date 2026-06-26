@@ -1,5 +1,34 @@
 # HIRIS — Changelog
 
+## v0.14.1 — Hardening auth per esposizione a tunnel (CR-1 + CSRF) (2026-06-26)
+
+Preparazione sicura all'accesso dell'execute-API da un secondo host (gateway MCP
+su .31) via tunnel cifrato, senza esporre la porta sulla LAN e senza rompere i
+consumer esistenti (card custom + proxy Retro Panel).
+
+### Sicurezza
+
+- **CR-1 (X-Ingress-Path spoofing) chiuso.** `internal_auth_middleware` ora
+  concede il bypass-ingress solo se `X-Ingress-Path` è presente **E** l'IP
+  sorgente è in una CIDR Supervisor fidata (nuova opzione
+  `supervisor_ingress_cidr`, default `172.30.32.0/23`). Prima bastava il
+  formato dell'header: chiunque raggiungesse la porta poteva falsificarlo e
+  bypassare `internal_token` su tutta la API. Stesso pattern già in produzione
+  in Retro Panel.
+- **Esenzione CSRF per client server-to-server.** `csrf_middleware` ora esenta
+  le richieste con un `X-HIRIS-Internal-Token` valido (non sono un vettore CSRF
+  browser). Sblocca i `POST/PUT` autenticati col token del gateway MCP e del
+  proxy Retro Panel senza `X-Requested-With`.
+- **Execute-API coerente.** `/api/execute` valida `X-HIRIS-Internal-Token`
+  (header HIRIS-nativo) invece di `Authorization: Bearer`, mantenendo il check
+  indipendente come difesa-in-profondità (resta sicuro anche se l'ingress fosse
+  falsificato).
+
+### Test
+
+- Nuovi test CR-1 (ingress da IP non fidato non bypassa; token sempre valido),
+  esenzione CSRF (token valido/non valido), header execute-API. Suite: 627 passati.
+
 ## v0.14.0 — Execute-API per il gateway MCP (2026-06-26)
 
 Aggiunta una piccola **execute-API non-LLM** che permette al gateway MCP

@@ -15,6 +15,7 @@ export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
 export EXECUTE_API_TOOLS=$(bashio::config 'execute_api_tools' '')
 export EXECUTE_API_ENTITIES=$(bashio::config 'execute_api_entities' '')
 export EXECUTE_API_SERVICES=$(bashio::config 'execute_api_services' '')
+export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
 export APPRISE_URLS=$(jq -c '.apprise_urls // []' /data/options.json)
 export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 

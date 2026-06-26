@@ -262,6 +262,13 @@ async def _on_startup(app: web.Application) -> None:
             app[key] = ""
 
     app["internal_token"] = os.environ.get("INTERNAL_TOKEN", "")
+    # CR-1: trusted Supervisor-ingress source CIDRs. The ingress-bypass in
+    # internal_auth_middleware only applies to requests from these ranges, so a
+    # forged X-Ingress-Path from a direct LAN/tunnel client cannot bypass the
+    # internal_token. Default = the standard HA Supervisor Docker network.
+    _cidrs = [c.strip() for c in os.environ.get(
+        "SUPERVISOR_INGRESS_CIDR", "172.30.32.0/23").split(",") if c.strip()]
+    app["supervisor_ingress_cidrs"] = _cidrs or ["172.30.32.0/23"]
     from .api.handlers_execute import parse_execute_policy
     app["execute_policy"] = parse_execute_policy(
         tools=os.environ.get("EXECUTE_API_TOOLS", ""),
