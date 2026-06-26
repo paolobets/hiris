@@ -27,8 +27,9 @@ class _FakeDispatcher:
         self.calls = []
 
     async def dispatch(self, name, inputs, allowed_entities=None,
-                       allowed_services=None, cloud=True, **kw):
+                       allowed_services=None, agent_id=None, cloud=True, **kw):
         self.calls.append((name, inputs, allowed_entities, allowed_services))
+        self.last_agent_id = agent_id
         return {"ok": name}
 
 
@@ -93,6 +94,26 @@ async def test_execute_rejects_when_token_unset(aiohttp_client):
     client = await aiohttp_client(app)
     resp = await _post(client, {"tool": "get_home_status", "input": {}}, token="")
     assert resp.status == 401
+
+
+@pytest.mark.asyncio
+async def test_execute_passes_origin_as_agent_id(aiohttp_client):
+    app = _make_app({"tools": ["get_home_status"], "allowed_entities": None, "allowed_services": None})
+    client = await aiohttp_client(app)
+    await client.post("/api/execute",
+                      json={"tool": "get_home_status", "input": {}, "origin": "mcp-gateway"},
+                      headers={"X-HIRIS-Internal-Token": "secret"})
+    assert app["tool_dispatcher"].last_agent_id == "mcp-gateway"
+
+
+@pytest.mark.asyncio
+async def test_execute_sanitizes_bad_origin(aiohttp_client):
+    app = _make_app({"tools": ["get_home_status"], "allowed_entities": None, "allowed_services": None})
+    client = await aiohttp_client(app)
+    await client.post("/api/execute",
+                      json={"tool": "get_home_status", "input": {}, "origin": "evil <script>"},
+                      headers={"X-HIRIS-Internal-Token": "secret"})
+    assert app["tool_dispatcher"].last_agent_id == "mcp-gateway"   # invalid -> default
 
 
 @pytest.mark.asyncio

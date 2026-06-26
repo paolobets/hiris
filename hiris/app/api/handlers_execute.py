@@ -9,10 +9,22 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
+
+# Provenance tag is client-supplied (the gateway); validate strictly before it
+# is stored on tasks/audit. Default to "mcp-gateway" when missing/invalid.
+_ORIGIN_RE = re.compile(r"^[A-Za-z0-9_:.\-]{1,64}$")
+
+
+def _origin(body: dict) -> str:
+    o = body.get("origin")
+    if isinstance(o, str) and _ORIGIN_RE.match(o):
+        return o
+    return "mcp-gateway"
 
 
 def _csv(value: str | None) -> list[str]:
@@ -89,6 +101,7 @@ async def handle_execute(request: web.Request) -> web.Response:
         inputs,
         allowed_entities=policy.get("allowed_entities"),
         allowed_services=policy.get("allowed_services"),
+        agent_id=_origin(body),
         cloud=True,
     )
     return web.json_response({"result": result})
