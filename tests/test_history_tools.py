@@ -1,3 +1,4 @@
+import pytest
 from hiris.app.tools import history_tools as H
 
 
@@ -81,9 +82,6 @@ def test_classify_empty_is_state():
     assert H.classify([]) == "state"
 
 
-import pytest
-
-
 class _FakeHA:
     def __init__(self, history=None, stats=None):
         self._history = history or {}
@@ -142,3 +140,15 @@ async def test_get_history_rejects_bad_input():
     ha = _FakeHA()
     out = await H.get_history(ha, [], days=7, resolution="auto")
     assert "error" in out
+
+
+@pytest.mark.asyncio
+async def test_get_history_statistics_hourly_label():
+    ha = _FakeHA(stats={"sensor.power": [
+        {"start": "2026-06-10T00:00:00+00:00", "mean": 120.0, "min": 80.0, "max": 200.0},
+    ]})
+    out = await H.get_history(ha, ["sensor.power"], days=20, resolution="hourly")
+    series = out[0]
+    assert series["source"] == "statistics"
+    assert series["resolution"] == "hourly"     # normalized vocab, not HA's "hour"
+    assert series["unit"] is None

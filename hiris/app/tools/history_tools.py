@@ -14,7 +14,8 @@ GET_HISTORY_TOOL_DEF = {
     "name": "get_history",
     "description": (
         "Historical/time-series data for entities (trends, min/max/avg). READ-only. "
-        "Returns COMPRESSED per-entity daily/hourly buckets, never raw point dumps. "
+        "Numeric entities return COMPRESSED daily/hourly 'buckets'; non-numeric "
+        "entities (on/off) return downsampled 'samples'. Never unbounded raw dumps. "
         "Use for: 'temperature trend last week', 'energy this month', sensor history. "
         "Args: entity_ids (1-20), days (1-365, default 7), "
         "resolution ('auto'|'raw'|'hourly'|'daily')."
@@ -137,18 +138,19 @@ async def _entity_series(ha: Any, eid: str, days: int, resolution: str) -> dict:
 
     # Long numeric range -> try HA statistics first.
     if long_range and not want_raw:
-        stats = await ha.get_statistics([eid], period=_period_for(days, resolution), days=days)
+        period = _period_for(days, resolution)
+        stats = await ha.get_statistics([eid], period=period, days=days)
         rows = stats.get(eid) or []
         if rows:
-            return {"id": eid, "source": "statistics",
-                    "resolution": _period_for(days, resolution),
+            return {"id": eid, "source": "statistics", "unit": None,
+                    "resolution": "hourly" if period == "hour" else "daily",
                     "buckets": normalize_statistics(rows)}
 
     # Recorder path (recent, or statistics-less fallback).
     raw = await ha.get_history([eid], days)
     samples = [{"t": _ts_of(s), "state": s.get("state")} for s in raw
                if s.get("entity_id", eid) == eid]
-    series: dict = {"id": eid, "source": "recorder"}
+    series: dict = {"id": eid, "source": "recorder", "unit": None}
     if long_range:
         series["partial"] = True   # recorder retains only ~RECORDER_WINDOW_DAYS days
 
