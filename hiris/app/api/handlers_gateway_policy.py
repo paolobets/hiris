@@ -26,15 +26,26 @@ READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states", "reca
 GATEWAY_CATEGORIES = [
     {"id": "light", "label": "Luci", "domain": "light"},
     {"id": "scene", "label": "Scene", "domain": "scene"},
+    {"id": "script", "label": "Script", "domain": "script"},
     {"id": "climate", "label": "Climatizzazione", "domain": "climate"},
     {"id": "cover", "label": "Tapparelle / Tende", "domain": "cover"},
     {"id": "media_player", "label": "Media / TV", "domain": "media_player"},
     {"id": "switch", "label": "Interruttori / Prese", "domain": "switch"},
     {"id": "fan", "label": "Ventilazione", "domain": "fan"},
     {"id": "vacuum", "label": "Aspirapolvere", "domain": "vacuum"},
+    {"id": "humidifier", "label": "Umidificatori", "domain": "humidifier"},
+    {"id": "water_heater", "label": "Scaldabagno", "domain": "water_heater"},
+    {"id": "valve", "label": "Valvole", "domain": "valve"},
+    {"id": "siren", "label": "Sirene", "domain": "siren"},
+    {"id": "lawn_mower", "label": "Tagliaerba", "domain": "lawn_mower"},
+    {"id": "select", "label": "Selettori", "domain": "select"},
+    {"id": "number", "label": "Valori numerici", "domain": "number"},
+    {"id": "button", "label": "Pulsanti", "domain": "button"},
+    {"id": "input_boolean", "label": "Interruttori virtuali", "domain": "input_boolean"},
+    {"id": "automation", "label": "Automazioni HA", "domain": "automation"},
+    {"id": "remote", "label": "Telecomandi", "domain": "remote"},
     {"id": "lock", "label": "Serrature", "domain": "lock"},
     {"id": "alarm_control_panel", "label": "Allarme", "domain": "alarm_control_panel"},
-    {"id": "script", "label": "Script", "domain": "script"},
 ]
 
 _VALID_LEVELS = frozenset({"green", "yellow", "red", "off"})
@@ -116,8 +127,20 @@ def apply_saved_policy(app: web.Application) -> None:
 async def handle_get_gateway_policy(request: web.Request) -> web.Response:
     data_dir = request.app.get("data_dir") or "/data"
     cats = load_categories(data_dir)
+    # Per-category entity count from the live cache, so the UI can show how many
+    # devices each category has (and grey out the empty ones).
+    counts: dict = {}
+    cache = request.app.get("entity_cache")
+    if cache is not None:
+        try:
+            counts = cache.domain_counts()
+        except Exception:
+            counts = {}
+    categories = [
+        dict(c, count=int(counts.get(c["domain"], 0))) for c in GATEWAY_CATEGORIES
+    ]
     return web.json_response({
-        "categories": GATEWAY_CATEGORIES,
+        "categories": categories,
         "levels": cats,                       # {category_id: level} (missing = off)
         "valid_levels": sorted(_VALID_LEVELS),
     })

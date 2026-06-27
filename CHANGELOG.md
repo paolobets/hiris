@@ -1,5 +1,28 @@
 # HIRIS — Changelog
 
+## v0.14.3 — Semaforo categorie + conteggi + provenienza (2026-06-27)
+
+### Accessi Gateway
+
+- **Semaforo a 4 livelli** per categoria: Off / 🟢 Verde / 🟡 Giallo / 🔴 Rosso
+  (Giallo/Rosso configurabili; il flusso notifica si attiva nel prossimo update).
+- **Categorie complete** (22: luci, scene, script, clima, tapparelle, media,
+  interruttori, ventilazione, aspirapolvere, umidificatori, scaldabagno, valvole,
+  sirene, tagliaerba, selettori, numeri, pulsanti, interruttori virtuali,
+  automazioni, telecomandi, serrature, allarme).
+- **Conteggio dispositivi** per categoria dalla cache entità (`EntityCache.
+  domain_counts()`); le categorie senza dispositivi sono attenuate.
+- Dicitura chat "Configura agenti" → **"Configurazione"**.
+
+### Provenienza
+
+- L'execute-API registra l'**origine** (`origin` → `agent_id`, validato) di ogni
+  chiamata: gateway/Claude vs chat HIRIS vs agente schedulato.
+
+### Test
+
+- `tests/test_gateway_policy.py`, `tests/test_execute_api.py`. Suite verde.
+
 ## v0.14.2 — Pagina "Accessi Gateway" (permessi a categorie) (2026-06-26)
 
 Nuova sezione nell'interfaccia `/config` per scegliere **a click** cosa il

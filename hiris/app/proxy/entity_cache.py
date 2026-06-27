@@ -81,6 +81,10 @@ class EntityCache:
         ids = self._by_domain.get(domain, [])
         return self.get_minimal(ids)
 
+    def domain_counts(self) -> dict:
+        """Map of domain -> number of cached entities (for the gateway policy UI)."""
+        return {d: len(v) for d, v in self._by_domain.items()}
+
     def get_on(self) -> list[dict]:
         return [e for e in self._states.values() if e["state"] == "on"]
 

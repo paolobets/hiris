@@ -8,11 +8,20 @@ window.HirisGatewayRoute = (function () {
   'use strict';
 
   var EMOJI = {
-    light: '💡', scene: '🎬', climate: '🌡️',
-    cover: '🪟', media_player: '📺', switch: '🔌',
-    fan: '🌀', vacuum: '🧹', lock: '🔒',
-    alarm_control_panel: '🚨', script: '📝'
+    light: '💡', scene: '🎬', script: '📝', climate: '🌡️',
+    cover: '🪟', media_player: '📺', switch: '🔌', fan: '🌀',
+    vacuum: '🧹', humidifier: '💧', water_heater: '♨️', valve: '🚰',
+    siren: '📢', lawn_mower: '🌿', select: '🔽', number: '🔢',
+    button: '🔘', input_boolean: '🎚️', automation: '⚙️', remote: '🎮',
+    lock: '🔒', alarm_control_panel: '🚨'
   };
+
+  var LEVELS = [
+    ['off', 'Off (blocca)'],
+    ['green', '🟢 Verde (esegui subito)'],
+    ['yellow', '🟡 Giallo (notifica + approva)'],
+    ['red', '🔴 Rosso (conferma manuale)']
+  ];
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -42,9 +51,12 @@ window.HirisGatewayRoute = (function () {
     var body = el('div', 'sc-body');
 
     var selects = {};
+    var VALID = { off: 1, green: 1, yellow: 1, red: 1 };
     (data.categories || []).forEach(function (cat) {
+      var count = cat.count || 0;
       var row = el('div', 'gw-row');
       row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border,#2a2a2a)';
+      if (count === 0) row.style.opacity = '0.45';
 
       var ic = el('span', null, (EMOJI[cat.id] || '') + ' ');
       ic.style.fontSize = '18px';
@@ -54,14 +66,19 @@ window.HirisGatewayRoute = (function () {
       lbl.style.cssText = 'flex:1;font-weight:500';
       row.appendChild(lbl);
 
+      var cnt = el('span', null, count + (count === 1 ? ' dispositivo' : ' dispositivi'));
+      cnt.style.cssText = 'color:var(--text-4,#888);font-size:13px;min-width:110px;text-align:right';
+      row.appendChild(cnt);
+
       var sel = el('select');
-      sel.style.cssText = 'padding:6px 10px;border-radius:8px';
-      [['off', 'Off (blocca)'], ['green', '🟢 Verde (consenti)']].forEach(function (o) {
+      sel.style.cssText = 'padding:6px 10px;border-radius:8px;min-width:220px';
+      LEVELS.forEach(function (o) {
         var opt = el('option', null, o[1]);
         opt.value = o[0];
         sel.appendChild(opt);
       });
-      sel.value = (levels[cat.id] === 'green') ? 'green' : 'off';
+      var cur = levels[cat.id];
+      sel.value = VALID[cur] ? cur : 'off';
       selects[cat.id] = sel;
       row.appendChild(sel);
 
@@ -69,8 +86,10 @@ window.HirisGatewayRoute = (function () {
     });
 
     var hint = el('p', 'sc-desc',
-      'v1: Verde = Claude esegue subito (entro la whitelist). I livelli ' +
-      '🟡 Giallo (notifica) e 🔴 Rosso (conferma manuale) arrivano a breve.');
+      'Verde = Claude esegue subito (attivo ora). Giallo (notifica + approva) e ' +
+      'Rosso (conferma manuale) li imposti già qui: il loro flusso di notifica si ' +
+      'attiva col prossimo aggiornamento — fino ad allora, per sicurezza, si ' +
+      'comportano come Off. Le categorie senza dispositivi sono attenuate.');
     hint.style.marginTop = '14px';
     body.appendChild(hint);
 
