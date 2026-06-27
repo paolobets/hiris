@@ -1,5 +1,25 @@
 # HIRIS — Changelog
 
+## v0.14.9 — Gateway: le letture non sono più filtrate dal semaforo azioni (2026-06-27)
+
+**Bugfix.** Da Claude/MCP, chiedere stati di entità non controllabili (es. *"dammi
+le temperature delle stanze"*) tornava **vuoto** appena una categoria del semaforo
+era impostata a verde.
+
+- **Causa**: `derive_execute_policy` deriva `allowed_entities` dai soli **domini
+  azione verdi** (`light.*`, `climate.*`, …). Il dispatcher applicava quel
+  whitelist **anche alle read tool** (`get_home_status`, `get_entity_states`),
+  filtrando via tutto ciò che non era un dominio-azione verde — inclusi tutti i
+  `sensor.*` (temperature). Con semaforo non configurato `allowed_entities` era
+  `None` → nessun filtro, e le letture funzionavano.
+- **Fix** (`handlers_execute.py`): le read tool del gateway ignorano
+  `allowed_entities`/`allowed_services`; solo i tool che mutano stato portano il
+  whitelist. Principio: **le azioni sono sotto semaforo, le entità si leggono
+  sempre.** Letture non distruttive → nessun indebolimento della safety azioni.
+- Test: nuovo `test_execute_read_bypasses_action_whitelist` +
+  `test_execute_action_passes_whitelists` (era codificato il comportamento
+  errato). 99 test gateway/security/tools verdi.
+
 ## v0.14.8 — Mobile config: editor agente senza overflow orizzontale (2026-06-27)
 
 Verificato a video (render headless a viewport iPhone 390×844) **prima** della

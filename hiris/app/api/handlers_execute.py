@@ -120,11 +120,18 @@ async def handle_execute(request: web.Request) -> web.Response:
                                else " manuale in HIRIS.")),
             }})
 
+    # Reads are non-destructive and must NOT be constrained by the action
+    # whitelist (allowed_entities/allowed_services are derived from the *green
+    # action domains*; applying them to reads hides every entity outside those
+    # domains — e.g. all sensors/temperatures — once any category is enabled).
+    # Only mutating tools carry the whitelist; reads see the whole home.
+    from .handlers_gateway_policy import READ_TOOLS
+    is_read = tool in READ_TOOLS
     result = await dispatcher.dispatch(
         tool,
         inputs,
-        allowed_entities=policy.get("allowed_entities"),
-        allowed_services=policy.get("allowed_services"),
+        allowed_entities=None if is_read else policy.get("allowed_entities"),
+        allowed_services=None if is_read else policy.get("allowed_services"),
         agent_id=_origin(body),
         cloud=True,
     )

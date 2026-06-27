@@ -73,8 +73,29 @@ async def test_execute_rejects_tool_not_in_allowlist(aiohttp_client):
 
 
 @pytest.mark.asyncio
-async def test_execute_dispatches_and_passes_whitelists(aiohttp_client):
-    policy = {"tools": ["get_home_status"], "allowed_entities": ["light.*"], "allowed_services": ["light.*"]}
+async def test_execute_action_passes_whitelists(aiohttp_client):
+    # Action tools MUST receive the entity/service whitelist (that is the
+    # gateway's action safety boundary).
+    policy = {"tools": ["call_ha_service"], "allowed_entities": ["light.*"],
+              "allowed_services": ["light.*"]}
+    app = _make_app(policy)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "call_ha_service",
+                                "input": {"domain": "light", "service": "turn_on"}})
+    assert resp.status == 200
+    name, inputs, ents, svcs = app["tool_dispatcher"].calls[0]
+    assert name == "call_ha_service"
+    assert ents == ["light.*"]
+    assert svcs == ["light.*"]
+
+
+@pytest.mark.asyncio
+async def test_execute_read_bypasses_action_whitelist(aiohttp_client):
+    # Reads are non-destructive: the action whitelist (derived from the green
+    # action domains) must NOT restrict what a read can see — otherwise asking
+    # for sensor temperatures returns empty as soon as any category is green.
+    policy = {"tools": ["get_home_status", "get_entity_states"],
+              "allowed_entities": ["light.*"], "allowed_services": ["light.*"]}
     app = _make_app(policy)
     client = await aiohttp_client(app)
     resp = await _post(client, {"tool": "get_home_status", "input": {"a": 1}})
@@ -83,8 +104,8 @@ async def test_execute_dispatches_and_passes_whitelists(aiohttp_client):
     name, inputs, ents, svcs = app["tool_dispatcher"].calls[0]
     assert name == "get_home_status"
     assert inputs == {"a": 1}
-    assert ents == ["light.*"]
-    assert svcs == ["light.*"]
+    assert ents is None          # read sees everything, not just green domains
+    assert svcs is None
 
 
 @pytest.mark.asyncio
