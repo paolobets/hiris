@@ -21,6 +21,7 @@ from .task_tools import create_task_tool, list_tasks_tool, cancel_task_tool
 from .calendar_tools import get_calendar_events, set_input_helper, create_calendar_event
 from .http_tools import http_request
 from .memory_tools import recall_memory as _recall_memory, save_memory as _save_memory
+from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
 from .proposal_tools import create_automation_proposal
 from .knowledge_tools import (
@@ -129,6 +130,13 @@ class ToolDispatcher:
                 if allowed_entities:
                     ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                 return await get_entity_states(self._ha, ids, entity_cache=self._cache)
+            if name == "get_history":
+                return await _get_history(
+                    self._ha,
+                    inputs.get("entity_ids", []),
+                    days=int(inputs.get("days", 7)),
+                    resolution=inputs.get("resolution", "auto"),
+                )
             if name == "get_home_status":
                 result = get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
                 return _filter_entities(result, allowed_entities)
