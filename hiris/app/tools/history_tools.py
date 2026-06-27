@@ -1,0 +1,109 @@
+# hiris/app/tools/history_tools.py
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+MAX_ENTITIES = 20
+MAX_DAYS = 365
+MAX_RAW_POINTS = 500            # per-entity cap before downsampling
+RECORDER_WINDOW_DAYS = 10       # routing threshold (HA recorder default retention)
+_VALID_RESOLUTION = ("auto", "raw", "hourly", "daily")
+
+GET_HISTORY_TOOL_DEF = {
+    "name": "get_history",
+    "description": (
+        "Historical/time-series data for entities (trends, min/max/avg). READ-only. "
+        "Returns COMPRESSED per-entity daily/hourly buckets, never raw point dumps. "
+        "Use for: 'temperature trend last week', 'energy this month', sensor history. "
+        "Args: entity_ids (1-20), days (1-365, default 7), "
+        "resolution ('auto'|'raw'|'hourly'|'daily')."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "entity_ids": {"type": "array", "items": {"type": "string"},
+                           "minItems": 1, "maxItems": MAX_ENTITIES},
+            "days": {"type": "integer", "minimum": 1, "maximum": MAX_DAYS},
+            "resolution": {"type": "string", "enum": list(_VALID_RESOLUTION)},
+        },
+        "required": ["entity_ids"],
+    },
+}
+
+
+def validate_inputs(entity_ids: Any, days: int, resolution: str) -> Optional[str]:
+    if not isinstance(entity_ids, list) or not (1 <= len(entity_ids) <= MAX_ENTITIES):
+        return f"entity_ids must be a list of 1..{MAX_ENTITIES} ids"
+    if not all(isinstance(e, str) and e for e in entity_ids):
+        return "entity_ids must be non-empty strings"
+    if not isinstance(days, int) or not (1 <= days <= MAX_DAYS):
+        return f"days must be an integer 1..{MAX_DAYS}"
+    if resolution not in _VALID_RESOLUTION:
+        return f"resolution must be one of {_VALID_RESOLUTION}"
+    return None
+
+
+def _to_float(s: Any) -> Optional[float]:
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def classify(samples: list[dict]) -> str:
+    """'numeric' if the majority of states parse as float, else 'state'."""
+    if not samples:
+        return "state"
+    numeric = sum(1 for s in samples if _to_float(s.get("state")) is not None)
+    return "numeric" if numeric * 2 >= len(samples) else "state"
+
+
+def _bucket_key(ts: str, resolution: str) -> str:
+    # ts is ISO8601; daily -> YYYY-MM-DD, hourly -> YYYY-MM-DDTHH
+    return ts[:13] if resolution == "hourly" else ts[:10]
+
+
+def aggregate_numeric(samples: list[dict], resolution: str) -> list[dict]:
+    """Group numeric samples (each {'t','state'}) into min/max/mean/n per bucket."""
+    buckets: dict[str, list[float]] = {}
+    for s in samples:
+        v = _to_float(s.get("state"))
+        if v is None:
+            continue
+        key = _bucket_key(s.get("t", ""), resolution)
+        buckets.setdefault(key, []).append(v)
+    out = []
+    for key in sorted(buckets):
+        vals = buckets[key]
+        out.append({"t": key, "min": min(vals), "max": max(vals),
+                    "mean": round(sum(vals) / len(vals), 3), "n": len(vals)})
+    return out
+
+
+def downsample(points: list[dict], cap: int) -> list[dict]:
+    """Evenly thin a point list to <= cap, always keeping first and last."""
+    if len(points) <= cap or cap < 2:
+        return points
+    step = (len(points) - 1) / (cap - 1)
+    idxs = sorted({round(i * step) for i in range(cap)})
+    idxs = [min(i, len(points) - 1) for i in idxs]
+    return [points[i] for i in idxs]
+
+
+def _stat_ts_to_day(start: Any) -> str:
+    if isinstance(start, (int, float)):
+        return datetime.fromtimestamp(start / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+    return str(start)[:10]
+
+
+def normalize_statistics(rows: list[dict]) -> list[dict]:
+    """HA statistics rows -> uniform numeric buckets {t,min,max,mean,n}."""
+    out = []
+    for r in rows:
+        out.append({
+            "t": _stat_ts_to_day(r.get("start")),
+            "min": r.get("min"), "max": r.get("max"), "mean": r.get("mean"),
+            "n": 1,
+        })
+    return out
