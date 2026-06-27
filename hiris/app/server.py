@@ -429,6 +429,16 @@ async def _on_startup(app: web.Application) -> None:
     knowledge_store = KnowledgeStore(os.path.join(data_dir, "knowledge.db"))
     app["knowledge_store"] = knowledge_store
 
+    from .history.store import HistoryStore
+    from .history.capture import HistoryCapture
+    from .api.handlers_history_policy import load_policy as _load_history_policy
+
+    history_store = HistoryStore(os.path.join(data_dir, "history.db"))
+    app["history_store"] = history_store
+    history_capture = HistoryCapture(history_store, _load_history_policy(data_dir))
+    app["history_capture"] = history_capture
+    ha_client.add_state_listener(history_capture.on_state_changed)
+
     vault = VaultStore(os.path.join(data_dir, "vault.db"))
     pseudonymizer = Pseudonymizer(vault)
     app["vault"] = vault
@@ -455,6 +465,21 @@ async def _on_startup(app: web.Application) -> None:
         id="hiris_retention",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+
+    def _run_history_compact() -> None:
+        from datetime import datetime, timezone
+        pol = _load_history_policy(data_dir)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        try:
+            history_store.compact(today=today, retention_days=pol["retention_days"])
+        except Exception as exc:
+            logger.error("History compaction failed: %s", exc, exc_info=True)
+
+    engine._scheduler.add_job(
+        _run_history_compact,
+        trigger="cron", hour=3, minute=30,
+        id="hiris_history_compact", replace_existing=True, misfire_grace_time=3600,
     )
 
     # ── Mayan EDMS polling ingestion job (second-brain phase-3, Task 6) ────────
@@ -570,6 +595,7 @@ async def _on_startup(app: web.Application) -> None:
         knowledge_store=knowledge_store,
         embedder=embedder,
         pseudonymizer=pseudonymizer,
+        history_store=history_store,
     )
     dispatcher.set_task_engine(task_engine)
     app["tool_dispatcher"] = dispatcher
@@ -764,6 +790,12 @@ def create_app() -> web.Application:
     )
     app.router.add_get("/api/gateway/policy", handle_get_gateway_policy)
     app.router.add_post("/api/gateway/policy", handle_save_gateway_policy)
+
+    from .api.handlers_history_policy import (
+        handle_get_history_policy, handle_save_history_policy,
+    )
+    app.router.add_get("/api/history/policy", handle_get_history_policy)
+    app.router.add_post("/api/history/policy", handle_save_history_policy)
 
     from .api.handlers_gateway_pending import (
         handle_list_pending as _gw_list_pending,
