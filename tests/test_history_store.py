@@ -79,3 +79,49 @@ def test_compact_rolls_complete_days_and_prunes_old_raw(tmp_path):
     remaining = {e["ts"][:10] for e in s._all_events()}
     assert "2026-06-15" not in remaining
     assert "2026-06-19" in remaining and "2026-06-20" in remaining
+
+
+def test_has_entity(tmp_path):
+    import os
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    assert s.has_entity("sensor.t") is False
+    s.append("sensor.t", "2026-06-20T10:00:00+00:00", "30.0")
+    assert s.has_entity("sensor.t") is True
+
+
+def test_query_numeric_buckets_from_daily_and_today(tmp_path):
+    import os
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    s.append("sensor.t", "2026-06-18T10:00:00+00:00", "10.0")
+    s.append("sensor.t", "2026-06-18T12:00:00+00:00", "20.0")
+    s.rollup_day("sensor.t", "2026-06-18")
+    s.append("sensor.t", "2026-06-20T08:00:00+00:00", "30.0")
+    out = s.query("sensor.t", days=7, today="2026-06-20")
+    assert out["id"] == "sensor.t"
+    assert out["source"] == "store"
+    days = [b["t"] for b in out["buckets"]]
+    assert "2026-06-18" in days and "2026-06-20" in days
+    b18 = next(b for b in out["buckets"] if b["t"] == "2026-06-18")
+    assert b18["mean"] == 15.0
+
+
+def test_query_onoff_buckets(tmp_path):
+    import os
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    s.append("binary_sensor.d", "2026-06-20T09:00:00+00:00", "on")
+    s.append("binary_sensor.d", "2026-06-20T09:05:00+00:00", "off")
+    out = s.query("binary_sensor.d", days=7, today="2026-06-20")
+    b = out["buckets"][0]
+    assert b["t"] == "2026-06-20"
+    assert b["on_seconds"] == 300.0 and b["transitions"] == 1
+    assert "mean" not in b           # non-numeric bucket omits numeric keys
+
+
+def test_query_returns_none_when_no_data(tmp_path):
+    import os
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    assert s.query("sensor.absent", days=7, today="2026-06-20") is None

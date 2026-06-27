@@ -50,6 +50,22 @@ def _day_offset(day: str, delta_days: int) -> str:
     return d.strftime("%Y-%m-%d")
 
 
+def _bucket_from_daily(row: dict) -> dict:
+    """Shape a history_daily row (or a _rollup_events result + day) into a bucket.
+    Numeric entities expose min/max/mean; non-numeric expose on_seconds/transitions."""
+    b = {"t": row["day"]}
+    if row.get("mean") is not None:
+        b["min"] = row["min"]
+        b["max"] = row["max"]
+        b["mean"] = row["mean"]
+        b["n"] = row["n"]
+    else:
+        b["on_seconds"] = row.get("on_seconds") or 0.0
+        b["transitions"] = row.get("transitions") or 0
+        b["last_state"] = row.get("last_state")
+    return b
+
+
 def _rollup_events(events: list[dict]) -> dict:
     """Aggregate one entity's events for a single day into a daily summary.
 
@@ -157,6 +173,45 @@ class HistoryStore:
             self._conn.execute(
                 "DELETE FROM history_events WHERE substr(ts,1,10) < ?", (cutoff,))
             self._conn.commit()
+
+    def has_entity(self, entity_id: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT 1 FROM history_events WHERE entity_id=? LIMIT 1", (entity_id,))
+            if cur.fetchone():
+                return True
+            cur = self._conn.execute(
+                "SELECT 1 FROM history_daily WHERE entity_id=? LIMIT 1", (entity_id,))
+            return cur.fetchone() is not None
+
+    def query(self, entity_id: str, days: int, today: str) -> Optional[dict]:
+        """Return uniform daily buckets for an entity, or None if it has no data.
+
+        Daily rollups are authoritative for past days; any day still present in
+        raw events (typically 'today') is aggregated live and overrides the
+        rollup for that day, so there is never double counting."""
+        if not self.has_entity(entity_id):
+            return None
+        cutoff = _day_offset(today, -days)
+        by_day: dict[str, dict] = {}
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM history_daily WHERE entity_id=? AND day>=? ORDER BY day",
+                (entity_id, cutoff))
+            for r in cur.fetchall():
+                by_day[r["day"]] = _bucket_from_daily(dict(r))
+            cur = self._conn.execute(
+                "SELECT ts, state, num FROM history_events "
+                "WHERE entity_id=? AND substr(ts,1,10)>=? ORDER BY ts",
+                (entity_id, cutoff))
+            raw = [dict(r) for r in cur.fetchall()]
+        raw_by_day: dict[str, list[dict]] = {}
+        for e in raw:
+            raw_by_day.setdefault(e["ts"][:10], []).append(e)
+        for day, events in raw_by_day.items():
+            by_day[day] = _bucket_from_daily(dict(_rollup_events(events), day=day, entity_id=entity_id))
+        buckets = [by_day[d] for d in sorted(by_day)]
+        return {"id": entity_id, "source": "store", "unit": None, "buckets": buckets}
 
     # --- test helper ---
     def _daily(self, entity_id: str) -> list[dict]:
