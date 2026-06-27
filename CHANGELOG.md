@@ -1,5 +1,25 @@
 # HIRIS — Changelog
 
+## v0.16.0 — Storico proprietario HIRIS: cattura + Storicizzazione + analisi a lungo termine (2026-06-27)
+
+Completa lo **storico ibrido** (Fasi 2a/2b/2c): oltre a recorder+statistics di HA
+(v0.15.0), HIRIS ora **conserva in proprio** lo storico delle entità che scegli,
+anche oltre la retention di HA — base per analisi a lungo periodo via `get_history`.
+
+- **`HistoryStore`** (SQLite locale): cattura eventi di stato, li compatta in
+  **riepiloghi giornalieri permanenti** (numerici: min/max/media; on/off: durate e
+  transizioni) e pota i grezzi oltre la retention. Timestamp normalizzati UTC,
+  cattura crash-proof, chiusura pulita allo shutdown.
+- **Cattura opt-in**: nuova pagina config **"Storicizzazione"** per scegliere cosa
+  registrare (per categoria + entità extra/escluse + retention). **Default: nulla**
+  viene storicizzato finché non abiliti tu — zero impatto su chi non la usa.
+- **`get_history`** legge automaticamente lo store per le entità storicizzate
+  (recorder/statistics per il resto), così Claude analizza trend di presenza,
+  irrigazione, clima ecc. anche su mesi.
+- **Compattazione notturna** schedulata (03:30) con retention dalla policy.
+- API `/api/history/policy` protetta dai middleware auth/CSRF come il resto.
+- Verificato a video (desktop 1440 + iPhone 390) prima del rilascio; 704 test verdi.
+
 ## v0.15.0 — Storico via MCP: get_history (recorder + statistics) (2026-06-27)
 
 Nuova capability: **dati storici accessibili via MCP** e nella chat HIRIS.
