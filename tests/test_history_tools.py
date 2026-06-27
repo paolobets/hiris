@@ -159,3 +159,40 @@ def test_get_history_registered_in_runner():
     names = {t["name"] for t in ALL_TOOL_DEFS}
     assert "get_history" in names
     assert "get_history" in EVALUATION_ONLY_TOOLS    # read-only, injection-safe
+
+
+def test_validate_inputs_rejects_malformed_entity_id():
+    assert H.validate_inputs(["sensor.ok"], 7, "auto") is None
+    assert H.validate_inputs(["bad id with spaces"], 7, "auto") is not None
+    assert H.validate_inputs(["inject&filter_entity_id=x"], 7, "auto") is not None
+    assert H.validate_inputs(["NoDot"], 7, "auto") is not None
+
+
+@pytest.mark.asyncio
+async def test_get_history_statistics_buckets_are_capped():
+    # 5000 hourly statistics rows must be downsampled to <= MAX_RAW_POINTS.
+    rows = [{"start": f"2026-01-01T00:00:00+00:00", "mean": float(i), "min": 0.0, "max": 1.0}
+            for i in range(5000)]
+    ha = _FakeHA(stats={"sensor.power": rows})
+    out = await H.get_history(ha, ["sensor.power"], days=300, resolution="hourly")
+    series = out[0]
+    assert series["source"] == "statistics"
+    assert len(series["buckets"]) <= H.MAX_RAW_POINTS
+
+
+@pytest.mark.asyncio
+async def test_get_history_long_range_raw_skips_statistics():
+    # long range + resolution="raw" must NOT call statistics; recorder + partial.
+    ha = _FakeHA(history={"sensor.temp": [
+        {"last_changed": "2026-06-26T10:00:00+00:00", "state": "21.0"},
+    ]})
+    out = await H.get_history(ha, ["sensor.temp"], days=60, resolution="raw")
+    series = out[0]
+    assert series["source"] == "recorder"
+    assert series["partial"] is True
+    assert series["resolution"] == "raw"
+
+
+def test_period_for_boundary_at_35_days():
+    assert H._period_for(35, "auto") == "hour"
+    assert H._period_for(36, "auto") == "day"

@@ -1,6 +1,7 @@
 # hiris/app/tools/history_tools.py
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -9,6 +10,7 @@ MAX_DAYS = 365
 MAX_RAW_POINTS = 500            # per-entity cap before downsampling
 RECORDER_WINDOW_DAYS = 10       # routing threshold (HA recorder default retention)
 _VALID_RESOLUTION = ("auto", "raw", "hourly", "daily")
+_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 GET_HISTORY_TOOL_DEF = {
     "name": "get_history",
@@ -36,8 +38,8 @@ GET_HISTORY_TOOL_DEF = {
 def validate_inputs(entity_ids: Any, days: int, resolution: str) -> Optional[str]:
     if not isinstance(entity_ids, list) or not (1 <= len(entity_ids) <= MAX_ENTITIES):
         return f"entity_ids must be a list of 1..{MAX_ENTITIES} ids"
-    if not all(isinstance(e, str) and e for e in entity_ids):
-        return "entity_ids must be non-empty strings"
+    if not all(isinstance(e, str) and _ENTITY_ID_RE.match(e) for e in entity_ids):
+        return "each entity_id must look like 'domain.object_id' (lowercase)"
     if not isinstance(days, int) or isinstance(days, bool) or not (1 <= days <= MAX_DAYS):
         return f"days must be an integer 1..{MAX_DAYS}"
     if resolution not in _VALID_RESOLUTION:
@@ -144,7 +146,7 @@ async def _entity_series(ha: Any, eid: str, days: int, resolution: str) -> dict:
         if rows:
             return {"id": eid, "source": "statistics", "unit": None,
                     "resolution": "hourly" if period == "hour" else "daily",
-                    "buckets": normalize_statistics(rows)}
+                    "buckets": downsample(normalize_statistics(rows), MAX_RAW_POINTS)}
 
     # Recorder path (recent, or statistics-less fallback).
     raw = await ha.get_history([eid], days)
