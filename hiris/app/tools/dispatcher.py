@@ -82,6 +82,7 @@ class ToolDispatcher:
         knowledge_store: Any = None,
         embedder: Any = None,
         pseudonymizer: Any = None,
+        history_store: Any = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -96,6 +97,7 @@ class ToolDispatcher:
         # Use dedicated embedder if provided, otherwise fall back to the memory embedder
         self._knowledge_embedder = embedder if embedder is not None else embedding_provider
         self._pseudonymizer = pseudonymizer
+        self._history_store = history_store
         self._task_engine: Any = None
 
     def set_task_engine(self, engine: Any) -> None:
@@ -136,6 +138,7 @@ class ToolDispatcher:
                     inputs.get("entity_ids", []),
                     days=int(inputs.get("days", 7)),
                     resolution=inputs.get("resolution", "auto"),
+                    store=self._history_store,
                 )
             if name == "get_home_status":
                 result = get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []

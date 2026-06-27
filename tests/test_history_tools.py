@@ -196,3 +196,37 @@ async def test_get_history_long_range_raw_skips_statistics():
 def test_period_for_boundary_at_35_days():
     assert H._period_for(35, "auto") == "hour"
     assert H._period_for(36, "auto") == "day"
+
+
+class _FakeStore:
+    def __init__(self, entities):
+        self._e = entities
+    def has_entity(self, eid):
+        return eid in self._e
+    def query(self, eid, days, today):
+        if eid not in self._e:
+            return None
+        return {"id": eid, "source": "store", "unit": None,
+                "buckets": [{"t": "2026-06-19", "min": 1.0, "max": 3.0, "mean": 2.0, "n": 5}]}
+
+
+@pytest.mark.asyncio
+async def test_get_history_uses_store_for_captured_entity():
+    ha = _FakeHA()
+    store = _FakeStore({"climate.salotto"})
+    out = await H.get_history(ha, ["climate.salotto"], days=30, resolution="auto",
+                              store=store, today="2026-06-20")
+    series = out[0]
+    assert series["source"] == "store"
+    assert series["resolution"] == "daily"
+    assert series["buckets"][0]["mean"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_get_history_store_skipped_for_raw_resolution():
+    ha = _FakeHA(history={"climate.salotto": [
+        {"last_changed": "2026-06-20T10:00:00+00:00", "state": "21.0"}]})
+    store = _FakeStore({"climate.salotto"})
+    out = await H.get_history(ha, ["climate.salotto"], days=3, resolution="raw",
+                              store=store, today="2026-06-20")
+    assert out[0]["source"] == "recorder"

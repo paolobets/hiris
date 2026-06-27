@@ -134,9 +134,17 @@ def _resolution_for(days: int, resolution: str) -> str:
     return "daily" if days > 2 else "raw"
 
 
-async def _entity_series(ha: Any, eid: str, days: int, resolution: str) -> dict:
+async def _entity_series(ha: Any, eid: str, days: int, resolution: str,
+                         store: Any = None, today: Optional[str] = None) -> dict:
     long_range = days > RECORDER_WINDOW_DAYS
     want_raw = resolution == "raw"
+
+    # Captured entities: the HIRIS store is authoritative for aggregated history.
+    if store is not None and not want_raw and store.has_entity(eid):
+        res = store.query(eid, days, today)
+        if res and res.get("buckets"):
+            res["resolution"] = "daily"
+            return res
 
     # Long numeric range -> try HA statistics first.
     if long_range and not want_raw:
@@ -167,8 +175,13 @@ async def _entity_series(ha: Any, eid: str, days: int, resolution: str) -> dict:
 
 
 async def get_history(ha: Any, entity_ids: list[str], days: int = 7,
-                      resolution: str = "auto") -> Any:
+                      resolution: str = "auto", store: Any = None,
+                      today: Optional[str] = None) -> Any:
     err = validate_inputs(entity_ids, days, resolution)
     if err:
         return {"error": err}
-    return [await _entity_series(ha, eid, days, resolution) for eid in entity_ids]
+    if today is None:
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return [await _entity_series(ha, eid, days, resolution, store=store, today=today)
+            for eid in entity_ids]

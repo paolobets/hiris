@@ -27,3 +27,17 @@ async def test_dispatch_get_history_ignores_action_whitelist():
     out = await d.dispatch("get_history", {"entity_ids": ["sensor.temp"], "days": 3},
                            allowed_entities=["light.*"])
     assert out[0]["id"] == "sensor.temp"   # not blocked
+
+
+class _StoreFake:
+    def has_entity(self, eid): return True
+    def query(self, eid, days, today):
+        return {"id": eid, "source": "store", "unit": None,
+                "buckets": [{"t": "2026-06-19", "mean": 2.0, "min": 1.0, "max": 3.0, "n": 4}]}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_history_prefers_store_when_present():
+    d = ToolDispatcher(_FakeHA(), notify_config={}, history_store=_StoreFake())
+    out = await d.dispatch("get_history", {"entity_ids": ["climate.x"], "days": 30})
+    assert out[0]["source"] == "store"
