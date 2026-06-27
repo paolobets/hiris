@@ -37,7 +37,7 @@ def validate_inputs(entity_ids: Any, days: int, resolution: str) -> Optional[str
         return f"entity_ids must be a list of 1..{MAX_ENTITIES} ids"
     if not all(isinstance(e, str) and e for e in entity_ids):
         return "entity_ids must be non-empty strings"
-    if not isinstance(days, int) or not (1 <= days <= MAX_DAYS):
+    if not isinstance(days, int) or isinstance(days, bool) or not (1 <= days <= MAX_DAYS):
         return f"days must be an integer 1..{MAX_DAYS}"
     if resolution not in _VALID_RESOLUTION:
         return f"resolution must be one of {_VALID_RESOLUTION}"
@@ -69,9 +69,10 @@ def aggregate_numeric(samples: list[dict], resolution: str) -> list[dict]:
     buckets: dict[str, list[float]] = {}
     for s in samples:
         v = _to_float(s.get("state"))
-        if v is None:
+        ts = s.get("t", "")
+        if v is None or len(ts) < 10:        # need a parsable value AND a date-able ts
             continue
-        key = _bucket_key(s.get("t", ""), resolution)
+        key = _bucket_key(ts, resolution)
         buckets.setdefault(key, []).append(v)
     out = []
     for key in sorted(buckets):
@@ -101,8 +102,11 @@ def normalize_statistics(rows: list[dict]) -> list[dict]:
     """HA statistics rows -> uniform numeric buckets {t,min,max,mean,n}."""
     out = []
     for r in rows:
+        start = r.get("start")
+        if start is None:
+            continue
         out.append({
-            "t": _stat_ts_to_day(r.get("start")),
+            "t": _stat_ts_to_day(start),
             "min": r.get("min"), "max": r.get("max"), "mean": r.get("mean"),
             "n": 1,
         })
