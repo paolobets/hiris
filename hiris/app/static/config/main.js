@@ -8,6 +8,22 @@
     pc.innerHTML = '';
     pc.appendChild(document.getElementById('tpl-page-chrome').content.cloneNode(true));
 
+    /* Off-canvas drawer (mobile ≤768px): hamburger opens the side-nav. */
+    var menuBtn = document.getElementById('cfg-menu-btn');
+    var overlay = document.getElementById('sidenav-overlay');
+    function toggleNav(open) {
+      var snEl = document.getElementById('side-nav');
+      if (!snEl) return;
+      var o = (open === undefined) ? !snEl.classList.contains('open') : !!open;
+      snEl.classList.toggle('open', o);
+      if (overlay) overlay.style.display = o ? 'block' : 'none';
+    }
+    if (menuBtn) menuBtn.addEventListener('click', function () { toggleNav(); });
+    if (overlay) overlay.addEventListener('click', function () { toggleNav(false); });
+    sn.addEventListener('click', function (e) {
+      if (e.target.closest('.nav-item') && window.matchMedia('(max-width: 768px)').matches) toggleNav(false);
+    });
+
     /* Theme toggle */
     var btn = document.getElementById('theme-toggle');
     var moon = document.getElementById('ic-moon');

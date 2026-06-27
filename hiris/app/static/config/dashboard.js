@@ -41,7 +41,7 @@
     outlet.innerHTML =
       '<div class="page-title">Benvenuto in HIRIS</div>' +
       '<p class="page-subtitle">Configura il tuo primo agente AI per Home Assistant. Scegli un template per iniziare velocemente, oppure parti da zero.</p>' +
-      '<div class="stat-grid" style="grid-template-columns:repeat(3, 1fr)">' +
+      '<div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr))">' +
         '<a class="stat-tile" href="#/agents/new" style="text-decoration:none">' +
           '<div class="st-label">⚡ Energia</div>' +
           '<div class="st-value" style="font-size:var(--fs-15);font-weight:500;letter-spacing:normal">Monitor consumi</div>' +

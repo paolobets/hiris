@@ -1147,6 +1147,35 @@
   .side-nav .brand-name { display: none; }
 }
 
+/* Off-canvas drawer on phones: the 64px rail wastes space, so below 768px the
+   sidebar becomes a slide-in drawer (hamburger in the chrome) and the content
+   uses the full width. */
+.cfg-menu-btn {
+  display: none; align-items: center; justify-content: center;
+  width: 40px; height: 40px; margin-right: 6px;
+  background: transparent; border: none; color: var(--text);
+  cursor: pointer; border-radius: 8px; flex-shrink: 0;
+}
+.cfg-menu-btn:active { background: var(--hover); }
+.sidenav-overlay { display: none; }
+@media (pointer: coarse) { .cfg-menu-btn { width: 44px; height: 44px; } }
+
+@media (max-width: 768px) {
+  .app-shell { grid-template-columns: 1fr !important; }
+  .cfg-menu-btn { display: inline-flex; }
+  .side-nav {
+    position: fixed !important; top: 0; left: 0; bottom: 0; height: auto !important;
+    width: min(82vw, 280px); z-index: 60;
+    transform: translateX(-100%); transition: transform .22s ease;
+    box-shadow: 2px 0 28px rgba(0,0,0,.45);
+    padding-top: calc(var(--sp-4) + env(safe-area-inset-top));
+  }
+  .side-nav.open { transform: translateX(0) !important; }
+  .side-nav .nav-label, .side-nav .brand-name { display: inline !important; }
+  .sidenav-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55; }
+  .page-chrome { padding-top: calc(12px + env(safe-area-inset-top)); }
+}
+
 /* ────────────────────────────────────────────────────────────
    Side navigation
    ──────────────────────────────────────────────────────────── */

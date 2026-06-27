@@ -1,5 +1,18 @@
 # HIRIS — Changelog
 
+## v0.14.7 — Mobile config: sidebar a drawer + dashboard senza overflow (2026-06-27)
+
+Verificato a video (render headless a viewport iPhone) **prima** della pubblicazione.
+
+- **Config: sidebar → drawer a scomparsa** (≤768px). Il rail da 64px mangiava
+  spazio; ora un hamburger nel chrome apre la sidebar come drawer (con overlay e
+  label visibili), e il contenuto usa **tutta la larghezza**. Si chiude su tap
+  voce/overlay. (Fix specificità: regole `!important` perché la media query
+  precedeva la definizione base `.side-nav`.)
+- **Dashboard: card template responsive** — erano forzate a `repeat(3,1fr)`
+  inline → overflow orizzontale e sottotitolo tagliato su iPhone. Ora
+  `auto-fit/minmax(150px)` → wrappano, niente scroll orizzontale.
+
 ## v0.14.6 — Mobile: header chat riprogettato (no sovrapposizioni) (2026-06-27)
 
 - L'header della chat su mobile (≤720px) era affollato (logo + versione +
