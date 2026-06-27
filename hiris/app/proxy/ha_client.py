@@ -183,7 +183,7 @@ class HAClient:
                             logger.warning("HA WS auth failed in _ws_request(%s)", msg_type)
                             return None
                     payload = {"id": 1, "type": msg_type}
-                    if extra:
+                    if extra is not None:
                         payload.update(extra)
                     await ws.send_json(payload)
                     while True:
@@ -205,6 +205,7 @@ class HAClient:
 
         period: "5minute" | "hour" | "day" | "week" | "month".
         Returns {statistic_id: [{start, mean, min, max, sum?}, ...]} ({} on failure).
+        end_time is omitted -> HA defaults it to now.
         """
         start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         result = await self._ws_request(
