@@ -89,6 +89,7 @@
 </div>
 
 <div id="app">
+  <div id="sidebar-overlay" onclick="toggleSidebar(false)"></div>
   <aside id="sidebar">
     <div id="sidebar-header"><h2>Agenti chat</h2></div>
     <div id="agent-list"></div>
@@ -126,6 +127,9 @@
 
   <main id="main">
     <header id="header">
+      <button id="menu-btn" onclick="toggleSidebar()" aria-label="Apri menu" title="Menu">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
       <img id="header-icon" src="static/hiris-icon.svg" alt="HIRIS">
       <div id="header-text">
         <div id="header-title">HIRIS <span id="header-version"></span></div>
@@ -561,6 +565,24 @@ updateGreeting();
 setInterval(loadAgents, 30000);
 setInterval(loadUsage, 30000);
 setInterval(updateGreeting, 60 * 60 * 1000);  /* refresh greeting every hour */
+
+/* ── Off-canvas sidebar (mobile) ─────────────────────────── */
+function toggleSidebar(force) {
+  var sb = document.getElementById('sidebar');
+  var ov = document.getElementById('sidebar-overlay');
+  if (!sb) return;
+  var open = (force === undefined) ? !sb.classList.contains('open') : !!force;
+  sb.classList.toggle('open', open);
+  if (ov) ov.style.display = open ? 'block' : 'none';
+}
+/* Close the drawer after picking an agent (tap inside the sidebar list). */
+document.addEventListener('DOMContentLoaded', function () {
+  var sb = document.getElementById('sidebar');
+  if (sb) sb.addEventListener('click', function (e) {
+    var hit = e.target.closest('.agent-item, .sb-nav-item');
+    if (hit && window.matchMedia('(max-width: 720px)').matches) toggleSidebar(false);
+  });
+});
 
 /* ── Tasks panel ─────────────────────────────────────────── */
 function showPanel(name) {

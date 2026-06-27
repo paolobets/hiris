@@ -92,12 +92,12 @@ window.HirisGatewayRoute = (function () {
 
     // notify service
     var srow = el('div');
-    srow.style.cssText = 'display:flex;align-items:center;gap:12px;padding:6px 0 14px';
+    srow.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 0 14px';
     srow.appendChild(el('span', null, '🔔 Servizio notifica (Giallo):'));
     var svc = el('input');
     svc.type = 'text';
     svc.value = settings.notify_service || 'notify.iphone_bet';
-    svc.style.cssText = 'padding:6px 10px;border-radius:8px;min-width:240px';
+    svc.style.cssText = 'padding:8px 10px;border-radius:8px;min-width:160px;flex:1 1 200px;min-height:44px;box-sizing:border-box';
     srow.appendChild(svc);
     body.appendChild(srow);
 
@@ -105,19 +105,19 @@ window.HirisGatewayRoute = (function () {
     (data.categories || []).forEach(function (cat) {
       var count = cat.count || 0;
       var row = el('div', 'gw-row');
-      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border,#2a2a2a)';
+      row.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px 0;border-bottom:1px solid var(--border,#2a2a2a)';
       if (count === 0) row.style.opacity = '0.45';
       var ic = el('span', null, (EMOJI[cat.id] || '') + ' ');
       ic.style.fontSize = '18px';
       row.appendChild(ic);
       var lbl = el('span', null, cat.label);
-      lbl.style.cssText = 'flex:1;font-weight:500';
+      lbl.style.cssText = 'flex:1 1 120px;font-weight:500;font-size:15px';
       row.appendChild(lbl);
-      var cnt = el('span', null, count + (count === 1 ? ' dispositivo' : ' dispositivi'));
-      cnt.style.cssText = 'color:var(--text-4,#888);font-size:13px;min-width:110px;text-align:right';
+      var cnt = el('span', null, count + (count === 1 ? ' disp.' : ' disp.'));
+      cnt.style.cssText = 'color:var(--text-4,#888);font-size:13px;min-width:64px;text-align:right';
       row.appendChild(cnt);
       var sel = el('select');
-      sel.style.cssText = 'padding:6px 10px;border-radius:8px;min-width:220px';
+      sel.style.cssText = 'padding:8px 10px;border-radius:8px;min-width:150px;flex:1 1 170px;min-height:44px;box-sizing:border-box';
       LEVELS.forEach(function (o) {
         var opt = el('option', null, o[1]); opt.value = o[0]; sel.appendChild(opt);
       });

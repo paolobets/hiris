@@ -1,5 +1,22 @@
 # HIRIS — Changelog
 
+## v0.14.5 — Mobile: menu a scomparsa + fix overflow Accessi Gateway (2026-06-27)
+
+### Chat (mobile)
+
+- **Hamburger ☰** nell'header HIRIS che apre la sidebar come **drawer a
+  scomparsa** (con overlay): da iPhone in verticale ora si raggiungono la lista
+  agenti e **Configurazione** (prima la sidebar era `display:none` e la config
+  era irraggiungibile). Chiusura su tap agente/voce o overlay. Safe-area iOS.
+
+### Accessi Gateway (mobile)
+
+- Righe responsive: `flex-wrap` + controlli flessibili (niente più larghezze
+  fisse 220/240px) → niente **scroll orizzontale** su iPhone. `select`/input a
+  **44px** (target touch), label a 15px.
+
+Solo front-end (HTML/CSS/JS), nessun cambiamento backend.
+
 ## v0.14.4 — Semaforo operativo: flusso Giallo/Rosso (notifica + approvazione) (2026-06-27)
 
 Il comportamento dei livelli del semaforo, **solo sul percorso del gateway**
