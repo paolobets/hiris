@@ -164,8 +164,9 @@ class HAClient:
             resp.raise_for_status()
             return await resp.json()
 
-    async def _ws_call(self, msg_type: str, timeout: float = 10.0) -> list[dict]:
-        """Send a single WebSocket command and return its result list."""
+    async def _ws_request(self, msg_type: str, extra: dict | None = None,
+                          timeout: float = 10.0) -> Any:
+        """Single WebSocket command → raw `result` (dict OR list, per command)."""
         ws_url = (
             self._base_url.replace("http://", "ws://").replace("https://", "wss://")
             + "/api/websocket"
@@ -179,16 +180,40 @@ class HAClient:
                         await ws.send_json({"type": "auth", "access_token": token})
                         auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
                         if auth_resp.get("type") != "auth_ok":
-                            logger.warning("HA WS auth failed in _ws_call(%s)", msg_type)
-                            return []
-                    await ws.send_json({"id": 1, "type": msg_type})
+                            logger.warning("HA WS auth failed in _ws_request(%s)", msg_type)
+                            return None
+                    payload = {"id": 1, "type": msg_type}
+                    if extra:
+                        payload.update(extra)
+                    await ws.send_json(payload)
                     while True:
                         msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
                         if msg.get("id") == 1:
-                            return msg.get("result", []) or []
+                            return msg.get("result")
         except Exception as exc:
-            logger.debug("_ws_call(%s) failed: %s", msg_type, exc)
-            return []
+            logger.debug("_ws_request(%s) failed: %s", msg_type, exc)
+            return None
+
+    async def _ws_call(self, msg_type: str, timeout: float = 10.0) -> list[dict]:
+        """Back-compat wrapper: WS command whose result is a list (registry, etc.)."""
+        result = await self._ws_request(msg_type, timeout=timeout)
+        return result if isinstance(result, list) else []
+
+    async def get_statistics(self, statistic_ids: list[str], period: str,
+                             days: int) -> dict:
+        """HA Long-Term Statistics for measurement sensors over the last N days.
+
+        period: "5minute" | "hour" | "day" | "week" | "month".
+        Returns {statistic_id: [{start, mean, min, max, sum?}, ...]} ({} on failure).
+        """
+        start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        result = await self._ws_request(
+            "recorder/statistics_during_period",
+            extra={"start_time": start,
+                   "statistic_ids": list(statistic_ids),
+                   "period": period},
+        )
+        return result if isinstance(result, dict) else {}
 
     async def get_area_registry(self) -> list[dict]:
         return await self._ws_call("config/area_registry/list")
