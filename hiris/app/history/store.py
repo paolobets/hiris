@@ -128,6 +128,11 @@ class HistoryStore:
             self._conn.executescript(_SCHEMA)
             self._conn.commit()
 
+    def close(self) -> None:
+        """Close the SQLite connection (called on app shutdown)."""
+        with self._lock:
+            self._conn.close()
+
     def append(self, entity_id: str, ts: str, state: str) -> None:
         """Record one state change. Never raises on bad data (capture must not crash)."""
         try:

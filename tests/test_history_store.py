@@ -167,3 +167,15 @@ def test_compact_continues_when_one_entity_rollup_fails(tmp_path, monkeypatch):
     s.compact(today="2026-06-20", retention_days=10)
     days_good = {r["day"] for r in s._daily("sensor.good")}
     assert "2026-06-18" in days_good      # the good entity was still rolled up
+
+
+def test_close_closes_connection(tmp_path):
+    import os, sqlite3
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    s.append("sensor.t", "2026-06-20T10:00:00+00:00", "1.0")
+    s.close()
+    # using a closed connection raises ProgrammingError
+    import pytest
+    with pytest.raises(sqlite3.ProgrammingError):
+        s._all_events()

@@ -712,6 +712,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["memory_store"].close()
     if "proposal_store" in app:
         app["proposal_store"].close()
+    if "history_store" in app:
+        app["history_store"].close()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()
