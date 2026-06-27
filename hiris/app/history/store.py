@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS history_events (
@@ -40,9 +43,12 @@ def _to_float(s: object) -> Optional[float]:
 
 def _parse_ts(ts: str) -> Optional[datetime]:
     try:
-        return datetime.fromisoformat(ts)
+        dt = datetime.fromisoformat(ts)
     except (TypeError, ValueError):
         return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _day_offset(day: str, delta_days: int) -> str:
@@ -69,9 +75,16 @@ def _bucket_from_daily(row: dict) -> dict:
 def _rollup_events(events: list[dict]) -> dict:
     """Aggregate one entity's events for a single day into a daily summary.
 
-    events: ordered list of {ts, state, num}. Computes numeric stats when values
-    are numeric, and on/off durations (state != 'off'/'unavailable'/'unknown' is
-    treated as 'on') in all cases.
+    events: ordered list of {ts, state, num}. Computes numeric stats over the
+    numeric samples (min/max/mean/n), and on/off durations.
+
+    on_seconds accounting model: time is attributed only to the interval BETWEEN
+    two consecutive events within this list. The tail segment after the last
+    event (until end of day) and any segment before the first event (an entity
+    already 'on' at midnight) are NOT counted here. Completing open segments
+    across day boundaries is a capture-layer concern (Phase 2b); within a single
+    day this under-counts a state that spans the day edges. Non-'off' states
+    ('off'/'unavailable'/'unknown'/''/'none' are treated as off) count as 'on'.
     """
     nums = [e["num"] for e in events if e.get("num") is not None]
     transitions = 0
@@ -90,7 +103,7 @@ def _rollup_events(events: list[dict]) -> dict:
         prev_state = st
         prev_dt = dt
     agg = {
-        "n": len(events),
+        "n": len(nums) if nums else len(events),
         "min": min(nums) if nums else None,
         "max": max(nums) if nums else None,
         "mean": round(sum(nums) / len(nums), 3) if nums else None,
@@ -167,7 +180,10 @@ class HistoryStore:
                 "WHERE substr(ts,1,10) < ?", (today,))
             pairs = [(r["entity_id"], r["day"]) for r in cur.fetchall()]
         for entity_id, day in pairs:
-            self.rollup_day(entity_id, day)
+            try:
+                self.rollup_day(entity_id, day)
+            except Exception:
+                logger.exception("history rollup failed for %s %s; skipping", entity_id, day)
         cutoff = _day_offset(today, -retention_days)
         with self._lock:
             self._conn.execute(

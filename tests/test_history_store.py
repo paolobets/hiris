@@ -125,3 +125,45 @@ def test_query_returns_none_when_no_data(tmp_path):
     from hiris.app.history.store import HistoryStore
     s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
     assert s.query("sensor.absent", days=7, today="2026-06-20") is None
+
+
+def test_rollup_handles_mixed_naive_and_aware_timestamps():
+    from hiris.app.history.store import _rollup_events
+    # one naive ts (no offset), one aware ts (+00:00) — must NOT raise
+    events = [
+        {"ts": "2026-06-20T09:00:00", "state": "on", "num": None},          # naive
+        {"ts": "2026-06-20T09:05:00+00:00", "state": "off", "num": None},   # aware
+    ]
+    agg = _rollup_events(events)
+    assert agg["on_seconds"] == 300.0
+    assert agg["transitions"] == 1
+
+
+def test_rollup_n_counts_numeric_samples_only():
+    from hiris.app.history.store import _rollup_events
+    events = [
+        {"ts": "2026-06-20T01:00:00+00:00", "state": "19.0", "num": 19.0},
+        {"ts": "2026-06-20T02:00:00+00:00", "state": "unavailable", "num": None},
+        {"ts": "2026-06-20T03:00:00+00:00", "state": "21.0", "num": 21.0},
+    ]
+    agg = _rollup_events(events)
+    assert agg["mean"] == 20.0            # over the 2 numeric samples
+    assert agg["n"] == 2                  # numeric-sample count, not 3 total events
+
+
+def test_compact_continues_when_one_entity_rollup_fails(tmp_path, monkeypatch):
+    import os
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    s.append("sensor.bad", "2026-06-18T10:00:00+00:00", "1.0")
+    s.append("sensor.good", "2026-06-18T10:00:00+00:00", "2.0")
+    orig = s.rollup_day
+    def flaky(entity_id, day):
+        if entity_id == "sensor.bad":
+            raise RuntimeError("boom")
+        return orig(entity_id, day)
+    monkeypatch.setattr(s, "rollup_day", flaky)
+    # must NOT raise even though sensor.bad fails
+    s.compact(today="2026-06-20", retention_days=10)
+    days_good = {r["day"] for r in s._daily("sensor.good")}
+    assert "2026-06-18" in days_good      # the good entity was still rolled up
