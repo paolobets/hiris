@@ -1,5 +1,26 @@
 # HIRIS — Changelog
 
+## v0.15.0 — Storico via MCP: get_history (recorder + statistics) (2026-06-27)
+
+Nuova capability: **dati storici accessibili via MCP** e nella chat HIRIS.
+Fase 1 dello storico ibrido (Fase 2 = HistoryStore proprietario + cattura + config
+"Storicizzazione"; Fase 3 = digest verso il second brain).
+
+- Nuovo tool **`get_history(entity_ids, days, resolution)`**: trend storici
+  **compressi** (min/max/media) leggendo il **recorder HA** (recente) e le
+  **Long-Term Statistics HA** (mesi, via WebSocket `recorder/statistics_during_period`),
+  senza nuovo storage. Entità numeriche → `buckets` aggregati; entità on/off →
+  `samples` downsamplati. Output uniforme `{id, source, resolution, unit, buckets|samples}`.
+- Tier **READ** → fuori dal semaforo; con il fix v0.14.9 vede tutte le entità.
+  Esposto sia a Claude/MCP (catalogo gateway) sia ai runner LLM della chat HIRIS.
+- **Token-safe**: output sempre limitato (cap a 500 punti/bucket per entità con
+  downsampling, aggregazione per giorno/ora). Cap input: ≤20 entità, ≤365 giorni.
+- **Hardening**: validazione formato `entity_id` (`domain.object_id`) per evitare
+  injection nei query param della history API; rifiuto di `days` booleano.
+- Routing automatico: recente/raw → recorder; range lungo numerico → statistics;
+  se le statistics mancano → fallback recorder con flag `partial` (mai troncamento
+  silenzioso).
+
 ## v0.14.9 — Gateway: le letture non sono più filtrate dal semaforo azioni (2026-06-27)
 
 **Bugfix.** Da Claude/MCP, chiedere stati di entità non controllabili (es. *"dammi
