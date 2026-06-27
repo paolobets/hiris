@@ -61,3 +61,21 @@ def test_rollup_day_persists_and_is_idempotent(tmp_path):
     rows = s._daily("sensor.t")
     assert len(rows) == 1
     assert rows[0]["day"] == "2026-06-20" and rows[0]["mean"] == 21.5
+
+
+def test_compact_rolls_complete_days_and_prunes_old_raw(tmp_path):
+    import os
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    s.append("sensor.t", "2026-06-15T10:00:00+00:00", "10.0")
+    s.append("sensor.t", "2026-06-19T10:00:00+00:00", "20.0")
+    s.append("sensor.t", "2026-06-20T10:00:00+00:00", "30.0")   # 'today' -> not rolled
+    s.compact(today="2026-06-20", retention_days=3)
+    # complete days (15, 19) rolled into daily; today (20) left raw
+    days = {r["day"] for r in s._daily("sensor.t")}
+    assert "2026-06-15" in days and "2026-06-19" in days
+    assert "2026-06-20" not in days
+    # raw older than retention (today-3 = 2026-06-17) pruned: 15 gone, 19 & 20 kept
+    remaining = {e["ts"][:10] for e in s._all_events()}
+    assert "2026-06-15" not in remaining
+    assert "2026-06-19" in remaining and "2026-06-20" in remaining

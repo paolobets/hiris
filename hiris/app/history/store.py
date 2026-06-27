@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 _SCHEMA = """
@@ -43,6 +43,11 @@ def _parse_ts(ts: str) -> Optional[datetime]:
         return datetime.fromisoformat(ts)
     except (TypeError, ValueError):
         return None
+
+
+def _day_offset(day: str, delta_days: int) -> str:
+    d = datetime.fromisoformat(day + "T00:00:00+00:00") + timedelta(days=delta_days)
+    return d.strftime("%Y-%m-%d")
 
 
 def _rollup_events(events: list[dict]) -> dict:
@@ -134,6 +139,23 @@ class HistoryStore:
                 (entity_id, day, a["n"], a["min"], a["max"], a["mean"],
                  a["on_seconds"], a["transitions"], a["last_state"]),
             )
+            self._conn.commit()
+
+    def compact(self, today: str, retention_days: int) -> None:
+        """Roll up every complete day (< today) that has raw events, then delete
+        raw events older than `retention_days` days before `today`. The daily
+        rollups are permanent; only raw events are pruned."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT DISTINCT entity_id, substr(ts,1,10) AS day FROM history_events "
+                "WHERE substr(ts,1,10) < ?", (today,))
+            pairs = [(r["entity_id"], r["day"]) for r in cur.fetchall()]
+        for entity_id, day in pairs:
+            self.rollup_day(entity_id, day)
+        cutoff = _day_offset(today, -retention_days)
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM history_events WHERE substr(ts,1,10) < ?", (cutoff,))
             self._conn.commit()
 
     # --- test helper ---
