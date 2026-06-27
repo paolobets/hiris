@@ -79,3 +79,66 @@ def test_validate_inputs_rejects_bool_days():
 
 def test_classify_empty_is_state():
     assert H.classify([]) == "state"
+
+
+import pytest
+
+
+class _FakeHA:
+    def __init__(self, history=None, stats=None):
+        self._history = history or {}
+        self._stats = stats or {}
+
+    async def get_history(self, entity_ids, days):
+        eid = entity_ids[0]
+        return [dict(s, entity_id=eid) for s in self._history.get(eid, [])]
+
+    async def get_statistics(self, statistic_ids, period, days):
+        return {k: v for k, v in self._stats.items() if k in statistic_ids}
+
+
+@pytest.mark.asyncio
+async def test_get_history_recent_numeric_aggregates_recorder():
+    ha = _FakeHA(history={"sensor.temp": [
+        {"last_changed": "2026-06-26T01:00:00+00:00", "state": "19.0"},
+        {"last_changed": "2026-06-26T13:00:00+00:00", "state": "24.0"},
+    ]})
+    out = await H.get_history(ha, ["sensor.temp"], days=3, resolution="auto")
+    series = out[0]
+    assert series["id"] == "sensor.temp"
+    assert series["resolution"] == "daily"
+    assert series["buckets"][0] == {"t": "2026-06-26", "min": 19.0, "max": 24.0,
+                                    "mean": 21.5, "n": 2}
+
+
+@pytest.mark.asyncio
+async def test_get_history_long_range_uses_statistics():
+    ha = _FakeHA(stats={"sensor.temp": [
+        {"start": "2026-05-01T00:00:00+00:00", "mean": 18.0, "min": 15.0, "max": 21.0},
+    ]})
+    out = await H.get_history(ha, ["sensor.temp"], days=60, resolution="auto")
+    series = out[0]
+    assert series["source"] == "statistics"
+    assert series["buckets"][0]["mean"] == 18.0
+
+
+@pytest.mark.asyncio
+async def test_get_history_long_range_falls_back_to_recorder_with_note():
+    # No statistics for this entity -> fall back to recorder window + partial note.
+    ha = _FakeHA(history={"binary_sensor.door": [
+        {"last_changed": "2026-06-26T09:00:00+00:00", "state": "on"},
+        {"last_changed": "2026-06-26T09:05:00+00:00", "state": "off"},
+    ]})
+    out = await H.get_history(ha, ["binary_sensor.door"], days=60, resolution="auto")
+    series = out[0]
+    assert series["source"] == "recorder"
+    assert series["partial"] is True            # range exceeds recorder window
+    assert series["resolution"] == "raw"        # non-numeric -> raw samples
+    assert series["samples"][0]["state"] == "on"
+
+
+@pytest.mark.asyncio
+async def test_get_history_rejects_bad_input():
+    ha = _FakeHA()
+    out = await H.get_history(ha, [], days=7, resolution="auto")
+    assert "error" in out

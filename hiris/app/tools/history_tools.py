@@ -111,3 +111,60 @@ def normalize_statistics(rows: list[dict]) -> list[dict]:
             "n": 1,
         })
     return out
+
+
+def _ts_of(sample: dict) -> str:
+    return sample.get("last_changed") or sample.get("last_updated") or ""
+
+
+def _period_for(days: int, resolution: str) -> str:
+    if resolution == "hourly":
+        return "hour"
+    if resolution == "daily":
+        return "day"
+    return "hour" if days <= 35 else "day"
+
+
+def _resolution_for(days: int, resolution: str) -> str:
+    if resolution != "auto":
+        return resolution
+    return "daily" if days > 2 else "raw"
+
+
+async def _entity_series(ha: Any, eid: str, days: int, resolution: str) -> dict:
+    long_range = days > RECORDER_WINDOW_DAYS
+    want_raw = resolution == "raw"
+
+    # Long numeric range -> try HA statistics first.
+    if long_range and not want_raw:
+        stats = await ha.get_statistics([eid], period=_period_for(days, resolution), days=days)
+        rows = stats.get(eid) or []
+        if rows:
+            return {"id": eid, "source": "statistics",
+                    "resolution": _period_for(days, resolution),
+                    "buckets": normalize_statistics(rows)}
+
+    # Recorder path (recent, or statistics-less fallback).
+    raw = await ha.get_history([eid], days)
+    samples = [{"t": _ts_of(s), "state": s.get("state")} for s in raw
+               if s.get("entity_id", eid) == eid]
+    series: dict = {"id": eid, "source": "recorder"}
+    if long_range:
+        series["partial"] = True   # recorder retains only ~RECORDER_WINDOW_DAYS days
+
+    eff = _resolution_for(days, resolution)
+    if eff != "raw" and classify(samples) == "numeric":
+        series["resolution"] = eff
+        series["buckets"] = aggregate_numeric(samples, eff)
+    else:
+        series["resolution"] = "raw"
+        series["samples"] = downsample(samples, MAX_RAW_POINTS)
+    return series
+
+
+async def get_history(ha: Any, entity_ids: list[str], days: int = 7,
+                      resolution: str = "auto") -> Any:
+    err = validate_inputs(entity_ids, days, resolution)
+    if err:
+        return {"error": err}
+    return [await _entity_series(ha, eid, days, resolution) for eid in entity_ids]
