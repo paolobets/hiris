@@ -14,6 +14,7 @@ from .tools.ha_tools import (
     GET_ENTITIES_BY_DOMAIN_TOOL_DEF,
 )
 from .tools.energy_tools import TOOL_DEF as ENERGY_TOOL
+from .tools.history_tools import GET_HISTORY_TOOL_DEF
 from .tools.weather_tools import TOOL_DEF as WEATHER_TOOL
 from .tools.notify_tools import TOOL_DEF as NOTIFY_TOOL
 from .tools.automation_tools import (
@@ -109,6 +110,7 @@ ALL_TOOL_DEFS = [
     GET_ENTITIES_ON_TOOL_DEF,
     GET_ENTITIES_BY_DOMAIN_TOOL_DEF,
     ENERGY_TOOL,
+    GET_HISTORY_TOOL_DEF,
     WEATHER_TOOL,
     NOTIFY_TOOL,
     GET_AUTOMATIONS_TOOL_DEF,
@@ -138,7 +140,7 @@ ALL_TOOL_DEFS = [
 EVALUATION_ONLY_TOOLS = frozenset({
     "get_entity_states", "get_area_entities", "get_home_status",
     "get_entities_on", "get_entities_by_domain",
-    "get_energy_history", "get_weather_forecast",
+    "get_energy_history", "get_weather_forecast", "get_history",
     "get_ha_automations", "get_calendar_events",
     "create_task", "list_tasks", "cancel_task",
     "recall_memory",  # read-only — safe for non-chat agents

@@ -152,3 +152,10 @@ async def test_get_history_statistics_hourly_label():
     assert series["source"] == "statistics"
     assert series["resolution"] == "hourly"     # normalized vocab, not HA's "hour"
     assert series["unit"] is None
+
+
+def test_get_history_registered_in_runner():
+    from hiris.app.claude_runner import ALL_TOOL_DEFS, EVALUATION_ONLY_TOOLS
+    names = {t["name"] for t in ALL_TOOL_DEFS}
+    assert "get_history" in names
+    assert "get_history" in EVALUATION_ONLY_TOOLS    # read-only, injection-safe
