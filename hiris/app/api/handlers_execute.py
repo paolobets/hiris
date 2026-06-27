@@ -96,6 +96,30 @@ async def handle_execute(request: web.Request) -> web.Response:
             {"error": f"tool {tool!r} not exposed by execute-API policy"}, status=403
         )
 
+    # Tier routing for actions: green executes directly; yellow/red are held for
+    # approval (notification) and not dispatched here.
+    if tool == "call_ha_service":
+        domain = inputs.get("domain")
+        tier = (policy.get("tiers") or {}).get(domain)
+        if tier in ("yellow", "red"):
+            from .handlers_gateway_pending import create_pending, notify
+            label = f"{domain}.{inputs.get('service', '')}"
+            entry = create_pending(
+                request.app.get("data_dir") or "/data",
+                tool=tool, inputs=inputs, tier=tier, origin=_origin(body), label=label,
+            )
+            msg = (f"Claude chiede: {label}. "
+                   + ("Approva o nega dalla notifica." if tier == "yellow"
+                      else "Conferma manualmente in HIRIS (Approvazioni)."))
+            await notify(request.app, message=msg,
+                         actionable=(tier == "yellow"), nonce=entry["id"])
+            return web.json_response({"result": {
+                "status": "pending_approval", "id": entry["id"], "tier": tier,
+                "message": ("Azione in attesa di approvazione"
+                            + (" — notifica inviata." if tier == "yellow"
+                               else " manuale in HIRIS.")),
+            }})
+
     result = await dispatcher.dispatch(
         tool,
         inputs,

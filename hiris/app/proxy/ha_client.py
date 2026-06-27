@@ -21,6 +21,7 @@ class HAClient:
         self._ws_task: Optional[asyncio.Task] = None
         self._state_listeners: list[Callable[[dict], None]] = []
         self._registry_listeners: list[Callable[[str, dict], None]] = []
+        self._action_listeners: list[Callable[[dict], None]] = []
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -198,6 +199,11 @@ class HAClient:
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         self._state_listeners.append(callback)
 
+    def add_action_listener(self, callback: Callable[[dict], None]) -> None:
+        """Register callback(event_data) for mobile_app_notification_action events
+        (the actionable-notification button taps)."""
+        self._action_listeners.append(callback)
+
     def add_registry_listener(self, callback: Callable[[str, dict], None]) -> None:
         """Register callback(entity_id, attributes) for entity_registry_updated events."""
         self._registry_listeners.append(callback)
@@ -222,6 +228,7 @@ class HAClient:
 
                     await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
                     await ws.send_json({"id": 2, "type": "subscribe_events", "event_type": "entity_registry_updated"})
+                    await ws.send_json({"id": 3, "type": "subscribe_events", "event_type": "mobile_app_notification_action"})
 
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -236,6 +243,12 @@ class HAClient:
                                         cb(event["data"])
                                     except Exception as cb_exc:
                                         logger.exception("state_listener callback raised: %s", cb_exc)
+                            elif event_type == "mobile_app_notification_action":
+                                for cb in self._action_listeners:
+                                    try:
+                                        cb(event.get("data", {}))
+                                    except Exception as cb_exc:
+                                        logger.exception("action_listener callback raised: %s", cb_exc)
                             elif event_type == "entity_registry_updated":
                                 action = event.get("data", {}).get("action")
                                 if action == "create":

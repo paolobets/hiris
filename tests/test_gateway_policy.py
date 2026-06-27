@@ -27,10 +27,20 @@ def test_derive_green_light_adds_call_service_and_glob():
     assert pol["allowed_entities"] == ["light.*"]
 
 
-def test_derive_yellow_red_not_executable_in_v1():
+def test_derive_yellow_red_requestable_but_held():
     pol = derive_execute_policy({"lock": "red", "climate": "yellow"})
-    assert "call_ha_service" not in pol["tools"]
+    # requestable (the handler routes them to approval)...
+    assert "call_ha_service" in pol["tools"]
+    # ...but NOT directly executable (not in the green whitelist)
     assert pol["allowed_services"] is None
+    # the tiers map drives the routing
+    assert pol["tiers"] == {"lock": "red", "climate": "yellow"}
+
+
+def test_derive_mixed_tiers():
+    pol = derive_execute_policy({"light": "green", "climate": "yellow", "lock": "red", "fan": "off"})
+    assert pol["allowed_services"] == ["light.*"]          # only green is whitelisted
+    assert pol["tiers"] == {"light": "green", "climate": "yellow", "lock": "red"}
 
 
 def test_save_load_roundtrip_and_validation(tmp_path):

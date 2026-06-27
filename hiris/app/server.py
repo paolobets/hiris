@@ -313,6 +313,12 @@ async def _on_startup(app: web.Application) -> None:
     # If the user manages the gateway policy from the UI, it overrides the env CSV.
     from .api.handlers_gateway_policy import apply_saved_policy
     apply_saved_policy(app)
+    # Yellow approval: route iPhone notification-action button taps to approve/reject.
+    import asyncio as _asyncio
+    from .api.handlers_gateway_pending import on_notification_action
+    ha_client.add_action_listener(
+        lambda ev: _asyncio.create_task(on_notification_action(app, ev))
+    )
 
     # Build semantic map
     semantic_map = SemanticMap(data_dir=data_dir)
@@ -758,6 +764,15 @@ def create_app() -> web.Application:
     )
     app.router.add_get("/api/gateway/policy", handle_get_gateway_policy)
     app.router.add_post("/api/gateway/policy", handle_save_gateway_policy)
+
+    from .api.handlers_gateway_pending import (
+        handle_list_pending as _gw_list_pending,
+        handle_approve_pending as _gw_approve_pending,
+        handle_reject_pending as _gw_reject_pending,
+    )
+    app.router.add_get("/api/gateway/pending", _gw_list_pending)
+    app.router.add_post("/api/gateway/pending/{nonce}/approve", _gw_approve_pending)
+    app.router.add_post("/api/gateway/pending/{nonce}/reject", _gw_reject_pending)
 
     return app
 

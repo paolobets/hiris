@@ -116,6 +116,59 @@ async def test_execute_sanitizes_bad_origin(aiohttp_client):
     assert app["tool_dispatcher"].last_agent_id == "mcp-gateway"   # invalid -> default
 
 
+class _FakeHA:
+    def __init__(self):
+        self.calls = []
+
+    async def call_service(self, domain, service, data):
+        self.calls.append((domain, service, data))
+        return True
+
+
+def _make_tier_app(tiers, tmp_path):
+    app = web.Application()
+    app["internal_token"] = "secret"
+    app["execute_policy"] = {"tools": ["call_ha_service"], "allowed_services": ["light.*"],
+                             "allowed_entities": ["light.*"], "tiers": tiers}
+    app["tool_dispatcher"] = _FakeDispatcher()
+    app["data_dir"] = str(tmp_path)
+    app["ha_client"] = _FakeHA()
+    app["gateway_notify_service"] = "notify.iphone_bet"
+    app.router.add_post("/api/execute", handle_execute)
+    return app
+
+
+@pytest.mark.asyncio
+async def test_execute_yellow_action_held_and_notified(aiohttp_client, tmp_path):
+    app = _make_tier_app({"climate": "yellow"}, tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post(
+        "/api/execute",
+        json={"tool": "call_ha_service", "input": {"domain": "climate", "service": "set_temperature"}},
+        headers={"X-HIRIS-Internal-Token": "secret"},
+    )
+    assert resp.status == 200
+    res = (await resp.json())["result"]
+    assert res["status"] == "pending_approval" and res["tier"] == "yellow"
+    assert app["tool_dispatcher"].calls == []                # held, not executed
+    assert len(app["ha_client"].calls) == 1                  # actionable notification sent
+    assert app["ha_client"].calls[0][1] == "iphone_bet"
+
+
+@pytest.mark.asyncio
+async def test_execute_green_action_dispatches_directly(aiohttp_client, tmp_path):
+    app = _make_tier_app({"light": "green"}, tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post(
+        "/api/execute",
+        json={"tool": "call_ha_service", "input": {"domain": "light", "service": "turn_on"}},
+        headers={"X-HIRIS-Internal-Token": "secret"},
+    )
+    assert resp.status == 200
+    assert app["tool_dispatcher"].calls                      # executed directly
+    assert app["ha_client"].calls == []                      # no notification
+
+
 @pytest.mark.asyncio
 async def test_execute_rejects_invalid_json(aiohttp_client):
     app = _make_app({"tools": ["get_home_status"], "allowed_entities": None, "allowed_services": None})

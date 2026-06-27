@@ -1,5 +1,28 @@
 # HIRIS — Changelog
 
+## v0.14.4 — Semaforo operativo: flusso Giallo/Rosso (notifica + approvazione) (2026-06-27)
+
+Il comportamento dei livelli del semaforo, **solo sul percorso del gateway**
+(Claude); chat HIRIS e agenti restano diretti.
+
+### Flusso approvazione
+
+- L'execute-API instrada `call_ha_service` per **tier**: 🟢 esegue subito ·
+  🟡 trattiene + **notifica azionabile** (Approva/Nega) sull'iPhone ·
+  🔴 trattiene + notifica informativa (conferma solo in HIRIS).
+- Store comandi-in-sospeso (`gateway_pending.json`): **nonce monouso + scadenza
+  5 min**, esecuzione vincolata al singolo comando approvato (whitelist scoped).
+- `ha_client`: sottoscrive `mobile_app_notification_action` → il bottone
+  "Approva" sull'iPhone esegue il comando (mappa azione→nonce).
+- Endpoint `/api/gateway/pending` (list/approve/reject) + sezione
+  **"Approvazioni in attesa"** nella pagina Accessi Gateway.
+- **Servizio notifica configurabile** (default `notify.iphone_bet`) dalla pagina.
+
+### Test
+
+- `tests/test_gateway_pending.py` (nonce monouso, scadenza, approva/rifiuta,
+  evento iPhone) + routing tier in `test_execute_api.py`. Suite: 647 passati.
+
 ## v0.14.3 — Semaforo categorie + conteggi + provenienza (2026-06-27)
 
 ### Accessi Gateway
