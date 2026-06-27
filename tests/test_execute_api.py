@@ -205,3 +205,17 @@ async def test_execute_rejects_non_object_input(aiohttp_client):
     client = await aiohttp_client(app)
     resp = await _post(client, {"tool": "get_home_status", "input": [1, 2]})
     assert resp.status == 400
+
+
+@pytest.mark.asyncio
+async def test_execute_get_history_bypasses_action_whitelist(aiohttp_client):
+    policy = {"tools": ["get_history"], "allowed_entities": ["light.*"],
+              "allowed_services": ["light.*"]}
+    app = _make_app(policy)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "get_history",
+                                "input": {"entity_ids": ["sensor.temp"], "days": 3}})
+    assert resp.status == 200
+    name, inputs, ents, svcs = app["tool_dispatcher"].calls[0]
+    assert name == "get_history"
+    assert ents is None and svcs is None     # read sees everything

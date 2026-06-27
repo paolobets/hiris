@@ -3,6 +3,7 @@ from aiohttp import web
 
 from hiris.app.api.handlers_gateway_policy import (
     GATEWAY_CATEGORIES,
+    READ_TOOLS,
     apply_saved_policy,
     derive_execute_policy,
     handle_get_gateway_policy,
@@ -94,3 +95,12 @@ async def test_post_saves_and_updates_execute_policy(aiohttp_client, tmp_path):
     # persisted: a fresh GET reflects it
     resp2 = await client.get("/api/gateway/policy")
     assert (await resp2.json())["levels"] == {"light": "green"}
+
+
+def test_get_history_is_a_read_tool():
+    assert "get_history" in READ_TOOLS
+
+
+def test_derived_policy_exposes_get_history():
+    pol = derive_execute_policy({"light": "green"})
+    assert "get_history" in pol["tools"]

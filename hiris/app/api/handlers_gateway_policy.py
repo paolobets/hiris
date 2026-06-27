@@ -20,7 +20,8 @@ from aiohttp import web
 logger = logging.getLogger(__name__)
 
 # Read tools are always available to the gateway (non-destructive).
-READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states", "recall_knowledge"]
+READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
+              "get_history", "recall_knowledge"]
 
 # Canonical categories shown in the UI, with friendly Italian labels and the HA
 # domain they map to. Order is the display order.
