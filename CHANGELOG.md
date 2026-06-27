@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## v0.14.6 — Mobile: header chat riprogettato (no sovrapposizioni) (2026-06-27)
+
+- L'header della chat su mobile (≤720px) era affollato (logo + versione +
+  sottotitolo + Nuova conv. + pill agente + Task + tema) → elementi
+  sovrapposti. **Riprogettato minimale**: restano solo **☰ menu · HIRIS ·
+  nuova conversazione (icona) · tema**. Logo/versione/sottotitolo/pill
+  agente/Task **nascosti** (agenti, Configurazione e Task sono nel drawer).
+  Padding con safe-area iOS.
+
 ## v0.14.5 — Mobile: menu a scomparsa + fix overflow Accessi Gateway (2026-06-27)
 
 ### Chat (mobile)

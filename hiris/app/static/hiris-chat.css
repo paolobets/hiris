@@ -677,5 +677,17 @@
       #sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55; }
       .msg-row, .typing-row, #welcome, #input-inner, .debug-row { padding-left: 16px; padding-right: 16px; }
       #input-area { padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
-      #mobile-task-btn { display: inline-flex; }
+
+      /* Mobile header redesign: minimal & clear. The crowded items (logo,
+         version, subtitle, agent pill, Task) move into the drawer / are hidden;
+         only essentials stay: ☰ menu · HIRIS · nuova conversazione · tema. */
+      #header { padding: 8px 12px calc(8px + env(safe-area-inset-top)); gap: 8px; }
+      #header-icon, #header-subtitle, #header-version, #agent-pill, #mobile-task-btn { display: none; }
+      #header-title { font-size: 16px; }
+      #header-tools { margin-left: auto; gap: 4px; }
+      #new-conv-btn {
+        font-size: 0; gap: 0; padding: 0; width: 44px; height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      #new-conv-btn svg { width: 19px; height: 19px; }
     }
