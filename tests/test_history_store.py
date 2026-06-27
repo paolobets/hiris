@@ -1,5 +1,6 @@
 import os
 from hiris.app.history.store import HistoryStore
+from hiris.app.history.store import _rollup_events
 
 
 def _store(tmp_path):
@@ -22,3 +23,41 @@ def test_append_ignores_unparseable_timestamp_gracefully(tmp_path):
     # empty/short ts is stored as-is; never raises (capture must be crash-proof)
     s.append("sensor.x", "", "5")
     assert len(s._all_events()) == 1
+
+
+def test_rollup_events_numeric():
+    events = [
+        {"ts": "2026-06-20T01:00:00+00:00", "state": "19.0", "num": 19.0},
+        {"ts": "2026-06-20T13:00:00+00:00", "state": "24.0", "num": 24.0},
+    ]
+    agg = _rollup_events(events)
+    assert agg["n"] == 2
+    assert agg["min"] == 19.0 and agg["max"] == 24.0 and agg["mean"] == 21.5
+    assert agg["transitions"] == 1            # 19->24 is one change
+    assert agg["last_state"] == "24.0"
+
+
+def test_rollup_events_onoff_durations():
+    # on at 09:00:00, off at 09:05:00 -> 300s on; ends 'off'
+    events = [
+        {"ts": "2026-06-20T09:00:00+00:00", "state": "on", "num": None},
+        {"ts": "2026-06-20T09:05:00+00:00", "state": "off", "num": None},
+    ]
+    agg = _rollup_events(events)
+    assert agg["on_seconds"] == 300.0
+    assert agg["transitions"] == 1
+    assert agg["last_state"] == "off"
+    assert agg["mean"] is None                # non-numeric -> no numeric stats
+
+
+def test_rollup_day_persists_and_is_idempotent(tmp_path):
+    import os
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    s.append("sensor.t", "2026-06-20T01:00:00+00:00", "19.0")
+    s.append("sensor.t", "2026-06-20T13:00:00+00:00", "24.0")
+    s.rollup_day("sensor.t", "2026-06-20")
+    s.rollup_day("sensor.t", "2026-06-20")    # idempotent (REPLACE)
+    rows = s._daily("sensor.t")
+    assert len(rows) == 1
+    assert rows[0]["day"] == "2026-06-20" and rows[0]["mean"] == 21.5
