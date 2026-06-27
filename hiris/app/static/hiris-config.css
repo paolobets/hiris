@@ -1174,6 +1174,15 @@
   .side-nav .nav-label, .side-nav .brand-name { display: inline !important; }
   .sidenav-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55; }
   .page-chrome { padding-top: calc(12px + env(safe-area-inset-top)); }
+  /* Editor: the side index is redundant on a single-column phone; the sticky
+     action bar must span the full width (the 64px-rail offset is gone). */
+  .anchor-nav { display: none; }
+  .sticky-actions-wrap { left: 0 !important; }
+  /* Prevent grid-item blowout: let the content column shrink to the viewport
+     (min-width:auto would let it grow to its content min-content -> overflow). */
+  .app-shell > main, .page-main, .editor-grid, .editor-content { min-width: 0; }
+  /* Dense log table scrolls within itself, not the page. */
+  .log-list { overflow-x: auto; }
 }
 
 /* ────────────────────────────────────────────────────────────

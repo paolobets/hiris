@@ -1,5 +1,21 @@
 # HIRIS — Changelog
 
+## v0.14.8 — Mobile config: editor agente senza overflow orizzontale (2026-06-27)
+
+Verificato a video (render headless a viewport iPhone 390×844) **prima** della
+pubblicazione: `scrollWidth` da 452 → 389 ≤ 390, `main` da 451 → 382, nessuno
+scroll orizzontale.
+
+- **Editor agente: fix overflow orizzontale** (≤768px). La colonna `1fr` del
+  grid `.app-shell` cresceva al min-content del contenuto (`min-width:auto`)
+  spingendo la larghezza a 452px. Aggiunto `min-width:0` su
+  `main / .page-main / .editor-grid / .editor-content` per consentire lo shrink,
+  più `.log-list { overflow-x:auto }` per i blocchi log lunghi.
+- **Anchor-nav nascosta** su mobile (la barra àncore laterale non serve nel
+  layout a colonna singola e contribuiva all'overflow).
+- **Barra azioni sticky a tutta larghezza** (`left:0`) — prima era ancorata alla
+  griglia desktop e finiva fuori viewport.
+
 ## v0.14.7 — Mobile config: sidebar a drawer + dashboard senza overflow (2026-06-27)
 
 Verificato a video (render headless a viewport iPhone) **prima** della pubblicazione.
