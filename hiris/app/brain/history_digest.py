@@ -81,3 +81,59 @@ def compute_insights(entity_id: str, buckets: list[dict], today: str) -> list[di
         "sensitivity": _sensitivity_for(entity_id),
         "source_ref": "history-digest:%s:weekly" % entity_id,
     }]
+
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+async def run_history_digest(store, knowledge_store, embedder, today: str,
+                             owner: str = "home") -> int:
+    """For each entity in the store, compute its weekly insight, supersede the
+    prior digest item with the same source_ref, and persist the new one
+    (embedded when an embedder is available). Returns the number written."""
+    written = 0
+    try:
+        existing = knowledge_store.list_items(kind="insight", limit=1000)
+    except Exception as exc:
+        logger.error("history digest: cannot list existing insights: %s", exc)
+        existing = []
+    by_ref = {}
+    for it in existing:
+        ref = it.get("source_ref")
+        if ref:
+            by_ref.setdefault(ref, []).append(it.get("id"))
+
+    for eid in store.list_entities():
+        try:
+            res = store.query(eid, days=14, today=today)
+            if not res or not res.get("buckets"):
+                continue
+            for ins in compute_insights(eid, res["buckets"], today):
+                ref = ins["source_ref"]
+                for old_id in by_ref.get(ref, []):
+                    try:
+                        knowledge_store.delete_item(old_id)
+                    except Exception:
+                        pass
+                by_ref[ref] = []
+                emb = None
+                if embedder is not None:
+                    try:
+                        emb = await embedder.embed(ins["text"])
+                    except Exception as exc:
+                        logger.debug("history digest: embed failed for %s: %s", eid, exc)
+                knowledge_store.add_item(
+                    kind="insight", content=ins["text"], owner=owner,
+                    title="Storico: %s" % eid, embedding=emb,
+                    sensitivity=ins["sensitivity"], source="history-digest",
+                    source_ref=ref, confidence=1.0, status="approved",
+                    valid_from=today,
+                )
+                written += 1
+        except Exception as exc:
+            logger.error("history digest: entity %s failed: %s", eid, exc)
+    if written:
+        logger.info("history digest: wrote %d insight(s)", written)
+    return written
