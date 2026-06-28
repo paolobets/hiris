@@ -115,3 +115,19 @@ async def test_run_history_digest_handles_no_embedder():
     kb = _FakeKnowledge()
     n = await run_history_digest(store, kb, None, today="2026-06-21")
     assert n == 1 and kb.items[0]["has_emb"] is False
+
+
+def test_compute_insights_prev_zero_not_misreported_as_in_linea():
+    # prev week mean 0, last week mean 5 -> must NOT say "in linea"
+    buckets = _numeric_buckets(7, [0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5, 5])
+    ins = compute_insights("sensor.pioggia", buckets, today="2026-06-21")
+    assert len(ins) == 1
+    assert "in linea" not in ins[0]["text"]
+
+
+def test_compute_insights_first_summary_phrase_when_no_prior_window():
+    # only last7 present (no prev7) -> "primo riepilogo", not "in linea"
+    buckets = _numeric_buckets(14, [21, 21, 21, 21, 21, 21, 21])
+    ins = compute_insights("sensor.temp", buckets, today="2026-06-21")
+    assert len(ins) == 1
+    assert "in linea" not in ins[0]["text"]

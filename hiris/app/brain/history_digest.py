@@ -2,6 +2,7 @@
 summary insight per entity, in Italian. Deterministic, no LLM, no tokens."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -10,6 +11,12 @@ _DELTA_PCT = 10.0        # |Δ%| at/above this is called out explicitly
 _SENSITIVE_DOMAINS = {
     "binary_sensor", "device_tracker", "person", "alarm_control_panel", "lock",
 }
+
+# Upper bound for the supersede scan. One insight per entity, superseded each
+# run, so this only needs to exceed the number of historicized entities.
+_MAX_INSIGHT_SCAN = 100000
+
+logger = logging.getLogger(__name__)
 
 
 def _sensitivity_for(entity_id: str) -> str:
@@ -42,7 +49,12 @@ def _avg(vals: list) -> Optional[float]:
     return round(sum(vals) / len(vals), 1) if vals else None
 
 
-def _fmt_delta(pct: Optional[float]) -> str:
+def _delta_phrase(cur: float, prev: Optional[float]) -> str:
+    if prev is None:
+        return "primo riepilogo disponibile"          # no prior window
+    if prev == 0:
+        return "nessun valore confrontabile la settimana precedente"
+    pct = _pct_delta(cur, prev)                        # prev != 0 -> never None
     if pct is None or abs(pct) < _DELTA_PCT:
         return "in linea con la settimana precedente"
     sign = "+" if pct > 0 else ""
@@ -54,7 +66,10 @@ def compute_insights(entity_id: str, buckets: list[dict], today: str) -> list[di
 
     Numeric entities (buckets carry 'mean') summarize the 7-day average vs the
     prior week. On/off entities (buckets carry 'on_seconds') summarize active
-    hours vs the prior week."""
+    hours vs the prior week.
+
+    Each bucket is expected to carry EITHER 'mean' (numeric) OR 'on_seconds'
+    (on/off), never both — as produced by HistoryStore.query."""
     last7, prev7 = _split_windows(buckets, today)
     if len(last7) < _MIN_DAYS:
         return []
@@ -64,16 +79,14 @@ def compute_insights(entity_id: str, buckets: list[dict], today: str) -> list[di
         prev = _avg([b.get("mean") for b in prev7]) if len(prev7) >= _MIN_DAYS else None
         if cur is None:
             return []
-        pct = _pct_delta(cur, prev) if prev is not None else None
         text = ("Negli ultimi 7 giorni %s ha una media di %.1f (%s)."
-                % (entity_id, cur, _fmt_delta(pct)))
+                % (entity_id, cur, _delta_phrase(cur, prev)))
     else:
         cur_h = sum(b.get("on_seconds") or 0.0 for b in last7) / 3600.0
         prev_h = (sum(b.get("on_seconds") or 0.0 for b in prev7) / 3600.0
                   if len(prev7) >= _MIN_DAYS else None)
-        pct = _pct_delta(cur_h, prev_h) if prev_h is not None else None
         text = ("Negli ultimi 7 giorni %s è risultato attivo per circa %.0f ore (%s)."
-                % (entity_id, cur_h, _fmt_delta(pct)))
+                % (entity_id, cur_h, _delta_phrase(cur_h, prev_h)))
     return [{
         "entity_id": entity_id,
         "metric": "weekly",
@@ -83,11 +96,6 @@ def compute_insights(entity_id: str, buckets: list[dict], today: str) -> list[di
     }]
 
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 async def run_history_digest(store, knowledge_store, embedder, today: str,
                              owner: str = "home") -> int:
     """For each entity in the store, compute its weekly insight, supersede the
@@ -95,7 +103,7 @@ async def run_history_digest(store, knowledge_store, embedder, today: str,
     (embedded when an embedder is available). Returns the number written."""
     written = 0
     try:
-        existing = knowledge_store.list_items(kind="insight", limit=1000)
+        existing = knowledge_store.list_items(kind="insight", limit=_MAX_INSIGHT_SCAN)
     except Exception as exc:
         logger.error("history digest: cannot list existing insights: %s", exc)
         existing = []
