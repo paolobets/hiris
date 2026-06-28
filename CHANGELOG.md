@@ -1,5 +1,20 @@
 # HIRIS — Changelog
 
+## v0.17.1 — Fix: layout chat immune alla cache CSS stantia (2026-06-28)
+
+- **Bugfix layout chat su desktop**: con una `hiris-chat.css` vecchia in cache del
+  browser (precedente al drawer, v0.14.5) il div `#sidebar-overlay` — non più
+  nascosto da quella CSS — occupava una cella della griglia `#app`, spingendo la
+  sidebar nella colonna larga e la chat in una colonna stretta da 280px (sidebar
+  in alto a tutta larghezza, chat compressa a sinistra).
+- **Fix**: `style="display:none"` inline sugli overlay drawer (`#sidebar-overlay`
+  in chat, `#sidenav-overlay` in config) → l'overlay non ruba mai una cella della
+  griglia, **anche con CSS in cache vecchia**. Il JS lo imposta a `block`
+  all'apertura del drawer, quindi il comportamento mobile è invariato.
+- Diagnosi e fix verificati a video (riproduzione con CSS pre-drawer + immunità
+  confermata a 1920px; drawer mobile 390px funzionante). NB: un hard-refresh
+  (Ctrl+Shift+R) risolve comunque la vista corrente, essendo cache.
+
 ## v0.17.0 — Storico → second brain: digest notturno di insight (2026-06-28)
 
 - Nuovo job notturno (04:00) che distilla lo storico (HistoryStore) in **insight
