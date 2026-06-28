@@ -482,6 +482,21 @@ async def _on_startup(app: web.Application) -> None:
         id="hiris_history_compact", replace_existing=True, misfire_grace_time=3600,
     )
 
+    async def _run_history_digest_job() -> None:
+        from datetime import datetime, timezone
+        from .brain.history_digest import run_history_digest
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        try:
+            await run_history_digest(history_store, knowledge_store, embedder, today=today)
+        except Exception as exc:
+            logger.error("History digest failed: %s", exc, exc_info=True)
+
+    engine._scheduler.add_job(
+        _run_history_digest_job,
+        trigger="cron", hour=4, minute=0,
+        id="hiris_history_digest", replace_existing=True, misfire_grace_time=3600,
+    )
+
     # ── Mayan EDMS polling ingestion job (second-brain phase-3, Task 6) ────────
     # Read config from env vars exported by run.sh (bashio::config 'mayan.*').
     mayan_url = os.environ.get("MAYAN_URL", "").strip()

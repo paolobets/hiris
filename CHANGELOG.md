@@ -1,5 +1,15 @@
 # HIRIS — Changelog
 
+## v0.17.0 — Storico → second brain: digest notturno di insight (2026-06-28)
+
+- Nuovo job notturno (04:00) che distilla lo storico (HistoryStore) in **insight
+  testuali** salvati nel second brain (KnowledgeStore), ricercabili via
+  recall_knowledge. Un riepilogo settimanale per entità storicizzata
+  (media/ore attive + Δ% settimana-su-settimana), aggiornato (superseded) ogni notte.
+- **Regole deterministiche, zero token** (nessuna chiamata LLM). Dati di
+  presenza/sicurezza marcati sensitive (rispettano l'egress privacy del brain).
+- Completa la Fase 3 dello storico (2a/2b/2c già in v0.16.0).
+
 ## v0.16.0 — Storico proprietario HIRIS: cattura + Storicizzazione + analisi a lungo termine (2026-06-27)
 
 Completa lo **storico ibrido** (Fasi 2a/2b/2c): oltre a recorder+statistics di HA
