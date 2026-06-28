@@ -205,6 +205,14 @@ class HistoryStore:
                 "SELECT 1 FROM history_daily WHERE entity_id=? LIMIT 1", (entity_id,))
             return cur.fetchone() is not None
 
+    def list_entities(self) -> list[str]:
+        """Distinct entity ids known to the store (raw events or daily rollups)."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT entity_id FROM history_events "
+                "UNION SELECT entity_id FROM history_daily")
+            return [r["entity_id"] for r in cur.fetchall()]
+
     def query(self, entity_id: str, days: int, today: str) -> Optional[dict]:
         """Return uniform daily buckets for an entity, or None if it has no data.
 

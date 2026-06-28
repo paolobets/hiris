@@ -179,3 +179,16 @@ def test_close_closes_connection(tmp_path):
     import pytest
     with pytest.raises(sqlite3.ProgrammingError):
         s._all_events()
+
+
+def test_list_entities_from_both_tables(tmp_path):
+    import os
+    from hiris.app.history.store import HistoryStore
+    s = HistoryStore(os.path.join(str(tmp_path), "h.db"))
+    s.append("sensor.a", "2026-06-20T10:00:00+00:00", "1.0")
+    s.append("climate.b", "2026-06-20T10:00:00+00:00", "2.0")
+    s.rollup_day("climate.b", "2026-06-20")
+    s.compact(today="2026-06-21", retention_days=0)   # prune raw, keep daily for climate.b
+    ents = s.list_entities()
+    assert "climate.b" in ents          # survives via history_daily
+    assert isinstance(ents, list)
