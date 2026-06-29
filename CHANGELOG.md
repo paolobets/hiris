@@ -1,5 +1,21 @@
 # HIRIS — Changelog
 
+## v0.21.0 — Semaforo per-entità + pip-audit (Road to 1.0, Blocker 3) (2026-06-29)
+
+- **Granularità per-entità del semaforo**: oltre al livello per-dominio, ora puoi
+  impostare override per singola entità (off/green/yellow/red) — l'entità batte il
+  dominio. Es. dominio Interruttori verde ma `switch.cancello off`, oppure dominio
+  off con `switch.lampada green`. UI: riquadro "Override per entità" in *Accessi
+  Gateway*. Chiude il residuo "sharp" dell'audit (domini eterogenei).
+- **Enforcement a tenuta** (audit adversariale + fix): un'entità `off` dentro un
+  dominio verde è bloccata sia per azione diretta sia (bypass chiuso) per azione
+  **schedulata in un task** — i task possono contenere solo azioni verdi. La
+  risoluzione del tier è entity-aware sul confine execute-API.
+- **Sicurezza dipendenze**: `pip-audit` sulle dipendenze dirette pulito; floor di
+  `aiohttp` alzato a `>=3.14.1` (CVE-2026-54274). Audit transitivo definitivo →
+  in CI sull'immagine (Blocker 4).
+- 749 test.
+
 ## v0.20.0 — Data layer robusto: WAL + migrazioni schema (Road to 1.0, Blocker 2) (2026-06-29)
 
 Fondazione per la sicurezza dei dati negli aggiornamenti dell'addon. Nessun
