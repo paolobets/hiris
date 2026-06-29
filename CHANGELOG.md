@@ -1,5 +1,21 @@
 # HIRIS — Changelog
 
+## v0.20.0 — Data layer robusto: WAL + migrazioni schema (Road to 1.0, Blocker 2) (2026-06-29)
+
+Fondazione per la sicurezza dei dati negli aggiornamenti dell'addon. Nessun
+cambiamento funzionale visibile; cambia come i DB SQLite vengono aperti e versionati.
+
+- Nuovo helper condiviso `storage.connect()` / `storage.init_schema()`. Tutti i 7
+  store (`chat`, `history`, `knowledge`, `vault`, `knowledge_db`, `proposals`,
+  `memory`) ora aprono con: **WAL** (resilienza a crash/black-out + letture
+  concorrenti mentre cattura/scheduler scrivono), **busy_timeout=5000** (niente
+  "database is locked"), `synchronous=NORMAL`, `foreign_keys=ON`.
+- **Versioning schema** via `PRAGMA user_version` + runner di migrazioni
+  idempotente, con baseline degli store esistenti (nessuna perdita dati). Oggi
+  tutti a versione 1; i prossimi cambi di schema avranno migrazioni sicure.
+- 736 test (incl. WAL/migrazioni). Nessun vincolo FK negli schemi → `foreign_keys`
+  è no-op oggi, pronto per il futuro.
+
 ## v0.19.0 — Apply reale proposte + hardening sicurezza semaforo (2026-06-29)
 
 A valle di un audit di sicurezza adversariale sul semaforo (nessun bypass verso
