@@ -16,7 +16,7 @@ from .ha_tools import (
 from .energy_tools import get_energy_history
 from .weather_tools import get_weather_forecast
 from .notify_tools import send_notification
-from .automation_tools import get_ha_automations, trigger_automation, toggle_automation
+from .automation_tools import get_ha_automations, get_automation_config, trigger_automation, toggle_automation
 from .task_tools import create_task_tool, list_tasks_tool, cancel_task_tool
 from .calendar_tools import get_calendar_events, set_input_helper, create_calendar_event
 from .http_tools import http_request
@@ -157,6 +157,8 @@ class ToolDispatcher:
                 return await send_notification(self._ha, inputs["message"], inputs["channel"], self._notify_config)
             if name == "get_ha_automations":
                 return await get_ha_automations(self._ha)
+            if name == "get_automation_config":
+                return await get_automation_config(self._ha, inputs.get("automation_id", ""))
             if name == "trigger_automation":
                 automation_id = inputs["automation_id"]
                 bare_id = (

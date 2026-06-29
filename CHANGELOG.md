@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## v0.18.0 — Lettura config automazioni + fix proposte/task via MCP (2026-06-29)
+
+- Nuovo tool **get_automation_config**: legge la configurazione (YAML-equivalente)
+  di un'automazione creata da UI in HA, così Claude/HIRIS può mostrarla e
+  spiegarla. (Le automazioni scritte a mano in YAML non passano dall'API HA → errore chiaro.)
+- **Fix via MCP**: i tool di proposta/pianificazione (create_automation_proposal,
+  save_knowledge, list_tasks, create_task, cancel_task) erano nel catalogo del
+  gateway ma non nell'allowlist execute-API di HIRIS → venivano respinti ("tool
+  not exposed by policy"). Ora derive_execute_policy li espone (create_task/
+  cancel_task restano gated dal semaforo del gateway).
+
 ## v0.17.1 — Fix: layout chat immune alla cache CSS stantia (2026-06-28)
 
 - **Bugfix layout chat su desktop**: con una `hiris-chat.css` vecchia in cache del

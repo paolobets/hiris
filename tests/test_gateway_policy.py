@@ -4,6 +4,7 @@ from aiohttp import web
 from hiris.app.api.handlers_gateway_policy import (
     GATEWAY_CATEGORIES,
     READ_TOOLS,
+    PROPOSE_TOOLS,
     apply_saved_policy,
     derive_execute_policy,
     handle_get_gateway_policy,
@@ -104,3 +105,21 @@ def test_get_history_is_a_read_tool():
 def test_derived_policy_exposes_get_history():
     pol = derive_execute_policy({"light": "green"})
     assert "get_history" in pol["tools"]
+
+
+def test_get_automation_config_is_read_tool():
+    assert "get_automation_config" in READ_TOOLS
+
+
+def test_propose_tools_always_in_derived_policy():
+    pol = derive_execute_policy({})          # no categories at all
+    for t in ("create_automation_proposal", "save_knowledge", "list_tasks",
+              "create_task", "cancel_task"):
+        assert t in pol["tools"]
+    assert "call_ha_service" not in pol["tools"]   # not actionable -> no action tool
+
+
+def test_green_category_still_adds_call_service():
+    pol = derive_execute_policy({"light": "green"})
+    assert "call_ha_service" in pol["tools"]
+    assert "create_automation_proposal" in pol["tools"]

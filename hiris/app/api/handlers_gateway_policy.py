@@ -21,7 +21,14 @@ logger = logging.getLogger(__name__)
 
 # Read tools are always available to the gateway (non-destructive).
 READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
-              "get_history", "recall_knowledge"]
+              "get_history", "recall_knowledge", "get_automation_config"]
+
+# Propose / schedule tools the gateway may always reach. They are either
+# non-destructive (proposals & pending knowledge) or held for human approval by
+# the gateway's own confirmation (create_task/cancel_task). Distinct from
+# READ_TOOLS (which additionally bypass the action entity/service whitelist).
+PROPOSE_TOOLS = ["create_automation_proposal", "save_knowledge", "list_tasks",
+                 "create_task", "cancel_task"]
 
 # Canonical categories shown in the UI, with friendly Italian labels and the HA
 # domain they map to. Order is the display order.
@@ -127,7 +134,7 @@ def derive_execute_policy(categories: dict) -> dict:
         actionable = True
         if level == "green":
             green_domains.append(dom)
-    tools = list(READ_TOOLS)
+    tools = list(READ_TOOLS) + list(PROPOSE_TOOLS)
     if actionable:
         tools.append("call_ha_service")  # requestable; the handler routes by tier
     services = [d + ".*" for d in green_domains]

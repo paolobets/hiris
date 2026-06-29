@@ -19,6 +19,7 @@ from .tools.weather_tools import TOOL_DEF as WEATHER_TOOL
 from .tools.notify_tools import TOOL_DEF as NOTIFY_TOOL
 from .tools.automation_tools import (
     GET_AUTOMATIONS_TOOL_DEF,
+    GET_AUTOMATION_CONFIG_TOOL_DEF,
     TRIGGER_TOOL_DEF,
     TOGGLE_TOOL_DEF,
 )
@@ -114,6 +115,7 @@ ALL_TOOL_DEFS = [
     WEATHER_TOOL,
     NOTIFY_TOOL,
     GET_AUTOMATIONS_TOOL_DEF,
+    GET_AUTOMATION_CONFIG_TOOL_DEF,
     TRIGGER_TOOL_DEF,
     TOGGLE_TOOL_DEF,
     CALL_SERVICE_TOOL_DEF,
@@ -141,7 +143,7 @@ EVALUATION_ONLY_TOOLS = frozenset({
     "get_entity_states", "get_area_entities", "get_home_status",
     "get_entities_on", "get_entities_by_domain",
     "get_energy_history", "get_weather_forecast", "get_history",
-    "get_ha_automations", "get_calendar_events",
+    "get_ha_automations", "get_automation_config", "get_calendar_events",
     "create_task", "list_tasks", "cancel_task",
     "recall_memory",  # read-only — safe for non-chat agents
     "get_ha_health",  # read-only cached data — safe for proactive monitors

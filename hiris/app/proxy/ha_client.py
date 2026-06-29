@@ -69,6 +69,37 @@ class HAClient:
             all_states: list[dict] = await resp.json()
         return [s for s in all_states if s["entity_id"].startswith("automation.")]
 
+    async def get_automation_config(self, automation_id: str) -> dict:
+        """Return the config (YAML-equivalent dict) of a UI-managed automation.
+
+        `automation_id` may be the numeric unique id, the entity_id
+        ('automation.foo') or the object_id ('foo'). HA's config API only serves
+        automations created/managed via the UI (404 for hand-written YAML ones)."""
+        numeric = str(automation_id or "")
+        if not numeric.isdigit():
+            eid = numeric if numeric.startswith("automation.") else f"automation.{numeric}"
+            try:
+                states = await self.get_states([eid])
+            except Exception:
+                states = []
+            numeric = ""
+            for s in states:
+                if s.get("entity_id") == eid:
+                    numeric = str(s.get("attributes", {}).get("id", "") or "")
+                    break
+        if not numeric:
+            return {"error": "automazione non trovata o priva di id univoco"}
+        url = f"{self._base_url}/api/config/automation/config/{numeric}"
+        try:
+            async with self._session.get(url) as resp:
+                if resp.status == 404:
+                    return {"error": "config non disponibile: l'automazione non e' "
+                                     "gestita dalla UI di HA (forse definita a mano in YAML)"}
+                resp.raise_for_status()
+                return await resp.json()
+        except Exception as exc:
+            return {"error": f"lettura config fallita: {exc}"}
+
     async def get_error_log(self, limit: int = 100) -> dict:
         """Fetch HA error log and return parsed summary."""
         _empty = {"errors": 0, "warnings": 0, "top_errors": []}
