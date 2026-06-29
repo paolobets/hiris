@@ -76,17 +76,16 @@ class HAClient:
         ('automation.foo') or the object_id ('foo'). HA's config API only serves
         automations created/managed via the UI (404 for hand-written YAML ones)."""
         numeric = str(automation_id or "")
-        if not numeric.isdigit():
+        if not numeric.isascii() or not numeric.isdigit():
             eid = numeric if numeric.startswith("automation.") else f"automation.{numeric}"
-            try:
-                states = await self.get_states([eid])
-            except Exception:
-                states = []
             numeric = ""
-            for s in states:
-                if s.get("entity_id") == eid:
-                    numeric = str(s.get("attributes", {}).get("id", "") or "")
-                    break
+            try:
+                async with self._session.get(f"{self._base_url}/api/states/{eid}") as r:
+                    if r.status == 200:
+                        s = await r.json()
+                        numeric = str(s.get("attributes", {}).get("id", "") or "")
+            except Exception:
+                numeric = ""
         if not numeric:
             return {"error": "automazione non trovata o priva di id univoco"}
         url = f"{self._base_url}/api/config/automation/config/{numeric}"

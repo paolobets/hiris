@@ -113,10 +113,18 @@ def test_get_automation_config_is_read_tool():
 
 def test_propose_tools_always_in_derived_policy():
     pol = derive_execute_policy({})          # no categories at all
-    for t in ("create_automation_proposal", "save_knowledge", "list_tasks",
-              "create_task", "cancel_task"):
+    for t in ("create_automation_proposal", "save_knowledge", "list_tasks", "cancel_task"):
         assert t in pol["tools"]
     assert "call_ha_service" not in pol["tools"]   # not actionable -> no action tool
+    assert "create_task" not in pol["tools"]       # create_task needs a green domain to constrain it
+
+
+def test_create_task_exposed_only_when_actionable():
+    assert "create_task" not in derive_execute_policy({})["tools"]
+    assert "create_task" not in derive_execute_policy({"light": "off"})["tools"]
+    pol = derive_execute_policy({"light": "green"})
+    assert "create_task" in pol["tools"]
+    assert pol["allowed_services"] == ["light.*"]   # so the task's actions are constrained
 
 
 def test_green_category_still_adds_call_service():
