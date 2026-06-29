@@ -75,7 +75,7 @@ class HAClient:
         Returns {"ok": True, "id": <id>} or {"error": ...}. Human-gated upstream."""
         if not isinstance(config, dict) or not config:
             return {"error": "config automazione vuota o non valida"}
-        aid = str(automation_id or int(datetime.now(timezone.utc).timestamp() * 1000))
+        aid = str(automation_id or int(datetime.now(timezone.utc).timestamp() * 1_000_000))
         if not (aid.isascii() and aid.isdigit()):
             return {"error": "automation_id non valido"}
         url = f"{self._base_url}/api/config/automation/config/{aid}"
@@ -89,8 +89,9 @@ class HAClient:
         # Reload so the new automation becomes active immediately (idempotent).
         try:
             await self.call_service("automation", "reload", {})
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("automation.reload after create failed (automation %s persisted, "
+                           "will load on next HA restart): %s", aid, exc)
         return {"ok": True, "id": aid}
 
     async def get_automation_config(self, automation_id: str) -> dict:

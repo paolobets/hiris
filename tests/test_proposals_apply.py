@@ -73,3 +73,13 @@ async def test_apply_hiris_agent_status_only(aiohttp_client):
     client = await aiohttp_client(_app(store))   # no ha_client needed
     r = await client.post("/api/proposals/p1/apply", headers={"X-Requested-With": "x"})
     assert r.status == 200 and store.applied == ["p1"]
+
+
+@pytest.mark.asyncio
+async def test_apply_ha_automation_without_ha_client_returns_503(aiohttp_client):
+    store = _FakeProposalStore({"id": "p1", "status": "pending", "type": "ha_automation",
+                                "config": {"alias": "X"}})
+    client = await aiohttp_client(_app(store))   # no ha_client registered
+    r = await client.post("/api/proposals/p1/apply", headers={"X-Requested-With": "x"})
+    assert r.status == 503
+    assert store.applied == []

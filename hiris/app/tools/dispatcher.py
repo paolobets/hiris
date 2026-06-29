@@ -9,6 +9,9 @@ from typing import Any, Optional
 # automation.{id} in case HA's downstream parser is lenient.
 _AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
+# Action types the TaskEngine can actually execute (deny-by-default at create_task).
+_ALLOWED_TASK_ACTIONS = frozenset({"call_ha_service", "send_notification", "create_task"})
+
 from .ha_tools import (
     get_entity_states, get_area_entities, get_home_status,
     get_entities_on, get_entities_by_domain,
@@ -223,7 +226,6 @@ class ToolDispatcher:
             if name == "create_task":
                 if self._task_engine is None:
                     return {"error": "TaskEngine not available"}
-                _ALLOWED_TASK_ACTIONS = {"call_ha_service", "send_notification", "create_task"}
                 for action in inputs.get("actions", []):
                     atype = action.get("type")
                     if atype not in _ALLOWED_TASK_ACTIONS:
