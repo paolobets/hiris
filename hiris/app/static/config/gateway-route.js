@@ -36,6 +36,24 @@ window.HirisGatewayRoute = (function () {
     return fetch('api/gateway' + path, opts);
   }
 
+  var ENT_LEVELS = { off: 1, green: 1, yellow: 1, red: 1 };
+  var ENT_RE = /^[a-z][a-z0-9_]*\.[a-z0-9_]+$/;
+  function parseEntityOverrides(text) {
+    var out = {};
+    (text || '').split('\n').forEach(function (line) {
+      var parts = line.trim().split(/\s+/);
+      if (parts.length !== 2) return;
+      var eid = parts[0], lvl = parts[1];
+      if (ENT_RE.test(eid) && ENT_LEVELS[lvl]) out[eid] = lvl;
+    });
+    return out;
+  }
+  function entitiesToText(entities) {
+    return Object.keys(entities || {}).sort().map(function (eid) {
+      return eid + ' ' + entities[eid];
+    }).join('\n');
+  }
+
   function renderPending(host, list) {
     host.innerHTML = '';
     if (!list || !list.length) return;
@@ -128,6 +146,24 @@ window.HirisGatewayRoute = (function () {
       body.appendChild(row);
     });
 
+    var entWrap = el('div');
+    entWrap.style.cssText = 'padding:14px 0 4px;border-top:1px solid var(--border,#2a2a2a);margin-top:8px';
+    var entTitle = el('div', null, 'Override per entità (avanzato)');
+    entTitle.style.cssText = 'font-weight:600;margin-bottom:4px';
+    entWrap.appendChild(entTitle);
+    var entHint = el('p', 'sc-desc',
+      'Una per riga: "entity_id livello" (off/green/yellow/red). ' +
+      'L\'entità batte il livello del dominio — es. dominio Interruttori verde ma ' +
+      '"switch.cancello off" per bloccarlo, o dominio off con "switch.lampada green".');
+    entWrap.appendChild(entHint);
+    var entTa = el('textarea');
+    entTa.value = entitiesToText(data.entities || {});
+    entTa.rows = 4;
+    entTa.placeholder = 'switch.cancello off\nlock.ingresso red';
+    entTa.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;font-family:var(--font-mono,monospace);font-size:13px';
+    entWrap.appendChild(entTa);
+    body.appendChild(entWrap);
+
     body.appendChild(el('p', 'sc-desc',
       'Verde = esegui subito · Giallo = notifica sul telefono e approvi (anche qui sopra) · ' +
       'Rosso = conferma solo qui in HIRIS. Le categorie senza dispositivi sono attenuate.'));
@@ -144,7 +180,9 @@ window.HirisGatewayRoute = (function () {
       Object.keys(selects).forEach(function (id) { out[id] = selects[id].value; });
       save.disabled = true; status.textContent = 'Salvataggio…';
       api('/policy', { method: 'POST', body: JSON.stringify({
-        levels: out, settings: { notify_service: svc.value.trim() }
+        levels: out,
+        entities: parseEntityOverrides(entTa.value),
+        settings: { notify_service: svc.value.trim() }
       }) })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
         .then(function () { status.textContent = 'Salvato ✓'; save.disabled = false; })
