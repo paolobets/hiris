@@ -154,6 +154,27 @@ async def handle_execute(request: web.Request) -> web.Response:
                                else " manuale in HIRIS.")),
             }})
 
+    # create_task is dispatched without per-fire approval, so any call_ha_service
+    # action it schedules must target ONLY green-effective entities. off/yellow/red
+    # (or a broadcast with no entity target) are rejected here — otherwise a task
+    # would let the gateway bypass the per-entity semaforo at fire time.
+    if tool == "create_task":
+        from .handlers_gateway_policy import effective_tier
+        tiers = policy.get("tiers") or {}
+        entity_tiers = policy.get("entity_tiers") or {}
+        for action in (inputs.get("actions") or []):
+            if not isinstance(action, dict) or action.get("type") != "call_ha_service":
+                continue
+            targets = _target_entities(action)
+            if not targets:
+                return web.json_response({"result": {"error":
+                    "Task rifiutato: azione call_ha_service senza entity target esplicito."}})
+            for e in targets:
+                if effective_tier(e, tiers, entity_tiers) != "green":
+                    return web.json_response({"result": {"error":
+                        f"Task rifiutato: l'azione su {e!r} non e' verde nel semaforo "
+                        "(i task possono contenere solo azioni verdi)."}})
+
     # Reads are non-destructive and must NOT be constrained by the action
     # whitelist (allowed_entities/allowed_services are derived from the *green
     # action domains*; applying them to reads hides every entity outside those

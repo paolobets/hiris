@@ -290,3 +290,66 @@ async def test_execute_green_entity_dispatches(aiohttp_client):
         "input": {"domain": "switch", "service": "turn_on", "data": {"entity_id": "switch.lamp"}}})
     assert resp.status == 200
     assert app["tool_dispatcher"].calls and app["tool_dispatcher"].calls[0][0] == "call_ha_service"
+
+
+# ---------------------------------------------------------------------------
+# create_task semaforo guard tests (TDD: added before implementation)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_execute_create_task_rejects_action_on_off_entity(aiohttp_client):
+    policy = {"tools": ["create_task"], "allowed_entities": ["switch.*"],
+              "allowed_services": ["switch.*"], "tiers": {"switch": "green"},
+              "entity_tiers": {"switch.gate": "off"}}
+    app = _make_app(policy)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "create_task", "input": {
+        "label": "x", "trigger": {}, "actions": [
+            {"type": "call_ha_service", "domain": "switch", "service": "turn_on",
+             "data": {"entity_id": "switch.gate"}}]}})
+    assert resp.status == 200
+    res = (await resp.json())["result"]
+    assert "error" in res
+    assert app["tool_dispatcher"].calls == []          # never dispatched
+
+
+@pytest.mark.asyncio
+async def test_execute_create_task_rejects_red_entity_action(aiohttp_client):
+    policy = {"tools": ["create_task"], "allowed_entities": ["switch.*"],
+              "allowed_services": ["switch.*"], "tiers": {"switch": "green"},
+              "entity_tiers": {"switch.boiler": "red"}}
+    app = _make_app(policy)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "create_task", "input": {
+        "label": "x", "trigger": {}, "actions": [
+            {"type": "call_ha_service", "domain": "switch", "service": "turn_on",
+             "data": {"entity_id": "switch.boiler"}}]}})
+    assert "error" in (await resp.json())["result"]
+    assert app["tool_dispatcher"].calls == []
+
+
+@pytest.mark.asyncio
+async def test_execute_create_task_allows_green_entity_action(aiohttp_client):
+    policy = {"tools": ["create_task"], "allowed_entities": ["switch.*"],
+              "allowed_services": ["switch.*"], "tiers": {"switch": "green"}, "entity_tiers": {}}
+    app = _make_app(policy)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "create_task", "input": {
+        "label": "x", "trigger": {}, "actions": [
+            {"type": "call_ha_service", "domain": "switch", "service": "turn_on",
+             "data": {"entity_id": "switch.lamp"}}]}})
+    assert resp.status == 200
+    assert app["tool_dispatcher"].calls and app["tool_dispatcher"].calls[0][0] == "create_task"
+
+
+@pytest.mark.asyncio
+async def test_execute_create_task_rejects_broadcast_action(aiohttp_client):
+    policy = {"tools": ["create_task"], "allowed_entities": ["switch.*"],
+              "allowed_services": ["switch.*"], "tiers": {"switch": "green"}, "entity_tiers": {}}
+    app = _make_app(policy)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "create_task", "input": {
+        "label": "x", "trigger": {}, "actions": [
+            {"type": "call_ha_service", "domain": "switch", "service": "turn_on"}]}})
+    assert "error" in (await resp.json())["result"]
+    assert app["tool_dispatcher"].calls == []
