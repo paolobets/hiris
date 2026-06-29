@@ -8,6 +8,7 @@ import threading
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any
+from ..storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +44,9 @@ class ProposalStore:
     """
 
     def __init__(self, db_path: str, scheduler: Any) -> None:
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn = connect(db_path)
         self._mu = threading.Lock()
-        with self._mu:
-            self._conn.executescript(_SCHEMA)
-            self._conn.commit()
+        init_schema(self._conn, _SCHEMA, version=1)
         if scheduler is not None:
             scheduler.add_job(
                 self._run_lifecycle,

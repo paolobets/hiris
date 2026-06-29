@@ -5,6 +5,7 @@ import threading
 import json
 from datetime import datetime, timezone
 from ..backends.embeddings import vec_to_blob, blob_to_vec, cosine_similarity
+from ..storage import connect, init_schema
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -65,13 +66,9 @@ CREATE INDEX IF NOT EXISTS idx_dc_doc  ON document_chunks(mayan_doc_id);
 
 class KnowledgeStore:
     def __init__(self, db_path: str) -> None:
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn = connect(db_path)
         self._mu = threading.Lock()
-        with self._mu:
-            self._conn.executescript(_SCHEMA)
-            self._conn.commit()
+        init_schema(self._conn, _SCHEMA, version=1)
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).strftime(_TS_FMT)

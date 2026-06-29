@@ -7,6 +7,8 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from ..storage import connect, init_schema
+
 logger = logging.getLogger(__name__)
 
 _SCHEMA = """
@@ -120,13 +122,9 @@ class HistoryStore:
     the WS capture callback; reads from request handlers)."""
 
     def __init__(self, db_path: str) -> None:
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn = connect(db_path)
         self._lock = threading.Lock()
-        with self._lock:
-            self._conn.executescript(_SCHEMA)
-            self._conn.commit()
+        init_schema(self._conn, _SCHEMA, version=1)
 
     def close(self) -> None:
         """Close the SQLite connection (called on app shutdown)."""

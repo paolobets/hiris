@@ -5,6 +5,7 @@ import re
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from ..storage import connect, init_schema
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -26,13 +27,9 @@ class VaultStore:
     (la cifratura at-rest è differita, uniforme con la cifratura whole-DB)."""
 
     def __init__(self, db_path: str) -> None:
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn = connect(db_path)
         self._mu = threading.Lock()
-        with self._mu:
-            self._conn.executescript(_VAULT_SCHEMA)
-            self._conn.commit()
+        init_schema(self._conn, _VAULT_SCHEMA, version=1)
 
     @staticmethod
     def _hash(pii_type: str, value: str) -> str:

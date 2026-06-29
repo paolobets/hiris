@@ -3,6 +3,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
+from ..storage import connect, init_schema
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS entity_classifications (
@@ -46,11 +47,8 @@ CREATE TABLE IF NOT EXISTS query_patterns (
 
 class KnowledgeDB:
     def __init__(self, db_path: str = "/data/hiris_knowledge.db") -> None:
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_SCHEMA)
-        self._conn.commit()
+        self._conn = connect(db_path)
+        init_schema(self._conn, _SCHEMA, version=1)
 
     def save_classification(
         self,

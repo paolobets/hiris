@@ -8,6 +8,8 @@ import threading
 import uuid
 from datetime import datetime, timezone, timedelta
 
+from .storage import connect, init_schema
+
 logger = logging.getLogger(__name__)
 
 _AGENT_ID_RE = re.compile(r'^[\w\-]{1,64}$')
@@ -97,13 +99,9 @@ CREATE INDEX IF NOT EXISTS idx_sess_agent ON chat_sessions(agent_id, last_msg_at
 
 class ChatStore:
     def __init__(self, db_path: str):
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn = connect(db_path)
         self._mu = threading.Lock()
-        with self._mu:
-            self._conn.executescript(_SCHEMA)
-            self._conn.commit()
+        init_schema(self._conn, _SCHEMA, version=1)
 
     # ------------------------------------------------------------------
     # Internal helpers (called with self._mu already held)
