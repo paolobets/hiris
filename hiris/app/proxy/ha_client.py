@@ -69,6 +69,30 @@ class HAClient:
             all_states: list[dict] = await resp.json()
         return [s for s in all_states if s["entity_id"].startswith("automation.")]
 
+    async def create_automation(self, config: dict,
+                                automation_id: str | None = None) -> dict:
+        """Create/replace a UI-managed automation via HA's config API, then reload.
+        Returns {"ok": True, "id": <id>} or {"error": ...}. Human-gated upstream."""
+        if not isinstance(config, dict) or not config:
+            return {"error": "config automazione vuota o non valida"}
+        aid = str(automation_id or int(datetime.now(timezone.utc).timestamp() * 1000))
+        if not (aid.isascii() and aid.isdigit()):
+            return {"error": "automation_id non valido"}
+        url = f"{self._base_url}/api/config/automation/config/{aid}"
+        try:
+            async with self._session.post(url, json=config) as resp:
+                if resp.status not in (200, 201):
+                    body = await resp.text()
+                    return {"error": f"HA ha rifiutato la config ({resp.status}): {body[:200]}"}
+        except Exception as exc:
+            return {"error": f"scrittura automazione fallita: {exc}"}
+        # Reload so the new automation becomes active immediately (idempotent).
+        try:
+            await self.call_service("automation", "reload", {})
+        except Exception:
+            pass
+        return {"ok": True, "id": aid}
+
     async def get_automation_config(self, automation_id: str) -> dict:
         """Return the config (YAML-equivalent dict) of a UI-managed automation.
 

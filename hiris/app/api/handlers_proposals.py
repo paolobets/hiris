@@ -33,6 +33,26 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
     if proposal_store is None:
         return web.json_response({"error": "ProposalStore not initialized"}, status=503)
     proposal_id = request.match_info["proposal_id"]
+    proposal = await proposal_store.get(proposal_id)
+    if proposal is None or proposal.get("status") != "pending":
+        return web.json_response(
+            {"error": "Proposal not found or not in pending state"}, status=409
+        )
+    # For HA automations, materialize the config in Home Assistant first; only
+    # mark applied if HA accepted it (so a rejected config stays pending/retryable).
+    if proposal.get("type") == "ha_automation":
+        ha = request.app.get("ha_client")
+        if ha is None:
+            return web.json_response({"error": "HA client non disponibile"}, status=503)
+        result = await ha.create_automation(proposal.get("config") or {})
+        if not isinstance(result, dict) or result.get("error"):
+            msg = result.get("error") if isinstance(result, dict) else "errore sconosciuto"
+            return web.json_response(
+                {"error": f"Automazione non creata in HA: {msg}"}, status=502
+            )
+        applied = await proposal_store.apply(proposal_id)
+        return web.json_response({"ok": bool(applied), "automation_id": result.get("id")})
+    # Other proposal types: status-only apply (unchanged behavior).
     ok = await proposal_store.apply(proposal_id)
     if not ok:
         return web.json_response(

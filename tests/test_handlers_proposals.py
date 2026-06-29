@@ -91,7 +91,11 @@ async def test_get_proposal_not_found_returns_404():
 
 @pytest.mark.asyncio
 async def test_apply_proposal_returns_ok():
-    store = _make_store(apply=AsyncMock(return_value=True))
+    # Non-ha_automation proposal: only status update, no HA client required.
+    store = _make_store(
+        get=AsyncMock(return_value={"id": "abc", "status": "pending", "type": "hiris_agent"}),
+        apply=AsyncMock(return_value=True),
+    )
 
     request = make_mocked_request(
         "POST", "/api/proposals/abc/apply",
