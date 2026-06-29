@@ -33,6 +33,17 @@ def _origin(body: dict) -> str:
     return "mcp-gateway"
 
 
+def _target_entities(inputs: dict) -> list[str]:
+    data = inputs.get("data") if isinstance(inputs.get("data"), dict) else {}
+    target = inputs.get("target") if isinstance(inputs.get("target"), dict) else {}
+    raw = (data.get("entity_id") if isinstance(data, dict) else None) or target.get("entity_id")
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, list):
+        return [e for e in raw if isinstance(e, str)]
+    return []
+
+
 def _csv(value: str | None) -> list[str]:
     if not value:
         return []
@@ -107,10 +118,23 @@ async def handle_execute(request: web.Request) -> web.Response:
         )
 
     # Tier routing for actions: green executes directly; yellow/red are held for
-    # approval (notification) and not dispatched here.
+    # approval (notification) and not dispatched here. Per-entity overrides beat
+    # the domain level (off entity inside green domain is BLOCKED, never dispatched).
     if tool == "call_ha_service":
+        from .handlers_gateway_policy import effective_tier
         domain = inputs.get("domain")
-        tier = (policy.get("tiers") or {}).get(domain)
+        tiers = policy.get("tiers") or {}
+        entity_tiers = policy.get("entity_tiers") or {}
+        targets = _target_entities(inputs)
+        if targets:
+            levels = [effective_tier(e, tiers, entity_tiers) for e in targets]
+            if any(lv == "off" for lv in levels):
+                return web.json_response(
+                    {"result": {"error": "Entità bloccata dal semaforo (off)."}})
+            tier = "red" if "red" in levels else ("yellow" if "yellow" in levels else None)
+        else:
+            dom_tier = tiers.get(domain, "off")
+            tier = dom_tier if dom_tier in ("yellow", "red") else None
         if tier in ("yellow", "red"):
             from .handlers_gateway_pending import create_pending, notify
             label = f"{domain}.{inputs.get('service', '')}"

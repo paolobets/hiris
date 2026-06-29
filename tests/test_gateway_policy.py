@@ -131,3 +131,38 @@ def test_green_category_still_adds_call_service():
     pol = derive_execute_policy({"light": "green"})
     assert "call_ha_service" in pol["tools"]
     assert "create_automation_proposal" in pol["tools"]
+
+
+# ---------------------------------------------------------------------------
+# Per-entity override tests (TDD: added before implementation)
+# ---------------------------------------------------------------------------
+from hiris.app.api.handlers_gateway_policy import effective_tier, load_entities
+
+
+def test_effective_tier_entity_overrides_domain():
+    tiers = {"switch": "green"}; ent = {"switch.gate": "off", "switch.lamp": "red"}
+    assert effective_tier("switch.gate", tiers, ent) == "off"      # override beats green
+    assert effective_tier("switch.lamp", tiers, ent) == "red"
+    assert effective_tier("switch.other", tiers, ent) == "green"   # falls back to domain
+    assert effective_tier("fan.x", tiers, ent) == "off"            # unconfigured -> off
+
+
+def test_derive_includes_green_entity_in_off_domain():
+    pol = derive_execute_policy({"switch": "off"}, {"switch.lamp": "green"})
+    assert "switch.lamp" in (pol["allowed_entities"] or [])
+    assert "switch.*" in (pol["allowed_services"] or [])
+    assert pol["entity_tiers"]["switch.lamp"] == "green"
+    assert "call_ha_service" in pol["tools"]                       # green entity -> actionable
+
+
+def test_derive_entity_off_override_recorded():
+    pol = derive_execute_policy({"switch": "green"}, {"switch.gate": "off"})
+    assert pol["entity_tiers"]["switch.gate"] == "off"
+    assert "switch.*" in (pol["allowed_entities"] or [])           # domain still green-globbed
+
+
+def test_save_and_load_entities_roundtrip(tmp_path):
+    d = str(tmp_path)
+    save_categories(d, {"switch": "green"}, entities={"switch.gate": "off", "bad id": "green"})
+    ents = load_entities(d)
+    assert ents == {"switch.gate": "off"}                          # malformed id dropped

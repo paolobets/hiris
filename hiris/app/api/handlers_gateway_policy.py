@@ -62,6 +62,7 @@ _VALID_LEVELS = frozenset({"green", "yellow", "red", "off"})
 _BY_ID = {c["id"]: c for c in GATEWAY_CATEGORIES}
 DEFAULT_NOTIFY_SERVICE = "notify.iphone_bet"
 _SERVICE_RE = re.compile(r"^notify\.[A-Za-z0-9_]{1,64}$")
+_ENTITY_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 
 def _policy_path(data_dir: str) -> str:
@@ -93,6 +94,15 @@ def load_categories(data_dir: str) -> dict:
     return {k: v for k, v in cats.items() if k in _BY_ID and v in _VALID_LEVELS}
 
 
+def load_entities(data_dir: str) -> dict:
+    """Load {entity_id: level} per-entity overrides (validated)."""
+    ents = _read_full(data_dir).get("entities", {})
+    if not isinstance(ents, dict):
+        return {}
+    return {k: v for k, v in ents.items()
+            if isinstance(k, str) and _ENTITY_RE.match(k) and v in _VALID_LEVELS}
+
+
 def load_settings(data_dir: str) -> dict:
     s = _read_full(data_dir).get("settings", {})
     svc = s.get("notify_service")
@@ -101,12 +111,16 @@ def load_settings(data_dir: str) -> dict:
     return {"notify_service": svc}
 
 
-def save_categories(data_dir: str, categories: dict, settings: dict | None = None) -> dict:
-    """Validate and persist the category map (preserving/updating settings)."""
+def save_categories(data_dir: str, categories: dict, settings: dict | None = None,
+                    entities: dict | None = None) -> dict:
+    """Validate and persist the category map (+ optional per-entity overrides, settings)."""
     clean = {k: v for k, v in categories.items() if k in _BY_ID and v in _VALID_LEVELS}
     full = _read_full(data_dir)
-    full["version"] = 1
+    full["version"] = 2
     full["categories"] = clean
+    if entities is not None:
+        full["entities"] = {k: v for k, v in entities.items()
+                            if isinstance(k, str) and _ENTITY_RE.match(k) and v in _VALID_LEVELS}
     if settings is not None:
         svc = settings.get("notify_service")
         full.setdefault("settings", {})
@@ -116,16 +130,29 @@ def save_categories(data_dir: str, categories: dict, settings: dict | None = Non
     return clean
 
 
-def derive_execute_policy(categories: dict) -> dict:
-    """Translate the category map into the execute-API policy.
+def effective_tier(entity_id: str, tiers: dict, entity_tiers: dict) -> str:
+    """Effective tier of a target entity: a per-entity override beats the domain
+    level; unconfigured domains default to 'off' (fail-closed)."""
+    if entity_id in entity_tiers:
+        return entity_tiers[entity_id]
+    dom = entity_id.split(".", 1)[0] if "." in entity_id else ""
+    return tiers.get(dom, "off")
+
+
+def derive_execute_policy(categories: dict, entities: dict | None = None) -> dict:
+    """Translate the category map (+ optional per-entity overrides) into the execute-API policy.
 
     - green: the domain is directly executable (its glob is whitelisted).
     - yellow/red: the domain is *requestable* but held for approval (carried in
       ``tiers`` so the execute-API can route it), not in the green whitelist.
     - off/missing: not reachable at all.
+    Per-entity overrides in ``entities`` ({entity_id: level}) beat the domain level.
     """
+    entities = entities or {}
     tiers: dict = {}
+    entity_tiers: dict = {}
     green_domains: list[str] = []
+    green_entities: list[str] = []
     actionable = False
     for cid, level in categories.items():
         if cid not in _BY_ID or level not in ("green", "yellow", "red"):
@@ -135,17 +162,28 @@ def derive_execute_policy(categories: dict) -> dict:
         actionable = True
         if level == "green":
             green_domains.append(dom)
+    for eid, level in entities.items():
+        if not (isinstance(eid, str) and _ENTITY_RE.match(eid)) or level not in _VALID_LEVELS:
+            continue
+        entity_tiers[eid] = level
+        if level in ("green", "yellow", "red"):
+            actionable = True
+        if level == "green":
+            green_entities.append(eid)
     tools = list(READ_TOOLS) + list(PROPOSE_TOOLS)
     if actionable:
         tools.append("call_ha_service")  # requestable; the handler routes by tier
-        tools.append("create_task")      # only when green domains constrain its actions
-    services = [d + ".*" for d in green_domains]
-    entities = [d + ".*" for d in green_domains]
+        tools.append("create_task")      # only when green domains/entities constrain its actions
+    # allowed_services: green domains' services + the domain-services of green entities.
+    services = [d + ".*" for d in green_domains] + [e.split(".", 1)[0] + ".*" for e in green_entities]
+    # allowed_entities: green domains' glob + the specific green entity ids.
+    allowed_entities = [d + ".*" for d in green_domains] + list(green_entities)
     return {
         "tools": tools,
         "allowed_services": services or None,
-        "allowed_entities": entities or None,
+        "allowed_entities": allowed_entities or None,
         "tiers": tiers,
+        "entity_tiers": entity_tiers,
     }
 
 
@@ -162,9 +200,10 @@ def apply_saved_policy(app: web.Application) -> None:
         app["gateway_settings"] = holder = {}
     holder["notify_service"] = load_settings(data_dir)["notify_service"]
     cats = load_categories(data_dir)
-    if not cats:
+    ents = load_entities(data_dir)
+    if not cats and not ents:
         return
-    derived = derive_execute_policy(cats)
+    derived = derive_execute_policy(cats, ents)
     existing = app.get("execute_policy")
     if isinstance(existing, dict):
         existing.clear()
@@ -194,6 +233,7 @@ async def handle_get_gateway_policy(request: web.Request) -> web.Response:
         "levels": cats,                       # {category_id: level} (missing = off)
         "valid_levels": sorted(_VALID_LEVELS),
         "settings": load_settings(data_dir),  # {"notify_service": ...}
+        "entities": load_entities(data_dir),  # {entity_id: level} overrides
     })
 
 
@@ -206,8 +246,9 @@ async def handle_save_gateway_policy(request: web.Request) -> web.Response:
     if not isinstance(cats, dict):
         return web.json_response({"error": "levels must be an object"}, status=400)
     settings = body.get("settings") if isinstance(body.get("settings"), dict) else None
+    ents = body.get("entities") if isinstance(body.get("entities"), dict) else None
     data_dir = request.app.get("data_dir") or "/data"
-    clean = save_categories(data_dir, cats, settings)
+    clean = save_categories(data_dir, cats, settings, entities=ents)
     apply_saved_policy(request.app)
     return web.json_response({"ok": True, "levels": clean,
                              "settings": load_settings(data_dir),

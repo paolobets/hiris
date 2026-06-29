@@ -237,3 +237,56 @@ async def test_execute_hard_allows_known_read_tool(aiohttp_client):
     client = await aiohttp_client(app)
     resp = await _post(client, {"tool": "get_home_status", "input": {}})
     assert resp.status == 200
+
+
+# ---------------------------------------------------------------------------
+# Per-entity override tests (TDD: added before implementation)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_execute_blocks_off_entity_in_green_domain(aiohttp_client):
+    # switch domain green, but switch.gate overridden off -> must be blocked, NOT dispatched
+    policy = {"tools": ["call_ha_service"], "allowed_entities": ["switch.*"],
+              "allowed_services": ["switch.*"], "tiers": {"switch": "green"},
+              "entity_tiers": {"switch.gate": "off"}}
+    app = _make_app(policy)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "call_ha_service",
+        "input": {"domain": "switch", "service": "turn_on",
+                  "data": {"entity_id": "switch.gate"}}})
+    assert resp.status == 200
+    res = (await resp.json())["result"]
+    assert "error" in res                                # blocked
+    assert app["tool_dispatcher"].calls == []            # NEVER dispatched
+
+
+@pytest.mark.asyncio
+async def test_execute_red_entity_in_green_domain_held(aiohttp_client, tmp_path):
+    # switch domain green, but switch.boiler overridden red -> must be held for approval
+    app = _make_tier_app({"switch": "green"}, tmp_path)
+    # Add entity_tiers to the existing policy
+    app["execute_policy"]["entity_tiers"] = {"switch.boiler": "red"}
+    app["execute_policy"]["allowed_entities"] = ["switch.*"]
+    app["execute_policy"]["allowed_services"] = ["switch.*"]
+    client = await aiohttp_client(app)
+    resp = await client.post(
+        "/api/execute",
+        json={"tool": "call_ha_service",
+              "input": {"domain": "switch", "service": "turn_on",
+                        "data": {"entity_id": "switch.boiler"}}},
+        headers={"X-HIRIS-Internal-Token": "secret"},
+    )
+    res = (await resp.json())["result"]
+    assert res.get("status") == "pending_approval" and res["tier"] == "red"
+    assert app["tool_dispatcher"].calls == []            # held, not executed
+
+
+@pytest.mark.asyncio
+async def test_execute_green_entity_dispatches(aiohttp_client):
+    app = _make_app({"tools": ["call_ha_service"], "allowed_entities": ["switch.lamp"],
+                     "allowed_services": ["switch.*"], "tiers": {}, "entity_tiers": {"switch.lamp": "green"}})
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "call_ha_service",
+        "input": {"domain": "switch", "service": "turn_on", "data": {"entity_id": "switch.lamp"}}})
+    assert resp.status == 200
+    assert app["tool_dispatcher"].calls and app["tool_dispatcher"].calls[0][0] == "call_ha_service"
