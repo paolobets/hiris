@@ -219,3 +219,21 @@ async def test_execute_get_history_bypasses_action_whitelist(aiohttp_client):
     name, inputs, ents, svcs = app["tool_dispatcher"].calls[0]
     assert name == "get_history"
     assert ents is None and svcs is None     # read sees everything
+
+
+@pytest.mark.asyncio
+async def test_execute_hard_rejects_tool_outside_server_allowlist(aiohttp_client):
+    # Even if the policy lists it, http_request must never be dispatchable.
+    app = _make_app({"tools": ["http_request"], "allowed_entities": None, "allowed_services": None})
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "http_request", "input": {"url": "http://x"}})
+    assert resp.status == 403
+    assert "not permitted" in (await resp.json())["error"]
+
+
+@pytest.mark.asyncio
+async def test_execute_hard_allows_known_read_tool(aiohttp_client):
+    app = _make_app({"tools": ["get_home_status"], "allowed_entities": None, "allowed_services": None})
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "get_home_status", "input": {}})
+    assert resp.status == 200

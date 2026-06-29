@@ -15,6 +15,12 @@ from aiohttp import web
 
 logger = logging.getLogger(__name__)
 
+# Hard server-side ceiling: tools the execute-API may EVER dispatch, regardless
+# of what the env CSV or the saved policy lists. Prevents a misconfigured
+# EXECUTE_API_TOOLS from exposing unconstrained tools (http_request, set_input_helper, …).
+from .handlers_gateway_policy import READ_TOOLS as _RT, PROPOSE_TOOLS as _PT
+_HARD_EXECUTE_ALLOWED = frozenset(_RT) | frozenset(_PT) | {"call_ha_service", "create_task"}
+
 # Provenance tag is client-supplied (the gateway); validate strictly before it
 # is stored on tasks/audit. Default to "mcp-gateway" when missing/invalid.
 _ORIGIN_RE = re.compile(r"^[A-Za-z0-9_:.\-]{1,64}$")
@@ -88,6 +94,10 @@ async def handle_execute(request: web.Request) -> web.Response:
         return web.json_response({"error": "tool required"}, status=400)
     if not isinstance(inputs, dict):
         return web.json_response({"error": "input must be an object"}, status=400)
+
+    if tool not in _HARD_EXECUTE_ALLOWED:
+        logger.warning("execute-API hard-rejected tool %r (outside server allowlist)", tool)
+        return web.json_response({"error": f"tool {tool!r} not permitted by execute-API"}, status=403)
 
     policy = request.app.get("execute_policy") or {"tools": []}
     if tool not in policy.get("tools", []):

@@ -212,6 +212,9 @@ class ToolDispatcher:
                         else list(raw_eid) if isinstance(raw_eid, list)
                         else []
                     )
+                    if not eids:
+                        logger.warning("call_ha_service blocked: no target entity under an active entity whitelist")
+                        return {"error": "call_ha_service richiede un entity_id target quando è attiva una whitelist"}
                     for eid in eids:
                         if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
                             logger.warning("Entity %s blocked by allowed_entities policy", eid)
@@ -220,13 +223,17 @@ class ToolDispatcher:
             if name == "create_task":
                 if self._task_engine is None:
                     return {"error": "TaskEngine not available"}
-                if allowed_services:
-                    for action in inputs.get("actions", []):
-                        if action.get("type") == "call_ha_service":
-                            svc_key = f"{action.get('domain', '')}.{action.get('service', '')}"
-                            if not any(fnmatch.fnmatch(svc_key, pat) for pat in allowed_services):
-                                logger.warning("create_task blocked: action %s not permitted", svc_key)
-                                return {"error": f"Action {svc_key} not permitted by policy"}
+                _ALLOWED_TASK_ACTIONS = {"call_ha_service", "send_notification", "create_task"}
+                for action in inputs.get("actions", []):
+                    atype = action.get("type")
+                    if atype not in _ALLOWED_TASK_ACTIONS:
+                        logger.warning("create_task blocked: action type %r not permitted", atype)
+                        return {"error": f"Action type {atype!r} not permitted in tasks"}
+                    if atype == "call_ha_service" and allowed_services:
+                        svc_key = f"{action.get('domain', '')}.{action.get('service', '')}"
+                        if not any(fnmatch.fnmatch(svc_key, pat) for pat in allowed_services):
+                            logger.warning("create_task blocked: action %s not permitted", svc_key)
+                            return {"error": f"Action {svc_key} not permitted by policy"}
                 return create_task_tool(
                     task_engine=self._task_engine,
                     label=inputs["label"],
