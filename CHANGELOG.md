@@ -1,5 +1,30 @@
 # HIRIS — Changelog
 
+## v0.19.0 — Apply reale proposte + hardening sicurezza semaforo (2026-06-29)
+
+A valle di un audit di sicurezza adversariale sul semaforo (nessun bypass verso
+domini giallo/rosso/off; l'enforcement server-side regge come backstop alla
+prompt-injection):
+
+- **Apply reale delle proposte**: attivare una proposta `ha_automation` ora **crea
+  davvero** l'automazione in Home Assistant (config API + reload), prima il click
+  "Attiva" marcava solo lo stato senza scrivere su HA. Resta **human-gated**
+  (route `/api/proposals/.../apply` dietro auth UI, irraggiungibile da MCP) e
+  scrive solo se HA accetta la config (altrimenti resta pending, ritentabile).
+- **Hardening execute-API**:
+  - `create_task`: **deny-by-default** sui tipi di action (solo
+    call_ha_service/send_notification/create_task; tipi sconosciuti rifiutati alla
+    creazione).
+  - `call_ha_service`: **fail-closed** sui broadcast — con whitelist attiva una
+    call senza entity target è bloccata (niente azioni a tappeto).
+  - **Tetto hard server-side** dei tool execute-API: nessun tool fuori
+    dall'allowlist (READ/PROPOSE/call_ha_service/create_task) è dispatchabile,
+    anche se l'env `EXECUTE_API_TOOLS` lo elencasse.
+- **Gateway**: `cancel_task` richiede **sempre** conferma umana, indipendente da
+  `CONFIRM_ACTIONS` (evita la disattivazione silenziosa di task di sicurezza);
+  `create_task` resta attivo come da scelta utente.
+- 731 test HIRIS / 88 gateway. Richiede update addon HA a 0.19.0 + redeploy gateway.
+
 ## v0.18.0 — Lettura config automazioni + fix proposte/task via MCP (2026-06-29)
 
 - Nuovo tool **get_automation_config**: legge la configurazione (YAML-equivalente)
