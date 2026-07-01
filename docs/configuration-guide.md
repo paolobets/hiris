@@ -1,6 +1,6 @@
 # HIRIS — Configuration Guide
 
-> Version: 0.21.1 · Updated: 2026-07-01
+> Version: 0.21.2 · Updated: 2026-07-01
 
 This guide covers configuration areas that require a conscious choice:
 **AI providers and privacy**, **Notifications (Apprise)** and **Memory & RAG**.

@@ -157,7 +157,10 @@ class ToolDispatcher:
             if name == "get_weather_forecast":
                 return await get_weather_forecast(inputs["hours"])
             if name == "send_notification":
-                return await send_notification(self._ha, inputs["message"], inputs["channel"], self._notify_config)
+                return await send_notification(
+                    self._ha, inputs.get("message", ""), inputs["channel"], self._notify_config,
+                    title=inputs.get("title"), notification_id=inputs.get("notification_id"),
+                )
             if name == "get_ha_automations":
                 return await get_ha_automations(self._ha)
             if name == "get_automation_config":

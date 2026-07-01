@@ -351,5 +351,32 @@ async def test_execute_create_task_rejects_broadcast_action(aiohttp_client):
     resp = await _post(client, {"tool": "create_task", "input": {
         "label": "x", "trigger": {}, "actions": [
             {"type": "call_ha_service", "domain": "switch", "service": "turn_on"}]}})
-    assert "error" in (await resp.json())["result"]
+    res = (await resp.json())["result"]
+    assert "error" in res
+    assert res.get("ok") is False          # observability: not mistakable for success
     assert app["tool_dispatcher"].calls == []
+
+
+# ---------------------------------------------------------------------------
+# send_notification always-exposed (notifiche "sempre permesse")
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_execute_send_notification_exposed_without_policy(aiohttp_client):
+    # Notifications are informational; send_notification is dispatchable even when
+    # the saved EXECUTE_API_TOOLS policy is empty (fail-closed for everything else).
+    app = _make_app({"tools": [], "allowed_entities": None, "allowed_services": None})
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "send_notification",
+        "input": {"channel": "ha_persistent", "title": "Ciao", "message": "test"}})
+    assert resp.status == 200
+    assert app["tool_dispatcher"].calls and app["tool_dispatcher"].calls[0][0] == "send_notification"
+
+
+@pytest.mark.asyncio
+async def test_execute_other_tool_still_fail_closed_without_policy(aiohttp_client):
+    # The always-exposed bypass must be limited to send_notification.
+    app = _make_app({"tools": [], "allowed_entities": None, "allowed_services": None})
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "call_ha_service", "input": {"domain": "light", "service": "turn_on"}})
+    assert resp.status == 403

@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## v0.21.2 — Notifiche persistenti Home Assistant (send_notification) (2026-07-01)
+
+- **Nuova capacità: notifiche persistenti nel dashboard HA.** `send_notification`
+  ora supporta il canale **`ha_persistent`** (→ `persistent_notification.create`,
+  con `title` e `notification_id`; rimozione via `dismiss` passando `notification_id`
+  e `message` vuoto). Anche il canale `ha_push` ora invia il `title`.
+- **Perché**: un task creato via MCP gateway per creare una notifica persistente non
+  veniva eseguito — `persistent_notification` non è tra le categorie del semaforo
+  (tier `off`), i task rifiutano le `call_ha_service` senza `entity_id`, e non
+  esisteva alcun percorso per emettere `persistent_notification`. Le notifiche sono
+  informative e non azionano dispositivi: ora hanno un canale dedicato, fuori dai
+  cancelli di attuazione ("sempre permesse").
+- **Execute-API**: `send_notification` è sempre esposto (indipendente da
+  `EXECUTE_API_TOOLS`), così il gateway può sempre raggiungere l'utente.
+- **Osservabilità**: i risultati di rifiuto dell'execute-API ora includono
+  `"ok": false` (non più scambiabili per successo dal chiamante MCP).
+- Guida `create_task` aggiornata: usare `send_notification` per le notifiche, mai
+  `call_ha_service` su `persistent_notification`/`notify`.
+- Nuovi test `tests/test_notifications.py` + copertura execute-API. 764 test.
+- **Nota**: richiede anche il redeploy del MCP gateway per esporre a Claude il nuovo
+  tool `send_notification` e la descrizione aggiornata.
+
 ## v0.21.1 — Fix cache-busting asset: menu /config Storicizzazione + Accessi Gateway (2026-07-01)
 
 - **Bugfix**: nella pagina /config i menu del drawer *Storicizzazione* (`#/history`)

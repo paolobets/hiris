@@ -366,7 +366,9 @@ class TaskEngine:
             return await self._ha.call_service(domain, service, data)
         if a_type == "send_notification":
             return await send_notification(
-                self._ha, action["message"], action.get("channel", "ha_push"), self._notify_config
+                self._ha, action.get("message", ""), action.get("channel", "ha_push"),
+                self._notify_config,
+                title=action.get("title"), notification_id=action.get("notification_id"),
             )
         if a_type == "create_task":
             child = self.add_task(

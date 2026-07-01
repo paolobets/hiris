@@ -19,7 +19,13 @@ logger = logging.getLogger(__name__)
 # of what the env CSV or the saved policy lists. Prevents a misconfigured
 # EXECUTE_API_TOOLS from exposing unconstrained tools (http_request, set_input_helper, …).
 from .handlers_gateway_policy import READ_TOOLS as _RT, PROPOSE_TOOLS as _PT
-_HARD_EXECUTE_ALLOWED = frozenset(_RT) | frozenset(_PT) | {"call_ha_service", "create_task"}
+_HARD_EXECUTE_ALLOWED = frozenset(_RT) | frozenset(_PT) | {"call_ha_service", "create_task", "send_notification"}
+
+# Tools always exposed regardless of the saved EXECUTE_API_TOOLS policy. Notifications
+# are informational — they never actuate a device — so per the "notifiche sempre
+# permesse" decision the gateway can always reach the user without extra config.
+# (Still bounded by _HARD_EXECUTE_ALLOWED and the internal_token.)
+_ALWAYS_EXPOSED = frozenset({"send_notification"})
 
 # Provenance tag is client-supplied (the gateway); validate strictly before it
 # is stored on tasks/audit. Default to "mcp-gateway" when missing/invalid.
@@ -111,7 +117,7 @@ async def handle_execute(request: web.Request) -> web.Response:
         return web.json_response({"error": f"tool {tool!r} not permitted by execute-API"}, status=403)
 
     policy = request.app.get("execute_policy") or {"tools": []}
-    if tool not in policy.get("tools", []):
+    if tool not in _ALWAYS_EXPOSED and tool not in policy.get("tools", []):
         logger.warning("execute-API rejected tool %r (not in allowlist)", tool)
         return web.json_response(
             {"error": f"tool {tool!r} not exposed by execute-API policy"}, status=403
@@ -130,7 +136,7 @@ async def handle_execute(request: web.Request) -> web.Response:
             levels = [effective_tier(e, tiers, entity_tiers) for e in targets]
             if any(lv == "off" for lv in levels):
                 return web.json_response(
-                    {"result": {"error": "Entità bloccata dal semaforo (off)."}})
+                    {"result": {"ok": False, "error": "Entità bloccata dal semaforo (off)."}})
             tier = "red" if "red" in levels else ("yellow" if "yellow" in levels else None)
         else:
             dom_tier = tiers.get(domain, "off")
@@ -167,11 +173,13 @@ async def handle_execute(request: web.Request) -> web.Response:
                 continue
             targets = _target_entities(action)
             if not targets:
-                return web.json_response({"result": {"error":
-                    "Task rifiutato: azione call_ha_service senza entity target esplicito."}})
+                return web.json_response({"result": {"ok": False, "error":
+                    "Task rifiutato: azione call_ha_service senza entity target esplicito. "
+                    "Per inviare una notifica usa un'azione send_notification "
+                    "(channel ha_persistent/ha_push), non call_ha_service."}})
             for e in targets:
                 if effective_tier(e, tiers, entity_tiers) != "green":
-                    return web.json_response({"result": {"error":
+                    return web.json_response({"result": {"ok": False, "error":
                         f"Task rifiutato: l'azione su {e!r} non e' verde nel semaforo "
                         "(i task possono contenere solo azioni verdi)."}})
 

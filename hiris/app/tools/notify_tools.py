@@ -13,43 +13,101 @@ logger = logging.getLogger(__name__)
 
 TOOL_DEF = {
     "name": "send_notification",
-    "description": "Send a notification via HA mobile push, Apprise (Telegram/WhatsApp/ntfy/etc.), or Retro Panel kiosk toast.",
+    "description": (
+        "Send a notification to the user. Use THIS tool for ANY notification — do NOT "
+        "call_ha_service on persistent_notification/notify. "
+        "Channels: 'ha_persistent' = a persistent notification card in the Home Assistant "
+        "dashboard (supports title + message; to remove one later, pass its notification_id "
+        "together with an empty message to dismiss it); "
+        "'ha_push' = mobile push (supports title); "
+        "'apprise' = all configured Apprise URLs (Telegram/WhatsApp/ntfy/etc.); "
+        "'retropanel' = Retro Panel kiosk toast."
+    ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "message": {"type": "string", "description": "Notification message text"},
+            "message": {
+                "type": "string",
+                "description": (
+                    "Notification body text. Leave empty ONLY to dismiss an existing "
+                    "persistent notification (together with its notification_id)."
+                ),
+            },
+            "title": {
+                "type": "string",
+                "description": "Optional title/heading (used by 'ha_persistent' and 'ha_push').",
+            },
             "channel": {
                 "type": "string",
-                "enum": ["ha_push", "apprise", "retropanel"],
+                "enum": ["ha_persistent", "ha_push", "apprise", "retropanel"],
+                "description": "Delivery channel (see tool description).",
+            },
+            "notification_id": {
+                "type": "string",
                 "description": (
-                    "Delivery channel. "
-                    "'ha_push': HA mobile push. "
-                    "'apprise': all configured Apprise URLs (Telegram, WhatsApp, ntfy, etc.). "
-                    "'retropanel': Retro Panel kiosk toast."
+                    "Optional stable id for a persistent notification, so it can be "
+                    "updated (same id overwrites) or dismissed later."
                 ),
             },
         },
-        "required": ["message", "channel"],
+        "required": ["channel"],
     },
 }
 
 
-async def send_notification(ha: HAClient, message: str, channel: str, config: dict) -> bool:
-    """Send a notification via the specified channel."""
+async def send_notification(
+    ha: HAClient,
+    message: str,
+    channel: str,
+    config: dict,
+    *,
+    title: str | None = None,
+    notification_id: str | None = None,
+) -> bool:
+    """Send a notification via the specified channel.
+
+    Notifications are informational (they never actuate devices), so this path is
+    intentionally NOT gated by the gateway semaforo — it is the sanctioned way for
+    the agent/gateway to reach the user, including Home Assistant persistent
+    (dashboard) notifications, which are otherwise unreachable via call_ha_service.
+    """
+    message = message or ""
     # Normalize legacy channel aliases
     if channel == "ha":
         channel = "ha_push"
     if channel == "telegram":
         channel = "apprise"
 
+    if channel == "ha_persistent":
+        # Dismiss an existing persistent notification: empty message + id.
+        if not message and notification_id:
+            return await ha.call_service(
+                "persistent_notification", "dismiss", {"notification_id": notification_id}
+            )
+        if not message:
+            logger.warning("ha_persistent: 'message' required to create a persistent notification")
+            return False
+        data: dict = {"message": message}
+        if title:
+            data["title"] = title
+        if notification_id:
+            data["notification_id"] = notification_id
+        return await ha.call_service("persistent_notification", "create", data)
+
     if channel == "ha_push":
+        if not message:
+            logger.warning("ha_push: 'message' required")
+            return False
         service = config.get("ha_notify_service", "notify.notify")
         try:
             domain, svc = service.split(".", 1)
         except ValueError:
             logger.error("Invalid ha_notify_service format: %s (expected 'domain.service')", service)
             return False
-        return await ha.call_service(domain, svc, {"message": message})
+        data = {"message": message}
+        if title:
+            data["title"] = title
+        return await ha.call_service(domain, svc, data)
 
     if channel == "apprise":
         if not _APPRISE_AVAILABLE:
@@ -62,13 +120,16 @@ async def send_notification(ha: HAClient, message: str, channel: str, config: di
         apobj = _apprise_lib.Apprise()
         for url in urls:
             apobj.add(url)
-        result = await apobj.async_notify(body=message)
+        result = await apobj.async_notify(body=message, title=title or "")
         return bool(result)
 
     if channel == "retropanel":
         rp_url = config.get("retropanel_url", "http://retropanel:8098")
+        payload = {"message": message}
+        if title:
+            payload["title"] = title
         async with aiohttp.ClientSession() as session:
-            async with session.post(f"{rp_url}/api/notify", json={"message": message}) as resp:
+            async with session.post(f"{rp_url}/api/notify", json=payload) as resp:
                 return resp.status in (200, 204)
 
     logger.warning("Unknown notification channel: %s", channel)

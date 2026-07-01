@@ -17,8 +17,11 @@ CREATE_TASK_TOOL_DEF = {
         "e.g. {type: time_window, from: '18:00', to: '20:00', check_interval_minutes: 5}). "
         "Condition (optional): {entity_id, operator (<|<=|>|>=|=|!=), value}. "
         "Action types: "
-        "call_ha_service ({type: call_ha_service, domain, service, data}), "
-        "send_notification ({type: send_notification, message, channel: ha_push|telegram}), "
+        "call_ha_service ({type: call_ha_service, domain, service, data}) — requires an explicit "
+        "entity_id target and a green semaforo level; "
+        "send_notification ({type: send_notification, channel: ha_persistent|ha_push|apprise, message, title?}) — "
+        "use channel 'ha_persistent' for a Home Assistant dashboard notification, 'ha_push' for a phone push; "
+        "ALWAYS use send_notification for notifications, never call_ha_service on persistent_notification/notify; "
         "create_task ({type: create_task, task: {...}}) for chaining. "
         "HA scripts: use call_ha_service with domain='script', service='<script_name>'."
     ),
