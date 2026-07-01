@@ -1,5 +1,20 @@
 # HIRIS — Changelog
 
+## v0.21.1 — Fix cache-busting asset: menu /config Storicizzazione + Accessi Gateway (2026-07-01)
+
+- **Bugfix**: nella pagina /config i menu del drawer *Storicizzazione* (`#/history`)
+  e *Accessi Gateway* (`#/gateway`) non entravano — un `main.js` cachato dal browser
+  (privo delle registrazioni delle route) veniva servito ancora dopo l'upgrade.
+- **Causa**: il cache-busting iniettava un unico `?v=VERSION` globale su tutti gli
+  asset; cambiava solo al bump di versione, quindi ogni modifica JS/CSS senza bump
+  riusava lo stesso URL e browser/HA-Ingress servivano il file stale.
+- **Fix**: `_inject_version()` ora inietta un fingerprint **per singolo file**
+  (`?v=<hash-contenuto>`, cache invalidata per mtime) — qualunque modifica al file
+  cambia l'URL e forza il refetch, senza dipendere dal bump di versione. Aggiunto
+  anche `Cache-Control: no-cache` sugli asset `/static/` (revalidation, difesa in
+  profondità contro il proxy HA Ingress).
+- Nuovo test `tests/test_cache_busting.py`. 754 test.
+
 ## v0.21.0 — Semaforo per-entità + pip-audit (Road to 1.0, Blocker 3) (2026-06-29)
 
 - **Granularità per-entità del semaforo**: oltre al livello per-dominio, ora puoi

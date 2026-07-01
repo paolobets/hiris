@@ -1,8 +1,10 @@
 # hiris/app/server.py
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import aiohttp
 from aiohttp import web
@@ -739,6 +741,13 @@ async def _on_cleanup(app: web.Application) -> None:
 @web.middleware
 async def _security_headers(request: web.Request, handler) -> web.Response:
     response = await handler(request)
+    # Static assets are content-fingerprinted (?v=HASH via _inject_version), so a
+    # changed file always gets a fresh URL. As defence-in-depth against the HA
+    # Ingress proxy / heuristic browser caching serving a stale copy under an old
+    # URL, force revalidation: "no-cache" allows storing but requires a
+    # conditional request (304 when unchanged) before the cached copy is reused.
+    if request.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     # X-Frame-Options omesso: HA Ingress carica l'UI in un iframe
     response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -828,11 +837,53 @@ def create_app() -> web.Application:
 
 _NO_CACHE = {"Cache-Control": "no-store"}
 
+# Per-file content fingerprints for cache-busting. Keyed by asset path
+# relative to the static dir; value is (mtime, short-sha1). Hashing a given
+# file happens at most once per change (invalidated by mtime).
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+_ASSET_FP_CACHE: dict[str, tuple[float, str]] = {}
+# Matches local asset refs like  src="static/config/main.js"  /  href="static/hiris.css"
+# External URLs (Google Fonts, https://…) and query-stringed refs are left untouched.
+_ASSET_REF_RE = re.compile(r'(src|href)="(static/[^"?]+\.(?:js|css))"')
+
+
+def _asset_fingerprint(rel_path: str, fallback: str) -> str:
+    """Return a short content hash for a static asset, cached by mtime.
+
+    Because the fingerprint is derived from the file's actual bytes, ANY edit
+    changes the query string and forces browsers (and the HA Ingress proxy) to
+    re-fetch — no manual version bump required. Falls back to the app version
+    string if the file can't be read (keeps old behaviour as a floor)."""
+    # rel_path is like "static/config/main.js"; strip the "static/" mount prefix.
+    abs_path = os.path.join(_STATIC_DIR, rel_path[len("static/"):])
+    try:
+        mtime = os.path.getmtime(abs_path)
+    except OSError:
+        return fallback
+    cached = _ASSET_FP_CACHE.get(rel_path)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    try:
+        with open(abs_path, "rb") as f:
+            digest = hashlib.sha1(f.read()).hexdigest()[:10]
+    except OSError:
+        return fallback
+    _ASSET_FP_CACHE[rel_path] = (mtime, digest)
+    return digest
+
 
 def _inject_version(html: str, version: str) -> str:
-    """Append ?v=VERSION to local static asset URLs so browsers bust cache on upgrade."""
-    v = f'?v={version}"'
-    return html.replace('.css"', f'.css{v}').replace('.js"', f'.js{v}')
+    """Append a per-file content fingerprint (?v=HASH) to local static asset
+    URLs so browsers bust cache whenever a file's content actually changes.
+
+    Replaces the previous single global ?v=VERSION scheme, which only busted
+    caches on a release version bump and left stale JS/CSS in place during any
+    edit that didn't change config.yaml's version field."""
+    def _repl(m: "re.Match[str]") -> str:
+        attr, path = m.group(1), m.group(2)
+        return f'{attr}="{path}?v={_asset_fingerprint(path, version)}"'
+
+    return _ASSET_REF_RE.sub(_repl, html)
 
 
 async def _serve_index(request: web.Request) -> web.Response:
