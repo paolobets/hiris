@@ -1,6 +1,25 @@
 # HIRIS — Changelog
 
-## v0.21.2 — Notifiche persistenti Home Assistant (send_notification) (2026-07-01)
+## [0.22.0] — Generazione config HA da chat e MCP (dashboard, script, scene) (2026-07-17)
+
+- **Nuova capacità: HIRIS crea dashboard Lovelace, script e scene su Home Assistant.**
+  Nuovo tool `create_ha_config` (chat-only). Da chat HIRIS l'artefatto viene scritto
+  subito su HA; dal gateway MCP viene salvato come **proposta pending** che l'operatore
+  approva dalla pagina Proposte (con anteprima del config), rispecchiando il semaforo di
+  sicurezza già esistente per `call_ha_service`.
+- **Write layer HA**: `create_script`/`create_scene` via REST config API (+ reload);
+  `create_dashboard` via WebSocket Lovelace (`lovelace/dashboards/create` + `config/save`).
+  Dashboard sempre additive (nuova voce in sidebar, non tocca quelle esistenti).
+- **Validazione condivisa** in `config_tools.py`: slug/id, config non vuoto, cap dimensione,
+  presenza di `views` per le dashboard. Identica per il percorso chat (scrittura diretta)
+  e MCP (proposta).
+- **Sicurezza**: da MCP il tool non viene mai eseguito direttamente (intercettato prima del
+  dispatch → proposta); non disponibile agli agent non-chat (proattivi/reattivi restano
+  read-only); output non fidato nella UI review escapato (stored-XSS chiuso).
+- **Perché**: generare plance, scene e script in linguaggio naturale, mantenendo il
+  controllo umano quando la richiesta arriva da un canale esterno (MCP).
+
+## [0.21.2] — Notifiche persistenti Home Assistant (send_notification) (2026-07-01)
 
 - **Nuova capacità: notifiche persistenti nel dashboard HA.** `send_notification`
   ora supporta il canale **`ha_persistent`** (→ `persistent_notification.create`,

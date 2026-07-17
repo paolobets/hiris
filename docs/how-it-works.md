@@ -1,6 +1,6 @@
 # HIRIS — How It Works
 
-> Version: 0.21.2 · Updated: 2026-07-01
+> Version: 0.22.0 · Updated: 2026-07-17
 
 ---
 
