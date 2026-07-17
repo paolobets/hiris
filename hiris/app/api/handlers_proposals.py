@@ -1,6 +1,7 @@
 from aiohttp import web
 
 _VALID_STATUSES = frozenset({"pending", "applied", "rejected", "archived"})
+_CONFIG_TYPES = frozenset({"ha_dashboard", "ha_script", "ha_scene"})
 
 # CSRF protection is now provided globally by csrf_middleware (require
 # X-Requested-With on POST/PUT/DELETE under /api/). Removed inline _check_csrf.
@@ -52,6 +53,19 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
             )
         applied = await proposal_store.apply(proposal_id)
         return web.json_response({"ok": bool(applied), "automation_id": result.get("id")})
+    if proposal.get("type") in _CONFIG_TYPES:
+        ha = request.app.get("ha_client")
+        if ha is None:
+            return web.json_response({"error": "HA client non disponibile"}, status=503)
+        from ..tools.config_tools import apply_ha_config
+        result = await apply_ha_config(ha, proposal.get("config") or {})
+        if not isinstance(result, dict) or result.get("error"):
+            msg = result.get("error") if isinstance(result, dict) else "errore sconosciuto"
+            return web.json_response(
+                {"error": f"Config non creata in HA: {msg}"}, status=502
+            )
+        applied = await proposal_store.apply(proposal_id)
+        return web.json_response({"ok": bool(applied), "result": result})
     # Other proposal types: status-only apply (unchanged behavior).
     ok = await proposal_store.apply(proposal_id)
     if not ok:

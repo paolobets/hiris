@@ -94,6 +94,85 @@ class HAClient:
                            "will load on next HA restart): %s", aid, exc)
         return {"ok": True, "id": aid}
 
+    @staticmethod
+    def _is_slug(value: str) -> bool:
+        return bool(value) and all(c.islower() or c.isdigit() or c == "_" for c in value)
+
+    async def _post_config(self, path: str, config: dict) -> dict:
+        """POST a UI-managed config to /api/config/{path}. Returns ok/error."""
+        url = f"{self._base_url}/api/config/{path}"
+        try:
+            async with self._session.post(url, json=config) as resp:
+                if resp.status not in (200, 201):
+                    body = await resp.text()
+                    return {"error": f"HA ha rifiutato la config ({resp.status}): {body[:200]}"}
+        except Exception as exc:
+            return {"error": f"scrittura config fallita: {exc}"}
+        return {"ok": True}
+
+    async def create_script(self, object_id: str, config: dict) -> dict:
+        """Create a UI-managed script via HA config API, then reload. Human-gated upstream."""
+        if not isinstance(config, dict) or not config:
+            return {"error": "config script vuota o non valida"}
+        if not self._is_slug(object_id):
+            return {"error": "object_id script non valido (usa a-z 0-9 _)"}
+        res = await self._post_config(f"script/config/{object_id}", config)
+        if res.get("error"):
+            return res
+        try:
+            await self.call_service("script", "reload", {})
+        except Exception as exc:
+            logger.warning("script.reload after create failed (script %s persisted): %s", object_id, exc)
+        return {"ok": True, "id": object_id}
+
+    async def create_scene(self, scene_id: str, config: dict) -> dict:
+        """Create a UI-managed scene via HA config API, then reload. Human-gated upstream."""
+        if not isinstance(config, dict) or not config:
+            return {"error": "config scena vuota o non valida"}
+        if not self._is_slug(scene_id):
+            return {"error": "scene_id non valido (usa a-z 0-9 _)"}
+        res = await self._post_config(f"scene/config/{scene_id}", config)
+        if res.get("error"):
+            return res
+        try:
+            await self.call_service("scene", "reload", {})
+        except Exception as exc:
+            logger.warning("scene.reload after create failed (scene %s persisted): %s", scene_id, exc)
+        return {"ok": True, "id": scene_id}
+
+    @staticmethod
+    def _ws_error(msg: dict | None) -> str:
+        if not msg:
+            return "nessuna risposta WS"
+        err = msg.get("error")
+        if isinstance(err, dict):
+            return str(err.get("message") or err)
+        return str(err or "errore WS sconosciuto")
+
+    async def create_dashboard(self, url_path: str, title: str, config: dict,
+                               icon: str | None = None, show_in_sidebar: bool = True) -> dict:
+        """Create a new storage-mode Lovelace dashboard + save its config (two WS commands).
+        Additive: appears as a new sidebar entry; never touches existing dashboards."""
+        if not isinstance(config, dict) or "views" not in config:
+            return {"error": "config dashboard non valida (manca 'views')"}
+        created = await self._ws_command("lovelace/dashboards/create", {
+            "url_path": url_path,
+            "title": title,
+            "icon": icon,
+            "show_in_sidebar": bool(show_in_sidebar),
+            "require_admin": False,
+            "mode": "storage",
+        })
+        if not created or not created.get("success"):
+            return {"error": f"creazione dashboard fallita: {self._ws_error(created)}"}
+        saved = await self._ws_command("lovelace/config/save", {
+            "url_path": url_path,
+            "config": config,
+        })
+        if not saved or not saved.get("success"):
+            return {"error": f"salvataggio config dashboard fallito: {self._ws_error(saved)}"}
+        return {"ok": True, "url_path": url_path}
+
     async def get_automation_config(self, automation_id: str) -> dict:
         """Return the config (YAML-equivalent dict) of a UI-managed automation.
 
@@ -247,6 +326,38 @@ class HAClient:
                             return msg.get("result")
         except Exception as exc:
             logger.debug("_ws_request(%s) failed: %s", msg_type, exc)
+            return None
+
+    async def _ws_command(self, msg_type: str, extra: dict | None = None,
+                          timeout: float = 10.0) -> dict | None:
+        """Single WS command → the FULL result message ({success, result, error}).
+        Unlike _ws_request, this exposes the success flag so writes can be verified.
+        Returns None only on connection/auth failure."""
+        ws_url = (
+            self._base_url.replace("http://", "ws://").replace("https://", "wss://")
+            + "/api/websocket"
+        )
+        token = self._headers["Authorization"].removeprefix("Bearer ")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.ws_connect(ws_url) as ws:
+                    handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                    if handshake.get("type") == "auth_required":
+                        await ws.send_json({"type": "auth", "access_token": token})
+                        auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                        if auth_resp.get("type") != "auth_ok":
+                            logger.warning("HA WS auth failed in _ws_command(%s)", msg_type)
+                            return None
+                    payload = {"id": 1, "type": msg_type}
+                    if extra is not None:
+                        payload.update(extra)
+                    await ws.send_json(payload)
+                    while True:
+                        msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                        if msg.get("id") == 1:
+                            return msg
+        except Exception as exc:
+            logger.debug("_ws_command(%s) failed: %s", msg_type, exc)
             return None
 
     async def _ws_call(self, msg_type: str, timeout: float = 10.0) -> list[dict]:

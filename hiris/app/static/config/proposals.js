@@ -24,7 +24,21 @@ function renderProposals(proposals, status) {
     return;
   }
   list.innerHTML = proposals.map(function(p) {
-    var typeLabel = '→ automazione HA';
+    var TYPE_LABELS = {
+      ha_automation: '→ automazione HA', hiris_agent: '→ agent HIRIS',
+      ha_dashboard: '→ dashboard', ha_script: '→ script', ha_scene: '→ scena'
+    };
+    var typeLabel = TYPE_LABELS[p.type] || ('→ ' + (p.type || 'config'));
+    var configPreview = '';
+    if (p.type === 'ha_dashboard' || p.type === 'ha_script' || p.type === 'ha_scene') {
+      try {
+        configPreview = '<pre class="proposal-config" style="max-height:180px;overflow:auto;'
+          + 'background:var(--surface-sunken,#00000010);padding:8px;border-radius:6px;'
+          + 'font-family:var(--font-mono);font-size:11px;margin-top:6px">'
+          + escHtml(JSON.stringify((p.config && p.config.ha_config) || p.config, null, 2))
+          + '</pre>';
+      } catch(e) { configPreview = ''; }
+    }
     var date = p.created_at ? p.created_at.substring(0, 10) : '';
     var safeId = escHtml(p.id);
     var actions = status === 'pending'
@@ -33,10 +47,11 @@ function renderProposals(proposals, status) {
       : '';
     return '<div class="proposal-row" id="pr-' + safeId + '">'
       + '<div class="proposal-info">'
-      + '<div class="proposal-name"><span class="type-badge" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;background:var(--accent-tint);color:var(--accent-ink);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);margin-right:6px;vertical-align:middle">' + typeLabel + '</span>' + escHtml(p.name) + '</div>'
+      + '<div class="proposal-name"><span class="type-badge" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;background:var(--accent-tint);color:var(--accent-ink);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);margin-right:6px;vertical-align:middle">' + escHtml(typeLabel) + '</span>' + escHtml(p.name) + '</div>'
       + '<div class="proposal-meta">' + date + '</div>'
       + '<div class="proposal-desc">' + escHtml(p.description || '') + '</div>'
       + '<div class="proposal-reason"><strong>Motivo:</strong> ' + escHtml(p.routing_reason || '') + '</div>'
+      + configPreview
       + '</div>'
       + (actions ? '<div class="proposal-actions">' + actions + '</div>' : '')
       + '</div>';
