@@ -58,3 +58,37 @@ async def test_create_scene_ok(client):
 async def test_create_script_empty_config(client):
     res = await client.create_script("luci_sera", {})
     assert "error" in res
+
+
+@pytest.mark.asyncio
+async def test_create_dashboard_ok(client):
+    client._ws_command = AsyncMock(side_effect=[
+        {"success": True, "result": {"url_path": "casa-mia"}},   # dashboards/create
+        {"success": True, "result": None},                        # config/save
+    ])
+    res = await client.create_dashboard("casa-mia", "Casa Mia", {"views": [{"cards": []}]})
+    assert res == {"ok": True, "url_path": "casa-mia"}
+    assert client._ws_command.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_create_dashboard_missing_views(client):
+    res = await client.create_dashboard("casa-mia", "Casa Mia", {"cards": []})
+    assert "error" in res
+
+
+@pytest.mark.asyncio
+async def test_create_dashboard_create_fails(client):
+    client._ws_command = AsyncMock(return_value={"success": False, "error": {"message": "exists"}})
+    res = await client.create_dashboard("casa-mia", "Casa Mia", {"views": []})
+    assert "error" in res
+
+
+@pytest.mark.asyncio
+async def test_create_dashboard_save_fails(client):
+    client._ws_command = AsyncMock(side_effect=[
+        {"success": True, "result": {"url_path": "casa-mia"}},
+        {"success": False, "error": {"message": "bad config"}},
+    ])
+    res = await client.create_dashboard("casa-mia", "Casa Mia", {"views": []})
+    assert "error" in res
