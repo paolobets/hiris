@@ -1,6 +1,6 @@
 # HIRIS — Full Local Mode (Zero Cloud)
 
-> Version: 0.22.0 · Updated: 2026-07-17
+> Version: 0.22.1 · Updated: 2026-07-17
 
 Run HIRIS with no cloud dependencies: all AI inference, embeddings, and data stay on your local network.
 

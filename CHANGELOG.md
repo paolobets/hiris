@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [0.22.1] — Fix creazione dashboard da chat: tetto token e costruzione incrementale (2026-07-17)
+
+- **Fix: la creazione di dashboard/script da chat sembrava riuscire ma non
+  produceva nulla.** La chiamata con l'intero config Lovelace superava il limite
+  di output (max_tokens 4096): la generazione si troncava a metà e il runner
+  restituiva solo il testo del preambolo senza eseguire la creazione. Ora la chat
+  ha un tetto di output più alto (16000 token — è un tetto, non aumenta il costo
+  delle risposte normali), i troncamenti vengono segnalati con un messaggio chiaro
+  invece del falso "creata", e le dashboard grandi si costruiscono in modo incrementale.
+- **Nuovo strumento chat `add_dashboard_view`**: aggiunge una vista/stanza alla
+  volta a una dashboard esistente, così case con molte stanze non superano mai il
+  limite di token in una singola risposta.
+- **`create_ha_config`** guida il modello a creare prima la dashboard con poche
+  viste e poi aggiungere le stanze una alla volta.
+- **Modelli locali (OpenRouter/Ollama)**: stessa gestione del troncamento
+  (`finish_reason=length`) del percorso Claude.
+- **Fix: rollback dashboard orfana.** Se `lovelace/config/save` fallisce dopo la
+  creazione, la dashboard vuota appena creata viene eliminata, evitando che i
+  tentativi successivi falliscano per sempre su un url_path ormai esistente.
+- **Cap `max_tokens` per tipo di agente**: chat fino a 16000, agenti
+  proattivi/reattivi restano a 8192 (costo, latenza, sicurezza prompt-injection).
+
 ## [0.22.0] — Generazione config HA da chat e MCP (dashboard, script, scene) (2026-07-17)
 
 - **Nuova capacità: HIRIS crea dashboard Lovelace, script e scene su Home Assistant.**

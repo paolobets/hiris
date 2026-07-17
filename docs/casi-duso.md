@@ -1,6 +1,6 @@
 # HIRIS — Casi d'uso ed esempi
 
-> Versione: 0.22.0 · Aggiornato: 2026-07-17
+> Versione: 0.22.1 · Aggiornato: 2026-07-17
 
 Questo documento contiene configurazioni reali di HIRIS con YAML completo degli agenti, conversazioni di esempio e setup step-by-step per ogni scenario.
 

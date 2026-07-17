@@ -1,6 +1,6 @@
 # HIRIS — Use Cases & Examples
 
-> Version: 0.22.0 · Updated: 2026-07-17
+> Version: 0.22.1 · Updated: 2026-07-17
 
 This document contains real-world HIRIS configurations with full agent YAML, example conversations, and step-by-step setup for each scenario.
 

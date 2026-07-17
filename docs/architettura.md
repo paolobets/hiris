@@ -1,6 +1,6 @@
 # HIRIS — Architettura Tecnica
 
-> Versione: 0.22.0 · Aggiornato: 2026-07-17
+> Versione: 0.22.1 · Aggiornato: 2026-07-17
 
 ---
 

@@ -1,6 +1,6 @@
 # HIRIS — Guida alla Configurazione
 
-> Versione: 0.22.0 · Aggiornato: 2026-07-17
+> Versione: 0.22.1 · Aggiornato: 2026-07-17
 
 Questa guida copre le aree di configurazione che richiedono una scelta consapevole:
 **Provider AI e privacy**, **Notifiche (Apprise)** e **Memoria & RAG**.
