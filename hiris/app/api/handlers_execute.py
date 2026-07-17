@@ -183,6 +183,24 @@ async def handle_execute(request: web.Request) -> web.Response:
                         f"Task rifiutato: l'azione su {e!r} non e' verde nel semaforo "
                         "(i task possono contenere solo azioni verdi)."}})
 
+    # create_ha_config from the gateway is NEVER executed directly. It is held as a
+    # pending proposal the operator reviews+approves in HIRIS (spec: MCP = convalida).
+    if tool == "create_ha_config":
+        from ..tools.config_tools import normalize_config_inputs, build_config_proposal
+        store = request.app.get("proposal_store")
+        if store is None:
+            return web.json_response({"error": "ProposalStore non disponibile"}, status=503)
+        try:
+            normalized = normalize_config_inputs(inputs)
+        except ValueError as exc:
+            return web.json_response({"result": {"ok": False, "error": str(exc)}})
+        pid = await store.save(build_config_proposal(normalized))
+        return web.json_response({"result": {
+            "status": "pending_approval", "proposal_id": pid,
+            "message": (f"Creazione '{normalized['name']}' in attesa di approvazione "
+                        "dell'operatore in HIRIS (pagina Proposte)."),
+        }})
+
     # Reads are non-destructive and must NOT be constrained by the action
     # whitelist (allowed_entities/allowed_services are derived from the *green
     # action domains*; applying them to reads hides every entity outside those

@@ -29,7 +29,7 @@ READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
 # call_ha_service actions unconstrained. It is added in derive_execute_policy
 # only when at least one green domain exists (allowed_services is then set).
 PROPOSE_TOOLS = ["create_automation_proposal", "save_knowledge", "list_tasks",
-                 "cancel_task"]
+                 "cancel_task", "create_ha_config"]
 
 # Canonical categories shown in the UI, with friendly Italian labels and the HA
 # domain they map to. Order is the display order.
