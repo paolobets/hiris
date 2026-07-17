@@ -94,6 +94,52 @@ class HAClient:
                            "will load on next HA restart): %s", aid, exc)
         return {"ok": True, "id": aid}
 
+    @staticmethod
+    def _is_slug(value: str) -> bool:
+        return bool(value) and all(c.islower() or c.isdigit() or c == "_" for c in value)
+
+    async def _post_config(self, path: str, config: dict) -> dict:
+        """POST a UI-managed config to /api/config/{path}. Returns ok/error."""
+        url = f"{self._base_url}/api/config/{path}"
+        try:
+            async with self._session.post(url, json=config) as resp:
+                if resp.status not in (200, 201):
+                    body = await resp.text()
+                    return {"error": f"HA ha rifiutato la config ({resp.status}): {body[:200]}"}
+        except Exception as exc:
+            return {"error": f"scrittura config fallita: {exc}"}
+        return {"ok": True}
+
+    async def create_script(self, object_id: str, config: dict) -> dict:
+        """Create a UI-managed script via HA config API, then reload. Human-gated upstream."""
+        if not isinstance(config, dict) or not config:
+            return {"error": "config script vuota o non valida"}
+        if not self._is_slug(object_id):
+            return {"error": "object_id script non valido (usa a-z 0-9 _)"}
+        res = await self._post_config(f"script/config/{object_id}", config)
+        if res.get("error"):
+            return res
+        try:
+            await self.call_service("script", "reload", {})
+        except Exception as exc:
+            logger.warning("script.reload after create failed (script %s persisted): %s", object_id, exc)
+        return {"ok": True, "id": object_id}
+
+    async def create_scene(self, scene_id: str, config: dict) -> dict:
+        """Create a UI-managed scene via HA config API, then reload. Human-gated upstream."""
+        if not isinstance(config, dict) or not config:
+            return {"error": "config scena vuota o non valida"}
+        if not self._is_slug(scene_id):
+            return {"error": "scene_id non valido (usa a-z 0-9 _)"}
+        res = await self._post_config(f"scene/config/{scene_id}", config)
+        if res.get("error"):
+            return res
+        try:
+            await self.call_service("scene", "reload", {})
+        except Exception as exc:
+            logger.warning("scene.reload after create failed (scene %s persisted): %s", scene_id, exc)
+        return {"ok": True, "id": scene_id}
+
     async def get_automation_config(self, automation_id: str) -> dict:
         """Return the config (YAML-equivalent dict) of a UI-managed automation.
 
