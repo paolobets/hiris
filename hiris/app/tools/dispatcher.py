@@ -27,6 +27,7 @@ from .memory_tools import recall_memory as _recall_memory, save_memory as _save_
 from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
 from .proposal_tools import create_automation_proposal
+from .config_tools import normalize_config_inputs, apply_ha_config
 from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
@@ -344,6 +345,12 @@ class ToolDispatcher:
                     config=inputs["config"],
                     routing_reason=inputs["routing_reason"],
                 )
+            if name == "create_ha_config":
+                try:
+                    normalized = normalize_config_inputs(inputs)
+                except ValueError as exc:
+                    return {"error": str(exc)}
+                return await apply_ha_config(self._ha, normalized)
             if name == "save_knowledge" and self._knowledge_store:
                 return await handle_save_knowledge(
                     self._knowledge_store, self._knowledge_embedder, inputs, owner="home"

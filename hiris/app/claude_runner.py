@@ -43,6 +43,7 @@ from .tools.knowledge_tools import (
 )
 from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
 from .tools.proposal_tools import CREATE_AUTOMATION_PROPOSAL_TOOL_DEF
+from .tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF
 from .tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ ALL_TOOL_DEFS = [
     SAVE_MEMORY_TOOL_DEF,
     GET_HA_HEALTH_TOOL_DEF,
     CREATE_AUTOMATION_PROPOSAL_TOOL_DEF,
+    CREATE_HA_CONFIG_TOOL_DEF,
     SAVE_KNOWLEDGE_TOOL_DEF,
     RECALL_KNOWLEDGE_TOOL_DEF,
     LINK_KNOWLEDGE_TOOL_DEF,
@@ -149,6 +151,7 @@ EVALUATION_ONLY_TOOLS = frozenset({
     "get_ha_health",  # read-only cached data — safe for proactive monitors
     # save_memory excluded: write risk in reactive agents (prompt injection via HA state)
     # create_automation_proposal excluded: writes to store — chat-only
+    # create_ha_config excluded: writes to HA (dashboard/script/scene) — chat-only
 })
 
 MODEL = "claude-sonnet-4-6"
