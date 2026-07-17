@@ -158,8 +158,12 @@ async def handle_chat(request: web.Request) -> web.Response:
     # Interactive chat gets a higher output ceiling than the per-agent eval cap:
     # complex requests (a multi-view dashboard, a long script) legitimately need
     # more room, and the old 4096 default truncated them mid-tool-call. Floor up.
-    if agent_type == "chat":
-        agent_max_tokens = max(agent_max_tokens, CHAT_MAX_TOKENS)
+    if agent_type == "chat" and agent_max_tokens < CHAT_MAX_TOKENS:
+        logger.info(
+            "chat: max_tokens floored %d -> %d (ceiling, not target — no extra cost "
+            "on normal replies)", agent_max_tokens, CHAT_MAX_TOKENS,
+        )
+        agent_max_tokens = CHAT_MAX_TOKENS
     agent_restrict = getattr(agent, "restrict_to_home", False) if agent else False
     agent_require_confirmation = getattr(agent, "require_confirmation", False) if agent else False
     agent_response_mode = getattr(agent, "response_mode", "auto") if agent else "auto"

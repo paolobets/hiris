@@ -625,6 +625,12 @@ class OpenAICompatRunner:
                         "content": json.dumps(result),
                     })
             else:
+                if choice.finish_reason == "length":
+                    # OpenAI's analog of Anthropic max_tokens: generation cut off
+                    # (possibly mid tool call). Surface the truncation instead of
+                    # returning a misleading partial preamble with nothing executed.
+                    from ..claude_runner import _max_tokens_message
+                    return _max_tokens_message([choice.message.content or ""])
                 raw_content = choice.message.content or f"Stopped: {choice.finish_reason}"
                 leaked = detect_leaked_tool_call(raw_content, tool_name_set)
                 if leaked:
