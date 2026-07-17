@@ -593,3 +593,27 @@ def test_openrouter_runner_is_cloud(tmp_path):
         usage_path=str(tmp_path / "u.json"),
     )
     assert runner._is_cloud is True
+
+
+@pytest.mark.asyncio
+async def test_chat_length_finish_returns_truncation_notice(dispatcher, tmp_path):
+    """finish_reason='length' (OpenAI's max_tokens) must surface a truncation
+    notice, not a misleading partial preamble with nothing executed."""
+    from hiris.app.claude_runner import _TRUNCATION_NOTICE
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        dispatcher=dispatcher,
+        usage_path=str(tmp_path / "u.json"),
+    )
+    msg = MagicMock()
+    msg.content = "Ora creo la dashboard!"
+    msg.tool_calls = None
+    choice = MagicMock(finish_reason="length", message=msg)
+    response = MagicMock(choices=[choice])
+    response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
+    runner._client.chat.completions.create = AsyncMock(return_value=response)
+
+    result = await runner.chat(user_message="crea dashboard", model="gpt-4o")
+    assert _TRUNCATION_NOTICE in result
+    assert result.startswith("Ora creo la dashboard!")

@@ -312,6 +312,19 @@ class AgentEngine:
 
     _LEGACY_TYPE_MAP = {"monitor": "agent", "reactive": "agent", "preventive": "agent"}
 
+    # Output-token ceiling per agent type. Chat needs room for large outputs
+    # (multi-view dashboards, long scripts); non-chat agents stay capped low to
+    # bound cost, latency, and prompt-injection blast radius. Chat cap mirrors
+    # claude_runner.CHAT_MAX_TOKENS (kept in sync deliberately, not imported, to
+    # avoid a module cycle).
+    _CHAT_MAX_TOKENS_CAP = 16000
+    _AGENT_MAX_TOKENS_CAP = 8192
+
+    @classmethod
+    def _cap_max_tokens(cls, value: Any, agent_type: str) -> int:
+        cap = cls._CHAT_MAX_TOKENS_CAP if agent_type == "chat" else cls._AGENT_MAX_TOKENS_CAP
+        return min(int(value), cap)
+
     def create_agent(self, data: dict) -> Agent:
         raw_type = data["type"]
         normalized_type = self._LEGACY_TYPE_MAP.get(raw_type, raw_type)
@@ -328,7 +341,10 @@ class AgentEngine:
             allowed_entities=data.get("allowed_entities", []),
             allowed_services=data.get("allowed_services", []),
             model=data.get("model", "auto"),
-            max_tokens=min(int(data.get("max_tokens", 4096)), 8192),
+            max_tokens=self._cap_max_tokens(
+                data.get("max_tokens", 16000 if normalized_type == "chat" else 4096),
+                normalized_type,
+            ),
             restrict_to_home=bool(data.get("restrict_to_home", False)),
             require_confirmation=bool(data.get("require_confirmation", False)),
             budget_eur_limit=float(data.get("budget_eur_limit", 0.0)),
@@ -383,7 +399,7 @@ class AgentEngine:
                 elif key in _INT_FIELDS:
                     setattr(agent, key, int(data[key]))
                 elif key == "max_tokens":
-                    setattr(agent, key, min(int(data[key]), 8192))
+                    setattr(agent, key, self._cap_max_tokens(data[key], agent.type))
                 else:
                     setattr(agent, key, data[key])
         if agent.enabled and agent.type == "agent":

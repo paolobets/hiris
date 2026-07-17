@@ -27,7 +27,7 @@ from .memory_tools import recall_memory as _recall_memory, save_memory as _save_
 from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
 from .proposal_tools import create_automation_proposal
-from .config_tools import normalize_config_inputs, apply_ha_config
+from .config_tools import normalize_config_inputs, apply_ha_config, add_dashboard_view
 from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
@@ -351,6 +351,10 @@ class ToolDispatcher:
                 except ValueError as exc:
                     return {"error": str(exc)}
                 return await apply_ha_config(self._ha, normalized)
+            if name == "add_dashboard_view":
+                return await add_dashboard_view(
+                    self._ha, inputs.get("url_path", ""), inputs.get("view", {})
+                )
             if name == "save_knowledge" and self._knowledge_store:
                 return await handle_save_knowledge(
                     self._knowledge_store, self._knowledge_embedder, inputs, owner="home"
