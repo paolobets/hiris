@@ -41,7 +41,7 @@
 - **Nota**: richiede anche il redeploy del MCP gateway per esporre a Claude il nuovo
   tool `send_notification` e la descrizione aggiornata.
 
-## v0.21.1 — Fix cache-busting asset: menu /config Storicizzazione + Accessi Gateway (2026-07-01)
+## [0.21.1] — Fix cache-busting asset: menu /config Storicizzazione + Accessi Gateway (2026-07-01)
 
 - **Bugfix**: nella pagina /config i menu del drawer *Storicizzazione* (`#/history`)
   e *Accessi Gateway* (`#/gateway`) non entravano — un `main.js` cachato dal browser
@@ -56,7 +56,7 @@
   profondità contro il proxy HA Ingress).
 - Nuovo test `tests/test_cache_busting.py`. 754 test.
 
-## v0.21.0 — Semaforo per-entità + pip-audit (Road to 1.0, Blocker 3) (2026-06-29)
+## [0.21.0] — Semaforo per-entità + pip-audit (Road to 1.0, Blocker 3) (2026-06-29)
 
 - **Granularità per-entità del semaforo**: oltre al livello per-dominio, ora puoi
   impostare override per singola entità (off/green/yellow/red) — l'entità batte il
@@ -72,7 +72,7 @@
   in CI sull'immagine (Blocker 4).
 - 749 test.
 
-## v0.20.0 — Data layer robusto: WAL + migrazioni schema (Road to 1.0, Blocker 2) (2026-06-29)
+## [0.20.0] — Data layer robusto: WAL + migrazioni schema (Road to 1.0, Blocker 2) (2026-06-29)
 
 Fondazione per la sicurezza dei dati negli aggiornamenti dell'addon. Nessun
 cambiamento funzionale visibile; cambia come i DB SQLite vengono aperti e versionati.
@@ -88,7 +88,7 @@ cambiamento funzionale visibile; cambia come i DB SQLite vengono aperti e versio
 - 736 test (incl. WAL/migrazioni). Nessun vincolo FK negli schemi → `foreign_keys`
   è no-op oggi, pronto per il futuro.
 
-## v0.19.0 — Apply reale proposte + hardening sicurezza semaforo (2026-06-29)
+## [0.19.0] — Apply reale proposte + hardening sicurezza semaforo (2026-06-29)
 
 A valle di un audit di sicurezza adversariale sul semaforo (nessun bypass verso
 domini giallo/rosso/off; l'enforcement server-side regge come backstop alla
@@ -113,7 +113,7 @@ prompt-injection):
   `create_task` resta attivo come da scelta utente.
 - 731 test HIRIS / 88 gateway. Richiede update addon HA a 0.19.0 + redeploy gateway.
 
-## v0.18.0 — Lettura config automazioni + fix proposte/task via MCP (2026-06-29)
+## [0.18.0] — Lettura config automazioni + fix proposte/task via MCP (2026-06-29)
 
 - Nuovo tool **get_automation_config**: legge la configurazione (YAML-equivalente)
   di un'automazione creata da UI in HA, così Claude/HIRIS può mostrarla e
@@ -124,7 +124,7 @@ prompt-injection):
   not exposed by policy"). Ora derive_execute_policy li espone (create_task/
   cancel_task restano gated dal semaforo del gateway).
 
-## v0.17.1 — Fix: layout chat immune alla cache CSS stantia (2026-06-28)
+## [0.17.1] — Fix: layout chat immune alla cache CSS stantia (2026-06-28)
 
 - **Bugfix layout chat su desktop**: con una `hiris-chat.css` vecchia in cache del
   browser (precedente al drawer, v0.14.5) il div `#sidebar-overlay` — non più
@@ -139,7 +139,7 @@ prompt-injection):
   confermata a 1920px; drawer mobile 390px funzionante). NB: un hard-refresh
   (Ctrl+Shift+R) risolve comunque la vista corrente, essendo cache.
 
-## v0.17.0 — Storico → second brain: digest notturno di insight (2026-06-28)
+## [0.17.0] — Storico → second brain: digest notturno di insight (2026-06-28)
 
 - Nuovo job notturno (04:00) che distilla lo storico (HistoryStore) in **insight
   testuali** salvati nel second brain (KnowledgeStore), ricercabili via
@@ -149,7 +149,7 @@ prompt-injection):
   presenza/sicurezza marcati sensitive (rispettano l'egress privacy del brain).
 - Completa la Fase 3 dello storico (2a/2b/2c già in v0.16.0).
 
-## v0.16.0 — Storico proprietario HIRIS: cattura + Storicizzazione + analisi a lungo termine (2026-06-27)
+## [0.16.0] — Storico proprietario HIRIS: cattura + Storicizzazione + analisi a lungo termine (2026-06-27)
 
 Completa lo **storico ibrido** (Fasi 2a/2b/2c): oltre a recorder+statistics di HA
 (v0.15.0), HIRIS ora **conserva in proprio** lo storico delle entità che scegli,
@@ -169,7 +169,7 @@ anche oltre la retention di HA — base per analisi a lungo periodo via `get_his
 - API `/api/history/policy` protetta dai middleware auth/CSRF come il resto.
 - Verificato a video (desktop 1440 + iPhone 390) prima del rilascio; 704 test verdi.
 
-## v0.15.0 — Storico via MCP: get_history (recorder + statistics) (2026-06-27)
+## [0.15.0] — Storico via MCP: get_history (recorder + statistics) (2026-06-27)
 
 Nuova capability: **dati storici accessibili via MCP** e nella chat HIRIS.
 Fase 1 dello storico ibrido (Fase 2 = HistoryStore proprietario + cattura + config
@@ -190,7 +190,7 @@ Fase 1 dello storico ibrido (Fase 2 = HistoryStore proprietario + cattura + conf
   se le statistics mancano → fallback recorder con flag `partial` (mai troncamento
   silenzioso).
 
-## v0.14.9 — Gateway: le letture non sono più filtrate dal semaforo azioni (2026-06-27)
+## [0.14.9] — Gateway: le letture non sono più filtrate dal semaforo azioni (2026-06-27)
 
 **Bugfix.** Da Claude/MCP, chiedere stati di entità non controllabili (es. *"dammi
 le temperature delle stanze"*) tornava **vuoto** appena una categoria del semaforo
@@ -210,7 +210,7 @@ era impostata a verde.
   `test_execute_action_passes_whitelists` (era codificato il comportamento
   errato). 99 test gateway/security/tools verdi.
 
-## v0.14.8 — Mobile config: editor agente senza overflow orizzontale (2026-06-27)
+## [0.14.8] — Mobile config: editor agente senza overflow orizzontale (2026-06-27)
 
 Verificato a video (render headless a viewport iPhone 390×844) **prima** della
 pubblicazione: `scrollWidth` da 452 → 389 ≤ 390, `main` da 451 → 382, nessuno
@@ -226,7 +226,7 @@ scroll orizzontale.
 - **Barra azioni sticky a tutta larghezza** (`left:0`) — prima era ancorata alla
   griglia desktop e finiva fuori viewport.
 
-## v0.14.7 — Mobile config: sidebar a drawer + dashboard senza overflow (2026-06-27)
+## [0.14.7] — Mobile config: sidebar a drawer + dashboard senza overflow (2026-06-27)
 
 Verificato a video (render headless a viewport iPhone) **prima** della pubblicazione.
 
@@ -239,7 +239,7 @@ Verificato a video (render headless a viewport iPhone) **prima** della pubblicaz
   inline → overflow orizzontale e sottotitolo tagliato su iPhone. Ora
   `auto-fit/minmax(150px)` → wrappano, niente scroll orizzontale.
 
-## v0.14.6 — Mobile: header chat riprogettato (no sovrapposizioni) (2026-06-27)
+## [0.14.6] — Mobile: header chat riprogettato (no sovrapposizioni) (2026-06-27)
 
 - L'header della chat su mobile (≤720px) era affollato (logo + versione +
   sottotitolo + Nuova conv. + pill agente + Task + tema) → elementi
@@ -248,7 +248,7 @@ Verificato a video (render headless a viewport iPhone) **prima** della pubblicaz
   agente/Task **nascosti** (agenti, Configurazione e Task sono nel drawer).
   Padding con safe-area iOS.
 
-## v0.14.5 — Mobile: menu a scomparsa + fix overflow Accessi Gateway (2026-06-27)
+## [0.14.5] — Mobile: menu a scomparsa + fix overflow Accessi Gateway (2026-06-27)
 
 ### Chat (mobile)
 
@@ -265,7 +265,7 @@ Verificato a video (render headless a viewport iPhone) **prima** della pubblicaz
 
 Solo front-end (HTML/CSS/JS), nessun cambiamento backend.
 
-## v0.14.4 — Semaforo operativo: flusso Giallo/Rosso (notifica + approvazione) (2026-06-27)
+## [0.14.4] — Semaforo operativo: flusso Giallo/Rosso (notifica + approvazione) (2026-06-27)
 
 Il comportamento dei livelli del semaforo, **solo sul percorso del gateway**
 (Claude); chat HIRIS e agenti restano diretti.
@@ -288,7 +288,7 @@ Il comportamento dei livelli del semaforo, **solo sul percorso del gateway**
 - `tests/test_gateway_pending.py` (nonce monouso, scadenza, approva/rifiuta,
   evento iPhone) + routing tier in `test_execute_api.py`. Suite: 647 passati.
 
-## v0.14.3 — Semaforo categorie + conteggi + provenienza (2026-06-27)
+## [0.14.3] — Semaforo categorie + conteggi + provenienza (2026-06-27)
 
 ### Accessi Gateway
 
@@ -311,7 +311,7 @@ Il comportamento dei livelli del semaforo, **solo sul percorso del gateway**
 
 - `tests/test_gateway_policy.py`, `tests/test_execute_api.py`. Suite verde.
 
-## v0.14.2 — Pagina "Accessi Gateway" (permessi a categorie) (2026-06-26)
+## [0.14.2] — Pagina "Accessi Gateway" (permessi a categorie) (2026-06-26)
 
 Nuova sezione nell'interfaccia `/config` per scegliere **a click** cosa il
 gateway MCP (Claude) puo' comandare, per **categoria** (Luci, Climatizzazione,
@@ -336,7 +336,7 @@ Scene…), al posto del CSV nelle opzioni dell'add-on.
 
 - `tests/test_gateway_policy.py` (derivazione, persistenza, endpoint). Suite: 635 passati.
 
-## v0.14.1 — Hardening auth per esposizione a tunnel (CR-1 + CSRF) (2026-06-26)
+## [0.14.1] — Hardening auth per esposizione a tunnel (CR-1 + CSRF) (2026-06-26)
 
 Preparazione sicura all'accesso dell'execute-API da un secondo host (gateway MCP
 su .31) via tunnel cifrato, senza esporre la porta sulla LAN e senza rompere i
@@ -365,7 +365,7 @@ consumer esistenti (card custom + proxy Retro Panel).
 - Nuovi test CR-1 (ingress da IP non fidato non bypassa; token sempre valido),
   esenzione CSRF (token valido/non valido), header execute-API. Suite: 627 passati.
 
-## v0.14.0 — Execute-API per il gateway MCP (2026-06-26)
+## [0.14.0] — Execute-API per il gateway MCP (2026-06-26)
 
 Aggiunta una piccola **execute-API non-LLM** che permette al gateway MCP
 (app separata su .31) di pilotare tool HIRIS curati a IA = zero. HIRIS resta
@@ -392,7 +392,7 @@ ampliare i privilegi.
 - `tests/test_execute_api.py`: 9 casi (auth, allowlist 403, pass-through
   whitelist, fail-closed, JSON/input non validi). Suite completa: 623 passati.
 
-## v0.10.15 — Fix HTTP 401 nella Lovelace card (ingress session) (2026-05-08)
+## [0.10.15] — Fix HTTP 401 nella Lovelace card (ingress session) (2026-05-08)
 
 User: "Errore: HTTP 401" sulla custom card dopo l'aggiornamento. Diagnosi:
 le rotte `/api/hassio_ingress/<token>/...` non sono autenticate dal Bearer
@@ -426,7 +426,7 @@ non riapriva il pannello sidebar dell'addon.
   dopo un restart dell'addon. Backend già parte con `enabled=True` di
   default, ora la UI riflette quell'intento esplicitamente.
 
-## v0.10.14 — Lovelace card overhaul: persistence, markdown, switch (2026-05-08)
+## [0.10.14] — Lovelace card overhaul: persistence, markdown, switch (2026-05-08)
 
 User: "prendiamo la card Lovelace, fai un'analisi front end UI UX se è
 migliorabile" → audit con 19 punti → "fai la 10.14 fixando tutto".
@@ -503,7 +503,7 @@ migliorabile" → audit con 19 punti → "fai la 10.14 fixando tutto".
 
 ---
 
-## v0.10.13 — Audit UX: status visibility, label/typo cleanup (2026-05-08)
+## [0.10.13] — Audit UX: status visibility, label/typo cleanup (2026-05-08)
 
 User: "Se apri la tab agenti capisci subito quali sono attivi?" → audit
 completo grafico app reale + "Chiudi tutti i bug segnalati".
@@ -557,7 +557,7 @@ completo grafico app reale + "Chiudi tutti i bug segnalati".
 
 ---
 
-## v0.10.12 — Lista agenti: badge stato esplicito (2026-05-08)
+## [0.10.12] — Lista agenti: badge stato esplicito (2026-05-08)
 
 User: "Se apri la tab agenti capisci subito quali sono attivi?" → no.
 Dot 8x8px quasi invisibile, nessun badge testuale, no row dimming, no toggle.
@@ -569,7 +569,7 @@ Dot 8x8px quasi invisibile, nessun badge testuale, no row dimming, no toggle.
 
 ---
 
-## v0.10.11 — Debug expose port toggle (per testing esterno) (2026-05-07)
+## [0.10.11] — Debug expose port toggle (per testing esterno) (2026-05-07)
 
 User: "Possiamo inserire una modalità DEBUG attivabile dal config che
 espone la porta? Se la disattivo la porta viene chiusa".
@@ -616,7 +616,7 @@ warning chiaro + descrizione UI esplicita evitano misuse.
 - pytest 562/562 passed
 - Schema yaml validato (HA Hass.io schema validator)
 
-## v0.10.10 — Trigger UI fixes (2026-05-07)
+## [0.10.10] — Trigger UI fixes (2026-05-07)
 
 User report 4 bug nella sezione Trigger:
 1. **Periodico**: input number con arrows native non in linea col design
@@ -650,7 +650,7 @@ User report 4 bug nella sezione Trigger:
 
 Bump 0.10.9 → 0.10.10 + V6_CACHE_BUST sync.
 
-## v0.10.9 — Frontend runAgent timeout 90s → 600s (2026-05-07)
+## [0.10.9] — Frontend runAgent timeout 90s → 600s (2026-05-07)
 
 User console v0.10.8: `[v6] runAgent error: AbortError: signal is aborted
 without reason at agent-editor.js:692:46`. Test Run su agente IRRIGAZIONE
@@ -677,7 +677,7 @@ ma backend è configurato per timeout molto più lunghi:
 
 Bump 0.10.8 → 0.10.9 + V6_CACHE_BUST sync.
 
-## v0.10.8 — Test Run feedback visivo + sidebar/sticky-bar redesign (2026-05-07)
+## [0.10.8] — Test Run feedback visivo + sidebar/sticky-bar redesign (2026-05-07)
 
 Due richieste user combinate in unica release:
 
@@ -766,7 +766,7 @@ appariva sotto il viewport user (sezione 08, dopo Log esecuzioni in 07).
 
 Bump 0.10.7 → 0.10.8 + V6_CACHE_BUST sync.
 
-## v0.10.7 — Route #/tasks per Task pianificati (2026-05-07)
+## [0.10.7] — Route #/tasks per Task pianificati (2026-05-07)
 
 User feedback: "in tutto questo aggiornamento/restyle dove sono finiti i task?"
 
@@ -809,7 +809,7 @@ Mea culpa nel design doc originale.
 - pytest 562/562 passed
 - node -c syntax OK
 
-## v0.10.6 — Hotfix regressione cleanup v0.10.5 (2026-05-07)
+## [0.10.6] — Hotfix regressione cleanup v0.10.5 (2026-05-07)
 
 User report v0.10.5 console: due regressioni introdotte dal cleanup.
 
@@ -840,7 +840,7 @@ di `loadModels`. La function diventa no-op se l'editor non è montato.
 
 Bump 0.10.5 → 0.10.6 + V6_CACHE_BUST sync.
 
-## v0.10.5 — Drawer/popover loading + anchor nav + sidebar count + settings + sticky align (2026-05-07)
+## [0.10.5] — Drawer/popover loading + anchor nav + sidebar count + settings + sticky align (2026-05-07)
 
 User feedback su v0.10.4 + console output. Audit systematic-debugging ha
 trovato **bug critico mai notato**: drawer.js e popover.js NON ERANO MAI
@@ -904,7 +904,7 @@ Se persiste in v0.10.5, il diagnostic logging in console.log `[v6] TestRun click
 - pytest 562/562 passed
 - node -c syntax OK su tutti i file modificati
 
-## v0.10.4 — 300s timeout + sticky bar + theme toggle + chat redundant badge (2026-05-07)
+## [0.10.4] — 300s timeout + sticky bar + theme toggle + chat redundant badge (2026-05-07)
 
 User segnala 5 categorie bug. Audit deep ha individuato root cause per ognuno
 + extra dead code. Fix mirati:
@@ -1010,7 +1010,7 @@ Hard reload browser (Ctrl+Shift+R) post-update per forzare fetch CSS/JS
 freschi. Da v0.10.4 il client-side cache-bust più aggressivo previene la
 ricomparsa.
 
-## v0.10.3 — Log row collapse di default + diagnostic buttons (2026-05-07)
+## [0.10.3] — Log row collapse di default + diagnostic buttons (2026-05-07)
 
 Due bug user reportati:
 1. Sezione log dell'editor appariva ESPLOSA con tutti i dettagli visibili
@@ -1069,7 +1069,7 @@ ecc. Future debug saranno immediati.
 
 Bump version 0.10.2 → 0.10.3 + V6_CACHE_BUST sync.
 
-## v0.10.2 — Defensive guards + cache-bust + chat link fix (2026-05-07)
+## [0.10.2] — Defensive guards + cache-bust + chat link fix (2026-05-07)
 
 User segnala che v0.10.1 aveva ancora il banner "Errore caricamento editor:
 Cannot read properties of null (reading 'style')" e un nuovo bug: il bottone
@@ -1123,7 +1123,7 @@ del browser (Ctrl+Shift+R su PC, clear cache via Settings su tablet) per
 forzare fetch del nuovo agent-editor.js. Da v0.10.2 in poi, il cache-bust
 client-side previene la ricomparsa del problema.
 
-## v0.10.1 — Hotfix wiring legacy↔v6 (2026-05-07)
+## [0.10.1] — Hotfix wiring legacy↔v6 (2026-05-07)
 
 Fix comprehensive di **9 bug** di disconnessione tra il long-form v6 e i moduli
 legacy (templates, triggers, permessi, action-editor, logs, usage, agent-form):
@@ -1180,7 +1180,7 @@ legacy (templates, triggers, permessi, action-editor, logs, usage, agent-form):
 - pytest 562/562 passed (zero regressioni backend)
 - node -c syntax OK su agent-editor.js (733 LOC, +400 vs v0.10.0)
 
-## v0.10.0 — Agent Designer v6 redesign (2026-05-07)
+## [0.10.0] — Agent Designer v6 redesign (2026-05-07)
 
 Refactor completo della pagina `config.html` (Agent Designer) come applicazione
 multi-route con long-form editor.
