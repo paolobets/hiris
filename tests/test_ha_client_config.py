@@ -122,3 +122,65 @@ async def test_create_dashboard_rollback_best_effort(client):
     res = await client.create_dashboard("casa-mia", "Casa Mia", {"views": []})
     assert "error" in res and "salvataggio" in res["error"]
     assert client._ws_command.await_count == 3
+
+
+# --- incremental dashboard: get_lovelace_config + add_dashboard_view ---
+
+@pytest.mark.asyncio
+async def test_get_lovelace_config_ok(client):
+    client._ws_command = AsyncMock(return_value={
+        "success": True, "result": {"views": [{"title": "Home"}]},
+    })
+    res = await client.get_lovelace_config("casa-mia")
+    assert res == {"views": [{"title": "Home"}]}
+
+
+@pytest.mark.asyncio
+async def test_get_lovelace_config_unreadable(client):
+    client._ws_command = AsyncMock(return_value={"success": False, "error": {"message": "not found"}})
+    res = await client.get_lovelace_config("casa-mia")
+    assert "error" in res
+
+
+@pytest.mark.asyncio
+async def test_get_lovelace_config_non_dict_result(client):
+    client._ws_command = AsyncMock(return_value={"success": True, "result": None})
+    res = await client.get_lovelace_config("casa-mia")
+    assert "error" in res
+
+
+@pytest.mark.asyncio
+async def test_add_dashboard_view_appends_and_saves(client):
+    client._ws_command = AsyncMock(side_effect=[
+        {"success": True, "result": {"views": [{"title": "Home"}]}},  # lovelace/config
+        {"success": True, "result": None},                             # config/save
+    ])
+    res = await client.add_dashboard_view("casa-mia", {"title": "Cucina", "cards": []})
+    assert res == {"ok": True, "url_path": "casa-mia", "views": 2}
+    save_call = client._ws_command.await_args_list[1]
+    assert save_call.args[0] == "lovelace/config/save"
+    assert save_call.args[1]["config"]["views"][-1] == {"title": "Cucina", "cards": []}
+
+
+@pytest.mark.asyncio
+async def test_add_dashboard_view_config_unreadable(client):
+    client._ws_command = AsyncMock(return_value={"success": False, "error": {"message": "no dash"}})
+    res = await client.add_dashboard_view("casa-mia", {"title": "Cucina"})
+    assert "error" in res
+    assert client._ws_command.await_count == 1  # never tried to save
+
+
+@pytest.mark.asyncio
+async def test_add_dashboard_view_save_fails(client):
+    client._ws_command = AsyncMock(side_effect=[
+        {"success": True, "result": {"views": []}},
+        {"success": False, "error": {"message": "bad"}},
+    ])
+    res = await client.add_dashboard_view("casa-mia", {"title": "Cucina"})
+    assert "error" in res and "vista" in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_add_dashboard_view_empty_view(client):
+    res = await client.add_dashboard_view("casa-mia", {})
+    assert "error" in res

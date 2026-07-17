@@ -43,7 +43,7 @@ from .tools.knowledge_tools import (
 )
 from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
 from .tools.proposal_tools import CREATE_AUTOMATION_PROPOSAL_TOOL_DEF
-from .tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF
+from .tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF, ADD_DASHBOARD_VIEW_TOOL_DEF
 from .tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
@@ -132,6 +132,7 @@ ALL_TOOL_DEFS = [
     GET_HA_HEALTH_TOOL_DEF,
     CREATE_AUTOMATION_PROPOSAL_TOOL_DEF,
     CREATE_HA_CONFIG_TOOL_DEF,
+    ADD_DASHBOARD_VIEW_TOOL_DEF,
     SAVE_KNOWLEDGE_TOOL_DEF,
     RECALL_KNOWLEDGE_TOOL_DEF,
     LINK_KNOWLEDGE_TOOL_DEF,
@@ -152,10 +153,17 @@ EVALUATION_ONLY_TOOLS = frozenset({
     # save_memory excluded: write risk in reactive agents (prompt injection via HA state)
     # create_automation_proposal excluded: writes to store — chat-only
     # create_ha_config excluded: writes to HA (dashboard/script/scene) — chat-only
+    # add_dashboard_view excluded: writes to HA (edits dashboard) — chat-only
 })
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
+# Higher default output ceiling for interactive chat: complex requests (a
+# multi-view dashboard, a long script) legitimately need more than the 4096
+# eval-agent cap. Kept well under the model max so the non-streaming SDK path
+# doesn't hit the request-timeout guard; larger dashboards are built
+# incrementally via add_dashboard_view instead of one giant response.
+CHAT_MAX_TOKENS = 16000
 MAX_TOOL_ITERATIONS = 10
 MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 45]
@@ -215,6 +223,22 @@ def _build_thinking_param(
         )
         thinking_budget = clamped
     return {"type": "enabled", "budget_tokens": thinking_budget}
+
+
+_TRUNCATION_NOTICE = (
+    "⚠️ La risposta è stata troncata perché ha raggiunto il limite di token "
+    "(max_tokens). Se stavi creando qualcosa di grande (es. una dashboard con "
+    "molte stanze), chiedimi di crearla in modo incrementale — prima la dashboard "
+    "con poche viste, poi una vista/stanza alla volta — oppure semplifica la richiesta."
+)
+
+
+def _max_tokens_message(text_blocks: list[str]) -> str:
+    """Message returned when generation is cut off by max_tokens. Surfaces the
+    truncation explicitly instead of returning a misleading partial preamble
+    (which reads as 'done' to the user while nothing was actually executed)."""
+    prefix = "\n".join(text_blocks).strip()
+    return f"{prefix}\n\n{_TRUNCATION_NOTICE}" if prefix else _TRUNCATION_NOTICE
 
 
 RESTRICT_PROMPT = (
@@ -600,6 +624,9 @@ class ClaudeRunner:
                         })
                 messages.append({"role": "user", "content": tool_results})
                 _compress_old_tool_results(messages)
+            elif response.stop_reason == "max_tokens":
+                text_blocks = [b.text for b in response.content if b.type == "text"]
+                return _max_tokens_message(text_blocks)
             else:
                 logger.warning("Unexpected stop_reason: %s", response.stop_reason)
                 text_blocks = [b.text for b in response.content if b.type == "text"]

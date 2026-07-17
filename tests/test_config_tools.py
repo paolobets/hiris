@@ -111,3 +111,38 @@ def test_build_config_proposal():
 
 def test_valid_kinds():
     assert VALID_KINDS == frozenset({"dashboard", "script", "scene"})
+
+
+# --- incremental dashboard: add_dashboard_view helper ---
+from hiris.app.tools.config_tools import add_dashboard_view, ADD_DASHBOARD_VIEW_TOOL_DEF
+
+
+def test_add_dashboard_view_tool_def_shape():
+    assert ADD_DASHBOARD_VIEW_TOOL_DEF["name"] == "add_dashboard_view"
+    req = ADD_DASHBOARD_VIEW_TOOL_DEF["input_schema"]["required"]
+    assert set(req) == {"url_path", "view"}
+
+
+@pytest.mark.asyncio
+async def test_add_dashboard_view_routes_to_ha():
+    ha = AsyncMock()
+    ha.add_dashboard_view = AsyncMock(return_value={"ok": True, "url_path": "casa-mia", "views": 3})
+    res = await add_dashboard_view(ha, "casa-mia", {"title": "Studio", "cards": []})
+    ha.add_dashboard_view.assert_awaited_once_with("casa-mia", {"title": "Studio", "cards": []})
+    assert res["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_add_dashboard_view_bad_url_path():
+    ha = AsyncMock()
+    res = await add_dashboard_view(ha, "casa", {"title": "x"})  # no hyphen
+    assert "error" in res
+    ha.add_dashboard_view.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_add_dashboard_view_empty_view_rejected():
+    ha = AsyncMock()
+    res = await add_dashboard_view(ha, "casa-mia", {})
+    assert "error" in res
+    ha.add_dashboard_view.assert_not_awaited()

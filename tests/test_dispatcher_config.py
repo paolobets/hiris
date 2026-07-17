@@ -36,3 +36,21 @@ def test_create_ha_config_in_all_tool_defs():
 
 def test_create_ha_config_is_chat_only():
     assert "create_ha_config" not in EVALUATION_ONLY_TOOLS
+
+
+@pytest.mark.asyncio
+async def test_dispatch_add_dashboard_view():
+    ha = AsyncMock()
+    ha.add_dashboard_view = AsyncMock(return_value={"ok": True, "views": 2})
+    d = _dispatcher(ha)
+    res = await d.dispatch("add_dashboard_view", {"url_path": "casa-mia", "view": {"title": "Cucina"}})
+    ha.add_dashboard_view.assert_awaited_once_with("casa-mia", {"title": "Cucina"})
+    assert res["ok"] is True
+
+
+def test_add_dashboard_view_in_all_tool_defs():
+    assert any(t["name"] == "add_dashboard_view" for t in ALL_TOOL_DEFS)
+
+
+def test_add_dashboard_view_is_chat_only():
+    assert "add_dashboard_view" not in EVALUATION_ONLY_TOOLS

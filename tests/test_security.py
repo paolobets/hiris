@@ -194,7 +194,15 @@ def test_create_agent_caps_max_tokens():
                 "trigger": {"type": "manual"},
                 "max_tokens": 99999,
             })
-    assert agent.max_tokens == 8192
+            # chat is capped higher (room for large outputs) but still bounded
+            non_chat = engine.create_agent({
+                "name": "Mon",
+                "type": "monitor",
+                "trigger": {"type": "manual"},
+                "max_tokens": 99999,
+            })
+    assert agent.max_tokens == 16000
+    assert non_chat.max_tokens == 8192  # non-chat stays tightly capped
 
 
 def test_update_agent_caps_max_tokens():
@@ -213,7 +221,7 @@ def test_update_agent_caps_max_tokens():
         with patch.object(engine, "_unschedule_agent"):
             with patch.object(engine, "_schedule_agent"):
                 updated = engine.update_agent(agent.id, {"max_tokens": 50000})
-    assert updated.max_tokens == 8192
+    assert updated.max_tokens == 16000  # chat cap
 
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,11 @@ CREATE_HA_CONFIG_TOOL_DEF = {
     "description": (
         "Crea un artefatto di configurazione Home Assistant: una dashboard Lovelace "
         "('plancia'), uno script o una scena. Dalla chat viene creato subito su HA. "
-        "Le dashboard sono additive (nuova voce in sidebar). Fornisci un config HA valido."
+        "Le dashboard sono additive (nuova voce in sidebar). Fornisci un config HA valido. "
+        "IMPORTANTE per dashboard grandi (molte stanze/viste): NON generare tutte le viste "
+        "in un colpo solo — supereresti il limite di token e la creazione fallirebbe. "
+        "Crea la dashboard con 1-2 viste iniziali (es. solo la Home), poi aggiungi le altre "
+        "UNA ALLA VOLTA con lo strumento add_dashboard_view."
     ),
     "input_schema": {
         "type": "object",
@@ -44,6 +48,43 @@ CREATE_HA_CONFIG_TOOL_DEF = {
         "required": ["kind", "name", "slug", "config"],
     },
 }
+
+
+ADD_DASHBOARD_VIEW_TOOL_DEF = {
+    "name": "add_dashboard_view",
+    "description": (
+        "Aggiunge UNA vista (tab/pagina) a una dashboard Lovelace già esistente su HA. "
+        "Usa questo per costruire una dashboard grande in modo incrementale, una stanza/vista "
+        "per chiamata, evitando di superare il limite di token. La dashboard deve già esistere "
+        "(creala prima con create_ha_config)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "url_path": {
+                "type": "string",
+                "description": "url_path della dashboard esistente (es. 'casa-mia').",
+            },
+            "view": {
+                "type": "object",
+                "description": "Una singola vista Lovelace, es. {title, path, icon, cards:[...]}.",
+            },
+        },
+        "required": ["url_path", "view"],
+    },
+}
+
+
+async def add_dashboard_view(ha_client: Any, url_path: str, view: dict) -> dict:
+    """Validate inputs and append one view to an existing dashboard. Returns
+    {"ok": True, ...} or {"error": ...}; never raises on bad input."""
+    if not isinstance(url_path, str) or not _URL_PATH_RE.match(url_path):
+        return {"error": "url_path non valido: serve un url_path dashboard con un trattino"}
+    if not isinstance(view, dict) or not view:
+        return {"error": "view vuota o non valida"}
+    if len(str(view).encode("utf-8", "ignore")) > _MAX_CONFIG_BYTES:
+        return {"error": "view troppo grande"}
+    return await ha_client.add_dashboard_view(url_path, view)
 
 
 def normalize_config_inputs(inputs: dict) -> dict:

@@ -292,7 +292,10 @@ async def test_chat_passes_model_to_runner(client):
 
     call_kwargs = runner.chat.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
-    assert call_kwargs["max_tokens"] == 1024
+    # chat is floored up to CHAT_MAX_TOKENS regardless of the stored per-agent
+    # value — max_tokens is a ceiling, not a target, so this doesn't raise cost
+    # for normal replies but prevents truncation of large outputs (dashboards).
+    assert call_kwargs["max_tokens"] == 16000
     assert call_kwargs["agent_type"] == "chat"
 
 
