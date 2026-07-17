@@ -80,6 +80,26 @@ async def test_apply_ha_config_routes_to_dashboard():
     assert res["ok"] is True
 
 
+@pytest.mark.asyncio
+async def test_apply_ha_config_missing_kind_returns_error():
+    ha = AsyncMock()
+    res = await apply_ha_config(ha, {})
+    assert isinstance(res, dict) and res.get("error")
+    ha.create_script.assert_not_awaited()
+    ha.create_scene.assert_not_awaited()
+    ha.create_dashboard.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_apply_ha_config_missing_slug_and_ha_config_returns_error():
+    ha = AsyncMock()
+    res = await apply_ha_config(ha, {"kind": "script"})
+    assert isinstance(res, dict) and res.get("error")
+    ha.create_script.assert_not_awaited()
+    ha.create_scene.assert_not_awaited()
+    ha.create_dashboard.assert_not_awaited()
+
+
 def test_build_config_proposal():
     n = normalize_config_inputs(_dash_inputs())
     p = build_config_proposal(n)

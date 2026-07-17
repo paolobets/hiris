@@ -88,19 +88,34 @@ def normalize_config_inputs(inputs: dict) -> dict:
 
 async def apply_ha_config(ha_client: Any, normalized: dict) -> dict:
     """Materialize a normalized config on HA. Shared by the chat dispatch path and
-    the pending-proposal apply path."""
-    kind = normalized["kind"]
-    if kind == "script":
-        return await ha_client.create_script(normalized["slug"], normalized["ha_config"])
-    if kind == "scene":
-        return await ha_client.create_scene(normalized["slug"], normalized["ha_config"])
-    if kind == "dashboard":
-        return await ha_client.create_dashboard(
-            normalized["slug"], normalized["name"], normalized["ha_config"],
-            icon=normalized.get("icon"),
-            show_in_sidebar=normalized.get("show_in_sidebar", True),
-        )
-    return {"error": f"kind non supportato: {kind}"}
+    the pending-proposal apply path.
+
+    Defensive: `normalized` may originate from a proposal built outside
+    `normalize_config_inputs` (e.g. `create_automation_proposal` via MCP), so required
+    keys are not guaranteed to be present. Never raise KeyError — always return an
+    {"error": ...} dict instead, so callers can turn it into a clean HTTP error."""
+    kind = normalized.get("kind")
+    if kind not in VALID_KINDS:
+        return {"error": "config non valida: kind mancante o non supportato"}
+    if kind in ("script", "scene"):
+        slug = normalized.get("slug")
+        ha_config = normalized.get("ha_config")
+        if not slug or not isinstance(ha_config, dict):
+            return {"error": "config non valida: kind mancante o non supportato"}
+        if kind == "script":
+            return await ha_client.create_script(slug, ha_config)
+        return await ha_client.create_scene(slug, ha_config)
+    # kind == "dashboard"
+    slug = normalized.get("slug")
+    name = normalized.get("name")
+    ha_config = normalized.get("ha_config")
+    if not slug or not name or not isinstance(ha_config, dict):
+        return {"error": "config non valida: kind mancante o non supportato"}
+    return await ha_client.create_dashboard(
+        slug, name, ha_config,
+        icon=normalized.get("icon"),
+        show_in_sidebar=normalized.get("show_in_sidebar", True),
+    )
 
 
 def build_config_proposal(normalized: dict) -> dict:
