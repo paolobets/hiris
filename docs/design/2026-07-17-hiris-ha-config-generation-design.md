@@ -18,18 +18,18 @@ localmente ed è considerata l'operatore fidato; il gateway MCP passa sempre da 
 
 ## Contesto esistente (riuso)
 
-- **Pattern proposta**: [`create_automation_proposal`](../../../hiris/app/tools/proposal_tools.py)
-  salva in [`ProposalStore`](../../../hiris/app/proxy/proposal_store.py) (SQLite, stato `pending`),
+- **Pattern proposta**: [`create_automation_proposal`](../../hiris/app/tools/proposal_tools.py)
+  salva in [`ProposalStore`](../../hiris/app/proxy/proposal_store.py) (SQLite, stato `pending`),
   con lifecycle (pending→archived→delete) e pagina Proposte. Applicazione reale in
-  [`handle_apply_proposal`](../../../hiris/app/api/handlers_proposals.py) che chiama
+  [`handle_apply_proposal`](../../hiris/app/api/handlers_proposals.py) che chiama
   `ha_client.create_automation`.
 - **Due percorsi già cablati**:
-  - *Chat/agent*: Claude gira dentro HIRIS → [`dispatcher.dispatch()`](../../../hiris/app/tools/dispatcher.py),
+  - *Chat/agent*: Claude gira dentro HIRIS → [`dispatcher.dispatch()`](../../hiris/app/tools/dispatcher.py),
     nessun semaforo, esecuzione diretta.
-  - *MCP*: Claude esterno → [`/api/execute`](../../../hiris/app/api/handlers_execute.py) (gated da
+  - *MCP*: Claude esterno → [`/api/execute`](../../hiris/app/api/handlers_execute.py) (gated da
     `internal_token`); le azioni gialle/rosse vengono **intercettate prima del dispatch** e messe in
-    attesa tramite [`gateway_pending`](../../../hiris/app/api/handlers_gateway_pending.py).
-- **WebSocket HA**: [`ha_client._ws_request(msg_type, extra=...)`](../../../hiris/app/proxy/ha_client.py)
+    attesa tramite [`gateway_pending`](../../hiris/app/api/handlers_gateway_pending.py).
+- **WebSocket HA**: [`ha_client._ws_request(msg_type, extra=...)`](../../hiris/app/proxy/ha_client.py)
   invia un singolo comando WS con parametri e ritorna il `result`. Necessario per Lovelace
   (le dashboard non rispondono su REST).
 
