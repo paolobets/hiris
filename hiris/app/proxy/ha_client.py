@@ -170,6 +170,26 @@ class HAClient:
             "config": config,
         })
         if not saved or not saved.get("success"):
+            # Roll back the just-created (guaranteed new) dashboard so the pending
+            # proposal stays retryable: without this, a retry hits the now-existing
+            # url_path and fails forever, leaving an orphan empty dashboard.
+            # Best-effort — we only delete what THIS call created (create succeeded,
+            # so url_path was new), never a pre-existing dashboard.
+            dash_id = (created.get("result") or {}).get("id")
+            if dash_id:
+                rolled = await self._ws_command(
+                    "lovelace/dashboards/delete", {"dashboard_id": dash_id}
+                )
+                if not rolled or not rolled.get("success"):
+                    logger.warning(
+                        "dashboard rollback failed (url_path=%s id=%s): %s — orphan dashboard remains",
+                        url_path, dash_id, self._ws_error(rolled),
+                    )
+            else:
+                logger.warning(
+                    "dashboard rollback skipped: create response had no id (url_path=%s) — orphan may remain",
+                    url_path,
+                )
             return {"error": f"salvataggio config dashboard fallito: {self._ws_error(saved)}"}
         return {"ok": True, "url_path": url_path}
 

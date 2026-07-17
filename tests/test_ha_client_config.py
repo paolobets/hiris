@@ -92,3 +92,33 @@ async def test_create_dashboard_save_fails(client):
     ])
     res = await client.create_dashboard("casa-mia", "Casa Mia", {"views": []})
     assert "error" in res
+
+
+@pytest.mark.asyncio
+async def test_create_dashboard_save_fails_rolls_back(client):
+    # create succeeds (returns the new dashboard id), config/save fails → the
+    # just-created dashboard must be deleted so a retry starts clean.
+    client._ws_command = AsyncMock(side_effect=[
+        {"success": True, "result": {"id": "abc123", "url_path": "casa-mia"}},  # create
+        {"success": False, "error": {"message": "bad config"}},                 # save fails
+        {"success": True, "result": None},                                       # delete (rollback)
+    ])
+    res = await client.create_dashboard("casa-mia", "Casa Mia", {"views": []})
+    assert "error" in res
+    assert client._ws_command.await_count == 3
+    rollback_call = client._ws_command.await_args_list[2]
+    assert rollback_call.args[0] == "lovelace/dashboards/delete"
+    assert rollback_call.args[1] == {"dashboard_id": "abc123"}
+
+
+@pytest.mark.asyncio
+async def test_create_dashboard_rollback_best_effort(client):
+    # if the rollback delete itself fails, still return the save error (no raise).
+    client._ws_command = AsyncMock(side_effect=[
+        {"success": True, "result": {"id": "abc123"}},           # create
+        {"success": False, "error": {"message": "bad config"}},  # save fails
+        None,                                                     # delete fails (WS down)
+    ])
+    res = await client.create_dashboard("casa-mia", "Casa Mia", {"views": []})
+    assert "error" in res and "salvataggio" in res["error"]
+    assert client._ws_command.await_count == 3
