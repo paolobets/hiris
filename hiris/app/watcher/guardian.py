@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Awaitable, Callable
 from .detectors import DETECTORS
 from .signals import wake_from_signal, WakeEvent
+from .wake import maybe_wake
 
 log = logging.getLogger(__name__)
 
@@ -63,15 +64,6 @@ class Guardian:
             log.exception("guardian on_state_changed failed")
 
     async def _maybe_wake(self, key: str, sig, now: float) -> None:
-        last = self._store.last_wake(key)
-        if last is not None and (now - last) < self._cooldown:
-            return
-        day = self._today()
-        if self._store.wakes_today(day) >= self._cap:
-            self._store.record_event({"ts": now, "kind": sig.kind, "entity_id": sig.entity_id,
-                                      "verdict": None, "severity": sig.severity,
-                                      "outcome": "cap", "message": "cap giornaliero raggiunto"})
-            return
-        self._store.mark_wake(key, now)
-        self._store.incr_wakes_today(day)
-        await self._on_wake(wake_from_signal(sig))
+        await maybe_wake(self._store, key, wake_from_signal(sig),
+                          on_wake=self._on_wake, clock=self._clock, today=self._today,
+                          cooldown_sec=self._cooldown, daily_cap=self._cap, cap_scope="events")
