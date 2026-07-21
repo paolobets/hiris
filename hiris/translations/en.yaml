@@ -95,6 +95,9 @@ configuration:
   sentinel_allow_green_auto:
     name: "Sentinella — Auto actions on green domains"
     description: "When enabled, Sentinella automatically executes actions on green-status domains (then notifies). Default: disabled."
+  sentinel_ronda_min:
+    name: "Sentinella — Situation scan interval (minutes)"
+    description: "How often Sentinella scans home situations (hot+absence, all-away+alarm-off, holistic scan). Default: 15."
   mayan:
     name: "Mayan EDMS (documents)"
     description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."

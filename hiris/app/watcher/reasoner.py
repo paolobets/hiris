@@ -17,6 +17,14 @@ SENTINEL_SYSTEM = (
     "action(null oppure {domain,service,entity_id,data})."
 )
 
+SITUATION_HOLISTIC_SYSTEM = (
+    "Sei il cervello di HIRIS in revisione olistica: ricevi una fotografia della casa "
+    "(presenza, meteo, sicurezza, salute impianto). Segnala SOLO ciò che merita attenzione; "
+    "non elencare lo stato normale. Puoi proporre UNA azione a basso rischio pertinente; "
+    "NON proporre mai azioni su serrature, allarmi, tapparelle, sirene. Rispondi in italiano "
+    "e concludi SEMPRE col blocco ```json``` con verdict/severity/message/action."
+)
+
 _JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 
 def _san(v):
@@ -58,8 +66,9 @@ def parse_decision(text: str, default_severity: str = "warn") -> Decision:
 async def reason(wake: WakeEvent, *,
                  gather_context: Callable[[WakeEvent], dict],
                  llm_reason: Callable[..., Awaitable[str]],
-                 model: str = "auto", max_tokens: int = 1024) -> Decision:
+                 model: str = "auto", max_tokens: int = 1024,
+                 system: str = SENTINEL_SYSTEM) -> Decision:
     context = gather_context(wake) or {}
     user = build_user_message(wake, context)
-    text = await llm_reason(SENTINEL_SYSTEM, user, model=model, max_tokens=max_tokens)
+    text = await llm_reason(system, user, model=model, max_tokens=max_tokens)
     return parse_decision(text, default_severity=wake.severity_hint)

@@ -1,6 +1,6 @@
 import pytest
 from hiris.app.watcher.signals import WakeEvent, Decision
-from hiris.app.watcher.reasoner import parse_decision, build_user_message, reason
+from hiris.app.watcher.reasoner import parse_decision, build_user_message, reason, SITUATION_HOLISTIC_SYSTEM, SENTINEL_SYSTEM
 
 def test_parse_decision_reads_json_block():
     txt = 'Ragionamento...\n```json\n{"verdict":"anomalia","severity":"warn","message":"Frigo caldo","action":null}\n```'
@@ -44,3 +44,14 @@ async def test_reason_fallback_uses_wake_severity():
     d = await reason(we, gather_context=lambda w: {},
                      llm_reason=fake_llm)
     assert d.severity == "critico"
+
+@pytest.mark.asyncio
+async def test_reason_accepts_custom_system():
+    seen = {}
+    async def fake_llm(system, user, *, model, max_tokens):
+        seen["system"] = system
+        return '```json\n{"verdict":"anomalia","severity":"info","message":"ok","action":null}\n```'
+    we = WakeEvent("holistic", "home", "info", {}, 1.0)
+    await reason(we, gather_context=lambda w: {}, llm_reason=fake_llm, system=SITUATION_HOLISTIC_SYSTEM)
+    assert seen["system"] == SITUATION_HOLISTIC_SYSTEM
+    assert SITUATION_HOLISTIC_SYSTEM != SENTINEL_SYSTEM

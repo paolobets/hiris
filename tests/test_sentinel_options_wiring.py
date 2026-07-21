@@ -19,3 +19,10 @@ def test_translations_present():
     for f in ("it.yaml", "en.yaml"):
         t = (BASE / "translations" / f).read_text(encoding="utf-8")
         assert "sentinel_daily_cap" in t
+
+
+def test_ronda_option_wired():
+    cfg = yaml.safe_load((BASE / "config.yaml").read_text(encoding="utf-8"))
+    assert "sentinel_ronda_min" in cfg["options"] and "sentinel_ronda_min" in cfg["schema"]
+    sh = (BASE / "run.sh").read_text(encoding="utf-8")
+    assert "SENTINEL_RONDA_MINUTES" in sh

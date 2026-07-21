@@ -623,8 +623,10 @@ async def _on_startup(app: web.Application) -> None:
     from .watcher.sentinel_store import SentinelStore
     from .watcher.guardian import Guardian
     from .watcher.policy import load_policy
-    from .watcher.reasoner import reason
+    from .watcher.reasoner import reason, SENTINEL_SYSTEM, SITUATION_HOLISTIC_SYSTEM
     from .watcher.executor import execute
+    from .watcher.off_task import build_off_task
+    from .watcher.signals import WakeEvent
     from .tools.notify_tools import send_notification
     from .tools.proposal_tools import create_automation_proposal
     import time as _time
@@ -695,6 +697,21 @@ async def _on_startup(app: web.Application) -> None:
             allowed_services=[f"{domain}.{service}"] if service else None,
             allowed_entities=[eid] if eid else None,
         )
+        # Irrigation-style actions (turn_on with off_after_min) get a matching
+        # delayed turn_off scheduled through the TaskEngine. build_off_task()
+        # already refuses to build anything unless service=="turn_on" and
+        # off_after_min is a positive number, so this is a no-op for every
+        # other action. create_task's own allowlist (below) scopes the
+        # scheduled task to exactly this domain.turn_off + entity_id — same
+        # defense-in-depth pattern as the turn_on dispatch above.
+        if action.get("off_after_min"):
+            off = build_off_task(action)
+            if off is not None:
+                await dispatcher.dispatch(
+                    "create_task", off,
+                    allowed_services=[f"{domain}.turn_off"],
+                    allowed_entities=[eid] if eid else None,
+                )
 
     async def _propose(decision, wake):
         await create_automation_proposal(
@@ -743,6 +760,61 @@ async def _on_startup(app: web.Application) -> None:
     engine._scheduler.add_job(
         _reset_sentinel_counter, trigger="cron", hour=0, minute=1,
         id="hiris_sentinel_reset", replace_existing=True, misfire_grace_time=3600)
+
+    # ── Situazioni (ronda periodica + revisione olistica, fetta 2) ──────────
+    # Same semaforo (execute_policy) and same Fetta-1 adapters (_gather_context,
+    # _llm_reason, _notify, _act, _propose) as the guardian above — situations
+    # are just another wake source feeding the identical reason→execute path.
+    from .watcher.snapshot import build_snapshot as _build_snapshot
+    from .watcher.evaluator import SituationEvaluator
+    from .tools.weather_tools import get_weather_forecast
+
+    _snap_deps = {
+        "get_states": lambda ids: ha_client.get_states(ids),
+        "get_weather": lambda: get_weather_forecast(hours=6),
+        "get_health": (lambda: health_monitor.get_snapshot(["all"])) if health_monitor is not None else (lambda: None),
+    }
+
+    async def _snapshot():
+        return await _build_snapshot(_snap_deps, load_policy(data_dir).get("situations", {}))
+
+    async def _record_situation_event(kind, entity_id, decision, outcome):
+        sentinel_store.record_event({
+            "ts": _time.time(), "kind": kind, "entity_id": entity_id,
+            "verdict": getattr(decision, "verdict", None), "severity": getattr(decision, "severity", None),
+            "outcome": outcome, "message": getattr(decision, "message", "")})
+
+    async def _run_decision(wake, suggested, system):
+        decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system)
+        if suggested and getattr(decision, "verdict", "") != "falso_positivo":
+            decision.action = suggested  # target deterministico dalla config, non dall'LLM
+        _ep = app.get("execute_policy") or {}
+        outcome = await execute(
+            decision, wake,
+            tiers=_ep.get("tiers") or {}, entity_tiers=_ep.get("entity_tiers") or {},
+            notify=_notify, act=_act, propose=_propose,
+            allow_green_auto=os.environ.get("SENTINEL_ALLOW_GREEN_AUTO", "0")
+            in ("1", "true", "yes", "on"))
+        await _record_situation_event(wake.signal_kind, wake.entity_id, decision, outcome)
+
+    async def _on_situation(wake, suggested):
+        await _run_decision(wake, suggested, SENTINEL_SYSTEM)
+
+    async def _holistic_reason(snapshot):
+        wake = WakeEvent("holistic", "home", "info", {"snapshot": snapshot}, _time.time())
+        await _run_decision(wake, None, SITUATION_HOLISTIC_SYSTEM)
+
+    situation_evaluator = SituationEvaluator(
+        sentinel_store, lambda: load_policy(data_dir),
+        build_snapshot=_snapshot, on_situation=_on_situation, holistic_reason=_holistic_reason,
+        cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
+        daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")))
+    app["situation_evaluator"] = situation_evaluator
+
+    engine._scheduler.add_job(
+        situation_evaluator.run_evaluation, trigger="interval",
+        minutes=int(os.environ.get("SENTINEL_RONDA_MINUTES", "15")),
+        id="hiris_sentinel_ronda", replace_existing=True, misfire_grace_time=300)
 
     claude_runner = None
     if api_key:

@@ -22,6 +22,7 @@ export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 export SENTINEL_DAILY_CAP=$(bashio::config 'sentinel_daily_cap' '20')
 export SENTINEL_COOLDOWN_SEC=$(( $(bashio::config 'sentinel_cooldown_min' '30') * 60 ))
 export SENTINEL_ALLOW_GREEN_AUTO=$(bashio::config 'sentinel_allow_green_auto' 'false')
+export SENTINEL_RONDA_MINUTES=$(bashio::config 'sentinel_ronda_min' '15')
 
 export LOCAL_MODEL_URL=$(bashio::config 'local_model.url' '')
 export LOCAL_MODEL_NAME=$(bashio::config 'local_model.model' '')

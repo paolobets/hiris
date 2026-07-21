@@ -93,15 +93,135 @@ window.HirisSentinelRoute = (function () {
         });
         payload.detectors[m.id] = d;
       });
-      save.disabled = true; status.textContent = 'Salvataggio…';
+      payload.situations = buildSituationsPayload();
+      save.disabled = true; status.textContent = 'Salvataggio…'; sitStatus.textContent = 'Salvataggio…';
       api('api/sentinel/policy', { method: 'POST', body: JSON.stringify(payload) })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-        .then(function () { status.textContent = 'Salvato ✓'; save.disabled = false; })
-        .catch(function () { status.textContent = 'Errore nel salvataggio'; save.disabled = false; });
+        .then(function () {
+          status.textContent = 'Salvato ✓'; save.disabled = false;
+          sitStatus.textContent = 'Salvato ✓';
+        })
+        .catch(function () {
+          status.textContent = 'Errore nel salvataggio'; save.disabled = false;
+          sitStatus.textContent = 'Errore nel salvataggio';
+        });
     });
 
     card.appendChild(body);
     outlet.appendChild(card);
+
+    // --- Situazioni ---
+    var sit = data.situations || {};
+    var sitHotAway = sit.hot_and_away || {};
+    var sitAwayAlarm = sit.away_alarm_off || {};
+    var sitHolistic = sit.holistic || {};
+    var sitInputs = {};
+
+    function textField(parent, labelText, value) {
+      var wrap = el('div');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
+      wrap.appendChild(el('span', null, labelText));
+      var inp = el('input'); inp.type = 'text';
+      inp.value = value != null ? value : '';
+      inp.style.cssText = 'flex:1;padding:6px 8px;border-radius:8px;min-width:120px';
+      wrap.appendChild(inp);
+      parent.appendChild(wrap);
+      return inp;
+    }
+    function numberField(parent, labelText, value) {
+      var wrap = el('div');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
+      wrap.appendChild(el('span', null, labelText));
+      var inp = el('input'); inp.type = 'number';
+      inp.value = value != null ? value : '';
+      inp.style.cssText = 'width:100px;padding:6px 8px;border-radius:8px';
+      wrap.appendChild(inp);
+      parent.appendChild(wrap);
+      return inp;
+    }
+    function checkboxField(parent, labelText, checked) {
+      var head = el('label');
+      head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:15px;margin-top:12px';
+      var chk = el('input'); chk.type = 'checkbox'; chk.checked = !!checked;
+      chk.style.cssText = 'width:20px;height:20px;flex:0 0 auto';
+      head.appendChild(chk);
+      head.appendChild(el('span', null, labelText));
+      parent.appendChild(head);
+      return chk;
+    }
+
+    var sitCard = el('section', 'section-card');
+    var sitBody = el('div', 'sc-body');
+    sitBody.appendChild(el('div', 'page-title', 'Situazioni'));
+    sitBody.appendChild(el('p', 'sc-desc',
+      'Comportamenti composti: ronda di sicurezza, caldo+assenza, allarme disinserito, riepilogo giornaliero.'));
+
+    // Presenza (generali)
+    var genRow = el('div');
+    genRow.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--border,#2a2a2a)';
+    sitInputs.presence_entity = textField(genRow, 'Entità presenza', sit.presence_entity);
+    genRow.appendChild(el('p', 'sc-desc',
+      'La cadenza della ronda si imposta nelle opzioni dell\'add-on (sentinel_ronda_min).'));
+    sitBody.appendChild(genRow);
+
+    // hot_and_away
+    var hotRow = el('div');
+    hotRow.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--border,#2a2a2a)';
+    var hotChk = checkboxField(hotRow, 'Caldo e fuori casa (hot_and_away)', sitHotAway.enabled);
+    var hotOutsideTemp = textField(hotRow, 'Entità temperatura esterna', sitHotAway.outside_temp_entity);
+    var hotThreshold = numberField(hotRow, 'Soglia calore (°C)', sitHotAway.hot_threshold_c);
+    var hotValve = textField(hotRow, 'Entità valvola', sitHotAway.valve_entity);
+    var hotRunMinutes = numberField(hotRow, 'Durata attivazione (minuti)', sitHotAway.run_minutes);
+    var hotSkipRain = checkboxField(hotRow, 'Salta se pioggia (skip_if_rain)', sitHotAway.skip_if_rain);
+    sitBody.appendChild(hotRow);
+
+    // away_alarm_off
+    var awayRow = el('div');
+    awayRow.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--border,#2a2a2a)';
+    var awayChk = checkboxField(awayRow, 'Allarme disinserito da fuori (away_alarm_off)', sitAwayAlarm.enabled);
+    var awayAlarmEntity = textField(awayRow, 'Entità allarme', sitAwayAlarm.alarm_entity);
+    sitBody.appendChild(awayRow);
+
+    // holistic
+    var holRow = el('div');
+    holRow.style.cssText = 'padding:12px 0';
+    var holChk = checkboxField(holRow, 'Riepilogo giornaliero (holistic)', sitHolistic.enabled);
+    var holHour = numberField(holRow, 'Ora invio', sitHolistic.hour);
+    var holPerDay = numberField(holRow, 'Invii al giorno (per_day)', sitHolistic.per_day);
+    sitBody.appendChild(holRow);
+
+    var sitBar = el('div');
+    sitBar.style.cssText = 'margin-top:16px;display:flex;gap:10px;align-items:center';
+    var sitStatus = el('span', 'sc-desc', '');
+    sitBar.appendChild(sitStatus);
+    sitBody.appendChild(sitBar);
+
+    sitCard.appendChild(sitBody);
+    outlet.appendChild(sitCard);
+
+    function buildSituationsPayload() {
+      function n(v, fallback) { var x = parseInt(v, 10); return isNaN(x) ? fallback : x; }
+      return {
+        presence_entity: sitInputs.presence_entity.value,
+        hot_and_away: {
+          enabled: hotChk.checked,
+          outside_temp_entity: hotOutsideTemp.value,
+          hot_threshold_c: n(hotThreshold.value, sitHotAway.hot_threshold_c),
+          valve_entity: hotValve.value,
+          run_minutes: n(hotRunMinutes.value, sitHotAway.run_minutes),
+          skip_if_rain: hotSkipRain.checked
+        },
+        away_alarm_off: {
+          enabled: awayChk.checked,
+          alarm_entity: awayAlarmEntity.value
+        },
+        holistic: {
+          enabled: holChk.checked,
+          hour: n(holHour.value, sitHolistic.hour),
+          per_day: n(holPerDay.value, sitHolistic.per_day)
+        }
+      };
+    }
 
     outlet.appendChild(el('p', 'page-subtitle', 'Eventi recenti'));
     var list = el('div');

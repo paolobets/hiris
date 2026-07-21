@@ -5,6 +5,7 @@ from hiris.app.watcher.sentinel_store import SentinelStore
 from hiris.app.watcher.reasoner import reason
 from hiris.app.watcher.executor import execute
 from hiris.app.watcher.signals import Decision
+from hiris.app.watcher.evaluator import SituationEvaluator
 
 @pytest.mark.asyncio
 async def test_battery_anomaly_end_to_end(tmp_path):
@@ -29,4 +30,33 @@ async def test_battery_anomaly_end_to_end(tmp_path):
                               "old_state": {"state": "50"}, "new_state": {"state": "8"}})
     assert notified == ["Batteria all'8%"]
     assert store.recent_events(1)[0]["outcome"] == "notify"
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_situation_hot_away_end_to_end(tmp_path):
+    store = SentinelStore(str(tmp_path / "s.db"))
+    acted, notified = [], []
+    async def build_snapshot():
+        return {"presence": {"present": False}, "outside_temp_c": 35,
+                "weather": {"rain_soon": False}, "alarm_state": None}
+    async def notify(m, *, title): notified.append(m)
+    async def act(a): acted.append(a)
+    async def propose(d, w): raise AssertionError("non proporre: verde+optin")
+    async def on_situation(wake, suggested):
+        d = Decision("anomalia", "info", "Fa caldo, irrigo", None)
+        if suggested: d.action = suggested
+        out = await execute(d, wake, tiers={"switch": "green"}, entity_tiers={},
+                            notify=notify, act=act, propose=propose, allow_green_auto=True)
+        store.record_event({"ts": 1.0, "kind": wake.signal_kind, "entity_id": "switch.irr",
+                            "verdict": d.verdict, "severity": d.severity, "outcome": out, "message": d.message})
+    async def holistic(s): pass
+    cfg = lambda: {"situations": {"presence_entity": "person.p",
+        "hot_and_away": {"enabled": True, "outside_temp_entity": "sensor.t", "hot_threshold_c": 32,
+                         "valve_entity": "switch.irr", "run_minutes": 5, "skip_if_rain": True},
+        "away_alarm_off": {"enabled": False}, "holistic": {"enabled": False}}}
+    ev = SituationEvaluator(store, cfg, build_snapshot=build_snapshot, on_situation=on_situation,
+                            holistic_reason=holistic, clock=lambda: 1.0, today=lambda: "2026-07-21")
+    await ev.run_evaluation()
+    assert acted and acted[0]["entity_id"] == "switch.irr" and notified
     store.close()

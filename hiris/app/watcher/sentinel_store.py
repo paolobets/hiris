@@ -12,8 +12,10 @@ CREATE TABLE IF NOT EXISTS cooldowns (
     last_wake REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS wake_counts (
-    day TEXT PRIMARY KEY,
-    n INTEGER NOT NULL
+    scope TEXT NOT NULL DEFAULT 'events',
+    day TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (scope, day)
 );
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,11 +24,26 @@ CREATE TABLE IF NOT EXISTS events (
 );
 """
 
+
+def _migrate_v2(conn) -> None:
+    """v1 -> v2: wake_counts gains a `scope` column and PK (scope, day).
+
+    SQLite can't ALTER a PRIMARY KEY in place, so rebuild: rename the old
+    table, create the new shape, copy rows tagged with scope='events'
+    (the only scope that existed pre-migration), drop the old table."""
+    conn.executescript(
+        "ALTER TABLE wake_counts RENAME TO wake_counts_old;"
+        "CREATE TABLE wake_counts (scope TEXT NOT NULL DEFAULT 'events', day TEXT NOT NULL,"
+        " n INTEGER NOT NULL, PRIMARY KEY (scope, day));"
+        "INSERT INTO wake_counts(scope, day, n) SELECT 'events', day, n FROM wake_counts_old;"
+        "DROP TABLE wake_counts_old;")
+
+
 class SentinelStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migrate_v2})
 
     def close(self) -> None:
         with self._lock:
@@ -61,18 +78,20 @@ class SentinelStore:
                 "ON CONFLICT(key) DO UPDATE SET last_wake=excluded.last_wake", (key, ts))
             self._conn.commit()
 
-    def wakes_today(self, day: str) -> int:
+    def wakes_today(self, day: str, scope: str = "events") -> int:
         with self._lock:
-            r = self._conn.execute("SELECT n FROM wake_counts WHERE day=?", (day,)).fetchone()
+            r = self._conn.execute(
+                "SELECT n FROM wake_counts WHERE scope=? AND day=?", (scope, day)).fetchone()
         return r["n"] if r else 0
 
-    def incr_wakes_today(self, day: str) -> int:
+    def incr_wakes_today(self, day: str, scope: str = "events") -> int:
         with self._lock:
             self._conn.execute(
-                "INSERT INTO wake_counts(day, n) VALUES(?, 1) "
-                "ON CONFLICT(day) DO UPDATE SET n = n + 1", (day,))
+                "INSERT INTO wake_counts(scope, day, n) VALUES(?, ?, 1) "
+                "ON CONFLICT(scope, day) DO UPDATE SET n = n + 1", (scope, day))
             self._conn.commit()
-            r = self._conn.execute("SELECT n FROM wake_counts WHERE day=?", (day,)).fetchone()
+            r = self._conn.execute(
+                "SELECT n FROM wake_counts WHERE scope=? AND day=?", (scope, day)).fetchone()
         return r["n"]
 
     def reset_wakes(self, before_day: str) -> None:

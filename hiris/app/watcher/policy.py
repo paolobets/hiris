@@ -11,6 +11,14 @@ DEFAULT_POLICY: dict = {
         "fridge_temp":{"enabled": False, "entities": [], "max_temp_c": 8, "duration_min": 30},
         "power":      {"enabled": False, "entities": [], "max_watt": 3000},
         "battery":    {"enabled": False, "entities": [], "min_pct": 10},
+    },
+    "situations": {
+        "ronda_minutes": 15,
+        "presence_entity": "",
+        "hot_and_away": {"enabled": False, "outside_temp_entity": "", "hot_threshold_c": 32,
+                         "valve_entity": "", "run_minutes": 5, "skip_if_rain": True},
+        "away_alarm_off": {"enabled": False, "alarm_entity": "", "disarmed_states": ["disarmed"]},
+        "holistic": {"enabled": False, "hour": 9, "per_day": 1},
     }
 }
 
@@ -30,6 +38,19 @@ _PATH = "sentinel_policy.json"
 _ALLOWED_KEYS = {k: set(v) for k, v in DEFAULT_POLICY["detectors"].items()}
 
 
+def _deep_merge(default: dict, stored: dict | None) -> dict:
+    """Deep merge stored values over defaults, restricted to keys present in default."""
+    out = copy.deepcopy(default)
+    if not isinstance(stored, dict):
+        return out
+    for k, dv in default.items():
+        if k not in stored:
+            continue
+        sv = stored[k]
+        out[k] = _deep_merge(dv, sv) if isinstance(dv, dict) and isinstance(sv, dict) else sv
+    return out
+
+
 def _file(data_dir: str) -> str:
     return os.path.join(data_dir, _PATH)
 
@@ -45,6 +66,7 @@ def load_policy(data_dir: str) -> dict:
         if det in pol["detectors"] and isinstance(cfg, dict):
             pol["detectors"][det].update({k: v for k, v in cfg.items()
                                           if k in _ALLOWED_KEYS[det]})
+    pol["situations"] = _deep_merge(DEFAULT_POLICY["situations"], stored.get("situations"))
     return pol
 
 
@@ -56,6 +78,7 @@ def save_policy(data_dir: str, body: dict) -> dict:
         for k, v in cfg.items():
             if k in _ALLOWED_KEYS[det]:
                 clean["detectors"][det][k] = v
+    clean["situations"] = _deep_merge(DEFAULT_POLICY["situations"], body.get("situations"))
     os.makedirs(data_dir, exist_ok=True)
     tmp = _file(data_dir) + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
