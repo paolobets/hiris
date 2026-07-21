@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.23.0"
+version: "0.24.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -85,6 +85,7 @@ options:
   sentinel_daily_cap: 20
   sentinel_cooldown_min: 30
   sentinel_allow_green_auto: false
+  sentinel_ronda_min: 15
 
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:
@@ -146,6 +147,7 @@ schema:
   sentinel_daily_cap: int(0,200)
   sentinel_cooldown_min: int(1,1440)
   sentinel_allow_green_auto: bool
+  sentinel_ronda_min: int(1,240)
 
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:

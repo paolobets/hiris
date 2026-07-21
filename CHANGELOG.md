@@ -1,5 +1,19 @@
 # HIRIS — Changelog
 
+## [0.24.0] — Cervello proattivo: valutatore di situazioni (fetta 2) (2026-07-21)
+
+- **Nuova capacità: valutazione olistica e periodica delle situazioni di casa.** Una
+  ronda deterministica (zero-AI) costruisce una foto della casa (presenza, meteo,
+  temperatura esterna, allarme, salute HA) e sveglia il cervello solo quando una
+  situazione scatta.
+- **3 situazioni iniziali**: caldo forte + nessuno in casa → avvia irrigazione per
+  N minuti (prima azione autonoma "verde", opt-in, con spegnimento programmato);
+  tutti fuori + allarme disinserito → allerta (l'allarme non si arma mai in
+  autonomia — denylist); scansione olistica AI (rate-capata) per gli imprevisti.
+- **Sicurezza**: unico attuatore (l'esecutore) gated da semaforo + denylist; azione a
+  target deterministico dalla config; default prudente (agisci-auto spento).
+- **Config**: sezione "Situazioni" nella pagina Sentinella; intervallo ronda addon.
+
 ## [0.23.0] — Cervello proattivo: Sentinella anomalie (fetta 1) (2026-07-20)
 
 - **Nuova capacità: livello cognitivo proattivo.** Un guardiano deterministico

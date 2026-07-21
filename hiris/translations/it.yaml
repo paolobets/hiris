@@ -95,6 +95,9 @@ configuration:
   sentinel_allow_green_auto:
     name: "Sentinella — Azioni automatiche su domini verdi"
     description: "Se attivo, la Sentinella esegue da sola le azioni sui domini a semaforo verde (poi notifica). Predefinito: spento."
+  sentinel_ronda_min:
+    name: "Sentinella — Intervallo ronda situazioni (minuti)"
+    description: "Ogni quanti minuti la Sentinella scansiona le situazioni della casa (caldo+assenza, tutti-fuori+allarme-off, olistica). Predefinito: 15."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."
