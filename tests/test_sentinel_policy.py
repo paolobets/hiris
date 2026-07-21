@@ -21,3 +21,17 @@ def test_save_ignores_unknown_detector(tmp_path):
 def test_detectors_metadata_complete():
     ids = {d["id"] for d in SENTINEL_DETECTORS}
     assert ids == {"opening", "fridge_temp", "power", "battery"}
+
+def test_situations_defaults_present():
+    assert "situations" in DEFAULT_POLICY
+    assert DEFAULT_POLICY["situations"]["hot_and_away"]["enabled"] is False
+    assert DEFAULT_POLICY["situations"]["ronda_minutes"] == 15
+
+def test_save_situations_roundtrip(tmp_path):
+    body = {"situations": {"presence_entity": "person.p",
+            "hot_and_away": {"enabled": True, "valve_entity": "switch.irr", "run_minutes": 7}}}
+    clean = save_policy(str(tmp_path), body)
+    assert clean["situations"]["hot_and_away"]["enabled"] is True
+    reloaded = load_policy(str(tmp_path))
+    assert reloaded["situations"]["hot_and_away"]["run_minutes"] == 7
+    assert reloaded["situations"]["away_alarm_off"]["enabled"] is False  # default preservato
