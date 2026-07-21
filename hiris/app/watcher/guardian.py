@@ -18,11 +18,17 @@ class Guardian:
                  cooldown_sec: int = 1800, daily_cap: int = 20) -> None:
         self._store = store
         self._get_policy = get_policy
+        self._policy_override: dict | None = None
         self._on_wake = on_wake
         self._clock = clock
         self._today = today
         self._cooldown = cooldown_sec
         self._cap = daily_cap
+
+    def set_policy(self, policy: dict) -> None:
+        """Apply a policy override live (e.g. right after the UI saves new
+        detector config), bypassing the next disk read via ``get_policy``."""
+        self._policy_override = policy
 
     async def on_state_changed(self, event: dict) -> None:
         try:
@@ -31,7 +37,8 @@ class Guardian:
             if not eid:
                 return
             old, new = data.get("old_state"), data.get("new_state")
-            pol = (self._get_policy() or {}).get("detectors", {})
+            source = self._policy_override if self._policy_override is not None else (self._get_policy() or {})
+            pol = source.get("detectors", {})
             now = self._clock()
             for kind, fn in DETECTORS.items():
                 dcfg = pol.get(kind) or {}

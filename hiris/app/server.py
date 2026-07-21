@@ -617,6 +617,107 @@ async def _on_startup(app: web.Application) -> None:
     dispatcher.set_task_engine(task_engine)
     app["tool_dispatcher"] = dispatcher
 
+    # ── Sentinella (cervello proattivo, fetta 1) ──────────────────────────
+    # Shares the SAME semaforo (execute_policy tiers) as the execute-API/gateway
+    # — the single source of truth for what the AI is allowed to actuate.
+    from .watcher.sentinel_store import SentinelStore
+    from .watcher.guardian import Guardian
+    from .watcher.policy import load_policy
+    from .watcher.reasoner import reason
+    from .watcher.executor import execute
+    from .tools.notify_tools import send_notification
+    from .tools.proposal_tools import create_automation_proposal
+    import time as _time
+    from datetime import datetime as _dt
+
+    sentinel_store = SentinelStore(os.path.join(data_dir, "sentinel.db"))
+    app["sentinel_store"] = sentinel_store
+
+    def _gather_context(wake) -> dict:
+        # Synchronous, non-throwing: best-effort friendly_name from the entity
+        # cache; falls back to the raw entity_id when unavailable.
+        try:
+            cache = app.get("entity_cache")
+            state = cache.get_state(wake.entity_id) if cache is not None else None
+            fn = (state or {}).get("attributes", {}).get("friendly_name") if state else None
+            return {"friendly_name": fn or wake.entity_id}
+        except Exception:
+            return {"friendly_name": wake.entity_id}
+
+    async def _llm_reason(system, user, *, model, max_tokens):
+        # allowed_tools=[] → this reasoning call performs NO home actions; the
+        # executor below is the only thing that acts, gated by the semaforo.
+        runner = app.get("llm_router")
+        if runner is None:
+            eng = app.get("engine")
+            runner = getattr(eng, "_claude_runner", None) if eng is not None else None
+        if runner is None or not hasattr(runner, "run_with_actions"):
+            return ""
+        out = await runner.run_with_actions(
+            user_message=user, system_prompt=system, action_mode="automatic",
+            allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
+        if isinstance(out, tuple):
+            return out[0] or ""
+        return out or ""
+
+    async def _notify(message, *, title):
+        # Reuses the exact notify_config object passed to the dispatcher/
+        # TaskEngine for send_notification — not a re-invented config shape.
+        await send_notification(ha_client, message, "ha_persistent", notify_config, title=title)
+
+    async def _act(action):
+        # Dispatched through the normal tool dispatcher (call_ha_service), same
+        # code path as every other actuation — no bypass of existing guards.
+        await dispatcher.dispatch("call_ha_service", action)
+
+    async def _propose(decision, wake):
+        await create_automation_proposal(
+            proposal_store, proposal_type="ha_automation",
+            name=f"Sentinella: {wake.signal_kind} {wake.entity_id}",
+            description=decision.message,
+            config={"suggested_action": decision.action},
+            routing_reason="Proposta dalla Sentinella (autonomia graduata)")
+
+    async def _on_wake(wake):
+        decision = None
+        outcome = "error"
+        try:
+            decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason)
+            # Semaforo source of truth: the SAME execute_policy the execute-API
+            # and gateway use, never the sentinel detector policy. Empty tiers
+            # → effective_tier() returns "off" → alert-only (SAFE default).
+            _ep = app.get("execute_policy") or {}
+            tiers = _ep.get("tiers") or {}
+            entity_tiers = _ep.get("entity_tiers") or {}
+            outcome = await execute(
+                decision, wake,
+                tiers=tiers, entity_tiers=entity_tiers,
+                notify=_notify, act=_act, propose=_propose,
+                allow_green_auto=os.environ.get("SENTINEL_ALLOW_GREEN_AUTO", "0")
+                in ("1", "true", "yes", "on"))
+        except Exception:
+            logger.exception("sentinel on_wake failed")
+            outcome = "error"
+        sentinel_store.record_event({
+            "ts": _time.time(), "kind": wake.signal_kind, "entity_id": wake.entity_id,
+            "verdict": getattr(decision, "verdict", None), "severity": wake.severity_hint,
+            "outcome": outcome, "message": getattr(decision, "message", "")})
+
+    guardian = Guardian(
+        sentinel_store, lambda: load_policy(data_dir), _on_wake,
+        cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
+        daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")))
+    guardian.set_policy(load_policy(data_dir))
+    app["guardian"] = guardian
+    ha_client.add_state_listener(lambda evt: asyncio.create_task(guardian.on_state_changed(evt)))
+
+    def _reset_sentinel_counter() -> None:
+        sentinel_store.reset_wakes(_dt.now().strftime("%Y-%m-%d"))
+
+    engine._scheduler.add_job(
+        _reset_sentinel_counter, trigger="cron", hour=0, minute=1,
+        id="hiris_sentinel_reset", replace_existing=True, misfire_grace_time=3600)
+
     claude_runner = None
     if api_key:
         claude_runner = ClaudeRunner(
@@ -731,6 +832,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["proposal_store"].close()
     if "history_store" in app:
         app["history_store"].close()
+    if "sentinel_store" in app:
+        app["sentinel_store"].close()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()
@@ -822,6 +925,13 @@ def create_app() -> web.Application:
     )
     app.router.add_get("/api/history/policy", handle_get_history_policy)
     app.router.add_post("/api/history/policy", handle_save_history_policy)
+
+    from .api.handlers_sentinel import (
+        handle_get_sentinel_policy, handle_save_sentinel_policy, handle_sentinel_timeline,
+    )
+    app.router.add_get("/api/sentinel/policy", handle_get_sentinel_policy)
+    app.router.add_post("/api/sentinel/policy", handle_save_sentinel_policy)
+    app.router.add_get("/api/sentinel/timeline", handle_sentinel_timeline)
 
     from .api.handlers_gateway_pending import (
         handle_list_pending as _gw_list_pending,
