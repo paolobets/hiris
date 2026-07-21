@@ -1,7 +1,6 @@
 /* HIRIS · Config · Sentinella (route #/sentinel)
    Configura i detector di anomalia/sicurezza (soglie, entità monitorate) e
    mostra la timeline degli eventi rilevati di recente.
-   Endpoint: api/sentinel/policy (GET/POST), api/sentinel/timeline (GET).
    Sicurezza: testi via textContent / nodi DOM, mai innerHTML su dati server. */
 window.HirisSentinelRoute = (function () {
   'use strict';
@@ -17,7 +16,7 @@ window.HirisSentinelRoute = (function () {
     opts.headers = Object.assign(
       { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       opts.headers || {});
-    return fetch('api/sentinel/' + path, opts);
+    return fetch(path, opts);
   }
 
   function render(outlet, data) {
@@ -95,7 +94,7 @@ window.HirisSentinelRoute = (function () {
         payload.detectors[m.id] = d;
       });
       save.disabled = true; status.textContent = 'Salvataggio…';
-      api('policy', { method: 'POST', body: JSON.stringify(payload) })
+      api('api/sentinel/policy', { method: 'POST', body: JSON.stringify(payload) })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
         .then(function () { status.textContent = 'Salvato ✓'; save.disabled = false; })
         .catch(function () { status.textContent = 'Errore nel salvataggio'; save.disabled = false; });
@@ -107,7 +106,7 @@ window.HirisSentinelRoute = (function () {
     outlet.appendChild(el('p', 'page-subtitle', 'Eventi recenti'));
     var list = el('div');
     outlet.appendChild(list);
-    api('timeline', { method: 'GET' })
+    api('api/sentinel/timeline', { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (t) {
         var events = t.events || [];
@@ -129,7 +128,7 @@ window.HirisSentinelRoute = (function () {
     outlet.innerHTML = '';
     outlet.appendChild(el('div', 'page-title', 'Sentinella'));
     outlet.appendChild(el('p', 'page-subtitle', 'Caricamento…'));
-    api('policy', { method: 'GET' })
+    api('api/sentinel/policy', { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (data) { render(outlet, data); })
       .catch(function () {
