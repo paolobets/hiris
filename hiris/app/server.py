@@ -674,12 +674,26 @@ async def _on_startup(app: web.Application) -> None:
         # to exactly this action's domain.service and entity_id, so the
         # dispatcher's own allowlist check (otherwise inert here) is a second,
         # independent layer instead of a no-op.
+        #
+        # Action-shape fix: Decision.action carries entity_id as a top-level
+        # sibling of "data" (see reasoner.py's SENTINEL_SYSTEM contract), but
+        # ToolDispatcher.dispatch's call_ha_service branch reads the target
+        # entity from INSIDE inputs["data"]/inputs["target"]
+        # (dispatcher.py:213-224) and forwards inputs["data"] verbatim to
+        # self._ha.call_service(domain, service, data). Copy entity_id into
+        # data so the actuation actually reaches HA with a target, and so the
+        # allowed_entities check below (which also reads from data/target)
+        # has something to match against instead of always failing closed.
         domain = action.get("domain") or action["entity_id"].split(".", 1)[0]
         service = action.get("service", "")
+        eid = action.get("entity_id")
+        data = dict(action.get("data") or {})
+        if eid:
+            data["entity_id"] = eid
         await dispatcher.dispatch(
-            "call_ha_service", action,
+            "call_ha_service", {"domain": domain, "service": service, "data": data},
             allowed_services=[f"{domain}.{service}"] if service else None,
-            allowed_entities=[action["entity_id"]],
+            allowed_entities=[eid] if eid else None,
         )
 
     async def _propose(decision, wake):
