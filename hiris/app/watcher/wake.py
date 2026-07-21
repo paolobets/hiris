@@ -22,8 +22,11 @@ async def maybe_wake(store, key: str, wake, *, on_wake: Callable[..., Awaitable]
         return "cooldown"
     day = today()
     if store.wakes_today(day, cap_scope) >= daily_cap:
-        store.record_event({"ts": now, "kind": cap_scope, "entity_id": key,
-                             "verdict": None, "severity": None, "outcome": "cap",
+        kind = getattr(wake, "signal_kind", None) or cap_scope
+        eid = getattr(wake, "entity_id", None) or key
+        sev = getattr(wake, "severity_hint", None)
+        store.record_event({"ts": now, "kind": kind, "entity_id": eid,
+                             "verdict": None, "severity": sev, "outcome": "cap",
                              "message": "cap giornaliero raggiunto"})
         return "cap"
     store.mark_wake(key, now)

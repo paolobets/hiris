@@ -55,6 +55,42 @@ def test_store_scope_isolation(store):
     assert store.wakes_today("2026-07-21", "situations") == 1
 
 
+@pytest.mark.asyncio
+async def test_cap_event_preserves_real_identity_from_wake(store):
+    """Regression: the cap-event record must not collapse identity down to
+    cap_scope/key — when a WakeEvent-like object is available, its real
+    signal_kind/entity_id/severity_hint must be used instead."""
+    class FakeWake:
+        signal_kind = "battery"
+        entity_id = "sensor.b"
+        severity_hint = "info"
+
+    async def on_wake(w): pass
+    r = await maybe_wake(store, "battery:sensor.b", FakeWake(), on_wake=on_wake,
+                         clock=lambda: 1.0, today=lambda: "2026-07-21",
+                         cooldown_sec=0, daily_cap=0, cap_scope="events")
+    assert r == "cap"
+    ev = store.recent_events(1)[0]
+    assert ev["kind"] == "battery"
+    assert ev["entity_id"] == "sensor.b"
+    assert ev["severity"] == "info"
+
+
+@pytest.mark.asyncio
+async def test_cap_event_falls_back_to_scope_when_wake_is_none(store):
+    """Holistic scans pass wake=None (no per-entity wake object) — the cap
+    event should fall back to cap_scope/key in that case."""
+    async def on_wake(w): pass
+    r = await maybe_wake(store, "holistic-key", None, on_wake=on_wake,
+                         clock=lambda: 1.0, today=lambda: "2026-07-21",
+                         cooldown_sec=0, daily_cap=0, cap_scope="holistic")
+    assert r == "cap"
+    ev = store.recent_events(1)[0]
+    assert ev["kind"] == "holistic"
+    assert ev["entity_id"] == "holistic-key"
+    assert ev["severity"] is None
+
+
 def test_v1_db_migrates_to_v2_preserving_events_scope(tmp_path):
     """Simulate a pre-existing Fetta-1 DB (schema v1, no scope column) and
     verify SentinelStore migrates it to v2 without losing counter data."""

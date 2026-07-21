@@ -65,5 +65,5 @@ class Guardian:
 
     async def _maybe_wake(self, key: str, sig, now: float) -> None:
         await maybe_wake(self._store, key, wake_from_signal(sig),
-                          on_wake=self._on_wake, clock=self._clock, today=self._today,
+                          on_wake=self._on_wake, clock=lambda: now, today=self._today,
                           cooldown_sec=self._cooldown, daily_cap=self._cap, cap_scope="events")
