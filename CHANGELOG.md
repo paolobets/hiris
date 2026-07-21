@@ -1,5 +1,20 @@
 # HIRIS — Changelog
 
+## [0.23.0] — Cervello proattivo: Sentinella anomalie (fetta 1) (2026-07-20)
+
+- **Nuova capacità: livello cognitivo proattivo.** Un guardiano deterministico
+  (zero-AI) sorveglia lo stato della casa in tempo reale e sveglia un ragionamento
+  AI solo quando un segnale supera soglia/durata, con debounce, cooldown e cap
+  giornaliero rigido.
+- **4 detector**: aperture prolungate, catena del freddo (frigo/freezer),
+  consumo anomalo, batterie scariche. Configurabili dalla nuova pagina "Sentinella".
+- **Autonomia graduata sul semaforo**: verde → agisci-e-notifica (opt-in, spento
+  di default); giallo → proponi; rosso/off → solo allerta. Ogni azione è
+  rivalidata dal semaforo lato server (anti prompt-injection).
+- **Osservabilità**: timeline eventi (segnale → esito) nella pagina Sentinella.
+- **Opzioni addon**: cap risvegli/giorno, pausa tra risvegli, azioni automatiche
+  su domini verdi.
+
 ## [0.22.1] — Fix creazione dashboard da chat: tetto token e costruzione incrementale (2026-07-17)
 
 - **Fix: la creazione di dashboard/script da chat sembrava riuscire ma non

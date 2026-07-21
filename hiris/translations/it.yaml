@@ -86,6 +86,15 @@ configuration:
   history_retention_days:
     name: "Conservazione Cronologia (giorni)"
     description: "Quanti giorni conservare la cronologia delle conversazioni prima della cancellazione automatica. Predefinito: 90 giorni."
+  sentinel_daily_cap:
+    name: "Sentinella — Cap risvegli AI/giorno"
+    description: "Numero massimo di ragionamenti AI al giorno innescati dalla Sentinella. Predefinito: 20."
+  sentinel_cooldown_min:
+    name: "Sentinella — Pausa tra risvegli (minuti)"
+    description: "Minuti minimi tra due risvegli sullo stesso segnale. Predefinito: 30."
+  sentinel_allow_green_auto:
+    name: "Sentinella — Azioni automatiche su domini verdi"
+    description: "Se attivo, la Sentinella esegue da sola le azioni sui domini a semaforo verde (poi notifica). Predefinito: spento."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."

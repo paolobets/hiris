@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.22.1"
+version: "0.23.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -81,6 +81,11 @@ options:
   apprise_urls: []
   history_retention_days: 90
 
+  # ── Sentinella (knobs) ────────────────────────────────────────────────────
+  sentinel_daily_cap: 20
+  sentinel_cooldown_min: 30
+  sentinel_allow_green_auto: false
+
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:
     url: ""            # es. http://192.168.1.31:8090/api/v4
@@ -136,6 +141,11 @@ schema:
   apprise_urls:
     - str
   history_retention_days: int
+
+  # ── Sentinella (knobs) ────────────────────────────────────────────────────
+  sentinel_daily_cap: int(0,200)
+  sentinel_cooldown_min: int(1,1440)
+  sentinel_allow_green_auto: bool
 
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:

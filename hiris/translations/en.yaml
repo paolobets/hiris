@@ -86,6 +86,15 @@ configuration:
   history_retention_days:
     name: "Conversation History Retention (days)"
     description: "How many days to keep conversation history before automatic deletion. Default is 90 days."
+  sentinel_daily_cap:
+    name: "Sentinella — AI wakeup cap per day"
+    description: "Maximum number of AI reasonings per day triggered by Sentinella. Default: 20."
+  sentinel_cooldown_min:
+    name: "Sentinella — Cooldown between wakeups (minutes)"
+    description: "Minimum minutes between two wakeups on the same signal. Default: 30."
+  sentinel_allow_green_auto:
+    name: "Sentinella — Auto actions on green domains"
+    description: "When enabled, Sentinella automatically executes actions on green-status domains (then notifies). Default: disabled."
   mayan:
     name: "Mayan EDMS (documents)"
     description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."
