@@ -64,5 +64,19 @@ async def test_never_raises_on_bad_event(store):
     await g.on_state_changed({"data": {}})       # nessun crash
     await g.on_state_changed({})                 # nessun crash
 
+@pytest.mark.asyncio
+async def test_duration_timer_cleared_when_condition_clears(store):
+    woke = []
+    t = {"v": 0.0}
+    g = Guardian(store, _policy, lambda we: woke.append(we) or _noop(),
+                 clock=lambda: t["v"], today=lambda: "2026-07-20")
+    await g.on_state_changed(_evt("binary_sensor.porta", "off", "on"))   # apre timer
+    assert store.timer_started_at("opening:binary_sensor.porta") == 0.0
+    await g.on_state_changed(_evt("binary_sensor.porta", "on", "off"))   # rientra → detector None
+    assert store.timer_started_at("opening:binary_sensor.porta") is None # timer azzerato
+    t["v"] = 20 * 60                                                     # oltre soglia
+    await g.on_state_changed(_evt("binary_sensor.porta", "off", "on"))   # riparte da capo
+    assert woke == []                                                    # non sveglia (timer riaperto ora)
+
 async def _noop():
     return None
