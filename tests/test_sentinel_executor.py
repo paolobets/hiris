@@ -45,6 +45,15 @@ async def test_injection_via_entity_never_acts_off_domain():
     assert out == "alert" and not r.acted and not r.proposed
 
 @pytest.mark.asyncio
+async def test_dangerous_domain_never_acts_or_proposes():
+    r = _Rec()
+    d = Decision("anomalia","critico","Apro il garage",
+                 {"domain":"cover","service":"open_cover","entity_id":"cover.garage","data":{}})
+    out = await execute(d, _wake(), tiers={"cover":"green"}, entity_tiers={},
+                        notify=r.notify, act=r.act, propose=r.propose, allow_green_auto=True)
+    assert out == "alert" and not r.acted and not r.proposed
+
+@pytest.mark.asyncio
 async def test_no_action_just_notifies():
     r = _Rec()
     d = Decision("anomalia","info","Batteria all'8%", None)

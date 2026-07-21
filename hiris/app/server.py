@@ -667,8 +667,20 @@ async def _on_startup(app: web.Application) -> None:
 
     async def _act(action):
         # Dispatched through the normal tool dispatcher (call_ha_service), same
-        # code path as every other actuation — no bypass of existing guards.
-        await dispatcher.dispatch("call_ha_service", action)
+        # code path as every other actuation. Primary enforcement (tier gate +
+        # dangerous-domain denylist) already happened upstream in
+        # executor.execute() — this only ever runs for a green, non-dangerous
+        # action. As defense-in-depth, also pass a per-call allowlist scoped
+        # to exactly this action's domain.service and entity_id, so the
+        # dispatcher's own allowlist check (otherwise inert here) is a second,
+        # independent layer instead of a no-op.
+        domain = action.get("domain") or action["entity_id"].split(".", 1)[0]
+        service = action.get("service", "")
+        await dispatcher.dispatch(
+            "call_ha_service", action,
+            allowed_services=[f"{domain}.{service}"] if service else None,
+            allowed_entities=[action["entity_id"]],
+        )
 
     async def _propose(decision, wake):
         await create_automation_proposal(
