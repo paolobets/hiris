@@ -38,6 +38,7 @@ class SituationEvaluator:
                 sig = fn(snap, merged)
                 if sig is None:
                     continue
+                # entity_id=sig.kind is a deliberate stand-in (SituationSignal has no entity_id; used only for cap-log labeling)
                 wake = WakeEvent(signal_kind=sig.kind, entity_id=sig.kind,
                                  severity_hint=sig.severity, evidence=sig.evidence, ts=self._clock())
                 suggested = sig.suggested_action
