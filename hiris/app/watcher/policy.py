@@ -4,7 +4,6 @@ from __future__ import annotations
 import copy
 import json
 import os
-from typing import Any
 
 DEFAULT_POLICY: dict = {
     "detectors": {

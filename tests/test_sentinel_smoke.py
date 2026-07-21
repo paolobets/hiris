@@ -25,8 +25,8 @@ async def test_battery_anomaly_end_to_end(tmp_path):
 
     pol = {"detectors": {"battery": {"enabled": True, "entities": ["sensor.b"], "min_pct": 10}}}
     g = Guardian(store, lambda: pol, on_wake, clock=lambda: 1.0, today=lambda: "2026-07-20")
-    await g.on_state_changed({"data": {"entity_id": "sensor.b",
-                             "old_state": {"state": "50"}, "new_state": {"state": "8"}}})
+    await g.on_state_changed({"entity_id": "sensor.b",
+                              "old_state": {"state": "50"}, "new_state": {"state": "8"}})
     assert notified == ["Batteria all'8%"]
     assert store.recent_events(1)[0]["outcome"] == "notify"
     store.close()

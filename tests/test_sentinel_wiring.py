@@ -16,8 +16,8 @@ async def test_guardian_set_policy_live(tmp_path):
     g.set_policy({"detectors": {"battery": {"enabled": True, "entities": ["sensor.b"], "min_pct": 10}}})
     woke = []
     g._on_wake = lambda we: woke.append(we) or _noop()
-    await g.on_state_changed({"data": {"entity_id": "sensor.b",
-                             "old_state": {"state": "50"}, "new_state": {"state": "5"}}})
+    await g.on_state_changed({"entity_id": "sensor.b",
+                              "old_state": {"state": "50"}, "new_state": {"state": "5"}})
     assert len(woke) == 1
     store.close()
 

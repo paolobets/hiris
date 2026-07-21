@@ -12,10 +12,15 @@ def _policy():
         "opening": {"enabled": True, "entities": ["binary_sensor.porta"], "open_minutes": 10},
     }}
 
+# Shape pinned to the REAL contract: ha_client.py:490 dispatches state
+# listeners as `cb(event["data"])` — the unwrapped HA state_changed event
+# data, with entity_id/old_state/new_state at the top level (see also
+# entity_cache.on_state_changed which reads event_data.get("new_state")
+# directly). Do NOT wrap this in another {"data": ...} layer.
 def _evt(eid, old, new):
-    return {"data": {"entity_id": eid,
-                     "old_state": {"state": old, "attributes": {}},
-                     "new_state": {"state": new, "attributes": {}}}}
+    return {"entity_id": eid,
+            "old_state": {"state": old, "attributes": {}},
+            "new_state": {"state": new, "attributes": {}}}
 
 @pytest.mark.asyncio
 async def test_instant_detector_wakes(store):
@@ -61,8 +66,8 @@ async def test_daily_cap_blocks_ai(store):
 async def test_never_raises_on_bad_event(store):
     g = Guardian(store, _policy, lambda we: _noop(),
                  clock=lambda: 1.0, today=lambda: "2026-07-20")
-    await g.on_state_changed({"data": {}})       # nessun crash
-    await g.on_state_changed({})                 # nessun crash
+    await g.on_state_changed({"entity_id": None})  # nessun crash
+    await g.on_state_changed({})                   # nessun crash
 
 @pytest.mark.asyncio
 async def test_duration_timer_cleared_when_condition_clears(store):

@@ -32,7 +32,7 @@ class Guardian:
 
     async def on_state_changed(self, event: dict) -> None:
         try:
-            data = (event or {}).get("data") or {}
+            data = event or {}
             eid = data.get("entity_id")
             if not eid:
                 return
