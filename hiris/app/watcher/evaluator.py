@@ -15,6 +15,7 @@ class SituationEvaluator:
     def __init__(self, store, get_config: Callable[[], dict], *, build_snapshot,
                  on_situation: Callable[..., Awaitable], holistic_reason: Callable[..., Awaitable],
                  clock: Callable[[], float] = time.time, today: Callable[[], str] = _today,
+                 now_hour: Callable[[], int] = lambda: datetime.now().hour,
                  cooldown_sec: int = 1800, daily_cap: int = 20) -> None:
         self._store = store
         self._get_config = get_config
@@ -23,6 +24,7 @@ class SituationEvaluator:
         self._holistic_reason = holistic_reason
         self._clock = clock
         self._today = today
+        self._now_hour = now_hour
         self._cooldown = cooldown_sec
         self._cap = daily_cap
 
@@ -47,7 +49,7 @@ class SituationEvaluator:
                                  clock=self._clock, today=self._today,
                                  cooldown_sec=self._cooldown, daily_cap=self._cap, cap_scope="situations")
             hol = cfg.get("holistic") or {}
-            if hol.get("enabled"):
+            if hol.get("enabled") and self._now_hour() == int(hol.get("hour", 9)):
                 async def _run_holistic(_w):
                     await self._holistic_reason(snap)
                 await maybe_wake(self._store, "holistic", None, on_wake=_run_holistic,

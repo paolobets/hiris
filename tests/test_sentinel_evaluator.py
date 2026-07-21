@@ -43,6 +43,46 @@ async def test_never_raises_on_bad_snapshot(store):
     await ev.run_evaluation()  # nessun crash
 
 @pytest.mark.asyncio
+async def test_holistic_runs_only_at_configured_hour(store):
+    calls = []
+    async def build_snapshot():
+        return {"presence": {"present": True}, "outside_temp_c": 20,
+                "weather": {"rain_soon": False}, "alarm_state": None}
+    async def on_situation(wake, suggested): pass
+    async def holistic(snap): calls.append("holistic")
+    cfg = lambda: {"situations": {
+        "presence_entity": "person.p",
+        "hot_and_away": {"enabled": False},
+        "away_alarm_off": {"enabled": False},
+        "holistic": {"enabled": True, "hour": 9, "per_day": 1}}}
+    ev = SituationEvaluator(store, cfg, build_snapshot=build_snapshot,
+                            on_situation=on_situation, holistic_reason=holistic,
+                            clock=lambda: 1.0, today=lambda: "2026-07-21",
+                            now_hour=lambda: 9)
+    await ev.run_evaluation()
+    assert calls == ["holistic"]
+
+@pytest.mark.asyncio
+async def test_holistic_skipped_outside_configured_hour(store):
+    calls = []
+    async def build_snapshot():
+        return {"presence": {"present": True}, "outside_temp_c": 20,
+                "weather": {"rain_soon": False}, "alarm_state": None}
+    async def on_situation(wake, suggested): pass
+    async def holistic(snap): calls.append("holistic")
+    cfg = lambda: {"situations": {
+        "presence_entity": "person.p",
+        "hot_and_away": {"enabled": False},
+        "away_alarm_off": {"enabled": False},
+        "holistic": {"enabled": True, "hour": 9, "per_day": 1}}}
+    ev = SituationEvaluator(store, cfg, build_snapshot=build_snapshot,
+                            on_situation=on_situation, holistic_reason=holistic,
+                            clock=lambda: 1.0, today=lambda: "2026-07-21",
+                            now_hour=lambda: 10)
+    await ev.run_evaluation()
+    assert calls == []
+
+@pytest.mark.asyncio
 async def test_two_situations_fire_without_action_cross_contamination(store):
     calls = {}
     async def build_snapshot():

@@ -156,11 +156,12 @@ window.HirisSentinelRoute = (function () {
     sitBody.appendChild(el('p', 'sc-desc',
       'Comportamenti composti: ronda di sicurezza, caldo+assenza, allarme disinserito, riepilogo giornaliero.'));
 
-    // Ronda / presenza (generali)
+    // Presenza (generali)
     var genRow = el('div');
     genRow.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--border,#2a2a2a)';
-    sitInputs.ronda_minutes = numberField(genRow, 'Ronda (minuti)', sit.ronda_minutes);
     sitInputs.presence_entity = textField(genRow, 'Entità presenza', sit.presence_entity);
+    genRow.appendChild(el('p', 'sc-desc',
+      'La cadenza della ronda si imposta nelle opzioni dell\'add-on (sentinel_ronda_min).'));
     sitBody.appendChild(genRow);
 
     // hot_and_away
@@ -201,7 +202,6 @@ window.HirisSentinelRoute = (function () {
     function buildSituationsPayload() {
       function n(v, fallback) { var x = parseInt(v, 10); return isNaN(x) ? fallback : x; }
       return {
-        ronda_minutes: n(sitInputs.ronda_minutes.value, sit.ronda_minutes),
         presence_entity: sitInputs.presence_entity.value,
         hot_and_away: {
           enabled: hotChk.checked,

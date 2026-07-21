@@ -11,6 +11,13 @@ def test_hot_and_away_fires():
     assert sig and sig.kind == "hot_and_away"
     assert sig.suggested_action["entity_id"] == "switch.irr"
     assert sig.suggested_action["off_after_min"] == 5
+    assert sig.suggested_action["domain"] == "switch"
+
+def test_hot_and_away_domain_derived_from_valve_entity():
+    cfg = {"hot_threshold_c": 32, "valve_entity": "input_boolean.irr", "run_minutes": 5, "skip_if_rain": True}
+    sig = situation_hot_and_away(_snap(present=False, temp=34, rain=False), cfg)
+    assert sig and sig.suggested_action["domain"] == "input_boolean"
+    assert sig.suggested_action["entity_id"] == "input_boolean.irr"
 
 def test_hot_and_away_skips_if_rain():
     cfg = {"hot_threshold_c": 32, "valve_entity": "switch.irr", "run_minutes": 5, "skip_if_rain": True}
