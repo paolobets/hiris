@@ -1,6 +1,9 @@
 from __future__ import annotations
+import logging
 import time
 from aiohttp import web
+
+logger = logging.getLogger(__name__)
 
 
 def _now(request):
@@ -32,5 +35,6 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         try:
             outcome = await ex(decision, (job or {}).get("wake") or {})
         except Exception:
+            logger.exception("execute_decision failed")
             outcome = "error"
     return web.json_response({"ok": True, "outcome": outcome})

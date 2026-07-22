@@ -815,7 +815,13 @@ async def _on_startup(app: web.Application) -> None:
     app["reasoning_queue"] = reasoning_queue
 
     async def _execute_decision(decision_dict, wake_dict):
-        d = Decision(verdict=decision_dict.get("verdict", "anomalia"),
+        # Fail-CLOSED on the verdict: the runner submits this over the
+        # network, so a missing/malformed/unknown verdict must NOT default to
+        # the actuation-eligible "anomalia" — it degrades to "falso_positivo",
+        # which execute() turns into a no-op "skip".
+        _v = decision_dict.get("verdict")
+        verdict = _v if _v in ("anomalia", "falso_positivo") else "falso_positivo"
+        d = Decision(verdict=verdict,
                      severity=decision_dict.get("severity", "info"),
                      message=decision_dict.get("message", ""),
                      action=decision_dict.get("action"))
