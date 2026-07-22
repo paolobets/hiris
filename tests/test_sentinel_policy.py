@@ -35,3 +35,16 @@ def test_save_situations_roundtrip(tmp_path):
     reloaded = load_policy(str(tmp_path))
     assert reloaded["situations"]["hot_and_away"]["run_minutes"] == 7
     assert reloaded["situations"]["away_alarm_off"]["enabled"] is False  # default preservato
+
+def test_preparation_defaults():
+    assert "preparation" in DEFAULT_POLICY
+    assert DEFAULT_POLICY["preparation"]["evening_arrival"]["enabled"] is False
+    assert DEFAULT_POLICY["preparation"]["evening_arrival"]["after_hour"] == 18
+
+def test_save_preparation_roundtrip(tmp_path):
+    body = {"preparation": {"evening_arrival": {"enabled": True, "target_entity": "scene.r", "after_hour": 19}}}
+    clean = save_policy(str(tmp_path), body)
+    assert clean["preparation"]["evening_arrival"]["enabled"] is True
+    reloaded = load_policy(str(tmp_path))
+    assert reloaded["preparation"]["evening_arrival"]["target_entity"] == "scene.r"
+    assert reloaded["preparation"]["evening_arrival"]["sun_entity"] == "sun.sun"  # default preservato

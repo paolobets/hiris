@@ -19,6 +19,9 @@ DEFAULT_POLICY: dict = {
                          "valve_entity": "", "run_minutes": 5, "skip_if_rain": True},
         "away_alarm_off": {"enabled": False, "alarm_entity": "", "disarmed_states": ["disarmed"]},
         "holistic": {"enabled": False, "hour": 9, "per_day": 1},
+    },
+    "preparation": {
+        "evening_arrival": {"enabled": False, "target_entity": "", "sun_entity": "sun.sun", "after_hour": 18},
     }
 }
 
@@ -67,6 +70,7 @@ def load_policy(data_dir: str) -> dict:
             pol["detectors"][det].update({k: v for k, v in cfg.items()
                                           if k in _ALLOWED_KEYS[det]})
     pol["situations"] = _deep_merge(DEFAULT_POLICY["situations"], stored.get("situations"))
+    pol["preparation"] = _deep_merge(DEFAULT_POLICY["preparation"], stored.get("preparation"))
     return pol
 
 
@@ -79,6 +83,7 @@ def save_policy(data_dir: str, body: dict) -> dict:
             if k in _ALLOWED_KEYS[det]:
                 clean["detectors"][det][k] = v
     clean["situations"] = _deep_merge(DEFAULT_POLICY["situations"], body.get("situations"))
+    clean["preparation"] = _deep_merge(DEFAULT_POLICY["preparation"], body.get("preparation"))
     os.makedirs(data_dir, exist_ok=True)
     tmp = _file(data_dir) + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
