@@ -1,5 +1,19 @@
 # HIRIS — Changelog
 
+## [0.26.0] — Ponte push→abbonamento: coda di ragionamento (scheletro olistica) (2026-07-22)
+
+- **Nuova fondazione: coda di ragionamento (`ReasoningQueue`)** + API
+  `/api/reasoning/claim` e `/api/reasoning/submit` (nonce monouso). Con
+  `bridge_enabled`, la scansione olistica non ragiona più inline: accoda un job
+  che un runner esterno (abbonamento Claude) drena e a cui restituisce la
+  Decisione — eseguita da HIRIS con il semaforo (il runner non bypassa la
+  sicurezza).
+- **Fallback**: i job non serviti entro la scadenza vengono ragionati dal
+  provider metered/locale (con cap), così il cervello resta vivo se il runner è
+  giù. Opzioni addon `bridge_enabled`/`bridge_deadline_min`/`bridge_fallback`.
+- Solo la scansione olistica passa dal ponte in questa versione; i tool gateway
+  e il container runner arrivano nei rilasci successivi.
+
 ## [0.25.0] — Cervello proattivo: preparazione contestuale (fetta 3) (2026-07-22)
 
 - **Nuova capacità: preparazione al rientro serale.** Quando la presenza passa
