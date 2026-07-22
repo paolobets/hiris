@@ -800,7 +800,52 @@ async def _on_startup(app: web.Application) -> None:
     async def _on_situation(wake, suggested):
         await _run_decision(wake, suggested, SENTINEL_SYSTEM)
 
+    # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
+    # runner remoto. execute_decision applica una Decisione GIA' PRESA dal
+    # runner attraverso lo STESSO executor.execute()/semaforo/adapters usati
+    # sopra — nessun path di actuation nuovo, solo un altro chiamante.
+    from .reasoning.queue import ReasoningQueue
+    from .watcher.signals import Decision
+    try:
+        from .proxy._sanitize import sanitize_ha_value as _san
+    except Exception:
+        _san = lambda v: v  # noqa: E731
+
+    reasoning_queue = ReasoningQueue(os.path.join(data_dir, "reasoning.db"))
+    app["reasoning_queue"] = reasoning_queue
+
+    async def _execute_decision(decision_dict, wake_dict):
+        d = Decision(verdict=decision_dict.get("verdict", "anomalia"),
+                     severity=decision_dict.get("severity", "info"),
+                     message=decision_dict.get("message", ""),
+                     action=decision_dict.get("action"))
+        wake = WakeEvent(signal_kind=wake_dict.get("signal_kind", "holistic"),
+                          entity_id=wake_dict.get("entity_id", "home"),
+                          severity_hint=wake_dict.get("severity_hint", "info"),
+                          evidence=wake_dict.get("evidence") or {},
+                          ts=wake_dict.get("ts") or _time.time())
+        _ep = app.get("execute_policy") or {}
+        outcome = await execute(
+            d, wake,
+            tiers=_ep.get("tiers") or {}, entity_tiers=_ep.get("entity_tiers") or {},
+            notify=_notify, act=_act, propose=_propose,
+            allow_green_auto=os.environ.get("SENTINEL_ALLOW_GREEN_AUTO", "0")
+            in ("1", "true", "yes", "on"))
+        sentinel_store.record_event({
+            "ts": _time.time(), "kind": wake.signal_kind, "entity_id": wake.entity_id,
+            "verdict": d.verdict, "severity": d.severity,
+            "outcome": outcome, "message": d.message})
+        return outcome
+    app["execute_decision"] = _execute_decision
+
     async def _holistic_reason(snapshot):
+        if os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on"):
+            wake = {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
+                    "evidence": {}, "ts": _time.time()}
+            ctx = {"snapshot": {k: (_san(v) if isinstance(v, str) else v) for k, v in (snapshot or {}).items()}}
+            deadline = _time.time() + int(os.environ.get("BRIDGE_DEADLINE_MIN", "5")) * 60
+            reasoning_queue.enqueue("holistic", wake, ctx, deadline, now=_time.time())
+            return
         wake = WakeEvent("holistic", "home", "info", {"snapshot": snapshot}, _time.time())
         await _run_decision(wake, None, SITUATION_HOLISTIC_SYSTEM)
 
@@ -815,6 +860,31 @@ async def _on_startup(app: web.Application) -> None:
         situation_evaluator.run_evaluation, trigger="interval",
         minutes=int(os.environ.get("SENTINEL_RONDA_MINUTES", "15")),
         id="hiris_sentinel_ronda", replace_existing=True, misfire_grace_time=300)
+
+    # ── Ponte push (Piano A): spazzata di fallback per i job scaduti senza risposta dal
+    # runner remoto. Se BRIDGE_FALLBACK è attivo, ragiona in locale riusando
+    # lo stesso _run_decision (e quindi lo stesso cap del router LLM) delle
+    # situazioni sopra — nessun path metrico/actuation nuovo.
+    async def _reasoning_sweep() -> None:
+        if os.environ.get("BRIDGE_ENABLED", "0") not in ("1", "true", "yes", "on"):
+            return
+        fallback = os.environ.get("BRIDGE_FALLBACK", "1") in ("1", "true", "yes", "on")
+        for job in reasoning_queue.sweep_expired(_time.time()):
+            if not fallback:
+                continue
+            jw = job.get("wake") or {}
+            wake = WakeEvent(jw.get("signal_kind", "holistic"), jw.get("entity_id", "home"),
+                              jw.get("severity_hint", "info"),
+                              {"snapshot": (job.get("context") or {}).get("snapshot", {})}, _time.time())
+            try:
+                await _run_decision(wake, None, SITUATION_HOLISTIC_SYSTEM)  # metered/locale, già capato dal router
+            except Exception:
+                logger.exception("reasoning fallback failed for %s", job.get("job_id"))
+        reasoning_queue.prune(_time.time() - 7 * 86400)
+
+    engine._scheduler.add_job(
+        _reasoning_sweep, trigger="interval", minutes=2,
+        id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
 
     # ── Arrivo serale (fetta 3): riusa lo stesso adapter _on_situation ──────
     # (reason→inietta suggested_action→execute→record), stessa gate del
@@ -950,6 +1020,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["history_store"].close()
     if "sentinel_store" in app:
         app["sentinel_store"].close()
+    if "reasoning_queue" in app:
+        app["reasoning_queue"].close()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()
@@ -1057,6 +1129,10 @@ def create_app() -> web.Application:
     app.router.add_get("/api/gateway/pending", _gw_list_pending)
     app.router.add_post("/api/gateway/pending/{nonce}/approve", _gw_approve_pending)
     app.router.add_post("/api/gateway/pending/{nonce}/reject", _gw_reject_pending)
+
+    from .api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
+    app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
+    app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
     return app
 
