@@ -1,5 +1,18 @@
 # HIRIS — Changelog
 
+## [0.25.0] — Cervello proattivo: preparazione contestuale (fetta 3) (2026-07-22)
+
+- **Nuova capacità: preparazione al rientro serale.** Quando la presenza passa
+  fuori→casa ed è sera (sole sotto l'orizzonte o dopo un'ora configurata), HIRIS
+  attiva una scena configurata (luci esterne/ingresso + clima) — con autonomia
+  graduata sul semaforo (verde+opt-in per farlo da solo, altrimenti propone).
+- Trigger a evento in tempo reale (transizione di presenza), distinto dal
+  guardiano anomalie e dalla ronda situazioni; cooldown anti-flapping.
+- Sicurezza: unico attuatore gated da semaforo + denylist; target deterministico
+  dalla config (una scena HA); default prudente (agisci-auto spento).
+- Config: sezione "Preparazione" nella pagina Sentinella. La prossimità
+  (anticipazione prima dell'arrivo) è un'estensione futura opzionale.
+
 ## [0.24.0] — Cervello proattivo: valutatore di situazioni (fetta 2) (2026-07-21)
 
 - **Nuova capacità: valutazione olistica e periodica delle situazioni di casa.** Una
