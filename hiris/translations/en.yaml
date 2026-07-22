@@ -98,6 +98,15 @@ configuration:
   sentinel_ronda_min:
     name: "Sentinella — Situation scan interval (minutes)"
     description: "How often Sentinella scans home situations (hot+absence, all-away+alarm-off, holistic scan). Default: 15."
+  bridge_enabled:
+    name: "Bridge push — Enable subscription bridge"
+    description: "Enable bridge push to sync subscription status with Home Assistant. When disabled, subscription checks do not occur. Default: off."
+  bridge_deadline_min:
+    name: "Bridge push — Check deadline (minutes)"
+    description: "Maximum time (in minutes) to complete a bridge check. If the bridge doesn't respond within this interval, fallback is triggered. Range: 1–120. Default: 5."
+  bridge_fallback:
+    name: "Bridge push — Metered fallback"
+    description: "When enabled, the bridge uses a metered strategy when unreachable (assumes pay-per-use traffic). When disabled, it fails explicitly. Default: enabled."
   mayan:
     name: "Mayan EDMS (documents)"
     description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."

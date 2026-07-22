@@ -98,6 +98,15 @@ configuration:
   sentinel_ronda_min:
     name: "Sentinella — Intervallo ronda situazioni (minuti)"
     description: "Ogni quanti minuti la Sentinella scansiona le situazioni della casa (caldo+assenza, tutti-fuori+allarme-off, olistica). Predefinito: 15."
+  bridge_enabled:
+    name: "Ponte push — Abilita ponte abbonamento"
+    description: "Attiva il bridge push per sincronizzare lo stato dell'abbonamento con Home Assistant. Quando disabilitato, le verifiche di abbonamento non avvengono. Predefinito: spento."
+  bridge_deadline_min:
+    name: "Ponte push — Scadenza controllo (minuti)"
+    description: "Tempo massimo (in minuti) per completare il controllo del bridge. Se il bridge non risponde entro questo intervallo, il fallback viene attivato. Range: 1–120. Predefinito: 5."
+  bridge_fallback:
+    name: "Ponte push — Fallback metered"
+    description: "Se abilitato, il bridge usa una strategia metered quando non raggiungibile (assume traffico a consumo). Se disabilitato, fallisce in modo esplicito. Predefinito: attivo."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."
