@@ -98,6 +98,15 @@ configuration:
   sentinel_ronda_min:
     name: "Sentinella — Situation scan interval (minutes)"
     description: "How often Sentinella scans home situations (hot+absence, all-away+alarm-off, holistic scan). Default: 15."
+  bridge_enabled:
+    name: "Subscription bridge — enable"
+    description: "Routes the brain's holistic scan to an external subscription runner (via the reasoning queue) instead of reasoning locally/pay-per-use. Off = inline reasoning as before."
+  bridge_deadline_min:
+    name: "Subscription bridge — deadline (minutes)"
+    description: "Minutes within which a reasoning job must be served by the runner before falling back to the pay-per-use/local provider. Default: 5."
+  bridge_fallback:
+    name: "Subscription bridge — fall back to pay-per-use"
+    description: "When enabled, expired jobs (runner missing/down) are reasoned by the pay-per-use/local provider so the brain keeps working. When disabled, expired jobs are dropped (no reasoning). Default: enabled."
   mayan:
     name: "Mayan EDMS (documents)"
     description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."

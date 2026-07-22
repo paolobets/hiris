@@ -98,6 +98,15 @@ configuration:
   sentinel_ronda_min:
     name: "Sentinella — Intervallo ronda situazioni (minuti)"
     description: "Ogni quanti minuti la Sentinella scansiona le situazioni della casa (caldo+assenza, tutti-fuori+allarme-off, olistica). Predefinito: 15."
+  bridge_enabled:
+    name: "Ponte abbonamento — attiva"
+    description: "Instrada la scansione olistica del cervello a un runner esterno su abbonamento (via coda di ragionamento) invece di ragionare in locale/a consumo. Spento = ragionamento inline come prima."
+  bridge_deadline_min:
+    name: "Ponte abbonamento — scadenza (minuti)"
+    description: "Minuti entro cui un job di ragionamento deve essere servito dal runner prima di ricadere sul provider a consumo/locale. Predefinito: 5."
+  bridge_fallback:
+    name: "Ponte abbonamento — fallback a consumo"
+    description: "Se attivo, i job scaduti (runner assente/giù) vengono ragionati dal provider a consumo/locale così il cervello resta attivo. Se spento, i job scaduti vengono scartati (nessun ragionamento). Predefinito: attivo."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."

@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.25.0"
+version: "0.26.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -87,6 +87,11 @@ options:
   sentinel_allow_green_auto: false
   sentinel_ronda_min: 15
 
+  # ── Ponte push (knobs) ────────────────────────────────────────────────────
+  bridge_enabled: false
+  bridge_deadline_min: 5
+  bridge_fallback: true
+
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:
     url: ""            # es. http://192.168.1.31:8090/api/v4
@@ -148,6 +153,11 @@ schema:
   sentinel_cooldown_min: int(1,1440)
   sentinel_allow_green_auto: bool
   sentinel_ronda_min: int(1,240)
+
+  # ── Ponte push (knobs) ────────────────────────────────────────────────────
+  bridge_enabled: bool
+  bridge_deadline_min: int(1,120)
+  bridge_fallback: bool
 
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:
