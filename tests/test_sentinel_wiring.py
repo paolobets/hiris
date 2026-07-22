@@ -73,3 +73,13 @@ def test_evaluator_and_off_task_wired(tmp_path):
     # No off-task for actions without off_after_min (e.g. plain notify/toggle).
     assert build_off_task({"domain": "switch", "service": "turn_on", "entity_id": "switch.x"}) is None
     assert build_off_task({"domain": "light", "service": "turn_off", "entity_id": "light.x", "off_after_min": 5}) is None
+
+
+def test_arrival_watcher_importable():
+    """Task 3 wiring smoke test: ArrivalWatcher + is_evening import cleanly.
+    The real startup wiring (server.py's _on_startup) is verified separately via
+    `python -c "import hiris.app.server"`, same convention as the evaluator/
+    off_task check above."""
+    from hiris.app.watcher.arrival import ArrivalWatcher, is_evening
+
+    assert ArrivalWatcher is not None and is_evening is not None

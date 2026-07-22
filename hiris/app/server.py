@@ -816,6 +816,24 @@ async def _on_startup(app: web.Application) -> None:
         minutes=int(os.environ.get("SENTINEL_RONDA_MINUTES", "15")),
         id="hiris_sentinel_ronda", replace_existing=True, misfire_grace_time=300)
 
+    # ── Arrivo serale (fetta 3): riusa lo stesso adapter _on_situation ──────
+    # (reason→inietta suggested_action→execute→record), stessa gate del
+    # semaforo (execute_policy) delle situazioni sopra. Nessun path di
+    # actuation nuovo: instrada solo attraverso _on_situation.
+    from .watcher.arrival import ArrivalWatcher
+
+    _arrival_deps = {
+        "get_states": lambda ids: ha_client.get_states(ids),
+        "now_hour": lambda: _dt.now().hour,
+    }
+    arrival_watcher = ArrivalWatcher(
+        sentinel_store, lambda: load_policy(data_dir), deps=_arrival_deps,
+        on_arrival=_on_situation,  # riuso identico: (wake, suggested) → reason→inietta→execute→record
+        cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
+        daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")))
+    app["arrival_watcher"] = arrival_watcher
+    ha_client.add_state_listener(lambda evt: asyncio.create_task(arrival_watcher.on_state_changed(evt)))
+
     claude_runner = None
     if api_key:
         claude_runner = ClaudeRunner(
