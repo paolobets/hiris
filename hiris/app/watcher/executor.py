@@ -20,11 +20,13 @@ async def execute(decision: Decision, wake, *, tiers: dict, entity_tiers: dict,
     if not action or not action.get("entity_id"):
         await notify(decision.message, title=title)
         return "notify"
-    domain = (action.get("domain") or action["entity_id"].split(".", 1)[0])
-    if domain in _DANGEROUS_DOMAINS:
+    eid = action["entity_id"]
+    dom_supplied = action.get("domain")
+    dom_entity = eid.split(".", 1)[0] if "." in eid else ""
+    if dom_supplied in _DANGEROUS_DOMAINS or dom_entity in _DANGEROUS_DOMAINS:
         await notify(decision.message, title=title)
         return "alert"
-    tier = effective_tier(action["entity_id"], tiers or {}, entity_tiers or {})
+    tier = effective_tier(eid, tiers or {}, entity_tiers or {})
     if tier == "green" and allow_green_auto:
         await act(action)
         await notify(f"{decision.message} (fatto)", title=title)

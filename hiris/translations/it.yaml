@@ -99,14 +99,14 @@ configuration:
     name: "Sentinella — Intervallo ronda situazioni (minuti)"
     description: "Ogni quanti minuti la Sentinella scansiona le situazioni della casa (caldo+assenza, tutti-fuori+allarme-off, olistica). Predefinito: 15."
   bridge_enabled:
-    name: "Ponte push — Abilita ponte abbonamento"
-    description: "Attiva il bridge push per sincronizzare lo stato dell'abbonamento con Home Assistant. Quando disabilitato, le verifiche di abbonamento non avvengono. Predefinito: spento."
+    name: "Ponte abbonamento — attiva"
+    description: "Instrada la scansione olistica del cervello a un runner esterno su abbonamento (via coda di ragionamento) invece di ragionare in locale/a consumo. Spento = ragionamento inline come prima."
   bridge_deadline_min:
-    name: "Ponte push — Scadenza controllo (minuti)"
-    description: "Tempo massimo (in minuti) per completare il controllo del bridge. Se il bridge non risponde entro questo intervallo, il fallback viene attivato. Range: 1–120. Predefinito: 5."
+    name: "Ponte abbonamento — scadenza (minuti)"
+    description: "Minuti entro cui un job di ragionamento deve essere servito dal runner prima di ricadere sul provider a consumo/locale. Predefinito: 5."
   bridge_fallback:
-    name: "Ponte push — Fallback metered"
-    description: "Se abilitato, il bridge usa una strategia metered quando non raggiungibile (assume traffico a consumo). Se disabilitato, fallisce in modo esplicito. Predefinito: attivo."
+    name: "Ponte abbonamento — fallback a consumo"
+    description: "Se attivo, i job scaduti (runner assente/giù) vengono ragionati dal provider a consumo/locale così il cervello resta attivo. Se spento, i job scaduti vengono scartati (nessun ragionamento). Predefinito: attivo."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."

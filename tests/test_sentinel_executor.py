@@ -60,3 +60,13 @@ async def test_no_action_just_notifies():
     out = await execute(d, _wake(), tiers={}, entity_tiers={},
                         notify=r.notify, act=r.act, propose=r.propose, allow_green_auto=True)
     assert out == "notify" and r.notified
+
+@pytest.mark.asyncio
+async def test_dangerous_entity_with_spoofed_domain_never_acts():
+    r = _Rec()
+    # spoofed non-dangerous domain but the ENTITY is a lock; tier light=green + opt-in on
+    d = Decision("anomalia","critico","apri",
+                 {"domain":"light","service":"turn_on","entity_id":"lock.porta","data":{}})
+    out = await execute(d, _wake(), tiers={"light":"green"}, entity_tiers={},
+                        notify=r.notify, act=r.act, propose=r.propose, allow_green_auto=True)
+    assert out == "alert" and not r.acted and not r.proposed
