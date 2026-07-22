@@ -94,6 +94,7 @@ window.HirisSentinelRoute = (function () {
         payload.detectors[m.id] = d;
       });
       payload.situations = buildSituationsPayload();
+      payload.preparation = buildPreparationPayload();
       save.disabled = true; status.textContent = 'Salvataggio…'; sitStatus.textContent = 'Salvataggio…';
       api('api/sentinel/policy', { method: 'POST', body: JSON.stringify(payload) })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
@@ -198,6 +199,40 @@ window.HirisSentinelRoute = (function () {
 
     sitCard.appendChild(sitBody);
     outlet.appendChild(sitCard);
+
+    // --- Preparazione ---
+    var prep = data.preparation || {};
+    var prepEvening = prep.evening_arrival || {};
+
+    var prepCard = el('section', 'section-card');
+    var prepBody = el('div', 'sc-body');
+    prepBody.appendChild(el('div', 'page-title', 'Preparazione'));
+    prepBody.appendChild(el('p', 'sc-desc',
+      'Prepara la casa in anticipo su un evento previsto (es. rientro serale).'));
+
+    var prepRow = el('div');
+    prepRow.style.cssText = 'padding:12px 0';
+    var prepEnabled = checkboxField(prepRow, 'Rientro serale (evening_arrival)', prepEvening.enabled);
+    var prepTargetEntity = textField(prepRow, 'Scena da attivare', prepEvening.target_entity);
+    prepTargetEntity.placeholder = 'scene.rientro_serale';
+    var prepSunEntity = textField(prepRow, 'Entità sole', prepEvening.sun_entity != null ? prepEvening.sun_entity : 'sun.sun');
+    var prepAfterHour = numberField(prepRow, 'Non prima delle ore', prepEvening.after_hour);
+    prepBody.appendChild(prepRow);
+
+    prepCard.appendChild(prepBody);
+    outlet.appendChild(prepCard);
+
+    function buildPreparationPayload() {
+      function n(v, fallback) { var x = parseInt(v, 10); return isNaN(x) ? fallback : x; }
+      return {
+        evening_arrival: {
+          enabled: prepEnabled.checked,
+          target_entity: prepTargetEntity.value,
+          sun_entity: prepSunEntity.value,
+          after_hour: n(prepAfterHour.value, prepEvening.after_hour)
+        }
+      };
+    }
 
     function buildSituationsPayload() {
       function n(v, fallback) { var x = parseInt(v, 10); return isNaN(x) ? fallback : x; }

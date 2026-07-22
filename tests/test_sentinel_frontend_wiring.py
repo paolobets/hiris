@@ -19,3 +19,7 @@ def test_sentinel_route_has_situations_section():
     js = (BASE / "config" / "sentinel-route.js").read_text(encoding="utf-8")
     assert "situations" in js
     assert "hot_and_away" in js and "away_alarm_off" in js
+
+def test_sentinel_route_has_preparation_section():
+    js = (BASE / "config" / "sentinel-route.js").read_text(encoding="utf-8")
+    assert "preparation" in js and "evening_arrival" in js
