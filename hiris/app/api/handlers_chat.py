@@ -185,6 +185,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     agent_thinking_budget = getattr(agent, "thinking_budget", 0) if agent else 0
     ka = getattr(agent, "knowledge_access", {}) if agent else {}
     allow_sensitive = bool(ka.get("allow_sensitive", False)) if isinstance(ka, dict) else False
+    _kinds_raw = ka.get("kinds", "all") if isinstance(ka, dict) else "all"
+    knowledge_kinds = None if _kinds_raw == "all" else _kinds_raw
 
     wants_stream = (
         "text/event-stream" in request.headers.get("Accept", "")
@@ -220,6 +222,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             knowledge_allow_sensitive=allow_sensitive,
+            knowledge_kinds=knowledge_kinds,
             user_id=owner,
         ):
             await stream_resp.write(chunk.encode())
@@ -276,6 +279,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         response_mode=agent_response_mode,
         thinking_budget=agent_thinking_budget,
         knowledge_allow_sensitive=allow_sensitive,
+        knowledge_kinds=knowledge_kinds,
         user_id=owner,
     )
 

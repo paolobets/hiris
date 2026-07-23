@@ -130,6 +130,7 @@ class ToolDispatcher:
         agent_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
         knowledge_allow_sensitive: bool = False,
+        knowledge_kinds: list[str] | str | None = None,
         cloud: bool = True,
         tier_confirmed: bool = False,
         user_id: str | None = None,
@@ -427,6 +428,7 @@ class ToolDispatcher:
                     owner=user_id or "home",
                     lens=agent_id or "hiris-default",
                     allow_sensitive=knowledge_allow_sensitive,
+                    kinds=knowledge_kinds,
                     pseudonymizer=self._pseudonymizer,
                     cloud=cloud,
                 )

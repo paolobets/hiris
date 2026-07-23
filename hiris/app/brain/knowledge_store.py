@@ -198,7 +198,12 @@ class KnowledgeStore:
             bind["lens"] = lens
         if not allow_sensitive:
             clauses.append("sensitivity='normal'")
-        if kinds and kinds != "all":
+        if isinstance(kinds, str):
+            # A plain string like "fact" must be treated as a single-kind
+            # filter (["fact"]), not iterated char-by-char (which would
+            # produce `kind IN ('f','a','c','t')` and match nothing).
+            kinds = None if kinds == "all" else [kinds]
+        if kinds:
             placeholders = []
             for i, kind_val in enumerate(kinds):
                 key = f"kind{i}"

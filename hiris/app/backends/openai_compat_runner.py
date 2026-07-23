@@ -420,6 +420,7 @@ class OpenAICompatRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> str:
         # thinking_budget is part of the runner contract since v0.9.5 because
@@ -618,6 +619,7 @@ class OpenAICompatRunner:
                         agent_id=agent_id,
                         visible_entity_ids=visible_entity_ids,
                         knowledge_allow_sensitive=knowledge_allow_sensitive,
+                        knowledge_kinds=knowledge_kinds,
                         cloud=self._is_cloud,
                         user_id=user_id,
                     )
@@ -667,6 +669,7 @@ class OpenAICompatRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ):
         """Vero streaming SSE: i token arrivano mentre il modello genera.
@@ -871,6 +874,7 @@ class OpenAICompatRunner:
                         agent_id=agent_id,
                         visible_entity_ids=visible_entity_ids,
                         knowledge_allow_sensitive=knowledge_allow_sensitive,
+                        knowledge_kinds=knowledge_kinds,
                         cloud=self._is_cloud,
                         user_id=user_id,
                     )
@@ -908,6 +912,7 @@ class OpenAICompatRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> tuple[str, dict]:
         # thinking_budget accepted for runner-contract symmetry with
@@ -967,6 +972,7 @@ class OpenAICompatRunner:
             agent_id=agent_id,
             response_mode=response_mode,
             knowledge_allow_sensitive=knowledge_allow_sensitive,
+            knowledge_kinds=knowledge_kinds,
             user_id=user_id,
         )
         clean_text, structured = _parse_structured_output(raw_result)
