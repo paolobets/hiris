@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS knowledge_items (
     valid_from   TEXT,
     valid_until  TEXT,
     created_at   TEXT NOT NULL,
-    updated_at   TEXT NOT NULL
+    updated_at   TEXT NOT NULL,
+    lens         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ki_owner    ON knowledge_items(owner);
 CREATE INDEX IF NOT EXISTS idx_ki_kind     ON knowledge_items(kind);
@@ -64,11 +65,17 @@ CREATE INDEX IF NOT EXISTS idx_dc_doc  ON document_chunks(mayan_doc_id);
 """
 
 
+def _migrate_v2(conn: sqlite3.Connection) -> None:
+    """v1 -> v2: knowledge_items gains a nullable `lens` column (per-agent scope,
+    used to unify per-agent RAG memory with shared knowledge in Slice 3)."""
+    conn.execute("ALTER TABLE knowledge_items ADD COLUMN lens TEXT")
+
+
 class KnowledgeStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._mu = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migrate_v2})
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).strftime(_TS_FMT)
@@ -81,7 +88,7 @@ class KnowledgeStore:
         sensitivity: str = "normal", source: str = "manual",
         source_ref: str | None = None, confidence: float = 1.0,
         status: str = "approved", valid_from: str | None = None,
-        valid_until: str | None = None,
+        valid_until: str | None = None, lens: str | None = None,
     ) -> int:
         now = self._now()
         blob = vec_to_blob(embedding) if embedding else None
@@ -90,11 +97,11 @@ class KnowledgeStore:
                 "INSERT INTO knowledge_items"
                 "(kind, owner, title, content, data, amount, due_date, category,"
                 " embedding, sensitivity, source, source_ref, confidence, status,"
-                " valid_from, valid_until, created_at, updated_at)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " valid_from, valid_until, created_at, updated_at, lens)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (kind, owner, title, content, json.dumps(data or {}), amount,
                  due_date, category, blob, sensitivity, source, source_ref,
-                 confidence, status, valid_from, valid_until, now, now),
+                 confidence, status, valid_from, valid_until, now, now, lens),
             )
             self._conn.commit()
             return cur.lastrowid or 0
@@ -160,22 +167,63 @@ class KnowledgeStore:
 
     def search(
         self, *, query_vec: list[float], k: int = 5,
-        owner: str | None = None, allow_sensitive: bool = False,
-        kinds: list[str] | None = None,
+        owner: str | None = None, lens: str | None = None,
+        allow_sensitive: bool = False,
+        kinds: list[str] | str | None = None,
     ) -> list[dict]:
         clauses = ["status='approved'", "embedding IS NOT NULL"]
-        params: list = []
+        bind: dict = {}
         if owner is not None:
-            clauses.append("(owner=? OR owner='home')"); params.append(owner)
+            # Unified scope (Slice 3): a row must always be scoped to this
+            # owner (or shared as 'home') -- the owner check applies whether
+            # or not the row carries a lens. On top of that, lens rows are
+            # further restricted to the caller's own lens (or knowledge rows
+            # with no lens at all). This prevents two different HA users
+            # chatting with the SAME agent (same lens) from seeing each
+            # other's save_memory items: owner is no longer ignored just
+            # because lens matched. With lens=None this reduces to the
+            # pre-Slice3 filter `(owner=? OR owner='home')` restricted to
+            # un-lensed (knowledge) rows, preserving backward compatibility.
+            clauses.append(
+                "(owner = :owner OR owner = 'home') AND (lens = :lens OR lens IS NULL)"
+            )
+            bind["lens"] = lens
+            bind["owner"] = owner
+        elif lens is not None:
+            # No owner passed but a lens was: don't fail open and expose all
+            # lens memory across owners -- still scope by lens (or knowledge
+            # rows with no lens). Current production callers always pass
+            # owner alongside lens; this branch only guards future callers.
+            clauses.append("(lens = :lens OR lens IS NULL)")
+            bind["lens"] = lens
         if not allow_sensitive:
             clauses.append("sensitivity='normal'")
-        if kinds:
-            clauses.append("kind IN (%s)" % ",".join("?" * len(kinds)))
-            params.extend(kinds)
+        if isinstance(kinds, str):
+            # A plain string like "fact" must be treated as a single-kind
+            # filter (["fact"]), not iterated char-by-char (which would
+            # produce `kind IN ('f','a','c','t')` and match nothing).
+            kinds = None if kinds == "all" else [kinds]
+        if kinds is not None:
+            if not kinds:
+                # An explicitly empty list is the deny-all sentinel (e.g. an
+                # agent configured with knowledge_access.kinds=[] meaning "no
+                # knowledge access"). `kind IN ()` is invalid SQL, so short-
+                # circuit with an always-false predicate instead of falling
+                # through to "no filter" (which `if kinds:` used to do).
+                clauses.append("1=0")
+            else:
+                placeholders = []
+                for i, kind_val in enumerate(kinds):
+                    key = f"kind{i}"
+                    placeholders.append(f":{key}")
+                    bind[key] = kind_val
+                clauses.append("kind IN (%s)" % ",".join(placeholders))
+        clauses.append("(valid_until IS NULL OR valid_until >= :valid_now)")
+        bind["valid_now"] = self._now()
         sql = "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
         scored = []
         with self._mu:
-            rows = self._conn.execute(sql, params).fetchall()
+            rows = self._conn.execute(sql, bind).fetchall()
             for r in rows:
                 sim = cosine_similarity(query_vec, blob_to_vec(r["embedding"]))
                 scored.append((sim, r))
@@ -303,6 +351,32 @@ class KnowledgeStore:
                         "mayan_doc_id": r["mayan_doc_id"], "item_id": r["item_id"],
                         "sensitivity": r["sensitivity"], "score": sim})
         return out
+
+    def delete_by_lens(self, lens: str) -> int:
+        """Delete every row scoped to this lens (an agent's own working
+        memory), regardless of expiry. Used when an agent is deleted, to
+        clean up its orphaned memory -- the KnowledgeStore equivalent of the
+        legacy MemoryStore.delete_by_agent (Slice 3 Task 4)."""
+        with self._mu:
+            cur = self._conn.execute(
+                "DELETE FROM knowledge_items WHERE lens = ?", (lens,),
+            )
+            self._conn.commit()
+            return cur.rowcount
+
+    def purge_expired_lens(self) -> int:
+        """Delete lens-scoped rows (per-agent working memory) whose retention
+        has elapsed. Rows with lens IS NULL (shared knowledge) or with no
+        valid_until (no retention set) are never touched here."""
+        now = self._now()
+        with self._mu:
+            cur = self._conn.execute(
+                "DELETE FROM knowledge_items"
+                " WHERE lens IS NOT NULL AND valid_until IS NOT NULL AND valid_until < ?",
+                (now,),
+            )
+            self._conn.commit()
+            return cur.rowcount
 
     def close(self) -> None:
         with self._mu:

@@ -41,9 +41,9 @@ from .proxy.ha_client import HAClient
 from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
 from .proxy.semantic_context_map import SemanticContextMap
-from .proxy.memory_store import MemoryStore
 from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
+from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
@@ -454,7 +454,7 @@ async def _on_startup(app: web.Application) -> None:
     app["proposal_store"] = proposal_store
 
     knowledge_db = KnowledgeDB(
-        db_path=os.path.join(data_dir, "hiris_knowledge.db")
+        db_path=os.path.join(data_dir, "home_map.db")
     )
     app["knowledge_db"] = knowledge_db
 
@@ -529,13 +529,24 @@ async def _on_startup(app: web.Application) -> None:
         openai_api_key=openai_api_key,
         local_model_url=local_model_url,
     )
-    memory_store = MemoryStore(db_path=os.path.join(data_dir, "hiris_memory.db"))
-    app["memory_store"] = memory_store
     app["embedding_provider"] = embedder
     app["memory_rag_k"] = memory_rag_k
 
     knowledge_store = KnowledgeStore(os.path.join(data_dir, "knowledge.db"))
     app["knowledge_store"] = knowledge_store
+
+    # A migration failure must never brick add-on boot (Slice 3 Task 4, M1):
+    # log loudly and continue with an empty/partial KnowledgeStore rather
+    # than crashing startup over legacy hiris_memory.db data.
+    try:
+        _migrated_memories = migrate_agent_memories(data_dir, knowledge_store)
+        if _migrated_memories:
+            logger.info(
+                "Startup: migrated %d legacy agent memories into KnowledgeStore",
+                _migrated_memories,
+            )
+    except Exception as exc:
+        logger.error("Startup: migrate_agent_memories failed, continuing boot: %s", exc, exc_info=True)
 
     from .history.store import HistoryStore
     from .history.capture import HistoryCapture
@@ -561,9 +572,9 @@ async def _on_startup(app: web.Application) -> None:
             n = _delete_old_messages(data_dir, HISTORY_RETENTION_DAYS)
             if n:
                 logger.info("Retention: deleted %d old chat messages", n)
-        n2 = memory_store.delete_expired()
+        n2 = knowledge_store.purge_expired_lens()
         if n2:
-            logger.info("Retention: deleted %d expired memories", n2)
+            logger.info("Retention: purged %d expired lens memories", n2)
 
     engine._scheduler.add_job(
         _run_retention,
@@ -723,7 +734,6 @@ async def _on_startup(app: web.Application) -> None:
         notify_config=notify_config,
         entity_cache=entity_cache,
         semantic_map=semantic_map,
-        memory_store=memory_store,
         embedding_provider=embedder,
         memory_retention_days=memory_retention_days,
         health_monitor=health_monitor,
@@ -1181,8 +1191,6 @@ async def _on_cleanup(app: web.Application) -> None:
         app["knowledge_store"].close()
     if "vault" in app:
         app["vault"].close()
-    if "memory_store" in app:
-        app["memory_store"].close()
     if "proposal_store" in app:
         app["proposal_store"].close()
     if "history_store" in app:

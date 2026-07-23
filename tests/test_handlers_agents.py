@@ -244,7 +244,7 @@ async def test_created_agent_has_all_dashboard_fields(dashboard_client):
 
 @pytest.mark.asyncio
 async def test_delete_agent_cleans_memory_and_chat_history():
-    """handle_delete_agent must call memory_store.delete_by_agent + clear_history."""
+    """handle_delete_agent must call knowledge_store.delete_by_lens + clear_history."""
     from hiris.app.api.handlers_agents import handle_delete_agent
 
     engine = MagicMock()
@@ -253,12 +253,12 @@ async def test_delete_agent_cleans_memory_and_chat_history():
     engine.get_agent.return_value = fake_agent
     engine.delete_agent.return_value = True
 
-    memory_store = MagicMock()
-    memory_store.delete_by_agent = MagicMock()
+    knowledge_store = MagicMock()
+    knowledge_store.delete_by_lens = MagicMock()
 
     app = MagicMock()
     app.get = MagicMock(side_effect=lambda k, default=None: {
-        "memory_store": memory_store,
+        "knowledge_store": knowledge_store,
         "data_dir": "/tmp/hiris_test_data",
     }.get(k, default))
     app.__getitem__ = MagicMock(side_effect=lambda k: {
@@ -281,7 +281,7 @@ async def test_delete_agent_cleans_memory_and_chat_history():
         resp = await handle_delete_agent(request)
 
     assert resp.status == 204
-    memory_store.delete_by_agent.assert_called_once_with(aid)
+    knowledge_store.delete_by_lens.assert_called_once_with(aid)
     assert called["clear"] == (aid, "/tmp/hiris_test_data")
 
 

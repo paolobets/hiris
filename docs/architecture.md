@@ -80,10 +80,13 @@ hiris/app/
 │   ├── entity_cache.py          In-memory entity state cache (WebSocket fed)
 │   ├── semantic_map.py          Entity classification (rule + LLM)
 │   ├── semantic_context_map.py  Area-aware context injection
-│   ├── memory_store.py          SQLite vector store (cosine similarity)
-│   ├── knowledge_db.py          Structured home knowledge (areas, devices)
+│   ├── knowledge_db.py          Entity classification (areas, devices) — `home_map.db`
 │   ├── health_monitor.py        HA health snapshot: WebSocket + 30min polling + JSON persist
 │   └── proposal_store.py        Automation proposals SQLite store (lifecycle management)
+│
+├── brain/
+│   └── knowledge_store.py       Unified second brain (`knowledge.db`): personal/shared
+│                                 knowledge + per-agent "lens" working memory, vector search
 │
 ├── mqtt_publisher.py            MQTT Discovery + state publish + command subscribe
 └── static/
@@ -214,19 +217,39 @@ CREATE TABLE chat_messages (
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
 );
 
--- Agent long-term memories (vector search)
-CREATE TABLE agent_memories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_id TEXT,
-    content TEXT,
-    embedding BLOB,     -- float32 array, serialized
-    tags TEXT,          -- JSON array
-    created_at TEXT,
-    expires_at TEXT
+```
+
+### SQLite — `/data/knowledge.db`
+
+Unified second brain: personal/shared knowledge (facts, expenses, obligations, notes, ...)
+**and** per-agent "lens" working memory (what used to be the separate `hiris_memory.db`)
+in a single table, distinguished by `kind` and scoped by `owner` + `lens`.
+
+```sql
+CREATE TABLE knowledge_items (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind         TEXT NOT NULL,       -- 'memory' = agent working memory; other kinds = knowledge
+    owner        TEXT NOT NULL DEFAULT 'home',  -- HA user id, or 'home' for shared knowledge
+    title        TEXT NOT NULL DEFAULT '',
+    content      TEXT NOT NULL,
+    data         TEXT NOT NULL DEFAULT '{}',    -- JSON blob (e.g. tags for memory rows)
+    embedding    BLOB,                          -- float32 array, serialized
+    sensitivity  TEXT NOT NULL DEFAULT 'normal',
+    source       TEXT NOT NULL DEFAULT 'manual',
+    status       TEXT NOT NULL DEFAULT 'approved',
+    valid_until  TEXT,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    lens         TEXT                          -- agent_id: scopes 'memory' rows to that agent
 );
 ```
 
-Similarity search uses pure Python cosine similarity — no native extensions required, Alpine/ARM compatible.
+`save_memory`/`recall_memory` read/write `kind='memory'` rows scoped by `owner`
+(who it belongs to) + `lens` (which agent wrote it) — private to each user's
+session with that agent. Similarity search uses pure Python cosine similarity
+— no native extensions required, Alpine/ARM compatible. Pre-existing per-agent
+memory is migrated once, automatically, into this table on first startup of
+this version.
 
 ### JSON files — `/data/`
 
@@ -423,7 +446,8 @@ server.py: _on_startup(app)
     ├── 2. Connect HA WebSocket client
     ├── 3. Initialize EntityCache (subscribe to state_changed)
     ├── 4. Initialize SemanticMap + SemanticContextMap (load from disk)
-    ├── 5. Initialize MemoryStore (open SQLite, run migrations)
+    ├── 5. Initialize KnowledgeStore (open `knowledge.db`, run migrations, one-time
+    │      migration of legacy per-agent memory into the agent "lens" scope)
     ├── 6. Initialize EmbeddingProvider (OpenAI / Ollama / Null)
     ├── 7. Initialize ToolDispatcher
     ├── 8. Initialize ClaudeRunner (if CLAUDE_API_KEY set)

@@ -514,6 +514,7 @@ class ClaudeRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> str:
         if agent_id:
@@ -653,6 +654,7 @@ class ClaudeRunner:
                             agent_id=agent_id,
                             visible_entity_ids=visible_entity_ids,
                             knowledge_allow_sensitive=knowledge_allow_sensitive,
+                            knowledge_kinds=knowledge_kinds,
                             cloud=self._is_cloud,
                             user_id=user_id,
                         )
@@ -694,6 +696,7 @@ class ClaudeRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ):
         """Async generator yielding SSE-formatted lines for the chat response.
@@ -729,6 +732,7 @@ class ClaudeRunner:
                 response_mode=response_mode,
                 thinking_budget=thinking_budget,
                 knowledge_allow_sensitive=knowledge_allow_sensitive,
+                knowledge_kinds=knowledge_kinds,
                 user_id=user_id,
             )
         except Exception as exc:
@@ -763,6 +767,7 @@ class ClaudeRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> tuple[str, dict]:
         """Run an autonomous agent evaluation — restrict tools, inject structured-output instructions.
@@ -849,6 +854,7 @@ class ClaudeRunner:
             response_mode=response_mode,
             thinking_budget=thinking_budget,
             knowledge_allow_sensitive=knowledge_allow_sensitive,
+            knowledge_kinds=knowledge_kinds,
             user_id=user_id,
         )
         clean_text, structured = _parse_structured_output(raw_result)

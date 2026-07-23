@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## [0.30.0] — Memoria unificata (Slice 3 verso 1.0) (2026-07-23)
+
+- **Un unico substrato di memoria:** la memoria di lavoro per-agente confluisce nel
+  second brain (KnowledgeStore) con scoping unificato — personale (owner), condivisa
+  (home) e di lavoro dell'agente (lens). `save_memory`/`recall_memory` restano come
+  alias. Migrazione automatica una-tantum della memoria esistente (nessuna perdita).
+- La conoscenza personale è ora correttamente **per-utente** (non più tutta "home").
+- Il filtro `kinds` di `knowledge_access` è finalmente attivo.
+- Rinominato il DB delle classificazioni entità in `home_map.db` (toglie l'ambiguità
+  con il knowledge store).
+
 ## [0.29.0] — Step-up di conferma dalla chat (Slice 2 verso 1.0) (2026-07-23)
 
 - **Conferma out-of-band per le azioni a rischio richieste in chat:** un'azione

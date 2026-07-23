@@ -71,9 +71,10 @@ con ognuno, così puoi scegliere consapevolmente.
   in `/data/options.json` interno all'add-on)
 - Token di Home Assistant (`SUPERVISOR_TOKEN`)
 - I dati `/config/.storage/` di HA
-- I database SQLite di HIRIS (`hiris_memory.db`, `chat_history.db`,
-  `hiris_knowledge.db`, `proposals.db`) — **mai inviati come tali**;
-  ne esce solo il contenuto richiesto come contesto a una richiesta specifica.
+- I database SQLite di HIRIS (`knowledge.db` — second brain unificato,
+  comprensivo della memoria di lavoro per-agente "lens" —, `chat_history.db`,
+  `home_map.db`, `proposals.db`) — **mai inviati come tali**; ne esce solo il
+  contenuto richiesto come contesto a una richiesta specifica.
 
 ### OpenRouter — proxy unificato 200+ modelli, 1 chiave
 
