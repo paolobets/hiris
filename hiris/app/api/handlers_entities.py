@@ -6,7 +6,7 @@ def _csv(v: str | None):
     return {x.strip() for x in v.split(",") if x.strip()} if v else None
 
 
-def filter_entities(states, domains, device_classes) -> list[dict]:
+def filter_entities(states: list[dict], domains: set | None, device_classes: set | None) -> list[dict]:
     out = []
     for s in states or []:
         eid = s.get("id") or s.get("entity_id")

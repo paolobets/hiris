@@ -26,6 +26,21 @@ def test_no_filter_returns_all():
     assert len(filter_entities(_states(), None, None)) == 3
 
 
+def test_filter_by_domain_and_device_class_combined():
+    states = [
+        {"id": "sensor.freezer", "name": "Freezer", "device_class": "temperature", "state": "-18"},
+        {"id": "sensor.batt_porta", "name": "Batt Porta", "device_class": "battery", "state": "80"},
+        {"id": "sensor.humidity", "name": "Humidity", "device_class": "humidity", "state": "55"},
+        {"id": "switch.irr", "name": "Irrigazione", "device_class": None, "state": "off"},
+    ]
+    # Filter for sensors with temperature device_class (AND filter)
+    out = filter_entities(states, {"sensor"}, {"temperature"})
+    assert [e["entity_id"] for e in out] == ["sensor.freezer"]
+    assert len(out) == 1
+    assert out[0]["domain"] == "sensor"
+    assert out[0]["device_class"] == "temperature"
+
+
 class _Cache:
     def __init__(self, s):
         self._s = s
