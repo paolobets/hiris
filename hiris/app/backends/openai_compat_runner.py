@@ -17,6 +17,7 @@ from ..claude_runner import (
     RESTRICT_PROMPT,
     REQUIRE_CONFIRMATION_PROMPT,
     _parse_structured_output,
+    _redact_stream_tool_calls,
 )
 from .pricing import PRICING as _PRICING
 
@@ -419,6 +420,7 @@ class OpenAICompatRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        user_id: str | None = None,
     ) -> str:
         # thinking_budget is part of the runner contract since v0.9.5 because
         # ClaudeRunner uses it for Anthropic Extended Thinking. OpenAI/Ollama/
@@ -617,6 +619,7 @@ class OpenAICompatRunner:
                         visible_entity_ids=visible_entity_ids,
                         knowledge_allow_sensitive=knowledge_allow_sensitive,
                         cloud=self._is_cloud,
+                        user_id=user_id,
                     )
                     self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
                     messages.append({
@@ -664,6 +667,7 @@ class OpenAICompatRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        user_id: str | None = None,
     ):
         """Vero streaming SSE: i token arrivano mentre il modello genera.
         Le iterazioni tool-call vengono risolte prima di cedere il controllo
@@ -868,6 +872,7 @@ class OpenAICompatRunner:
                         visible_entity_ids=visible_entity_ids,
                         knowledge_allow_sensitive=knowledge_allow_sensitive,
                         cloud=self._is_cloud,
+                        user_id=user_id,
                     )
                     self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
                     messages.append({
@@ -881,7 +886,7 @@ class OpenAICompatRunner:
             yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
             return
 
-        yield f'data: {json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": self.last_tool_calls})}\n\n'
+        yield f'data: {json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": _redact_stream_tool_calls(self.last_tool_calls)})}\n\n'
 
     async def run_with_actions(
         self,
@@ -903,6 +908,7 @@ class OpenAICompatRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        user_id: str | None = None,
     ) -> tuple[str, dict]:
         # thinking_budget accepted for runner-contract symmetry with
         # ClaudeRunner; not applicable on OpenAI-compat APIs (Ollama uses
@@ -961,6 +967,7 @@ class OpenAICompatRunner:
             agent_id=agent_id,
             response_mode=response_mode,
             knowledge_allow_sensitive=knowledge_allow_sensitive,
+            user_id=user_id,
         )
         clean_text, structured = _parse_structured_output(raw_result)
         return clean_text, structured

@@ -50,6 +50,22 @@ def _target_entities(inputs: dict) -> list[str]:
     return []
 
 
+def _has_group_target(inputs: dict) -> bool:
+    """True if data/target carries area_id/device_id/label_id.
+
+    A group target is never resolvable to a per-entity tier: HA actuates the
+    whole area/device/label server-side, bypassing per-entity overrides even
+    when an explicit (green) entity_id rides along in the same call. Fail-closed
+    regardless of accompanying entity_ids (see Slice 1 Task 8 fix).
+    """
+    data = inputs.get("data") if isinstance(inputs.get("data"), dict) else {}
+    target = inputs.get("target") if isinstance(inputs.get("target"), dict) else {}
+    return any(
+        isinstance(d, dict) and (d.get("area_id") or d.get("device_id") or d.get("label_id"))
+        for d in (data, target)
+    )
+
+
 def _csv(value: str | None) -> list[str]:
     if not value:
         return []
@@ -131,6 +147,11 @@ async def handle_execute(request: web.Request) -> web.Response:
         domain = inputs.get("domain")
         tiers = policy.get("tiers") or {}
         entity_tiers = policy.get("entity_tiers") or {}
+        if _has_group_target(inputs):
+            logger.warning("execute-API gated: area/device/label target present (%s.%s)",
+                          domain, inputs.get("service"))
+            return web.json_response({"result": {"ok": False, "error":
+                "Azione su area/dispositivo/label non consentita: specifica le entità target."}})
         targets = _target_entities(inputs)
         if targets:
             levels = [effective_tier(e, tiers, entity_tiers) for e in targets]
@@ -171,6 +192,11 @@ async def handle_execute(request: web.Request) -> web.Response:
         for action in (inputs.get("actions") or []):
             if not isinstance(action, dict) or action.get("type") != "call_ha_service":
                 continue
+            if _has_group_target(action):
+                return web.json_response({"result": {"ok": False, "error":
+                    "Task rifiutato: azione call_ha_service con target area/dispositivo/label. "
+                    "Specifica le entità esplicite (i task possono contenere solo azioni verdi "
+                    "per-entità)."}})
             targets = _target_entities(action)
             if not targets:
                 return web.json_response({"result": {"ok": False, "error":

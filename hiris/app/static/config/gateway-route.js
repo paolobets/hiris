@@ -1,6 +1,6 @@
 /* HIRIS · Config · Accessi Gateway (route #/gateway)
    Semaforo per categoria (Off / 🟢 / 🟡 / 🔴), servizio notifica configurabile,
-   e coda "Approvazioni in attesa" (Giallo/Rosso) con Approva/Rifiuta.
+   e coda "Da approvare (inbox)" (Giallo/Rosso, gateway o chat) con Approva/Rifiuta.
    Sicurezza: testi dinamici via textContent / nodi DOM, mai innerHTML. */
 window.HirisGatewayRoute = (function () {
   'use strict';
@@ -59,15 +59,21 @@ window.HirisGatewayRoute = (function () {
     if (!list || !list.length) return;
     var card = el('section', 'section-card');
     var b = el('div', 'sc-body');
-    b.appendChild(el('h2', 'sc-title', 'Approvazioni in attesa (' + list.length + ')'));
+    b.appendChild(el('h2', 'sc-title', 'Da approvare (inbox) (' + list.length + ')'));
     list.forEach(function (p) {
       var row = el('div');
       row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border,#2a2a2a)';
       var dot = el('span', null, p.tier === 'red' ? '🔴 ' : '🟡 ');
       row.appendChild(dot);
-      var lab = el('span', null, (p.label || p.tool) + '  ·  ' + (p.origin || ''));
+      var lab = el('span', null, p.label || p.tool);
       lab.style.cssText = 'flex:1';
       row.appendChild(lab);
+      var originText = p.origin === 'chat'
+        ? ('chat' + (p.user ? ' · ' + p.user : ''))
+        : (p.origin || 'gateway');
+      var badge = el('span', null, '[' + originText + ']');
+      badge.style.cssText = 'font-size:11px;color:var(--text-4,#888);padding:2px 6px;border:1px solid var(--border,#2a2a2a);border-radius:10px;white-space:nowrap';
+      row.appendChild(badge);
       var ok = el('button', 'btn btn-primary', 'Approva');
       var no = el('button', 'btn btn-ghost', 'Rifiuta');
       ok.addEventListener('click', function () { resolve(p.id, 'approve'); });

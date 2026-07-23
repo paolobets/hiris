@@ -89,6 +89,8 @@ class ToolDispatcher:
         pseudonymizer: Any = None,
         history_store: Any = None,
         execute_policy: dict | None = None,
+        request_confirmation: Any = None,
+        confirm_executor: Any = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -107,6 +109,8 @@ class ToolDispatcher:
         # Riferimento VIVO al dict app["execute_policy"] (mutato in place da
         # apply_saved_policy): il semaforo si legge a ogni dispatch. {} = fail-closed.
         self._execute_policy = execute_policy if execute_policy is not None else {}
+        self._request_confirmation = request_confirmation
+        self._confirm_executor = confirm_executor
         self._task_engine: Any = None
 
     def set_task_engine(self, engine: Any) -> None:
@@ -128,8 +132,9 @@ class ToolDispatcher:
         knowledge_allow_sensitive: bool = False,
         cloud: bool = True,
         tier_confirmed: bool = False,
+        user_id: str | None = None,
     ) -> Any:
-        _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization"})
+        _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization", "code"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
         logger.info("Tool call: %s(%s)", name, _log_inputs)
         try:
@@ -226,15 +231,18 @@ class ToolDispatcher:
                             else []
                         ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
                     ]
-                    # Fix #2: target per area/dispositivo/label senza entità esplicite
-                    # non è risolvibile ai tier per-entità → fail-closed (blocca).
+                    # Fix #2/#8: un target per area/dispositivo/label non è risolvibile ai
+                    # tier per-entità → fail-closed, INDIPENDENTEMENTE da entità esplicite
+                    # accompagnatorie (HA attua l'intero gruppo lato server, bypassando
+                    # gli override per-entità: un target misto entity_id+area_id fa sì
+                    # che HA esegua su TUTTE le entità dell'area, non solo su quella verde).
                     _has_group_target = any(
                         (isinstance(d, dict) and (d.get("area_id") or d.get("device_id") or d.get("label_id")))
                         for d in (data if isinstance(data, dict) else {}, target)
                     )
-                    if _has_group_target and not gate_eids:
-                        logger.warning("call_ha_service gated: area/device target without explicit entities (%s.%s)", domain, service)
-                        return {"error": "Azione su area/dispositivo non consentita dal semaforo: specifica le entità target."}
+                    if _has_group_target:
+                        logger.warning("call_ha_service gated: area/device/label target present (%s.%s)", domain, service)
+                        return {"error": "Azione su area/dispositivo/label non consentita dal semaforo: specifica le entità target."}
                     verdict = gate_action(
                         domain=domain, service=service, entity_ids=gate_eids,
                         tiers=self._execute_policy.get("tiers") or {},
@@ -244,8 +252,24 @@ class ToolDispatcher:
                         logger.warning("call_ha_service gated: %s (%s.%s)",
                                        verdict.decision, domain, service)
                         if verdict.decision == "confirm":
-                            return {"error": "Azione a rischio: richiede conferma "
-                                             "(flusso di conferma in arrivo nella Slice 2)."}
+                            if self._request_confirmation is not None:
+                                res = await self._request_confirmation(
+                                    tool=name, inputs=inputs, tier=verdict.tier, user=user_id,
+                                )
+                                # No-identity guard (Fix 5): the callback returns None
+                                # (or a dict without an "id") when there's no real user
+                                # to target — e.g. the "home" no-identity fallback has
+                                # no phone and no chat OTP flow that could resolve it.
+                                # Fall back to the Slice-1 error instead of minting a
+                                # pending nobody can ever confirm.
+                                if not isinstance(res, dict) or not res.get("id"):
+                                    return {"error": "Azione a rischio: richiede conferma."}
+                                return {"status": "confirmation_required",
+                                        "id": res.get("id"), "tier": verdict.tier,
+                                        "message": ("Ho bisogno della tua conferma: tocca "
+                                                    "'Conferma' nella notifica sul telefono, "
+                                                    "oppure dimmi il codice che ti ho inviato.")}
+                            return {"error": "Azione a rischio: richiede conferma."}
                         return {"error": verdict.reason}
                 if allowed_services:
                     service_key = f"{domain}.{service}"
@@ -410,6 +434,13 @@ class ToolDispatcher:
                 )
             if name == "link_knowledge" and self._knowledge_store:
                 return await handle_link_knowledge(self._knowledge_store, inputs)
+            if name == "confirm_pending":
+                if self._confirm_executor is None:
+                    return {"error": "Conferma non disponibile"}
+                code = str(inputs.get("code", "")).strip()
+                if not code:
+                    return {"error": "Codice mancante."}
+                return await self._confirm_executor(code=code, user=user_id)
             logger.warning("Unknown tool: %s", name)
             return {
                 "error": (

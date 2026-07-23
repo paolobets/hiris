@@ -376,6 +376,27 @@ async def test_task_area_target_without_entities_skipped():
 
 
 @pytest.mark.asyncio
+async def test_task_group_target_log_message_matches_dispatcher_wording(caplog):
+    # Fix 4: the guard fires on ANY group target (area/device/label), even
+    # with explicit entities accompanying it — the stale message said "without
+    # explicit entities" and omitted "label". Wording should now match the
+    # dispatcher's own log line (dispatcher.py: "area/device/label target
+    # present").
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
+              "data": {"label_id": "salotto", "entity_id": "light.sofa"}}
+    t = Task(id="t4b", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    with caplog.at_level("WARNING", logger="hiris.app.task_engine"):
+        res = await eng._run_action(action, t)
+    assert isinstance(res, str) and res.startswith("skipped")
+    logged = [r.message for r in caplog.records if "gated" in r.message]
+    assert logged
+    assert "area/device/label target present" in logged[0]
+    assert "without explicit entities" not in logged[0]
+
+
+@pytest.mark.asyncio
 async def test_task_non_string_entity_id_does_not_crash():
     # entity_id: [123] (non-string list contents) must be filtered out (not
     # crash domain-of / gate lookup) and fall back to the domain-level tier;

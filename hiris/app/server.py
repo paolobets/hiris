@@ -31,6 +31,7 @@ from .api.handlers_proposals import (
 from .api.handlers_knowledge import (
     handle_list_pending, handle_approve, handle_reject, handle_manual_add,
 )
+from .api.handlers_gateway_pending import verify_otp, execute_pending, resolve_pending
 from .proxy.health_monitor import HealthMonitor
 from .proxy.proposal_store import ProposalStore
 from .agent_engine import AgentEngine
@@ -93,6 +94,39 @@ def _deploy_card_to_www(slug: str = "hiris") -> None:
         logger.info("HIRIS card deployed to %s", dst)
     except Exception as exc:
         logger.error("Failed to deploy HIRIS card to %s: %s", dst, exc, exc_info=True)
+
+
+def _confirmation_push_message(label: str, inputs: dict, otp: str) -> str:
+    """Build the phone-push confirmation message for a chat step-up action.
+
+    This notification IS the entire human-in-the-loop safety check: the tap or
+    typed OTP executes exactly the frozen ``inputs`` (denylist included), never
+    re-derived. So the human on the phone must see WHICH entity is being
+    actuated, not just ``domain.service`` — otherwise a prompt-injected LLM
+    could request e.g. turn_on on ``switch.boiler`` while the chat discusses
+    something unrelated, and the user would have no way to notice.
+
+    Extracts the target entity id(s) from ``inputs["data"]["entity_id"]`` and/or
+    ``inputs["target"]["entity_id"]`` (either a single string or a list), joins
+    them for display, and falls back to a placeholder when no entity_id is
+    present at all (e.g. a broadcast service call with no target). The OTP is
+    interpolated here ONLY — this string is passed straight to ``notify(...)``
+    (the phone push), never returned to the chat/LLM side.
+    """
+    data = inputs.get("data") if isinstance(inputs.get("data"), dict) else {}
+    target = inputs.get("target") if isinstance(inputs.get("target"), dict) else {}
+    raw = data.get("entity_id") if isinstance(data, dict) else None
+    if raw is None:
+        raw = target.get("entity_id") if isinstance(target, dict) else None
+    if isinstance(raw, str):
+        ids = [raw]
+    elif isinstance(raw, list):
+        ids = [e for e in raw if isinstance(e, str)]
+    else:
+        ids = []
+    targets_str = ", ".join(ids) if ids else "(nessuna entità)"
+    return (f'HIRIS: confermi "{label}" su {targets_str}? '
+            f'Tocca Conferma, oppure usa il codice {otp}.')
 
 
 async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
@@ -245,6 +279,75 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
                     )
     except Exception as exc:
         logger.warning("Lovelace card registration error: %s", exc)
+
+
+# Chat OTP fallback: the LLM calls confirm_pending(code) when the user
+# types the code from the phone notification. `code` is untrusted tool
+# input from the LLM, so it is validated (exactly 6 ASCII digits) BEFORE it
+# ever reaches verify_otp's comparison. On match, the FROZEN pending
+# entry is executed via execute_pending — never anything re-derived from
+# this tool call — so the OTP only unlocks the action, it cannot alter it.
+#
+# Module-level (rather than a closure captured inside _on_startup) so tests
+# can exercise the real 6-digit gate directly instead of a hand-rebuilt
+# replica of it.
+async def confirm_pending_execute(app: web.Application, *, code: str, user: str) -> dict:
+    if not (isinstance(code, str) and code.isascii() and code.isdigit() and len(code) == 6):
+        return {"error": "Codice non valido."}
+    data_dir = app["data_dir"]
+    entry = verify_otp(data_dir, user, code)
+    if entry is None:
+        return {"error": "Codice non valido o scaduto."}
+    res = await execute_pending(app, entry)
+    resolve_pending(data_dir, entry["id"], "approved")
+    return {"ok": True, "result": res}
+
+
+# Step-up chat (Slice 2): when the semaforo gate returns "confirm" on a
+# chat-initiated call_ha_service, freeze the action as a pending (never
+# re-derived later — this exact `inputs` is what a later approve/OTP will
+# execute) and push tap+OTP to the chatting user's phone. The OTP travels
+# ONLY in the phone notification, never in this function's return value.
+#
+# Module-level (same rationale as confirm_pending_execute above) so tests
+# can exercise the real no-identity guard and the yellow/red actionable
+# split directly instead of a hand-rebuilt replica of it.
+async def request_confirmation_stepup(
+    app: web.Application, data_dir: str, *, tool: str, inputs: dict, tier: str, user: str | None,
+) -> dict | None:
+    from .api.handlers_gateway_pending import (
+        create_pending, notify, invalidate_user_otp_pendings,
+    )
+    from .api.handlers_gateway_policy import notify_service_for_user
+
+    # Safety (Fix 5): with no real identity (falsy user, or the "home"
+    # no-identity fallback bucket — see brain/identity.py's `uid or "home"`)
+    # there is no phone to target and no chat OTP flow that could ever
+    # resolve this pending, since verify_otp() matches on `user`. Minting one
+    # anyway would create a dead pending nobody can confirm. Return None so
+    # the dispatcher falls back to the Slice-1 "richiede conferma" error.
+    if not user or user == "home":
+        return None
+    label = f"{inputs.get('domain')}.{inputs.get('service')}"
+    # At most one OTP pending per user at a time: `verify_otp` resolves a
+    # typed code by scanning for the first live pending bound to `user`, so a
+    # second concurrent one would be ambiguous. Invalidate any prior chat OTP
+    # pending for this user before minting the new one.
+    invalidate_user_otp_pendings(data_dir, user)
+    entry = create_pending(
+        data_dir, tool=tool, inputs=inputs, tier=tier,
+        origin="chat", label=label, user=user, with_otp=True,
+    )
+    svc = notify_service_for_user(app, user)
+    msg = _confirmation_push_message(label, inputs, entry["otp"])
+    # Owner decision (Fix 3): red/dangerous pendings are page/OTP-only — no
+    # one-tap notification buttons (matches the gateway's execute-API
+    # behaviour in handlers_execute.py, which uses actionable=(tier ==
+    # "yellow")). Only yellow gets actionable=True. The OTP is included in
+    # `msg` above unconditionally either way.
+    otp_sent = await notify(app, message=msg, actionable=(tier == "yellow"),
+                            nonce=entry["id"], service=svc)
+    return {"id": entry["id"], "otp_sent": bool(otp_sent)}
 
 
 async def _on_startup(app: web.Application) -> None:
@@ -601,6 +704,19 @@ async def _on_startup(app: web.Application) -> None:
     from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
+    # Thin wrapper binding the module-level request_confirmation_stepup to
+    # this app instance; see request_confirmation_stepup for the actual
+    # no-identity guard and yellow/red actionable logic.
+    async def _request_confirmation(*, tool, inputs, tier, user):
+        return await request_confirmation_stepup(
+            app, data_dir, tool=tool, inputs=inputs, tier=tier, user=user,
+        )
+
+    # Thin wrapper binding the module-level confirm_pending_execute to this
+    # app instance; see confirm_pending_execute for the actual 6-digit gate
+    # and pending-execution logic.
+    async def _confirm_executor(*, code, user):
+        return await confirm_pending_execute(app, code=code, user=user)
 
     dispatcher = ToolDispatcher(
         ha_client=ha_client,
@@ -617,6 +733,8 @@ async def _on_startup(app: web.Application) -> None:
         pseudonymizer=pseudonymizer,
         history_store=history_store,
         execute_policy=app["execute_policy"],
+        request_confirmation=_request_confirmation,
+        confirm_executor=_confirm_executor,
     )
     dispatcher.set_task_engine(task_engine)
     app["tool_dispatcher"] = dispatcher

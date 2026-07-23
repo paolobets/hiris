@@ -3,6 +3,7 @@ import logging
 
 from aiohttp import web
 
+from ..brain.identity import resolve_owner
 from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 async def handle_chat(request: web.Request) -> web.Response:
+    owner = resolve_owner(request)
     try:
         body = await request.json()
     except Exception:
@@ -205,6 +207,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             knowledge_allow_sensitive=allow_sensitive,
+            user_id=owner,
         ):
             await stream_resp.write(chunk.encode())
             try:
@@ -260,6 +263,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         response_mode=agent_response_mode,
         thinking_budget=agent_thinking_budget,
         knowledge_allow_sensitive=allow_sensitive,
+        user_id=owner,
     )
 
     # De-tokenize pseudonymized tokens before toxicity check, persistence,
@@ -285,8 +289,18 @@ async def handle_chat(request: web.Request) -> web.Response:
     # t.get("name"), but last_tool_calls keys are "tool"/"input", so every entry
     # was None; appendDebug then threw on t.input AFTER the answer had rendered,
     # surfacing a spurious "Errore di connessione" with no backend-side error.
+    def _debug_input(t: dict):
+        # OTP secrecy toward the client: confirm_pending's `input` carries the
+        # 6-digit code the user typed in chat. It must never be echoed back in
+        # the HTTP response debug payload (it's already redacted server-side
+        # in ToolDispatcher's log line — this covers the separate API surface).
+        inp = t.get("input")
+        if t.get("tool") == "confirm_pending" and isinstance(inp, dict) and "code" in inp:
+            return {**inp, "code": "***"}
+        return inp
+
     tools_called = [
-        {"tool": t.get("tool", ""), "input": t.get("input")}
+        {"tool": t.get("tool", ""), "input": _debug_input(t)}
         for t in raw if isinstance(t, dict)
     ] if isinstance(raw, list) else []
     raw_thinking = getattr(runner, "last_thinking_blocks", None)
