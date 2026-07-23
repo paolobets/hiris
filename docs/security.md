@@ -93,8 +93,10 @@ lamp green) instead of making a whole heterogeneous domain green.
 
 ## 5. Data and backup
 
-Data lives in the add-on's `/data`, in separate SQLite DBs: `knowledge.db`,
-`history.db`, `proposals.db`, `hiris_memory.db`, **`vault.db`** (holds pseudonymizer
+Data lives in the add-on's `/data`, in separate SQLite DBs: `knowledge.db`
+(unified second brain: personal/shared knowledge + per-agent "lens" working
+memory), `home_map.db` (entity classification / semantic home map),
+`history.db`, `proposals.db`, **`vault.db`** (holds pseudonymizer
 secrets), `chat`, etc. Since v0.20.0 the DBs use **WAL** (crash/power-loss
 resilience) and **schema versioning** with safe migrations across add-on upgrades.
 

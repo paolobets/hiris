@@ -71,9 +71,10 @@ with each, so you can choose consciously.
   add-on internal `/data/options.json`)
 - Home Assistant tokens (`SUPERVISOR_TOKEN`)
 - HA `/config/.storage/` data
-- HIRIS SQLite DBs (`hiris_memory.db`, `chat_history.db`,
-  `hiris_knowledge.db`, `proposals.db`) — **never sent as such**;
-  only the content requested as context for a specific request leaves.
+- HIRIS SQLite DBs (`knowledge.db` — unified second brain, including per-agent
+  "lens" working memory —, `chat_history.db`, `home_map.db`, `proposals.db`) —
+  **never sent as such**; only the content requested as context for a specific
+  request leaves.
 
 ### OpenRouter — unified proxy 200+ models, 1 key
 

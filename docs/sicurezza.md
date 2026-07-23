@@ -97,7 +97,9 @@ Il gateway permette a Claude (claude.ai) di pilotare HIRIS. Punti chiave di sicu
 ## 5. Dati e backup
 
 I dati vivono in `/data` dell'add-on, in DB SQLite separati:
-`knowledge.db`, `history.db`, `proposals.db`, `hiris_memory.db`, **`vault.db`**
+`knowledge.db` (second brain unificato: conoscenza personale/condivisa +
+memoria di lavoro per-agente "lens"), `home_map.db` (classificazione entità /
+mappa semantica della casa), `history.db`, `proposals.db`, **`vault.db`**
 (contiene segreti dello pseudonimizzatore), `chat`, ecc. Da v0.20.0 i DB usano
 **WAL** (resilienza a crash/black-out) e **versioning schema** con migrazioni sicure
 sugli aggiornamenti dell'add-on.
