@@ -25,7 +25,10 @@ def mock_ha():
 
 @pytest.fixture
 def runner(mock_ha):
-    dispatcher = ToolDispatcher(mock_ha, {})
+    # tiers green for the domains exercised by call_ha_service tests below —
+    # the universal semaforo gate in ToolDispatcher is fail-closed by default.
+    dispatcher = ToolDispatcher(mock_ha, {},
+                                execute_policy={"tiers": {"light": "green", "climate": "green"}})
     with patch("anthropic.AsyncAnthropic"):
         r = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
     r._ha = mock_ha  # shortcut for tests

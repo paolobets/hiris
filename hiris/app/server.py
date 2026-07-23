@@ -383,6 +383,7 @@ async def _on_startup(app: web.Application) -> None:
         entity_cache=entity_cache,
         notify_config=notify_config,
         data_path=tasks_data_path,
+        execute_policy=app["execute_policy"],
     )
     await task_engine.start()
     app["task_engine"] = task_engine
@@ -615,6 +616,7 @@ async def _on_startup(app: web.Application) -> None:
         embedder=embedder,
         pseudonymizer=pseudonymizer,
         history_store=history_store,
+        execute_policy=app["execute_policy"],
     )
     dispatcher.set_task_engine(task_engine)
     app["tool_dispatcher"] = dispatcher

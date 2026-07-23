@@ -46,7 +46,10 @@ async def test_create_task_rejects_unknown_action_type():
 
 @pytest.mark.asyncio
 async def test_call_ha_service_failclosed_broadcast_without_target():
-    d = ToolDispatcher(_FakeHASvc(), notify_config={})
+    # light tier green so the semaforo gate itself allows through, isolating
+    # the per-agent whitelist's own broadcast-without-target fail-closed check.
+    d = ToolDispatcher(_FakeHASvc(), notify_config={},
+                       execute_policy={"tiers": {"light": "green"}})
     out = await d.dispatch("call_ha_service",
                            {"domain": "light", "service": "turn_on"},
                            allowed_services=["light.*"], allowed_entities=["light.*"])
@@ -56,7 +59,7 @@ async def test_call_ha_service_failclosed_broadcast_without_target():
 @pytest.mark.asyncio
 async def test_call_ha_service_with_target_ok():
     ha = _FakeHASvc()
-    d = ToolDispatcher(ha, notify_config={})
+    d = ToolDispatcher(ha, notify_config={}, execute_policy={"tiers": {"light": "green"}})
     out = await d.dispatch("call_ha_service",
                            {"domain": "light", "service": "turn_on",
                             "data": {"entity_id": "light.sala"}},

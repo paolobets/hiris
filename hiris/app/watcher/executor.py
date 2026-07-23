@@ -1,14 +1,7 @@
 from __future__ import annotations
 from typing import Awaitable, Callable
 from .signals import Decision
-from ..api.handlers_gateway_policy import effective_tier
-
-# Domains that must NEVER be auto-actuated or even proposed by the Sentinella,
-# regardless of the operator's semaforo config or allow_green_auto opt-in.
-# Enforced here independently of tiers — the reasoner prompt also forbids
-# proposing actions on these, but a misbehaving/compromised model output must
-# not be able to bypass this via a misconfigured tier.
-_DANGEROUS_DOMAINS = frozenset({"lock", "alarm_control_panel", "cover", "siren", "garage_door"})
+from ..security.semaphore import DANGEROUS_DOMAINS as _DANGEROUS_DOMAINS, effective_tier
 
 async def execute(decision: Decision, wake, *, tiers: dict, entity_tiers: dict,
                   notify: Callable[..., Awaitable], act: Callable[[dict], Awaitable],

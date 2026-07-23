@@ -10,6 +10,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from .security.semaphore import gate_action
 from .tools.notify_tools import send_notification
 
 logger = logging.getLogger(__name__)
@@ -44,11 +45,13 @@ class TaskEngine:
         entity_cache: Any,
         notify_config: dict,
         data_path: str = "/data/tasks.json",
+        execute_policy: dict | None = None,
     ) -> None:
         self._ha = ha_client
         self._cache = entity_cache
         self._notify_config = notify_config
         self._data_path = data_path
+        self._execute_policy = execute_policy if execute_policy is not None else {}
         self._tasks: dict[str, Task] = {}
         self._scheduler = AsyncIOScheduler()
         # Serialize concurrent _do_save() across executor threads.
@@ -319,7 +322,10 @@ class TaskEngine:
                     break
                 try:
                     action_result = await self._run_action(action, task)
-                    results.append(f"{action.get('type', '?')}:OK")
+                    if isinstance(action_result, str) and action_result.startswith("skipped"):
+                        results.append(f"{action.get('type', '?')}:{action_result}")
+                    else:
+                        results.append(f"{action.get('type', '?')}:OK")
                 except Exception as exc:
                     a_label = action.get("type", "?")
                     results.append(f"{a_label}:FAILED({exc})")
@@ -347,6 +353,30 @@ class TaskEngine:
             domain = action["domain"]
             service = action["service"]
             data = action.get("data", {})
+            _raw = data.get("entity_id") if isinstance(data, dict) else None
+            _eids = [
+                e for e in (
+                    [_raw] if isinstance(_raw, str)
+                    else list(_raw) if isinstance(_raw, list)
+                    else []
+                ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
+            ]
+            # Fix #2: i task inoltrano solo `data` (non `target`): un target per
+            # area/dispositivo/label senza entità esplicite non è risolvibile ai
+            # tier per-entità → fail-closed (skip).
+            if isinstance(data, dict) and (data.get("area_id") or data.get("device_id") or data.get("label_id")) and not _eids:
+                logger.warning("Task %s: call_ha_service gated: area/device target without explicit entities (%s.%s)",
+                               task.label, domain, service)
+                return f"skipped: group_target ({domain}.{service})"
+            _v = gate_action(
+                domain=domain, service=service, entity_ids=_eids,
+                tiers=self._execute_policy.get("tiers") or {},
+                entity_tiers=self._execute_policy.get("entity_tiers") or {},
+            )
+            if _v.decision != "allow":
+                logger.warning("Task %s: call_ha_service gated (%s) %s.%s",
+                               task.label, _v.decision, domain, service)
+                return f"skipped: {_v.decision} ({domain}.{service})"
             if task.allowed_services is not None:
                 svc_key = f"{domain}.{service}"
                 if not any(fnmatch.fnmatch(svc_key, pat) for pat in task.allowed_services):
