@@ -637,6 +637,10 @@ async def _on_startup(app: web.Application) -> None:
     sentinel_store = SentinelStore(os.path.join(data_dir, "sentinel.db"))
     app["sentinel_store"] = sentinel_store
 
+    from .brain.suggestions import SuggestionStore
+    suggestion_store = SuggestionStore(os.path.join(data_dir, "suggestions.db"))
+    app["suggestion_store"] = suggestion_store
+
     def _gather_context(wake) -> dict:
         # Synchronous, non-throwing: best-effort friendly_name from the entity
         # cache; falls back to the raw entity_id when unavailable.
@@ -847,6 +851,43 @@ async def _on_startup(app: web.Application) -> None:
     app["execute_decision"] = _execute_decision
 
     async def _holistic_reason(snapshot):
+        # Cervello auto-proponente: revisione di copertura sulla cadenza olistica.
+        # Gira SEMPRE (anche quando BRIDGE_ENABLED e' attivo, prima del branch
+        # sotto) perche' riusa direttamente _llm_reason (locale/metered) — non
+        # instrada nessuna azione sulla casa, solo config detector (gated,
+        # apply_suggestions) e proposte. Wrapped in try/except: non deve mai
+        # rompere il giro olistico.
+        try:
+            _store = app.get("suggestion_store")
+            _cache = app.get("entity_cache")
+            if _store is not None and _cache is not None and hasattr(_cache, "all_states"):
+                from .brain.coverage_review import (
+                    COVERAGE_REVIEW_SYSTEM, build_review_context,
+                    build_review_message, parse_suggestions)
+                from .brain.suggestions import apply_suggestions
+                from .api.handlers_entities import filter_entities
+                _inventory = filter_entities(_cache.all_states(), None, None)
+                _current = load_policy(data_dir)
+                _ctx = build_review_context(snapshot, _inventory, _current)
+                _text = await _llm_reason(COVERAGE_REVIEW_SYSTEM, build_review_message(_ctx),
+                                          model="auto", max_tokens=1536)
+                _suggs = parse_suggestions(_text)
+
+                def _mk_proposal(c):
+                    return asyncio.create_task(create_automation_proposal(
+                        proposal_store, proposal_type="ha_automation",
+                        name=str(c.get("name") or "Brain coverage-review"),
+                        description=str(c.get("description") or ""),
+                        config=c, routing_reason="brain coverage-review"))
+
+                apply_suggestions(
+                    _suggs, data_dir=data_dir, store=_store,
+                    inventory_ids={e["entity_id"] for e in _inventory},
+                    current_config=_current, create_proposal=_mk_proposal,
+                    cap=int(os.environ.get("BRAIN_SUGGEST_CAP", "5")))
+        except Exception:
+            logger.exception("coverage-review failed")
+
         if os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on"):
             wake = {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
                     "evidence": {}, "ts": _time.time()}
@@ -1028,6 +1069,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["history_store"].close()
     if "sentinel_store" in app:
         app["sentinel_store"].close()
+    if "suggestion_store" in app:
+        app["suggestion_store"].close()
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "task_engine" in app:
