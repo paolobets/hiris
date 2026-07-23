@@ -31,6 +31,7 @@ from .api.handlers_proposals import (
 from .api.handlers_knowledge import (
     handle_list_pending, handle_approve, handle_reject, handle_manual_add,
 )
+from .api.handlers_gateway_pending import verify_otp, execute_pending, resolve_pending
 from .proxy.health_monitor import HealthMonitor
 from .proxy.proposal_store import ProposalStore
 from .agent_engine import AgentEngine
@@ -278,6 +279,28 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
                     )
     except Exception as exc:
         logger.warning("Lovelace card registration error: %s", exc)
+
+
+# Chat OTP fallback: the LLM calls confirm_pending(code) when the user
+# types the code from the phone notification. `code` is untrusted tool
+# input from the LLM, so it is validated (exactly 6 ASCII digits) BEFORE it
+# ever reaches verify_otp's comparison. On match, the FROZEN pending
+# entry is executed via execute_pending — never anything re-derived from
+# this tool call — so the OTP only unlocks the action, it cannot alter it.
+#
+# Module-level (rather than a closure captured inside _on_startup) so tests
+# can exercise the real 6-digit gate directly instead of a hand-rebuilt
+# replica of it.
+async def confirm_pending_execute(app: web.Application, *, code: str, user: str) -> dict:
+    if not (isinstance(code, str) and code.isascii() and code.isdigit() and len(code) == 6):
+        return {"error": "Codice non valido."}
+    data_dir = app["data_dir"]
+    entry = verify_otp(data_dir, user, code)
+    if entry is None:
+        return {"error": "Codice non valido o scaduto."}
+    res = await execute_pending(app, entry)
+    resolve_pending(data_dir, entry["id"], "approved")
+    return {"ok": True, "result": res}
 
 
 async def _on_startup(app: web.Application) -> None:
@@ -636,7 +659,6 @@ async def _on_startup(app: web.Application) -> None:
     from .backends.openrouter_runner import OpenRouterRunner
     from .api.handlers_gateway_pending import (
         create_pending, notify, invalidate_user_otp_pendings,
-        verify_otp, execute_pending, resolve_pending,
     )
     from .api.handlers_gateway_policy import notify_service_for_user
 
@@ -661,21 +683,11 @@ async def _on_startup(app: web.Application) -> None:
         otp_sent = await notify(app, message=msg, actionable=True, nonce=entry["id"], service=svc)
         return {"id": entry["id"], "otp_sent": bool(otp_sent)}
 
-    # Chat OTP fallback: the LLM calls confirm_pending(code) when the user
-    # types the code from the phone notification. `code` is untrusted tool
-    # input from the LLM, so it is validated (exactly 6 digits) BEFORE it
-    # ever reaches verify_otp's comparison. On match, the FROZEN pending
-    # entry is executed via execute_pending — never anything re-derived from
-    # this tool call — so the OTP only unlocks the action, it cannot alter it.
+    # Thin wrapper binding the module-level confirm_pending_execute to this
+    # app instance; see confirm_pending_execute for the actual 6-digit gate
+    # and pending-execution logic.
     async def _confirm_executor(*, code, user):
-        if not (isinstance(code, str) and code.isdigit() and len(code) == 6):
-            return {"error": "Codice non valido."}
-        entry = verify_otp(data_dir, user, code)
-        if entry is None:
-            return {"error": "Codice non valido o scaduto."}
-        res = await execute_pending(app, entry)
-        resolve_pending(data_dir, entry["id"], "approved")
-        return {"ok": True, "result": res}
+        return await confirm_pending_execute(app, code=code, user=user)
 
     dispatcher = ToolDispatcher(
         ha_client=ha_client,

@@ -78,7 +78,10 @@ async def test_confirm_pending_user_comes_from_dispatch_user_id_not_input():
     assert seen["user"] == "paolo"
 
 
-# --- server._confirm_executor wiring: frozen action executed, not tool inputs ---
+# --- server.confirm_pending_execute (the REAL executor, not a replica) ---
+# These call the module-level function extracted from server.py's
+# _confirm_executor closure directly, so the 6-digit validation gate and the
+# frozen-entry execution get real coverage instead of a hand-rebuilt copy.
 
 class _RecordingDispatcher:
     """Fake tool_dispatcher that records what dispatch() actually executed,
@@ -94,10 +97,41 @@ class _RecordingDispatcher:
 
 
 @pytest.mark.asyncio
-async def test_confirm_executor_executes_frozen_entry_not_tool_call_inputs(tmp_path, monkeypatch):
+async def test_confirm_pending_execute_rejects_garbage_code_without_verify_or_dispatch(tmp_path):
     from aiohttp import web
     from hiris.app.api import handlers_gateway_pending as P
-    import hiris.app.server as server_mod
+    from hiris.app.server import confirm_pending_execute
+
+    data_dir = str(tmp_path)
+    frozen_inputs = {"domain": "lock", "service": "unlock",
+                      "data": {"entity_id": "lock.front_door"}}
+    entry = P.create_pending(
+        data_dir, tool="call_ha_service", inputs=frozen_inputs, tier="red",
+        origin="chat", label="lock.unlock", user="paolo", with_otp=True,
+    )
+
+    app = web.Application()
+    app["data_dir"] = data_dir
+    recorder = _RecordingDispatcher()
+    app["tool_dispatcher"] = recorder
+
+    result = await confirm_pending_execute(app, code="not-a-code", user="paolo")
+
+    assert result == {"error": "Codice non valido."}
+    # Nothing was dispatched...
+    assert recorder.calls == []
+    # ...and the garbage code did not burn a lockout attempt against the real
+    # pending: the correct OTP must still verify afterwards.
+    found = P.verify_otp(data_dir, "paolo", entry["otp"])
+    assert found is not None
+    P.resolve_pending(data_dir, found["id"], "approved")
+
+
+@pytest.mark.asyncio
+async def test_confirm_pending_execute_executes_frozen_entry_not_tool_call_inputs(tmp_path):
+    from aiohttp import web
+    from hiris.app.api import handlers_gateway_pending as P
+    from hiris.app.server import confirm_pending_execute
 
     data_dir = str(tmp_path)
     frozen_inputs = {"domain": "lock", "service": "unlock",
@@ -113,17 +147,7 @@ async def test_confirm_executor_executes_frozen_entry_not_tool_call_inputs(tmp_p
     recorder = _RecordingDispatcher()
     app["tool_dispatcher"] = recorder
 
-    # Build the same closure shape as server.py's _confirm_executor, calling
-    # through the real verify_otp/execute_pending/resolve_pending.
-    async def _confirm_executor(*, code, user):
-        found = P.verify_otp(data_dir, user, code)
-        if found is None:
-            return {"error": "Codice non valido o scaduto."}
-        res = await P.execute_pending(app, found)
-        P.resolve_pending(data_dir, found["id"], "approved")
-        return {"ok": True, "result": res}
-
-    result = await _confirm_executor(code=otp, user="paolo")
+    result = await confirm_pending_execute(app, code=otp, user="paolo")
 
     assert result["ok"] is True
     assert len(recorder.calls) == 1
@@ -138,3 +162,36 @@ async def test_confirm_executor_executes_frozen_entry_not_tool_call_inputs(tmp_p
     # Pending is resolved as approved and single-use (OTP already consumed).
     again = P.verify_otp(data_dir, "paolo", otp)
     assert again is None
+
+
+@pytest.mark.asyncio
+async def test_confirm_pending_execute_rejects_non_ascii_digits(tmp_path):
+    from aiohttp import web
+    from hiris.app.api import handlers_gateway_pending as P
+    from hiris.app.server import confirm_pending_execute
+
+    data_dir = str(tmp_path)
+    frozen_inputs = {"domain": "lock", "service": "unlock",
+                      "data": {"entity_id": "lock.front_door"}}
+    entry = P.create_pending(
+        data_dir, tool="call_ha_service", inputs=frozen_inputs, tier="red",
+        origin="chat", label="lock.unlock", user="paolo", with_otp=True,
+    )
+
+    app = web.Application()
+    app["data_dir"] = data_dir
+    recorder = _RecordingDispatcher()
+    app["tool_dispatcher"] = recorder
+
+    # Arabic-Indic digits: str.isdigit() is True for these, but they are not
+    # ASCII 0-9 and must be rejected before ever reaching verify_otp.
+    non_ascii_code = "١٢٣٤٥٦"  # ١٢٣٤٥٦
+    assert non_ascii_code.isdigit()  # sanity: confirms isdigit() alone would pass this
+
+    result = await confirm_pending_execute(app, code=non_ascii_code, user="paolo")
+
+    assert result == {"error": "Codice non valido."}
+    assert recorder.calls == []
+    found = P.verify_otp(data_dir, "paolo", entry["otp"])
+    assert found is not None
+    P.resolve_pending(data_dir, found["id"], "approved")
