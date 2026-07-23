@@ -1,5 +1,17 @@
 # HIRIS — Changelog
 
+## [0.28.0] — Semaforo universale (Slice 1 verso 1.0) (2026-07-23)
+
+- **Semaforo universale (Slice 1 verso 1.0):** il semaforo (tiers/entity_tiers)
+  e la denylist domini pericolosi sono ora il gate UNICO su ogni `call_ha_service`
+  — chat, agenti, gateway, sentinella e task differiti passano tutti dallo stesso
+  controllo (`hiris/app/security/semaphore.py`).
+- **Fail-closed:** un dominio non configurato nel semaforo (`off`) blocca l'azione
+  anche da chat. Configura le categorie dalla pagina gateway perché le azioni siano
+  eseguibili. Le letture non sono mai gated.
+- Le azioni yellow/red da chat vengono per ora bloccate con richiesta di conferma;
+  il flusso di conferma (step-up con tap/OTP) arriva nella prossima versione.
+
 ## [0.27.0] — Cervello auto-proponente + selettore entità (2026-07-23)
 - **Selettore di entità** nella pagina Sentinella: scegli le entità dalla lista filtrata
   per tipo (niente più entity id scritti a mano). Nuova API `/api/entities`.
