@@ -1,5 +1,18 @@
 # HIRIS — Changelog
 
+## [0.29.0] — Step-up di conferma dalla chat (Slice 2 verso 1.0) (2026-07-23)
+
+- **Conferma out-of-band per le azioni a rischio richieste in chat:** un'azione
+  gialla/rossa o su un dominio pericoloso richiesta a un assistente viene congelata
+  e confermata dal telefono dell'utente — **tap** sulla notifica (primario) o
+  **codice OTP** digitato in chat (fallback, tool `confirm_pending`). L'azione
+  eseguita è quella congelata: l'assistente non può alterarla, solo sbloccarla.
+- **Notifiche per-utente:** mappa persona HA → servizio notify (con fallback globale),
+  così la conferma arriva al telefono di chi sta chattando.
+- **Inbox unica** "Da approvare": i pending di chat e gateway nello stesso elenco.
+- **Sicurezza:** azioni con target per area/dispositivo/label sui percorsi non
+  confermati sono ora bloccate (fail-closed), per non aggirare gli override per-entità.
+
 ## [0.28.0] — Semaforo universale (Slice 1 verso 1.0) (2026-07-23)
 
 - **Semaforo universale (Slice 1 verso 1.0):** il semaforo (tiers/entity_tiers)
