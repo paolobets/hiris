@@ -174,16 +174,28 @@ class KnowledgeStore:
         clauses = ["status='approved'", "embedding IS NOT NULL"]
         bind: dict = {}
         if owner is not None:
-            # Unified scope (Slice 3): a row is visible when it belongs to the
-            # caller's lens, OR it has no lens (plain knowledge/legacy row) and
-            # is scoped to this owner or shared as 'home'. With lens=None the
-            # first branch matches nothing, so this reduces to the pre-Slice3
-            # filter `(owner=? OR owner='home')`.
+            # Unified scope (Slice 3): a row must always be scoped to this
+            # owner (or shared as 'home') -- the owner check applies whether
+            # or not the row carries a lens. On top of that, lens rows are
+            # further restricted to the caller's own lens (or knowledge rows
+            # with no lens at all). This prevents two different HA users
+            # chatting with the SAME agent (same lens) from seeing each
+            # other's save_memory items: owner is no longer ignored just
+            # because lens matched. With lens=None this reduces to the
+            # pre-Slice3 filter `(owner=? OR owner='home')` restricted to
+            # un-lensed (knowledge) rows, preserving backward compatibility.
             clauses.append(
-                "(lens = :lens OR (lens IS NULL AND (owner = :owner OR owner = 'home')))"
+                "(owner = :owner OR owner = 'home') AND (lens = :lens OR lens IS NULL)"
             )
             bind["lens"] = lens
             bind["owner"] = owner
+        elif lens is not None:
+            # No owner passed but a lens was: don't fail open and expose all
+            # lens memory across owners -- still scope by lens (or knowledge
+            # rows with no lens). Current production callers always pass
+            # owner alongside lens; this branch only guards future callers.
+            clauses.append("(lens = :lens OR lens IS NULL)")
+            bind["lens"] = lens
         if not allow_sensitive:
             clauses.append("sensitivity='normal'")
         if kinds and kinds != "all":

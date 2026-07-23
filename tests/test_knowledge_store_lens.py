@@ -133,6 +133,35 @@ def test_migration_v1_to_v2_adds_lens(tmp_path):
     s2.close()
 
 
+def test_lens_memory_not_leaked_across_users_of_same_agent(tmp_path):
+    """Two different HA users chatting with the SAME agent (same lens) must
+    not see each other's lens-scoped memory. Before the owner-scope fix, the
+    search WHERE was `(lens=:lens OR (lens IS NULL AND (owner=... )))` — once
+    `lens` matched, `owner` was ignored entirely, leaking userA's memory to
+    userB. The fix ANDs the owner-scope with the lens clause."""
+    s = _store(tmp_path)
+    a = s.add_item(kind="memory", content="userA pref 21C", owner="userA",
+                    lens="agentA", status="approved", embedding=[0.2, 0.2])
+    got_by_a = s.search(query_vec=[0.2, 0.2], owner="userA", lens="agentA", k=5)
+    got_by_b = s.search(query_vec=[0.2, 0.2], owner="userB", lens="agentA", k=5)
+    assert any(r["id"] == a for r in got_by_a)
+    assert all(r["id"] != a for r in got_by_b)
+    s.close()
+
+
+def test_home_owned_lens_memory_shared_across_users_of_same_agent(tmp_path):
+    """A lens item explicitly owned by 'home' is shared across users of that
+    agent (owner='home' still matches the (owner=? OR owner='home') clause)."""
+    s = _store(tmp_path)
+    h = s.add_item(kind="memory", content="shared agent note", owner="home",
+                    lens="agentA", status="approved", embedding=[0.25, 0.25])
+    got_by_a = s.search(query_vec=[0.25, 0.25], owner="userA", lens="agentA", k=5)
+    got_by_b = s.search(query_vec=[0.25, 0.25], owner="userB", lens="agentA", k=5)
+    assert any(r["id"] == h for r in got_by_a)
+    assert any(r["id"] == h for r in got_by_b)
+    s.close()
+
+
 def test_backward_compat_lens_none_equivalent_to_previous_owner_scope(tmp_path):
     """With lens=None, the unified WHERE must give identical results to the
     pre-Slice3 scope filter (owner=? OR owner='home')."""

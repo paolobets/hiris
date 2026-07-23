@@ -42,6 +42,65 @@ async def test_save_memory_writes_lens_item_and_recall_finds_it(tmp_path):
     store.close()
 
 
+async def test_save_memory_writes_real_owner_not_hardcoded_home(tmp_path):
+    """Regression guard: save_memory/save_knowledge with user_id='paolo' must
+    persist owner='paolo', not a hardcoded 'home'. If a future refactor
+    reverts owner threading, this catches it directly on the stored row
+    (rather than relying only on search-visibility side effects)."""
+    from hiris.app.tools.knowledge_tools import handle_save_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+
+    saved_memory = await disp.dispatch(
+        "save_memory", {"content": "nota di paolo"},
+        agent_id="agentA", user_id="paolo",
+    )
+    mem_item = store.get_item(saved_memory["id"])
+    assert mem_item["owner"] == "paolo"
+
+    saved_knowledge = await handle_save_knowledge(
+        store, _Emb(), {"kind": "fact", "content": "fatto di paolo"},
+        owner="paolo",
+    )
+    know_item = store.get_item(saved_knowledge["id"])
+    assert know_item["owner"] == "paolo"
+    store.close()
+
+
+async def test_recall_memory_two_users_same_agent_no_leak(tmp_path):
+    """Two different HA users chatting with the SAME agent must not see
+    each other's save_memory (lens) items — the cross-user leak this task
+    fixes. A home-owned lens item, however, is visible to both."""
+    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+
+    await disp.dispatch("save_memory", {"content": "userA preferisce 21 gradi"},
+                        agent_id="agentA", user_id="userA")
+
+    res_a = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
+                                agent_id="agentA", user_id="userA")
+    assert "21" in str(res_a)
+
+    res_b = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
+                                agent_id="agentA", user_id="userB")
+    assert "21" not in str(res_b)
+
+    # A home-owned lens item (e.g. saved with no user_id) is shared across
+    # both users of this same agent.
+    await disp.dispatch("save_memory", {"content": "nota condivisa casa 99"},
+                        agent_id="agentA")  # no user_id -> owner defaults to 'home'
+    res_a2 = await disp.dispatch("recall_memory", {"query": "nota condivisa"},
+                                 agent_id="agentA", user_id="userA")
+    res_b2 = await disp.dispatch("recall_memory", {"query": "nota condivisa"},
+                                 agent_id="agentA", user_id="userB")
+    assert "99" in str(res_a2)
+    assert "99" in str(res_b2)
+    store.close()
+
+
 async def test_save_memory_defaults_owner_to_home_without_user_id(tmp_path):
     """No user_id supplied -> owner falls back to 'home' (Slice 3 contract)."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
