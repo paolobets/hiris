@@ -105,6 +105,21 @@ CALL_SERVICE_TOOL_DEF = {
     },
 }
 
+CONFIRM_PENDING_TOOL_DEF = {
+    "name": "confirm_pending",
+    "description": (
+        "Conferma un'azione a rischio in attesa fornendo il codice ricevuto sul "
+        "telefono. Usa questo tool SOLO quando l'utente ti comunica il codice."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "code": {"type": "string", "description": "Codice OTP a 6 cifre ricevuto via notifica sul telefono"},
+        },
+        "required": ["code"],
+    },
+}
+
 ALL_TOOL_DEFS = [
     HA_TOOL,
     GET_AREA_ENTITIES_TOOL_DEF,
@@ -136,6 +151,7 @@ ALL_TOOL_DEFS = [
     SAVE_KNOWLEDGE_TOOL_DEF,
     RECALL_KNOWLEDGE_TOOL_DEF,
     LINK_KNOWLEDGE_TOOL_DEF,
+    CONFIRM_PENDING_TOOL_DEF,
 ]
 
 # Tools available to non-chat agents in evaluation mode.

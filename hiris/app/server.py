@@ -636,6 +636,7 @@ async def _on_startup(app: web.Application) -> None:
     from .backends.openrouter_runner import OpenRouterRunner
     from .api.handlers_gateway_pending import (
         create_pending, notify, invalidate_user_otp_pendings,
+        verify_otp, execute_pending, resolve_pending,
     )
     from .api.handlers_gateway_policy import notify_service_for_user
 
@@ -660,6 +661,22 @@ async def _on_startup(app: web.Application) -> None:
         otp_sent = await notify(app, message=msg, actionable=True, nonce=entry["id"], service=svc)
         return {"id": entry["id"], "otp_sent": bool(otp_sent)}
 
+    # Chat OTP fallback: the LLM calls confirm_pending(code) when the user
+    # types the code from the phone notification. `code` is untrusted tool
+    # input from the LLM, so it is validated (exactly 6 digits) BEFORE it
+    # ever reaches verify_otp's comparison. On match, the FROZEN pending
+    # entry is executed via execute_pending — never anything re-derived from
+    # this tool call — so the OTP only unlocks the action, it cannot alter it.
+    async def _confirm_executor(*, code, user):
+        if not (isinstance(code, str) and code.isdigit() and len(code) == 6):
+            return {"error": "Codice non valido."}
+        entry = verify_otp(data_dir, user, code)
+        if entry is None:
+            return {"error": "Codice non valido o scaduto."}
+        res = await execute_pending(app, entry)
+        resolve_pending(data_dir, entry["id"], "approved")
+        return {"ok": True, "result": res}
+
     dispatcher = ToolDispatcher(
         ha_client=ha_client,
         notify_config=notify_config,
@@ -676,6 +693,7 @@ async def _on_startup(app: web.Application) -> None:
         history_store=history_store,
         execute_policy=app["execute_policy"],
         request_confirmation=_request_confirmation,
+        confirm_executor=_confirm_executor,
     )
     dispatcher.set_task_engine(task_engine)
     app["tool_dispatcher"] = dispatcher

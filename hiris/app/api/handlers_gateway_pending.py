@@ -131,7 +131,7 @@ def verify_otp(data_dir: str, user: str, code: str) -> dict | None:
     for entry in data.values():
         if (entry.get("status") == "pending" and entry.get("user") == user
                 and entry.get("otp") and entry.get("expires", 0) > now):
-            if hmac.compare_digest(str(code), str(entry["otp"])):
+            if hmac.compare_digest(str(code).encode(), str(entry["otp"]).encode()):
                 entry["status"] = "consumed"
                 _save(data_dir, data)
                 return {k: v for k, v in entry.items()

@@ -90,6 +90,7 @@ class ToolDispatcher:
         history_store: Any = None,
         execute_policy: dict | None = None,
         request_confirmation: Any = None,
+        confirm_executor: Any = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -109,6 +110,7 @@ class ToolDispatcher:
         # apply_saved_policy): il semaforo si legge a ogni dispatch. {} = fail-closed.
         self._execute_policy = execute_policy if execute_policy is not None else {}
         self._request_confirmation = request_confirmation
+        self._confirm_executor = confirm_executor
         self._task_engine: Any = None
 
     def set_task_engine(self, engine: Any) -> None:
@@ -421,6 +423,13 @@ class ToolDispatcher:
                 )
             if name == "link_knowledge" and self._knowledge_store:
                 return await handle_link_knowledge(self._knowledge_store, inputs)
+            if name == "confirm_pending":
+                if self._confirm_executor is None:
+                    return {"error": "Conferma non disponibile"}
+                code = str(inputs.get("code", "")).strip()
+                if not code:
+                    return {"error": "Codice mancante."}
+                return await self._confirm_executor(code=code, user=user_id)
             logger.warning("Unknown tool: %s", name)
             return {
                 "error": (
