@@ -10,6 +10,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from .security.semaphore import gate_action
 from .tools.notify_tools import send_notification
 
 logger = logging.getLogger(__name__)
@@ -44,11 +45,13 @@ class TaskEngine:
         entity_cache: Any,
         notify_config: dict,
         data_path: str = "/data/tasks.json",
+        execute_policy: dict | None = None,
     ) -> None:
         self._ha = ha_client
         self._cache = entity_cache
         self._notify_config = notify_config
         self._data_path = data_path
+        self._execute_policy = execute_policy if execute_policy is not None else {}
         self._tasks: dict[str, Task] = {}
         self._scheduler = AsyncIOScheduler()
         # Serialize concurrent _do_save() across executor threads.
@@ -347,6 +350,17 @@ class TaskEngine:
             domain = action["domain"]
             service = action["service"]
             data = action.get("data", {})
+            _raw = data.get("entity_id") if isinstance(data, dict) else None
+            _eids = [_raw] if isinstance(_raw, str) else (list(_raw) if isinstance(_raw, list) else [])
+            _v = gate_action(
+                domain=domain, service=service, entity_ids=_eids,
+                tiers=self._execute_policy.get("tiers") or {},
+                entity_tiers=self._execute_policy.get("entity_tiers") or {},
+            )
+            if _v.decision != "allow":
+                logger.warning("Task %s: call_ha_service gated (%s) %s.%s",
+                               task.label, _v.decision, domain, service)
+                return f"skipped: {_v.decision} ({domain}.{service})"
             if task.allowed_services is not None:
                 svc_key = f"{domain}.{service}"
                 if not any(fnmatch.fnmatch(svc_key, pat) for pat in task.allowed_services):

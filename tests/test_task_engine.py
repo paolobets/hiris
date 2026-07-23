@@ -26,6 +26,7 @@ def engine(tmp_path, mock_ha, mock_cache):
         entity_cache=mock_cache,
         notify_config={},
         data_path=str(tmp_path / "tasks.json"),
+        execute_policy={"tiers": {"light": "green"}},
     )
     te._scheduler = MagicMock()  # prevent real scheduling
     return te
@@ -302,6 +303,62 @@ def test_cancel_removes_scheduler_job(engine):
     engine.cancel_task(task.id)
     removed = [c[0][0] for c in engine._scheduler.remove_job.call_args_list]
     assert f"task_{task.id}" in removed
+
+
+class _FakeHA2:
+    def __init__(self):
+        self.calls = []
+
+    async def call_service(self, domain, service, data):
+        self.calls.append((domain, service, data))
+        return {"ok": True}
+
+
+def _engine(policy):
+    return TaskEngine(
+        ha_client=_FakeHA2(), entity_cache=None,
+        notify_config={}, execute_policy=policy,
+    )
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_task_green_action_runs():
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
+              "data": {"entity_id": "light.kitchen"}}
+    t = Task(id="t1", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    res = await eng._run_action(action, t)
+    assert res == {"ok": True}
+    assert eng._ha.calls == [("light", "turn_on", {"entity_id": "light.kitchen"})]
+
+
+@pytest.mark.asyncio
+async def test_task_off_action_skipped():
+    eng = _engine({})  # fail-closed
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
+              "data": {"entity_id": "light.kitchen"}}
+    t = Task(id="t2", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and "skipped" in res
+    assert eng._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_task_dangerous_action_skipped():
+    eng = _engine({"tiers": {"lock": "green"}})
+    action = {"type": "call_ha_service", "domain": "lock", "service": "unlock",
+              "data": {"entity_id": "lock.front"}}
+    t = Task(id="t3", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and "skipped" in res
+    assert eng._ha.calls == []
 
 
 def test_cleanup_keeps_tasks_within_7_days(engine):
