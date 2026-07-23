@@ -16,6 +16,7 @@ from .api.handlers_agents import (
     handle_context_preview,
 )
 from .api.handlers_entities import handle_list_entities
+from .api.handlers_suggestions import handle_list_suggestions, handle_undo_suggestion
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
@@ -1086,6 +1087,8 @@ def create_app() -> web.Application:
     app.router.add_delete("/api/agents/{agent_id}", handle_delete_agent)
     app.router.add_post("/api/agents/{agent_id}/run", handle_run_agent)
     app.router.add_get("/api/entities", handle_list_entities)
+    app.router.add_get("/api/suggestions", handle_list_suggestions)
+    app.router.add_post("/api/suggestions/{id}/undo", handle_undo_suggestion)
     app.router.add_get("/api/agents/{agent_id}/usage", handle_get_agent_usage)
     app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
     app.router.add_get("/api/agents/{agent_id}/context-preview", handle_context_preview)
