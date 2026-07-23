@@ -303,6 +303,53 @@ async def confirm_pending_execute(app: web.Application, *, code: str, user: str)
     return {"ok": True, "result": res}
 
 
+# Step-up chat (Slice 2): when the semaforo gate returns "confirm" on a
+# chat-initiated call_ha_service, freeze the action as a pending (never
+# re-derived later — this exact `inputs` is what a later approve/OTP will
+# execute) and push tap+OTP to the chatting user's phone. The OTP travels
+# ONLY in the phone notification, never in this function's return value.
+#
+# Module-level (same rationale as confirm_pending_execute above) so tests
+# can exercise the real no-identity guard and the yellow/red actionable
+# split directly instead of a hand-rebuilt replica of it.
+async def request_confirmation_stepup(
+    app: web.Application, data_dir: str, *, tool: str, inputs: dict, tier: str, user: str | None,
+) -> dict | None:
+    from .api.handlers_gateway_pending import (
+        create_pending, notify, invalidate_user_otp_pendings,
+    )
+    from .api.handlers_gateway_policy import notify_service_for_user
+
+    # Safety (Fix 5): with no real identity (falsy user, or the "home"
+    # no-identity fallback bucket — see brain/identity.py's `uid or "home"`)
+    # there is no phone to target and no chat OTP flow that could ever
+    # resolve this pending, since verify_otp() matches on `user`. Minting one
+    # anyway would create a dead pending nobody can confirm. Return None so
+    # the dispatcher falls back to the Slice-1 "richiede conferma" error.
+    if not user or user == "home":
+        return None
+    label = f"{inputs.get('domain')}.{inputs.get('service')}"
+    # At most one OTP pending per user at a time: `verify_otp` resolves a
+    # typed code by scanning for the first live pending bound to `user`, so a
+    # second concurrent one would be ambiguous. Invalidate any prior chat OTP
+    # pending for this user before minting the new one.
+    invalidate_user_otp_pendings(data_dir, user)
+    entry = create_pending(
+        data_dir, tool=tool, inputs=inputs, tier=tier,
+        origin="chat", label=label, user=user, with_otp=True,
+    )
+    svc = notify_service_for_user(app, user)
+    msg = _confirmation_push_message(label, inputs, entry["otp"])
+    # Owner decision (Fix 3): red/dangerous pendings are page/OTP-only — no
+    # one-tap notification buttons (matches the gateway's execute-API
+    # behaviour in handlers_execute.py, which uses actionable=(tier ==
+    # "yellow")). Only yellow gets actionable=True. The OTP is included in
+    # `msg` above unconditionally either way.
+    otp_sent = await notify(app, message=msg, actionable=(tier == "yellow"),
+                            nonce=entry["id"], service=svc)
+    return {"id": entry["id"], "otp_sent": bool(otp_sent)}
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner
     from .proxy.semantic_map import SemanticMap
@@ -657,31 +704,13 @@ async def _on_startup(app: web.Application) -> None:
     from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
-    from .api.handlers_gateway_pending import (
-        create_pending, notify, invalidate_user_otp_pendings,
-    )
-    from .api.handlers_gateway_policy import notify_service_for_user
-
-    # Step-up chat (Slice 2): when the semaforo gate returns "confirm" on a
-    # chat-initiated call_ha_service, freeze the action as a pending (never
-    # re-derived later — this exact `inputs` is what a later approve/OTP will
-    # execute) and push tap+OTP to the chatting user's phone. The OTP travels
-    # ONLY in the phone notification, never in this function's return value.
+    # Thin wrapper binding the module-level request_confirmation_stepup to
+    # this app instance; see request_confirmation_stepup for the actual
+    # no-identity guard and yellow/red actionable logic.
     async def _request_confirmation(*, tool, inputs, tier, user):
-        label = f"{inputs.get('domain')}.{inputs.get('service')}"
-        # At most one OTP pending per user at a time: `verify_otp` resolves a
-        # typed code by scanning for the first live pending bound to `user`,
-        # so a second concurrent one would be ambiguous. Invalidate any prior
-        # chat OTP pending for this user before minting the new one.
-        invalidate_user_otp_pendings(data_dir, user)
-        entry = create_pending(
-            data_dir, tool=tool, inputs=inputs, tier=tier,
-            origin="chat", label=label, user=user, with_otp=True,
+        return await request_confirmation_stepup(
+            app, data_dir, tool=tool, inputs=inputs, tier=tier, user=user,
         )
-        svc = notify_service_for_user(app, user)
-        msg = _confirmation_push_message(label, inputs, entry["otp"])
-        otp_sent = await notify(app, message=msg, actionable=True, nonce=entry["id"], service=svc)
-        return {"id": entry["id"], "otp_sent": bool(otp_sent)}
 
     # Thin wrapper binding the module-level confirm_pending_execute to this
     # app instance; see confirm_pending_execute for the actual 6-digit gate

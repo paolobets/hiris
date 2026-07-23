@@ -134,7 +134,7 @@ class ToolDispatcher:
         tier_confirmed: bool = False,
         user_id: str | None = None,
     ) -> Any:
-        _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization"})
+        _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization", "code"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
         logger.info("Tool call: %s(%s)", name, _log_inputs)
         try:
@@ -256,6 +256,14 @@ class ToolDispatcher:
                                 res = await self._request_confirmation(
                                     tool=name, inputs=inputs, tier=verdict.tier, user=user_id,
                                 )
+                                # No-identity guard (Fix 5): the callback returns None
+                                # (or a dict without an "id") when there's no real user
+                                # to target — e.g. the "home" no-identity fallback has
+                                # no phone and no chat OTP flow that could resolve it.
+                                # Fall back to the Slice-1 error instead of minting a
+                                # pending nobody can ever confirm.
+                                if not isinstance(res, dict) or not res.get("id"):
+                                    return {"error": "Azione a rischio: richiede conferma."}
                                 return {"status": "confirmation_required",
                                         "id": res.get("id"), "tier": verdict.tier,
                                         "message": ("Ho bisogno della tua conferma: tocca "

@@ -366,7 +366,7 @@ class TaskEngine:
             # (skip), INDIPENDENTEMENTE da entità esplicite accompagnatorie (HA attua
             # l'intero gruppo lato server, bypassando gli override per-entità).
             if isinstance(data, dict) and (data.get("area_id") or data.get("device_id") or data.get("label_id")):
-                logger.warning("Task %s: call_ha_service gated: area/device target without explicit entities (%s.%s)",
+                logger.warning("Task %s: call_ha_service gated: area/device/label target present (%s.%s)",
                                task.label, domain, service)
                 return f"skipped: group_target ({domain}.{service})"
             _v = gate_action(
