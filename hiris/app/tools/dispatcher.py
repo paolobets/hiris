@@ -23,7 +23,7 @@ from .automation_tools import get_ha_automations, get_automation_config, trigger
 from .task_tools import create_task_tool, list_tasks_tool, cancel_task_tool
 from .calendar_tools import get_calendar_events, set_input_helper, create_calendar_event
 from .http_tools import http_request
-from .memory_tools import recall_memory as _recall_memory, save_memory as _save_memory
+from .memory_tools import handle_recall_memory as _handle_recall_memory, handle_save_memory as _handle_save_memory
 from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
 from .proposal_tools import create_automation_proposal
@@ -118,7 +118,9 @@ class ToolDispatcher:
 
     @property
     def has_memory(self) -> bool:
-        return self._memory_store is not None and self._embedder is not None
+        # save_memory/recall_memory route into the unified KnowledgeStore
+        # (Slice 3) — gate tool exposure on that, not the legacy MemoryStore.
+        return self._knowledge_store is not None and self._knowledge_embedder is not None
 
     async def dispatch(
         self,
@@ -379,25 +381,20 @@ class ToolDispatcher:
                     allowed_endpoints=allowed_endpoints,
                 )
             if name == "recall_memory":
-                if self._memory_store is None:
+                if self._knowledge_store is None or self._knowledge_embedder is None:
                     return {"error": "Memory store not configured"}
-                return await _recall_memory(
-                    memory_store=self._memory_store,
-                    embedder=self._embedder,
-                    agent_id=agent_id or "hiris-default",
-                    query=inputs["query"],
-                    k=int(inputs.get("k", 5)),
-                    tags=inputs.get("tags") or None,
+                return await _handle_recall_memory(
+                    self._knowledge_store, self._knowledge_embedder, inputs,
+                    owner=user_id or "home",
+                    lens=agent_id or "hiris-default",
                 )
             if name == "save_memory":
-                if self._memory_store is None:
+                if self._knowledge_store is None or self._knowledge_embedder is None:
                     return {"error": "Memory store not configured"}
-                return await _save_memory(
-                    memory_store=self._memory_store,
-                    embedder=self._embedder,
-                    agent_id=agent_id or "hiris-default",
-                    content=inputs["content"],
-                    tags=inputs.get("tags") or None,
+                return await _handle_save_memory(
+                    self._knowledge_store, self._knowledge_embedder, inputs,
+                    owner=user_id or "home",
+                    lens=agent_id or "hiris-default",
                     retention_days=self._memory_retention_days,
                 )
             if name == "get_ha_health":
@@ -423,11 +420,14 @@ class ToolDispatcher:
                 )
             if name == "save_knowledge" and self._knowledge_store:
                 return await handle_save_knowledge(
-                    self._knowledge_store, self._knowledge_embedder, inputs, owner="home"
+                    self._knowledge_store, self._knowledge_embedder, inputs,
+                    owner=user_id or "home",
                 )
             if name == "recall_knowledge" and self._knowledge_store:
                 return await handle_recall_knowledge(
-                    self._knowledge_store, self._knowledge_embedder, inputs, owner="home",
+                    self._knowledge_store, self._knowledge_embedder, inputs,
+                    owner=user_id or "home",
+                    lens=agent_id or "hiris-default",
                     allow_sensitive=knowledge_allow_sensitive,
                     pseudonymizer=self._pseudonymizer,
                     cloud=cloud,

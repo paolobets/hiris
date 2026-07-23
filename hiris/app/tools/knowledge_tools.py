@@ -91,6 +91,7 @@ async def handle_recall_knowledge(
     tool_input: dict,
     *,
     owner: str,
+    lens: str | None = None,
     allow_sensitive: bool = False,
     pseudonymizer: Any = None,
     cloud: bool = True,
@@ -109,6 +110,7 @@ async def handle_recall_knowledge(
             query_vec=qv,
             k=k,
             owner=owner,
+            lens=lens,
             allow_sensitive=allow_sensitive,
         )
         chunks = store.search_chunks(

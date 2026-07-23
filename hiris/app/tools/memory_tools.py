@@ -1,12 +1,17 @@
 from __future__ import annotations
+import asyncio
 import logging
-from typing import TYPE_CHECKING
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..proxy.memory_store import MemoryStore
+    from ..brain.knowledge_store import KnowledgeStore
     from ..backends.embeddings import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
+
+# Same timestamp format used by KnowledgeStore (see brain/knowledge_store.py).
+_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 RECALL_MEMORY_TOOL_DEF = {
     "name": "recall_memory",
@@ -67,38 +72,103 @@ SAVE_MEMORY_TOOL_DEF = {
 }
 
 
-async def recall_memory(
-    memory_store: "MemoryStore",
+async def handle_save_memory(
+    store: "KnowledgeStore",
     embedder: "EmbeddingProvider",
-    agent_id: str,
-    query: str,
-    k: int = 5,
-    tags: list[str] | None = None,
-) -> dict:
-    k = min(max(1, k), 20)
-    try:
-        results = await memory_store.search(agent_id, query, k, tags, embedder)
-    except Exception as exc:
-        logger.warning("recall_memory failed: %s", exc)
-        return {"memories": [], "count": 0, "error": str(exc)}
-    return {"memories": results, "count": len(results)}
-
-
-async def save_memory(
-    memory_store: "MemoryStore",
-    embedder: "EmbeddingProvider",
-    agent_id: str,
-    content: str,
-    tags: list[str] | None = None,
+    tool_input: dict,
+    *,
+    owner: str,
+    lens: str,
     retention_days: int | None = None,
 ) -> dict:
+    """Save agent working-memory ("lens" memory) into the unified KnowledgeStore.
+
+    kind='memory', status='approved' (no human-in-the-loop gate like
+    save_knowledge — this is the agent's own scratch memory), scoped by
+    owner (who it belongs to) AND lens (which agent wrote it).
+    """
+    content = tool_input["content"]
     if len(content) > 1000:
         return {"error": "content exceeds 1000 character limit"}
+    tags = tool_input.get("tags") or []
     try:
-        mem_id = await memory_store.save(
-            agent_id, content, tags or [], embedder, retention_days
+        embedding = await embedder.embed(content)
+    except Exception as exc:
+        logger.warning("save_memory: embedding failed, saving without vector: %s", exc)
+        embedding = []
+
+    valid_until: str | None = None
+    if retention_days and retention_days > 0:
+        valid_until = (
+            datetime.now(timezone.utc) + timedelta(days=retention_days)
+        ).strftime(_TS_FMT)
+
+    loop = asyncio.get_running_loop()
+    try:
+        item_id = await loop.run_in_executor(
+            None,
+            lambda: store.add_item(
+                kind="memory",
+                content=content,
+                owner=owner,
+                lens=lens,
+                data={"tags": tags},
+                embedding=embedding or None,
+                sensitivity="normal",
+                source="chat",
+                status="approved",
+                valid_until=valid_until,
+            ),
         )
     except Exception as exc:
         logger.warning("save_memory failed: %s", exc)
         return {"error": str(exc)}
-    return {"saved": True, "id": mem_id}
+    return {"saved": True, "id": item_id}
+
+
+async def handle_recall_memory(
+    store: "KnowledgeStore",
+    embedder: "EmbeddingProvider",
+    tool_input: dict,
+    *,
+    owner: str,
+    lens: str,
+) -> dict:
+    """Recall from the unified KnowledgeStore, scoped to this owner's lens
+    (own agent memory) plus any un-lensed knowledge shared with this owner."""
+    k = min(max(1, int(tool_input.get("k", 5))), 20)
+    tags = tool_input.get("tags") or None
+    try:
+        query_vec = await embedder.embed(tool_input["query"])
+    except Exception as exc:
+        logger.warning("recall_memory: embedding failed: %s", exc)
+        return {"memories": [], "count": 0, "error": str(exc)}
+    if not query_vec:
+        return {"memories": [], "count": 0}
+
+    loop = asyncio.get_running_loop()
+
+    def _search() -> list[dict]:
+        # Over-fetch when a tag filter is active so post-filtering doesn't
+        # starve the result set below k.
+        search_k = k * 4 if tags else k
+        rows = store.search(query_vec=query_vec, k=search_k, owner=owner, lens=lens)
+        if tags:
+            tag_set = set(tags)
+            rows = [
+                r for r in rows
+                if tag_set.intersection((r.get("data") or {}).get("tags") or [])
+            ]
+        return rows[:k]
+
+    rows = await loop.run_in_executor(None, _search)
+    memories = [
+        {
+            "id": r["id"],
+            "content": r["content"],
+            "tags": (r.get("data") or {}).get("tags") or [],
+            "created_at": r.get("created_at"),
+        }
+        for r in rows
+    ]
+    return {"memories": memories, "count": len(memories)}

@@ -327,6 +327,20 @@ class KnowledgeStore:
                         "sensitivity": r["sensitivity"], "score": sim})
         return out
 
+    def purge_expired_lens(self) -> int:
+        """Delete lens-scoped rows (per-agent working memory) whose retention
+        has elapsed. Rows with lens IS NULL (shared knowledge) or with no
+        valid_until (no retention set) are never touched here."""
+        now = self._now()
+        with self._mu:
+            cur = self._conn.execute(
+                "DELETE FROM knowledge_items"
+                " WHERE lens IS NOT NULL AND valid_until IS NOT NULL AND valid_until < ?",
+                (now,),
+            )
+            self._conn.commit()
+            return cur.rowcount
+
     def close(self) -> None:
         with self._mu:
             self._conn.close()
