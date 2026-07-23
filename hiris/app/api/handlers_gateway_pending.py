@@ -167,14 +167,20 @@ def build_actions(nonce: str) -> list[dict]:
     ]
 
 
-async def notify(app: web.Application, *, message: str, actionable: bool, nonce: str) -> None:
+async def notify(app: web.Application, *, message: str, actionable: bool, nonce: str,
+                 service: str | None = None) -> None:
     """Send a notification via the configured notify service (default
-    notify.iphone_bet). Actionable (yellow) adds Approva/Nega buttons."""
+    notify.iphone_bet). Actionable (yellow) adds Approva/Nega buttons.
+
+    ``service`` is optional and keyword-only: when passed (e.g. resolved via
+    ``notify_service_for_user`` for the chatting user), it is used verbatim
+    instead of the global ``gateway_settings.notify_service`` — existing
+    callers that omit it keep the previous behaviour unchanged."""
     ha = app.get("ha_client")
     if ha is None:
         logger.warning("no ha_client — cannot send approval notification")
         return
-    service = ((app.get("gateway_settings") or {}).get("notify_service")
+    service = (service or (app.get("gateway_settings") or {}).get("notify_service")
                or "notify.iphone_bet").strip()
     if "." not in service:
         logger.error("invalid notify service %r", service)

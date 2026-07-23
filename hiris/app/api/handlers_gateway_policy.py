@@ -108,7 +108,12 @@ def load_settings(data_dir: str) -> dict:
     svc = s.get("notify_service")
     if not (isinstance(svc, str) and _SERVICE_RE.match(svc)):
         svc = DEFAULT_NOTIFY_SERVICE
-    return {"notify_service": svc}
+    users = s.get("notify_users")
+    if not isinstance(users, dict):
+        users = {}
+    users = {k: v for k, v in users.items()
+             if isinstance(k, str) and isinstance(v, str) and _SERVICE_RE.match(v)}
+    return {"notify_service": svc, "notify_users": users}
 
 
 def save_categories(data_dir: str, categories: dict, settings: dict | None = None,
@@ -126,6 +131,12 @@ def save_categories(data_dir: str, categories: dict, settings: dict | None = Non
         full.setdefault("settings", {})
         if isinstance(svc, str) and _SERVICE_RE.match(svc):
             full["settings"]["notify_service"] = svc
+        users = settings.get("notify_users")
+        if isinstance(users, dict):
+            full["settings"]["notify_users"] = {
+                k: v for k, v in users.items()
+                if isinstance(k, str) and isinstance(v, str) and _SERVICE_RE.match(v)
+            }
     _write_full(data_dir, full)
     return clean
 
@@ -187,6 +198,19 @@ def derive_execute_policy(categories: dict, entities: dict | None = None) -> dic
     }
 
 
+def notify_service_for_user(app, user: str | None) -> str:
+    """Resolve the notify service for a given HA user_id: the per-user mapping
+    (``gateway_settings.notify_users``) if present and valid, else the global
+    ``notify_service``, else the hard default."""
+    gs = app.get("gateway_settings") or {}
+    users = gs.get("notify_users") or {}
+    svc = users.get(user) if user else None
+    if isinstance(svc, str) and _SERVICE_RE.match(svc):
+        return svc
+    glob = gs.get("notify_service")
+    return glob if isinstance(glob, str) and _SERVICE_RE.match(glob) else DEFAULT_NOTIFY_SERVICE
+
+
 def apply_saved_policy(app: web.Application) -> None:
     """If a UI-managed policy file exists, derive and set the execute policy
     (overriding the env CSV). Called at startup and after each save. Mutates the
@@ -198,7 +222,9 @@ def apply_saved_policy(app: web.Application) -> None:
     holder = app.get("gateway_settings")
     if not isinstance(holder, dict):
         app["gateway_settings"] = holder = {}
-    holder["notify_service"] = load_settings(data_dir)["notify_service"]
+    settings = load_settings(data_dir)
+    holder["notify_service"] = settings["notify_service"]
+    holder["notify_users"] = settings["notify_users"]
     cats = load_categories(data_dir)
     ents = load_entities(data_dir)
     if not cats and not ents:
