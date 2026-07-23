@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [0.27.0] — Cervello auto-proponente + selettore entità (2026-07-23)
+- **Selettore di entità** nella pagina Sentinella: scegli le entità dalla lista filtrata
+  per tipo (niente più entity id scritti a mano). Nuova API `/api/entities`.
+- **Cervello auto-proponente**: la scansione olistica confronta l'inventario della casa con
+  la configurazione attuale, trova buchi di copertura e **auto-configura** nuovi detector
+  (marcati "brain", con undo dalla pagina "Suggerimenti"). Le opportunità di gestione
+  diventano proposte di automazione (approvazione umana — le automazioni HA girano fuori
+  dal semaforo). Grounding + cap anti-runaway; il cervello non tocca mai la config utente.
+
 ## [0.26.0] — Ponte push→abbonamento: coda di ragionamento (scheletro olistica) (2026-07-22)
 
 - **Nuova fondazione: coda di ragionamento (`ReasoningQueue`)** + API

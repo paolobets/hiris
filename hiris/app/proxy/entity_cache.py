@@ -100,6 +100,10 @@ class EntityCache:
     def get_all_states(self) -> dict[str, dict]:
         return dict(self._states)
 
+    def all_states(self) -> list[dict]:
+        """Return all cached entity states as a list (read-only access for the entity inventory API)."""
+        return list(self._states.values())
+
     async def load_area_registry(self, ha_client) -> None:
         """Load area→entity mapping from HA registries. Cached until next call."""
         areas = await ha_client.get_area_registry()
