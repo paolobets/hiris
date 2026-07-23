@@ -305,6 +305,64 @@ window.HirisSentinelRoute = (function () {
         });
       })
       .catch(function () { list.appendChild(el('p', 'sc-desc', 'Errore nel caricamento della timeline.')); });
+
+    outlet.appendChild(el('p', 'page-subtitle', 'Suggerimenti del cervello'));
+    var suggList = el('div');
+    outlet.appendChild(suggList);
+    api('api/suggestions', { method: 'GET' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+      .then(function (j) {
+        var suggs = j.suggestions || [];
+        if (!suggs.length) {
+          suggList.appendChild(el('p', 'sc-desc', 'Nessun suggerimento del cervello.'));
+          return;
+        }
+        suggs.forEach(function (s) {
+          var row = el('div', 'log-row');
+
+          var badge = el('span', 'sc-badge', 'brain');
+          badge.style.cssText = 'font-size:11px;padding:2px 6px;border-radius:6px;background:var(--accent,#3a6);color:#fff;margin-right:8px';
+          row.appendChild(badge);
+
+          var statusText = el('span', null,
+            (s.title || '') + ' · ' + (s.rationale || '') + ' · ' + (s.status || ''));
+          row.appendChild(statusText);
+
+          if (s.kind === 'coverage' && s.status === 'applied') {
+            var undoBtn = el('button', 'btn', 'Annulla');
+            undoBtn.style.cssText = 'margin-left:8px';
+            row.appendChild(undoBtn);
+            var errText = el('span', 'sc-desc', '');
+            errText.style.cssText = 'margin-left:8px';
+            row.appendChild(errText);
+
+            undoBtn.addEventListener('click', function () {
+              undoBtn.disabled = true;
+              errText.textContent = '';
+              api('api/suggestions/' + s.id + '/undo', { method: 'POST' })
+                .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+                .then(function (res) {
+                  if (res && res.ok) {
+                    s.status = 'dismissed';
+                    statusText.textContent =
+                      (s.title || '') + ' · ' + (s.rationale || '') + ' · ' + (s.status || '');
+                    undoBtn.style.display = 'none';
+                  } else {
+                    errText.textContent = 'Annullamento non riuscito.';
+                    undoBtn.disabled = false;
+                  }
+                })
+                .catch(function () {
+                  errText.textContent = 'Errore nell\'annullamento.';
+                  undoBtn.disabled = false;
+                });
+            });
+          }
+
+          suggList.appendChild(row);
+        });
+      })
+      .catch(function () { suggList.appendChild(el('p', 'sc-desc', 'Errore nel caricamento dei suggerimenti.')); });
   }
 
   function mount() {
