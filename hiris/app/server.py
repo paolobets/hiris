@@ -95,6 +95,39 @@ def _deploy_card_to_www(slug: str = "hiris") -> None:
         logger.error("Failed to deploy HIRIS card to %s: %s", dst, exc, exc_info=True)
 
 
+def _confirmation_push_message(label: str, inputs: dict, otp: str) -> str:
+    """Build the phone-push confirmation message for a chat step-up action.
+
+    This notification IS the entire human-in-the-loop safety check: the tap or
+    typed OTP executes exactly the frozen ``inputs`` (denylist included), never
+    re-derived. So the human on the phone must see WHICH entity is being
+    actuated, not just ``domain.service`` — otherwise a prompt-injected LLM
+    could request e.g. turn_on on ``switch.boiler`` while the chat discusses
+    something unrelated, and the user would have no way to notice.
+
+    Extracts the target entity id(s) from ``inputs["data"]["entity_id"]`` and/or
+    ``inputs["target"]["entity_id"]`` (either a single string or a list), joins
+    them for display, and falls back to a placeholder when no entity_id is
+    present at all (e.g. a broadcast service call with no target). The OTP is
+    interpolated here ONLY — this string is passed straight to ``notify(...)``
+    (the phone push), never returned to the chat/LLM side.
+    """
+    data = inputs.get("data") if isinstance(inputs.get("data"), dict) else {}
+    target = inputs.get("target") if isinstance(inputs.get("target"), dict) else {}
+    raw = data.get("entity_id") if isinstance(data, dict) else None
+    if raw is None:
+        raw = target.get("entity_id") if isinstance(target, dict) else None
+    if isinstance(raw, str):
+        ids = [raw]
+    elif isinstance(raw, list):
+        ids = [e for e in raw if isinstance(e, str)]
+    else:
+        ids = []
+    targets_str = ", ".join(ids) if ids else "(nessuna entità)"
+    return (f'HIRIS: confermi "{label}" su {targets_str}? '
+            f'Tocca Conferma, oppure usa il codice {otp}.')
+
+
 async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
     """Read WebSocket messages until we get the one matching msg_id."""
     loop = asyncio.get_running_loop()
@@ -623,9 +656,9 @@ async def _on_startup(app: web.Application) -> None:
             origin="chat", label=label, user=user, with_otp=True,
         )
         svc = notify_service_for_user(app, user)
-        msg = f"HIRIS: confermi {label}? Tocca Conferma, oppure usa il codice {entry['otp']}."
-        await notify(app, message=msg, actionable=True, nonce=entry["id"], service=svc)
-        return {"id": entry["id"], "otp_sent": True}
+        msg = _confirmation_push_message(label, inputs, entry["otp"])
+        otp_sent = await notify(app, message=msg, actionable=True, nonce=entry["id"], service=svc)
+        return {"id": entry["id"], "otp_sent": bool(otp_sent)}
 
     dispatcher = ToolDispatcher(
         ha_client=ha_client,

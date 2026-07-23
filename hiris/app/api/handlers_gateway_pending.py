@@ -194,31 +194,40 @@ def build_actions(nonce: str) -> list[dict]:
 
 
 async def notify(app: web.Application, *, message: str, actionable: bool, nonce: str,
-                 service: str | None = None) -> None:
+                 service: str | None = None) -> bool:
     """Send a notification via the configured notify service (default
     notify.iphone_bet). Actionable (yellow) adds Approva/Nega buttons.
 
     ``service`` is optional and keyword-only: when passed (e.g. resolved via
     ``notify_service_for_user`` for the chatting user), it is used verbatim
     instead of the global ``gateway_settings.notify_service`` — existing
-    callers that omit it keep the previous behaviour unchanged."""
+    callers that omit it keep the previous behaviour unchanged.
+
+    Returns ``True`` iff ``ha.call_service`` actually completed, ``False`` on
+    any failure (no ``ha_client``, invalid ``service`` string, or an
+    exception from the call). Callers that need to know whether the push
+    really reached HA (e.g. the chat step-up flow's ``otp_sent`` flag) can
+    rely on this; callers that don't care may keep ignoring the return
+    value, as before."""
     ha = app.get("ha_client")
     if ha is None:
         logger.warning("no ha_client — cannot send approval notification")
-        return
+        return False
     service = (service or (app.get("gateway_settings") or {}).get("notify_service")
                or "notify.iphone_bet").strip()
     if "." not in service:
         logger.error("invalid notify service %r", service)
-        return
+        return False
     domain, svc = service.split(".", 1)
     data: dict = {"message": message, "title": "HIRIS · richiesta da Claude"}
     if actionable:
         data["data"] = {"actions": build_actions(nonce), "tag": f"hiris-gw-{nonce}"}
     try:
         await ha.call_service(domain, svc, data)
+        return True
     except Exception as exc:
         logger.error("approval notification failed: %s", exc)
+        return False
 
 
 async def approve(app: web.Application, nonce: str) -> dict:
