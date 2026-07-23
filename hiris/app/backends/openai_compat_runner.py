@@ -17,6 +17,7 @@ from ..claude_runner import (
     RESTRICT_PROMPT,
     REQUIRE_CONFIRMATION_PROMPT,
     _parse_structured_output,
+    _redact_stream_tool_calls,
 )
 from .pricing import PRICING as _PRICING
 
@@ -885,7 +886,7 @@ class OpenAICompatRunner:
             yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
             return
 
-        yield f'data: {json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": self.last_tool_calls})}\n\n'
+        yield f'data: {json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": _redact_stream_tool_calls(self.last_tool_calls)})}\n\n'
 
     async def run_with_actions(
         self,

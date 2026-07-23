@@ -344,6 +344,28 @@ def _parse_structured_output(text: str) -> tuple[str, dict]:
     return clean_text, structured
 
 
+def _redact_stream_tool_calls(tool_calls: list) -> list:
+    """Redact confirm_pending's OTP `code` before a runner emits its
+    last_tool_calls list in an SSE "done" event.
+
+    Mirrors handlers_chat.py's `_debug_input` redaction for the same
+    {"tool": ..., "input": ...} shape on the non-streaming HTTP debug-payload
+    surface (see commit d86efea) — this is the streaming-path counterpart:
+    the raw 6-digit code the user typed in chat must never be echoed back to
+    the client, whether via the debug payload or the SSE tool_calls list.
+    """
+    out = []
+    for t in tool_calls:
+        if not isinstance(t, dict):
+            out.append(t)
+            continue
+        inp = t.get("input")
+        if t.get("tool") == "confirm_pending" and isinstance(inp, dict) and "code" in inp:
+            t = {**t, "input": {**inp, "code": "***"}}
+        out.append(t)
+    return out
+
+
 class ClaudeRunner:
     def __init__(
         self,
@@ -718,6 +740,7 @@ class ClaudeRunner:
             yield f'data: {_json.dumps({"type": "token", "text": result[i:i + chunk_size]})}\n\n'
 
         tool_calls = self.last_tool_calls if isinstance(self.last_tool_calls, list) else []
+        tool_calls = _redact_stream_tool_calls(tool_calls)
         yield f'data: {_json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": tool_calls})}\n\n'
 
     async def run_with_actions(
