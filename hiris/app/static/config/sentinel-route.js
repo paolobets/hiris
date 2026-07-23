@@ -244,9 +244,8 @@ window.HirisSentinelRoute = (function () {
     var prepRow = el('div');
     prepRow.style.cssText = 'padding:12px 0';
     var prepEnabled = checkboxField(prepRow, 'Rientro serale (evening_arrival)', prepEvening.enabled);
-    var prepTargetEntity = textField(prepRow, 'Scena da attivare', prepEvening.target_entity);
-    prepTargetEntity.placeholder = 'scene.rientro_serale';
-    var prepSunEntity = textField(prepRow, 'Entità sole', prepEvening.sun_entity != null ? prepEvening.sun_entity : 'sun.sun');
+    var prepTargetEntity = entityField(prepRow, 'Scena da attivare', prepEvening.target_entity, 'domain=scene,light,switch');
+    var prepSunEntity = entityField(prepRow, 'Entità sole', prepEvening.sun_entity != null ? prepEvening.sun_entity : 'sun.sun', 'domain=sun');
     var prepAfterHour = numberField(prepRow, 'Non prima delle ore', prepEvening.after_hour);
     prepBody.appendChild(prepRow);
 
