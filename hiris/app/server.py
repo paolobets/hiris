@@ -12,9 +12,10 @@ from .api.handlers_chat import handle_chat
 from .api.handlers_agents import (
     handle_list_agents, handle_create_agent, handle_get_agent,
     handle_update_agent, handle_delete_agent, handle_run_agent,
-    handle_list_entities, handle_get_agent_usage, handle_reset_agent_usage,
+    handle_get_agent_usage, handle_reset_agent_usage,
     handle_context_preview,
 )
+from .api.handlers_entities import handle_list_entities
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
