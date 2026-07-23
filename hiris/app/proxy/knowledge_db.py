@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS query_patterns (
 
 
 class KnowledgeDB:
-    def __init__(self, db_path: str = "/data/hiris_knowledge.db") -> None:
+    def __init__(self, db_path: str = "/data/home_map.db") -> None:
         self._conn = connect(db_path)
         init_schema(self._conn, _SCHEMA, version=1)
 

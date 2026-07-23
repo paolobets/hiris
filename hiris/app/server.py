@@ -454,7 +454,7 @@ async def _on_startup(app: web.Application) -> None:
     app["proposal_store"] = proposal_store
 
     knowledge_db = KnowledgeDB(
-        db_path=os.path.join(data_dir, "hiris_knowledge.db")
+        db_path=os.path.join(data_dir, "home_map.db")
     )
     app["knowledge_db"] = knowledge_db
 
