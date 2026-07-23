@@ -164,6 +164,36 @@ async def test_purge_expired_lens_deletes_only_expired_lens_rows(tmp_path):
     store.close()
 
 
+async def test_recall_memory_does_not_leak_non_memory_kinds(tmp_path):
+    """recall_memory must only ever return kind='memory' items. The unified
+    scope WHERE also returns un-lensed knowledge rows (expenses, obligations,
+    facts...) owned by the same user, so without an explicit kinds=['memory']
+    filter an agent could use recall_memory to read data outside its
+    configured kinds egress filter (e.g. an agent restricted to
+    kinds=['fact'] reading expenses via recall_memory instead of
+    recall_knowledge). This is the egress-filter bypass this fix closes."""
+    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+
+    # An approved, un-lensed knowledge item (e.g. an expense the user already
+    # approved) — this is the kind of row the unified scope WHERE also
+    # matches for owner=paolo regardless of lens, which is exactly what
+    # recall_memory must NOT expose.
+    store.add_item(
+        kind="expense", content="bolletta luce 123 euro", owner="paolo",
+        lens=None, status="approved", embedding=[0.1, 0.2, 0.3],
+    )
+    await disp.dispatch("save_memory", {"content": "l'utente preferisce il te verde"},
+                        agent_id="agentA", user_id="paolo")
+
+    res = await disp.dispatch("recall_memory", {"query": "bolletta luce spesa"},
+                              agent_id="agentA", user_id="paolo")
+    assert "123" not in str(res)
+    assert "bolletta" not in str(res)
+    store.close()
+
+
 async def test_recall_knowledge_includes_agents_own_lens_memory(tmp_path):
     """recall_knowledge must also pass lens=agent_id so an agent's own
     working memory shows up alongside shared knowledge."""

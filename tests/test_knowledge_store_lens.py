@@ -47,6 +47,30 @@ def test_kinds_filter(tmp_path):
     s.close()
 
 
+def test_kinds_empty_list_denies_all(tmp_path):
+    """An empty kinds list is the deny-all sentinel (e.g. an agent configured
+    with knowledge_access.kinds=[] meaning 'no knowledge access at all') and
+    must return nothing. Before this fix `if kinds:` treated [] the same as
+    None/'all' (falsy => no filter applied), returning every kind instead of
+    none."""
+    s = _store(tmp_path)
+    s.add_item(kind="memory", content="m", owner="home", status="approved", embedding=[0.55, 0.55])
+    s.add_item(kind="fact", content="f", owner="home", status="approved", embedding=[0.55, 0.55])
+    got = s.search(query_vec=[0.55, 0.55], owner="home", kinds=[], k=5)
+    assert got == []
+    s.close()
+
+
+def test_kinds_none_means_no_filter(tmp_path):
+    s = _store(tmp_path)
+    s.add_item(kind="memory", content="m", owner="home", status="approved", embedding=[0.65, 0.65])
+    s.add_item(kind="fact", content="f", owner="home", status="approved", embedding=[0.65, 0.65])
+    got = s.search(query_vec=[0.65, 0.65], owner="home", kinds=None, k=5)
+    kinds_seen = {r["kind"] for r in got}
+    assert {"memory", "fact"} <= kinds_seen
+    s.close()
+
+
 def test_kinds_all_means_no_filter(tmp_path):
     s = _store(tmp_path)
     s.add_item(kind="memory", content="m", owner="home", status="approved", embedding=[0.6, 0.6])

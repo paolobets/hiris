@@ -203,13 +203,21 @@ class KnowledgeStore:
             # filter (["fact"]), not iterated char-by-char (which would
             # produce `kind IN ('f','a','c','t')` and match nothing).
             kinds = None if kinds == "all" else [kinds]
-        if kinds:
-            placeholders = []
-            for i, kind_val in enumerate(kinds):
-                key = f"kind{i}"
-                placeholders.append(f":{key}")
-                bind[key] = kind_val
-            clauses.append("kind IN (%s)" % ",".join(placeholders))
+        if kinds is not None:
+            if not kinds:
+                # An explicitly empty list is the deny-all sentinel (e.g. an
+                # agent configured with knowledge_access.kinds=[] meaning "no
+                # knowledge access"). `kind IN ()` is invalid SQL, so short-
+                # circuit with an always-false predicate instead of falling
+                # through to "no filter" (which `if kinds:` used to do).
+                clauses.append("1=0")
+            else:
+                placeholders = []
+                for i, kind_val in enumerate(kinds):
+                    key = f"kind{i}"
+                    placeholders.append(f":{key}")
+                    bind[key] = kind_val
+                clauses.append("kind IN (%s)" % ",".join(placeholders))
         clauses.append("(valid_until IS NULL OR valid_until >= :valid_now)")
         bind["valid_now"] = self._now()
         sql = "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)

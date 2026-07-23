@@ -134,8 +134,12 @@ async def handle_recall_memory(
     owner: str,
     lens: str,
 ) -> dict:
-    """Recall from the unified KnowledgeStore, scoped to this owner's lens
-    (own agent memory) plus any un-lensed knowledge shared with this owner."""
+    """Recall from the unified KnowledgeStore, restricted to kind='memory'
+    rows scoped to this owner's lens (this agent's own memory only). The
+    kinds=['memory'] filter is required: the unified scope WHERE also
+    matches un-lensed knowledge rows (facts, expenses, obligations...) owned
+    by this owner, and without it recall_memory would let an agent read
+    knowledge outside its configured kinds egress filter."""
     k = min(max(1, int(tool_input.get("k", 5))), 20)
     tags = tool_input.get("tags") or None
     try:
@@ -152,7 +156,10 @@ async def handle_recall_memory(
         # Over-fetch when a tag filter is active so post-filtering doesn't
         # starve the result set below k.
         search_k = k * 4 if tags else k
-        rows = store.search(query_vec=query_vec, k=search_k, owner=owner, lens=lens)
+        rows = store.search(
+            query_vec=query_vec, k=search_k, owner=owner, lens=lens,
+            kinds=["memory"],
+        )
         if tags:
             tag_set = set(tags)
             rows = [
