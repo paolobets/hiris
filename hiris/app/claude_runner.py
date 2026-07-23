@@ -476,6 +476,7 @@ class ClaudeRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        user_id: str | None = None,
     ) -> str:
         if agent_id:
             if agent_id not in self._per_agent_usage:
@@ -615,6 +616,7 @@ class ClaudeRunner:
                             visible_entity_ids=visible_entity_ids,
                             knowledge_allow_sensitive=knowledge_allow_sensitive,
                             cloud=self._is_cloud,
+                            user_id=user_id,
                         )
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({
@@ -654,6 +656,7 @@ class ClaudeRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        user_id: str | None = None,
     ):
         """Async generator yielding SSE-formatted lines for the chat response.
 
@@ -688,6 +691,7 @@ class ClaudeRunner:
                 response_mode=response_mode,
                 thinking_budget=thinking_budget,
                 knowledge_allow_sensitive=knowledge_allow_sensitive,
+                user_id=user_id,
             )
         except Exception as exc:
             yield f'data: {_json.dumps({"type": "error", "message": str(exc)})}\n\n'
@@ -720,6 +724,7 @@ class ClaudeRunner:
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
+        user_id: str | None = None,
     ) -> tuple[str, dict]:
         """Run an autonomous agent evaluation — restrict tools, inject structured-output instructions.
 
@@ -805,6 +810,7 @@ class ClaudeRunner:
             response_mode=response_mode,
             thinking_budget=thinking_budget,
             knowledge_allow_sensitive=knowledge_allow_sensitive,
+            user_id=user_id,
         )
         clean_text, structured = _parse_structured_output(raw_result)
         return clean_text, structured

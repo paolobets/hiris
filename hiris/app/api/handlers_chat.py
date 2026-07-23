@@ -3,6 +3,7 @@ import logging
 
 from aiohttp import web
 
+from ..brain.identity import resolve_owner
 from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 async def handle_chat(request: web.Request) -> web.Response:
+    owner = resolve_owner(request)
     try:
         body = await request.json()
     except Exception:
@@ -205,6 +207,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             knowledge_allow_sensitive=allow_sensitive,
+            user_id=owner,
         ):
             await stream_resp.write(chunk.encode())
             try:
@@ -260,6 +263,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         response_mode=agent_response_mode,
         thinking_budget=agent_thinking_budget,
         knowledge_allow_sensitive=allow_sensitive,
+        user_id=owner,
     )
 
     # De-tokenize pseudonymized tokens before toxicity check, persistence,

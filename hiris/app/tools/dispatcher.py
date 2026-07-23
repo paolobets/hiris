@@ -128,6 +128,7 @@ class ToolDispatcher:
         knowledge_allow_sensitive: bool = False,
         cloud: bool = True,
         tier_confirmed: bool = False,
+        user_id: str | None = None,
     ) -> Any:
         _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
