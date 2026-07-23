@@ -151,6 +151,32 @@ def resolve_pending(data_dir: str, nonce: str, status: str) -> None:
         _save(data_dir, data)
 
 
+def invalidate_user_otp_pendings(data_dir: str, user: str | None) -> None:
+    """Reject any still-live chat-OTP pending belonging to ``user``.
+
+    Called right before issuing a new one (see ``create_pending(...,
+    with_otp=True)`` call sites) so at most ONE OTP pending exists per user
+    at a time. ``verify_otp`` resolves a typed code by scanning for the
+    first pending entry matching ``user`` that carries an ``otp`` — with two
+    live OTP pendings for the same user, that scan could match the wrong one
+    (e.g. reject a code meant for a different, still-open confirmation, or
+    worse, confirm a stale action). Keeping the invariant at creation time
+    avoids that ambiguity entirely.
+    """
+    if not user:
+        return
+    now = time.time()
+    data = _load(data_dir)
+    changed = False
+    for entry in data.values():
+        if (entry.get("status") == "pending" and entry.get("user") == user
+                and entry.get("otp") and entry.get("expires", 0) > now):
+            entry["status"] = "rejected"
+            changed = True
+    if changed:
+        _save(data_dir, data)
+
+
 def parse_action(action: str) -> tuple[str, str] | None:
     """Parse a mobile_app notification action string 'HIRIS_GW:approve:<nonce>'."""
     parts = (action or "").split(":")

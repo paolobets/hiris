@@ -601,6 +601,31 @@ async def _on_startup(app: web.Application) -> None:
     from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
+    from .api.handlers_gateway_pending import (
+        create_pending, notify, invalidate_user_otp_pendings,
+    )
+    from .api.handlers_gateway_policy import notify_service_for_user
+
+    # Step-up chat (Slice 2): when the semaforo gate returns "confirm" on a
+    # chat-initiated call_ha_service, freeze the action as a pending (never
+    # re-derived later — this exact `inputs` is what a later approve/OTP will
+    # execute) and push tap+OTP to the chatting user's phone. The OTP travels
+    # ONLY in the phone notification, never in this function's return value.
+    async def _request_confirmation(*, tool, inputs, tier, user):
+        label = f"{inputs.get('domain')}.{inputs.get('service')}"
+        # At most one OTP pending per user at a time: `verify_otp` resolves a
+        # typed code by scanning for the first live pending bound to `user`,
+        # so a second concurrent one would be ambiguous. Invalidate any prior
+        # chat OTP pending for this user before minting the new one.
+        invalidate_user_otp_pendings(data_dir, user)
+        entry = create_pending(
+            data_dir, tool=tool, inputs=inputs, tier=tier,
+            origin="chat", label=label, user=user, with_otp=True,
+        )
+        svc = notify_service_for_user(app, user)
+        msg = f"HIRIS: confermi {label}? Tocca Conferma, oppure usa il codice {entry['otp']}."
+        await notify(app, message=msg, actionable=True, nonce=entry["id"], service=svc)
+        return {"id": entry["id"], "otp_sent": True}
 
     dispatcher = ToolDispatcher(
         ha_client=ha_client,
@@ -617,6 +642,7 @@ async def _on_startup(app: web.Application) -> None:
         pseudonymizer=pseudonymizer,
         history_store=history_store,
         execute_policy=app["execute_policy"],
+        request_confirmation=_request_confirmation,
     )
     dispatcher.set_task_engine(task_engine)
     app["tool_dispatcher"] = dispatcher

@@ -89,6 +89,7 @@ class ToolDispatcher:
         pseudonymizer: Any = None,
         history_store: Any = None,
         execute_policy: dict | None = None,
+        request_confirmation: Any = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -107,6 +108,7 @@ class ToolDispatcher:
         # Riferimento VIVO al dict app["execute_policy"] (mutato in place da
         # apply_saved_policy): il semaforo si legge a ogni dispatch. {} = fail-closed.
         self._execute_policy = execute_policy if execute_policy is not None else {}
+        self._request_confirmation = request_confirmation
         self._task_engine: Any = None
 
     def set_task_engine(self, engine: Any) -> None:
@@ -245,8 +247,16 @@ class ToolDispatcher:
                         logger.warning("call_ha_service gated: %s (%s.%s)",
                                        verdict.decision, domain, service)
                         if verdict.decision == "confirm":
-                            return {"error": "Azione a rischio: richiede conferma "
-                                             "(flusso di conferma in arrivo nella Slice 2)."}
+                            if self._request_confirmation is not None:
+                                res = await self._request_confirmation(
+                                    tool=name, inputs=inputs, tier=verdict.tier, user=user_id,
+                                )
+                                return {"status": "confirmation_required",
+                                        "id": res.get("id"), "tier": verdict.tier,
+                                        "message": ("Ho bisogno della tua conferma: tocca "
+                                                    "'Conferma' nella notifica sul telefono, "
+                                                    "oppure dimmi il codice che ti ho inviato.")}
+                            return {"error": "Azione a rischio: richiede conferma."}
                         return {"error": verdict.reason}
                 if allowed_services:
                     service_key = f"{domain}.{service}"
