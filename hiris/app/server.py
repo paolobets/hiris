@@ -44,6 +44,7 @@ from .proxy.semantic_context_map import SemanticContextMap
 from .proxy.memory_store import MemoryStore
 from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
+from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
@@ -536,6 +537,13 @@ async def _on_startup(app: web.Application) -> None:
 
     knowledge_store = KnowledgeStore(os.path.join(data_dir, "knowledge.db"))
     app["knowledge_store"] = knowledge_store
+
+    _migrated_memories = migrate_agent_memories(data_dir, knowledge_store)
+    if _migrated_memories:
+        logger.info(
+            "Startup: migrated %d legacy agent memories into KnowledgeStore",
+            _migrated_memories,
+        )
 
     from .history.store import HistoryStore
     from .history.capture import HistoryCapture
