@@ -14,6 +14,7 @@ issued for. The notify service is configurable (default notify.iphone_bet).
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -83,10 +84,20 @@ def create_pending(data_dir: str, *, tool: str, inputs: dict, tier: str,
 
 
 def list_pending(data_dir: str) -> list[dict]:
+    """Return sanitized copies of pending entries (never the raw store).
+
+    Security: this feeds ``GET /api/gateway/pending``, which is reachable
+    with the same ``X-HIRIS-Internal-Token`` the MCP gateway (Claude) holds.
+    The OTP is a step-up secret meant to prove a *human* typed it in chat —
+    if it leaked back out over this endpoint, the very principal being
+    checked could read it. So ``otp``/``otp_attempts`` are stripped from the
+    copies handed out here; the stored entries themselves are untouched.
+    """
     now = time.time()
     data = _load(data_dir)
-    out = [v for v in data.values()
-           if v.get("status") == "pending" and v.get("expires", 0) > now]
+    out = [{k: v for k, v in entry.items() if k not in ("otp", "otp_attempts")}
+           for entry in data.values()
+           if entry.get("status") == "pending" and entry.get("expires", 0) > now]
     out.sort(key=lambda e: e.get("ts", 0), reverse=True)
     return out
 
@@ -110,18 +121,21 @@ def verify_otp(data_dir: str, user: str, code: str) -> dict | None:
     Single-use, scoped to the same ``user`` who owns the pending, with a
     lockout after ``MAX_OTP_ATTEMPTS`` mismatches (the pending is then
     invalidated: status -> "rejected"). On match the pending is consumed
-    exactly like ``take_pending`` and the entry is returned; otherwise
-    returns None (wrong user, no OTP, expired, or mismatch).
+    exactly like ``take_pending`` and a sanitized copy of the entry (with
+    ``otp``/``otp_attempts`` stripped, so the code never travels further
+    downstream than this check) is returned; otherwise returns None (wrong
+    user, no OTP, expired, or mismatch).
     """
     now = time.time()
     data = _load(data_dir)
     for entry in data.values():
         if (entry.get("status") == "pending" and entry.get("user") == user
                 and entry.get("otp") and entry.get("expires", 0) > now):
-            if str(code) == str(entry["otp"]):
+            if hmac.compare_digest(str(code), str(entry["otp"])):
                 entry["status"] = "consumed"
                 _save(data_dir, data)
-                return entry
+                return {k: v for k, v in entry.items()
+                        if k not in ("otp", "otp_attempts")}
             entry["otp_attempts"] = int(entry.get("otp_attempts", 0)) + 1
             if entry["otp_attempts"] >= MAX_OTP_ATTEMPTS:
                 entry["status"] = "rejected"
