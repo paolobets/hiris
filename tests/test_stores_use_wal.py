@@ -18,5 +18,6 @@ def test_knowledge_store_opens_in_wal(tmp_path):
 
     s = KnowledgeStore(str(tmp_path / "k.db"))
     assert s._conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
-    assert s._conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    # Slice 3 Task 1 bumped KnowledgeStore to schema v2 (adds the `lens` column).
+    assert s._conn.execute("PRAGMA user_version").fetchone()[0] == 2
     s.close()
