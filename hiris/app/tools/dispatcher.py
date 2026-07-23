@@ -31,6 +31,7 @@ from .config_tools import normalize_config_inputs, apply_ha_config, add_dashboar
 from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
+from ..security.semaphore import gate_action
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class ToolDispatcher:
         embedder: Any = None,
         pseudonymizer: Any = None,
         history_store: Any = None,
+        execute_policy: dict | None = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -102,6 +104,9 @@ class ToolDispatcher:
         self._knowledge_embedder = embedder if embedder is not None else embedding_provider
         self._pseudonymizer = pseudonymizer
         self._history_store = history_store
+        # Riferimento VIVO al dict app["execute_policy"] (mutato in place da
+        # apply_saved_policy): il semaforo si legge a ogni dispatch. {} = fail-closed.
+        self._execute_policy = execute_policy if execute_policy is not None else {}
         self._task_engine: Any = None
 
     def set_task_engine(self, engine: Any) -> None:
@@ -205,6 +210,27 @@ class ToolDispatcher:
                 service = inputs["service"]
                 data = inputs.get("data", {})
                 target = inputs.get("target", {}) or {}
+                # Semaforo universale (denylist + tier). Le letture non arrivano qui.
+                raw_gate_eid = (
+                    data.get("entity_id") if isinstance(data, dict) else None
+                ) or target.get("entity_id")
+                gate_eids = (
+                    [raw_gate_eid] if isinstance(raw_gate_eid, str)
+                    else list(raw_gate_eid) if isinstance(raw_gate_eid, list)
+                    else []
+                )
+                verdict = gate_action(
+                    domain=domain, service=service, entity_ids=gate_eids,
+                    tiers=self._execute_policy.get("tiers") or {},
+                    entity_tiers=self._execute_policy.get("entity_tiers") or {},
+                )
+                if verdict.decision != "allow":
+                    logger.warning("call_ha_service gated: %s (%s.%s)",
+                                   verdict.decision, domain, service)
+                    if verdict.decision == "confirm":
+                        return {"error": "Azione a rischio: richiede conferma "
+                                         "(flusso di conferma in arrivo nella Slice 2)."}
+                    return {"error": verdict.reason}
                 if allowed_services:
                     service_key = f"{domain}.{service}"
                     if not any(fnmatch.fnmatch(service_key, pat) for pat in allowed_services):
