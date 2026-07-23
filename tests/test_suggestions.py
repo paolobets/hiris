@@ -55,3 +55,20 @@ def test_cap_and_management(tmp_path, store):
     apply_suggestions(suggs, data_dir=str(tmp_path), store=store, inventory_ids=set(),
                       current_config=load_policy(str(tmp_path)), create_proposal=lambda c: proposed.append(c), cap=5)
     assert proposed == [{"x": 1}] and store.list()[0]["status"] == "proposed"
+
+def test_undo_no_op_when_entity_not_in_registry(tmp_path, store):
+    """Regression test: undo() should only mark dismissed when removal actually
+    succeeds. If the entity is not in the brain sidecar registry (e.g., registry/policy
+    desync or double-undo), undo() returns False and status stays 'applied'."""
+    dd = str(tmp_path)
+    # Manually record an "applied" suggestion with a delta pointing to a detector/entity
+    # that was NEVER actually registered via apply_brain_detector.
+    delta = {"detector": "fridge_temp", "entity": "sensor.ghost"}
+    sid = store.record(kind="coverage", title="Ghost Sensor", rationale="r",
+                       config={"detector": "fridge_temp", "entity": "sensor.ghost"},
+                       status="applied", delta=delta)
+    # Attempt undo: should return False (entity not in registry) and NOT mark dismissed.
+    result = undo(store, dd, sid)
+    assert result is False
+    row = store.get(sid)
+    assert row["status"] == "applied", "Status should remain 'applied' when undo fails"

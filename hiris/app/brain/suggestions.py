@@ -156,5 +156,6 @@ def undo(store: SuggestionStore, data_dir: str, suggestion_id: int) -> bool:
     if not isinstance(delta, dict) or "detector" not in delta or "entity" not in delta:
         return False
     ok = remove_brain_detector(data_dir, delta["detector"], delta["entity"])
-    store.set_status(suggestion_id, "dismissed")
+    if ok:
+        store.set_status(suggestion_id, "dismissed")
     return ok
