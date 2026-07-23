@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import threading
 
 DEFAULT_POLICY: dict = {
     "detectors": {
@@ -40,6 +41,17 @@ SENTINEL_DETECTORS = [
 _PATH = "sentinel_policy.json"
 _BRAIN_PATH = "sentinel_brain.json"
 _ALLOWED_KEYS = {k: set(v) for k, v in DEFAULT_POLICY["detectors"].items()}
+# Structural keys that a brain-suggested `config`/`params` must NEVER be able to
+# override via apply_brain_detector -- enabling/disabling a detector or wiping
+# its entities list is exclusively the caller's own logic, never untrusted config.
+_BRAIN_PARAM_DENY = frozenset({"enabled", "entities"})
+# Guards the load_policy -> mutate -> save_policy critical sections (including the
+# sentinel_brain.json sidecar update) against a concurrent save_policy call from
+# e.g. the web UI handler clobbering an in-flight brain auto-apply/undo. Single
+# process only -- cross-process locking is out of scope. Reentrant because
+# apply_brain_detector/remove_brain_detector hold it across their own call to
+# save_policy, which also takes it internally.
+_POLICY_LOCK = threading.RLock()
 
 
 def _deep_merge(default: dict, stored: dict | None) -> dict:
@@ -122,9 +134,10 @@ def save_policy(data_dir: str, body: dict) -> dict:
     clean["preparation"] = _deep_merge(DEFAULT_POLICY["preparation"], body.get("preparation"))
     os.makedirs(data_dir, exist_ok=True)
     tmp = _file(data_dir) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(clean, fh, ensure_ascii=False, indent=2)
-    os.replace(tmp, _file(data_dir))
+    with _POLICY_LOCK:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(clean, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, _file(data_dir))
     return clean
 
 
@@ -132,22 +145,24 @@ def apply_brain_detector(data_dir: str, detector: str, entity: str, params: dict
     """Enable `detector`, add `entity` to it, merge allowed `params`, and record the
     (detector, entity) pair as brain-added in the sidecar registry (see
     _load_brain_registry). Returns the delta needed to undo this exact change."""
-    pol = load_policy(data_dir)
-    det_cfg = pol["detectors"].setdefault(detector, {"enabled": False, "entities": []})
-    det_cfg["enabled"] = True
-    entities = det_cfg.setdefault("entities", [])
-    if entity not in entities:
-        entities.append(entity)
-    for k, v in (params or {}).items():
-        if k in _ALLOWED_KEYS.get(detector, set()):
-            det_cfg[k] = v
-    save_policy(data_dir, pol)
+    allowed_params = _ALLOWED_KEYS.get(detector, set()) - _BRAIN_PARAM_DENY
+    with _POLICY_LOCK:
+        pol = load_policy(data_dir)
+        det_cfg = pol["detectors"].setdefault(detector, {"enabled": False, "entities": []})
+        det_cfg["enabled"] = True
+        entities = det_cfg.setdefault("entities", [])
+        if entity not in entities:
+            entities.append(entity)
+        for k, v in (params or {}).items():
+            if k in allowed_params:
+                det_cfg[k] = v
+        save_policy(data_dir, pol)
 
-    registry = _load_brain_registry(data_dir)
-    det_list = registry["detectors"].setdefault(detector, [])
-    if entity not in det_list:
-        det_list.append(entity)
-    _save_brain_registry(data_dir, registry)
+        registry = _load_brain_registry(data_dir)
+        det_list = registry["detectors"].setdefault(detector, [])
+        if entity not in det_list:
+            det_list.append(entity)
+        _save_brain_registry(data_dir, registry)
 
     return {"detector": detector, "entity": entity}
 
@@ -157,21 +172,22 @@ def remove_brain_detector(data_dir: str, detector: str, entity: str) -> bool:
     ONLY if that exact pair is present in the brain sidecar registry. This is the
     guarantee that a user-added entity (never recorded in the registry) is never
     touched by undo. Returns True if a removal happened, False otherwise (no-op)."""
-    registry = _load_brain_registry(data_dir)
-    det_list = registry["detectors"].get(detector, [])
-    if entity not in det_list:
-        return False
+    with _POLICY_LOCK:
+        registry = _load_brain_registry(data_dir)
+        det_list = registry["detectors"].get(detector, [])
+        if entity not in det_list:
+            return False
 
-    pol = load_policy(data_dir)
-    det_cfg = pol["detectors"].get(detector)
-    if isinstance(det_cfg, dict):
-        entities = det_cfg.get("entities", [])
-        if entity in entities:
-            entities.remove(entity)
-        save_policy(data_dir, pol)
+        pol = load_policy(data_dir)
+        det_cfg = pol["detectors"].get(detector)
+        if isinstance(det_cfg, dict):
+            entities = det_cfg.get("entities", [])
+            if entity in entities:
+                entities.remove(entity)
+            save_policy(data_dir, pol)
 
-    det_list.remove(entity)
-    if not det_list:
-        registry["detectors"].pop(detector, None)
-    _save_brain_registry(data_dir, registry)
+        det_list.remove(entity)
+        if not det_list:
+            registry["detectors"].pop(detector, None)
+        _save_brain_registry(data_dir, registry)
     return True

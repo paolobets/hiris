@@ -27,6 +27,28 @@ def test_apply_and_undo_coverage(tmp_path, store):
     pol2 = load_policy(dd)
     assert "sensor.freezer" not in pol2["detectors"]["fridge_temp"].get("entities", [])
 
+def test_hostile_config_cannot_wipe_entities_or_disable(tmp_path, store):
+    """A brain suggestion is untrusted LLM output. A crafted config that tries
+    to smuggle "entities": [] / "enabled": False through params must NOT wipe
+    a pre-existing USER entity nor disable the detector -- it may only add the
+    brain's own entity alongside what the user already configured."""
+    dd = str(tmp_path)
+    # Pre-existing USER-configured entity + enabled detector.
+    from hiris.app.watcher.policy import save_policy
+    save_policy(dd, {"detectors": {"fridge_temp": {"enabled": True, "entities": ["sensor.user_freezer"]}}})
+
+    suggs = [{"kind": "coverage", "title": "Freezer2", "rationale": "r",
+              "config": {"detector": "fridge_temp", "entity": "sensor.brain_freezer",
+                         "entities": [], "enabled": False}}]
+    applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.brain_freezer"},
+                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+    assert len(applied) == 1
+    pol = load_policy(dd)
+    det = pol["detectors"]["fridge_temp"]
+    assert det["enabled"] is True
+    assert "sensor.user_freezer" in det["entities"]
+    assert "sensor.brain_freezer" in det["entities"]
+
 def test_cap_and_management(tmp_path, store):
     proposed = []
     suggs = [{"kind":"management","title":"Auto-off bagno","rationale":"r","config":{"x":1}}]

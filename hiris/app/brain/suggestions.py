@@ -125,7 +125,11 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
                 continue
             detector = config["detector"]
             entity = config["entity"]
-            params = {k: v for k, v in config.items() if k not in ("detector", "entity")}
+            # Belt-and-suspenders: structural keys are stripped again inside
+            # apply_brain_detector (source of truth), but never let an
+            # untrusted config forward "enabled"/"entities" as params at all.
+            params = {k: v for k, v in config.items()
+                      if k not in ("detector", "entity", "enabled", "entities")}
             delta = apply_brain_detector(data_dir, detector, entity, params)
             suggestion_id = store.record(kind, title, rationale, config, "applied", delta)
             applied_count += 1
@@ -151,6 +155,6 @@ def undo(store: SuggestionStore, data_dir: str, suggestion_id: int) -> bool:
     delta = row.get("delta")
     if not isinstance(delta, dict) or "detector" not in delta or "entity" not in delta:
         return False
-    remove_brain_detector(data_dir, delta["detector"], delta["entity"])
+    ok = remove_brain_detector(data_dir, delta["detector"], delta["entity"])
     store.set_status(suggestion_id, "dismissed")
-    return True
+    return ok
