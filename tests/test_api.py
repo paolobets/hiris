@@ -437,6 +437,46 @@ async def test_chat_context_map_injects_area_context(client):
 
 
 @pytest.mark.asyncio
+async def test_chat_rag_injects_lens_memory_from_knowledge_store(client):
+    """Slice 3 Task 4: chat's RAG auto-injection was repointed from the
+    retired MemoryStore onto the unified KnowledgeStore. This guards that a
+    lens-scoped memory saved for the default agent is found and injected into
+    context_str on a matching query."""
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    engine = client.app["engine"]
+    engine._agents[DEFAULT_AGENT_ID] = Agent(
+        id=DEFAULT_AGENT_ID, name="HIRIS", type="chat",
+        triggers=[], system_prompt="base prompt",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+
+    store = KnowledgeStore(":memory:")
+    store.add_item(
+        kind="memory", content="l'utente preferisce 21 gradi", owner="home",
+        lens=DEFAULT_AGENT_ID, status="approved", embedding=[0.1, 0.2, 0.3],
+    )
+    client.app["knowledge_store"] = store
+
+    class _Emb:
+        async def embed(self, text):
+            return [0.1, 0.2, 0.3]
+
+    client.app["embedding_provider"] = _Emb()
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "che temperatura preferisco?"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "Memoria rilevante" in call_kwargs["context_str"]
+    assert "21 gradi" in call_kwargs["context_str"]
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_create_task_tool_via_chat(client):
     from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
     from unittest.mock import MagicMock, AsyncMock

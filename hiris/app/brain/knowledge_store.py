@@ -339,6 +339,18 @@ class KnowledgeStore:
                         "sensitivity": r["sensitivity"], "score": sim})
         return out
 
+    def delete_by_lens(self, lens: str) -> int:
+        """Delete every row scoped to this lens (an agent's own working
+        memory), regardless of expiry. Used when an agent is deleted, to
+        clean up its orphaned memory -- the KnowledgeStore equivalent of the
+        legacy MemoryStore.delete_by_agent (Slice 3 Task 4)."""
+        with self._mu:
+            cur = self._conn.execute(
+                "DELETE FROM knowledge_items WHERE lens = ?", (lens,),
+            )
+            self._conn.commit()
+            return cur.rowcount
+
     def purge_expired_lens(self) -> int:
         """Delete lens-scoped rows (per-agent working memory) whose retention
         has elapsed. Rows with lens IS NULL (shared knowledge) or with no

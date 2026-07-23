@@ -283,13 +283,14 @@ async def handle_delete_agent(request: web.Request) -> web.Response:
     deleted = engine.delete_agent(agent_id)
     if not deleted:
         return web.json_response({"error": "Not found"}, status=404)
-    # Clean up orphaned data: long-term memories and persisted chat history.
-    memory_store = request.app.get("memory_store")
-    if memory_store is not None:
+    # Clean up orphaned data: long-term memories (lens-scoped KnowledgeStore
+    # rows, Slice 3) and persisted chat history.
+    knowledge_store = request.app.get("knowledge_store")
+    if knowledge_store is not None:
         try:
-            memory_store.delete_by_agent(agent_id)
+            knowledge_store.delete_by_lens(agent_id)
         except Exception as exc:
-            logger.warning("memory_store.delete_by_agent(%s) failed: %s", agent_id, exc)
+            logger.warning("knowledge_store.delete_by_lens(%s) failed: %s", agent_id, exc)
     data_dir = request.app.get("data_dir")
     if data_dir:
         try:

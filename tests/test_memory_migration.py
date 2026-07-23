@@ -8,9 +8,9 @@ from hiris.app.brain.memory_migration import migrate_agent_memories
 
 def _seed_legacy(data_dir, rows):
     """Create a legacy hiris_memory.db with the real agent_memories schema
-    (see hiris/app/proxy/memory_store.py:21-32) and insert `rows`, each a
-    tuple (agent_id, content, tags_json, embedding_blob_or_None,
-    created_at, expires_at_or_None)."""
+    (the schema formerly defined by the now-removed proxy/memory_store.py,
+    Slice 3 Task 4) and insert `rows`, each a tuple (agent_id, content,
+    tags_json, embedding_blob_or_None, created_at, expires_at_or_None)."""
     db = os.path.join(data_dir, "hiris_memory.db")
     conn = sqlite3.connect(db)
     conn.execute(
@@ -143,9 +143,9 @@ def test_migration_no_legacy_db_is_noop(tmp_path):
 
 def test_migration_already_migrated_marker_short_circuits(tmp_path):
     """If a hiris_memory.db.migrated marker is already present (e.g. from a
-    previous startup), migration must not run even if a fresh
-    hiris_memory.db happens to exist (mirrors production: MemoryStore always
-    (re)creates an empty hiris_memory.db on construction)."""
+    previous startup), migration must not run even if a hiris_memory.db
+    happens to exist alongside it (e.g. left over from before MemoryStore
+    was retired in Slice 3 Task 4)."""
     d = str(tmp_path)
     _seed_legacy(d, [
         ("agentF", "should be ignored", "[]", None, "2026-05-01T00:00:00Z", None),

@@ -79,7 +79,6 @@ class ToolDispatcher:
         notify_config: dict,
         entity_cache: Any = None,
         semantic_map: Any = None,
-        memory_store: Any = None,
         embedding_provider: Any = None,
         memory_retention_days: int | None = None,
         health_monitor: Any = None,
@@ -96,7 +95,6 @@ class ToolDispatcher:
         self._notify_config = notify_config
         self._cache = entity_cache
         self._semantic_map = semantic_map
-        self._memory_store = memory_store
         self._embedder = embedding_provider
         self._memory_retention_days = memory_retention_days
         self._health_monitor = health_monitor

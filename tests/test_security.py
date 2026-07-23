@@ -291,7 +291,6 @@ def _make_dispatcher():
         notify_config={},
         entity_cache=MagicMock(),
         semantic_map=MagicMock(),
-        memory_store=MagicMock(),
         embedding_provider=None,
         memory_retention_days=None,
         health_monitor=MagicMock(),
