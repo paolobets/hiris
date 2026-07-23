@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 PENDING_TTL_S = 300                    # a pending command expires after 5 minutes
 _ACTION_PREFIX = "HIRIS_GW"           # mobile_app notification action namespace
+MAX_OTP_ATTEMPTS = 3                   # lockout threshold for chat step-up OTP
 
 
 def _pending_path(data_dir: str) -> str:
@@ -52,8 +53,15 @@ def _save(data_dir: str, data: dict) -> None:
 
 
 def create_pending(data_dir: str, *, tool: str, inputs: dict, tier: str,
-                   origin: str, label: str) -> dict:
-    """Create and persist a pending command; returns the new entry."""
+                   origin: str, label: str, user: str | None = None,
+                   with_otp: bool = False) -> dict:
+    """Create and persist a pending command; returns the new entry.
+
+    ``user`` and ``with_otp`` are optional and keyword-only so existing
+    gateway callers (which never pass them) keep working unchanged. When
+    ``with_otp`` is set, a single-use 6-digit OTP is attached for the chat
+    step-up flow (see ``verify_otp``); it reuses the same ``expires`` TTL.
+    """
     data = _load(data_dir)
     now = time.time()
     # opportunistic GC of expired/resolved entries
@@ -64,7 +72,11 @@ def create_pending(data_dir: str, *, tool: str, inputs: dict, tier: str,
         "id": nonce, "tool": tool, "inputs": inputs, "tier": tier,
         "origin": origin, "label": label, "ts": now,
         "expires": now + PENDING_TTL_S, "status": "pending",
+        "user": user,
     }
+    if with_otp:
+        entry["otp"] = f"{secrets.randbelow(1000000):06d}"
+        entry["otp_attempts"] = 0
     data[nonce] = entry
     _save(data_dir, data)
     return entry
@@ -90,6 +102,32 @@ def take_pending(data_dir: str, nonce: str) -> dict | None:
     entry["status"] = "consumed"
     _save(data_dir, data)
     return entry
+
+
+def verify_otp(data_dir: str, user: str, code: str) -> dict | None:
+    """Validate an OTP typed in chat (step-up confirmation).
+
+    Single-use, scoped to the same ``user`` who owns the pending, with a
+    lockout after ``MAX_OTP_ATTEMPTS`` mismatches (the pending is then
+    invalidated: status -> "rejected"). On match the pending is consumed
+    exactly like ``take_pending`` and the entry is returned; otherwise
+    returns None (wrong user, no OTP, expired, or mismatch).
+    """
+    now = time.time()
+    data = _load(data_dir)
+    for entry in data.values():
+        if (entry.get("status") == "pending" and entry.get("user") == user
+                and entry.get("otp") and entry.get("expires", 0) > now):
+            if str(code) == str(entry["otp"]):
+                entry["status"] = "consumed"
+                _save(data_dir, data)
+                return entry
+            entry["otp_attempts"] = int(entry.get("otp_attempts", 0)) + 1
+            if entry["otp_attempts"] >= MAX_OTP_ATTEMPTS:
+                entry["status"] = "rejected"
+            _save(data_dir, data)
+            return None
+    return None
 
 
 def resolve_pending(data_dir: str, nonce: str, status: str) -> None:
