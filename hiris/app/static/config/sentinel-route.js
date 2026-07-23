@@ -5,6 +5,8 @@
 window.HirisSentinelRoute = (function () {
   'use strict';
 
+  var entityFieldSeq = 0;
+
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -129,6 +131,35 @@ window.HirisSentinelRoute = (function () {
       parent.appendChild(wrap);
       return inp;
     }
+    function entityField(parent, labelText, value, filterQuery) {
+      var wrap = el('div');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
+      wrap.appendChild(el('span', null, labelText));
+      var inp = el('input'); inp.type = 'text';
+      inp.value = value != null ? value : '';
+      inp.style.cssText = 'flex:1;padding:6px 8px;border-radius:8px;min-width:120px';
+      entityFieldSeq += 1;
+      var listId = 'entity-list-' + entityFieldSeq;
+      inp.setAttribute('list', listId);
+      var datalist = el('datalist');
+      datalist.id = listId;
+      wrap.appendChild(inp);
+      wrap.appendChild(datalist);
+      parent.appendChild(wrap);
+      api('api/entities?' + filterQuery, { method: 'GET' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (data) {
+          var entities = data.entities || [];
+          entities.forEach(function (e) {
+            var option = el('option');
+            option.value = e.entity_id;
+            option.textContent = (e.friendly_name || '') + ' (' + e.entity_id + ')';
+            datalist.appendChild(option);
+          });
+        })
+        .catch(function () { /* free-text fallback resta disponibile */ });
+      return inp;
+    }
     function numberField(parent, labelText, value) {
       var wrap = el('div');
       wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
@@ -160,7 +191,7 @@ window.HirisSentinelRoute = (function () {
     // Presenza (generali)
     var genRow = el('div');
     genRow.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--border,#2a2a2a)';
-    sitInputs.presence_entity = textField(genRow, 'Entità presenza', sit.presence_entity);
+    sitInputs.presence_entity = entityField(genRow, 'Entità presenza', sit.presence_entity, 'domain=person,device_tracker,zone');
     genRow.appendChild(el('p', 'sc-desc',
       'La cadenza della ronda si imposta nelle opzioni dell\'add-on (sentinel_ronda_min).'));
     sitBody.appendChild(genRow);
@@ -169,9 +200,9 @@ window.HirisSentinelRoute = (function () {
     var hotRow = el('div');
     hotRow.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--border,#2a2a2a)';
     var hotChk = checkboxField(hotRow, 'Caldo e fuori casa (hot_and_away)', sitHotAway.enabled);
-    var hotOutsideTemp = textField(hotRow, 'Entità temperatura esterna', sitHotAway.outside_temp_entity);
+    var hotOutsideTemp = entityField(hotRow, 'Entità temperatura esterna', sitHotAway.outside_temp_entity, 'device_class=temperature');
     var hotThreshold = numberField(hotRow, 'Soglia calore (°C)', sitHotAway.hot_threshold_c);
-    var hotValve = textField(hotRow, 'Entità valvola', sitHotAway.valve_entity);
+    var hotValve = entityField(hotRow, 'Entità valvola', sitHotAway.valve_entity, 'domain=switch,valve');
     var hotRunMinutes = numberField(hotRow, 'Durata attivazione (minuti)', sitHotAway.run_minutes);
     var hotSkipRain = checkboxField(hotRow, 'Salta se pioggia (skip_if_rain)', sitHotAway.skip_if_rain);
     sitBody.appendChild(hotRow);
@@ -180,7 +211,7 @@ window.HirisSentinelRoute = (function () {
     var awayRow = el('div');
     awayRow.style.cssText = 'padding:12px 0;border-bottom:1px solid var(--border,#2a2a2a)';
     var awayChk = checkboxField(awayRow, 'Allarme disinserito da fuori (away_alarm_off)', sitAwayAlarm.enabled);
-    var awayAlarmEntity = textField(awayRow, 'Entità allarme', sitAwayAlarm.alarm_entity);
+    var awayAlarmEntity = entityField(awayRow, 'Entità allarme', sitAwayAlarm.alarm_entity, 'domain=alarm_control_panel');
     sitBody.appendChild(awayRow);
 
     // holistic
