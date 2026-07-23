@@ -231,15 +231,18 @@ class ToolDispatcher:
                             else []
                         ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
                     ]
-                    # Fix #2: target per area/dispositivo/label senza entità esplicite
-                    # non è risolvibile ai tier per-entità → fail-closed (blocca).
+                    # Fix #2/#8: un target per area/dispositivo/label non è risolvibile ai
+                    # tier per-entità → fail-closed, INDIPENDENTEMENTE da entità esplicite
+                    # accompagnatorie (HA attua l'intero gruppo lato server, bypassando
+                    # gli override per-entità: un target misto entity_id+area_id fa sì
+                    # che HA esegua su TUTTE le entità dell'area, non solo su quella verde).
                     _has_group_target = any(
                         (isinstance(d, dict) and (d.get("area_id") or d.get("device_id") or d.get("label_id")))
                         for d in (data if isinstance(data, dict) else {}, target)
                     )
-                    if _has_group_target and not gate_eids:
-                        logger.warning("call_ha_service gated: area/device target without explicit entities (%s.%s)", domain, service)
-                        return {"error": "Azione su area/dispositivo non consentita dal semaforo: specifica le entità target."}
+                    if _has_group_target:
+                        logger.warning("call_ha_service gated: area/device/label target present (%s.%s)", domain, service)
+                        return {"error": "Azione su area/dispositivo/label non consentita dal semaforo: specifica le entità target."}
                     verdict = gate_action(
                         domain=domain, service=service, entity_ids=gate_eids,
                         tiers=self._execute_policy.get("tiers") or {},
