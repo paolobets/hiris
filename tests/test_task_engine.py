@@ -361,6 +361,51 @@ async def test_task_dangerous_action_skipped():
     assert eng._ha.calls == []
 
 
+@pytest.mark.asyncio
+async def test_task_area_target_without_entities_skipped():
+    # A group target (area_id) with no explicit entity_id is not resolvable to
+    # a per-entity tier -> fail-closed (skip), even if the domain is green.
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
+              "data": {"area_id": "cucina"}}
+    t = Task(id="t4", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and res.startswith("skipped")
+    assert eng._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_task_non_string_entity_id_does_not_crash():
+    # entity_id: [123] (non-string list contents) must be filtered out (not
+    # crash domain-of / gate lookup) and fall back to the domain-level tier;
+    # with an unconfigured (fail-closed) domain that means deny_off/skipped.
+    eng = _engine({})  # domain unconfigured -> off, fail-closed
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
+              "data": {"entity_id": [123]}}
+    t = Task(id="t5", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and "skipped" in res
+    assert eng._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_execute_task_records_gated_skip_honestly(engine):
+    # engine fixture policy is {"tiers": {"light": "green"}} -> a lock action is
+    # denylisted; the audit trail must show the real skip, not ":OK".
+    task = engine.add_task({
+        "label": "Gated",
+        "trigger": {"type": "delay", "minutes": 1},
+        "actions": [{"type": "call_ha_service", "domain": "lock", "service": "unlock",
+                     "data": {"entity_id": "lock.front"}}],
+    }, agent_id="hiris-default")
+    await engine._execute_task(task.id)
+    assert engine._tasks[task.id].status == "done"
+    assert "skipped" in engine._tasks[task.id].result
+    assert ":OK" not in engine._tasks[task.id].result
+
+
 def test_cleanup_keeps_tasks_within_7_days(engine):
     """Tasks terminali più vecchi di 7gg vengono rimossi; quelli entro 7gg no."""
     from hiris.app.task_engine import _CLEANUP_AFTER_HOURS

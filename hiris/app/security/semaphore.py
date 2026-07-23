@@ -61,4 +61,6 @@ def gate_action(
         return GateVerdict("confirm", "red", "Azione ad alto rischio: richiede conferma.")
     if "yellow" in levels:
         return GateVerdict("confirm", "yellow", "Azione a rischio: richiede conferma.")
-    return GateVerdict("allow", "green", "")
+    if all(lv == "green" for lv in levels):
+        return GateVerdict("allow", "green", "")
+    return GateVerdict("deny_off", "off", "Tier non riconosciuto: bloccato per sicurezza.")

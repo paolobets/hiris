@@ -55,6 +55,43 @@ async def test_yellow_requires_confirmation():
 
 
 @pytest.mark.asyncio
+async def test_area_target_without_entities_blocked_even_if_green():
+    # An area/device/label target with no explicit entity_id can't be resolved
+    # to a per-entity tier -> fail-closed, even if the domain itself is green.
+    d = _disp({"tiers": {"light": "green"}})
+    r = await d.dispatch(
+        "call_ha_service",
+        {"domain": "light", "service": "turn_on", "target": {"area_id": "cucina"}},
+    )
+    assert "error" in r
+    assert d._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_tier_confirmed_skips_gate_for_yellow():
+    d = _disp({"tiers": {"switch": "yellow"}})
+    r = await d.dispatch(
+        "call_ha_service",
+        {"domain": "switch", "service": "turn_on", "data": {"entity_id": "switch.boiler"}},
+        tier_confirmed=True,
+    )
+    assert r == {"ok": True}
+    assert d._ha.calls == [("switch", "turn_on", {"entity_id": "switch.boiler"})]
+
+
+@pytest.mark.asyncio
+async def test_tier_confirmed_skips_gate_for_dangerous_domain():
+    d = _disp({"tiers": {"lock": "green"}})
+    r = await d.dispatch(
+        "call_ha_service",
+        {"domain": "lock", "service": "unlock", "data": {"entity_id": "lock.front"}},
+        tier_confirmed=True,
+    )
+    assert r == {"ok": True}
+    assert d._ha.calls == [("lock", "unlock", {"entity_id": "lock.front"})]
+
+
+@pytest.mark.asyncio
 async def test_green_then_per_agent_whitelist_still_applies():
     d = _disp({"tiers": {"light": "green"}})
     r = await d.dispatch(

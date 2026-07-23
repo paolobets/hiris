@@ -322,7 +322,10 @@ class TaskEngine:
                     break
                 try:
                     action_result = await self._run_action(action, task)
-                    results.append(f"{action.get('type', '?')}:OK")
+                    if isinstance(action_result, str) and action_result.startswith("skipped"):
+                        results.append(f"{action.get('type', '?')}:{action_result}")
+                    else:
+                        results.append(f"{action.get('type', '?')}:OK")
                 except Exception as exc:
                     a_label = action.get("type", "?")
                     results.append(f"{a_label}:FAILED({exc})")
@@ -351,7 +354,20 @@ class TaskEngine:
             service = action["service"]
             data = action.get("data", {})
             _raw = data.get("entity_id") if isinstance(data, dict) else None
-            _eids = [_raw] if isinstance(_raw, str) else (list(_raw) if isinstance(_raw, list) else [])
+            _eids = [
+                e for e in (
+                    [_raw] if isinstance(_raw, str)
+                    else list(_raw) if isinstance(_raw, list)
+                    else []
+                ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
+            ]
+            # Fix #2: i task inoltrano solo `data` (non `target`): un target per
+            # area/dispositivo/label senza entità esplicite non è risolvibile ai
+            # tier per-entità → fail-closed (skip).
+            if isinstance(data, dict) and (data.get("area_id") or data.get("device_id") or data.get("label_id")) and not _eids:
+                logger.warning("Task %s: call_ha_service gated: area/device target without explicit entities (%s.%s)",
+                               task.label, domain, service)
+                return f"skipped: group_target ({domain}.{service})"
             _v = gate_action(
                 domain=domain, service=service, entity_ids=_eids,
                 tiers=self._execute_policy.get("tiers") or {},

@@ -9,8 +9,10 @@
 - **Fail-closed:** un dominio non configurato nel semaforo (`off`) blocca l'azione
   anche da chat. Configura le categorie dalla pagina gateway perché le azioni siano
   eseguibili. Le letture non sono mai gated.
-- Le azioni yellow/red da chat vengono per ora bloccate con richiesta di conferma;
-  il flusso di conferma (step-up con tap/OTP) arriva nella prossima versione.
+- Le azioni yellow/red richieste in modo **non confermato** (chat/agente diretti) sono
+  per ora bloccate; il flusso di **conferma umana esistente del gateway** ("Approva" dalla
+  notifica) continua a eseguirle, inclusi i domini pericolosi quando approvati out-of-band
+  (`tier_confirmed`). Lo step-up di conferma dalla chat arriva nella Slice 2.
 
 ## [0.27.0] — Cervello auto-proponente + selettore entità (2026-07-23)
 - **Selettore di entità** nella pagina Sentinella: scegli le entità dalla lista filtrata

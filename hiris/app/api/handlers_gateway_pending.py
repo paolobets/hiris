@@ -201,4 +201,5 @@ async def execute_pending(app: web.Application, entry: dict) -> object:
         entry["tool"], inputs,
         allowed_services=allowed_services, allowed_entities=None,
         agent_id=entry.get("origin", "mcp-gateway"), cloud=True,
+        tier_confirmed=True,
     )

@@ -127,6 +127,7 @@ class ToolDispatcher:
         visible_entity_ids: Optional[frozenset] = None,
         knowledge_allow_sensitive: bool = False,
         cloud: bool = True,
+        tier_confirmed: bool = False,
     ) -> Any:
         _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
@@ -210,27 +211,42 @@ class ToolDispatcher:
                 service = inputs["service"]
                 data = inputs.get("data", {})
                 target = inputs.get("target", {}) or {}
-                # Semaforo universale (denylist + tier). Le letture non arrivano qui.
-                raw_gate_eid = (
-                    data.get("entity_id") if isinstance(data, dict) else None
-                ) or target.get("entity_id")
-                gate_eids = (
-                    [raw_gate_eid] if isinstance(raw_gate_eid, str)
-                    else list(raw_gate_eid) if isinstance(raw_gate_eid, list)
-                    else []
-                )
-                verdict = gate_action(
-                    domain=domain, service=service, entity_ids=gate_eids,
-                    tiers=self._execute_policy.get("tiers") or {},
-                    entity_tiers=self._execute_policy.get("entity_tiers") or {},
-                )
-                if verdict.decision != "allow":
-                    logger.warning("call_ha_service gated: %s (%s.%s)",
-                                   verdict.decision, domain, service)
-                    if verdict.decision == "confirm":
-                        return {"error": "Azione a rischio: richiede conferma "
-                                         "(flusso di conferma in arrivo nella Slice 2)."}
-                    return {"error": verdict.reason}
+                # Semaforo universale (denylist + tier). Saltato se l'azione è già
+                # stata confermata out-of-band da un umano (approvazione gateway /
+                # step-up chat): in quel caso la conferma umana autorizza esattamente
+                # questo comando, denylist inclusa (killer feature step-up).
+                if not tier_confirmed:
+                    raw_gate_eid = (
+                        data.get("entity_id") if isinstance(data, dict) else None
+                    ) or target.get("entity_id")
+                    gate_eids = [
+                        e for e in (
+                            [raw_gate_eid] if isinstance(raw_gate_eid, str)
+                            else list(raw_gate_eid) if isinstance(raw_gate_eid, list)
+                            else []
+                        ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
+                    ]
+                    # Fix #2: target per area/dispositivo/label senza entità esplicite
+                    # non è risolvibile ai tier per-entità → fail-closed (blocca).
+                    _has_group_target = any(
+                        (isinstance(d, dict) and (d.get("area_id") or d.get("device_id") or d.get("label_id")))
+                        for d in (data if isinstance(data, dict) else {}, target)
+                    )
+                    if _has_group_target and not gate_eids:
+                        logger.warning("call_ha_service gated: area/device target without explicit entities (%s.%s)", domain, service)
+                        return {"error": "Azione su area/dispositivo non consentita dal semaforo: specifica le entità target."}
+                    verdict = gate_action(
+                        domain=domain, service=service, entity_ids=gate_eids,
+                        tiers=self._execute_policy.get("tiers") or {},
+                        entity_tiers=self._execute_policy.get("entity_tiers") or {},
+                    )
+                    if verdict.decision != "allow":
+                        logger.warning("call_ha_service gated: %s (%s.%s)",
+                                       verdict.decision, domain, service)
+                        if verdict.decision == "confirm":
+                            return {"error": "Azione a rischio: richiede conferma "
+                                             "(flusso di conferma in arrivo nella Slice 2)."}
+                        return {"error": verdict.reason}
                 if allowed_services:
                     service_key = f"{domain}.{service}"
                     if not any(fnmatch.fnmatch(service_key, pat) for pat in allowed_services):

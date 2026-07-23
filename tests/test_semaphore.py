@@ -62,3 +62,10 @@ def test_mixed_targets_worst_wins():
     v = _gate("light", entity_ids=["light.a", "light.b"],
               tiers={"light": "green"}, entity_tiers={"light.b": "red"})
     assert v.decision == "confirm" and v.tier == "red"
+
+
+def test_unrecognized_tier_string_fails_closed():
+    # A tier value that is neither off/green/yellow/red (e.g. corrupted config
+    # or a typo) must NOT fall through to allow.
+    v = _gate("light", entity_ids=["light.kitchen"], tiers={"light": "boh"})
+    assert v.decision == "deny_off"
