@@ -170,6 +170,25 @@ async def handle_chat(request: web.Request) -> web.Response:
     # the sending end. Checked BEFORE the runner-required guard below so
     # subscription mode works even without CLAUDE_API_KEY.
     if request.app.get("chat_via_subscription") and _bridge_on(request.app):
+        # Slice 4b Task 3: two guards on the async path ONLY -- the sync path
+        # above/below is unaffected when the flag is off. Checked before
+        # anything is persisted/enqueued so a blocked turn leaves no trace.
+        reasoning_queue = request.app["reasoning_queue"]
+        # In-flight guard first: it's the more specific, more actionable
+        # signal for the user (retry once the current answer lands), so it
+        # wins even if the daily cap is ALSO exhausted.
+        if reasoning_queue.has_pending_chat(effective_agent_id):
+            return web.json_response(
+                {"error": "C'è già una risposta in arrivo per questa conversazione."},
+                status=409,
+            )
+        _cap = request.app.get("chat_daily_cap")
+        chat_daily_cap = int(_cap) if _cap is not None else 50
+        if reasoning_queue.count_chat_today() >= chat_daily_cap:
+            return web.json_response(
+                {"error": "Limite giornaliero di messaggi chat raggiunto."},
+                status=429,
+            )
         return await _enqueue_chat_job(request, agent, effective_agent_id, message, data_dir)
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")

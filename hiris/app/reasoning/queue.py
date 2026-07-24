@@ -1,5 +1,6 @@
 from __future__ import annotations
-import json, secrets, threading
+import json, secrets, threading, time
+from datetime import datetime
 from typing import Optional
 from ..storage import connect, init_schema
 
@@ -91,6 +92,54 @@ class ReasoningQueue:
         out = _row(r)
         out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
         return out
+
+    def has_pending_chat(self, agent_id: Optional[str]) -> bool:
+        """True if a kind="chat" job for this agent_id is still in flight
+        (status 'pending' or 'claimed'). Slice 4b Task 3 -- "one answer in
+        flight per conversation" guard on the async subscription path.
+
+        Chat jobs have no dedicated conversation_id column: Task 2 put
+        agent_id inside context_json (a conversation IS an agent's active
+        session, keyed by agent_id -- there's no separate concept). So this
+        scans the in-flight chat-kind rows (typically a handful -- bounded by
+        chat_daily_cap and by the fact that most turns resolve quickly) and
+        parses each row's context to match agent_id, rather than adding a
+        dedicated indexed column for a query this cheap in practice."""
+        if not agent_id:
+            return False
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT context_json FROM reasoning_jobs "
+                "WHERE kind='chat' AND status IN ('pending','claimed')").fetchall()
+        for r in rows:
+            try:
+                ctx = json.loads(r["context_json"])
+            except (TypeError, ValueError):
+                continue
+            if isinstance(ctx, dict) and ctx.get("agent_id") == agent_id:
+                return True
+        return False
+
+    def count_chat_today(self, now: Optional[float] = None) -> int:
+        """Count of kind="chat" jobs enqueued (created_ts) on the same local
+        calendar day as `now`. Slice 4b Task 3's separate daily chat cap --
+        counts every chat turn enqueued today regardless of its current
+        status (resolved/expired turns still consumed the day's budget).
+
+        Takes an explicit `now`, like every other method on this class
+        (enqueue/claim/submit/sweep_expired), defaulting to time.time() only
+        when the caller (production code) doesn't pass one -- tests can pin
+        an exact day boundary instead of depending on wall clock."""
+        ts = time.time() if now is None else now
+        dt = datetime.fromtimestamp(ts)
+        day_start = dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        day_end = day_start + 86400
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM reasoning_jobs "
+                "WHERE kind='chat' AND created_ts >= ? AND created_ts < ?",
+                (day_start, day_end)).fetchone()
+        return r["c"]
 
     def prune(self, before_ts: float) -> int:
         with self._lock:

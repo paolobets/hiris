@@ -113,6 +113,9 @@ configuration:
   bridge_fallback:
     name: "Ponte abbonamento — fallback a consumo"
     description: "Se attivo, i job scaduti (runner assente/giù) vengono ragionati dal provider a consumo/locale così il cervello resta attivo. Se spento, i job scaduti vengono scartati (nessun ragionamento). Predefinito: attivo."
+  chat_daily_cap:
+    name: "Chat via abbonamento — cap messaggi/giorno"
+    description: "Numero massimo di messaggi chat instradati al giorno verso il runner esterno su abbonamento, indipendente dal cap della Sentinella. Predefinito: 50."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."

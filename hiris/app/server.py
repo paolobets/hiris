@@ -1011,6 +1011,11 @@ async def _on_startup(app: web.Application) -> None:
         _append_chat_messages(agent_id, [{"role": "assistant", "content": reply_text}], data_dir)
     app["submit_chat_reply"] = _submit_chat_reply
 
+    # Slice 4b Task 3: separate daily cap for chat-via-abbonamento, checked by
+    # handle_chat's subscription branch (handlers_chat.py) against
+    # reasoning_queue.count_chat_today() -- independent of SENTINEL_DAILY_CAP.
+    app["chat_daily_cap"] = int(os.environ.get("CHAT_DAILY_CAP", "50"))
+
     async def _holistic_reason(snapshot):
         # Cervello auto-proponente: revisione di copertura sulla cadenza olistica.
         # Gira SEMPRE (anche quando BRIDGE_ENABLED e' attivo, prima del branch
