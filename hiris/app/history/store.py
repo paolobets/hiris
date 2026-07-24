@@ -240,6 +240,28 @@ class HistoryStore:
         buckets = [by_day[d] for d in sorted(by_day)]
         return {"id": entity_id, "source": "store", "unit": None, "buckets": buckets}
 
+    def baseline_for(self, entity_id: str, days: int = 14, today: Optional[str] = None) -> dict:
+        """Structured numeric baseline for an entity over the last `days` days,
+        aggregated from `query()` buckets. Unlike the (text) digest, this keeps
+        real numbers so callers (e.g. detector auto-tuning) can do math on them.
+
+        Returns {"mean": float|None, "on_hours": float|None, "n_days": int}.
+        `mean` is the average of per-bucket `mean` (numeric entities); `on_hours`
+        is the average daily on-seconds/3600 (on/off entities); `n_days` is the
+        number of day-buckets with data. Never raises; no history -> all-None/0.
+        """
+        if today is None:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        result = self.query(entity_id, days, today)
+        if result is None:
+            return {"mean": None, "on_hours": None, "n_days": 0}
+        buckets = result["buckets"]
+        means = [b["mean"] for b in buckets if b.get("mean") is not None]
+        on_seconds = [b["on_seconds"] for b in buckets if "on_seconds" in b]
+        mean = round(sum(means) / len(means), 3) if means else None
+        on_hours = round((sum(on_seconds) / 3600.0) / len(on_seconds), 3) if on_seconds else None
+        return {"mean": mean, "on_hours": on_hours, "n_days": len(buckets)}
+
     # --- test helper ---
     def _daily(self, entity_id: str) -> list[dict]:
         with self._lock:
