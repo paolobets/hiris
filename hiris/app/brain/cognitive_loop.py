@@ -28,7 +28,6 @@ in `_holistic_reason` remains a second safety net.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from .brain_trace import record_brain_action
 from .learned_thresholds import LEARNABLE, learned_threshold
@@ -93,12 +92,26 @@ async def auto_tune_detectors(
                 if not params:
                     continue
                 apply_brain_detector(data_dir, detector, entity, params)
-                await record_brain_action(
-                    knowledge_store, embedder,
-                    text=_tune_text(detector, entity, params, baseline),
-                    source_ref=f"brain-tune:{detector}:{entity}",
-                )
+                # Count the tuning as applied THE MOMENT apply_brain_detector
+                # succeeds -- the policy mutation already happened and is
+                # deterministic, so BRAIN_TUNE_CAP must bind on it regardless
+                # of whether the trace write below succeeds. A raising
+                # embedder (real embedder, network call, service down) must
+                # never leave the cap unbound -- see feedback in this file's
+                # module docstring re: per-item failure isolation.
                 applied.append({"detector": detector, "entity": entity, "params": params})
+                try:
+                    await record_brain_action(
+                        knowledge_store, embedder,
+                        text=_tune_text(detector, entity, params, baseline),
+                        source_ref=f"brain-tune:{detector}:{entity}",
+                    )
+                except Exception:
+                    logger.exception(
+                        "auto_tune_detectors: trace failed for detector=%s entity=%s "
+                        "(tuning already applied and counted)",
+                        detector, entity,
+                    )
             except Exception:
                 logger.exception(
                     "auto_tune_detectors: tuning failed for detector=%s entity=%s",

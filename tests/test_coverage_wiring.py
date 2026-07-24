@@ -43,6 +43,22 @@ def test_suggestion_store_instantiated_in_server_source():
     assert 'app["suggestion_store"].close()' in src
 
 
+def test_holistic_reason_wires_auto_tune_and_trace_coverage():
+    """Slice 6 Task 4 wiring: _holistic_reason must call both
+    trace_applied_coverage (write-back trace for auto-applied coverage
+    suggestions) and auto_tune_detectors (learnable-detector auto-tuning).
+    Source-level check, same inspect.getsource convention as the other
+    wiring assertions in this file, so a regression that deletes either
+    call is caught even though both are import-clean on their own (see
+    test_coverage_review_symbols_importable above)."""
+    import inspect
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    assert "auto_tune_detectors(" in src
+    assert "trace_applied_coverage(" in src
+
+
 def test_coverage_review_runs_before_bridge_enabled_branch():
     """The coverage-review block must sit BEFORE the BRIDGE_ENABLED early
     return in _holistic_reason, so it runs on every holistic pass regardless

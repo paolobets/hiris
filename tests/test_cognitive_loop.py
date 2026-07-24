@@ -176,6 +176,48 @@ async def test_no_embedder_still_applies_tuning_but_writes_no_trace(tmp_path, ks
 
 
 @pytest.mark.asyncio
+async def test_cap_binds_when_embedder_raises_on_trace_write(tmp_path, kstore, caplog):
+    """Regression for the cap-fails-open bug: a REAL embedder makes a
+    network call, and a service outage means record_brain_action can raise
+    (this is not the same as embedder=None, which record_brain_action
+    itself refuses gracefully -- see test_no_embedder_still_applies_tuning_
+    but_writes_no_trace above). apply_brain_detector's policy mutation is
+    deterministic and already happened, so it must be counted immediately;
+    a raising trace write must not leave BRAIN_TUNE_CAP unbound -- with N >
+    cap qualifying entities and a persistently-raising embedder, tuning
+    must stop AT the cap, not silently tune all N in one round."""
+    dd = str(tmp_path)
+    entities = [f"sensor.plug_{i}" for i in range(7)]
+    _enable_power(dd, entities)
+    baselines = {e: {"mean": 800.0, "on_hours": None, "n_days": 14} for e in entities}
+    history = _FakeHistoryStore(baselines)
+
+    class _RaisingEmbedder:
+        async def embed(self, text):
+            raise ConnectionError("embedder service down")
+
+    with caplog.at_level("ERROR"):
+        applied = await auto_tune_detectors(
+            data_dir=dd, policy=load_policy(dd), history_store=history,
+            knowledge_store=kstore, embedder=_RaisingEmbedder(), cap=3,
+        )
+
+    # (a) capped at BRAIN_TUNE_CAP (here cap=3), NOT all 7 qualifying entities.
+    assert len(applied) == 3
+    pol = load_policy(dd)
+    assert pol["detectors"]["power"]["max_watt"] == 1600
+
+    # (b) no exception propagated out of auto_tune_detectors (already true
+    # since we're past the `await` above without a raise, asserted for clarity).
+    assert isinstance(applied, list)
+
+    # (c) the failed trace write was logged, but no brain-action trace exists
+    # (record_brain_action itself never got to write anything before raising).
+    assert kstore.list_items(kind="brain-action") == []
+    assert any("trace failed" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
 async def test_applied_coverage_suggestion_writes_trace(tmp_path, kstore):
     dd = str(tmp_path)
     store = SuggestionStore(str(tmp_path / "s.db"))
