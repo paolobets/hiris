@@ -912,10 +912,33 @@ async def _on_startup(app: web.Application) -> None:
             "verdict": getattr(decision, "verdict", None), "severity": wake.severity_hint,
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
+    # Slice 5b / Task 4: EVENT-triggered user lenses, dispatched by the SAME
+    # Guardian.on_state_changed alongside (not instead of) the built-in
+    # DETECTORS above. `get_user_lenses` re-reads+filters the sidecar store
+    # on every call (cheap, tiny JSON file; keeps freshly-saved lenses live
+    # without a restart, mirroring `lambda: load_policy(data_dir)` above).
+    # `run_lens` is a lazy indirection onto `app["run_lens"]`, which is only
+    # bound a few lines below this constructor call (Task 3's wiring) — by
+    # the time any real state_changed event can reach the Guardian the key
+    # is always already set, so the extra indirection is just to satisfy
+    # Python's top-to-bottom evaluation order at startup, not a race.
+    from .watcher.lenses import load_lenses as _load_lenses
+
+    def _get_event_lenses() -> list:
+        return [
+            l for l in _load_lenses(data_dir)
+            if l.get("enabled") and (l.get("trigger") or {}).get("type") == "event"
+        ]
+
+    async def _dispatch_run_lens(lens: dict, evidence: dict) -> str:
+        return await app["run_lens"](lens, evidence)
+
     guardian = Guardian(
         sentinel_store, lambda: load_policy(data_dir), _on_wake,
         cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
-        daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")))
+        daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")),
+        get_user_lenses=_get_event_lenses,
+        run_lens=_dispatch_run_lens)
     guardian.set_policy(load_policy(data_dir))
     app["guardian"] = guardian
     ha_client.add_state_listener(lambda evt: asyncio.create_task(guardian.on_state_changed(evt)))
