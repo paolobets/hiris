@@ -1380,6 +1380,7 @@ async def _on_startup(app: web.Application) -> None:
                     COVERAGE_REVIEW_SYSTEM, build_review_context,
                     build_review_message, parse_suggestions)
                 from .brain.suggestions import apply_suggestions
+                from .brain.cognitive_loop import auto_tune_detectors, trace_applied_coverage
                 from .api.handlers_entities import filter_entities
                 _inventory = filter_entities(_cache.all_states(), None, None)
                 _current = load_policy(data_dir)
@@ -1395,11 +1396,28 @@ async def _on_startup(app: web.Application) -> None:
                         description=str(c.get("description") or ""),
                         config=c, routing_reason="brain coverage-review"))
 
-                apply_suggestions(
+                _applied_coverage = apply_suggestions(
                     _suggs, data_dir=data_dir, store=_store,
                     inventory_ids={e["entity_id"] for e in _inventory},
                     current_config=_current, create_proposal=_mk_proposal,
                     cap=int(os.environ.get("BRAIN_SUGGEST_CAP", "5")))
+
+                # Slice 6 Task 4: write-back a recallable brain-action trace
+                # for every coverage suggestion just auto-applied above, so
+                # the chat can later explain what the brain did on its own.
+                await trace_applied_coverage(knowledge_store, embedder, _applied_coverage)
+
+                # Slice 6 Task 4: auto-tune enabled LEARNABLE detectors (v1:
+                # "power") from history baselines. Deterministic-action
+                # discipline: the tuning value comes ONLY from
+                # learned_threshold (pure/deterministic), never from the
+                # LLM/reasoner above -- re-read the policy so a detector/
+                # entity apply_suggestions just enabled above is considered.
+                await auto_tune_detectors(
+                    data_dir=data_dir, policy=load_policy(data_dir),
+                    history_store=history_store, knowledge_store=knowledge_store,
+                    embedder=embedder,
+                    cap=int(os.environ.get("BRAIN_TUNE_CAP", "5")))
         except Exception:
             logger.exception("coverage-review failed")
 
