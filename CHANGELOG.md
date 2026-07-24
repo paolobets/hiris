@@ -1,5 +1,11 @@
 # HIRIS — Changelog
 
+## [0.35.1] — Fast-follow ciclo cognitivo (2026-07-24)
+
+- Il cervello ora mantiene una sola riga di taratura annullabile per rilevatore
+  (le tarature ripetute superano le precedenti, niente più righe "Annulla"
+  bloccate).
+
 ## [0.35.0] — Ciclo cognitivo: soglie auto-apprese (Slice 6 verso 1.0) (2026-07-24)
 
 - **Soglie auto-apprese:** il cervello tara le soglie di rilevamento (v1: consumo)

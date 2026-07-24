@@ -113,6 +113,29 @@ def _tune_text(detector: str, busiest_entity: str, params: dict, baseline: dict)
             f"(rif. {busiest_entity}, media recente ~{mean_txt}).")
 
 
+def _supersede_prior_tune_rows(store, source_ref: str) -> None:
+    """Mark any existing applied brain-tune rows for `source_ref` as
+    'superseded' so only the newest applied row stays in the undoable UI.
+
+    A detector holds ONE snapshot-once tuning (policy.apply_brain_tuning), so
+    remove_brain_tuning can restore the user's original value exactly once;
+    older sibling rows would otherwise linger as status="applied" with an
+    "Annulla" that fails. Best-effort and side-effect-only: a store hiccup
+    here must never block recording the new row."""
+    try:
+        rows = store.list()
+    except Exception:
+        return
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("kind") != "coverage" or row.get("status") != "applied":
+            continue
+        delta = row.get("delta") if isinstance(row.get("delta"), dict) else {}
+        if delta.get("source_ref") == source_ref:
+            store.set_status(row["id"], "superseded")
+
+
 async def auto_tune_detectors(
     *, data_dir: str, policy: dict, history_store, knowledge_store, embedder,
     cap: int = BRAIN_TUNE_CAP, store=None,
@@ -176,15 +199,24 @@ async def auto_tune_detectors(
             # module docstring re: per-item failure isolation.
             applied.append({"detector": detector, "params": params})
 
+            source_ref = f"brain-tune:{detector}"
             if store is not None:
                 try:
+                    # M1 fast-follow: a detector has ONE snapshot-once tuning
+                    # (policy.apply_brain_tuning), so only the latest applied
+                    # brain-tune row is undoable -- remove_brain_tuning restores
+                    # the original once, and any older sibling row's undo would
+                    # then fail ("Annullamento non riuscito", stuck "applied").
+                    # Supersede prior applied brain-tune rows for this detector
+                    # so exactly one live, undoable row remains in the UI.
+                    _supersede_prior_tune_rows(store, source_ref)
                     store.record(
                         "coverage",
                         f"Taratura {detector}",
                         _tune_text(detector, busiest_entity, params, baseline),
                         {"detector": detector, **params},
                         "applied",
-                        {"detector": detector, "source_ref": f"brain-tune:{detector}"},
+                        {"detector": detector, "source_ref": source_ref},
                     )
                 except Exception:
                     logger.exception(
