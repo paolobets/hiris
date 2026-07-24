@@ -1,5 +1,15 @@
 # HIRIS — Changelog
 
+## [0.36.0] — Ragionamento consapevole (Slice 6b verso 1.0) (2026-07-24)
+
+- **Il cervello ora ragiona con memoria:** quando la sentinella valuta un
+  evento (o durante il controllo giornaliero "va tutto bene?"), tiene conto
+  degli insight e delle preferenze rilevanti che ha imparato sulla tua casa,
+  non solo del dato grezzo del momento.
+- **Privacy per progettazione:** le informazioni marcate come sensibili
+  entrano nel ragionamento solo quando l'elaborazione resta locale; con un
+  modello cloud il cervello usa solo informazioni non sensibili.
+
 ## [0.35.1] — Fast-follow ciclo cognitivo (2026-07-24)
 
 - Il cervello ora mantiene una sola riga di taratura annullabile per rilevatore
