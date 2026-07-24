@@ -1162,21 +1162,21 @@ async def _on_startup(app: web.Application) -> None:
 
     # Slice 5b / Task 4: EVENT-triggered user lenses, dispatched by the SAME
     # Guardian.on_state_changed alongside (not instead of) the built-in
-    # DETECTORS above. `get_user_lenses` re-reads+filters the sidecar store
-    # on every call (cheap, tiny JSON file; keeps freshly-saved lenses live
-    # without a restart, mirroring `lambda: load_policy(data_dir)` above).
-    # `run_lens` is a lazy indirection onto `app["run_lens"]`, which is only
-    # bound a few lines below this constructor call (Task 3's wiring) — by
-    # the time any real state_changed event can reach the Guardian the key
-    # is always already set, so the extra indirection is just to satisfy
-    # Python's top-to-bottom evaluation order at startup, not a race.
+    # DETECTORS above. `get_user_lenses` reads the in-memory lens cache
+    # (Task 6, `handlers_lenses.set_lenses`/`get_event_lenses`) instead of
+    # re-reading+re-validating sentinel_lenses.json on every single
+    # state_changed event (Task 4 review finding). The cache is populated
+    # right here from the current disk contents, and refreshed after every
+    # CRUD mutation by the `/api/lenses` handlers -- so freshly-saved lenses
+    # are still live without a restart, just without the per-event disk hit.
     from .watcher.lenses import load_lenses as _load_lenses
+    from .api.handlers_lenses import set_lenses as _set_lenses_cache
+    from .api.handlers_lenses import get_event_lenses as _get_event_lenses_cache
+
+    _set_lenses_cache(app, _load_lenses(data_dir))
 
     def _get_event_lenses() -> list:
-        return [
-            l for l in _load_lenses(data_dir)
-            if l.get("enabled") and (l.get("trigger") or {}).get("type") == "event"
-        ]
+        return _get_event_lenses_cache(app)
 
     async def _dispatch_run_lens(lens: dict, evidence: dict) -> str:
         return await app["run_lens"](lens, evidence)
@@ -1711,6 +1711,17 @@ def create_app() -> web.Application:
     app.router.add_get("/api/sentinel/policy", handle_get_sentinel_policy)
     app.router.add_post("/api/sentinel/policy", handle_save_sentinel_policy)
     app.router.add_get("/api/sentinel/timeline", handle_sentinel_timeline)
+
+    # Slice 5b Task 6: user-lens CRUD. Same app-level internal_auth_middleware
+    # + csrf_middleware protection as every other /api/* route above -- no
+    # per-route auth here, just registration under the same app.router.
+    from .api.handlers_lenses import (
+        handle_list_lenses, handle_create_lens, handle_update_lens, handle_delete_lens,
+    )
+    app.router.add_get("/api/lenses", handle_list_lenses)
+    app.router.add_post("/api/lenses", handle_create_lens)
+    app.router.add_put("/api/lenses/{id}", handle_update_lens)
+    app.router.add_delete("/api/lenses/{id}", handle_delete_lens)
 
     from .api.handlers_gateway_pending import (
         handle_list_pending as _gw_list_pending,
