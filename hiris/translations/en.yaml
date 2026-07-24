@@ -22,7 +22,7 @@ configuration:
     description: "Backend order for automatic reasoning/chat, e.g. claude,ollama — empty = use the strategy."
   chat_policy:
     name: "Backend policy — chat"
-    description: "Backend order for automatic reasoning/chat, e.g. claude,ollama — empty = use the strategy."
+    description: "Backend order for the interactive chat, e.g. claude,ollama — empty = use the strategy."
   local_model:
     name: "Local Model (Ollama)"
     description: "Settings for a locally hosted Ollama model. Leave empty if you do not use Ollama."
