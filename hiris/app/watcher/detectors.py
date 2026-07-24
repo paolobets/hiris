@@ -1,6 +1,16 @@
 from __future__ import annotations
+import logging
 from typing import Any, Callable, Optional
 from .signals import Signal
+
+log = logging.getLogger(__name__)
+
+# HA's no-data sentinels: an entity flapping to one of these (HA restart,
+# wifi drop) is not "real data" and must never be treated as a matched
+# value by any operator -- mirrors _num()'s own no-data mapping below, but
+# _num() only kicks in on the numeric path; the "==" / "!=" string-fallback
+# path in make_generic_detector needs the same guard applied explicitly.
+_NO_DATA_STATES = ("unavailable", "unknown", "")
 
 def _num(state_dict: dict) -> Optional[float]:
     if not isinstance(state_dict, dict):
@@ -63,8 +73,10 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
     trigger (Slice 5b). `trigger` is the already whitelist-validated dict
     produced by ``watcher.lenses.validate_lens``/``_validate_trigger``:
     ``{entity_id, attribute?, operator, threshold, duration_min?}`` --
-    ``operator`` in ``{">","<",">=","<=","==","!="}``, ``threshold`` a finite
-    number, ``duration_min`` (if present) a finite non-negative number.
+    ``operator`` in ``{">","<",">=","<=","==","!="}``; ``threshold`` a finite
+    number for every operator, OR (for ``==``/``!=`` only) a non-empty
+    string up to 64 chars for state-matching lenses (e.g. "home",
+    "unlocked"); ``duration_min`` (if present) a finite non-negative number.
 
     Returns a callable with the SAME signature as the built-in detectors
     (``fn(entity_id, old, new, cfg, now) -> Optional[Signal]``) so the
@@ -98,6 +110,13 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
             raw = _raw_value(new)
             if raw is None:
                 return None
+            if raw in _NO_DATA_STATES:
+                # No-data guard for ALL operators (not just the numeric
+                # path): without this, a temp sensor "!= 20" lens would
+                # spuriously fire every time the entity goes briefly
+                # "unavailable", because the string-fallback below would
+                # compare str("unavailable") != str(20) and match.
+                return None
 
             num = _num({"state": raw})
 
@@ -118,9 +137,18 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
             if not matched:
                 return None
 
+            # TODO(Task 4 / follow-up): severity vocabulary mismatch --
+            # watcher.lenses.ALLOWED_SEVERITIES is {"info","warn","alert"}
+            # but watcher.signals.SEVERITIES is ("info","warn","critico").
+            # Whatever maps a lens's user-authored severity into `cfg` (and
+            # from there into this Signal) must normalize "alert"<->"critico"
+            # before it reaches here; this detector just passes it through.
             severity = "warn"
             if isinstance(cfg, dict):
-                severity = cfg.get("severity", "warn")
+                # `cfg.get("severity", "warn")` alone is not enough: a key
+                # present with value None (e.g. {"severity": None}) would
+                # return None here, not the default -- `or` catches that.
+                severity = cfg.get("severity") or "warn"
 
             evidence: dict = {
                 "entity_id": entity_id,
@@ -137,6 +165,10 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
             return Signal(kind="user_lens", entity_id=entity_id, severity=severity,
                           evidence=evidence, ts=now)
         except Exception:
-            return None  # fail-safe: a user lens must never crash the Guardian
+            # fail-safe: a user lens must never crash the Guardian, but a
+            # silent swallow makes a broken lens undiagnosable -- log it.
+            log.debug("make_generic_detector: user lens failed for %s, returning None",
+                      entity_id, exc_info=True)
+            return None
 
     return detect_user_lens

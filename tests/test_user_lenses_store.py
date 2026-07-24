@@ -439,3 +439,81 @@ def test_delete_nonexistent_id_is_noop(tmp_path):
     save_lenses(str(tmp_path), [VALID_EVENT_LENS])
     result = delete_lens(str(tmp_path), "does-not-exist")
     assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# FIX 1 (Task 2 review): string thresholds for ==/!= (state-matching lenses),
+# still numeric-only for ordering operators.
+# ---------------------------------------------------------------------------
+
+def test_validate_accepts_string_threshold_for_eq_state_matching():
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "entity_id": "person.paolo", "operator": "==", "threshold": "home"}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert cleaned["trigger"]["threshold"] == "home"
+
+
+def test_validate_accepts_string_threshold_for_neq_state_matching():
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "entity_id": "person.paolo", "operator": "!=", "threshold": "home"}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert cleaned["trigger"]["threshold"] == "home"
+
+
+def test_validate_rejects_string_threshold_for_ordering_operator():
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "operator": ">", "threshold": "home"}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_truncates_long_string_threshold_to_64_chars():
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "operator": "==", "threshold": "x" * 100}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert len(cleaned["trigger"]["threshold"]) == 64
+
+
+def test_validate_rejects_whitespace_only_string_threshold_for_eq():
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "operator": "==", "threshold": "   "}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_still_rejects_bool_threshold_for_eq():
+    # bool is a subclass of int/str-adjacent trap: True/False must not leak
+    # through as a threshold via either the numeric or the new string path.
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "operator": "==", "threshold": True}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_condition_accepts_string_threshold_for_eq():
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {**VALID_SCHEDULE_LENS["trigger"],
+           "condition": {"entity_id": "lock.porta", "operator": "==", "threshold": "unlocked"}}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert cleaned["trigger"]["condition"]["threshold"] == "unlocked"
+
+
+def test_validate_condition_accepts_string_threshold_for_neq():
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {**VALID_SCHEDULE_LENS["trigger"],
+           "condition": {"entity_id": "person.paolo", "operator": "!=", "threshold": "home"}}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert cleaned["trigger"]["condition"]["threshold"] == "home"
+
+
+def test_validate_condition_rejects_string_threshold_for_ordering_operator():
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {**VALID_SCHEDULE_LENS["trigger"],
+           "condition": {"entity_id": "sensor.away", "operator": ">", "threshold": "far"}}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_condition_still_accepts_numeric_threshold_for_eq():
+    # Numeric == must keep working after adding the string branch.
+    cleaned = validate_lens(VALID_SCHEDULE_LENS)
+    assert cleaned is not None
+    assert cleaned["trigger"]["condition"]["threshold"] == 1

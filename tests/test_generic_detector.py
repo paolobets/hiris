@@ -232,3 +232,52 @@ def test_ts_is_the_now_argument():
 def test_reuses_num_helper_for_unavailable_and_unknown():
     assert _num(_st("unavailable")) is None
     assert _num(_st("unknown")) is None
+
+
+# ---------------------------------------------------------------------------
+# FIX 2 (Task 2 review, I1): no-data guard -- "unavailable"/"unknown"/"" must
+# never be treated as a real value, even by the "!=" string-fallback path
+# (a temp sensor "!= 20" lens must not fire just because HA restarted /
+# wifi flapped and the entity briefly reports "unavailable").
+# ---------------------------------------------------------------------------
+
+def test_neq_does_not_fire_when_new_state_is_unavailable():
+    fn = make_generic_detector({"entity_id": "sensor.temp", "operator": "!=", "threshold": 20})
+    assert fn("sensor.temp", _st("18"), _st("unavailable"), {}, 1.0) is None
+
+
+def test_neq_does_not_fire_when_new_state_is_unknown():
+    fn = make_generic_detector({"entity_id": "sensor.temp", "operator": "!=", "threshold": 20})
+    assert fn("sensor.temp", _st("18"), _st("unknown"), {}, 1.0) is None
+
+
+def test_neq_does_not_fire_when_new_state_is_empty_string():
+    fn = make_generic_detector({"entity_id": "sensor.temp", "operator": "!=", "threshold": 20})
+    assert fn("sensor.temp", _st("18"), _st(""), {}, 1.0) is None
+
+
+def test_eq_does_not_fire_when_new_state_is_unavailable():
+    fn = make_generic_detector({"entity_id": "binary_sensor.door", "operator": "==", "threshold": "unavailable"})
+    # Even though threshold literally equals the sentinel string, no-data
+    # must still short-circuit before any comparison (no coincidental fire).
+    assert fn("binary_sensor.door", _st("on"), _st("unavailable"), {}, 1.0) is None
+
+
+def test_no_data_guard_applies_to_attribute_reads_too():
+    fn = make_generic_detector({
+        "entity_id": "climate.living", "attribute": "current_temperature",
+        "operator": "!=", "threshold": 20,
+    })
+    new = _st("heat", current_temperature="unavailable")
+    assert fn("climate.living", _st("heat", current_temperature=20), new, {}, 1.0) is None
+
+
+# ---------------------------------------------------------------------------
+# M1: cfg.get("severity") present-but-None must fall back to "warn", not None.
+# ---------------------------------------------------------------------------
+
+def test_severity_present_but_none_defaults_to_warn():
+    fn = make_generic_detector({"entity_id": "sensor.x", "operator": ">", "threshold": 8})
+    sig = fn("sensor.x", None, _st("9"), {"severity": None}, 1.0)
+    assert sig is not None
+    assert sig.severity == "warn"

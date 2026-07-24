@@ -85,13 +85,49 @@ def _coerce_bool(v, default: bool) -> bool:
     return v if isinstance(v, bool) else default
 
 
+_THRESHOLD_STR_MAX_LEN = 64
+
+
+def _validate_threshold(operator, threshold):
+    """Validate `threshold` given its paired `operator` (already known to be
+    a member of ALLOWED_OPERATORS). A finite number is always accepted.
+
+    For the equality operators ("==" / "!=") a non-empty stripped string is
+    ALSO accepted (capped to `_THRESHOLD_STR_MAX_LEN`, mirroring this
+    file's general truncation policy) -- this is what makes state-matching
+    lenses possible (e.g. "person.paolo != home", "lock.porta == unlocked",
+    "binary_sensor.x == on"), which are core Home Assistant automations and
+    were previously impossible because this validator forced threshold to
+    be numeric. detectors.make_generic_detector already string-compares for
+    "==" / "!=" (falling back to str(raw) == str(threshold)); only this
+    validator was blocking it.
+
+    Ordering operators (">", "<", ">=", "<=") keep the numeric-only rule: no
+    total order is defined over arbitrary strings, so a string threshold
+    there is rejected (present-but-invalid -> reject the whole lens, per
+    this module's fail-safe-optional convention).
+
+    Returns the cleaned threshold (the number as-is, or the stripped/
+    truncated string) or None if `threshold` is not usable for `operator`.
+    """
+    if _is_number(threshold):
+        return threshold
+    if operator in ("==", "!=") and isinstance(threshold, str):
+        v = threshold.strip()
+        if v:
+            return v[:_THRESHOLD_STR_MAX_LEN]
+    return None
+
+
 def _validate_condition(raw) -> dict | None:
     if not isinstance(raw, dict):
         return None
     entity_id = _clean_nonempty_str(raw.get("entity_id"))
     operator = raw.get("operator")
-    threshold = raw.get("threshold")
-    if entity_id is None or operator not in ALLOWED_OPERATORS or not _is_number(threshold):
+    if entity_id is None or operator not in ALLOWED_OPERATORS:
+        return None
+    threshold = _validate_threshold(operator, raw.get("threshold"))
+    if threshold is None:
         return None
     if not _ENTITY_ID_RE.match(entity_id):
         return None
@@ -108,8 +144,10 @@ def _validate_trigger(raw) -> dict | None:
     if ttype == "event":
         entity_id = _clean_nonempty_str(raw.get("entity_id"))
         operator = raw.get("operator")
-        threshold = raw.get("threshold")
-        if entity_id is None or operator not in ALLOWED_OPERATORS or not _is_number(threshold):
+        if entity_id is None or operator not in ALLOWED_OPERATORS:
+            return None
+        threshold = _validate_threshold(operator, raw.get("threshold"))
+        if threshold is None:
             return None
         if not _ENTITY_ID_RE.match(entity_id):
             return None
