@@ -67,6 +67,11 @@ async def _apply_mutation(app, clean: list[dict]) -> None:
     register = app.get("register_lens_schedules")
     if register is not None:
         await register(app)
+    # Cache/disk consistency across interleaved mutations depends on
+    # `register_lens_schedules` containing NO `await` between reading the
+    # just-saved list and this `set_lenses` call -- a future yield point in
+    # there would let a second concurrent mutation's save+cache-refresh
+    # interleave in between, leaving the cache stale/out of order.
     set_lenses(app, clean)
 
 
@@ -85,12 +90,21 @@ async def handle_list_lenses(request: web.Request) -> web.Response:
 
 
 async def handle_create_lens(request: web.Request) -> web.Response:
-    """POST /api/lenses -- validate + create. 400 on an invalid lens."""
+    """POST /api/lenses -- validate + create. 400 on an invalid lens.
+
+    A create must always mint a FRESH id, never reuse one -- `validate_lens`
+    only re-mints `id` when it's malformed, so a format-valid id copied from
+    a GET/import/retried request (`^[0-9a-f]{12}$`) would otherwise be
+    honored and `upsert_lens` would silently REPLACE that existing lens
+    while this handler still reports 201 Created. Stripping any client
+    `id` here forces `validate_lens` to always mint a new one."""
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid JSON"}, status=400)
-    cleaned = _store.validate_lens(body if isinstance(body, dict) else {})
+    body = body if isinstance(body, dict) else {}
+    body = {k: v for k, v in body.items() if k != "id"}
+    cleaned = _store.validate_lens(body)
     if cleaned is None:
         return web.json_response({"error": "invalid lens"}, status=400)
     data_dir = _data_dir(request)

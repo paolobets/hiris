@@ -142,6 +142,42 @@ async def test_create_invalid_lens_is_400(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_create_with_existing_id_in_body_creates_new_lens_not_overwrite(aiohttp_client, tmp_path):
+    """POST must always CREATE. A body carrying a format-valid `id` copied
+    from an existing lens (GET/import/retried request) must NOT let
+    `upsert_lens` replace that existing lens -- the handler must strip any
+    client-supplied `id` before validating/saving, so a fresh id is always
+    minted and the original lens is left untouched."""
+    spy = _RegisterSpy()
+    app = _app(tmp_path, register=spy)
+    client = await aiohttp_client(app)
+
+    # create the original lens
+    r = await client.post("/api/lenses", json=VALID_EVENT_LENS)
+    assert r.status == 201
+    original = (await r.json())["lens"]
+    original_id = original["id"]
+
+    # POST again, this time smuggling the existing id in the body, with a
+    # different name so an overwrite would be observable.
+    hijack_body = {**VALID_EVENT_LENS, "id": original_id, "name": "Hijack"}
+    r = await client.post("/api/lenses", json=hijack_body)
+    assert r.status == 201
+    created = (await r.json())["lens"]
+
+    # a brand-new id was minted -- never the client-supplied one
+    assert created["id"] != original_id
+    assert created["name"] == "Hijack"
+
+    # both lenses now exist, the original untouched
+    all_lenses = load_lenses(str(tmp_path))
+    assert len(all_lenses) == 2
+    by_id = {l["id"]: l for l in all_lenses}
+    assert by_id[original_id]["name"] == "Porta aperta"
+    assert by_id[created["id"]]["name"] == "Hijack"
+
+
+@pytest.mark.asyncio
 async def test_create_non_dict_body_is_400(aiohttp_client, tmp_path):
     app = _app(tmp_path)
     client = await aiohttp_client(app)
