@@ -59,6 +59,35 @@ def test_holistic_reason_wires_auto_tune_and_trace_coverage():
     assert "trace_applied_coverage(" in src
 
 
+def test_holistic_reason_refreshes_guardian_policy_after_auto_tune():
+    """Whole-branch review I1: the live Guardian runs its DETECTORS loop off
+    a policy override snapshot (guardian.py's `_policy_override`), which
+    shadows the fresh disk read. auto_tune_detectors (and coverage
+    suggestions applied just above it) write the policy FILE, but without
+    refreshing the guardian's in-memory snapshot the running loop keeps
+    stale thresholds until the next UI save or restart -- silently making
+    the brain's tunings inert live. _holistic_reason must call
+    guardian.set_policy(load_policy(data_dir)) right after
+    auto_tune_detectors(...) so the live guardian picks up the fresh
+    on-disk policy immediately. Source-level check, same inspect.getsource
+    convention as the other wiring assertions in this file, so a regression
+    that deletes the refresh is caught even though it has no import-time
+    signature of its own."""
+    import inspect
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    assert "await auto_tune_detectors(" in src
+    assert "guardian.set_policy(load_policy(data_dir))" in src
+    # server.py also calls guardian.set_policy(...) once at startup, before
+    # _holistic_reason is even defined -- that's a DIFFERENT call and not
+    # what this test is about. Find the refresh that happens AFTER the
+    # auto_tune_detectors call specifically.
+    tune_pos = src.index("await auto_tune_detectors(")
+    refresh_pos = src.index("guardian.set_policy(load_policy(data_dir))", tune_pos)
+    assert tune_pos < refresh_pos
+
+
 def test_coverage_review_runs_before_bridge_enabled_branch():
     """The coverage-review block must sit BEFORE the BRIDGE_ENABLED early
     return in _holistic_reason, so it runs on every holistic pass regardless

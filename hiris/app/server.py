@@ -1423,6 +1423,15 @@ async def _on_startup(app: web.Application) -> None:
                     # suggestions, so they are undoable via the existing
                     # /api/suggestions/{id}/undo route.
                     store=_store)
+
+                # Slice 6 (whole-branch review I1): the running guardian holds
+                # a policy override snapshot (set at startup / on UI save), so
+                # threshold tunings and coverage detectors just written to disk
+                # above are invisible to the live DETECTORS loop until the next
+                # UI save or restart -- making the auto-tune (and its undo)
+                # behaviorally inert live. Refresh the override from disk so the
+                # brain's changes take effect immediately.
+                guardian.set_policy(load_policy(data_dir))
         except Exception:
             logger.exception("coverage-review failed")
 

@@ -30,6 +30,19 @@ async def handle_undo_suggestion(request: web.Request) -> web.Response:
     ok = undo(store, data_dir, sid)
 
     if ok:
+        # Slice 6 (whole-branch review I1): undo just restored detector config
+        # on disk (a tuned threshold, or a coverage entity). The live guardian
+        # runs off a policy override snapshot, so without a refresh the running
+        # DETECTORS loop keeps the pre-undo value until the next UI save or
+        # restart -- silently breaking the undo promise. Refresh it from disk.
+        guardian = request.app.get("guardian")
+        if guardian is not None:
+            from ..watcher.policy import load_policy
+            try:
+                guardian.set_policy(load_policy(data_dir))
+            except Exception:
+                logger.exception("handle_undo_suggestion: guardian policy refresh failed")
+
         # Slice 6 Task 5: an undone row can be either a genuine coverage
         # suggestion (source_ref="brain-coverage:...") or a directly-applied
         # tuning surfaced the same way (source_ref="brain-tune:...", see
