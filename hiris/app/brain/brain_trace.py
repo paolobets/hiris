@@ -39,6 +39,15 @@ async def record_brain_action(
 
     emb = await embedder.embed(text)
 
+    if not emb:
+        logger.warning(
+            "record_brain_action: embedder returned an empty embedding, "
+            "refusing to write an unrecallable (NULL-embedding) trace for "
+            "source_ref=%s (prior trace, if any, is left untouched)",
+            source_ref,
+        )
+        return None
+
     existing = knowledge_store.list_items(kind="brain-action", limit=_MAX_ACTION_SCAN)
     for old in existing:
         if old.get("source_ref") == source_ref:

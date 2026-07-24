@@ -9,6 +9,14 @@ class _FakeEmbedder:
         return [1.0, 0.0, 0.0]
 
 
+class _FalsyEmbedder:
+    def __init__(self, value):
+        self._value = value
+
+    async def embed(self, text):
+        return self._value
+
+
 @pytest.mark.asyncio
 async def test_record_brain_action_creates_recallable_item(tmp_path):
     store = KnowledgeStore(str(tmp_path / "brain.db"))
@@ -92,4 +100,38 @@ async def test_remove_brain_action_no_match_is_noop(tmp_path):
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     removed = await remove_brain_action(store, "brain-action:threshold:nope")
     assert removed == 0
+    store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("falsy_value", [None, []])
+async def test_record_brain_action_falsy_embedding_returns_none_and_preserves_prior(
+    tmp_path, falsy_value,
+):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    good_emb = _FakeEmbedder()
+    ref = "brain-action:threshold:binary_sensor.porta"
+
+    # Seed a prior good trace with the same source_ref.
+    prior_id = await record_brain_action(
+        store, good_emb, text="Soglia alzata a 0.7", source_ref=ref,
+    )
+    assert prior_id is not None
+
+    # A subsequent write whose embedder returns a falsy vector must be
+    # refused: no new item written, and the prior trace must survive.
+    bad_emb = _FalsyEmbedder(falsy_value)
+    result = await record_brain_action(
+        store, bad_emb, text="Soglia alzata a 0.8 (embed fallito)", source_ref=ref,
+    )
+
+    assert result is None
+    rows = store.list_items(kind="brain-action")
+    assert len(rows) == 1
+    assert rows[0]["id"] == int(prior_id)
+    assert rows[0]["content"] == "Soglia alzata a 0.7"
+
+    # Prior trace must still be recallable via search.
+    res = store.search(query_vec=[1.0, 0.0, 0.0], k=5, kinds="brain-action")
+    assert any(r["id"] == int(prior_id) for r in res)
     store.close()
