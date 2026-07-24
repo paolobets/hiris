@@ -139,8 +139,14 @@ async def test_register_creates_job_for_interval_lens(tmp_path):
     assert job.replace_existing is True
 
 
+def _trigger_fields(job) -> dict[str, str]:
+    return {f.name: str(f) for f in job.trigger.fields}
+
+
 @pytest.mark.asyncio
 async def test_register_creates_job_for_cron_lens_mapped_to_apscheduler_fields(tmp_path):
+    from apscheduler.triggers.cron import CronTrigger
+
     save_lenses(str(tmp_path), [CRON_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
@@ -149,9 +155,84 @@ async def test_register_creates_job_for_cron_lens_mapped_to_apscheduler_fields(t
 
     job = scheduler.jobs.get("hiris_lens_222222222222")
     assert job is not None
-    assert job.trigger == "cron"
-    # "0 3 * * *" -> minute hour day month day_of_week
-    assert job.kwargs == {"minute": "0", "hour": "3", "day": "*", "month": "*", "day_of_week": "*"}
+    assert isinstance(job.trigger, CronTrigger)
+    # "0 3 * * *" -> minute hour day month day_of_week; day_of_week=="*"
+    # needs no crontab->APScheduler translation.
+    fields = _trigger_fields(job)
+    assert fields["minute"] == "0"
+    assert fields["hour"] == "3"
+    assert fields["day"] == "*"
+    assert fields["month"] == "*"
+    assert fields["day_of_week"] == "*"
+
+
+# ---------------------------------------------------------------------------
+# FIX 1 (Task 5 review): standard-crontab day_of_week numbering (0 or 7 =
+# Sunday, 1 = Monday, ..., 6 = Saturday) must be translated to APScheduler's
+# OWN CronTrigger day_of_week numbering (0 = Monday, ..., 6 = Sunday) --
+# otherwise a Sunday cron silently fires on Monday, and the POSIX-legal "7"
+# spelling of Sunday is rejected outright by APScheduler (whose max is 6).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_register_cron_sunday_dow0_maps_to_apscheduler_sunday(tmp_path):
+    sunday_lens = {
+        "id": "777777777777", "name": "Solo domenica", "enabled": True,
+        "trigger": {"type": "schedule", "cron": "0 3 * * 0"},
+        "reasoning": {"enabled": False},
+        "action": {"type": "notify", "message": "domenica"},
+        "severity": "info",
+    }
+    save_lenses(str(tmp_path), [sunday_lens])
+    scheduler = FakeScheduler()
+    app = _app(scheduler, tmp_path)
+
+    await register_lens_schedules(app)
+
+    job = scheduler.jobs["hiris_lens_777777777777"]
+    # APScheduler's Sunday is day_of_week=6 -- NOT a bare passthrough of the
+    # crontab "0" (which would be APScheduler's Monday, the pre-fix bug).
+    assert _trigger_fields(job)["day_of_week"] == "6"
+
+
+@pytest.mark.asyncio
+async def test_register_cron_dow7_legal_posix_sunday_is_accepted(tmp_path):
+    sunday7_lens = {
+        "id": "888888888888", "name": "Domenica (7)", "enabled": True,
+        "trigger": {"type": "schedule", "cron": "0 3 * * 7"},
+        "reasoning": {"enabled": False},
+        "action": {"type": "notify", "message": "domenica"},
+        "severity": "info",
+    }
+    save_lenses(str(tmp_path), [sunday7_lens])
+    scheduler = FakeScheduler()
+    app = _app(scheduler, tmp_path)
+
+    await register_lens_schedules(app)  # must not raise / skip -- "7" is legal POSIX cron
+
+    job = scheduler.jobs.get("hiris_lens_888888888888")
+    assert job is not None
+    assert _trigger_fields(job)["day_of_week"] == "6"
+
+
+@pytest.mark.asyncio
+async def test_register_cron_weekday_range_maps_each_day(tmp_path):
+    """"1-5" (standard-crontab Mon-Fri) -> APScheduler "0,1,2,3,4"."""
+    weekday_lens = {
+        "id": "999999999999", "name": "Feriali", "enabled": True,
+        "trigger": {"type": "schedule", "cron": "0 9 * * 1-5"},
+        "reasoning": {"enabled": False},
+        "action": {"type": "notify", "message": "feriale"},
+        "severity": "info",
+    }
+    save_lenses(str(tmp_path), [weekday_lens])
+    scheduler = FakeScheduler()
+    app = _app(scheduler, tmp_path)
+
+    await register_lens_schedules(app)
+
+    job = scheduler.jobs["hiris_lens_999999999999"]
+    assert _trigger_fields(job)["day_of_week"] == "0,1,2,3,4"
 
 
 @pytest.mark.asyncio
@@ -319,8 +400,8 @@ class _RunLensSpy:
         self.calls = []
         self._raise = raise_exc
 
-    async def __call__(self, lens, evidence):
-        self.calls.append((lens, evidence))
+    async def __call__(self, lens, evidence, **kwargs):
+        self.calls.append((lens, evidence, kwargs))
         if self._raise:
             raise RuntimeError("boom")
         return "woke"
@@ -330,7 +411,7 @@ class _RunLensSpy:
 async def test_run_scheduled_lens_no_condition_calls_run_lens():
     spy = _RunLensSpy()
     await _run_scheduled_lens(INTERVAL_LENS, cache=None, run_lens=spy)
-    assert spy.calls == [(INTERVAL_LENS, {"entity_id": "-"})]
+    assert spy.calls == [(INTERVAL_LENS, {"entity_id": "-"}, {"cooldown_sec": 0})]
 
 
 @pytest.mark.asyncio
@@ -338,7 +419,20 @@ async def test_run_scheduled_lens_condition_satisfied_calls_run_lens():
     spy = _RunLensSpy()
     cache = FakeCache({"person.paolo": {"state": "home"}})
     await _run_scheduled_lens(CONDITION_LENS, cache=cache, run_lens=spy)
-    assert spy.calls == [(CONDITION_LENS, {"entity_id": "person.paolo"})]
+    assert spy.calls == [(CONDITION_LENS, {"entity_id": "person.paolo"}, {"cooldown_sec": 0})]
+
+
+# ---------------------------------------------------------------------------
+# FIX 2 (Task 5 review): the scheduled-lens callback must pass
+# `cooldown_sec=0` to `run_lens` -- its own interval/cron cadence IS the
+# rate limiter, not the sentinel's default ~30-min cooldown.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_run_scheduled_lens_bypasses_cooldown_via_zero_override():
+    spy = _RunLensSpy()
+    await _run_scheduled_lens(INTERVAL_LENS, cache=None, run_lens=spy)
+    assert spy.calls[0][2] == {"cooldown_sec": 0}
 
 
 @pytest.mark.asyncio

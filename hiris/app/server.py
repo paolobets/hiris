@@ -9,6 +9,7 @@ import shutil
 import time
 import aiohttp
 from aiohttp import web
+from apscheduler.triggers.cron import CronTrigger
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_agents import (
     handle_list_agents, handle_create_agent, handle_get_agent,
@@ -392,7 +393,6 @@ async def request_confirmation_stepup(
 # ---------------------------------------------------------------------------
 
 _LENS_JOB_PREFIX = "hiris_lens_"
-_CRON_FIELDS = ("minute", "hour", "day", "month", "day_of_week")
 
 
 def _condition_holds(condition: dict | None, cache) -> bool:
@@ -453,23 +453,98 @@ async def _run_scheduled_lens(lens: dict, *, cache, run_lens) -> None:
         if condition and not _condition_holds(condition, cache):
             return
         entity_id = condition.get("entity_id", "-") if condition else "-"
-        await run_lens(lens, {"entity_id": entity_id})
+        # Task 5 review Fix 2: a scheduled lens's own interval/cron cadence
+        # IS its rate limiter -- bypass the ~30-min sentinel cooldown here
+        # (cooldown_sec=0) so e.g. an interval_min=5 lens isn't silently
+        # suppressed by it. `run_lens`'s daily_cap (an unrelated, unchanged
+        # safety net) and every other gate still apply unchanged.
+        await run_lens(lens, {"entity_id": entity_id}, cooldown_sec=0)
     except Exception:
         logger.exception("scheduled lens %s failed", lens_id)
 
 
-def _cron_kwargs(cron: str) -> dict | None:
-    """Map a whitelist-validated 5-field cron string (`watcher.lenses._CRON_RE`
-    already confirmed the charset/shape) onto APScheduler's CronTrigger field
-    names, in the standard crontab order: minute hour day month day_of_week.
-    Returns None only if the field count is somehow off (defensive -- the
-    store's regex already guarantees exactly 5 whitespace-separated fields).
-    Per-field VALUE validity (e.g. an out-of-range hour) is left to
-    APScheduler itself, raised at `add_job` time and caught there."""
+def _translate_cron_dow(field: str) -> str:
+    """Remap a cron day-of-week FIELD from STANDARD crontab numbering
+    (POSIX cron(5): 0 or 7 = Sunday, 1 = Monday, ..., 6 = Saturday -- what
+    every SCHEDULE-trigger user lens is authored against, and what
+    `watcher.lenses._CRON_RE` whitelists) to APScheduler's OWN CronTrigger
+    day_of_week numbering (0 = Monday, ..., 6 = Sunday, i.e. Python's
+    `datetime.weekday()`).
+
+    This translation is REQUIRED even though the caller builds the trigger
+    via `CronTrigger.from_crontab` -- verified against the installed
+    apscheduler==3.10.4, `from_crontab` does NOT perform any day_of_week
+    remapping itself: it feeds a numeric day_of_week token straight into
+    APScheduler's own field parser unchanged. Confirmed empirically: an
+    UNTRANSLATED `CronTrigger.from_crontab("0 3 * * 0")` (standard-crontab
+    Sunday) computes its next fire time on APScheduler's day_of_week=0,
+    which is MONDAY, not Sunday; and a POSIX-legal "7" raises outright
+    (APScheduler's day_of_week max is 6). This function runs BEFORE the
+    cron string ever reaches `from_crontab`, fixing both at the source
+    rather than relying on upstream translation that doesn't exist.
+
+    Supports exactly the charset `_CRON_RE` allows for a cron field --
+    digits, `*`, `,`, `/`, `-` -- i.e. bare values, comma-lists, ranges, and
+    step values, in any combination (e.g. "1-5", "0,6", "*/2"). Any field
+    this can't parse, or that resolves to a value outside 0-7, raises
+    ValueError -- the caller (`register_lens_schedules`) catches this
+    per-lens so one broken cron never blocks the others.
+    """
+    field = field.strip()
+    if field == "*":
+        return "*"
+    crontab_days: set[int] = set()
+    for part in field.split(","):
+        part = part.strip()
+        if not part:
+            raise ValueError(f"empty day_of_week token in {field!r}")
+        step = 1
+        base = part
+        if "/" in part:
+            base, step_s = part.split("/", 1)
+            step = int(step_s)
+            if step <= 0:
+                raise ValueError(f"non-positive step in {part!r}")
+        if base == "*":
+            lo, hi = 0, 7
+        elif "-" in base:
+            lo_s, hi_s = base.split("-", 1)
+            lo, hi = int(lo_s), int(hi_s)
+        else:
+            lo = hi = int(base)
+        if lo > hi:
+            raise ValueError(f"backwards range in {part!r}")
+        v = lo
+        while v <= hi:
+            crontab_days.add(v)
+            v += step
+    if not crontab_days or any(d < 0 or d > 7 for d in crontab_days):
+        raise ValueError(f"day_of_week value out of range 0-7 in {field!r}")
+    # 0 and 7 both denote Sunday in standard crontab -- collapse them onto
+    # the SAME APScheduler day (6) rather than two separate ones.
+    normalized = {0 if d == 7 else d for d in crontab_days}
+    apscheduler_days = sorted((d - 1) % 7 for d in normalized)
+    return ",".join(str(d) for d in apscheduler_days)
+
+
+def _to_apscheduler_crontab(cron: str) -> str:
+    """Rewrite a whitelist-validated 5-field standard-crontab string
+    (`watcher.lenses._CRON_RE` already confirmed the charset/shape) into
+    the equivalent string for `CronTrigger.from_crontab`, remapping ONLY
+    the day_of_week field (`_translate_cron_dow`) -- minute/hour/day/month
+    use the same numbering in both conventions and pass through untouched.
+    Raises ValueError if the field count is off (defensive -- the store's
+    regex already guarantees exactly 5 whitespace-separated fields) or the
+    day_of_week field doesn't parse; the caller's try/except turns either
+    into "skip this lens" without crashing registration of the rest.
+    Per-field VALUE validity of minute/hour/day/month (e.g. an out-of-range
+    hour) is left to `CronTrigger.from_crontab` itself, raised at
+    `add_job` time and caught there."""
     parts = cron.split()
     if len(parts) != 5:
-        return None
-    return dict(zip(_CRON_FIELDS, parts))
+        raise ValueError(f"expected 5 cron fields, got {len(parts)}: {cron!r}")
+    minute, hour, day, month, dow = parts
+    return f"{minute} {hour} {day} {month} {_translate_cron_dow(dow)}"
 
 
 async def register_lens_schedules(app: web.Application) -> None:
@@ -529,13 +604,10 @@ async def register_lens_schedules(app: web.Application) -> None:
         interval_min = trigger.get("interval_min")
         try:
             if cron:
-                fields = _cron_kwargs(cron)
-                if fields is None:
-                    logger.warning("register_lens_schedules: lens %s has a malformed cron, skipping", lens_id)
-                    continue
+                trigger = CronTrigger.from_crontab(_to_apscheduler_crontab(cron))
                 scheduler.add_job(
-                    _make_callback(lens), trigger="cron", id=job_id,
-                    replace_existing=True, **fields)
+                    _make_callback(lens), trigger=trigger, id=job_id,
+                    replace_existing=True)
             elif interval_min:
                 scheduler.add_job(
                     _make_callback(lens), trigger="interval", minutes=interval_min,
@@ -1182,7 +1254,12 @@ async def _on_startup(app: web.Application) -> None:
     # _llm_reason), stessa denylist domini pericolosi (via executor.execute).
     from .watcher.lens_runner import run_lens as _run_lens_flow
 
-    async def _run_lens(lens: dict, evidence: dict) -> str:
+    async def _run_lens(lens: dict, evidence: dict, *, cooldown_sec: int | None = None) -> str:
+        # Task 5 review Fix 2: `cooldown_sec` is None for every EVENT-lens
+        # caller (`_dispatch_run_lens` above never passes it), so behavior
+        # there is UNCHANGED -- the env-configured (default 1800s) cooldown
+        # still applies. `_run_scheduled_lens` (server.py, schedule-trigger
+        # callback) is the only caller that overrides it, with 0.
         return await _run_lens_flow(
             lens, evidence,
             store=sentinel_store, run_decision=_run_decision, execute=execute,
@@ -1192,7 +1269,8 @@ async def _on_startup(app: web.Application) -> None:
             in ("1", "true", "yes", "on"),
             record_event=sentinel_store.record_event,
             sentinel_system=SENTINEL_SYSTEM,
-            cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
+            cooldown_sec=cooldown_sec if cooldown_sec is not None
+            else int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
             daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")),
         )
 

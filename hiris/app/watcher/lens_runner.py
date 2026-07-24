@@ -114,7 +114,7 @@ async def run_lens(
     sentinel_system: str,
     clock: Callable[[], float] = time.time,
     today: Callable[[], str] = _today,
-    cooldown_sec: int = 1800,
+    cooldown_sec: int | None = None,
     daily_cap: int = 20,
 ) -> str:
     """Fire (or gate) a single user-lens evaluation.
@@ -128,8 +128,18 @@ async def run_lens(
     `execute` is the real `watcher.executor.execute` (the zero-AI path
     calls it directly, exactly like `_run_decision`'s own tail call).
 
+    `cooldown_sec`: `None` (the default) keeps the ORIGINAL behavior -- a
+    ~30-min cooldown, same as the built-in guardian/situations paths --
+    which is what an EVENT-triggered lens still gets (it has no cadence of
+    its own to honor). Task 5 review Fix 2: a SCHEDULE-triggered lens's own
+    interval/cron cadence IS its rate limiter, so `server.py`'s scheduled
+    callback passes `cooldown_sec=0` here to bypass the cooldown gate
+    entirely for that fire -- `daily_cap` (an unrelated, unchanged safety
+    net) still applies regardless.
+
     Returns the `maybe_wake` gate outcome: `"woke"` | `"cooldown"` | `"cap"`.
     """
+    _cooldown_sec = 1800 if cooldown_sec is None else cooldown_sec
     lens = lens or {}
     evidence = dict(evidence or {})
     lens_id = lens.get("id", "-")
@@ -177,5 +187,5 @@ async def run_lens(
     return await maybe_wake(
         store, key, wake, on_wake=_on_wake,
         clock=clock, today=today,
-        cooldown_sec=cooldown_sec, daily_cap=daily_cap, cap_scope=cap_scope,
+        cooldown_sec=_cooldown_sec, daily_cap=daily_cap, cap_scope=cap_scope,
     )

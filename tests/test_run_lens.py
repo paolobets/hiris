@@ -479,3 +479,68 @@ async def test_key_scopes_cooldown_per_lens_and_entity(store):
 
     assert out_a == "woke" and out_b == "woke"
     assert len(rec.notified) == 2
+
+
+# ---------------------------------------------------------------------------
+# (f) Task 5 review Fix 2: a SCHEDULED lens's own interval/cron cadence IS
+# its rate limiter -- passing cooldown_sec=0 must bypass the cooldown gate
+# entirely, while daily_cap (an unrelated, unchanged safety net) still
+# applies. Event lenses (which never pass cooldown_sec) must keep the
+# default ~30-min cooldown -- verified by OMITTING the kwarg entirely,
+# not just passing 1800 explicitly (regression against Fix 2's new
+# `cooldown_sec: int | None = None` default).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cooldown_sec_zero_bypasses_cooldown_but_daily_cap_still_applies(store):
+    rec = _Rec()
+
+    async def _run_decision_unused(wake, suggested, system):
+        raise AssertionError("reasoning disabled")
+
+    async def _run(clock_val):
+        return await run_lens(
+            NOTIFY_LENS, {"entity_id": "sensor.temp"},
+            store=store, run_decision=_run_decision_unused, execute=real_execute,
+            notify=rec.notify, act=rec.act, propose=rec.propose,
+            get_execute_policy=_policy(), allow_green_auto=True,
+            record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+            clock=lambda: clock_val, today=lambda: "2026-07-24",
+            cooldown_sec=0, daily_cap=2,
+        )
+
+    out1 = await _run(1000.0)
+    out2 = await _run(1000.5)  # immediately after -- would be "cooldown" at the default 1800s
+    out3 = await _run(1001.0)  # third fire -- beyond daily_cap=2
+
+    assert out1 == "woke"
+    assert out2 == "woke"   # cooldown bypassed
+    assert out3 == "cap"    # daily_cap still enforced
+    assert len(rec.notified) == 2
+
+
+@pytest.mark.asyncio
+async def test_omitted_cooldown_sec_still_defaults_to_thirty_minutes(store):
+    rec = _Rec()
+
+    async def _run_decision_unused(wake, suggested, system):
+        raise AssertionError("reasoning disabled")
+
+    async def _run(clock_val):
+        return await run_lens(
+            NOTIFY_LENS, {"entity_id": "sensor.temp"},
+            store=store, run_decision=_run_decision_unused, execute=real_execute,
+            notify=rec.notify, act=rec.act, propose=rec.propose,
+            get_execute_policy=_policy(), allow_green_auto=True,
+            record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+            clock=lambda: clock_val, today=lambda: "2026-07-24",
+            # cooldown_sec intentionally omitted -- must resolve to the
+            # same default (~1800s) as before Fix 2, for EVENT lenses.
+        )
+
+    out1 = await _run(1000.0)
+    out2 = await _run(1100.0)  # 100s later, well within the default 1800s cooldown
+
+    assert out1 == "woke"
+    assert out2 == "cooldown"
+    assert len(rec.notified) == 1
