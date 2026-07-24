@@ -1,4 +1,5 @@
 from __future__ import annotations
+import inspect
 import json, re
 from typing import Awaitable, Callable
 from .signals import WakeEvent, Decision
@@ -40,10 +41,16 @@ def _san(v):
 def build_user_message(wake: WakeEvent, context: dict) -> str:
     ev = _san(dict(wake.evidence))
     ctx = _san(dict(context or {}))
+    memory = ctx.pop("memory", None)
+    memory_block = ""
+    if isinstance(memory, list) and memory:
+        lines = "\n".join(f"- {snippet}" for snippet in memory)
+        memory_block = f"Cosa so di rilevante:\n{lines}\n\n"
     return (
         f"Segnale: {wake.signal_kind} su {wake.entity_id}\n"
         f"Evidenza: {json.dumps(ev, ensure_ascii=False)}\n"
         f"Contesto: {json.dumps(ctx, ensure_ascii=False)}\n\n"
+        f"{memory_block}"
         "Valuta e rispondi con il blocco json richiesto."
     )
 
@@ -68,7 +75,10 @@ async def reason(wake: WakeEvent, *,
                  llm_reason: Callable[..., Awaitable[str]],
                  model: str = "auto", max_tokens: int = 1024,
                  system: str = SENTINEL_SYSTEM) -> Decision:
-    context = gather_context(wake) or {}
+    context = gather_context(wake)
+    if inspect.isawaitable(context):
+        context = await context
+    context = context or {}
     user = build_user_message(wake, context)
     text = await llm_reason(system, user, model=model, max_tokens=max_tokens)
     return parse_decision(text, default_severity=wake.severity_hint)
