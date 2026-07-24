@@ -44,8 +44,15 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
     memory = ctx.pop("memory", None)
     memory_block = ""
     if isinstance(memory, list) and memory:
-        lines = "\n".join(f"- {snippet}" for snippet in memory)
-        memory_block = f"Cosa so di rilevante:\n{lines}\n\n"
+        # Snippets are rendered raw (not JSON-encoded like ev/ctx), so flatten
+        # each to a single line: collapsing all whitespace/newlines removes the
+        # only way a crafted insight could break the prompt's line structure or
+        # open a fake ``` fence (sanitize_ha_value clamps length but keeps
+        # newlines/backticks). Empty-after-flatten snippets are dropped.
+        flat = [" ".join(str(s).split()) for s in memory]
+        lines = "\n".join(f"- {s}" for s in flat if s)
+        if lines:
+            memory_block = f"Cosa so di rilevante:\n{lines}\n\n"
     return (
         f"Segnale: {wake.signal_kind} su {wake.entity_id}\n"
         f"Evidenza: {json.dumps(ev, ensure_ascii=False)}\n"
