@@ -1,5 +1,6 @@
 /* HIRIS · Designer · per-agent usage panel
-   Reads/displays per-agent usage; lets user reset, set budget, block/unblock. */
+   Reads/displays per-agent usage; lets user reset counters, block/unblock.
+   Task 4 (Slice 5): rimosso il set-budget control (vedi nota più sotto). */
 
 async function loadAgentUsage(agentId) {
   if (!agentId) return;
@@ -58,18 +59,12 @@ document.getElementById('u-ag-toggle-btn').onclick = async function() {
   } catch(e) {}
 };
 
-document.getElementById('u-ag-budget-save-btn').onclick = async function() {
-  if (!currentId) return;
-  var budget = parseFloat(document.getElementById('u-ag-budget').value) || 0;
-  try {
-    await fetch('api/agents/' + currentId, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      body: JSON.stringify({ budget_eur_limit: budget }),
-    });
-    alert(budget > 0 ? 'Soglia di budget salvata: €' + budget.toFixed(2) : 'Nessun limite di budget impostato.');
-  } catch(e) {}
-};
+/* Task 4 (Slice 5) review fix: rimosso il binding di u-ag-budget-save-btn
+   (PUT budget_eur_limit) — il campo e il pulsante non esistono più nel
+   markup (rimossi da populateConsumi in agent-editor.js) e il backend
+   scarta comunque quella chiave. Lasciarlo qui avrebbe fatto sì che
+   getElementById('u-ag-budget-save-btn') restituisse null e il successivo
+   .onclick lanciasse un TypeError non gestito al primo mount dell'editor. */
 
 document.getElementById('usage-reset-btn').onclick = async function() {
   if (!confirm('Azzerare i contatori di utilizzo API?')) return;

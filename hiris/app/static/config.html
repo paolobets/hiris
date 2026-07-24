@@ -127,8 +127,8 @@
     <div class="editor-grid">
       <div class="editor-content">
         <section class="section-card" id="sec-identita">
-          <div class="sc-header"><span class="sc-num">01</span><h2 class="sc-title">Identità &amp; Trigger</h2></div>
-          <p class="sc-desc">Nome, tipo e quando l'agente si attiva.</p>
+          <div class="sc-header"><span class="sc-num">01</span><h2 class="sc-title">Identità</h2></div>
+          <p class="sc-desc">Nome della persona.</p>
           <div class="sc-body" id="sc-body-identita"></div>
         </section>
         <section class="section-card" id="sec-istruzioni">
@@ -146,28 +146,23 @@
           <p class="sc-desc">Quali tool e quali entità HA può leggere o usare.</p>
           <div class="sc-body" id="sc-body-permessi"></div>
         </section>
-        <section class="section-card" id="sec-azioni">
-          <div class="sc-header"><span class="sc-num">05</span><h2 class="sc-title">Azioni</h2></div>
-          <p class="sc-desc">Cosa fa l'agente quando la valutazione attiva una regola.</p>
-          <div class="sc-body" id="sc-body-azioni"></div>
-        </section>
         <section class="section-card" id="sec-stato">
-          <div class="sc-header"><span class="sc-num">06</span><h2 class="sc-title">Abilitazione</h2></div>
+          <div class="sc-header"><span class="sc-num">05</span><h2 class="sc-title">Abilitazione</h2></div>
           <p class="sc-desc">Quando l'agente è abilitato e se chiede conferma.</p>
           <div class="sc-body" id="sc-body-stato"></div>
         </section>
         <section class="section-card" id="sec-log">
-          <div class="sc-header"><span class="sc-num">07</span><h2 class="sc-title">Log esecuzioni</h2></div>
+          <div class="sc-header"><span class="sc-num">06</span><h2 class="sc-title">Log esecuzioni</h2></div>
           <p class="sc-desc">Ultimi 20 run. Click su una riga per il dettaglio.</p>
           <div class="sc-body" id="sc-body-log"></div>
         </section>
         <section class="section-card" id="sec-run">
-          <div class="sc-header"><span class="sc-num">08</span><h2 class="sc-title">Test Run</h2></div>
+          <div class="sc-header"><span class="sc-num">07</span><h2 class="sc-title">Test Run</h2></div>
           <p class="sc-desc">Ultimo Test Run lanciato manualmente. Non esegue azioni reali.</p>
           <div class="sc-body" id="sc-body-run"></div>
         </section>
         <section class="section-card" id="sec-consumi">
-          <div class="sc-header"><span class="sc-num">09</span><h2 class="sc-title">Consumi agente</h2></div>
+          <div class="sc-header"><span class="sc-num">08</span><h2 class="sc-title">Consumi agente</h2></div>
           <p class="sc-desc">Conteggio richieste, token e costo stimato.</p>
           <div class="sc-body" id="sc-body-consumi"></div>
         </section>
@@ -188,15 +183,14 @@
       </div>
       <aside class="anchor-nav" id="anchor-nav">
         <div class="an-label">Indice</div>
-        <a class="anchor-link" href="#sec-identita"><span>01</span><span>Identità &amp; Trigger</span></a>
+        <a class="anchor-link" href="#sec-identita"><span>01</span><span>Identità</span></a>
         <a class="anchor-link" href="#sec-istruzioni"><span>02</span><span>Istruzioni</span></a>
         <a class="anchor-link" href="#sec-modello"><span>03</span><span>Modello AI</span></a>
         <a class="anchor-link" href="#sec-permessi"><span>04</span><span>Permessi</span></a>
-        <a class="anchor-link" href="#sec-azioni"><span>05</span><span>Azioni</span></a>
-        <a class="anchor-link" href="#sec-stato"><span>06</span><span>Abilitazione</span></a>
-        <a class="anchor-link" href="#sec-log"><span>07</span><span>Log esecuzioni</span></a>
-        <a class="anchor-link" href="#sec-run"><span>08</span><span>Test Run</span></a>
-        <a class="anchor-link" href="#sec-consumi"><span>09</span><span>Consumi agente</span></a>
+        <a class="anchor-link" href="#sec-stato"><span>05</span><span>Abilitazione</span></a>
+        <a class="anchor-link" href="#sec-log"><span>06</span><span>Log esecuzioni</span></a>
+        <a class="anchor-link" href="#sec-run"><span>07</span><span>Test Run</span></a>
+        <a class="anchor-link" href="#sec-consumi"><span>08</span><span>Consumi agente</span></a>
       </aside>
     </div>
   </template>
@@ -206,17 +200,22 @@
   <div id="popover-container"></div>
 
   <!-- Scripts (ordine importante: state → router → api → main).
-       I moduli legacy (templates, cron, triggers, permessi, action-editor,
-       logs, usage, proposals, agent-form) hanno DOM access top-level ai
-       loro target del vecchio markup e qui andrebbero in TypeError.
+       I moduli legacy (templates, permessi, logs, usage, proposals,
+       agent-form) hanno DOM access top-level ai loro target del vecchio
+       markup e qui andrebbero in TypeError.
        Saranno ri-caricati quando le route reali (Phase 4-9) montano i
-       relativi target DOM nelle template, oppure rifattorizzati inline. -->
+       relativi target DOM nelle template, oppure rifattorizzati inline.
+       Task 4 (Slice 5): cron.js/cron-popover.js/triggers.js/action-editor.js/
+       script-action.js rimossi (macchina azioni/trigger ritirata — il
+       Designer ora è un editor Persona: prompt + tool scope + memory scope +
+       chat policy). -->
   <script src="static/config/state.js"></script>
   <script src="static/config/router.js"></script>
   <script src="static/config/api.js"></script>
-  <!-- v0.10.5: drawer + popover atom modules MUST be loaded before agent-editor.js,
-       altrimenti HirisDrawer/HirisPopover sono undefined → script-action.js
-       (+Aggiungi azione) e cron-popover.js (cron chip) non funzionano. -->
+  <!-- v0.10.5: drawer + popover atom modules MUST be loaded before agent-editor.js.
+       Task 4 (Slice 5) rimosse script-action.js e cron-popover.js (macchina
+       azioni/trigger, ritirata); drawer.js/popover.js restano come atomi UI
+       generici riusabili da feature future. -->
   <script src="static/config/drawer.js"></script>
   <script src="static/config/popover.js"></script>
   <script src="static/config/agent-editor.js"></script>

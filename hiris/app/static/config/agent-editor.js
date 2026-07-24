@@ -1,5 +1,7 @@
 /* HIRIS · Designer · agent editor mount (long-form, Phase 4.2)
-   Mount delle 9 section-card e bridge alla logica legacy in agent-form.js. */
+   Mount delle 8 section-card di un editor Persona (Task 4/Slice 5 rimosse
+   Tipo/Trigger da Identità e l'intera section-card Azioni) e bridge alla
+   logica legacy in agent-form.js. */
 (function() {
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
@@ -7,14 +9,13 @@
   var V6_CACHE_BUST = '0.10.14';
 
   var legacyLoaded = false;
+  /* Task 4 (Slice 5): rimossi cron.js/cron-popover.js/triggers.js/
+     action-editor.js/script-action.js — erano la macchina di trigger e
+     sequenza-azioni ritirata insieme al backend (Task 1-3). Il Designer
+     ora carica solo i moduli di un editor Persona. */
   var LEGACY_SCRIPTS = [
     'static/config/templates.js',
-    'static/config/cron.js',
-    'static/config/cron-popover.js',
-    'static/config/triggers.js',
     'static/config/permessi.js',
-    'static/config/action-editor.js',
-    'static/config/script-action.js',
     'static/config/log-row.js',
     'static/config/logs.js',
     'static/config/usage.js',
@@ -43,46 +44,16 @@
     }, Promise.resolve()).then(function() { legacyLoaded = true; });
   }
 
+  /* Task 4 (Slice 5): rimossi il selettore Tipo (agent/chat) e l'intera
+     sezione Trigger — l'esecuzione trigger-based/autonoma è stata ritirata
+     (Task 1-3). Il Designer edita solo Persona: il campo Nome è quanto
+     resta di "Identità". */
   function populateIdentita() {
     document.getElementById('sc-body-identita').innerHTML =
       '<div class="field-group">' +
         '<div class="fg-label">Identità</div>' +
         '<div class="field-row">' +
           '<div class="field"><label>Nome</label><input class="input" type="text" id="f-name" placeholder="Es: Monitor energia"></div>' +
-          '<div class="field"><label>Tipo</label><select class="select" id="f-type">' +
-            '<option value="agent">Agent — autonomo, trigger-based</option>' +
-            '<option value="chat">Chat — risponde a messaggi utente</option>' +
-          '</select></div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="field-group" id="agent-triggers-section">' +
-        '<div class="fg-label">Trigger</div>' +
-        '<p class="field-hint">L\'agente si attiva in risposta a questi eventi.</p>' +
-        '<div id="triggers-list" style="display:flex;flex-wrap:wrap;gap:6px;min-height:10px;margin-bottom:8px"></div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start">' +
-          /* v0.10.10: rimosso "Manuale" (mai implementato lato backend, confondeva user) */
-          '<select id="new-trigger-type" class="select" style="width:auto">' +
-            '<option value="schedule">Periodico (ogni N min)</option>' +
-            '<option value="state_changed">Cambio stato entità</option>' +
-            '<option value="cron">Cron expression</option>' +
-          '</select>' +
-          /* v0.10.10: width più ampio + classe per nascondere arrows native */
-          '<div id="nt-schedule-fields" style="display:flex;gap:6px;align-items:center">' +
-            '<input class="input nt-num-input" type="number" id="nt-interval" value="5" min="1" max="1440" style="width:80px;text-align:center">' +
-            '<span style="font-size:12px;color:var(--text-3)">min</span>' +
-          '</div>' +
-          /* v0.10.10: state-fields ora con autocomplete dropdown invece di stringa free-text */
-          '<div id="nt-state-fields" style="display:none;position:relative">' +
-            '<input class="input" type="text" id="nt-entity" placeholder="Cerca entità (es. binary_sensor.porta)" style="width:280px" autocomplete="off">' +
-            '<div id="nt-entity-suggestions" class="nt-entity-suggestions" style="display:none"></div>' +
-          '</div>' +
-          '<div id="nt-cron-fields" style="display:none">' +
-            '<span class="cron-chip" id="nt-cron-chip" tabindex="0">' +
-              '<span>🕐</span><span id="nt-cron-chip-label">Ogni giorno alle 06:00</span><code id="nt-cron-chip-expr">0 6 * * *</code><span>▾</span>' +
-            '</span>' +
-            '<input type="hidden" id="nt-cron" value="0 6 * * *">' +
-          '</div>' +
-          '<button type="button" id="btn-add-trigger" class="btn btn-sm">+ Aggiungi</button>' +
         '</div>' +
       '</div>';
   }
@@ -113,12 +84,14 @@
       '</details>';
   }
 
+  /* Task 4 (Slice 5): rimossa la riga "confirm-free" (era legata al tipo
+     agente autonomo/schedulato, ritirato con Task 1-3 — ogni persona è
+     chat). max-turns-row era nascosta di default e mostrata solo per
+     type==='chat'; ora è sempre visibile (nessun altro tipo esiste). */
   function populateModello() {
     document.getElementById('sc-body-modello').innerHTML =
       '<div class="field"><label>Modello</label><select class="select" id="f-model"><option value="auto">auto — segue tipo agente</option></select>' +
       '<p class="field-hint" id="model-hint">Seleziona il modello AI. <em>auto</em> sceglie automaticamente.</p></div>' +
-      '<div id="confirm-free-row" style="display:none"><label class="checkbox-row"><input type="checkbox" id="f-confirm-free"> Accetto i rischi del modello :free per agente schedulato</label>' +
-      '<p class="field-hint">I modelli :free di OpenRouter hanno quota giornaliera bassa…</p></div>' +
       '<div class="field-row">' +
         '<div class="field"><label>Max token risposta</label><input class="input" type="number" id="f-max-tokens" value="4096" min="256" max="16000"></div>' +
         '<div class="field"><label>Extended Thinking budget</label><select class="select" id="f-thinking-budget">' +
@@ -129,7 +102,7 @@
           '<option value="16384">16384 (max)</option>' +
         '</select></div>' +
       '</div>' +
-      '<div id="max-turns-row" style="display:none"><div class="field"><label>Max messaggi per sessione</label>' +
+      '<div id="max-turns-row"><div class="field"><label>Max messaggi per sessione</label>' +
         '<input class="input" type="number" id="f-max-chat-turns" value="0" min="0" max="9999">' +
         '<p class="field-hint">0 = illimitato.</p></div></div>' +
       '<label class="checkbox-row"><input type="checkbox" id="f-restrict"> Limita conversazione alla casa</label>' +
@@ -166,31 +139,6 @@
         '<div class="tool-checkboxes" id="action-checks"></div></div>';
   }
 
-  function populateAzioni() {
-    document.getElementById('sc-body-azioni').innerHTML =
-      '<div class="field-row">' +
-        '<div class="field"><label>Modalità azioni</label><select class="select" id="f-action-mode">' +
-          '<option value="automatic">Automatica — il modello decide</option>' +
-          '<option value="configured">Configurata — regole esplicite</option>' +
-        '</select></div>' +
-      '</div>' +
-      '<div id="configured-actions-section">' +
-        '<div id="trigger-on-section" class="field-group">' +
-          '<div class="fg-label">Stati agente</div>' +
-          '<input class="input" type="text" id="f-states" value="OK, ATTENZIONE, ANOMALIA">' +
-          '<label>Valutazione che attiva azioni</label>' +
-          '<div id="trigger-on-checks" style="display:flex;flex-wrap:wrap;gap:10px"></div>' +
-        '</div>' +
-        '<div class="field-group"><div class="fg-label">Sequenza azioni</div>' +
-          '<div id="actions-list" class="actions-list"></div>' +
-          '<button type="button" class="btn btn-sm" id="btn-add-action">+ Aggiungi azione</button>' +
-        '</div>' +
-        '<div id="action-editor" class="action-editor" style="display:none">' +
-          '<p class="field-hint">Action editor inline placeholder — sostituito da drawer in Phase 6.</p>' +
-        '</div>' +
-      '</div>';
-  }
-
   function populateStato() {
     document.getElementById('sc-body-stato').innerHTML =
       '<label class="checkbox-row"><input type="checkbox" id="f-enabled"> Agente abilitato</label>' +
@@ -208,6 +156,10 @@
     document.getElementById('sc-body-run').innerHTML = '<pre id="run-output"></pre>';
   }
 
+  /* Task 4 (Slice 5) review fix: rimosso il controllo "Budget massimo (€)"
+     (PUT budget_eur_limit) — il backend ha ritirato quel campo (Task 2) e lo
+     scarta silenziosamente, quindi la UI mostrava un controllo che non
+     faceva più nulla. */
   function populateConsumi() {
     document.getElementById('sc-body-consumi').innerHTML =
       '<div class="usage-content">' +
@@ -221,11 +173,6 @@
         '<div class="usage-actions">' +
           '<button type="button" class="btn btn-sm" id="u-ag-reset-btn">↺ Azzera contatori</button>' +
           '<button type="button" class="btn btn-sm btn-danger" id="u-ag-toggle-btn">⊘ Blocca agente</button>' +
-        '</div>' +
-        '<div class="usage-budget">' +
-          '<label>Budget massimo (€, 0 = nessun limite)</label>' +
-          '<input class="input" type="number" id="u-ag-budget" min="0" step="0.01" value="0">' +
-          '<button type="button" class="btn btn-sm" id="u-ag-budget-save-btn">Salva soglia</button>' +
         '</div>' +
       '</div>';
   }
@@ -375,102 +322,9 @@
      nodi NUOVI ma stessi ID — i listener IIFE-bound puntano a nodi rimossi.
      Qui rebindiamo via .onchange/.onclick/.oninput (overwrite) sui nodi nuovi. */
   function rewireLegacyAfterMount() {
-    /* triggers.js — switch tipo trigger reveals fields conditional */
-    var nt = document.getElementById('new-trigger-type');
-    if (nt) {
-      nt.onchange = function() {
-        var v = this.value;
-        var s = document.getElementById('nt-schedule-fields');
-        var st = document.getElementById('nt-state-fields');
-        var cr = document.getElementById('nt-cron-fields');
-        if (s) s.style.display = v === 'schedule' ? 'flex' : 'none';
-        if (st) st.style.display = v === 'state_changed' ? '' : 'none';
-        if (cr) cr.style.display = v === 'cron' ? '' : 'none';
-        if (v === 'cron' && typeof _cronInitUI === 'function') {
-          try { _cronInitUI(); } catch(e) {}
-        }
-      };
-    }
-
-    /* v0.10.10: autocomplete su #nt-entity (trigger "Cambio stato entità").
-       Pattern stesso di permessi.js entity-search ma scope locale al trigger. */
-    var ntEntity = document.getElementById('nt-entity');
-    var ntSugg = document.getElementById('nt-entity-suggestions');
-    if (ntEntity && ntSugg) {
-      var ntEntityTimer = null;
-      ntEntity.oninput = function() {
-        clearTimeout(ntEntityTimer);
-        var q = ntEntity.value.trim();
-        if (!q) { ntSugg.style.display = 'none'; return; }
-        ntEntityTimer = setTimeout(function() {
-          fetch('api/entities?q=' + encodeURIComponent(q))
-            .then(function(r) { return r.json(); })
-            .then(function(items) {
-              if (!items || !items.length) { ntSugg.style.display = 'none'; return; }
-              ntSugg.innerHTML = items.slice(0, 30).map(function(e) {
-                var id = (e.id || '').replace(/[<>&"]/g, '');
-                var name = (e.name || '').replace(/[<>&"]/g, '');
-                return '<div class="suggestion-item" data-eid="' + id + '">' +
-                  '<span class="s-id">' + id + '</span>' +
-                  (name ? '<span class="s-name">' + name + '</span>' : '') +
-                '</div>';
-              }).join('');
-              ntSugg.style.display = 'block';
-              ntSugg.querySelectorAll('.suggestion-item').forEach(function(item) {
-                item.addEventListener('click', function() {
-                  ntEntity.value = item.dataset.eid;
-                  ntSugg.style.display = 'none';
-                });
-              });
-            })
-            .catch(function() { ntSugg.style.display = 'none'; });
-        }, 250);
-      };
-      ntEntity.onkeydown = function(e) {
-        if (e.key === 'Escape') { ntSugg.style.display = 'none'; }
-      };
-      /* Outside-click chiude suggestions */
-      document.addEventListener('mousedown', function(e) {
-        if (!ntEntity || !ntSugg) return;
-        if (!ntEntity.contains(e.target) && !ntSugg.contains(e.target)) {
-          ntSugg.style.display = 'none';
-        }
-      }, { once: false });
-    }
-    /* triggers.js — btn-add-trigger */
-    var bat = document.getElementById('btn-add-trigger');
-    if (bat) {
-      bat.onclick = function() {
-        var ttype = document.getElementById('new-trigger-type').value;
-        var trigger = { type: ttype };
-        if (ttype === 'schedule') trigger.interval_minutes = parseInt(document.getElementById('nt-interval').value) || 5;
-        else if (ttype === 'state_changed') trigger.entity_id = document.getElementById('nt-entity').value.trim();
-        else if (ttype === 'cron') trigger.cron = document.getElementById('nt-cron').value.trim();
-        if (typeof window._agentTriggers === 'undefined') window._agentTriggers = [];
-        window._agentTriggers.push(trigger);
-        if (typeof _triggersRender === 'function') _triggersRender();
-        var entityIn = document.getElementById('nt-entity');
-        if (entityIn) entityIn.value = '';
-        if (ttype === 'cron' && typeof _cronApply === 'function') _cronApply('0 6 * * *');
-        else {
-          var cronIn = document.getElementById('nt-cron');
-          if (cronIn) cronIn.value = '';
-        }
-      };
-    }
-    /* triggers.js — chip remove on triggers-list */
-    var tl = document.getElementById('triggers-list');
-    if (tl) {
-      tl.onclick = function(e) {
-        var btn = e.target.closest('.chip-remove');
-        if (!btn) return;
-        var idx = parseInt(btn.dataset.idx);
-        if (typeof window._agentTriggers !== 'undefined') {
-          window._agentTriggers.splice(idx, 1);
-          if (typeof _triggersRender === 'function') _triggersRender();
-        }
-      };
-    }
+    /* Task 4 (Slice 5): rimossi i rebind di new-trigger-type/nt-entity/
+       btn-add-trigger/triggers-list — la sezione Trigger e triggers.js sono
+       stati ritirati insieme alla macchina action/rules/states (Task 1-3). */
 
     /* permessi.js — domain pills + entity search */
     document.querySelectorAll('.domain-pill').forEach(function(pill) {
@@ -525,27 +379,10 @@
       };
     }
 
-    /* agent-form.js — change handlers */
-    var ft = document.getElementById('f-type');
-    if (ft) ft.onchange = function(e) {
-      if (typeof showAgentMode === 'function') showAgentMode(e.target.value);
-      if (typeof updateConfirmFreeVisibility === 'function') updateConfirmFreeVisibility();
-    };
-    var fa = document.getElementById('f-action-mode');
-    if (fa && typeof showActionMode === 'function') {
-      fa.onchange = function(e) { showActionMode(e.target.value); };
-    }
-    var fm = document.getElementById('f-model');
-    if (fm && typeof updateConfirmFreeVisibility === 'function') {
-      fm.onchange = updateConfirmFreeVisibility;
-    }
-    var fs = document.getElementById('f-states');
-    if (fs && typeof _buildTriggerOnChecks === 'function' &&
-        typeof _defaultStates === 'function' && typeof _triggerOnValue === 'function') {
-      fs.onblur = function() {
-        _buildTriggerOnChecks(_defaultStates(), _triggerOnValue());
-      };
-    }
+    /* Task 4 (Slice 5): rimossi i rebind di f-type/f-action-mode/f-states —
+       quei campi non esistono più nel markup (Tipo/Azioni/Stati ritirati).
+       f-model non ha più un handler qui: updateConfirmFreeVisibility era
+       legato solo al tipo agente autonomo, anch'esso ritirato. */
 
     /* logs.js — token counter on input */
     if (typeof updateTokenCounter === 'function') {
@@ -584,56 +421,38 @@
         }
       }).catch(function(){});
     };
-    var ub = document.getElementById('u-ag-budget-save-btn');
-    if (ub) ub.onclick = function() {
-      var aid = HirisState.get('activeAgentId');
-      if (!aid) return;
-      var val = parseFloat(document.getElementById('u-ag-budget').value) || 0;
-      fetch('api/agents/' + encodeURIComponent(aid), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-        body: JSON.stringify({ budget_eur_limit: val })
-      }).catch(function(){});
-    };
+    /* Task 4 (Slice 5) review fix: rimosso il rebind di u-ag-budget-save-btn
+       — il controllo "Budget massimo (€)" (PUT budget_eur_limit) è stato
+       tolto dal markup in populateConsumi(), il backend scarta quel campo. */
   }
 
   /* Init form for "Nuovo agente" (was in agent-form.js #new-btn IIFE handler).
-     Replicates the reset sequence: clear fields + load empty triggers/actions/etc. */
+     Replicates the reset sequence: clear fields + load empty persona state.
+     Task 4 (Slice 5): rimossi i reset di triggers/actions/stati/action-mode/
+     tipo/confirm-free/budget — tutti campi ritirati insieme alla macchina
+     action/rules/states (Task 1-3) e al tab Azioni (questo task). */
   function initNewAgent() {
     /* agent-form.js currentId — reset */
     if (typeof window !== 'undefined') window.currentId = null;
-    /* Replicate reset from agent-form.js:161-200 */
-    if (typeof _triggersLoad === 'function') _triggersLoad([]);
     if (typeof _entitySelectorLoad === 'function') _entitySelectorLoad([]);
-    if (typeof _actionsLoad === 'function') _actionsLoad([]);
     if (typeof buildToolChecks === 'function') buildToolChecks([]);
     if (typeof buildActionChecks === 'function') buildActionChecks([]);
-    if (typeof _buildTriggerOnChecks === 'function') _buildTriggerOnChecks(['OK','ATTENZIONE','ANOMALIA'], ['ANOMALIA']);
-    if (typeof showAgentMode === 'function') showAgentMode('agent');
-    if (typeof showActionMode === 'function') showActionMode('automatic');
 
     var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; };
     var setChk = function(id, v) { var el = document.getElementById(id); if (el) el.checked = v; };
 
     setVal('f-template', '');
     setVal('f-name', '');
-    setVal('f-type', 'agent');
     setVal('f-prompt', '');
     setVal('f-strategic', '');
     setChk('f-enabled', true);
-    setVal('f-confirm-free', '');
-    setChk('f-confirm-free', false);
     if (typeof _setModelValue === 'function') _setModelValue('auto');
-    if (typeof updateConfirmFreeVisibility === 'function') updateConfirmFreeVisibility();
     setVal('f-max-tokens', 4096);
     setChk('f-restrict', false);
     setChk('f-require-confirmation', false);
     setVal('f-max-chat-turns', 0);
     setVal('f-response-mode', 'auto');
     setVal('f-thinking-budget', '0');
-    setVal('f-action-mode', 'automatic');
-    setVal('u-ag-budget', 0);
-    setVal('f-states', 'OK, ATTENZIONE, ANOMALIA');
 
     if (typeof updateTokenCounter === 'function') updateTokenCounter();
 
@@ -880,7 +699,6 @@
       step('populateIstruzioni', populateIstruzioni);
       step('populateModello', populateModello);
       step('populatePermessi', populatePermessi);
-      step('populateAzioni', populateAzioni);
       step('populateStato', populateStato);
       step('populateLog', populateLog);
       step('populateRun', populateRun);

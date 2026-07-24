@@ -50,16 +50,17 @@
           : (enabled
               ? '<span class="agent-badge badge-on">● Attivo</span>'
               : '<span class="agent-badge badge-off">○ Disabilitato</span>');
-        var typeLabel = a.type || 'agent';
+        /* Task 4 (Slice 5): rimossi typeLabel/triggerCount — il campo `type`
+           e i trigger sono stati ritirati dal backend (Task 1-3), ogni
+           agente è ormai una persona chat-only. */
         var modelLabel = a.model || 'auto';
-        var triggerCount = (a.triggers || []).length;
         var lastLog = (a.execution_log || [])[a.execution_log ? a.execution_log.length - 1 : -1];
         var lastLogText = lastLog ? ('ultima esec ' + new Date(lastLog.timestamp).toLocaleTimeString('it-IT', {hour:'2-digit',minute:'2-digit'}) + (lastLog.success ? ' ✓' : ' ✗')) : 'mai eseguito';
         return '<a class="' + rowCls + '" href="#/agents/' + escHtml(a.id) + '">' +
           '<span class="dl-time"><span class="dot ' + dotCls + '"></span></span>' +
           '<span class="dl-content">' +
             '<span class="dl-agent">' + escHtml(a.name) + '</span>' +
-            '<span class="dl-text">' + escHtml(typeLabel) + ' · ' + escHtml(modelLabel) + ' · ' + triggerCount + ' trigger · ' + lastLogText + '</span>' +
+            '<span class="dl-text">' + escHtml(modelLabel) + ' · ' + lastLogText + '</span>' +
           '</span>' +
           badge +
           '<span class="dl-arrow">→</span>' +
