@@ -498,52 +498,51 @@ def test_parse_structured_output_with_params():
 
 
 @pytest.mark.asyncio
-async def test_run_with_actions_automatic_mode():
+async def test_run_with_actions_is_plain_agentic_loop():
+    """Slice 5: run_with_actions no longer injects VALUTAZIONE/AZIONI
+    instructions into the system prompt — it passes it through unmodified
+    and returns whatever text the model produced (plus a best-effort
+    structured dict, normally empty since nothing asks for that block)."""
     from unittest.mock import AsyncMock
     from hiris.app.claude_runner import ClaudeRunner
 
     runner = ClaudeRunner.__new__(ClaudeRunner)
-    runner.chat = AsyncMock(return_value=(
-        "Tutto OK.\n\nVALUTAZIONE: OK\nNOTIFICA: Nessun problema.\n"
-        "AZIONI:\nturn_on switch.water_heater"
-    ))
+    runner.chat = AsyncMock(return_value="Tutto OK, nessuna anomalia rilevata.")
 
     text, structured = await runner.run_with_actions(
         user_message="test",
         system_prompt="base system",
-        action_mode="automatic",
     )
 
-    assert structured["valutazione"] == "OK"
-    assert structured["notifica"] == "Nessun problema."
-    assert structured["azioni"] == ["turn_on switch.water_heater"]
-    assert "Tutto OK." in text
+    assert text == "Tutto OK, nessuna anomalia rilevata."
+    assert structured["valutazione"] is None
+    assert structured["azioni"] == []
     call_kwargs = runner.chat.call_args.kwargs
-    assert "VALUTAZIONE:" in call_kwargs["system_prompt"]
-    assert "AZIONI:" in call_kwargs["system_prompt"]
-    assert "base system" in call_kwargs["system_prompt"]
+    # No more prompt augmentation — the system prompt passes through as-is.
+    assert call_kwargs["system_prompt"] == "base system"
+    assert "VALUTAZIONE:" not in call_kwargs["system_prompt"]
+    assert "AZIONI:" not in call_kwargs["system_prompt"]
 
 
 @pytest.mark.asyncio
-async def test_run_with_actions_configured_mode():
+async def test_run_with_actions_restricts_to_evaluation_only_tools():
+    """The Sentinella relies on run_with_actions never exposing actuation
+    tools — verify the eval_tools restriction (EVALUATION_ONLY_TOOLS ∩
+    allowed_tools) still applies post-simplification."""
     from unittest.mock import AsyncMock
-    from hiris.app.claude_runner import ClaudeRunner
+    from hiris.app.claude_runner import ClaudeRunner, EVALUATION_ONLY_TOOLS
 
     runner = ClaudeRunner.__new__(ClaudeRunner)
-    runner.chat = AsyncMock(return_value="Analisi.\n\nVALUTAZIONE: ANOMALIA\nNOTIFICA: Consumo anomalo.")
+    runner.chat = AsyncMock(return_value="ok")
 
-    text, structured = await runner.run_with_actions(
+    await runner.run_with_actions(
         user_message="test",
         system_prompt="base system",
-        action_mode="configured",
+        allowed_tools=[],
     )
 
-    assert structured["valutazione"] == "ANOMALIA"
-    assert structured["notifica"] == "Consumo anomalo."
-    assert structured["azioni"] == []  # no AZIONI block in configured mode
     call_kwargs = runner.chat.call_args.kwargs
-    # Configured mode should NOT inject AZIONI instructions
-    assert "AZIONI:" not in call_kwargs["system_prompt"]
+    assert set(call_kwargs["allowed_tools"]) == set(EVALUATION_ONLY_TOOLS)
 
 
 def test_resolve_model_auto_agent_returns_haiku():

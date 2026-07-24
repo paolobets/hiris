@@ -83,26 +83,6 @@ async def test_run_agent_skips_when_already_running(engine):
     runner.run_with_actions.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_state_changed_triggers_reactive_agent(engine, mock_ha):
-    agent = engine.create_agent({
-        "name": "Garage Watcher",
-        "type": "agent",
-        "triggers": [{"type": "state_changed", "entity_id": "binary_sensor.garage_door"}],
-        "system_prompt": "Watch the garage",
-        "allowed_tools": ["send_notification"],
-        "enabled": True,
-    })
-
-    with patch.object(engine, "_run_agent", new=AsyncMock()) as mock_run:
-        engine._on_state_changed({
-            "entity_id": "binary_sensor.garage_door",
-            "new_state": {"state": "on"},
-        })
-        await asyncio.sleep(0.05)
-        mock_run.assert_called_once()
-
-
 def test_create_agent_with_new_fields(engine):
     agent = engine.create_agent({
         "name": "Climate Manager",
@@ -216,7 +196,7 @@ def test_list_agents_includes_new_fields(engine):
 @pytest.mark.asyncio
 async def test_run_agent_injects_strategic_context(engine):
     mock_runner = AsyncMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
+    mock_runner.chat = AsyncMock(return_value="ok")
     engine.set_claude_runner(mock_runner)
     agent = engine.create_agent({
         "name": "Climate Agent",
@@ -230,7 +210,7 @@ async def test_run_agent_injects_strategic_context(engine):
         "allowed_services": [],
     })
     await engine.run_agent(agent)
-    call_kwargs = mock_runner.run_with_actions.call_args
+    call_kwargs = mock_runner.chat.call_args
     system_prompt_used = call_kwargs.kwargs.get("system_prompt", "")
     assert "---" in system_prompt_used
     assert "Famiglia: 2 adulti." in system_prompt_used
@@ -241,7 +221,7 @@ async def test_run_agent_injects_strategic_context(engine):
 @pytest.mark.asyncio
 async def test_run_agent_no_strategic_context_plain_prompt(engine):
     mock_runner = AsyncMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
+    mock_runner.chat = AsyncMock(return_value="ok")
     engine.set_claude_runner(mock_runner)
     agent = engine.create_agent({
         "name": "Simple Agent",
@@ -252,7 +232,7 @@ async def test_run_agent_no_strategic_context_plain_prompt(engine):
         "enabled": False,
     })
     await engine.run_agent(agent)
-    call_kwargs = mock_runner.run_with_actions.call_args
+    call_kwargs = mock_runner.chat.call_args
     system_prompt_used = call_kwargs.kwargs.get("system_prompt", "")
     assert "---" not in system_prompt_used
     assert system_prompt_used == "Semplice monitor."
@@ -432,7 +412,7 @@ def test_agent_update_model_and_max_tokens(engine):
 @pytest.mark.asyncio
 async def test_run_agent_passes_per_agent_config_to_runner(engine):
     mock_runner = AsyncMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=("result", {}))
+    mock_runner.chat = AsyncMock(return_value="result")
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
@@ -446,7 +426,7 @@ async def test_run_agent_passes_per_agent_config_to_runner(engine):
     })
     await engine._run_agent(agent)
 
-    call_kwargs = mock_runner.run_with_actions.call_args.kwargs
+    call_kwargs = mock_runner.chat.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
     assert call_kwargs["max_tokens"] == 512
     assert call_kwargs["agent_type"] == "agent"
@@ -516,8 +496,8 @@ async def test_run_agent_appends_execution_log_record(engine):
     async def run_side_effect(**kwargs):
         mock_runner.total_input_tokens += 120
         mock_runner.total_output_tokens += 30
-        return ("Tutto ok, niente da fare.", {})
-    mock_runner.run_with_actions = AsyncMock(side_effect=run_side_effect)
+        return "Tutto ok, niente da fare."
+    mock_runner.chat = AsyncMock(side_effect=run_side_effect)
     engine.set_claude_runner(mock_runner)
 
     agent = engine.create_agent({
@@ -544,7 +524,7 @@ async def test_run_agent_execution_log_caps_at_20(engine):
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
-    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
+    mock_runner.chat = AsyncMock(return_value="ok")
     engine.set_claude_runner(mock_runner)
 
     agent = engine.create_agent({
@@ -563,7 +543,7 @@ async def test_run_agent_execution_log_marks_error(engine):
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
-    mock_runner.run_with_actions = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_runner.chat = AsyncMock(side_effect=RuntimeError("boom"))
     engine.set_claude_runner(mock_runner)
 
     agent = engine.create_agent({
@@ -774,7 +754,7 @@ async def test_run_agent_injects_context_for_monitor(engine):
     engine.set_entity_cache(cache)
 
     runner = AsyncMock()
-    runner.run_with_actions = AsyncMock(return_value=("ok", {}))
+    runner.chat = AsyncMock(return_value="ok")
     runner.last_tool_calls = []
     runner.total_input_tokens = 0
     runner.total_output_tokens = 0
@@ -791,7 +771,7 @@ async def test_run_agent_injects_context_for_monitor(engine):
     })
     await engine._run_agent(agent)
 
-    call_args = runner.run_with_actions.call_args
+    call_args = runner.chat.call_args
     user_msg = call_args.kwargs["user_message"]
     assert "[CONTESTO ENTITÀ]" in user_msg
     assert "Temp: 21.0 °C" in user_msg
@@ -818,7 +798,7 @@ async def test_execution_log_result_summary_truncated_at_1000(tmp_path):
 
     long_result = "x" * 1500
     mock_runner = MagicMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=(long_result, {}))
+    mock_runner.chat = AsyncMock(return_value=long_result)
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
@@ -881,7 +861,7 @@ async def test_agent_auto_disabled_when_budget_exceeded(tmp_path):
     })
 
     mock_runner = MagicMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
+    mock_runner.chat = AsyncMock(return_value="ok")
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
@@ -922,7 +902,7 @@ async def test_agent_not_disabled_when_budget_not_exceeded(tmp_path):
     })
 
     mock_runner = MagicMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=("ok", {}))
+    mock_runner.chat = AsyncMock(return_value="ok")
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
@@ -941,164 +921,23 @@ async def test_agent_not_disabled_when_budget_not_exceeded(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Migration tests (v1 schema → v2 schema)
-# ---------------------------------------------------------------------------
-
-def test_migrate_agent_raw_monitor_to_agent():
-    from hiris.app.agent_engine import _migrate_agent_raw
-    raw = {
-        "id": "x", "name": "M", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 10},
-        "system_prompt": "", "allowed_tools": [], "enabled": True,
-    }
-    result = _migrate_agent_raw(raw)
-    assert result["type"] == "agent"
-    assert result["triggers"] == [{"type": "schedule", "interval_minutes": 10}]
-    assert "trigger" not in result
-
-
-def test_migrate_agent_raw_preventive_trigger_renamed():
-    from hiris.app.agent_engine import _migrate_agent_raw
-    raw = {
-        "id": "x", "name": "P", "type": "preventive",
-        "trigger": {"type": "preventive", "cron": "0 7 * * *"},
-        "system_prompt": "", "allowed_tools": [], "enabled": True,
-    }
-    result = _migrate_agent_raw(raw)
-    assert result["type"] == "agent"
-    assert result["triggers"][0]["type"] == "cron"
-    assert result["triggers"][0]["cron"] == "0 7 * * *"
-
-
-def test_migrate_agent_raw_reactive_state_changed():
-    from hiris.app.agent_engine import _migrate_agent_raw
-    raw = {
-        "id": "x", "name": "R", "type": "reactive",
-        "trigger": {"type": "state_changed", "entity_id": "binary_sensor.door"},
-        "system_prompt": "", "allowed_tools": [], "enabled": True,
-    }
-    result = _migrate_agent_raw(raw)
-    assert result["type"] == "agent"
-    assert result["triggers"] == [{"type": "state_changed", "entity_id": "binary_sensor.door"}]
-
-
-def test_migrate_agent_raw_chat_gets_empty_triggers():
-    from hiris.app.agent_engine import _migrate_agent_raw
-    raw = {
-        "id": "x", "name": "C", "type": "chat",
-        "trigger": {"type": "manual"},
-        "system_prompt": "", "allowed_tools": [], "enabled": True,
-    }
-    result = _migrate_agent_raw(raw)
-    assert result["type"] == "chat"
-    assert result["triggers"] == []
-
-
-def test_migrate_agent_raw_actions_to_rules():
-    from hiris.app.agent_engine import _migrate_agent_raw
-    raw = {
-        "id": "x", "name": "A", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": True,
-        "trigger_on": ["ANOMALIA"],
-        "actions": [{"type": "notify", "channel": "ha_push", "message": "Alert!"}],
-    }
-    result = _migrate_agent_raw(raw)
-    assert result["rules"] == [
-        {"states": ["ANOMALIA"], "actions": [{"type": "notify", "channel": "ha_push", "message": "Alert!"}]}
-    ]
-    assert result["action_mode"] == "configured"
-    assert "actions" not in result
-    assert "trigger_on" not in result
-
-
-def test_migrate_agent_raw_is_idempotent():
-    from hiris.app.agent_engine import _migrate_agent_raw
-    raw = {
-        "id": "x", "name": "M", "type": "agent",
-        "triggers": [{"type": "schedule", "interval_minutes": 10}],
-        "rules": [], "action_mode": "automatic",
-        "system_prompt": "", "allowed_tools": [], "enabled": True,
-    }
-    result1 = _migrate_agent_raw(dict(raw))
-    result2 = _migrate_agent_raw(dict(result1))
-    assert result1 == result2
-
-
-def test_load_v1_json_migrates_on_load(mock_ha, tmp_path):
-    """Old v1 agents.json migrates to v2 schema at load time without errors."""
-    path = tmp_path / "agents.json"
-    path.write_text(json.dumps({
-        "schema_version": 1,
-        "agents": [{
-            "id": "old-001", "name": "Old Monitor", "type": "monitor",
-            "trigger": {"type": "schedule", "interval_minutes": 15},
-            "trigger_on": ["ANOMALIA"],
-            "actions": [{"type": "notify", "channel": "ha_push", "message": "Alert"}],
-            "system_prompt": "check", "allowed_tools": [], "enabled": False,
-            "is_default": False, "last_run": None, "last_result": None,
-            "strategic_context": "", "allowed_entities": [], "allowed_services": [],
-        }]
-    }))
-    eng = AgentEngine(ha_client=mock_ha, data_path=str(path))
-    eng._load()
-    agent = eng.get_agent("old-001")
-    assert agent is not None
-    assert agent.type == "agent"
-    assert agent.triggers == [{"type": "schedule", "interval_minutes": 15}]
-    assert agent.rules == [{"states": ["ANOMALIA"], "actions": [{"type": "notify", "channel": "ha_push", "message": "Alert"}]}]
-    assert agent.action_mode == "configured"
-
-
-# ---------------------------------------------------------------------------
-# _parse_azioni_lines tests
-# ---------------------------------------------------------------------------
-
-def test_parse_azioni_lines_basic_commands():
-    from hiris.app.agent_engine import AgentEngine
-    lines = [
-        "turn_on switch.water_heater",
-        "wait 60",
-        "turn_off switch.water_heater",
-        "notify ha_push Scaldabagno spento",
-    ]
-    result = AgentEngine._parse_azioni_lines(lines)
-    assert result[0] == {"type": "turn_on", "entity_id": "switch.water_heater"}
-    assert result[1] == {"type": "wait", "minutes": 60}
-    assert result[2] == {"type": "turn_off", "entity_id": "switch.water_heater"}
-    assert result[3] == {"type": "notify", "channel": "ha_push", "message": "Scaldabagno spento"}
-
-
-def test_parse_azioni_lines_set_value():
-    from hiris.app.agent_engine import AgentEngine
-    result = AgentEngine._parse_azioni_lines(["set_value climate.soggiorno 21"])
-    assert result[0] == {"type": "set_value", "entity_id": "climate.soggiorno", "value": "21"}
-
-
-def test_parse_azioni_lines_call_service():
-    from hiris.app.agent_engine import AgentEngine
-    result = AgentEngine._parse_azioni_lines(["call_service light.turn_on light.soggiorno"])
-    assert result[0] == {"type": "call_service", "domain": "light", "service": "turn_on", "entity_id": "light.soggiorno"}
-
-
-def test_parse_azioni_lines_skips_blank():
-    from hiris.app.agent_engine import AgentEngine
-    result = AgentEngine._parse_azioni_lines(["", "  ", "turn_on switch.x"])
-    assert len(result) == 1
-
-
-# ---------------------------------------------------------------------------
-# run_with_actions integration — agent type uses structured output
+# Slice 5 removed _migrate_agent_raw (v1→v2 schema migration), the AZIONI-line
+# parser (_parse_azioni_lines), and the action/rules execution machinery
+# entirely — agents.json is v2-only going forward, and no agent (any type)
+# executes actions anymore. See test_run_agent_uses_chat_not_run_with_actions
+# below for the replacement contract: every agent type now goes through
+# ClaudeRunner.chat(), never run_with_actions().
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_run_agent_type_uses_run_with_actions(engine):
-    """Agents with type='agent' must call run_with_actions, not chat."""
+async def test_run_agent_uses_chat_not_run_with_actions(engine):
+    """Slice 5: no agent type executes actions anymore — _run_agent always
+    calls chat() (plain text), regardless of agent.type, and never touches
+    run_with_actions (that method is now Sentinella-only, invoked directly
+    by server.py's _llm_reason, not through AgentEngine)."""
     mock_runner = AsyncMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=(
-        "Analisi OK.",
-        {"valutazione": "OK", "notifica": "Tutto bene.", "params": {}, "azioni": []},
-    ))
+    mock_runner.chat = AsyncMock(return_value="Analisi OK.")
+    mock_runner.run_with_actions = AsyncMock(return_value=("should not be used", {}))
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
@@ -1110,35 +949,11 @@ async def test_run_agent_type_uses_run_with_actions(engine):
         "system_prompt": "Monitor everything.",
         "allowed_tools": [], "enabled": False,
     })
-    await engine.run_agent(agent)
+    result = await engine.run_agent(agent)
 
-    mock_runner.run_with_actions.assert_called_once()
-    mock_runner.chat.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_run_agent_execution_log_includes_structured_fields(engine):
-    """Execution log for type='agent' includes valutazione and notifica."""
-    mock_runner = AsyncMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=(
-        "Analisi.",
-        {"valutazione": "ANOMALIA", "notifica": "Consumo alto.", "params": {}, "azioni": []},
-    ))
-    mock_runner.last_tool_calls = []
-    mock_runner.total_input_tokens = 0
-    mock_runner.total_output_tokens = 0
-    engine.set_claude_runner(mock_runner)
-
-    agent = engine.create_agent({
-        "name": "Struct Agent", "type": "agent",
-        "triggers": [{"type": "schedule", "interval_minutes": 5}],
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    await engine.run_agent(agent)
-
-    rec = agent.execution_log[0]
-    assert rec["eval_status"] == "ANOMALIA"
-    assert rec["notifica"] == "Consumo alto."
+    assert result == "Analisi OK."
+    mock_runner.chat.assert_called_once()
+    mock_runner.run_with_actions.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

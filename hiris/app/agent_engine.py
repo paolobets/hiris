@@ -50,6 +50,12 @@ DEFAULT_AGENT_ID = "hiris-default"
 
 @dataclass
 class Agent:
+    # NOTE (Slice 5): triggers/type/action_mode/rules/states/fallback_action/
+    # budget_eur_limit were the "proactive" execution fields — the engine no
+    # longer schedules, reacts to state changes, or executes actions/rules for
+    # any agent (see AgentEngine._run_agent). They are kept on the dataclass
+    # only because handlers_agents.py still validates/persists/reads them
+    # (API + config UI backward-compat); trimming the schema is Task 2.
     id: str
     name: str
     type: str                   # "chat" | "agent"
@@ -84,57 +90,10 @@ class Agent:
 
 
 # ---------------------------------------------------------------------------
-# Migration helpers
-# ---------------------------------------------------------------------------
-
-def _migrate_agent_raw(raw: dict) -> dict:
-    """Migrate agents.json entries from old schema to new schema. Idempotent."""
-    # 1. type: monitor|reactive|preventive → agent
-    old_type = raw.get("type", "chat")
-    if old_type in ("monitor", "reactive", "preventive"):
-        raw["type"] = "agent"
-
-    # 2. trigger (singular) → triggers (list)
-    if "trigger" in raw and "triggers" not in raw:
-        old_trigger = raw.pop("trigger")
-        t_type = old_trigger.get("type", "manual")
-        # rename old preventive trigger type
-        if t_type == "preventive":
-            old_trigger["type"] = "cron"
-        if t_type == "manual" or raw["type"] == "chat":
-            raw["triggers"] = []
-        else:
-            raw["triggers"] = [old_trigger]
-    elif "triggers" not in raw:
-        raw["triggers"] = []
-
-    # 3. trigger_on + actions → rules
-    if "actions" in raw and "rules" not in raw:
-        old_actions = raw.pop("actions", [])
-        old_trigger_on = raw.pop("trigger_on", ["ANOMALIA"])
-        if old_actions and old_trigger_on:
-            raw["rules"] = [{"states": old_trigger_on, "actions": old_actions}]
-            raw.setdefault("action_mode", "configured")
-        else:
-            raw["rules"] = []
-            raw.setdefault("action_mode", "automatic")
-    else:
-        # Clean up stale fields even if migration already ran partially
-        raw.pop("trigger_on", None)
-        raw.pop("actions", None)
-        raw.setdefault("rules", [])
-        raw.setdefault("action_mode", "automatic")
-
-    return raw
-
-
-# ---------------------------------------------------------------------------
 # Engine
 # ---------------------------------------------------------------------------
 
 class AgentEngine:
-    _MQTT_RUN_COOLDOWN = 30
-
     def __init__(self, ha_client: HAClient, data_path: str = DEFAULT_AGENTS_DATA_PATH) -> None:
         self._agents: dict[str, Agent] = {}
         self._scheduler = AsyncIOScheduler()
@@ -145,9 +104,7 @@ class AgentEngine:
         self._running_agents: set[str] = set()
         self._error_agents: set[str] = set()
         self._mqtt_publisher = None
-        self._pending_mqtt_runs: set[str] = set()
         self._task_engine: Any = None
-        self._mqtt_last_run: dict[str, float] = {}
         # Serialize tmp-write + os.replace across concurrent _save() calls
         # (executor uses a thread pool — two fire-and-forget _save() can otherwise
         # overlap on the same .tmp file and corrupt state).
@@ -170,31 +127,12 @@ class AgentEngine:
 
     def set_mqtt_publisher(self, publisher) -> None:
         self._mqtt_publisher = publisher
-        publisher.set_command_callback(self._handle_mqtt_command)
 
     def set_task_engine(self, engine: Any) -> None:
         self._task_engine = engine
 
-    async def _handle_mqtt_command(self, agent_id: str, command: str, payload: str) -> None:
-        agent = self._agents.get(agent_id)
-        if not agent:
-            return
-        if command == "enabled":
-            new_enabled = payload.upper() == "ON"
-            if agent.enabled != new_enabled:
-                self.update_agent(agent_id, {"enabled": new_enabled})
-        elif command == "run_now" and payload.upper() == "PRESS":
-            if time.time() - self._mqtt_last_run.get(agent_id, 0) < self._MQTT_RUN_COOLDOWN:
-                logger.warning("MQTT run_now cooldown active for agent %s, ignoring", agent_id)
-            elif agent_id in self._running_agents:
-                self._pending_mqtt_runs.add(agent_id)
-            else:
-                self._mqtt_last_run[agent_id] = time.time()
-                asyncio.create_task(self._run_agent(agent), name=f"mqtt_run_{agent_id}")
-
     async def start(self) -> None:
         self._scheduler.start()
-        self._ha.add_state_listener(self._on_state_changed)
         await self._ha.start_websocket()
         self._load()
         self._seed_default_agent()
@@ -232,7 +170,6 @@ class AgentEngine:
             with open(self._data_path, encoding="utf-8") as f:
                 data = json.load(f)
             for raw in data.get("agents", []):
-                raw = _migrate_agent_raw(raw)
                 agent = Agent(
                     id=raw["id"],
                     name=raw["name"],
@@ -264,8 +201,6 @@ class AgentEngine:
                     knowledge_access=raw.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
                 )
                 self._agents[agent.id] = agent
-                if agent.enabled and agent.type == "agent":
-                    self._schedule_agent(agent)
         except Exception as exc:
             logger.error("Failed to load agents from %s: %s", self._data_path, exc)
 
@@ -364,8 +299,6 @@ class AgentEngine:
                 self._mqtt_publisher.publish_discovery(agent),
                 name=f"mqtt_disc_{agent.id}",
             )
-        if agent.enabled and agent.type == "agent":
-            self._schedule_agent(agent)
         self._save()
         return agent
 
@@ -402,8 +335,6 @@ class AgentEngine:
                     setattr(agent, key, self._cap_max_tokens(data[key], agent.type))
                 else:
                     setattr(agent, key, data[key])
-        if agent.enabled and agent.type == "agent":
-            self._schedule_agent(agent)
         self._save()
         if self._mqtt_publisher and agent.enabled != enabled_before:
             try:
@@ -440,42 +371,11 @@ class AgentEngine:
     # ------------------------------------------------------------------
     # Scheduling
     # ------------------------------------------------------------------
-
-    def _schedule_agent(self, agent: Agent) -> None:
-        for i, trigger in enumerate(agent.triggers):
-            job_id = f"{agent.id}__{i}"
-            t_type = trigger.get("type")
-            try:
-                if t_type == "schedule":
-                    minutes = max(1, int(trigger.get("interval_minutes", 5)))
-                    self._scheduler.add_job(
-                        self._run_agent, "interval",
-                        minutes=minutes,
-                        args=[agent, None, trigger],
-                        id=job_id, replace_existing=True, coalesce=True,
-                        misfire_grace_time=60,
-                    )
-                elif t_type == "cron" and trigger.get("cron"):
-                    parts = trigger["cron"].split()
-                    if len(parts) < 2:
-                        logger.error("Invalid cron for agent %s: %s", agent.id, trigger["cron"])
-                        continue
-                    kwargs: dict = {"minute": parts[0], "hour": parts[1]}
-                    if len(parts) >= 3:
-                        kwargs["day"] = parts[2]
-                    if len(parts) >= 4:
-                        kwargs["month"] = parts[3]
-                    if len(parts) >= 5:
-                        kwargs["day_of_week"] = parts[4]
-                    self._scheduler.add_job(
-                        self._run_agent, "cron",
-                        **kwargs,
-                        args=[agent, None, trigger],
-                        id=job_id, replace_existing=True, coalesce=True,
-                        misfire_grace_time=60,
-                    )
-            except Exception as exc:
-                logger.error("Failed to schedule agent %s trigger %d: %s", agent.id, i, exc)
+    # Autonomous agent scheduling (interval/cron triggers) and reactive
+    # state-change dispatch were retired in Slice 5 — the Sentinella
+    # (watcher/) is now the sole proactive engine. `_unschedule_agent`
+    # remains as a defensive no-op-safe cleanup for any job left over from
+    # a pre-upgrade scheduler state.
 
     def _unschedule_agent(self, agent_id: str) -> None:
         for job in list(self._scheduler.get_jobs()):
@@ -484,22 +384,6 @@ class AgentEngine:
                     self._scheduler.remove_job(job.id)
                 except Exception as exc:
                     logger.debug("remove_job(%s) failed: %s", job.id, exc)
-
-    def _on_state_changed(self, event_data: dict) -> None:
-        entity_id = event_data.get("entity_id", "")
-        for agent in self._agents.values():
-            if not agent.enabled or agent.type != "agent":
-                continue
-            for trigger in agent.triggers:
-                if trigger.get("type") == "state_changed" and trigger.get("entity_id") == entity_id:
-                    task = asyncio.create_task(
-                        self._run_agent(agent, context=event_data, trigger_fired=trigger)
-                    )
-                    def _on_done(t: asyncio.Task) -> None:
-                        if not t.cancelled() and (exc := t.exception()):
-                            logger.error("Reactive agent task failed: %s", exc)
-                    task.add_done_callback(_on_done)
-                    break
 
     # ------------------------------------------------------------------
     # Context helpers
@@ -545,255 +429,13 @@ class AgentEngine:
             logger.warning("Budget check failed for %s: %s", agent.name, exc)
 
     # ------------------------------------------------------------------
-    # Action execution
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _resolve_param(value: str, params: dict, notifica: str, default: Any = None) -> str:
-        """Resolve {{param.X}} and {{notifica}} placeholders in a string."""
-        if not isinstance(value, str):
-            return str(value) if value is not None else (str(default) if default is not None else "")
-        value = re.sub(r'\{\{notifica\}\}', notifica or "", value, flags=re.IGNORECASE)
-        value = re.sub(r'\{\{valutazione\}\}', params.get("__valutazione__", ""), value, flags=re.IGNORECASE)
-        def _repl(m: re.Match) -> str:
-            key = m.group(1)
-            return str(params.get(key, m.group(0)))
-        return re.sub(r'\{\{param\.(\w+)\}\}', _repl, value)
-
-    @staticmethod
-    def _resolve_minutes(raw: Any, params: dict, default: int = 5) -> int:
-        """Resolve a minutes value that may contain {{param.X}}."""
-        if isinstance(raw, (int, float)):
-            return max(1, int(raw))
-        s = AgentEngine._resolve_param(str(raw), params, "", default)
-        try:
-            return max(1, int(float(s)))
-        except (ValueError, TypeError):
-            return max(1, default)
-
-    @staticmethod
-    def _split_chain_at_waits(actions: list, params: dict) -> list[tuple[int, list]]:
-        """Split an action list into (cumulative_delay_minutes, [actions]) batches at each wait."""
-        batches: list[tuple[int, list]] = []
-        current_delay = 0
-        current_batch: list = []
-        for action in actions:
-            if action.get("type") == "wait":
-                if current_batch:
-                    batches.append((current_delay, current_batch))
-                    current_batch = []
-                raw = action.get("minutes", action.get("default", 5))
-                current_delay += AgentEngine._resolve_minutes(raw, params, default=int(action.get("default", 5)))
-            else:
-                current_batch.append(action)
-        if current_batch:
-            batches.append((current_delay, current_batch))
-        return batches
-
-    def _action_to_task_format(self, action: dict, params: dict, notifica: str) -> dict:
-        """Convert a rule action dict to task_engine action format."""
-        a_type = action.get("type", "")
-        resolve = lambda v, d=None: self._resolve_param(str(v) if v is not None else "", params, notifica, d)
-
-        if a_type == "turn_on":
-            return {"type": "call_ha_service", "domain": "homeassistant", "service": "turn_on",
-                    "data": {"entity_id": resolve(action.get("entity_id", ""))}}
-        if a_type == "turn_off":
-            return {"type": "call_ha_service", "domain": "homeassistant", "service": "turn_off",
-                    "data": {"entity_id": resolve(action.get("entity_id", ""))}}
-        if a_type == "set_value":
-            entity_id = resolve(action.get("entity_id", ""))
-            value = resolve(action.get("value", ""))
-            domain = entity_id.split(".")[0] if "." in entity_id else "homeassistant"
-            service = "set_temperature" if domain == "climate" else "turn_on"
-            data: dict = {"entity_id": entity_id}
-            if domain == "climate":
-                try:
-                    data["temperature"] = float(value)
-                except (ValueError, TypeError):
-                    data["temperature"] = value
-            return {"type": "call_ha_service", "domain": domain, "service": service, "data": data}
-        if a_type == "call_service":
-            entity_id = resolve(action.get("entity_id", action.get("entity_pattern", "")))
-            return {"type": "call_ha_service",
-                    "domain": action.get("domain", ""),
-                    "service": action.get("service", ""),
-                    "data": {"entity_id": entity_id} if entity_id else {}}
-        if a_type == "notify":
-            return {"type": "send_notification",
-                    "message": resolve(action.get("message", "{{notifica}}")),
-                    "channel": action.get("channel", "ha_push")}
-        return action  # pass through unknown types
-
-    def _validate_action(self, action: dict, agent: "Agent") -> bool:
-        """Return True if action is permitted by agent's allowed_services and allowed_entities."""
-        a_type = action.get("type", "")
-        if not agent.allowed_services and not agent.allowed_entities:
-            return True
-
-        if a_type in ("turn_on", "turn_off"):
-            svc = f"homeassistant.{a_type}"
-            entity_id = action.get("entity_id", "")
-        elif a_type == "set_value":
-            entity_id = action.get("entity_id", "")
-            domain = entity_id.split(".")[0] if "." in entity_id else "homeassistant"
-            svc = f"{domain}.set_temperature" if domain == "climate" else f"homeassistant.turn_on"
-        elif a_type == "call_service":
-            svc = f"{action.get('domain','')}.{action.get('service','')}"
-            entity_id = action.get("entity_id", action.get("entity_pattern", ""))
-        elif a_type == "notify":
-            return True  # notifications always allowed
-        else:
-            return True
-
-        if agent.allowed_services and not any(fnmatch.fnmatch(svc, p) for p in agent.allowed_services):
-            logger.warning("Action blocked (service not allowed): %s", svc)
-            return False
-        if agent.allowed_entities and entity_id and not any(
-            fnmatch.fnmatch(entity_id, p) for p in agent.allowed_entities
-        ):
-            logger.warning("Action blocked (entity not allowed): %s", entity_id)
-            return False
-        return True
-
-    async def _execute_action_batch(
-        self, agent: "Agent", actions: list, params: dict, notifica: str,
-        delay_minutes: int = 0, label_suffix: str = "",
-    ) -> list[str]:
-        """Schedule a batch of (non-wait) actions via task_engine, optionally delayed."""
-        if not actions or not self._task_engine:
-            return []
-        task_actions = [self._action_to_task_format(a, params, notifica) for a in actions
-                        if self._validate_action(a, agent)]
-        if not task_actions:
-            return ["batch:all_blocked"]
-        trigger = {"type": "delay", "minutes": delay_minutes} if delay_minutes > 0 else {"type": "immediate"}
-        label = f"{agent.name}{label_suffix}"
-        try:
-            self._task_engine.add_task(
-                {"label": label, "trigger": trigger, "actions": task_actions, "one_shot": True},
-                agent_id=agent.id,
-            )
-            return [f"batch({'delayed+' + str(delay_minutes) + 'min' if delay_minutes else 'immediate'}):queued({len(task_actions)})"]
-        except Exception as exc:
-            return [f"batch:FAILED({exc})"]
-
-    async def _execute_action_chain(
-        self, agent: "Agent", actions: list, params: dict, notifica: str,
-    ) -> str:
-        """Execute a sequential action chain, splitting at wait steps into scheduled tasks."""
-        batches = self._split_chain_at_waits(actions, params)
-        results: list[str] = []
-        for i, (delay, batch) in enumerate(batches):
-            suffix = f" — step {i+1}" if len(batches) > 1 else ""
-            batch_results = await self._execute_action_batch(
-                agent, batch, params, notifica, delay_minutes=delay, label_suffix=suffix
-            )
-            results.extend(batch_results)
-        return "; ".join(results) if results else ""
-
-    # ------------------------------------------------------------------
-    # Automatic mode: parse AZIONI block from LLM output
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _parse_azioni_lines(lines: list[str]) -> list[dict]:
-        """Parse raw AZIONI command lines (list[str]) into action dicts.
-
-        Each entry in ``lines`` is one command in the format: cmd entity [value]
-        """
-        actions: list[dict] = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split(None, 2)
-            cmd = parts[0].lower()
-            if cmd == "turn_on" and len(parts) >= 2:
-                actions.append({"type": "turn_on", "entity_id": parts[1]})
-            elif cmd == "turn_off" and len(parts) >= 2:
-                actions.append({"type": "turn_off", "entity_id": parts[1]})
-            elif cmd == "set_value" and len(parts) >= 3:
-                actions.append({"type": "set_value", "entity_id": parts[1], "value": parts[2]})
-            elif cmd == "call_service" and len(parts) >= 2:
-                svc_parts = parts[1].split(".", 1)
-                domain = svc_parts[0]
-                service = svc_parts[1] if len(svc_parts) > 1 else ""
-                entity_id = parts[2] if len(parts) > 2 else ""
-                actions.append({"type": "call_service", "domain": domain, "service": service, "entity_id": entity_id})
-            elif cmd == "wait" and len(parts) >= 2:
-                try:
-                    minutes = max(1, int(float(parts[1])))
-                except ValueError:
-                    minutes = 5
-                actions.append({"type": "wait", "minutes": minutes})
-            elif cmd == "notify" and len(parts) >= 3:
-                actions.append({"type": "notify", "channel": parts[1], "message": " ".join(parts[2:])})
-        return actions
-
-    async def _execute_automatic_actions(
-        self, agent: "Agent", structured: dict,
-    ) -> str:
-        """Execute AZIONI block (automatic mode) or fallback if absent."""
-        azioni_lines: list[str] = structured.get("azioni", [])
-        notifica = structured.get("notifica", "")
-        params = structured.get("params", {})
-        if not azioni_lines:
-            if agent.fallback_action:
-                result = await self._execute_action_chain(
-                    agent, [agent.fallback_action], params, notifica
-                )
-                return f"fallback:{result}"
-            return ""
-        # Parse raw command lines into action dicts; cap to 20 to prevent runaway
-        azioni = self._parse_azioni_lines(azioni_lines[:20])
-        if not azioni:
-            if azioni_lines:
-                logger.warning(
-                    "Agent %s: AZIONI block had %d line(s) but none were parseable: %s",
-                    agent.id, len(azioni_lines), azioni_lines[:5],
-                )
-            return ""
-        return await self._execute_action_chain(agent, azioni, params, notifica)
-
-    async def _execute_configured_rules(
-        self, agent: "Agent", structured: dict,
-    ) -> str:
-        """Execute configured rules based on VALUTAZIONE (configured mode)."""
-        valutazione = (structured.get("valutazione") or "").strip().upper()
-        notifica = structured.get("notifica", "")
-        params = dict(structured.get("params", {}))
-        params["__valutazione__"] = valutazione
-
-        matched_rule = None
-        for rule in agent.rules:
-            rule_states = [s.strip().upper() for s in rule.get("states", [])]
-            if valutazione in rule_states:
-                matched_rule = rule
-                break
-
-        if matched_rule is None:
-            if agent.fallback_action:
-                result = await self._execute_action_chain(
-                    agent, [agent.fallback_action], params, notifica
-                )
-                return f"fallback:{result}"
-            return ""
-
-        actions = matched_rule.get("actions", [])
-        if not actions:
-            return ""
-        return await self._execute_action_chain(agent, actions, params, notifica)
-
-    async def _execute_actions_for_agent(self, agent: "Agent", structured: dict) -> str:
-        """Dispatch to automatic or configured action execution."""
-        if agent.action_mode == "configured":
-            return await self._execute_configured_rules(agent, structured)
-        return await self._execute_automatic_actions(agent, structured)
-
-    # ------------------------------------------------------------------
     # Agent run
     # ------------------------------------------------------------------
+    # Slice 5 retired the action/rules execution machinery (AZIONI parsing,
+    # configured rules, action chains/batches) and the notion of an agent
+    # "acting" on its own conclusions. The Sentinella (watcher/) is now the
+    # sole proactive/actuating engine. `_run_agent` below only ever produces
+    # text via the runner's plain chat() — it never executes actions.
 
     # ------------------------------------------------------------------
     # Rate-limit backoff helpers (v0.9.10)
@@ -847,18 +489,20 @@ class AgentEngine:
     async def _run_agent(
         self, agent: Agent, context: Optional[dict] = None, trigger_fired: Optional[dict] = None
     ) -> str:
+        """Run a persona once and return its reply text — no autonomous actuation.
+
+        Reachable from the manual "run" API (`run_agent` → `handle_run_agent`).
+        `context`/`trigger_fired` are kept for the execution-log record shape;
+        callers other than the manual API no longer exist (Slice 5 retired the
+        scheduler/reactive triggers that used to pass them).
+        """
         if not self._claude_runner:
             logger.warning("No runner configured")
             return ""
-        # Per-agent concurrency guard. _run_agent is reachable from four sources:
-        # the APScheduler interval/cron jobs, state-change reactions, the manual
-        # API (run_agent), and the MQTT run_now handler. APScheduler's
-        # max_instances=1 only stops a *single* job overlapping itself — it does
-        # not stop a cron job overlapping the interval job, nor a reactive or
-        # manual run landing while another is already in flight. Overlap
-        # double-executes actions and races on the shared ClaudeRunner state
-        # (last_tool_calls, usage). Skip the overlapping trigger; the MQTT path
-        # already queues a follow-up run for this case via _pending_mqtt_runs.
+        # Per-agent concurrency guard: a manual run landing while another run
+        # for the same agent is still in flight is skipped rather than run
+        # concurrently — avoids racing on shared ClaudeRunner state
+        # (last_tool_calls, usage).
         if agent.id in self._running_agents:
             logger.info("Agent %s already running — skipping overlapping trigger", agent.id)
             return "[skipped: already running]"
@@ -874,7 +518,6 @@ class AgentEngine:
         out_before = getattr(self._claude_runner, "total_output_tokens", 0)
         self._running_agents.add(agent.id)
         _had_error = False
-        structured: dict = {}
         try:
             agent.last_run = datetime.now(timezone.utc).isoformat()
             effective_prompt = (
@@ -891,72 +534,38 @@ class AgentEngine:
                 entity_ctx = self._build_entity_context(agent)
                 if entity_ctx:
                     user_message = f"{user_message}\n\n{entity_ctx}"
-                _ka = (agent.knowledge_access or {}) if isinstance(agent.knowledge_access, dict) else {}
-                _allow_sensitive = bool(_ka.get("allow_sensitive", False))
-                _kinds_raw = _ka.get("kinds", "all")
-                _knowledge_kinds = None if _kinds_raw == "all" else _kinds_raw
-                try:
-                    result, structured = await asyncio.wait_for(
-                        self._claude_runner.run_with_actions(
-                            user_message=user_message,
-                            system_prompt=effective_prompt,
-                            action_mode=agent.action_mode,
-                            states=agent.states,
-                            rules=agent.rules,
-                            allowed_tools=agent.allowed_tools or None,
-                            allowed_entities=agent.allowed_entities or None,
-                            allowed_services=agent.allowed_services or None,
-                            allowed_endpoints=agent.allowed_endpoints,
-                            model=agent.model,
-                            max_tokens=agent.max_tokens,
-                            agent_type=agent.type,
-                            restrict_to_home=agent.restrict_to_home,
-                            agent_id=agent.id,
-                            response_mode=agent.response_mode,
-                            thinking_budget=agent.thinking_budget,
-                            knowledge_allow_sensitive=_allow_sensitive,
-                            knowledge_kinds=_knowledge_kinds,
-                        ),
-                        timeout=_AGENT_RUN_TIMEOUT,
-                    )
-                except asyncio.TimeoutError:
-                    raise RuntimeError(
-                        f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
-                    )
-                action_taken = await self._execute_actions_for_agent(agent, structured)
-            else:
-                _ka = (agent.knowledge_access or {}) if isinstance(agent.knowledge_access, dict) else {}
-                _allow_sensitive = bool(_ka.get("allow_sensitive", False))
-                _kinds_raw = _ka.get("kinds", "all")
-                _knowledge_kinds = None if _kinds_raw == "all" else _kinds_raw
-                try:
-                    result = await asyncio.wait_for(
-                        self._claude_runner.chat(
-                            user_message=user_message,
-                            system_prompt=effective_prompt,
-                            allowed_tools=agent.allowed_tools or None,
-                            allowed_entities=agent.allowed_entities or None,
-                            allowed_services=agent.allowed_services or None,
-                            allowed_endpoints=agent.allowed_endpoints,
-                            model=agent.model,
-                            mode="automatic",
-                            max_tokens=agent.max_tokens,
-                            agent_type=agent.type,
-                            restrict_to_home=agent.restrict_to_home,
-                            require_confirmation=agent.require_confirmation,
-                            agent_id=agent.id,
-                            response_mode=agent.response_mode,
-                            thinking_budget=agent.thinking_budget,
-                            knowledge_allow_sensitive=_allow_sensitive,
-                            knowledge_kinds=_knowledge_kinds,
-                        ),
-                        timeout=_AGENT_RUN_TIMEOUT,
-                    )
-                except asyncio.TimeoutError:
-                    raise RuntimeError(
-                        f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
-                    )
-                action_taken = None
+
+            _ka = (agent.knowledge_access or {}) if isinstance(agent.knowledge_access, dict) else {}
+            _allow_sensitive = bool(_ka.get("allow_sensitive", False))
+            _kinds_raw = _ka.get("kinds", "all")
+            _knowledge_kinds = None if _kinds_raw == "all" else _kinds_raw
+            try:
+                result = await asyncio.wait_for(
+                    self._claude_runner.chat(
+                        user_message=user_message,
+                        system_prompt=effective_prompt,
+                        allowed_tools=agent.allowed_tools or None,
+                        allowed_entities=agent.allowed_entities or None,
+                        allowed_services=agent.allowed_services or None,
+                        allowed_endpoints=agent.allowed_endpoints,
+                        model=agent.model,
+                        mode="automatic",
+                        max_tokens=agent.max_tokens,
+                        agent_type=agent.type,
+                        restrict_to_home=agent.restrict_to_home,
+                        require_confirmation=agent.require_confirmation,
+                        agent_id=agent.id,
+                        response_mode=agent.response_mode,
+                        thinking_budget=agent.thinking_budget,
+                        knowledge_allow_sensitive=_allow_sensitive,
+                        knowledge_kinds=_knowledge_kinds,
+                    ),
+                    timeout=_AGENT_RUN_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                raise RuntimeError(
+                    f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
+                )
 
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             agent.last_result = result
@@ -975,8 +584,7 @@ class AgentEngine:
             )
             self._append_execution_log(
                 agent, result, inp_before, out_before, tool_calls_snapshot,
-                success=not _is_upstream_err, structured=structured, action_taken=action_taken,
-                trigger_fired=trigger_fired,
+                success=not _is_upstream_err, trigger_fired=trigger_fired,
             )
             self._save()
             self._check_budget_auto_disable(agent)
@@ -1022,9 +630,6 @@ class AgentEngine:
                     ),
                     name=f"mqtt_pub_{agent.id}",
                 )
-            if agent.id in self._pending_mqtt_runs:
-                self._pending_mqtt_runs.discard(agent.id)
-                asyncio.create_task(self._run_agent(agent), name=f"mqtt_queued_{agent.id}")
 
     def _append_execution_log(
         self,
@@ -1034,13 +639,10 @@ class AgentEngine:
         out_before: int,
         tool_calls_snapshot: list,
         success: bool,
-        structured: Optional[dict] = None,
-        action_taken: Optional[str] = None,
         trigger_fired: Optional[dict] = None,
     ) -> None:
         inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
         out_after = getattr(self._claude_runner, "total_output_tokens", 0)
-        s = structured or {}
         # Capture extended-thinking blocks if any. Truncate per-block to keep
         # the agents.json file from growing unbounded — full reasoning is
         # rarely needed in the UI, just the gist for debug.
@@ -1054,10 +656,13 @@ class AgentEngine:
             "output_tokens": out_after - out_before,
             "result_summary": (result or "")[:1000],
             "success": success and not (result or "").startswith("Error:"),
-            "eval_status": s.get("valutazione"),
-            "notifica": s.get("notifica"),
-            "params": s.get("params"),
-            "action_taken": action_taken,
+            # Retired with the action/rules machinery (Slice 5) — kept as None
+            # so older frontend log-row rendering (eval badge / action chip)
+            # degrades gracefully instead of KeyError-ing on old records.
+            "eval_status": None,
+            "notifica": None,
+            "params": None,
+            "action_taken": None,
             "thinking_blocks": thinking_blocks,
         }
         agent.execution_log = (agent.execution_log + [record])[-20:]

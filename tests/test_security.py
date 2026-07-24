@@ -187,20 +187,19 @@ def test_create_agent_caps_max_tokens():
     from unittest.mock import MagicMock, patch
     engine = AgentEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
     with patch.object(engine, "_save"):
-        with patch.object(engine, "_schedule_agent"):
-            agent = engine.create_agent({
-                "name": "Test",
-                "type": "chat",
-                "trigger": {"type": "manual"},
-                "max_tokens": 99999,
-            })
-            # chat is capped higher (room for large outputs) but still bounded
-            non_chat = engine.create_agent({
-                "name": "Mon",
-                "type": "monitor",
-                "trigger": {"type": "manual"},
-                "max_tokens": 99999,
-            })
+        agent = engine.create_agent({
+            "name": "Test",
+            "type": "chat",
+            "trigger": {"type": "manual"},
+            "max_tokens": 99999,
+        })
+        # chat is capped higher (room for large outputs) but still bounded
+        non_chat = engine.create_agent({
+            "name": "Mon",
+            "type": "monitor",
+            "trigger": {"type": "manual"},
+            "max_tokens": 99999,
+        })
     assert agent.max_tokens == 16000
     assert non_chat.max_tokens == 8192  # non-chat stays tightly capped
 
@@ -210,17 +209,15 @@ def test_update_agent_caps_max_tokens():
     from unittest.mock import MagicMock, patch
     engine = AgentEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
     with patch.object(engine, "_save"):
-        with patch.object(engine, "_schedule_agent"):
-            agent = engine.create_agent({
-                "name": "Test",
-                "type": "chat",
-                "trigger": {"type": "manual"},
-                "max_tokens": 4096,
-            })
+        agent = engine.create_agent({
+            "name": "Test",
+            "type": "chat",
+            "trigger": {"type": "manual"},
+            "max_tokens": 4096,
+        })
     with patch.object(engine, "_save"):
         with patch.object(engine, "_unschedule_agent"):
-            with patch.object(engine, "_schedule_agent"):
-                updated = engine.update_agent(agent.id, {"max_tokens": 50000})
+            updated = engine.update_agent(agent.id, {"max_tokens": 50000})
     assert updated.max_tokens == 16000  # chat cap
 
 
@@ -256,26 +253,9 @@ def test_config_yaml_no_direct_port():
 # ---------------------------------------------------------------------------
 # SEC-021 — APScheduler cron coalesce
 # ---------------------------------------------------------------------------
-
-def test_cron_job_uses_coalesce():
-    """Verify that _schedule_agent passes coalesce=True to add_job."""
-    from hiris.app.agent_engine import AgentEngine, Agent
-    engine = AgentEngine(ha_client=MagicMock())
-    mock_scheduler = MagicMock()
-    engine._scheduler = mock_scheduler
-    agent = Agent(
-        id="test",
-        name="T",
-        type="agent",
-        triggers=[{"type": "cron", "cron": "0 8 * * *"}],
-        system_prompt="",
-        allowed_tools=[],
-        enabled=True,
-    )
-    engine._schedule_agent(agent)
-    call_kwargs = mock_scheduler.add_job.call_args[1]
-    assert call_kwargs.get("coalesce") is True
-    assert call_kwargs.get("misfire_grace_time") == 60
+# Retired (Slice 5): _schedule_agent and all autonomous-agent scheduling was
+# removed from AgentEngine — the Sentinella (watcher/) is now the sole
+# proactive engine, and it does not use APScheduler add_job() at all.
 
 
 # ---------------------------------------------------------------------------

@@ -896,9 +896,6 @@ class OpenAICompatRunner:
         self,
         user_message: str,
         system_prompt: str,
-        action_mode: str = "automatic",
-        states: Optional[list[str]] = None,
-        rules: Optional[list[dict]] = None,
         allowed_tools: Optional[list[str]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
@@ -915,6 +912,13 @@ class OpenAICompatRunner:
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> tuple[str, dict]:
+        """Run a tool-restricted evaluation pass — used solely by the Sentinella.
+
+        Mirrors ``ClaudeRunner.run_with_actions`` (see its docstring): Slice 5
+        retired the action/rules machinery, so this is a plain agentic loop
+        restricted to read-only (``EVALUATION_ONLY_TOOLS``) tools that returns
+        the model's raw text unmodified.
+        """
         # thinking_budget accepted for runner-contract symmetry with
         # ClaudeRunner; not applicable on OpenAI-compat APIs (Ollama uses
         # extra_body think:false instead, applied unconditionally in chat()).
@@ -923,43 +927,9 @@ class OpenAICompatRunner:
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]
 
-        _states = states if states else ["OK", "ATTENZIONE", "ANOMALIA"]
-        states_str = "|".join(_states)
-        motivazione = "1 riga sintetica" if response_mode == "minimal" else "1-2 righe sintetiche"
-
-        if action_mode == "automatic":
-            eval_instruction = (
-                "\n\n---\n"
-                "ISTRUZIONI DI RISPOSTA:\n"
-                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
-                f"VALUTAZIONE: {states_str}\n"
-                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
-                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]\n"
-                "AZIONI:\n"
-                "[una azione per riga — formato: comando entità [valore]]\n\n"
-                "Comandi AZIONI (vanno scritti in testo nel blocco AZIONI:, NON come tool calls):\n"
-                "  turn_on <entity_id>\n"
-                "  turn_off <entity_id>\n"
-                "  set_value <entity_id> <value>\n"
-                "  wait <minuti>\n"
-                "  notify <channel> <message>\n"
-                "  call_service <domain.service> <entity_id> [key=value ...]\n\n"
-                "Se non sono necessarie azioni ometti il blocco AZIONI: completamente."
-            )
-        else:  # configured
-            eval_instruction = (
-                "\n\n---\n"
-                "ISTRUZIONI DI RISPOSTA:\n"
-                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
-                f"VALUTAZIONE: {states_str}\n"
-                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
-                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]"
-            )
-
-        augmented_prompt = system_prompt + eval_instruction
         raw_result = await self.chat(
             user_message=user_message,
-            system_prompt=augmented_prompt,
+            system_prompt=system_prompt,
             allowed_tools=eval_tools,
             allowed_entities=allowed_entities,
             allowed_services=allowed_services,

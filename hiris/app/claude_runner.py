@@ -751,9 +751,6 @@ class ClaudeRunner:
         self,
         user_message: str,
         system_prompt: str,
-        action_mode: str = "automatic",
-        states: Optional[list[str]] = None,
-        rules: Optional[list[dict]] = None,
         allowed_tools: Optional[list[str]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
@@ -770,17 +767,18 @@ class ClaudeRunner:
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> tuple[str, dict]:
-        """Run an autonomous agent evaluation — restrict tools, inject structured-output instructions.
+        """Run a tool-restricted evaluation pass — used solely by the Sentinella.
 
-        Claude gathers data using read-only tools, then produces a structured trailing
-        block (VALUTAZIONE / NOTIFICA / PARAM / AZIONI) that the caller parses and acts on.
+        Slice 5 retired the action/rules execution machinery (AZIONI blocks,
+        configured rules): this is now a plain agentic loop that runs the given
+        system prompt restricted to read-only (``EVALUATION_ONLY_TOOLS``) tools
+        and returns the model's raw text, unmodified. The Sentinella reasoner
+        (``watcher/reasoner.py``) parses its own ```json``` block out of the
+        returned text; it does not depend on the ``structured`` dict.
 
         Args:
             user_message: Trigger message (may contain event context or a cron prompt).
-            system_prompt: Agent-specific instructions.
-            action_mode: ``"automatic"`` — LLM writes AZIONI block; ``"configured"`` — user-defined rules.
-            states: Allowed VALUTAZIONE values. Defaults to [OK, ATTENZIONE, ANOMALIA].
-            rules: Pre-configured action rules (used only by caller; included here for completeness).
+            system_prompt: Caller-provided instructions (not augmented here).
             allowed_tools: Whitelist of tool names, or None for all evaluation tools.
             allowed_entities: Entity glob patterns allowed for this agent.
             allowed_services: Service patterns allowed for this agent.
@@ -794,53 +792,21 @@ class ClaudeRunner:
             response_mode: ``"minimal"`` for terse motivazione, ``"auto"`` for standard.
 
         Returns:
-            Tuple of ``(clean_text, structured)`` where ``structured`` contains:
-            ``valutazione``, ``notifica``, ``params``, ``azioni``.
+            Tuple of ``(clean_text, structured)``. ``structured`` is produced by
+            the legacy ``_parse_structured_output`` scanner (VALUTAZIONE/NOTIFICA/
+            PARAM/AZIONI markers) for backward-compat callers; since nothing
+            instructs the model to emit that block anymore it is normally all
+            defaults (None/empty) and ``clean_text`` equals the full response.
         """
-        # Restrict to evaluation-only tools — Claude may read HA state and schedule
-        # tasks but cannot directly call action services (prevents prompt-injection attacks).
+        # Restrict to evaluation-only tools — Claude may read HA state but
+        # cannot directly call action services (prevents prompt-injection attacks).
         eval_tools = list(EVALUATION_ONLY_TOOLS)
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]
 
-        _states = states if states else ["OK", "ATTENZIONE", "ANOMALIA"]
-        states_str = "|".join(_states)
-        motivazione = "1 riga sintetica" if response_mode == "minimal" else "1-2 righe sintetiche"
-
-        if action_mode == "automatic":
-            eval_instruction = (
-                "\n\n---\n"
-                "ISTRUZIONI DI RISPOSTA:\n"
-                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
-                f"VALUTAZIONE: {states_str}\n"
-                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
-                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]\n"
-                "AZIONI:\n"
-                "[una azione per riga — formato: comando entità [valore]]\n\n"
-                "Comandi AZIONI (vanno scritti in testo nel blocco AZIONI:, NON come tool calls):\n"
-                "  turn_on <entity_id>\n"
-                "  turn_off <entity_id>\n"
-                "  set_value <entity_id> <value>\n"
-                "  wait <minuti>\n"
-                "  notify <channel> <message>\n"
-                "  call_service <domain.service> <entity_id> [key=value ...]\n\n"
-                "Se non sono necessarie azioni ometti il blocco AZIONI: completamente."
-            )
-        else:  # configured
-            eval_instruction = (
-                "\n\n---\n"
-                "ISTRUZIONI DI RISPOSTA:\n"
-                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
-                f"VALUTAZIONE: {states_str}\n"
-                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
-                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]"
-            )
-
-        augmented_prompt = system_prompt + eval_instruction
-
         raw_result = await self.chat(
             user_message=user_message,
-            system_prompt=augmented_prompt,
+            system_prompt=system_prompt,
             allowed_tools=eval_tools,
             allowed_entities=allowed_entities,
             allowed_services=allowed_services,
