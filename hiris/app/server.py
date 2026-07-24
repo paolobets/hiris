@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import time
 import aiohttp
 from aiohttp import web
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
@@ -49,6 +50,8 @@ from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
 from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
+from .watcher.detectors import make_generic_detector
+from .watcher.lenses import load_lenses as _load_scheduled_lenses
 
 logger = logging.getLogger(__name__)
 
@@ -376,6 +379,179 @@ async def request_confirmation_stepup(
     otp_sent = await notify(app, message=msg, actionable=(tier == "yellow"),
                             nonce=entry["id"], service=svc)
     return {"id": entry["id"], "otp_sent": bool(otp_sent)}
+
+
+# ---------------------------------------------------------------------------
+# Slice 5b Task 5: SCHEDULED (cron/interval) user lenses -- per-lens jobs on
+# `engine._scheduler`, the SAME AsyncIOScheduler instance the built-in
+# ronda/reset/due-reminders jobs use (verified: `_on_startup` never creates a
+# second scheduler). Module-level (same rationale as
+# confirm_pending_execute/request_confirmation_stepup above) so tests can
+# drive `register_lens_schedules` against a fake scheduler + fake
+# entity_cache without booting the whole aiohttp app.
+# ---------------------------------------------------------------------------
+
+_LENS_JOB_PREFIX = "hiris_lens_"
+_CRON_FIELDS = ("minute", "hour", "day", "month", "day_of_week")
+
+
+def _condition_holds(condition: dict | None, cache) -> bool:
+    """Evaluate a schedule trigger's optional `trigger.condition`
+    (`{entity_id, operator, threshold}`, already whitelist-validated by
+    `watcher.lenses._validate_condition`) against the CURRENT cached state
+    of `condition["entity_id"]` (`entity_cache.get_state`). Absent condition
+    -> True (nothing to gate on).
+
+    Reuses `make_generic_detector` (Task 2) with a synthesized one-shot
+    trigger dict so the exact same operator/threshold comparison applies
+    here as to a real event-triggered lens -- including the no-data guard
+    for "unavailable"/"unknown"/"" states and the numeric-vs-string
+    fallback for ==/!= -- rather than a second, driftable implementation of
+    the same comparison.
+
+    Fail-safe: missing cache, missing entity_id, an entity never seen by the
+    cache, or the detector raising all resolve to False -- a conditioned
+    scheduled lens must never fire when its condition can't be positively
+    confirmed.
+    """
+    if not condition:
+        return True
+    if cache is None:
+        return False
+    entity_id = condition.get("entity_id")
+    if not entity_id:
+        return False
+    try:
+        state = cache.get_state(entity_id)
+    except Exception:
+        logger.debug("register_lens_schedules: cache.get_state(%s) failed", entity_id, exc_info=True)
+        return False
+    if state is None:
+        return False
+    detector = make_generic_detector({
+        "entity_id": entity_id,
+        "operator": condition.get("operator"),
+        "threshold": condition.get("threshold"),
+    })
+    try:
+        sig = detector(entity_id, None, state, {}, time.time())
+    except Exception:
+        logger.debug("register_lens_schedules: condition detector failed for %s", entity_id, exc_info=True)
+        return False
+    return sig is not None
+
+
+async def _run_scheduled_lens(lens: dict, *, cache, run_lens) -> None:
+    """The per-lens job callback registered by `register_lens_schedules`.
+    Wrapped end-to-end in try/except (log + return) so one broken scheduled
+    lens (a condition entity that vanished, `run_lens` raising, ...) can
+    never take down the shared AsyncIOScheduler or any sibling job."""
+    lens_id = lens.get("id", "-")
+    try:
+        trigger = lens.get("trigger") or {}
+        condition = trigger.get("condition")
+        if condition and not _condition_holds(condition, cache):
+            return
+        entity_id = condition.get("entity_id", "-") if condition else "-"
+        await run_lens(lens, {"entity_id": entity_id})
+    except Exception:
+        logger.exception("scheduled lens %s failed", lens_id)
+
+
+def _cron_kwargs(cron: str) -> dict | None:
+    """Map a whitelist-validated 5-field cron string (`watcher.lenses._CRON_RE`
+    already confirmed the charset/shape) onto APScheduler's CronTrigger field
+    names, in the standard crontab order: minute hour day month day_of_week.
+    Returns None only if the field count is somehow off (defensive -- the
+    store's regex already guarantees exactly 5 whitespace-separated fields).
+    Per-field VALUE validity (e.g. an out-of-range hour) is left to
+    APScheduler itself, raised at `add_job` time and caught there."""
+    parts = cron.split()
+    if len(parts) != 5:
+        return None
+    return dict(zip(_CRON_FIELDS, parts))
+
+
+async def register_lens_schedules(app: web.Application) -> None:
+    """(Re)register per-lens scheduler jobs for every enabled,
+    SCHEDULE-triggered user lens (Slice 5b Task 5), and remove any
+    `hiris_lens_*` job whose lens no longer exists, is disabled, or is no
+    longer schedule-triggered. Idempotent -- safe to call at startup and
+    again after every lens save (Task 6, via `app["register_lens_schedules"]`).
+
+    Reads `engine._scheduler` (the SAME scheduler instance the built-in
+    ronda/reset jobs use), `data_dir` (to reload the current lens set) and
+    `entity_cache` (for the schedule trigger's optional `condition`, checked
+    at fire time by `_run_scheduled_lens`/`_condition_holds`) straight off
+    `app`, mirroring `confirm_pending_execute`'s "module-level, reads from
+    app, testable without booting `_on_startup`" shape.
+    """
+    engine = app.get("engine")
+    scheduler = getattr(engine, "_scheduler", None)
+    if scheduler is None:
+        return
+
+    data_dir = app.get("data_dir")
+    lenses = _load_scheduled_lenses(data_dir) if data_dir else []
+    scheduled = {
+        l["id"]: l for l in lenses
+        if l.get("enabled") and (l.get("trigger") or {}).get("type") == "schedule"
+    }
+
+    # Remove orphaned jobs: a lens that was deleted, disabled, or switched
+    # away from a schedule trigger since the last registration. Enumeration
+    # pattern mirrors `agent_engine.py:350-353`'s `_unschedule_agent`.
+    for job in list(scheduler.get_jobs()):
+        if not job.id.startswith(_LENS_JOB_PREFIX):
+            continue
+        lens_id = job.id[len(_LENS_JOB_PREFIX):]
+        if lens_id not in scheduled:
+            try:
+                scheduler.remove_job(job.id)
+            except Exception:
+                logger.debug("register_lens_schedules: remove_job(%s) failed", job.id, exc_info=True)
+
+    cache = app.get("entity_cache")
+    run_lens = app.get("run_lens")
+
+    def _make_callback(lens: dict):
+        # Bind `lens` via this factory's own parameter (a fresh scope per
+        # call) rather than closing directly over the loop variable below,
+        # which would otherwise let every job share the LAST lens iterated.
+        async def _cb() -> None:
+            await _run_scheduled_lens(lens, cache=cache, run_lens=run_lens)
+        return _cb
+
+    for lens_id, lens in scheduled.items():
+        trigger = lens.get("trigger") or {}
+        job_id = f"{_LENS_JOB_PREFIX}{lens_id}"
+        cron = trigger.get("cron")
+        interval_min = trigger.get("interval_min")
+        try:
+            if cron:
+                fields = _cron_kwargs(cron)
+                if fields is None:
+                    logger.warning("register_lens_schedules: lens %s has a malformed cron, skipping", lens_id)
+                    continue
+                scheduler.add_job(
+                    _make_callback(lens), trigger="cron", id=job_id,
+                    replace_existing=True, **fields)
+            elif interval_min:
+                scheduler.add_job(
+                    _make_callback(lens), trigger="interval", minutes=interval_min,
+                    id=job_id, replace_existing=True)
+            else:
+                # Neither cron nor interval_min -- shouldn't happen for a
+                # store-validated lens (XOR enforced at validation time),
+                # but skip defensively rather than register a no-op job.
+                continue
+        except Exception:
+            # A shape-valid but value-invalid cron (e.g. hour=99) surfaces
+            # here as APScheduler's own ValueError at add_job time -- one
+            # broken lens's schedule must never crash registration for the
+            # rest.
+            logger.warning("register_lens_schedules: failed to schedule lens %s, skipping", lens_id, exc_info=True)
+            continue
 
 
 async def _on_startup(app: web.Application) -> None:
@@ -1021,6 +1197,16 @@ async def _on_startup(app: web.Application) -> None:
         )
 
     app["run_lens"] = _run_lens
+
+    # ── Lenti definite dall'utente (Slice 5b, Task 5): trigger SCHEDULATO ───
+    # `register_lens_schedules` (module-level, above) reads `app["run_lens"]`
+    # (just bound) and `engine._scheduler` (already started, `engine.start()`
+    # ran earlier in this function) to (re)register a per-lens cron/interval
+    # job for every enabled schedule-type lens. Exposed on `app` so Task 6's
+    # CRUD handlers can re-invoke it after every lens save/delete without a
+    # server.py import (avoids a circular import back from api/handlers_*.py).
+    app["register_lens_schedules"] = register_lens_schedules
+    await register_lens_schedules(app)
 
     # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
     # runner remoto. execute_decision applica una Decisione GIA' PRESA dal
