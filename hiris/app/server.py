@@ -47,6 +47,7 @@ from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
 from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
+from .brain.reasoner_memory import relevant_memory
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
@@ -626,6 +627,45 @@ async def register_lens_schedules(app: web.Application) -> None:
             continue
 
 
+async def _reason_memory_context(
+    app: web.Application, embedder, wake, friendly_name: str,
+) -> list[str]:
+    """Slice 6b Task 4: bounded, egress-gated memory snippets for the
+    sentinel/situation reasoner's context.
+
+    Extracted to module level (instead of inlined in the `_gather_context`
+    closure inside `_on_startup`) specifically so it is unit-testable with a
+    plain dict standing in for `app` -- `_gather_context` itself is a
+    closure over `_on_startup`'s locals and isn't independently reachable
+    from tests. `app` only needs `.get("knowledge_store")` and
+    `.get("llm_router")`, both of which a dict provides.
+
+    The egress gate: memory that isn't `sensitivity='normal'` is only
+    included when `LLMRouter.automatic_allows_sensitive()` reports the
+    whole automatic backend chain is local (Task 1) -- this feeds the
+    proactive reasoner's `_llm_reason` -> `run_with_actions` (automatic
+    mode) path exclusively; it never routes through `simple_chat` or a
+    forced non-auto model.
+
+    Failure-safe: relevant_memory() itself never raises (see
+    reasoner_memory.py), but router.automatic_allows_sensitive() or a
+    malformed `wake` could -- so this is wrapped too, degrading to []
+    rather than ever bubbling an exception into `_gather_context`.
+    """
+    try:
+        knowledge_store = app.get("knowledge_store") if app is not None else None
+        router = app.get("llm_router") if app is not None else None
+        allow_sensitive = router.automatic_allows_sensitive() if router is not None else False
+        query_text = f"{friendly_name} {wake.signal_kind}"
+        return await relevant_memory(
+            knowledge_store, embedder,
+            query_text=query_text, allow_sensitive=allow_sensitive,
+        )
+    except Exception:
+        logger.warning("_reason_memory_context: memory retrieval failed", exc_info=True)
+        return []
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner
     from .proxy.semantic_map import SemanticMap
@@ -1049,16 +1089,27 @@ async def _on_startup(app: web.Application) -> None:
     suggestion_store = SuggestionStore(os.path.join(data_dir, "suggestions.db"))
     app["suggestion_store"] = suggestion_store
 
-    def _gather_context(wake) -> dict:
-        # Synchronous, non-throwing: best-effort friendly_name from the entity
-        # cache; falls back to the raw entity_id when unavailable.
+    async def _gather_context(wake) -> dict:
+        # Best-effort friendly_name from the entity cache; falls back to the
+        # raw entity_id when unavailable. This part is unchanged from before
+        # Task 4 and stays non-throwing on its own.
         try:
             cache = app.get("entity_cache")
             state = cache.get_state(wake.entity_id) if cache is not None else None
             fn = (state or {}).get("attributes", {}).get("friendly_name") if state else None
-            return {"friendly_name": fn or wake.entity_id}
+            friendly_name = fn or wake.entity_id
         except Exception:
             return {"friendly_name": wake.entity_id}
+
+        # Slice 6b Task 4: bounded, egress-gated memory recall added on top.
+        # _reason_memory_context is itself failure-safe (never raises), but
+        # this call is never allowed to prevent returning at least
+        # {"friendly_name": ...} exactly like before Task 4.
+        try:
+            mem = await _reason_memory_context(app, embedder, wake, friendly_name)
+        except Exception:
+            return {"friendly_name": friendly_name}
+        return {"friendly_name": friendly_name, "memory": mem}
 
     async def _llm_reason(system, user, *, model, max_tokens):
         # allowed_tools=[] → this reasoning call performs NO home actions; the
