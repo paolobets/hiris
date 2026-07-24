@@ -57,7 +57,7 @@ def _tune_text(detector: str, entity: str, params: dict, baseline: dict) -> str:
 
 async def auto_tune_detectors(
     *, data_dir: str, policy: dict, history_store, knowledge_store, embedder,
-    cap: int = BRAIN_TUNE_CAP,
+    cap: int = BRAIN_TUNE_CAP, store=None,
 ) -> list[dict]:
     """Auto-tune enabled LEARNABLE detectors from history baselines.
 
@@ -65,6 +65,19 @@ async def auto_tune_detectors(
     apply_brain_detector, record_brain_action) is caught, logged, and
     skipped -- the round continues with the next entity. Returns the list
     of {"detector", "entity", "params"} actually applied, up to `cap`.
+
+    `store` (a brain.suggestions.SuggestionStore), if given, ALSO records
+    each applied tuning as a kind="coverage"/status="applied" row -- the
+    exact shape apply_suggestions uses for auto-applied coverage -- with
+    delta.source_ref="brain-tune:<detector>:<entity>". This is what makes a
+    directly-applied tuning (unlike a coverage suggestion, it is never routed
+    through apply_suggestions/SuggestionStore.record on its own) show up in
+    the existing "Suggerimenti del cervello" list and be undoable via the
+    existing POST /api/suggestions/{id}/undo route (Slice 6 Task 5), with NO
+    new API surface or UI needed -- sentinel-route.js already renders an
+    "Annulla" button for any row with kind=="coverage" and status=="applied".
+    Optional and best-effort: a failure recording this row never blocks the
+    tuning itself (already applied by this point) or its brain-action trace.
     """
     applied: list[dict] = []
     detectors_cfg = (policy or {}).get("detectors") if isinstance(policy, dict) else None
@@ -100,6 +113,25 @@ async def auto_tune_detectors(
                 # never leave the cap unbound -- see feedback in this file's
                 # module docstring re: per-item failure isolation.
                 applied.append({"detector": detector, "entity": entity, "params": params})
+
+                if store is not None:
+                    try:
+                        store.record(
+                            "coverage",
+                            f"Taratura {detector}: {entity}",
+                            _tune_text(detector, entity, params, baseline),
+                            {"detector": detector, "entity": entity, **params},
+                            "applied",
+                            {"detector": detector, "entity": entity,
+                             "source_ref": f"brain-tune:{detector}:{entity}"},
+                        )
+                    except Exception:
+                        logger.exception(
+                            "auto_tune_detectors: suggestion-store record failed for "
+                            "detector=%s entity=%s (tuning already applied and counted)",
+                            detector, entity,
+                        )
+
                 try:
                     await record_brain_action(
                         knowledge_store, embedder,

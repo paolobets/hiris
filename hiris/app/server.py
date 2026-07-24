@@ -1417,7 +1417,12 @@ async def _on_startup(app: web.Application) -> None:
                     data_dir=data_dir, policy=load_policy(data_dir),
                     history_store=history_store, knowledge_store=knowledge_store,
                     embedder=embedder,
-                    cap=int(os.environ.get("BRAIN_TUNE_CAP", "5")))
+                    cap=int(os.environ.get("BRAIN_TUNE_CAP", "5")),
+                    # Slice 6 Task 5: surface applied tunings in the same
+                    # "Suggerimenti del cervello" store/UI as coverage
+                    # suggestions, so they are undoable via the existing
+                    # /api/suggestions/{id}/undo route.
+                    store=_store)
         except Exception:
             logger.exception("coverage-review failed")
 

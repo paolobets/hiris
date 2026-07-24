@@ -9,7 +9,9 @@ embedder) -- only the LLM reasoning itself would ever be mocked, and this
 module doesn't touch that at all (learned_threshold is pure/deterministic).
 """
 import pytest
+from aiohttp import web
 
+from hiris.app.api.handlers_suggestions import handle_undo_suggestion
 from hiris.app.brain.cognitive_loop import (
     BRAIN_TUNE_CAP,
     auto_tune_detectors,
@@ -17,6 +19,7 @@ from hiris.app.brain.cognitive_loop import (
 )
 from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.brain.suggestions import SuggestionStore, apply_suggestions
+from hiris.app.tools.dispatcher import ToolDispatcher
 from hiris.app.watcher.policy import load_policy, save_policy
 
 
@@ -262,3 +265,140 @@ async def test_management_suggestion_writes_no_trace(tmp_path, kstore):
         assert kstore.list_items(kind="brain-action") == []
     finally:
         store.close()
+
+
+# ---------------------------------------------------------------------------
+# Slice 6 Task 5: undo of a directly-applied tuning also removes its trace.
+#
+# auto_tune_detectors (Task 4) applies a tuning by calling apply_brain_detector
+# DIRECTLY -- it never goes through apply_suggestions/SuggestionStore.record on
+# its own, so (unlike a coverage suggestion) there is no suggestion row and
+# hence no {id} for the existing POST /api/suggestions/{id}/undo route to key
+# off. The fix: when a SuggestionStore is passed to auto_tune_detectors, it
+# ALSO records the applied tuning as a kind="coverage"/status="applied" row
+# (delta.source_ref="brain-tune:<detector>:<entity>") -- the exact shape
+# apply_suggestions already uses, so the EXISTING undo route/UI (sentinel-
+# route.js renders "Annulla" for any kind="coverage"+status="applied" row)
+# handles it with no new API surface.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tuning_recorded_as_undoable_suggestion_row(tmp_path, kstore):
+    dd = str(tmp_path)
+    _enable_power(dd, ["sensor.plug_power"])
+    history = _FakeHistoryStore({
+        "sensor.plug_power": {"mean": 800.0, "on_hours": None, "n_days": 14},
+    })
+    sstore = SuggestionStore(str(tmp_path / "s.db"))
+    try:
+        applied = await auto_tune_detectors(
+            data_dir=dd, policy=load_policy(dd), history_store=history,
+            knowledge_store=kstore, embedder=_FakeEmbedder(), store=sstore,
+        )
+        assert applied == [{"detector": "power", "entity": "sensor.plug_power",
+                            "params": {"max_watt": 1600}}]
+
+        rows = sstore.list()
+        assert len(rows) == 1
+        assert rows[0]["kind"] == "coverage"
+        assert rows[0]["status"] == "applied"
+        assert rows[0]["delta"] == {
+            "detector": "power", "entity": "sensor.plug_power",
+            "source_ref": "brain-tune:power:sensor.plug_power",
+        }
+    finally:
+        sstore.close()
+
+
+@pytest.mark.asyncio
+async def test_no_store_passed_skips_suggestion_row_backward_compat(tmp_path, kstore):
+    """store defaults to None -- existing callers (and the tests above) that
+    don't pass it keep working exactly as before Task 5."""
+    dd = str(tmp_path)
+    _enable_power(dd, ["sensor.plug_power"])
+    history = _FakeHistoryStore({
+        "sensor.plug_power": {"mean": 800.0, "on_hours": None, "n_days": 14},
+    })
+    applied = await auto_tune_detectors(
+        data_dir=dd, policy=load_policy(dd), history_store=history,
+        knowledge_store=kstore, embedder=_FakeEmbedder(),
+    )
+    assert applied == [{"detector": "power", "entity": "sensor.plug_power",
+                        "params": {"max_watt": 1600}}]
+    assert len(kstore.list_items(kind="brain-action")) == 1
+
+
+@pytest.mark.asyncio
+async def test_recall_finds_tune_trace_then_real_undo_removes_config_and_trace(
+    tmp_path, kstore, aiohttp_client,
+):
+    """Full Task 5 flow, end to end:
+      1. Apply a tuning (Task 4 path) with a SuggestionStore wired in.
+      2. BEFORE undo: the REAL chat recall path (ToolDispatcher.dispatch("recall_
+         knowledge", ...), not a raw store call) finds the brain-action trace on
+         a consumption-related query.
+      3. Undo via the REAL API route (handle_undo_suggestion / POST
+         /api/suggestions/{id}/undo) -- not a direct call to internal helpers.
+      4. AFTER undo: the detector config reverts to its pre-tuning value in the
+         sidecar (watcher.policy), AND recall no longer finds the trace.
+    """
+    dd = str(tmp_path)
+    _enable_power(dd, ["sensor.plug_power"], max_watt=3000)
+    history = _FakeHistoryStore({
+        "sensor.plug_power": {"mean": 800.0, "on_hours": None, "n_days": 14},
+    })
+    emb = _FakeEmbedder()
+    sstore = SuggestionStore(str(tmp_path / "s.db"))
+    try:
+        applied = await auto_tune_detectors(
+            data_dir=dd, policy=load_policy(dd), history_store=history,
+            knowledge_store=kstore, embedder=emb, store=sstore,
+        )
+        assert applied == [{"detector": "power", "entity": "sensor.plug_power",
+                            "params": {"max_watt": 1600}}]
+        assert load_policy(dd)["detectors"]["power"]["max_watt"] == 1600
+
+        rows = sstore.list()
+        assert len(rows) == 1
+        sid = rows[0]["id"]
+
+        # (2) Real chat recall path, BEFORE undo: recall_knowledge must surface
+        # the brain-action trace for a consumption query -- kind is NOT
+        # restricted to exclude "brain-action" (knowledge_kinds=None default).
+        dispatcher = ToolDispatcher(None, {}, knowledge_store=kstore, embedder=emb)
+        before = await dispatcher.dispatch(
+            "recall_knowledge", {"query": "consumo energetico della presa"},
+            user_id="home",
+        )
+        assert any(r["kind"] == "brain-action" for r in before["results"]), before
+
+        # (3) Real undo route.
+        app = web.Application()
+        app["suggestion_store"] = sstore
+        app["data_dir"] = dd
+        app["knowledge_store"] = kstore
+        app.router.add_post("/api/suggestions/{id}/undo", handle_undo_suggestion)
+        client = await aiohttp_client(app)
+        resp = await client.post(f"/api/suggestions/{sid}/undo")
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["ok"] is True
+
+        # (4a) Detector reverts via the EXISTING, unchanged remove_brain_detector
+        # contract (Task 5 reuses it as-is, per the brief: "remove_brain_detector
+        # esistente"): the entity is dropped from the sidecar-tracked coverage,
+        # exactly like undoing an auto-applied coverage suggestion.
+        pol = load_policy(dd)
+        assert "sensor.plug_power" not in pol["detectors"]["power"].get("entities", [])
+        assert sstore.get(sid)["status"] == "dismissed"
+
+        # (4b) Trace gone: recall no longer finds it via the real chat path.
+        after = await dispatcher.dispatch(
+            "recall_knowledge", {"query": "consumo energetico della presa"},
+            user_id="home",
+        )
+        assert not any(r["kind"] == "brain-action" for r in after["results"]), after
+        assert kstore.list_items(kind="brain-action") == []
+    finally:
+        sstore.close()

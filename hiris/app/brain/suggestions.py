@@ -131,6 +131,11 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
             params = {k: v for k, v in config.items()
                       if k not in ("detector", "entity", "enabled", "entities")}
             delta = apply_brain_detector(data_dir, detector, entity, params)
+            # Slice 6 Task 5: stamp the brain-action source_ref this row's
+            # undo must remove, so handle_undo_suggestion doesn't have to
+            # guess it from (detector, entity) -- see trace_applied_coverage
+            # in cognitive_loop.py, which writes exactly this source_ref.
+            delta["source_ref"] = f"brain-coverage:{detector}:{entity}"
             suggestion_id = store.record(kind, title, rationale, config, "applied", delta)
             applied_count += 1
             row = store.get(suggestion_id)
