@@ -822,7 +822,7 @@ async def _on_startup(app: web.Application) -> None:
         if runner is None or not hasattr(runner, "run_with_actions"):
             return ""
         out = await runner.run_with_actions(
-            user_message=user, system_prompt=system, action_mode="automatic",
+            user_message=user, system_prompt=system,
             allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
         if isinstance(out, tuple):
             return out[0] or ""

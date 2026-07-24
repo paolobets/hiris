@@ -5,10 +5,9 @@ from hiris.app.agent_engine import Agent
 
 def _make_agent(**kwargs):
     defaults = dict(
-        id="test-001", name="Test Agent", type="chat",
-        triggers=[], system_prompt="",
+        id="test-001", name="Test Agent",
+        system_prompt="",
         allowed_tools=[], enabled=True, last_run=None,
-        budget_eur_limit=5.0,
     )
     defaults.update(kwargs)
     return Agent(**defaults)
@@ -82,3 +81,61 @@ def test_is_auth_error_ignores_network_errors():
     assert not pub._is_auth_error(Exception("[code:1] Unacceptable protocol version"))
     assert not pub._is_auth_error(Exception("Connection refused: server unavailable"))
     assert not pub._is_auth_error(Exception("TimeoutError"))
+
+
+# ---------------------------------------------------------------------------
+# Slice 5 Task 2 — MQTT residue: the "enabled" switch and "run_now" button
+# had a command_topic with no listener (Task 1 removed the command
+# callback). publish_discovery must stop advertising them as live controls
+# and instead publish a removal (empty payload) on their old discovery
+# topics so HA drops any already-discovered entity.
+# ---------------------------------------------------------------------------
+
+async def _drain(pub):
+    topics = {}
+    while not pub._pending.empty():
+        topic, payload = pub._pending.get_nowait()
+        topics[topic] = payload
+    return topics
+
+
+@pytest.mark.asyncio
+async def test_publish_discovery_removes_stale_command_entities():
+    pub = MQTTPublisher()
+    pub._enabled = True
+    agent = _make_agent()
+    await pub.publish_discovery(agent)
+    topics = await _drain(pub)
+
+    switch_topic = "homeassistant/switch/hiris_test-001_enabled/config"
+    button_topic = "homeassistant/button/hiris_test-001_run_now/config"
+    assert switch_topic in topics
+    assert topics[switch_topic] == ""  # empty payload → HA drops the entity
+    assert button_topic in topics
+    assert topics[button_topic] == ""
+
+
+@pytest.mark.asyncio
+async def test_publish_discovery_keeps_enabled_as_read_only_sensor():
+    pub = MQTTPublisher()
+    pub._enabled = True
+    agent = _make_agent()
+    await pub.publish_discovery(agent)
+    topics = await _drain(pub)
+
+    sensor_topic = "homeassistant/sensor/hiris_test-001_enabled/config"
+    assert sensor_topic in topics
+    import json
+    payload = json.loads(topics[sensor_topic])
+    assert payload["state_topic"] == "hiris/agents/test-001/enabled"
+    assert "command_topic" not in payload  # read-only now, not a control
+
+
+@pytest.mark.asyncio
+async def test_publish_discovery_does_not_crash_without_agent_type():
+    """Regression: `_build_discovery_payload` used to read `agent.type` for
+    the device "model" field — Agent no longer has that attribute."""
+    pub = MQTTPublisher()
+    pub._enabled = True
+    agent = _make_agent()
+    await pub.publish_discovery(agent)  # must not raise AttributeError

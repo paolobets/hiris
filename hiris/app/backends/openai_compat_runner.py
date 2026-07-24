@@ -16,7 +16,6 @@ from ..claude_runner import (
     EVALUATION_ONLY_TOOLS,
     RESTRICT_PROMPT,
     REQUIRE_CONFIRMATION_PROMPT,
-    _parse_structured_output,
     _redact_stream_tool_calls,
 )
 from .pricing import PRICING as _PRICING
@@ -896,9 +895,6 @@ class OpenAICompatRunner:
         self,
         user_message: str,
         system_prompt: str,
-        action_mode: str = "automatic",
-        states: Optional[list[str]] = None,
-        rules: Optional[list[dict]] = None,
         allowed_tools: Optional[list[str]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
@@ -915,6 +911,13 @@ class OpenAICompatRunner:
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> tuple[str, dict]:
+        """Run a tool-restricted evaluation pass — used solely by the Sentinella.
+
+        Mirrors ``ClaudeRunner.run_with_actions`` (see its docstring): Slice 5
+        retired the action/rules machinery, so this is a plain agentic loop
+        restricted to read-only (``EVALUATION_ONLY_TOOLS``) tools that returns
+        the model's raw text unmodified.
+        """
         # thinking_budget accepted for runner-contract symmetry with
         # ClaudeRunner; not applicable on OpenAI-compat APIs (Ollama uses
         # extra_body think:false instead, applied unconditionally in chat()).
@@ -923,43 +926,9 @@ class OpenAICompatRunner:
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]
 
-        _states = states if states else ["OK", "ATTENZIONE", "ANOMALIA"]
-        states_str = "|".join(_states)
-        motivazione = "1 riga sintetica" if response_mode == "minimal" else "1-2 righe sintetiche"
-
-        if action_mode == "automatic":
-            eval_instruction = (
-                "\n\n---\n"
-                "ISTRUZIONI DI RISPOSTA:\n"
-                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
-                f"VALUTAZIONE: {states_str}\n"
-                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
-                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]\n"
-                "AZIONI:\n"
-                "[una azione per riga — formato: comando entità [valore]]\n\n"
-                "Comandi AZIONI (vanno scritti in testo nel blocco AZIONI:, NON come tool calls):\n"
-                "  turn_on <entity_id>\n"
-                "  turn_off <entity_id>\n"
-                "  set_value <entity_id> <value>\n"
-                "  wait <minuti>\n"
-                "  notify <channel> <message>\n"
-                "  call_service <domain.service> <entity_id> [key=value ...]\n\n"
-                "Se non sono necessarie azioni ometti il blocco AZIONI: completamente."
-            )
-        else:  # configured
-            eval_instruction = (
-                "\n\n---\n"
-                "ISTRUZIONI DI RISPOSTA:\n"
-                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
-                f"VALUTAZIONE: {states_str}\n"
-                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
-                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]"
-            )
-
-        augmented_prompt = system_prompt + eval_instruction
         raw_result = await self.chat(
             user_message=user_message,
-            system_prompt=augmented_prompt,
+            system_prompt=system_prompt,
             allowed_tools=eval_tools,
             allowed_entities=allowed_entities,
             allowed_services=allowed_services,
@@ -975,5 +944,9 @@ class OpenAICompatRunner:
             knowledge_kinds=knowledge_kinds,
             user_id=user_id,
         )
-        clean_text, structured = _parse_structured_output(raw_result)
+        # Slice 5 Task 2: dropped the _parse_structured_output scanning pass
+        # (mirrors ClaudeRunner.run_with_actions — see its comment) — nothing
+        # emits VALUTAZIONE/NOTIFICA/PARAM/AZIONI markers anymore.
+        clean_text = raw_result.rstrip() if isinstance(raw_result, str) else raw_result
+        structured = {"valutazione": None, "notifica": None, "params": {}, "azioni": []}
         return clean_text, structured

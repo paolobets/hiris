@@ -67,11 +67,14 @@ async def test_scheduled_chat_agent_run_passes_mode_automatic_to_runner(engine):
 
 
 @pytest.mark.asyncio
-async def test_agent_type_run_does_not_pass_mode_explicitly(engine):
-    """agent_engine.py:910 (type=='agent') relies on run_with_actions' own
-    default (automatic) and must not need to pass mode explicitly."""
+async def test_agent_type_run_uses_chat_with_mode_automatic(engine):
+    """Slice 5: AgentEngine no longer calls run_with_actions at all — every
+    agent type (including the legacy 'agent' type) runs through the plain
+    chat() path and passes mode="automatic" for router backend-policy
+    selection, same as 'chat'-type agents."""
     mock_runner = AsyncMock()
-    mock_runner.run_with_actions = AsyncMock(return_value=("result", {}))
+    mock_runner.chat = AsyncMock(return_value="result")
+    mock_runner.run_with_actions = AsyncMock(return_value=("should not be used", {}))
     mock_runner.last_tool_calls = []
     mock_runner.total_input_tokens = 0
     mock_runner.total_output_tokens = 0
@@ -85,5 +88,7 @@ async def test_agent_type_run_does_not_pass_mode_explicitly(engine):
     })
     await engine.run_agent(agent)
 
-    call_kwargs = mock_runner.run_with_actions.call_args.kwargs
-    assert "mode" not in call_kwargs
+    mock_runner.run_with_actions.assert_not_called()
+    call_kwargs = mock_runner.chat.call_args.kwargs
+    assert call_kwargs["mode"] == "automatic"
+    assert call_kwargs["model"] == "auto"

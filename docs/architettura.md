@@ -1,6 +1,6 @@
 # HIRIS — Architettura Tecnica
 
-> Versione: 0.22.1 · Aggiornato: 2026-07-17
+> Versione: 0.33.0 · Aggiornato: 2026-07-24
 
 ---
 
@@ -36,7 +36,7 @@ Il sistema è strutturato in tre livelli logici:
 hiris/app/
 ├── server.py                    Factory applicazione, lifecycle startup/cleanup
 ├── routes.py                    Registrazione route
-├── agent_engine.py              Scheduler agenti, macchina a stati, esecutore azioni
+├── agent_engine.py              Store personas (CRUD, esecuzione manuale) — niente scheduling/azioni autonome
 ├── claude_runner.py             Loop agentico Anthropic SDK
 ├── llm_router.py                Routing backend, strategia, catena di fallback
 ├── task_engine.py               Esecuzione task differiti (delay/cron/time_window)
@@ -89,7 +89,9 @@ hiris/app/
 │                                 personale/condivisa + memoria di lavoro per-agente "lens",
 │                                 ricerca vettoriale
 │
-├── mqtt_publisher.py            Discovery MQTT + pubblicazione stati + subscribe comandi
+├── watcher/                     Sentinella — lenti proattive built-in (detector/situazioni),
+│                                 reasoner, executor, semaforo (invariata in questa fetta)
+├── mqtt_publisher.py            Discovery MQTT + pubblicazione stati (solo outbound — niente subscribe comandi)
 └── static/
     ├── index.html               Interfaccia chat
     └── config.html              Designer agenti
@@ -152,43 +154,48 @@ Risposta: {response, debug: {tools_called}}
 
 ---
 
-## Ciclo di vita di un agente
+## Ciclo di vita della Sentinella (livello proattivo)
+
+Non esiste più un "agente" autonomo — niente scheduler, niente macchina a
+stati/regole, niente canale comandi MQTT. L'unico livello proattivo è la
+**Sentinella** (`hiris/app/watcher/`, invariata in questa fetta): un set fisso
+di **lenti** built-in ma tarabili (detector/situazioni), ciascuna abilitabile
+singolarmente con il proprio selettore entità e le proprie soglie in
+`sentinel_policy.json` (config UI: pagina Sentinella). Le lenti definite
+dall'utente (trigger/prompt personalizzati) sono previste in una versione
+successiva.
 
 ```
-AgentEngine
+watcher/
     │
-    ├── Job APScheduler (monitor, preventive)
-    │       │
-    │       └── _run_agent(agent_id)
-    │               │
-    │               ├── controllo budget → auto-disable se superato
-    │               ├── LLMRouter.run_with_actions()
-    │               │       │
-    │               │       └── ClaudeRunner / OpenAICompatRunner
-    │               │               (solo EVALUATION_ONLY_TOOLS per agenti non-chat)
-    │               │
-    │               ├── analizza VALUTAZIONE: OK|ATTENZIONE|ANOMALIA
-    │               │
-    │               ├── se status in agent.trigger_on:
-    │               │       └── _execute_agent_actions()
-    │               │               │
-    │               │               ├── azione notify → ToolDispatcher
-    │               │               ├── azione call_service → ToolDispatcher
-    │               │               ├── azione wait → TaskEngine.schedule(delay)
-    │               │               └── azione verify → riesegui agente con prompt verifica
-    │               │
-    │               └── pubblicazione MQTT: status, last_result, tokens_used_today
+    ├── state_changed WebSocket HA → detectors.py
+    │       └── opening / fridge_temp / power / battery
+    │               → Signal(kind, entity_id, severity, evidence)
     │
-    ├── Listener WebSocket HA (agenti reattivi)
-    │       │
-    │       └── eventi state_changed → filtra per agent.trigger.entity_id
-    │               └── _run_agent(agent_id)
+    ├── Snapshot periodico (snapshot.py) → situations.py / arrival.py
+    │       └── hot_and_away / away_alarm_off / evening_arrival
+    │               → SituationSignal / WakeEvent
     │
-    └── Subscriber comandi MQTT
+    ├── guardian.py / evaluator.py — gate cooldown + tetto giornaliero (wake.py)
+    │       prima che un segnale possa "svegliare" il reasoner
+    │
+    └── reasoner.py
+            │  LLMRouter.run_with_actions(allowed_tools=[], ...) — single-shot,
+            │  ristretto a EVALUATION_ONLY_TOOLS, parsa il proprio blocco
+            │  ```json``` (verdict/message/action) dalla risposta del modello
+            ▼
+        Decision {verdict, message, action?}
             │
-            └── hiris/agents/+/enabled/set → abilita/disabilita agente
-                hiris/agents/+/run_now/set → esecuzione immediata
+            └── executor.py
+                    ├── semaforo (`security/semaphore.py`) — gate tier
+                    │       (green/yellow/red/off) + denylist domini pericolosi
+                    │       (lock, alarm_control_panel, cover, siren, garage_door)
+                    ├── notify → ToolDispatcher
+                    └── act (solo se il semaforo lo consente) → ToolDispatcher
 ```
+
+La chat (Personas) è un percorso separato, sempre su richiesta — vedi "Ciclo
+di vita di una richiesta chat" sopra; non ha scheduling proprio.
 
 ---
 
@@ -256,7 +263,7 @@ questa tabella al primo avvio di questa versione.
 
 | File | Schema |
 |---|---|
-| `agents.json` | `[{id, name, type, trigger, system_prompt, strategic_context, allowed_tools, allowed_entities, allowed_services, allowed_endpoints, model, max_tokens, budget_eur_limit, ...}]` |
+| `agents.json` | `[{id, name, enabled, is_default, system_prompt, strategic_context, allowed_tools, allowed_entities, allowed_services, allowed_endpoints, restrict_to_home, knowledge_access, model, max_tokens, thinking_budget, response_mode, require_confirmation, max_chat_turns, last_run, last_result, execution_log, ...}]` (personas — niente `type`/`triggers`/`action_mode`/`rules`/`states`/`budget_eur_limit`) |
 | `usage.json` | `{schema_version, total_input_tokens, total_output_tokens, total_requests, total_cost_usd, last_reset, per_agent: {agent_id: {...}}}` |
 | `home_semantic_map.json` | `{entity_id: {role, label, confidence, classified_at}}` |
 | `ha_health.json` | `{last_updated, unavailable_entities, integration_errors, error_log_summary, updates_available, system_info}` — snapshot HealthMonitor |
@@ -340,8 +347,8 @@ Ogni chiamata tool passa per `ToolDispatcher.dispatch()`:
 1. **Filtro entità** — pattern glob `allowed_entities` applicati a `get_entity_states`, `get_home_status`, `get_entities_on`, `get_entities_by_domain`
 2. **Filtro servizi** — pattern glob `allowed_services` verificati prima di ogni `call_ha_service`
 3. **Filtro endpoint** — `http_request` nascosto da Claude se `allowed_endpoints` non è configurato; ogni chiamata validata contro la lista consentita
-4. **Controllo budget** — agente auto-disabilitato se `total_cost_usd * EUR_RATE > budget_eur_limit`
-5. **Scope memoria** — `save_memory` disponibile solo per agenti chat (monitor/reattivi/preventivi possono solo `recall_memory`)
+4. **Tracciamento consumi** — costo/token tracciati per persona (`get_agent_usage`) e pubblicati via MQTT/UI; non esiste più un tetto di budget per persona né un auto-disable (rimosso insieme ai campi agente ritirati — `budget_remaining_eur` riporta sempre `"unlimited"`)
+5. **Scope memoria** — `save_memory` è disponibile alle personas (chat), governato da `knowledge_access`; il reasoner single-shot della Sentinella è ristretto a `EVALUATION_ONLY_TOOLS`, che esclude `save_memory` (chiama solo `recall_memory`)
 
 ### Protezione SSRF (`http_tools.py`)
 
@@ -382,29 +389,41 @@ Il campo `debug.tools_called` nelle risposte API è ridotto ai soli nomi dei too
 
 ## Architettura del bridge MQTT
 
+Solo outbound: HIRIS pubblica discovery + stato verso Home Assistant via
+MQTT e non si sottoscrive a nulla. Non esistono più topic di comando — la
+coppia switch/button `enabled`/`run_now` (e lo scheduler/esecuzione
+autonoma che pilotavano) è stata ritirata; il flag `enabled` di una persona
+ora è esposto come semplice sensore read-only.
+
 ```
 AgentEngine
     │
-    └── MQTTPublisher
+    └── MQTTPublisher (solo outbound — nessuna sottoscrizione)
             │
             ├── Messaggi Discovery (retain=True)
             │   homeassistant/sensor/hiris_{id}_status/config
             │   homeassistant/sensor/hiris_{id}_last_run/config
+            │   homeassistant/sensor/hiris_{id}_last_result/config
             │   homeassistant/sensor/hiris_{id}_budget_eur/config
-            │   homeassistant/switch/hiris_{id}_enabled/config
-            │   homeassistant/button/hiris_{id}_run_now/config
+            │   homeassistant/sensor/hiris_{id}_budget_remaining_eur/config
+            │   homeassistant/sensor/hiris_{id}_tokens_used_today/config
+            │   homeassistant/sensor/hiris_{id}_enabled/config       (read-only)
             │
-            ├── Aggiornamenti stato (ad ogni esecuzione agente)
-            │   hiris/agents/{id}/status          → idle|running|error|disabled
-            │   hiris/agents/{id}/last_run         → ISO 8601
-            │   hiris/agents/{id}/last_result      → testo troncato (255 char)
-            │   hiris/agents/{id}/budget_remaining → float EUR
-            │   hiris/agents/{id}/tokens_today     → int (reset giornaliero)
-            │
-            └── Sottoscrizioni comandi (2 vie)
-                hiris/agents/{id}/enabled/set  → "true"|"false"
-                hiris/agents/{id}/run_now/set  → "trigger"
+            └── Aggiornamenti stato (ad ogni esecuzione agente)
+                hiris/agents/{id}/status               → idle|running|error|disabled
+                hiris/agents/{id}/enabled               → "ON"|"OFF" (sensore read-only)
+                hiris/agents/{id}/last_run              → ISO 8601
+                hiris/agents/{id}/last_result           → testo troncato (255 char)
+                hiris/agents/{id}/budget_eur             → float EUR
+                hiris/agents/{id}/budget_remaining_eur  → float EUR (o "unlimited")
+                hiris/agents/{id}/tokens_used_today     → int (reset giornaliero)
 ```
+
+All'avvio, HIRIS pubblica anche un payload discovery vuoto sui vecchi topic
+`homeassistant/switch/hiris_{id}_enabled/config` e
+`homeassistant/button/hiris_{id}_run_now/config`, così Home Assistant rimuove
+le entità di controllo ormai inerti da qualunque installazione in upgrade da
+una release precedente a Slice 5.
 
 Riconnessione usa backoff esponenziale. Tutti i publish di stato sono fire-and-forget (non bloccanti via `run_in_executor`).
 

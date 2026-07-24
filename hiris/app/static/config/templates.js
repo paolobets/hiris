@@ -1,5 +1,7 @@
 /* HIRIS · Designer · templates + tool/action catalogs
-   TEMPLATES seeds the f-template dropdown.
+   TEMPLATES seeds the f-template dropdown (prompt + strategic_context only —
+   Task 4/Slice 5 dropped the agent-type/trigger/states preset fields along
+   with the action/trigger machinery).
    TOOLS, ACTIONS feed buildToolChecks / buildActionChecks (in permessi.js). */
 
 var TEMPLATES = [
@@ -30,12 +32,8 @@ var TEMPLATES = [
   {
     id: 'irrigation',
     label: 'Irrigazione Giardino',
-    type: 'agent',
-    triggers: [{type: 'cron', cron: '0 5 * * *'}],
-    states: ['SKIP', 'LEGGERA', 'PIENA'],
-    trigger_on: ['LEGGERA', 'PIENA'],
     strategic: 'ZONE DI IRRIGAZIONE:\n[Descrivi qui le zone — usa valve.* se disponibile (HA 2023.9+), altrimenti switch.*]\n[Es. "Prato nord" valve.irrigazione_prato_nord, "Aiuole" valve.irrigazione_aiuole]\n[Indica posizione e tipo di terreno: es. "Prato nord — terreno argilloso, esposizione sole pieno"]\n\nSENSOR METEO:\n- Pioggia recente: search_entities("pioggia") o search_entities("precipitazione")\n- Umidità suolo: search_entities("umidità suolo") per ogni zona se disponibile\n- Meteo: get_weather_forecast(hours=48) per previsioni 2 giorni\n\nSTATI IRRIGAZIONE:\n- SKIP: ha piovuto abbastanza o previste piogge significative oggi/domani\n- LEGGERA: irrigazione breve (10-15 min per zona) — condizioni borderline\n- PIENA: irrigazione completa (20-30 min per zona) — terreno asciutto, nessuna pioggia prevista\n\nSOGLIE PIOGGIA:\n- Pioggia passata 24h > 5mm: SKIP\n- Pioggia passata 48h > 10mm: SKIP o LEGGERA\n- Previsione pioggia oggi > 3mm: SKIP\n- Previsione pioggia domani > 5mm: considera LEGGERA invece di PIENA',
-    prompt: 'Valuta se e quanto irrigare oggi. Controlla le precipitazioni degli ultimi 3 giorni con get_entity_states sui sensori pioggia, le previsioni meteo con get_weather_forecast(hours=48), e l\'umidità del suolo se disponibile.\n\nPer ogni zona decide durata in minuti (0 = salta).\n\nSe decidi di irrigare, usa create_task() per programmare call_ha_service su ogni valvola/switch di zona:\n- Accensione (valve: service=open_valve; switch: service=turn_on): ora attuale + 2 min di buffer\n- Spegnimento (valve: service=close_valve; switch: service=turn_off): accensione + durata zona\n- Sequenza: una zona alla volta per non sovraccaricare la pompa\n\nConcluidi con VALUTAZIONE: SKIP | LEGGERA | PIENA e motiva brevemente la scelta.',
+    prompt: 'Valuta se e quanto irrigare oggi. Controlla le precipitazioni degli ultimi 3 giorni con get_entity_states sui sensori pioggia, le previsioni meteo con get_weather_forecast(hours=48), e l\'umidità del suolo se disponibile.\n\nPer ogni zona decide durata in minuti (0 = salta).\n\nSe decidi di irrigare, usa create_task() per programmare call_ha_service su ogni valvola/switch di zona:\n- Accensione (valve: service=open_valve; switch: service=turn_on): ora attuale + 2 min di buffer\n- Spegnimento (valve: service=close_valve; switch: service=turn_off): accensione + durata zona\n- Sequenza: una zona alla volta per non sovraccaricare la pompa\n\nConcludi indicando per ogni zona se salti l\'irrigazione, la fai leggera o completa, motivando brevemente la scelta.',
   },
 ];
 
@@ -55,14 +53,6 @@ function populateTemplateSelector() {
     if (!tpl) return;
     document.getElementById('f-strategic').value = tpl.strategic || '';
     document.getElementById('f-prompt').value = tpl.prompt || '';
-    if (tpl.type) {
-      document.getElementById('f-type').value = tpl.type;
-      showAgentMode(tpl.type);
-    }
-    if (tpl.triggers) _triggersLoad(tpl.triggers);
-    var tplStates = tpl.states || ['OK', 'ATTENZIONE', 'ANOMALIA'];
-    document.getElementById('f-states').value = tplStates.join(', ');
-    _buildTriggerOnChecks(tplStates, tpl.trigger_on || ['ANOMALIA']);
     e.target.value = '';
   });
 }

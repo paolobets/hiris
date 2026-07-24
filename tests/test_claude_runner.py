@@ -425,125 +425,52 @@ async def test_require_confirmation_combines_with_restrict(runner):
     assert idx_restrict < idx_confirm
 
 
-def test_parse_structured_output_basic():
-    from hiris.app.claude_runner import _parse_structured_output
-    raw = "Il sistema - normale.\n\nVALUTAZIONE: OK\nNOTIFICA: Tutto bene."
-    text, s = _parse_structured_output(raw)
-    assert s["valutazione"] == "OK"
-    assert s["notifica"] == "Tutto bene."
-    assert s["azioni"] == []
-    assert s["params"] == {}
-    assert "Il sistema - normale." in text
-    assert "VALUTAZIONE:" not in text
-
-
-def test_parse_structured_output_anomalia():
-    from hiris.app.claude_runner import _parse_structured_output
-    raw = "Anomalia rilevata.\nVALUTAZIONE: ANOMALIA\nNOTIFICA: Consumo anomalo alle 02:30."
-    text, s = _parse_structured_output(raw)
-    assert s["valutazione"] == "ANOMALIA"
-    assert s["notifica"] == "Consumo anomalo alle 02:30."
-
-
-def test_parse_structured_output_no_block():
-    from hiris.app.claude_runner import _parse_structured_output
-    raw = "Risposta senza struttura"
-    text, s = _parse_structured_output(raw)
-    assert text == raw
-    assert s["valutazione"] is None
-    assert s["notifica"] is None
-    assert s["azioni"] == []
-
-
-def test_parse_structured_output_no_false_positive():
-    from hiris.app.claude_runner import _parse_structured_output
-    # VALUTAZIONE mid-paragraph should NOT be consumed
-    raw = "La VALUTAZIONE: scarsa dell'impianto - allarmante.\n\nVALUTAZIONE: ANOMALIA\nNOTIFICA: notifica"
-    text, s = _parse_structured_output(raw)
-    assert s["valutazione"] == "ANOMALIA"
-    assert "VALUTAZIONE: scarsa" in text
-
-
-def test_parse_structured_output_with_azioni():
-    from hiris.app.claude_runner import _parse_structured_output
-    raw = (
-        "Surplus solare rilevato.\n\n"
-        "VALUTAZIONE: OK\n"
-        "NOTIFICA: Scaldabagno acceso per sfruttare il surplus.\n"
-        "AZIONI:\n"
-        "turn_on switch.water_heater\n"
-        "wait 60\n"
-        "turn_off switch.water_heater"
-    )
-    text, s = _parse_structured_output(raw)
-    assert s["valutazione"] == "OK"
-    assert s["azioni"] == ["turn_on switch.water_heater", "wait 60", "turn_off switch.water_heater"]
-    assert "Surplus solare" in text
-
-
-def test_parse_structured_output_with_params():
-    from hiris.app.claude_runner import _parse_structured_output
-    raw = (
-        "Analisi irrigazione.\n\n"
-        "VALUTAZIONE: LEGGERA\n"
-        "NOTIFICA: Irrigazione breve avviata.\n"
-        "PARAM durata_prato: 15\n"
-        "PARAM durata_aiuole: 10\n"
-        "AZIONI:\n"
-        "turn_on switch.irrigation_lawn"
-    )
-    text, s = _parse_structured_output(raw)
-    assert s["params"] == {"durata_prato": "15", "durata_aiuole": "10"}
-    assert s["azioni"] == ["turn_on switch.irrigation_lawn"]
-
-
 @pytest.mark.asyncio
-async def test_run_with_actions_automatic_mode():
+async def test_run_with_actions_is_plain_agentic_loop():
+    """Slice 5: run_with_actions no longer injects VALUTAZIONE/AZIONI
+    instructions into the system prompt — it passes it through unmodified
+    and returns whatever text the model produced (plus a best-effort
+    structured dict, normally empty since nothing asks for that block)."""
     from unittest.mock import AsyncMock
     from hiris.app.claude_runner import ClaudeRunner
 
     runner = ClaudeRunner.__new__(ClaudeRunner)
-    runner.chat = AsyncMock(return_value=(
-        "Tutto OK.\n\nVALUTAZIONE: OK\nNOTIFICA: Nessun problema.\n"
-        "AZIONI:\nturn_on switch.water_heater"
-    ))
+    runner.chat = AsyncMock(return_value="Tutto OK, nessuna anomalia rilevata.")
 
     text, structured = await runner.run_with_actions(
         user_message="test",
         system_prompt="base system",
-        action_mode="automatic",
     )
 
-    assert structured["valutazione"] == "OK"
-    assert structured["notifica"] == "Nessun problema."
-    assert structured["azioni"] == ["turn_on switch.water_heater"]
-    assert "Tutto OK." in text
+    assert text == "Tutto OK, nessuna anomalia rilevata."
+    assert structured["valutazione"] is None
+    assert structured["azioni"] == []
     call_kwargs = runner.chat.call_args.kwargs
-    assert "VALUTAZIONE:" in call_kwargs["system_prompt"]
-    assert "AZIONI:" in call_kwargs["system_prompt"]
-    assert "base system" in call_kwargs["system_prompt"]
-
-
-@pytest.mark.asyncio
-async def test_run_with_actions_configured_mode():
-    from unittest.mock import AsyncMock
-    from hiris.app.claude_runner import ClaudeRunner
-
-    runner = ClaudeRunner.__new__(ClaudeRunner)
-    runner.chat = AsyncMock(return_value="Analisi.\n\nVALUTAZIONE: ANOMALIA\nNOTIFICA: Consumo anomalo.")
-
-    text, structured = await runner.run_with_actions(
-        user_message="test",
-        system_prompt="base system",
-        action_mode="configured",
-    )
-
-    assert structured["valutazione"] == "ANOMALIA"
-    assert structured["notifica"] == "Consumo anomalo."
-    assert structured["azioni"] == []  # no AZIONI block in configured mode
-    call_kwargs = runner.chat.call_args.kwargs
-    # Configured mode should NOT inject AZIONI instructions
+    # No more prompt augmentation — the system prompt passes through as-is.
+    assert call_kwargs["system_prompt"] == "base system"
+    assert "VALUTAZIONE:" not in call_kwargs["system_prompt"]
     assert "AZIONI:" not in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_run_with_actions_restricts_to_evaluation_only_tools():
+    """The Sentinella relies on run_with_actions never exposing actuation
+    tools — verify the eval_tools restriction (EVALUATION_ONLY_TOOLS ∩
+    allowed_tools) still applies post-simplification."""
+    from unittest.mock import AsyncMock
+    from hiris.app.claude_runner import ClaudeRunner, EVALUATION_ONLY_TOOLS
+
+    runner = ClaudeRunner.__new__(ClaudeRunner)
+    runner.chat = AsyncMock(return_value="ok")
+
+    await runner.run_with_actions(
+        user_message="test",
+        system_prompt="base system",
+        allowed_tools=[],
+    )
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert set(call_kwargs["allowed_tools"]) == set(EVALUATION_ONLY_TOOLS)
 
 
 def test_resolve_model_auto_agent_returns_haiku():

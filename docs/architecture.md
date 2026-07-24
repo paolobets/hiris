@@ -1,6 +1,6 @@
 # HIRIS — Technical Architecture
 
-> Version: 0.22.1 · Updated: 2026-07-17
+> Version: 0.33.0 · Updated: 2026-07-24
 
 ---
 
@@ -36,7 +36,7 @@ The system is structured in three logical layers:
 hiris/app/
 ├── server.py                    Application factory, startup/cleanup lifecycle
 ├── routes.py                    Route registration
-├── agent_engine.py              Agent scheduler, state machine, action executor
+├── agent_engine.py              Persona store (CRUD, manual run) — no autonomous scheduling/actions
 ├── claude_runner.py             Anthropic SDK agentic loop
 ├── llm_router.py                Backend routing, strategy, fallback chain
 ├── task_engine.py               Deferred task execution (delay/cron/time_window)
@@ -88,7 +88,9 @@ hiris/app/
 │   └── knowledge_store.py       Unified second brain (`knowledge.db`): personal/shared
 │                                 knowledge + per-agent "lens" working memory, vector search
 │
-├── mqtt_publisher.py            MQTT Discovery + state publish + command subscribe
+├── watcher/                     Sentinella — built-in proactive lenti (detectors/situations),
+│                                 reasoner, executor, semaforo gate (unchanged this slice)
+├── mqtt_publisher.py            MQTT Discovery + state publish (outbound only — no command subscribe)
 └── static/
     ├── index.html               Chat UI
     └── config.html              Agent designer UI
@@ -151,43 +153,47 @@ Response: {response, debug: {tools_called}}
 
 ---
 
-## Agent execution lifecycle
+## Sentinella execution lifecycle (proactive layer)
+
+There is no autonomous "agent" anymore — no scheduler, no rules/states machine,
+no MQTT command channel. The only proactive layer is the **Sentinella**
+(`hiris/app/watcher/`, unchanged by this slice): a fixed set of built-in,
+tunable **lenti** (detectors/situations), each independently enabled with its
+own entity selector and thresholds in `sentinel_policy.json` (config UI:
+Sentinella page). User-defined lenti (custom triggers/prompts) are planned for
+a later version.
 
 ```
-AgentEngine
+watcher/
     │
-    ├── APScheduler jobs (agent type — schedule/cron triggers)
-    │       │
-    │       └── _run_agent(agent_id)
-    │               │
-    │               ├── budget check → auto-disable if exceeded
-    │               ├── LLMRouter.run_with_actions()  [action_mode: automatic|configured]
-    │               │       │
-    │               │       └── ClaudeRunner / OpenAICompatRunner
-    │               │               (EVALUATION_ONLY_TOOLS only for non-chat)
-    │               │
-    │               ├── parse structured output: VALUTAZIONE / NOTIFICA / PARAM / AZIONI
-    │               │
-    │               ├── automatic mode: _parse_azioni_lines() → _execute_action_chain()
-    │               ├── configured mode: match VALUTAZIONE against rules[i].states
-    │               │       └── _execute_action_chain(rule.actions)
-    │               │               │
-    │               │               ├── notify → ToolDispatcher
-    │               │               ├── call_service → ToolDispatcher
-    │               │               └── wait → asyncio.sleep
-    │               │
-    │               └── MQTT publish: status, last_result, tokens_used_today
+    ├── HA WebSocket state_changed → detectors.py
+    │       └── opening / fridge_temp / power / battery
+    │               → Signal(kind, entity_id, severity, evidence)
     │
-    ├── HA WebSocket listener (agent type — state_changed triggers)
-    │       │
-    │       └── state_changed events → filter by agent.triggers[*].entity_id
-    │               └── _run_agent(agent_id)
+    ├── Periodic snapshot (snapshot.py) → situations.py / arrival.py
+    │       └── hot_and_away / away_alarm_off / evening_arrival
+    │               → SituationSignal / WakeEvent
     │
-    └── MQTT command subscriber
+    ├── guardian.py / evaluator.py — cooldown + daily-cap gate (wake.py)
+    │       before a signal is allowed to "wake" the reasoner
+    │
+    └── reasoner.py
+            │  LLMRouter.run_with_actions(allowed_tools=[], ...) — single-shot,
+            │  restricted to EVALUATION_ONLY_TOOLS, parses its own ```json```
+            │  block (verdict/message/action) out of the model's reply
+            ▼
+        Decision {verdict, message, action?}
             │
-            └── hiris/agents/+/enabled/set → enable/disable agent
-                hiris/agents/+/run_now/set → immediate execution
+            └── executor.py
+                    ├── semaforo (`security/semaphore.py`) — tier gate
+                    │       (green/yellow/red/off) + dangerous-domain denylist
+                    │       (lock, alarm_control_panel, cover, siren, garage_door)
+                    ├── notify → ToolDispatcher
+                    └── act (only if the semaforo allows it) → ToolDispatcher
 ```
+
+Chat (Personas) is a separate, always-on-demand path — see "Request lifecycle
+— chat" above; it has no scheduling of its own.
 
 ---
 
@@ -255,7 +261,7 @@ this version.
 
 | File | Schema |
 |---|---|
-| `agents.json` | `[{id, name, type, trigger, system_prompt, strategic_context, allowed_tools, allowed_entities, allowed_services, allowed_endpoints, model, max_tokens, budget_eur_limit, ...}]` |
+| `agents.json` | `[{id, name, enabled, is_default, system_prompt, strategic_context, allowed_tools, allowed_entities, allowed_services, allowed_endpoints, restrict_to_home, knowledge_access, model, max_tokens, thinking_budget, response_mode, require_confirmation, max_chat_turns, last_run, last_result, execution_log, ...}]` (personas — no `type`/`triggers`/`action_mode`/`rules`/`states`/`budget_eur_limit`) |
 | `usage.json` | `{schema_version, total_input_tokens, total_output_tokens, total_requests, total_cost_usd, last_reset, per_agent: {agent_id: {...}}}` |
 | `home_semantic_map.json` | `{entity_id: {role, label, confidence, classified_at}}` |
 | `ha_health.json` | `{last_updated, unavailable_entities, integration_errors, error_log_summary, updates_available, system_info}` — HealthMonitor snapshot |
@@ -337,8 +343,8 @@ Every tool call passes through `ToolDispatcher.dispatch()`:
 1. **Entity filter** — `allowed_entities` glob patterns applied to `get_entity_states`, `get_home_status`, `get_entities_on`, `get_entities_by_domain`
 2. **Service filter** — `allowed_services` glob patterns checked before every `call_ha_service`
 3. **Endpoint filter** — `http_request` hidden from Claude unless `allowed_endpoints` is configured; each call validated against the allowlist
-4. **Budget check** — agent auto-disabled if `total_cost_usd * EUR_RATE > budget_eur_limit`
-5. **Memory scope** — `save_memory` only available to chat agents (agent-type agents can only `recall_memory`)
+4. **Usage tracking** — cost/tokens tracked per persona (`get_agent_usage`) and published via MQTT/UI; there is no per-persona budget cap or auto-disable anymore (removed together with the retired agent fields — `budget_remaining_eur` is always reported as `"unlimited"`)
+5. **Memory scope** — `save_memory` is available to personas (chat), governed by `knowledge_access`; the Sentinella's single-shot reasoner is restricted to `EVALUATION_ONLY_TOOLS`, which excludes `save_memory` (it only ever calls `recall_memory`)
 
 ### SSRF protection (`http_tools.py`)
 
@@ -379,29 +385,41 @@ The `debug.tools_called` field in API responses is redacted to tool names only (
 
 ## MQTT bridge architecture
 
+Outbound-only: HIRIS publishes discovery + state to Home Assistant via MQTT
+and never subscribes to anything. There are no command topics — the
+`enabled`/`run_now` switch+button pair (and the scheduler/autonomous
+execution they used to drive) were retired; a persona's `enabled` flag is
+now surfaced as a plain read-only sensor.
+
 ```
 AgentEngine
     │
-    └── MQTTPublisher
+    └── MQTTPublisher (outbound-only — no subscriptions)
             │
             ├── Discovery messages (retain=True)
             │   homeassistant/sensor/hiris_{id}_status/config
             │   homeassistant/sensor/hiris_{id}_last_run/config
+            │   homeassistant/sensor/hiris_{id}_last_result/config
             │   homeassistant/sensor/hiris_{id}_budget_eur/config
-            │   homeassistant/switch/hiris_{id}_enabled/config
-            │   homeassistant/button/hiris_{id}_run_now/config
+            │   homeassistant/sensor/hiris_{id}_budget_remaining_eur/config
+            │   homeassistant/sensor/hiris_{id}_tokens_used_today/config
+            │   homeassistant/sensor/hiris_{id}_enabled/config       (read-only)
             │
-            ├── State updates (on every agent run)
-            │   hiris/agents/{id}/status          → idle|running|error|disabled
-            │   hiris/agents/{id}/last_run         → ISO 8601
-            │   hiris/agents/{id}/last_result      → truncated text (255 chars)
-            │   hiris/agents/{id}/budget_remaining → float EUR
-            │   hiris/agents/{id}/tokens_today     → int (daily reset)
-            │
-            └── Command subscriptions (2-way)
-                hiris/agents/{id}/enabled/set  → "true"|"false"
-                hiris/agents/{id}/run_now/set  → "trigger"
+            └── State updates (on every agent run)
+                hiris/agents/{id}/status               → idle|running|error|disabled
+                hiris/agents/{id}/enabled               → "ON"|"OFF" (read-only sensor)
+                hiris/agents/{id}/last_run              → ISO 8601
+                hiris/agents/{id}/last_result           → truncated text (255 chars)
+                hiris/agents/{id}/budget_eur             → float EUR
+                hiris/agents/{id}/budget_remaining_eur  → float EUR (or "unlimited")
+                hiris/agents/{id}/tokens_used_today     → int (daily reset)
 ```
+
+On startup, HIRIS also publishes an empty discovery payload on the old
+`homeassistant/switch/hiris_{id}_enabled/config` and
+`homeassistant/button/hiris_{id}_run_now/config` topics, so Home Assistant
+drops the now-inert control entities from any install upgrading from a
+pre-Slice-5 release.
 
 Reconnect uses exponential backoff. All state publishes are fire-and-forget (non-blocking via `run_in_executor`).
 

@@ -10,31 +10,29 @@ def engine(tmp_path):
     return AgentEngine(ha_client=AsyncMock(), data_path=str(tmp_path / "agents.json"))
 
 
-# --- Part 1: type-aware max_tokens cap ---
+# --- Part 1: max_tokens cap ---
+# Slice 5 Task 2 dropped the `type` field — every persona is a chat entity
+# now, so there is a single cap (there is no more non-chat "agent"/"monitor"
+# variant to clamp lower).
 
-def test_cap_chat_allows_up_to_16000():
-    assert AgentEngine._cap_max_tokens(16000, "chat") == 16000
-    assert AgentEngine._cap_max_tokens(99999, "chat") == 16000  # clamped to chat cap
-    assert AgentEngine._cap_max_tokens(12000, "chat") == 12000  # below cap kept
-
-
-def test_cap_non_chat_stays_at_8192():
-    assert AgentEngine._cap_max_tokens(16000, "agent") == 8192
-    assert AgentEngine._cap_max_tokens(4096, "agent") == 4096
+def test_cap_allows_up_to_16000():
+    assert AgentEngine._cap_max_tokens(16000) == 16000
+    assert AgentEngine._cap_max_tokens(99999) == 16000  # clamped to the cap
+    assert AgentEngine._cap_max_tokens(12000) == 12000  # below cap kept
 
 
-def test_create_chat_agent_keeps_high_max_tokens(engine):
-    agent = engine.create_agent({"name": "Chat", "type": "chat", "max_tokens": 16000})
+def test_create_agent_keeps_high_max_tokens(engine):
+    agent = engine.create_agent({"name": "Chat", "max_tokens": 16000})
     assert agent.max_tokens == 16000
 
 
-def test_create_non_chat_agent_clamped_to_8192(engine):
-    agent = engine.create_agent({"name": "Mon", "type": "monitor", "max_tokens": 16000})
-    assert agent.max_tokens == 8192
+def test_create_agent_clamped_to_16000(engine):
+    agent = engine.create_agent({"name": "Persona", "max_tokens": 99999})
+    assert agent.max_tokens == 16000
 
 
-def test_update_chat_agent_raises_cap(engine):
-    agent = engine.create_agent({"name": "Chat", "type": "chat", "max_tokens": 4096})
+def test_update_agent_raises_cap(engine):
+    agent = engine.create_agent({"name": "Chat", "max_tokens": 4096})
     engine.update_agent(agent.id, {"max_tokens": 16000})
     assert engine.get_agent(agent.id).max_tokens == 16000
 

@@ -1,21 +1,13 @@
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Coroutine, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 _DISCOVERY_PREFIX = "homeassistant"
 _STATE_PREFIX = "hiris/agents"
 _RECONNECT_MAX = 60
-
-# Topics HIRIS subscribes to for inbound commands
-_CMD_TOPICS = (
-    f"{_STATE_PREFIX}/+/enabled/set",
-    f"{_STATE_PREFIX}/+/run_now/set",
-)
-
-_CommandCallback = Callable[[str, str, str], Coroutine[Any, Any, None]]
 
 
 class MQTTPublisher:
@@ -28,14 +20,10 @@ class MQTTPublisher:
         self._user = ""
         self._password = ""
         self._pending: asyncio.Queue = asyncio.Queue()
-        self._command_callback: Optional[_CommandCallback] = None
 
     @property
     def is_connected(self) -> bool:
         return self._connected
-
-    def set_command_callback(self, cb: _CommandCallback) -> None:
-        self._command_callback = cb
 
     async def start(self, host: str, port: int = 1883, user: str = "", password: str = "") -> None:
         if not host:
@@ -104,31 +92,16 @@ class MQTTPublisher:
                     backoff = 1
                     logger.info("MQTT connected to %s:%d", self._host, self._port)
 
-                    for topic in _CMD_TOPICS:
-                        await client.subscribe(topic)
-                    logger.debug("MQTT subscribed to command topics")
-
-                    # Run publish drain and subscribe loop concurrently
-                    async def _publish_drain() -> None:
-                        while True:
-                            topic, payload = await self._pending.get()
-                            await client.publish(topic, payload, retain=True)
-                            self._pending.task_done()
-
-                    publish_task = asyncio.create_task(_publish_drain(), name="mqtt_publish_drain")
+                    # No inbound command topics to subscribe to (Slice 5 Task
+                    # 2): the `enabled`/`run_now` command callback was retired
+                    # in Task 1 (no scheduler/autonomous execution left to
+                    # enable or trigger) — this publisher is outbound-only
+                    # (discovery + state) now, so draining the outbound queue
+                    # is the only thing keeping this connection busy.
                     try:
-                        async for message in client.messages:
-                            asyncio.create_task(
-                                self._on_command(str(message.topic), message.payload.decode()),
-                                name="mqtt_cmd",
-                            )
+                        await self._publish_drain(client)
                     finally:
                         self._connected = False
-                        publish_task.cancel()
-                        try:
-                            await publish_task
-                        except asyncio.CancelledError:
-                            pass
 
             except asyncio.CancelledError:
                 self._connected = False
@@ -149,19 +122,16 @@ class MQTTPublisher:
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, _RECONNECT_MAX)
 
-    async def _on_command(self, topic: str, payload: str) -> None:
-        # Expected topic: hiris/agents/{agent_id}/{command}/set
-        parts = topic.split("/")
-        if len(parts) != 5 or parts[0] != "hiris" or parts[1] != "agents" or parts[4] != "set":
-            logger.debug("MQTT: unexpected command topic %s", topic)
-            return
-        agent_id = parts[2]
-        command = parts[3]
-        if self._command_callback:
-            try:
-                await self._command_callback(agent_id, command, payload.strip())
-            except Exception as exc:
-                logger.warning("MQTT command callback error (agent=%s cmd=%s): %s", agent_id, command, exc)
+    async def _publish_drain(self, client) -> None:
+        """Drain ``self._pending`` onto the broker until cancelled.
+
+        Cancellation propagates from ``stop()`` cancelling the outer
+        ``_connect_loop`` task — no separate teardown needed here.
+        """
+        while True:
+            topic, payload = await self._pending.get()
+            await client.publish(topic, payload, retain=True)
+            self._pending.task_done()
 
     # ── Discovery ──────────────────────────────────────────────────────────────
 
@@ -173,7 +143,10 @@ class MQTTPublisher:
                 "identifiers": [f"hiris_{agent.id}"],
                 "name": f"HIRIS {agent.name}",
                 "manufacturer": "HIRIS",
-                "model": agent.type,
+                # Slice 5 Task 2 dropped Agent.type — every persona is the
+                # chat entity now, so there is no per-agent "model" variant
+                # left to report here.
+                "model": "Persona",
             },
         }
         if component == "button":
@@ -218,6 +191,15 @@ class MQTTPublisher:
             f"{_STATE_PREFIX}/{agent.id}/tokens_used_today": str(tokens_used_today),
         }
 
+    # Task 1 removed the MQTT command callback (no scheduler/autonomous
+    # execution left to enable or manually trigger), so the "enabled" switch
+    # and "run_now" button this used to (re)discover were dead controls in
+    # HA — pressing/flipping them did nothing. We stop advertising them and
+    # publish an empty config on their old discovery topics so HA drops any
+    # already-discovered entity from an install upgrading from an older
+    # release, instead of leaving it visible-but-inert.
+    _RETIRED_COMMAND_ENTITIES = (("enabled", "switch"), ("run_now", "button"))
+
     async def publish_discovery(self, agent) -> None:
         if not self._enabled:
             return
@@ -228,13 +210,18 @@ class MQTTPublisher:
             ("budget_eur", "sensor"),
             ("budget_remaining_eur", "sensor"),
             ("tokens_used_today", "sensor"),
-            ("enabled", "switch"),
-            ("run_now", "button"),
+            # Read-only now (was a "switch" with a dead command_topic): still
+            # worth surfacing whether a persona is enabled, just not as a
+            # control.
+            ("enabled", "sensor"),
         ]
         for metric, component in metrics:
             payload = self._build_discovery_payload(agent, metric, component)
             topic = f"{_DISCOVERY_PREFIX}/{component}/hiris_{agent.id}_{metric}/config"
             await self._pending.put((topic, json.dumps(payload)))
+        for metric, component in self._RETIRED_COMMAND_ENTITIES:
+            topic = f"{_DISCOVERY_PREFIX}/{component}/hiris_{agent.id}_{metric}/config"
+            await self._pending.put((topic, ""))
 
     async def publish_agent_state(
         self,

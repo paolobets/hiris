@@ -272,78 +272,6 @@ REQUIRE_CONFIRMATION_PROMPT = (
 )
 
 
-def _parse_structured_output(text: str) -> tuple[str, dict]:
-    """Parse structured output block from the TRAILING section of a Claude response.
-
-    Two-pass strategy:
-    1. Locate the AZIONI: marker (last occurrence) and collect all lines after it.
-    2. Scan bottom-up from the marker (or end-of-text) for VALUTAZIONE / NOTIFICA / PARAM.
-       Stop at the first non-blank, non-marker line to avoid consuming mid-text content.
-
-    Returns:
-        Tuple of (clean_text, structured) where structured contains:
-        - valutazione: str | None
-        - notifica: str | None
-        - params: dict[str, str]  — from ``PARAM key: value`` lines
-        - azioni: list[str]       — raw action command lines (one per list entry)
-    """
-    structured: dict = {
-        "valutazione": None,
-        "notifica": None,
-        "params": {},
-        "azioni": [],
-    }
-    lines = text.splitlines()
-
-    # Pass 1: locate the AZIONI: marker (last occurrence)
-    azioni_marker_idx: int | None = None
-    for i in range(len(lines) - 1, -1, -1):
-        if lines[i].strip().startswith("AZIONI:"):
-            azioni_marker_idx = i
-            break
-
-    if azioni_marker_idx is not None:
-        marker_stripped = lines[azioni_marker_idx].strip()
-        inline = marker_stripped[len("AZIONI:"):].strip()
-        azioni_lines: list[str] = []
-        if inline:
-            azioni_lines.append(inline)
-        for j in range(azioni_marker_idx + 1, len(lines)):
-            cmd = lines[j].strip()
-            if cmd:
-                azioni_lines.append(cmd)
-        structured["azioni"] = azioni_lines
-
-    # Pass 2: scan the last 40 lines (before AZIONI marker) for VALUTAZIONE / NOTIFICA / PARAM.
-    # We bound the window instead of using else:break so that a single stray LLM line
-    # between markers does not silently swallow all structured output.
-    scan_end = azioni_marker_idx if azioni_marker_idx is not None else len(lines)
-    scan_start = max(0, scan_end - 40)
-    cut = scan_end
-
-    for i in range(scan_end - 1, scan_start - 1, -1):
-        stripped = lines[i].strip()
-        if stripped.startswith("VALUTAZIONE:"):
-            structured["valutazione"] = stripped[len("VALUTAZIONE:"):].strip()
-            cut = i
-        elif stripped.startswith("NOTIFICA:"):
-            structured["notifica"] = stripped[len("NOTIFICA:"):].strip()
-            cut = i
-        elif stripped.startswith("PARAM ") and ":" in stripped:
-            rest = stripped[len("PARAM "):].strip()
-            colon_pos = rest.find(":")
-            if colon_pos > 0:
-                key = rest[:colon_pos].strip()
-                value = rest[colon_pos + 1:].strip()
-                structured["params"][key] = value
-            cut = i
-        elif not stripped:
-            cut = i  # blank lines in trailing block are consumable
-
-    clean_text = "\n".join(lines[:cut]).rstrip()
-    return clean_text, structured
-
-
 def _redact_stream_tool_calls(tool_calls: list) -> list:
     """Redact confirm_pending's OTP `code` before a runner emits its
     last_tool_calls list in an SSE "done" event.
@@ -751,9 +679,6 @@ class ClaudeRunner:
         self,
         user_message: str,
         system_prompt: str,
-        action_mode: str = "automatic",
-        states: Optional[list[str]] = None,
-        rules: Optional[list[dict]] = None,
         allowed_tools: Optional[list[str]] = None,
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
@@ -770,17 +695,18 @@ class ClaudeRunner:
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> tuple[str, dict]:
-        """Run an autonomous agent evaluation — restrict tools, inject structured-output instructions.
+        """Run a tool-restricted evaluation pass — used solely by the Sentinella.
 
-        Claude gathers data using read-only tools, then produces a structured trailing
-        block (VALUTAZIONE / NOTIFICA / PARAM / AZIONI) that the caller parses and acts on.
+        Slice 5 retired the action/rules execution machinery (AZIONI blocks,
+        configured rules): this is now a plain agentic loop that runs the given
+        system prompt restricted to read-only (``EVALUATION_ONLY_TOOLS``) tools
+        and returns the model's raw text, unmodified. The Sentinella reasoner
+        (``watcher/reasoner.py``) parses its own ```json``` block out of the
+        returned text; it does not depend on the ``structured`` dict.
 
         Args:
             user_message: Trigger message (may contain event context or a cron prompt).
-            system_prompt: Agent-specific instructions.
-            action_mode: ``"automatic"`` — LLM writes AZIONI block; ``"configured"`` — user-defined rules.
-            states: Allowed VALUTAZIONE values. Defaults to [OK, ATTENZIONE, ANOMALIA].
-            rules: Pre-configured action rules (used only by caller; included here for completeness).
+            system_prompt: Caller-provided instructions (not augmented here).
             allowed_tools: Whitelist of tool names, or None for all evaluation tools.
             allowed_entities: Entity glob patterns allowed for this agent.
             allowed_services: Service patterns allowed for this agent.
@@ -794,53 +720,24 @@ class ClaudeRunner:
             response_mode: ``"minimal"`` for terse motivazione, ``"auto"`` for standard.
 
         Returns:
-            Tuple of ``(clean_text, structured)`` where ``structured`` contains:
-            ``valutazione``, ``notifica``, ``params``, ``azioni``.
+            Tuple of ``(clean_text, structured)``. Nothing instructs the model
+            to emit a VALUTAZIONE/NOTIFICA/PARAM/AZIONI block anymore, so
+            ``structured`` is always the all-defaults (None/empty) shape kept
+            for backward-compat callers, and ``clean_text`` is the model's raw
+            text unmodified (Slice 5 Task 2 dropped the dead
+            ``_parse_structured_output`` scanning pass — the Sentinella
+            reasoner parses its own ```json``` block out of ``clean_text``
+            directly, never touching ``structured``).
         """
-        # Restrict to evaluation-only tools — Claude may read HA state and schedule
-        # tasks but cannot directly call action services (prevents prompt-injection attacks).
+        # Restrict to evaluation-only tools — Claude may read HA state but
+        # cannot directly call action services (prevents prompt-injection attacks).
         eval_tools = list(EVALUATION_ONLY_TOOLS)
         if allowed_tools:
             eval_tools = [t for t in eval_tools if t in allowed_tools]
 
-        _states = states if states else ["OK", "ATTENZIONE", "ANOMALIA"]
-        states_str = "|".join(_states)
-        motivazione = "1 riga sintetica" if response_mode == "minimal" else "1-2 righe sintetiche"
-
-        if action_mode == "automatic":
-            eval_instruction = (
-                "\n\n---\n"
-                "ISTRUZIONI DI RISPOSTA:\n"
-                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
-                f"VALUTAZIONE: {states_str}\n"
-                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
-                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]\n"
-                "AZIONI:\n"
-                "[una azione per riga — formato: comando entità [valore]]\n\n"
-                "Comandi AZIONI (vanno scritti in testo nel blocco AZIONI:, NON come tool calls):\n"
-                "  turn_on <entity_id>\n"
-                "  turn_off <entity_id>\n"
-                "  set_value <entity_id> <value>\n"
-                "  wait <minuti>\n"
-                "  notify <channel> <message>\n"
-                "  call_service <domain.service> <entity_id> [key=value ...]\n\n"
-                "Se non sono necessarie azioni ometti il blocco AZIONI: completamente."
-            )
-        else:  # configured
-            eval_instruction = (
-                "\n\n---\n"
-                "ISTRUZIONI DI RISPOSTA:\n"
-                "Analizza il contesto e concludi la risposta con queste righe esatte:\n\n"
-                f"VALUTAZIONE: {states_str}\n"
-                f"NOTIFICA: [messaggio da inviare — {motivazione}]\n"
-                "[PARAM nome: valore  ← aggiungi una riga per ogni parametro dinamico necessario]"
-            )
-
-        augmented_prompt = system_prompt + eval_instruction
-
         raw_result = await self.chat(
             user_message=user_message,
-            system_prompt=augmented_prompt,
+            system_prompt=system_prompt,
             allowed_tools=eval_tools,
             allowed_entities=allowed_entities,
             allowed_services=allowed_services,
@@ -857,7 +754,14 @@ class ClaudeRunner:
             knowledge_kinds=knowledge_kinds,
             user_id=user_id,
         )
-        clean_text, structured = _parse_structured_output(raw_result)
+        # Slice 5 Task 2: dropped the _parse_structured_output scanning pass —
+        # nothing emits VALUTAZIONE/NOTIFICA/PARAM/AZIONI markers anymore, so
+        # it always returned clean_text == raw_result (mod trailing
+        # whitespace) and an all-defaults structured dict. Return that same
+        # shape directly instead of paying for a 40-line bottom-up scan on
+        # every Sentinella evaluation.
+        clean_text = raw_result.rstrip() if isinstance(raw_result, str) else raw_result
+        structured = {"valutazione": None, "notifica": None, "params": {}, "azioni": []}
         return clean_text, structured
 
     async def _call_api(self, **kwargs) -> Any:
