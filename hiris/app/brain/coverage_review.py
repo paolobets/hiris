@@ -16,14 +16,35 @@ COVERAGE_REVIEW_SYSTEM = (
 )
 _JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 
-def build_review_context(snapshot, inventory, current_config) -> dict:
+def build_review_context(snapshot, inventory, current_config, memory=None) -> dict:
     inv = [{"entity_id": e.get("entity_id"), "friendly_name": _san(e.get("friendly_name") or ""),
             "domain": e.get("domain"), "device_class": e.get("device_class")} for e in (inventory or [])]
-    return {"snapshot": snapshot or {}, "inventory": inv, "current": current_config or {}}
+    ctx = {"snapshot": snapshot or {}, "inventory": inv, "current": current_config or {}}
+    if memory:
+        # Slice 6b Task 5: bounded, home-scoped memory snippets (see
+        # reasoner_memory.py / server.py's _holistic_reason). Only added when
+        # non-empty so absent/empty memory keeps the context (and therefore
+        # build_review_message's output) identical to before this change.
+        ctx["memory"] = list(memory)
+    return ctx
 
 def build_review_message(context) -> str:
-    return ("Inventario + config attuale:\n" + json.dumps(context, ensure_ascii=False)
-            + "\n\nProponi coperture/gestioni col blocco json richiesto.")
+    ctx = dict(context or {})
+    # Rendered as a readable bullet block below (not JSON-encoded like the
+    # rest of the context), so pop it before json.dumps -- mirrors
+    # reasoner.py's build_user_message (Slice 6b Task 3).
+    memory = ctx.pop("memory", None)
+    memory_block = ""
+    if isinstance(memory, list) and memory:
+        # Flatten each snippet to a single line: collapsing all
+        # whitespace/newlines removes the only way a crafted insight could
+        # break the prompt's line structure or open a fake ``` fence.
+        flat = [" ".join(str(s).split()) for s in memory]
+        lines = "\n".join(f"- {s}" for s in flat if s)
+        if lines:
+            memory_block = f"Cosa so di rilevante:\n{lines}\n\n"
+    return ("Inventario + config attuale:\n" + json.dumps(ctx, ensure_ascii=False)
+            + "\n\n" + memory_block + "Proponi coperture/gestioni col blocco json richiesto.")
 
 def parse_suggestions(text) -> list[dict]:
     m = list(_JSON_RE.finditer(text or ""))

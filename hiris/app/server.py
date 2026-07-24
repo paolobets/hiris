@@ -1435,7 +1435,20 @@ async def _on_startup(app: web.Application) -> None:
                 from .api.handlers_entities import filter_entities
                 _inventory = filter_entities(_cache.all_states(), None, None)
                 _current = load_policy(data_dir)
-                _ctx = build_review_context(snapshot, _inventory, _current)
+                # Slice 6b Task 5: same bounded, home-scoped memory enrichment
+                # as the per-wake sentinel path (_reason_memory_context /
+                # Task 4), applied to the holistic coverage-review context.
+                # relevant_memory() never raises (reasoner_memory.py), and
+                # this whole block is already inside the try/except above, so
+                # a failure here degrades to no memory rather than breaking
+                # the holistic pass.
+                _llm_router = app.get("llm_router")
+                _allow_sensitive = _llm_router.automatic_allows_sensitive() if _llm_router is not None else False
+                _mem = await relevant_memory(
+                    knowledge_store, embedder,
+                    query_text="stato generale della casa", allow_sensitive=_allow_sensitive,
+                    limit=5)
+                _ctx = build_review_context(snapshot, _inventory, _current, memory=_mem)
                 _text = await _llm_reason(COVERAGE_REVIEW_SYSTEM, build_review_message(_ctx),
                                           model="auto", max_tokens=1536)
                 _suggs = parse_suggestions(_text)
