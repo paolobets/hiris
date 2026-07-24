@@ -1438,16 +1438,21 @@ async def _on_startup(app: web.Application) -> None:
                 # Slice 6b Task 5: same bounded, home-scoped memory enrichment
                 # as the per-wake sentinel path (_reason_memory_context /
                 # Task 4), applied to the holistic coverage-review context.
-                # relevant_memory() never raises (reasoner_memory.py), and
-                # this whole block is already inside the try/except above, so
-                # a failure here degrades to no memory rather than breaking
-                # the holistic pass.
-                _llm_router = app.get("llm_router")
-                _allow_sensitive = _llm_router.automatic_allows_sensitive() if _llm_router is not None else False
-                _mem = await relevant_memory(
-                    knowledge_store, embedder,
-                    query_text="stato generale della casa", allow_sensitive=_allow_sensitive,
-                    limit=5)
+                # Memory enrichment degrades to no-memory on ANY failure and
+                # must never abort the holistic pass (coverage review + auto-
+                # tune + guardian refresh below). relevant_memory() is already
+                # non-throwing for the real store, but wrap independently so a
+                # nonconforming store/embedder can't take the whole round down.
+                _mem = []
+                try:
+                    _llm_router = app.get("llm_router")
+                    _allow_sensitive = _llm_router.automatic_allows_sensitive() if _llm_router is not None else False
+                    _mem = await relevant_memory(
+                        knowledge_store, embedder,
+                        query_text="stato generale della casa", allow_sensitive=_allow_sensitive,
+                        limit=5)
+                except Exception:
+                    logger.warning("holistic memory retrieval failed", exc_info=True)
                 _ctx = build_review_context(snapshot, _inventory, _current, memory=_mem)
                 _text = await _llm_reason(COVERAGE_REVIEW_SYSTEM, build_review_message(_ctx),
                                           model="auto", max_tokens=1536)
