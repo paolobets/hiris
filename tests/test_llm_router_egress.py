@@ -62,6 +62,16 @@ def test_openai_and_openrouter_are_treated_as_cloud():
     assert r2.automatic_allows_sensitive() is False
 
 
+def test_registered_cloud_backend_absent_from_policy_still_allows():
+    # claude IS registered but is NOT in the automatic policy, so it can
+    # never receive an automatic fallback call -> it must not block.
+    r = LLMRouter(
+        ollama=_R("ollama"), claude=_R("claude"),
+        automatic_policy=["ollama"],
+    )
+    assert r.automatic_allows_sensitive() is True
+
+
 def test_never_crashes_with_empty_policy_and_no_backends():
     r = LLMRouter(automatic_policy=[])
     assert r.automatic_allows_sensitive() is False

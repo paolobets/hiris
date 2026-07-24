@@ -55,6 +55,11 @@ _STRATEGY_ORDER = {
 }
 
 _VALID_BACKEND_NAMES = frozenset({"claude", "openai", "openrouter", "ollama"})
+# Backend names that run LOCALLY (no egress). Kept next to _VALID_BACKEND_NAMES
+# so any future backend addition is forced to decide its egress class here;
+# automatic_allows_sensitive() treats every name NOT in this set as cloud, so a
+# forgotten entry fails CLOSED (over-blocks sensitive memory, never leaks it).
+_LOCAL_BACKEND_NAMES = frozenset({"ollama"})
 
 
 def _norm_policy(policy: list[str] | None, strategy: str) -> list[str]:
@@ -146,7 +151,7 @@ class LLMRouter:
         try:
             bmap = self._backend_map()
             available = [name for name in self._automatic_policy if bmap.get(name) is not None]
-            return bool(available) and all(name == "ollama" for name in available)
+            return bool(available) and all(name in _LOCAL_BACKEND_NAMES for name in available)
         except Exception:
             return False
 
