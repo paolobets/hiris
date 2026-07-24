@@ -95,7 +95,17 @@ def _load_brain_registry(data_dir: str) -> dict:
     detectors = data.get("detectors")
     if not isinstance(detectors, dict):
         detectors = {}
-    return {"detectors": {k: list(v) for k, v in detectors.items() if isinstance(v, list)}}
+    # "tunings" (Task 5A) is a sibling key holding, per detector, a snapshot of
+    # the pre-tuning value of each detector-level param touched by
+    # apply_brain_tuning. Old sidecar files predating this key simply lack it
+    # -> defaults to {} here, so they keep loading exactly as before.
+    tunings = data.get("tunings")
+    if not isinstance(tunings, dict):
+        tunings = {}
+    return {
+        "detectors": {k: list(v) for k, v in detectors.items() if isinstance(v, list)},
+        "tunings": {k: dict(v) for k, v in tunings.items() if isinstance(v, dict)},
+    }
 
 
 def _save_brain_registry(data_dir: str, registry: dict) -> None:
@@ -189,5 +199,61 @@ def remove_brain_detector(data_dir: str, detector: str, entity: str) -> bool:
         det_list.remove(entity)
         if not det_list:
             registry["detectors"].pop(detector, None)
+        _save_brain_registry(data_dir, registry)
+    return True
+
+
+def apply_brain_tuning(data_dir: str, detector: str, params: dict) -> dict:
+    """Tune allowed detector-level params (e.g. power.max_watt) and, the FIRST
+    time this detector is tuned, snapshot the CURRENT (pre-tuning) value of
+    each touched param into the brain sidecar under "tunings". Unlike
+    apply_brain_detector (which tracks brain-added ENTITIES for undo),
+    detector params like `max_watt` are shared by every entity on the
+    detector, so this is a separate primitive: it never touches
+    `enabled`/`entities` (see _BRAIN_PARAM_DENY), and the snapshot is taken
+    only once so a chain of auto-tunes (drift) still undoes back to the
+    user's ORIGINAL value, not just the previous auto-tune's value."""
+    allowed_params = _ALLOWED_KEYS.get(detector, set()) - _BRAIN_PARAM_DENY
+    with _POLICY_LOCK:
+        pol = load_policy(data_dir)
+        det_cfg = pol["detectors"].setdefault(detector, {"enabled": False, "entities": []})
+
+        registry = _load_brain_registry(data_dir)
+        tunings = registry.setdefault("tunings", {})
+        if detector not in tunings:
+            snapshot = {k: det_cfg.get(k) for k in params if k in allowed_params}
+            if snapshot:
+                tunings[detector] = snapshot
+
+        for k, v in (params or {}).items():
+            if k in allowed_params:
+                det_cfg[k] = v
+
+        save_policy(data_dir, pol)
+        _save_brain_registry(data_dir, registry)
+
+    return {"detector": detector}
+
+
+def remove_brain_tuning(data_dir: str, detector: str) -> bool:
+    """Undo apply_brain_tuning: restore the detector's params to the
+    snapshotted pre-tuning values and delete the snapshot. Returns True if a
+    restore happened, False otherwise (no snapshot -> no-op). Never touches
+    `entities`/`enabled`."""
+    with _POLICY_LOCK:
+        registry = _load_brain_registry(data_dir)
+        tunings = registry.setdefault("tunings", {})
+        snapshot = tunings.get(detector)
+        if not snapshot:
+            return False
+
+        pol = load_policy(data_dir)
+        det_cfg = pol["detectors"].get(detector)
+        if isinstance(det_cfg, dict):
+            for k, v in snapshot.items():
+                det_cfg[k] = v
+            save_policy(data_dir, pol)
+
+        tunings.pop(detector, None)
         _save_brain_registry(data_dir, registry)
     return True
