@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## [0.35.0] — Ciclo cognitivo: soglie auto-apprese (Slice 6 verso 1.0) (2026-07-24)
+
+- **Soglie auto-apprese:** il cervello tara le soglie di rilevamento (v1: consumo)
+  sulla base dei dati reali della tua casa invece che su valori fissi — solo per i
+  rilevatori già attivi, con limiti di sicurezza, e con un annullamento.
+- **Spiegabilità:** ogni configurazione/taratura automatica del cervello lascia una
+  traccia in memoria, così puoi chiedere in chat "perché hai cambiato X?" e ottenere
+  la spiegazione.
+- Il ragionamento consapevole (il cervello che consulta insight e preferenze durante
+  la valutazione) arriva in una versione successiva.
+
 ## [0.34.0] — Lenti definite dall'utente (Slice 5b verso 1.0) (2026-07-24)
 
 - **Crea le tue lenti:** oltre ai detector predefiniti, ora puoi definire lenti
