@@ -229,8 +229,13 @@ def apply_brain_tuning(data_dir: str, detector: str, params: dict) -> dict:
             if k in allowed_params:
                 det_cfg[k] = v
 
-        save_policy(data_dir, pol)
+        # Persist the snapshot BEFORE the tuned policy: if we crash between the
+        # two writes, the safe residue is a snapshot with an untouched policy
+        # (undo becomes a harmless no-op restore) rather than a tuned policy
+        # with no snapshot (which would make the next tune snapshot the tuned
+        # value as if it were the user's original).
         _save_brain_registry(data_dir, registry)
+        save_policy(data_dir, pol)
 
     return {"detector": detector}
 
