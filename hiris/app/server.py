@@ -966,6 +966,31 @@ async def _on_startup(app: web.Application) -> None:
     async def _on_situation(wake, suggested):
         await _run_decision(wake, suggested, SENTINEL_SYSTEM)
 
+    # ── Lenti definite dall'utente (Slice 5b, Task 3): flusso condiviso ─────
+    # `_run_lens` è un thin wiring del vero flusso (in `watcher/lens_runner.py`,
+    # testabile in isolamento) sugli stessi adapter reali già usati sopra
+    # (sentinel_store, _run_decision, execute, _notify/_act/_propose,
+    # execute_policy) — nessun path di actuation nuovo: stesso semaforo,
+    # stesso allowed_tools=[] della reasoning (via _run_decision → reason →
+    # _llm_reason), stessa denylist domini pericolosi (via executor.execute).
+    from .watcher.lens_runner import run_lens as _run_lens_flow
+
+    async def _run_lens(lens: dict, evidence: dict) -> str:
+        return await _run_lens_flow(
+            lens, evidence,
+            store=sentinel_store, run_decision=_run_decision, execute=execute,
+            notify=_notify, act=_act, propose=_propose,
+            get_execute_policy=lambda: app.get("execute_policy") or {},
+            allow_green_auto=os.environ.get("SENTINEL_ALLOW_GREEN_AUTO", "0")
+            in ("1", "true", "yes", "on"),
+            record_event=sentinel_store.record_event,
+            sentinel_system=SENTINEL_SYSTEM,
+            cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
+            daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")),
+        )
+
+    app["run_lens"] = _run_lens
+
     # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
     # runner remoto. execute_decision applica una Decisione GIA' PRESA dal
     # runner attraverso lo STESSO executor.execute()/semaforo/adapters usati
