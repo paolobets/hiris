@@ -56,6 +56,52 @@ async def test_mode_not_forwarded_to_runner():
     assert all("mode" not in kw for kw in r._claude.calls)
 
 
+class _StrictR:
+    """Runner whose chat/run_with_actions signatures do NOT accept `mode`.
+
+    If a future regression swaps LLMRouter's kwargs.pop("mode", ...) for
+    kwargs.get("mode", ...), `mode` would leak through to the underlying
+    runner and this fake would raise TypeError (unexpected keyword
+    argument), failing the test loudly instead of the leak going unnoticed.
+    """
+
+    def __init__(self, name):
+        self.name = name
+        self.seen = []
+
+    async def chat(self, *, model, **kw):
+        assert "mode" not in kw
+        self.seen.append(kw)
+        return self.name
+
+    async def run_with_actions(self, *, model, **kw):
+        assert "mode" not in kw
+        self.seen.append(kw)
+        return (self.name, None, None)
+
+
+@pytest.mark.asyncio
+async def test_chat_mode_leak_hardening_strict_runner_rejects_mode_kwarg():
+    r = LLMRouter(
+        claude=_StrictR("claude"), ollama=_StrictR("ollama"),
+        automatic_policy=["ollama", "claude"], chat_policy=["claude", "ollama"],
+    )
+    out = await r.chat(model="auto", mode="automatic")
+    assert out == "ollama"
+    assert all("mode" not in kw for kw in r._claude.seen + r._ollama.seen)
+
+
+@pytest.mark.asyncio
+async def test_run_with_actions_mode_leak_hardening_strict_runner_rejects_mode_kwarg():
+    r = LLMRouter(
+        claude=_StrictR("claude"), ollama=_StrictR("ollama"),
+        automatic_policy=["ollama", "claude"], chat_policy=["claude", "ollama"],
+    )
+    out, _, _ = await r.run_with_actions(model="auto", mode="automatic")
+    assert out == "ollama"
+    assert all("mode" not in kw for kw in r._claude.seen + r._ollama.seen)
+
+
 @pytest.mark.asyncio
 async def test_explicit_model_overrides_policy():
     r = _router()

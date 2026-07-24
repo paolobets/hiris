@@ -939,6 +939,7 @@ class AgentEngine:
                             allowed_services=agent.allowed_services or None,
                             allowed_endpoints=agent.allowed_endpoints,
                             model=agent.model,
+                            mode="automatic",
                             max_tokens=agent.max_tokens,
                             agent_type=agent.type,
                             restrict_to_home=agent.restrict_to_home,
