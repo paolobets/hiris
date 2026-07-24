@@ -8,7 +8,7 @@ import re
 import shutil
 import aiohttp
 from aiohttp import web
-from .api.handlers_chat import handle_chat
+from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_agents import (
     handle_list_agents, handle_create_agent, handle_get_agent,
     handle_update_agent, handle_delete_agent, handle_run_agent,
@@ -1284,6 +1284,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/usage", handle_usage)
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
+    app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
     app.router.add_get("/api/agents", handle_list_agents)
     app.router.add_post("/api/agents", handle_create_agent)
     app.router.add_get("/api/agents/{agent_id}", handle_get_agent)

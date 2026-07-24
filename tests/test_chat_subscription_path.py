@@ -1,0 +1,208 @@
+"""Slice 4b Task 2: async subscription path for handle_chat.
+
+When ``app["chat_via_subscription"]`` is truthy AND the reasoning-queue
+bridge is wired (``app["reasoning_queue"]`` present — see
+``handlers_chat._bridge_on``), ``handle_chat`` must:
+  1. persist the user turn to chat_store (keyed by agent_id) BEFORE
+     enqueueing — otherwise a session could start on an assistant turn,
+     which the Claude API rejects (contract from Task 1's report);
+  2. enqueue a ``kind="chat"`` reasoning job whose context carries
+     ``agent_id`` (NOT ``conversation_id`` — that's the real chat_store key,
+     confirmed in Task 1);
+  3. return HTTP 202 ``{"status": "pending", "job_id": ...}`` WITHOUT
+     calling the runner.
+
+Otherwise (flag off, or bridge not wired) the existing synchronous path is
+unchanged — runner is called, 200 is returned.
+
+A new ``GET /api/chat/reply/{job_id}`` route polls the same queue
+(``ReasoningQueue.get``) and returns ``{"status": "pending"}`` until a
+decision exists, then ``{"status": "done", "reply": ...}``.
+
+Real APIs verified before writing this test (matches Task 1's report):
+- ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
+- ReasoningQueue.get(job_id) -> dict with "kind"/"context"/"decision" (decision
+  is None until ReasoningQueue.submit() has been called)
+- ReasoningQueue.submit(job_id, nonce, decision, now) -> bool
+- chat_store.append_messages(agent_id, messages, data_dir) /
+  chat_store.load_history(agent_id, data_dir)
+"""
+import os
+
+import pytest
+from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
+from unittest.mock import AsyncMock, MagicMock
+
+from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
+from hiris.app.chat_store import close_all_stores, load_history
+from hiris.app.reasoning.queue import ReasoningQueue
+
+
+@pytest.fixture(autouse=True)
+def reset_stores():
+    close_all_stores()
+    yield
+    close_all_stores()
+
+
+def _make_agent():
+    agent = MagicMock()
+    agent.id = "test-agent"
+    agent.is_default = False
+    agent.system_prompt = "You are a helpful assistant."
+    agent.strategic_context = "Home context."
+    agent.allowed_tools = None
+    agent.allowed_entities = None
+    agent.allowed_services = None
+    agent.model = "auto"
+    agent.max_tokens = 4096
+    agent.type = "chat"
+    agent.restrict_to_home = False
+    agent.require_confirmation = False
+    agent.max_chat_turns = 0
+    agent.response_mode = "auto"
+    agent.thinking_budget = 0
+    agent.knowledge_access = {}
+    return agent
+
+
+def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=None):
+    data_dir = str(tmp_path / "data")
+    os.makedirs(data_dir, exist_ok=True)
+
+    agent = _make_agent()
+    engine = MagicMock()
+    engine.get_agent.return_value = agent
+    engine.get_default_agent.return_value = agent
+
+    if runner is None:
+        runner = AsyncMock()
+        runner.chat = AsyncMock(return_value="sync reply")
+        runner.last_tool_calls = []
+        runner.last_thinking_blocks = []
+
+    app = web.Application()
+    app["llm_router"] = runner
+    app["claude_runner"] = runner
+    app["engine"] = engine
+    app["data_dir"] = data_dir
+    app["chat_via_subscription"] = chat_via_subscription
+
+    q = None
+    if with_queue:
+        q = ReasoningQueue(str(tmp_path / "reasoning.db"))
+        app["reasoning_queue"] = q
+
+    app.router.add_post("/api/chat", handle_chat)
+    app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
+    return app, q, runner, agent, data_dir
+
+
+# ---------------------------------------------------------------------------
+# Flag + bridge gating
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        assert resp.status == 202
+        body = await resp.json()
+        assert body["status"] == "pending"
+        assert isinstance(body["job_id"], str) and body["job_id"]
+
+    runner.chat.assert_not_called()
+
+    job = q.get(body["job_id"])
+    assert job["kind"] == "chat"
+    assert job["context"]["agent_id"] == agent.id
+
+
+@pytest.mark.asyncio
+async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=False)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["response"] == "sync reply"
+
+    runner.chat.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=False, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["response"] == "sync reply"
+
+    runner.chat.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# User message persisted BEFORE enqueue
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_user_message_persisted_before_enqueue(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "salva questo", "agent_id": agent.id})
+        assert resp.status == 202
+
+    history = load_history(agent.id, data_dir)
+    assert history == [{"role": "user", "content": "salva questo"}]
+
+
+@pytest.mark.asyncio
+async def test_job_context_history_includes_current_user_turn(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "prima domanda", "agent_id": agent.id})
+        body = await resp.json()
+
+    job = q.get(body["job_id"])
+    history = job["context"]["history"]
+    assert history[-1] == {"role": "user", "content": "prima domanda"}
+    # No leading assistant turn (Claude API would reject it).
+    assert history[0]["role"] == "user"
+
+
+# ---------------------------------------------------------------------------
+# Poll route
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_poll_route_pending_then_done(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        job_id = (await resp.json())["job_id"]
+
+        poll1 = await client.get(f"/api/chat/reply/{job_id}")
+        assert poll1.status == 200
+        assert (await poll1.json()) == {"status": "pending"}
+
+        # Simulate the external runner claiming + submitting a decision,
+        # exactly like Task 1's submit path.
+        claimed = q.claim(now=5.0)
+        assert claimed["job_id"] == job_id
+        ok = q.submit(job_id, claimed["nonce"], {"reply": "ecco la risposta"}, now=6.0)
+        assert ok is True
+
+        poll2 = await client.get(f"/api/chat/reply/{job_id}")
+        assert poll2.status == 200
+        assert (await poll2.json()) == {"status": "done", "reply": "ecco la risposta"}
+
+
+@pytest.mark.asyncio
+async def test_poll_route_unknown_job_id_404(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get("/api/chat/reply/does-not-exist")
+        assert resp.status == 404
