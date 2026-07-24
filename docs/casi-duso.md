@@ -1,182 +1,164 @@
 # HIRIS — Casi d'uso ed esempi
 
-> Versione: 0.22.1 · Aggiornato: 2026-07-17
+> Versione: 0.33.0 · Aggiornato: 2026-07-24
 
-Questo documento contiene configurazioni reali di HIRIS con YAML completo degli agenti, conversazioni di esempio e setup step-by-step per ogni scenario.
+A partire da questa versione HIRIS ragiona sulla casa in due soli modi:
+
+- **Sentinella** — il livello proattivo. Un set fisso di **lenti** built-in
+  (detector/situazioni), ciascuna abilitabile e tarabile singolarmente
+  (selettore entità + soglie) dalla pagina di configurazione Sentinella. Non
+  esistono più agenti autonomi con prompt, regole (`rules`) e stati (`states`)
+  personalizzati: quando una lente rileva qualcosa, un reasoner LLM
+  single-shot valuta il segnale e — filtrato dal semaforo di sicurezza — può
+  notificare e/o suggerire un'unica azione a basso rischio.
+- **Personas** — la chat. Una Persona è una configurazione (prompt, scope
+  tool/entità/servizi, scope memoria, politica di conversazione) usata su
+  richiesta dall'utente; non ha scheduling proprio.
+
+Le **lenti definite dall'utente** (trigger e prompt personalizzati, per
+coprire scenari oltre i built-in) sono previste in una versione successiva —
+non in questa.
+
+Questo documento raccoglie esempi realistici per entrambi i livelli.
 
 ---
 
-## 1. Briefing mattutino
+## Sentinella — lenti built-in
 
-**Obiettivo:** Ogni mattina alle 7:00 ricevere un riepilogo dei consumi di ieri, il meteo di oggi e le eventuali anomalie della notte.
+| Lente | Cosa rileva | Parametri tarabili |
+|---|---|---|
+| `opening` | Porta/finestra aperta oltre una soglia | entità, minuti |
+| `fridge_temp` | Temperatura frigo/freezer fuori soglia per troppo tempo | entità, °C max, durata min |
+| `power` | Consumo istantaneo sopra soglia | entità, watt max |
+| `battery` | Batteria di un sensore/dispositivo sotto soglia | entità, % minima |
+| `hot_and_away` | Fa caldo fuori e non c'è nessuno in casa | sensore temp. esterna, soglia °C, entità valvola/relè, minuti di funzionamento, salta se pioggia prevista |
+| `evening_arrival` | Rientro serale (presenza torna a `on` di sera) | entità presenza, entità scena/target, entità sole, ora dopo cui è "sera" |
 
-**Tipo agente:** Agent (cron schedulato)
+Ogni lente segue lo stesso schema: **detector/situazione → segnale →
+reasoner (Claude Haiku di default) → semaforo → notifica e/o azione**. Non
+c'è un system prompt da scrivere: il reasoner della Sentinella ha un prompt
+fisso, condiviso da tutte le lenti, e risponde sempre con lo stesso schema
+JSON interno (`verdict`, `severity`, `message`, `action`) — non più con la
+sintassi `VALUTAZIONE:`/`AZIONI:` di prima.
 
-**Configurazione:**
+### Esempio — lente `opening` (ex "Porta lasciata aperta")
+
+**Obiettivo:** essere avvisati se la porta d'ingresso resta aperta troppo a lungo.
+
+**Configurazione (pagina Sentinella):**
 ```json
 {
-  "name": "Briefing Mattutino",
-  "type": "agent",
-  "triggers": [{"type": "cron", "cron": "0 7 * * *"}],
-  "action_mode": "automatic",
-  "system_prompt": "Sei un agente di briefing quotidiano. Ogni mattina recupera i dati energetici di ieri, le previsioni meteo per le prossime 12 ore e qualsiasi evento insolito della notte (porte lasciate aperte, consumi anomali). Scrivi un briefing conciso in 3-4 righe, adatto a una notifica push. Concludi con un suggerimento pratico per la giornata.",
-  "strategic_context": "Casa di famiglia, 4 persone, pannelli solari 6kWp, pompa di calore per riscaldamento e acqua calda.",
-  "allowed_tools": ["get_energy_history", "get_weather_forecast", "get_home_status", "send_notification"],
-  "model": "auto"
+  "detectors": {
+    "opening": {
+      "enabled": true,
+      "entities": ["binary_sensor.porta_ingresso"],
+      "open_minutes": 10
+    }
+  }
 }
 ```
 
-**Esempio output (notifica):**
+**Cosa succede:** quando `binary_sensor.porta_ingresso` passa a `on`, il
+detector emette un segnale con soglia 10 minuti. Se la porta resta aperta
+oltre la soglia, la Sentinella sveglia il reasoner, che valuta il contesto e
+— se lo ritiene opportuno — notifica.
+
 ```
-☀️ Buongiorno! Ieri: 18,2 kWh consumati, 12,4 kWh prodotti (solare ha coperto il 68%).
-Oggi: parzialmente nuvoloso, 14→22°C. Previsione solare moderata dalle 10:00.
-Nessuna anomalia notturna.
-💡 Consiglio: fai girare la lavastoviglie tra le 11:00 e le 14:00 per massimizzare l'autoconsumo solare.
+🚪 La porta d'ingresso è aperta da 12 minuti.
 ```
 
----
+### Esempio — lente `power` (ex "Rilevamento anomalie energetiche")
 
-## 2. Rilevamento anomalie energetiche
+**Obiettivo:** essere avvisati di un consumo anomalo prima che arrivi la bolletta.
 
-**Obiettivo:** Rilevare consumi insoliti e avvisare prima che arrivi la bolletta.
-
-**Tipo agente:** Agent (periodico)
-
-**Configurazione:**
 ```json
 {
-  "name": "Monitor Energia",
-  "type": "agent",
-  "triggers": [{"type": "schedule", "interval_minutes": 20}],
-  "action_mode": "configured",
-  "system_prompt": "Sei un agente di monitoraggio energetico. Controlla il consumo attuale della casa. Confrontalo con l'orario e i pattern tipici (descritti nel contesto). Segnala ANOMALIA se: il consumo totale supera 3kW quando nessuno dovrebbe cucinare; lavatrice o lavastoviglie attive dopo mezzanotte; qualsiasi elettrodomestico con consumo superiore all'atteso. Rispondi con VALUTAZIONE: OK se nulla di insolito, VALUTAZIONE: ANOMALIA se serve intervento.",
-  "strategic_context": "Consumo notturno normale (23:00-07:00): 200-400W (frigo + standby). Diurno normale: 400-1200W. Picchi cottura: 1500-3500W per 20-40 minuti.",
-  "allowed_tools": ["get_home_status", "get_entities_by_domain", "get_energy_history"],
-  "allowed_entities": ["sensor.*potenza*", "sensor.*energia*", "switch.*"],
-  "model": "auto",
-  "states": ["OK", "ANOMALIA"],
-  "rules": [
-    {"states": ["ANOMALIA"], "actions": [{"type": "notify", "channel": "ha_push", "message": "⚡ Anomalia energetica"}]}
-  ]
+  "detectors": {
+    "power": {
+      "enabled": true,
+      "entities": ["sensor.potenza_rete"],
+      "max_watt": 3000
+    }
+  }
 }
 ```
 
-**Esempio notifica:**
+**Cosa succede:** quando `sensor.potenza_rete` supera 3000 W, la Sentinella
+valuta il segnale e notifica se lo ritiene un'anomalia:
 ```
-⚡ Anomalia energetica: sono le 02:30 e la casa assorbe 1,8 kW.
-La lavatrice (1,4 kW) è in funzione da 2h 15min — insolito a quest'ora.
-Totale attuale: 1,8 kW vs atteso 350 W.
+⚡ Consumo anomalo: 3.8 kW alle 02:30.
 ```
 
----
+### Esempio — lente `hot_and_away` (ex "Pianificatore irrigazione intelligente")
 
-## 3. Porta lasciata aperta
+**Obiettivo:** quando fa caldo e non c'è nessuno in casa, far partire per
+qualche minuto un'utenza (es. l'irrigazione) senza dover programmare nulla
+manualmente.
 
-**Obiettivo:** Quando la porta d'ingresso è aperta da più di 5 minuti, verificare il contesto e notificare se necessario.
-
-**Tipo agente:** Agent (state_changed)
-
-**Configurazione:**
 ```json
 {
-  "name": "Monitor Porta",
-  "type": "agent",
-  "triggers": [{"type": "state_changed", "entity_id": "binary_sensor.porta_ingresso"}],
-  "action_mode": "configured",
-  "system_prompt": "Lo stato della porta d'ingresso è appena cambiato. Se si è aperta: controlla da quanto è aperta, verifica se c'è qualcuno in casa tramite i sensori di presenza, controlla se è un'ora insolita (tra le 23:00 e le 07:00). Notifica solo se la porta è aperta da più di 5 minuti E nessuno è rilevato dentro OPPURE è notte. Se la porta si è appena chiusa, nessuna azione necessaria.",
-  "strategic_context": "Porta ingresso: binary_sensor.porta_ingresso. Sensori presenza: binary_sensor.pir_ingresso, binary_sensor.pir_salotto, binary_sensor.pir_cucina.",
-  "allowed_tools": ["get_entity_states", "send_notification"],
-  "allowed_entities": ["binary_sensor.porta_ingresso", "binary_sensor.pir_*"],
-  "require_confirmation": false,
-  "model": "auto",
-  "states": ["OK", "ANOMALIA"],
-  "rules": [
-    {"states": ["ANOMALIA"], "actions": [{"type": "notify", "channel": "ha_push", "message": "🚪 Porta aperta"}]}
-  ]
+  "situations": {
+    "presence_entity": "binary_sensor.presenza_casa",
+    "hot_and_away": {
+      "enabled": true,
+      "outside_temp_entity": "sensor.temperatura_esterna",
+      "hot_threshold_c": 32,
+      "valve_entity": "switch.irrigazione_prato",
+      "run_minutes": 5,
+      "skip_if_rain": true
+    }
+  }
 }
 ```
 
-**Esempio notifica:**
-```
-🚪 La porta d'ingresso è aperta da 8 minuti.
-Nessun movimento rilevato in casa negli ultimi 15 minuti.
-Ora attuale: 23:42. Situazione insolita — verificare.
-```
+**Cosa succede:** ogni volta che la Sentinella osserva lo snapshot periodico
+della casa, se la temperatura esterna supera 32°C, in casa non c'è nessuno e
+non è prevista pioggia, propone di accendere `switch.irrigazione_prato` per 5
+minuti.
+
+**Nota — non è più il pianificatore multi-zona di prima:** questa lente
+valuta un'unica soglia/relè con una singola decisione, non un piano per-zona
+con durate calcolate dal modello su piogge/umidità/orientamento di ogni
+aiuola. Quel livello di ragionamento personalizzato richiede prompt e trigger
+su misura — cioè le **lenti definite dall'utente**, non ancora disponibili
+in questa versione.
+
+### Cosa non è più disponibile come agente autonomo
+
+I vecchi agenti "monitor/reattivi/preventivi" con prompt, regole e stati
+personalizzati sono stati ritirati insieme alla loro macchina di esecuzione.
+Casi come "briefing mattutino automatico alle 7:00", "pre-riscaldamento in
+base alle previsioni", "ottimizzatore autoconsumo solare" o "controllo di
+sicurezza notturno combinato" non hanno oggi un equivalente autonomo: il
+livello proattivo copre solo le lenti built-in sopra. Puoi comunque ottenere
+lo stesso risultato **su richiesta**, chiedendolo a una Persona in chat (vedi
+sotto). Le lenti definite dall'utente, quando arriveranno, colmeranno questo
+divario per gli scenari ricorrenti.
 
 ---
 
-## 4. Pre-riscaldamento anticipato
+## Personas — agenti chat
 
-**Obiettivo:** Ogni pomeriggio, controlla le previsioni e avvia il riscaldamento in anticipo se farà freddo al rientro.
+Una Persona è definita da:
+- **Prompt** — `system_prompt` + `strategic_context` (contesto della casa/famiglia).
+- **Scope tool** — `allowed_tools`.
+- **Scope entità/servizi** — `allowed_entities`, `allowed_services`, `allowed_endpoints`.
+- **Scope memoria** — `knowledge_access` (dati sensibili, quali categorie).
+- **Politica di conversazione** — `max_chat_turns`, `require_confirmation`, `response_mode`.
+- **Override modello** — `model`, `max_tokens`, `thinking_budget`.
 
-**Tipo agente:** Agent (cron)
+Non esistono più `type`, `triggers`, `action_mode`, `rules`, `states` né
+`budget_eur_limit`: una Persona non ha scheduling né esecuzione autonoma, e i
+costi sono tracciati ma senza tetto per-persona (nessun auto-disable).
 
-**Configurazione:**
-```json
-{
-  "name": "Pre-riscaldamento",
-  "type": "agent",
-  "triggers": [{"type": "cron", "cron": "30 16 * * 1-5"}],
-  "action_mode": "automatic",
-  "system_prompt": "Sono le 16:30 di un giorno feriale. La famiglia rientra tipicamente verso le 18:30. Controlla le previsioni meteo per le 18:00-19:00. Se la temperatura esterna sarà sotto 10°C e il termostato del soggiorno è in modalità 'away' o 'off', attiva il riscaldamento ora così la casa è calda all'arrivo. Imposta il soggiorno a 21°C. Se già in riscaldamento o temperatura mite (>15°C fuori), nessuna azione.",
-  "strategic_context": "Termostato soggiorno: climate.soggiorno. Modalità assenza setpoint: 17°C. Setpoint comfort: 21°C.",
-  "allowed_tools": ["get_weather_forecast", "get_entity_states", "call_ha_service"],
-  "allowed_entities": ["climate.soggiorno", "climate.*"],
-  "allowed_services": ["climate.*"],
-  "model": "auto"
-}
-```
+### Esempio — Assistente per ospiti
 
-**Cosa succede:** alle 16:30 HIRIS controlla le previsioni delle 18:00. Se sono 8°C chiama `climate.set_temperature` e `climate.set_hvac_mode` automaticamente. Nessuna notifica a meno che non intervenga.
+**Obiettivo:** una Persona ristretta che gli ospiti possono usare per
+controllare luci e temperatura, senza accedere a dati sensibili.
 
----
-
-## 5. Controllo sicurezza notturno
-
-**Obiettivo:** Ogni sera alle 23:00, verificare che porte e finestre siano chiuse e che non accada nulla di insolito.
-
-**Tipo agente:** Agent (cron)
-
-**Configurazione:**
-```json
-{
-  "name": "Sicurezza Notturna",
-  "type": "agent",
-  "triggers": [{"type": "cron", "cron": "0 23 * * *"}],
-  "action_mode": "automatic",
-  "system_prompt": "Sono le 23:00. Esegui un controllo di sicurezza notturno: 1) elenca tutte le porte e finestre attualmente aperte. 2) verifica se ci sono luci esterne ancora accese. 3) controlla se l'allarme è inserito. Scrivi un report di sicurezza breve. Se tutto è ok, dillo in una riga. Se c'è qualcosa da segnalare, elencalo chiaramente.",
-  "strategic_context": "Sensori porta/finestra: binary_sensor.porta_ingresso, binary_sensor.porta_retro, binary_sensor.finestra_cucina, binary_sensor.finestra_camera. Luci esterne: light.giardino, light.garage.",
-  "allowed_tools": ["get_entities_by_domain", "get_entity_states", "send_notification"],
-  "allowed_entities": ["binary_sensor.*porta*", "binary_sensor.*finestra*", "light.giardino", "light.garage"],
-  "model": "auto",
-  "states": ["OK", "ATTENZIONE", "ANOMALIA"],
-  "rules": [
-    {"states": ["ANOMALIA", "ATTENZIONE"], "actions": [{"type": "notify", "channel": "ha_push", "message": "🔒 Controllo sicurezza"}]}
-  ]
-}
-```
-
-**Esempio notifica quando qualcosa è aperto:**
-```
-🔒 Controllo notturno — attenzione richiesta:
-• Finestra cucina: APERTA
-• Luce giardino: ACCESA (dimenticata)
-Tutto il resto a posto. Allarme: inserito.
-```
-
----
-
-## 6. Agente chat per ospiti
-
-**Obiettivo:** Un agente chat ristretto che gli ospiti possono usare per controllare luci e temperatura, senza accedere a dati sensibili.
-
-**Tipo agente:** Chat
-
-**Configurazione:**
 ```json
 {
   "name": "Assistente Ospiti",
-  "type": "chat",
   "system_prompt": "Sei un assistente domotico per gli ospiti. Puoi controllare luci e temperatura della camera ospiti e del soggiorno. Sii sempre cortese e chiedi conferma prima di fare modifiche. Non discutere di costi energetici, abitudini della famiglia o informazioni sulla sicurezza. Se ti chiedono qualcosa al di fuori di luci e temperatura, declina gentilmente.",
   "strategic_context": "Camera ospiti: light.camera_ospiti, climate.camera_ospiti. Soggiorno: light.soggiorno, climate.soggiorno.",
   "allowed_tools": ["get_entity_states", "call_ha_service"],
@@ -184,7 +166,6 @@ Tutto il resto a posto. Allarme: inserito.
   "allowed_services": ["light.*", "climate.set_temperature"],
   "restrict_to_home": true,
   "require_confirmation": true,
-  "budget_eur_limit": 1.00,
   "model": "auto"
 }
 ```
@@ -201,37 +182,11 @@ HIRIS:  "Sono configurato solo per luci e temperatura. Per altre domande,
          chiedi al proprietario di casa."
 ```
 
----
+### Esempio — Controllo multi-stanza con un messaggio
 
-## 7. Ottimizzatore autoconsumo solare
+**Obiettivo:** usare una Persona per controllare più stanze con un singolo
+comando in linguaggio naturale.
 
-**Obiettivo:** Quando la produzione solare è alta, avviare automaticamente gli elettrodomestici ad alto consumo.
-
-**Tipo agente:** Agent (state_changed sul sensore solare)
-
-**Configurazione:**
-```json
-{
-  "name": "Ottimizzatore Solare",
-  "type": "agent",
-  "triggers": [{"type": "state_changed", "entity_id": "sensor.fotovoltaico"}],
-  "action_mode": "configured",
-  "system_prompt": "La produzione solare è cambiata. Controlla produzione attuale (W) e consumo attuale (W). Calcola il surplus netto (produzione - consumo). Se surplus > 1500W: controlla se lo scaldabagno (switch.scaldabagno) è spento — se sì, accendilo per usare l'energia gratuita. Se il surplus scende sotto 500W: spegni lo scaldabagno per evitare di importare dalla rete. Agisci solo se la variazione di surplus è significativa (>300W rispetto all'ultimo stato).",
-  "strategic_context": "Solare: sensor.fotovoltaico. Scambio rete: sensor.potenza_rete (positivo = importo, negativo = esporto). Scaldabagno: switch.scaldabagno (1800W quando acceso).",
-  "allowed_tools": ["get_entity_states", "call_ha_service"],
-  "allowed_entities": ["sensor.fotovoltaico", "sensor.potenza_rete", "switch.scaldabagno"],
-  "allowed_services": ["switch.turn_on", "switch.turn_off"],
-  "model": "auto"
-}
-```
-
----
-
-## 8. Controllo multi-stanza con un messaggio
-
-**Obiettivo:** Usare l'agente chat per controllare più stanze con un singolo comando in linguaggio naturale.
-
-**Esempio conversazione:**
 ```
 Tu:    "Fa freddo, porta tutti i termostati a 21 gradi"
 HIRIS: [chiama get_entities_by_domain("climate")]
@@ -246,59 +201,41 @@ HIRIS: [chiama call_ha_service per climate.camera_ospiti con temperature: 18]
 HIRIS: "Camera ospiti aggiornata a 18°C. Gli altri tre rimangono a 21°C."
 ```
 
----
+### Esempio — chiedere un riepilogo su richiesta (ex "Briefing mattutino")
 
-## 9. Pianificatore irrigazione intelligente
+**Obiettivo:** ottenere lo stesso tipo di riepilogo che prima girava da solo
+ogni mattina, ora chiedendolo esplicitamente a una Persona.
 
-**Obiettivo:** Ogni mattina alle 5:00, decidere se irrigare e per quanto tempo — in base alle precipitazioni recenti, al meteo odierno e alle previsioni a 2 giorni. Programmare automaticamente accensione e spegnimento delle valvole.
-
-**Tipo agente:** Preventivo (cron `0 5 * * *`)
-
-**Stati personalizzati:** `SKIP | LEGGERA | PIENA`
-- `SKIP` — pioggia recente sufficiente o prevista; nessuna irrigazione
-- `LEGGERA` — condizioni borderline; ciclo breve (10–15 min per zona)
-- `PIENA` — terreno asciutto, nessuna pioggia prevista; ciclo completo (20–30 min per zona)
-
-**Perché stati personalizzati?** I risultati dell'irrigazione non si mappano su OK/ATTENZIONE/ANOMALIA. Stati specifici al dominio rendono la decisione leggibile e la logica di notifica precisa — le azioni scattano solo su `LEGGERA` o `PIENA`.
-
-**Configurazione:**
-```json
-{
-  "name": "Irrigazione Giardino",
-  "type": "agent",
-  "triggers": [{"type": "cron", "cron": "0 5 * * *"}],
-  "action_mode": "configured",
-  "states": ["SKIP", "LEGGERA", "PIENA"],
-  "rules": [{"states": ["LEGGERA", "PIENA"], "actions": [{"type": "notify", "message": "Irrigazione avviata"}]}],
-  "strategic_context": "ZONE DI IRRIGAZIONE:\n- Prato nord: switch.irrigazione_prato_nord — terreno argilloso, sole pieno\n- Aiuole: switch.irrigazione_aiuole — terreno misto, mezza ombra\n- Orto: switch.irrigazione_orto — terreno sabbioso, richiede più acqua\n\nSENSOR METEO:\n- Pioggia ultimi 24h: sensor.pioggia_24h (mm)\n- Pioggia ultimi 48h: sensor.pioggia_48h (mm)\n- Umidità suolo prato: sensor.umidita_suolo_prato (%)\n\nSOGLIE PIOGGIA:\n- Passate 24h > 5mm → SKIP\n- Passate 48h > 10mm → SKIP o LEGGERA\n- Previsione oggi > 3mm → SKIP\n- Previsione domani > 5mm → preferisci LEGGERA invece di PIENA",
-  "system_prompt": "Valuta se e quanto irrigare oggi.\n1. Leggi le precipitazioni recenti: get_entity_states sui sensori pioggia.\n2. Leggi l'umidità del suolo se disponibile.\n3. Ottieni previsioni meteo 48h: get_weather_forecast(hours=48).\n4. Per ogni zona, decidi la durata in minuti (0 = salta).\n5. Se irrighi, usa create_task() per programmare call_ha_service per ogni zona:\n   - Accensione: ora attuale + 2 min di buffer\n   - Spegnimento: orario accensione + durata zona\n   - Esegui le zone in sequenza per non sovraccaricare la pompa.\nConcluidi con VALUTAZIONE: SKIP | LEGGERA | PIENA e una riga di motivazione.",
-  "allowed_tools": ["get_entity_states", "get_weather_forecast", "search_entities", "send_notification", "create_task"],
-  "allowed_services": ["switch.turn_on", "switch.turn_off"],
-  "model": "auto"
-}
+```
+Tu:    "Dammi il riepilogo energetico di ieri e il meteo di oggi"
+HIRIS: [chiama get_energy_history(days=1), get_weather_forecast(hours=12)]
+HIRIS: "Ieri: 18,2 kWh consumati, 12,4 kWh prodotti (solare ha coperto il 68%).
+        Oggi: parzialmente nuvoloso, 14→22°C."
 ```
 
-**Come funziona:**
-1. Alle 05:00 l'agente si attiva e legge lo storico piogge + umidità suolo + previsioni 48h.
-2. Ragiona su ogni zona e decide le durate.
-3. Per ogni zona chiama `create_task()` due volte (valvola on, valvola off) — i task vengono accodati in HIRIS ed eseguiti agli orari programmati, anche dopo che l'agente ha terminato.
-4. L'agente conclude con `VALUTAZIONE: LEGGERA` (o `PIENA` o `SKIP`).
-5. Poiché `action_mode` è `configured` e la regola include `LEGGERA` e `PIENA` negli `states`, la notifica scatta; `SKIP` non produce notifiche.
-
-**Consiglio — descrivi le zone nel contesto strategico:** includi orientamento, tipo di terreno e note microclima. Il modello usa queste informazioni per calibrare le durate (terreno sabbioso = cicli più lunghi; zone in ombra = meno acqua).
-
-**Consiglio — nessun tool meteo storico per ora:** HIRIS non fornisce ancora un tool `get_weather_history`. Come workaround usa i sensori di precipitazione di HA (es. `sensor.pioggia_24h` dall'integrazione meteo). Un tool dedicato è previsto per la Fase 2.
+A differenza del vecchio agente cron, questa richiesta va posta quando serve
+— non gira più autonomamente a un orario fisso.
 
 ---
 
-## Consigli per scrivere system prompt efficaci
+## Consigli per configurare Sentinella e Personas
 
-**Sii esplicito sulle condizioni:** invece di "notifica se qualcosa non va", scrivi "notifica se il consumo supera 3kW tra le 23:00 e le 07:00".
+**Per il proattivo, taratura non prompt:** le lenti della Sentinella non si
+programmano scrivendo un prompt — si abilitano e si tarano (entità, soglie)
+dalla pagina Sentinella. Non serve (e non è più possibile) scrivere
+`VALUTAZIONE:` o definire `rules`/`states` personalizzati.
 
-**Dai contesto sulla tua casa:** includi gli entity ID, i valori di consumo tipici, gli orari della famiglia. Claude usa questo per calibrare il ragionamento.
+**Sii esplicito nel prompt di una Persona:** invece di "dimmi se qualcosa non
+va", scrivi "dimmi se il consumo supera 3kW".
 
-**Definisci il formato di output per gli agenti non-chat:** termina sempre i prompt con `VALUTAZIONE: <stati>` — è quello che gestisce l'action chaining. Gli stati predefiniti sono `OK|ATTENZIONE|ANOMALIA`, ma puoi definire stati personalizzati per ogni agente (es. `SKIP|LEGGERA|PIENA` per l'irrigazione). Configurali nel campo "Stati agente" e scegli quali valori attivano le azioni in "Valutazione che attiva le azioni".
+**Dai contesto sulla tua casa:** includi gli entity ID, i valori tipici, gli
+orari della famiglia in `strategic_context`. Claude usa questo per calibrare
+le risposte.
 
-**Usa `require_confirmation` per azioni irreversibili:** qualsiasi agente che controlla riscaldamento, elettrodomestici o sicurezza dovrebbe averlo abilitato.
+**Usa `require_confirmation` per azioni irreversibili:** qualsiasi Persona che
+controlla riscaldamento, elettrodomestici o sicurezza dovrebbe averlo
+abilitato.
 
-**Imposta sempre un budget:** anche un limite di 5 EUR/mese per ogni agente previene costi imprevisti da bug o comportamenti inattesi.
+**Restringi lo scope:** `allowed_tools`/`allowed_entities`/`allowed_services`
+più stretti possibile per ogni Persona — soprattutto per assistenti condivisi
+con ospiti.

@@ -1,12 +1,12 @@
 # HIRIS — How It Works
 
-> Version: 0.22.1 · Updated: 2026-07-17
+> Version: 0.33.0 · Updated: 2026-07-24
 
 ---
 
 ## What HIRIS is
 
-**HIRIS** (Home Intelligent Reasoning & Integration System) is a Home Assistant Add-on that adds an AI reasoning layer to your smart home. It exposes a natural language chat interface, runs proactive agents on a schedule or in response to HA events, and executes reasoned automations using Claude (or OpenAI / Ollama) as its reasoning engine.
+**HIRIS** (Home Intelligent Reasoning & Integration System) is a Home Assistant Add-on that adds an AI reasoning layer to your smart home. It exposes a natural language chat interface configured via **Personas**, and runs a built-in proactive layer — the **Sentinella** — that watches for a fixed set of tunable situations ("lenti") and reasons about them with Claude (or OpenAI / Ollama) as its reasoning engine.
 
 HIRIS does **not** replace Home Assistant — it works alongside it. Simple time-based automations (lights at sunset, alarms) belong in Layer 1 (local, no AI cost). Complex reasoning, anomaly detection, and natural language interaction belong in Layer 2 (AI).
 
@@ -17,20 +17,22 @@ HIRIS does **not** replace Home Assistant — it works alongside it. Simple time
 ```
 ┌───────────────────────────────────────────────────────┐
 │  LAYER 2 — AI Agentic Loop                            │
-│  • Natural language chat                              │
-│  • Proactive monitoring (anomalies, energy, climate)  │
+│  • Natural language chat (Personas)                   │
+│  • Sentinella: built-in proactive lenti                │
+│    (opening, fridge_temp, power, battery,             │
+│     hot_and_away, arrival, ...)                        │
 │  • Multi-source reasoning (weather + energy + HA)     │
 │  • Memory & RAG pre-fetch                             │
-│  Model: Claude Sonnet (chat) / Haiku (monitor)        │
+│  Model: Claude Sonnet (chat) / Haiku (Sentinella)     │
 │  Fallback: OpenAI GPT-4o / local Ollama               │
 └───────────────────────────────────────────────────────┘
           ↕  tool calls
 ┌───────────────────────────────────────────────────────┐
 │  LAYER 1 — Python Flow Engine (local, offline)        │
-│  • APScheduler: every N minutes, cron                 │
-│  • HA WebSocket listener: state_changed               │
-│  • Task engine: deferred actions, action chaining     │
-│  • Per-agent budget enforcement                       │
+│  • HA WebSocket listener: state_changed (detectors)   │
+│  • Periodic snapshot: situations/arrival               │
+│  • Task engine: deferred actions                       │
+│  • Semaforo: tier gate + dangerous-domain denylist    │
 └───────────────────────────────────────────────────────┘
           ↕  REST + WebSocket
 ┌───────────────────────────────────────────────────────┐
@@ -138,34 +140,42 @@ The loop repeats up to **10 iterations** (infinite loop protection). Claude deci
 
 ---
 
-## The four agent types
+## Personas and the Sentinella
 
-### `chat` — Conversational agent
+There is no longer a single "agent" concept split into types (`chat` /
+`monitor` / `reactive` / `preventive`) with custom rules and states. HIRIS now
+has exactly two ways it reasons about your home:
 
-Activated by the user via the UI. Uses Claude Sonnet for maximum quality.
+### Personas — conversational
 
-### `monitor` — Periodic proactive agent
+Activated by the user via the UI (or the Lovelace card). Each Persona is a
+configuration — system prompt + strategic context, tool/entity/service scope,
+memory scope (`knowledge_access`), chat policy (`max_chat_turns`,
+`require_confirmation`, `response_mode`) — never an autonomous schedule. Uses
+Claude Sonnet for maximum quality by default.
 
-Runs every N minutes. Scans the house and notifies if it finds anomalies.
-Uses Claude Haiku (economical for continuous execution).
+### Sentinella — proactive, built-in lenti
 
-Required structured output:
+A fixed set of **lenti** (detectors/situations), each independently enabled
+and tuned (entity selector + thresholds) from the Sentinella config page:
+`opening` (door/window left open), `fridge_temp`, `power` (consumption
+anomaly), `battery` (low battery), `hot_and_away` (hot outside + nobody home
+→ suggests running a valve/relay for N minutes), `evening_arrival` (presence
+returns in the evening → suggests a scene). A signal from any lens wakes a
+single-shot LLM reasoner (Claude Haiku by default, restricted to read-only
+tools) that decides whether to notify and/or suggest one low-risk action,
+gated by the semaforo (tier + dangerous-domain denylist) before anything is
+actually executed.
+
+Example of the reasoner's own structured reply (internal — not user-facing
+prompt syntax anymore; the reasoner always answers in Italian):
+```json
+{"verdict": "anomalia", "severity": "warn", "message": "Consumo anomalo — lavatrice attiva da 3 ore", "action": null}
 ```
-VALUTAZIONE: ANOMALIA
-Motivazione: Anomalous consumption — washing machine running for 3 hours
-```
 
-### `reactive` — Event-driven agent
-
-Activates when an HA entity changes state.
-
-Example: front door opened at midnight → Claude decides whether to notify.
-
-### `preventive` — Cron-scheduled agent
-
-Activates at fixed times.
-
-Example: every morning at 7:00, fetches weather + yesterday's energy → suggests optimizations.
+User-defined lenti (custom triggers/prompts, replacing the old
+`monitor`/`reactive`/`preventive` autonomous agents) are planned for a later
+version — today the proactive layer only covers the built-in lenti above.
 
 ---
 
@@ -249,7 +259,7 @@ HIRIS stores agent memories in SQLite with vector similarity search (pure Python
 
 ## Security model
 
-Each agent can be restricted to:
+Each Persona can be restricted to:
 
 | Field | Purpose | Example |
 |---|---|---|
@@ -259,8 +269,12 @@ Each agent can be restricted to:
 | `allowed_endpoints` | Whitelisted URLs for `http_request` | `[{"url": "https://api.example.com", ...}]` |
 | `restrict_to_home` | Refuse off-topic questions | `true` |
 | `require_confirmation` | Claude must ask before calling `call_ha_service` | `true` |
-| `budget_eur_limit` | Auto-disable when cumulative cost exceeds limit | `2.00` |
+| `knowledge_access` | Memory scope (sensitive data, which kinds) | `{"allow_sensitive": false, "kinds": "all"}` |
 | `max_chat_turns` | Limit conversation length | `20` |
+
+Cost/tokens are still tracked per Persona (visible in the config UI and via
+MQTT) but there is no per-Persona budget cap or auto-disable anymore — that
+mechanism was retired together with the old autonomous-agent fields.
 
 SSRF protection is enforced on `http_request`: RFC1918 ranges, IPv4-mapped IPv6, loopback, and link-local addresses are blocked. Redirects are disabled. Requests are capped at 4KB.
 

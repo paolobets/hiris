@@ -1,8 +1,17 @@
 # HIRIS — MQTT Integration
 
-> Version: 0.22.1 · Updated: 2026-07-17
+> Version: 0.33.0 · Updated: 2026-07-24
 
-HIRIS publishes native Home Assistant entities via MQTT discovery, making every agent's status, budget, and run controls available as first-class HA entities — usable in dashboards, automations, and scripts without any manual YAML configuration.
+HIRIS publishes native Home Assistant entities via MQTT discovery, making every Persona's status and usage available as first-class HA entities — usable in dashboards and automations without any manual YAML configuration.
+
+MQTT publishing is **outbound-only** (discovery + state). There is no longer a
+2-way command channel: an earlier version exposed a writable `enabled` switch
+and a `run_now` button over MQTT, wired to the old autonomous-agent scheduler.
+That scheduler was retired — the proactive layer today is the built-in
+Sentinella (see `docs/how-it-works.md`), and Personas run only on demand from
+chat — so there is nothing left in HIRIS to enable/disable or "run now" via a
+remote command. Both controls were removed; see "Upgrading from an older
+version" below.
 
 ---
 
@@ -26,116 +35,74 @@ HIRIS connects to the broker on startup and reconnects automatically with expone
 
 ## Published entities
 
-For each configured agent, HIRIS publishes the following entities via MQTT auto-discovery. Replace `{agent_id}` with the agent's ID (hyphens are converted to underscores in entity IDs — e.g. agent ID `hiris-default` → entity IDs use `hiris_default`).
+For each configured Persona, HIRIS publishes the following entities via MQTT auto-discovery. Replace `{agent_id}` with the Persona's ID (hyphens are converted to underscores in entity IDs — e.g. ID `hiris-default` → entity IDs use `hiris_default`). All of them are **read-only** (`sensor`) — there is no writable control entity anymore.
 
 ### `sensor.hiris_{agent_id}_status`
 
-Current operational state of the agent.
+Current operational state of the Persona.
 
 | Value | Meaning |
 |-------|---------|
-| `idle` | Agent is waiting for its next trigger |
-| `running` | Agent is currently executing |
+| `idle` | Not currently running |
+| `running` | Currently executing a chat turn |
 | `error` | Last run failed |
+
+### `sensor.hiris_{agent_id}_budget_eur`
+
+Cumulative cost (EUR) accrued by this Persona so far. Informational only.
+
+- Unit of measurement: `EUR`
+- Device class: `monetary`
 
 ### `sensor.hiris_{agent_id}_budget_remaining_eur`
 
-Budget remaining for the agent in EUR. Counts down from `budget_eur_limit` as the agent accumulates costs. When this reaches 0 the agent auto-disables.
-
-- Unit of measurement: `EUR`
-- State class: `measurement`
+Always reports `unlimited` — Personas no longer have a per-agent budget cap or auto-disable (that mechanism was retired along with the old autonomous-agent fields). Kept for backward compatibility with existing dashboards/automations built on this entity.
 
 ### `sensor.hiris_{agent_id}_tokens_used_today`
 
-Total tokens consumed by the agent since UTC midnight.
+Total tokens consumed by the Persona since UTC midnight.
 
 - Resets daily at 00:00 UTC
 
-### `switch.hiris_{agent_id}_enabled`
+### `sensor.hiris_{agent_id}_enabled`
 
-Enables or disables the agent. Writable — turning the switch off pauses the agent without deleting its configuration or history.
+Whether the Persona is enabled (`ON`/`OFF`). Read-only — enable/disable it from the HIRIS config UI, not via MQTT (see "Upgrading from an older version" below for what changed).
 
-**Control from an HA automation:**
+### `sensor.hiris_{agent_id}_last_run`
 
-```yaml
-service: switch.turn_off
-target:
-  entity_id: switch.hiris_monitor_enabled
-```
+Timestamp of the Persona's most recent run.
 
 ### `sensor.hiris_{agent_id}_last_result`
 
-Text output of the agent's most recent run. Updated after every execution.
-
-### `button.hiris_{agent_id}_run_now`
-
-Pressing this button triggers an immediate execution of the agent outside its normal schedule. Useful for testing or forcing a run from a dashboard or automation.
-
-**Trigger from an HA automation:**
-
-```yaml
-service: button.press
-target:
-  entity_id: button.hiris_morning_briefing_run_now
-```
-
----
-
-## Controlling agents via MQTT
-
-In addition to HA service calls, you can publish MQTT messages directly to control agents:
-
-| Topic | Payload | Action |
-|-------|---------|--------|
-| `hiris/agents/{agent_id}/enabled/set` | `ON` / `OFF` | Enable or disable the agent |
-| `hiris/agents/{agent_id}/run_now/set` | `ON` | Trigger an immediate run |
+Text output of the Persona's most recent run. Updated after every execution.
 
 ---
 
 ## Using entities in dashboards
 
-Once MQTT is configured and the add-on has started, all entities appear in HA automatically. A minimal agent status card in YAML:
+Once MQTT is configured and the add-on has started, all entities appear in HA automatically. A minimal status card in YAML:
 
 ```yaml
 type: entities
-title: HIRIS Agents
+title: HIRIS Personas
 entities:
   - entity: sensor.hiris_default_status
     name: Status
-  - entity: sensor.hiris_default_budget_remaining_eur
-    name: Budget remaining
+  - entity: sensor.hiris_default_enabled
+    name: Enabled
   - entity: sensor.hiris_default_tokens_used_today
     name: Tokens today
-  - entity: switch.hiris_default_enabled
-    name: Enabled
-  - entity: button.hiris_default_run_now
-    name: Run now
+  - entity: sensor.hiris_default_last_result
+    name: Last result
 ```
 
 ---
 
-## Example: alert when budget runs low
+## Upgrading from an older version
 
-This automation sends a notification when an agent's remaining budget drops below €0.50:
+Versions before this one published a writable `switch.hiris_{agent_id}_enabled` and a `button.hiris_{agent_id}_run_now`, plus two inbound MQTT command topics (`hiris/agents/{agent_id}/enabled/set`, `hiris/agents/{agent_id}/run_now/set`). Both entities and topics were wired to the old autonomous-agent scheduler/executor, which has been retired — flipping the switch or pressing the button did nothing useful even before this doc was updated.
 
-```yaml
-alias: HIRIS budget warning
-description: Notify when the default agent is nearly out of budget
-trigger:
-  - platform: numeric_state
-    entity_id: sensor.hiris_default_budget_remaining_eur
-    below: 0.50
-condition: []
-action:
-  - service: notify.notify
-    data:
-      title: "HIRIS — Budget Warning"
-      message: >
-        Agent "hiris-default" has only
-        €{{ states('sensor.hiris_default_budget_remaining_eur') }} remaining.
-        Top up the budget limit or disable the agent to avoid unexpected costs.
-mode: single
-```
+On first restart after upgrading, HIRIS publishes an empty discovery payload on the old `switch`/`button` config topics, which causes HA to remove those two stale entities automatically. The `enabled` state itself is still available, just as the read-only `sensor.hiris_{agent_id}_enabled` described above. Any automation that called `switch.turn_on/off` or `button.press` on the old entities will need to be updated to use the HIRIS config UI instead.
 
 ---
 
@@ -146,9 +113,5 @@ mode: single
 - Confirm the broker host and port in the HIRIS add-on configuration
 - Check the add-on log (Supervisor → HIRIS → Log) for connection errors
 
-**Switch state is not updating:**
-HIRIS publishes state on every enable/disable event. If the switch appears stale, restart the add-on to re-publish discovery messages.
-
-**`run_now` button is not triggering execution:**
-- Ensure the agent is enabled (`switch.hiris_{agent_id}_enabled` is ON)
-- Check the add-on log for any execution errors on the agent
+**Old `switch`/`button` entities are still visible after upgrading:**
+Restart the add-on once to force HIRIS to (re-)publish the removal discovery payload for both retired entities.

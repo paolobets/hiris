@@ -158,8 +158,8 @@ Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMP
 
 #### Sprint A — HA-Bridge ✅ done (v0.6.1)
 *Competenza: Python backend + HA WebSocket/MQTT*
-- MQTT 2-way: subscribe `hiris/agents/+/{enabled,run_now}/set`; `AgentEngine._handle_mqtt_command` callback
-- New MQTT entities: `last_result`, `budget_remaining_eur` ("unlimited" when no limit), `tokens_used_today` (daily lazy reset), `run_now` button
+- MQTT 2-way: subscribe `hiris/agents/+/{enabled,run_now}/set`; `AgentEngine._handle_mqtt_command` callback — **retired in Slice 5 (v0.33.0)**: no autonomous scheduler/executor is left to enable or trigger remotely; the command subscribe loop and `_handle_mqtt_command` are gone, `enabled` is now a read-only `sensor`, and the `run_now` button was removed (see `docs/mqtt-integration.md`)
+- New MQTT entities: `last_result`, `budget_remaining_eur` ("unlimited" when no limit), `tokens_used_today` (daily lazy reset), `run_now` button — `run_now` button retired along with the item above; `budget_remaining_eur` is now *always* `"unlimited"` (no per-agent budget cap exists anymore, see Slice 5 note below)
 - Tool: `http_request(url, method?, headers?, body?)` — Option C security: structured `AllowedEndpoint`, DNS pinning (`_PinnedResolver`), correct RFC1918 DENY_NETS, `SOCK_STREAM` for Alpine/musl, redirects off by default, 4KB cap, internal header stripping
 - `Agent.allowed_endpoints: list[dict] | None` — tool hidden from Claude when `None`
 - *(§2A.2 REST bridge: deferred — Lovelace card already uses REST+SUPERVISOR\_TOKEN)*
@@ -175,6 +175,19 @@ Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMP
 - `on_fail: continue|stop` per action; `_check_budget_auto_disable` helper extracted
 - `TaskEngine`: `immediate` trigger type; per-action `on_fail` loop with `_stop` flag
 - config.html UI: trigger_on checkboxes, on_fail dropdown, wait/verify action types with child-action editor ("Poi esegui")
+
+> **Retired in Slice 5 — Lenti + Personas (v0.33.0):** the whole autonomous-agent
+> machinery from this sprint — `action_mode`/`rules`/`states`, `Agent.trigger_on`,
+> `AgentEngine._execute_agent_actions()` (and `_execute_action_chain`/
+> `_parse_azioni_lines` added later), `on_fail`, the `VALUTAZIONE`/`AZIONI`
+> structured-output convention, per-agent `budget_eur_limit` auto-disable, and the
+> corresponding config.html trigger/action-sequence UI — has been deleted, not
+> deprecated. The proactive layer today is the built-in **Sentinella**
+> (`hiris/app/watcher/`: fixed, tunable detectors/situations — "lenti") and chat
+> is configured via **Personas** (prompt, tool/entity/service scope, memory
+> scope, chat policy). User-defined lenti (custom triggers/prompts) are planned
+> for a later version. See `docs/how-it-works.md` ("Personas and the
+> Sentinella") and `docs/architecture.md` ("Sentinella execution lifecycle").
 
 #### Sprint C — Memory-RAG ✅ done (v0.7.x)
 *Competenza: SQLite + embeddings + AI context*

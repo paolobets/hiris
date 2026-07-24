@@ -1,12 +1,12 @@
 # HIRIS — Come funziona
 
-> Versione: 0.22.1 · Aggiornato: 2026-07-17
+> Versione: 0.33.0 · Aggiornato: 2026-07-24
 
 ---
 
 ## Cos'è HIRIS
 
-**HIRIS** (Home Intelligent Reasoning & Integration System) è un Add-on per Home Assistant che aggiunge un layer di intelligenza artificiale alla smart home. Espone una chat in linguaggio naturale, esegue agenti proattivi su schedule o in risposta a eventi HA, e porta automazioni ragionate tramite Claude (o OpenAI / Ollama) come motore di ragionamento.
+**HIRIS** (Home Intelligent Reasoning & Integration System) è un Add-on per Home Assistant che aggiunge un layer di intelligenza artificiale alla smart home. Espone una chat in linguaggio naturale configurata tramite **Personas**, ed esegue un livello proattivo built-in — la **Sentinella** — che sorveglia un set fisso di situazioni tarabili ("lenti") e ragiona su di esse tramite Claude (o OpenAI / Ollama) come motore di ragionamento.
 
 HIRIS **non sostituisce** Home Assistant — si affianca a esso. Le automazioni semplici (luci al tramonto, sveglie) restano nel Layer 1 locale. Il ragionamento complesso, le anomalie, e le domande in linguaggio libero vanno al Layer 2 AI.
 
@@ -17,20 +17,22 @@ HIRIS **non sostituisce** Home Assistant — si affianca a esso. Le automazioni 
 ```
 ┌───────────────────────────────────────────────────────┐
 │  LAYER 2 — AI Agentic Loop                            │
-│  • Chat in linguaggio naturale                        │
-│  • Monitor proattivo (anomalie, consumi, clima)       │
+│  • Chat in linguaggio naturale (Personas)              │
+│  • Sentinella: lenti proattive built-in                │
+│    (opening, fridge_temp, power, battery,              │
+│     hot_and_away, arrival, ...)                         │
 │  • Ragionamento multi-sorgente (meteo + energia + HA) │
 │  • Memoria e RAG pre-fetch                            │
-│  Modello: Claude Sonnet (chat) / Haiku (monitor)      │
+│  Modello: Claude Sonnet (chat) / Haiku (Sentinella)   │
 │  Fallback: OpenAI GPT-4o / Ollama locale              │
 └───────────────────────────────────────────────────────┘
           ↕  tool calls
 ┌───────────────────────────────────────────────────────┐
 │  LAYER 1 — Python Flow Engine (locale, offline)       │
-│  • APScheduler: ogni N minuti, cron                   │
-│  • Listener WebSocket HA: state_changed               │
-│  • Task engine: azioni differite, action chaining     │
-│  • Budget enforcement per agente                      │
+│  • Listener WebSocket HA: state_changed (detector)     │
+│  • Snapshot periodico: situazioni/arrival               │
+│  • Task engine: azioni differite                       │
+│  • Semaforo: gate tier + denylist domini pericolosi   │
 └───────────────────────────────────────────────────────┘
           ↕  REST + WebSocket
 ┌───────────────────────────────────────────────────────┐
@@ -138,34 +140,44 @@ Il loop si ripete fino a **10 iterazioni** (protezione da loop infiniti). Claude
 
 ---
 
-## I quattro tipi di agente
+## Personas e Sentinella
 
-### `chat` — Agente conversazionale
+Non esiste più un unico concetto di "agente" diviso in tipi (`chat` /
+`monitor` / `reactive` / `preventive`) con regole e stati personalizzati.
+HIRIS oggi ragiona sulla casa in due soli modi:
 
-Attivato dall'utente tramite UI. Usa Claude Sonnet per la massima qualità.
+### Personas — conversazionale
 
-### `monitor` — Agente proattivo periodico
+Attivata dall'utente tramite UI (o la card Lovelace). Ogni Persona è una
+configurazione — system prompt + contesto strategico, scope tool/entità/
+servizi, scope memoria (`knowledge_access`), politica chat
+(`max_chat_turns`, `require_confirmation`, `response_mode`) — mai uno
+scheduling autonomo. Usa Claude Sonnet per la massima qualità di default.
 
-Si attiva ogni N minuti. Esamina la casa e notifica se trova anomalie.
-Usa Claude Haiku (economico per l'esecuzione continuativa).
+### Sentinella — proattiva, lenti built-in
 
-Output strutturato obbligatorio:
+Un set fisso di **lenti** (detector/situazioni), ciascuna abilitabile e
+tarabile singolarmente (selettore entità + soglie) dalla pagina di
+configurazione Sentinella: `opening` (apertura prolungata),
+`fridge_temp` (catena del freddo), `power` (consumo anomalo), `battery`
+(batteria scarica), `hot_and_away` (fa caldo e non c'è nessuno →
+suggerisce di accendere una valvola/relè per N minuti), `evening_arrival`
+(rientro serale → suggerisce una scena). Un segnale da una lente sveglia
+un reasoner LLM single-shot (Claude Haiku di default, ristretto a tool
+di sola lettura) che decide se notificare e/o suggerire un'unica azione
+a basso rischio, filtrata dal semaforo (tier + denylist domini
+pericolosi) prima che venga davvero eseguita.
+
+Esempio della risposta strutturata del reasoner (interna — non più una
+sintassi da scrivere nel prompt utente):
+```json
+{"verdict": "anomalia", "severity": "warn", "message": "Consumo anomalo — lavatrice attiva da 3 ore", "action": null}
 ```
-VALUTAZIONE: ANOMALIA
-Motivazione: Consumo anomalo — lavatrice attiva da 3 ore
-```
 
-### `reactive` — Agente event-driven
-
-Si attiva quando un'entità HA cambia stato.
-
-Esempio: porta aperta a mezzanotte → Claude decide se notificare.
-
-### `preventive` — Agente schedulato con cron
-
-Si attiva a orari fissi.
-
-Esempio: ogni mattina alle 7:00, legge meteo + consumi ieri → suggerisce ottimizzazioni.
+Le lenti definite dall'utente (trigger/prompt personalizzati, in
+sostituzione dei vecchi agenti autonomi `monitor`/`reactive`/`preventive`)
+sono previste in una versione successiva — oggi il livello proattivo
+copre solo le lenti built-in elencate sopra.
 
 ---
 
@@ -235,7 +247,7 @@ HIRIS salva le memorie degli agenti in SQLite con ricerca per similarità vettor
 
 ## Sicurezza e permessi
 
-Ogni agente può essere limitato tramite:
+Ogni Persona può essere limitata tramite:
 
 | Campo | Funzione | Esempio |
 |---|---|---|
@@ -245,8 +257,13 @@ Ogni agente può essere limitato tramite:
 | `allowed_endpoints` | URL approvati per `http_request` | `[{"url": "https://api.example.com", ...}]` |
 | `restrict_to_home` | Rifiuta domande off-topic | `true` |
 | `require_confirmation` | Claude chiede conferma prima di agire | `true` |
-| `budget_eur_limit` | Auto-disabilita al superamento budget | `2.00` |
+| `knowledge_access` | Scope memoria (dati sensibili, quali kind) | `{"allow_sensitive": false, "kinds": "all"}` |
 | `max_chat_turns` | Limita lunghezza conversazione | `20` |
+
+Costi/token restano tracciati per Persona (visibili nella UI di
+configurazione e via MQTT), ma non esiste più un tetto di budget per
+Persona né un auto-disable — quel meccanismo è stato ritirato insieme ai
+vecchi campi degli agenti autonomi.
 
 Protezione SSRF su `http_request`: range RFC1918, IPv6 mapped-IPv4, loopback e link-local bloccati. Redirect disabilitati. Risposta cappata a 4KB.
 
