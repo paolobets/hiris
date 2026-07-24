@@ -24,7 +24,7 @@ from hiris.app.brain.cognitive_loop import (
     trace_applied_coverage,
 )
 from hiris.app.brain.knowledge_store import KnowledgeStore
-from hiris.app.brain.suggestions import SuggestionStore, apply_suggestions
+from hiris.app.brain.suggestions import SuggestionStore, apply_suggestions, undo
 from hiris.app.tools.dispatcher import ToolDispatcher
 from hiris.app.watcher.policy import load_policy, save_policy
 
@@ -428,5 +428,92 @@ async def test_recall_finds_tune_trace_then_real_undo_restores_value_and_keeps_e
         )
         assert not any(r["kind"] == "brain-action" for r in after["results"]), after
         assert kstore.list_items(kind="brain-action") == []
+    finally:
+        sstore.close()
+
+
+# ---------------------------------------------------------------------------
+# M1 fast-follow: repeated drift rounds on the same detector must keep only
+# ONE live, undoable applied brain-tune row. apply_brain_tuning snapshots the
+# pre-tuning value ONLY ONCE (the very first tune), so if a SECOND round's
+# tuning also recorded a fresh "applied" suggestion row without dealing with
+# the first one, both rows would sit as kind="coverage"/status="applied" --
+# but only the newest is backed by a live snapshot; undoing the STALE one
+# would call remove_brain_tuning a second time (no-op, snapshot already
+# consumed/overwritten) and either fail or restore the wrong value, while the
+# UI still shows an "Annulla" button for it. _supersede_prior_tune_rows fixes
+# this by marking any prior applied brain-tune:<detector> row "superseded"
+# right before the new one is recorded.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_second_tune_round_supersedes_prior_applied_row_and_undo_restores_original(
+    tmp_path, kstore,
+):
+    dd = str(tmp_path)
+    _enable_power(dd, ["sensor.plug_power"], max_watt=3000)
+    sstore = SuggestionStore(str(tmp_path / "s.db"))
+    try:
+        # Round 1: mean ~800 -> raw 1600, well past hysteresis vs the
+        # original 3000 (diff ~47% > 15%) -- genuinely applies.
+        history_round1 = _FakeHistoryStore({
+            "sensor.plug_power": {"mean": 800.0, "on_hours": None, "n_days": 14},
+        })
+        applied1 = await auto_tune_detectors(
+            data_dir=dd, policy=load_policy(dd), history_store=history_round1,
+            knowledge_store=kstore, embedder=_FakeEmbedder(), store=sstore,
+        )
+        assert applied1 == [{"detector": "power", "params": {"max_watt": 1600}}]
+        assert load_policy(dd)["detectors"]["power"]["max_watt"] == 1600
+
+        rows_after_1 = sstore.list()
+        assert len(rows_after_1) == 1
+        assert rows_after_1[0]["status"] == "applied"
+        assert rows_after_1[0]["delta"] == {
+            "detector": "power",
+            "source_ref": "brain-tune:power",
+        }
+        first_id = rows_after_1[0]["id"]
+
+        # Round 2 (drift): mean ~1200 -> raw 2400, past hysteresis vs the NEW
+        # current value 1600 (diff 50% > 15%) -- this round genuinely
+        # applies AGAIN, moving max_watt from 1600 to 2400.
+        history_round2 = _FakeHistoryStore({
+            "sensor.plug_power": {"mean": 1200.0, "on_hours": None, "n_days": 14},
+        })
+        applied2 = await auto_tune_detectors(
+            data_dir=dd, policy=load_policy(dd), history_store=history_round2,
+            knowledge_store=kstore, embedder=_FakeEmbedder(), store=sstore,
+        )
+        assert applied2 == [{"detector": "power", "params": {"max_watt": 2400}}]
+        assert load_policy(dd)["detectors"]["power"]["max_watt"] == 2400
+
+        # Exactly ONE applied brain-tune:power row remains -- the newest.
+        rows_after_2 = sstore.list()
+        applied_power_rows = [
+            r for r in rows_after_2
+            if r["kind"] == "coverage" and r["status"] == "applied"
+            and isinstance(r["delta"], dict)
+            and r["delta"].get("source_ref") == "brain-tune:power"
+        ]
+        assert len(applied_power_rows) == 1
+        second_id = applied_power_rows[0]["id"]
+        assert second_id != first_id
+
+        # The earlier row must no longer read "applied" -- it is superseded,
+        # never left dangling with an "Annulla" that would fail.
+        first_row = sstore.get(first_id)
+        assert first_row["status"] == "superseded"
+
+        # Undo the SURVIVING row via the real undo path: restores the
+        # ORIGINAL pre-tuning value (3000) -- apply_brain_tuning snapshots
+        # only ONCE (round 1's call captured 3000); round 2 did not
+        # re-snapshot the intermediate 1600, so this is the only correct
+        # restore target regardless of how many rounds occurred.
+        ok = undo(sstore, dd, second_id)
+        assert ok is True
+        assert load_policy(dd)["detectors"]["power"]["max_watt"] == 3000
+        assert sstore.get(second_id)["status"] == "dismissed"
     finally:
         sstore.close()
