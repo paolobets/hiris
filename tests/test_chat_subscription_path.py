@@ -146,6 +146,58 @@ async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Final-review Fix 1: max_chat_turns must be enforced BEFORE the subscription
+# branch, not just on the sync path. Before the fix, an agent with a session
+# turn limit chatted indefinitely once chat_via_subscription was on, because
+# the check sat after the subscription branch's early return (unreachable in
+# that mode).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_max_turns_reached_blocks_subscription_path(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    agent.max_chat_turns = 1
+    from hiris.app.chat_store import append_messages
+    append_messages(agent.id, [
+        {"role": "user", "content": "prima"},
+        {"role": "assistant", "content": "risposta"},
+    ], data_dir)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "seconda", "agent_id": agent.id})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body.get("error") == "max_turns_reached"
+        assert body["turns"] == 1
+        assert body["limit"] == 1
+
+    runner.chat.assert_not_called()
+    # Nothing must have been enqueued into the reasoning queue either.
+    assert q.claim(now=time.time()) is None
+
+
+@pytest.mark.asyncio
+async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_path):
+    """Sanity check: the hoisted check must not block turns that are still
+    under the limit -- the subscription path must remain reachable."""
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    agent.max_chat_turns = 5
+    from hiris.app.chat_store import append_messages
+    append_messages(agent.id, [
+        {"role": "user", "content": "prima"},
+        {"role": "assistant", "content": "risposta"},
+    ], data_dir)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "seconda", "agent_id": agent.id})
+        assert resp.status == 202
+        body = await resp.json()
+        assert body["status"] == "pending"
+
+    runner.chat.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # User message persisted BEFORE enqueue
 # ---------------------------------------------------------------------------
 
@@ -357,8 +409,26 @@ def test_chat_via_subscription_env_var_read_same_convention_as_bridge_enabled():
     (False, False, False),
 ])
 def test_chat_via_subscription_gate_truth_table(cfg, bridge, expected):
-    """Mirrors _on_startup's gating expression exactly (verified against the
-    source above) so the truth table is exercised without booting the full
-    app: config flag alone must NEVER activate the async path when the
-    bridge (BRIDGE_ENABLED) is off."""
-    assert (cfg and bridge) is expected
+    """Final-review Fix 2: exercises the REAL gate combinator
+    (``server._chat_subscription_active``), not a hand-copied truth table --
+    so an ``and`` -> ``or`` regression in the actual function fails this
+    test. Config flag alone must NEVER activate the async path when the
+    bridge (BRIDGE_ENABLED) is off, and vice versa."""
+    from hiris.app.server import _chat_subscription_active
+
+    assert _chat_subscription_active(cfg, bridge) is expected
+
+
+def test_on_startup_wires_chat_via_subscription_through_the_real_gate_function():
+    """Complements the truth-table test above: pins that _on_startup's
+    wiring point actually CALLS _chat_subscription_active rather than
+    reimplementing the boolean logic inline (where an ``and``->``or``
+    regression would be invisible to the truth-table test, which only
+    exercises the extracted function directly)."""
+    import inspect
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    assign_pos = src.index('app["chat_via_subscription"] =')
+    line_end = src.index("\n", assign_pos)
+    assert "_chat_subscription_active(" in src[assign_pos:line_end]

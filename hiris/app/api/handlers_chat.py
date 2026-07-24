@@ -162,6 +162,24 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     effective_agent_id = getattr(agent, "id", None) if agent else None
 
+    # Enforce max turns limit (count from DB, not from the trimmed context
+    # window). Final-review Fix 1 (Slice 4b): hoisted ABOVE the subscription
+    # branch below — this check is branch-independent (it reads the turn
+    # count from chat_store, never from the sync path's trimmed history) and
+    # must run before anything is persisted/enqueued, otherwise an agent's
+    # session turn limit is silently bypassed whenever chat_via_subscription
+    # is on (the old position, after the subscription branch's early return,
+    # was never reached in that mode).
+    max_turns = getattr(agent, "max_chat_turns", 0) if agent else 0
+    if max_turns > 0:
+        turn_count = count_user_turns(effective_agent_id, data_dir) if effective_agent_id else 0
+        if turn_count >= max_turns:
+            return web.json_response({
+                "error": "max_turns_reached",
+                "turns": turn_count,
+                "limit": max_turns,
+            })
+
     # Slice 4b (chat via abbonamento), Task 2: when subscription mode is on
     # AND the reasoning-queue bridge is wired, hand the turn to the async
     # queue instead of calling a local runner — subscription mode may have
@@ -200,16 +218,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     # Load server-side history (client-sent history field is ignored)
     history = load_history(effective_agent_id, data_dir) if effective_agent_id else []
 
-    # Enforce max turns limit (count from DB, not from the trimmed context window)
-    max_turns = getattr(agent, "max_chat_turns", 0) if agent else 0
-    if max_turns > 0:
-        turn_count = count_user_turns(effective_agent_id, data_dir) if effective_agent_id else 0
-        if turn_count >= max_turns:
-            return web.json_response({
-                "error": "max_turns_reached",
-                "turns": turn_count,
-                "limit": max_turns,
-            })
+    # (max-turns check now runs above, before the subscription branch — see
+    # Fix 1 comment there.)
 
     context_history = _trim_history(history)
 

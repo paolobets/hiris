@@ -53,6 +53,19 @@ from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 logger = logging.getLogger(__name__)
 
 
+def _chat_subscription_active(cfg_on: bool, bridge_on: bool) -> bool:
+    """Slice 4b final-review Fix 2: the release's #1 fail-safe, extracted to a
+    tiny pure function so the invariant is unit-tested against REAL code
+    (see test_chat_subscription_path.py) rather than a hand-copied
+    truth-table or a substring match on the source. The chat-via-abbonamento
+    addon option must NEVER activate unless the reasoning-queue bridge is
+    ALSO genuinely enabled (BRIDGE_ENABLED) — otherwise chat jobs get
+    enqueued into a queue nothing sweeps/claims/prunes and sit pending
+    forever. Both must be True; an ``or`` here would be a silent regression.
+    """
+    return cfg_on and bridge_on
+
+
 def _parse_policy_csv(value: str | None) -> list[str] | None:
     """Parse a CSV of backend names (e.g. 'claude, ollama') into an ordered list.
 
@@ -1003,9 +1016,26 @@ async def _on_startup(app: web.Application) -> None:
     # IS an agent's active session, keyed by agent_id, so that's what the job
     # context carries and what this receives.
     from .chat_store import append_messages as _append_chat_messages
+    from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
 
     async def _submit_chat_reply(agent_id: str, reply_text: str) -> None:
         if not agent_id or not reply_text:
+            return
+        # Final-review Fix 3 (Slice 4b): mirror the sync path's two
+        # persistence guards (handlers_chat.py, ~line 423) so a reply that
+        # arrived via the async runner gets the same treatment as one from
+        # the local runner. De-tokenize BEFORE the toxicity check, same order
+        # as the sync path, so both the stored history and the toxic-pattern
+        # match see real values rather than vault tokens.
+        _pseudonymizer = app.get("pseudonymizer")
+        if _pseudonymizer is not None:
+            reply_text = _pseudonymizer.detokenize(reply_text)
+        if _is_toxic_chat_reply(reply_text):
+            # Drop silently, same as the sync path: the next turn must not
+            # inherit a poisoned/leaked history. There's no HTTP response
+            # here to carry a visible error (the caller already got a 202
+            # long ago) -- the poll route's chat_reply_skipped handling is
+            # the user-facing side of this.
             return
         _append_chat_messages(agent_id, [{"role": "assistant", "content": reply_text}], data_dir)
     app["submit_chat_reply"] = _submit_chat_reply
@@ -1120,7 +1150,7 @@ async def _on_startup(app: web.Application) -> None:
     # would sit pending forever and grow the DB.
     _bridge_enabled = os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")
     _chat_via_subscription_cfg = os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")
-    app["chat_via_subscription"] = _chat_via_subscription_cfg and _bridge_enabled
+    app["chat_via_subscription"] = _chat_subscription_active(_chat_via_subscription_cfg, _bridge_enabled)
 
     # ── Arrivo serale (fetta 3): riusa lo stesso adapter _on_situation ──────
     # (reason→inietta suggested_action→execute→record), stessa gate del
