@@ -950,10 +950,18 @@ async def _on_startup(app: web.Application) -> None:
             "verdict": getattr(decision, "verdict", None), "severity": getattr(decision, "severity", None),
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
-    async def _run_decision(wake, suggested, system):
+    async def _run_decision(wake, suggested, system, force_notify_only=False):
         decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system)
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested  # target deterministico dalla config, non dall'LLM
+        if force_notify_only:
+            # Task 3 review fix: a notify-type lens has `suggested is None`
+            # (lens_action() returns None for action.type=="notify"), so the
+            # guard above never fires and the LLM's OWN parsed action would
+            # otherwise survive onto the Decision. Force it back to None
+            # here, BEFORE execute() runs, so a notify lens can never
+            # actuate -- the AI still gets to pick verdict/severity/message.
+            decision.action = None
         _ep = app.get("execute_policy") or {}
         outcome = await execute(
             decision, wake,

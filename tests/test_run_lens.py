@@ -124,20 +124,25 @@ def _policy(tiers=None, entity_tiers=None):
 def _make_run_decision_from_llm(llm_reason, *, gather_context=None, notify, act, propose,
                                  execute_policy, allow_green_auto):
     """Test-local stand-in for server.py's real `_run_decision(wake, suggested,
-    system)` (verified against the current `hiris/app/server.py` body,
-    lines ~953-964): calls `reason()` (the LLM edge is the only fake),
-    re-injects the deterministic `suggested` action onto the parsed
-    Decision (mirroring `server.py:955-956`'s
-    `decision.action = suggested`), then runs the result through the REAL
-    `executor.execute`. This is the same "not practical to instantiate the
-    real _on_startup closure, so mirror the composed logic against real
-    reason()/execute()" approach already used by
-    `tests/test_sentinel_wiring.py`'s `_resolve_verdict` mirror."""
-    async def _run_decision(wake, suggested, system):
+    system, force_notify_only=False)` (verified against the current
+    `hiris/app/server.py` body, lines ~953-966): calls `reason()` (the LLM
+    edge is the only fake), re-injects the deterministic `suggested` action
+    onto the parsed Decision (mirroring `server.py:955-956`'s
+    `decision.action = suggested`), then -- if `force_notify_only` -- forces
+    the action back to `None` before the executor ever sees it (Task 3
+    review fix: a notify-type lens must NEVER actuate, even when `suggested`
+    is None and the LLM's own parsed action would otherwise survive), then
+    runs the result through the REAL `executor.execute`. This is the same
+    "not practical to instantiate the real _on_startup closure, so mirror
+    the composed logic against real reason()/execute()" approach already
+    used by `tests/test_sentinel_wiring.py`'s `_resolve_verdict` mirror."""
+    async def _run_decision(wake, suggested, system, force_notify_only=False):
         decision = await reason(wake, gather_context=gather_context or (lambda w: {}),
                                  llm_reason=llm_reason, system=system)
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested
+        if force_notify_only:
+            decision.action = None
         ep = execute_policy() or {}
         return await real_execute(
             decision, wake,
@@ -370,6 +375,48 @@ async def test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied(st
     )
 
     assert not rec.acted  # dangerous domain denylist still blocks it
+
+
+@pytest.mark.asyncio
+async def test_ai_notify_lens_never_actuates_even_on_safe_green_domain(store):
+    """Task 3 review fix: for a `notify`-type lens, `lens_action` legitimately
+    returns `None`, so the reasoning path's `if suggested and ...` guard
+    never re-injects a deterministic action. Without `force_notify_only`,
+    that leaves the LLM's OWN parsed `action` sitting on the Decision, and
+    on a SAFE (non-dangerous) domain with a green tier + `allow_green_auto`,
+    `executor.execute` would actuate it -- even though the user explicitly
+    configured this lens as "just notify". Unlike
+    `test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied`
+    (which uses a dangerous `lock` domain, so the denylist alone would save
+    it regardless of this fix), this test uses `light` -- a safe domain --
+    so only `force_notify_only` forcing `decision.action = None` before
+    `execute()` runs can prevent the actuation."""
+    rec = _Rec()
+    notify_lens_ai = {**NOTIFY_LENS, "reasoning": {"enabled": True, "prompt": "Sii prudente."}}
+
+    async def _llm_proposes_safe_action(system, user, *, model, max_tokens):
+        return (
+            '```json\n{"verdict":"anomalia","severity":"warn","message":"agisco",'
+            '"action":{"domain":"light","service":"turn_on","entity_id":"light.malicious_target"}}'
+            '\n```'
+        )
+
+    run_decision = _make_run_decision_from_llm(
+        _llm_proposes_safe_action, notify=rec.notify, act=rec.act, propose=rec.propose,
+        execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True)
+
+    outcome = await run_lens(
+        notify_lens_ai, {"entity_id": "sensor.temp", "value": 35},
+        store=store, run_decision=run_decision, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-24",
+    )
+
+    assert outcome == "woke"
+    assert not rec.acted  # notify lens must NEVER actuate, safe domain or not
+    assert rec.notified  # the AI verdict/message still reaches the user
 
 
 # ---------------------------------------------------------------------------

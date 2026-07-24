@@ -14,6 +14,15 @@ SECURITY (non-negotiable, see plan Global Constraints):
   parsed Decision after `reason()` returns, exactly like the built-in
   situations flow does (`server.py` `_run_decision`, mirroring
   `server.py:955-956`'s `decision.action = suggested`).
+- For a `notify`-type lens, `lens_action(lens)` is `None`, so the guard
+  above never re-injects anything — left alone, the LLM's OWN parsed
+  action would survive onto the Decision, and on a safe/green domain with
+  `allow_green_auto` the executor would actuate it. This module closes
+  that gap by passing `force_notify_only=(action.type=="notify")` into
+  `run_decision`, which (in server.py's `_run_decision`) forces
+  `decision.action = None` right before `execute()` runs. A notify lens
+  can therefore NEVER actuate, reasoning-enabled or not — only its
+  verdict/severity/message ever reach the user.
 - Reasoning always runs through `run_decision`, which (in production) is
   server.py's `_run_decision` -> `reason()` -> `_llm_reason()`, and
   `_llm_reason` calls the LLM with `allowed_tools=[]` -- this module does
@@ -112,11 +121,12 @@ async def run_lens(
 
     `store` is the sentinel store (cooldown/cap bookkeeping, same schema
     used by the guardian/situations paths). `run_decision` is server.py's
-    real `_run_decision(wake, suggested, system)` (the optional-reasoning
-    path: reason() judges verdict/severity/message, then re-injects
-    `suggested` as the action -- see module docstring). `execute` is the
-    real `watcher.executor.execute` (the zero-AI path calls it directly,
-    exactly like `_run_decision`'s own tail call).
+    real `_run_decision(wake, suggested, system, force_notify_only=False)`
+    (the optional-reasoning path: reason() judges verdict/severity/message,
+    then re-injects `suggested` as the action, then -- if
+    `force_notify_only` -- forces it back to None -- see module docstring).
+    `execute` is the real `watcher.executor.execute` (the zero-AI path
+    calls it directly, exactly like `_run_decision`'s own tail call).
 
     Returns the `maybe_wake` gate outcome: `"woke"` | `"cooldown"` | `"cap"`.
     """
@@ -140,7 +150,10 @@ async def run_lens(
         suggested = lens_action(lens)  # deterministic, from config -- never from the LLM
         if reasoning.get("enabled"):
             system = sentinel_system + "\n\n" + (reasoning.get("prompt") or "")
-            await run_decision(w, suggested=suggested, system=system)
+            action_type = (lens.get("action") or {}).get("type")
+            await run_decision(
+                w, suggested=suggested, system=system,
+                force_notify_only=(action_type == "notify"))
             return
         decision = Decision(
             verdict="anomalia",
