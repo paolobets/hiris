@@ -118,6 +118,38 @@ class LLMRouter:
         self._automatic_policy = _norm_policy(automatic_policy, self._strategy)
         self._chat_policy = _norm_policy(chat_policy, self._strategy)
 
+    def automatic_allows_sensitive(self) -> bool:
+        """True only if the whole *available* automatic chain is local.
+
+        Rationale: a prompt composed for a local primary backend could still
+        fall back to a cloud backend if that primary is unreachable (see the
+        automatic-mode retry loop in chat()/run_with_actions()). So sensitive
+        content is safe to include only when NO cloud backend is reachable
+        anywhere in the automatic chain -- the chain must be non-empty and
+        every backend registered in it (non-None) must be local.
+
+        Note: backend_is_cloud() classifies *model strings* (e.g.
+        "claude-sonnet-4-6", "gpt-4o", "openrouter:x/y") by prefix, not the
+        bare backend keys ("claude", "openai", "openrouter", "ollama") used
+        in the automatic policy chain -- calling it directly on those keys
+        would misclassify every cloud backend as local (verified: it only
+        recognizes "auto" and prefixed model strings). So this method
+        classifies by backend-key membership instead: every
+        _VALID_BACKEND_NAMES entry is a cloud provider except "ollama",
+        mirroring backend_is_cloud's own claude/openai/openrouter-are-cloud,
+        ollama-is-local convention and this module's production wiring
+        (server.py always constructs the "openai"/"openrouter"/"claude"
+        runners as cloud and "ollama" as local).
+
+        Pure/deterministic, no I/O. Never raises.
+        """
+        try:
+            bmap = self._backend_map()
+            available = [name for name in self._automatic_policy if bmap.get(name) is not None]
+            return bool(available) and all(name == "ollama" for name in available)
+        except Exception:
+            return False
+
     def _backend_map(self) -> dict[str, Any]:
         return {
             "claude": self._claude,
