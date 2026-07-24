@@ -36,10 +36,12 @@ def build_review_message(context) -> str:
     memory = ctx.pop("memory", None)
     memory_block = ""
     if isinstance(memory, list) and memory:
-        # Flatten each snippet to a single line: collapsing all
-        # whitespace/newlines removes the only way a crafted insight could
-        # break the prompt's line structure or open a fake ``` fence.
-        flat = [" ".join(str(s).split()) for s in memory]
+        # Sanitize each snippet through the SAME injection filter/clamp the
+        # per-wake path applies (reasoner.build_user_message runs _san over the
+        # whole context before rendering) so a poisoned insight can't smuggle
+        # an instruction-override phrase here, THEN flatten to a single line so
+        # collapsed whitespace/newlines can't break structure / open a ``` fence.
+        flat = [" ".join(str(_san(s)).split()) for s in memory]
         lines = "\n".join(f"- {s}" for s in flat if s)
         if lines:
             memory_block = f"Cosa so di rilevante:\n{lines}\n\n"
