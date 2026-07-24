@@ -181,6 +181,35 @@ window.HirisSentinelRoute = (function () {
       parent.appendChild(head);
       return chk;
     }
+    function selectField(parent, labelText, options, value) {
+      var wrap = el('div');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
+      wrap.appendChild(el('span', null, labelText));
+      var sel = el('select');
+      sel.style.cssText = 'padding:6px 8px;border-radius:8px;min-width:120px';
+      (options || []).forEach(function (o) {
+        var opt = el('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        if (o.value === value) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      wrap.appendChild(sel);
+      parent.appendChild(wrap);
+      return sel;
+    }
+    function textareaField(parent, labelText, value) {
+      var wrap = el('div');
+      wrap.style.cssText = 'margin-top:8px';
+      wrap.appendChild(el('span', null, labelText));
+      var ta = el('textarea');
+      ta.value = value != null ? value : '';
+      ta.rows = 3;
+      ta.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;margin-top:4px;font-family:inherit';
+      wrap.appendChild(ta);
+      parent.appendChild(wrap);
+      return ta;
+    }
 
     var sitCard = el('section', 'section-card');
     var sitBody = el('div', 'sc-body');
@@ -251,6 +280,271 @@ window.HirisSentinelRoute = (function () {
 
     prepCard.appendChild(prepBody);
     outlet.appendChild(prepCard);
+
+    // --- Lenti (Slice 5b, Task 7: lista lenti utente-definite) ---
+    var OPERATORS = [
+      { value: '>', label: '>' }, { value: '<', label: '<' },
+      { value: '>=', label: '>=' }, { value: '<=', label: '<=' },
+      { value: '==', label: '==' }, { value: '!=', label: '!=' }
+    ];
+    function isEqualityOp(op) { return op === '==' || op === '!='; }
+    function toNumOrNull(v) {
+      if (v === '' || v == null) return null;
+      var x = parseFloat(v);
+      return isNaN(x) ? null : x;
+    }
+    function buildThresholdValue(operator, raw) {
+      if (isEqualityOp(operator)) return raw;
+      var x = parseFloat(raw);
+      return isNaN(x) ? raw : x;
+    }
+    function emptyLens() {
+      return {
+        id: null, name: '', enabled: true, severity: 'info',
+        trigger: { type: 'event', entity_id: '', operator: '==', threshold: '' },
+        reasoning: { enabled: false, prompt: '' },
+        action: { type: 'notify', message: '' }
+      };
+    }
+
+    var lensCard = el('section', 'section-card');
+    var lensBody = el('div', 'sc-body');
+    lensBody.appendChild(el('div', 'page-title', 'Lenti'));
+    lensBody.appendChild(el('p', 'sc-desc',
+      'Regole personalizzate: trigger (evento o pianificazione), ragionamento AI opzionale, azione.'));
+
+    var lensListEl = el('div');
+    lensBody.appendChild(lensListEl);
+    var lensEmptyMsg = el('p', 'sc-desc', 'Nessuna lente configurata.');
+    lensListEl.appendChild(lensEmptyMsg);
+
+    var lensAddBar = el('div');
+    lensAddBar.style.cssText = 'margin-top:12px';
+    var lensAddBtn = el('button', 'btn', '+ Nuova lente');
+    lensAddBar.appendChild(lensAddBtn);
+    lensBody.appendChild(lensAddBar);
+
+    lensCard.appendChild(lensBody);
+    outlet.appendChild(lensCard);
+
+    function buildLensRow(lens) {
+      var row = el('div');
+      row.style.cssText = 'padding:14px 0;border-bottom:1px solid var(--border,#2a2a2a)';
+
+      var nameInp = textField(row, 'Nome', lens.name);
+      var enabledChk = checkboxField(row, 'Abilitata', lens.enabled);
+      var severitySel = selectField(row, 'Severità', [
+        { value: 'info', label: 'Info' },
+        { value: 'warn', label: 'Warn' },
+        { value: 'alert', label: 'Alert' }
+      ], lens.severity || 'info');
+
+      // Trigger
+      row.appendChild(el('p', 'sc-desc', 'Trigger'));
+      var trg = lens.trigger || {};
+      var triggerTypeSel = selectField(row, 'Tipo trigger', [
+        { value: 'event', label: 'Evento' },
+        { value: 'schedule', label: 'Pianificazione' }
+      ], trg.type || 'event');
+
+      var eventWrap = el('div');
+      var evEntity = entityField(eventWrap, 'Entità', trg.type === 'event' ? trg.entity_id : '', '');
+      var evOperator = selectField(eventWrap, 'Operatore', OPERATORS,
+        trg.type === 'event' ? (trg.operator || '==') : '==');
+      var evThreshold = textField(eventWrap, 'Soglia (numero, o testo per ==/!=)',
+        trg.type === 'event' && trg.threshold != null ? trg.threshold : '');
+      var evDuration = numberField(eventWrap, 'Durata (minuti, opzionale)',
+        trg.type === 'event' ? trg.duration_min : null);
+      row.appendChild(eventWrap);
+
+      var scheduleWrap = el('div');
+      var schKindSel = selectField(scheduleWrap, 'Modalità', [
+        { value: 'cron', label: 'Cron' },
+        { value: 'interval', label: 'Intervallo (minuti)' }
+      ], trg.type === 'schedule' && trg.interval_min != null ? 'interval' : 'cron');
+      var schCron = textField(scheduleWrap, 'Cron (es. "0 7 * * *")',
+        trg.type === 'schedule' ? (trg.cron || '') : '');
+      var schInterval = numberField(scheduleWrap, 'Intervallo (minuti)',
+        trg.type === 'schedule' ? trg.interval_min : null);
+      scheduleWrap.appendChild(el('p', 'sc-desc', 'Condizione aggiuntiva (opzionale)'));
+      var cond = trg.condition || {};
+      var schCondEntity = entityField(scheduleWrap, 'Entità condizione', cond.entity_id, '');
+      var schCondOperator = selectField(scheduleWrap, 'Operatore condizione', OPERATORS, cond.operator || '==');
+      var schCondThreshold = textField(scheduleWrap, 'Soglia condizione',
+        cond.threshold != null ? cond.threshold : '');
+      row.appendChild(scheduleWrap);
+
+      function updateTriggerVisibility() {
+        var isEvent = triggerTypeSel.value === 'event';
+        eventWrap.style.display = isEvent ? '' : 'none';
+        scheduleWrap.style.display = isEvent ? 'none' : '';
+      }
+      function updateScheduleKindVisibility() {
+        var isCron = schKindSel.value === 'cron';
+        schCron.parentNode.style.display = isCron ? '' : 'none';
+        schInterval.parentNode.style.display = isCron ? 'none' : '';
+      }
+      triggerTypeSel.addEventListener('change', updateTriggerVisibility);
+      schKindSel.addEventListener('change', updateScheduleKindVisibility);
+      evOperator.addEventListener('change', function () {
+        evThreshold.type = isEqualityOp(evOperator.value) ? 'text' : 'number';
+      });
+      schCondOperator.addEventListener('change', function () {
+        schCondThreshold.type = isEqualityOp(schCondOperator.value) ? 'text' : 'number';
+      });
+      updateTriggerVisibility();
+      updateScheduleKindVisibility();
+      evThreshold.type = isEqualityOp(evOperator.value) ? 'text' : 'number';
+      schCondThreshold.type = isEqualityOp(schCondOperator.value) ? 'text' : 'number';
+
+      // Ragionamento AI
+      row.appendChild(el('p', 'sc-desc', 'Ragionamento AI'));
+      var reasoningChk = checkboxField(row, 'Abilita ragionamento AI', (lens.reasoning || {}).enabled);
+      var reasoningPrompt = textareaField(row, 'Prompt personalizzato', (lens.reasoning || {}).prompt);
+
+      // Azione
+      row.appendChild(el('p', 'sc-desc', 'Azione'));
+      var act = lens.action || {};
+      var actionTypeSel = selectField(row, 'Tipo azione', [
+        { value: 'notify', label: 'Notifica' },
+        { value: 'service', label: 'Servizio HA' }
+      ], act.type || 'notify');
+
+      var notifyWrap = el('div');
+      var notifyMessage = textareaField(notifyWrap, 'Messaggio', act.type !== 'service' ? act.message : '');
+      row.appendChild(notifyWrap);
+
+      var serviceWrap = el('div');
+      var actDomain = textField(serviceWrap, 'Dominio (es. switch)', act.domain);
+      var actService = textField(serviceWrap, 'Servizio (es. turn_on)', act.service);
+      var actEntity = entityField(serviceWrap, 'Entità target', act.entity_id, '');
+      var actOffAfter = numberField(serviceWrap, 'Spegni dopo (minuti, opzionale)', act.off_after_min);
+      row.appendChild(serviceWrap);
+
+      function updateActionVisibility() {
+        var isNotify = actionTypeSel.value === 'notify';
+        notifyWrap.style.display = isNotify ? '' : 'none';
+        serviceWrap.style.display = isNotify ? 'none' : '';
+      }
+      actionTypeSel.addEventListener('change', updateActionVisibility);
+      updateActionVisibility();
+
+      var bar = el('div');
+      bar.style.cssText = 'margin-top:12px;display:flex;gap:10px;align-items:center';
+      var saveBtn = el('button', 'btn btn-primary', 'Salva lente');
+      var delBtn = el('button', 'btn', 'Elimina');
+      var lensStatus = el('span', 'sc-desc', '');
+      bar.appendChild(saveBtn); bar.appendChild(delBtn); bar.appendChild(lensStatus);
+      row.appendChild(bar);
+
+      function buildPayload() {
+        var payload = {
+          name: nameInp.value,
+          enabled: enabledChk.checked,
+          severity: severitySel.value
+        };
+        if (triggerTypeSel.value === 'event') {
+          var trigger = {
+            type: 'event',
+            entity_id: evEntity.value,
+            operator: evOperator.value,
+            threshold: buildThresholdValue(evOperator.value, evThreshold.value)
+          };
+          var dur = toNumOrNull(evDuration.value);
+          if (dur != null) trigger.duration_min = dur;
+          payload.trigger = trigger;
+        } else {
+          var trigger2 = { type: 'schedule' };
+          if (schKindSel.value === 'cron') {
+            trigger2.cron = schCron.value;
+          } else {
+            var iv = toNumOrNull(schInterval.value);
+            if (iv != null) trigger2.interval_min = iv;
+          }
+          if (schCondEntity.value) {
+            trigger2.condition = {
+              entity_id: schCondEntity.value,
+              operator: schCondOperator.value,
+              threshold: buildThresholdValue(schCondOperator.value, schCondThreshold.value)
+            };
+          }
+          payload.trigger = trigger2;
+        }
+        payload.reasoning = {
+          enabled: reasoningChk.checked,
+          prompt: reasoningPrompt.value
+        };
+        if (actionTypeSel.value === 'notify') {
+          payload.action = { type: 'notify', message: notifyMessage.value };
+        } else {
+          var action = {
+            type: 'service',
+            domain: actDomain.value,
+            service: actService.value,
+            entity_id: actEntity.value
+          };
+          var off = toNumOrNull(actOffAfter.value);
+          if (off != null) action.off_after_min = off;
+          payload.action = action;
+        }
+        return payload;
+      }
+
+      saveBtn.addEventListener('click', function () {
+        var payload = buildPayload();
+        saveBtn.disabled = true; lensStatus.textContent = 'Salvataggio…';
+        var isUpdate = !!lens.id;
+        var url = isUpdate ? ('api/lenses/' + encodeURIComponent(lens.id)) : 'api/lenses';
+        var method = isUpdate ? 'PUT' : 'POST';
+        api(url, { method: method, body: JSON.stringify(payload) })
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+          .then(function (res) {
+            if (res && res.lens && res.lens.id) lens.id = res.lens.id;
+            lensStatus.textContent = 'Salvato ✓';
+            saveBtn.disabled = false;
+          })
+          .catch(function () {
+            lensStatus.textContent = 'Errore nel salvataggio';
+            saveBtn.disabled = false;
+          });
+      });
+
+      delBtn.addEventListener('click', function () {
+        if (!lens.id) {
+          row.remove();
+          return;
+        }
+        delBtn.disabled = true; lensStatus.textContent = 'Eliminazione…';
+        api('api/lenses/' + encodeURIComponent(lens.id), { method: 'DELETE' })
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+          .then(function () { row.remove(); })
+          .catch(function () {
+            lensStatus.textContent = 'Errore nell\'eliminazione';
+            delBtn.disabled = false;
+          });
+      });
+
+      return row;
+    }
+
+    lensAddBtn.addEventListener('click', function () {
+      if (lensEmptyMsg.parentNode) lensEmptyMsg.remove();
+      lensListEl.appendChild(buildLensRow(emptyLens()));
+    });
+
+    api('api/lenses', { method: 'GET' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+      .then(function (j) {
+        var lenses = j.lenses || [];
+        if (!lenses.length) return;
+        lensEmptyMsg.remove();
+        lenses.forEach(function (lens) {
+          lensListEl.appendChild(buildLensRow(lens));
+        });
+      })
+      .catch(function () {
+        lensEmptyMsg.textContent = 'Errore nel caricamento delle lenti.';
+      });
 
     function buildPreparationPayload() {
       function n(v, fallback) { var x = parseInt(v, 10); return isNaN(x) ? fallback : x; }

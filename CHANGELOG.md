@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [0.34.0] — Lenti definite dall'utente (Slice 5b verso 1.0) (2026-07-24)
+
+- **Crea le tue lenti:** oltre ai detector predefiniti, ora puoi definire lenti
+  custom dalla pagina Sentinella — scatto su **evento** (quando un'entità supera
+  una soglia, con durata opzionale) o a **tempo** (cron/interval), con
+  ragionamento AI opzionale (un tuo prompt) e un'azione (notifica o un servizio).
+  Le azioni passano sempre dal semaforo (target deterministico dalla tua config;
+  l'AI decide solo se/come avvisare, mai cosa attuare).
+
 ## [0.33.0] — Lenti e Personas (Slice 5 verso 1.0) (2026-07-24)
 
 - **Modello unificato:** niente più due paradigmi. Il livello proattivo è la
