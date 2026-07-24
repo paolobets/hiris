@@ -137,12 +137,18 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
             if not matched:
                 return None
 
-            # TODO(Task 4 / follow-up): severity vocabulary mismatch --
-            # watcher.lenses.ALLOWED_SEVERITIES is {"info","warn","alert"}
-            # but watcher.signals.SEVERITIES is ("info","warn","critico").
-            # Whatever maps a lens's user-authored severity into `cfg` (and
-            # from there into this Signal) must normalize "alert"<->"critico"
-            # before it reaches here; this detector just passes it through.
+            # Severity vocabulary mismatch note: watcher.lenses.ALLOWED_SEVERITIES
+            # is {"info","warn","alert"} but watcher.signals.SEVERITIES is
+            # ("info","warn","critico"). This is ALREADY handled --
+            # `normalize_lens_severity` (watcher/lens_runner.py) maps
+            # "alert"->"critico" (falling back to "info" for anything
+            # unrecognized) when a lens fires. This detector's own Signal.severity
+            # (computed below from `cfg`, always `{}` on the guardian's
+            # event-lens path -- see guardian.py's `_dispatch_user_lenses`) is
+            # discarded anyway: only `sig.evidence` is forwarded to `run_lens`,
+            # which re-derives severity straight from `lens["severity"]` via
+            # `normalize_lens_severity`. So the value assigned here never
+            # reaches a notification/decision.
             severity = "warn"
             if isinstance(cfg, dict):
                 # `cfg.get("severity", "warn")` alone is not enough: a key

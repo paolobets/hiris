@@ -137,6 +137,10 @@ async def test_register_creates_job_for_interval_lens(tmp_path):
     assert job.trigger == "interval"
     assert job.kwargs.get("minutes") == 5
     assert job.replace_existing is True
+    # Review fix: without a grace window, APScheduler's ~1s default misfire
+    # tolerance silently drops a fire that lands while the loop is briefly
+    # busy -- same 3600s grace every other scheduler job in server.py sets.
+    assert job.kwargs.get("misfire_grace_time") == 3600
 
 
 def _trigger_fields(job) -> dict[str, str]:
@@ -164,6 +168,10 @@ async def test_register_creates_job_for_cron_lens_mapped_to_apscheduler_fields(t
     assert fields["day"] == "*"
     assert fields["month"] == "*"
     assert fields["day_of_week"] == "*"
+    # Review fix: same 3600s misfire grace as every other scheduler job in
+    # server.py -- a daily cron lens must not get silently skipped for 24h
+    # just because the loop was briefly busy at fire time.
+    assert job.kwargs.get("misfire_grace_time") == 3600
 
 
 # ---------------------------------------------------------------------------

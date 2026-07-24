@@ -607,11 +607,11 @@ async def register_lens_schedules(app: web.Application) -> None:
                 trigger = CronTrigger.from_crontab(_to_apscheduler_crontab(cron))
                 scheduler.add_job(
                     _make_callback(lens), trigger=trigger, id=job_id,
-                    replace_existing=True)
+                    replace_existing=True, misfire_grace_time=3600)
             elif interval_min:
                 scheduler.add_job(
                     _make_callback(lens), trigger="interval", minutes=interval_min,
-                    id=job_id, replace_existing=True)
+                    id=job_id, replace_existing=True, misfire_grace_time=3600)
             else:
                 # Neither cron nor interval_min -- shouldn't happen for a
                 # store-validated lens (XOR enforced at validation time),
