@@ -656,7 +656,7 @@ async def _reason_memory_context(
         knowledge_store = app.get("knowledge_store") if app is not None else None
         router = app.get("llm_router") if app is not None else None
         allow_sensitive = router.automatic_allows_sensitive() if router is not None else False
-        query_text = f"{friendly_name} {wake.signal_kind}"
+        query_text = f"{friendly_name} {wake.signal_kind}"[:200]
         return await relevant_memory(
             knowledge_store, embedder,
             query_text=query_text, allow_sensitive=allow_sensitive,
