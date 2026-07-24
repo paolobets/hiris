@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 from .signals import Signal
 
 def _num(state_dict: dict) -> Optional[float]:
@@ -49,3 +49,94 @@ DETECTORS: dict[str, Callable] = {
     "power": detect_power_anomaly,
     "battery": detect_low_battery,
 }
+
+_ORDER_OPS = {
+    ">": lambda a, b: a > b,
+    "<": lambda a, b: a < b,
+    ">=": lambda a, b: a >= b,
+    "<=": lambda a, b: a <= b,
+}
+
+
+def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float], Optional[Signal]]:
+    """Build a Guardian-compatible detector for a user-defined lens's event
+    trigger (Slice 5b). `trigger` is the already whitelist-validated dict
+    produced by ``watcher.lenses.validate_lens``/``_validate_trigger``:
+    ``{entity_id, attribute?, operator, threshold, duration_min?}`` --
+    ``operator`` in ``{">","<",">=","<=","==","!="}``, ``threshold`` a finite
+    number, ``duration_min`` (if present) a finite non-negative number.
+
+    Returns a callable with the SAME signature as the built-in detectors
+    (``fn(entity_id, old, new, cfg, now) -> Optional[Signal]``) so the
+    Guardian can dispatch user lenses through the existing DETECTORS
+    machinery (Task 4) -- `old`/`cfg` are accepted only for signature
+    compatibility (the built-ins don't use `old` either); `cfg` is read once,
+    for an optional `severity` override (mirrors the built-ins' `cfg.get(...)`
+    pattern for their own tunables), defaulting to "warn".
+
+    Never raises: any odd input (missing attribute, non-numeric state,
+    `new` that is None/not a dict) safely yields None instead of firing or
+    crashing.
+    """
+    attribute = trigger.get("attribute")
+    operator = trigger.get("operator")
+    threshold = trigger.get("threshold")
+    duration_min = trigger.get("duration_min")
+
+    def _raw_value(new) -> Any:
+        if not isinstance(new, dict):
+            return None
+        if attribute:
+            attrs = new.get("attributes")
+            if not isinstance(attrs, dict):
+                return None
+            return attrs.get(attribute)
+        return new.get("state")
+
+    def detect_user_lens(entity_id, old, new, cfg, now) -> Optional[Signal]:
+        try:
+            raw = _raw_value(new)
+            if raw is None:
+                return None
+
+            num = _num({"state": raw})
+
+            if operator in ("==", "!="):
+                if num is not None and isinstance(threshold, (int, float)) and not isinstance(threshold, bool):
+                    lhs, rhs = num, threshold
+                else:
+                    lhs, rhs = str(raw), str(threshold)
+                matched = (lhs == rhs) if operator == "==" else (lhs != rhs)
+            else:
+                op_fn = _ORDER_OPS.get(operator)
+                if op_fn is None:
+                    return None  # unreachable for a validated trigger; safe default
+                if num is None or not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
+                    return None  # non-numeric -> ordering ops can't fire, no crash
+                matched = op_fn(num, threshold)
+
+            if not matched:
+                return None
+
+            severity = "warn"
+            if isinstance(cfg, dict):
+                severity = cfg.get("severity", "warn")
+
+            evidence: dict = {
+                "entity_id": entity_id,
+                "value": num if num is not None else raw,
+                "operator": operator,
+                "threshold": threshold,
+            }
+            if attribute:
+                evidence["attribute"] = attribute
+            if duration_min is not None:
+                evidence["needs_duration"] = True
+                evidence["threshold_min"] = duration_min
+
+            return Signal(kind="user_lens", entity_id=entity_id, severity=severity,
+                          evidence=evidence, ts=now)
+        except Exception:
+            return None  # fail-safe: a user lens must never crash the Guardian
+
+    return detect_user_lens
