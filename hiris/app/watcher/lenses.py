@@ -7,9 +7,13 @@ list), independent from `sentinel_policy.json` (see watcher.policy).
 
 Validation is fail-safe by construction, mirroring
 brain.suggestions.validate_coverage / brain.coverage_review.parse_suggestions:
-every field is whitelisted, unknown keys are silently dropped, malformed
-required fields make the whole lens invalid (returns None) rather than
-raising. validate_lens() NEVER raises.
+every field is whitelisted and unknown keys are silently dropped. Malformed
+*required* fields make the whole lens invalid (returns None). Optional
+fields follow the rule "absent -> default, PRESENT but invalid -> reject the
+whole lens" (never silently dropped) -- this is a fail-safe gate in front of
+an LLM prompt and a semaphore-gated Home Assistant action, so a malformed
+optional must never cause the action to fire *more* broadly than the user
+wrote. validate_lens() NEVER raises.
 
 Atomic write + lock mirror watcher.policy.save_policy: write to a .tmp file
 then os.replace() it into place, guarded by a module-level RLock (single
@@ -19,7 +23,9 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
+import re
 import secrets
 import threading
 
@@ -39,6 +45,18 @@ ALLOWED_TRIGGER_TYPES = {"event", "schedule"}
 ALLOWED_ACTION_TYPES = {"notify", "service"}
 ALLOWED_SEVERITIES = {"info", "warn", "alert"}
 
+# Home Assistant's real grammar for the bits of a lens that end up in an
+# actual HA API call (action target) or a cron parser. Presence-only
+# whitelisting leaves a path-smuggling residual (e.g. domain="light/../..");
+# these patterns are the defense against that.
+_ID_RE = re.compile(r"^[0-9a-f]{12}$")
+_DOMAIN_SERVICE_RE = re.compile(r"^[a-z0-9_]+$")
+_ENTITY_ID_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
+# Basic 5-field shape check (full cron correctness is the scheduler's job).
+_CRON_RE = re.compile(r"^[0-9*,/\-]+(?:\s+[0-9*,/\-]+){4}$")
+
+_MESSAGE_MAX_LEN = 1000
+
 
 def _file(data_dir: str) -> str:
     return os.path.join(data_dir, _PATH)
@@ -46,12 +64,25 @@ def _file(data_dir: str) -> str:
 
 def _is_number(v) -> bool:
     # bool is a subclass of int in Python; a lens threshold/interval must be
-    # an actual number, not True/False leaking through.
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    # an actual number, not True/False leaking through. json.load() can also
+    # hand us float('nan')/float('inf'): a NaN threshold with operator "!="
+    # would make the detector always fire, and NaN/Infinity don't round-trip
+    # through strict JSON, so both are rejected as "not a number" here.
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
 def _clean_nonempty_str(v):
-    return v if isinstance(v, str) and v else None
+    if not isinstance(v, str):
+        return None
+    v = v.strip()
+    return v or None
+
+
+def _coerce_bool(v, default: bool) -> bool:
+    # Only a real bool is trusted; anything else (e.g. the string "false",
+    # which is truthy under bool()) falls back to the safe default instead
+    # of silently flipping polarity.
+    return v if isinstance(v, bool) else default
 
 
 def _validate_condition(raw) -> dict | None:
@@ -61,6 +92,8 @@ def _validate_condition(raw) -> dict | None:
     operator = raw.get("operator")
     threshold = raw.get("threshold")
     if entity_id is None or operator not in ALLOWED_OPERATORS or not _is_number(threshold):
+        return None
+    if not _ENTITY_ID_RE.match(entity_id):
         return None
     return {"entity_id": entity_id, "operator": operator, "threshold": threshold}
 
@@ -78,29 +111,53 @@ def _validate_trigger(raw) -> dict | None:
         threshold = raw.get("threshold")
         if entity_id is None or operator not in ALLOWED_OPERATORS or not _is_number(threshold):
             return None
+        if not _ENTITY_ID_RE.match(entity_id):
+            return None
         out = {"type": "event", "entity_id": entity_id, "operator": operator, "threshold": threshold}
         attribute = _clean_nonempty_str(raw.get("attribute"))
         if attribute is not None:
             out["attribute"] = attribute
-        duration_min = raw.get("duration_min")
-        if _is_number(duration_min) and duration_min >= 0:
+        # duration_min is optional: absent -> fine (no duration gate).
+        # PRESENT but not a finite non-negative number -> reject the whole
+        # lens rather than silently dropping it (a dropped duration gate
+        # would make the trigger fire on the very first sample, wider than
+        # the user wrote).
+        if "duration_min" in raw and raw.get("duration_min") is not None:
+            duration_min = raw.get("duration_min")
+            if not (_is_number(duration_min) and duration_min >= 0):
+                return None
             out["duration_min"] = duration_min
         return out
 
-    # schedule
-    cron = _clean_nonempty_str(raw.get("cron"))
-    interval_min = raw.get("interval_min")
-    has_interval = _is_number(interval_min) and interval_min > 0
-    has_cron = cron is not None
-    if has_cron == has_interval:  # both present or neither -> not a valid XOR
+    # schedule: exactly one of cron / interval_min, each validated if present.
+    cron_present = "cron" in raw and raw.get("cron") is not None
+    interval_present = "interval_min" in raw and raw.get("interval_min") is not None
+
+    cron = None
+    if cron_present:
+        cron = _clean_nonempty_str(raw.get("cron"))
+        if cron is None or not _CRON_RE.match(cron):
+            return None  # present but malformed -> reject
+
+    interval_min = None
+    if interval_present:
+        interval_min = raw.get("interval_min")
+        if not (_is_number(interval_min) and interval_min > 0):
+            return None  # present but invalid -> reject
+
+    if cron_present == interval_present:  # both present or neither -> not a valid XOR
         return None
+
     out = {"type": "schedule"}
-    if has_cron:
+    if cron_present:
         out["cron"] = cron
     else:
         out["interval_min"] = interval_min
-    condition = _validate_condition(raw.get("condition")) if isinstance(raw.get("condition"), dict) else None
-    if condition is not None:
+
+    if "condition" in raw and raw.get("condition") is not None:
+        condition = _validate_condition(raw.get("condition"))
+        if condition is None:
+            return None  # present but malformed -> reject
         out["condition"] = condition
     return out
 
@@ -118,14 +175,22 @@ def _validate_action(raw) -> dict | None:
         entity_id = _clean_nonempty_str(raw.get("entity_id"))
         if domain is None or service is None or entity_id is None:
             return None  # service action REQUIRES domain, service, entity_id
+        if (
+            not _DOMAIN_SERVICE_RE.match(domain)
+            or not _DOMAIN_SERVICE_RE.match(service)
+            or not _ENTITY_ID_RE.match(entity_id)
+        ):
+            return None  # charset gate: no path smuggling into the HA call
         out["domain"] = domain
         out["service"] = service
         out["entity_id"] = entity_id
     message = raw.get("message")
     if isinstance(message, str):
-        out["message"] = message
-    off_after_min = raw.get("off_after_min")
-    if _is_number(off_after_min) and off_after_min >= 0:
+        out["message"] = message[:_MESSAGE_MAX_LEN]
+    if "off_after_min" in raw and raw.get("off_after_min") is not None:
+        off_after_min = raw.get("off_after_min")
+        if not (_is_number(off_after_min) and off_after_min >= 0):
+            return None  # present but invalid -> reject
         out["off_after_min"] = off_after_min
     return out
 
@@ -135,7 +200,7 @@ def _validate_reasoning(raw) -> dict:
     # never an error: reasoning is inert (no side effects) unlike trigger/action.
     if not isinstance(raw, dict):
         return {"enabled": False}
-    out = {"enabled": bool(raw.get("enabled", False))}
+    out = {"enabled": _coerce_bool(raw.get("enabled", False), False)}
     prompt = raw.get("prompt")
     if isinstance(prompt, str) and prompt:
         out["prompt"] = prompt[:2000]
@@ -149,8 +214,10 @@ def validate_lens(raw: dict) -> dict | None:
     unsalvageable (unknown trigger/action type, invalid operator, a service
     action missing domain/service/entity_id, an event trigger missing
     entity_id/operator/threshold, a schedule trigger without exactly one of
-    cron/interval_min). Unknown top-level and nested fields are silently
-    dropped rather than causing rejection. NEVER raises.
+    cron/interval_min, a present-but-invalid optional field, a domain/
+    service/entity_id/cron that doesn't match Home Assistant's grammar).
+    Unknown top-level and nested fields are silently dropped rather than
+    causing rejection. NEVER raises.
     """
     try:
         if not isinstance(raw, dict):
@@ -164,18 +231,26 @@ def validate_lens(raw: dict) -> dict | None:
         if action is None:
             return None
 
+        # severity: absent -> default "info"; PRESENT but not in the allowed
+        # set -> reject the whole lens (don't silently coerce to "info",
+        # which would understate a user-authored "alert").
         severity = raw.get("severity")
-        if severity not in ALLOWED_SEVERITIES:
+        if severity is not None:
+            if severity not in ALLOWED_SEVERITIES:
+                return None
+        else:
             severity = "info"
 
         lens_id = raw.get("id")
-        if not isinstance(lens_id, str) or not lens_id:
+        if not isinstance(lens_id, str) or not _ID_RE.match(lens_id):
+            # Absent, wrong shape, or not the token_hex(6) format we mint ->
+            # never trust an arbitrary client-supplied id, re-mint one.
             lens_id = secrets.token_hex(6)
 
         name = raw.get("name")
         name = name[:80] if isinstance(name, str) else ""
 
-        enabled = bool(raw.get("enabled", True))
+        enabled = _coerce_bool(raw.get("enabled", True), True)
 
         reasoning = _validate_reasoning(raw.get("reasoning"))
 
