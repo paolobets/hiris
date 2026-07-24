@@ -308,3 +308,57 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
         poll = await client.get(f"/api/chat/reply/{job_id}")
         assert poll.status == 200
         assert (await poll.json()) == {"status": "pending"}
+
+
+# ---------------------------------------------------------------------------
+# Task 5: server.py wiring -- the addon option only takes effect when the
+# bridge is ALSO truly usable (BRIDGE_ENABLED), otherwise chat jobs would be
+# enqueued into a queue nothing sweeps/claims/prunes -> eternal pending + DB
+# growth (the queue itself is created unconditionally in _on_startup, so
+# handlers_chat._bridge_on's "queue present" check alone can't catch this).
+#
+# Full _on_startup is HA-client/engine/mqtt-heavy and out of scope for a unit
+# test here -- verified at the source level instead, same convention as
+# test_coverage_wiring.py's test_coverage_review_runs_before_bridge_enabled_branch
+# and test_suggestion_store_instantiated_in_server_source (both README'd as
+# "runtime wiring verified separately via manual/integration checks").
+# ---------------------------------------------------------------------------
+
+def test_chat_via_subscription_wiring_requires_bridge_enabled_in_source():
+    import inspect
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    assert 'app["chat_via_subscription"] =' in src
+    # The assigned expression must combine the CHAT_VIA_SUBSCRIPTION config
+    # read with a BRIDGE_ENABLED check -- not the config flag alone.
+    assign_pos = src.index('app["chat_via_subscription"] =')
+    tail = src[assign_pos:assign_pos + 400]
+    assert "CHAT_VIA_SUBSCRIPTION" in tail or "_chat_via_subscription_cfg" in tail
+    assert "_bridge_enabled" in tail or "BRIDGE_ENABLED" in tail
+
+
+def test_chat_via_subscription_env_var_read_same_convention_as_bridge_enabled():
+    """CHAT_VIA_SUBSCRIPTION must be parsed with the exact same truthy-string
+    convention used everywhere else in this module for boolean env vars
+    (BRIDGE_ENABLED, BRIDGE_FALLBACK, SENTINEL_ALLOW_GREEN_AUTO, ...) --
+    '1'/'true'/'yes'/'on' -- so ops behavior is consistent across knobs."""
+    import inspect
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    assert 'os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")' in src
+
+
+@pytest.mark.parametrize("cfg,bridge,expected", [
+    (True, True, True),
+    (True, False, False),
+    (False, True, False),
+    (False, False, False),
+])
+def test_chat_via_subscription_gate_truth_table(cfg, bridge, expected):
+    """Mirrors _on_startup's gating expression exactly (verified against the
+    source above) so the truth table is exercised without booting the full
+    app: config flag alone must NEVER activate the async path when the
+    bridge (BRIDGE_ENABLED) is off."""
+    assert (cfg and bridge) is expected

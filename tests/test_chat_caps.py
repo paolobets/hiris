@@ -111,14 +111,16 @@ def test_has_pending_chat_false_when_no_jobs(tmp_path):
 def test_has_pending_chat_true_for_pending_job(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
     q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    assert q.has_pending_chat("agentX") is True
+    # `now` explicit and still before deadline_ts (100.0) -- job is
+    # genuinely in-flight, not merely unswept-but-expired.
+    assert q.has_pending_chat("agentX", now=50.0) is True
 
 
 def test_has_pending_chat_true_for_claimed_job(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
     q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
     q.claim(now=2.0)
-    assert q.has_pending_chat("agentX") is True
+    assert q.has_pending_chat("agentX", now=50.0) is True
 
 
 def test_has_pending_chat_false_after_submit_resolves_job(tmp_path):
@@ -154,6 +156,21 @@ def test_has_pending_chat_false_for_missing_agent_id(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
     assert q.has_pending_chat(None) is False
     assert q.has_pending_chat("") is False
+
+
+def test_has_pending_chat_false_for_expired_but_unswept_job(tmp_path):
+    """Task 5 fix (Task 3 review, MEDIUM): a chat job whose deadline has
+    already passed but was never swept (e.g. BRIDGE_ENABLED off, or the
+    2-minute sweep just hasn't run yet) must NOT count as in-flight --
+    otherwise it 409s the conversation forever with no way to clear it.
+    Still status='pending' in the DB (no sweep_expired call here), but
+    `now` is past its deadline_ts."""
+    q = ReasoningQueue(str(tmp_path / "r.db"))
+    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+    # Still 'pending' in the DB -- no sweep_expired call -- but `now` (200.0)
+    # is already past deadline_ts (100.0).
+    assert q.has_pending_chat("agentX", now=200.0) is False
+
 
 
 # ---------------------------------------------------------------------------

@@ -116,6 +116,9 @@ configuration:
   chat_daily_cap:
     name: "Chat via subscription — messages/day cap"
     description: "Maximum number of chat messages routed per day to the external subscription runner, separate from Sentinella's cap. Default: 50."
+  chat_via_subscription:
+    name: "Chat via subscription — enable"
+    description: "Routes interactive chat replies (not just the holistic scan) to the external subscription runner too, subject to the same daily cap/deadline. Takes effect only when the subscription bridge above is also enabled — otherwise chat keeps using the local/pay-per-use runner. Default: disabled."
   mayan:
     name: "Mayan EDMS (documents)"
     description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."

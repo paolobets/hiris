@@ -116,6 +116,9 @@ configuration:
   chat_daily_cap:
     name: "Chat via abbonamento — cap messaggi/giorno"
     description: "Numero massimo di messaggi chat instradati al giorno verso il runner esterno su abbonamento, indipendente dal cap della Sentinella. Predefinito: 50."
+  chat_via_subscription:
+    name: "Chat via abbonamento — attiva"
+    description: "Instrada anche le risposte della chat interattiva (non solo la scansione olistica) al runner esterno su abbonamento, con lo stesso cap giornaliero/scadenza. Ha effetto solo se il ponte abbonamento sopra è anch'esso attivo — altrimenti la chat continua a usare il runner locale/a consumo. Predefinito: spento."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."

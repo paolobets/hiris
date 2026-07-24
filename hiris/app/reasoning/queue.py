@@ -93,10 +93,21 @@ class ReasoningQueue:
         out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
         return out
 
-    def has_pending_chat(self, agent_id: Optional[str]) -> bool:
+    def has_pending_chat(self, agent_id: Optional[str], now: Optional[float] = None) -> bool:
         """True if a kind="chat" job for this agent_id is still in flight
-        (status 'pending' or 'claimed'). Slice 4b Task 3 -- "one answer in
-        flight per conversation" guard on the async subscription path.
+        (status 'pending' or 'claimed') AND its deadline hasn't passed yet.
+        Slice 4b Task 3 -- "one answer in flight per conversation" guard on
+        the async subscription path.
+
+        Task 5 fix (Task 3 review, MEDIUM): a job whose deadline_ts is
+        already in the past is excluded even if its status is still
+        'pending'/'claimed' -- e.g. because the ponte-push sweep
+        (server.py's _reasoning_sweep, gated on BRIDGE_ENABLED) never ran or
+        is off. Without this, an expired-but-unswept job would 409 the
+        conversation forever with no way to clear it. Takes an explicit
+        `now`, like every other method on this class (enqueue/claim/submit/
+        sweep_expired/count_chat_today), defaulting to time.time() only when
+        the caller (production code) doesn't pass one.
 
         Chat jobs have no dedicated conversation_id column: Task 2 put
         agent_id inside context_json (a conversation IS an agent's active
@@ -107,10 +118,12 @@ class ReasoningQueue:
         dedicated indexed column for a query this cheap in practice."""
         if not agent_id:
             return False
+        ts = time.time() if now is None else now
         with self._lock:
             rows = self._conn.execute(
                 "SELECT context_json FROM reasoning_jobs "
-                "WHERE kind='chat' AND status IN ('pending','claimed')").fetchall()
+                "WHERE kind='chat' AND status IN ('pending','claimed') "
+                "AND deadline_ts > ?", (ts,)).fetchall()
         for r in rows:
             try:
                 ctx = json.loads(r["context_json"])

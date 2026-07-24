@@ -48,10 +48,9 @@ from .brain.privacy import VaultStore, Pseudonymizer
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
+from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 
 logger = logging.getLogger(__name__)
-
-_VALID_POLICY_BACKENDS = frozenset({"claude", "openai", "openrouter", "ollama"})
 
 
 def _parse_policy_csv(value: str | None) -> list[str] | None:
@@ -1105,6 +1104,23 @@ async def _on_startup(app: web.Application) -> None:
     engine._scheduler.add_job(
         _reasoning_sweep, trigger="interval", minutes=2,
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
+
+    # Slice 4b Task 5: the chat_via_subscription addon option only takes
+    # effect when the bridge is ALSO truly usable. handlers_chat._bridge_on
+    # just checks that app["reasoning_queue"] is wired -- and it always is in
+    # prod (created unconditionally a few lines above) -- so on its own it's
+    # not a signal that anything actually claims/sweeps/prunes those jobs.
+    # That sweeping/pruning (both _holistic_reason's enqueue above and
+    # _reasoning_sweep just above) is gated on BRIDGE_ENABLED, read the same
+    # way here as everywhere else in this module. Gating the flag itself at
+    # this single wiring point -- rather than teaching _bridge_on about
+    # BRIDGE_ENABLED -- keeps handlers_chat.py's tests able to wire/unwire
+    # the queue directly without touching env vars, while still making sure
+    # chat_via_subscription=true + BRIDGE_ENABLED=0 enqueues nothing that
+    # would sit pending forever and grow the DB.
+    _bridge_enabled = os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")
+    _chat_via_subscription_cfg = os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")
+    app["chat_via_subscription"] = _chat_via_subscription_cfg and _bridge_enabled
 
     # ── Arrivo serale (fetta 3): riusa lo stesso adapter _on_situation ──────
     # (reason→inietta suggested_action→execute→record), stessa gate del
