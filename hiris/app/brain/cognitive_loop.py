@@ -133,7 +133,13 @@ def _supersede_prior_tune_rows(store, source_ref: str) -> None:
             continue
         delta = row.get("delta") if isinstance(row.get("delta"), dict) else {}
         if delta.get("source_ref") == source_ref:
-            store.set_status(row["id"], "superseded")
+            # Per-row guard: a set_status hiccup must not abort the sweep nor
+            # bubble up to skip the new store.record() the caller runs next.
+            try:
+                store.set_status(row["id"], "superseded")
+            except Exception:
+                logger.exception(
+                    "auto_tune_detectors: superseding prior tune row %s failed", row.get("id"))
 
 
 async def auto_tune_detectors(
