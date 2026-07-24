@@ -35,7 +35,7 @@ async def test_ollama_backend_simple_chat():
 def mock_runner():
     runner = MagicMock()
     runner.chat = AsyncMock(return_value="response text")
-    runner.run_with_actions = AsyncMock(return_value=("text", "OK", "action"))
+    runner.run_with_actions = AsyncMock(return_value=("text", {"OK": "action"}))
     runner.simple_chat = AsyncMock(return_value='{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}')
     runner.last_tool_calls = []
     runner.total_input_tokens = 10

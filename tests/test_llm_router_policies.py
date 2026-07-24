@@ -13,7 +13,7 @@ class _R:
 
     async def run_with_actions(self, **kw):
         self.calls.append(kw)
-        return (self.name, None, None)
+        return (self.name, None)
 
     async def chat_stream(self, **kw):
         self.calls.append(kw)
@@ -38,7 +38,7 @@ async def test_chat_mode_uses_chat_policy_first():
 @pytest.mark.asyncio
 async def test_automatic_mode_uses_automatic_policy_first():
     r = _router()
-    out, _, _ = await r.run_with_actions(model="auto")  # default automatic -> ollama
+    out, _ = await r.run_with_actions(model="auto")  # default automatic -> ollama
     assert out == "ollama"
 
 
@@ -77,7 +77,7 @@ class _StrictR:
     async def run_with_actions(self, *, model, **kw):
         assert "mode" not in kw
         self.seen.append(kw)
-        return (self.name, None, None)
+        return (self.name, None)
 
 
 @pytest.mark.asyncio
@@ -97,7 +97,7 @@ async def test_run_with_actions_mode_leak_hardening_strict_runner_rejects_mode_k
         claude=_StrictR("claude"), ollama=_StrictR("ollama"),
         automatic_policy=["ollama", "claude"], chat_policy=["claude", "ollama"],
     )
-    out, _, _ = await r.run_with_actions(model="auto", mode="automatic")
+    out, _ = await r.run_with_actions(model="auto", mode="automatic")
     assert out == "ollama"
     assert all("mode" not in kw for kw in r._claude.seen + r._ollama.seen)
 
@@ -113,7 +113,7 @@ async def test_explicit_model_overrides_policy():
 async def test_backward_compat_policies_default_from_strategy():
     r = LLMRouter(claude=_R("claude"), ollama=_R("ollama"), strategy="cost_first")
     # cost_first order: ollama before claude; both modes derive from it
-    out, _, _ = await r.run_with_actions(model="auto")
+    out, _ = await r.run_with_actions(model="auto")
     assert out == "ollama"
     assert await r.chat(model="auto") == "ollama"
 

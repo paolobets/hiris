@@ -356,15 +356,19 @@ function esc(t) {
   return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
+function _formatContent(text) {
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code style="font-family:var(--font-mono);font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border)">$1</code>')
+    .replace(/\n/g,'<br>');
+}
+
 function appendMsg(role, text) {
   if (!hasMessages) { welcomeEl.style.display = 'none'; hasMessages = true; }
   var row = document.createElement('div');
   row.className = 'msg-row ' + role;
   var time = nowHHMM();
-  var content = esc(text)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code style="font-family:var(--font-mono);font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border)">$1</code>')
-    .replace(/\n/g,'<br>');
+  var content = _formatContent(text);
   if (role === 'assistant') {
     row.innerHTML =
       '<div class="avatar">' + HIRIS_AVATAR + '</div>' +
@@ -376,6 +380,53 @@ function appendMsg(role, text) {
   }
   messagesEl.appendChild(row);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  return row;
+}
+
+function _updateMsgBubble(row, text) {
+  if (!row) return;
+  var bubble = row.querySelector('.bubble');
+  if (bubble) bubble.innerHTML = _formatContent(text);
+}
+
+/* Slice 4b (chat via abbonamento): when the backend enqueues the turn to the
+ * subscription runner instead of replying synchronously, it returns HTTP 202
+ * {status:"pending", job_id}. Poll the reply endpoint every ~3.5s, replacing
+ * the placeholder bubble once a terminal state ("done" or "error") arrives.
+ * Gives up after CHAT_POLL_MAX_MS so the UI never spins forever. */
+var CHAT_POLL_INTERVAL_MS = 3500;
+var CHAT_POLL_MAX_MS = 5 * 60 * 1000;
+
+function _sleep(ms) {
+  return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
+
+async function pollChatReply(jobId, placeholderRow) {
+  var start = Date.now();
+  while (Date.now() - start < CHAT_POLL_MAX_MS) {
+    await _sleep(CHAT_POLL_INTERVAL_MS);
+    try {
+      var r = await fetch('api/chat/reply/' + encodeURIComponent(jobId));
+      var data = await r.json();
+      if (data.status === 'done') {
+        _updateMsgBubble(placeholderRow, data.reply || '');
+        agentTurnCounts[activeAgentId] = (agentTurnCounts[activeAgentId] || 0) + 1;
+        updateTurnCounter();
+        checkTurnLimit();
+        return;
+      }
+      if (data.status === 'error') {
+        _updateMsgBubble(placeholderRow, data.message || 'Errore nella risposta.');
+        return;
+      }
+      /* status === 'pending' (or unexpected 404/503 body without a status)
+       * -- keep polling until CHAT_POLL_MAX_MS is reached. */
+    } catch (e) {
+      /* Transient network hiccup while polling -- keep retrying until the
+       * overall timeout above gives up. */
+    }
+  }
+  _updateMsgBubble(placeholderRow, 'La risposta non è arrivata in tempo. Riprova.');
 }
 
 function appendDebug(tools) {
@@ -450,6 +501,11 @@ async function sendMessage(text) {
     });
     var data = await r.json();
     typing.remove();
+    if (r.status === 202 && data.status === 'pending' && data.job_id) {
+      var placeholder = appendMsg('assistant', 'HIRIS sta pensando… (risposta in arrivo)');
+      pollChatReply(data.job_id, placeholder);
+      return;
+    }
     if (data.error === 'max_turns_reached') {
       appendMsg('assistant', 'Sessione completata. Avvia una nuova conversazione.');
       checkTurnLimit();

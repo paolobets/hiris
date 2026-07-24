@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import os
+import time
 
 from aiohttp import web
 
@@ -12,6 +14,127 @@ from ..chat_store import (
 from ..claude_runner import CHAT_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
+
+# Trim history by estimated token count (len/4) rather than message count.
+# Always keep an even number of messages (user+assistant pairs) to preserve
+# conversation structure. Full history is still persisted and counted.
+_MAX_HISTORY_TOKENS = 6000
+
+
+def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) -> list[dict]:
+    """Keep the most recent messages within an estimated token budget, always
+    starting on a user turn (the Claude API rejects a session/history that
+    opens with an assistant turn). Shared by the sync path (as
+    ``context_history`` sent to the runner) and the async subscription path
+    (as the ``history`` field of the enqueued job context)."""
+    trimmed: list[dict] = []
+    estimated_tokens = 0
+    for msg in reversed(history):
+        estimated_tokens += len(msg.get("content", "")) // 4 + 4
+        if estimated_tokens > max_tokens:
+            break
+        trimmed.insert(0, msg)
+    if trimmed and trimmed[0].get("role") == "assistant":
+        trimmed = trimmed[1:]
+    return trimmed
+
+
+def _build_system_prompt(agent) -> str:
+    """Static agent persona (strategic_context + system_prompt), same
+    assembly used by the sync path and reused for the async job context."""
+    static_parts = []
+    if agent and agent.strategic_context:
+        static_parts.append(agent.strategic_context.strip())
+    if agent and agent.system_prompt:
+        static_parts.append(agent.system_prompt.strip())
+    return "\n\n---\n\n".join(static_parts)
+
+
+def _bridge_on(app) -> bool:
+    """Whether the reasoning-queue bridge is wired into this app.
+
+    server.py's ``_on_startup`` always creates ``app["reasoning_queue"]``
+    unconditionally — the holistic path's own ``BRIDGE_ENABLED`` env var only
+    gates whether *it* enqueues into that same queue vs. reasoning locally,
+    it doesn't control whether the queue object exists. So presence of the
+    key is the right signal for chat: it's also how tests opt in/out (wire
+    or don't wire ``app["reasoning_queue"]``) without touching env vars.
+    """
+    return app.get("reasoning_queue") is not None
+
+
+async def _enqueue_chat_job(
+    request: web.Request, agent, effective_agent_id: str | None,
+    message: str, data_dir: str,
+) -> web.Response:
+    """Chat-via-abbonamento (Slice 4b, Task 2): hand the turn to the async
+    reasoning queue (``kind="chat"``) instead of calling a runner
+    synchronously — subscription mode may have no local runner/API key at
+    all, that's the point.
+
+    The user turn is persisted to chat_store BEFORE enqueueing (contract
+    from Task 1's report): a consumer could claim and resolve the job, and
+    ultimately read history back, before this request even returns, and a
+    session that opens on an assistant turn is rejected by the Claude API.
+    """
+    if effective_agent_id:
+        append_messages(effective_agent_id, [
+            {"role": "user", "content": message},
+        ], data_dir)
+
+    # Built AFTER the append above, so the current user turn is the last
+    # entry — the external runner needs it to know what it's replying to.
+    history = load_history(effective_agent_id, data_dir) if effective_agent_id else []
+    sanitized_history = _trim_history(history)
+    system_prompt = _build_system_prompt(agent)
+
+    reasoning_queue = request.app["reasoning_queue"]
+    now = time.time()
+    deadline = now + int(os.environ.get("BRIDGE_DEADLINE_MIN", "5")) * 60
+    context = {
+        "agent_id": effective_agent_id,
+        "history": sanitized_history,
+        "system_prompt": system_prompt,
+    }
+    job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now)
+    return web.json_response({"status": "pending", "job_id": job_id}, status=202)
+
+
+async def handle_chat_reply_poll(request: web.Request) -> web.Response:
+    """GET /api/chat/reply/{job_id} — the UI polls this after a 202 pending
+    response from handle_chat. Reads the SAME queue row Task 1's submit
+    branch resolves (``ReasoningQueue.submit`` always writes decision_json,
+    independent of whether the chat_store write in that branch succeeded)."""
+    job_id = request.match_info.get("job_id", "")
+    reasoning_queue = request.app.get("reasoning_queue")
+    if reasoning_queue is None:
+        return web.json_response({"error": "reasoning queue not configured"}, status=503)
+    job = reasoning_queue.get(job_id)
+    if job is None:
+        return web.json_response({"error": "not found"}, status=404)
+    status = job.get("status")
+    decision = job.get("decision") or {}
+    reply = decision.get("reply")
+    if status in ("expired", "failed"):
+        # Never spin forever: the ponte-push sweep (server.py's
+        # _reasoning_sweep) already left non-holistic jobs in this state
+        # without routing them anywhere else -- this is the only place they
+        # get surfaced to the user.
+        return web.json_response({
+            "status": "error",
+            "message": "La risposta non è arrivata in tempo. Riprova.",
+        })
+    if status == "decided" and not reply:
+        # Task 1's chat_reply_skipped outcome: a decision was recorded but it
+        # carries no usable reply. Same terminal treatment as expired/failed
+        # -- pending-forever would strand the UI.
+        return web.json_response({
+            "status": "error",
+            "message": "La risposta non è arrivata in tempo. Riprova.",
+        })
+    if not reply:
+        return web.json_response({"status": "pending"})
+    return web.json_response({"status": "done", "reply": reply})
 
 
 async def handle_chat(request: web.Request) -> web.Response:
@@ -27,12 +150,6 @@ async def handle_chat(request: web.Request) -> web.Response:
     if len(message) > 4000:
         return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
 
-    runner = request.app.get("llm_router") or request.app.get("claude_runner")
-    if runner is None:
-        return web.json_response(
-            {"error": "Claude runner not configured — set CLAUDE_API_KEY"}, status=503
-        )
-
     agent_id = body.get("agent_id")
     data_dir = request.app.get("data_dir", "/data")
     engine = request.app["engine"]
@@ -45,10 +162,14 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     effective_agent_id = getattr(agent, "id", None) if agent else None
 
-    # Load server-side history (client-sent history field is ignored)
-    history = load_history(effective_agent_id, data_dir) if effective_agent_id else []
-
-    # Enforce max turns limit (count from DB, not from the trimmed context window)
+    # Enforce max turns limit (count from DB, not from the trimmed context
+    # window). Final-review Fix 1 (Slice 4b): hoisted ABOVE the subscription
+    # branch below — this check is branch-independent (it reads the turn
+    # count from chat_store, never from the sync path's trimmed history) and
+    # must run before anything is persisted/enqueued, otherwise an agent's
+    # session turn limit is silently bypassed whenever chat_via_subscription
+    # is on (the old position, after the subscription branch's early return,
+    # was never reached in that mode).
     max_turns = getattr(agent, "max_chat_turns", 0) if agent else 0
     if max_turns > 0:
         turn_count = count_user_turns(effective_agent_id, data_dir) if effective_agent_id else 0
@@ -59,20 +180,48 @@ async def handle_chat(request: web.Request) -> web.Response:
                 "limit": max_turns,
             })
 
-    # Trim history by estimated token count (len/4) rather than message count.
-    # Always keep an even number of messages (user+assistant pairs) to preserve
-    # conversation structure. Full history is still persisted and counted.
-    _MAX_HISTORY_TOKENS = 6000
-    context_history: list[dict] = []
-    estimated_tokens = 0
-    for msg in reversed(history):
-        estimated_tokens += len(msg.get("content", "")) // 4 + 4
-        if estimated_tokens > _MAX_HISTORY_TOKENS:
-            break
-        context_history.insert(0, msg)
-    # Ensure we start on a user turn (drop a leading assistant message if present)
-    if context_history and context_history[0].get("role") == "assistant":
-        context_history = context_history[1:]
+    # Slice 4b (chat via abbonamento), Task 2: when subscription mode is on
+    # AND the reasoning-queue bridge is wired, hand the turn to the async
+    # queue instead of calling a local runner — subscription mode may have
+    # no runner/API key configured at all locally, that's the point. Task 1
+    # built the receiving end (kind="chat" submit -> chat_store); this is
+    # the sending end. Checked BEFORE the runner-required guard below so
+    # subscription mode works even without CLAUDE_API_KEY.
+    if request.app.get("chat_via_subscription") and _bridge_on(request.app):
+        # Slice 4b Task 3: two guards on the async path ONLY -- the sync path
+        # above/below is unaffected when the flag is off. Checked before
+        # anything is persisted/enqueued so a blocked turn leaves no trace.
+        reasoning_queue = request.app["reasoning_queue"]
+        # In-flight guard first: it's the more specific, more actionable
+        # signal for the user (retry once the current answer lands), so it
+        # wins even if the daily cap is ALSO exhausted.
+        if reasoning_queue.has_pending_chat(effective_agent_id):
+            return web.json_response(
+                {"error": "C'è già una risposta in arrivo per questa conversazione."},
+                status=409,
+            )
+        _cap = request.app.get("chat_daily_cap")
+        chat_daily_cap = int(_cap) if _cap is not None else 50
+        if reasoning_queue.count_chat_today() >= chat_daily_cap:
+            return web.json_response(
+                {"error": "Limite giornaliero di messaggi chat raggiunto."},
+                status=429,
+            )
+        return await _enqueue_chat_job(request, agent, effective_agent_id, message, data_dir)
+
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
+    if runner is None:
+        return web.json_response(
+            {"error": "Claude runner not configured — set CLAUDE_API_KEY"}, status=503
+        )
+
+    # Load server-side history (client-sent history field is ignored)
+    history = load_history(effective_agent_id, data_dir) if effective_agent_id else []
+
+    # (max-turns check now runs above, before the subscription branch — see
+    # Fix 1 comment there.)
+
+    context_history = _trim_history(history)
 
     if agent:
         allowed_tools = agent.allowed_tools or None
@@ -86,12 +235,7 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     # system_prompt = static agent content (strategic_context + system_prompt).
     # Kept separate from context_str so claude_runner can cache it independently.
-    static_parts = []
-    if agent and agent.strategic_context:
-        static_parts.append(agent.strategic_context.strip())
-    if agent and agent.system_prompt:
-        static_parts.append(agent.system_prompt.strip())
-    system_prompt = "\n\n---\n\n".join(static_parts)
+    system_prompt = _build_system_prompt(agent)
 
     # Inject closed-session summaries so Claude remembers previous conversations.
     past = get_past_summaries(effective_agent_id, data_dir) if effective_agent_id else []

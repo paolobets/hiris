@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [0.32.0] — Chat via abbonamento (Slice 4b verso 1.0) (2026-07-24)
+
+- **La chat può girare sull'abbonamento Claude** (opzione `chat_via_subscription`,
+  default off): quando attiva, i messaggi sono elaborati in modo asincrono da un
+  runner esterno via `claude -p` (a costo zero di token metered), con la chat che
+  mostra "risposta in arrivo" e la recupera al termine. Cap chat giornaliero
+  separato e una sola risposta in volo per conversazione.
+- Con l'opzione off la chat resta sincrona come prima (nessun cambiamento).
+
 ## [0.31.0] — Due politiche di routing LLM (Slice 4 verso 1.0) (2026-07-24)
 
 - **Due politiche separate** per la scelta del provider AI: una per il ragionamento

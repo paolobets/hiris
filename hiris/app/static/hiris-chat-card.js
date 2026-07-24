@@ -770,7 +770,22 @@ class HirisCard extends HTMLElement {
       }
 
       const ct = resp.headers.get('Content-Type') || '';
-      if (ct.includes('text/event-stream')) {
+      if (resp.status === 202) {
+        // Slice 4b (chat via abbonamento): subscription mode enqueued the
+        // turn to the async reasoning queue instead of replying synchronously
+        // or streaming -- this wins over the `stream: true` request above.
+        // Stop the 30s single-request abort timer (it does not apply to the
+        // multi-minute poll below) and switch to polling for the reply.
+        clearTimeout(timeout);
+        const data = await resp.json();
+        if (data && data.status === 'pending' && data.job_id) {
+          assistantMsg.text = 'HIRIS sta pensando… (risposta in arrivo)';
+          await this._pollChatReply(data.job_id, assistantMsg);
+        } else {
+          assistantMsg.text = 'Nessuna risposta';
+          assistantMsg.streaming = false;
+        }
+      } else if (ct.includes('text/event-stream')) {
         const reader = resp.body.getReader();
         const dec = new TextDecoder();
         let buf = '';
@@ -817,6 +832,46 @@ class HirisCard extends HTMLElement {
       this._render();
       await this._fetchStatus();
     }
+  }
+
+  // Slice 4b (chat via abbonamento): poll GET api/chat/reply/{job_id} every
+  // ~3.5s until the queued turn resolves. Only reached from the 202-pending
+  // branch above (subscription mode) -- the sync/SSE branches are untouched.
+  async _pollChatReply(jobId, assistantMsg) {
+    const POLL_INTERVAL_MS = 3500;
+    const POLL_MAX_MS = 5 * 60 * 1000;
+    const start = Date.now();
+    while (Date.now() - start < POLL_MAX_MS) {
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+      try {
+        const resp = await _hirisFetch(this._hass, this._hirisUrl(`api/chat/reply/${jobId}`), {
+          headers: { 'Authorization': `Bearer ${this._authToken()}` },
+        });
+        const data = await resp.json();
+        if (data.status === 'done') {
+          assistantMsg.text = data.reply || '';
+          assistantMsg.streaming = false;
+          this._render();
+          return;
+        }
+        if (data.status === 'error') {
+          assistantMsg.text = data.message || 'Errore nella risposta.';
+          assistantMsg.streaming = false;
+          assistantMsg.error = true;
+          this._render();
+          return;
+        }
+        // 'pending' (or a malformed body without a recognized status) --
+        // keep polling until POLL_MAX_MS gives up.
+      } catch {
+        // Transient network hiccup while polling -- keep retrying until the
+        // overall timeout above gives up.
+      }
+    }
+    assistantMsg.text = 'La risposta non è arrivata in tempo. Riprova.';
+    assistantMsg.streaming = false;
+    assistantMsg.error = true;
+    this._render();
   }
 
   // (M6) Regenerate: drop the last assistant bubble and re-send the matching

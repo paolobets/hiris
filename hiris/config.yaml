@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.31.0"
+version: "0.32.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -93,6 +93,8 @@ options:
   bridge_enabled: false
   bridge_deadline_min: 5
   bridge_fallback: true
+  chat_daily_cap: 50
+  chat_via_subscription: false
 
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:
@@ -162,6 +164,8 @@ schema:
   bridge_enabled: bool
   bridge_deadline_min: int(1,120)
   bridge_fallback: bool
+  chat_daily_cap: int(0,1000)?
+  chat_via_subscription: bool?
 
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:

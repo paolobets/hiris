@@ -30,6 +30,26 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "invalid or expired"}, status=409)
     job = q.get(job_id)
     outcome = "recorded"
+
+    if (job or {}).get("kind") == "chat":
+        # Chat-via-abbonamento (Slice 4b): a chat job's submit writes the
+        # reply into chat_store — it must NEVER actuate the house through
+        # execute_decision. Fail-closed: missing agent_id/reply -> no write,
+        # but the job stays "decided" (already committed by q.submit above).
+        agent_id = ((job or {}).get("context") or {}).get("agent_id")
+        reply = decision.get("reply")
+        submit_chat_reply = request.app.get("submit_chat_reply")
+        if submit_chat_reply is not None and agent_id and reply:
+            try:
+                await submit_chat_reply(agent_id, reply)
+                outcome = "chat_reply_recorded"
+            except Exception:
+                logger.exception("submit_chat_reply failed")
+                outcome = "error"
+        else:
+            outcome = "chat_reply_skipped"
+        return web.json_response({"ok": True, "outcome": outcome})
+
     ex = request.app.get("execute_decision")
     if ex is not None:
         try:

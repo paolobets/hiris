@@ -61,10 +61,15 @@ def _norm_policy(policy: list[str] | None, strategy: str) -> list[str]:
     """Normalize a backend policy list.
 
     A non-empty list is filtered to known backend names, preserving order.
-    None/empty falls back to the strategy's default order (backward-compat).
+    None/empty, OR a non-empty list that filters down to nothing (every name
+    unknown), falls back to the strategy's default order (backward-compat) --
+    an all-invalid policy must not silently leave the router with an empty
+    backend chain.
     """
     if policy:
-        return [name for name in policy if name in _VALID_BACKEND_NAMES]
+        filtered = [name for name in policy if name in _VALID_BACKEND_NAMES]
+        if filtered:
+            return filtered
     return list(_STRATEGY_ORDER[strategy])
 
 
@@ -132,9 +137,6 @@ class LLMRouter:
         return [bmap[name] for name in order if bmap[name] is not None]
 
     def _route(self, model: str) -> Any:
-        if model == "auto":
-            backends = self._ordered_backends()
-            return backends[0] if backends else None
         if _is_openrouter_model(model):
             return self._openrouter
         if model.startswith("claude-"):
@@ -181,19 +183,25 @@ class LLMRouter:
             yield chunk
 
     async def run_with_actions(self, **kwargs):
+        # Slice 4 backlog fix: real runners (claude_runner/openai_compat_runner)
+        # return a 2-tuple (clean_text, structured), and every real caller
+        # (e.g. agent_engine.py's `result, structured = await
+        # self._claude_runner.run_with_actions(...)`) unpacks exactly 2
+        # values -- both fallback returns below must match that shape, not
+        # the old 3-tuple, or the unpack raises ValueError.
         mode = kwargs.pop("mode", "automatic")
         model = kwargs.get("model", "auto")
         if model != "auto":
             runner = self._route(model)
             if runner is None:
-                return "", None, None
+                return "Nessun provider AI configurato per questo modello.", {}
             return await runner.run_with_actions(**kwargs)
         for runner in self._ordered_backends(mode):
             try:
                 return await runner.run_with_actions(**kwargs)
             except Exception as exc:
                 logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
-        return "", None, None
+        return "Tutti i provider AI non disponibili. Riprova tra poco.", {}
 
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
         runner = self._claude or self._openai or self._ollama

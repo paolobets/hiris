@@ -8,7 +8,7 @@ import re
 import shutil
 import aiohttp
 from aiohttp import web
-from .api.handlers_chat import handle_chat
+from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_agents import (
     handle_list_agents, handle_create_agent, handle_get_agent,
     handle_update_agent, handle_delete_agent, handle_run_agent,
@@ -48,10 +48,22 @@ from .brain.privacy import VaultStore, Pseudonymizer
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
+from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 
 logger = logging.getLogger(__name__)
 
-_VALID_POLICY_BACKENDS = frozenset({"claude", "openai", "openrouter", "ollama"})
+
+def _chat_subscription_active(cfg_on: bool, bridge_on: bool) -> bool:
+    """Slice 4b final-review Fix 2: the release's #1 fail-safe, extracted to a
+    tiny pure function so the invariant is unit-tested against REAL code
+    (see test_chat_subscription_path.py) rather than a hand-copied
+    truth-table or a substring match on the source. The chat-via-abbonamento
+    addon option must NEVER activate unless the reasoning-queue bridge is
+    ALSO genuinely enabled (BRIDGE_ENABLED) — otherwise chat jobs get
+    enqueued into a queue nothing sweeps/claims/prunes and sit pending
+    forever. Both must be True; an ``or`` here would be a silent regression.
+    """
+    return cfg_on and bridge_on
 
 
 def _parse_policy_csv(value: str | None) -> list[str] | None:
@@ -998,6 +1010,41 @@ async def _on_startup(app: web.Application) -> None:
         return outcome
     app["execute_decision"] = _execute_decision
 
+    # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
+    # jobs — writes the runner's reply into chat_store instead of actuating
+    # the house. chat_store has no separate "conversation_id"; a conversation
+    # IS an agent's active session, keyed by agent_id, so that's what the job
+    # context carries and what this receives.
+    from .chat_store import append_messages as _append_chat_messages
+    from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
+
+    async def _submit_chat_reply(agent_id: str, reply_text: str) -> None:
+        if not agent_id or not reply_text:
+            return
+        # Final-review Fix 3 (Slice 4b): mirror the sync path's two
+        # persistence guards (handlers_chat.py, ~line 423) so a reply that
+        # arrived via the async runner gets the same treatment as one from
+        # the local runner. De-tokenize BEFORE the toxicity check, same order
+        # as the sync path, so both the stored history and the toxic-pattern
+        # match see real values rather than vault tokens.
+        _pseudonymizer = app.get("pseudonymizer")
+        if _pseudonymizer is not None:
+            reply_text = _pseudonymizer.detokenize(reply_text)
+        if _is_toxic_chat_reply(reply_text):
+            # Drop silently, same as the sync path: the next turn must not
+            # inherit a poisoned/leaked history. There's no HTTP response
+            # here to carry a visible error (the caller already got a 202
+            # long ago) -- the poll route's chat_reply_skipped handling is
+            # the user-facing side of this.
+            return
+        _append_chat_messages(agent_id, [{"role": "assistant", "content": reply_text}], data_dir)
+    app["submit_chat_reply"] = _submit_chat_reply
+
+    # Slice 4b Task 3: separate daily cap for chat-via-abbonamento, checked by
+    # handle_chat's subscription branch (handlers_chat.py) against
+    # reasoning_queue.count_chat_today() -- independent of SENTINEL_DAILY_CAP.
+    app["chat_daily_cap"] = int(os.environ.get("CHAT_DAILY_CAP", "50"))
+
     async def _holistic_reason(snapshot):
         # Cervello auto-proponente: revisione di copertura sulla cadenza olistica.
         # Gira SEMPRE (anche quando BRIDGE_ENABLED e' attivo, prima del branch
@@ -1067,6 +1114,11 @@ async def _on_startup(app: web.Application) -> None:
             return
         fallback = os.environ.get("BRIDGE_FALLBACK", "1") in ("1", "true", "yes", "on")
         for job in reasoning_queue.sweep_expired(_time.time()):
+            if job.get("kind") != "holistic":
+                # Non-holistic jobs (e.g. kind="chat") must never be routed
+                # into holistic reasoning: they simply stay 'expired' and are
+                # surfaced to their own caller (e.g. the chat poll route).
+                continue
             if not fallback:
                 continue
             jw = job.get("wake") or {}
@@ -1082,6 +1134,23 @@ async def _on_startup(app: web.Application) -> None:
     engine._scheduler.add_job(
         _reasoning_sweep, trigger="interval", minutes=2,
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
+
+    # Slice 4b Task 5: the chat_via_subscription addon option only takes
+    # effect when the bridge is ALSO truly usable. handlers_chat._bridge_on
+    # just checks that app["reasoning_queue"] is wired -- and it always is in
+    # prod (created unconditionally a few lines above) -- so on its own it's
+    # not a signal that anything actually claims/sweeps/prunes those jobs.
+    # That sweeping/pruning (both _holistic_reason's enqueue above and
+    # _reasoning_sweep just above) is gated on BRIDGE_ENABLED, read the same
+    # way here as everywhere else in this module. Gating the flag itself at
+    # this single wiring point -- rather than teaching _bridge_on about
+    # BRIDGE_ENABLED -- keeps handlers_chat.py's tests able to wire/unwire
+    # the queue directly without touching env vars, while still making sure
+    # chat_via_subscription=true + BRIDGE_ENABLED=0 enqueues nothing that
+    # would sit pending forever and grow the DB.
+    _bridge_enabled = os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")
+    _chat_via_subscription_cfg = os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")
+    app["chat_via_subscription"] = _chat_subscription_active(_chat_via_subscription_cfg, _bridge_enabled)
 
     # ── Arrivo serale (fetta 3): riusa lo stesso adapter _on_situation ──────
     # (reason→inietta suggested_action→execute→record), stessa gate del
@@ -1271,6 +1340,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/usage", handle_usage)
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
+    app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
     app.router.add_get("/api/agents", handle_list_agents)
     app.router.add_post("/api/agents", handle_create_agent)
     app.router.add_get("/api/agents/{agent_id}", handle_get_agent)
