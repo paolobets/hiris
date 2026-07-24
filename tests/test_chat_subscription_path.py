@@ -28,6 +28,7 @@ Real APIs verified before writing this test (matches Task 1's report):
   chat_store.load_history(agent_id, data_dir)
 """
 import os
+import time
 
 import pytest
 from aiohttp import web
@@ -206,3 +207,104 @@ async def test_poll_route_unknown_job_id_404(tmp_path):
     async with TestClient(TestServer(app)) as client:
         resp = await client.get("/api/chat/reply/does-not-exist")
         assert resp.status == 404
+
+
+# ---------------------------------------------------------------------------
+# Poll route: terminal states (Task 2, Fix 2) -- an expired job, a failed
+# job, or a decided job whose decision carries no usable reply (Task 1's
+# chat_reply_skipped outcome) must all poll as a TERMINAL error, never as
+# pending-forever. Only genuinely still-in-flight jobs poll as "pending".
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        job_id = (await resp.json())["job_id"]
+
+        # Simulate the ponte-push sweep expiring the job (deadline passed,
+        # no runner ever claimed/submitted it).
+        q.sweep_expired(now=time.time() + 10 * 60)
+        assert q.get(job_id)["status"] == "expired"
+
+        poll = await client.get(f"/api/chat/reply/{job_id}")
+        assert poll.status == 200
+        body = await poll.json()
+        assert body["status"] == "error"
+        assert "message" in body and body["message"]
+
+
+@pytest.mark.asyncio
+async def test_poll_route_failed_job_returns_error_not_pending(tmp_path):
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        job_id = (await resp.json())["job_id"]
+
+    # ReasoningQueue has no public API to force status='failed' directly;
+    # write it through the same connection the queue already owns so this
+    # test doesn't depend on internal column layout beyond the 'status' field
+    # documented in reasoning/queue.py's _row().
+    with q._lock:
+        q._conn.execute("UPDATE reasoning_jobs SET status='failed' WHERE job_id=?", (job_id,))
+        q._conn.commit()
+
+    async with TestClient(TestServer(app)) as client:
+        poll = await client.get(f"/api/chat/reply/{job_id}")
+        assert poll.status == 200
+        body = await poll.json()
+        assert body["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
+    """Mirrors Task 1's chat_reply_skipped outcome: the job reached
+    'decided' but the decision carries no truthy 'reply' (e.g. the runner's
+    decision was empty/garbage). The UI must stop polling, not spin forever."""
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        job_id = (await resp.json())["job_id"]
+
+        claimed = q.claim(now=5.0)
+        ok = q.submit(job_id, claimed["nonce"], {"message": "no reply field here"}, now=6.0)
+        assert ok is True
+        assert q.get(job_id)["status"] == "decided"
+
+        poll = await client.get(f"/api/chat/reply/{job_id}")
+        assert poll.status == 200
+        body = await poll.json()
+        assert body["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_poll_route_pending_job_still_returns_pending(tmp_path):
+    """Sanity check: a genuinely in-flight job (not yet claimed) still polls
+    as pending -- the terminal-state handling must not regress this."""
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        job_id = (await resp.json())["job_id"]
+
+        poll = await client.get(f"/api/chat/reply/{job_id}")
+        assert poll.status == 200
+        assert (await poll.json()) == {"status": "pending"}
+
+
+@pytest.mark.asyncio
+async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
+    """A job claimed by the external runner but not yet submitted is still
+    in-flight -- must poll as pending, not error."""
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        job_id = (await resp.json())["job_id"]
+
+        claimed = q.claim(now=5.0)
+        assert claimed["job_id"] == job_id
+        assert q.get(job_id)["status"] == "claimed"
+
+        poll = await client.get(f"/api/chat/reply/{job_id}")
+        assert poll.status == 200
+        assert (await poll.json()) == {"status": "pending"}

@@ -112,8 +112,26 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     job = reasoning_queue.get(job_id)
     if job is None:
         return web.json_response({"error": "not found"}, status=404)
+    status = job.get("status")
     decision = job.get("decision") or {}
     reply = decision.get("reply")
+    if status in ("expired", "failed"):
+        # Never spin forever: the ponte-push sweep (server.py's
+        # _reasoning_sweep) already left non-holistic jobs in this state
+        # without routing them anywhere else -- this is the only place they
+        # get surfaced to the user.
+        return web.json_response({
+            "status": "error",
+            "message": "La risposta non è arrivata in tempo. Riprova.",
+        })
+    if status == "decided" and not reply:
+        # Task 1's chat_reply_skipped outcome: a decision was recorded but it
+        # carries no usable reply. Same terminal treatment as expired/failed
+        # -- pending-forever would strand the UI.
+        return web.json_response({
+            "status": "error",
+            "message": "La risposta non è arrivata in tempo. Riprova.",
+        })
     if not reply:
         return web.json_response({"status": "pending"})
     return web.json_response({"status": "done", "reply": reply})

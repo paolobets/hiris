@@ -1080,6 +1080,11 @@ async def _on_startup(app: web.Application) -> None:
             return
         fallback = os.environ.get("BRIDGE_FALLBACK", "1") in ("1", "true", "yes", "on")
         for job in reasoning_queue.sweep_expired(_time.time()):
+            if job.get("kind") != "holistic":
+                # Non-holistic jobs (e.g. kind="chat") must never be routed
+                # into holistic reasoning: they simply stay 'expired' and are
+                # surfaced to their own caller (e.g. the chat poll route).
+                continue
             if not fallback:
                 continue
             jw = job.get("wake") or {}
