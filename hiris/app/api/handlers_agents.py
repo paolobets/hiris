@@ -8,9 +8,6 @@ from ..config import EUR_RATE as _EUR_RATE
 logger = logging.getLogger(__name__)
 
 _AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-_VALID_AGENT_TYPES = frozenset({"chat", "agent"})
-_VALID_TRIGGER_TYPES = frozenset({"schedule", "state_changed", "manual", "cron"})
-_VALID_ACTION_MODES = frozenset({"automatic", "configured"})
 
 
 def _check_agent_id(agent_id: str) -> web.Response | None:
@@ -27,57 +24,6 @@ def _validate_agent_payload(body: dict) -> str | None:
             return "name must be a non-empty string"
         if len(name) > 256:
             return "name too long (max 256 chars)"
-
-    agent_type = body.get("type")
-    if agent_type is not None and agent_type not in _VALID_AGENT_TYPES:
-        return f"type must be one of {sorted(_VALID_AGENT_TYPES)}"
-
-    # Legacy single-trigger (still accepted; engine migrates it to triggers list)
-    trigger = body.get("trigger")
-    if trigger is not None:
-        if not isinstance(trigger, dict):
-            return "trigger must be an object"
-        if "type" not in trigger:
-            return "trigger.type is required"
-
-    # New-style triggers list
-    triggers = body.get("triggers")
-    if triggers is not None:
-        if not isinstance(triggers, list):
-            return "triggers must be a list"
-        for i, t in enumerate(triggers):
-            if not isinstance(t, dict):
-                return f"triggers[{i}] must be an object"
-            if "type" not in t:
-                return f"triggers[{i}].type is required"
-            if t["type"] not in _VALID_TRIGGER_TYPES:
-                return f"triggers[{i}].type must be one of {sorted(_VALID_TRIGGER_TYPES)}"
-
-    action_mode = body.get("action_mode")
-    if action_mode is not None and action_mode not in _VALID_ACTION_MODES:
-        return f"action_mode must be one of {sorted(_VALID_ACTION_MODES)}"
-
-    rules = body.get("rules")
-    if rules is not None:
-        if not isinstance(rules, list):
-            return "rules must be a list"
-        for i, r in enumerate(rules):
-            if not isinstance(r, dict):
-                return f"rules[{i}] must be an object"
-            if "states" not in r or "actions" not in r:
-                return f"rules[{i}] must have 'states' and 'actions' fields"
-            if not isinstance(r["states"], list):
-                return f"rules[{i}].states must be a list"
-            if not isinstance(r["actions"], list):
-                return f"rules[{i}].actions must be a list"
-
-    budget = body.get("budget_eur_limit")
-    if budget is not None:
-        try:
-            if float(budget) < 0:
-                return "budget_eur_limit must be >= 0"
-        except (TypeError, ValueError):
-            return "budget_eur_limit must be a number"
 
     for list_field in ("allowed_tools", "allowed_entities", "allowed_services"):
         val = body.get(list_field)
@@ -108,13 +54,6 @@ def _validate_agent_payload(body: dict) -> str | None:
                     return "thinking_budget must be < max_tokens"
             except (TypeError, ValueError):
                 pass
-
-    states = body.get("states")
-    if states is not None:
-        if not isinstance(states, list) or not states:
-            return "states must be a non-empty list of strings"
-        if not all(isinstance(s, str) and s.strip() for s in states):
-            return "states must be a list of non-empty strings"
 
     allowed_endpoints = body.get("allowed_endpoints")
     if allowed_endpoints is not None:
@@ -155,7 +94,6 @@ async def handle_list_agents(request: web.Request) -> web.Response:
                 logger.warning("get_agent_usage(%s) failed: %s", agent_id, exc)
                 budget_eur = 0.0
         entry["budget_eur"] = budget_eur
-        entry["budget_limit_eur"] = float(entry.get("budget_eur_limit", 0.0))
         entry["usage"] = usage_payload
         result.append(entry)
     return web.json_response(result)
@@ -217,7 +155,7 @@ async def handle_create_agent(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
 
-    required = {"name", "type"}
+    required = {"name"}
     missing = required - set(body.keys())
     if missing:
         return web.json_response({"error": f"Missing required fields: {missing}"}, status=400)

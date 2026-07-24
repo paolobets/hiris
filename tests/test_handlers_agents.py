@@ -198,14 +198,17 @@ async def test_list_agents_has_status_field(dashboard_client):
 
 @pytest.mark.asyncio
 async def test_list_agents_has_budget_fields(dashboard_client):
+    """Task 3: `budget_limit_eur` is gone from the /api/agents payload — it
+    was a defensive `.get("budget_eur_limit", 0.0)` read of a dataclass field
+    Task 2 already removed, so it was always hardcoded 0.0. `budget_eur`
+    (actual computed usage cost) is the only budget field left."""
     resp = await dashboard_client.get("/api/agents")
     assert resp.status == 200
     agents = await resp.json()
     for agent in agents:
         assert "budget_eur" in agent
-        assert "budget_limit_eur" in agent
         assert isinstance(agent["budget_eur"], float)
-        assert isinstance(agent["budget_limit_eur"], float)
+        assert "budget_limit_eur" not in agent
 
 
 @pytest.mark.asyncio
@@ -222,8 +225,9 @@ async def test_list_agents_budget_computed_from_usage(dashboard_client):
 async def test_created_agent_has_all_dashboard_fields(dashboard_client):
     # Slice 5 Task 2 dropped Agent.type (personas are chat-only now — see
     # hiris/app/agent_engine.py's Agent dataclass); "type"/"trigger" here are
-    # just stray keys in the payload that create_agent ignores (Task 3 will
-    # stop handlers_agents.py from validating them at all).
+    # just stray keys in the payload that create_agent ignores. Task 3 stops
+    # handlers_agents.py from validating them at all (no more _VALID_AGENT_TYPES
+    # / _VALID_TRIGGER_TYPES enum checks, no more required "type" key).
     resp = await dashboard_client.post("/api/agents", json={
         "name": "Test",
         "type": "chat",
@@ -236,11 +240,12 @@ async def test_created_agent_has_all_dashboard_fields(dashboard_client):
     assert resp.status == 200
     agents = await resp.json()
     required = {"id", "name", "enabled", "status", "last_run",
-                "budget_eur", "budget_limit_eur", "is_default"}
+                "budget_eur", "is_default"}
     for agent in agents:
         missing = required - set(agent.keys())
         assert not missing, f"Missing fields: {missing}"
         assert "type" not in agent
+        assert "budget_limit_eur" not in agent
 
 
 # ---------------------------------------------------------------------------
@@ -495,3 +500,163 @@ async def test_create_agent_blocks_autonomous_on_free_without_confirm(monkeypatc
     payload = json.loads(resp.body)
     assert "free" in payload["error"].lower()
     engine.create_agent.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Task 3: handlers_agents is personas-only — no more validation of the
+# proactive-only fields (type/trigger/triggers/action_mode/rules/states/
+# budget_eur_limit). A payload carrying garbage values for those fields must
+# still be accepted (201/200); create_agent/update_agent silently drop them
+# since the Persona dataclass has no such attributes (Task 2).
+# ---------------------------------------------------------------------------
+
+from hiris.app.api.handlers_agents import _validate_agent_payload
+
+
+def test_validate_agent_payload_ignores_bogus_proactive_fields():
+    """None of the old enum/shape checks fire anymore — a payload with
+    invalid values for every retired proactive field passes validation."""
+    body = {
+        "name": "x",
+        "type": "not-a-real-type",
+        "trigger": "not even an object",
+        "triggers": "not a list either",
+        "action_mode": "totally-invalid",
+        "rules": "not a list",
+        "states": [],  # used to require non-empty
+        "budget_eur_limit": -999,  # used to require >= 0
+    }
+    assert _validate_agent_payload(body) is None
+
+
+def test_validate_agent_payload_no_longer_defines_removed_constants():
+    import hiris.app.api.handlers_agents as mod
+    assert not hasattr(mod, "_VALID_AGENT_TYPES")
+    assert not hasattr(mod, "_VALID_TRIGGER_TYPES")
+    assert not hasattr(mod, "_VALID_ACTION_MODES")
+
+
+@pytest.mark.asyncio
+async def test_create_agent_accepts_payload_with_bogus_proactive_fields(monkeypatch):
+    """End-to-end: POST /api/agents with garbage proactive-field values
+    still returns 201 — the fields are stray keys that create_agent ignores."""
+    body = {
+        "name": "test",
+        "type": "not-a-real-type",
+        "triggers": "not a list",
+        "action_mode": "bogus",
+        "rules": {"not": "a list"},
+        "states": [],
+        "budget_eur_limit": -5,
+    }
+
+    from dataclasses import dataclass
+    @dataclass
+    class _Agent:
+        id: str = "a-uuid"
+        name: str = "test"
+
+    engine = MagicMock()
+    engine.create_agent = MagicMock(return_value=_Agent())
+    app = MagicMock()
+    app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
+    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
+
+    req = make_mocked_request("POST", "/api/agents", app=app)
+    req.json = AsyncMock(return_value=body)
+
+    resp = await handle_create_agent(req)
+    assert resp.status == 201
+    engine.create_agent.assert_called_once_with(body)
+
+
+@pytest.mark.asyncio
+async def test_create_agent_no_longer_requires_type_field(monkeypatch):
+    """`type` used to be in the required-fields set alongside `name`; Task 3
+    drops that requirement too since `type` is not a persona field."""
+    body = {"name": "no-type-here"}
+
+    from dataclasses import dataclass
+    @dataclass
+    class _Agent:
+        id: str = "a-uuid"
+        name: str = "no-type-here"
+
+    engine = MagicMock()
+    engine.create_agent = MagicMock(return_value=_Agent())
+    app = MagicMock()
+    app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
+    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
+
+    req = make_mocked_request("POST", "/api/agents", app=app)
+    req.json = AsyncMock(return_value=body)
+
+    resp = await handle_create_agent(req)
+    assert resp.status == 201
+
+
+@pytest.mark.asyncio
+async def test_update_agent_accepts_payload_with_bogus_proactive_fields(monkeypatch):
+    """End-to-end: PUT /api/agents/{id} with garbage proactive-field values
+    still returns 200 — the fields are stray keys that update_agent ignores."""
+    body = {
+        "type": "not-a-real-type",
+        "triggers": [{"no_type_key": True}],
+        "action_mode": "bogus",
+        "rules": "not a list",
+        "states": "not a list",
+    }
+
+    from dataclasses import dataclass
+    @dataclass
+    class _Agent:
+        id: str = "a-uuid"
+        name: str = "x"
+
+    engine = MagicMock()
+    engine.update_agent = MagicMock(return_value=_Agent())
+    app = MagicMock()
+    app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
+    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
+
+    aid = "550e8400-e29b-41d4-a716-446655440000"
+    req = make_mocked_request(
+        "PUT", f"/api/agents/{aid}",
+        match_info={"agent_id": aid},
+        app=app,
+    )
+    req.json = AsyncMock(return_value=body)
+    resp = await handle_update_agent(req)
+    assert resp.status == 200
+    engine.update_agent.assert_called_once_with(aid, body)
+
+
+# ---------------------------------------------------------------------------
+# Task 3: handle_run_agent stays a minimal "run the persona once, return its
+# text reply" — no action execution, no structured-output parsing.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_run_agent_returns_plain_text_result():
+    from hiris.app.api.handlers_agents import handle_run_agent
+
+    engine = MagicMock()
+    fake_agent = MagicMock()
+    engine.get_agent.return_value = fake_agent
+    engine.run_agent = AsyncMock(return_value="Ciao! Come posso aiutarti?")
+
+    app = MagicMock()
+    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
+
+    aid = "550e8400-e29b-41d4-a716-446655440000"
+    req = make_mocked_request(
+        "POST", f"/api/agents/{aid}/run",
+        match_info={"agent_id": aid},
+        app=app,
+    )
+
+    resp = await handle_run_agent(req)
+    assert resp.status == 200
+    payload = json.loads(resp.body)
+    assert payload == {"result": "Ciao! Come posso aiutarti?"}
+    engine.run_agent.assert_called_once_with(fake_agent)
