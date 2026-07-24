@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [0.31.0] — Due politiche di routing LLM (Slice 4 verso 1.0) (2026-07-24)
+
+- **Due politiche separate** per la scelta del provider AI: una per il ragionamento
+  **automatico** (sentinella, agenti proattivi/schedulati) e una per la **chat**
+  interattiva — configurabili come ordine di backend (es. `claude,ollama`) dalle
+  opzioni dell'add-on (`automatic_policy` / `chat_policy`). Vuote = usano la
+  strategia esistente (nessun cambiamento per chi non le imposta).
+- Il modello per-agente resta come override esplicito quando serve.
+
 ## [0.30.0] — Memoria unificata (Slice 3 verso 1.0) (2026-07-23)
 
 - **Un unico substrato di memoria:** la memoria di lavoro per-agente confluisce nel

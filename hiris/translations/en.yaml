@@ -17,6 +17,12 @@ configuration:
   llm_strategy:
     name: "LLM Strategy"
     description: "How HIRIS selects models when multiple are available. 'balanced' uses cost/quality balance, 'cost_first' prefers cheaper models, 'quality_first' always uses the best."
+  automatic_policy:
+    name: "Backend policy — automatic"
+    description: "Backend order for automatic reasoning/chat, e.g. claude,ollama — empty = use the strategy."
+  chat_policy:
+    name: "Backend policy — chat"
+    description: "Backend order for the interactive chat, e.g. claude,ollama — empty = use the strategy."
   local_model:
     name: "Local Model (Ollama)"
     description: "Settings for a locally hosted Ollama model. Leave empty if you do not use Ollama."

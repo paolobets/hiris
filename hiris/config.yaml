@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.30.0"
+version: "0.31.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -41,6 +41,8 @@ options:
   hide_free_models: false
   primary_model: "claude-sonnet-4-6"
   llm_strategy: "balanced"
+  automatic_policy: ""
+  chat_policy: ""
 
   # ── Local Model (Ollama) ──────────────────────────────────────────────────
   local_model:
@@ -115,6 +117,8 @@ schema:
   hide_free_models: bool?
   primary_model: str
   llm_strategy: "list(balanced|cost_first|quality_first)"
+  automatic_policy: "str?"
+  chat_policy: "str?"
 
   # ── Local Model (Ollama) ──────────────────────────────────────────────────
   local_model:

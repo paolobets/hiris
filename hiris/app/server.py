@@ -51,6 +51,22 @@ from .mqtt_publisher import MQTTPublisher
 
 logger = logging.getLogger(__name__)
 
+_VALID_POLICY_BACKENDS = frozenset({"claude", "openai", "openrouter", "ollama"})
+
+
+def _parse_policy_csv(value: str | None) -> list[str] | None:
+    """Parse a CSV of backend names (e.g. 'claude, ollama') into an ordered list.
+
+    Unknown backend names are dropped, order preserved. Returns None if the
+    input is None/empty or if filtering leaves nothing (so the router falls
+    back to its strategy-derived default order).
+    """
+    if not value:
+        return None
+    names = [name.strip() for name in value.split(",")]
+    filtered = [name for name in names if name in _VALID_POLICY_BACKENDS]
+    return filtered or None
+
 
 def _find_ha_config_dir() -> str | None:
     """Return the HA config directory path inside the container, or None if not mounted.
@@ -515,6 +531,8 @@ async def _on_startup(app: web.Application) -> None:
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
     llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
+    automatic_policy = _parse_policy_csv(os.environ.get("AUTOMATIC_POLICY", ""))
+    chat_policy = _parse_policy_csv(os.environ.get("CHAT_POLICY", ""))
 
     # Memory / RAG config
     mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
@@ -1161,6 +1179,8 @@ async def _on_startup(app: web.Application) -> None:
             openrouter=openrouter_runner,
             ollama=ollama_runner,
             strategy=llm_strategy,
+            automatic_policy=automatic_policy,
+            chat_policy=chat_policy,
         )
         semantic_map.set_router(router)
         app["claude_runner"] = claude_runner  # backward compat (may be None)

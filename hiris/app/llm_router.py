@@ -54,17 +54,36 @@ _STRATEGY_ORDER = {
     "balanced":      ["claude", "openai", "openrouter", "ollama"],
 }
 
+_VALID_BACKEND_NAMES = frozenset({"claude", "openai", "openrouter", "ollama"})
+
+
+def _norm_policy(policy: list[str] | None, strategy: str) -> list[str]:
+    """Normalize a backend policy list.
+
+    A non-empty list is filtered to known backend names, preserving order.
+    None/empty falls back to the strategy's default order (backward-compat).
+    """
+    if policy:
+        return [name for name in policy if name in _VALID_BACKEND_NAMES]
+    return list(_STRATEGY_ORDER[strategy])
+
 
 class LLMRouter:
     """Routes LLM calls to the appropriate backend.
 
     Backends: Claude (anthropic), OpenAI cloud, OpenRouter proxy, Ollama local.
 
-    strategy controls the backend preference order when model="auto":
+    strategy controls the default backend preference order when model="auto":
       - "balanced" / "quality_first": Claude → OpenAI → OpenRouter → Ollama
       - "cost_first": Ollama → OpenRouter → OpenAI → Claude
     Fallback: if the primary backend raises an exception and model="auto",
-    the next backend in the strategy chain is tried automatically.
+    the next backend in the policy chain is tried automatically.
+
+    Two independent ordered policies select the backend chain when
+    model="auto", picked via the `mode` kwarg on chat/chat_stream/
+    run_with_actions ("chat" → chat_policy, else → automatic_policy).
+    If a policy is not supplied (None/empty), it derives from
+    _STRATEGY_ORDER[strategy] — unchanged behavior for existing callers.
 
     Explicit model routing (when model != "auto"):
       - 'claude-*'                  → Claude runner
@@ -80,6 +99,8 @@ class LLMRouter:
         openrouter: Any = None,
         ollama: Any = None,
         strategy: str = "balanced",
+        automatic_policy: list[str] | None = None,
+        chat_policy: list[str] | None = None,
     ) -> None:
         self._claude = claude
         self._openai = openai
@@ -87,6 +108,10 @@ class LLMRouter:
         self._ollama = ollama
         self._strategy = strategy if strategy in _STRATEGY_ORDER else "balanced"
         self._all = [r for r in [claude, openai, openrouter, ollama] if r is not None]
+        # Two ordered backend policies (proactive/agents vs interactive chat).
+        # Each falls back to the strategy's default order when not provided.
+        self._automatic_policy = _norm_policy(automatic_policy, self._strategy)
+        self._chat_policy = _norm_policy(chat_policy, self._strategy)
 
     def _backend_map(self) -> dict[str, Any]:
         return {
@@ -96,9 +121,13 @@ class LLMRouter:
             "ollama": self._ollama,
         }
 
-    def _ordered_backends(self) -> list[Any]:
-        """Return available backends in strategy priority order."""
-        order = _STRATEGY_ORDER[self._strategy]
+    def _ordered_backends(self, mode: str = "automatic") -> list[Any]:
+        """Return available backends in mode-policy priority order.
+
+        mode="chat" uses chat_policy (interactive chat); anything else
+        (default "automatic") uses automatic_policy (proactive/agents).
+        """
+        order = self._chat_policy if mode == "chat" else self._automatic_policy
         bmap = self._backend_map()
         return [bmap[name] for name in order if bmap[name] is not None]
 
@@ -119,14 +148,17 @@ class LLMRouter:
     # ------------------------------------------------------------------
 
     async def chat(self, **kwargs) -> str:
+        # mode selects the auto-routing policy; popped so it is never
+        # forwarded to the underlying runner (runners don't accept it).
+        mode = kwargs.pop("mode", "chat")
         model = kwargs.get("model", "auto")
         if model != "auto":
             runner = self._route(model)
             if runner is None:
                 return "Nessun provider AI configurato per questo modello."
             return await runner.chat(**kwargs)
-        # auto: try backends in strategy order with fallback
-        for runner in self._ordered_backends():
+        # auto: try backends in mode-policy order with fallback
+        for runner in self._ordered_backends(mode):
             try:
                 return await runner.chat(**kwargs)
             except Exception as exc:
@@ -134,7 +166,14 @@ class LLMRouter:
         return "Tutti i provider AI non disponibili. Riprova tra poco."
 
     async def chat_stream(self, **kwargs):
-        runner = self._route(kwargs.get("model", "auto"))
+        mode = kwargs.pop("mode", "chat")
+        model = kwargs.get("model", "auto")
+        if model == "auto":
+            # no fallback in streaming (as today): just the first pick
+            backends = self._ordered_backends(mode)
+            runner = backends[0] if backends else None
+        else:
+            runner = self._route(model)
         if runner is None:
             yield f'data: {json.dumps({"type": "error", "message": "Provider AI non configurato"})}\n\n'
             return
@@ -142,13 +181,14 @@ class LLMRouter:
             yield chunk
 
     async def run_with_actions(self, **kwargs):
+        mode = kwargs.pop("mode", "automatic")
         model = kwargs.get("model", "auto")
         if model != "auto":
             runner = self._route(model)
             if runner is None:
                 return "", None, None
             return await runner.run_with_actions(**kwargs)
-        for runner in self._ordered_backends():
+        for runner in self._ordered_backends(mode):
             try:
                 return await runner.run_with_actions(**kwargs)
             except Exception as exc:
