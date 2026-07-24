@@ -6,7 +6,7 @@
   /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
      Necessario perché _inject_version backend agisce solo sul HTML response,
      non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.10.14';
+  var V6_CACHE_BUST = '0.11.0';
 
   var legacyLoaded = false;
   /* Task 4 (Slice 5): rimossi cron.js/cron-popover.js/triggers.js/
@@ -90,7 +90,7 @@
      type==='chat'; ora è sempre visibile (nessun altro tipo esiste). */
   function populateModello() {
     document.getElementById('sc-body-modello').innerHTML =
-      '<div class="field"><label>Modello</label><select class="select" id="f-model"><option value="auto">auto — segue tipo agente</option></select>' +
+      '<div class="field"><label>Modello</label><select class="select" id="f-model"><option value="auto">auto — sceglie il modello migliore</option></select>' +
       '<p class="field-hint" id="model-hint">Seleziona il modello AI. <em>auto</em> sceglie automaticamente.</p></div>' +
       '<div class="field-row">' +
         '<div class="field"><label>Max token risposta</label><input class="input" type="number" id="f-max-tokens" value="4096" min="256" max="16000"></div>' +

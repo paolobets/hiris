@@ -1,5 +1,18 @@
 # HIRIS — Changelog
 
+## [0.33.0] — Lenti e Personas (Slice 5 verso 1.0) (2026-07-24)
+
+- **Modello unificato:** niente più due paradigmi. Il livello proattivo è la
+  Sentinella (detector/situazioni "lenti", tarabili); la chat è configurata con
+  **Personas** (prompt, tool, memoria, politica chat). Ritirata la vecchia macchina
+  di azioni/regole/stati degli agenti autonomi (sostituita dalla pipeline sicura
+  della Sentinella con il semaforo).
+- Le lenti definite dall'utente (trigger e prompt personalizzati) arrivano in una
+  versione successiva.
+- Le installazioni pre-esistenti con agenti autonomi legacy mantengono solo i campi
+  persona (chat): i vecchi comportamenti autonomi sono sostituiti dalla Sentinella,
+  senza migrazione automatica dei comportamenti custom.
+
 ## [0.32.0] — Chat via abbonamento (Slice 4b verso 1.0) (2026-07-24)
 
 - **La chat può girare sull'abbonamento Claude** (opzione `chat_via_subscription`,
