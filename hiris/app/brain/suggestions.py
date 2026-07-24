@@ -15,7 +15,7 @@ from typing import Callable, Optional
 
 from ..storage import connect, init_schema
 from ..watcher.detectors import DETECTORS
-from ..watcher.policy import apply_brain_detector, remove_brain_detector
+from ..watcher.policy import apply_brain_detector, remove_brain_detector, remove_brain_tuning
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS suggestions (
@@ -131,6 +131,11 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
             params = {k: v for k, v in config.items()
                       if k not in ("detector", "entity", "enabled", "entities")}
             delta = apply_brain_detector(data_dir, detector, entity, params)
+            # Slice 6 Task 5: stamp the brain-action source_ref this row's
+            # undo must remove, so handle_undo_suggestion doesn't have to
+            # guess it from (detector, entity) -- see trace_applied_coverage
+            # in cognitive_loop.py, which writes exactly this source_ref.
+            delta["source_ref"] = f"brain-coverage:{detector}:{entity}"
             suggestion_id = store.record(kind, title, rationale, config, "applied", delta)
             applied_count += 1
             row = store.get(suggestion_id)
@@ -144,18 +149,42 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
 
 
 def undo(store: SuggestionStore, data_dir: str, suggestion_id: int) -> bool:
-    """Undo a previously auto-applied coverage suggestion. Only ever reverses
-    a suggestion that IS an applied coverage row with a delta; remove_brain_detector
-    additionally refuses to touch anything not in the brain sidecar registry."""
+    """Undo a previously auto-applied coverage row. Only ever reverses a row
+    that IS an applied coverage suggestion with a delta. Two shapes share
+    kind=="coverage"/status=="applied" and must be routed differently
+    (Slice 6 Task 5B):
+
+      - A directly-applied DETECTOR-LEVEL tuning (cognitive_loop.
+        auto_tune_detectors), whose delta looks like
+        {"detector": ..., "source_ref": "brain-tune:<detector>"} -- no
+        "entity" key, because the tuned param (e.g. power.max_watt) is
+        shared by every entity on the detector, not tied to one. This is
+        routed to remove_brain_tuning, which RESTORES the detector's
+        pre-tuning value from its one-time snapshot and never touches
+        entities/enabled.
+      - An entity-level coverage suggestion (suggestions.apply_suggestions),
+        whose delta has both "detector" and "entity" (source_ref, if
+        present, starts with "brain-coverage:"). This is routed to the
+        existing remove_brain_detector, which additionally refuses to touch
+        anything not in the brain sidecar registry.
+    """
     row = store.get(suggestion_id)
     if row is None:
         return False
     if row.get("kind") != "coverage" or row.get("status") != "applied":
         return False
     delta = row.get("delta")
-    if not isinstance(delta, dict) or "detector" not in delta or "entity" not in delta:
+    if not isinstance(delta, dict) or "detector" not in delta:
         return False
-    ok = remove_brain_detector(data_dir, delta["detector"], delta["entity"])
+
+    source_ref = delta.get("source_ref")
+    if isinstance(source_ref, str) and source_ref.startswith("brain-tune:"):
+        ok = remove_brain_tuning(data_dir, delta["detector"])
+    else:
+        if "entity" not in delta:
+            return False
+        ok = remove_brain_detector(data_dir, delta["detector"], delta["entity"])
+
     if ok:
         store.set_status(suggestion_id, "dismissed")
     return ok

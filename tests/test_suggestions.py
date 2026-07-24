@@ -56,6 +56,33 @@ def test_cap_and_management(tmp_path, store):
                       current_config=load_policy(str(tmp_path)), create_proposal=lambda c: proposed.append(c), cap=5)
     assert proposed == [{"x": 1}] and store.list()[0]["status"] == "proposed"
 
+def test_undo_routes_brain_tune_source_ref_to_value_restore(tmp_path, store):
+    """Slice 6 Task 5B: a suggestion row whose delta.source_ref starts with
+    "brain-tune:" is a detector-level tuning (cognitive_loop.
+    auto_tune_detectors), not an entity-coverage row -- its delta has no
+    "entity" key at all. undo() must route it to remove_brain_tuning
+    (restores the detector's pre-tuning value), not remove_brain_detector."""
+    from hiris.app.watcher.policy import apply_brain_tuning, save_policy
+
+    dd = str(tmp_path)
+    save_policy(dd, {"detectors": {"power": {"enabled": True,
+                                              "entities": ["sensor.plug"],
+                                              "max_watt": 3000}}})
+    apply_brain_tuning(dd, "power", {"max_watt": 1600})
+    assert load_policy(dd)["detectors"]["power"]["max_watt"] == 1600
+
+    delta = {"detector": "power", "source_ref": "brain-tune:power"}
+    sid = store.record(kind="coverage", title="Taratura power", rationale="r",
+                        config={"detector": "power", "max_watt": 1600},
+                        status="applied", delta=delta)
+
+    assert undo(store, dd, sid) is True
+    pol = load_policy(dd)
+    assert pol["detectors"]["power"]["max_watt"] == 3000
+    assert "sensor.plug" in pol["detectors"]["power"]["entities"]
+    assert store.get(sid)["status"] == "dismissed"
+
+
 def test_undo_no_op_when_entity_not_in_registry(tmp_path, store):
     """Regression test: undo() should only mark dismissed when removal actually
     succeeds. If the entity is not in the brain sidecar registry (e.g., registry/policy
