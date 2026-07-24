@@ -34,7 +34,6 @@ def _make_app_with_runner(runner):
     agent.allowed_services = None
     agent.model = "auto"
     agent.max_tokens = 4096
-    agent.type = "chat"
     agent.restrict_to_home = False
     agent.require_confirmation = False
     agent.max_chat_turns = 0
@@ -183,6 +182,9 @@ async def test_ha_client_accepts_valid_service():
 # ---------------------------------------------------------------------------
 
 def test_create_agent_caps_max_tokens():
+    """Every persona is a chat entity now (Slice 5 Task 2 dropped `type`),
+    so there is a single cap regardless of what a stray "type" payload key
+    says — 16000, not the old non-chat 8192."""
     from hiris.app.agent_engine import AgentEngine
     from unittest.mock import MagicMock, patch
     engine = AgentEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
@@ -193,15 +195,14 @@ def test_create_agent_caps_max_tokens():
             "trigger": {"type": "manual"},
             "max_tokens": 99999,
         })
-        # chat is capped higher (room for large outputs) but still bounded
-        non_chat = engine.create_agent({
+        formerly_non_chat = engine.create_agent({
             "name": "Mon",
             "type": "monitor",
             "trigger": {"type": "manual"},
             "max_tokens": 99999,
         })
     assert agent.max_tokens == 16000
-    assert non_chat.max_tokens == 8192  # non-chat stays tightly capped
+    assert formerly_non_chat.max_tokens == 16000  # single cap now — no non-chat variant
 
 
 def test_update_agent_caps_max_tokens():

@@ -313,11 +313,15 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     agent_model = getattr(agent, "model", "auto") if agent else "auto"
     agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096
-    agent_type = getattr(agent, "type", "chat") if agent else "chat"
+    # Personas are always the chat entity (Slice 5 retired the non-chat
+    # "agent" type and the `type` field itself) — no per-type branch needed
+    # here. Kept as a literal only because runner.chat/chat_stream still take
+    # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
+    agent_type = "chat"
     # Interactive chat gets a higher output ceiling than the per-agent eval cap:
     # complex requests (a multi-view dashboard, a long script) legitimately need
     # more room, and the old 4096 default truncated them mid-tool-call. Floor up.
-    if agent_type == "chat" and agent_max_tokens < CHAT_MAX_TOKENS:
+    if agent_max_tokens < CHAT_MAX_TOKENS:
         logger.info(
             "chat: max_tokens floored %d -> %d (ceiling, not target — no extra cost "
             "on normal replies)", agent_max_tokens, CHAT_MAX_TOKENS,

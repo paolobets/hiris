@@ -58,7 +58,7 @@ async def test_run_with_actions_agent_engine_style_unpack_does_not_crash_when_al
     # Must not raise ValueError: too many/not enough values to unpack.
     result, structured = await router.run_with_actions(
         user_message="[Agent trigger: test]", system_prompt="sys",
-        action_mode="automatic", model="auto", max_tokens=100,
+        model="auto", max_tokens=100,
         agent_type="agent",
     )
     assert isinstance(result, str) and result

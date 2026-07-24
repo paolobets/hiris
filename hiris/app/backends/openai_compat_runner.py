@@ -16,7 +16,6 @@ from ..claude_runner import (
     EVALUATION_ONLY_TOOLS,
     RESTRICT_PROMPT,
     REQUIRE_CONFIRMATION_PROMPT,
-    _parse_structured_output,
     _redact_stream_tool_calls,
 )
 from .pricing import PRICING as _PRICING
@@ -945,5 +944,9 @@ class OpenAICompatRunner:
             knowledge_kinds=knowledge_kinds,
             user_id=user_id,
         )
-        clean_text, structured = _parse_structured_output(raw_result)
+        # Slice 5 Task 2: dropped the _parse_structured_output scanning pass
+        # (mirrors ClaudeRunner.run_with_actions — see its comment) — nothing
+        # emits VALUTAZIONE/NOTIFICA/PARAM/AZIONI markers anymore.
+        clean_text = raw_result.rstrip() if isinstance(raw_result, str) else raw_result
+        structured = {"valutazione": None, "notifica": None, "params": {}, "azioni": []}
         return clean_text, structured

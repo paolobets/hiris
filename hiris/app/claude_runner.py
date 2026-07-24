@@ -792,11 +792,14 @@ class ClaudeRunner:
             response_mode: ``"minimal"`` for terse motivazione, ``"auto"`` for standard.
 
         Returns:
-            Tuple of ``(clean_text, structured)``. ``structured`` is produced by
-            the legacy ``_parse_structured_output`` scanner (VALUTAZIONE/NOTIFICA/
-            PARAM/AZIONI markers) for backward-compat callers; since nothing
-            instructs the model to emit that block anymore it is normally all
-            defaults (None/empty) and ``clean_text`` equals the full response.
+            Tuple of ``(clean_text, structured)``. Nothing instructs the model
+            to emit a VALUTAZIONE/NOTIFICA/PARAM/AZIONI block anymore, so
+            ``structured`` is always the all-defaults (None/empty) shape kept
+            for backward-compat callers, and ``clean_text`` is the model's raw
+            text unmodified (Slice 5 Task 2 dropped the dead
+            ``_parse_structured_output`` scanning pass — the Sentinella
+            reasoner parses its own ```json``` block out of ``clean_text``
+            directly, never touching ``structured``).
         """
         # Restrict to evaluation-only tools — Claude may read HA state but
         # cannot directly call action services (prevents prompt-injection attacks).
@@ -823,7 +826,14 @@ class ClaudeRunner:
             knowledge_kinds=knowledge_kinds,
             user_id=user_id,
         )
-        clean_text, structured = _parse_structured_output(raw_result)
+        # Slice 5 Task 2: dropped the _parse_structured_output scanning pass —
+        # nothing emits VALUTAZIONE/NOTIFICA/PARAM/AZIONI markers anymore, so
+        # it always returned clean_text == raw_result (mod trailing
+        # whitespace) and an all-defaults structured dict. Return that same
+        # shape directly instead of paying for a 40-line bottom-up scan on
+        # every Sentinella evaluation.
+        clean_text = raw_result.rstrip() if isinstance(raw_result, str) else raw_result
+        structured = {"valutazione": None, "notifica": None, "params": {}, "azioni": []}
         return clean_text, structured
 
     async def _call_api(self, **kwargs) -> Any:

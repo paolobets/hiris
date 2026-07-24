@@ -1,6 +1,6 @@
-"""Slice 5 — Lenti + Personas, Task 1.
+"""Slice 5 — Lenti + Personas, Task 1 + Task 2.
 
-AgentEngine is now purely a persona store: create/read/update/delete a
+Task 1: AgentEngine is now purely a persona store: create/read/update/delete a
 persona without any proactive/action-execution field being required, and no
 autonomous scheduling happening as a side effect.
 
@@ -14,6 +14,13 @@ Slice 5) and feeds the returned text into `reason()`, which parses its own
 prompt. This test replicates that exact call shape against the real
 `ClaudeRunner.run_with_actions` (mocking only the underlying `chat()` call) to
 prove the reasoner still produces a Decision.
+
+Task 2: trims the `Agent` dataclass itself — `type`, `triggers`,
+`action_mode`, `rules`, `states`, `fallback_action`, `budget_eur_limit` are
+gone (Task 1 already stopped executing them; nothing read them anymore).
+`_save` bumps `schema_version` to 3; `_load` does not migrate — a legacy dict
+carrying those fields just has them ignored via the explicit `.get()` field
+list, per "no migration" in the brief (Step 1 chose "discard" over "reject").
 """
 import json
 import pytest
@@ -37,9 +44,11 @@ def engine(mock_ha, tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_create_persona_without_proactive_fields(engine):
-    """A persona (type='chat') can be created with no triggers/rules/action_mode
-    in the payload at all — those are proactive-only concerns the engine no
-    longer executes."""
+    """A persona can be created with no type/triggers/rules/action_mode in
+    the payload at all — those are proactive-only concerns the engine no
+    longer executes, and (Task 2) no longer even exist on the dataclass. A
+    stray "type" key in the payload is silently ignored (create_agent never
+    reads it)."""
     persona = engine.create_agent({
         "name": "Assistente di casa",
         "type": "chat",
@@ -47,7 +56,7 @@ def test_create_persona_without_proactive_fields(engine):
         "allowed_tools": ["get_home_status"],
     })
     assert persona.id in engine.list_agents()
-    assert persona.type == "chat"
+    assert not hasattr(persona, "type")
     assert persona.name == "Assistente di casa"
 
 
@@ -170,3 +179,126 @@ async def test_llm_reason_via_run_with_actions_still_produces_decision():
     # signal rather than a "no tools at all" one.
     from hiris.app.claude_runner import EVALUATION_ONLY_TOOLS
     assert set(call_kwargs["allowed_tools"]) == set(EVALUATION_ONLY_TOOLS)
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Agent dataclass trimmed to a persona (proactive fields removed)
+# ---------------------------------------------------------------------------
+
+_REMOVED_FIELDS = (
+    "type", "triggers", "action_mode", "rules", "states",
+    "fallback_action", "budget_eur_limit",
+)
+
+
+def test_agent_dataclass_has_no_proactive_fields():
+    """The seven proactive-only fields are gone from the dataclass — not just
+    unused, actually absent (no attribute, no default)."""
+    field_names = {f for f in Agent.__dataclass_fields__}
+    for removed in _REMOVED_FIELDS:
+        assert removed not in field_names
+
+
+def test_updatable_fields_excludes_removed_fields():
+    for removed in _REMOVED_FIELDS:
+        assert removed not in AgentEngine.UPDATABLE_FIELDS
+
+
+def test_persona_with_only_valid_fields_persists_and_reloads(engine):
+    """Step 1: a persona built from only the fields the trimmed dataclass
+    still has round-trips through _save/_load unchanged."""
+    persona = engine.create_agent({
+        "name": "Solo campi validi",
+        "system_prompt": "Sei utile.",
+        "allowed_tools": ["get_home_status"],
+        "strategic_context": "Contesto.",
+        "allowed_entities": ["light.*"],
+        "allowed_services": [],
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 2048,
+        "restrict_to_home": True,
+        "require_confirmation": True,
+        "max_chat_turns": 5,
+        "response_mode": "compact",
+        "thinking_budget": 1024,
+        "knowledge_access": {"allow_sensitive": True, "kinds": "all"},
+    })
+
+    reloaded_engine = AgentEngine(ha_client=engine._ha, data_path=engine._data_path)
+    reloaded_engine._load()
+    reloaded = reloaded_engine.get_agent(persona.id)
+
+    assert reloaded is not None
+    assert reloaded.name == "Solo campi validi"
+    assert reloaded.system_prompt == "Sei utile."
+    assert reloaded.allowed_tools == ["get_home_status"]
+    assert reloaded.strategic_context == "Contesto."
+    assert reloaded.allowed_entities == ["light.*"]
+    assert reloaded.model == "claude-haiku-4-5-20251001"
+    assert reloaded.max_tokens == 2048
+    assert reloaded.restrict_to_home is True
+    assert reloaded.require_confirmation is True
+    assert reloaded.max_chat_turns == 5
+    assert reloaded.response_mode == "compact"
+    assert reloaded.thinking_budget == 1024
+    assert reloaded.knowledge_access == {"allow_sensitive": True, "kinds": "all"}
+
+
+def test_save_bumps_schema_version_to_3(engine, tmp_path):
+    engine.create_agent({"name": "X", "system_prompt": "", "allowed_tools": []})
+    data = json.loads((tmp_path / "agents.json").read_text())
+    assert data["schema_version"] == 3
+
+
+def test_load_legacy_dict_with_proactive_fields_discards_them(mock_ha, tmp_path):
+    """A v2 (or older) agents.json entry that still carries the removed
+    proactive fields loads fine — _load()'s explicit per-field `.get()` list
+    simply never reads `type`/`triggers`/`action_mode`/`rules`/`states`/
+    `fallback_action`/`budget_eur_limit`, so they're silently discarded
+    rather than migrated or rejected."""
+    path = tmp_path / "agents.json"
+    path.write_text(json.dumps({
+        "schema_version": 2,
+        "agents": [{
+            "id": "legacy-proactive-001",
+            "name": "Legacy Proactive",
+            "type": "agent",
+            "triggers": [{"type": "schedule", "interval_minutes": 5}],
+            "action_mode": "configured",
+            "rules": [{"states": ["ANOMALIA"], "actions": ["turn_on switch.x"]}],
+            "states": ["OK", "ANOMALIA"],
+            "fallback_action": {"service": "notify.notify"},
+            "budget_eur_limit": 2.5,
+            "system_prompt": "loaded",
+            "allowed_tools": [],
+            "enabled": True,
+            "is_default": False,
+            "strategic_context": "",
+            "allowed_entities": [],
+            "allowed_services": [],
+        }],
+    }))
+
+    eng = AgentEngine(ha_client=mock_ha, data_path=str(path))
+    eng._load()
+
+    agent = eng.get_agent("legacy-proactive-001")
+    assert agent is not None
+    assert agent.name == "Legacy Proactive"
+    assert agent.system_prompt == "loaded"
+    for removed in _REMOVED_FIELDS:
+        assert not hasattr(agent, removed)
+
+
+@pytest.mark.asyncio
+async def test_seed_default_agent_is_a_persona_with_no_type_field(mock_ha, tmp_path):
+    eng = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    eng._scheduler.start()
+    eng._load()
+    eng._seed_default_agent()
+
+    from hiris.app.agent_engine import DEFAULT_AGENT_ID
+    default = eng._agents[DEFAULT_AGENT_ID]
+    assert default.is_default is True
+    assert not hasattr(default, "type")
+    eng._scheduler.shutdown(wait=False)

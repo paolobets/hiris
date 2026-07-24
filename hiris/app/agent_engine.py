@@ -50,16 +50,14 @@ DEFAULT_AGENT_ID = "hiris-default"
 
 @dataclass
 class Agent:
-    # NOTE (Slice 5): triggers/type/action_mode/rules/states/fallback_action/
-    # budget_eur_limit were the "proactive" execution fields — the engine no
-    # longer schedules, reacts to state changes, or executes actions/rules for
-    # any agent (see AgentEngine._run_agent). They are kept on the dataclass
-    # only because handlers_agents.py still validates/persists/reads them
-    # (API + config UI backward-compat); trimming the schema is Task 2.
+    # Slice 5 Task 2: this dataclass is a persona (used only by chat) — the
+    # "proactive" execution fields that used to describe an autonomous agent
+    # (type, triggers, action_mode, rules, states, fallback_action,
+    # budget_eur_limit) are gone. Task 1 already retired the engine code that
+    # scheduled/reacted/executed on them (see AgentEngine._run_agent); this
+    # task trims the schema itself now that nothing reads those fields.
     id: str
     name: str
-    type: str                   # "chat" | "agent"
-    triggers: list              # list of trigger dicts: [{type, interval_minutes?|entity_id?|cron?}]
     system_prompt: str
     allowed_tools: list
     enabled: bool
@@ -74,13 +72,8 @@ class Agent:
     restrict_to_home: bool = False
     require_confirmation: bool = False   # chat only
     execution_log: list = field(default_factory=list)
-    budget_eur_limit: float = 0.0
     max_chat_turns: int = 0              # chat only
     allowed_endpoints: Optional[list] = None
-    states: list = field(default_factory=lambda: ["OK", "ATTENZIONE", "ANOMALIA"])
-    action_mode: str = "automatic"       # "automatic" | "configured"
-    rules: list = field(default_factory=list)  # [{states:[...], actions:[...]}]
-    fallback_action: Optional[dict] = None
     response_mode: str = "auto"
     # Extended Thinking budget tokens (0 = disabled).
     # When >0, Claude returns thinking blocks alongside the answer (sonnet-4.5+/
@@ -143,7 +136,12 @@ class AgentEngine:
         logger.info("AgentEngine stopped")
 
     def _save(self) -> None:
-        data = {"schema_version": 2, "agents": [asdict(a) for a in self._agents.values()]}
+        # schema_version 3 (Slice 5 Task 2): dropped the proactive-only
+        # fields (type/triggers/action_mode/rules/states/fallback_action/
+        # budget_eur_limit) from the persisted shape. No migration on load —
+        # a v1/v2 file simply has those keys ignored by _load()'s explicit
+        # field list below.
+        data = {"schema_version": 3, "agents": [asdict(a) for a in self._agents.values()]}
         tmp = self._data_path + ".tmp"
         lock = self._save_lock
 
@@ -173,8 +171,6 @@ class AgentEngine:
                 agent = Agent(
                     id=raw["id"],
                     name=raw["name"],
-                    type=raw["type"],
-                    triggers=raw.get("triggers", []),
                     system_prompt=raw.get("system_prompt", ""),
                     allowed_tools=raw.get("allowed_tools", []),
                     enabled=raw.get("enabled", True),
@@ -189,13 +185,8 @@ class AgentEngine:
                     restrict_to_home=raw.get("restrict_to_home", False),
                     require_confirmation=raw.get("require_confirmation", False),
                     execution_log=raw.get("execution_log", []),
-                    budget_eur_limit=raw.get("budget_eur_limit", 0.0),
                     max_chat_turns=int(raw.get("max_chat_turns", 0)),
                     allowed_endpoints=raw.get("allowed_endpoints"),
-                    states=raw.get("states", ["OK", "ATTENZIONE", "ANOMALIA"]),
-                    action_mode=raw.get("action_mode", "automatic"),
-                    rules=raw.get("rules", []),
-                    fallback_action=raw.get("fallback_action"),
                     response_mode=raw.get("response_mode", "auto"),
                     thinking_budget=int(raw.get("thinking_budget", 0) or 0),
                     knowledge_access=raw.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
@@ -221,8 +212,6 @@ class AgentEngine:
             agent = Agent(
                 id=DEFAULT_AGENT_ID,
                 name="HIRIS",
-                type="chat",
-                triggers=[],
                 system_prompt=self._DEFAULT_SYSTEM_PROMPT,
                 allowed_tools=[],
                 enabled=True,
@@ -245,29 +234,21 @@ class AgentEngine:
     def get_default_agent(self) -> Optional[Agent]:
         return self._agents.get(DEFAULT_AGENT_ID)
 
-    _LEGACY_TYPE_MAP = {"monitor": "agent", "reactive": "agent", "preventive": "agent"}
-
-    # Output-token ceiling per agent type. Chat needs room for large outputs
-    # (multi-view dashboards, long scripts); non-chat agents stay capped low to
-    # bound cost, latency, and prompt-injection blast radius. Chat cap mirrors
-    # claude_runner.CHAT_MAX_TOKENS (kept in sync deliberately, not imported, to
-    # avoid a module cycle).
+    # Output-token ceiling for personas. Chat needs room for large outputs
+    # (multi-view dashboards, long scripts) — every persona is a chat entity
+    # now (Slice 5 Task 2 dropped the non-chat "agent" type), so there is a
+    # single cap. Kept as a class attr (not imported from claude_runner) to
+    # avoid a module cycle — CHAT_MAX_TOKENS there must stay in sync.
     _CHAT_MAX_TOKENS_CAP = 16000
-    _AGENT_MAX_TOKENS_CAP = 8192
 
     @classmethod
-    def _cap_max_tokens(cls, value: Any, agent_type: str) -> int:
-        cap = cls._CHAT_MAX_TOKENS_CAP if agent_type == "chat" else cls._AGENT_MAX_TOKENS_CAP
-        return min(int(value), cap)
+    def _cap_max_tokens(cls, value: Any) -> int:
+        return min(int(value), cls._CHAT_MAX_TOKENS_CAP)
 
     def create_agent(self, data: dict) -> Agent:
-        raw_type = data["type"]
-        normalized_type = self._LEGACY_TYPE_MAP.get(raw_type, raw_type)
         agent = Agent(
             id=str(uuid.uuid4()),
             name=data["name"],
-            type=normalized_type,
-            triggers=data.get("triggers", []),
             system_prompt=data.get("system_prompt", ""),
             allowed_tools=data.get("allowed_tools", []),
             enabled=data.get("enabled", True),
@@ -276,19 +257,11 @@ class AgentEngine:
             allowed_entities=data.get("allowed_entities", []),
             allowed_services=data.get("allowed_services", []),
             model=data.get("model", "auto"),
-            max_tokens=self._cap_max_tokens(
-                data.get("max_tokens", 16000 if normalized_type == "chat" else 4096),
-                normalized_type,
-            ),
+            max_tokens=self._cap_max_tokens(data.get("max_tokens", 16000)),
             restrict_to_home=bool(data.get("restrict_to_home", False)),
             require_confirmation=bool(data.get("require_confirmation", False)),
-            budget_eur_limit=float(data.get("budget_eur_limit", 0.0)),
             max_chat_turns=int(data.get("max_chat_turns", 0)),
             allowed_endpoints=data.get("allowed_endpoints"),
-            states=data.get("states", ["OK", "ATTENZIONE", "ANOMALIA"]),
-            action_mode=data.get("action_mode", "automatic"),
-            rules=data.get("rules", []),
-            fallback_action=data.get("fallback_action"),
             response_mode=data.get("response_mode", "auto"),
             thinking_budget=max(0, int(data.get("thinking_budget", 0) or 0)),
             knowledge_access=data.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
@@ -306,12 +279,11 @@ class AgentEngine:
         return self._agents.get(agent_id)
 
     UPDATABLE_FIELDS = {
-        "name", "type", "triggers", "system_prompt", "allowed_tools", "enabled",
+        "name", "system_prompt", "allowed_tools", "enabled",
         "strategic_context", "allowed_entities", "allowed_services",
         "model", "max_tokens", "restrict_to_home", "require_confirmation",
-        "budget_eur_limit", "max_chat_turns", "allowed_endpoints",
-        "states", "action_mode", "rules", "fallback_action", "response_mode",
-        "thinking_budget", "knowledge_access",
+        "max_chat_turns", "allowed_endpoints",
+        "response_mode", "thinking_budget", "knowledge_access",
     }
 
     def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
@@ -321,18 +293,15 @@ class AgentEngine:
         enabled_before = agent.enabled
         self._unschedule_agent(agent_id)
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
-        _FLOAT_FIELDS = {"budget_eur_limit"}
         _INT_FIELDS = {"max_chat_turns"}
         for key in self.UPDATABLE_FIELDS:
             if key in data:
                 if key in _BOOL_FIELDS:
                     setattr(agent, key, bool(data[key]))
-                elif key in _FLOAT_FIELDS:
-                    setattr(agent, key, float(data[key]))
                 elif key in _INT_FIELDS:
                     setattr(agent, key, int(data[key]))
                 elif key == "max_tokens":
-                    setattr(agent, key, self._cap_max_tokens(data[key], agent.type))
+                    setattr(agent, key, self._cap_max_tokens(data[key]))
                 else:
                     setattr(agent, key, data[key])
         self._save()
@@ -414,20 +383,6 @@ class AgentEngine:
         lines.append("[FINE DATI NON AFFIDABILI]")
         return "\n".join(lines)
 
-    def _check_budget_auto_disable(self, agent: "Agent") -> None:
-        if not (agent.budget_eur_limit > 0 and self._claude_runner):
-            return
-        try:
-            usage = self._claude_runner.get_agent_usage(agent.id)
-            cost_eur = usage.get("cost_usd", 0.0) * EUR_RATE
-            if cost_eur >= agent.budget_eur_limit:
-                logger.warning("Agent %s auto-disabled: cost €%.4f >= limit €%.4f",
-                               agent.name, cost_eur, agent.budget_eur_limit)
-                agent.enabled = False
-                self._save()
-        except Exception as exc:
-            logger.warning("Budget check failed for %s: %s", agent.name, exc)
-
     # ------------------------------------------------------------------
     # Agent run
     # ------------------------------------------------------------------
@@ -436,6 +391,11 @@ class AgentEngine:
     # "acting" on its own conclusions. The Sentinella (watcher/) is now the
     # sole proactive/actuating engine. `_run_agent` below only ever produces
     # text via the runner's plain chat() — it never executes actions.
+    #
+    # Slice 5 Task 2: every persona is a chat entity now (the "agent"/
+    # "monitor" type and its dedicated entity-context injection are gone
+    # along with the `type` field) — `_build_entity_context` above is kept
+    # only as a directly-tested helper, no longer called from here.
 
     # ------------------------------------------------------------------
     # Rate-limit backoff helpers (v0.9.10)
@@ -530,11 +490,6 @@ class AgentEngine:
             fired_type = (trigger_fired or {}).get("type", "unknown")
             user_message = f"[Agent trigger: {fired_type}]"
 
-            if agent.type == "agent":
-                entity_ctx = self._build_entity_context(agent)
-                if entity_ctx:
-                    user_message = f"{user_message}\n\n{entity_ctx}"
-
             _ka = (agent.knowledge_access or {}) if isinstance(agent.knowledge_access, dict) else {}
             _allow_sensitive = bool(_ka.get("allow_sensitive", False))
             _kinds_raw = _ka.get("kinds", "all")
@@ -551,7 +506,10 @@ class AgentEngine:
                         model=agent.model,
                         mode="automatic",
                         max_tokens=agent.max_tokens,
-                        agent_type=agent.type,
+                        # Every persona is the chat entity now (Slice 5 Task 2
+                        # dropped the `type` field) — "chat" is not read off
+                        # `agent`, it's simply what a persona is.
+                        agent_type="chat",
                         restrict_to_home=agent.restrict_to_home,
                         require_confirmation=agent.require_confirmation,
                         agent_id=agent.id,
@@ -587,7 +545,6 @@ class AgentEngine:
                 success=not _is_upstream_err, trigger_fired=trigger_fired,
             )
             self._save()
-            self._check_budget_auto_disable(agent)
             return result
         except Exception as exc:
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
@@ -598,7 +555,6 @@ class AgentEngine:
                 agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False
             )
             self._save()
-            self._check_budget_auto_disable(agent)
             return agent.last_result
         finally:
             self._running_agents.discard(agent.id)
@@ -617,15 +573,13 @@ class AgentEngine:
                         tokens_today = usage.get("tokens_today", 0)
                     except Exception as exc:
                         logger.debug("get_agent_usage(%s) failed: %s", agent.id, exc)
-                remaining: Any = (
-                    max(0.0, agent.budget_eur_limit - budget_eur)
-                    if agent.budget_eur_limit > 0 else "unlimited"
-                )
                 asyncio.create_task(
                     self._mqtt_publisher.publish_agent_state(
                         agent, budget_eur=budget_eur,
                         status="error" if _had_error else "idle",
-                        budget_remaining_eur=remaining,
+                        # No more per-agent budget_eur_limit (Slice 5 Task 2) —
+                        # there is nothing left to subtract a remainder from.
+                        budget_remaining_eur="unlimited",
                         tokens_used_today=tokens_today,
                     ),
                     name=f"mqtt_pub_{agent.id}",
@@ -650,7 +604,9 @@ class AgentEngine:
         thinking_blocks = [(t or "")[:2000] for t in thinking_blocks]
         record = {
             "timestamp": agent.last_run,
-            "trigger": (trigger_fired or {}).get("type", agent.triggers[0].get("type", "unknown") if agent.triggers else "manual"),
+            # No more `agent.triggers` to fall back on (Slice 5 Task 2 removed
+            # the field) — "manual" is the only source left for a persona run.
+            "trigger": (trigger_fired or {}).get("type", "manual"),
             "tool_calls": [t.get("tool", "") for t in tool_calls_snapshot],
             "input_tokens": inp_after - inp_before,
             "output_tokens": out_after - out_before,

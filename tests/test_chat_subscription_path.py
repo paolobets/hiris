@@ -58,7 +58,6 @@ def _make_agent():
     agent.allowed_services = None
     agent.model = "auto"
     agent.max_tokens = 4096
-    agent.type = "chat"
     agent.restrict_to_home = False
     agent.require_confirmation = False
     agent.max_chat_turns = 0

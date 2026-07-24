@@ -220,6 +220,10 @@ async def test_list_agents_budget_computed_from_usage(dashboard_client):
 
 @pytest.mark.asyncio
 async def test_created_agent_has_all_dashboard_fields(dashboard_client):
+    # Slice 5 Task 2 dropped Agent.type (personas are chat-only now — see
+    # hiris/app/agent_engine.py's Agent dataclass); "type"/"trigger" here are
+    # just stray keys in the payload that create_agent ignores (Task 3 will
+    # stop handlers_agents.py from validating them at all).
     resp = await dashboard_client.post("/api/agents", json={
         "name": "Test",
         "type": "chat",
@@ -231,11 +235,12 @@ async def test_created_agent_has_all_dashboard_fields(dashboard_client):
     resp = await dashboard_client.get("/api/agents")
     assert resp.status == 200
     agents = await resp.json()
-    required = {"id", "name", "type", "enabled", "status", "last_run",
+    required = {"id", "name", "enabled", "status", "last_run",
                 "budget_eur", "budget_limit_eur", "is_default"}
     for agent in agents:
         missing = required - set(agent.keys())
         assert not missing, f"Missing fields: {missing}"
+        assert "type" not in agent
 
 
 # ---------------------------------------------------------------------------
