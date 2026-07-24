@@ -184,11 +184,12 @@ class LLMRouter:
 
     async def run_with_actions(self, **kwargs):
         # Slice 4 backlog fix: real runners (claude_runner/openai_compat_runner)
-        # return a 2-tuple (clean_text, structured), and every real caller
-        # (e.g. agent_engine.py's `result, structured = await
-        # self._claude_runner.run_with_actions(...)`) unpacks exactly 2
-        # values -- both fallback returns below must match that shape, not
-        # the old 3-tuple, or the unpack raises ValueError.
+        # return a 2-tuple (clean_text, structured), and the sole real caller
+        # (server.py's `_llm_reason`, via `out = await runner.run_with_actions(...)`
+        # then `out[0] if isinstance(out, tuple) else out`) tolerates either a
+        # tuple or a bare string -- but both fallback returns below still use
+        # the 2-tuple shape for consistency with the real runners, not the
+        # old 3-tuple.
         mode = kwargs.pop("mode", "automatic")
         model = kwargs.get("model", "auto")
         if model != "auto":

@@ -385,29 +385,41 @@ The `debug.tools_called` field in API responses is redacted to tool names only (
 
 ## MQTT bridge architecture
 
+Outbound-only: HIRIS publishes discovery + state to Home Assistant via MQTT
+and never subscribes to anything. There are no command topics — the
+`enabled`/`run_now` switch+button pair (and the scheduler/autonomous
+execution they used to drive) were retired; a persona's `enabled` flag is
+now surfaced as a plain read-only sensor.
+
 ```
 AgentEngine
     │
-    └── MQTTPublisher
+    └── MQTTPublisher (outbound-only — no subscriptions)
             │
             ├── Discovery messages (retain=True)
             │   homeassistant/sensor/hiris_{id}_status/config
             │   homeassistant/sensor/hiris_{id}_last_run/config
+            │   homeassistant/sensor/hiris_{id}_last_result/config
             │   homeassistant/sensor/hiris_{id}_budget_eur/config
-            │   homeassistant/switch/hiris_{id}_enabled/config
-            │   homeassistant/button/hiris_{id}_run_now/config
+            │   homeassistant/sensor/hiris_{id}_budget_remaining_eur/config
+            │   homeassistant/sensor/hiris_{id}_tokens_used_today/config
+            │   homeassistant/sensor/hiris_{id}_enabled/config       (read-only)
             │
-            ├── State updates (on every agent run)
-            │   hiris/agents/{id}/status          → idle|running|error|disabled
-            │   hiris/agents/{id}/last_run         → ISO 8601
-            │   hiris/agents/{id}/last_result      → truncated text (255 chars)
-            │   hiris/agents/{id}/budget_remaining → float EUR
-            │   hiris/agents/{id}/tokens_today     → int (daily reset)
-            │
-            └── Command subscriptions (2-way)
-                hiris/agents/{id}/enabled/set  → "true"|"false"
-                hiris/agents/{id}/run_now/set  → "trigger"
+            └── State updates (on every agent run)
+                hiris/agents/{id}/status               → idle|running|error|disabled
+                hiris/agents/{id}/enabled               → "ON"|"OFF" (read-only sensor)
+                hiris/agents/{id}/last_run              → ISO 8601
+                hiris/agents/{id}/last_result           → truncated text (255 chars)
+                hiris/agents/{id}/budget_eur             → float EUR
+                hiris/agents/{id}/budget_remaining_eur  → float EUR (or "unlimited")
+                hiris/agents/{id}/tokens_used_today     → int (daily reset)
 ```
+
+On startup, HIRIS also publishes an empty discovery payload on the old
+`homeassistant/switch/hiris_{id}_enabled/config` and
+`homeassistant/button/hiris_{id}_run_now/config` topics, so Home Assistant
+drops the now-inert control entities from any install upgrading from a
+pre-Slice-5 release.
 
 Reconnect uses exponential backoff. All state publishes are fire-and-forget (non-blocking via `run_in_executor`).
 
