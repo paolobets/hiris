@@ -297,15 +297,16 @@ _STRATEGY_ORDER = {
     "balanced":      ["claude", "openai", "ollama"],
 }
 
-# Selezione backend
+# Selezione backend -- chiamata solo quando model != "auto": il caso "auto"
+# viene risolto prima, dal livello di policy (chat_policy/automatic_policy,
+# vedi _ordered_backends sotto), quindi _route non vede mai "auto".
 def _route(model: str) -> Backend:
-    if model == "auto":              return il primo disponibile nell'ordine strategia
     if model.startswith("claude-"):  return self._claude
     if re.match(r"^(gpt-|o[1-9])", model): return self._openai
     return self._ollama              # nome modello Ollama
 
-# Catena di fallback (solo model="auto")
-for runner in self._ordered_backends():
+# Catena di fallback (solo model="auto", ordinata per policy in base al mode: chat vs automatic)
+for runner in self._ordered_backends(mode):
     try:
         return await runner.chat(**kwargs)
     except Exception:
