@@ -6,6 +6,11 @@ window.HirisSentinelRoute = (function () {
   'use strict';
 
   var entityFieldSeq = 0;
+  var labelFieldSeq = 0;
+  function nextFieldId() {
+    labelFieldSeq += 1;
+    return 'sentinel-field-' + labelFieldSeq;
+  }
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -123,10 +128,13 @@ window.HirisSentinelRoute = (function () {
     function textField(parent, labelText, value) {
       var wrap = el('div');
       wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
-      wrap.appendChild(el('span', null, labelText));
       var inp = el('input'); inp.type = 'text';
+      inp.id = nextFieldId();
       inp.value = value != null ? value : '';
       inp.style.cssText = 'flex:1;padding:6px 8px;border-radius:8px;min-width:120px';
+      var lbl = el('label', null, labelText);
+      lbl.setAttribute('for', inp.id);
+      wrap.appendChild(lbl);
       wrap.appendChild(inp);
       parent.appendChild(wrap);
       return inp;
@@ -134,15 +142,18 @@ window.HirisSentinelRoute = (function () {
     function entityField(parent, labelText, value, filterQuery) {
       var wrap = el('div');
       wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
-      wrap.appendChild(el('span', null, labelText));
       var inp = el('input'); inp.type = 'text';
+      inp.id = nextFieldId();
       inp.value = value != null ? value : '';
       inp.style.cssText = 'flex:1;padding:6px 8px;border-radius:8px;min-width:120px';
+      var lbl = el('label', null, labelText);
+      lbl.setAttribute('for', inp.id);
       entityFieldSeq += 1;
       var listId = 'entity-list-' + entityFieldSeq;
       inp.setAttribute('list', listId);
       var datalist = el('datalist');
       datalist.id = listId;
+      wrap.appendChild(lbl);
       wrap.appendChild(inp);
       wrap.appendChild(datalist);
       parent.appendChild(wrap);
@@ -163,10 +174,13 @@ window.HirisSentinelRoute = (function () {
     function numberField(parent, labelText, value) {
       var wrap = el('div');
       wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
-      wrap.appendChild(el('span', null, labelText));
       var inp = el('input'); inp.type = 'number';
+      inp.id = nextFieldId();
       inp.value = value != null ? value : '';
       inp.style.cssText = 'width:100px;padding:6px 8px;border-radius:8px';
+      var lbl = el('label', null, labelText);
+      lbl.setAttribute('for', inp.id);
+      wrap.appendChild(lbl);
       wrap.appendChild(inp);
       parent.appendChild(wrap);
       return inp;
@@ -184,8 +198,8 @@ window.HirisSentinelRoute = (function () {
     function selectField(parent, labelText, options, value) {
       var wrap = el('div');
       wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
-      wrap.appendChild(el('span', null, labelText));
       var sel = el('select');
+      sel.id = nextFieldId();
       sel.style.cssText = 'padding:6px 8px;border-radius:8px;min-width:120px';
       (options || []).forEach(function (o) {
         var opt = el('option');
@@ -194,6 +208,9 @@ window.HirisSentinelRoute = (function () {
         if (o.value === value) opt.selected = true;
         sel.appendChild(opt);
       });
+      var lbl = el('label', null, labelText);
+      lbl.setAttribute('for', sel.id);
+      wrap.appendChild(lbl);
       wrap.appendChild(sel);
       parent.appendChild(wrap);
       return sel;
@@ -201,11 +218,14 @@ window.HirisSentinelRoute = (function () {
     function textareaField(parent, labelText, value) {
       var wrap = el('div');
       wrap.style.cssText = 'margin-top:8px';
-      wrap.appendChild(el('span', null, labelText));
       var ta = el('textarea');
+      ta.id = nextFieldId();
       ta.value = value != null ? value : '';
       ta.rows = 3;
       ta.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;margin-top:4px;font-family:inherit';
+      var lbl = el('label', null, labelText);
+      lbl.setAttribute('for', ta.id);
+      wrap.appendChild(lbl);
       wrap.appendChild(ta);
       parent.appendChild(wrap);
       return ta;

@@ -75,20 +75,20 @@
       '<div class="field-group">' +
         '<div class="fg-label">Identità</div>' +
         '<div class="field-row">' +
-          '<div class="field"><label>Nome</label><input class="input" type="text" id="f-name" placeholder="Es: Monitor energia"></div>' +
+          '<div class="field"><label for="f-name">Nome</label><input class="input" type="text" id="f-name" placeholder="Es: Monitor energia"></div>' +
         '</div>' +
       '</div>';
   }
 
   function populateIstruzioni() {
     document.getElementById('sc-body-istruzioni').innerHTML =
-      '<div class="field"><label>Template contesto</label>' +
+      '<div class="field"><label for="f-template">Template contesto</label>' +
         '<select class="select" id="f-template"><option value="">— nessun template —</option></select>' +
         '<p class="field-hint">Seleziona un template per precompilare contesto + system prompt.</p></div>' +
-      '<div class="field"><label>Contesto Strategico</label>' +
+      '<div class="field"><label for="f-strategic">Contesto Strategico</label>' +
         '<textarea class="textarea" id="f-strategic" rows="5" placeholder="Es: La famiglia è composta da 2 adulti..."></textarea>' +
         '<p class="field-hint">Informazioni stabili sulla casa. Precedono il System Prompt.</p></div>' +
-      '<div class="field"><label>System Prompt</label>' +
+      '<div class="field"><label for="f-prompt">System Prompt</label>' +
         '<textarea class="textarea" id="f-prompt" rows="4" placeholder="Descrivi il comportamento specifico..."></textarea>' +
         '<p class="field-hint">Istruzioni operative specifiche per questo agente.</p></div>' +
       '<div class="token-bar" id="token-bar">' +
@@ -112,11 +112,11 @@
      type==='chat'; ora è sempre visibile (nessun altro tipo esiste). */
   function populateModello() {
     document.getElementById('sc-body-modello').innerHTML =
-      '<div class="field"><label>Modello</label><select class="select" id="f-model"><option value="auto">auto — sceglie il modello migliore</option></select>' +
+      '<div class="field"><label for="f-model">Modello</label><select class="select" id="f-model"><option value="auto">auto — sceglie il modello migliore</option></select>' +
       '<p class="field-hint" id="model-hint">Seleziona il modello AI. <em>auto</em> sceglie automaticamente.</p></div>' +
       '<div class="field-row">' +
-        '<div class="field"><label>Max token risposta</label><input class="input" type="number" id="f-max-tokens" value="4096" min="256" max="16000"></div>' +
-        '<div class="field"><label>Extended Thinking budget</label><select class="select" id="f-thinking-budget">' +
+        '<div class="field"><label for="f-max-tokens">Max token risposta</label><input class="input" type="number" id="f-max-tokens" value="4096" min="256" max="16000"></div>' +
+        '<div class="field"><label for="f-thinking-budget">Extended Thinking budget</label><select class="select" id="f-thinking-budget">' +
           '<option value="0">disabilitato</option>' +
           '<option value="2048">2048 (light)</option>' +
           '<option value="4096">4096 (standard)</option>' +
@@ -124,11 +124,11 @@
           '<option value="16384">16384 (max)</option>' +
         '</select></div>' +
       '</div>' +
-      '<div id="max-turns-row"><div class="field"><label>Max messaggi per sessione</label>' +
+      '<div id="max-turns-row"><div class="field"><label for="f-max-chat-turns">Max messaggi per sessione</label>' +
         '<input class="input" type="number" id="f-max-chat-turns" value="0" min="0" max="9999">' +
         '<p class="field-hint">0 = illimitato.</p></div></div>' +
       '<label class="checkbox-row"><input type="checkbox" id="f-restrict"> Limita conversazione alla casa</label>' +
-      '<div class="field"><label>Modalità risposta</label><select class="select" id="f-response-mode">' +
+      '<div class="field"><label for="f-response-mode">Modalità risposta</label><select class="select" id="f-response-mode">' +
         '<option value="auto">auto</option>' +
         '<option value="compact">compact (max 2-3 frasi)</option>' +
         '<option value="minimal">minimal (1 riga)</option>' +
@@ -151,7 +151,7 @@
             '<span class="domain-pill" data-pattern="binary_sensor.*">⚡ binari</span>' +
             '<span class="domain-pill" data-pattern="person.*">🧑 persone</span>' +
           '</div>' +
-          '<input class="input" id="entity-search" placeholder="Cerca entità…">' +
+          '<input class="input" id="entity-search" placeholder="Cerca entità…" aria-label="Cerca entità">' +
           '<div id="entity-suggestions" class="entity-suggestions" style="display:none"></div>' +
           '<div id="entity-chips" class="entity-chips"></div>' +
           '<input type="hidden" id="f-entities">' +

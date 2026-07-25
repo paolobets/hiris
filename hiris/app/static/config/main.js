@@ -17,6 +17,7 @@
       var o = (open === undefined) ? !snEl.classList.contains('open') : !!open;
       snEl.classList.toggle('open', o);
       if (overlay) overlay.style.display = o ? 'block' : 'none';
+      if (menuBtn) menuBtn.setAttribute('aria-expanded', o ? 'true' : 'false');
     }
     if (menuBtn) menuBtn.addEventListener('click', function () { toggleNav(); });
     if (overlay) overlay.addEventListener('click', function () { toggleNav(false); });
