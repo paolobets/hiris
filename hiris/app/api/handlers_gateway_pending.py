@@ -265,16 +265,44 @@ async def on_notification_action(app: web.Application, event_data: dict) -> None
 
 
 # --- HTTP endpoints (used by the HIRIS "Approvazioni" page) ---
+def _require_human_auth(request: web.Request) -> web.Response | None:
+    """Reject approval/rejection unless the request came from a human in the
+    HIRIS UI (genuine Supervisor Ingress) or dev no-auth mode.
+
+    ``internal_auth_middleware`` authenticates a request as EITHER genuine
+    Ingress (a human) OR a valid ``X-HIRIS-Internal-Token`` (the MCP
+    gateway — the very machine principal the yellow/red step-up is meant to
+    gate). The gateway legitimately holds that token to CREATE pendings via
+    ``/api/execute``; if the same token were enough to APPROVE them too, a
+    compromised/malicious gateway could create a red-tier pending and
+    immediately self-approve it with zero human involvement, defeating the
+    entire human-in-the-loop step-up model. So token-only auth is rejected
+    here even though it already passed the middleware.
+    """
+    if request.get("auth_via") not in ("ingress", "no_token"):
+        return web.json_response(
+            {"error": "forbidden: approval requires the HIRIS UI (ingress), not the service token"},
+            status=403,
+        )
+    return None
+
+
 async def handle_list_pending(request: web.Request) -> web.Response:
     return web.json_response({"pending": list_pending(request.app.get("data_dir") or "/data")})
 
 
 async def handle_approve_pending(request: web.Request) -> web.Response:
+    denied = _require_human_auth(request)
+    if denied is not None:
+        return denied
     nonce = request.match_info.get("nonce", "")
     return web.json_response(await approve(request.app, nonce))
 
 
 async def handle_reject_pending(request: web.Request) -> web.Response:
+    denied = _require_human_auth(request)
+    if denied is not None:
+        return denied
     nonce = request.match_info.get("nonce", "")
     return web.json_response(reject(request.app, nonce))
 

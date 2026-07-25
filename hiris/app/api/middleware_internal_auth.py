@@ -74,12 +74,14 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     disable this during local development).
     """
     if _is_supervisor_ingress(request):
+        request["auth_via"] = "ingress"
         return await handler(request)
 
     token = request.app.get("internal_token", "")
     if not token:
         if _allow_no_token():
             logger.critical("SECURITY: HIRIS_ALLOW_NO_TOKEN=1 is set — authentication is DISABLED")
+            request["auth_via"] = "no_token"
             return await handler(request)
         logger.warning(
             "Blocked unauthenticated non-ingress request from %s "
@@ -92,4 +94,5 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
         logger.warning("Unauthorized inter-addon request from %s", request.remote)
         return web.json_response({"error": "unauthorized"}, status=401)
 
+    request["auth_via"] = "token"
     return await handler(request)
