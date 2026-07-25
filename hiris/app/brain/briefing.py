@@ -205,7 +205,13 @@ def render_briefing_template(bundle: dict) -> str:
     (deadlines/home.open_now/home.low_batteries -- see build_briefing_bundle
     above). Always returns a non-empty string, even for an empty bundle, so
     a briefing can always go out without the LLM. Defensive against
-    malformed entries: never raises."""
+    malformed entries: never raises.
+
+    Free-text (`content`/`name`) is passed through `_san` because this template
+    is not only user-facing notification text (Task 4) but also the return value
+    of the read-only `daily_briefing` chat tool (Task 5) -- i.e. it can land in a
+    chat model's context that DOES hold actuation tools, so a poisoned obligation
+    must be injection-neutralized here just as `build_briefing_message` does."""
     bundle = bundle or {}
     deadlines = bundle.get("deadlines") or []
     home = bundle.get("home") or {}
@@ -220,7 +226,7 @@ def render_briefing_template(bundle: dict) -> str:
             try:
                 if not isinstance(d, dict):
                     continue
-                content = str(d.get("content") or "").strip()
+                content = str(_san(d.get("content") or "")).strip()
                 if not content:
                     continue
                 when = _fmt_days_left(d.get("days_left"))
@@ -237,7 +243,7 @@ def render_briefing_template(bundle: dict) -> str:
 
     if open_now:
         try:
-            names = [str(e.get("name") or "").strip() for e in open_now if isinstance(e, dict)]
+            names = [str(_san(e.get("name") or "")).strip() for e in open_now if isinstance(e, dict)]
             names = [n for n in names if n]
         except Exception:
             names = []
@@ -250,7 +256,7 @@ def render_briefing_template(bundle: dict) -> str:
             try:
                 if not isinstance(e, dict):
                     continue
-                name = str(e.get("name") or "").strip()
+                name = str(_san(e.get("name") or "")).strip()
                 if not name:
                     continue
                 pct = e.get("pct")
