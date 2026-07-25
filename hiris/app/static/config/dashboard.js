@@ -127,7 +127,10 @@
       '</div>';
 
     /* Async loaders */
-    fetch('api/usage').then(function(r) { return r.ok ? r.json() : {}; }).then(function(u) {
+    fetch('api/usage').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(u) {
       var execEl = document.getElementById('dash-exec24h');
       var tokEl = document.getElementById('dash-tokens');
       var tokDeltaEl = document.getElementById('dash-tokens-delta');
@@ -141,7 +144,19 @@
       var cost = u.total_cost_eur || u.cost_eur || 0;
       if (costEl) costEl.textContent = '€ ' + Number(cost).toFixed(2);
       if (costDeltaEl) costDeltaEl.textContent = u.budget_eur ? ('budget €' + Number(u.budget_eur).toFixed(2)) : '';
-    }).catch(function() { /* silent */ });
+    }).catch(function(err) {
+      console.error('dashboard usage fetch failed', err);
+      var execEl = document.getElementById('dash-exec24h');
+      var tokEl = document.getElementById('dash-tokens');
+      var tokDeltaEl = document.getElementById('dash-tokens-delta');
+      var costEl = document.getElementById('dash-cost');
+      var costDeltaEl = document.getElementById('dash-cost-delta');
+      if (execEl) execEl.textContent = '⚠';
+      if (tokEl) tokEl.textContent = '⚠';
+      if (costEl) costEl.textContent = '⚠';
+      if (tokDeltaEl) { tokDeltaEl.textContent = 'Errore caricamento'; tokDeltaEl.style.color = 'var(--danger)'; }
+      if (costDeltaEl) { costDeltaEl.textContent = 'Errore caricamento'; costDeltaEl.style.color = 'var(--danger)'; }
+    });
 
     /* Cross-agent last logs (limit to first 6 agents to avoid N+1 explosion) */
     var subset = agents.slice(0, 6);
@@ -178,7 +193,10 @@
     });
 
     /* Proposals peek */
-    fetch('api/proposals?status=pending').then(function(r) { return r.ok ? r.json() : { proposals: [] }; }).then(function(d) {
+    fetch('api/proposals?status=pending').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(d) {
       var props = (d.proposals || []).slice(0, 3);
       var body = document.getElementById('dash-proposals-body');
       var countEl = document.getElementById('dash-prop-count');
@@ -213,7 +231,13 @@
           if (typeof rejectProposal === 'function') rejectProposal(b.dataset.pid);
         });
       });
-    }).catch(function() { /* silent */ });
+    }).catch(function(err) {
+      console.error('dashboard proposals fetch failed', err);
+      var body = document.getElementById('dash-proposals-body');
+      var countEl = document.getElementById('dash-prop-count');
+      if (countEl) countEl.textContent = '—';
+      if (body) body.innerHTML = '<div class="proposals-error">Errore caricamento proposte.</div>';
+    });
   }
 
   function mount() {

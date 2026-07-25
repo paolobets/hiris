@@ -14,6 +14,18 @@
       }
     }
     console.warn('no route matched', hash);
+    renderNotFound();
+  }
+
+  function renderNotFound() {
+    var here = document.getElementById('chrome-here');
+    if (here) here.textContent = 'Pagina non trovata';
+    var outlet = document.getElementById('route-outlet');
+    if (outlet) {
+      outlet.innerHTML =
+        '<div class="page-title">Pagina non trovata</div>' +
+        '<p class="page-subtitle">La pagina richiesta non esiste. <a href="#/">Torna alla Dashboard</a></p>';
+    }
   }
 
   window.HirisRouter = {

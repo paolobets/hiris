@@ -32,7 +32,10 @@
       '</div>';
 
     /* Global usage */
-    fetch('api/usage').then(function(r) { return r.ok ? r.json() : {}; }).then(function(u) {
+    fetch('api/usage').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(u) {
       var grid = document.getElementById('usage-global-grid');
       if (!grid) return;
       var tin = u.total_input_tokens || u.input_tokens || 0;
@@ -45,10 +48,17 @@
         '<div class="stat-tile"><div class="st-label">Token IN</div><div class="st-value">' + formatTokens(tin) + '</div></div>' +
         '<div class="stat-tile"><div class="st-label">Token OUT</div><div class="st-value">' + formatTokens(tout) + '</div></div>' +
         '<div class="stat-tile"><div class="st-label">Costo</div><div class="st-value">€ ' + Number(cost).toFixed(2) + '</div></div>';
+    }).catch(function(err) {
+      console.error('usage global fetch failed', err);
+      var grid = document.getElementById('usage-global-grid');
+      if (grid) grid.innerHTML = '<div class="proposals-error" style="grid-column:1/-1">Errore caricamento consumi.</div>';
     });
 
     /* Per-agent table */
-    fetch('api/agents').then(function(r) { return r.ok ? r.json() : []; }).then(function(d) {
+    fetch('api/agents').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(d) {
       var list = Array.isArray(d) ? d : (d.agents || []);
       var body = document.getElementById('usage-per-agent-body');
       var countEl = document.getElementById('usage-per-agent-count');
@@ -89,6 +99,12 @@
           '<span class="dl-arrow">→</span>' +
         '</a>';
       }).join('');
+    }).catch(function(err) {
+      console.error('usage per-agent fetch failed', err);
+      var body = document.getElementById('usage-per-agent-body');
+      var countEl = document.getElementById('usage-per-agent-count');
+      if (countEl) countEl.textContent = '—';
+      if (body) body.innerHTML = '<div class="proposals-error">Errore caricamento agenti.</div>';
     });
 
     /* Reset button */

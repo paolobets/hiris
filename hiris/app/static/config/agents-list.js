@@ -6,9 +6,10 @@
   }
 
   function fetchAgents() {
-    return fetch('api/agents').then(function(r) { return r.ok ? r.json() : []; })
-      .then(function(d) { return Array.isArray(d) ? d : (d.agents || []); })
-      .catch(function() { return []; });
+    return fetch('api/agents').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(d) { return Array.isArray(d) ? d : (d.agents || []); });
   }
 
   function mount() {
@@ -66,6 +67,10 @@
           '<span class="dl-arrow">→</span>' +
         '</a>';
       }).join('');
+    }).catch(function(err) {
+      console.error('agents fetch failed', err);
+      var body = document.getElementById('agents-list-body');
+      if (body) body.innerHTML = '<div class="proposals-error" style="text-align:center;padding:24px">Errore di rete: impossibile caricare la lista agenti.</div>';
     });
   }
 
