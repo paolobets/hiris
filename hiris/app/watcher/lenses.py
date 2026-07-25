@@ -87,6 +87,13 @@ def _coerce_bool(v, default: bool) -> bool:
 
 _THRESHOLD_STR_MAX_LEN = 64
 
+# Sane floor for a scheduled lens's interval_min. Scheduled lenses run with
+# cooldown_sec=0 (see module docstring) and each firing appends to an
+# unbounded `events` table; without a floor a tiny/fractional interval would
+# hog the event loop and grow the table without limit. 1 minute mirrors the
+# coarsest HA/cron-adjacent scheduling grain used elsewhere in this module.
+_INTERVAL_MIN_FLOOR = 1
+
 
 def _validate_threshold(operator, threshold):
     """Validate `threshold` given its paired `operator` (already known to be
@@ -152,8 +159,18 @@ def _validate_trigger(raw) -> dict | None:
         if not _ENTITY_ID_RE.match(entity_id):
             return None
         out = {"type": "event", "entity_id": entity_id, "operator": operator, "threshold": threshold}
-        attribute = _clean_nonempty_str(raw.get("attribute"))
-        if attribute is not None:
+        # attribute is optional: absent -> fine (compares the entity's main
+        # state, per make_generic_detector). PRESENT but not a clean,
+        # HA-attribute-shaped string (wrong type, empty/whitespace-only, or
+        # outside the snake_case charset) -> reject the whole lens rather
+        # than silently dropping it: a dropped attribute would rebind the
+        # trigger to compare against the *state* instead of the intended
+        # attribute -- wider than the user wrote, same failure shape as the
+        # duration_min gate right below.
+        if "attribute" in raw and raw.get("attribute") is not None:
+            attribute = _clean_nonempty_str(raw.get("attribute"))
+            if attribute is None or not _DOMAIN_SERVICE_RE.match(attribute):
+                return None  # present but invalid -> reject
             out["attribute"] = attribute
         # duration_min is optional: absent -> fine (no duration gate).
         # PRESENT but not a finite non-negative number -> reject the whole
@@ -180,8 +197,8 @@ def _validate_trigger(raw) -> dict | None:
     interval_min = None
     if interval_present:
         interval_min = raw.get("interval_min")
-        if not (_is_number(interval_min) and interval_min > 0):
-            return None  # present but invalid -> reject
+        if not (_is_number(interval_min) and interval_min >= _INTERVAL_MIN_FLOOR):
+            return None  # present but invalid or below the floor -> reject
 
     if cron_present == interval_present:  # both present or neither -> not a valid XOR
         return None
@@ -288,7 +305,19 @@ def validate_lens(raw: dict) -> dict | None:
         name = raw.get("name")
         name = name[:80] if isinstance(name, str) else ""
 
-        enabled = _coerce_bool(raw.get("enabled", True), True)
+        # enabled: absent -> default True; PRESENT but not a real bool (e.g.
+        # the string "false", 0, "no") -> reject the whole lens, mirroring
+        # severity's absent-vs-present convention just above. Unlike
+        # reasoning.enabled (inert, no side effects -- safe to lenient-
+        # default to False), this flag gates whether the lens's action can
+        # fire at all: silently coercing a present-but-invalid value to True
+        # would invert a user's explicit disable intent.
+        if "enabled" in raw and raw.get("enabled") is not None:
+            enabled = raw.get("enabled")
+            if not isinstance(enabled, bool):
+                return None  # present but invalid -> reject
+        else:
+            enabled = True
 
         reasoning = _validate_reasoning(raw.get("reasoning"))
 

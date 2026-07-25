@@ -158,11 +158,8 @@ def test_validate_reasoning_enabled_non_bool_falls_back_to_default_false():
     assert cleaned3["reasoning"]["enabled"] is False
 
 
-def test_validate_enabled_non_bool_falls_back_to_default_true():
-    # Same trap on the top-level `enabled` (default True): a non-bool value
-    # (e.g. "" which is falsy under bool()) must not silently disable the
-    # lens; it falls back to the current default (True) instead.
-    raw = {**VALID_EVENT_LENS, "enabled": ""}
+def test_validate_enabled_real_bools_pass_through():
+    raw = {**VALID_EVENT_LENS, "enabled": True}
     cleaned = validate_lens(raw)
     assert cleaned["enabled"] is True
 
@@ -517,3 +514,85 @@ def test_validate_condition_still_accepts_numeric_threshold_for_eq():
     cleaned = validate_lens(VALID_SCHEDULE_LENS)
     assert cleaned is not None
     assert cleaned["trigger"]["condition"]["threshold"] == 1
+
+
+# ---------------------------------------------------------------------------
+# FIX 5 (review mediums batch 2): present-but-invalid `attribute` REJECTS the
+# lens instead of being silently dropped (mirrors duration_min's own gate);
+# present-but-invalid top-level `enabled` REJECTS instead of defaulting to
+# True (mirrors severity's absent-vs-present convention); `interval_min` has
+# a sane floor.
+# ---------------------------------------------------------------------------
+
+def test_validate_accepts_valid_attribute():
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "entity_id": "climate.living", "attribute": "current_temperature"}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert cleaned["trigger"]["attribute"] == "current_temperature"
+
+
+def test_validate_absent_attribute_is_fine():
+    raw = {**VALID_EVENT_LENS, "trigger": {k: v for k, v in VALID_EVENT_LENS["trigger"].items()
+                                            if k != "attribute"}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert "attribute" not in cleaned["trigger"]
+
+
+def test_validate_rejects_present_invalid_attribute_wrong_type():
+    # Before the fix: a non-string attribute was silently dropped by
+    # _clean_nonempty_str (returns None) instead of rejecting the lens --
+    # the trigger would then silently rebind to the entity's main state.
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "entity_id": "climate.living", "attribute": 42}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_rejects_present_invalid_attribute_charset():
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "entity_id": "climate.living", "attribute": "current-temp!"}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_rejects_present_invalid_attribute_whitespace_only():
+    raw = {**VALID_EVENT_LENS, "trigger": {**VALID_EVENT_LENS["trigger"],
+           "entity_id": "climate.living", "attribute": "   "}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_rejects_present_invalid_enabled():
+    # Before the fix: a present-but-non-bool `enabled` (e.g. the string
+    # "false", which is truthy under bool()) silently defaulted to True,
+    # inverting the user's disable intent. It must now reject the lens.
+    raw = {**VALID_EVENT_LENS, "enabled": "false"}
+    assert validate_lens(raw) is None
+
+    raw2 = {**VALID_EVENT_LENS, "enabled": 0}
+    assert validate_lens(raw2) is None
+
+    raw3 = {**VALID_EVENT_LENS, "enabled": "no"}
+    assert validate_lens(raw3) is None
+
+
+def test_validate_absent_enabled_still_defaults_to_true():
+    raw = {**VALID_EVENT_LENS}
+    del raw["enabled"]
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert cleaned["enabled"] is True
+
+
+def test_validate_rejects_interval_min_below_minimum():
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {"type": "schedule", "interval_min": 0.5}}
+    assert validate_lens(raw) is None
+
+    raw2 = {**VALID_SCHEDULE_LENS, "trigger": {"type": "schedule", "interval_min": 0}}
+    assert validate_lens(raw2) is None
+
+
+def test_validate_accepts_interval_min_at_minimum():
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {"type": "schedule", "interval_min": 1}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert cleaned["trigger"]["interval_min"] == 1
