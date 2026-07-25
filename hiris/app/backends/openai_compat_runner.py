@@ -449,6 +449,16 @@ class OpenAICompatRunner:
         del thinking_budget
         import openai as _openai
 
+        # review M3/#2: the connection-failure circuit breaker used to guard
+        # simple_chat() only. The agentic loop below never consulted it, so a
+        # dead Ollama endpoint was retried at full timeout every single turn
+        # instead of failing fast like simple_chat() already does.
+        if self._circuit_is_open():
+            raise RunnerBackendError(
+                "Il backend locale non risponde da diversi tentativi consecutivi "
+                "(circuito aperto). Riprova tra qualche istante."
+            )
+
         if agent_id:
             if agent_id not in self._per_agent_usage:
                 self._per_agent_usage[agent_id] = {
@@ -576,11 +586,18 @@ class OpenAICompatRunner:
                             f"oppure aggiungi credito su openrouter.ai."
                         ) from retry_exc
                 else:
+                    # review M3/#2: connection-class failures (dead endpoint)
+                    # must trip the same breaker simple_chat() uses, so a
+                    # stale Ollama tunnel fails fast on the NEXT turn instead
+                    # of being retried at full timeout forever.
+                    if _is_conn_error(exc):
+                        self._record_conn_failure()
                     logger.error("OpenAI/Ollama API error: %s", exc)
                     raise RunnerBackendError(
                         "Errore temporaneo del servizio AI. Riprova tra poco."
                     ) from exc
 
+            self._record_success()
             self._track_usage(response, effective_model, agent_id)
             choice = response.choices[0]
 
@@ -703,6 +720,23 @@ class OpenAICompatRunner:
         del thinking_budget
         import openai as _openai
 
+        # review M3/#2: see chat() above -- the streaming agentic loop must
+        # also consult the circuit breaker instead of hammering a dead
+        # endpoint at full timeout on every turn.
+        if self._circuit_is_open():
+            yield (
+                'data: '
+                + json.dumps({
+                    "type": "error",
+                    "message": (
+                        "Il backend locale non risponde da diversi tentativi "
+                        "consecutivi (circuito aperto). Riprova tra qualche istante."
+                    ),
+                })
+                + '\n\n'
+            )
+            return
+
         self.last_tool_calls = []
         # Fresh per-exchange pseudonymization map (review B/#7).
         self.last_pseudonym_map = {}
@@ -803,10 +837,16 @@ class OpenAICompatRunner:
                             yield f'data: {json.dumps({"type": "error", "message": err})}\n\n'
                             return
                     else:
+                        # review M3/#2: see chat() for full rationale — trip
+                        # the breaker on connection-class failures so a dead
+                        # endpoint fails fast on subsequent turns.
+                        if _is_conn_error(exc):
+                            self._record_conn_failure()
                         logger.error("OpenAI/Ollama API error (stream): %s", exc)
                         yield f'data: {json.dumps({"type": "error", "message": "Errore temporaneo del servizio AI."})}\n\n'
                         return
 
+                self._record_success()
                 collected_text = ""
                 finish_reason: Optional[str] = None
                 # {index: {id, name, args}} — assembla i frammenti tool-call dallo stream
@@ -855,6 +895,15 @@ class OpenAICompatRunner:
                         yield f'data: {json.dumps({"type": "discard_collected"})}\n\n'
                         yield f'data: {json.dumps({"type": "error", "message": TOOL_LEAK_USER_MSG})}\n\n'
                         return
+                    if finish_reason == "length":
+                        # review M3/#1: chat() surfaces _TRUNCATION_NOTICE
+                        # when finish_reason=='length' (see the "else" branch
+                        # below the tool_calls check there); this streaming
+                        # path used to just `break` silently, leaving the
+                        # client with a truncated response and no warning.
+                        from ..claude_runner import _TRUNCATION_NOTICE
+                        notice = f"\n\n{_TRUNCATION_NOTICE}"
+                        yield f'data: {json.dumps({"type": "token", "text": notice})}\n\n'
                     break
 
                 # Ci sono tool calls: eseguili e continua il loop

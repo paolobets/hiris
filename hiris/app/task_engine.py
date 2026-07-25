@@ -83,6 +83,13 @@ class TaskEngine:
         self._data_path = data_path
         self._execute_policy = execute_policy if execute_policy is not None else {}
         self._tasks: dict[str, Task] = {}
+        # Guards mutation of self._tasks. _cleanup() is a SYNC APScheduler job
+        # (runs on APScheduler's worker thread pool), while add_task()/_load()
+        # run on the asyncio event-loop thread — without this lock, _cleanup()
+        # iterating self._tasks can race a concurrent insert and raise
+        # "RuntimeError: dictionary changed size during iteration" (review
+        # M3/#3). Combined with iterating a snapshot in _cleanup() below.
+        self._tasks_lock = threading.Lock()
         self._scheduler = AsyncIOScheduler()
         # Strong refs to fire-and-forget immediate-trigger tasks: asyncio only
         # weak-refs a bare create_task, so without this a running task can be
@@ -133,7 +140,8 @@ class TaskEngine:
             allowed_entities=allowed_entities,
             allowed_services=allowed_services,
         )
-        self._tasks[task.id] = task
+        with self._tasks_lock:
+            self._tasks[task.id] = task
         self._schedule_task(task)
         self._save()
         return task
@@ -211,7 +219,8 @@ class TaskEngine:
                     allowed_entities=raw.get("allowed_entities"),
                     allowed_services=raw.get("allowed_services"),
                 )
-                self._tasks[task.id] = task
+                with self._tasks_lock:
+                    self._tasks[task.id] = task
                 if task.status == "pending":
                     if task.trigger.get("type") == "immediate":
                         task.status = "skipped"
@@ -227,7 +236,15 @@ class TaskEngine:
     def _cleanup(self) -> None:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=_CLEANUP_AFTER_HOURS)
         to_remove = []
-        for task_id, task in self._tasks.items():
+        # Snapshot under the lock: _cleanup runs on APScheduler's worker
+        # thread while add_task()/_load() run on the event-loop thread.
+        # Iterating self._tasks directly here raced concurrent inserts and
+        # raised "RuntimeError: dictionary changed size during iteration"
+        # (review M3/#3) — copying to a list first means a concurrent insert
+        # can no longer corrupt this loop's iterator.
+        with self._tasks_lock:
+            snapshot = list(self._tasks.items())
+        for task_id, task in snapshot:
             if task.status not in _TERMINAL:
                 continue
             ts_str = task.executed_at or task.created_at
@@ -239,9 +256,10 @@ class TaskEngine:
                     to_remove.append(task_id)
             except Exception as exc:
                 logger.debug("cleanup ts parse failed for task %s: %s", task_id, exc)
-        for task_id in to_remove:
-            del self._tasks[task_id]
         if to_remove:
+            with self._tasks_lock:
+                for task_id in to_remove:
+                    self._tasks.pop(task_id, None)
             self._save()
             logger.info("TaskEngine cleanup: removed %d terminal tasks", len(to_remove))
 

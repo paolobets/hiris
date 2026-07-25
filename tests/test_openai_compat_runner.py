@@ -5,6 +5,8 @@ valid kwarg (httpx uses `timeout` as positional or `connect/read/write/pool`).
 This crashed startup with `TypeError: Timeout.__init__() got an unexpected
 keyword argument 'total'` whenever an OpenAI key or Ollama URL was configured.
 """
+import json
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -623,3 +625,187 @@ async def test_chat_length_finish_returns_truncation_notice(dispatcher, tmp_path
     result = await runner.chat(user_message="crea dashboard", model="gpt-4o")
     assert _TRUNCATION_NOTICE in result
     assert result.startswith("Ora creo la dashboard!")
+
+
+# ---------------------------------------------------------------------------
+# review M3/#1: chat_stream() never checked finish_reason=='length', so a
+# truncated streaming response reached the client with NO warning, while the
+# non-streaming chat() above DOES surface _TRUNCATION_NOTICE.
+# ---------------------------------------------------------------------------
+
+class _FakeStream:
+    """Minimal async-iterable stand-in for the OpenAI SDK's streaming response
+    (mirrors tests/test_stream_otp_redaction.py's helper)."""
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+
+    def __aiter__(self):
+        return self._gen()
+
+    async def _gen(self):
+        for c in self._chunks:
+            yield c
+
+
+def _stream_chunk(content=None, finish_reason=None):
+    delta = MagicMock()
+    delta.content = content
+    delta.tool_calls = None
+    choice = MagicMock()
+    choice.delta = delta
+    choice.finish_reason = finish_reason
+    chunk = MagicMock()
+    chunk.choices = [choice]
+    return chunk
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_length_finish_yields_truncation_notice(dispatcher, tmp_path):
+    """finish_reason='length' on the streaming path must surface the same
+    truncation notice as chat(), not silently end the SSE stream."""
+    from hiris.app.claude_runner import _TRUNCATION_NOTICE
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        dispatcher=dispatcher,
+        usage_path=str(tmp_path / "u.json"),
+    )
+    runner._dispatcher.has_memory = False
+
+    stream = _FakeStream([
+        _stream_chunk(content="Ora creo la dashboard!"),
+        _stream_chunk(finish_reason="length"),
+    ])
+    runner._client.chat.completions.create = AsyncMock(return_value=stream)
+
+    lines = [line async for line in runner.chat_stream(
+        user_message="crea dashboard", model="gpt-4o",
+    )]
+    # SSE lines are 'data: {json}\n\n' -- json.dumps() escapes non-ASCII (the
+    # ⚠️ emoji etc.), so reconstruct the streamed text from the parsed
+    # payloads rather than substring-searching the raw (escaped) SSE text.
+    streamed_text = "".join(
+        json.loads(line[len("data: "):])["text"]
+        for line in lines
+        if '"type": "token"' in line
+    )
+    assert _TRUNCATION_NOTICE in streamed_text
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_normal_stop_has_no_truncation_notice(dispatcher, tmp_path):
+    """Sanity: a normal finish_reason='stop' must NOT emit the notice."""
+    from hiris.app.claude_runner import _TRUNCATION_NOTICE
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        dispatcher=dispatcher,
+        usage_path=str(tmp_path / "u.json"),
+    )
+    runner._dispatcher.has_memory = False
+
+    stream = _FakeStream([
+        _stream_chunk(content="Tutto ok."),
+        _stream_chunk(finish_reason="stop"),
+    ])
+    runner._client.chat.completions.create = AsyncMock(return_value=stream)
+
+    lines = [line async for line in runner.chat_stream(
+        user_message="come stiamo", model="gpt-4o",
+    )]
+    full_output = "\n".join(lines)
+    assert _TRUNCATION_NOTICE not in full_output
+
+
+# ---------------------------------------------------------------------------
+# review M3/#2: the connection-failure circuit breaker guarded simple_chat()
+# only. The agentic chat()/chat_stream() loop never checked/tripped it, so a
+# dead Ollama endpoint was retried at full timeout every turn instead of
+# failing fast like simple_chat() already does.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_chat_short_circuits_when_breaker_open(dispatcher, tmp_path):
+    """chat() must consult the circuit breaker and fail fast (no network
+    call) when it's open, instead of hammering a dead endpoint at full
+    timeout on every turn."""
+    runner = OpenAICompatRunner(
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama",
+        dispatcher=dispatcher, fixed_model="llama3.1:8b",
+        usage_path=str(tmp_path / "u.json"),
+    )
+    runner._circuit_open_until = time.monotonic() + 60
+    create = AsyncMock()
+    runner._client.chat.completions.create = create
+
+    with pytest.raises(RunnerBackendError):
+        await runner.chat(user_message="ciao", model="llama3.1:8b")
+    create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_short_circuits_when_breaker_open(dispatcher, tmp_path):
+    """chat_stream() must consult the circuit breaker too, yielding an SSE
+    error event instead of calling the network."""
+    runner = OpenAICompatRunner(
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama",
+        dispatcher=dispatcher, fixed_model="llama3.1:8b",
+        usage_path=str(tmp_path / "u.json"),
+    )
+    runner._circuit_open_until = time.monotonic() + 60
+    create = AsyncMock()
+    runner._client.chat.completions.create = create
+
+    lines = [line async for line in runner.chat_stream(
+        user_message="ciao", model="llama3.1:8b",
+    )]
+    full_output = "\n".join(lines)
+    assert '"type": "error"' in full_output
+    create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chat_trips_breaker_on_connection_error(dispatcher, tmp_path):
+    """A connection-class failure inside chat()'s agentic loop must trip the
+    same breaker simple_chat() uses -- today it only logs a generic API
+    error and never calls _record_conn_failure()."""
+    from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
+    import openai as _openai
+    runner = OpenAICompatRunner(
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama",
+        dispatcher=dispatcher, fixed_model="llama3.1:8b",
+        usage_path=str(tmp_path / "u.json"),
+    )
+    runner._dispatcher.has_memory = False
+    conn_err = _openai.APIConnectionError(request=MagicMock())
+    runner._client.chat.completions.create = AsyncMock(side_effect=conn_err)
+
+    for _ in range(_CIRCUIT_THRESHOLD):
+        with pytest.raises(RunnerBackendError):
+            await runner.chat(user_message="ciao", model="llama3.1:8b")
+
+    assert runner._circuit_is_open()
+
+
+@pytest.mark.asyncio
+async def test_chat_healthy_backend_behavior_unchanged(dispatcher, tmp_path):
+    """Sanity: with the breaker closed and a healthy backend, chat() behaves
+    exactly as before (no regression from the new breaker check)."""
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        dispatcher=dispatcher,
+        usage_path=str(tmp_path / "u.json"),
+    )
+    runner._dispatcher.has_memory = False
+    msg = MagicMock()
+    msg.content = "ok"
+    msg.tool_calls = None
+    choice = MagicMock(finish_reason="stop", message=msg)
+    response = MagicMock(choices=[choice])
+    response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
+    runner._client.chat.completions.create = AsyncMock(return_value=response)
+
+    out = await runner.chat(user_message="hi", model="gpt-4o")
+    assert out == "ok"

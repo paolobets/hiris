@@ -120,6 +120,65 @@ def test_cleanup_keeps_recent_terminal_tasks(engine):
     assert task.id in engine._tasks
 
 
+def test_cleanup_survives_concurrent_task_insertion(engine):
+    """review M3/#3: _cleanup() is a sync APScheduler job run on a worker
+    thread, iterating self._tasks while add_task() (event-loop thread) can
+    insert a new key at the same time. Pre-fix this raised 'RuntimeError:
+    dictionary changed size during iteration' because _cleanup iterated the
+    live dict directly. This test reproduces the exact mechanism (a mutation
+    landing mid-iteration, via a hook on datetime.fromisoformat which
+    _cleanup calls once per terminal task) without needing real OS threads —
+    the CPython-level hazard is identical regardless of what triggers the
+    concurrent write.
+    """
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=200)).isoformat()
+    for i in range(5):
+        t = engine.add_task(
+            {"label": f"Old{i}", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
+            agent_id="hiris-default",
+        )
+        engine._tasks[t.id].status = "done"
+        engine._tasks[t.id].executed_at = old_ts
+
+    import hiris.app.task_engine as task_engine_module
+    real_datetime = task_engine_module.datetime
+
+    class _SpyDatetime:
+        """Delegates to the real datetime class, but on the 2nd
+        fromisoformat() call (i.e. mid-way through _cleanup's loop over the
+        5 terminal tasks above) fires a concurrent add_task() — simulating
+        the other thread inserting a new task while _cleanup is iterating."""
+
+        calls = 0
+
+        @staticmethod
+        def now(tz=None):
+            return real_datetime.now(tz)
+
+        @staticmethod
+        def fromisoformat(s):
+            _SpyDatetime.calls += 1
+            if _SpyDatetime.calls == 2:
+                engine.add_task(
+                    {"label": "concurrent", "trigger": {"type": "delay", "minutes": 1},
+                     "actions": []},
+                    agent_id="hiris-default",
+                )
+            return real_datetime.fromisoformat(s)
+
+    task_engine_module.datetime = _SpyDatetime
+    try:
+        engine._cleanup()  # must not raise RuntimeError
+    finally:
+        task_engine_module.datetime = real_datetime
+
+    # All 5 stale terminal tasks were reaped...
+    remaining = list(engine._tasks.values())
+    assert not any(t.label.startswith("Old") for t in remaining)
+    # ...and the task inserted mid-iteration survived (it's pending, not terminal).
+    assert any(t.label == "concurrent" for t in remaining)
+
+
 def test_persistence_roundtrip(tmp_path, mock_ha, mock_cache):
     path = str(tmp_path / "tasks.json")
     te1 = TaskEngine(ha_client=mock_ha, entity_cache=mock_cache, notify_config={}, data_path=path)

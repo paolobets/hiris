@@ -193,6 +193,62 @@ def test_light_state_format_on_with_brightness():
     assert "50%" in context
 
 
+def test_light_state_format_non_numeric_brightness_falls_back(caplog):
+    """review M3/#4: a malformed integration (or a template sensor bug) can
+    hand back a non-numeric 'brightness' attribute. _format_state must not
+    let round(b / 255 * 100) raise TypeError -- it should degrade to the
+    bare 'accesa' state instead of crashing the whole context build."""
+    cache = _make_cache(
+        [{"id": "light.sala", "state": "on", "name": "Luce Sala",
+          "domain": "light", "device_class": None, "unit": "",
+          "attributes": {"brightness": "unavailable"}}],
+        {"Soggiorno": ["light.sala"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, _ = scm.get_context("luci soggiorno", cache)  # must not raise
+    assert "accesa" in context
+    assert "light.sala" not in context or True  # sanity: no crash reached here
+
+
+def test_media_player_volume_non_numeric_does_not_crash():
+    """Same guard for media_player's volume_level (round(vol * 100))."""
+    cache = _make_cache(
+        [{"id": "media_player.sala", "state": "playing", "name": "TV Sala",
+          "domain": "media_player", "device_class": None, "unit": "",
+          "attributes": {"volume_level": "n/a", "media_title": "Film"}}],
+        {"Soggiorno": ["media_player.sala"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, _ = scm.get_context("tv soggiorno", cache)  # must not raise
+    assert "playing" in context
+    assert "Film" in context
+
+
+def test_one_malformed_entity_does_not_break_others_in_context():
+    """review M3/#4: get_context() has no try/except around per-entity
+    formatting -- one bad entity (e.g. a corrupted brightness attribute)
+    must not deny context (and therefore chat) to every user. The rest of
+    the area's entities must still render."""
+    cache = _make_cache(
+        [
+            {"id": "light.bad", "state": "on", "name": "Luce Rotta",
+             "domain": "light", "device_class": None, "unit": "",
+             "attributes": {"brightness": {"unexpected": "dict"}}},
+            {"id": "light.good", "state": "on", "name": "Luce Buona",
+             "domain": "light", "device_class": None, "unit": "",
+             "attributes": {"brightness": 255}},
+        ],
+        {"Soggiorno": ["light.bad", "light.good"]},
+    )
+    scm = SemanticContextMap()
+    scm.build(cache)
+    context, _ = scm.get_context("luci soggiorno", cache)  # must not raise
+    assert "Luce Buona" in context
+    assert "100%" in context
+
+
 def test_climate_state_format():
     cache = _make_cache(
         [{"id": "climate.sala", "state": "heat", "name": "Termostato Sala",
