@@ -37,7 +37,10 @@
       if (typeof loadProposals === 'function') {
         loadProposals(tab);
       } else {
-        document.getElementById('proposals-list').innerHTML = '<div class="proposals-empty">proposals.js non caricato — apri prima un agente per inizializzare i moduli legacy.</div>';
+        /* Il modulo legacy proposals.js è ancora in caricamento (lazy-load
+           gestito da main.js sulla route #/proposals) — messaggio neutro,
+           l'elenco si aggiorna da solo appena il modulo è pronto. */
+        document.getElementById('proposals-list').innerHTML = '<div class="proposals-empty">Caricamento moduli…</div>';
       }
       if (typeof window !== 'undefined') window._currentProposalTab = tab;
     }

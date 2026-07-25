@@ -123,10 +123,6 @@
             '<h3>Proposte pending <span class="right" id="dash-prop-count">—</span></h3>' +
             '<div id="dash-proposals-body"><div style="padding:16px;color:var(--text-3)">Caricamento…</div></div>' +
           '</div>' +
-          '<div class="dash-list">' +
-            '<h3>Prossimi trigger <span class="right">presto</span></h3>' +
-            '<div style="padding:16px;color:var(--text-3);font-size:var(--fs-12)">In arrivo — vista calendaristica dei prossimi trigger schedulati.</div>' +
-          '</div>' +
         '</div>' +
       '</div>';
 

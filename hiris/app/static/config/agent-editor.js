@@ -3,10 +3,32 @@
    Tipo/Trigger da Identità e l'intera section-card Azioni) e bridge alla
    logica legacy in agent-form.js. */
 (function() {
-  /* Bumped a ogni release: forza cache-bust dei dynamic-loaded legacy scripts.
-     Necessario perché _inject_version backend agisce solo sul HTML response,
-     non sui <script> creati lato client da loadScript(). */
-  var V6_CACHE_BUST = '0.11.0';
+  /* Cache-bust automatico per i 7 legacy script dynamic-loaded via loadScript().
+     Il backend (_inject_version in server.py, via _ASSET_REF_RE/_asset_fingerprint)
+     appende già un content-hash "?v=<hash>" alla src di QUESTO script quando
+     serve config.html — lo leggiamo qui (nessuna chiamata di rete aggiuntiva,
+     solo lettura sincrona di document.currentScript.src) e lo riusiamo per
+     bustare la cache dei legacy script iniettati lato client. Così il bust
+     cambia automaticamente ogni volta che agent-editor.js viene modificato,
+     senza bump manuale.
+     Limite noto: l'hash è quello di QUESTO file, non dei singoli LEGACY_SCRIPTS
+     (che non passano da _inject_version perché iniettati via JS, non presenti
+     come <script src> in config.html). Se cambia SOLO uno dei LEGACY_SCRIPTS
+     senza toccare questo file, il bust non cambia — in quel caso serve comunque
+     un tocco (anche solo un commento) a questo file per forzare il refresh.
+     Fallback alla costante sotto se lo script non è servito con query string
+     (es. accesso diretto al file senza passare da _serve_config). */
+  var V6_CACHE_BUST = (function() {
+    try {
+      var selfScript = document.currentScript ||
+        document.querySelector('script[src*="agent-editor.js"]');
+      if (selfScript && selfScript.src) {
+        var m = /[?&]v=([^&]+)/.exec(selfScript.src);
+        if (m && m[1]) return decodeURIComponent(m[1]);
+      }
+    } catch (e) {}
+    return '0.11.0'; /* fallback manuale se non c'è query string sulla src */
+  })();
 
   var legacyLoaded = false;
   /* Task 4 (Slice 5): rimossi cron.js/cron-popover.js/triggers.js/
@@ -231,40 +253,35 @@
     });
 
     btnSave.addEventListener('click', function() {
-      console.log('[v6] Save clicked, agentId=' + agentId + ' saveAgent=' + (typeof saveAgent) + ' buildPayload=' + (typeof buildPayload));
       if (typeof saveAgent === 'function') {
         try {
           var p = saveAgent();
-          console.log('[v6] saveAgent returned:', p);
-          if (p && p.then) p.then(function(res) { console.log('[v6] save resolved:', res); markClean(); }).catch(function(err) { console.error('[v6] save rejected:', err); });
+          if (p && p.then) p.then(function(res) { markClean(); }).catch(function(err) { console.error('save rejected:', err); });
           else markClean();
-        } catch(e) { console.error('[v6] saveAgent threw:', e); alert('Save error: ' + (e.message || e)); }
+        } catch(e) { console.error('saveAgent threw:', e); alert('Save error: ' + (e.message || e)); }
       } else {
-        console.warn('[v6] saveAgent not defined — markClean only');
+        console.warn('saveAgent not defined — markClean only');
         alert('window.saveAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
         markClean();
       }
     });
     btnCancel.addEventListener('click', function() {
-      console.log('[v6] Cancel clicked');
       if (HirisState.get('unsaved') && !confirm('Annullare le modifiche non salvate?')) return;
       window.location.hash = '#/agents';
     });
     btnTestRun.addEventListener('click', function() {
-      console.log('[v6] TestRun clicked, runAgent=' + (typeof runAgent) + ' currentId=' + (typeof window !== 'undefined' ? window.currentId : '?'));
       if (typeof runAgent === 'function') {
-        try { runAgent(); } catch(e) { console.error('[v6] runAgent threw:', e); alert('TestRun error: ' + (e.message || e)); }
+        try { runAgent(); } catch(e) { console.error('runAgent threw:', e); alert('TestRun error: ' + (e.message || e)); }
       } else {
-        console.warn('[v6] runAgent not defined');
+        console.warn('runAgent not defined');
         alert('window.runAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
       }
     });
     btnDelete.addEventListener('click', function() {
-      console.log('[v6] Delete clicked, deleteAgent=' + (typeof deleteAgent));
       if (typeof deleteAgent === 'function') {
-        try { deleteAgent(); } catch(e) { console.error('[v6] deleteAgent threw:', e); alert('Delete error: ' + (e.message || e)); }
+        try { deleteAgent(); } catch(e) { console.error('deleteAgent threw:', e); alert('Delete error: ' + (e.message || e)); }
       } else {
-        console.warn('[v6] deleteAgent not defined');
+        console.warn('deleteAgent not defined');
         alert('window.deleteAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
       }
     });
@@ -506,12 +523,12 @@
   var _runInFlight = false;
   window.runAgent = function() {
     if (_runInFlight) {
-      console.warn('[v6] runAgent già in flight — click ignorato');
+      console.warn('runAgent già in flight — click ignorato');
       return Promise.resolve();
     }
     var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeAgentId');
     if (!cid) {
-      console.warn('[v6] runAgent: nessun agentId attivo');
+      console.warn('runAgent: nessun agentId attivo');
       return Promise.resolve();
     }
 
@@ -576,12 +593,9 @@
       if (banner) banner.remove();
     }
 
-    console.log('[v6] runAgent fetch starting agentId=' + cid);
-
     return fetch('api/agents/' + encodeURIComponent(cid) + '/run', {
       method: 'POST', headers: { 'X-Requested-With': 'fetch' }, signal: ctrl.signal,
     }).then(function(r) {
-      console.log('[v6] runAgent fetch response status=' + r.status);
       return r.json();
     }).then(function(data) {
       clearTimeout(timer);
@@ -608,11 +622,10 @@
         if (a && typeof renderExecutionLog === 'function') renderExecutionLog(a);
         if (a && typeof loadAgentUsage === 'function') loadAgentUsage(cid);
       }).catch(function(){});
-      console.log('[v6] runAgent done');
     }).catch(function(e) {
       clearTimeout(timer);
       cleanupRunning();
-      console.error('[v6] runAgent error:', e);
+      console.error('runAgent error:', e);
       if (out) {
         out.className = 'run-error-text';
         out.textContent = e.name === 'AbortError'
