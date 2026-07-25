@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.36.1] — Hardening anti-injection italiano (2026-07-25)
+
+- Il filtro anti-manipolazione che protegge il cervello dalle istruzioni
+  nascoste nei dati ora riconosce anche le formule italiane ("ignora le
+  istruzioni", "dimentica tutto", "agisci come…"), non solo quelle inglesi —
+  senza intaccare i testi legittimi (es. "il sistema ha ignorato l'evento").
+
 ## [0.36.0] — Ragionamento consapevole (Slice 6b verso 1.0) (2026-07-24)
 
 - **Il cervello ora ragiona con memoria:** quando la sentinella valuta un
