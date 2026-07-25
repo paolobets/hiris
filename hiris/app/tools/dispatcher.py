@@ -22,7 +22,10 @@ from .weather_tools import get_weather_forecast
 from .notify_tools import send_notification
 from .automation_tools import get_ha_automations, get_automation_config, trigger_automation, toggle_automation
 from .task_tools import create_task_tool, list_tasks_tool, cancel_task_tool
-from .calendar_tools import get_calendar_events, set_input_helper, create_calendar_event
+from .calendar_tools import (
+    get_calendar_events, set_input_helper, create_calendar_event,
+    resolve_input_helper_service,
+)
 from .http_tools import http_request
 from .memory_tools import handle_recall_memory as _handle_recall_memory, handle_save_memory as _handle_save_memory
 from .history_tools import get_history as _get_history
@@ -121,6 +124,47 @@ class ToolDispatcher:
     def set_task_engine(self, engine: Any) -> None:
         self._task_engine = engine
 
+    async def _gate(
+        self, *, name: str, inputs: dict, domain: str, service: str,
+        entity_ids: list[str], user_id: str | None,
+    ) -> dict | None:
+        """Semaforo universale — gate condiviso da OGNI superficie che attua su HA
+        (call_ha_service, trigger_automation, toggle_automation, set_input_helper;
+        review A/#2, #9, #10). Chiamare SOLO quando l'azione non è già
+        tier_confirmed (il chiamante decide se saltare il gate in quel caso, come
+        fa call_ha_service per lo step-up out-of-band).
+
+        Ritorna None se l'azione può procedere (allow). Altrimenti ritorna il
+        dict ({"error": ...} o {"status": "confirmation_required", ...}) da
+        restituire IMMEDIATAMENTE al chiamante SENZA attuare — mai chiamare
+        ha.call_service (o l'equivalente tool) se il ritorno non è None.
+        """
+        verdict = gate_action(
+            domain=domain, service=service, entity_ids=entity_ids,
+            tiers=self._execute_policy.get("tiers") or {},
+            entity_tiers=self._execute_policy.get("entity_tiers") or {},
+        )
+        if verdict.decision == "allow":
+            return None
+        logger.warning("%s gated: %s (%s.%s)", name, verdict.decision, domain, service)
+        if verdict.decision == "confirm":
+            if self._request_confirmation is not None:
+                res = await self._request_confirmation(
+                    tool=name, inputs=inputs, tier=verdict.tier, user=user_id,
+                )
+                # No-identity guard (Fix 5, mirrored from call_ha_service): fall
+                # back to the generic error instead of minting a pending nobody
+                # can ever confirm.
+                if not isinstance(res, dict) or not res.get("id"):
+                    return {"error": "Azione a rischio: richiede conferma."}
+                return {"status": "confirmation_required",
+                        "id": res.get("id"), "tier": verdict.tier,
+                        "message": ("Ho bisogno della tua conferma: tocca "
+                                    "'Conferma' nella notifica sul telefono, "
+                                    "oppure dimmi il codice che ti ho inviato.")}
+            return {"error": "Azione a rischio: richiede conferma."}
+        return {"error": verdict.reason}
+
     @property
     def has_memory(self) -> bool:
         # save_memory/recall_memory route into the unified KnowledgeStore
@@ -200,6 +244,13 @@ class ToolDispatcher:
                 err = _check_entity_allowed(entity_id, allowed_entities)
                 if err is not None:
                     return err
+                if not tier_confirmed:
+                    gate_result = await self._gate(
+                        name=name, inputs=inputs, domain="automation", service="trigger",
+                        entity_ids=[entity_id], user_id=user_id,
+                    )
+                    if gate_result is not None:
+                        return gate_result
                 return await trigger_automation(self._ha, automation_id)
             if name == "toggle_automation":
                 automation_id = inputs["automation_id"]
@@ -218,6 +269,13 @@ class ToolDispatcher:
                 err = _check_entity_allowed(entity_id, allowed_entities)
                 if err is not None:
                     return err
+                if not tier_confirmed:
+                    gate_result = await self._gate(
+                        name=name, inputs=inputs, domain="automation", service=service_key.split(".")[1],
+                        entity_ids=[entity_id], user_id=user_id,
+                    )
+                    if gate_result is not None:
+                        return gate_result
                 return await toggle_automation(self._ha, automation_id, enabled)
             if name == "call_ha_service":
                 domain = inputs["domain"]
@@ -251,34 +309,12 @@ class ToolDispatcher:
                     if _has_group_target:
                         logger.warning("call_ha_service gated: area/device/label target present (%s.%s)", domain, service)
                         return {"error": "Azione su area/dispositivo/label non consentita dal semaforo: specifica le entità target."}
-                    verdict = gate_action(
-                        domain=domain, service=service, entity_ids=gate_eids,
-                        tiers=self._execute_policy.get("tiers") or {},
-                        entity_tiers=self._execute_policy.get("entity_tiers") or {},
+                    gate_result = await self._gate(
+                        name=name, inputs=inputs, domain=domain, service=service,
+                        entity_ids=gate_eids, user_id=user_id,
                     )
-                    if verdict.decision != "allow":
-                        logger.warning("call_ha_service gated: %s (%s.%s)",
-                                       verdict.decision, domain, service)
-                        if verdict.decision == "confirm":
-                            if self._request_confirmation is not None:
-                                res = await self._request_confirmation(
-                                    tool=name, inputs=inputs, tier=verdict.tier, user=user_id,
-                                )
-                                # No-identity guard (Fix 5): the callback returns None
-                                # (or a dict without an "id") when there's no real user
-                                # to target — e.g. the "home" no-identity fallback has
-                                # no phone and no chat OTP flow that could resolve it.
-                                # Fall back to the Slice-1 error instead of minting a
-                                # pending nobody can ever confirm.
-                                if not isinstance(res, dict) or not res.get("id"):
-                                    return {"error": "Azione a rischio: richiede conferma."}
-                                return {"status": "confirmation_required",
-                                        "id": res.get("id"), "tier": verdict.tier,
-                                        "message": ("Ho bisogno della tua conferma: tocca "
-                                                    "'Conferma' nella notifica sul telefono, "
-                                                    "oppure dimmi il codice che ti ho inviato.")}
-                            return {"error": "Azione a rischio: richiede conferma."}
-                        return {"error": verdict.reason}
+                    if gate_result is not None:
+                        return gate_result
                 if allowed_services:
                     service_key = f"{domain}.{service}"
                     if not any(fnmatch.fnmatch(service_key, pat) for pat in allowed_services):
@@ -364,6 +400,19 @@ class ToolDispatcher:
                     if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
                         logger.warning("set_input_helper on %r blocked by allowed_entities policy", eid)
                         return {"error": f"Entity {eid!r} not permitted by policy"}
+                if not tier_confirmed and ih_domain and eid:
+                    resolved = resolve_input_helper_service(ih_domain, inputs.get("value"))
+                    # A resolution error (bad value/unsupported domain) means the
+                    # actuation call below will fail its own validation anyway and
+                    # never reach HA — nothing to gate, let it surface that error.
+                    if isinstance(resolved, tuple):
+                        ih_service, _ = resolved
+                        gate_result = await self._gate(
+                            name=name, inputs=inputs, domain=ih_domain, service=ih_service,
+                            entity_ids=[eid], user_id=user_id,
+                        )
+                        if gate_result is not None:
+                            return gate_result
                 return await set_input_helper(self._ha, entity_id=eid, value=inputs.get("value"))
             if name == "create_calendar_event":
                 return await create_calendar_event(

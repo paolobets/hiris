@@ -25,10 +25,17 @@ def mock_ha():
 
 @pytest.fixture
 def runner(mock_ha):
-    # tiers green for the domains exercised by call_ha_service tests below —
-    # the universal semaforo gate in ToolDispatcher is fail-closed by default.
+    # tiers green for the domains exercised by call_ha_service/trigger_automation/
+    # toggle_automation/set_input_helper tests below — the universal semaforo gate
+    # in ToolDispatcher is fail-closed by default (review A/#2, #9, #10: these
+    # three tool paths are now gated exactly like call_ha_service).
     dispatcher = ToolDispatcher(mock_ha, {},
-                                execute_policy={"tiers": {"light": "green", "climate": "green"}})
+                                execute_policy={"tiers": {
+                                    "light": "green", "climate": "green",
+                                    "automation": "green", "input_boolean": "green",
+                                    "input_number": "green", "input_text": "green",
+                                    "input_select": "green",
+                                }})
     with patch("anthropic.AsyncAnthropic"):
         r = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
     r._ha = mock_ha  # shortcut for tests

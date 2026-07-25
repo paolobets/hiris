@@ -263,7 +263,7 @@ def test_config_yaml_no_direct_port():
 # SEC-022 — automation tools rispettano allowed_services / allowed_entities
 # ---------------------------------------------------------------------------
 
-def _make_dispatcher():
+def _make_dispatcher(execute_policy=None, request_confirmation=None):
     from hiris.app.tools.dispatcher import ToolDispatcher
     ha = MagicMock()
     ha.call_service = AsyncMock(return_value=True)
@@ -276,6 +276,8 @@ def _make_dispatcher():
         memory_retention_days=None,
         health_monitor=MagicMock(),
         proposal_store=MagicMock(),
+        execute_policy=execute_policy,
+        request_confirmation=request_confirmation,
     )
 
 
@@ -315,8 +317,12 @@ async def test_trigger_automation_blocked_by_allowed_entities():
 
 @pytest.mark.asyncio
 async def test_trigger_automation_allowed_when_whitelisted():
-    """Allowed automation must reach ha_client.call_service."""
-    d = _make_dispatcher()
+    """Allowed automation must reach ha_client.call_service.
+
+    Also requires the semaforo's ``automation`` domain to be green (review
+    A/#2): allowed_services/allowed_entities alone are no longer sufficient.
+    """
+    d = _make_dispatcher(execute_policy={"tiers": {"automation": "green"}})
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
@@ -366,8 +372,12 @@ async def test_toggle_automation_blocked_by_allowed_entities():
 
 @pytest.mark.asyncio
 async def test_toggle_automation_allowed_when_whitelisted():
-    """Allowed toggle off must reach ha_client.call_service."""
-    d = _make_dispatcher()
+    """Allowed toggle off must reach ha_client.call_service.
+
+    Also requires the semaforo's ``automation`` domain to be green (review
+    A/#9): allowed_services/allowed_entities alone are no longer sufficient.
+    """
+    d = _make_dispatcher(execute_policy={"tiers": {"automation": "green"}})
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "morning_briefing", "enabled": False},
@@ -379,6 +389,184 @@ async def test_toggle_automation_allowed_when_whitelisted():
     d._ha.call_service.assert_awaited_once_with(
         "automation", "turn_off", {"entity_id": "automation.morning_briefing"}
     )
+
+
+# ---------------------------------------------------------------------------
+# Review A / #2, #9, #10 — semaforo gate applies to trigger_automation,
+# toggle_automation and set_input_helper, same as call_ha_service. An
+# automation's action sequence (or an input helper wired to a
+# guest/vacation/alarm-override automation) can actuate HA just like a raw
+# service call, so these three tool-dispatch paths must not bypass the gate.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_trigger_automation_denied_when_domain_not_green():
+    """No execute_policy configured (fail-closed default) -> gated, not executed."""
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "morning_briefing"},
+        agent_id="a",
+    )
+    assert isinstance(out, dict) and "error" in out
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_denied_when_domain_off():
+    d = _make_dispatcher(execute_policy={"tiers": {"automation": "off"}})
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "morning_briefing"},
+        agent_id="a",
+    )
+    assert isinstance(out, dict) and "error" in out
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_confirmation_required_when_yellow():
+    seen = {}
+
+    async def sink(*, tool, inputs, tier, user):
+        seen.update(tool=tool, tier=tier, user=user)
+        return {"id": "nonce-trig", "otp_sent": True}
+
+    d = _make_dispatcher(
+        execute_policy={"tiers": {"automation": "yellow"}},
+        request_confirmation=sink,
+    )
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "morning_briefing"},
+        agent_id="a",
+        user_id="paolo",
+    )
+    assert out["status"] == "confirmation_required" and out["id"] == "nonce-trig"
+    assert out["tier"] == "yellow"
+    assert seen == {"tool": "trigger_automation", "tier": "yellow", "user": "paolo"}
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_automation_executes_when_domain_green():
+    d = _make_dispatcher(execute_policy={"tiers": {"automation": "green"}})
+    out = await d.dispatch(
+        "trigger_automation",
+        {"automation_id": "morning_briefing"},
+        agent_id="a",
+    )
+    assert out is True
+    d._ha.call_service.assert_awaited_once_with(
+        "automation", "trigger", {"entity_id": "automation.morning_briefing"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_denied_when_domain_not_green():
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": "morning_briefing", "enabled": True},
+        agent_id="a",
+    )
+    assert isinstance(out, dict) and "error" in out
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_toggle_automation_executes_when_domain_green():
+    d = _make_dispatcher(execute_policy={"tiers": {"automation": "green"}})
+    out = await d.dispatch(
+        "toggle_automation",
+        {"automation_id": "morning_briefing", "enabled": True},
+        agent_id="a",
+    )
+    assert out is True
+    d._ha.call_service.assert_awaited_once_with(
+        "automation", "turn_on", {"entity_id": "automation.morning_briefing"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_input_helper_denied_when_domain_not_green():
+    """input_boolean not configured green -> gated (deny_off), not executed.
+
+    Guest/vacation/alarm-override automations are commonly wired off input
+    helpers, so this must go through the same semaforo as any other actuator.
+    """
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "set_input_helper",
+        {"entity_id": "input_boolean.guest_mode", "value": True},
+        agent_id="a",
+    )
+    assert isinstance(out, dict) and "error" in out
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_input_helper_confirmation_required_when_yellow():
+    seen = {}
+
+    async def sink(*, tool, inputs, tier, user):
+        seen.update(tool=tool, tier=tier, user=user)
+        return {"id": "nonce-ih", "otp_sent": True}
+
+    d = _make_dispatcher(
+        execute_policy={"tiers": {"input_boolean": "yellow"}},
+        request_confirmation=sink,
+    )
+    out = await d.dispatch(
+        "set_input_helper",
+        {"entity_id": "input_boolean.guest_mode", "value": True},
+        agent_id="a",
+        user_id="paolo",
+    )
+    assert out["status"] == "confirmation_required" and out["id"] == "nonce-ih"
+    assert out["tier"] == "yellow"
+    assert seen == {"tool": "set_input_helper", "tier": "yellow", "user": "paolo"}
+    d._ha.call_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_input_helper_executes_when_domain_green():
+    d = _make_dispatcher(execute_policy={"tiers": {"input_boolean": "green"}})
+    out = await d.dispatch(
+        "set_input_helper",
+        {"entity_id": "input_boolean.guest_mode", "value": True},
+        agent_id="a",
+    )
+    assert out == {"entity_id": "input_boolean.guest_mode", "service": "input_boolean.turn_on", "ok": True}
+    d._ha.call_service.assert_awaited_once_with(
+        "input_boolean", "turn_on", {"entity_id": "input_boolean.guest_mode"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_input_helper_number_executes_when_domain_green():
+    d = _make_dispatcher(execute_policy={"tiers": {"input_number": "green"}})
+    out = await d.dispatch(
+        "set_input_helper",
+        {"entity_id": "input_number.target_temp", "value": 21.5},
+        agent_id="a",
+    )
+    assert out["ok"] is True
+    d._ha.call_service.assert_awaited_once_with(
+        "input_number", "set_value", {"entity_id": "input_number.target_temp", "value": 21.5}
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_input_helper_number_denied_when_domain_not_green():
+    d = _make_dispatcher()
+    out = await d.dispatch(
+        "set_input_helper",
+        {"entity_id": "input_number.target_temp", "value": 21.5},
+        agent_id="a",
+    )
+    assert isinstance(out, dict) and "error" in out
+    d._ha.call_service.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
