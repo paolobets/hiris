@@ -101,3 +101,63 @@ async def test_green_then_per_agent_whitelist_still_applies():
     )
     assert "error" in r and "not permitted" in r["error"]
     assert d._ha.calls == []
+
+
+# ── review A/#5: target-vs-data split (gated entities must == executed entities) ──
+
+
+@pytest.mark.asyncio
+async def test_target_only_scoped_call_not_broadcast_to_domain():
+    # A call scoped via `target` (empty `data`) to a single green entity must be
+    # gated for -- and executed against -- exactly that entity. Forwarding empty
+    # `data` to HA would make HA treat this as a domain-wide broadcast, actuating
+    # every light in the house instead of just light.kitchen.
+    d = _disp({"tiers": {"light": "green"}})
+    r = await d.dispatch(
+        "call_ha_service",
+        {"domain": "light", "service": "turn_on", "target": {"entity_id": "light.kitchen"}},
+    )
+    assert r == {"ok": True}
+    assert d._ha.calls == [("light", "turn_on", {"entity_id": "light.kitchen"})]
+
+
+@pytest.mark.asyncio
+async def test_target_only_scoped_call_gated_per_entity_not_domain():
+    # If the target entity itself is red (needs confirmation) while the domain
+    # default is green, the call must be gated on the TARGET entity, not allowed
+    # just because `data` (which the old code gated on) was empty.
+    d = _disp({"tiers": {"light": "green"}, "entity_tiers": {"light.bedroom": "red"}})
+    r = await d.dispatch(
+        "call_ha_service",
+        {"domain": "light", "service": "turn_on", "target": {"entity_id": "light.bedroom"}},
+    )
+    assert "error" in r and "conferma" in r["error"].lower()
+    assert d._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_data_and_target_entity_ids_are_unioned_for_gate_and_execution():
+    # data and target can both carry an entity_id; both must be gated AND both
+    # must reach HA (union), not just whichever one the old "or" picked first.
+    d = _disp({"tiers": {"light": "green"}})
+    r = await d.dispatch(
+        "call_ha_service",
+        {"domain": "light", "service": "turn_on",
+         "data": {"entity_id": "light.kitchen"}, "target": {"entity_id": "light.hall"}},
+    )
+    assert r == {"ok": True}
+    assert d._ha.calls == [("light", "turn_on", {"entity_id": ["light.kitchen", "light.hall"]})]
+
+
+@pytest.mark.asyncio
+async def test_genuine_domain_wide_call_without_entity_still_works():
+    # Neither data nor target carries an entity_id (or a group target) -> this is
+    # a legitimate domain-wide call gated on the domain tier. Must keep working
+    # exactly as before: no entity_id key gets fabricated into `data`.
+    d = _disp({"tiers": {"light": "green"}})
+    r = await d.dispatch(
+        "call_ha_service",
+        {"domain": "light", "service": "turn_off", "data": {}},
+    )
+    assert r == {"ok": True}
+    assert d._ha.calls == [("light", "turn_off", {})]

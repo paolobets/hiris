@@ -10,7 +10,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .security.semaphore import gate_action
+from .security.semaphore import gate_action, normalize_target
 from .tools.notify_tools import send_notification
 
 logger = logging.getLogger(__name__)
@@ -353,24 +353,25 @@ class TaskEngine:
             domain = action["domain"]
             service = action["service"]
             data = action.get("data", {})
-            _raw = data.get("entity_id") if isinstance(data, dict) else None
-            _eids = [
-                e for e in (
-                    [_raw] if isinstance(_raw, str)
-                    else list(_raw) if isinstance(_raw, list)
-                    else []
-                ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
-            ]
-            # Fix #2/#8: i task inoltrano solo `data` (non `target`): un target per
-            # area/dispositivo/label non è risolvibile ai tier per-entità → fail-closed
-            # (skip), INDIPENDENTEMENTE da entità esplicite accompagnatorie (HA attua
+            target = action.get("target", {}) or {}
+            # review A/#5: merge target into data ONCE (same helper the live
+            # dispatch path uses) so the entity_ids gated below are exactly the
+            # entity_ids forwarded to ha.call_service at the bottom -- a deferred
+            # task scoped via `target` must never execute as a domain-wide
+            # broadcast because `target` got silently dropped.
+            normalized = normalize_target(data, target)
+            # Fix #2/#8: un target per area/dispositivo/label (in data O target)
+            # non è risolvibile ai tier per-entità → fail-closed (skip),
+            # INDIPENDENTEMENTE da entità esplicite accompagnatorie (HA attua
             # l'intero gruppo lato server, bypassando gli override per-entità).
-            if isinstance(data, dict) and (data.get("area_id") or data.get("device_id") or data.get("label_id")):
+            # Questo guard deve valere anche sul path task_engine, non solo su
+            # quello live del dispatcher.
+            if normalized.has_group_target:
                 logger.warning("Task %s: call_ha_service gated: area/device/label target present (%s.%s)",
                                task.label, domain, service)
                 return f"skipped: group_target ({domain}.{service})"
             _v = gate_action(
-                domain=domain, service=service, entity_ids=_eids,
+                domain=domain, service=service, entity_ids=normalized.entity_ids,
                 tiers=self._execute_policy.get("tiers") or {},
                 entity_tiers=self._execute_policy.get("entity_tiers") or {},
             )
@@ -386,15 +387,13 @@ class TaskEngine:
                     )
                     return f"skipped: {svc_key} not permitted by policy"
             if task.allowed_entities is not None:
-                eid = data.get("entity_id") if isinstance(data, dict) else None
-                eids = [eid] if isinstance(eid, str) else (list(eid) if isinstance(eid, list) else [])
-                for e in eids:
+                for e in normalized.entity_ids:
                     if not any(fnmatch.fnmatch(e, pat) for pat in task.allowed_entities):
                         logger.warning(
                             "Task %s: entity %s blocked by policy", task.label, e
                         )
                         return f"skipped: entity {e!r} not permitted by policy"
-            return await self._ha.call_service(domain, service, data)
+            return await self._ha.call_service(domain, service, normalized.data)
         if a_type == "send_notification":
             return await send_notification(
                 self._ha, action.get("message", ""), action.get("channel", "ha_push"),

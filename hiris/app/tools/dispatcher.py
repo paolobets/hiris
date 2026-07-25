@@ -36,7 +36,7 @@ from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
 from ..brain.briefing import build_briefing_bundle, render_briefing_template
-from ..security.semaphore import gate_action
+from ..security.semaphore import gate_action, normalize_target
 
 logger = logging.getLogger(__name__)
 
@@ -292,36 +292,27 @@ class ToolDispatcher:
                 service = inputs["service"]
                 data = inputs.get("data", {})
                 target = inputs.get("target", {}) or {}
+                # review A/#5: merge target into data ONCE, so the entity_ids gated
+                # below are exactly the entity_ids forwarded to ha.call_service at
+                # the bottom -- a target-scoped call must never be executed as a
+                # domain-wide broadcast because `target` got silently dropped.
+                normalized = normalize_target(data, target)
                 # Semaforo universale (denylist + tier). Saltato se l'azione è già
                 # stata confermata out-of-band da un umano (approvazione gateway /
                 # step-up chat): in quel caso la conferma umana autorizza esattamente
                 # questo comando, denylist inclusa (killer feature step-up).
                 if not tier_confirmed:
-                    raw_gate_eid = (
-                        data.get("entity_id") if isinstance(data, dict) else None
-                    ) or target.get("entity_id")
-                    gate_eids = [
-                        e for e in (
-                            [raw_gate_eid] if isinstance(raw_gate_eid, str)
-                            else list(raw_gate_eid) if isinstance(raw_gate_eid, list)
-                            else []
-                        ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
-                    ]
                     # Fix #2/#8: un target per area/dispositivo/label non è risolvibile ai
                     # tier per-entità → fail-closed, INDIPENDENTEMENTE da entità esplicite
                     # accompagnatorie (HA attua l'intero gruppo lato server, bypassando
                     # gli override per-entità: un target misto entity_id+area_id fa sì
                     # che HA esegua su TUTTE le entità dell'area, non solo su quella verde).
-                    _has_group_target = any(
-                        (isinstance(d, dict) and (d.get("area_id") or d.get("device_id") or d.get("label_id")))
-                        for d in (data if isinstance(data, dict) else {}, target)
-                    )
-                    if _has_group_target:
+                    if normalized.has_group_target:
                         logger.warning("call_ha_service gated: area/device/label target present (%s.%s)", domain, service)
                         return {"error": "Azione su area/dispositivo/label non consentita dal semaforo: specifica le entità target."}
                     gate_result = await self._gate(
                         name=name, inputs=inputs, domain=domain, service=service,
-                        entity_ids=gate_eids, user_id=user_id,
+                        entity_ids=normalized.entity_ids, user_id=user_id,
                     )
                     if gate_result is not None:
                         return gate_result
@@ -331,14 +322,7 @@ class ToolDispatcher:
                         logger.warning("Service %s.%s blocked by policy", domain, service)
                         return {"error": f"Service {domain}.{service} not permitted by policy"}
                 if allowed_entities:
-                    raw_eid = (
-                        data.get("entity_id") if isinstance(data, dict) else None
-                    ) or target.get("entity_id")
-                    eids = (
-                        [raw_eid] if isinstance(raw_eid, str)
-                        else list(raw_eid) if isinstance(raw_eid, list)
-                        else []
-                    )
+                    eids = normalized.entity_ids
                     if not eids:
                         logger.warning("call_ha_service blocked: no target entity under an active entity whitelist")
                         return {"error": "call_ha_service richiede un entity_id target quando è attiva una whitelist"}
@@ -346,7 +330,7 @@ class ToolDispatcher:
                         if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
                             logger.warning("Entity %s blocked by allowed_entities policy", eid)
                             return {"error": f"Entity {eid!r} not permitted by policy"}
-                return await self._ha.call_service(domain, service, data)
+                return await self._ha.call_service(domain, service, normalized.data)
             if name == "create_task":
                 if self._task_engine is None:
                     return {"error": "TaskEngine not available"}

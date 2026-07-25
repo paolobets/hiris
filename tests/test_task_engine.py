@@ -396,6 +396,55 @@ async def test_task_group_target_log_message_matches_dispatcher_wording(caplog):
     assert "without explicit entities" not in logged[0]
 
 
+# ── review A/#5: target-vs-data split (gated entities must == executed entities) ──
+
+
+@pytest.mark.asyncio
+async def test_task_target_only_scoped_call_not_broadcast_to_domain():
+    # A deferred call_ha_service scoped via `target` (no `data.entity_id`) must
+    # execute scoped to that entity, not as a domain-wide broadcast -- the task
+    # engine previously read only `data`, so `target` was silently dropped and
+    # HA received no entity_id filter at all.
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
+              "target": {"entity_id": "light.kitchen"}}
+    t = Task(id="t5", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    res = await eng._run_action(action, t)
+    assert res == {"ok": True}
+    assert eng._ha.calls == [("light", "turn_on", {"entity_id": "light.kitchen"})]
+
+
+@pytest.mark.asyncio
+async def test_task_group_target_in_target_field_fail_closed():
+    # The group-target fail-closed guard must fire when the area/device/label
+    # lives under `target`, not only under `data` -- the task engine previously
+    # never even read `target`, so this bypassed the guard entirely.
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
+              "target": {"area_id": "cucina"}}
+    t = Task(id="t6", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and res.startswith("skipped")
+    assert eng._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_task_domain_wide_call_without_entity_still_works():
+    # Neither data nor target carries an entity_id (or a group target) -> this
+    # is a legitimate domain-wide call gated on the domain tier. Must keep
+    # working exactly as before.
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
+              "data": {}}
+    t = Task(id="t7", label="x", agent_id="a", created_at=_now_iso(),
+              trigger={"type": "immediate"}, actions=[action])
+    res = await eng._run_action(action, t)
+    assert res == {"ok": True}
+    assert eng._ha.calls == [("light", "turn_off", {})]
+
+
 @pytest.mark.asyncio
 async def test_task_non_string_entity_id_does_not_crash():
     # entity_id: [123] (non-string list contents) must be filtered out (not
