@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -308,7 +309,80 @@ def _redact_stream_tool_calls(tool_calls: list) -> list:
     return out
 
 
+# ── Per-call tool-call / thinking-block isolation (review A/#3) ────────────
+# ClaudeRunner and OpenAICompatRunner are long-lived singletons shared by
+# every interactive chat request AND every scheduler-driven agent run on the
+# same event loop. `last_tool_calls`/`last_thinking_blocks` used to be plain
+# unlocked instance attributes: chat() reset them to [] then appended after
+# `await` points. Two overlapping calls on the SAME runner instance (e.g. a
+# chat request racing a background persona run) could interleave their
+# resets/appends and leak one call's tool-call inputs (entity IDs,
+# memory-recall content, HTTP payloads) into a completely different call's
+# debug_payload / SSE `done` event, or silently wipe them.
+#
+# Fix: back both attributes with a contextvars.ContextVar instead of a plain
+# instance attribute, via the _PerCallList descriptor below. asyncio.Task
+# creation copies the current Context, and ContextVar.set() inside a Task
+# mutates only that Task's own copy — never a sibling Task's. Two concurrent
+# Tasks calling chat()/run_with_actions() on the very same runner instance
+# therefore never observe each other's resets or appends, even though they
+# share the object. Within a single Task (the normal, non-overlapping case —
+# e.g. handlers_chat.py reading `runner.last_tool_calls` right after
+# `await runner.chat(...)`), the value set inside chat() is still visible to
+# the caller immediately afterward: that is just a regular attribute read
+# within the same unmodified Context, so single-call behavior is unchanged.
+#
+# The ContextVar objects are module-level so ClaudeRunner and
+# OpenAICompatRunner (which imports them below) share the exact same
+# isolation buffers, and so LLMRouter (llm_router.py) can proxy its own
+# last_tool_calls/last_thinking_blocks properties to the SAME per-call state
+# instead of scanning its registered backends for "whichever has a
+# non-empty list" (the old LLMRouter property — that scan could return a
+# totally different caller's tool calls than the one that just ran through
+# the router, amplifying the same race).
+_current_tool_calls: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
+    "hiris_current_tool_calls", default=None
+)
+_current_thinking_blocks: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
+    "hiris_current_thinking_blocks", default=None
+)
+
+
+class _PerCallList:
+    """Descriptor for a list attribute backed by a contextvars.ContextVar.
+
+    `obj.attr` reads the current Task's buffer (or `[]` if never set in this
+    Task); `obj.attr = value` sets it for the current Task only. See the
+    module comment above for the full isolation rationale.
+    """
+
+    def __init__(self, var: "contextvars.ContextVar[Optional[list]]") -> None:
+        self._var = var
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        # `is not None`, NOT `or []` -- the reset step (chat() does
+        # `self.last_tool_calls = []` before any appends) legitimately sets
+        # the ContextVar to an empty-but-real list. `val or []` would treat
+        # that falsy `[]` as "unset" and hand back a throwaway literal `[]`
+        # on every read instead of the stored list, silently discarding every
+        # subsequent `.append()` (they'd mutate a list nobody keeps a
+        # reference to). Only a genuine `None` (never set in this Task) falls
+        # back to a fresh empty list.
+        val = self._var.get()
+        return val if val is not None else []
+
+    def __set__(self, obj, value) -> None:
+        self._var.set(value)
+
+
 class ClaudeRunner:
+    # Per-call, per-asyncio-Task isolated — NOT shared mutable instance state,
+    # even though this object is a long-lived singleton (see comment above).
+    last_tool_calls = _PerCallList(_current_tool_calls)
+    last_thinking_blocks = _PerCallList(_current_thinking_blocks)
+
     def __init__(
         self,
         api_key: str,
@@ -319,10 +393,10 @@ class ClaudeRunner:
         self._dispatcher = dispatcher
         self._usage_path = usage_path
         self._is_cloud = True  # Anthropic cloud — always pseudonymize sensitive content
-        self.last_tool_calls: list[dict] = []
-        # Captured thinking blocks from the most recent run (extended thinking).
-        # Empty list when thinking is disabled or model returns no thinking.
-        self.last_thinking_blocks: list[str] = []
+        # last_tool_calls / last_thinking_blocks are intentionally NOT
+        # initialized here — they are per-call/per-Task class-level
+        # descriptors (see above); chat() resets them at the start of every
+        # call, scoped to the calling Task.
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
         self.total_requests: int = 0

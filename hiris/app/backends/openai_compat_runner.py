@@ -17,6 +17,8 @@ from ..claude_runner import (
     RESTRICT_PROMPT,
     REQUIRE_CONFIRMATION_PROMPT,
     _redact_stream_tool_calls,
+    _current_tool_calls,
+    _PerCallList,
 )
 from .pricing import PRICING as _PRICING
 
@@ -172,6 +174,13 @@ def parse_upstream_rate_limit(exc: Any) -> Optional[str]:
 class OpenAICompatRunner:
     """Agentic LLM runner for OpenAI-compatible APIs (OpenAI cloud + Ollama local)."""
 
+    # Per-call, per-asyncio-Task isolated — shares the SAME ContextVar as
+    # ClaudeRunner (review A/#3 — see claude_runner.py's module comment for
+    # the full rationale). No last_thinking_blocks here: OpenAI-compatible
+    # backends don't support Anthropic Extended Thinking (thinking_budget is
+    # accepted-and-ignored in chat()/run_with_actions() below).
+    last_tool_calls = _PerCallList(_current_tool_calls)
+
     def __init__(
         self,
         base_url: str,
@@ -212,7 +221,9 @@ class OpenAICompatRunner:
         # Circuit-breaker state for connection-class failures (dead endpoint).
         self._conn_fail_count = 0
         self._circuit_open_until = 0.0
-        self.last_tool_calls: list[dict] = []
+        # last_tool_calls is intentionally NOT initialized here — it's a
+        # per-call/per-Task class-level descriptor (see above); chat() resets
+        # it at the start of every call, scoped to the calling Task.
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
         self.total_requests: int = 0

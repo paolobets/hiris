@@ -4,6 +4,8 @@ import logging
 import re
 from typing import Any
 
+from .claude_runner import _current_tool_calls, _current_thinking_blocks
+
 logger = logging.getLogger(__name__)
 
 _CLASSIFY_SYSTEM = (
@@ -258,11 +260,26 @@ class LLMRouter:
 
     @property
     def last_tool_calls(self) -> list:
-        for r in reversed(self._all):
-            tc = getattr(r, "last_tool_calls", None)
-            if tc:
-                return tc
-        return []
+        """Tool calls from the call that just ran through THIS asyncio Task.
+
+        Proxies straight to the shared per-call ContextVar (see
+        claude_runner.py's module comment, review A/#3) instead of scanning
+        registered backends for "whichever has a non-empty list" — the old
+        scan could return a completely different caller's tool calls than
+        the one that actually served this request, since every backend
+        shares the router and any of them could have run moments earlier on
+        another Task.
+        """
+        val = _current_tool_calls.get()
+        return val if val is not None else []
+
+    @property
+    def last_thinking_blocks(self) -> list:
+        """Extended-thinking blocks from the call that just ran through THIS
+        asyncio Task. See last_tool_calls above — same ContextVar-backed
+        isolation, shared with ClaudeRunner/OpenAICompatRunner."""
+        val = _current_thinking_blocks.get()
+        return val if val is not None else []
 
     @property
     def total_input_tokens(self) -> int:
