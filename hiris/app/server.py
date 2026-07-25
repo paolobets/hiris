@@ -150,17 +150,12 @@ def _confirmation_push_message(label: str, inputs: dict, otp: str) -> str:
     interpolated here ONLY — this string is passed straight to ``notify(...)``
     (the phone push), never returned to the chat/LLM side.
     """
-    data = inputs.get("data") if isinstance(inputs.get("data"), dict) else {}
-    target = inputs.get("target") if isinstance(inputs.get("target"), dict) else {}
-    raw = data.get("entity_id") if isinstance(data, dict) else None
-    if raw is None:
-        raw = target.get("entity_id") if isinstance(target, dict) else None
-    if isinstance(raw, str):
-        ids = [raw]
-    elif isinstance(raw, list):
-        ids = [e for e in raw if isinstance(e, str)]
-    else:
-        ids = []
+    # Show the UNION of data+target entities -- the exact set that actuates
+    # after confirmation (review A/#5 I1). First-wins here would let a decoy
+    # `data` entity hide a smuggled `target` entity the human is really
+    # approving. Uses the same normalizer the gate/execution use.
+    from .security.semaphore import normalize_target
+    ids = normalize_target(inputs.get("data"), inputs.get("target")).entity_ids
     targets_str = ", ".join(ids) if ids else "(nessuna entità)"
     return (f'HIRIS: confermi "{label}" su {targets_str}? '
             f'Tocca Conferma, oppure usa il codice {otp}.')

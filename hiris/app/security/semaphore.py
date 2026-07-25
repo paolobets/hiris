@@ -56,10 +56,13 @@ def normalize_target(data: dict | None, target: dict | None) -> NormalizedTarget
     merged_data = dict(data) if isinstance(data, dict) else {}
     target = target if isinstance(target, dict) else {}
 
-    has_group_target = bool(
-        merged_data.get("area_id") or merged_data.get("device_id") or merged_data.get("label_id")
-        or target.get("area_id") or target.get("device_id") or target.get("label_id")
-    )
+    # HA honors area_id/device_id/label_id/floor_id as group targets (in target
+    # AND inside service data). None resolves to a per-entity tier, so any of
+    # them must fail-closed reject on unconfirmed paths — floor_id included
+    # (HA >=2024.4, same era as label_id), else data={"floor_id":...} broadcasts
+    # a whole floor while gated on a single green entity.
+    _GROUP_KEYS = ("area_id", "device_id", "label_id", "floor_id")
+    has_group_target = any(merged_data.get(k) or target.get(k) for k in _GROUP_KEYS)
 
     entity_ids = _as_entity_list(merged_data.get("entity_id"))
     for eid in _as_entity_list(target.get("entity_id")):
