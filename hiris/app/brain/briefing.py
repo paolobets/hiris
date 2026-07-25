@@ -227,7 +227,10 @@ def render_briefing_template(bundle: dict) -> str:
                 if when:
                     lines.append(f"- {content} ({when})")
                 else:
-                    due = d.get("due_date")
+                    # Only show a due date we can validate as ISO -- never echo
+                    # unparseable free-text from the stored due_date column.
+                    _iso = _parse_iso_date(d.get("due_date"))
+                    due = _iso.isoformat() if _iso else None
                     lines.append(f"- {content}" + (f" (entro il {due})" if due else ""))
             except Exception:
                 continue
@@ -285,9 +288,14 @@ def build_briefing_message(bundle: dict) -> str:
     for d in deadlines:
         if not isinstance(d, dict):
             continue
+        # due_date is stored as free-text (TEXT column, no write-time format
+        # validation) so a poisoned value that passes the store's lexicographic
+        # filter could smuggle raw text into the LLM message. Emit only a
+        # re-serialized valid ISO date; anything unparseable becomes None.
+        _iso = _parse_iso_date(d.get("due_date"))
         san_deadlines.append({
             "content": _san(d.get("content")),
-            "due_date": d.get("due_date"),
+            "due_date": _iso.isoformat() if _iso else None,
             "days_left": d.get("days_left"),
             "sensitive": bool(d.get("sensitive")),
         })
