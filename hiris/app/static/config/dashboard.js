@@ -28,13 +28,17 @@
   /* Fallback fetch: loadAgents() in agent-form.js mutates module state and
      touches DOM (#agent-list); not safe to call before that DOM exists. */
   function fetchAgentsDirect() {
+    /* Rejects on failure (does NOT coerce to []) so mount() can tell a real
+       network/server error apart from a genuinely-empty first run -- otherwise
+       a blip would show the first-run onboarding to a user who has agents. */
     return fetch('api/agents').then(function(r) {
-      return r.ok ? r.json() : { agents: [] };
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
     }).then(function(d) {
       /* api/agents returns either an array or {agents: [...]} */
       if (Array.isArray(d)) return d;
       return d.agents || [];
-    }).catch(function() { return []; });
+    });
   }
 
   function renderEmpty(outlet) {
@@ -251,6 +255,11 @@
         HirisState.set('agents', loaded);
         if (loaded.length === 0) renderEmpty(outlet);
         else renderPopulated(outlet, loaded);
+      }).catch(function(err) {
+        /* Network/server error: show an error, NOT the first-run onboarding,
+           and do not clobber shared state with a false empty list. */
+        console.error('[dashboard] agents fetch failed', err);
+        outlet.innerHTML = '<div class="proposals-error">Errore nel caricamento della dashboard. Riprova.</div>';
       });
     } else {
       renderPopulated(outlet, agents);

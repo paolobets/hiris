@@ -70,7 +70,7 @@
     }).catch(function(err) {
       console.error('agents fetch failed', err);
       var body = document.getElementById('agents-list-body');
-      if (body) body.innerHTML = '<div class="proposals-error" style="text-align:center;padding:24px">Errore di rete: impossibile caricare la lista agenti.</div>';
+      if (body) body.innerHTML = '<div class="proposals-error" style="text-align:center;padding:24px">Errore nel caricamento della lista agenti. Riprova.</div>';
     });
   }
 
