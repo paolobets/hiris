@@ -506,3 +506,171 @@ def test_cleanup_keeps_tasks_within_7_days(engine):
 
     assert old_task.id not in engine._tasks
     assert recent_task.id in engine._tasks
+
+
+# ── review C/#14: malformed condition must never stick a task at 'running' ─
+
+
+def test_add_task_rejects_condition_missing_operator(engine):
+    with pytest.raises(ValueError, match="operator"):
+        engine.add_task(
+            {
+                "label": "Bad cond",
+                "trigger": {"type": "delay", "minutes": 1},
+                "actions": [],
+                "condition": {"entity_id": "sensor.temp", "value": 10},
+            },
+            agent_id="hiris-default",
+        )
+
+
+def test_add_task_rejects_condition_missing_value(engine):
+    with pytest.raises(ValueError, match="value"):
+        engine.add_task(
+            {
+                "label": "Bad cond",
+                "trigger": {"type": "delay", "minutes": 1},
+                "actions": [],
+                "condition": {"entity_id": "sensor.temp", "operator": "<"},
+            },
+            agent_id="hiris-default",
+        )
+
+
+def test_add_task_rejects_condition_missing_entity_id(engine):
+    with pytest.raises(ValueError, match="entity_id"):
+        engine.add_task(
+            {
+                "label": "Bad cond",
+                "trigger": {"type": "delay", "minutes": 1},
+                "actions": [],
+                "condition": {"operator": "<", "value": 10},
+            },
+            agent_id="hiris-default",
+        )
+
+
+def test_add_task_rejects_condition_unknown_operator(engine):
+    with pytest.raises(ValueError, match="operator"):
+        engine.add_task(
+            {
+                "label": "Bad cond",
+                "trigger": {"type": "delay", "minutes": 1},
+                "actions": [],
+                "condition": {"entity_id": "sensor.temp", "operator": "??", "value": 10},
+            },
+            agent_id="hiris-default",
+        )
+
+
+def test_add_task_rejects_condition_not_a_dict(engine):
+    with pytest.raises(ValueError, match="object"):
+        engine.add_task(
+            {
+                "label": "Bad cond",
+                "trigger": {"type": "delay", "minutes": 1},
+                "actions": [],
+                "condition": "not-a-dict",
+            },
+            agent_id="hiris-default",
+        )
+
+
+def test_add_task_accepts_valid_condition(engine):
+    task = engine.add_task(
+        {
+            "label": "Good cond",
+            "trigger": {"type": "delay", "minutes": 1},
+            "actions": [],
+            "condition": {"entity_id": "sensor.temp", "operator": "<", "value": 19},
+        },
+        agent_id="hiris-default",
+    )
+    assert task.status == "pending"
+    assert task.condition == {"entity_id": "sensor.temp", "operator": "<", "value": 19}
+
+
+def test_add_task_no_condition_still_works(engine):
+    task = engine.add_task(
+        {"label": "No cond", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
+        agent_id="hiris-default",
+    )
+    assert task.status == "pending"
+    assert task.condition is None
+
+
+@pytest.mark.asyncio
+async def test_execute_task_condition_crash_ends_terminal_not_stuck_running(engine, mock_cache):
+    """If a malformed condition somehow reaches execution (e.g. legacy data
+    on disk from before add_task validated the shape), _evaluate_condition
+    raising must NOT leave the task stuck at 'running' forever -- it must
+    end in a terminal status so it can be cleaned up. Bypasses add_task's
+    validation by writing the bad condition directly onto the task, since
+    add_task itself now rejects it at creation (defense in depth: this
+    exercises the execution-time fail-safe independently)."""
+    task = engine.add_task(
+        {"label": "Crash cond", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
+        agent_id="hiris-default",
+    )
+    # Simulate a condition that raises inside _evaluate_condition (missing
+    # 'operator' -> KeyError on condition["operator"]).
+    engine._tasks[task.id].condition = {"entity_id": "sensor.temp", "value": 10}
+
+    await engine._execute_task(task.id)
+
+    from hiris.app.task_engine import _TERMINAL
+    result_task = engine._tasks[task.id]
+    assert result_task.status != "running"
+    assert result_task.status in _TERMINAL
+    assert result_task.status == "failed"
+    assert result_task.error is not None
+
+    # Terminal now -> _cleanup() will eventually reap it (was previously
+    # impossible for a stuck 'running' task).
+    result_task.executed_at = (
+        datetime.now(timezone.utc) - timedelta(hours=169)
+    ).isoformat()
+    engine._cleanup()
+    assert task.id not in engine._tasks
+
+
+@pytest.mark.asyncio
+async def test_execute_task_condition_crash_not_cancellable_but_not_stuck(engine):
+    """A task already in a terminal status (post-fix) is not 'stuck running':
+    cancel_task legitimately reports False (it's not pending -- it already
+    finished), which is the correct terminal-state semantics, unlike the old
+    bug where the task was permanently 'running' and ALSO uncancellable."""
+    task = engine.add_task(
+        {"label": "Crash cond 2", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
+        agent_id="hiris-default",
+    )
+    # Missing 'value' -> KeyError inside _evaluate_condition.
+    engine._tasks[task.id].condition = {"entity_id": "sensor.temp", "operator": "<"}
+
+    await engine._execute_task(task.id)
+
+    result_task = engine._tasks[task.id]
+    assert result_task.status == "failed"
+    # Already terminal, so cancel correctly no-ops (not stuck at 'running').
+    assert engine.cancel_task(task.id) is False
+
+
+@pytest.mark.asyncio
+async def test_execute_task_runs_when_valid_condition_met(engine, mock_cache, mock_ha):
+    """Regression: a well-formed, satisfied condition still lets the task run
+    its actions normally (the fail-safe must not interfere with the legit
+    path)."""
+    mock_cache.get_state = MagicMock(return_value={"state": "15.0"})
+    task = engine.add_task(
+        {
+            "label": "Runs fine",
+            "trigger": {"type": "delay", "minutes": 1},
+            "condition": {"entity_id": "sensor.temp", "operator": "<", "value": 19},
+            "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on",
+                         "data": {"entity_id": "light.test"}}],
+        },
+        agent_id="hiris-default",
+    )
+    await engine._execute_task(task.id)
+    assert engine._tasks[task.id].status == "done"
+    mock_ha.call_service.assert_called_once_with("light", "turn_on", {"entity_id": "light.test"})
