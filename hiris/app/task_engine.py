@@ -498,14 +498,21 @@ class TaskEngine:
         to_h, to_m = (int(x) for x in trigger["to"].split(":"))
         from_dt = now.replace(hour=from_h, minute=from_m, second=0, microsecond=0)
         to_dt = now.replace(hour=to_h, minute=to_m, second=0, microsecond=0)
-        if now > to_dt:
-            task.status = "expired"
-            task.executed_at = datetime.now(timezone.utc).isoformat()
-            task.result = "Time window expired without condition being met"
-            self._remove_job(task_id)
-            self._save()
-            return
-        if now < from_dt:
+        # Handle windows that span midnight (e.g. 23:00 -> 06:00, or the edge
+        # case where "now+1h" wraps past 00:00): when `to` <= `from` on the same
+        # day, the window wraps, so "in window" is `now >= from OR now <= to`.
+        # A non-wrapping window still expires once fully past `to` today; a
+        # wrapping window recurs nightly and is never marked expired by this
+        # tick (it just waits out the daytime dead-zone).
+        wraps = to_dt <= from_dt
+        in_window = (from_dt <= now <= to_dt) if not wraps else (now >= from_dt or now <= to_dt)
+        if not in_window:
+            if not wraps and now > to_dt:
+                task.status = "expired"
+                task.executed_at = datetime.now(timezone.utc).isoformat()
+                task.result = "Time window expired without condition being met"
+                self._remove_job(task_id)
+                self._save()
             return
         # Fail-safe (review C/#14): a malformed condition reloaded from disk
         # (_load does not re-validate) must not raise out of this interval job

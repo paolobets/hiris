@@ -318,6 +318,65 @@ async def test_check_time_window_within_window(engine, mock_ha):
     assert engine._tasks[task.id].status == "done"
 
 
+def _patch_now(monkeypatch, hour, minute=0):
+    """Freeze task_engine's clock at a fixed local time (deterministic
+    midnight-wraparound tests, independent of the machine's wall-clock)."""
+    import hiris.app.task_engine as te
+    real = te.datetime
+    fixed = real(2026, 7, 25, hour, minute)
+
+    class _FakeDatetime(real):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.replace(tzinfo=tz) if tz else fixed
+
+    monkeypatch.setattr(te, "datetime", _FakeDatetime)
+
+
+@pytest.mark.asyncio
+async def test_check_time_window_overnight_active_at_night(engine, mock_ha, monkeypatch):
+    # Overnight window 23:00 -> 06:00 (spans midnight). At 02:00 we are INSIDE
+    # it -> execute (regression: pre-fix this expired because to < from).
+    _patch_now(monkeypatch, 2, 0)
+    task = engine.add_task(
+        {"label": "Notte", "trigger": {"type": "time_window", "from": "23:00",
+         "to": "06:00", "check_interval_minutes": 5},
+         "actions": [{"type": "call_ha_service", "domain": "light",
+                      "service": "turn_off", "data": {"entity_id": "light.x"}}]},
+        agent_id="hiris-default")
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "done"
+
+
+@pytest.mark.asyncio
+async def test_check_time_window_overnight_dead_zone_waits_not_expired(engine, mock_ha, monkeypatch):
+    # Same overnight window at 12:00 (the daytime dead-zone): NOT in window,
+    # but a wrapping window recurs nightly -> stay pending, never "expired".
+    _patch_now(monkeypatch, 12, 0)
+    task = engine.add_task(
+        {"label": "Notte", "trigger": {"type": "time_window", "from": "23:00",
+         "to": "06:00", "check_interval_minutes": 5},
+         "actions": [{"type": "call_ha_service", "domain": "light",
+                      "service": "turn_off", "data": {"entity_id": "light.x"}}]},
+        agent_id="hiris-default")
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_check_time_window_normal_expires_after_to(engine, mock_ha, monkeypatch):
+    # Non-wrapping window 08:00 -> 10:00 at 12:00 -> fully past -> expired.
+    _patch_now(monkeypatch, 12, 0)
+    task = engine.add_task(
+        {"label": "Mattina", "trigger": {"type": "time_window", "from": "08:00",
+         "to": "10:00", "check_interval_minutes": 5},
+         "actions": [{"type": "call_ha_service", "domain": "light",
+                      "service": "turn_on", "data": {"entity_id": "light.x"}}]},
+        agent_id="hiris-default")
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "expired"
+
+
 def test_at_datetime_schedules_correct_run_date(engine):
     future = datetime.now() + timedelta(hours=2)
     future_iso = future.replace(microsecond=0).isoformat()
