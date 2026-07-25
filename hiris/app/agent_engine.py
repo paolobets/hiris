@@ -495,8 +495,12 @@ class AgentEngine:
             _kinds_raw = _ka.get("kinds", "all")
             _knowledge_kinds = None if _kinds_raw == "all" else _kinds_raw
             try:
-                result = await asyncio.wait_for(
-                    self._claude_runner.chat(
+                # asyncio.timeout (not wait_for): wait_for wraps the coroutine in
+                # a NEW Task on Python 3.11, which gets a COPY of the context, so
+                # the runner's per-call ContextVar tool-calls/thinking (review A/#3)
+                # would be invisible here. asyncio.timeout awaits in THIS Task.
+                async with asyncio.timeout(_AGENT_RUN_TIMEOUT):
+                    result = await self._claude_runner.chat(
                         user_message=user_message,
                         system_prompt=effective_prompt,
                         allowed_tools=agent.allowed_tools or None,
@@ -517,9 +521,7 @@ class AgentEngine:
                         thinking_budget=agent.thinking_budget,
                         knowledge_allow_sensitive=_allow_sensitive,
                         knowledge_kinds=_knowledge_kinds,
-                    ),
-                    timeout=_AGENT_RUN_TIMEOUT,
-                )
+                    )
             except asyncio.TimeoutError:
                 raise RuntimeError(
                     f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
