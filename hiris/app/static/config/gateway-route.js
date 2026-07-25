@@ -120,7 +120,8 @@ window.HirisGatewayRoute = (function () {
     srow.appendChild(el('span', null, '🔔 Servizio notifica (Giallo):'));
     var svc = el('input');
     svc.type = 'text';
-    svc.value = settings.notify_service || 'notify.iphone_bet';
+    svc.value = settings.notify_service || '';
+    svc.placeholder = 'es. notify.mobile_app_<device>';
     svc.style.cssText = 'padding:8px 10px;border-radius:8px;min-width:160px;flex:1 1 200px;min-height:44px;box-sizing:border-box';
     srow.appendChild(svc);
     body.appendChild(srow);

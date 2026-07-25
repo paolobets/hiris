@@ -154,7 +154,7 @@ def _make_tier_app(tiers, tmp_path):
     app["tool_dispatcher"] = _FakeDispatcher()
     app["data_dir"] = str(tmp_path)
     app["ha_client"] = _FakeHA()
-    app["gateway_notify_service"] = "notify.iphone_bet"
+    app["gateway_settings"] = {"notify_service": "notify.mobile_app_test"}
     app.router.add_post("/api/execute", handle_execute)
     return app
 
@@ -173,7 +173,7 @@ async def test_execute_yellow_action_held_and_notified(aiohttp_client, tmp_path)
     assert res["status"] == "pending_approval" and res["tier"] == "yellow"
     assert app["tool_dispatcher"].calls == []                # held, not executed
     assert len(app["ha_client"].calls) == 1                  # actionable notification sent
-    assert app["ha_client"].calls[0][1] == "iphone_bet"
+    assert app["ha_client"].calls[0][1] == "mobile_app_test"
 
 
 @pytest.mark.asyncio

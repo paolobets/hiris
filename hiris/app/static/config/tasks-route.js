@@ -150,11 +150,11 @@
       '<div class="page-title">Task pianificati</div>' +
       '<p class="page-subtitle">Task asincrone schedulate dagli agenti (es. <code class="code-inline">create_task()</code> in irrigazione, scenari rientro, ecc).</p>' +
       '<div class="log-toolbar">' +
-        '<span class="filter-chip active" data-filter="all">tutti<span class="fc-count" id="tasks-count-all">—</span></span>' +
-        '<span class="filter-chip" data-filter="pending">⏱ in attesa<span class="fc-count" id="tasks-count-pending">—</span></span>' +
-        '<span class="filter-chip" data-filter="executed">✓ eseguiti<span class="fc-count" id="tasks-count-executed">—</span></span>' +
-        '<span class="filter-chip" data-filter="failed">✗ falliti<span class="fc-count" id="tasks-count-failed">—</span></span>' +
-        '<span class="filter-chip" data-filter="cancelled">⊘ cancellati<span class="fc-count" id="tasks-count-cancelled">—</span></span>' +
+        '<button type="button" class="filter-chip active" data-filter="all" aria-pressed="true">tutti<span class="fc-count" id="tasks-count-all">—</span></button>' +
+        '<button type="button" class="filter-chip" data-filter="pending" aria-pressed="false">⏱ in attesa<span class="fc-count" id="tasks-count-pending">—</span></button>' +
+        '<button type="button" class="filter-chip" data-filter="executed" aria-pressed="false">✓ eseguiti<span class="fc-count" id="tasks-count-executed">—</span></button>' +
+        '<button type="button" class="filter-chip" data-filter="failed" aria-pressed="false">✗ falliti<span class="fc-count" id="tasks-count-failed">—</span></button>' +
+        '<button type="button" class="filter-chip" data-filter="cancelled" aria-pressed="false">⊘ cancellati<span class="fc-count" id="tasks-count-cancelled">—</span></button>' +
         '<span class="lt-spacer"></span>' +
         '<button class="btn btn-sm btn-ghost" id="tasks-refresh">↻ aggiorna</button>' +
       '</div>' +
@@ -165,8 +165,12 @@
     /* Wire filter chips */
     document.querySelectorAll('#route-outlet .filter-chip').forEach(function(chip) {
       chip.addEventListener('click', function() {
-        document.querySelectorAll('#route-outlet .filter-chip').forEach(function(c) { c.classList.remove('active'); });
+        document.querySelectorAll('#route-outlet .filter-chip').forEach(function(c) {
+          c.classList.remove('active');
+          c.setAttribute('aria-pressed', 'false');
+        });
         chip.classList.add('active');
+        chip.setAttribute('aria-pressed', 'true');
         currentFilter = chip.dataset.filter;
         renderTasks(currentFilter);
       });

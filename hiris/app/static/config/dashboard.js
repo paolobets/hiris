@@ -28,13 +28,17 @@
   /* Fallback fetch: loadAgents() in agent-form.js mutates module state and
      touches DOM (#agent-list); not safe to call before that DOM exists. */
   function fetchAgentsDirect() {
+    /* Rejects on failure (does NOT coerce to []) so mount() can tell a real
+       network/server error apart from a genuinely-empty first run -- otherwise
+       a blip would show the first-run onboarding to a user who has agents. */
     return fetch('api/agents').then(function(r) {
-      return r.ok ? r.json() : { agents: [] };
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
     }).then(function(d) {
       /* api/agents returns either an array or {agents: [...]} */
       if (Array.isArray(d)) return d;
       return d.agents || [];
-    }).catch(function() { return []; });
+    });
   }
 
   function renderEmpty(outlet) {
@@ -119,15 +123,14 @@
             '<h3>Proposte pending <span class="right" id="dash-prop-count">—</span></h3>' +
             '<div id="dash-proposals-body"><div style="padding:16px;color:var(--text-3)">Caricamento…</div></div>' +
           '</div>' +
-          '<div class="dash-list">' +
-            '<h3>Prossimi trigger <span class="right">presto</span></h3>' +
-            '<div style="padding:16px;color:var(--text-3);font-size:var(--fs-12)">In arrivo — vista calendaristica dei prossimi trigger schedulati.</div>' +
-          '</div>' +
         '</div>' +
       '</div>';
 
     /* Async loaders */
-    fetch('api/usage').then(function(r) { return r.ok ? r.json() : {}; }).then(function(u) {
+    fetch('api/usage').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(u) {
       var execEl = document.getElementById('dash-exec24h');
       var tokEl = document.getElementById('dash-tokens');
       var tokDeltaEl = document.getElementById('dash-tokens-delta');
@@ -141,7 +144,19 @@
       var cost = u.total_cost_eur || u.cost_eur || 0;
       if (costEl) costEl.textContent = '€ ' + Number(cost).toFixed(2);
       if (costDeltaEl) costDeltaEl.textContent = u.budget_eur ? ('budget €' + Number(u.budget_eur).toFixed(2)) : '';
-    }).catch(function() { /* silent */ });
+    }).catch(function(err) {
+      console.error('dashboard usage fetch failed', err);
+      var execEl = document.getElementById('dash-exec24h');
+      var tokEl = document.getElementById('dash-tokens');
+      var tokDeltaEl = document.getElementById('dash-tokens-delta');
+      var costEl = document.getElementById('dash-cost');
+      var costDeltaEl = document.getElementById('dash-cost-delta');
+      if (execEl) execEl.textContent = '⚠';
+      if (tokEl) tokEl.textContent = '⚠';
+      if (costEl) costEl.textContent = '⚠';
+      if (tokDeltaEl) { tokDeltaEl.textContent = 'Errore caricamento'; tokDeltaEl.style.color = 'var(--danger)'; }
+      if (costDeltaEl) { costDeltaEl.textContent = 'Errore caricamento'; costDeltaEl.style.color = 'var(--danger)'; }
+    });
 
     /* Cross-agent last logs (limit to first 6 agents to avoid N+1 explosion) */
     var subset = agents.slice(0, 6);
@@ -178,7 +193,10 @@
     });
 
     /* Proposals peek */
-    fetch('api/proposals?status=pending').then(function(r) { return r.ok ? r.json() : { proposals: [] }; }).then(function(d) {
+    fetch('api/proposals?status=pending').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(d) {
       var props = (d.proposals || []).slice(0, 3);
       var body = document.getElementById('dash-proposals-body');
       var countEl = document.getElementById('dash-prop-count');
@@ -213,7 +231,13 @@
           if (typeof rejectProposal === 'function') rejectProposal(b.dataset.pid);
         });
       });
-    }).catch(function() { /* silent */ });
+    }).catch(function(err) {
+      console.error('dashboard proposals fetch failed', err);
+      var body = document.getElementById('dash-proposals-body');
+      var countEl = document.getElementById('dash-prop-count');
+      if (countEl) countEl.textContent = '—';
+      if (body) body.innerHTML = '<div class="proposals-error">Errore caricamento proposte.</div>';
+    });
   }
 
   function mount() {
@@ -227,6 +251,11 @@
         HirisState.set('agents', loaded);
         if (loaded.length === 0) renderEmpty(outlet);
         else renderPopulated(outlet, loaded);
+      }).catch(function(err) {
+        /* Network/server error: show an error, NOT the first-run onboarding,
+           and do not clobber shared state with a false empty list. */
+        console.error('[dashboard] agents fetch failed', err);
+        outlet.innerHTML = '<div class="proposals-error">Errore nel caricamento della dashboard. Riprova.</div>';
       });
     } else {
       renderPopulated(outlet, agents);

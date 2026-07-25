@@ -92,7 +92,7 @@ async def test_notify_returns_true_on_success():
     ha = _FakeHA()
     app["ha_client"] = ha
     ok = await P.notify(app, message="hello", actionable=True, nonce="n1",
-                        service="notify.iphone_bet")
+                        service="notify.mobile_app_test")
     assert ok is True
     assert len(ha.calls) == 1
 
@@ -118,7 +118,7 @@ async def test_notify_returns_false_when_call_service_raises():
     app = web.Application()
     app["ha_client"] = _FakeHA(raise_on_call=True)
     ok = await P.notify(app, message="x", actionable=False, nonce="n4",
-                        service="notify.iphone_bet")
+                        service="notify.mobile_app_test")
     assert ok is False
 
 

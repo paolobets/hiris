@@ -114,7 +114,7 @@ DBs and applies any migrations automatically.
 3. In *Gateway Access*: start with everything **off**, then make **green only** the
    low-risk domains (e.g. Lights); keep locks/alarm/gate **yellow/red**.
 4. Use **per-entity overrides** for targeted exceptions.
-5. Configure the **notification service** (e.g. `notify.iphone_bet`) for the yellow flow.
+5. Configure the **notification service** (e.g. `notify.mobile_app_iphone`) for the yellow flow.
 6. If using the MCP gateway: verify `/authorize` is behind Cloudflare Access (email
    policy) and the panel is behind authentication.
 7. Enable periodic **HA snapshots** and protect them.

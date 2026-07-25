@@ -1,5 +1,19 @@
 # HIRIS — Changelog
 
+## [0.38.0] — UI/UX hardening pre-1.0 (2026-07-25)
+
+- **Configurazione più chiara:** rimosso un campo inutilizzato (Primary Model),
+  descrizioni corrette (incluso il toggle Debug, che da solo non apre la porta —
+  la porta si mappa nella sezione Rete), strategie LLM distinte, e valori
+  numerici ora validati.
+- **App più robusta:** le pagine sconosciute mostrano un fallback invece di
+  restare bloccate; se una sezione non carica, ora lo dice invece di mostrare
+  trattini vuoti o una falsa schermata di primo avvio.
+- **Pulizia e privacy:** rimossi residui di sviluppo e sostituito il servizio di
+  notifica di esempio personale con uno neutro predefinito.
+- **Accessibilità:** filtri e campi dei form ora usabili da tastiera e con
+  etichette associate; menu laterale con stato annunciato agli screen reader.
+
 ## [0.37.0] — Maggiordomo: briefing e scadenze (Slice 7 verso 1.0) (2026-07-25)
 
 - **Il maggiordomo:** ogni mattina un unico riepilogo in linguaggio naturale

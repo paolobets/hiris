@@ -118,7 +118,7 @@ HIRIS riapre i DB e applica eventuali migrazioni automaticamente.
 3. In *Accessi Gateway*: parti con tutto **off**, poi rendi **verdi solo** i domini a
    basso rischio (es. Luci); tieni serrature/allarme/cancello **giallo/rosso**.
 4. Usa gli **override per-entità** per le eccezioni puntuali.
-5. Configura il **servizio notifica** (es. `notify.iphone_bet`) per il flusso giallo.
+5. Configura il **servizio notifica** (es. `notify.mobile_app_iphone`) per il flusso giallo.
 6. Se usi il gateway MCP: verifica che `/authorize` sia protetto da Cloudflare Access
    (policy email) e che il pannello sia dietro autenticazione.
 7. Abilita **snapshot HA** periodici e proteggili.

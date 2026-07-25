@@ -64,9 +64,9 @@ async def test_ha_persistent_create_requires_message():
 async def test_ha_push_includes_title_and_uses_configured_service():
     ha = _FakeHA()
     await send_notification(
-        ha, "ciao", "ha_push", {"ha_notify_service": "notify.iphone_bet"}, title="Titolo",
+        ha, "ciao", "ha_push", {"ha_notify_service": "notify.mobile_app_test"}, title="Titolo",
     )
-    assert ha.calls == [("notify", "iphone_bet", {"message": "ciao", "title": "Titolo"})]
+    assert ha.calls == [("notify", "mobile_app_test", {"message": "ciao", "title": "Titolo"})]
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,6 @@ export LOG_LEVEL=$(bashio::config 'log_level' 'info')
 export CLAUDE_API_KEY=$(bashio::config 'claude_api_key')
 export OPENAI_API_KEY=$(bashio::config 'openai_api_key' '')
 export OPENROUTER_API_KEY=$(bashio::config 'openrouter_api_key' '')
-export PRIMARY_MODEL=$(bashio::config 'primary_model' 'claude-sonnet-4-6')
 export LLM_STRATEGY=$(bashio::config 'llm_strategy' 'balanced')
 export AUTOMATIC_POLICY=$(bashio::config 'automatic_policy' '')
 export CHAT_POLICY=$(bashio::config 'chat_policy' '')
@@ -77,7 +76,6 @@ fi
 bashio::log.info "Starting HIRIS"
 bashio::log.info "Log level: ${LOG_LEVEL}"
 bashio::log.info "Theme: ${THEME}"
-bashio::log.info "Primary model: ${PRIMARY_MODEL}"
 bashio::log.info "LLM strategy: ${LLM_STRATEGY}"
 
 cd /usr/lib/hiris

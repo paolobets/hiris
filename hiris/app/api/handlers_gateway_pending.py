@@ -10,7 +10,7 @@ and notifies the user:
 
 Security: the nonce is single-use, time-limited, and bound to the exact held
 command; an approval can never execute anything other than the command it was
-issued for. The notify service is configurable (default notify.iphone_bet).
+issued for. The notify service is configurable (default notify.persistent_notification).
 """
 from __future__ import annotations
 
@@ -196,7 +196,7 @@ def build_actions(nonce: str) -> list[dict]:
 async def notify(app: web.Application, *, message: str, actionable: bool, nonce: str,
                  service: str | None = None) -> bool:
     """Send a notification via the configured notify service (default
-    notify.iphone_bet). Actionable (yellow) adds Approva/Nega buttons.
+    notify.persistent_notification). Actionable (yellow) adds Approva/Nega buttons.
 
     ``service`` is optional and keyword-only: when passed (e.g. resolved via
     ``notify_service_for_user`` for the chatting user), it is used verbatim
@@ -214,7 +214,7 @@ async def notify(app: web.Application, *, message: str, actionable: bool, nonce:
         logger.warning("no ha_client — cannot send approval notification")
         return False
     service = (service or (app.get("gateway_settings") or {}).get("notify_service")
-               or "notify.iphone_bet").strip()
+               or "notify.persistent_notification").strip()
     if "." not in service:
         logger.error("invalid notify service %r", service)
         return False

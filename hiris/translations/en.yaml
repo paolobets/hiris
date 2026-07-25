@@ -4,19 +4,16 @@ configuration:
     description: "API key for Anthropic Claude. Required if you want to use Claude as the AI provider. Get it at console.anthropic.com. PRIVACY: messages and context are sent to Anthropic servers (US) — see anthropic.com/privacy."
   openai_api_key:
     name: "OpenAI API Key"
-    description: "API key for OpenAI models (GPT-4o, o1, etc.). Required only if you select an OpenAI model as primary. PRIVACY: messages are sent to OpenAI servers (US) — see openai.com/policies."
+    description: "API key for OpenAI models (GPT-4o, o1, etc.). Required only if OpenAI is part of your routing strategy/policies. PRIVACY: messages are sent to OpenAI servers (US) — see openai.com/policies."
   openrouter_api_key:
     name: "OpenRouter API Key"
-    description: "API key for OpenRouter — a unified proxy giving access to 200+ models (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ...) with one key. Get it at openrouter.ai. Free models are available (':free' suffix, e.g. 'meta-llama/llama-3.3-70b-instruct:free'). To use, set Primary Model or the agent model field to 'openrouter:provider/model-name'. PRIVACY: messages flow through OpenRouter (US) and then to the chosen model's provider — see openrouter.ai/privacy."
+    description: "API key for OpenRouter — a unified proxy giving access to 200+ models (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ...) with one key. Get it at openrouter.ai. Free models are available (':free' suffix, e.g. 'meta-llama/llama-3.3-70b-instruct:free'). To use, set the agent model field to 'openrouter:provider/model-name'. PRIVACY: messages flow through OpenRouter (US) and then to the chosen model's provider — see openrouter.ai/privacy."
   hide_free_models:
     name: "Hide :free OpenRouter models"
     description: "When enabled, OpenRouter ':free' models are hidden from the model dropdown in the Agent Designer. Useful if you have purchased OpenRouter credit and prefer to avoid the low daily quota and frequent upstream rate-limits of the free tier."
-  primary_model:
-    name: "Primary Model"
-    description: "The AI model used by HIRIS for reasoning and responses. Examples: claude-sonnet-4-6, claude-opus-4-7, gpt-4o."
   llm_strategy:
     name: "LLM Strategy"
-    description: "How HIRIS selects models when multiple are available. 'balanced' uses cost/quality balance, 'cost_first' prefers cheaper models, 'quality_first' always uses the best."
+    description: "How HIRIS selects models when multiple are available. 'balanced' (default) starts with Claude, then prefers OpenRouter over the dedicated OpenAI slot before falling back to local Ollama. 'cost_first' prefers cheaper/local models first. 'quality_first' always starts with Claude, then OpenAI, then OpenRouter, then Ollama."
   automatic_policy:
     name: "Backend policy — automatic"
     description: "Backend order for automatic reasoning/chat, e.g. claude,ollama — empty = use the strategy."
@@ -138,14 +135,17 @@ configuration:
       name: "Poll Interval (minutes)"
       description: "How often HIRIS polls Mayan for new documents. Default 60. Range: 5–1440."
   debug_expose_port:
-    name: "🛠 Debug — expose port (DEV ONLY)"
+    name: "🛠 Debug — expose port warning (DEV ONLY, does NOT open the port by itself)"
     description: >-
-      ⚠️ ENABLE ONLY FOR DEV/DIAGNOSTICS. When enabled, a warning is logged
-      at every addon startup. To actually expose port 8099 on LAN: go to
-      'Network' (below this section) and set '8099/tcp' = 8099, then Save +
-      Restart. Disable and clear the port mapping when done. Without HTTPS,
-      anyone on the LAN can call /api/* (only internal_token as a barrier).
-      DO NOT leave enabled in production.
+      ⚠️ This toggle by ITSELF does NOT open port 8099 — it only logs a
+      warning at every addon startup as a reminder. To actually expose the
+      port on the LAN you must ALSO go to Settings → Add-ons → HIRIS →
+      Configuration → Network (below this section, requires HA Advanced
+      Mode) and map '8099/tcp' = 8099, then Save + Restart. ENABLE ONLY FOR
+      DEV/DIAGNOSTICS. Disable this toggle and clear the Network port
+      mapping when done. Without HTTPS, anyone on the LAN can call /api/*
+      (only internal_token as a barrier). DO NOT leave enabled in
+      production.
 
 # v6 designer redesign (2026-05-07)
 designer:
