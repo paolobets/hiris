@@ -7,6 +7,12 @@ import aiohttp
 
 _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
+# Mirrors dispatcher._AUTOMATION_ID_RE (hiris/app/tools/dispatcher.py). HA
+# automation ids are slug-style: lowercase alphanumeric + underscore. Reject
+# anything else before composing a request path — last line of defense against
+# path-injection/SSRF via a hostile automation_id (review A/#4).
+_AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
+
 logger = logging.getLogger(__name__)
 
 
@@ -236,7 +242,10 @@ class HAClient:
         automations created/managed via the UI (404 for hand-written YAML ones)."""
         numeric = str(automation_id or "")
         if not numeric.isascii() or not numeric.isdigit():
-            eid = numeric if numeric.startswith("automation.") else f"automation.{numeric}"
+            bare = numeric[len("automation."):] if numeric.startswith("automation.") else numeric
+            if not _AUTOMATION_ID_RE.match(bare):
+                return {"error": "automation_id non valido"}
+            eid = f"automation.{bare}"
             numeric = ""
             try:
                 async with self._session.get(f"{self._base_url}/api/states/{eid}") as r:

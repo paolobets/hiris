@@ -228,7 +228,17 @@ class ToolDispatcher:
             if name == "get_ha_automations":
                 return await get_ha_automations(self._ha)
             if name == "get_automation_config":
-                return await get_automation_config(self._ha, inputs.get("automation_id", ""))
+                automation_id = inputs.get("automation_id", "")
+                bare_id = (
+                    automation_id[len("automation."):]
+                    if automation_id.startswith("automation.") else automation_id
+                )
+                # Numeric unique ids bypass the entity_id path entirely (ha_client
+                # fast path); anything else must match the same slug regex the
+                # trigger/toggle branches enforce (review A/#4: SSRF/path-injection).
+                if not (bare_id.isascii() and bare_id.isdigit()) and not _AUTOMATION_ID_RE.match(bare_id):
+                    return {"error": f"invalid automation_id: {automation_id!r}"}
+                return await get_automation_config(self._ha, automation_id)
             if name == "trigger_automation":
                 automation_id = inputs["automation_id"]
                 bare_id = (
