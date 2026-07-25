@@ -51,6 +51,22 @@ def _filter_entities(entities: list[dict], allowed_entities: list[str] | None) -
     ]
 
 
+def _filter_area_map(
+    area_map: dict[str, list[str]], allowed_entities: list[str] | None
+) -> dict[str, list[str]]:
+    """Filter an area→[entity_id] map through the same _filter_entities allowlist
+    used by get_home_status/get_entities_on/get_entities_by_domain (review B/#11):
+    drop non-permitted entity_ids within each area, then drop areas left empty."""
+    if not allowed_entities:
+        return area_map
+    result: dict[str, list[str]] = {}
+    for area, eids in area_map.items():
+        kept = [e["id"] for e in _filter_entities([{"id": eid} for eid in eids], allowed_entities)]
+        if kept:
+            result[area] = kept
+    return result
+
+
 def _check_service_allowed(
     service_key: str, allowed_services: list[str] | None
 ) -> dict | None:
@@ -191,7 +207,8 @@ class ToolDispatcher:
         logger.info("Tool call: %s(%s)", name, _log_inputs)
         try:
             if name == "get_area_entities":
-                return await get_area_entities(self._ha, entity_cache=self._cache)
+                result = await get_area_entities(self._ha, entity_cache=self._cache)
+                return _filter_area_map(result, allowed_entities)
             if name == "get_entity_states":
                 ids = inputs.get("ids", [])
                 if visible_entity_ids:
@@ -200,9 +217,15 @@ class ToolDispatcher:
                     ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                 return await get_entity_states(self._ha, ids, entity_cache=self._cache)
             if name == "get_history":
+                entity_ids = inputs.get("entity_ids", [])
+                if visible_entity_ids:
+                    entity_ids = [eid for eid in entity_ids if eid in visible_entity_ids]
+                if allowed_entities:
+                    entity_ids = [eid for eid in entity_ids
+                                  if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                 return await _get_history(
                     self._ha,
-                    inputs.get("entity_ids", []),
+                    entity_ids,
                     days=int(inputs.get("days", 7)),
                     resolution=inputs.get("resolution", "auto"),
                     store=self._history_store,

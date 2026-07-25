@@ -4,8 +4,8 @@ from hiris.app.tools.dispatcher import ToolDispatcher
 
 class _FakeHA:
     async def get_history(self, entity_ids, days):
-        return [{"entity_id": entity_ids[0], "last_changed": "2026-06-26T10:00:00+00:00",
-                 "state": "21.0"}]
+        return [{"entity_id": eid, "last_changed": "2026-06-26T10:00:00+00:00",
+                 "state": "21.0"} for eid in entity_ids]
 
     async def get_statistics(self, statistic_ids, period, days):
         return {}
@@ -21,12 +21,37 @@ async def test_dispatch_get_history_returns_series():
 
 
 @pytest.mark.asyncio
-async def test_dispatch_get_history_ignores_action_whitelist():
-    # Reads must NOT be filtered by allowed_entities (action whitelist).
+async def test_dispatch_get_history_unscoped_agent_gets_full_results():
+    # allowed_entities=None (unscoped agent) -> no filtering, full results.
     d = ToolDispatcher(_FakeHA(), notify_config={})
     out = await d.dispatch("get_history", {"entity_ids": ["sensor.temp"], "days": 3},
+                           allowed_entities=None)
+    assert out[0]["id"] == "sensor.temp"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_history_filters_by_allowed_entities():
+    # review B/#12: get_history must filter caller-supplied entity_ids against
+    # allowed_entities, exactly like the parallel get_entity_states branch —
+    # an entity-scoped agent must not be able to pull history for entities
+    # outside its scope (e.g. lock/alarm/presence).
+    d = ToolDispatcher(_FakeHA(), notify_config={})
+    out = await d.dispatch("get_history",
+                           {"entity_ids": ["light.a", "lock.front"], "days": 3},
                            allowed_entities=["light.*"])
-    assert out[0]["id"] == "sensor.temp"   # not blocked
+    ids = [s["id"] for s in out]
+    assert ids == ["light.a"]
+    assert "lock.front" not in ids
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_history_filters_by_visible_entity_ids():
+    d = ToolDispatcher(_FakeHA(), notify_config={})
+    out = await d.dispatch("get_history",
+                           {"entity_ids": ["light.a", "lock.front"], "days": 3},
+                           visible_entity_ids=frozenset({"light.a"}))
+    ids = [s["id"] for s in out]
+    assert ids == ["light.a"]
 
 
 class _StoreFake:
