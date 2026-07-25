@@ -50,6 +50,32 @@ async def test_recall_sensitive_raw_for_local(tmp_path):
     store.close()
 
 
+@pytest.mark.asyncio
+async def test_recall_pseudonymizes_non_normal_non_sensitive_literal_sensitivity(tmp_path):
+    """Review C/#5: the cloud-egress gate must treat ANY non-'normal'
+    sensitivity value as sensitive (mirroring knowledge_store.search's own
+    `sensitivity='normal'` gate), not only the exact literal string
+    "sensitive". A third value (e.g. a future/typo'd category) must still be
+    pseudonymized before reaching the cloud LLM."""
+    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+    from hiris.app.brain.privacy import VaultStore, Pseudonymizer
+
+    store = KnowledgeStore(str(tmp_path / "b5.db"))
+    store.add_item(kind="expense", content="Bonifico su IT60X0542811101000000123456",
+                   embedding=[1.0, 0.0], sensitivity="confidential")
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[1.0, 0.0])
+    pz = Pseudonymizer(VaultStore(str(tmp_path / "v5.db")))
+
+    res = await handle_recall_knowledge(
+        store, embedder, {"query": "bonifico"}, owner="home",
+        allow_sensitive=True, pseudonymizer=pz, cloud=True)
+    txt = res["results"][0]["content"]
+    assert "IT60X0542811101000000123456" not in txt
+    assert "[IBAN_1]" in txt
+    store.close()
+
+
 def test_tool_defs_have_names():
     assert SAVE_KNOWLEDGE_TOOL_DEF["name"] == "save_knowledge"
     assert RECALL_KNOWLEDGE_TOOL_DEF["name"] == "recall_knowledge"

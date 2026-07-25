@@ -51,7 +51,14 @@ def _collect_deadlines(
         return [], 0
     try:
         before = (today + timedelta(days=horizon_days)).strftime("%Y-%m-%d")
-        rows = knowledge_store.upcoming_obligations(before=before)
+        # Review C/#2: this is a HOME-WIDE broadcast (single push target, no
+        # per-user delivery -- see server.py's _briefing_notify/ha_push), not
+        # a per-user query. Without owner="home", upcoming_obligations()
+        # returns every owner's rows (owner=? OR owner='home' only narrows
+        # when a specific owner IS passed), so a PRIVATE obligation the user
+        # never intended to share would leak into the shared briefing. Scope
+        # to owner="home" so only genuinely shared obligations are included.
+        rows = knowledge_store.upcoming_obligations(before=before, owner="home")
     except Exception:
         return [], 0
 

@@ -234,7 +234,13 @@ def undo(store: SuggestionStore, data_dir: str, suggestion_id: int) -> bool:
     else:
         if "entity" not in delta:
             return False
-        ok = remove_brain_detector(data_dir, delta["detector"], delta["entity"])
+        # Review C/#3: restore the shared detector param(s) this suggestion
+        # overwrote (apply_brain_detector's "param_snapshot"), not just the
+        # entity. Older rows recorded before this fix simply lack the key ->
+        # restore_params=None, same no-restore behaviour as before.
+        restore_params = delta.get("param_snapshot")
+        ok = remove_brain_detector(data_dir, delta["detector"], delta["entity"],
+                                   restore_params if isinstance(restore_params, dict) else None)
 
     if ok:
         store.set_status(suggestion_id, "dismissed")

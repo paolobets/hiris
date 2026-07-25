@@ -142,6 +142,39 @@ def test_undo_routes_brain_tune_source_ref_to_value_restore(tmp_path, store):
     assert store.get(sid)["status"] == "dismissed"
 
 
+def test_undo_coverage_restores_shared_param_it_overwrote(tmp_path, store):
+    """Review C/#3: a coverage suggestion whose params overwrite a SHARED
+    detector-level value (e.g. power.max_watt, applied to ALL entities on
+    that detector, not just the newly-added one) must have that value
+    restored on undo -- not just have its entity removed -- mirroring
+    apply_brain_tuning/remove_brain_tuning's snapshot/restore discipline."""
+    from hiris.app.watcher.policy import save_policy, load_policy as _load_policy
+
+    dd = str(tmp_path)
+    # Pre-existing shared detector config (as if the user, or an earlier
+    # brain action, set max_watt=3000 before this coverage suggestion).
+    save_policy(dd, {"detectors": {"power": {"enabled": True, "entities": [],
+                                              "max_watt": 3000}}})
+
+    suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
+              "config": {"detector": "power", "entity": "sensor.plug", "max_watt": 5000}}]
+    applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
+                                current_config=_load_policy(dd), create_proposal=lambda c: None, cap=5)
+    assert len(applied) == 1
+    pol = _load_policy(dd)
+    assert pol["detectors"]["power"]["max_watt"] == 5000
+    assert "sensor.plug" in pol["detectors"]["power"]["entities"]
+
+    sid = store.list()[0]["id"]
+    assert undo(store, dd, sid) is True
+
+    pol2 = _load_policy(dd)
+    assert "sensor.plug" not in pol2["detectors"]["power"]["entities"]
+    # The shared param must be restored to its pre-apply value, not left at
+    # the suggestion's overwritten value.
+    assert pol2["detectors"]["power"]["max_watt"] == 3000
+
+
 def test_undo_no_op_when_entity_not_in_registry(tmp_path, store):
     """Regression test: undo() should only mark dismissed when removal actually
     succeeds. If the entity is not in the brain sidecar registry (e.g., registry/policy

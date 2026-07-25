@@ -86,7 +86,12 @@ def due_nudges(store, *, today: date, seen: ReminderSeen, horizon_days: int = 2)
     """
     before = (today + timedelta(days=horizon_days)).strftime("%Y-%m-%d")
     try:
-        items = store.upcoming_obligations(before=before)
+        # Review C/#2: urgent nudges are also a home-wide broadcast (single
+        # ha_push target, see server.py's _nudge_notify) -- scope to
+        # owner="home" so a user's PRIVATE obligation is never nudged to the
+        # whole household. See briefing.py's _collect_deadlines for the same
+        # fix on the daily briefing path.
+        items = store.upcoming_obligations(before=before, owner="home")
     except Exception:
         items = []
 

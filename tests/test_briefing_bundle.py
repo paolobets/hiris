@@ -189,6 +189,30 @@ def test_invalid_due_date_degrades_days_left_without_crash():
     assert entry["days_left"] is None
 
 
+def test_private_obligation_excluded_from_home_wide_briefing(tmp_path):
+    """Review C/#2: a PRIVATE obligation (owner='paolo') must never appear in
+    the home-wide daily briefing -- only owner='home' (shared) obligations
+    are visible here, since the briefing broadcasts to a single shared
+    channel with no per-user delivery."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    today = date(2026, 7, 25)
+    store.add_item(kind="obligation", content="Segreto di Paolo", owner="paolo",
+                   status="approved", due_date="2026-07-26", sensitivity="normal")
+    store.add_item(kind="obligation", content="Bolletta di casa", owner="home",
+                   status="approved", due_date="2026-07-27", sensitivity="normal")
+    cache = FakeEntityCache([])
+
+    bundle = build_briefing_bundle(
+        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+    )
+
+    contents = [d["content"] for d in bundle["deadlines"]]
+    assert "Bolletta di casa" in contents
+    assert "Segreto di Paolo" not in contents
+    assert bundle["counts"]["deadlines"] == 1
+    store.close()
+
+
 def test_battery_default_threshold_used_when_policy_has_no_min_pct():
     """T1: with policy={} (no detectors.battery.min_pct saved), the battery
     threshold must fall back to build_briefing_bundle's battery_default_pct

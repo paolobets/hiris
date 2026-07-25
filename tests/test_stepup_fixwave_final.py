@@ -116,6 +116,10 @@ async def test_yellow_pending_is_actionable_with_buttons(tmp_path):
     app = web.Application()
     ha = _FakeHA()
     app["ha_client"] = ha
+    # A private per-user push target must be configured for step-up to
+    # proceed at all (Review C/#1 — see the shared-surface tests below);
+    # this is the happy path, exercising the yellow/red actionable split.
+    app["gateway_settings"] = {"notify_users": {"paolo": "notify.mobile_app_paolo"}}
     data_dir = str(tmp_path)
     inputs = {"domain": "switch", "service": "turn_on", "data": {"entity_id": "switch.boiler"}}
 
@@ -134,6 +138,7 @@ async def test_red_pending_is_not_actionable_no_buttons_but_otp_present(tmp_path
     app = web.Application()
     ha = _FakeHA()
     app["ha_client"] = ha
+    app["gateway_settings"] = {"notify_users": {"paolo": "notify.mobile_app_paolo"}}
     data_dir = str(tmp_path)
     inputs = {"domain": "lock", "service": "unlock", "data": {"entity_id": "lock.front"}}
 
@@ -147,6 +152,67 @@ async def test_red_pending_is_not_actionable_no_buttons_but_otp_present(tmp_path
     # The OTP is still included in the push message (Task 4 fix) — confirmation
     # for red pendings is possible only by typing this code in chat.
     assert re.search(r"\d{6}", sent_data["message"]) is not None
+
+
+# ---------------------------------------------------------------------------
+# Review C/#1 — OTP must never be sent to the shared notify.persistent_
+# notification surface; fail closed (no pending minted) instead.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_no_pending_minted_when_no_private_notify_target_configured(tmp_path):
+    """No gateway_settings at all -> notify_service_for_user falls back to the
+    hard default notify.persistent_notification (HA-wide shared dashboard).
+    The OTP must NOT be sent there: fail closed, same as the no-identity path."""
+    app = web.Application()
+    ha = _FakeHA()
+    app["ha_client"] = ha
+    data_dir = str(tmp_path)
+    inputs = {"domain": "switch", "service": "turn_on", "data": {"entity_id": "switch.boiler"}}
+
+    res = await request_confirmation_stepup(
+        app, data_dir, tool="call_ha_service", inputs=inputs, tier="yellow", user="paolo",
+    )
+    assert res is None
+    assert ha.calls == [], "no notification (and no OTP) may reach the shared surface"
+
+
+@pytest.mark.asyncio
+async def test_no_pending_minted_when_notify_service_explicitly_shared(tmp_path):
+    """Even an explicitly-configured GLOBAL notify_service of
+    notify.persistent_notification is still the shared dashboard -- must
+    fail closed exactly like the no-config default above."""
+    app = web.Application()
+    ha = _FakeHA()
+    app["ha_client"] = ha
+    app["gateway_settings"] = {"notify_service": "notify.persistent_notification"}
+    data_dir = str(tmp_path)
+    inputs = {"domain": "lock", "service": "unlock", "data": {"entity_id": "lock.front"}}
+
+    res = await request_confirmation_stepup(
+        app, data_dir, tool="call_ha_service", inputs=inputs, tier="red", user="paolo",
+    )
+    assert res is None
+    assert ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_pending_minted_when_private_notify_target_configured(tmp_path):
+    """Sanity check: a genuine per-user private push target still works end
+    to end (positive control for the two failing-closed tests above)."""
+    app = web.Application()
+    ha = _FakeHA()
+    app["ha_client"] = ha
+    app["gateway_settings"] = {"notify_users": {"paolo": "notify.mobile_app_paolo"}}
+    data_dir = str(tmp_path)
+    inputs = {"domain": "switch", "service": "turn_on", "data": {"entity_id": "switch.boiler"}}
+
+    res = await request_confirmation_stepup(
+        app, data_dir, tool="call_ha_service", inputs=inputs, tier="yellow", user="paolo",
+    )
+    assert res is not None and res.get("id")
+    assert len(ha.calls) == 1
+    assert ha.calls[0][0] == "notify" and ha.calls[0][1] == "mobile_app_paolo"
 
 
 # ---------------------------------------------------------------------------

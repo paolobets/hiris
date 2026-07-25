@@ -384,6 +384,25 @@ async def request_confirmation_stepup(
     # the dispatcher falls back to the Slice-1 "richiede conferma" error.
     if not user or user == "home":
         return None
+    # Safety (Review C/#1): `notify_service_for_user` falls back to the
+    # shared, HA-wide `notify.persistent_notification` dashboard when this
+    # user has no per-user push target configured (or falls back to a
+    # globally-configured `notify.persistent_notification`). That surface has
+    # no notion of "this user's phone" and no actionable-button support, so
+    # the OTP secret embedded in the push message (`_confirmation_push_message`
+    # below) would sit readable by anyone with dashboard access -- exactly the
+    # shared-surface leak the OTP redaction elsewhere in this module (see
+    # confirm_pending_execute / list_pending's otp stripping) exists to avoid.
+    # There is no private channel to complete step-up in this case, so fail
+    # closed exactly like the no-identity guard above: mint no pending, and
+    # let the dispatcher fall back to the Slice-1 "richiede conferma" error.
+    svc = notify_service_for_user(app, user)
+    if svc.split(".", 1)[-1] == "persistent_notification":
+        logger.warning(
+            "step-up confirmation skipped for user=%s: no private notify "
+            "target configured (resolved to shared %s)", user, svc,
+        )
+        return None
     label = f"{inputs.get('domain')}.{inputs.get('service')}"
     # At most one OTP pending per user at a time: `verify_otp` resolves a
     # typed code by scanning for the first live pending bound to `user`, so a
@@ -394,7 +413,6 @@ async def request_confirmation_stepup(
         data_dir, tool=tool, inputs=inputs, tier=tier,
         origin="chat", label=label, user=user, with_otp=True,
     )
-    svc = notify_service_for_user(app, user)
     msg = _confirmation_push_message(label, inputs, entry["otp"])
     # Owner decision (Fix 3): red/dangerous pendings are page/OTP-only — no
     # one-tap notification buttons (matches the gateway's execute-API
