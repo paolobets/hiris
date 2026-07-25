@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [0.90.0] — Hardening di sicurezza pre-1.0 (2026-07-25)
+
+Release intermedia verso la 1.0: dopo una **review completa multi-agente
+dell'intera codebase**, sono state chiuse **tutte le vulnerabilità critiche e
+alte** individuate, ciascuna con fix + revisione indipendente.
+
+- **Semaforo rafforzato:** anche l'attivazione di automazioni e degli helper
+  (input_boolean/number/text/select) passa ora dal controllo tier; le azioni
+  vengono eseguite esattamente sulle entità autorizzate (niente più diffusione
+  a tutto il dominio quando l'ambito è una singola entità).
+- **Approvazione step-up più sicura:** l'approvazione delle azioni sensibili
+  richiede l'interfaccia HIRIS (un umano), non il token di servizio usato dal
+  gateway — così un componente automatico non può auto-approvarsi.
+- **Isolamento dei dati:** niente accesso incrociato tra utenti agli elementi
+  privati del second-brain; nessuna fuga di dati personali tra conversazioni;
+  gli strumenti di lettura rispettano gli ambiti configurati; corretto un caso
+  di SSRF/percorso e uno di possibile mescolamento di dati tra richieste.
+- **Validazione e robustezza:** soglie dei rilevatori e configurazione
+  validate prima di essere applicate; failover automatico tra modelli LLM se
+  un backend è irraggiungibile; i task pianificati non restano più bloccati.
+- **Chat via abbonamento più reattiva** (lato infrastruttura).
+
 ## [0.38.0] — UI/UX hardening pre-1.0 (2026-07-25)
 
 - **Configurazione più chiara:** rimosso un campo inutilizzato (Primary Model),
