@@ -60,7 +60,7 @@ GATEWAY_CATEGORIES = [
 
 _VALID_LEVELS = frozenset({"green", "yellow", "red", "off"})
 _BY_ID = {c["id"]: c for c in GATEWAY_CATEGORIES}
-DEFAULT_NOTIFY_SERVICE = "notify.iphone_bet"
+DEFAULT_NOTIFY_SERVICE = "notify.persistent_notification"
 _SERVICE_RE = re.compile(r"^notify\.[A-Za-z0-9_]{1,64}$")
 _ENTITY_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
