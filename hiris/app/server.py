@@ -1235,9 +1235,14 @@ async def _on_startup(app: web.Application) -> None:
         trigger="cron", hour=8, minute=0,
         id="hiris_daily_briefing", replace_existing=True, misfire_grace_time=3600,
     )
+    # Interval (not a single daily cron) so an obligation that becomes urgent
+    # BETWEEN morning briefings -- e.g. a document ingested midday creating a
+    # deadline due tomorrow -- gets its punctual nudge within hours instead of
+    # waiting for the next 08:00. Dedup (ReminderSeen) keeps each threshold to
+    # one notification regardless of how many ticks see it.
     engine._scheduler.add_job(
         _urgent_nudges,
-        trigger="cron", hour=8, minute=5,
+        trigger="interval", hours=6,
         id="hiris_urgent_nudges", replace_existing=True, misfire_grace_time=3600,
     )
 
