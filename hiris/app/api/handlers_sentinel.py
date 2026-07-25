@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from aiohttp import web
-from ..watcher.policy import load_policy, save_policy, SENTINEL_DETECTORS
+from ..watcher.policy import load_policy, save_policy, PolicyValidationError, SENTINEL_DETECTORS
 
 
 async def handle_get_sentinel_policy(request: web.Request) -> web.Response:
@@ -19,7 +19,13 @@ async def handle_save_sentinel_policy(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "invalid JSON"}, status=400)
     data_dir = request.app.get("data_dir") or "/data"
-    clean = save_policy(data_dir, body if isinstance(body, dict) else {})
+    try:
+        clean = save_policy(data_dir, body if isinstance(body, dict) else {})
+    except PolicyValidationError as exc:
+        # Review C/#8: a malformed detector value (wrong type / out of
+        # range) must never be persisted nor applied live -- reject with a
+        # 4xx instead of the 200 the happy path returns.
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
     guardian = request.app.get("guardian")
     if guardian is not None and hasattr(guardian, "set_policy"):
         guardian.set_policy(clean)   # applica live (vedi Task 9)

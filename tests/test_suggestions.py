@@ -1,3 +1,5 @@
+import math
+
 import pytest
 from hiris.app.brain.suggestions import SuggestionStore, validate_coverage, apply_suggestions, undo
 from hiris.app.watcher.policy import load_policy
@@ -48,6 +50,63 @@ def test_hostile_config_cannot_wipe_entities_or_disable(tmp_path, store):
     assert det["enabled"] is True
     assert "sensor.user_freezer" in det["entities"]
     assert "sensor.brain_freezer" in det["entities"]
+
+def test_non_numeric_threshold_rejects_whole_suggestion(tmp_path, store):
+    """Review C/#6: max_watt: "abc" (non-numeric, clearly invalid) must NOT
+    be applied to the shared detector config at all -- reject the whole
+    suggestion rather than let a string reach the detector."""
+    dd = str(tmp_path)
+    suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
+              "config": {"detector": "power", "entity": "sensor.plug", "max_watt": "abc"}}]
+    applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
+                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+    assert applied == []
+    pol = load_policy(dd)
+    assert pol["detectors"]["power"]["enabled"] is False
+    assert "sensor.plug" not in pol["detectors"]["power"]["entities"]
+    assert pol["detectors"]["power"]["max_watt"] == 3000
+
+
+def test_nan_threshold_rejects_whole_suggestion(tmp_path, store):
+    """NaN must be treated as clearly-invalid (not a "very high" number) --
+    same reject path as a non-numeric string."""
+    dd = str(tmp_path)
+    suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
+              "config": {"detector": "power", "entity": "sensor.plug", "max_watt": math.nan}}]
+    applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
+                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+    assert applied == []
+    assert load_policy(dd)["detectors"]["power"]["enabled"] is False
+
+
+def test_out_of_range_threshold_is_clamped_and_applied(tmp_path, store):
+    """Review C/#6: an in-type but wildly out-of-range value (e.g.
+    max_watt: 999999999) is clamped to the sane bound and the suggestion IS
+    still applied -- the detector must not be neutered by an absurd value,
+    but a legitimate coverage suggestion should still go through."""
+    dd = str(tmp_path)
+    suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
+              "config": {"detector": "power", "entity": "sensor.plug", "max_watt": 999999999}}]
+    applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
+                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+    assert len(applied) == 1
+    pol = load_policy(dd)
+    assert pol["detectors"]["power"]["enabled"] is True
+    assert "sensor.plug" in pol["detectors"]["power"]["entities"]
+    assert pol["detectors"]["power"]["max_watt"] == 20000  # clamped to the absolute upper bound
+
+
+def test_valid_threshold_still_applies_unchanged(tmp_path, store):
+    """Legit configs (valid types/ranges) still save and apply unchanged."""
+    dd = str(tmp_path)
+    suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
+              "config": {"detector": "power", "entity": "sensor.plug", "max_watt": 2500}}]
+    applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
+                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+    assert len(applied) == 1
+    pol = load_policy(dd)
+    assert pol["detectors"]["power"]["max_watt"] == 2500
+
 
 def test_cap_and_management(tmp_path, store):
     proposed = []
