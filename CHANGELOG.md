@@ -10,8 +10,10 @@
   ricevono un avviso puntuale, una sola volta per soglia.
 - **A richiesta in chat:** puoi chiedere "cosa devo fare oggi?" e ottenere lo
   stesso riepilogo.
-- Privacy: le scadenze sensibili entrano nel riepilogo del giorno solo quando
-  l'elaborazione resta locale.
+- Privacy: le scadenze sensibili entrano nel riepilogo solo quando
+  l'elaborazione resta locale — sia nel briefing del giorno sia nella richiesta
+  in chat (che rispetta anche la configurazione di accesso ai dati sensibili
+  dell'agente). Il riepilogo segnala quante scadenze riservate ha nascosto.
 
 ## [0.36.1] — Hardening anti-injection italiano (2026-07-25)
 
