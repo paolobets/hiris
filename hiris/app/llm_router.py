@@ -48,10 +48,14 @@ def backend_is_cloud(model: str) -> bool:
 _STRATEGY_ORDER = {
     # cost_first: prefer free local (Ollama) → cheap cloud → full cloud
     "cost_first":    ["ollama", "openrouter", "openai", "claude"],
-    # quality_first: prefer most capable first
+    # quality_first: prefer most capable first, then the dedicated OpenAI slot
     "quality_first": ["claude", "openai", "openrouter", "ollama"],
-    # balanced (default): same as quality_first
-    "balanced":      ["claude", "openai", "openrouter", "ollama"],
+    # balanced (default): still leads with the most capable model (Claude),
+    # but economizes on the fallback chain by preferring OpenRouter (which
+    # can hit cheaper/free-tier models) over the dedicated OpenAI slot,
+    # before finally falling back to local Ollama. Distinct from
+    # quality_first: swaps positions 2 and 3.
+    "balanced":      ["claude", "openrouter", "openai", "ollama"],
 }
 
 _VALID_BACKEND_NAMES = frozenset({"claude", "openai", "openrouter", "ollama"})
@@ -84,7 +88,8 @@ class LLMRouter:
     Backends: Claude (anthropic), OpenAI cloud, OpenRouter proxy, Ollama local.
 
     strategy controls the default backend preference order when model="auto":
-      - "balanced" / "quality_first": Claude → OpenAI → OpenRouter → Ollama
+      - "quality_first": Claude → OpenAI → OpenRouter → Ollama
+      - "balanced": Claude → OpenRouter → OpenAI → Ollama
       - "cost_first": Ollama → OpenRouter → OpenAI → Claude
     Fallback: if the primary backend raises an exception and model="auto",
     the next backend in the policy chain is tried automatically.

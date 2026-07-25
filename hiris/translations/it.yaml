@@ -7,16 +7,13 @@ configuration:
     description: "Chiave API per i modelli OpenAI (GPT-4o, o1, ecc.). Necessaria solo se selezioni un modello OpenAI come modello principale. PRIVACY: i messaggi passano dai server OpenAI (USA) — vedi openai.com/policies."
   openrouter_api_key:
     name: "Chiave API OpenRouter"
-    description: "Chiave API per OpenRouter — un proxy unificato che da' accesso a 200+ modelli (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ecc.) con un'unica chiave. Ottienila su openrouter.ai. Sono disponibili modelli gratuiti (suffisso ':free' es. 'meta-llama/llama-3.3-70b-instruct:free'). Per usarli, imposta in 'Modello Principale' o nel campo modello di un agente il formato 'openrouter:provider/nome-modello'. PRIVACY: i messaggi passano da OpenRouter (USA) e poi dal provider del modello scelto — vedi openrouter.ai/privacy."
+    description: "Chiave API per OpenRouter — un proxy unificato che da' accesso a 200+ modelli (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ecc.) con un'unica chiave. Ottienila su openrouter.ai. Sono disponibili modelli gratuiti (suffisso ':free' es. 'meta-llama/llama-3.3-70b-instruct:free'). Per usarli, imposta nel campo modello di un agente il formato 'openrouter:provider/nome-modello'. PRIVACY: i messaggi passano da OpenRouter (USA) e poi dal provider del modello scelto — vedi openrouter.ai/privacy."
   hide_free_models:
     name: "Nascondi modelli :free di OpenRouter"
     description: "Se attivo, i modelli ':free' di OpenRouter non compaiono nel menu modelli del Designer agente. Utile se hai acquistato credito OpenRouter e preferisci evitare la quota giornaliera bassa e i frequenti rate-limit upstream del tier gratuito."
-  primary_model:
-    name: "Modello Principale"
-    description: "Il modello AI usato da HIRIS per ragionamento e risposte. Esempi: claude-sonnet-4-6, claude-opus-4-7, gpt-4o."
   llm_strategy:
     name: "Strategia LLM"
-    description: "Come HIRIS seleziona i modelli quando ne sono disponibili più di uno. 'balanced' bilancia costo e qualità, 'cost_first' preferisce modelli più economici, 'quality_first' usa sempre il migliore."
+    description: "Come HIRIS seleziona i modelli quando ne sono disponibili più di uno. 'balanced' (default) parte da Claude, poi preferisce OpenRouter rispetto allo slot OpenAI dedicato, prima di ricadere su Ollama locale. 'cost_first' preferisce modelli più economici/locali per primi. 'quality_first' parte sempre da Claude, poi OpenAI, poi OpenRouter, poi Ollama."
   automatic_policy:
     name: "Politica backend — automatico"
     description: "Ordine backend per il ragionamento automatico/della chat, es. claude,ollama — vuoto = usa la strategia."
@@ -138,14 +135,17 @@ configuration:
       name: "Intervallo Polling (minuti)"
       description: "Con quale frequenza HIRIS interroga Mayan per nuovi documenti. Default 60. Range: 5–1440."
   debug_expose_port:
-    name: "🛠 Debug — esposizione porta (DEV ONLY)"
+    name: "🛠 Debug — warning esposizione porta (DEV ONLY, da solo NON apre la porta)"
     description: >-
-      ⚠️ ATTIVA SOLO PER DEV/DIAGNOSTICA. Quando attivo, logga un warning ad
-      ogni avvio addon. Per esporre realmente la porta 8099 sulla LAN:
-      vai in 'Network' (sotto questa sezione) e imposta '8099/tcp' = 8099,
-      poi Save + Restart. Disattiva e svuota il port mapping quando finito.
-      Senza HTTPS chiunque sulla LAN può chiamare /api/* (solo internal_token
-      come barriera). NON lasciare attivo in produzione.
+      ⚠️ Questo interruttore DA SOLO NON apre la porta 8099 — logga solo un
+      warning ad ogni avvio addon come promemoria. Per esporre realmente la
+      porta sulla LAN devi ANCHE andare in Impostazioni → Componenti
+      aggiuntivi → HIRIS → Configurazione → Rete (sotto questa sezione,
+      richiede la Modalità avanzata di HA) e impostare '8099/tcp' = 8099,
+      poi Save + Restart. ATTIVA SOLO PER DEV/DIAGNOSTICA. Disattiva questo
+      interruttore e svuota il port mapping in Rete quando finito. Senza
+      HTTPS chiunque sulla LAN può chiamare /api/* (solo internal_token come
+      barriera). NON lasciare attivo in produzione.
 
 # v6 designer redesign (2026-05-07)
 designer:
