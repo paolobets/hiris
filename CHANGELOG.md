@@ -1,5 +1,18 @@
 # HIRIS — Changelog
 
+## [0.37.0] — Maggiordomo: briefing e scadenze (Slice 7 verso 1.0) (2026-07-25)
+
+- **Il maggiordomo:** ogni mattina un unico riepilogo in linguaggio naturale
+  delle scadenze imminenti (dai tuoi documenti) e dello stato notevole della
+  casa (porte/finestre aperte, batterie scariche) — al posto delle vecchie
+  notifiche ripetute una per scadenza.
+- **Promemoria urgenti, non ripetuti:** le scadenze di oggi/domani/scadute
+  ricevono un avviso puntuale, una sola volta per soglia.
+- **A richiesta in chat:** puoi chiedere "cosa devo fare oggi?" e ottenere lo
+  stesso riepilogo.
+- Privacy: le scadenze sensibili entrano nel riepilogo del giorno solo quando
+  l'elaborazione resta locale.
+
 ## [0.36.1] — Hardening anti-injection italiano (2026-07-25)
 
 - Il filtro anti-manipolazione che protegge il cervello dalle istruzioni
