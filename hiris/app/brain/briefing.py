@@ -45,20 +45,22 @@ def _battery_threshold(policy: dict | None, default_pct: int) -> int:
 
 def _collect_deadlines(
     knowledge_store, *, today: date, horizon_days: int, allow_sensitive: bool,
+    owner: str = "home",
 ) -> tuple[list[dict], int]:
     """Returns (visible_deadlines, hidden_sensitive_count)."""
     if knowledge_store is None:
         return [], 0
     try:
         before = (today + timedelta(days=horizon_days)).strftime("%Y-%m-%d")
-        # Review C/#2: this is a HOME-WIDE broadcast (single push target, no
-        # per-user delivery -- see server.py's _briefing_notify/ha_push), not
-        # a per-user query. Without owner="home", upcoming_obligations()
-        # returns every owner's rows (owner=? OR owner='home' only narrows
-        # when a specific owner IS passed), so a PRIVATE obligation the user
-        # never intended to share would leak into the shared briefing. Scope
-        # to owner="home" so only genuinely shared obligations are included.
-        rows = knowledge_store.upcoming_obligations(before=before, owner="home")
+        # Review C/#2: the SCHEDULED briefing/nudges are a HOME-WIDE broadcast
+        # (single push target, no per-user delivery -- see server.py's
+        # _briefing_notify/ha_push), so they pass the default owner="home" and
+        # only genuinely shared obligations are included (without it,
+        # upcoming_obligations returns EVERY owner's rows and a user's private
+        # obligation would leak into the shared briefing). The on-demand chat
+        # tool, which HAS the caller's identity, passes owner=user_id so the
+        # user sees their OWN private obligations plus home ones.
+        rows = knowledge_store.upcoming_obligations(before=before, owner=owner)
     except Exception:
         return [], 0
 
@@ -145,16 +147,21 @@ def build_briefing_bundle(
     allow_sensitive: bool,
     horizon_days: int = 7,
     battery_default_pct: int = 20,
+    owner: str = "home",
 ) -> dict:
     """Deterministic butler briefing bundle: deadlines from ingested
     documents (obligations) plus notable home status (open doors/windows,
     low batteries). Egress-gated: sensitive deadlines are excluded from the
     list when `allow_sensitive` is False, but still counted. Never raises.
+
+    `owner` scopes the deadlines: default "home" (scheduled home-wide broadcast,
+    shared obligations only); the on-demand chat tool passes the caller's
+    user_id so the user also sees their own private obligations (review C/#2).
     """
     try:
         deadlines, hidden_sensitive = _collect_deadlines(
             knowledge_store, today=today, horizon_days=horizon_days,
-            allow_sensitive=allow_sensitive,
+            allow_sensitive=allow_sensitive, owner=owner,
         )
     except Exception:
         deadlines, hidden_sensitive = [], 0

@@ -70,6 +70,30 @@ def test_horizon_filters_and_days_left(tmp_path):
     store.close()
 
 
+def test_owner_scoping_home_broadcast_vs_per_user(tmp_path):
+    # review C/#2 follow-up: default owner="home" (scheduled broadcast) shows
+    # only shared obligations; the on-demand tool passing owner=<user> also
+    # shows that user's OWN private obligations, but never another user's.
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    today = date(2026, 7, 25)
+    store.add_item(kind="obligation", content="Bolletta casa", status="approved",
+                   owner="home", due_date="2026-07-27", sensitivity="normal")
+    store.add_item(kind="obligation", content="Privata di Alice", status="approved",
+                   owner="alice", due_date="2026-07-27", sensitivity="normal")
+    cache = FakeEntityCache([])
+
+    home = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True)
+    assert [d["content"] for d in home["deadlines"]] == ["Bolletta casa"]  # no private leak
+
+    alice = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True, owner="alice")
+    contents = {d["content"] for d in alice["deadlines"]}
+    assert contents == {"Bolletta casa", "Privata di Alice"}  # own + home
+
+    bob = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True, owner="bob")
+    assert [d["content"] for d in bob["deadlines"]] == ["Bolletta casa"]  # not alice's
+    store.close()
+
+
 def test_sensitive_excluded_unless_allowed(tmp_path):
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     today = date(2026, 7, 25)

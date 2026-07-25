@@ -547,9 +547,13 @@ class ToolDispatcher:
                         policy = {}
                 try:
                     allow_sensitive = bool(knowledge_allow_sensitive) and not bool(cloud)
+                    # On-demand tool: scope to the caller so they see their OWN
+                    # private obligations + home ones (review C/#2 follow-up),
+                    # unlike the scheduled home-wide broadcast (owner="home").
                     bundle = build_briefing_bundle(
                         self._knowledge_store, self._cache, policy,
                         today=date.today(), allow_sensitive=allow_sensitive,
+                        owner=user_id or "home",
                     )
                     return render_briefing_template(bundle)
                 except Exception as exc:
