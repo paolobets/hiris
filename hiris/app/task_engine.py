@@ -84,6 +84,10 @@ class TaskEngine:
         self._execute_policy = execute_policy if execute_policy is not None else {}
         self._tasks: dict[str, Task] = {}
         self._scheduler = AsyncIOScheduler()
+        # Strong refs to fire-and-forget immediate-trigger tasks: asyncio only
+        # weak-refs a bare create_task, so without this a running task can be
+        # GC'd mid-flight (review C/#15, same class as server._spawn).
+        self._bg_tasks: set = set()
         # Serialize concurrent _do_save() across executor threads.
         self._save_lock = threading.Lock()
 
@@ -275,9 +279,11 @@ class TaskEngine:
                     args=[task.id], id=f"task_{task.id}", replace_existing=True,
                 )
             elif t_type == "immediate":
-                asyncio.create_task(
+                _t = asyncio.create_task(
                     self._execute_task(task.id), name=f"imm_{task.id[:8]}"
                 )
+                self._bg_tasks.add(_t)
+                _t.add_done_callback(self._bg_tasks.discard)
             else:
                 logger.warning("Unknown trigger type: %s", t_type)
         except Exception as exc:
@@ -483,6 +489,14 @@ class TaskEngine:
             return
         if now < from_dt:
             return
-        if task.condition and not self._evaluate_condition(task.condition):
+        # Fail-safe (review C/#14): a malformed condition reloaded from disk
+        # (_load does not re-validate) must not raise out of this interval job
+        # every tick. On any evaluation error, treat the window as not-yet-met
+        # (skip this tick) rather than crashing the scheduler job.
+        try:
+            if task.condition and not self._evaluate_condition(task.condition):
+                return
+        except Exception:
+            logger.warning("time_window condition eval failed for task %s; skipping tick", task_id)
             return
         await self._execute_task(task_id)
