@@ -96,6 +96,7 @@ async def handle_recall_knowledge(
     kinds: list[str] | str | None = None,
     pseudonymizer: Any = None,
     cloud: bool = True,
+    pseudonym_map: dict[str, str] | None = None,
 ) -> dict:
     try:
         qv = await embedder.embed(tool_input["query"])
@@ -135,7 +136,10 @@ async def handle_recall_knowledge(
             is_sensitive = sens == "sensitive"
             if is_sensitive and cloud:
                 if pseudonymizer is not None:
-                    content = pseudonymizer.pseudonymize(content)
+                    # Record token->value into the caller's per-request
+                    # mapping (review B/#7) so ONLY this exchange's own
+                    # detokenize call can ever expand these tokens back.
+                    content = pseudonymizer.pseudonymize(content, pseudonym_map)
                 else:
                     content = "[contenuto sensibile non disponibile]"
             out.append({"id": _id, "kind": kind, "content": content})

@@ -18,7 +18,9 @@ from ..claude_runner import (
     REQUIRE_CONFIRMATION_PROMPT,
     _redact_stream_tool_calls,
     _current_tool_calls,
+    _current_pseudonym_map,
     _PerCallList,
+    _PerCallDict,
 )
 from .pricing import PRICING as _PRICING
 
@@ -180,6 +182,9 @@ class OpenAICompatRunner:
     # backends don't support Anthropic Extended Thinking (thinking_budget is
     # accepted-and-ignored in chat()/run_with_actions() below).
     last_tool_calls = _PerCallList(_current_tool_calls)
+    # Per-request pseudonymization token map (review B/#7) — same ContextVar
+    # shared with ClaudeRunner; see claude_runner.py's module comment.
+    last_pseudonym_map = _PerCallDict(_current_pseudonym_map)
 
     def __init__(
         self,
@@ -453,6 +458,8 @@ class OpenAICompatRunner:
             self._per_agent_usage[agent_id]["requests"] += 1
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
+        # Fresh per-exchange pseudonymization map (review B/#7).
+        self.last_pseudonym_map = {}
         self.total_requests += 1
 
         effective_model = self._resolve_model(model, agent_type)
@@ -632,6 +639,7 @@ class OpenAICompatRunner:
                         knowledge_kinds=knowledge_kinds,
                         cloud=self._is_cloud,
                         user_id=user_id,
+                        pseudonym_map=self.last_pseudonym_map,
                     )
                     self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
                     messages.append({
@@ -691,6 +699,8 @@ class OpenAICompatRunner:
         import openai as _openai
 
         self.last_tool_calls = []
+        # Fresh per-exchange pseudonymization map (review B/#7).
+        self.last_pseudonym_map = {}
         self.total_requests += 1
         if agent_id:
             if agent_id not in self._per_agent_usage:
@@ -887,6 +897,7 @@ class OpenAICompatRunner:
                         knowledge_kinds=knowledge_kinds,
                         cloud=self._is_cloud,
                         user_id=user_id,
+                        pseudonym_map=self.last_pseudonym_map,
                     )
                     self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
                     messages.append({

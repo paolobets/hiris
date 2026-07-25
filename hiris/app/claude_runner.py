@@ -346,6 +346,18 @@ _current_tool_calls: "contextvars.ContextVar[Optional[list]]" = contextvars.Cont
 _current_thinking_blocks: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
     "hiris_current_thinking_blocks", default=None
 )
+# Per-request pseudonymization token map (review B/#7 — PII cross-leak fix).
+# Same ContextVar-per-Task isolation rationale as the two ContextVars above:
+# chat()/chat_stream() reset this dict to {} at the start of every call, the
+# recall_knowledge tool path (dispatcher.dispatch -> knowledge_tools) records
+# token->value pairs into it as it pseudonymizes sensitive content for THIS
+# exchange, and the caller (handlers_chat.py / server.py) reads it back
+# AFTER chat()/chat_stream() returns (same Task, so the ContextVar value is
+# still visible) to detokenize the model's reply using ONLY this exchange's
+# own tokens — never falling back to the shared, unscoped vault.
+_current_pseudonym_map: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar(
+    "hiris_current_pseudonym_map", default=None
+)
 
 
 class _PerCallList:
@@ -377,11 +389,29 @@ class _PerCallList:
         self._var.set(value)
 
 
+class _PerCallDict:
+    """Same per-Task ContextVar-backed isolation as ``_PerCallList``, but for
+    a dict attribute (used by ``last_pseudonym_map`` — review B/#7)."""
+
+    def __init__(self, var: "contextvars.ContextVar[Optional[dict]]") -> None:
+        self._var = var
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        val = self._var.get()
+        return val if val is not None else {}
+
+    def __set__(self, obj, value) -> None:
+        self._var.set(value)
+
+
 class ClaudeRunner:
     # Per-call, per-asyncio-Task isolated — NOT shared mutable instance state,
     # even though this object is a long-lived singleton (see comment above).
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_thinking_blocks = _PerCallList(_current_thinking_blocks)
+    last_pseudonym_map = _PerCallDict(_current_pseudonym_map)
 
     def __init__(
         self,
@@ -543,6 +573,9 @@ class ClaudeRunner:
             self._per_agent_usage[agent_id]["requests"] += 1
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
+        # Fresh per-exchange pseudonymization map (review B/#7) — populated by
+        # the recall_knowledge tool path below, read by the caller afterwards.
+        self.last_pseudonym_map = {}
         # ── System prompt blocks with prompt caching ─────────────────────────
         # Anthropic prompt caching is *cumulative*: a single cache_control
         # breakpoint caches everything from the start of the request up to that
@@ -673,6 +706,7 @@ class ClaudeRunner:
                             knowledge_kinds=knowledge_kinds,
                             cloud=self._is_cloud,
                             user_id=user_id,
+                            pseudonym_map=self.last_pseudonym_map,
                         )
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({

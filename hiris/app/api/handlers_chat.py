@@ -396,7 +396,10 @@ async def handle_chat(request: web.Request) -> web.Response:
         # tokens until a future streaming refactor re-emits de-tokenized text.
         pseudonymizer = request.app.get("pseudonymizer")
         if pseudonymizer is not None and full_response:
-            full_response = pseudonymizer.detokenize(full_response)
+            # Only expand tokens THIS exchange's own pseudonymize call minted
+            # (review B/#7) — never a global/cross-conversation lookup.
+            pseudonym_map = getattr(runner, "last_pseudonym_map", None) or {}
+            full_response = pseudonymizer.detokenize(full_response, pseudonym_map)
         # Skip persistence for toxic / synthetic-error responses so the next
         # turn does not see a poisoned history. discard_collected already
         # zeroes collected_tokens for tool-call leaks; this also covers the
@@ -436,7 +439,10 @@ async def handle_chat(request: web.Request) -> web.Response:
     # contain real values rather than vault tokens.
     pseudonymizer = request.app.get("pseudonymizer")
     if pseudonymizer is not None and isinstance(response, str) and response:
-        response = pseudonymizer.detokenize(response)
+        # Only expand tokens THIS exchange's own pseudonymize call minted
+        # (review B/#7) — never a global/cross-conversation lookup.
+        pseudonym_map = getattr(runner, "last_pseudonym_map", None) or {}
+        response = pseudonymizer.detokenize(response, pseudonym_map)
 
     # Persist the new user+assistant exchange — but skip when the runner
     # returned a synthetic error / leak sentinel, so the next turn doesn't

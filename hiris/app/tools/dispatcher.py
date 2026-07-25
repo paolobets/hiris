@@ -201,6 +201,7 @@ class ToolDispatcher:
         cloud: bool = True,
         tier_confirmed: bool = False,
         user_id: str | None = None,
+        pseudonym_map: dict[str, str] | None = None,
     ) -> Any:
         _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization", "code"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
@@ -510,6 +511,7 @@ class ToolDispatcher:
                     kinds=knowledge_kinds,
                     pseudonymizer=self._pseudonymizer,
                     cloud=cloud,
+                    pseudonym_map=pseudonym_map,
                 )
             if name == "link_knowledge" and self._knowledge_store:
                 return await handle_link_knowledge(self._knowledge_store, inputs)

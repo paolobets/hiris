@@ -1515,7 +1515,17 @@ async def _on_startup(app: web.Application) -> None:
         # match see real values rather than vault tokens.
         _pseudonymizer = app.get("pseudonymizer")
         if _pseudonymizer is not None:
-            reply_text = _pseudonymizer.detokenize(reply_text)
+            # SECURITY (review B/#7): this async-bridge reply comes from an
+            # external runner process on a job claimed/submitted over the
+            # network, entirely outside this process's per-request
+            # ContextVar-scoped pseudonym map (_enqueue_chat_job never calls
+            # pseudonymize for this path either) — there is no legitimate
+            # per-job token mapping available here. Pass an explicit empty
+            # mapping so detokenize's new contract (expand ONLY tokens in the
+            # supplied mapping) safely leaves any [TYPE_N]-shaped text
+            # verbatim, instead of resolving it against the shared,
+            # unscoped vault as it used to.
+            reply_text = _pseudonymizer.detokenize(reply_text, {})
         if _is_toxic_chat_reply(reply_text):
             # Drop silently, same as the sync path: the next turn must not
             # inherit a poisoned/leaked history. There's no HTTP response

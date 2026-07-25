@@ -532,12 +532,14 @@ async def test_list_tasks_api_empty(client):
 @pytest.mark.asyncio
 async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     """Task 7 — de-tokenize: the handler must replace vault tokens in the
-    runner's reply with real PII values before returning the JSON response."""
+    runner's reply with real PII values before returning the JSON response,
+    using ONLY the current exchange's own per-request token map (review
+    B/#7) — never a global/vault-wide lookup. ``last_pseudonym_map`` here
+    simulates the mapping the real recall_knowledge tool path would have
+    populated during THIS exchange's own pseudonymize call."""
     from hiris.app.brain.privacy import VaultStore, Pseudonymizer
 
-    # Build a vault with one mapping: [IBAN_1] -> real IBAN
     vault = VaultStore(str(tmp_path / "vault.db"))
-    vault.token_for("iban", "IT60X0542811101000000123456")  # creates [IBAN_1]
     pseudonymizer = Pseudonymizer(vault)
 
     app = create_app()
@@ -557,6 +559,9 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     # Runner returns a response that contains the vault token (not the real IBAN)
     mock_runner.chat = AsyncMock(return_value="Saldo su [IBAN_1].")
     mock_runner.last_tool_calls = []
+    # This exchange's own per-request token map — as if recall_knowledge had
+    # pseudonymized this IBAN into [IBAN_1] earlier in THIS same tool loop.
+    mock_runner.last_pseudonym_map = {"[IBAN_1]": "IT60X0542811101000000123456"}
     engine.set_claude_runner(mock_runner)
 
     app["ha_client"] = mock_ha
@@ -576,4 +581,60 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     # The token must be replaced with the real value
     assert "IT60X0542811101000000123456" in data["response"]
     assert "[IBAN_1]" not in data["response"]
+    vault.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_does_not_detokenize_cross_request_token(aiohttp_client, tmp_path):
+    """SECURITY (review B/#7): a reply containing a [TYPE_N]-shaped token that
+    was NOT created by THIS exchange's own pseudonymize call (e.g. minted by
+    a different conversation/user, hallucinated by the model, or injected via
+    a poisoned document) must be returned VERBATIM — never expanded against
+    the shared vault, even though the vault happens to hold a real mapping
+    for that exact token string."""
+    from hiris.app.brain.privacy import VaultStore, Pseudonymizer
+
+    # A DIFFERENT conversation's PII lives in the shared vault under [IBAN_1].
+    vault = VaultStore(str(tmp_path / "vault.db"))
+    vault.token_for("iban", "IT00OTHERUSERSECRET000000001")  # creates [IBAN_1]
+    pseudonymizer = Pseudonymizer(vault)
+
+    app = create_app()
+
+    mock_ha = AsyncMock()
+    mock_ha.get_states = AsyncMock(return_value=[])
+    mock_ha.start = AsyncMock()
+    mock_ha.stop = AsyncMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+
+    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine.start = AsyncMock()
+    engine.stop = AsyncMock()
+
+    mock_runner = AsyncMock()
+    # THIS exchange's reply happens to mention the same token string, but
+    # THIS exchange never pseudonymized anything -- its own map is empty.
+    mock_runner.chat = AsyncMock(return_value="Il tuo saldo è su [IBAN_1].")
+    mock_runner.last_tool_calls = []
+    mock_runner.last_pseudonym_map = {}
+    engine.set_claude_runner(mock_runner)
+
+    app["ha_client"] = mock_ha
+    app["engine"] = engine
+    app["claude_runner"] = mock_runner
+    app["theme"] = "auto"
+    app["data_dir"] = str(tmp_path)
+    app["pseudonymizer"] = pseudonymizer
+
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+
+    c = await aiohttp_client(app)
+    resp = await c.post("/api/chat", json={"message": "qual è il mio IBAN?"})
+    assert resp.status == 200
+    data = await resp.json()
+    # Must NOT leak the other conversation's real IBAN.
+    assert "IT00OTHERUSERSECRET000000001" not in data["response"]
+    assert "[IBAN_1]" in data["response"]
     vault.close()

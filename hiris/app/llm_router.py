@@ -4,7 +4,7 @@ import logging
 import re
 from typing import Any
 
-from .claude_runner import _current_tool_calls, _current_thinking_blocks
+from .claude_runner import _current_tool_calls, _current_thinking_blocks, _current_pseudonym_map
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +280,16 @@ class LLMRouter:
         isolation, shared with ClaudeRunner/OpenAICompatRunner."""
         val = _current_thinking_blocks.get()
         return val if val is not None else []
+
+    @property
+    def last_pseudonym_map(self) -> dict:
+        """Per-request pseudonymization token map (review B/#7) from the call
+        that just ran through THIS asyncio Task. Same ContextVar-backed
+        isolation as last_tool_calls/last_thinking_blocks above — callers
+        must thread this into ``pseudonymizer.detokenize(text, mapping)`` so
+        only tokens THIS exchange minted can ever be expanded back."""
+        val = _current_pseudonym_map.get()
+        return val if val is not None else {}
 
     @property
     def total_input_tokens(self) -> int:
