@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.backends.base import LLMBackend
 from hiris.app.backends.ollama import OllamaBackend
 from hiris.app.llm_router import LLMRouter
-from hiris.app.claude_runner import _current_tool_calls, _current_thinking_blocks
+from hiris.app.claude_runner import _current_tool_calls, _current_thinking_blocks, RunnerBackendError
 
 
 def test_llm_backend_is_abstract():
@@ -165,6 +165,74 @@ async def test_router_chat_all_fail_returns_error_message(mock_runner):
     router = LLMRouter(claude=failing_runner, strategy="balanced")
     result = await router.chat(user_message="hello", model="auto")
     assert "non disponibili" in result
+
+
+# ---------------------------------------------------------------------------
+# Review C/#13: runners now RAISE RunnerBackendError on API failure instead
+# of returning a friendly string — these prove the fallback loop actually
+# engages on that exception (it was previously dead code: a returned string
+# never raised, so the primary "succeeded" and the healthy secondary was
+# never tried).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_router_chat_fails_over_on_runner_backend_error(mock_runner):
+    """Primary raises RunnerBackendError (e.g. rate limit) -> router tries
+    the next configured backend and returns ITS reply, not a degraded string.
+    Fails on the pre-fix code, where chat() swallowed the API error into a
+    returned string and the fallback loop never ran."""
+    failing_runner = MagicMock()
+    failing_runner.chat = AsyncMock(
+        side_effect=RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco.")
+    )
+    mock_ollama = MagicMock()
+    mock_ollama.chat = AsyncMock(return_value="ollama fallback")
+    router = LLMRouter(claude=failing_runner, ollama=mock_ollama, strategy="quality_first")
+    result = await router.chat(user_message="hello", model="auto")
+    assert result == "ollama fallback"
+    failing_runner.chat.assert_awaited_once()
+    mock_ollama.chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_router_chat_all_backends_raise_returns_last_friendly_message(mock_runner):
+    """Every backend raises RunnerBackendError -> router returns the LAST
+    failure's friendly_message (no exception propagates to the caller)."""
+    first = MagicMock()
+    first.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude, riprova."))
+    second = MagicMock()
+    second.chat = AsyncMock(side_effect=RunnerBackendError("Crediti OpenRouter esauriti."))
+    router = LLMRouter(claude=first, openrouter=second, strategy="balanced")
+    result = await router.chat(user_message="hello", model="auto")
+    assert result == "Crediti OpenRouter esauriti."
+
+
+@pytest.mark.asyncio
+async def test_router_run_with_actions_fails_over_on_runner_backend_error():
+    """Same fallback proof as above, for run_with_actions (the Sentinella's
+    safety-evaluation path)."""
+    failing_runner = MagicMock()
+    failing_runner.run_with_actions = AsyncMock(
+        side_effect=RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco.")
+    )
+    healthy = MagicMock()
+    healthy.run_with_actions = AsyncMock(return_value=("ok from fallback", {}))
+    router = LLMRouter(claude=failing_runner, ollama=healthy, strategy="quality_first")
+    result = await router.run_with_actions(user_message="hello", model="auto")
+    assert result == ("ok from fallback", {})
+    failing_runner.run_with_actions.assert_awaited_once()
+    healthy.run_with_actions.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_router_run_with_actions_all_fail_returns_last_friendly_message():
+    first = MagicMock()
+    first.run_with_actions = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    second = MagicMock()
+    second.run_with_actions = AsyncMock(side_effect=RunnerBackendError("Ollama irraggiungibile."))
+    router = LLMRouter(claude=first, ollama=second, strategy="quality_first")
+    result = await router.run_with_actions(user_message="hello", model="auto")
+    assert result == ("Ollama irraggiungibile.", {})
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
 from .proxy._sanitize import sanitize_ha_value as _sanitize_ha_value
+from .claude_runner import RunnerBackendError
 from .config import EUR_RATE
 
 # Timeout complessivo per un singolo run di agente. Evita che un modello locale
@@ -526,6 +527,16 @@ class AgentEngine:
                 raise RuntimeError(
                     f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
                 )
+            except RunnerBackendError as exc:
+                # Runner API failure (rate limit/connection/timeout/auth/5xx).
+                # Before review C/#13's fix this came back as a plain string
+                # from chat() (no exception at all); reproduce that exact
+                # shape here so the rest of this method (rate-limit
+                # detection/pause, execution-log success flag, return value)
+                # behaves exactly as it did — a hard crash into the generic
+                # `except Exception` below would prefix "Error: " and skip
+                # the rate-limit bookkeeping this branch relies on.
+                result = exc.friendly_message
 
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             agent.last_result = result

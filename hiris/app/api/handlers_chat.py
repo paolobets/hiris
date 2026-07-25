@@ -11,7 +11,7 @@ from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
 )
-from ..claude_runner import CHAT_MAX_TOKENS
+from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 
 logger = logging.getLogger(__name__)
 
@@ -412,27 +412,37 @@ async def handle_chat(request: web.Request) -> web.Response:
             ], data_dir)
         return stream_resp
 
-    response = await runner.chat(
-        user_message=message,
-        system_prompt=system_prompt,
-        context_str=context_str,
-        conversation_history=context_history,
-        allowed_tools=allowed_tools,
-        allowed_entities=allowed_entities,
-        allowed_services=allowed_services,
-        model=agent_model,
-        max_tokens=agent_max_tokens,
-        agent_type=agent_type,
-        restrict_to_home=agent_restrict,
-        require_confirmation=agent_require_confirmation,
-        agent_id=effective_agent_id,
-        visible_entity_ids=visible_ids,
-        response_mode=agent_response_mode,
-        thinking_budget=agent_thinking_budget,
-        knowledge_allow_sensitive=allow_sensitive,
-        knowledge_kinds=knowledge_kinds,
-        user_id=owner,
-    )
+    try:
+        response = await runner.chat(
+            user_message=message,
+            system_prompt=system_prompt,
+            context_str=context_str,
+            conversation_history=context_history,
+            allowed_tools=allowed_tools,
+            allowed_entities=allowed_entities,
+            allowed_services=allowed_services,
+            model=agent_model,
+            max_tokens=agent_max_tokens,
+            agent_type=agent_type,
+            restrict_to_home=agent_restrict,
+            require_confirmation=agent_require_confirmation,
+            agent_id=effective_agent_id,
+            visible_entity_ids=visible_ids,
+            response_mode=agent_response_mode,
+            thinking_budget=agent_thinking_budget,
+            knowledge_allow_sensitive=allow_sensitive,
+            knowledge_kinds=knowledge_kinds,
+            user_id=owner,
+        )
+    except RunnerBackendError as exc:
+        # Review C/#13: runners now raise instead of returning a friendly
+        # string on API failure, so LLMRouter's auto-fallback loop actually
+        # engages. That loop only ever raises here when `agent_model` pins an
+        # explicit non-"auto" model (the auto path already turns this into a
+        # returned string once every backend is exhausted) — reproduce the
+        # exact same string-shaped degraded response so everything below
+        # (detokenize/toxicity/persistence/serialization) is unaffected.
+        response = exc.friendly_message
 
     # De-tokenize pseudonymized tokens before toxicity check, persistence,
     # and serialization so both the stored history and the returned JSON

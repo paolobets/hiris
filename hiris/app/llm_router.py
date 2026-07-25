@@ -4,7 +4,12 @@ import logging
 import re
 from typing import Any
 
-from .claude_runner import _current_tool_calls, _current_thinking_blocks, _current_pseudonym_map
+from .claude_runner import (
+    RunnerBackendError,
+    _current_tool_calls,
+    _current_thinking_blocks,
+    _current_pseudonym_map,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -204,12 +209,16 @@ class LLMRouter:
                 return "Nessun provider AI configurato per questo modello."
             return await runner.chat(**kwargs)
         # auto: try backends in mode-policy order with fallback
+        last_friendly: str | None = None
         for runner in self._ordered_backends(mode):
             try:
                 return await runner.chat(**kwargs)
+            except RunnerBackendError as exc:
+                logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
+                last_friendly = exc.friendly_message
             except Exception as exc:
                 logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
-        return "Tutti i provider AI non disponibili. Riprova tra poco."
+        return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
 
     async def chat_stream(self, **kwargs):
         mode = kwargs.pop("mode", "chat")
@@ -241,12 +250,16 @@ class LLMRouter:
             if runner is None:
                 return "Nessun provider AI configurato per questo modello.", {}
             return await runner.run_with_actions(**kwargs)
+        last_friendly: str | None = None
         for runner in self._ordered_backends(mode):
             try:
                 return await runner.run_with_actions(**kwargs)
+            except RunnerBackendError as exc:
+                logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
+                last_friendly = exc.friendly_message
             except Exception as exc:
                 logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
-        return "Tutti i provider AI non disponibili. Riprova tra poco.", {}
+        return (last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."), {}
 
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
         runner = self._claude or self._openai or self._ollama

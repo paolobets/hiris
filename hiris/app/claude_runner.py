@@ -49,6 +49,40 @@ from .tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
 
+
+class RunnerBackendError(Exception):
+    """Raised by a runner's chat()/run_with_actions() when the underlying
+    provider API call itself failed (rate limit, connection error, timeout,
+    auth failure, 5xx, or any other persistent outage) — as opposed to the
+    model producing a normal (if unusual) reply.
+
+    Review C/#13: ClaudeRunner/OpenAICompatRunner used to CATCH these errors
+    and RETURN a friendly Italian string, indistinguishable from a real
+    successful reply to any caller. LLMRouter's ordered-backend fallback loop
+    wraps chat()/run_with_actions() in `except Exception` specifically to
+    fail over to the next configured backend on a primary outage — but a
+    returned string never raises, so the loop always "succeeded" on the
+    first (broken) backend and the fallback chain was dead code.
+
+    `friendly_message` carries the exact user-facing string the runner used
+    to return directly. LLMRouter catches this exception to try the next
+    backend, and once every backend in the chain has failed, surfaces the
+    LAST failure's `friendly_message` to the end user — the router becomes
+    the single place that produces the user-facing degradation. Callers that
+    bypass the router (e.g. AgentEngine._run_agent, handlers_chat.handle_chat
+    when an agent pins an explicit non-"auto" model) catch it directly at
+    their own call site to preserve their pre-existing graceful-degradation
+    behavior instead of crashing.
+    """
+
+    def __init__(self, friendly_message: str) -> None:
+        super().__init__(friendly_message)
+        self.friendly_message = friendly_message
+
+    def __str__(self) -> str:  # so `str(exc)` == the friendly text everywhere
+        return self.friendly_message
+
+
 _TOOL_RESULT_COMPRESS_LEN = 300  # chars to keep per old tool result
 
 def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None:
@@ -657,7 +691,9 @@ class ClaudeRunner:
                 response = await self._call_api(**_api_kwargs)
             except anthropic.APIError as exc:
                 logger.error("Claude API error: %s", exc)
-                return "Errore temporaneo del servizio AI. Riprova tra poco."
+                raise RunnerBackendError(
+                    "Errore temporaneo del servizio AI. Riprova tra poco."
+                ) from exc
 
             for block in response.content:
                 if getattr(block, "type", None) == "thinking":

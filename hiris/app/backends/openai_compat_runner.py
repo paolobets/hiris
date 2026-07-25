@@ -16,6 +16,7 @@ from ..claude_runner import (
     EVALUATION_ONLY_TOOLS,
     RESTRICT_PROMPT,
     REQUIRE_CONFIRMATION_PROMPT,
+    RunnerBackendError,
     _redact_stream_tool_calls,
     _current_tool_calls,
     _current_pseudonym_map,
@@ -546,7 +547,9 @@ class OpenAICompatRunner:
                 self.total_rate_limit_errors += 1
                 logger.error("OpenAI rate limit: %s", exc)
                 upstream = parse_upstream_rate_limit(exc)
-                return upstream or "Errore temporaneo del servizio AI. Riprova tra poco."
+                raise RunnerBackendError(
+                    upstream or "Errore temporaneo del servizio AI. Riprova tra poco."
+                ) from exc
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
                 # current max_tokens. The error message tells us the highest
@@ -567,14 +570,16 @@ class OpenAICompatRunner:
                         logger.error(
                             "OpenRouter 402 retry failed: %s", retry_exc,
                         )
-                        return (
+                        raise RunnerBackendError(
                             f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
                             f"Riduci max_tokens dell'agente sotto {affordable} "
                             f"oppure aggiungi credito su openrouter.ai."
-                        )
+                        ) from retry_exc
                 else:
                     logger.error("OpenAI/Ollama API error: %s", exc)
-                    return "Errore temporaneo del servizio AI. Riprova tra poco."
+                    raise RunnerBackendError(
+                        "Errore temporaneo del servizio AI. Riprova tra poco."
+                    ) from exc
 
             self._track_usage(response, effective_model, agent_id)
             choice = response.choices[0]
