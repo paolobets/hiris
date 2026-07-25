@@ -2,6 +2,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import re
+from datetime import date
 from typing import Any, Optional
 
 # HA automation IDs are slug-style: lowercase alphanumeric + underscore.
@@ -31,6 +32,7 @@ from .config_tools import normalize_config_inputs, apply_ha_config, add_dashboar
 from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
+from ..brain.briefing import build_briefing_bundle, render_briefing_template
 from ..security.semaphore import gate_action
 
 logger = logging.getLogger(__name__)
@@ -434,6 +436,37 @@ class ToolDispatcher:
                 )
             if name == "link_knowledge" and self._knowledge_store:
                 return await handle_link_knowledge(self._knowledge_store, inputs)
+            if name == "daily_briefing":
+                # On-demand chat butler summary (Slice 7 Task 5). READ-ONLY: no HA
+                # service call, no semaforo — it only reads knowledge_store/entity_cache.
+                #
+                # Deliberately FAIL-CLOSED on allow_sensitive, unlike the scheduled
+                # run_daily_briefing (server.py Task 4) which gates on
+                # LLMRouter.automatic_allows_sensitive(). The dispatcher has no
+                # llm_router/data_dir (see __init__): the tool result lands in the
+                # CHAT model's context, whose backend locality is not the automatic
+                # chain that gate measures, so there's no signal here to gate on
+                # safely. allow_sensitive=False hides sensitive deadlines from
+                # on-demand chat (still counted in bundle["counts"]["hidden_sensitive"]);
+                # a future chat_allows_sensitive() refinement is backlog.
+                #
+                # policy={}: no data_dir to load a saved policy from here, so
+                # build_briefing_bundle falls back to battery_default_pct.
+                #
+                # Returns the DETERMINISTIC render_briefing_template(bundle) string,
+                # not compose_briefing (which needs an llm_reason this dispatcher
+                # lacks) — the chat model, already mid-reply, narrates it itself.
+                if self._knowledge_store is None:
+                    return "Il maggiordomo non ha accesso alla memoria in questo momento: riprova più tardi."
+                try:
+                    bundle = build_briefing_bundle(
+                        self._knowledge_store, self._cache, {},
+                        today=date.today(), allow_sensitive=False,
+                    )
+                    return render_briefing_template(bundle)
+                except Exception as exc:
+                    logger.error("daily_briefing failed: %s", exc)
+                    return "Non sono riuscito a preparare il resoconto di oggi: riprova più tardi."
             if name == "confirm_pending":
                 if self._confirm_executor is None:
                     return {"error": "Conferma non disponibile"}

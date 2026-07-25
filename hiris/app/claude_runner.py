@@ -105,6 +105,19 @@ CALL_SERVICE_TOOL_DEF = {
     },
 }
 
+DAILY_BRIEFING_TOOL_DEF = {
+    "name": "daily_briefing",
+    "description": (
+        "Riepilogo del maggiordomo per oggi: scadenze imminenti dai documenti "
+        "e stato notevole della casa (porte/finestre aperte, batterie scariche). "
+        "Sola lettura."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
 CONFIRM_PENDING_TOOL_DEF = {
     "name": "confirm_pending",
     "description": (
@@ -151,6 +164,7 @@ ALL_TOOL_DEFS = [
     SAVE_KNOWLEDGE_TOOL_DEF,
     RECALL_KNOWLEDGE_TOOL_DEF,
     LINK_KNOWLEDGE_TOOL_DEF,
+    DAILY_BRIEFING_TOOL_DEF,
     CONFIRM_PENDING_TOOL_DEF,
 ]
 
