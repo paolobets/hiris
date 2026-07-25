@@ -227,8 +227,9 @@ HIRIS (handlers, agents)
 ```
 
 Con `model="auto"`:
-- **balanced / quality_first**: Claude → OpenAI → Ollama
-- **cost_first**: Ollama → OpenAI → Claude
+- **balanced**: Claude → OpenRouter → OpenAI → Ollama
+- **quality_first**: Claude → OpenAI → OpenRouter → Ollama
+- **cost_first**: Ollama → OpenRouter → OpenAI → Claude
 
 Se il backend primario fallisce, viene tentato automaticamente il successivo nella catena.
 

@@ -299,9 +299,9 @@ Lifecycle: `pending` → `applied`/`rejected` (permanente) o archiviato dopo 7 g
 ```python
 # L'ordine della strategia determina la preferenza backend quando model="auto"
 _STRATEGY_ORDER = {
-    "cost_first":    ["ollama", "openai", "claude"],
-    "quality_first": ["claude", "openai", "ollama"],
-    "balanced":      ["claude", "openai", "ollama"],
+    "cost_first":    ["ollama", "openrouter", "openai", "claude"],
+    "quality_first": ["claude", "openai", "openrouter", "ollama"],
+    "balanced":      ["claude", "openrouter", "openai", "ollama"],
 }
 
 # Selezione backend -- chiamata solo quando model != "auto": il caso "auto"

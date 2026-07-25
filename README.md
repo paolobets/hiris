@@ -89,7 +89,7 @@ Supported backends: Anthropic Claude, OpenAI (GPT-4o, GPT-4.1, o-series), any Ol
 
 **When using Ollama**, the model is selected per-agent in the agent designer UI. The model dropdown is populated live from your Ollama instance and grouped by provider.
 
-**Fallback chain:** when `model="auto"`, if the primary backend is unavailable the next one in the strategy chain is tried automatically (`balanced`: Claude → OpenAI → Ollama; `cost_first`: Ollama → OpenAI → Claude).
+**Fallback chain:** when `model="auto"`, if the primary backend is unavailable the next one in the strategy chain is tried automatically (`balanced`: Claude → OpenRouter → OpenAI → Ollama; `quality_first`: Claude → OpenAI → OpenRouter → Ollama; `cost_first`: Ollama → OpenRouter → OpenAI → Claude).
 
 ### Memory & RAG
 

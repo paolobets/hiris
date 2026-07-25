@@ -186,7 +186,7 @@ def test_router_strategy_includes_openrouter_in_chain():
     claude_runner = MagicMock()
     router = LLMRouter(claude=claude_runner, openrouter=or_runner, strategy="balanced")
     backends = router._ordered_backends()
-    # balanced: claude > openai > openrouter > ollama
+    # balanced: claude > openrouter > openai > ollama
     assert backends[0] is claude_runner
     assert or_runner in backends
 

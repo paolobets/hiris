@@ -239,8 +239,9 @@ HIRIS (handlers, agents)
 ```
 
 When `model="auto"`:
-- **balanced / quality_first**: Claude → OpenAI → Ollama
-- **cost_first**: Ollama → OpenAI → Claude
+- **balanced**: Claude → OpenRouter → OpenAI → Ollama
+- **quality_first**: Claude → OpenAI → OpenRouter → Ollama
+- **cost_first**: Ollama → OpenRouter → OpenAI → Claude
 
 If the primary backend fails, the next one in the chain is tried automatically.
 
