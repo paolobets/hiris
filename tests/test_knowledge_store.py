@@ -41,6 +41,74 @@ def test_list_approve_delete(tmp_path):
     store.close()
 
 
+def test_list_items_owner_scoping_includes_home(tmp_path):
+    """owner filter on list_items must mean 'this owner OR home', mirroring
+    search()'s unified scoping (review B/#16 IDOR fix)."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    a_id = store.add_item(kind="fact", content="A", owner="userA", status="pending")
+    b_id = store.add_item(kind="fact", content="B", owner="userB", status="pending")
+    home_id = store.add_item(kind="fact", content="shared", owner="home", status="pending")
+
+    ids_for_a = {i["id"] for i in store.list_items(status="pending", owner="userA")}
+    assert ids_for_a == {a_id, home_id}
+    assert b_id not in ids_for_a
+
+    store.close()
+
+
+def test_approve_rejects_cross_owner_and_leaves_item_unchanged(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    a_id = store.add_item(kind="fact", content="A", owner="userA", status="pending")
+
+    ok = store.approve(a_id, owner="userB")
+    assert ok is False
+    assert store.get_item(a_id)["status"] == "pending"
+
+    ok2 = store.approve(a_id, owner="userA")
+    assert ok2 is True
+    assert store.get_item(a_id)["status"] == "approved"
+
+    store.close()
+
+
+def test_approve_allows_home_item_for_any_owner(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    home_id = store.add_item(kind="fact", content="shared", owner="home", status="pending")
+    ok = store.approve(home_id, owner="anyUser")
+    assert ok is True
+    assert store.get_item(home_id)["status"] == "approved"
+    store.close()
+
+
+def test_delete_item_rejects_cross_owner_and_leaves_item_unchanged(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    a_id = store.add_item(kind="fact", content="A", owner="userA", status="pending")
+
+    ok = store.delete_item(a_id, owner="userB")
+    assert ok is False
+    assert store.get_item(a_id) is not None
+
+    ok2 = store.delete_item(a_id, owner="userA")
+    assert ok2 is True
+    assert store.get_item(a_id) is None
+
+    store.close()
+
+
+def test_approve_delete_owner_none_preserves_unscoped_behavior(tmp_path):
+    """Internal callers (brain_trace, history_digest) call approve/delete_item
+    without an owner arg -- must keep acting unconditionally (backward compat)."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    pid = store.add_item(kind="fact", content="x", owner="userA", status="pending")
+    ok = store.approve(pid)
+    assert ok is True
+    assert store.get_item(pid)["status"] == "approved"
+    ok2 = store.delete_item(pid)
+    assert ok2 is True
+    assert store.get_item(pid) is None
+    store.close()
+
+
 def test_search_ranks_by_cosine_and_excludes_sensitive(tmp_path):
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     store.add_item(kind="fact", content="vicino", embedding=[1.0, 0.0])

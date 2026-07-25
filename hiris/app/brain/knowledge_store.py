@@ -129,7 +129,11 @@ class KnowledgeStore:
         if status is not None:
             clauses.append("status=?"); params.append(status)
         if owner is not None:
-            clauses.append("owner=?"); params.append(owner)
+            # Unified scope (mirrors search()): a caller sees their own rows
+            # plus anything shared as 'home'. This is the fix for review
+            # B/#16 -- handle_list_pending must never return another
+            # owner's private rows.
+            clauses.append("(owner=? OR owner='home')"); params.append(owner)
         if kind is not None:
             clauses.append("kind=?"); params.append(kind)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
@@ -148,22 +152,43 @@ class KnowledgeStore:
             out.append(d)
         return out
 
-    def approve(self, item_id: int) -> None:
+    def approve(self, item_id: int, owner: str | None = None) -> bool:
+        """Approve a pending item. If `owner` is given, the item is only
+        approved when its own owner matches `owner` or is 'home' (shared) --
+        a cross-owner id is rejected (returns False, no mutation). `owner`
+        omitted (None) preserves the pre-fix unscoped behavior for internal
+        callers (brain_trace, history_digest) that manage their own rows and
+        don't carry a caller identity."""
         with self._mu:
+            if owner is not None and not self._owner_allowed(item_id, owner):
+                return False
             self._conn.execute(
                 "UPDATE knowledge_items SET status='approved', updated_at=? WHERE id=?",
                 (self._now(), item_id),
             )
             self._conn.commit()
+            return True
 
-    def delete_item(self, item_id: int) -> None:
+    def delete_item(self, item_id: int, owner: str | None = None) -> bool:
+        """Delete an item. See `approve()` for the `owner` scoping contract."""
         with self._mu:
+            if owner is not None and not self._owner_allowed(item_id, owner):
+                return False
             self._conn.execute("DELETE FROM knowledge_items WHERE id=?", (item_id,))
             self._conn.execute(
                 "DELETE FROM knowledge_links WHERE src_id=? OR dst_id=?",
                 (item_id, item_id),
             )
             self._conn.commit()
+            return True
+
+    def _owner_allowed(self, item_id: int, owner: str) -> bool:
+        """Must be called while holding self._mu. True iff item_id exists and
+        its owner is `owner` or the shared 'home' owner."""
+        row = self._conn.execute(
+            "SELECT owner FROM knowledge_items WHERE id=?", (item_id,)
+        ).fetchone()
+        return row is not None and row["owner"] in (owner, "home")
 
     def search(
         self, *, query_vec: list[float], k: int = 5,
