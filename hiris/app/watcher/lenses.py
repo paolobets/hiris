@@ -456,6 +456,13 @@ def load_lenses(data_dir: str) -> list[dict]:
         cleaned = validate_lens(item)
         if cleaned is not None:
             out.append(cleaned)
+        else:
+            # Don't let a stored-but-now-invalid lens vanish silently: stricter
+            # validation (e.g. an old interval_min below the floor, a non-bool
+            # enabled, a value-invalid cron) would otherwise drop it with no
+            # trace, and the next save persists the deletion.
+            lid = item.get("id") if isinstance(item, dict) else None
+            log.warning("load_lenses: dropping invalid stored lens id=%r", lid)
     return out
 
 

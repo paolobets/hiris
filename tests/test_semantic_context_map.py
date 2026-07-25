@@ -208,7 +208,6 @@ def test_light_state_format_non_numeric_brightness_falls_back(caplog):
     scm.build(cache)
     context, _ = scm.get_context("luci soggiorno", cache)  # must not raise
     assert "accesa" in context
-    assert "light.sala" not in context or True  # sanity: no crash reached here
 
 
 def test_media_player_volume_non_numeric_does_not_crash():

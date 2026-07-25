@@ -377,6 +377,22 @@ async def test_check_time_window_normal_expires_after_to(engine, mock_ha, monkey
     assert engine._tasks[task.id].status == "expired"
 
 
+@pytest.mark.asyncio
+async def test_check_time_window_degenerate_from_equals_to_expires(engine, mock_ha, monkeypatch):
+    # A degenerate from==to window is a zero-length instant, NOT a wrapping
+    # (always-active) window: once `now` is past it, the task must expire and
+    # not live forever. Regression guard for `wraps = to_dt < from_dt`.
+    _patch_now(monkeypatch, 12, 0)
+    task = engine.add_task(
+        {"label": "Istante", "trigger": {"type": "time_window", "from": "08:00",
+         "to": "08:00", "check_interval_minutes": 5},
+         "actions": [{"type": "call_ha_service", "domain": "light",
+                      "service": "turn_on", "data": {"entity_id": "light.x"}}]},
+        agent_id="hiris-default")
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "expired"
+
+
 def test_at_datetime_schedules_correct_run_date(engine):
     future = datetime.now() + timedelta(hours=2)
     future_iso = future.replace(microsecond=0).isoformat()

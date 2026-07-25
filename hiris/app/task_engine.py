@@ -504,7 +504,10 @@ class TaskEngine:
         # A non-wrapping window still expires once fully past `to` today; a
         # wrapping window recurs nightly and is never marked expired by this
         # tick (it just waits out the daytime dead-zone).
-        wraps = to_dt <= from_dt
+        # Strictly `<`: a degenerate `from == to` window is a zero-length
+        # instant that must expire once `now` passes it, NOT wrap into an
+        # always-active/never-expiring window (which `<=` would produce).
+        wraps = to_dt < from_dt
         in_window = (from_dt <= now <= to_dt) if not wraps else (now >= from_dt or now <= to_dt)
         if not in_window:
             if not wraps and now > to_dt:

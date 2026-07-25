@@ -53,7 +53,10 @@ _INJECTION_RE = re.compile(
     # pattern) is matched, mirroring the ignora/dimentica phrase discipline
     # above. This is a deliberate under-match: "override the light schedule"
     # or "bypass the alarm sensor" will NOT be filtered.
-    r'|\b(?:override|bypass)(?:s|es|ed|ing)?\s+(?:the\s+|all\s+|your\s+)?'
+    # "overrid(e|es|ed|ing|den)" spells all inflections: "override" drops the
+    # trailing -e before -ing/-en, so a naive "override(?:...ing)?" would miss
+    # "overriding"/"overridden". "bypass" keeps its stem, so bypass(es|ed|ing).
+    r'|\b(?:overrid(?:e|es|ed|ing|den)|bypass(?:es|ed|ing)?)\s+(?:the\s+|all\s+|your\s+)?'
     r'(?:system\s+prompt|instructions?|restrictions?|rules?|safeguards?|security)\b'
     r'|bypassa(?:re)?\s+(?:le\s+|tutte\s+le\s+)?(?:istruzioni|regole|restrizioni)'
     r'|sovrascrivi\s+(?:le\s+)?istruzioni|scavalca\s+(?:le\s+)?istruzioni'
