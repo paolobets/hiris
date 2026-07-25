@@ -1125,6 +1125,7 @@ async def _on_startup(app: web.Application) -> None:
         execute_policy=app["execute_policy"],
         request_confirmation=_request_confirmation,
         confirm_executor=_confirm_executor,
+        data_dir=data_dir,
     )
     dispatcher.set_task_engine(task_engine)
     app["tool_dispatcher"] = dispatcher

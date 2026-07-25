@@ -272,6 +272,14 @@ def render_briefing_template(bundle: dict) -> str:
             "nessuna apertura e nessuna batteria scarica da segnalare."
         )
 
+    try:
+        hidden = (bundle.get("counts") or {}).get("hidden_sensitive")
+        if isinstance(hidden, int) and not isinstance(hidden, bool) and hidden > 0:
+            noun = "scadenza riservata" if hidden == 1 else "scadenze riservate"
+            lines.append(f"Ci sono anche {hidden} {noun} non mostrate qui.")
+    except Exception:
+        pass
+
     return "\n".join(lines)
 
 

@@ -92,6 +92,7 @@ class ToolDispatcher:
         execute_policy: dict | None = None,
         request_confirmation: Any = None,
         confirm_executor: Any = None,
+        data_dir: str | None = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -106,6 +107,10 @@ class ToolDispatcher:
         self._knowledge_embedder = embedder if embedder is not None else embedding_provider
         self._pseudonymizer = pseudonymizer
         self._history_store = history_store
+        # Used only by daily_briefing (Slice 7 Task 5) to load the saved
+        # detectors.battery.min_pct threshold via watcher.policy.load_policy;
+        # optional/backward-compatible, defaults to None (policy={} fallback).
+        self._data_dir = data_dir
         # Riferimento VIVO al dict app["execute_policy"] (mutato in place da
         # apply_saved_policy): il semaforo si legge a ogni dispatch. {} = fail-closed.
         self._execute_policy = execute_policy if execute_policy is not None else {}
@@ -440,28 +445,37 @@ class ToolDispatcher:
                 # On-demand chat butler summary (Slice 7 Task 5). READ-ONLY: no HA
                 # service call, no semaforo — it only reads knowledge_store/entity_cache.
                 #
-                # Deliberately FAIL-CLOSED on allow_sensitive, unlike the scheduled
-                # run_daily_briefing (server.py Task 4) which gates on
-                # LLMRouter.automatic_allows_sensitive(). The dispatcher has no
-                # llm_router/data_dir (see __init__): the tool result lands in the
-                # CHAT model's context, whose backend locality is not the automatic
-                # chain that gate measures, so there's no signal here to gate on
-                # safely. allow_sensitive=False hides sensitive deadlines from
-                # on-demand chat (still counted in bundle["counts"]["hidden_sensitive"]);
-                # a future chat_allows_sensitive() refinement is backlog.
+                # allow_sensitive mirrors recall_knowledge's model: the agent config
+                # (knowledge_allow_sensitive) AND the current chat backend's locality
+                # (cloud) both gate it. Sensitive deadlines are included only when the
+                # agent is allowed to see them AND the chat backend is local — fail-closed
+                # whenever either signal is missing/False (config disallows OR backend is
+                # cloud), same as recall_knowledge. Hidden items are still counted in
+                # bundle["counts"]["hidden_sensitive"] regardless.
                 #
-                # policy={}: no data_dir to load a saved policy from here, so
-                # build_briefing_bundle falls back to battery_default_pct.
+                # policy: loaded from data_dir (watcher.policy.load_policy) when the
+                # dispatcher was constructed with one, so the saved
+                # detectors.battery.min_pct threshold is honored here too, same as the
+                # scheduled run_daily_briefing. Falls back to {} (→ battery_default_pct)
+                # if data_dir is unset or the load fails for any reason.
                 #
                 # Returns the DETERMINISTIC render_briefing_template(bundle) string,
                 # not compose_briefing (which needs an llm_reason this dispatcher
                 # lacks) — the chat model, already mid-reply, narrates it itself.
                 if self._knowledge_store is None:
                     return "Il maggiordomo non ha accesso alla memoria in questo momento: riprova più tardi."
+                policy: dict = {}
+                if self._data_dir:
+                    try:
+                        from ..watcher.policy import load_policy
+                        policy = load_policy(self._data_dir)
+                    except Exception:
+                        policy = {}
                 try:
+                    allow_sensitive = bool(knowledge_allow_sensitive) and not bool(cloud)
                     bundle = build_briefing_bundle(
-                        self._knowledge_store, self._cache, {},
-                        today=date.today(), allow_sensitive=False,
+                        self._knowledge_store, self._cache, policy,
+                        today=date.today(), allow_sensitive=allow_sensitive,
                     )
                     return render_briefing_template(bundle)
                 except Exception as exc:
