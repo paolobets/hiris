@@ -101,6 +101,43 @@ SET_INPUT_HELPER_TOOL_DEF = {
 }
 
 
+_INPUT_HELPER_DOMAINS = frozenset({"input_boolean", "input_number", "input_text", "input_select"})
+
+
+def resolve_input_helper_service(domain: str, value) -> tuple[str, dict] | dict:
+    """Resolve the HA service + extra call data for a set_input_helper call.
+
+    Single source of truth for the domain -> service mapping, shared with the
+    dispatcher (which needs the resolved service *before* actuating, to gate
+    it through the semaforo with the correct domain.service — see
+    ToolDispatcher._gate).
+
+    Returns:
+        ``(service, extra_data)`` on success, where ``extra_data`` holds the
+        service-call payload beyond ``entity_id`` (e.g. ``{"value": ...}``).
+        ``{"error": ...}`` on an unsupported domain or invalid value.
+    """
+    if domain == "input_boolean":
+        if isinstance(value, bool):
+            service = "turn_on" if value else "turn_off"
+        elif str(value).lower() in ("true", "on", "1", "yes"):
+            service = "turn_on"
+        else:
+            service = "turn_off"
+        return service, {}
+    if domain == "input_number":
+        try:
+            num = float(value)
+        except (TypeError, ValueError):
+            return {"error": f"value must be numeric for input_number, got {value!r}"}
+        return "set_value", {"value": num}
+    if domain == "input_text":
+        return "set_value", {"value": str(value)}
+    if domain == "input_select":
+        return "select_option", {"option": str(value)}
+    return {"error": f"Unsupported domain {domain!r}. Supported: {sorted(_INPUT_HELPER_DOMAINS)}"}
+
+
 async def set_input_helper(ha: HAClient, entity_id: str, value) -> dict:
     """Set value on an HA input helper entity, dispatching the correct service per domain.
 
@@ -121,31 +158,14 @@ async def set_input_helper(ha: HAClient, entity_id: str, value) -> dict:
         return {"error": f"Invalid entity_id format: {entity_id!r}"}
 
     domain = entity_id.split(".")[0]
-    supported = {"input_boolean", "input_number", "input_text", "input_select"}
-    if domain not in supported:
-        return {"error": f"Unsupported domain {domain!r}. Supported: {sorted(supported)}"}
+    if domain not in _INPUT_HELPER_DOMAINS:
+        return {"error": f"Unsupported domain {domain!r}. Supported: {sorted(_INPUT_HELPER_DOMAINS)}"}
 
-    data: dict = {"entity_id": entity_id}
-
-    if domain == "input_boolean":
-        if isinstance(value, bool):
-            service = "turn_on" if value else "turn_off"
-        elif str(value).lower() in ("true", "on", "1", "yes"):
-            service = "turn_on"
-        else:
-            service = "turn_off"
-    elif domain == "input_number":
-        try:
-            data["value"] = float(value)
-        except (TypeError, ValueError):
-            return {"error": f"value must be numeric for input_number, got {value!r}"}
-        service = "set_value"
-    elif domain == "input_text":
-        data["value"] = str(value)
-        service = "set_value"
-    elif domain == "input_select":
-        data["option"] = str(value)
-        service = "select_option"
+    resolved = resolve_input_helper_service(domain, value)
+    if isinstance(resolved, dict):  # error
+        return resolved
+    service, extra_data = resolved
+    data: dict = {"entity_id": entity_id, **extra_data}
 
     ok = await ha.call_service(domain, service, data)
     if ok:

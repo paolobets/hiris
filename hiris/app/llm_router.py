@@ -4,6 +4,13 @@ import logging
 import re
 from typing import Any
 
+from .claude_runner import (
+    RunnerBackendError,
+    _current_tool_calls,
+    _current_thinking_blocks,
+    _current_pseudonym_map,
+)
+
 logger = logging.getLogger(__name__)
 
 _CLASSIFY_SYSTEM = (
@@ -202,12 +209,16 @@ class LLMRouter:
                 return "Nessun provider AI configurato per questo modello."
             return await runner.chat(**kwargs)
         # auto: try backends in mode-policy order with fallback
+        last_friendly: str | None = None
         for runner in self._ordered_backends(mode):
             try:
                 return await runner.chat(**kwargs)
+            except RunnerBackendError as exc:
+                logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
+                last_friendly = exc.friendly_message
             except Exception as exc:
                 logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
-        return "Tutti i provider AI non disponibili. Riprova tra poco."
+        return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
 
     async def chat_stream(self, **kwargs):
         mode = kwargs.pop("mode", "chat")
@@ -239,12 +250,16 @@ class LLMRouter:
             if runner is None:
                 return "Nessun provider AI configurato per questo modello.", {}
             return await runner.run_with_actions(**kwargs)
+        last_friendly: str | None = None
         for runner in self._ordered_backends(mode):
             try:
                 return await runner.run_with_actions(**kwargs)
+            except RunnerBackendError as exc:
+                logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
+                last_friendly = exc.friendly_message
             except Exception as exc:
                 logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
-        return "Tutti i provider AI non disponibili. Riprova tra poco.", {}
+        return (last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."), {}
 
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
         runner = self._claude or self._openai or self._ollama
@@ -258,11 +273,36 @@ class LLMRouter:
 
     @property
     def last_tool_calls(self) -> list:
-        for r in reversed(self._all):
-            tc = getattr(r, "last_tool_calls", None)
-            if tc:
-                return tc
-        return []
+        """Tool calls from the call that just ran through THIS asyncio Task.
+
+        Proxies straight to the shared per-call ContextVar (see
+        claude_runner.py's module comment, review A/#3) instead of scanning
+        registered backends for "whichever has a non-empty list" — the old
+        scan could return a completely different caller's tool calls than
+        the one that actually served this request, since every backend
+        shares the router and any of them could have run moments earlier on
+        another Task.
+        """
+        val = _current_tool_calls.get()
+        return val if val is not None else []
+
+    @property
+    def last_thinking_blocks(self) -> list:
+        """Extended-thinking blocks from the call that just ran through THIS
+        asyncio Task. See last_tool_calls above — same ContextVar-backed
+        isolation, shared with ClaudeRunner/OpenAICompatRunner."""
+        val = _current_thinking_blocks.get()
+        return val if val is not None else []
+
+    @property
+    def last_pseudonym_map(self) -> dict:
+        """Per-request pseudonymization token map (review B/#7) from the call
+        that just ran through THIS asyncio Task. Same ContextVar-backed
+        isolation as last_tool_calls/last_thinking_blocks above — callers
+        must thread this into ``pseudonymizer.detokenize(text, mapping)`` so
+        only tokens THIS exchange minted can ever be expanded back."""
+        val = _current_pseudonym_map.get()
+        return val if val is not None else {}
 
     @property
     def total_input_tokens(self) -> int:

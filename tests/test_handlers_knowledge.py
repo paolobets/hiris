@@ -83,6 +83,130 @@ async def test_reject_deletes_item(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_list_pending_scoped_to_owner_and_home(aiohttp_client, tmp_path):
+    """IDOR regression (review B/#16): user B must not see user A's private
+    pending items, only their own + shared 'home' items."""
+    from aiohttp import web
+    from hiris.app.api.handlers_knowledge import handle_list_pending
+
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    a_id = store.add_item(kind="fact", content="A's secret", owner="userA",
+                           sensitivity="sensitive", status="pending")
+    b_id = store.add_item(kind="fact", content="B's own", owner="userB", status="pending")
+    home_id = store.add_item(kind="fact", content="shared", owner="home", status="pending")
+    app = web.Application()
+    app["knowledge_store"] = store
+    app.router.add_get("/api/knowledge/pending", handle_list_pending)
+    client = await aiohttp_client(app)
+
+    r = await client.get("/api/knowledge/pending", headers={"X-Remote-User-Id": "userB"})
+    assert r.status == 200
+    data = await r.json()
+    ids = {i["id"] for i in data["items"]}
+    assert ids == {b_id, home_id}
+    assert a_id not in ids
+
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_approve_cross_owner_rejected(aiohttp_client, tmp_path):
+    """IDOR regression: user B cannot approve user A's pending item."""
+    from aiohttp import web
+    from hiris.app.api.handlers_knowledge import handle_approve
+
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    a_id = store.add_item(kind="fact", content="A's secret", owner="userA", status="pending")
+    app = web.Application()
+    app["knowledge_store"] = store
+    app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
+    client = await aiohttp_client(app)
+
+    r = await client.post(f"/api/knowledge/{a_id}/approve", headers={"X-Remote-User-Id": "userB"})
+    assert r.status in (403, 404)
+    assert store.get_item(a_id)["status"] == "pending"
+
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_reject_cross_owner_rejected(aiohttp_client, tmp_path):
+    """IDOR regression: user B cannot delete (reject) user A's pending item."""
+    from aiohttp import web
+    from hiris.app.api.handlers_knowledge import handle_reject
+
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    a_id = store.add_item(kind="fact", content="A's secret", owner="userA", status="pending")
+    app = web.Application()
+    app["knowledge_store"] = store
+    app.router.add_post("/api/knowledge/{id}/reject", handle_reject)
+    client = await aiohttp_client(app)
+
+    r = await client.post(f"/api/knowledge/{a_id}/reject", headers={"X-Remote-User-Id": "userB"})
+    assert r.status in (403, 404)
+    assert store.get_item(a_id) is not None
+    assert store.get_item(a_id)["status"] == "pending"
+
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_approve_own_item_and_home_item_still_works(aiohttp_client, tmp_path):
+    """Legitimate flow: a user approves their OWN pending item, and any user
+    can approve a shared 'home' item."""
+    from aiohttp import web
+    from hiris.app.api.handlers_knowledge import handle_approve
+
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    own_id = store.add_item(kind="fact", content="mine", owner="userA", status="pending")
+    home_id = store.add_item(kind="fact", content="shared", owner="home", status="pending")
+    app = web.Application()
+    app["knowledge_store"] = store
+    app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
+    client = await aiohttp_client(app)
+
+    r1 = await client.post(f"/api/knowledge/{own_id}/approve", headers={"X-Remote-User-Id": "userA"})
+    assert r1.status == 200
+    assert store.get_item(own_id)["status"] == "approved"
+
+    r2 = await client.post(f"/api/knowledge/{home_id}/approve", headers={"X-Remote-User-Id": "userA"})
+    assert r2.status == 200
+    assert store.get_item(home_id)["status"] == "approved"
+
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_unknown_identity_fails_closed_to_home_scope(aiohttp_client, tmp_path):
+    """No X-Remote-User-Id header (unknown identity) must fail closed: only
+    'home' items are visible/actionable, never another user's private item."""
+    from aiohttp import web
+    from hiris.app.api.handlers_knowledge import handle_list_pending, handle_approve
+
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    a_id = store.add_item(kind="fact", content="A's secret", owner="userA", status="pending")
+    home_id = store.add_item(kind="fact", content="shared", owner="home", status="pending")
+    app = web.Application()
+    app["knowledge_store"] = store
+    app.router.add_get("/api/knowledge/pending", handle_list_pending)
+    app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
+    client = await aiohttp_client(app)
+
+    # No identity header at all.
+    r = await client.get("/api/knowledge/pending")
+    data = await r.json()
+    ids = {i["id"] for i in data["items"]}
+    assert ids == {home_id}
+    assert a_id not in ids
+
+    r2 = await client.post(f"/api/knowledge/{a_id}/approve")
+    assert r2.status in (403, 404)
+    assert store.get_item(a_id)["status"] == "pending"
+
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_no_store_list_returns_empty(aiohttp_client):
     from aiohttp import web
     from hiris.app.api.handlers_knowledge import handle_list_pending

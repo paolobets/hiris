@@ -13,6 +13,7 @@ from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
 from .proxy._sanitize import sanitize_ha_value as _sanitize_ha_value
+from .claude_runner import RunnerBackendError
 from .config import EUR_RATE
 
 # Timeout complessivo per un singolo run di agente. Evita che un modello locale
@@ -495,8 +496,12 @@ class AgentEngine:
             _kinds_raw = _ka.get("kinds", "all")
             _knowledge_kinds = None if _kinds_raw == "all" else _kinds_raw
             try:
-                result = await asyncio.wait_for(
-                    self._claude_runner.chat(
+                # asyncio.timeout (not wait_for): wait_for wraps the coroutine in
+                # a NEW Task on Python 3.11, which gets a COPY of the context, so
+                # the runner's per-call ContextVar tool-calls/thinking (review A/#3)
+                # would be invisible here. asyncio.timeout awaits in THIS Task.
+                async with asyncio.timeout(_AGENT_RUN_TIMEOUT):
+                    result = await self._claude_runner.chat(
                         user_message=user_message,
                         system_prompt=effective_prompt,
                         allowed_tools=agent.allowed_tools or None,
@@ -517,13 +522,21 @@ class AgentEngine:
                         thinking_budget=agent.thinking_budget,
                         knowledge_allow_sensitive=_allow_sensitive,
                         knowledge_kinds=_knowledge_kinds,
-                    ),
-                    timeout=_AGENT_RUN_TIMEOUT,
-                )
+                    )
             except asyncio.TimeoutError:
                 raise RuntimeError(
                     f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
                 )
+            except RunnerBackendError as exc:
+                # Runner API failure (rate limit/connection/timeout/auth/5xx).
+                # Before review C/#13's fix this came back as a plain string
+                # from chat() (no exception at all); reproduce that exact
+                # shape here so the rest of this method (rate-limit
+                # detection/pause, execution-log success flag, return value)
+                # behaves exactly as it did — a hard crash into the generic
+                # `except Exception` below would prefix "Error: " and skip
+                # the rate-limit bookkeeping this branch relies on.
+                result = exc.friendly_message
 
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             agent.last_result = result

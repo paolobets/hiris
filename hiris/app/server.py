@@ -61,6 +61,30 @@ from .watcher.lenses import load_lenses as _load_scheduled_lenses
 
 logger = logging.getLogger(__name__)
 
+# review C/#15: asyncio only holds a WEAK reference to a task with no other
+# referrer -- a bare `asyncio.create_task(...)` whose result is discarded can
+# be garbage-collected mid-execution (see the asyncio docs' "Important" note
+# on create_task). Several fire-and-forget spots in this module discarded the
+# result, including the HA notification-action listener that drives the
+# step-up APPROVAL flow (a human's phone-tap Approve/Reject awaits HTTP calls
+# to HA and must not be silently dropped mid-flight). _background_tasks keeps
+# a strong reference until each task finishes; _spawn() is the one place that
+# creates a background task, so every fire-and-forget site goes through it.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn(coro, *, name: str | None = None) -> asyncio.Task:
+    """Create a fire-and-forget task and keep a strong reference to it.
+
+    Use this instead of a bare `asyncio.create_task(...)` for any task whose
+    result is not awaited/stored by the caller -- otherwise nothing prevents
+    the event loop from garbage-collecting it before it completes.
+    """
+    task = asyncio.create_task(coro, name=name)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 
 def _chat_subscription_active(cfg_on: bool, bridge_on: bool) -> bool:
     """Slice 4b final-review Fix 2: the release's #1 fail-safe, extracted to a
@@ -150,17 +174,12 @@ def _confirmation_push_message(label: str, inputs: dict, otp: str) -> str:
     interpolated here ONLY — this string is passed straight to ``notify(...)``
     (the phone push), never returned to the chat/LLM side.
     """
-    data = inputs.get("data") if isinstance(inputs.get("data"), dict) else {}
-    target = inputs.get("target") if isinstance(inputs.get("target"), dict) else {}
-    raw = data.get("entity_id") if isinstance(data, dict) else None
-    if raw is None:
-        raw = target.get("entity_id") if isinstance(target, dict) else None
-    if isinstance(raw, str):
-        ids = [raw]
-    elif isinstance(raw, list):
-        ids = [e for e in raw if isinstance(e, str)]
-    else:
-        ids = []
+    # Show the UNION of data+target entities -- the exact set that actuates
+    # after confirmation (review A/#5 I1). First-wins here would let a decoy
+    # `data` entity hide a smuggled `target` entity the human is really
+    # approving. Uses the same normalizer the gate/execution use.
+    from .security.semaphore import normalize_target
+    ids = normalize_target(inputs.get("data"), inputs.get("target")).entity_ids
     targets_str = ", ".join(ids) if ids else "(nessuna entità)"
     return (f'HIRIS: confermi "{label}" su {targets_str}? '
             f'Tocca Conferma, oppure usa il codice {otp}.')
@@ -773,7 +792,7 @@ async def run_urgent_nudges(store, *, today, seen, notify_item) -> int:
 
 
 async def _on_startup(app: web.Application) -> None:
-    from .claude_runner import ClaudeRunner
+    from .claude_runner import ClaudeRunner, RunnerBackendError
     from .proxy.semantic_map import SemanticMap
     from .llm_router import LLMRouter
 
@@ -843,10 +862,12 @@ async def _on_startup(app: web.Application) -> None:
     from .api.handlers_gateway_policy import apply_saved_policy
     apply_saved_policy(app)
     # Yellow approval: route iPhone notification-action button taps to approve/reject.
-    import asyncio as _asyncio
+    # review C/#15: this is the approval-critical listener -- go through
+    # _spawn() (strong ref) so a phone-tap Approve/Reject can't be silently
+    # dropped by GC mid-flight.
     from .api.handlers_gateway_pending import on_notification_action
     ha_client.add_action_listener(
-        lambda ev: _asyncio.create_task(on_notification_action(app, ev))
+        lambda ev: _spawn(on_notification_action(app, ev), name="notification_action")
     )
 
     # Build semantic map
@@ -1085,7 +1106,7 @@ async def _on_startup(app: web.Application) -> None:
             misfire_grace_time=300,
         )
         # Also run one initial ingestion shortly after startup (non-blocking)
-        asyncio.create_task(_run_mayan_ingest(), name="mayan_ingest_initial")
+        _spawn(_run_mayan_ingest(), name="mayan_ingest_initial")
     else:
         logger.debug(
             "Mayan EDMS disabled (url=%r, token set=%s, tag_id=%d)",
@@ -1183,9 +1204,16 @@ async def _on_startup(app: web.Application) -> None:
             runner = getattr(eng, "_claude_runner", None) if eng is not None else None
         if runner is None or not hasattr(runner, "run_with_actions"):
             return ""
-        out = await runner.run_with_actions(
-            user_message=user, system_prompt=system,
-            allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
+        try:
+            out = await runner.run_with_actions(
+                user_message=user, system_prompt=system,
+                allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
+        except RunnerBackendError:
+            # All backends failed (or a pinned-model call with no fallback,
+            # review C/#13). Reasoning degrades to empty -> the reasoner treats
+            # it as "no verdict" (alert-only/safe), never crashes the wake/round.
+            logger.warning("_llm_reason: all LLM backends failed; degrading to empty verdict")
+            return ""
         if isinstance(out, tuple):
             return out[0] or ""
         return out or ""
@@ -1360,7 +1388,9 @@ async def _on_startup(app: web.Application) -> None:
         run_lens=_dispatch_run_lens)
     guardian.set_policy(load_policy(data_dir))
     app["guardian"] = guardian
-    ha_client.add_state_listener(lambda evt: asyncio.create_task(guardian.on_state_changed(evt)))
+    ha_client.add_state_listener(
+        lambda evt: _spawn(guardian.on_state_changed(evt), name="guardian_on_state_changed")
+    )
 
     def _reset_sentinel_counter() -> None:
         sentinel_store.reset_wakes(_dt.now().strftime("%Y-%m-%d"))
@@ -1520,7 +1550,17 @@ async def _on_startup(app: web.Application) -> None:
         # match see real values rather than vault tokens.
         _pseudonymizer = app.get("pseudonymizer")
         if _pseudonymizer is not None:
-            reply_text = _pseudonymizer.detokenize(reply_text)
+            # SECURITY (review B/#7): this async-bridge reply comes from an
+            # external runner process on a job claimed/submitted over the
+            # network, entirely outside this process's per-request
+            # ContextVar-scoped pseudonym map (_enqueue_chat_job never calls
+            # pseudonymize for this path either) — there is no legitimate
+            # per-job token mapping available here. Pass an explicit empty
+            # mapping so detokenize's new contract (expand ONLY tokens in the
+            # supplied mapping) safely leaves any [TYPE_N]-shaped text
+            # verbatim, instead of resolving it against the shared,
+            # unscoped vault as it used to.
+            reply_text = _pseudonymizer.detokenize(reply_text, {})
         if _is_toxic_chat_reply(reply_text):
             # Drop silently, same as the sync path: the next turn must not
             # inherit a poisoned/leaked history. There's no HTTP response
@@ -1579,11 +1619,12 @@ async def _on_startup(app: web.Application) -> None:
                 _suggs = parse_suggestions(_text)
 
                 def _mk_proposal(c):
-                    return asyncio.create_task(create_automation_proposal(
+                    return _spawn(create_automation_proposal(
                         proposal_store, proposal_type="ha_automation",
                         name=str(c.get("name") or "Brain coverage-review"),
                         description=str(c.get("description") or ""),
-                        config=c, routing_reason="brain coverage-review"))
+                        config=c, routing_reason="brain coverage-review"),
+                        name="create_automation_proposal")
 
                 _applied_coverage = apply_suggestions(
                     _suggs, data_dir=data_dir, store=_store,
@@ -1709,7 +1750,9 @@ async def _on_startup(app: web.Application) -> None:
         cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
         daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")))
     app["arrival_watcher"] = arrival_watcher
-    ha_client.add_state_listener(lambda evt: asyncio.create_task(arrival_watcher.on_state_changed(evt)))
+    ha_client.add_state_listener(
+        lambda evt: _spawn(arrival_watcher.on_state_changed(evt), name="arrival_watcher_on_state_changed")
+    )
 
     claude_runner = None
     if api_key:
@@ -1800,7 +1843,7 @@ async def _on_startup(app: web.Application) -> None:
 
         # Kick off LLM classification for ambiguous entities (background, non-blocking)
         if ambiguous:
-            asyncio.create_task(
+            _spawn(
                 semantic_map._classify_unknown_batch(),
                 name="semantic_map_initial_classify",
             )

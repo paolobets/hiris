@@ -3,7 +3,11 @@ from hiris.app.tools.dispatcher import ToolDispatcher
 
 
 class _FakeHA:
+    def __init__(self):
+        self.get_automation_config_calls = []
+
     async def get_automation_config(self, automation_id):
+        self.get_automation_config_calls.append(automation_id)
         return {"id": "123", "alias": "Test", "trigger": [], "action": [],
                 "_got": automation_id}
 
@@ -22,6 +26,36 @@ async def test_dispatch_get_automation_config_ignores_whitelist():
     out = await d.dispatch("get_automation_config", {"automation_id": "foo"},
                            allowed_entities=["light.*"])
     assert out["alias"] == "Test"      # read, not blocked
+
+
+# --- review A/#4 (SSRF/path-injection): get_automation_config must validate
+# automation_id BEFORE reaching ha_client, mirroring trigger/toggle's
+# _AUTOMATION_ID_RE check, so a hostile id never reaches the HA client at all.
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [
+    "automation.x/../../config/core/config",
+    "x/../../config/core/config",
+    "automation.x y",
+    "automation.http://evil.com",
+    "../../../api/config/core/config",
+    "automation.foo?x=1",
+])
+async def test_dispatch_get_automation_config_rejects_traversal(payload):
+    ha = _FakeHA()
+    d = ToolDispatcher(ha, notify_config={})
+    out = await d.dispatch("get_automation_config", {"automation_id": payload})
+    assert "error" in out
+    assert ha.get_automation_config_calls == []  # no request ever built downstream
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_automation_config_valid_id_reaches_ha_client():
+    ha = _FakeHA()
+    d = ToolDispatcher(ha, notify_config={})
+    out = await d.dispatch("get_automation_config", {"automation_id": "automation.my_id"})
+    assert out["alias"] == "Test"
+    assert ha.get_automation_config_calls == ["automation.my_id"]
 
 
 class _FakeHASvc:

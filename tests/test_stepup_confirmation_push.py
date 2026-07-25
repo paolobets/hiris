@@ -42,14 +42,18 @@ def test_message_contains_entities_from_target_entity_id_list():
     assert "light.hall" in msg
 
 
-def test_message_prefers_data_entity_id_over_target():
+def test_message_shows_union_of_data_and_target_entities():
+    # review A/#5 I1: the human must see EVERY entity that will actuate after
+    # confirmation. First-wins (data over target) would hide a smuggled `target`
+    # entity that also actuates -- exactly the prompt-injection decoy this push
+    # exists to defeat. Both must appear.
     msg = _confirmation_push_message(
         "lock.unlock",
         {"data": {"entity_id": "lock.front"}, "target": {"entity_id": "lock.back"}},
         "000000",
     )
     assert "lock.front" in msg
-    assert "lock.back" not in msg
+    assert "lock.back" in msg
 
 
 def test_message_falls_back_to_placeholder_when_no_entity():

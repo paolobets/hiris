@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import threading
 
@@ -45,6 +46,58 @@ _ALLOWED_KEYS = {k: set(v) for k, v in DEFAULT_POLICY["detectors"].items()}
 # override via apply_brain_detector -- enabling/disabling a detector or wiping
 # its entities list is exclusively the caller's own logic, never untrusted config.
 _BRAIN_PARAM_DENY = frozenset({"enabled", "entities"})
+
+# Review C/#8 (2026-07-25): type + range validation for detector keys, applied
+# BEFORE a policy body is persisted (save_policy) or merged over defaults
+# (load_policy). Every numeric threshold key is unique to exactly one
+# detector, so a single flat bounds table is unambiguous across detectors.
+# PUBLIC (no leading underscore): brain.suggestions imports this directly so
+# its own coverage-param clamp (review C/#6) uses the exact same bounds
+# rather than a second, driftable copy. max_watt's bounds also match
+# brain.learned_thresholds' own absolute clamp (_ABS_MIN_WATT/_ABS_MAX_WATT)
+# for the deterministic auto-tune path -- kept as literals here (not
+# imported from brain) to avoid a watcher->brain dependency inversion.
+PARAM_BOUNDS: dict[str, tuple[float, float]] = {
+    "open_minutes": (1, 1440),
+    "max_temp_c": (-20, 60),
+    "duration_min": (1, 1440),
+    "max_watt": (100, 20000),
+    "min_pct": (1, 100),
+}
+
+
+class PolicyValidationError(ValueError):
+    """Raised by save_policy() when a detector value fails type/range
+    validation. Callers accepting untrusted input (the sentinel policy POST
+    handler) must catch this and surface a 4xx -- a malformed config must
+    never reach disk or the live Guardian."""
+
+
+def _is_finite_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def validate_detector_value(key: str, value: object) -> bool:
+    """True iff `value` is well-typed and in-range for detector key `key`.
+
+    - "enabled" must be an actual bool (not a truthy string/int).
+    - "entities" must be a list of strings (a string here would make the
+      guardian's entity filter do substring matching instead of membership).
+    - every numeric threshold key (see PARAM_BOUNDS) must be a finite
+      number within its sane bound -- NaN/inf/strings/bools are rejected.
+    Unknown keys are rejected as a fail-safe default (callers already
+    restrict to _ALLOWED_KEYS[detector] before calling this)."""
+    if key == "enabled":
+        return isinstance(value, bool)
+    if key == "entities":
+        return isinstance(value, list) and all(isinstance(e, str) for e in value)
+    bounds = PARAM_BOUNDS.get(key)
+    if bounds is None:
+        return False
+    if not _is_finite_number(value):
+        return False
+    lo, hi = bounds
+    return lo <= value <= hi
 # Guards the load_policy -> mutate -> save_policy critical sections (including the
 # sentinel_brain.json sidecar update) against a concurrent save_policy call from
 # e.g. the web UI handler clobbering an in-flight brain auto-apply/undo. Single
@@ -125,20 +178,40 @@ def load_policy(data_dir: str) -> dict:
         return pol
     for det, cfg in (stored.get("detectors") or {}).items():
         if det in pol["detectors"] and isinstance(cfg, dict):
+            # Review C/#8: an on-disk file can be corrupt (hand-edited, a
+            # partial write from an old version, etc.). load_policy must
+            # never crash and must never let a malformed value through --
+            # any key that fails validate_detector_value() is simply
+            # dropped here, so that detector key keeps its DEFAULT_POLICY
+            # value instead of a bad one.
             pol["detectors"][det].update({k: v for k, v in cfg.items()
-                                          if k in _ALLOWED_KEYS[det]})
+                                          if k in _ALLOWED_KEYS[det]
+                                          and validate_detector_value(k, v)})
     pol["situations"] = _deep_merge(DEFAULT_POLICY["situations"], stored.get("situations"))
     pol["preparation"] = _deep_merge(DEFAULT_POLICY["preparation"], stored.get("preparation"))
     return pol
 
 
 def save_policy(data_dir: str, body: dict) -> dict:
+    """Validate + persist a policy body. Raises PolicyValidationError (review
+    C/#8) if any provided detector key is malformed -- a bad save must never
+    reach disk (nor the live Guardian, which the API handler applies `clean`
+    to only after this call returns successfully). Internal callers
+    (apply_brain_detector/apply_brain_tuning/remove_brain_*) only ever pass a
+    `pol` built from load_policy() plus already-validated mutations (coverage
+    params are clamped in suggestions.py before reaching here; tuning params
+    come from the already-clamped learned_threshold path), so this never
+    raises on the legitimate internal round-trip -- only on untrusted input
+    reaching save_policy directly (the sentinel policy POST handler)."""
     clean = copy.deepcopy(DEFAULT_POLICY)
     for det, cfg in (body.get("detectors") or {}).items():
         if det not in clean["detectors"] or not isinstance(cfg, dict):
             continue
         for k, v in cfg.items():
             if k in _ALLOWED_KEYS[det]:
+                if not validate_detector_value(k, v):
+                    raise PolicyValidationError(
+                        f"invalid value for detectors.{det}.{k}: {v!r}")
                 clean["detectors"][det][k] = v
     clean["situations"] = _deep_merge(DEFAULT_POLICY["situations"], body.get("situations"))
     clean["preparation"] = _deep_merge(DEFAULT_POLICY["preparation"], body.get("preparation"))

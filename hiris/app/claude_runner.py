@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -47,6 +48,40 @@ from .tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF, ADD_DASHBOARD_VIEW_TO
 from .tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
+
+
+class RunnerBackendError(Exception):
+    """Raised by a runner's chat()/run_with_actions() when the underlying
+    provider API call itself failed (rate limit, connection error, timeout,
+    auth failure, 5xx, or any other persistent outage) — as opposed to the
+    model producing a normal (if unusual) reply.
+
+    Review C/#13: ClaudeRunner/OpenAICompatRunner used to CATCH these errors
+    and RETURN a friendly Italian string, indistinguishable from a real
+    successful reply to any caller. LLMRouter's ordered-backend fallback loop
+    wraps chat()/run_with_actions() in `except Exception` specifically to
+    fail over to the next configured backend on a primary outage — but a
+    returned string never raises, so the loop always "succeeded" on the
+    first (broken) backend and the fallback chain was dead code.
+
+    `friendly_message` carries the exact user-facing string the runner used
+    to return directly. LLMRouter catches this exception to try the next
+    backend, and once every backend in the chain has failed, surfaces the
+    LAST failure's `friendly_message` to the end user — the router becomes
+    the single place that produces the user-facing degradation. Callers that
+    bypass the router (e.g. AgentEngine._run_agent, handlers_chat.handle_chat
+    when an agent pins an explicit non-"auto" model) catch it directly at
+    their own call site to preserve their pre-existing graceful-degradation
+    behavior instead of crashing.
+    """
+
+    def __init__(self, friendly_message: str) -> None:
+        super().__init__(friendly_message)
+        self.friendly_message = friendly_message
+
+    def __str__(self) -> str:  # so `str(exc)` == the friendly text everywhere
+        return self.friendly_message
+
 
 _TOOL_RESULT_COMPRESS_LEN = 300  # chars to keep per old tool result
 
@@ -308,7 +343,110 @@ def _redact_stream_tool_calls(tool_calls: list) -> list:
     return out
 
 
+# ── Per-call tool-call / thinking-block isolation (review A/#3) ────────────
+# ClaudeRunner and OpenAICompatRunner are long-lived singletons shared by
+# every interactive chat request AND every scheduler-driven agent run on the
+# same event loop. `last_tool_calls`/`last_thinking_blocks` used to be plain
+# unlocked instance attributes: chat() reset them to [] then appended after
+# `await` points. Two overlapping calls on the SAME runner instance (e.g. a
+# chat request racing a background persona run) could interleave their
+# resets/appends and leak one call's tool-call inputs (entity IDs,
+# memory-recall content, HTTP payloads) into a completely different call's
+# debug_payload / SSE `done` event, or silently wipe them.
+#
+# Fix: back both attributes with a contextvars.ContextVar instead of a plain
+# instance attribute, via the _PerCallList descriptor below. asyncio.Task
+# creation copies the current Context, and ContextVar.set() inside a Task
+# mutates only that Task's own copy — never a sibling Task's. Two concurrent
+# Tasks calling chat()/run_with_actions() on the very same runner instance
+# therefore never observe each other's resets or appends, even though they
+# share the object. Within a single Task (the normal, non-overlapping case —
+# e.g. handlers_chat.py reading `runner.last_tool_calls` right after
+# `await runner.chat(...)`), the value set inside chat() is still visible to
+# the caller immediately afterward: that is just a regular attribute read
+# within the same unmodified Context, so single-call behavior is unchanged.
+#
+# The ContextVar objects are module-level so ClaudeRunner and
+# OpenAICompatRunner (which imports them below) share the exact same
+# isolation buffers, and so LLMRouter (llm_router.py) can proxy its own
+# last_tool_calls/last_thinking_blocks properties to the SAME per-call state
+# instead of scanning its registered backends for "whichever has a
+# non-empty list" (the old LLMRouter property — that scan could return a
+# totally different caller's tool calls than the one that just ran through
+# the router, amplifying the same race).
+_current_tool_calls: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
+    "hiris_current_tool_calls", default=None
+)
+_current_thinking_blocks: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
+    "hiris_current_thinking_blocks", default=None
+)
+# Per-request pseudonymization token map (review B/#7 — PII cross-leak fix).
+# Same ContextVar-per-Task isolation rationale as the two ContextVars above:
+# chat()/chat_stream() reset this dict to {} at the start of every call, the
+# recall_knowledge tool path (dispatcher.dispatch -> knowledge_tools) records
+# token->value pairs into it as it pseudonymizes sensitive content for THIS
+# exchange, and the caller (handlers_chat.py / server.py) reads it back
+# AFTER chat()/chat_stream() returns (same Task, so the ContextVar value is
+# still visible) to detokenize the model's reply using ONLY this exchange's
+# own tokens — never falling back to the shared, unscoped vault.
+_current_pseudonym_map: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar(
+    "hiris_current_pseudonym_map", default=None
+)
+
+
+class _PerCallList:
+    """Descriptor for a list attribute backed by a contextvars.ContextVar.
+
+    `obj.attr` reads the current Task's buffer (or `[]` if never set in this
+    Task); `obj.attr = value` sets it for the current Task only. See the
+    module comment above for the full isolation rationale.
+    """
+
+    def __init__(self, var: "contextvars.ContextVar[Optional[list]]") -> None:
+        self._var = var
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        # `is not None`, NOT `or []` -- the reset step (chat() does
+        # `self.last_tool_calls = []` before any appends) legitimately sets
+        # the ContextVar to an empty-but-real list. `val or []` would treat
+        # that falsy `[]` as "unset" and hand back a throwaway literal `[]`
+        # on every read instead of the stored list, silently discarding every
+        # subsequent `.append()` (they'd mutate a list nobody keeps a
+        # reference to). Only a genuine `None` (never set in this Task) falls
+        # back to a fresh empty list.
+        val = self._var.get()
+        return val if val is not None else []
+
+    def __set__(self, obj, value) -> None:
+        self._var.set(value)
+
+
+class _PerCallDict:
+    """Same per-Task ContextVar-backed isolation as ``_PerCallList``, but for
+    a dict attribute (used by ``last_pseudonym_map`` — review B/#7)."""
+
+    def __init__(self, var: "contextvars.ContextVar[Optional[dict]]") -> None:
+        self._var = var
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        val = self._var.get()
+        return val if val is not None else {}
+
+    def __set__(self, obj, value) -> None:
+        self._var.set(value)
+
+
 class ClaudeRunner:
+    # Per-call, per-asyncio-Task isolated — NOT shared mutable instance state,
+    # even though this object is a long-lived singleton (see comment above).
+    last_tool_calls = _PerCallList(_current_tool_calls)
+    last_thinking_blocks = _PerCallList(_current_thinking_blocks)
+    last_pseudonym_map = _PerCallDict(_current_pseudonym_map)
+
     def __init__(
         self,
         api_key: str,
@@ -319,10 +457,10 @@ class ClaudeRunner:
         self._dispatcher = dispatcher
         self._usage_path = usage_path
         self._is_cloud = True  # Anthropic cloud — always pseudonymize sensitive content
-        self.last_tool_calls: list[dict] = []
-        # Captured thinking blocks from the most recent run (extended thinking).
-        # Empty list when thinking is disabled or model returns no thinking.
-        self.last_thinking_blocks: list[str] = []
+        # last_tool_calls / last_thinking_blocks are intentionally NOT
+        # initialized here — they are per-call/per-Task class-level
+        # descriptors (see above); chat() resets them at the start of every
+        # call, scoped to the calling Task.
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
         self.total_requests: int = 0
@@ -469,6 +607,9 @@ class ClaudeRunner:
             self._per_agent_usage[agent_id]["requests"] += 1
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
+        # Fresh per-exchange pseudonymization map (review B/#7) — populated by
+        # the recall_knowledge tool path below, read by the caller afterwards.
+        self.last_pseudonym_map = {}
         # ── System prompt blocks with prompt caching ─────────────────────────
         # Anthropic prompt caching is *cumulative*: a single cache_control
         # breakpoint caches everything from the start of the request up to that
@@ -550,7 +691,9 @@ class ClaudeRunner:
                 response = await self._call_api(**_api_kwargs)
             except anthropic.APIError as exc:
                 logger.error("Claude API error: %s", exc)
-                return "Errore temporaneo del servizio AI. Riprova tra poco."
+                raise RunnerBackendError(
+                    "Errore temporaneo del servizio AI. Riprova tra poco."
+                ) from exc
 
             for block in response.content:
                 if getattr(block, "type", None) == "thinking":
@@ -599,6 +742,7 @@ class ClaudeRunner:
                             knowledge_kinds=knowledge_kinds,
                             cloud=self._is_cloud,
                             user_id=user_id,
+                            pseudonym_map=self.last_pseudonym_map,
                         )
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({

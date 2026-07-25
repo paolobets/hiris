@@ -256,8 +256,8 @@ class SemanticContextMap:
         state = sanitize_ha_value(entity_data.get("state", ""))
         attrs = entity_data.get("attributes") or {}
         if entity_type == "climate":
-            cur = attrs.get("current_temperature", "?")
-            sp = attrs.get("temperature", "?")
+            cur = sanitize_ha_value(attrs.get("current_temperature", "?"))
+            sp = sanitize_ha_value(attrs.get("temperature", "?"))
             mode = sanitize_ha_value(attrs.get("hvac_mode", state))
             action = sanitize_ha_value(attrs.get("hvac_action", ""))
             action_str = f" · {action}" if action and action not in ("idle", "off") else ""

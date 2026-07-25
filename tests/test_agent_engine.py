@@ -564,6 +564,43 @@ async def test_run_agent_execution_log_marks_error(engine):
     assert rec["result_summary"].startswith("Error:")
 
 
+@pytest.mark.asyncio
+async def test_run_agent_degrades_gracefully_on_runner_backend_error(engine):
+    """Review C/#13: the runner (bypassed here directly, as AgentEngine
+    always is -- it calls .chat() rather than going through the router's
+    fallback) now RAISES RunnerBackendError on an API failure instead of
+    returning a friendly string. _run_agent must catch it at the call site
+    and reproduce the exact same degraded-string behavior as before (no
+    crash, no generic "Error: " prefix from the catch-all except, and the
+    upstream-failure detection below still sees a plain string) -- not let
+    it fall into the generic `except Exception` branch, which would lose the
+    rate-limit bookkeeping this specific branch relies on."""
+    from hiris.app.claude_runner import RunnerBackendError
+
+    mock_runner = AsyncMock()
+    mock_runner.last_tool_calls = []
+    mock_runner.total_input_tokens = 0
+    mock_runner.total_output_tokens = 0
+    mock_runner.chat = AsyncMock(
+        side_effect=RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco.")
+    )
+    engine.set_claude_runner(mock_runner)
+
+    agent = engine.create_agent({
+        "name": "Backend Err Agent", "type": "agent",
+        "triggers": [{"type": "schedule", "interval_minutes": 5}],
+        "system_prompt": "", "allowed_tools": [], "enabled": False,
+    })
+    result = await engine.run_agent(agent)
+
+    assert result == "Errore temporaneo del servizio AI. Riprova tra poco."
+    assert not result.startswith("Error:")
+    assert len(agent.execution_log) == 1
+    rec = agent.execution_log[0]
+    assert rec["success"] is False
+    assert rec["result_summary"] == "Errore temporaneo del servizio AI. Riprova tra poco."
+
+
 def test_execution_log_not_in_updatable_fields(engine):
     assert "execution_log" not in AgentEngine.UPDATABLE_FIELDS
 

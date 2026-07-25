@@ -10,12 +10,18 @@ and undoing coverage NEVER touches an entity the user configured themselves
 from __future__ import annotations
 
 import json
+import math
 import threading
 from typing import Callable, Optional
 
 from ..storage import connect, init_schema
 from ..watcher.detectors import DETECTORS
-from ..watcher.policy import apply_brain_detector, remove_brain_detector, remove_brain_tuning
+from ..watcher.policy import (
+    PARAM_BOUNDS,
+    apply_brain_detector,
+    remove_brain_detector,
+    remove_brain_tuning,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS suggestions (
@@ -106,6 +112,43 @@ def validate_coverage(sugg: dict, inventory_ids: set, current_config: dict) -> b
         return False
 
 
+def _is_finite_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _validate_and_clamp_params(params: dict) -> Optional[dict]:
+    """Review C/#6: validate/clamp LLM-chosen coverage suggestion params
+    BEFORE they reach apply_brain_detector's SHARED detector config (every
+    entity on that detector is affected, not just the newly-added one).
+
+    Choice: REJECT (return None -> caller must not apply anything) for a
+    clearly-invalid value -- wrong type, bool-as-number, NaN, +/-inf --
+    because there is no sane number to substitute and silently coercing a
+    string like "abc" would hide a broken suggestion behind a made-up
+    default. CLAMP (to PARAM_BOUNDS, shared with watcher.policy so both
+    layers agree on the same sane ranges) for an in-type but out-of-range
+    numeric value -- e.g. max_watt: 999999999 -- since the LLM's intent
+    ("this is a high threshold") is still directionally valid, just
+    unbounded; clamping preserves that intent while keeping the detector
+    functional for every entity on it.
+
+    An unrecognized param key (not in PARAM_BOUNDS) is dropped silently
+    here -- apply_brain_detector's own `allowed_params` filter already
+    strips anything not in _ALLOWED_KEYS[detector] minus _BRAIN_PARAM_DENY,
+    so this is belt-and-suspenders, not the source of truth for allowlisting.
+    """
+    clean: dict = {}
+    for k, v in params.items():
+        bounds = PARAM_BOUNDS.get(k)
+        if bounds is None:
+            continue
+        if not _is_finite_number(v):
+            return None
+        lo, hi = bounds
+        clean[k] = min(max(v, lo), hi)
+    return clean
+
+
 def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStore,
                        inventory_ids: set, current_config: dict,
                        create_proposal: Callable[[dict], None], cap: int) -> list[dict]:
@@ -128,8 +171,16 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
             # Belt-and-suspenders: structural keys are stripped again inside
             # apply_brain_detector (source of truth), but never let an
             # untrusted config forward "enabled"/"entities" as params at all.
-            params = {k: v for k, v in config.items()
-                      if k not in ("detector", "entity", "enabled", "entities")}
+            raw_params = {k: v for k, v in config.items()
+                          if k not in ("detector", "entity", "enabled", "entities")}
+            # Review C/#6: validate/clamp BEFORE the shared detector config
+            # is touched. A clearly-invalid param (non-numeric, NaN/inf)
+            # rejects the WHOLE suggestion -- skip it entirely, same as a
+            # failed validate_coverage() -- rather than apply a partial
+            # config to a detector shared by every entity on it.
+            params = _validate_and_clamp_params(raw_params)
+            if params is None:
+                continue
             delta = apply_brain_detector(data_dir, detector, entity, params)
             # Slice 6 Task 5: stamp the brain-action source_ref this row's
             # undo must remove, so handle_undo_suggestion doesn't have to

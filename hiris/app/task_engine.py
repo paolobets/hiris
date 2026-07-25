@@ -10,13 +10,43 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .security.semaphore import gate_action
+from .security.semaphore import gate_action, normalize_target
 from .tools.notify_tools import send_notification
 
 logger = logging.getLogger(__name__)
 
 _TERMINAL = frozenset({"done", "skipped", "failed", "expired", "cancelled"})
 _CLEANUP_AFTER_HOURS = 168  # 7 giorni — coerente con ciclo vita proposte
+
+# review C/#14: operators understood by _evaluate_condition(). Kept in sync
+# with the if/elif chain there — used to fail-safe at add_task() time.
+_VALID_CONDITION_OPERATORS = frozenset({"<", "<=", ">", ">=", "=", "==", "!="})
+
+
+def _validate_condition(condition: Optional[dict]) -> None:
+    """Reject a malformed task condition at creation time (review C/#14).
+
+    ``condition`` comes straight from the untyped ``create_task`` LLM tool
+    schema (just ``{"type": "object"}`` — no required sub-fields), so a
+    caller can trivially hand us ``{"entity_id": "sensor.x"}`` with no
+    ``operator``/``value``. ``_evaluate_condition()`` indexes those keys
+    directly (``condition["operator"]``) and would raise a bare ``KeyError``
+    at execution time. Validating the shape here means a malformed
+    condition never gets scheduled in the first place; the caller (e.g. the
+    dispatcher's tool-call handler) already turns a ``ValueError`` from
+    ``add_task`` into a graceful ``{"error": ...}`` tool response.
+    """
+    if condition is None:
+        return
+    if not isinstance(condition, dict):
+        raise ValueError(f"Task condition must be an object, got {type(condition).__name__}")
+    for key in ("entity_id", "operator", "value"):
+        if key not in condition:
+            raise ValueError(f"Task condition missing required field: {key!r}")
+    if not isinstance(condition["entity_id"], str) or not condition["entity_id"]:
+        raise ValueError("Task condition 'entity_id' must be a non-empty string")
+    if condition["operator"] not in _VALID_CONDITION_OPERATORS:
+        raise ValueError(f"Task condition has unknown operator: {condition['operator']!r}")
 
 
 @dataclass
@@ -54,6 +84,10 @@ class TaskEngine:
         self._execute_policy = execute_policy if execute_policy is not None else {}
         self._tasks: dict[str, Task] = {}
         self._scheduler = AsyncIOScheduler()
+        # Strong refs to fire-and-forget immediate-trigger tasks: asyncio only
+        # weak-refs a bare create_task, so without this a running task can be
+        # GC'd mid-flight (review C/#15, same class as server._spawn).
+        self._bg_tasks: set = set()
         # Serialize concurrent _do_save() across executor threads.
         self._save_lock = threading.Lock()
 
@@ -85,6 +119,7 @@ class TaskEngine:
         trigger_type = data["trigger"].get("type")
         if trigger_type not in ("delay", "at_time", "at_datetime", "time_window", "immediate"):
             raise ValueError(f"Unknown trigger type: {trigger_type!r}")
+        _validate_condition(data.get("condition"))
         task = Task(
             id=str(uuid.uuid4()),
             label=data["label"],
@@ -244,9 +279,11 @@ class TaskEngine:
                     args=[task.id], id=f"task_{task.id}", replace_existing=True,
                 )
             elif t_type == "immediate":
-                asyncio.create_task(
+                _t = asyncio.create_task(
                     self._execute_task(task.id), name=f"imm_{task.id[:8]}"
                 )
+                self._bg_tasks.add(_t)
+                _t.add_done_callback(self._bg_tasks.discard)
             else:
                 logger.warning("Unknown trigger type: %s", t_type)
         except Exception as exc:
@@ -304,19 +341,40 @@ class TaskEngine:
             return
         task.status = "running"
         task.executed_at = datetime.now(timezone.utc).isoformat()
-        if task.condition and not self._evaluate_condition(task.condition):
-            if task.one_shot:
-                task.status = "skipped"
-                task.result = "Condition not met"
-                self._remove_job(task_id)
-            else:
-                task.status = "pending"
-            self._save()
-            logger.info("Task %s skipped (condition not met)", task.label)
-            return
         results = []
         _stop = False
         try:
+            # review C/#14: the condition check used to sit OUTSIDE this
+            # try/finally. A malformed task.condition (e.g. missing
+            # 'operator'/'value') raised a bare KeyError out of
+            # _evaluate_condition() that propagated PAST the finally below,
+            # leaving the task stuck at status='running' forever — it can
+            # never be cancelled (cancel_task requires 'pending') and is
+            # never reaped by _cleanup() (which only removes terminal
+            # statuses). add_task() now validates the condition shape at
+            # creation time so this should be unreachable in practice, but
+            # this inner try/except is the execution-time fail-safe: any
+            # residual error here still ends the task in a TERMINAL status
+            # ('failed') instead of leaking it.
+            if task.condition:
+                try:
+                    condition_met = self._evaluate_condition(task.condition)
+                except Exception as exc:
+                    logger.error(
+                        "Task %s condition evaluation failed: %s", task.label, exc
+                    )
+                    task.status = "failed"
+                    task.error = f"Condition evaluation error: {exc}"
+                    task.result = "Condition evaluation error"
+                    return
+                if not condition_met:
+                    if task.one_shot:
+                        task.status = "skipped"
+                        task.result = "Condition not met"
+                    else:
+                        task.status = "pending"
+                    logger.info("Task %s skipped (condition not met)", task.label)
+                    return
             for action in task.actions:
                 if _stop:
                     break
@@ -353,24 +411,25 @@ class TaskEngine:
             domain = action["domain"]
             service = action["service"]
             data = action.get("data", {})
-            _raw = data.get("entity_id") if isinstance(data, dict) else None
-            _eids = [
-                e for e in (
-                    [_raw] if isinstance(_raw, str)
-                    else list(_raw) if isinstance(_raw, list)
-                    else []
-                ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
-            ]
-            # Fix #2/#8: i task inoltrano solo `data` (non `target`): un target per
-            # area/dispositivo/label non è risolvibile ai tier per-entità → fail-closed
-            # (skip), INDIPENDENTEMENTE da entità esplicite accompagnatorie (HA attua
+            target = action.get("target", {}) or {}
+            # review A/#5: merge target into data ONCE (same helper the live
+            # dispatch path uses) so the entity_ids gated below are exactly the
+            # entity_ids forwarded to ha.call_service at the bottom -- a deferred
+            # task scoped via `target` must never execute as a domain-wide
+            # broadcast because `target` got silently dropped.
+            normalized = normalize_target(data, target)
+            # Fix #2/#8: un target per area/dispositivo/label (in data O target)
+            # non è risolvibile ai tier per-entità → fail-closed (skip),
+            # INDIPENDENTEMENTE da entità esplicite accompagnatorie (HA attua
             # l'intero gruppo lato server, bypassando gli override per-entità).
-            if isinstance(data, dict) and (data.get("area_id") or data.get("device_id") or data.get("label_id")):
+            # Questo guard deve valere anche sul path task_engine, non solo su
+            # quello live del dispatcher.
+            if normalized.has_group_target:
                 logger.warning("Task %s: call_ha_service gated: area/device/label target present (%s.%s)",
                                task.label, domain, service)
                 return f"skipped: group_target ({domain}.{service})"
             _v = gate_action(
-                domain=domain, service=service, entity_ids=_eids,
+                domain=domain, service=service, entity_ids=normalized.entity_ids,
                 tiers=self._execute_policy.get("tiers") or {},
                 entity_tiers=self._execute_policy.get("entity_tiers") or {},
             )
@@ -386,15 +445,13 @@ class TaskEngine:
                     )
                     return f"skipped: {svc_key} not permitted by policy"
             if task.allowed_entities is not None:
-                eid = data.get("entity_id") if isinstance(data, dict) else None
-                eids = [eid] if isinstance(eid, str) else (list(eid) if isinstance(eid, list) else [])
-                for e in eids:
+                for e in normalized.entity_ids:
                     if not any(fnmatch.fnmatch(e, pat) for pat in task.allowed_entities):
                         logger.warning(
                             "Task %s: entity %s blocked by policy", task.label, e
                         )
                         return f"skipped: entity {e!r} not permitted by policy"
-            return await self._ha.call_service(domain, service, data)
+            return await self._ha.call_service(domain, service, normalized.data)
         if a_type == "send_notification":
             return await send_notification(
                 self._ha, action.get("message", ""), action.get("channel", "ha_push"),
@@ -432,6 +489,14 @@ class TaskEngine:
             return
         if now < from_dt:
             return
-        if task.condition and not self._evaluate_condition(task.condition):
+        # Fail-safe (review C/#14): a malformed condition reloaded from disk
+        # (_load does not re-validate) must not raise out of this interval job
+        # every tick. On any evaluation error, treat the window as not-yet-met
+        # (skip this tick) rather than crashing the scheduler job.
+        try:
+            if task.condition and not self._evaluate_condition(task.condition):
+                return
+        except Exception:
+            logger.warning("time_window condition eval failed for task %s; skipping tick", task_id)
             return
         await self._execute_task(task_id)

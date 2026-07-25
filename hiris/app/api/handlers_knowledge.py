@@ -10,8 +10,14 @@ async def handle_list_pending(request: web.Request) -> web.Response:
     store = request.app.get("knowledge_store")
     if store is None:
         return web.json_response({"items": []})
+    # Owner-scope (review B/#16 IDOR fix): only the caller's own pending
+    # items plus shared 'home' items -- never another user's private rows.
+    # resolve_owner() fails closed to 'home' when identity is unknown.
+    owner = resolve_owner(request)
     loop = asyncio.get_running_loop()
-    items = await loop.run_in_executor(None, lambda: store.list_items(status="pending"))
+    items = await loop.run_in_executor(
+        None, lambda: store.list_items(status="pending", owner=owner)
+    )
     return web.json_response({"items": items})
 
 
@@ -23,8 +29,12 @@ async def handle_approve(request: web.Request) -> web.Response:
         item_id = int(request.match_info["id"])
     except (KeyError, ValueError):
         return web.json_response({"error": "invalid id"}, status=400)
+    # Owner-scope (review B/#16 IDOR fix): reject cross-owner approvals.
+    owner = resolve_owner(request)
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, lambda: store.approve(item_id))
+    ok = await loop.run_in_executor(None, lambda: store.approve(item_id, owner=owner))
+    if not ok:
+        return web.json_response({"error": "not found"}, status=404)
     return web.json_response({"ok": True})
 
 
@@ -36,8 +46,12 @@ async def handle_reject(request: web.Request) -> web.Response:
         item_id = int(request.match_info["id"])
     except (KeyError, ValueError):
         return web.json_response({"error": "invalid id"}, status=400)
+    # Owner-scope (review B/#16 IDOR fix): reject cross-owner rejections.
+    owner = resolve_owner(request)
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, lambda: store.delete_item(item_id))
+    ok = await loop.run_in_executor(None, lambda: store.delete_item(item_id, owner=owner))
+    if not ok:
+        return web.json_response({"error": "not found"}, status=404)
     return web.json_response({"ok": True})
 
 

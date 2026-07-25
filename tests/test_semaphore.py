@@ -1,6 +1,6 @@
 # tests/test_semaphore.py
 from hiris.app.security.semaphore import (
-    DANGEROUS_DOMAINS, gate_action, GateVerdict, effective_tier,
+    DANGEROUS_DOMAINS, gate_action, GateVerdict, effective_tier, normalize_target,
 )
 
 
@@ -69,3 +69,50 @@ def test_unrecognized_tier_string_fails_closed():
     # or a typo) must NOT fall through to allow.
     v = _gate("light", entity_ids=["light.kitchen"], tiers={"light": "boh"})
     assert v.decision == "deny_off"
+
+
+# ── review A/#5: normalize_target (shared gated-set == executed-set helper) ──
+
+
+def test_normalize_target_merges_target_entity_into_data():
+    n = normalize_target({}, {"entity_id": "light.kitchen"})
+    assert n.data == {"entity_id": "light.kitchen"}
+    assert n.entity_ids == ["light.kitchen"]
+    assert n.has_group_target is False
+
+
+def test_normalize_target_unions_data_and_target_entity_ids():
+    n = normalize_target({"entity_id": "light.a"}, {"entity_id": "light.b"})
+    assert n.data == {"entity_id": ["light.a", "light.b"]}
+    assert n.entity_ids == ["light.a", "light.b"]
+
+
+def test_normalize_target_dedupes_overlapping_entity_ids():
+    n = normalize_target({"entity_id": "light.a"}, {"entity_id": "light.a"})
+    assert n.data == {"entity_id": "light.a"}
+    assert n.entity_ids == ["light.a"]
+
+
+def test_normalize_target_empty_data_and_target_stays_domain_wide():
+    n = normalize_target({}, {})
+    assert n.data == {}
+    assert n.entity_ids == []
+    assert n.has_group_target is False
+
+
+def test_normalize_target_group_target_detected_in_target_field():
+    n = normalize_target({}, {"area_id": "cucina"})
+    assert n.has_group_target is True
+
+
+def test_normalize_target_group_target_detected_in_data_field():
+    n = normalize_target({"device_id": "abc123"}, {})
+    assert n.has_group_target is True
+
+
+def test_normalize_target_does_not_mutate_caller_dicts():
+    data = {"entity_id": "light.a"}
+    target = {"entity_id": "light.b"}
+    normalize_target(data, target)
+    assert data == {"entity_id": "light.a"}
+    assert target == {"entity_id": "light.b"}

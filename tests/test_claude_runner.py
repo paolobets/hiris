@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 import unittest.mock
 import anthropic
@@ -25,10 +26,17 @@ def mock_ha():
 
 @pytest.fixture
 def runner(mock_ha):
-    # tiers green for the domains exercised by call_ha_service tests below —
-    # the universal semaforo gate in ToolDispatcher is fail-closed by default.
+    # tiers green for the domains exercised by call_ha_service/trigger_automation/
+    # toggle_automation/set_input_helper tests below — the universal semaforo gate
+    # in ToolDispatcher is fail-closed by default (review A/#2, #9, #10: these
+    # three tool paths are now gated exactly like call_ha_service).
     dispatcher = ToolDispatcher(mock_ha, {},
-                                execute_policy={"tiers": {"light": "green", "climate": "green"}})
+                                execute_policy={"tiers": {
+                                    "light": "green", "climate": "green",
+                                    "automation": "green", "input_boolean": "green",
+                                    "input_number": "green", "input_text": "green",
+                                    "input_select": "green",
+                                }})
     with patch("anthropic.AsyncAnthropic"):
         r = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
     r._ha = mock_ha  # shortcut for tests
@@ -862,6 +870,192 @@ async def test_chat_collects_thinking_blocks(runner):
     runner._client.messages.create = AsyncMock(return_value=msg)
     await runner.chat("ciao", model="claude-sonnet-4-6", thinking_budget=2048)
     assert runner.last_thinking_blocks == ["step 1: check state\nstep 2: decide"]
+
+
+@pytest.mark.asyncio
+async def test_chat_populates_last_tool_calls_single_call(runner):
+    """Baseline for 'single-call behavior unchanged' (review A/#3): a lone,
+    non-overlapping chat() call must still populate last_tool_calls with its
+    own tool call after switching from a plain instance attribute to the
+    per-call ContextVar-backed descriptor."""
+    tool_block = MagicMock(type="tool_use", id="tu_x", input={"ids": ["light.living"]})
+    tool_block.name = "get_entity_states"
+    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
+    text_block = MagicMock(type="text", text="ok")
+    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
+    runner._ha.get_states = AsyncMock(return_value=[])
+    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
+    await runner.chat("ciao")
+    assert runner.last_tool_calls == [{"tool": "get_entity_states", "input": {"ids": ["light.living"]}}]
+
+
+@pytest.mark.asyncio
+async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
+    """Two overlapping chat() calls on the SAME runner instance must not
+    leak or wipe each other's tool_calls (review A/#3 concurrency fix).
+
+    Before the ContextVar-based isolation, last_tool_calls was a single
+    unlocked instance attribute: both calls reset it to [] at the start and
+    appended to it after awaiting the (fake) API. Interleaving two calls —
+    call B resets/appends while call A is still in flight — meant the SAME
+    shared list ended up holding entries from BOTH calls, and a caller
+    reading `runner.last_tool_calls` right after its own `await
+    runner.chat(...)` could see the other call's tool inputs (or its own
+    silently wiped). This test deterministically interleaves two calls via
+    asyncio.gather + real awaits and fails on the pre-fix shared-attribute
+    code; it passes once collection is isolated per asyncio Task.
+    """
+
+    def _usage():
+        return MagicMock(input_tokens=1, output_tokens=1,
+                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
+
+    def _tool_response(tool_name: str, entity_id: str):
+        block = MagicMock(type="tool_use", id=f"id-{tool_name}", input={"entity_id": entity_id})
+        block.name = tool_name
+        return MagicMock(stop_reason="tool_use", content=[block], usage=_usage())
+
+    def _end_response(text: str):
+        block = MagicMock(type="text", text=text)
+        return MagicMock(stop_reason="end_turn", content=[block], usage=_usage())
+
+    async def fake_create(**kwargs):
+        msgs = kwargs["messages"]
+        is_call_a = msgs[0]["content"] == "call-A"
+        first_iteration = len(msgs) == 1
+        # call B is intentionally faster than call A so their two API
+        # round-trips interleave deterministically (B's iter1 resolves
+        # before A's iter1; B finishes entirely before A's iter2 finishes).
+        await asyncio.sleep(0.02 if is_call_a else 0.01)
+        if first_iteration:
+            return _tool_response(
+                "get_area_entities" if is_call_a else "get_home_status",
+                "entity-A" if is_call_a else "entity-B",
+            )
+        return _end_response("done-A" if is_call_a else "done-B")
+
+    runner._client.messages.create = AsyncMock(side_effect=fake_create)
+    runner._dispatcher.dispatch = AsyncMock(return_value={"ok": True})
+
+    async def call_a():
+        text = await runner.chat("call-A")
+        return text, list(runner.last_tool_calls)
+
+    async def call_b():
+        text = await runner.chat("call-B")
+        return text, list(runner.last_tool_calls)
+
+    (text_a, tools_a), (text_b, tools_b) = await asyncio.gather(call_a(), call_b())
+
+    assert text_a == "done-A"
+    assert text_b == "done-B"
+    assert tools_a == [{"tool": "get_area_entities", "input": {"entity_id": "entity-A"}}]
+    assert tools_b == [{"tool": "get_home_status", "input": {"entity_id": "entity-B"}}]
+
+
+@pytest.mark.asyncio
+async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path, mock_ha):
+    """SECURITY (review B/#7): two overlapping chat() calls on the SAME
+    runner instance -- sharing the SAME ToolDispatcher/KnowledgeStore/
+    Pseudonymizer/vault, exactly as two concurrent real users would on a
+    live server -- must never leak each other's per-request pseudonymize
+    token map. Each call's own recall_knowledge tool invocation pseudonymizes
+    DIFFERENT sensitive PII into the SAME global vault; `last_pseudonym_map`
+    read right after each call's own `await runner.chat(...)` must contain
+    ONLY that call's own token, and using it to detokenize would never
+    resolve the other call's PII.
+
+    This is the concurrency-flavored counterpart to
+    test_chat_concurrent_calls_do_not_leak_tool_calls above, exercising the
+    REAL dispatcher -> knowledge_tools -> Pseudonymizer path end-to-end
+    (dispatch is not mocked here) so the ContextVar-based per-Task isolation
+    is proven against the actual security-sensitive code path, not just
+    last_tool_calls bookkeeping.
+    """
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+    from hiris.app.brain.privacy import VaultStore, Pseudonymizer
+
+    store = KnowledgeStore(str(tmp_path / "kb.db"))
+    store.add_item(kind="expense", content="Bonifico su IT60X0542811101000000123456",
+                    embedding=[1.0, 0.0], sensitivity="sensitive")
+    store.add_item(kind="fact", content="Contatto: segreto.userB@example.it",
+                    embedding=[0.0, 1.0], sensitivity="sensitive")
+
+    class _FakeEmbedder:
+        async def embed(self, query: str):
+            return [1.0, 0.0] if query == "query-A" else [0.0, 1.0]
+
+    vault = VaultStore(str(tmp_path / "vault.db"))
+    pseudonymizer = Pseudonymizer(vault)
+
+    dispatcher = ToolDispatcher(
+        mock_ha, {}, knowledge_store=store, embedder=_FakeEmbedder(),
+        pseudonymizer=pseudonymizer,
+    )
+    with patch("anthropic.AsyncAnthropic"):
+        runner = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
+
+    def _usage():
+        return MagicMock(input_tokens=1, output_tokens=1,
+                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
+
+    def _tool_response(query: str):
+        # k=1: with only 2 sensitive items in the store, an unbounded k would
+        # return BOTH regardless of query vector, defeating the point of this
+        # test (each call must only ever pseudonymize ITS OWN best match).
+        block = MagicMock(type="tool_use", id=f"id-{query}", input={"query": query, "k": 1})
+        block.name = "recall_knowledge"
+        return MagicMock(stop_reason="tool_use", content=[block], usage=_usage())
+
+    def _end_response(text: str):
+        block = MagicMock(type="text", text=text)
+        return MagicMock(stop_reason="end_turn", content=[block], usage=_usage())
+
+    async def fake_create(**kwargs):
+        msgs = kwargs["messages"]
+        is_call_a = msgs[0]["content"] == "call-A"
+        first_iteration = len(msgs) == 1
+        # Same deterministic interleave as the tool_calls test above.
+        await asyncio.sleep(0.02 if is_call_a else 0.01)
+        if first_iteration:
+            return _tool_response("query-A" if is_call_a else "query-B")
+        return _end_response("done-A" if is_call_a else "done-B")
+
+    runner._client.messages.create = AsyncMock(side_effect=fake_create)
+
+    async def call_a():
+        text = await runner.chat(
+            "call-A", allowed_tools=["recall_knowledge"],
+            knowledge_allow_sensitive=True,
+        )
+        return text, dict(runner.last_pseudonym_map)
+
+    async def call_b():
+        text = await runner.chat(
+            "call-B", allowed_tools=["recall_knowledge"],
+            knowledge_allow_sensitive=True,
+        )
+        return text, dict(runner.last_pseudonym_map)
+
+    (text_a, map_a), (text_b, map_b) = await asyncio.gather(call_a(), call_b())
+
+    assert text_a == "done-A"
+    assert text_b == "done-B"
+
+    # Each call's own map holds ONLY its own PII, never the other's.
+    assert "IT60X0542811101000000123456" in map_a.values()
+    assert "segreto.userB@example.it" not in map_a.values()
+    assert "segreto.userB@example.it" in map_b.values()
+    assert "IT60X0542811101000000123456" not in map_b.values()
+
+    # Cross-request expansion attempt: a token minted for call A must not
+    # resolve using call B's map (and vice versa) -- the exact shape of the
+    # review B/#7 leak, now proven against the real end-to-end path.
+    token_a = next(iter(map_a))
+    assert pseudonymizer.detokenize(f"testo con {token_a}", map_b) == f"testo con {token_a}"
+
+    store.close()
+    vault.close()
 
 
 def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):

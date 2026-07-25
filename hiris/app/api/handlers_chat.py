@@ -11,7 +11,7 @@ from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
 )
-from ..claude_runner import CHAT_MAX_TOKENS
+from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 
 logger = logging.getLogger(__name__)
 
@@ -396,7 +396,10 @@ async def handle_chat(request: web.Request) -> web.Response:
         # tokens until a future streaming refactor re-emits de-tokenized text.
         pseudonymizer = request.app.get("pseudonymizer")
         if pseudonymizer is not None and full_response:
-            full_response = pseudonymizer.detokenize(full_response)
+            # Only expand tokens THIS exchange's own pseudonymize call minted
+            # (review B/#7) — never a global/cross-conversation lookup.
+            pseudonym_map = getattr(runner, "last_pseudonym_map", None) or {}
+            full_response = pseudonymizer.detokenize(full_response, pseudonym_map)
         # Skip persistence for toxic / synthetic-error responses so the next
         # turn does not see a poisoned history. discard_collected already
         # zeroes collected_tokens for tool-call leaks; this also covers the
@@ -409,34 +412,47 @@ async def handle_chat(request: web.Request) -> web.Response:
             ], data_dir)
         return stream_resp
 
-    response = await runner.chat(
-        user_message=message,
-        system_prompt=system_prompt,
-        context_str=context_str,
-        conversation_history=context_history,
-        allowed_tools=allowed_tools,
-        allowed_entities=allowed_entities,
-        allowed_services=allowed_services,
-        model=agent_model,
-        max_tokens=agent_max_tokens,
-        agent_type=agent_type,
-        restrict_to_home=agent_restrict,
-        require_confirmation=agent_require_confirmation,
-        agent_id=effective_agent_id,
-        visible_entity_ids=visible_ids,
-        response_mode=agent_response_mode,
-        thinking_budget=agent_thinking_budget,
-        knowledge_allow_sensitive=allow_sensitive,
-        knowledge_kinds=knowledge_kinds,
-        user_id=owner,
-    )
+    try:
+        response = await runner.chat(
+            user_message=message,
+            system_prompt=system_prompt,
+            context_str=context_str,
+            conversation_history=context_history,
+            allowed_tools=allowed_tools,
+            allowed_entities=allowed_entities,
+            allowed_services=allowed_services,
+            model=agent_model,
+            max_tokens=agent_max_tokens,
+            agent_type=agent_type,
+            restrict_to_home=agent_restrict,
+            require_confirmation=agent_require_confirmation,
+            agent_id=effective_agent_id,
+            visible_entity_ids=visible_ids,
+            response_mode=agent_response_mode,
+            thinking_budget=agent_thinking_budget,
+            knowledge_allow_sensitive=allow_sensitive,
+            knowledge_kinds=knowledge_kinds,
+            user_id=owner,
+        )
+    except RunnerBackendError as exc:
+        # Review C/#13: runners now raise instead of returning a friendly
+        # string on API failure, so LLMRouter's auto-fallback loop actually
+        # engages. That loop only ever raises here when `agent_model` pins an
+        # explicit non-"auto" model (the auto path already turns this into a
+        # returned string once every backend is exhausted) — reproduce the
+        # exact same string-shaped degraded response so everything below
+        # (detokenize/toxicity/persistence/serialization) is unaffected.
+        response = exc.friendly_message
 
     # De-tokenize pseudonymized tokens before toxicity check, persistence,
     # and serialization so both the stored history and the returned JSON
     # contain real values rather than vault tokens.
     pseudonymizer = request.app.get("pseudonymizer")
     if pseudonymizer is not None and isinstance(response, str) and response:
-        response = pseudonymizer.detokenize(response)
+        # Only expand tokens THIS exchange's own pseudonymize call minted
+        # (review B/#7) — never a global/cross-conversation lookup.
+        pseudonym_map = getattr(runner, "last_pseudonym_map", None) or {}
+        response = pseudonymizer.detokenize(response, pseudonym_map)
 
     # Persist the new user+assistant exchange — but skip when the runner
     # returned a synthetic error / leak sentinel, so the next turn doesn't

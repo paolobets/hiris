@@ -313,6 +313,33 @@ async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
+    """Review C/#13: runners now raise RunnerBackendError instead of
+    returning a friendly string on an API failure (needed so LLMRouter's
+    fallback loop actually engages). handle_chat's sync path must catch it
+    at its own call site and still return a normal 200 with the friendly
+    message in `response` -- not let it propagate into aiohttp as an
+    unhandled exception (which would 500 instead of degrading gracefully,
+    a real regression this test guards against)."""
+    from hiris.app.claude_runner import RunnerBackendError
+
+    runner = AsyncMock()
+    runner.chat = AsyncMock(
+        side_effect=RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco.")
+    )
+    runner.last_tool_calls = []
+    runner.last_thinking_blocks = []
+    app, q, runner, agent, data_dir = _make_app(
+        tmp_path, chat_via_subscription=False, chat_daily_cap=0, runner=runner)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["response"] == "Errore temporaneo del servizio AI. Riprova tra poco."
+
+
+@pytest.mark.asyncio
 async def test_bridge_off_falls_back_to_sync_guards_do_not_apply(tmp_path):
     """chat_via_subscription on but bridge not wired (no reasoning_queue) ->
     existing Task 2 fallback to sync path; the new guards must not blow up

@@ -1,4 +1,12 @@
-from hiris.app.watcher.policy import load_policy, save_policy, DEFAULT_POLICY, SENTINEL_DETECTORS
+import json
+import math
+
+import pytest
+
+from hiris.app.watcher.policy import (
+    load_policy, save_policy, validate_detector_value, PolicyValidationError,
+    DEFAULT_POLICY, SENTINEL_DETECTORS,
+)
 
 def test_load_defaults_when_absent(tmp_path):
     pol = load_policy(str(tmp_path))
@@ -48,3 +56,70 @@ def test_save_preparation_roundtrip(tmp_path):
     reloaded = load_policy(str(tmp_path))
     assert reloaded["preparation"]["evening_arrival"]["target_entity"] == "scene.r"
     assert reloaded["preparation"]["evening_arrival"]["sun_entity"] == "sun.sun"  # default preservato
+
+
+# --- Review C/#8: type + range validation ----------------------------------
+
+def test_validate_detector_value_type_and_range():
+    assert validate_detector_value("enabled", True) is True
+    assert validate_detector_value("enabled", "true") is False   # string, not bool
+    assert validate_detector_value("enabled", 1) is False        # int, not bool
+
+    assert validate_detector_value("entities", ["light.x"]) is True
+    assert validate_detector_value("entities", []) is True
+    assert validate_detector_value("entities", "light.x") is False   # string, not list
+    assert validate_detector_value("entities", [1, 2]) is False      # not all str
+
+    assert validate_detector_value("max_watt", 2500) is True
+    assert validate_detector_value("max_watt", "high") is False     # non-numeric
+    assert validate_detector_value("max_watt", True) is False       # bool masquerades as int
+    assert validate_detector_value("max_watt", math.nan) is False   # NaN
+    assert validate_detector_value("max_watt", math.inf) is False   # inf
+    assert validate_detector_value("max_watt", 999999999) is False  # out of range -> reject at this layer
+    assert validate_detector_value("max_watt", 50) is False         # below _PARAM_BOUNDS lower bound
+
+
+def test_save_rejects_string_max_watt(tmp_path):
+    with pytest.raises(PolicyValidationError):
+        save_policy(str(tmp_path), {"detectors": {"power": {"enabled": True, "entities": ["sensor.p"],
+                                                             "max_watt": "high"}}})
+    # Nothing persisted -- a subsequent load still sees defaults.
+    pol = load_policy(str(tmp_path))
+    assert pol["detectors"]["power"]["max_watt"] == 3000
+    assert pol["detectors"]["power"]["enabled"] is False
+
+
+def test_save_rejects_string_entities(tmp_path):
+    with pytest.raises(PolicyValidationError):
+        save_policy(str(tmp_path), {"detectors": {"power": {"enabled": True, "entities": "light.x"}}})
+
+
+def test_save_rejects_nan_threshold(tmp_path):
+    with pytest.raises(PolicyValidationError):
+        save_policy(str(tmp_path), {"detectors": {"power": {"max_watt": math.nan}}})
+
+
+def test_save_accepts_valid_numeric_threshold(tmp_path):
+    clean = save_policy(str(tmp_path), {"detectors": {"power": {"enabled": True,
+                                                                 "entities": ["sensor.p"],
+                                                                 "max_watt": 2500}}})
+    assert clean["detectors"]["power"]["max_watt"] == 2500
+    reloaded = load_policy(str(tmp_path))
+    assert reloaded["detectors"]["power"]["max_watt"] == 2500
+
+
+def test_load_falls_back_to_default_on_corrupt_stored_value(tmp_path):
+    """load_policy must never crash on an already-corrupt file (e.g. hand-
+    edited, or written by a version predating validation) -- a malformed key
+    falls back to the DEFAULT_POLICY value instead."""
+    policy_file = tmp_path / "sentinel_policy.json"
+    corrupt = json.loads(json.dumps(DEFAULT_POLICY))
+    corrupt["detectors"]["power"]["max_watt"] = "not-a-number"
+    corrupt["detectors"]["power"]["enabled"] = True
+    corrupt["detectors"]["power"]["entities"] = ["sensor.legit"]
+    policy_file.write_text(json.dumps(corrupt), encoding="utf-8")
+
+    pol = load_policy(str(tmp_path))
+    assert pol["detectors"]["power"]["max_watt"] == 3000  # default, corrupt value dropped
+    assert pol["detectors"]["power"]["enabled"] is True    # valid keys still loaded
+    assert pol["detectors"]["power"]["entities"] == ["sensor.legit"]

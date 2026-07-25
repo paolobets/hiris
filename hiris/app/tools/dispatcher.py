@@ -22,7 +22,10 @@ from .weather_tools import get_weather_forecast
 from .notify_tools import send_notification
 from .automation_tools import get_ha_automations, get_automation_config, trigger_automation, toggle_automation
 from .task_tools import create_task_tool, list_tasks_tool, cancel_task_tool
-from .calendar_tools import get_calendar_events, set_input_helper, create_calendar_event
+from .calendar_tools import (
+    get_calendar_events, set_input_helper, create_calendar_event,
+    resolve_input_helper_service,
+)
 from .http_tools import http_request
 from .memory_tools import handle_recall_memory as _handle_recall_memory, handle_save_memory as _handle_save_memory
 from .history_tools import get_history as _get_history
@@ -33,7 +36,7 @@ from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
 from ..brain.briefing import build_briefing_bundle, render_briefing_template
-from ..security.semaphore import gate_action
+from ..security.semaphore import gate_action, normalize_target
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,22 @@ def _filter_entities(entities: list[dict], allowed_entities: list[str] | None) -
         e for e in entities
         if any(fnmatch.fnmatch(e.get("id", e.get("entity_id", "")), pat) for pat in allowed_entities)
     ]
+
+
+def _filter_area_map(
+    area_map: dict[str, list[str]], allowed_entities: list[str] | None
+) -> dict[str, list[str]]:
+    """Filter an area→[entity_id] map through the same _filter_entities allowlist
+    used by get_home_status/get_entities_on/get_entities_by_domain (review B/#11):
+    drop non-permitted entity_ids within each area, then drop areas left empty."""
+    if not allowed_entities:
+        return area_map
+    result: dict[str, list[str]] = {}
+    for area, eids in area_map.items():
+        kept = [e["id"] for e in _filter_entities([{"id": eid} for eid in eids], allowed_entities)]
+        if kept:
+            result[area] = kept
+    return result
 
 
 def _check_service_allowed(
@@ -121,6 +140,47 @@ class ToolDispatcher:
     def set_task_engine(self, engine: Any) -> None:
         self._task_engine = engine
 
+    async def _gate(
+        self, *, name: str, inputs: dict, domain: str, service: str,
+        entity_ids: list[str], user_id: str | None,
+    ) -> dict | None:
+        """Semaforo universale — gate condiviso da OGNI superficie che attua su HA
+        (call_ha_service, trigger_automation, toggle_automation, set_input_helper;
+        review A/#2, #9, #10). Chiamare SOLO quando l'azione non è già
+        tier_confirmed (il chiamante decide se saltare il gate in quel caso, come
+        fa call_ha_service per lo step-up out-of-band).
+
+        Ritorna None se l'azione può procedere (allow). Altrimenti ritorna il
+        dict ({"error": ...} o {"status": "confirmation_required", ...}) da
+        restituire IMMEDIATAMENTE al chiamante SENZA attuare — mai chiamare
+        ha.call_service (o l'equivalente tool) se il ritorno non è None.
+        """
+        verdict = gate_action(
+            domain=domain, service=service, entity_ids=entity_ids,
+            tiers=self._execute_policy.get("tiers") or {},
+            entity_tiers=self._execute_policy.get("entity_tiers") or {},
+        )
+        if verdict.decision == "allow":
+            return None
+        logger.warning("%s gated: %s (%s.%s)", name, verdict.decision, domain, service)
+        if verdict.decision == "confirm":
+            if self._request_confirmation is not None:
+                res = await self._request_confirmation(
+                    tool=name, inputs=inputs, tier=verdict.tier, user=user_id,
+                )
+                # No-identity guard (Fix 5, mirrored from call_ha_service): fall
+                # back to the generic error instead of minting a pending nobody
+                # can ever confirm.
+                if not isinstance(res, dict) or not res.get("id"):
+                    return {"error": "Azione a rischio: richiede conferma."}
+                return {"status": "confirmation_required",
+                        "id": res.get("id"), "tier": verdict.tier,
+                        "message": ("Ho bisogno della tua conferma: tocca "
+                                    "'Conferma' nella notifica sul telefono, "
+                                    "oppure dimmi il codice che ti ho inviato.")}
+            return {"error": "Azione a rischio: richiede conferma."}
+        return {"error": verdict.reason}
+
     @property
     def has_memory(self) -> bool:
         # save_memory/recall_memory route into the unified KnowledgeStore
@@ -141,13 +201,15 @@ class ToolDispatcher:
         cloud: bool = True,
         tier_confirmed: bool = False,
         user_id: str | None = None,
+        pseudonym_map: dict[str, str] | None = None,
     ) -> Any:
         _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization", "code"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
         logger.info("Tool call: %s(%s)", name, _log_inputs)
         try:
             if name == "get_area_entities":
-                return await get_area_entities(self._ha, entity_cache=self._cache)
+                result = await get_area_entities(self._ha, entity_cache=self._cache)
+                return _filter_area_map(result, allowed_entities)
             if name == "get_entity_states":
                 ids = inputs.get("ids", [])
                 if visible_entity_ids:
@@ -156,9 +218,15 @@ class ToolDispatcher:
                     ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                 return await get_entity_states(self._ha, ids, entity_cache=self._cache)
             if name == "get_history":
+                entity_ids = inputs.get("entity_ids", [])
+                if visible_entity_ids:
+                    entity_ids = [eid for eid in entity_ids if eid in visible_entity_ids]
+                if allowed_entities:
+                    entity_ids = [eid for eid in entity_ids
+                                  if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                 return await _get_history(
                     self._ha,
-                    inputs.get("entity_ids", []),
+                    entity_ids,
                     days=int(inputs.get("days", 7)),
                     resolution=inputs.get("resolution", "auto"),
                     store=self._history_store,
@@ -184,7 +252,17 @@ class ToolDispatcher:
             if name == "get_ha_automations":
                 return await get_ha_automations(self._ha)
             if name == "get_automation_config":
-                return await get_automation_config(self._ha, inputs.get("automation_id", ""))
+                automation_id = inputs.get("automation_id", "")
+                bare_id = (
+                    automation_id[len("automation."):]
+                    if automation_id.startswith("automation.") else automation_id
+                )
+                # Numeric unique ids bypass the entity_id path entirely (ha_client
+                # fast path); anything else must match the same slug regex the
+                # trigger/toggle branches enforce (review A/#4: SSRF/path-injection).
+                if not (bare_id.isascii() and bare_id.isdigit()) and not _AUTOMATION_ID_RE.match(bare_id):
+                    return {"error": f"invalid automation_id: {automation_id!r}"}
+                return await get_automation_config(self._ha, automation_id)
             if name == "trigger_automation":
                 automation_id = inputs["automation_id"]
                 bare_id = (
@@ -200,6 +278,13 @@ class ToolDispatcher:
                 err = _check_entity_allowed(entity_id, allowed_entities)
                 if err is not None:
                     return err
+                if not tier_confirmed:
+                    gate_result = await self._gate(
+                        name=name, inputs=inputs, domain="automation", service="trigger",
+                        entity_ids=[entity_id], user_id=user_id,
+                    )
+                    if gate_result is not None:
+                        return gate_result
                 return await trigger_automation(self._ha, automation_id)
             if name == "toggle_automation":
                 automation_id = inputs["automation_id"]
@@ -218,81 +303,50 @@ class ToolDispatcher:
                 err = _check_entity_allowed(entity_id, allowed_entities)
                 if err is not None:
                     return err
+                if not tier_confirmed:
+                    gate_result = await self._gate(
+                        name=name, inputs=inputs, domain="automation", service=service_key.split(".")[1],
+                        entity_ids=[entity_id], user_id=user_id,
+                    )
+                    if gate_result is not None:
+                        return gate_result
                 return await toggle_automation(self._ha, automation_id, enabled)
             if name == "call_ha_service":
                 domain = inputs["domain"]
                 service = inputs["service"]
                 data = inputs.get("data", {})
                 target = inputs.get("target", {}) or {}
+                # review A/#5: merge target into data ONCE, so the entity_ids gated
+                # below are exactly the entity_ids forwarded to ha.call_service at
+                # the bottom -- a target-scoped call must never be executed as a
+                # domain-wide broadcast because `target` got silently dropped.
+                normalized = normalize_target(data, target)
                 # Semaforo universale (denylist + tier). Saltato se l'azione è già
                 # stata confermata out-of-band da un umano (approvazione gateway /
                 # step-up chat): in quel caso la conferma umana autorizza esattamente
                 # questo comando, denylist inclusa (killer feature step-up).
                 if not tier_confirmed:
-                    raw_gate_eid = (
-                        data.get("entity_id") if isinstance(data, dict) else None
-                    ) or target.get("entity_id")
-                    gate_eids = [
-                        e for e in (
-                            [raw_gate_eid] if isinstance(raw_gate_eid, str)
-                            else list(raw_gate_eid) if isinstance(raw_gate_eid, list)
-                            else []
-                        ) if isinstance(e, str)   # Fix #8: scarta entity_id non-stringa
-                    ]
                     # Fix #2/#8: un target per area/dispositivo/label non è risolvibile ai
                     # tier per-entità → fail-closed, INDIPENDENTEMENTE da entità esplicite
                     # accompagnatorie (HA attua l'intero gruppo lato server, bypassando
                     # gli override per-entità: un target misto entity_id+area_id fa sì
                     # che HA esegua su TUTTE le entità dell'area, non solo su quella verde).
-                    _has_group_target = any(
-                        (isinstance(d, dict) and (d.get("area_id") or d.get("device_id") or d.get("label_id")))
-                        for d in (data if isinstance(data, dict) else {}, target)
-                    )
-                    if _has_group_target:
+                    if normalized.has_group_target:
                         logger.warning("call_ha_service gated: area/device/label target present (%s.%s)", domain, service)
                         return {"error": "Azione su area/dispositivo/label non consentita dal semaforo: specifica le entità target."}
-                    verdict = gate_action(
-                        domain=domain, service=service, entity_ids=gate_eids,
-                        tiers=self._execute_policy.get("tiers") or {},
-                        entity_tiers=self._execute_policy.get("entity_tiers") or {},
+                    gate_result = await self._gate(
+                        name=name, inputs=inputs, domain=domain, service=service,
+                        entity_ids=normalized.entity_ids, user_id=user_id,
                     )
-                    if verdict.decision != "allow":
-                        logger.warning("call_ha_service gated: %s (%s.%s)",
-                                       verdict.decision, domain, service)
-                        if verdict.decision == "confirm":
-                            if self._request_confirmation is not None:
-                                res = await self._request_confirmation(
-                                    tool=name, inputs=inputs, tier=verdict.tier, user=user_id,
-                                )
-                                # No-identity guard (Fix 5): the callback returns None
-                                # (or a dict without an "id") when there's no real user
-                                # to target — e.g. the "home" no-identity fallback has
-                                # no phone and no chat OTP flow that could resolve it.
-                                # Fall back to the Slice-1 error instead of minting a
-                                # pending nobody can ever confirm.
-                                if not isinstance(res, dict) or not res.get("id"):
-                                    return {"error": "Azione a rischio: richiede conferma."}
-                                return {"status": "confirmation_required",
-                                        "id": res.get("id"), "tier": verdict.tier,
-                                        "message": ("Ho bisogno della tua conferma: tocca "
-                                                    "'Conferma' nella notifica sul telefono, "
-                                                    "oppure dimmi il codice che ti ho inviato.")}
-                            return {"error": "Azione a rischio: richiede conferma."}
-                        return {"error": verdict.reason}
+                    if gate_result is not None:
+                        return gate_result
                 if allowed_services:
                     service_key = f"{domain}.{service}"
                     if not any(fnmatch.fnmatch(service_key, pat) for pat in allowed_services):
                         logger.warning("Service %s.%s blocked by policy", domain, service)
                         return {"error": f"Service {domain}.{service} not permitted by policy"}
                 if allowed_entities:
-                    raw_eid = (
-                        data.get("entity_id") if isinstance(data, dict) else None
-                    ) or target.get("entity_id")
-                    eids = (
-                        [raw_eid] if isinstance(raw_eid, str)
-                        else list(raw_eid) if isinstance(raw_eid, list)
-                        else []
-                    )
+                    eids = normalized.entity_ids
                     if not eids:
                         logger.warning("call_ha_service blocked: no target entity under an active entity whitelist")
                         return {"error": "call_ha_service richiede un entity_id target quando è attiva una whitelist"}
@@ -300,7 +354,7 @@ class ToolDispatcher:
                         if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
                             logger.warning("Entity %s blocked by allowed_entities policy", eid)
                             return {"error": f"Entity {eid!r} not permitted by policy"}
-                return await self._ha.call_service(domain, service, data)
+                return await self._ha.call_service(domain, service, normalized.data)
             if name == "create_task":
                 if self._task_engine is None:
                     return {"error": "TaskEngine not available"}
@@ -364,6 +418,25 @@ class ToolDispatcher:
                     if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
                         logger.warning("set_input_helper on %r blocked by allowed_entities policy", eid)
                         return {"error": f"Entity {eid!r} not permitted by policy"}
+                if not tier_confirmed:
+                    # Fail closed LOCALLY: any non-confirmed actuation must pass
+                    # the semaforo. A malformed target or an unresolvable service
+                    # returns its error here and NEVER falls through to actuation
+                    # -- don't rely on the downstream actuator re-validating (a
+                    # future loosening there would silently reopen the bypass).
+                    if not ih_domain or not eid:
+                        return {"error": f"Invalid entity_id for set_input_helper: {eid!r}"}
+                    resolved = resolve_input_helper_service(ih_domain, inputs.get("value"))
+                    if not isinstance(resolved, tuple):
+                        return resolved if isinstance(resolved, dict) else {
+                            "error": f"Cannot resolve input helper service for {ih_domain!r}"}
+                    ih_service, _ = resolved
+                    gate_result = await self._gate(
+                        name=name, inputs=inputs, domain=ih_domain, service=ih_service,
+                        entity_ids=[eid], user_id=user_id,
+                    )
+                    if gate_result is not None:
+                        return gate_result
                 return await set_input_helper(self._ha, entity_id=eid, value=inputs.get("value"))
             if name == "create_calendar_event":
                 return await create_calendar_event(
@@ -438,6 +511,7 @@ class ToolDispatcher:
                     kinds=knowledge_kinds,
                     pseudonymizer=self._pseudonymizer,
                     cloud=cloud,
+                    pseudonym_map=pseudonym_map,
                 )
             if name == "link_knowledge" and self._knowledge_store:
                 return await handle_link_knowledge(self._knowledge_store, inputs)

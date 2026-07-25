@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
+from hiris.app.claude_runner import RunnerBackendError
 
 
 @pytest.fixture
@@ -410,11 +411,13 @@ async def test_chat_returns_explicit_error_when_402_retry_also_fails(dispatcher,
     )
     runner._client.chat.completions.create = AsyncMock(side_effect=[err, err2])
 
-    out = await runner.chat(
-        user_message="hi",
-        model="mistralai/mistral-large",
-        max_tokens=4096,
-    )
+    with pytest.raises(RunnerBackendError) as exc_info:
+        await runner.chat(
+            user_message="hi",
+            model="mistralai/mistral-large",
+            max_tokens=4096,
+        )
+    out = exc_info.value.friendly_message
     assert "OpenRouter" in out
     assert "max_tokens" in out
     assert "4096" in out  # original requested value mentioned for clarity
@@ -438,8 +441,9 @@ async def test_chat_non_402_api_error_still_returns_generic_message(dispatcher, 
     )
     runner._client.chat.completions.create = AsyncMock(side_effect=err)
 
-    out = await runner.chat(user_message="hi", model="gpt-4o", max_tokens=4096)
-    assert "Errore temporaneo" in out
+    with pytest.raises(RunnerBackendError) as exc_info:
+        await runner.chat(user_message="hi", model="gpt-4o", max_tokens=4096)
+    assert "Errore temporaneo" in exc_info.value.friendly_message
     # Verify no retry happened
     assert runner._client.chat.completions.create.call_count == 1
 
@@ -505,7 +509,9 @@ async def test_chat_returns_clear_message_on_upstream_rate_limit(dispatcher, tmp
         body=None,
     )
     runner._client.chat.completions.create = AsyncMock(side_effect=err)
-    out = await runner.chat(user_message="hi", model="qwen/qwen3-next-80b-a3b-instruct:free")
+    with pytest.raises(RunnerBackendError) as exc_info:
+        await runner.chat(user_message="hi", model="qwen/qwen3-next-80b-a3b-instruct:free")
+    out = exc_info.value.friendly_message
     assert "qwen/qwen3-next-80b-a3b-instruct:free" in out
     assert "Errore temporaneo" not in out
 

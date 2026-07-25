@@ -16,7 +16,12 @@ from ..claude_runner import (
     EVALUATION_ONLY_TOOLS,
     RESTRICT_PROMPT,
     REQUIRE_CONFIRMATION_PROMPT,
+    RunnerBackendError,
     _redact_stream_tool_calls,
+    _current_tool_calls,
+    _current_pseudonym_map,
+    _PerCallList,
+    _PerCallDict,
 )
 from .pricing import PRICING as _PRICING
 
@@ -172,6 +177,16 @@ def parse_upstream_rate_limit(exc: Any) -> Optional[str]:
 class OpenAICompatRunner:
     """Agentic LLM runner for OpenAI-compatible APIs (OpenAI cloud + Ollama local)."""
 
+    # Per-call, per-asyncio-Task isolated — shares the SAME ContextVar as
+    # ClaudeRunner (review A/#3 — see claude_runner.py's module comment for
+    # the full rationale). No last_thinking_blocks here: OpenAI-compatible
+    # backends don't support Anthropic Extended Thinking (thinking_budget is
+    # accepted-and-ignored in chat()/run_with_actions() below).
+    last_tool_calls = _PerCallList(_current_tool_calls)
+    # Per-request pseudonymization token map (review B/#7) — same ContextVar
+    # shared with ClaudeRunner; see claude_runner.py's module comment.
+    last_pseudonym_map = _PerCallDict(_current_pseudonym_map)
+
     def __init__(
         self,
         base_url: str,
@@ -212,7 +227,9 @@ class OpenAICompatRunner:
         # Circuit-breaker state for connection-class failures (dead endpoint).
         self._conn_fail_count = 0
         self._circuit_open_until = 0.0
-        self.last_tool_calls: list[dict] = []
+        # last_tool_calls is intentionally NOT initialized here — it's a
+        # per-call/per-Task class-level descriptor (see above); chat() resets
+        # it at the start of every call, scoped to the calling Task.
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
         self.total_requests: int = 0
@@ -442,6 +459,8 @@ class OpenAICompatRunner:
             self._per_agent_usage[agent_id]["requests"] += 1
             self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
+        # Fresh per-exchange pseudonymization map (review B/#7).
+        self.last_pseudonym_map = {}
         self.total_requests += 1
 
         effective_model = self._resolve_model(model, agent_type)
@@ -528,7 +547,9 @@ class OpenAICompatRunner:
                 self.total_rate_limit_errors += 1
                 logger.error("OpenAI rate limit: %s", exc)
                 upstream = parse_upstream_rate_limit(exc)
-                return upstream or "Errore temporaneo del servizio AI. Riprova tra poco."
+                raise RunnerBackendError(
+                    upstream or "Errore temporaneo del servizio AI. Riprova tra poco."
+                ) from exc
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
                 # current max_tokens. The error message tells us the highest
@@ -549,14 +570,16 @@ class OpenAICompatRunner:
                         logger.error(
                             "OpenRouter 402 retry failed: %s", retry_exc,
                         )
-                        return (
+                        raise RunnerBackendError(
                             f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
                             f"Riduci max_tokens dell'agente sotto {affordable} "
                             f"oppure aggiungi credito su openrouter.ai."
-                        )
+                        ) from retry_exc
                 else:
                     logger.error("OpenAI/Ollama API error: %s", exc)
-                    return "Errore temporaneo del servizio AI. Riprova tra poco."
+                    raise RunnerBackendError(
+                        "Errore temporaneo del servizio AI. Riprova tra poco."
+                    ) from exc
 
             self._track_usage(response, effective_model, agent_id)
             choice = response.choices[0]
@@ -621,6 +644,7 @@ class OpenAICompatRunner:
                         knowledge_kinds=knowledge_kinds,
                         cloud=self._is_cloud,
                         user_id=user_id,
+                        pseudonym_map=self.last_pseudonym_map,
                     )
                     self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
                     messages.append({
@@ -680,6 +704,8 @@ class OpenAICompatRunner:
         import openai as _openai
 
         self.last_tool_calls = []
+        # Fresh per-exchange pseudonymization map (review B/#7).
+        self.last_pseudonym_map = {}
         self.total_requests += 1
         if agent_id:
             if agent_id not in self._per_agent_usage:
@@ -876,6 +902,7 @@ class OpenAICompatRunner:
                         knowledge_kinds=knowledge_kinds,
                         cloud=self._is_cloud,
                         user_id=user_id,
+                        pseudonym_map=self.last_pseudonym_map,
                     )
                     self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
                     messages.append({

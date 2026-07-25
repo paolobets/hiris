@@ -177,6 +177,45 @@ async def test_execute_yellow_action_held_and_notified(aiohttp_client, tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_execute_smuggled_off_target_entity_is_evaluated(aiohttp_client, tmp_path):
+    # review A/#5 C1: the pre-screen must evaluate the UNION of data+target, so a
+    # smuggled OFF `target` entity can't ride an approval evaluated only on `data`.
+    app = _make_tier_app({"light": "green"}, tmp_path)
+    app["execute_policy"]["entity_tiers"] = {"light.blocked": "off"}
+    client = await aiohttp_client(app)
+    resp = await client.post(
+        "/api/execute",
+        json={"tool": "call_ha_service", "input": {
+            "domain": "light", "service": "turn_on",
+            "data": {"entity_id": "light.decoy"},
+            "target": {"entity_id": "light.blocked"}}},
+        headers={"X-HIRIS-Internal-Token": "secret"},
+    )
+    res = (await resp.json())["result"]
+    assert "error" in res                                    # denied on the off target
+    assert res.get("status") != "pending_approval"
+    assert app["tool_dispatcher"].calls == []                # never executed
+
+
+@pytest.mark.asyncio
+async def test_execute_floor_id_group_target_fail_closed(aiohttp_client, tmp_path):
+    # review A/#5 I2: floor_id is a group target -> fail-closed even alongside a
+    # green entity_id (HA would actuate the whole floor).
+    app = _make_tier_app({"light": "green"}, tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post(
+        "/api/execute",
+        json={"tool": "call_ha_service", "input": {
+            "domain": "light", "service": "turn_on",
+            "data": {"entity_id": "light.ok", "floor_id": "notte"}}},
+        headers={"X-HIRIS-Internal-Token": "secret"},
+    )
+    res = (await resp.json())["result"]
+    assert "error" in res
+    assert app["tool_dispatcher"].calls == []
+
+
+@pytest.mark.asyncio
 async def test_execute_green_action_dispatches_directly(aiohttp_client, tmp_path):
     app = _make_tier_app({"light": "green"}, tmp_path)
     client = await aiohttp_client(app)

@@ -13,6 +13,19 @@ persisting an assistant reply:
 Before this fix, ``_submit_chat_reply`` wrote the raw reply straight to
 chat_store, skipping both guards.
 
+SECURITY addendum (review B/#7 — PII cross-leak, ``brain/privacy.py``):
+``Pseudonymizer.detokenize`` no longer accepts a bare ``text`` and resolves
+tokens against the shared, unscoped vault. It now takes an explicit
+``mapping`` of ``token -> value`` and expands ONLY tokens present in it.
+This async-bridge path has no per-job pseudonymize step of its own (the
+external runner's tool calls, if any, ran in a completely different
+request/Task — ``_enqueue_chat_job`` never pseudonymizes the job context
+either), so there is no legitimate per-job mapping to thread through here.
+``_submit_chat_reply`` therefore calls ``detokenize(reply_text, {})`` with
+an explicit empty mapping: any ``[TYPE_N]``-shaped text in the reply
+(hallucinated, injected, or belonging to a different conversation's vault
+entry) is left verbatim rather than resolved to real PII.
+
 ``_submit_chat_reply`` is a closure defined inside ``server._on_startup``
 (same situation as ``_reasoning_sweep`` -- see
 test_reasoning_sweep_chat_skip.py / test_coverage_wiring.py for the same
@@ -56,15 +69,33 @@ def _load_real_submit_chat_reply(app, data_dir, append_fn=None):
 
 
 class _FakePseudonymizer:
-    def __init__(self, mapping):
-        self.mapping = mapping
-        self.calls = []
+    """Mirrors the real Pseudonymizer.detokenize(text, mapping) contract:
+    expansion uses ONLY the mapping passed in at call time, never state
+    stashed on the instance -- so a test can prove exactly what mapping the
+    caller threaded through (or didn't)."""
 
-    def detokenize(self, text):
-        self.calls.append(text)
-        for token, real in self.mapping.items():
+    def __init__(self):
+        self.calls: list[tuple[str, dict | None]] = []
+
+    def detokenize(self, text, mapping=None):
+        self.calls.append((text, mapping))
+        for token, real in (mapping or {}).items():
             text = text.replace(token, real)
         return text
+
+
+class _FakePseudonymizerFixedOutput:
+    """detokenize() always returns a fixed string regardless of input --
+    used only to test call ORDERING (detokenize-before-toxicity-check),
+    independent of mapping-substitution semantics (covered separately)."""
+
+    def __init__(self, fixed_output: str):
+        self._fixed_output = fixed_output
+        self.calls: list[tuple[str, dict | None]] = []
+
+    def detokenize(self, text, mapping=None):
+        self.calls.append((text, mapping))
+        return self._fixed_output
 
 
 @pytest.mark.asyncio
@@ -107,32 +138,40 @@ async def test_clean_reply_is_persisted(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_pseudonymizer_detokenize_applied_before_persisting(tmp_path):
+async def test_pseudonymizer_detokenize_called_with_empty_mapping_no_expansion(tmp_path):
+    """SECURITY (review B/#7): this async-bridge path has no per-job
+    pseudonymize step of its own, so _submit_chat_reply must call
+    detokenize with an explicit EMPTY mapping -- a [[TOKEN_1]]-shaped
+    pattern in the reply (which could belong to a completely different
+    conversation's vault entry, or be model-hallucinated/injected) is left
+    verbatim, never resolved to real PII."""
     data_dir = str(tmp_path / "data")
-    pseudonymizer = _FakePseudonymizer({"[[TOKEN_1]]": "Via Roma 12"})
+    pseudonymizer = _FakePseudonymizer()
     app = {"pseudonymizer": pseudonymizer}
     submit = _load_real_submit_chat_reply(app, data_dir)
 
     await submit("agentX", "Il tuo indirizzo è [[TOKEN_1]].")
 
-    assert pseudonymizer.calls == ["Il tuo indirizzo è [[TOKEN_1]]."]
+    assert pseudonymizer.calls == [("Il tuo indirizzo è [[TOKEN_1]].", {})]
     assert load_history("agentX", data_dir) == [
-        {"role": "assistant", "content": "Il tuo indirizzo è Via Roma 12."},
+        {"role": "assistant", "content": "Il tuo indirizzo è [[TOKEN_1]]."},
     ]
 
 
 @pytest.mark.asyncio
 async def test_detokenize_runs_before_toxicity_check(tmp_path):
     """Mirrors the sync path's ordering (handlers_chat.py comment: 'De-tokenize
-    ... before toxicity check'): if de-tokenizing could ever turn a token into
-    toxic-looking text (or vice versa), the toxicity check must see the
-    POST-detokenize value, not the raw one. Uses a recording fake for
-    _append_chat_messages -- see test_toxic_reply_is_dropped_not_persisted
-    for why load_history can't be used to observe this."""
+    ... before toxicity check'): if de-tokenizing could ever turn the text into
+    toxic-looking content, the toxicity check must see the POST-detokenize
+    value, not the raw one. Uses a fixed-output fake (ordering-only; the
+    empty-mapping/no-expansion behavior is covered by the test above) and a
+    recording fake for _append_chat_messages -- see
+    test_toxic_reply_is_dropped_not_persisted for why load_history can't be
+    used to observe this."""
     data_dir = str(tmp_path / "data")
-    pseudonymizer = _FakePseudonymizer({
-        "[[TOKEN_1]]": "Errore temporaneo del servizio AI. Riprova tra poco.",
-    })
+    pseudonymizer = _FakePseudonymizerFixedOutput(
+        "Errore temporaneo del servizio AI. Riprova tra poco."
+    )
     calls = []
 
     def _fake_append(agent_id, messages, data_dir):
@@ -141,9 +180,12 @@ async def test_detokenize_runs_before_toxicity_check(tmp_path):
     app = {"pseudonymizer": pseudonymizer}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
 
-    await submit("agentX", "[[TOKEN_1]]")
+    await submit("agentX", "risposta grezza qualsiasi")
 
-    # The detokenized value IS the toxic sentinel -- must be dropped.
+    # detokenize was invoked (with an explicit empty mapping) and its
+    # returned value -- the toxic sentinel -- is what the toxicity check
+    # saw, since the reply was dropped.
+    assert pseudonymizer.calls == [("risposta grezza qualsiasi", {})]
     assert calls == []
 
 

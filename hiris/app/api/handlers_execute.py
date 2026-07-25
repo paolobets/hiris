@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # of what the env CSV or the saved policy lists. Prevents a misconfigured
 # EXECUTE_API_TOOLS from exposing unconstrained tools (http_request, set_input_helper, …).
 from .handlers_gateway_policy import READ_TOOLS as _RT, PROPOSE_TOOLS as _PT
+from ..security.semaphore import normalize_target
 _HARD_EXECUTE_ALLOWED = frozenset(_RT) | frozenset(_PT) | {"call_ha_service", "create_task", "send_notification"}
 
 # Tools always exposed regardless of the saved EXECUTE_API_TOOLS policy. Notifications
@@ -40,30 +41,23 @@ def _origin(body: dict) -> str:
 
 
 def _target_entities(inputs: dict) -> list[str]:
-    data = inputs.get("data") if isinstance(inputs.get("data"), dict) else {}
-    target = inputs.get("target") if isinstance(inputs.get("target"), dict) else {}
-    raw = (data.get("entity_id") if isinstance(data, dict) else None) or target.get("entity_id")
-    if isinstance(raw, str):
-        return [raw]
-    if isinstance(raw, list):
-        return [e for e in raw if isinstance(e, str)]
-    return []
+    # Delegate to the shared normalizer so the tiers PRE-SCREENED here are the
+    # UNION of data+target entity_ids -- the exact set the dispatcher executes
+    # after confirmation (review A/#5 C1). First-wins here would let a smuggled
+    # `target` entity ride an approval evaluated only on the `data` entity.
+    return normalize_target(inputs.get("data"), inputs.get("target")).entity_ids
 
 
 def _has_group_target(inputs: dict) -> bool:
-    """True if data/target carries area_id/device_id/label_id.
+    """True if data/target carries area_id/device_id/label_id/floor_id.
 
     A group target is never resolvable to a per-entity tier: HA actuates the
-    whole area/device/label server-side, bypassing per-entity overrides even
-    when an explicit (green) entity_id rides along in the same call. Fail-closed
-    regardless of accompanying entity_ids (see Slice 1 Task 8 fix).
+    whole area/device/label/floor server-side, bypassing per-entity overrides
+    even when an explicit (green) entity_id rides along. Fail-closed regardless
+    of accompanying entity_ids. Delegated to normalize_target so the key set
+    stays in one place (review A/#5 I2/M3).
     """
-    data = inputs.get("data") if isinstance(inputs.get("data"), dict) else {}
-    target = inputs.get("target") if isinstance(inputs.get("target"), dict) else {}
-    return any(
-        isinstance(d, dict) and (d.get("area_id") or d.get("device_id") or d.get("label_id"))
-        for d in (data, target)
-    )
+    return normalize_target(inputs.get("data"), inputs.get("target")).has_group_target
 
 
 def _csv(value: str | None) -> list[str]:

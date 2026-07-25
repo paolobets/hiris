@@ -24,6 +24,74 @@ async def test_policy_get_and_save(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_save_rejects_string_max_watt(aiohttp_client, tmp_path):
+    """Review C/#8: a malformed POST (string threshold instead of numeric)
+    must be rejected with a 4xx, never persisted, never applied live."""
+    app = web.Application()
+    app["data_dir"] = str(tmp_path)
+    app.router.add_post("/api/sentinel/policy", handle_save_sentinel_policy)
+    client = await aiohttp_client(app)
+
+    r = await client.post("/api/sentinel/policy",
+                          json={"detectors": {"power": {"enabled": True, "entities": ["sensor.p"],
+                                                         "max_watt": "high"}}})
+    assert r.status == 400
+    body = await r.json()
+    assert body["ok"] is False
+
+    from hiris.app.watcher.policy import load_policy
+    pol = load_policy(str(tmp_path))
+    assert pol["detectors"]["power"]["max_watt"] == 3000  # default, untouched
+
+
+@pytest.mark.asyncio
+async def test_save_rejects_string_entities(aiohttp_client, tmp_path):
+    """Review C/#8: string `entities` (instead of a list) must be rejected --
+    a substring-matched string would cause false positives in the guardian's
+    entity filter if it ever reached disk/live policy."""
+    app = web.Application()
+    app["data_dir"] = str(tmp_path)
+    app.router.add_post("/api/sentinel/policy", handle_save_sentinel_policy)
+    client = await aiohttp_client(app)
+
+    r = await client.post("/api/sentinel/policy",
+                          json={"detectors": {"power": {"enabled": True, "entities": "light.x"}}})
+    assert r.status == 400
+    body = await r.json()
+    assert body["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_save_still_applies_live_on_valid_policy(aiohttp_client, tmp_path):
+    """Legit configs (valid types/ranges) must still save AND apply live
+    unchanged -- guards against the 4xx path accidentally swallowing the
+    happy path too."""
+    class _StubGuardian:
+        def __init__(self):
+            self.calls = []
+
+        def set_policy(self, policy):
+            self.calls.append(policy)
+
+    app = web.Application()
+    app["data_dir"] = str(tmp_path)
+    guardian = _StubGuardian()
+    app["guardian"] = guardian
+    app.router.add_post("/api/sentinel/policy", handle_save_sentinel_policy)
+    client = await aiohttp_client(app)
+
+    r = await client.post("/api/sentinel/policy",
+                          json={"detectors": {"power": {"enabled": True, "entities": ["sensor.p"],
+                                                         "max_watt": 2500}}})
+    assert r.status == 200
+    body = await r.json()
+    assert body["ok"] is True
+    assert body["detectors"]["power"]["max_watt"] == 2500
+    assert len(guardian.calls) == 1
+    assert guardian.calls[0]["detectors"]["power"]["max_watt"] == 2500
+
+
+@pytest.mark.asyncio
 async def test_timeline(aiohttp_client, tmp_path):
     app = web.Application()
     store = SentinelStore(str(tmp_path / "s.db"))
