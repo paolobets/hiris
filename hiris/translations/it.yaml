@@ -4,7 +4,7 @@ configuration:
     description: "Chiave API per Anthropic Claude. Obbligatoria se vuoi usare Claude come provider AI. Ottienila su console.anthropic.com. PRIVACY: i messaggi e i contesti inviati passano dai server Anthropic (USA) — vedi anthropic.com/privacy."
   openai_api_key:
     name: "Chiave API OpenAI"
-    description: "Chiave API per i modelli OpenAI (GPT-4o, o1, ecc.). Necessaria solo se selezioni un modello OpenAI come modello principale. PRIVACY: i messaggi passano dai server OpenAI (USA) — vedi openai.com/policies."
+    description: "Chiave API per i modelli OpenAI (GPT-4o, o1, ecc.). Necessaria solo se OpenAI fa parte della tua strategia/politiche di routing. PRIVACY: i messaggi passano dai server OpenAI (USA) — vedi openai.com/policies."
   openrouter_api_key:
     name: "Chiave API OpenRouter"
     description: "Chiave API per OpenRouter — un proxy unificato che da' accesso a 200+ modelli (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ecc.) con un'unica chiave. Ottienila su openrouter.ai. Sono disponibili modelli gratuiti (suffisso ':free' es. 'meta-llama/llama-3.3-70b-instruct:free'). Per usarli, imposta nel campo modello di un agente il formato 'openrouter:provider/nome-modello'. PRIVACY: i messaggi passano da OpenRouter (USA) e poi dal provider del modello scelto — vedi openrouter.ai/privacy."

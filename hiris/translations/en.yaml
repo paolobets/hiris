@@ -4,7 +4,7 @@ configuration:
     description: "API key for Anthropic Claude. Required if you want to use Claude as the AI provider. Get it at console.anthropic.com. PRIVACY: messages and context are sent to Anthropic servers (US) — see anthropic.com/privacy."
   openai_api_key:
     name: "OpenAI API Key"
-    description: "API key for OpenAI models (GPT-4o, o1, etc.). Required only if you select an OpenAI model as primary. PRIVACY: messages are sent to OpenAI servers (US) — see openai.com/policies."
+    description: "API key for OpenAI models (GPT-4o, o1, etc.). Required only if OpenAI is part of your routing strategy/policies. PRIVACY: messages are sent to OpenAI servers (US) — see openai.com/policies."
   openrouter_api_key:
     name: "OpenRouter API Key"
     description: "API key for OpenRouter — a unified proxy giving access to 200+ models (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ...) with one key. Get it at openrouter.ai. Free models are available (':free' suffix, e.g. 'meta-llama/llama-3.3-70b-instruct:free'). To use, set the agent model field to 'openrouter:provider/model-name'. PRIVACY: messages flow through OpenRouter (US) and then to the chosen model's provider — see openrouter.ai/privacy."
