@@ -792,7 +792,7 @@ async def run_urgent_nudges(store, *, today, seen, notify_item) -> int:
 
 
 async def _on_startup(app: web.Application) -> None:
-    from .claude_runner import ClaudeRunner
+    from .claude_runner import ClaudeRunner, RunnerBackendError
     from .proxy.semantic_map import SemanticMap
     from .llm_router import LLMRouter
 
@@ -1204,9 +1204,16 @@ async def _on_startup(app: web.Application) -> None:
             runner = getattr(eng, "_claude_runner", None) if eng is not None else None
         if runner is None or not hasattr(runner, "run_with_actions"):
             return ""
-        out = await runner.run_with_actions(
-            user_message=user, system_prompt=system,
-            allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
+        try:
+            out = await runner.run_with_actions(
+                user_message=user, system_prompt=system,
+                allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
+        except RunnerBackendError:
+            # All backends failed (or a pinned-model call with no fallback,
+            # review C/#13). Reasoning degrades to empty -> the reasoner treats
+            # it as "no verdict" (alert-only/safe), never crashes the wake/round.
+            logger.warning("_llm_reason: all LLM backends failed; degrading to empty verdict")
+            return ""
         if isinstance(out, tuple):
             return out[0] or ""
         return out or ""
