@@ -400,19 +400,25 @@ class ToolDispatcher:
                     if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
                         logger.warning("set_input_helper on %r blocked by allowed_entities policy", eid)
                         return {"error": f"Entity {eid!r} not permitted by policy"}
-                if not tier_confirmed and ih_domain and eid:
+                if not tier_confirmed:
+                    # Fail closed LOCALLY: any non-confirmed actuation must pass
+                    # the semaforo. A malformed target or an unresolvable service
+                    # returns its error here and NEVER falls through to actuation
+                    # -- don't rely on the downstream actuator re-validating (a
+                    # future loosening there would silently reopen the bypass).
+                    if not ih_domain or not eid:
+                        return {"error": f"Invalid entity_id for set_input_helper: {eid!r}"}
                     resolved = resolve_input_helper_service(ih_domain, inputs.get("value"))
-                    # A resolution error (bad value/unsupported domain) means the
-                    # actuation call below will fail its own validation anyway and
-                    # never reach HA — nothing to gate, let it surface that error.
-                    if isinstance(resolved, tuple):
-                        ih_service, _ = resolved
-                        gate_result = await self._gate(
-                            name=name, inputs=inputs, domain=ih_domain, service=ih_service,
-                            entity_ids=[eid], user_id=user_id,
-                        )
-                        if gate_result is not None:
-                            return gate_result
+                    if not isinstance(resolved, tuple):
+                        return resolved if isinstance(resolved, dict) else {
+                            "error": f"Cannot resolve input helper service for {ih_domain!r}"}
+                    ih_service, _ = resolved
+                    gate_result = await self._gate(
+                        name=name, inputs=inputs, domain=ih_domain, service=ih_service,
+                        entity_ids=[eid], user_id=user_id,
+                    )
+                    if gate_result is not None:
+                        return gate_result
                 return await set_input_helper(self._ha, entity_id=eid, value=inputs.get("value"))
             if name == "create_calendar_event":
                 return await create_calendar_event(
