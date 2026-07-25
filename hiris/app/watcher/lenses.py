@@ -29,6 +29,8 @@ import re
 import secrets
 import threading
 
+from apscheduler.triggers.cron import CronTrigger
+
 log = logging.getLogger(__name__)
 
 _PATH = "sentinel_lenses.json"
@@ -56,6 +58,91 @@ _ENTITY_ID_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 _CRON_RE = re.compile(r"^[0-9*,/\-]+(?:\s+[0-9*,/\-]+){4}$")
 
 _MESSAGE_MAX_LEN = 1000
+
+
+def translate_cron_dow(field: str) -> str:
+    """Remap a cron day-of-week FIELD from STANDARD crontab numbering
+    (POSIX cron(5): 0 or 7 = Sunday, 1 = Monday, ..., 6 = Saturday -- what
+    every SCHEDULE-trigger user lens is authored against, and what
+    `_CRON_RE` whitelists) to APScheduler's OWN CronTrigger day_of_week
+    numbering (0 = Monday, ..., 6 = Sunday, i.e. Python's
+    `datetime.weekday()`).
+
+    This translation is REQUIRED even though the caller builds the trigger
+    via `CronTrigger.from_crontab` -- verified against the installed
+    apscheduler==3.10.4, `from_crontab` does NOT perform any day_of_week
+    remapping itself: it feeds a numeric day_of_week token straight into
+    APScheduler's own field parser unchanged. Confirmed empirically: an
+    UNTRANSLATED `CronTrigger.from_crontab("0 3 * * 0")` (standard-crontab
+    Sunday) computes its next fire time on APScheduler's day_of_week=0,
+    which is MONDAY, not Sunday; and a POSIX-legal "7" raises outright
+    (APScheduler's day_of_week max is 6). This function runs BEFORE the
+    cron string ever reaches `from_crontab`, fixing both at the source
+    rather than relying on upstream translation that doesn't exist.
+
+    Supports exactly the charset `_CRON_RE` allows for a cron field --
+    digits, `*`, `,`, `/`, `-` -- i.e. bare values, comma-lists, ranges, and
+    step values, in any combination (e.g. "1-5", "0,6", "*/2"). Any field
+    this can't parse, or that resolves to a value outside 0-7, raises
+    ValueError -- callers (`validate_lens`, `server.register_lens_schedules`)
+    catch this per-lens so one broken cron never blocks the others / gets
+    persisted.
+    """
+    field = field.strip()
+    if field == "*":
+        return "*"
+    crontab_days: set[int] = set()
+    for part in field.split(","):
+        part = part.strip()
+        if not part:
+            raise ValueError(f"empty day_of_week token in {field!r}")
+        step = 1
+        base = part
+        if "/" in part:
+            base, step_s = part.split("/", 1)
+            step = int(step_s)
+            if step <= 0:
+                raise ValueError(f"non-positive step in {part!r}")
+        if base == "*":
+            lo, hi = 0, 7
+        elif "-" in base:
+            lo_s, hi_s = base.split("-", 1)
+            lo, hi = int(lo_s), int(hi_s)
+        else:
+            lo = hi = int(base)
+        if lo > hi:
+            raise ValueError(f"backwards range in {part!r}")
+        v = lo
+        while v <= hi:
+            crontab_days.add(v)
+            v += step
+    if not crontab_days or any(d < 0 or d > 7 for d in crontab_days):
+        raise ValueError(f"day_of_week value out of range 0-7 in {field!r}")
+    # 0 and 7 both denote Sunday in standard crontab -- collapse them onto
+    # the SAME APScheduler day (6) rather than two separate ones.
+    normalized = {0 if d == 7 else d for d in crontab_days}
+    apscheduler_days = sorted((d - 1) % 7 for d in normalized)
+    return ",".join(str(d) for d in apscheduler_days)
+
+
+def to_apscheduler_crontab(cron: str) -> str:
+    """Rewrite a whitelist-validated 5-field standard-crontab string
+    (`_CRON_RE` already confirmed the charset/shape) into the equivalent
+    string for `CronTrigger.from_crontab`, remapping ONLY the day_of_week
+    field (`translate_cron_dow`) -- minute/hour/day/month use the same
+    numbering in both conventions and pass through untouched. Raises
+    ValueError if the field count is off (defensive -- the store's regex
+    already guarantees exactly 5 whitespace-separated fields) or the
+    day_of_week field doesn't parse; callers turn either into "reject this
+    lens" (validate_lens) or "skip this lens" (server.register_lens_schedules)
+    without crashing. Per-field VALUE validity of minute/hour/day/month
+    (e.g. an out-of-range hour) is left to `CronTrigger.from_crontab`
+    itself, raised at construction/`add_job` time and caught there."""
+    parts = cron.split()
+    if len(parts) != 5:
+        raise ValueError(f"expected 5 cron fields, got {len(parts)}: {cron!r}")
+    minute, hour, day, month, dow = parts
+    return f"{minute} {hour} {day} {month} {translate_cron_dow(dow)}"
 
 
 def _file(data_dir: str) -> str:
@@ -193,6 +280,18 @@ def _validate_trigger(raw) -> dict | None:
         cron = _clean_nonempty_str(raw.get("cron"))
         if cron is None or not _CRON_RE.match(cron):
             return None  # present but malformed -> reject
+        # Review L/1: _CRON_RE only checks SHAPE (5 numeric/*/,/-// fields);
+        # a shape-valid but VALUE-invalid cron (e.g. hour=99) used to be
+        # accepted here and only fail later, silently, at schedule
+        # registration time (server.register_lens_schedules), leaving a
+        # lens that looks saved/enabled but never actually runs with no
+        # status surfaced. Reject-at-create instead: run it through the
+        # exact same translation + CronTrigger construction the scheduler
+        # itself uses, and fail the whole lens now if that raises.
+        try:
+            CronTrigger.from_crontab(to_apscheduler_crontab(cron))
+        except Exception:
+            return None  # present but value-invalid -> reject
 
     interval_min = None
     if interval_present:

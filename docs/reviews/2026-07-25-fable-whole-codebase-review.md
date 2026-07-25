@@ -142,18 +142,23 @@ The knowledge-approval API is completely owner-blind: `handle_list_pending` retu
 
 ---
 
-## 4. Backlog (low, unverified one-liners)
+## 4. Backlog (low) — verify-then-fix pass (Task L, `feat/slice8-medium-low`)
 
-- `brain/mayan_ingest.py:28` — Transient embedder failure marks a document ingested anyway; `document_exists` skips it forever with no retry/repair pass.
-- `watcher/policy.py:169` — `apply_brain_detector` writes the policy file *before* the brain registry (opposite of the crash-safe order `apply_brain_tuning` documents/uses) — crash between writes makes an auto-added entity un-undoable.
-- `server.py:630` — A shape-valid but value-invalid cron (e.g. hour 25) is accepted with 201; scheduler registration fails silently, lens never runs, no status surfaced.
-- `tools/dispatcher.py:499` — Catch-all handler returns `str(exc)` verbatim to the caller — potential internal-detail leak (paths, hostnames).
-- `api/handlers_sentinel.py:35` — Negative `limit` query param bypasses the documented 200-row cap (SQLite treats negative `LIMIT` as unlimited).
-- `proxy/ha_client.py:46` — `get_history`'s `filter_entity_id` is comma-joined into the query string with no `urllib.parse.quote()`; currently safe only because both call sites pre-validate with a regex.
-- `static/config/agent-editor.js:374` — HTML "escaping" via `.replace(/[<>&]/g,'')` doesn't escape quotes — currently safe (text-context only) but a landmine if reused.
-- `static/config/agent-form.js:97` — `highlightOutput()` regex-matches against already-HTML-escaped text; effectively dead code.
-- `requirements.txt:9` — `apprise>=1.9.0` unbounded, but affects only an optional, explicitly-configured notification channel; failures are caught/logged.
-- `Dockerfile` — No `USER` directive, container runs as root; standard (if not best-practice) for HA Supervisor add-ons using the bashio/s6 pattern, mitigated by Supervisor-level container isolation rather than in-container UID separation.
+Every item below was independently re-read against the current code before
+any change (this section was previously "unverified one-liners"; it is now
+verified). Full detail, tests added, and the full-suite result are in
+`.superpowers/sdd/task-L-report.md`.
+
+- `brain/mayan_ingest.py:28` — **REAL, FIXED.** Transient embedder failure used to mark a document ingested anyway (`add_item`/`document_exists` ran before embedding was attempted); it was skipped forever with no retry. Fixed: embed all chunks first, persist only on full success — a failure now leaves no trace, so the document is retried whole on the next poll. Test: `test_mayan_ingest.py::test_ingest_tag_retries_after_transient_embedder_failure`.
+- `watcher/policy.py:169` — **REAL, FIXED** (trivial + clearly safe). `apply_brain_detector` wrote the policy file *before* the brain registry, opposite of `apply_brain_tuning`'s documented crash-safe order — a crash between writes made an auto-added entity un-undoable. Fixed: swapped to registry-then-policy, matching the sibling function exactly. Test: `test_policy_brain_tuning.py::test_apply_brain_detector_writes_registry_before_policy`.
+- `server.py:630` — **REAL, FIXED.** A shape-valid but value-invalid cron (e.g. hour 25) was accepted at 201; scheduler registration then failed silently and the lens never ran. Fixed: `validate_lens` (watcher/lenses.py) now runs the cron through the same translation + `CronTrigger.from_crontab` construction the scheduler uses and rejects the lens (400) at creation if it's value-invalid. `server.py`'s registration-time catch stays as defense-in-depth for hand-edited/legacy data. Tests: `test_user_lenses_store.py::test_validate_rejects_value_invalid_cron_{hour,minute,day_of_week}` + a Sunday-as-7 regression guard.
+- `tools/dispatcher.py:499` — **REAL, FIXED.** Catch-all handler returned `str(exc)` verbatim — potential internal-detail leak (paths, hostnames). Fixed: `logger.exception(...)` server-side, generic message to the caller. Test: `test_dispatcher_error_leak.py::test_dispatch_catch_all_does_not_leak_exception_text`.
+- `api/handlers_sentinel.py:35` — **REAL, FIXED.** Negative `limit` bypassed the documented 200-row cap (SQLite treats negative `LIMIT` as unlimited). Fixed: clamped to `[1, 200]`. Test: `test_sentinel_api.py::test_timeline_negative_limit_does_not_bypass_200_cap`.
+- `proxy/ha_client.py:46` — **REAL (defense-in-depth), FIXED.** `get_history`'s `filter_entity_id` was comma-joined with no `urllib.parse.quote()`; safe today only because both call sites pre-validate with a regex. Fixed: each id is quoted before joining. Test: `test_ha_client.py::test_get_history_quotes_filter_entity_id`.
+- `static/config/agent-editor.js:374` — **REAL, FIXED** (cheap). `.replace(/[<>&]/g,'')` stripped but never escaped quotes — safe today (text-context only) but a landmine if reused. Fixed: switched to the shared, already-quote-safe `escHtml()` from `api.js`. `node --check` passes.
+- `static/config/agent-form.js:97` — **ACCEPTED, no change.** `highlightOutput()` IS called (agent-editor.js:614) but its regexes match literal `"`, and its input is already HTML-escaped (quotes → `&quot;`) before it runs — so it's a functional no-op, not literal dead code. Harmless; not worth touching in this pass.
+- `requirements.txt:9` — **FALSE POSITIVE, no change.** `apprise>=1.9.0,<2.0.0` is already capped (fixed in a prior commit); the backlog note predates that fix.
+- `Dockerfile` — **ACCEPTED, no change.** No `USER` directive is standard for HA Supervisor bashio/s6-pattern add-ons; Supervisor provides container-level isolation for this add-on class.
 
 ---
 

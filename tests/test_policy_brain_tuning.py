@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 
+from hiris.app.watcher import policy as _policy_mod
 from hiris.app.watcher.policy import (
     apply_brain_detector,
     apply_brain_tuning,
@@ -173,3 +174,37 @@ def test_retro_compat_interleaved_with_brain_detector_registry(tmp_path):
     # And remove_brain_tuning still restores correctly afterwards.
     assert remove_brain_tuning(dd, "power") is True
     assert load_policy(dd)["detectors"]["power"]["max_watt"] == 3000
+
+
+def test_apply_brain_detector_writes_registry_before_policy(tmp_path, monkeypatch):
+    """Review L/backlog: apply_brain_detector must persist the brain
+    REGISTRY before the POLICY file -- the same crash-safe order
+    apply_brain_tuning already uses/documents. If save_policy blows up
+    partway through (simulating a crash between the two writes), the safe
+    residue must be "registry says entity is brain-added, policy doesn't
+    have it yet" (a harmless no-op on undo) -- NOT the other way around,
+    which would leave an un-undoable, brain-added entity with no registry
+    record of it.
+    """
+    dd = str(tmp_path)
+    save_policy(dd, {"detectors": {"power": {"enabled": False, "entities": []}}})
+
+    def _boom(*a, **kw):
+        raise RuntimeError("simulated crash between the two writes")
+
+    monkeypatch.setattr(_policy_mod, "save_policy", _boom)
+
+    try:
+        apply_brain_detector(dd, "power", "sensor.crash")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("expected the simulated crash to propagate")
+
+    # Registry write must have already landed...
+    registry = _policy_mod._load_brain_registry(dd)
+    assert "sensor.crash" in registry["detectors"].get("power", [])
+    # ...while the policy write never happened (still the pre-call state).
+    monkeypatch.undo()
+    pol = load_policy(dd)
+    assert "sensor.crash" not in pol["detectors"]["power"]["entities"]

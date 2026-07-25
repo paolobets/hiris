@@ -250,13 +250,21 @@ def apply_brain_detector(data_dir: str, detector: str, entity: str, params: dict
         for k, v in (params or {}).items():
             if k in allowed_params:
                 det_cfg[k] = v
-        save_policy(data_dir, pol)
 
         registry = _load_brain_registry(data_dir)
         det_list = registry["detectors"].setdefault(detector, [])
         if entity not in det_list:
             det_list.append(entity)
+
+        # Review L/backlog (write-order): persist the registry BEFORE the
+        # policy -- mirrors apply_brain_tuning's documented crash-safe
+        # order. If we crash between the two writes, the safe residue is
+        # "registry says entity is brain-added, policy doesn't have it
+        # yet" (harmless no-op restore on undo), not the reverse (a
+        # policy-added entity with no registry record -- permanently
+        # un-undoable).
         _save_brain_registry(data_dir, registry)
+        save_policy(data_dir, pol)
 
     return {"detector": detector, "entity": entity, "param_snapshot": param_snapshot}
 

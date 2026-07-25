@@ -318,6 +318,45 @@ def test_validate_accepts_well_formed_cron():
     assert cleaned["trigger"]["cron"] == "*/5 1,2 * * 1-5"
 
 
+# ---------------------------------------------------------------------------
+# Task L/1: shape-valid but VALUE-invalid cron (e.g. hour=99) must be
+# rejected at creation (validate_lens -> None -> handlers_lenses.py 400),
+# not silently accepted at 201 only to fail later, invisibly, at
+# `register_lens_schedules` time (server.py's CronTrigger.from_crontab).
+# ---------------------------------------------------------------------------
+
+def test_validate_rejects_value_invalid_cron_hour():
+    # "0 99 * * *" passes _CRON_RE (shape: 5 numeric/`*` fields) but hour=99
+    # is outside APScheduler's 0-23 range -- must reject at validate_lens,
+    # not just fail silently later at schedule-registration time.
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {"type": "schedule", "cron": "0 99 * * *"}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_rejects_value_invalid_cron_minute():
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {"type": "schedule", "cron": "60 3 * * *"}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_rejects_value_invalid_cron_day_of_week():
+    # 8 is out of range even under the app's own 0-7 (standard crontab)
+    # day_of_week convention (0/7 = Sunday).
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {"type": "schedule", "cron": "0 3 * * 8"}}
+    assert validate_lens(raw) is None
+
+
+def test_validate_accepts_cron_day_of_week_7_as_sunday():
+    # 7 is POSIX-legal for Sunday (the app's documented convention,
+    # `server._translate_cron_dow`/`to_apscheduler_crontab`) even though
+    # APScheduler's own day_of_week field tops out at 6 -- validate_lens
+    # must translate before checking, not reject a legitimately-authored
+    # "Sunday as 7" cron.
+    raw = {**VALID_SCHEDULE_LENS, "trigger": {"type": "schedule", "cron": "0 3 * * 7"}}
+    cleaned = validate_lens(raw)
+    assert cleaned is not None
+    assert cleaned["trigger"]["cron"] == "0 3 * * 7"
+
+
 def test_validate_accepts_valid_domain_service_entity_id():
     cleaned = validate_lens(VALID_SCHEDULE_LENS)
     assert cleaned is not None

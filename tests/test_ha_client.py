@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit, parse_qs
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.proxy.ha_client import HAClient
@@ -41,6 +43,39 @@ async def test_get_history_returns_list(client):
 
     assert len(result) == 1
     assert result[0]["entity_id"] == "sensor.power"
+
+
+@pytest.mark.asyncio
+async def test_get_history_quotes_filter_entity_id(client):
+    """Task L/4 (defense in depth): get_history's filter_entity_id must be
+    percent-encoded before landing in the query string, so it stays safe
+    even if a future caller skips the regex pre-validation both current
+    call sites perform. Confirmed real by testing WITHOUT quoting first:
+    an unquoted `&`/`=` in an entity id would inject/split extra query
+    params -- with quoting, parse_qs must recover exactly the two
+    original entity ids as one filter_entity_id value."""
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json = AsyncMock(return_value=[])
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+    captured_url = {}
+
+    def _fake_get(url, *a, **kw):
+        captured_url["url"] = url
+        return mock_resp
+
+    with patch("aiohttp.ClientSession.get", side_effect=_fake_get):
+        await client.start()
+        await client.get_history(entity_ids=["sensor.a&evil=1", "sensor.b"], days=1)
+        await client.stop()
+
+    parsed = urlsplit(captured_url["url"])
+    qs = parse_qs(parsed.query)
+    assert qs["filter_entity_id"] == ["sensor.a&evil=1,sensor.b"]
+    assert "evil" not in qs
 
 
 @pytest.mark.asyncio

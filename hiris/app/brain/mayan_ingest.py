@@ -19,15 +19,27 @@ async def ingest_tag(client, store, embedder, *, tag_id: int,
         text = await client.get_ocr_text(d["id"])
         if not text or not text.strip():
             continue
+        chunks = chunk_text(text)
+        # Embed ALL chunks BEFORE persisting anything (review L/5): if the
+        # embedder fails transiently partway through, the document must NOT
+        # be marked ingested (store.add_item, which document_exists() keys
+        # off of), otherwise it would be skipped forever on every future
+        # poll with no retry/repair path. Collecting embeddings first means
+        # a failure here leaves no trace on disk -- the doc is retried
+        # whole, from scratch, next time this tag is polled.
+        try:
+            embeddings = [await embedder.embed(ch) for ch in chunks]
+        except Exception:
+            logger.warning(
+                "Mayan: embedding fallita per documento %s (%s) -- verrà "
+                "ritentato al prossimo poll, nessuna scrittura effettuata",
+                doc_id, d.get("label", ""), exc_info=True)
+            continue
         item_id = await loop.run_in_executor(None, lambda: store.add_item(
             kind="document", content=d.get("label", "") or f"doc {doc_id}",
             owner=owner, source="mayan", source_ref=doc_id,
             sensitivity=sensitivity, status="approved"))
-        for idx, ch in enumerate(chunk_text(text)):
-            try:
-                emb = await embedder.embed(ch)
-            except Exception:
-                emb = []
+        for idx, (ch, emb) in enumerate(zip(chunks, embeddings)):
             await loop.run_in_executor(None, lambda i=item_id, idx=idx, ch=ch, emb=emb:
                 store.add_document_chunk(item_id=i, mayan_doc_id=doc_id,
                                          chunk_index=idx, content=ch,
