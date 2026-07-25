@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import time
+from datetime import date
 import aiohttp
 from aiohttp import web
 from apscheduler.triggers.cron import CronTrigger
@@ -48,6 +49,9 @@ from .brain.knowledge_store import KnowledgeStore
 from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
 from .brain.reasoner_memory import relevant_memory
+from .brain.briefing import build_briefing_bundle, compose_briefing
+from .brain.reminders import ReminderSeen, due_nudges
+from .watcher.policy import load_policy
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
@@ -666,6 +670,108 @@ async def _reason_memory_context(
         return []
 
 
+async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
+    """Slice 7 (Maggiordomo) Task 4: the consolidated daily butler briefing
+    job, replacing the old per-obligation spam (`hiris_due_reminders` /
+    `_notify_due_obligations`, one notification per due obligation, no
+    dedup) with ONE grounded resoconto per day.
+
+    Module-level (not inlined in `_on_startup`) so it's unit-testable with a
+    plain dict standing in for `app` -- same convention as
+    `_reason_memory_context` above; `app` only needs `.get("knowledge_store")`,
+    `.get("entity_cache")`, `.get("llm_router")` and `.get("data_dir")`.
+
+    Egress gate: `allow_sensitive` is True only when
+    `LLMRouter.automatic_allows_sensitive()` reports the automatic backend
+    chain is entirely local (Slice 6b Task 1) -- the SAME gate
+    `_reason_memory_context` applies, fed into `build_briefing_bundle`
+    (Task 1) so sensitive deadlines are excluded (but still counted) from
+    a cloud-routed briefing. `compose_briefing` (Task 2) is itself
+    failure-safe (grounded LLM composition with a deterministic template
+    fallback, never raises, never returns empty), and is called with the
+    injected `llm_reason` -- SAME `_llm_reason` closure the sentinel
+    reasoner uses (allowed_tools=[], no actuation from this call).
+
+    The WHOLE body is wrapped in try/except: any failure (bad app wiring,
+    a raising `notify`, anything) is logged and degrades to returning
+    None -- this must NEVER raise into the scheduler.
+    """
+    try:
+        router = app.get("llm_router")
+        allow_sensitive = router.automatic_allows_sensitive() if router is not None else False
+        bundle = build_briefing_bundle(
+            app.get("knowledge_store"), app.get("entity_cache"),
+            load_policy(app.get("data_dir")),
+            today=today, allow_sensitive=allow_sensitive,
+        )
+        text = await compose_briefing(bundle, llm_reason)
+        await notify(text)
+        return text
+    except Exception:
+        logger.error("run_daily_briefing failed", exc_info=True)
+        return None
+
+
+_NUDGE_THRESHOLD_LABELS = {"overdue": "Scaduto", "today": "Oggi", "tomorrow": "Domani"}
+
+
+def _format_nudge_message(item: dict, threshold: str) -> str:
+    """Deterministic (non-LLM) urgent-nudge message text.
+
+    CRITICAL (Task 3 carry-forward): an obligation's `due_date` column is
+    free TEXT with no write-time format validation, so a poisoned value
+    that passed the store's lexicographic `upcoming_obligations` filter
+    must NEVER be echoed verbatim into a notification. `due_nudges` has
+    already re-derived `threshold` via `urgency_of` (which only ever
+    returns "overdue"/"today"/"tomorrow"/None off a validated `%Y-%m-%d`
+    parse) -- the label below is the only date information this message
+    exposes, never the raw column value. `content` is sanitized through
+    the shared `_san` filter (proxy._sanitize.sanitize_ha_value), same
+    prompt-injection defense `build_briefing_message` applies -- relevant
+    here too since this text is what actually reaches the user's device.
+    """
+    try:
+        from .proxy._sanitize import sanitize_ha_value as _san
+    except Exception:  # pragma: no cover - fallback difensivo
+        _san = lambda v: v  # noqa: E731
+    label = _NUDGE_THRESHOLD_LABELS.get(threshold, threshold or "")
+    content = _san((item or {}).get("content") or "")
+    return f"{label}: {content}"
+
+
+async def run_urgent_nudges(store, *, today, seen, notify_item) -> int:
+    """Slice 7 Task 4: the deduped urgent-nudge job, separate from the
+    once-a-day briefing above so a deadline crossing into overdue/today/
+    tomorrow doesn't wait until the next 08:00 run to be flagged.
+
+    `due_nudges` (Task 3) is a pure query + dedup lookup that does NOT mark
+    anything itself; marking only happens here, and only AFTER a
+    successful `notify_item`, so a failed send is naturally retried on the
+    next tick instead of being silently dropped.
+
+    Per-item try/except: one failing notification must not block the rest
+    of the batch, and a failure must not mark that (key, threshold) as
+    seen. Outer guard: a `due_nudges`/`store` failure degrades to 0 sent
+    rather than raising into the scheduler.
+    """
+    count = 0
+    try:
+        nudges = due_nudges(store, today=today, seen=seen)
+    except Exception:
+        logger.error("run_urgent_nudges: due_nudges query failed", exc_info=True)
+        return 0
+
+    for n in nudges:
+        try:
+            await notify_item(n["item"], n["threshold"])
+            seen.mark(n["key"], n["threshold"])
+            count += 1
+        except Exception:
+            logger.error("run_urgent_nudges: notify/mark failed for key=%r", n.get("key"), exc_info=True)
+            continue
+    return count
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner
     from .proxy.semantic_map import SemanticMap
@@ -986,50 +1092,6 @@ async def _on_startup(app: web.Application) -> None:
             mayan_url, bool(mayan_token), mayan_tag_id,
         )
 
-    # Daily due-date reminders job (second-brain phase-1, Task 10).
-    # Runs at 08:00 every day. Sends one notification per due obligation via the
-    # existing send_notification path (ha_push by default). Once-per-day cadence
-    # is the dedup strategy — no persistent dedup state is maintained.
-    async def _notify_due_obligations() -> None:
-        from datetime import date as _date
-        from .brain.reminders import run_due_reminders as _run_due_reminders
-        from .tools.notify_tools import send_notification as _send_notification
-
-        store = app.get("knowledge_store")
-        if store is None:
-            return
-        ha = app.get("ha_client")
-        n_cfg = app.get("_notify_config_ref")
-        if ha is None or n_cfg is None:
-            return
-
-        async def _notify_one(item: dict) -> None:
-            due = item.get("due_date", "?")
-            content = item.get("content", "")
-            message = f"Scadenza imminente: {content} (entro {due})"
-            try:
-                await _send_notification(ha, message, "ha_push", n_cfg)
-            except Exception as exc:
-                logger.error("Due-date reminders: notification failed for %r: %s", content, exc)
-
-        try:
-            await _run_due_reminders(store, _notify_one, today=_date.today())
-        except Exception as exc:
-            logger.error("Due-date reminders: error querying obligations: %s", exc)
-
-    # Stash notify_config reference so the job closure can access it after startup
-    app["_notify_config_ref"] = notify_config
-
-    engine._scheduler.add_job(
-        _notify_due_obligations,
-        trigger="cron",
-        hour=8,
-        minute=0,
-        id="hiris_due_reminders",
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
-
     from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
@@ -1063,6 +1125,7 @@ async def _on_startup(app: web.Application) -> None:
         execute_policy=app["execute_policy"],
         request_confirmation=_request_confirmation,
         confirm_executor=_confirm_executor,
+        data_dir=data_dir,
     )
     dispatcher.set_task_engine(task_engine)
     app["tool_dispatcher"] = dispatcher
@@ -1126,6 +1189,63 @@ async def _on_startup(app: web.Application) -> None:
         if isinstance(out, tuple):
             return out[0] or ""
         return out or ""
+
+    # ── Daily butler briefing + deduped urgent nudges (Slice 7, Task 4) ────
+    # Replaces the old per-obligation daily spam job (id "hiris_due_reminders",
+    # one notification per due obligation, no dedup, template-only text)
+    # with ONE consolidated grounded briefing
+    # (build_briefing_bundle + compose_briefing, Tasks 1-2) at 08:00, plus a
+    # separate deduped urgent-nudge job (Task 3's due_nudges/ReminderSeen)
+    # that flags overdue/today/tomorrow deadlines between briefings without
+    # re-sending ones already delivered. Both helpers (run_daily_briefing,
+    # run_urgent_nudges) live at module level and are independently
+    # unit-testable -- see test_briefing_wiring.py.
+    #
+    # Single long-lived ReminderSeen instance: its sidecar JSON file is a
+    # read-modify-write (load, mutate, atomic replace) that is NOT safe to
+    # race across concurrent instances (Task 3's concurrency note) -- one
+    # instance shared by every _urgent_nudges tick avoids that.
+    reminder_seen = ReminderSeen(data_dir)
+
+    async def _briefing_notify(message: str) -> None:
+        # SAME notification path the removed job used (ha_push channel).
+        await send_notification(ha_client, message, "ha_push", notify_config)
+
+    async def _daily_briefing() -> None:
+        await run_daily_briefing(
+            app, today=date.today(), llm_reason=_llm_reason, notify=_briefing_notify,
+        )
+
+    async def _nudge_notify(item: dict, threshold: str) -> None:
+        # Deterministic message (NOT via the LLM) -- see _format_nudge_message
+        # for why the raw due_date column is never echoed here.
+        await send_notification(
+            ha_client, _format_nudge_message(item, threshold), "ha_push", notify_config,
+        )
+
+    async def _urgent_nudges() -> None:
+        store = app.get("knowledge_store")
+        if store is None:
+            return
+        await run_urgent_nudges(
+            store, today=date.today(), seen=reminder_seen, notify_item=_nudge_notify,
+        )
+
+    engine._scheduler.add_job(
+        _daily_briefing,
+        trigger="cron", hour=8, minute=0,
+        id="hiris_daily_briefing", replace_existing=True, misfire_grace_time=3600,
+    )
+    # Interval (not a single daily cron) so an obligation that becomes urgent
+    # BETWEEN morning briefings -- e.g. a document ingested midday creating a
+    # deadline due tomorrow -- gets its punctual nudge within hours instead of
+    # waiting for the next 08:00. Dedup (ReminderSeen) keeps each threshold to
+    # one notification regardless of how many ticks see it.
+    engine._scheduler.add_job(
+        _urgent_nudges,
+        trigger="interval", hours=6,
+        id="hiris_urgent_nudges", replace_existing=True, misfire_grace_time=3600,
+    )
 
     async def _notify(message, *, title):
         # Reuses the exact notify_config object passed to the dispatcher/

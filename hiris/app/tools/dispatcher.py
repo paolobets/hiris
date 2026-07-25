@@ -2,6 +2,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import re
+from datetime import date
 from typing import Any, Optional
 
 # HA automation IDs are slug-style: lowercase alphanumeric + underscore.
@@ -31,6 +32,7 @@ from .config_tools import normalize_config_inputs, apply_ha_config, add_dashboar
 from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
+from ..brain.briefing import build_briefing_bundle, render_briefing_template
 from ..security.semaphore import gate_action
 
 logger = logging.getLogger(__name__)
@@ -90,6 +92,7 @@ class ToolDispatcher:
         execute_policy: dict | None = None,
         request_confirmation: Any = None,
         confirm_executor: Any = None,
+        data_dir: str | None = None,
     ) -> None:
         self._ha = ha_client
         self._notify_config = notify_config
@@ -104,6 +107,10 @@ class ToolDispatcher:
         self._knowledge_embedder = embedder if embedder is not None else embedding_provider
         self._pseudonymizer = pseudonymizer
         self._history_store = history_store
+        # Used only by daily_briefing (Slice 7 Task 5) to load the saved
+        # detectors.battery.min_pct threshold via watcher.policy.load_policy;
+        # optional/backward-compatible, defaults to None (policy={} fallback).
+        self._data_dir = data_dir
         # Riferimento VIVO al dict app["execute_policy"] (mutato in place da
         # apply_saved_policy): il semaforo si legge a ogni dispatch. {} = fail-closed.
         self._execute_policy = execute_policy if execute_policy is not None else {}
@@ -434,6 +441,46 @@ class ToolDispatcher:
                 )
             if name == "link_knowledge" and self._knowledge_store:
                 return await handle_link_knowledge(self._knowledge_store, inputs)
+            if name == "daily_briefing":
+                # On-demand chat butler summary (Slice 7 Task 5). READ-ONLY: no HA
+                # service call, no semaforo — it only reads knowledge_store/entity_cache.
+                #
+                # allow_sensitive mirrors recall_knowledge's model: the agent config
+                # (knowledge_allow_sensitive) AND the current chat backend's locality
+                # (cloud) both gate it. Sensitive deadlines are included only when the
+                # agent is allowed to see them AND the chat backend is local — fail-closed
+                # whenever either signal is missing/False (config disallows OR backend is
+                # cloud), same as recall_knowledge. Hidden items are still counted in
+                # bundle["counts"]["hidden_sensitive"] regardless.
+                #
+                # policy: loaded from data_dir (watcher.policy.load_policy) when the
+                # dispatcher was constructed with one, so the saved
+                # detectors.battery.min_pct threshold is honored here too, same as the
+                # scheduled run_daily_briefing. Falls back to {} (→ battery_default_pct)
+                # if data_dir is unset or the load fails for any reason.
+                #
+                # Returns the DETERMINISTIC render_briefing_template(bundle) string,
+                # not compose_briefing (which needs an llm_reason this dispatcher
+                # lacks) — the chat model, already mid-reply, narrates it itself.
+                if self._knowledge_store is None:
+                    return "Il maggiordomo non ha accesso alla memoria in questo momento: riprova più tardi."
+                policy: dict = {}
+                if self._data_dir:
+                    try:
+                        from ..watcher.policy import load_policy
+                        policy = load_policy(self._data_dir)
+                    except Exception:
+                        policy = {}
+                try:
+                    allow_sensitive = bool(knowledge_allow_sensitive) and not bool(cloud)
+                    bundle = build_briefing_bundle(
+                        self._knowledge_store, self._cache, policy,
+                        today=date.today(), allow_sensitive=allow_sensitive,
+                    )
+                    return render_briefing_template(bundle)
+                except Exception as exc:
+                    logger.error("daily_briefing failed: %s", exc)
+                    return "Non sono riuscito a preparare il resoconto di oggi: riprova più tardi."
             if name == "confirm_pending":
                 if self._confirm_executor is None:
                     return {"error": "Conferma non disponibile"}
