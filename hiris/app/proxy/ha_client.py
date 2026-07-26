@@ -86,7 +86,17 @@ class HAClient:
         Returns {"ok": True, "id": <id>} or {"error": ...}. Human-gated upstream."""
         if not isinstance(config, dict) or not config:
             return {"error": "config automazione vuota o non valida"}
-        aid = str(automation_id or int(datetime.now(timezone.utc).timestamp() * 1_000_000))
+        # Update-in-place vs create: HA identifies a UI automation by the {id}
+        # in the config URL. To MODIFY an existing automation we must reuse its
+        # id — take it from the explicit param, else from the config's own "id"
+        # field (get_automation_config returns it), else mint a fresh one for a
+        # brand-new automation. Without this, every apply minted a new id and so
+        # created a duplicate instead of overwriting the original.
+        aid = str(
+            automation_id
+            or config.get("id")
+            or int(datetime.now(timezone.utc).timestamp() * 1_000_000)
+        )
         if not (aid.isascii() and aid.isdigit()):
             return {"error": "automation_id non valido"}
         url = f"{self._base_url}/api/config/automation/config/{aid}"

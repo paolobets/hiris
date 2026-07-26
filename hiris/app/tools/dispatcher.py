@@ -486,6 +486,7 @@ class ToolDispatcher:
                     description=inputs["description"],
                     config=inputs["config"],
                     routing_reason=inputs["routing_reason"],
+                    automation_id=inputs.get("automation_id"),
                 )
             if name == "create_ha_config":
                 try:

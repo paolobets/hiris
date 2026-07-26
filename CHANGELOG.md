@@ -1,5 +1,15 @@
 # HIRIS — Changelog
 
+## [0.99.2] — Fix modifica automazioni via proposta (2026-07-26)
+
+- **Approvare una proposta di *modifica* automazione ora sovrascrive davvero
+  l'automazione esistente in Home Assistant**, invece di crearne una duplicata
+  lasciando l'originale invariata. Prima l'apply coniava sempre un id nuovo;
+  ora riusa l'id dell'automazione da modificare (dal parametro esplicito o dalla
+  config). Una proposta di automazione *nuova* nata copiando una esistente non
+  può più sovrascrivere per errore l'originale (l'id viene rimosso se non stai
+  esplicitamente modificando). Rilevante per la chat con tool HA reali.
+
 ## [0.99.1] — Residui di robustezza/privacy pre-1.0 (2026-07-26)
 
 Patch sulla RC 0.99: chiusi i tre residui low-impact rimasti dalla review, con
