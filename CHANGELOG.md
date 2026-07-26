@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [0.99.1] — Residui di robustezza/privacy pre-1.0 (2026-07-26)
+
+Patch sulla RC 0.99: chiusi i tre residui low-impact rimasti dalla review, con
+revisione indipendente (Fable) = *ready to merge*.
+
+- **Privacy step-up:** l'OTP di conferma viene inviato solo a un dispositivo
+  privato per-utente; un servizio `notify` condiviso/globale (o
+  `persistent_notification`) non riceve più il codice — in quel caso l'azione
+  ricade sul flusso "richiede conferma" senza mai esporre il segreto.
+- **Mayan:** un errore di scrittura dei chunk dopo la creazione del documento
+  esegue il rollback dell'item (che ora ripulisce anche i chunk orfani), così
+  il documento viene ritentato intero al giro successivo invece di restare un
+  gap parziale permanente; un doppio errore viene loggato senza interrompere il
+  resto del batch.
+- **Messaggi:** l'avviso di circuito aperto distingue backend cloud
+  ("Il servizio AI") da locale ("Il backend locale"); errore generico di
+  dispatch tutto in italiano.
+
+_Nota infra (non tocca l'addon): il runner del gateway MCP chat-via-abbonamento
+su .31 girava una build precedente al ramo chat — redeployato; la chat via
+abbonamento ora risponde correttamente._
+
 ## [0.99.0] — Chiusura finding medium/low pre-1.0 (2026-07-26)
 
 Release candidate verso la 1.0: chiusi **tutti i finding medium e low** della

@@ -220,6 +220,9 @@ class OpenAICompatRunner:
         self._dispatcher = dispatcher
         self._fixed_model = fixed_model   # Ollama: always use this model; empty for OpenAI
         self._is_cloud = not bool(fixed_model)  # True = cloud (OpenAI); False = local (Ollama)
+        # Circuit-breaker message noun, so a cloud backend doesn't report
+        # itself as "il backend locale" (review backlog #7).
+        self._backend_noun = "Il servizio AI" if self._is_cloud else "Il backend locale"
         self._usage_path = usage_path
         self._base_url = base_url
         # Serialize usage.json writes (see ClaudeRunner._save_lock for rationale).
@@ -455,8 +458,8 @@ class OpenAICompatRunner:
         # instead of failing fast like simple_chat() already does.
         if self._circuit_is_open():
             raise RunnerBackendError(
-                "Il backend locale non risponde da diversi tentativi consecutivi "
-                "(circuito aperto). Riprova tra qualche istante."
+                f"{self._backend_noun} non risponde da diversi tentativi "
+                "consecutivi (circuito aperto). Riprova tra qualche istante."
             )
 
         if agent_id:
@@ -729,7 +732,7 @@ class OpenAICompatRunner:
                 + json.dumps({
                     "type": "error",
                     "message": (
-                        "Il backend locale non risponde da diversi tentativi "
+                        f"{self._backend_noun} non risponde da diversi tentativi "
                         "consecutivi (circuito aperto). Riprova tra qualche istante."
                     ),
                 })

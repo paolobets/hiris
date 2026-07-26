@@ -379,7 +379,7 @@ async def request_confirmation_stepup(
     from .api.handlers_gateway_pending import (
         create_pending, notify, invalidate_user_otp_pendings,
     )
-    from .api.handlers_gateway_policy import notify_service_for_user
+    from .api.handlers_gateway_policy import private_notify_service_for_user
 
     # Safety (Fix 5): with no real identity (falsy user, or the "home"
     # no-identity fallback bucket — see brain/identity.py's `uid or "home"`)
@@ -389,23 +389,22 @@ async def request_confirmation_stepup(
     # the dispatcher falls back to the Slice-1 "richiede conferma" error.
     if not user or user == "home":
         return None
-    # Safety (Review C/#1): `notify_service_for_user` falls back to the
-    # shared, HA-wide `notify.persistent_notification` dashboard when this
-    # user has no per-user push target configured (or falls back to a
-    # globally-configured `notify.persistent_notification`). That surface has
-    # no notion of "this user's phone" and no actionable-button support, so
-    # the OTP secret embedded in the push message (`_confirmation_push_message`
-    # below) would sit readable by anyone with dashboard access -- exactly the
-    # shared-surface leak the OTP redaction elsewhere in this module (see
-    # confirm_pending_execute / list_pending's otp stripping) exists to avoid.
-    # There is no private channel to complete step-up in this case, so fail
-    # closed exactly like the no-identity guard above: mint no pending, and
-    # let the dispatcher fall back to the Slice-1 "richiede conferma" error.
-    svc = notify_service_for_user(app, user)
-    if svc.split(".", 1)[-1] == "persistent_notification":
+    # Safety (Review C/#1 + backlog #4): the OTP secret (and one-tap approval)
+    # must land only on a channel bound to THIS user. `private_notify_service_
+    # for_user` returns a service only when it comes from the explicit per-user
+    # mapping; it returns None for the shared, globally-configured
+    # `notify_service` (which may be a family group or a shared dashboard) and
+    # for the `notify.persistent_notification` default. In those cases there is
+    # no private channel to complete step-up, so fail closed exactly like the
+    # no-identity guard above: mint no pending, and let the dispatcher fall
+    # back to the Slice-1 "richiede conferma" error.
+    svc = private_notify_service_for_user(app, user)
+    if not svc:
         logger.warning(
-            "step-up confirmation skipped for user=%s: no private notify "
-            "target configured (resolved to shared %s)", user, svc,
+            "step-up confirmation skipped for user=%s: no PRIVATE per-user "
+            "notify target configured (a shared/global notify service must "
+            "not carry the OTP secret; set notify_users[%s] to enable "
+            "chat step-up)", user, user,
         )
         return None
     label = f"{inputs.get('domain')}.{inputs.get('service')}"

@@ -95,6 +95,26 @@ def test_delete_item_rejects_cross_owner_and_leaves_item_unchanged(tmp_path):
     store.close()
 
 
+def test_delete_item_purges_document_chunks(tmp_path):
+    """Backlog #5: delete_item must also drop the item's document_chunks, so a
+    deleted document leaves no orphan chunks (the Mayan ingest rollback relies
+    on this)."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    item_id = store.add_item(kind="document", content="Doc", owner="home",
+                             source="mayan", source_ref="900", status="approved")
+    store.add_document_chunk(item_id=item_id, mayan_doc_id="900",
+                             chunk_index=0, content="pezzo", embedding=[0.1, 0.2])
+    assert store._conn.execute(
+        "SELECT COUNT(*) FROM document_chunks WHERE item_id=?", (item_id,)
+    ).fetchone()[0] == 1
+
+    assert store.delete_item(item_id) is True
+    assert store._conn.execute(
+        "SELECT COUNT(*) FROM document_chunks WHERE item_id=?", (item_id,)
+    ).fetchone()[0] == 0
+    store.close()
+
+
 def test_approve_delete_owner_none_preserves_unscoped_behavior(tmp_path):
     """Internal callers (brain_trace, history_digest) call approve/delete_item
     without an owner arg -- must keep acting unconditionally (backward compat)."""
