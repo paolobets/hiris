@@ -54,7 +54,16 @@ async def ingest_tag(client, store, embedder, *, tag_id: int,
                 "Mayan: scrittura chunk fallita per documento %s (%s) -- "
                 "rollback dell'item, verrà ritentato al prossimo poll",
                 doc_id, d.get("label", ""), exc_info=True)
-            await loop.run_in_executor(None, lambda i=item_id: store.delete_item(i))
+            try:
+                await loop.run_in_executor(None, lambda i=item_id: store.delete_item(i))
+            except Exception:
+                # Double fault (the rollback DELETE itself failing on the same
+                # disk/lock trouble that killed the chunk write): don't let it
+                # escape and abort the rest of the batch. The item stays and
+                # will be a partial-chunk gap, but the remaining docs still run.
+                logger.error(
+                    "Mayan: rollback dell'item %s fallito -- gap parziale, "
+                    "gli altri documenti proseguono", doc_id, exc_info=True)
             continue
         ingested += 1
         logger.info("Mayan: ingerito documento %s (%s)", doc_id, d.get("label", ""))

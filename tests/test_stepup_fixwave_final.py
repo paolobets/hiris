@@ -217,6 +217,26 @@ async def test_no_pending_minted_when_only_global_shared_service_configured(tmp_
 
 
 @pytest.mark.asyncio
+async def test_no_pending_minted_when_per_user_target_is_persistent_notification(tmp_path):
+    """Review I-1: even a PER-USER mapping whose value is
+    notify.persistent_notification is the shared HA dashboard -- it must still
+    fail closed, not carry the OTP secret. (The previous guard ran after
+    resolution and caught this; the per-user resolver must catch it too.)"""
+    app = web.Application()
+    ha = _FakeHA()
+    app["ha_client"] = ha
+    app["gateway_settings"] = {"notify_users": {"paolo": "notify.persistent_notification"}}
+    data_dir = str(tmp_path)
+    inputs = {"domain": "lock", "service": "unlock", "data": {"entity_id": "lock.front"}}
+
+    res = await request_confirmation_stepup(
+        app, data_dir, tool="call_ha_service", inputs=inputs, tier="red", user="paolo",
+    )
+    assert res is None
+    assert ha.calls == []
+
+
+@pytest.mark.asyncio
 async def test_pending_minted_when_private_notify_target_configured(tmp_path):
     """Sanity check: a genuine per-user private push target still works end
     to end (positive control for the two failing-closed tests above)."""

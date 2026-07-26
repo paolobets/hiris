@@ -226,6 +226,12 @@ def private_notify_service_for_user(app, user: str | None) -> str | None:
     users = gs.get("notify_users") or {}
     svc = users.get(user) if user else None
     if isinstance(svc, str) and _SERVICE_RE.match(svc):
+        # persistent_notification is the HA-wide shared dashboard even when it
+        # is the value a user mapped to themselves (it is the visible hard
+        # default, easy to pick by mistake). It has no private-device notion,
+        # so it must never carry the OTP secret — fail closed here too.
+        if svc.split(".", 1)[-1] == "persistent_notification":
+            return None
         return svc
     return None
 

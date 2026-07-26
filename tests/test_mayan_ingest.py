@@ -69,7 +69,10 @@ async def test_ingest_tag_rolls_back_item_when_chunk_write_fails(tmp_path):
 
     def flaky_chunk(*args, **kwargs):
         calls["n"] += 1
-        if calls["n"] == 1:
+        # Persist chunk 0, THEN fail on chunk 1 -- so at rollback time there is
+        # a real orphan chunk on disk and the delete_item purge is genuinely
+        # exercised (not vacuously true because nothing was ever written).
+        if calls["n"] == 2:
             raise RuntimeError("disk full mid-chunk")
         return original(*args, **kwargs)
 
@@ -79,7 +82,7 @@ async def test_ingest_tag_rolls_back_item_when_chunk_write_fails(tmp_path):
     assert n == 0
     # item rolled back -> not "ingested", so it retries next poll
     assert store.document_exists("77") is False
-    # and its chunks were purged by delete_item (no orphans)
+    # and the chunk that DID get written was purged by delete_item (no orphans)
     row = store._conn.execute(
         "SELECT COUNT(*) FROM document_chunks WHERE mayan_doc_id=?", ("77",)
     ).fetchone()
