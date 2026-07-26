@@ -39,11 +39,23 @@ async def ingest_tag(client, store, embedder, *, tag_id: int,
             kind="document", content=d.get("label", "") or f"doc {doc_id}",
             owner=owner, source="mayan", source_ref=doc_id,
             sensitivity=sensitivity, status="approved"))
-        for idx, (ch, emb) in enumerate(zip(chunks, embeddings)):
-            await loop.run_in_executor(None, lambda i=item_id, idx=idx, ch=ch, emb=emb:
-                store.add_document_chunk(item_id=i, mayan_doc_id=doc_id,
-                                         chunk_index=idx, content=ch,
-                                         embedding=emb or None))
+        # add_item already makes document_exists(doc_id) True. If a chunk write
+        # now fails, the doc would be marked ingested forever but with partial
+        # or no chunks and never retried. Roll the item back (delete_item also
+        # purges its chunks) so the whole doc is retried cleanly next poll.
+        try:
+            for idx, (ch, emb) in enumerate(zip(chunks, embeddings)):
+                await loop.run_in_executor(None, lambda i=item_id, idx=idx, ch=ch, emb=emb:
+                    store.add_document_chunk(item_id=i, mayan_doc_id=doc_id,
+                                             chunk_index=idx, content=ch,
+                                             embedding=emb or None))
+        except Exception:
+            logger.warning(
+                "Mayan: scrittura chunk fallita per documento %s (%s) -- "
+                "rollback dell'item, verrà ritentato al prossimo poll",
+                doc_id, d.get("label", ""), exc_info=True)
+            await loop.run_in_executor(None, lambda i=item_id: store.delete_item(i))
+            continue
         ingested += 1
         logger.info("Mayan: ingerito documento %s (%s)", doc_id, d.get("label", ""))
     return ingested

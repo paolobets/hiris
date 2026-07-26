@@ -580,4 +580,4 @@ class ToolDispatcher:
             # Log the full detail server-side (with traceback) and return a
             # generic, non-identifying message instead.
             logger.exception("Tool %s failed", name)
-            return {"error": f"Tool '{name}' failed. Riprova più tardi."}
+            return {"error": f"Strumento '{name}' non riuscito. Riprova più tardi."}

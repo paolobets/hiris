@@ -45,6 +45,33 @@ def test_init_ollama_local_does_not_raise(dispatcher, tmp_path, monkeypatch):
     assert isinstance(runner._client.timeout, httpx.Timeout)
 
 
+@pytest.mark.asyncio
+async def test_circuit_open_message_names_cloud_backend(dispatcher, tmp_path):
+    """Backlog #7: an open circuit on a CLOUD backend must not call itself
+    'il backend locale' -- the noun tracks _is_cloud."""
+    import time as _time
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1", api_key="sk-test",
+        dispatcher=dispatcher, usage_path=str(tmp_path / "u.json"),
+    )
+    assert runner._backend_noun == "Il servizio AI"
+    runner._circuit_open_until = _time.monotonic() + 60
+    with pytest.raises(RunnerBackendError) as exc_info:
+        await runner.chat(user_message="hi", model="gpt-4o", max_tokens=64)
+    msg = exc_info.value.friendly_message
+    assert "Il servizio AI" in msg and "backend locale" not in msg
+
+
+def test_circuit_open_message_names_local_backend(dispatcher, tmp_path):
+    """Backlog #7 (local variant): Ollama keeps the 'backend locale' wording."""
+    runner = OpenAICompatRunner(
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama",
+        dispatcher=dispatcher, fixed_model="llama3.1:8b",
+        usage_path=str(tmp_path / "u.json"),
+    )
+    assert runner._backend_noun == "Il backend locale"
+
+
 def test_ollama_disables_sdk_retry(dispatcher, tmp_path):
     """Ollama runner must use max_retries=0 (fail-fast on hang)."""
     runner = OpenAICompatRunner(

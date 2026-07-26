@@ -197,6 +197,26 @@ async def test_no_pending_minted_when_notify_service_explicitly_shared(tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_no_pending_minted_when_only_global_shared_service_configured(tmp_path):
+    """Backlog #4: a global notify_service that is a REAL service (not the
+    persistent_notification default) -- e.g. a family Telegram group -- is
+    still a SHARED channel not bound to `paolo`. The OTP secret must not land
+    there, so step-up fails closed (no per-user mapping => no private target)."""
+    app = web.Application()
+    ha = _FakeHA()
+    app["ha_client"] = ha
+    app["gateway_settings"] = {"notify_service": "notify.family_group"}
+    data_dir = str(tmp_path)
+    inputs = {"domain": "lock", "service": "unlock", "data": {"entity_id": "lock.front"}}
+
+    res = await request_confirmation_stepup(
+        app, data_dir, tool="call_ha_service", inputs=inputs, tier="red", user="paolo",
+    )
+    assert res is None
+    assert ha.calls == []
+
+
+@pytest.mark.asyncio
 async def test_pending_minted_when_private_notify_target_configured(tmp_path):
     """Sanity check: a genuine per-user private push target still works end
     to end (positive control for the two failing-closed tests above)."""

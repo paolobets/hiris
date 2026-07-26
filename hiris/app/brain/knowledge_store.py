@@ -179,6 +179,13 @@ class KnowledgeStore:
                 "DELETE FROM knowledge_links WHERE src_id=? OR dst_id=?",
                 (item_id, item_id),
             )
+            # Also drop any document chunks bound to this item, otherwise a
+            # deleted document leaves orphan rows in document_chunks (they are
+            # already excluded from search via the item JOIN, but should not
+            # linger — and the Mayan ingest rollback relies on this).
+            self._conn.execute(
+                "DELETE FROM document_chunks WHERE item_id=?", (item_id,)
+            )
             self._conn.commit()
             return True
 

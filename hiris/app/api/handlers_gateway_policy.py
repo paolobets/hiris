@@ -211,6 +211,25 @@ def notify_service_for_user(app, user: str | None) -> str:
     return glob if isinstance(glob, str) and _SERVICE_RE.match(glob) else DEFAULT_NOTIFY_SERVICE
 
 
+def private_notify_service_for_user(app, user: str | None) -> str | None:
+    """Return the notify service ONLY when it comes from the explicit per-user
+    mapping (``gateway_settings.notify_users[user]``) — the user's own
+    designated private device. Returns ``None`` when resolution would fall back
+    to the shared, globally-configured ``notify_service`` or the hard default.
+
+    Used by the step-up OTP flow: an OTP secret (or one-tap approval) must land
+    only on a channel bound to *this* user. A global ``notify_service`` may be a
+    family group or a shared dashboard (review backlog #4), so it must not carry
+    the secret — the caller fails closed to the confirmation-required flow
+    instead."""
+    gs = app.get("gateway_settings") or {}
+    users = gs.get("notify_users") or {}
+    svc = users.get(user) if user else None
+    if isinstance(svc, str) and _SERVICE_RE.match(svc):
+        return svc
+    return None
+
+
 def apply_saved_policy(app: web.Application) -> None:
     """If a UI-managed policy file exists, derive and set the execute policy
     (overriding the env CSV). Called at startup and after each save. Mutates the
