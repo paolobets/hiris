@@ -44,6 +44,28 @@ async def test_create_proposal_without_automation_id_leaves_config(store):
 
 
 @pytest.mark.asyncio
+async def test_create_proposal_strips_stale_id_when_not_modifying(store):
+    """NEW-from-copy: the model copied a config that still carries a source
+    automation's 'id' but did NOT pass automation_id → the stale id must be
+    stripped, so apply mints a fresh one and does NOT overwrite the original."""
+    args = _sample_args(config={"id": "1699999999", "alias": "Copia", "trigger": [], "action": []})
+    res = await create_automation_proposal(store, **args)
+    saved = await store.get(res["proposal_id"])
+    assert "id" not in saved["config"]
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_hiris_agent_config_untouched(store):
+    """A hiris_agent proposal must not have its config['id'] touched (the id
+    logic is scoped to ha_automation only)."""
+    args = _sample_args(proposal_type="hiris_agent",
+                        config={"id": "keep-me", "role": "x"}, automation_id="999")
+    res = await create_automation_proposal(store, **args)
+    saved = await store.get(res["proposal_id"])
+    assert saved["config"]["id"] == "keep-me"
+
+
+@pytest.mark.asyncio
 async def test_create_proposal_returns_pending(store):
     result = await create_automation_proposal(store, **_sample_args())
     assert "proposal_id" in result

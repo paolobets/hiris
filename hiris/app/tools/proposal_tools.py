@@ -54,9 +54,18 @@ async def create_automation_proposal(
     # Modify-in-place: carry the target automation's id INSIDE the config (which
     # is persisted as-is), so create_automation reuses it at apply time and HA
     # overwrites the existing automation instead of creating a duplicate.
+    #
+    # The config["id"] is load-bearing at apply time, so for HA automations it
+    # must originate ONLY from an explicit automation_id: when modifying, pin it;
+    # when creating (no automation_id) STRIP any stale "id" the model may have
+    # copied from a get_automation_config read, otherwise a "make a similar new
+    # automation" flow would silently overwrite the original it was copied from.
     cfg = config
-    if automation_id and isinstance(cfg, dict):
-        cfg = {**cfg, "id": str(automation_id)}
+    if proposal_type == "ha_automation" and isinstance(cfg, dict):
+        if automation_id:
+            cfg = {**cfg, "id": str(automation_id)}
+        else:
+            cfg = {k: v for k, v in cfg.items() if k != "id"}
     try:
         pid = await proposal_store.save(
             {
