@@ -3,6 +3,49 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.proxy.ha_client import HAClient
 
 
+@pytest.mark.asyncio
+async def test_create_automation_updates_existing_via_config_id():
+    """MODIFY: a config carrying an existing numeric id must be written to that
+    id's URL (overwrite), NOT a freshly-minted one (which would duplicate)."""
+    client = HAClient(base_url="http://supervisor/core", token="t")
+    post = MagicMock(side_effect=[_post_mock(200), _post_mock(200)])
+    with patch("aiohttp.ClientSession.post", post):
+        await client.start()
+        res = await client.create_automation(
+            {"id": "1699999999", "alias": "X", "trigger": [], "action": []})
+        await client.stop()
+    assert res == {"ok": True, "id": "1699999999"}
+    assert post.call_args_list[0].args[0].endswith(
+        "/api/config/automation/config/1699999999")
+
+
+@pytest.mark.asyncio
+async def test_create_automation_mints_new_id_when_config_has_none():
+    """NEW: no id anywhere → a fresh numeric id, not tied to any config field."""
+    client = HAClient(base_url="http://supervisor/core", token="t")
+    post = MagicMock(side_effect=[_post_mock(200), _post_mock(200)])
+    with patch("aiohttp.ClientSession.post", post):
+        await client.start()
+        res = await client.create_automation({"alias": "Y", "trigger": [], "action": []})
+        await client.stop()
+    assert res["ok"] is True and res["id"].isdigit()
+    assert not post.call_args_list[0].args[0].rstrip("/").endswith("/Y")
+
+
+@pytest.mark.asyncio
+async def test_create_automation_explicit_id_beats_config_id():
+    """The explicit automation_id param wins over any id embedded in config."""
+    client = HAClient(base_url="http://supervisor/core", token="t")
+    post = MagicMock(side_effect=[_post_mock(200), _post_mock(200)])
+    with patch("aiohttp.ClientSession.post", post):
+        await client.start()
+        res = await client.create_automation(
+            {"id": "111", "alias": "Z", "trigger": [], "action": []}, automation_id="222")
+        await client.stop()
+    assert res["id"] == "222"
+    assert post.call_args_list[0].args[0].endswith("/config/222")
+
+
 @pytest.fixture
 def client():
     return HAClient(base_url="http://supervisor/core", token="test-token")

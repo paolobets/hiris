@@ -25,6 +25,15 @@ CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
                 "type": "string",
                 "description": "Why this level was chosen over the alternative",
             },
+            "automation_id": {
+                "type": "string",
+                "description": (
+                    "ONLY when MODIFYING an existing HA automation: its numeric "
+                    "unique id (from get_automation_config / get_ha_automations). "
+                    "When set, approving the proposal OVERWRITES that automation "
+                    "instead of creating a new one. Omit for a brand-new automation."
+                ),
+            },
         },
         "required": ["type", "name", "description", "config", "routing_reason"],
     },
@@ -38,16 +47,23 @@ async def create_automation_proposal(
     description: str,
     config: dict,
     routing_reason: str,
+    automation_id: str | None = None,
 ) -> dict:
     if proposal_store is None:
         return {"error": "ProposalStore not available"}
+    # Modify-in-place: carry the target automation's id INSIDE the config (which
+    # is persisted as-is), so create_automation reuses it at apply time and HA
+    # overwrites the existing automation instead of creating a duplicate.
+    cfg = config
+    if automation_id and isinstance(cfg, dict):
+        cfg = {**cfg, "id": str(automation_id)}
     try:
         pid = await proposal_store.save(
             {
                 "type": proposal_type,
                 "name": name,
                 "description": description,
-                "config": config,
+                "config": cfg,
                 "routing_reason": routing_reason,
             }
         )

@@ -27,6 +27,23 @@ def _sample_args(**overrides):
 
 
 @pytest.mark.asyncio
+async def test_create_proposal_injects_automation_id_into_config(store):
+    """MODIFY: automation_id is carried INTO the persisted config as 'id', so
+    apply overwrites that automation instead of duplicating it."""
+    res = await create_automation_proposal(store, **_sample_args(automation_id="1699999999"))
+    saved = await store.get(res["proposal_id"])
+    assert saved["config"]["id"] == "1699999999"
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_without_automation_id_leaves_config(store):
+    """NEW: no automation_id → no 'id' injected → apply mints a fresh one."""
+    res = await create_automation_proposal(store, **_sample_args())
+    saved = await store.get(res["proposal_id"])
+    assert "id" not in saved["config"]
+
+
+@pytest.mark.asyncio
 async def test_create_proposal_returns_pending(store):
     result = await create_automation_proposal(store, **_sample_args())
     assert "proposal_id" in result

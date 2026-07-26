@@ -48,6 +48,20 @@ async def test_apply_ha_automation_writes_to_ha(aiohttp_client):
 
 
 @pytest.mark.asyncio
+async def test_apply_forwards_config_id_to_ha_for_modify(aiohttp_client):
+    """MODIFY end-to-end: a proposal whose config carries an id must reach
+    ha.create_automation with that id intact (so HA overwrites, not duplicates)."""
+    store = _FakeProposalStore({"id": "p1", "status": "pending", "type": "ha_automation",
+                                "config": {"id": "555", "alias": "X", "trigger": [], "action": []}})
+    ha = _FakeHA({"ok": True, "id": "555"})
+    client = await aiohttp_client(_app(store, ha))
+    r = await client.post("/api/proposals/p1/apply", headers={"X-Requested-With": "x"})
+    assert r.status == 200
+    assert ha.created[0].get("id") == "555"
+    assert (await r.json())["automation_id"] == "555"
+
+
+@pytest.mark.asyncio
 async def test_apply_ha_automation_not_marked_when_ha_fails(aiohttp_client):
     store = _FakeProposalStore({"id": "p1", "status": "pending", "type": "ha_automation",
                                 "config": {"alias": "X"}})
