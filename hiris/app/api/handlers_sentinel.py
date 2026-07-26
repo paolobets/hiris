@@ -38,7 +38,11 @@ async def handle_sentinel_timeline(request: web.Request) -> web.Response:
     if store is None:
         return web.json_response({"events": []})
     try:
-        limit = min(int(request.query.get("limit", "50")), 200)
+        limit = int(request.query.get("limit", "50"))
     except ValueError:
         limit = 50
+    # Review L/3: SQLite treats a negative LIMIT as "unlimited" -- clamp
+    # into [1, 200] so a negative (or zero/absurdly large) query param can
+    # never bypass the documented 200-row cap.
+    limit = max(1, min(limit, 200))
     return web.json_response({"events": store.recent_events(limit)})

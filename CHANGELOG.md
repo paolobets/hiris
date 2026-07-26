@@ -1,5 +1,30 @@
 # HIRIS — Changelog
 
+## [0.99.0] — Chiusura finding medium/low pre-1.0 (2026-07-26)
+
+Release candidate verso la 1.0: chiusi **tutti i finding medium e low** della
+review multi-agente dell'intera codebase (i critical/high erano già stati
+chiusi nella 0.90.0). Review finale whole-branch indipendente (Fable): nessun
+finding critical o important, esito **pronto al merge**.
+
+- **Robustezza task/lenti:** finestra oraria che scavalca la mezzanotte gestita
+  correttamente (le finestre notturne non scadono più per errore); una finestra
+  degenere `from==to` ora scade invece di restare attiva per sempre; le lenti
+  memorizzate ma non più valide vengono loggate quando scartate (niente sparizioni
+  silenziose); cron con valori fuori range rifiutato alla creazione.
+- **Sicurezza difesa-in-profondità:** sanitizer anti-injection ampliato (marcatori
+  strutturati, forme flesse di override/bypass); filtro storico HA con quoting;
+  `limit` negativo sui log del sentinella limitato all'intervallo `[1,200]`;
+  errori di dispatch generici verso il chiamante (dettaglio solo nei log server).
+- **Concorrenza:** cleanup dei task su snapshot sotto lock; riferimenti forti ai
+  task immediati; circuit-breaker e avviso di troncamento sui percorsi di chat.
+- **Frontend:** id nei pulsanti passati via data-attribute (niente interpolazione
+  di stringa JS); escaping quote-safe condiviso.
+- **Infra/deps:** dipendenze principali con cap di versione; `run.sh` con guardie
+  su jq, formato CIDR e pre-flight dei provider LLM (avvisi chiari all'avvio).
+- **Mayan:** un fallimento transitorio dell'embedder non marca più il documento
+  come ingerito (verrà ritentato al prossimo giro).
+
 ## [0.90.0] — Hardening di sicurezza pre-1.0 (2026-07-25)
 
 Release intermedia verso la 1.0: dopo una **review completa multi-agente

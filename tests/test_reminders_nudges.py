@@ -132,6 +132,25 @@ def test_due_nudges_key_uses_source_ref_when_present(tmp_path):
     store.close()
 
 
+def test_due_nudges_excludes_private_obligations(tmp_path):
+    """Review C/#2: due_nudges is a home-wide broadcast (single ha_push
+    target, no per-user delivery) -- a PRIVATE obligation (owner='paolo')
+    must never be nudged to the whole household, only owner='home' ones."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    today = date(2026, 7, 25)
+    store.add_item(kind="obligation", content="Segreto di Paolo", owner="paolo",
+                   status="approved", due_date="2026-07-26", sensitivity="normal")
+    store.add_item(kind="obligation", content="Bolletta di casa", owner="home",
+                   status="approved", due_date="2026-07-26", sensitivity="normal")
+    seen = ReminderSeen(str(tmp_path / "data"))
+
+    nudges = due_nudges(store, today=today, seen=seen)
+    contents = [n["item"]["content"] for n in nudges]
+    assert "Bolletta di casa" in contents
+    assert "Segreto di Paolo" not in contents
+    store.close()
+
+
 def test_reminder_seen_persists_across_reinstantiation(tmp_path):
     data_dir = str(tmp_path / "data")
     seen1 = ReminderSeen(data_dir)

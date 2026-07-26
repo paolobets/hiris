@@ -58,6 +58,11 @@ from .mqtt_publisher import MQTTPublisher
 from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 from .watcher.detectors import make_generic_detector
 from .watcher.lenses import load_lenses as _load_scheduled_lenses
+# to_apscheduler_crontab moved to watcher/lenses.py (review L/1) so
+# validate_lens() can reuse the exact same translation to reject a
+# shape-valid-but-value-invalid cron (e.g. hour=99) AT CREATION time,
+# instead of only failing later, silently, here at registration.
+from .watcher.lenses import to_apscheduler_crontab as _to_apscheduler_crontab
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +389,25 @@ async def request_confirmation_stepup(
     # the dispatcher falls back to the Slice-1 "richiede conferma" error.
     if not user or user == "home":
         return None
+    # Safety (Review C/#1): `notify_service_for_user` falls back to the
+    # shared, HA-wide `notify.persistent_notification` dashboard when this
+    # user has no per-user push target configured (or falls back to a
+    # globally-configured `notify.persistent_notification`). That surface has
+    # no notion of "this user's phone" and no actionable-button support, so
+    # the OTP secret embedded in the push message (`_confirmation_push_message`
+    # below) would sit readable by anyone with dashboard access -- exactly the
+    # shared-surface leak the OTP redaction elsewhere in this module (see
+    # confirm_pending_execute / list_pending's otp stripping) exists to avoid.
+    # There is no private channel to complete step-up in this case, so fail
+    # closed exactly like the no-identity guard above: mint no pending, and
+    # let the dispatcher fall back to the Slice-1 "richiede conferma" error.
+    svc = notify_service_for_user(app, user)
+    if svc.split(".", 1)[-1] == "persistent_notification":
+        logger.warning(
+            "step-up confirmation skipped for user=%s: no private notify "
+            "target configured (resolved to shared %s)", user, svc,
+        )
+        return None
     label = f"{inputs.get('domain')}.{inputs.get('service')}"
     # At most one OTP pending per user at a time: `verify_otp` resolves a
     # typed code by scanning for the first live pending bound to `user`, so a
@@ -394,7 +418,6 @@ async def request_confirmation_stepup(
         data_dir, tool=tool, inputs=inputs, tier=tier,
         origin="chat", label=label, user=user, with_otp=True,
     )
-    svc = notify_service_for_user(app, user)
     msg = _confirmation_push_message(label, inputs, entry["otp"])
     # Owner decision (Fix 3): red/dangerous pendings are page/OTP-only — no
     # one-tap notification buttons (matches the gateway's execute-API
@@ -485,90 +508,6 @@ async def _run_scheduled_lens(lens: dict, *, cache, run_lens) -> None:
         await run_lens(lens, {"entity_id": entity_id}, cooldown_sec=0)
     except Exception:
         logger.exception("scheduled lens %s failed", lens_id)
-
-
-def _translate_cron_dow(field: str) -> str:
-    """Remap a cron day-of-week FIELD from STANDARD crontab numbering
-    (POSIX cron(5): 0 or 7 = Sunday, 1 = Monday, ..., 6 = Saturday -- what
-    every SCHEDULE-trigger user lens is authored against, and what
-    `watcher.lenses._CRON_RE` whitelists) to APScheduler's OWN CronTrigger
-    day_of_week numbering (0 = Monday, ..., 6 = Sunday, i.e. Python's
-    `datetime.weekday()`).
-
-    This translation is REQUIRED even though the caller builds the trigger
-    via `CronTrigger.from_crontab` -- verified against the installed
-    apscheduler==3.10.4, `from_crontab` does NOT perform any day_of_week
-    remapping itself: it feeds a numeric day_of_week token straight into
-    APScheduler's own field parser unchanged. Confirmed empirically: an
-    UNTRANSLATED `CronTrigger.from_crontab("0 3 * * 0")` (standard-crontab
-    Sunday) computes its next fire time on APScheduler's day_of_week=0,
-    which is MONDAY, not Sunday; and a POSIX-legal "7" raises outright
-    (APScheduler's day_of_week max is 6). This function runs BEFORE the
-    cron string ever reaches `from_crontab`, fixing both at the source
-    rather than relying on upstream translation that doesn't exist.
-
-    Supports exactly the charset `_CRON_RE` allows for a cron field --
-    digits, `*`, `,`, `/`, `-` -- i.e. bare values, comma-lists, ranges, and
-    step values, in any combination (e.g. "1-5", "0,6", "*/2"). Any field
-    this can't parse, or that resolves to a value outside 0-7, raises
-    ValueError -- the caller (`register_lens_schedules`) catches this
-    per-lens so one broken cron never blocks the others.
-    """
-    field = field.strip()
-    if field == "*":
-        return "*"
-    crontab_days: set[int] = set()
-    for part in field.split(","):
-        part = part.strip()
-        if not part:
-            raise ValueError(f"empty day_of_week token in {field!r}")
-        step = 1
-        base = part
-        if "/" in part:
-            base, step_s = part.split("/", 1)
-            step = int(step_s)
-            if step <= 0:
-                raise ValueError(f"non-positive step in {part!r}")
-        if base == "*":
-            lo, hi = 0, 7
-        elif "-" in base:
-            lo_s, hi_s = base.split("-", 1)
-            lo, hi = int(lo_s), int(hi_s)
-        else:
-            lo = hi = int(base)
-        if lo > hi:
-            raise ValueError(f"backwards range in {part!r}")
-        v = lo
-        while v <= hi:
-            crontab_days.add(v)
-            v += step
-    if not crontab_days or any(d < 0 or d > 7 for d in crontab_days):
-        raise ValueError(f"day_of_week value out of range 0-7 in {field!r}")
-    # 0 and 7 both denote Sunday in standard crontab -- collapse them onto
-    # the SAME APScheduler day (6) rather than two separate ones.
-    normalized = {0 if d == 7 else d for d in crontab_days}
-    apscheduler_days = sorted((d - 1) % 7 for d in normalized)
-    return ",".join(str(d) for d in apscheduler_days)
-
-
-def _to_apscheduler_crontab(cron: str) -> str:
-    """Rewrite a whitelist-validated 5-field standard-crontab string
-    (`watcher.lenses._CRON_RE` already confirmed the charset/shape) into
-    the equivalent string for `CronTrigger.from_crontab`, remapping ONLY
-    the day_of_week field (`_translate_cron_dow`) -- minute/hour/day/month
-    use the same numbering in both conventions and pass through untouched.
-    Raises ValueError if the field count is off (defensive -- the store's
-    regex already guarantees exactly 5 whitespace-separated fields) or the
-    day_of_week field doesn't parse; the caller's try/except turns either
-    into "skip this lens" without crashing registration of the rest.
-    Per-field VALUE validity of minute/hour/day/month (e.g. an out-of-range
-    hour) is left to `CronTrigger.from_crontab` itself, raised at
-    `add_job` time and caught there."""
-    parts = cron.split()
-    if len(parts) != 5:
-        raise ValueError(f"expected 5 cron fields, got {len(parts)}: {cron!r}")
-    minute, hour, day, month, dow = parts
-    return f"{minute} {hour} {day} {month} {_translate_cron_dow(dow)}"
 
 
 async def register_lens_schedules(app: web.Application) -> None:

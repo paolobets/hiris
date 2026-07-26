@@ -102,3 +102,24 @@ async def test_timeline(aiohttp_client, tmp_path):
     client = await aiohttp_client(app)
     r = await client.get("/api/sentinel/timeline")
     assert r.status == 200 and (await r.json())["events"][0]["kind"] == "battery"
+
+
+@pytest.mark.asyncio
+async def test_timeline_negative_limit_does_not_bypass_200_cap(aiohttp_client, tmp_path):
+    """Task L/3: SQLite treats a negative LIMIT as "unlimited" -- a
+    `?limit=-1` query param must never bypass the documented 200-row cap;
+    it must be clamped into [1, 200] like any other out-of-range value."""
+    app = web.Application()
+    store = SentinelStore(str(tmp_path / "s.db"))
+    for i in range(210):
+        store.record_event({"ts": float(i), "kind": "battery", "entity_id": "sensor.b",
+                            "verdict": "anomalia", "severity": "info", "outcome": "notify",
+                            "message": str(i)})
+    app["sentinel_store"] = store
+    app.router.add_get("/api/sentinel/timeline", handle_sentinel_timeline)
+    client = await aiohttp_client(app)
+
+    r = await client.get("/api/sentinel/timeline?limit=-1")
+    assert r.status == 200
+    events = (await r.json())["events"]
+    assert len(events) <= 200

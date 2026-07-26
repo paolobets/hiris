@@ -3,6 +3,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
+from urllib.parse import quote
 import aiohttp
 
 _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -49,7 +50,11 @@ class HAClient:
 
     async def get_history(self, entity_ids: list[str], days: int) -> list[dict]:
         start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        filter_param = ",".join(entity_ids)
+        # Review L/4 (defense in depth): quote each entity id before joining
+        # -- currently safe only because both call sites (history_tools.py,
+        # calendar_tools.py) pre-validate with a strict regex, but this way
+        # the query string stays safe even if a future caller skips that.
+        filter_param = ",".join(quote(eid, safe="") for eid in entity_ids)
         url = f"{self._base_url}/api/history/period/{start}?filter_entity_id={filter_param}&minimal_response=true"
         async with self._session.get(url) as resp:
             resp.raise_for_status()

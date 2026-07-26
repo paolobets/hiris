@@ -17,7 +17,13 @@ export EXECUTE_API_TOOLS=$(bashio::config 'execute_api_tools' '')
 export EXECUTE_API_ENTITIES=$(bashio::config 'execute_api_entities' '')
 export EXECUTE_API_SERVICES=$(bashio::config 'execute_api_services' '')
 export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
-export APPRISE_URLS=$(jq -c '.apprise_urls // []' /data/options.json)
+# Guard the jq parse (review medium): a malformed options.json used to silently
+# blank APPRISE_URLS with no hint. Warn and fall back to an empty list.
+export APPRISE_URLS=$(jq -c '.apprise_urls // []' /data/options.json 2>/dev/null)
+if [ -z "${APPRISE_URLS}" ]; then
+  bashio::log.warning "Impossibile leggere apprise_urls da options.json — notifiche Apprise disattivate."
+  export APPRISE_URLS="[]"
+fi
 export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 
 export SENTINEL_DAILY_CAP=$(bashio::config 'sentinel_daily_cap' '20')
@@ -77,6 +83,16 @@ bashio::log.info "Starting HIRIS"
 bashio::log.info "Log level: ${LOG_LEVEL}"
 bashio::log.info "Theme: ${THEME}"
 bashio::log.info "LLM strategy: ${LLM_STRATEGY}"
+
+# Pre-flight sanity checks (review mediums): warn early instead of surfacing a
+# cryptic runtime error later. Both are WARNINGS only — the addon still boots.
+if ! echo "${SUPERVISOR_INGRESS_CIDR}" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}([[:space:]]*,[[:space:]]*([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2})*$'; then
+  bashio::log.warning "supervisor_ingress_cidr non sembra un CIDR valido (${SUPERVISOR_INGRESS_CIDR}); l'app ignora le voci non parsabili e usa il default."
+fi
+if [ -z "${CLAUDE_API_KEY}" ] && [ -z "${OPENAI_API_KEY}" ] && [ -z "${OPENROUTER_API_KEY}" ] \
+   && [ -z "${LOCAL_MODEL_URL}" ] && [ "${CHAT_VIA_SUBSCRIPTION}" != "true" ]; then
+  bashio::log.warning "Nessuna API key LLM, nessun modello locale e chat-via-abbonamento non attiva: la chat non potra' rispondere finche' non configuri un provider."
+fi
 
 cd /usr/lib/hiris
 exec python3 -m app.main

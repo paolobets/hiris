@@ -120,6 +120,65 @@ def test_cleanup_keeps_recent_terminal_tasks(engine):
     assert task.id in engine._tasks
 
 
+def test_cleanup_survives_concurrent_task_insertion(engine):
+    """review M3/#3: _cleanup() is a sync APScheduler job run on a worker
+    thread, iterating self._tasks while add_task() (event-loop thread) can
+    insert a new key at the same time. Pre-fix this raised 'RuntimeError:
+    dictionary changed size during iteration' because _cleanup iterated the
+    live dict directly. This test reproduces the exact mechanism (a mutation
+    landing mid-iteration, via a hook on datetime.fromisoformat which
+    _cleanup calls once per terminal task) without needing real OS threads —
+    the CPython-level hazard is identical regardless of what triggers the
+    concurrent write.
+    """
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=200)).isoformat()
+    for i in range(5):
+        t = engine.add_task(
+            {"label": f"Old{i}", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
+            agent_id="hiris-default",
+        )
+        engine._tasks[t.id].status = "done"
+        engine._tasks[t.id].executed_at = old_ts
+
+    import hiris.app.task_engine as task_engine_module
+    real_datetime = task_engine_module.datetime
+
+    class _SpyDatetime:
+        """Delegates to the real datetime class, but on the 2nd
+        fromisoformat() call (i.e. mid-way through _cleanup's loop over the
+        5 terminal tasks above) fires a concurrent add_task() — simulating
+        the other thread inserting a new task while _cleanup is iterating."""
+
+        calls = 0
+
+        @staticmethod
+        def now(tz=None):
+            return real_datetime.now(tz)
+
+        @staticmethod
+        def fromisoformat(s):
+            _SpyDatetime.calls += 1
+            if _SpyDatetime.calls == 2:
+                engine.add_task(
+                    {"label": "concurrent", "trigger": {"type": "delay", "minutes": 1},
+                     "actions": []},
+                    agent_id="hiris-default",
+                )
+            return real_datetime.fromisoformat(s)
+
+    task_engine_module.datetime = _SpyDatetime
+    try:
+        engine._cleanup()  # must not raise RuntimeError
+    finally:
+        task_engine_module.datetime = real_datetime
+
+    # All 5 stale terminal tasks were reaped...
+    remaining = list(engine._tasks.values())
+    assert not any(t.label.startswith("Old") for t in remaining)
+    # ...and the task inserted mid-iteration survived (it's pending, not terminal).
+    assert any(t.label == "concurrent" for t in remaining)
+
+
 def test_persistence_roundtrip(tmp_path, mock_ha, mock_cache):
     path = str(tmp_path / "tasks.json")
     te1 = TaskEngine(ha_client=mock_ha, entity_cache=mock_cache, notify_config={}, data_path=path)
@@ -257,6 +316,81 @@ async def test_check_time_window_within_window(engine, mock_ha):
     )
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "done"
+
+
+def _patch_now(monkeypatch, hour, minute=0):
+    """Freeze task_engine's clock at a fixed local time (deterministic
+    midnight-wraparound tests, independent of the machine's wall-clock)."""
+    import hiris.app.task_engine as te
+    real = te.datetime
+    fixed = real(2026, 7, 25, hour, minute)
+
+    class _FakeDatetime(real):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.replace(tzinfo=tz) if tz else fixed
+
+    monkeypatch.setattr(te, "datetime", _FakeDatetime)
+
+
+@pytest.mark.asyncio
+async def test_check_time_window_overnight_active_at_night(engine, mock_ha, monkeypatch):
+    # Overnight window 23:00 -> 06:00 (spans midnight). At 02:00 we are INSIDE
+    # it -> execute (regression: pre-fix this expired because to < from).
+    _patch_now(monkeypatch, 2, 0)
+    task = engine.add_task(
+        {"label": "Notte", "trigger": {"type": "time_window", "from": "23:00",
+         "to": "06:00", "check_interval_minutes": 5},
+         "actions": [{"type": "call_ha_service", "domain": "light",
+                      "service": "turn_off", "data": {"entity_id": "light.x"}}]},
+        agent_id="hiris-default")
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "done"
+
+
+@pytest.mark.asyncio
+async def test_check_time_window_overnight_dead_zone_waits_not_expired(engine, mock_ha, monkeypatch):
+    # Same overnight window at 12:00 (the daytime dead-zone): NOT in window,
+    # but a wrapping window recurs nightly -> stay pending, never "expired".
+    _patch_now(monkeypatch, 12, 0)
+    task = engine.add_task(
+        {"label": "Notte", "trigger": {"type": "time_window", "from": "23:00",
+         "to": "06:00", "check_interval_minutes": 5},
+         "actions": [{"type": "call_ha_service", "domain": "light",
+                      "service": "turn_off", "data": {"entity_id": "light.x"}}]},
+        agent_id="hiris-default")
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_check_time_window_normal_expires_after_to(engine, mock_ha, monkeypatch):
+    # Non-wrapping window 08:00 -> 10:00 at 12:00 -> fully past -> expired.
+    _patch_now(monkeypatch, 12, 0)
+    task = engine.add_task(
+        {"label": "Mattina", "trigger": {"type": "time_window", "from": "08:00",
+         "to": "10:00", "check_interval_minutes": 5},
+         "actions": [{"type": "call_ha_service", "domain": "light",
+                      "service": "turn_on", "data": {"entity_id": "light.x"}}]},
+        agent_id="hiris-default")
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "expired"
+
+
+@pytest.mark.asyncio
+async def test_check_time_window_degenerate_from_equals_to_expires(engine, mock_ha, monkeypatch):
+    # A degenerate from==to window is a zero-length instant, NOT a wrapping
+    # (always-active) window: once `now` is past it, the task must expire and
+    # not live forever. Regression guard for `wraps = to_dt < from_dt`.
+    _patch_now(monkeypatch, 12, 0)
+    task = engine.add_task(
+        {"label": "Istante", "trigger": {"type": "time_window", "from": "08:00",
+         "to": "08:00", "check_interval_minutes": 5},
+         "actions": [{"type": "call_ha_service", "domain": "light",
+                      "service": "turn_on", "data": {"entity_id": "light.x"}}]},
+        agent_id="hiris-default")
+    await engine._check_time_window(task.id)
+    assert engine._tasks[task.id].status == "expired"
 
 
 def test_at_datetime_schedules_correct_run_date(engine):

@@ -547,9 +547,13 @@ class ToolDispatcher:
                         policy = {}
                 try:
                     allow_sensitive = bool(knowledge_allow_sensitive) and not bool(cloud)
+                    # On-demand tool: scope to the caller so they see their OWN
+                    # private obligations + home ones (review C/#2 follow-up),
+                    # unlike the scheduled home-wide broadcast (owner="home").
                     bundle = build_briefing_bundle(
                         self._knowledge_store, self._cache, policy,
                         today=date.today(), allow_sensitive=allow_sensitive,
+                        owner=user_id or "home",
                     )
                     return render_briefing_template(bundle)
                 except Exception as exc:
@@ -570,6 +574,10 @@ class ToolDispatcher:
                     "Non inventare nomi di tool."
                 )
             }
-        except Exception as exc:
-            logger.error("Tool %s failed: %s", name, exc)
-            return {"error": str(exc)}
+        except Exception:
+            # Review L/2: never echo str(exc) back to the caller -- it can
+            # leak internal detail (paths, hostnames, connection strings).
+            # Log the full detail server-side (with traceback) and return a
+            # generic, non-identifying message instead.
+            logger.exception("Tool %s failed", name)
+            return {"error": f"Tool '{name}' failed. Riprova più tardi."}

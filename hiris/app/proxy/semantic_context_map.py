@@ -266,7 +266,16 @@ class SemanticContextMap:
             if state == "off":
                 return "spenta"
             b = attrs.get("brightness")
-            return f"accesa {round(b / 255 * 100)}%" if b is not None else "accesa"
+            if b is not None:
+                try:
+                    return f"accesa {round(float(b) / 255 * 100)}%"
+                except (TypeError, ValueError):
+                    # review M3/#4: a malformed integration (or a buggy
+                    # template sensor) can hand back a non-numeric
+                    # brightness. Degrade to the bare state instead of
+                    # crashing the whole context build for every user.
+                    logger.debug("Non-numeric brightness %r ignored", b)
+            return "accesa"
         if entity_type == "cover":
             pos = attrs.get("current_position")
             return f"{state} {pos}%" if pos is not None else state
@@ -275,7 +284,12 @@ class SemanticContextMap:
                 return state
             title = sanitize_ha_value(attrs.get("media_title", ""))
             vol = attrs.get("volume_level")
-            vol_str = f" vol:{round(vol * 100)}%" if vol is not None else ""
+            vol_str = ""
+            if vol is not None:
+                try:
+                    vol_str = f" vol:{round(float(vol) * 100)}%"
+                except (TypeError, ValueError):
+                    logger.debug("Non-numeric volume_level %r ignored", vol)
             return f"{state} · {title}{vol_str}" if title else f"{state}{vol_str}"
         if entity_type in ("motion", "presence"):
             return "rilevato" if state == "on" else "assente"
@@ -345,7 +359,18 @@ class SemanticContextMap:
                     if ed is None:
                         logger.debug("get_state returned None for %s (cache/map desync?)", eid)
                         continue
-                    state_str = self._format_state(et, ed)
+                    try:
+                        state_str = self._format_state(et, ed)
+                    except Exception as exc:
+                        # review M3/#4: fail-safe of last resort -- a single
+                        # malformed attribute on ANY entity must not deny
+                        # context (and therefore chat) to every user. Skip
+                        # just this entity and keep building the rest.
+                        logger.warning(
+                            "_format_state failed for %s (type=%s): %s — skipping entity",
+                            eid, et, exc,
+                        )
+                        continue
                     name = sanitize_ha_value(ed.get("name") or eid)
                     lines.append(f"  {label:<14} {name:<32} {state_str}")
                     if knowledge_db:

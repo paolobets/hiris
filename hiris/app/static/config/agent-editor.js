@@ -371,7 +371,13 @@
                 var div = document.createElement('div');
                 div.className = 'suggestion-item';
                 var nm = item.name || '';
-                div.innerHTML = '<span>' + (item.id || '').replace(/[<>&]/g, '') + '</span><span class="s-name">' + nm.replace(/[<>&]/g, '') + '</span>';
+                // Review L/6: the old ad-hoc `.replace(/[<>&]/g, '')` stripped
+                // <>& but never touched quotes -- harmless here (text-node
+                // content, not an attribute) but a landmine if this pattern
+                // were ever copied into attribute-building code. Use the
+                // shared escHtml() (api.js, loaded before this file), which
+                // also escapes quotes, instead of a bespoke partial escaper.
+                div.innerHTML = '<span>' + escHtml(item.id) + '</span><span class="s-name">' + escHtml(nm) + '</span>';
                 div.addEventListener('click', function() {
                   if (typeof _entitySelectorAdd === 'function') _entitySelectorAdd(item.id);
                   es.value = ''; sg.style.display = 'none';

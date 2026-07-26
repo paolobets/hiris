@@ -70,6 +70,30 @@ def test_horizon_filters_and_days_left(tmp_path):
     store.close()
 
 
+def test_owner_scoping_home_broadcast_vs_per_user(tmp_path):
+    # review C/#2 follow-up: default owner="home" (scheduled broadcast) shows
+    # only shared obligations; the on-demand tool passing owner=<user> also
+    # shows that user's OWN private obligations, but never another user's.
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    today = date(2026, 7, 25)
+    store.add_item(kind="obligation", content="Bolletta casa", status="approved",
+                   owner="home", due_date="2026-07-27", sensitivity="normal")
+    store.add_item(kind="obligation", content="Privata di Alice", status="approved",
+                   owner="alice", due_date="2026-07-27", sensitivity="normal")
+    cache = FakeEntityCache([])
+
+    home = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True)
+    assert [d["content"] for d in home["deadlines"]] == ["Bolletta casa"]  # no private leak
+
+    alice = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True, owner="alice")
+    contents = {d["content"] for d in alice["deadlines"]}
+    assert contents == {"Bolletta casa", "Privata di Alice"}  # own + home
+
+    bob = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True, owner="bob")
+    assert [d["content"] for d in bob["deadlines"]] == ["Bolletta casa"]  # not alice's
+    store.close()
+
+
 def test_sensitive_excluded_unless_allowed(tmp_path):
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     today = date(2026, 7, 25)
@@ -187,6 +211,30 @@ def test_invalid_due_date_degrades_days_left_without_crash():
     assert entry["content"] == "Scadenza corrotta"
     assert entry["due_date"] == "not-a-date"
     assert entry["days_left"] is None
+
+
+def test_private_obligation_excluded_from_home_wide_briefing(tmp_path):
+    """Review C/#2: a PRIVATE obligation (owner='paolo') must never appear in
+    the home-wide daily briefing -- only owner='home' (shared) obligations
+    are visible here, since the briefing broadcasts to a single shared
+    channel with no per-user delivery."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    today = date(2026, 7, 25)
+    store.add_item(kind="obligation", content="Segreto di Paolo", owner="paolo",
+                   status="approved", due_date="2026-07-26", sensitivity="normal")
+    store.add_item(kind="obligation", content="Bolletta di casa", owner="home",
+                   status="approved", due_date="2026-07-27", sensitivity="normal")
+    cache = FakeEntityCache([])
+
+    bundle = build_briefing_bundle(
+        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+    )
+
+    contents = [d["content"] for d in bundle["deadlines"]]
+    assert "Bolletta di casa" in contents
+    assert "Segreto di Paolo" not in contents
+    assert bundle["counts"]["deadlines"] == 1
+    store.close()
 
 
 def test_battery_default_threshold_used_when_policy_has_no_min_pct():

@@ -133,7 +133,13 @@ async def handle_recall_knowledge(
         merged.sort(key=lambda x: x[0], reverse=True)
         out = []
         for _score, _id, kind, content, sens in merged[:k]:
-            is_sensitive = sens == "sensitive"
+            # Review C/#5: mirror the store's own semantics (knowledge_store.
+            # search/search_chunks gate on `sensitivity='normal'` -- i.e. ANY
+            # non-'normal' value is treated as sensitive there), not an exact
+            # match on the literal string "sensitive". An exact match let a
+            # third sensitivity value reach the cloud LLM verbatim even though
+            # the store itself already treats it as sensitive.
+            is_sensitive = (sens or "normal") != "normal"
             if is_sensitive and cloud:
                 if pseudonymizer is not None:
                     # Record token->value into the caller's per-request

@@ -30,6 +30,36 @@ _INJECTION_RE = re.compile(
     r'|istruzioni\s+precedenti|nuove\s+istruzioni'
     # Italian role-override lead-ins
     r'|agisci\s+come|comportati\s+come|fingi\s+di\s+essere|fai\s+finta\s+di\s+essere'
+    # Structured chat-template / instruction-format tokens used to smuggle a
+    # fake role turn into the context: LLaMA/Mistral [INST]..[/INST], any
+    # ChatML-or-similar <|role|> special token (<|system|>, <|user|>,
+    # <|assistant|>, <|endoftext|>, <|eot_id|>, ...; <|im_...| above already
+    # covered a subset), and Alpaca-style "### Instruction"/"### System"
+    # headers. These never occur in legitimate HA friendly names, states or
+    # annotations, so -- unlike the bare-verb English case above -- no
+    # word-boundary discipline is needed: matching broadly here carries no
+    # realistic false-positive cost. NOTE: the "###" alternative deliberately
+    # only fires for the classic English Alpaca/injection shape
+    # ("### Instruction"/"### System"), NOT bare "###" or Italian headers
+    # ("### Istruzioni installazione", "### Sistema di allarme") -- those are
+    # ordinary markdown in user notes and must survive.
+    r'|\[/?INST\]|<\|[a-zA-Z_]+\|>|###\s*(?:system|instructions?)\b'
+    # "override"/"bypass" -- phrase-scoped, NOT bare-word. Unlike the
+    # injection-only verbs above, both are also ordinary Italian/English
+    # vocabulary on their own ("override del termostato", "bypass
+    # chirurgico", "ho fatto un bypass ieri") -- bare-word matching would
+    # garble smart-home and everyday phrasing. Only the imperative +
+    # system-prompt/instructions/rules-target shape (the actual injection
+    # pattern) is matched, mirroring the ignora/dimentica phrase discipline
+    # above. This is a deliberate under-match: "override the light schedule"
+    # or "bypass the alarm sensor" will NOT be filtered.
+    # "overrid(e|es|ed|ing|den)" spells all inflections: "override" drops the
+    # trailing -e before -ing/-en, so a naive "override(?:...ing)?" would miss
+    # "overriding"/"overridden". "bypass" keeps its stem, so bypass(es|ed|ing).
+    r'|\b(?:overrid(?:e|es|ed|ing|den)|bypass(?:es|ed|ing)?)\s+(?:the\s+|all\s+|your\s+)?'
+    r'(?:system\s+prompt|instructions?|restrictions?|rules?|safeguards?|security)\b'
+    r'|bypassa(?:re)?\s+(?:le\s+|tutte\s+le\s+)?(?:istruzioni|regole|restrizioni)'
+    r'|sovrascrivi\s+(?:le\s+)?istruzioni|scavalca\s+(?:le\s+)?istruzioni'
     r')',
     re.IGNORECASE,
 )

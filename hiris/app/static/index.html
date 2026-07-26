@@ -668,7 +668,11 @@ function formatTrigger(trigger) {
 function renderTask(task) {
   var isPending = task.status === 'pending';
   var safeId = esc(task.id);
-  var cancelBtn = isPending ? '<button class="task-cancel-btn" onclick="cancelTask(&quot;' + safeId + '&quot;)">Annulla</button>' : '';
+  // Pass the id via a data-attribute (HTML-escaped, safe) and read it back from
+  // the DOM in the handler, instead of interpolating it into the onclick JS
+  // string (where an HTML-escaped quote still breaks the JS). Ids are uuids
+  // today, but this removes the injection landmine entirely.
+  var cancelBtn = isPending ? '<button class="task-cancel-btn" data-task-id="' + safeId + '" onclick="cancelTask(this.dataset.taskId)">Annulla</button>' : '';
   var rawMeta = task.result || task.error || formatTrigger(task.trigger);
   var meta = rawMeta ? esc(rawMeta) : '';
   return '<div class="task-card" id="task-' + safeId + '">'

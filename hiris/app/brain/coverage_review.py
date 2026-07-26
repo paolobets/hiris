@@ -19,7 +19,14 @@ _JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 def build_review_context(snapshot, inventory, current_config, memory=None) -> dict:
     inv = [{"entity_id": e.get("entity_id"), "friendly_name": _san(e.get("friendly_name") or ""),
             "domain": e.get("domain"), "device_class": e.get("device_class")} for e in (inventory or [])]
-    ctx = {"snapshot": snapshot or {}, "inventory": inv, "current": current_config or {}}
+    # Review C/#4: sanitize the HA-health/error-log snapshot through the SAME
+    # filter the sibling bridge path applies to this exact snapshot dict
+    # (server.py's _holistic_reason, BRIDGE_ENABLED branch: `{k: (_san(v) if
+    # isinstance(v, str) else v) ...}`) -- otherwise raw health/error text
+    # (e.g. HA error_log top_errors) reaches this LLM prompt unfiltered while
+    # the bridge path filters it, an injection-amplifier gap for finding #6.
+    san_snapshot = {k: (_san(v) if isinstance(v, str) else v) for k, v in (snapshot or {}).items()}
+    ctx = {"snapshot": san_snapshot, "inventory": inv, "current": current_config or {}}
     if memory:
         # Slice 6b Task 5: bounded, home-scoped memory snippets (see
         # reasoner_memory.py / server.py's _holistic_reason). Only added when

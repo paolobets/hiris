@@ -227,7 +227,17 @@ def save_policy(data_dir: str, body: dict) -> dict:
 def apply_brain_detector(data_dir: str, detector: str, entity: str, params: dict | None = None) -> dict:
     """Enable `detector`, add `entity` to it, merge allowed `params`, and record the
     (detector, entity) pair as brain-added in the sidecar registry (see
-    _load_brain_registry). Returns the delta needed to undo this exact change."""
+    _load_brain_registry). Returns the delta needed to undo this exact change.
+
+    Review C/#3: `params` (e.g. max_watt/max_temp_c/min_pct/open_minutes) are
+    SHARED detector-level config, not entity-scoped -- applying them here
+    overwrites the value for every entity already on `detector`, exactly like
+    apply_brain_tuning. So, same as apply_brain_tuning's one-time snapshot,
+    capture each touched key's PRE-apply value here and hand it back in the
+    delta as "param_snapshot" -- this is per-suggestion (not per-detector like
+    apply_brain_tuning's sidecar), since each coverage suggestion is undone
+    independently via its own stored delta, not a shared registry key.
+    """
     allowed_params = _ALLOWED_KEYS.get(detector, set()) - _BRAIN_PARAM_DENY
     with _POLICY_LOCK:
         pol = load_policy(data_dir)
@@ -236,25 +246,43 @@ def apply_brain_detector(data_dir: str, detector: str, entity: str, params: dict
         entities = det_cfg.setdefault("entities", [])
         if entity not in entities:
             entities.append(entity)
+        param_snapshot = {k: det_cfg.get(k) for k in (params or {}) if k in allowed_params}
         for k, v in (params or {}).items():
             if k in allowed_params:
                 det_cfg[k] = v
-        save_policy(data_dir, pol)
 
         registry = _load_brain_registry(data_dir)
         det_list = registry["detectors"].setdefault(detector, [])
         if entity not in det_list:
             det_list.append(entity)
+
+        # Review L/backlog (write-order): persist the registry BEFORE the
+        # policy -- mirrors apply_brain_tuning's documented crash-safe
+        # order. If we crash between the two writes, the safe residue is
+        # "registry says entity is brain-added, policy doesn't have it
+        # yet" (harmless no-op restore on undo), not the reverse (a
+        # policy-added entity with no registry record -- permanently
+        # un-undoable).
         _save_brain_registry(data_dir, registry)
+        save_policy(data_dir, pol)
 
-    return {"detector": detector, "entity": entity}
+    return {"detector": detector, "entity": entity, "param_snapshot": param_snapshot}
 
 
-def remove_brain_detector(data_dir: str, detector: str, entity: str) -> bool:
+def remove_brain_detector(data_dir: str, detector: str, entity: str,
+                          restore_params: dict | None = None) -> bool:
     """Undo apply_brain_detector: remove `entity` from `detector`'s entities, but
     ONLY if that exact pair is present in the brain sidecar registry. This is the
     guarantee that a user-added entity (never recorded in the registry) is never
-    touched by undo. Returns True if a removal happened, False otherwise (no-op)."""
+    touched by undo. Returns True if a removal happened, False otherwise (no-op).
+
+    Review C/#3: `restore_params` (apply_brain_detector's returned
+    "param_snapshot") is optionally written back into the shared detector
+    config alongside the entity removal, so a coverage suggestion that
+    overwrote a shared param (e.g. max_watt) is fully reversed, not just its
+    entity. Restricted to this detector's allowed params (defense in depth --
+    the snapshot itself is already `allowed_params`-filtered at capture time).
+    """
     with _POLICY_LOCK:
         registry = _load_brain_registry(data_dir)
         det_list = registry["detectors"].get(detector, [])
@@ -267,6 +295,11 @@ def remove_brain_detector(data_dir: str, detector: str, entity: str) -> bool:
             entities = det_cfg.get("entities", [])
             if entity in entities:
                 entities.remove(entity)
+            if restore_params:
+                allowed_params = _ALLOWED_KEYS.get(detector, set()) - _BRAIN_PARAM_DENY
+                for k, v in restore_params.items():
+                    if k in allowed_params:
+                        det_cfg[k] = v
             save_policy(data_dir, pol)
 
         det_list.remove(entity)
