@@ -1,5 +1,34 @@
 # HIRIS — Changelog
 
+## [0.100.0] — Layer Modelli: attivazione provider, una catena, modello per-entità e per-provider (SP-2) (2026-07-27)
+
+Ridisegno della gestione dei modelli AI (retro-compatibile: nessun install
+esistente cambia comportamento).
+
+- **Attivazione provider esplicita:** toggle `provider_subscription/claude/openai/
+  openrouter/ollama` nella config dell'addon. Un provider è usato solo se attivo
+  E con credenziale. Su un install esistente (toggle a false) i provider attivi
+  sono derivati dalle credenziali già presenti — comportamento invariato.
+- **Abbonamento first-class:** il toggle `provider_subscription` sostituisce la
+  vecchia accoppiata `chat_via_subscription`+`bridge_enabled` (che restano letti
+  per retro-compat). Attivarlo abilita chat, Brain e Agentbot in `auto`
+  sull'abbonamento. Il fail-safe della coda di ragionamento è preservato.
+- **Una catena modello globale** con failover, al posto della doppia
+  `chat_policy`/`automatic_policy`. Riordinabile; ricalcolata al boot includendo
+  sempre tutti i provider attivi.
+- **Modello per-entità:** ogni **Chatbot** e ogni **Agentbot** sceglie il proprio
+  modello (nuovo campo per-Agentbot); il **Brain** ha il suo (`brain_model`).
+- **Modello di default per-provider:** per Claude/OpenAI/OpenRouter scegli quale
+  modello usare quando l'entità è in `auto` (Ollama usa il suo modello fisso).
+- **Nuova sezione "Modelli"** (`#/models`): provider attivi + stato credenziale,
+  catena, assegnazione per-entità, embeddings (dichiarati separati —
+  l'Abbonamento non fa embeddings), con distinzione tra impostazioni applicate
+  al riavvio e quelle live.
+- **Sicurezza invariata:** semaforo, contratto Agentbot verdetto-JSON-senza-tool,
+  gate egress memoria sensibile (che continua a fallire in sicurezza), loopback
+  MCP e token OAuth. Nessun segreto esposto dalle API.
+
+
 ## [0.99.5] — Rinomina AI: Chatbot / Agentbot / Brain (SP-1a) (2026-07-27)
 
 Fondazione dei nomi (SP-1 della north-star). Rinominato **solo il testo
