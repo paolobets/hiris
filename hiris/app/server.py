@@ -794,13 +794,14 @@ def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
 
 
 def should_start_agent_worker() -> bool:
-    """Gate for the in-addon chat-via-subscription worker (Plan 2B Task 4):
-    only when explicitly enabled AND a subscription OAuth token is present --
-    otherwise there is nothing for the worker to authenticate `claude` with."""
-    return (
-        os.environ.get("CHAT_VIA_SUBSCRIPTION", "").strip().lower() == "true"
-        and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+    """Gate worker chat-via-abbonamento in-addon (SP-2): attivo quando
+    l'abbonamento è attivo (provider_subscription, o il legacy
+    chat_via_subscription) E un token OAuth è presente."""
+    sub_on = (
+        os.environ.get("PROVIDER_SUBSCRIPTION", "").strip().lower() in ("1", "true", "yes", "on")
+        or os.environ.get("CHAT_VIA_SUBSCRIPTION", "").strip().lower() == "true"
     )
+    return sub_on and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
 
 
 async def _on_startup(app: web.Application) -> None:
@@ -991,6 +992,17 @@ async def _on_startup(app: web.Application) -> None:
     }
     _active = derive_active_providers(_prov_cfg, _prov_creds)
     app["active_providers"] = _active
+
+    # SP-2 T3: l'abbonamento first-class (provider_subscription) implica il
+    # bridge attivo -- il fail-safe #1 (_chat_subscription_active = cfg AND
+    # bridge, invariato) altrimenti bloccherebbe la chat lasciando i job
+    # 'chat' in coda senza nessuno che li spazzi/reclami/pruni. Calcolato qui,
+    # PRIMA di ogni gate più sotto che legge BRIDGE_ENABLED dall'env
+    # (_holistic_reason, _reasoning_sweep, il wiring di chat_via_subscription
+    # poco più in basso), così ognuno di quei tre punti vede l'abbonamento
+    # senza duplicare il parsing env. Vedi task-3-report.md per il grep
+    # BRIDGE_ENABLED che ha individuato tutti e tre i gate.
+    _sub_first_class = _prov_cfg["provider_subscription"]
 
     # Memory / RAG config
     mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
@@ -1696,7 +1708,7 @@ async def _on_startup(app: web.Application) -> None:
         except Exception:
             logger.exception("coverage-review failed")
 
-        if os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on"):
+        if os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on") or _sub_first_class:
             wake = {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
                     "evidence": {}, "ts": _time.time()}
             ctx = {"snapshot": {k: (_san(v) if isinstance(v, str) else v) for k, v in (snapshot or {}).items()}}
@@ -1723,7 +1735,7 @@ async def _on_startup(app: web.Application) -> None:
     # lo stesso _run_decision (e quindi lo stesso cap del router LLM) delle
     # situazioni sopra — nessun path metrico/actuation nuovo.
     async def _reasoning_sweep() -> None:
-        if os.environ.get("BRIDGE_ENABLED", "0") not in ("1", "true", "yes", "on"):
+        if os.environ.get("BRIDGE_ENABLED", "0") not in ("1", "true", "yes", "on") and not _sub_first_class:
             return
         fallback = os.environ.get("BRIDGE_FALLBACK", "1") in ("1", "true", "yes", "on")
         for job in reasoning_queue.sweep_expired(_time.time()):
@@ -1761,8 +1773,23 @@ async def _on_startup(app: web.Application) -> None:
     # the queue directly without touching env vars, while still making sure
     # chat_via_subscription=true + BRIDGE_ENABLED=0 enqueues nothing that
     # would sit pending forever and grow the DB.
-    _bridge_enabled = os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")
-    _chat_via_subscription_cfg = os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")
+    #
+    # SP-2 T3: provider_subscription (first-class) must ALSO force the bridge
+    # on, everywhere BRIDGE_ENABLED is read -- not just here. _sub_first_class
+    # (computed once, right after _active above) is OR'd into all THREE
+    # BRIDGE_ENABLED reads in this module: _holistic_reason's enqueue gate,
+    # _reasoning_sweep's early-return, and this cfg/bridge derivation. Missing
+    # any one of them would leave a hole where the fail-safe below
+    # (_chat_subscription_active, still a strict AND) blocks chat while the
+    # sweep that's supposed to drain the queue never runs.
+    _bridge_enabled = (
+        os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")
+        or _sub_first_class  # SP-2: abbonamento attivo implica il bridge (sweep coda)
+    )
+    _chat_via_subscription_cfg = (
+        os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")
+        or _sub_first_class
+    )
     app["chat_via_subscription"] = _chat_subscription_active(_chat_via_subscription_cfg, _bridge_enabled)
 
     # ── Arrivo serale (fetta 3): riusa lo stesso adapter _on_situation ──────

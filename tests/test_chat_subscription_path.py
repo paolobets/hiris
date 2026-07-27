@@ -431,3 +431,21 @@ def test_on_startup_wires_chat_via_subscription_through_the_real_gate_function()
     assign_pos = src.index('app["chat_via_subscription"] =')
     line_end = src.index("\n", assign_pos)
     assert "_chat_subscription_active(" in src[assign_pos:line_end]
+
+
+# ---------------------------------------------------------------------------
+# SP-2 Task 3: provider_subscription first-class -- must derive BOTH cfg and
+# bridge, preserving the cfg AND bridge fail-safe (never weakened to an OR).
+# ---------------------------------------------------------------------------
+
+from hiris.app.server import _chat_subscription_active
+
+
+def test_subscription_first_class_implies_bridge():
+    # provider_subscription attivo => cfg e bridge entrambi True => attivo
+    assert _chat_subscription_active(True, True) is True
+
+
+def test_subscription_without_bridge_still_fails_closed():
+    # invariante preservata: manca il bridge => NON attivo (fail-safe #1)
+    assert _chat_subscription_active(True, False) is False
