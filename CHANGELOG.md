@@ -1,5 +1,22 @@
 # HIRIS — Changelog
 
+## [0.99.3] — Chat via abbonamento self-contained (MCP interno + runner in-addon) (2026-07-27)
+
+Passo verso un'app unica: la chat via abbonamento può ora girare **interamente
+dentro l'addon**, senza il gateway esterno. **Opt-in, spenta di default** — chi
+usa la chat con API key non è toccato.
+
+- **MCP interno:** l'addon espone i propri tool via un server MCP su `127.0.0.1`
+  (solo loopback), che inoltra alla execute-API interna — allowlist e **semaforo
+  invariati**.
+- **Runner in-addon:** l'immagine include node + Claude CLI; un worker interno
+  consuma la coda di ragionamento e lancia `claude -p` (autenticato via il nuovo
+  campo secret **`claude_code_oauth_token`**, da `claude setup-token`) contro
+  l'MCP interno. Si attiva solo con `chat_via_subscription: true` + token.
+- **Kill-switch/audit** in-memory sul percorso MCP.
+- Nessuna esposizione pubblica, nessun OAuth: tutto su loopback. Il gateway
+  esterno non è più necessario per questo percorso (dismissione separata).
+
 ## [0.99.2] — Fix modifica automazioni via proposta (2026-07-26)
 
 - **Approvare una proposta di *modifica* automazione ora sovrascrive davvero
