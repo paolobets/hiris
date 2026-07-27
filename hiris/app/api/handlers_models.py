@@ -7,6 +7,8 @@ import re
 import aiohttp
 from aiohttp import web
 
+from ..env_util import env_bool
+
 logger = logging.getLogger(__name__)
 
 # SP-2 Task 4: models-config store (chain_order + brain_model), see §8 code map.
@@ -115,7 +117,7 @@ def _config_raw_toggle(provider_id: str) -> bool:
     env_var = _TOGGLE_ENV_VARS.get(provider_id)
     if not env_var:
         return False
-    return os.environ.get(env_var, "").strip().lower() in ("1", "true", "yes", "on")
+    return env_bool(env_var)
 
 
 def _config_has_credential(request: web.Request, provider_id: str) -> bool:
@@ -181,9 +183,7 @@ def _hide_free_models_enabled() -> bool:
     free :free models would otherwise tempt usage but their daily quota /
     upstream rate-limits make them unsuitable for the user's workflow.
     """
-    return os.environ.get("HIRIS_HIDE_FREE_MODELS", "").strip().lower() in (
-        "1", "true", "yes", "on",
-    )
+    return env_bool("HIRIS_HIDE_FREE_MODELS")
 
 # Recent Claude models (Anthropic doesn't expose a public list-models endpoint)
 _CLAUDE_MODELS = [

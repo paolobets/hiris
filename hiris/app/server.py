@@ -45,6 +45,7 @@ from .agent_engine import AgentEngine
 from .task_engine import TaskEngine
 from .version import read_version
 from .proxy.ha_client import HAClient
+from .env_util import env_bool
 from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
 from .proxy.semantic_context_map import SemanticContextMap
@@ -800,8 +801,8 @@ def should_start_agent_worker() -> bool:
     l'abbonamento è attivo (provider_subscription, o il legacy
     chat_via_subscription) E un token OAuth è presente."""
     sub_on = (
-        os.environ.get("PROVIDER_SUBSCRIPTION", "").strip().lower() in ("1", "true", "yes", "on")
-        or os.environ.get("CHAT_VIA_SUBSCRIPTION", "").strip().lower() == "true"
+        env_bool("PROVIDER_SUBSCRIPTION")
+        or env_bool("CHAT_VIA_SUBSCRIPTION")
     )
     return sub_on and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
 
@@ -984,12 +985,12 @@ async def _on_startup(app: web.Application) -> None:
 
     from .model_activation import derive_active_providers
     _prov_cfg = {
-        "provider_subscription": os.environ.get("PROVIDER_SUBSCRIPTION", "") in ("1", "true", "yes", "on"),
-        "provider_claude": os.environ.get("PROVIDER_CLAUDE", "") in ("1", "true", "yes", "on"),
-        "provider_openai": os.environ.get("PROVIDER_OPENAI", "") in ("1", "true", "yes", "on"),
-        "provider_openrouter": os.environ.get("PROVIDER_OPENROUTER", "") in ("1", "true", "yes", "on"),
-        "provider_ollama": os.environ.get("PROVIDER_OLLAMA", "") in ("1", "true", "yes", "on"),
-        "chat_via_subscription": os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on"),
+        "provider_subscription": env_bool("PROVIDER_SUBSCRIPTION"),
+        "provider_claude": env_bool("PROVIDER_CLAUDE"),
+        "provider_openai": env_bool("PROVIDER_OPENAI"),
+        "provider_openrouter": env_bool("PROVIDER_OPENROUTER"),
+        "provider_ollama": env_bool("PROVIDER_OLLAMA"),
+        "chat_via_subscription": env_bool("CHAT_VIA_SUBSCRIPTION"),
     }
     _prov_creds = {
         "subscription": bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()),
@@ -1730,7 +1731,7 @@ async def _on_startup(app: web.Application) -> None:
         except Exception:
             logger.exception("coverage-review failed")
 
-        if os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on") or _sub_first_class:
+        if env_bool("BRIDGE_ENABLED") or _sub_first_class:
             wake = {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
                     "evidence": {}, "ts": _time.time()}
             ctx = {"snapshot": {k: (_san(v) if isinstance(v, str) else v) for k, v in (snapshot or {}).items()}}
@@ -1757,9 +1758,9 @@ async def _on_startup(app: web.Application) -> None:
     # lo stesso _run_decision (e quindi lo stesso cap del router LLM) delle
     # situazioni sopra — nessun path metrico/actuation nuovo.
     async def _reasoning_sweep() -> None:
-        if os.environ.get("BRIDGE_ENABLED", "0") not in ("1", "true", "yes", "on") and not _sub_first_class:
+        if not env_bool("BRIDGE_ENABLED") and not _sub_first_class:
             return
-        fallback = os.environ.get("BRIDGE_FALLBACK", "1") in ("1", "true", "yes", "on")
+        fallback = env_bool("BRIDGE_FALLBACK", default=True)
         for job in reasoning_queue.sweep_expired(_time.time()):
             if job.get("kind") != "holistic":
                 # Non-holistic jobs (e.g. kind="chat") must never be routed
@@ -1805,11 +1806,11 @@ async def _on_startup(app: web.Application) -> None:
     # (_chat_subscription_active, still a strict AND) blocks chat while the
     # sweep that's supposed to drain the queue never runs.
     _bridge_enabled = (
-        os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")
+        env_bool("BRIDGE_ENABLED")
         or _sub_first_class  # SP-2: abbonamento attivo implica il bridge (sweep coda)
     )
     _chat_via_subscription_cfg = (
-        os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")
+        env_bool("CHAT_VIA_SUBSCRIPTION")
         or _sub_first_class
     )
     app["chat_via_subscription"] = _chat_subscription_active(_chat_via_subscription_cfg, _bridge_enabled)

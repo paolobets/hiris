@@ -393,12 +393,16 @@ def test_chat_via_subscription_env_var_read_same_convention_as_bridge_enabled():
     """CHAT_VIA_SUBSCRIPTION must be parsed with the exact same truthy-string
     convention used everywhere else in this module for boolean env vars
     (BRIDGE_ENABLED, BRIDGE_FALLBACK, SENTINEL_ALLOW_GREEN_AUTO, ...) --
-    '1'/'true'/'yes'/'on' -- so ops behavior is consistent across knobs."""
+    '1'/'true'/'yes'/'on' -- so ops behavior is consistent across knobs.
+
+    SP-2 tech-debt: the idiom is now unified behind env_util.env_bool (still
+    the same '1'/'true'/'yes'/'on' truthy set), so this pins the call to the
+    shared helper instead of a hand-rolled `.strip().lower() in (...)`."""
     import inspect
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    assert 'os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")' in src
+    assert 'env_bool("CHAT_VIA_SUBSCRIPTION")' in src
 
 
 @pytest.mark.parametrize("cfg,bridge,expected", [
