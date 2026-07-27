@@ -8,6 +8,21 @@ configuration:
   openrouter_api_key:
     name: "Chiave API OpenRouter"
     description: "Chiave API per OpenRouter — un proxy unificato che da' accesso a 200+ modelli (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ecc.) con un'unica chiave. Ottienila su openrouter.ai. Sono disponibili modelli gratuiti (suffisso ':free' es. 'meta-llama/llama-3.3-70b-instruct:free'). Per usarli, imposta nel campo modello di un agente il formato 'openrouter:provider/nome-modello'. PRIVACY: i messaggi passano da OpenRouter (USA) e poi dal provider del modello scelto — vedi openrouter.ai/privacy."
+  provider_subscription:
+    name: "Attiva provider: Abbonamento (Claude Max)"
+    description: "Attiva l'abbonamento Claude (Claude Max, tramite il runner in-addon) come provider AI. Richiede il token OAuth (claude_code_oauth_token). Un provider è usato solo se attivo qui E con la sua credenziale. NOTA: se lasci tutti i toggle provider_* disattivi su un install esistente, HIRIS continua a derivare i provider attivi dalle credenziali già presenti (retro-compatibile); appena attivi UN toggle qualsiasi, sono attivi solo i toggle che accendi, quindi riattiva ogni provider che vuoi mantenere."
+  provider_claude:
+    name: "Attiva provider: API Claude"
+    description: "Attiva l'API Claude come provider AI (richiede claude_api_key). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
+  provider_openai:
+    name: "Attiva provider: API OpenAI"
+    description: "Attiva l'API OpenAI come provider AI (richiede openai_api_key). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
+  provider_openrouter:
+    name: "Attiva provider: OpenRouter"
+    description: "Attiva OpenRouter come provider AI (richiede openrouter_api_key). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
+  provider_ollama:
+    name: "Attiva provider: Ollama (locale)"
+    description: "Attiva il modello Ollama locale come provider AI (richiede local_model url + model). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
   hide_free_models:
     name: "Nascondi modelli :free di OpenRouter"
     description: "Se attivo, i modelli ':free' di OpenRouter non compaiono nel menu modelli del Designer agente. Utile se hai acquistato credito OpenRouter e preferisci evitare la quota giornaliera bassa e i frequenti rate-limit upstream del tier gratuito."

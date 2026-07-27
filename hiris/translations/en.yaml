@@ -8,6 +8,21 @@ configuration:
   openrouter_api_key:
     name: "OpenRouter API Key"
     description: "API key for OpenRouter — a unified proxy giving access to 200+ models (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ...) with one key. Get it at openrouter.ai. Free models are available (':free' suffix, e.g. 'meta-llama/llama-3.3-70b-instruct:free'). To use, set the agent model field to 'openrouter:provider/model-name'. PRIVACY: messages flow through OpenRouter (US) and then to the chosen model's provider — see openrouter.ai/privacy."
+  provider_subscription:
+    name: "Enable provider: Subscription (Claude Max)"
+    description: "Activate the Claude subscription (Claude Max, via the in-addon runner) as an AI provider. Requires the OAuth token (claude_code_oauth_token). A provider is used only if enabled here AND its credential is set. NOTE: if you leave all provider_* toggles off on an existing install, HIRIS keeps deriving the active providers from the credentials already present (backward-compatible); once you enable ANY provider toggle, only the toggles you turn on are active, so re-enable every provider you want to keep."
+  provider_claude:
+    name: "Enable provider: Claude API"
+    description: "Activate Claude API as an AI provider (requires claude_api_key). A provider is used only if enabled here AND its credential is set. See the note on provider_subscription about enabling toggles on an existing install."
+  provider_openai:
+    name: "Enable provider: OpenAI API"
+    description: "Activate OpenAI API as an AI provider (requires openai_api_key). A provider is used only if enabled here AND its credential is set. See the note on provider_subscription about enabling toggles on an existing install."
+  provider_openrouter:
+    name: "Enable provider: OpenRouter"
+    description: "Activate OpenRouter as an AI provider (requires openrouter_api_key). A provider is used only if enabled here AND its credential is set. See the note on provider_subscription about enabling toggles on an existing install."
+  provider_ollama:
+    name: "Enable provider: Ollama (local)"
+    description: "Activate the local Ollama model as an AI provider (requires local_model url + model). A provider is used only if enabled here AND its credential is set. See the note on provider_subscription about enabling toggles on an existing install."
   hide_free_models:
     name: "Hide :free OpenRouter models"
     description: "When enabled, OpenRouter ':free' models are hidden from the model dropdown in the Agent Designer. Useful if you have purchased OpenRouter credit and prefer to avoid the low daily quota and frequent upstream rate-limits of the free tier."
