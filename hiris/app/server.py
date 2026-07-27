@@ -770,8 +770,17 @@ class _EmbeddedMCPServer(uvicorn.Server):
 
 
 def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
-    """Costruisce (client, uvicorn.Config) per il server MCP interno su loopback.
-    Isolato dall'avvio dell'app cosi' e' testabile senza bootare tutto."""
+    """Costruisce (client, uvicorn.Config, guard) per il server MCP interno su
+    loopback. Isolato dall'avvio dell'app cosi' e' testabile senza bootare
+    tutto.
+
+    I-2 partial (Plan 2B final review, fast-follow): also returns `guard` so
+    callers can reach it -- previously `McpGuard()` was built here and handed
+    straight to `build_mcp`, with no reference kept anywhere else, so nothing
+    outside this function could ever inspect its audit trail or flip its
+    kill-switch. `_on_startup` below stores it on `app["mcp_guard"]`. No HTTP
+    endpoint/UI is added here (that remains a later gate) -- this only makes
+    the guard reachable in-process."""
     from .mcp.guard import McpGuard
     from .mcp.local_client import LocalExecuteClient
     from .mcp.server import build_mcp, make_asgi_app
@@ -781,7 +790,7 @@ def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
     guard = McpGuard()
     asgi = make_asgi_app(build_mcp(client, guard))
     config = uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="warning")
-    return client, config
+    return client, config, guard
 
 
 def should_start_agent_worker() -> bool:
@@ -1860,10 +1869,14 @@ async def _on_startup(app: web.Application) -> None:
     # 127.0.0.1 only -- never reachable off-box. Runs as a background asyncio
     # task on the SAME event loop as the rest of the app; cancelled + the
     # client's aiohttp session closed in _on_cleanup below.
-    _mcp_client, _mcp_config = build_internal_mcp_server()
+    _mcp_client, _mcp_config, _mcp_guard = build_internal_mcp_server()
     await _mcp_client.start()
     _mcp_server = _EmbeddedMCPServer(_mcp_config)
     app["internal_mcp_client"] = _mcp_client
+    # I-2 partial (Plan 2B final review, fast-follow): store the guard on the
+    # app so it's reachable (e.g. by a future admin endpoint or diagnostics)
+    # instead of being trapped inside build_internal_mcp_server's closure.
+    app["mcp_guard"] = _mcp_guard
     # Through _spawn() (not a bare asyncio.create_task) per review C/#15's
     # convention for every fire-and-forget task in this module -- _spawn's
     # strong reference is redundant here (app already holds one via
@@ -1902,16 +1915,27 @@ async def _on_startup(app: web.Application) -> None:
 
 async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
+    # M-2 (Plan 2B final review, fast-follow): stop the reasoning-queue
+    # CONSUMER (agent_worker_task) before the internal_mcp_task producer, and
+    # bound the wait. A claimed job can be sitting inside run_loop's
+    # run_in_executor offload of the blocking `run_once` (subprocess.run
+    # timeout=300 + httpx.Client timeout=330) -- an unbounded
+    # `await aw` after cancel() would then stall addon shutdown for up to
+    # ~5 minutes, since cancelling the outer task does not interrupt a
+    # thread already blocked inside the executor. `asyncio.wait_for` caps
+    # that wait; on timeout we give up on a clean join and move on rather
+    # than hang shutdown, and TimeoutError is suppressed same as
+    # CancelledError since either outcome means "stop waiting, proceed".
+    aw = app.get("agent_worker_task")
+    if aw is not None:
+        aw.cancel()
+        with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
+            await asyncio.wait_for(aw, timeout=5)
     task = app.get("internal_mcp_task")
     if task is not None:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-    aw = app.get("agent_worker_task")
-    if aw is not None:
-        aw.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await aw
     client = app.get("internal_mcp_client")
     if client is not None:
         await client.stop()

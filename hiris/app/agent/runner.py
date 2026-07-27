@@ -89,9 +89,24 @@ def parse_decision(text: str) -> dict:
     return {"verdict": "falso_positivo", "severity": "info",
             "message": (text or "").strip()[:400] or "(vuoto)", "action": None}
 
+
+# M-1 (Plan 2B final review, fast-follow): CLAUDE_API_KEY is HIRIS's own
+# METERED Anthropic key (see run.sh) -- it must never reach this subprocess.
+# The subscription runner authenticates `claude` via CLAUDE_CODE_OAUTH_TOKEN
+# ONLY; forwarding the metered key here would let a subscription-mode `claude`
+# silently fall back to spend-incurring API billing instead of the
+# subscription, defeating the entire point of Plan 2B. ANTHROPIC_API_KEY is
+# excluded for the same reason (a generic metered-API credential, if ever
+# present in this env). Everything else prefixed ANTHROPIC_/CLAUDE_ (e.g.
+# CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_CONFIG_DIR) still passes through.
+_SUBPROCESS_ENV_DENYLIST = {"CLAUDE_API_KEY", "ANTHROPIC_API_KEY"}
+
+
 def _safe_subprocess_env() -> dict:
     env = {"HOME": os.environ.get("HOME", ""), "PATH": os.environ.get("PATH", "")}
     for k, v in os.environ.items():
+        if k in _SUBPROCESS_ENV_DENYLIST:
+            continue
         if k.startswith("ANTHROPIC_") or k.startswith("CLAUDE_"):
             env[k] = v
     return env
@@ -189,7 +204,7 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
     executor (`run_in_executor`) e MAI chiamati direttamente nella coroutine,
     altrimenti un job claimato blocca l'intero addon fino a ~5 minuti
     (subprocess timeout=300, httpx.Client timeout=330)."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     with httpx.Client(timeout=330) as client:
         while True:
             try:

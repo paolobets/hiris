@@ -58,6 +58,25 @@ def test_build_headers_only_internal_token_no_cf_access(monkeypatch):
     assert "Authorization" not in headers
 
 
+def test_safe_subprocess_env_excludes_metered_api_keys(monkeypatch):
+    # M-1 (Plan 2B final review, fast-follow): CLAUDE_API_KEY is HIRIS's own
+    # METERED Anthropic key (see run.sh); the subscription runner must
+    # authenticate `claude` via CLAUDE_CODE_OAUTH_TOKEN only. Forwarding the
+    # metered key here would risk silent spend on the wrong credential. Both
+    # denylisted names must be dropped even when present in os.environ,
+    # while an unrelated CLAUDE_*/ANTHROPIC_* var (e.g. the OAuth token)
+    # still passes through.
+    monkeypatch.setenv("CLAUDE_API_KEY", "sk-ant-metered-secret")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-metered-secret-2")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-token")
+
+    env = runner._safe_subprocess_env()
+
+    assert "CLAUDE_API_KEY" not in env
+    assert "ANTHROPIC_API_KEY" not in env
+    assert env.get("CLAUDE_CODE_OAUTH_TOKEN") == "oauth-token"
+
+
 def test_reason_chat_returns_fallback_reply_on_nonzero_returncode(monkeypatch):
     job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
@@ -123,26 +142,57 @@ async def test_run_loop_does_not_block_event_loop(monkeypatch):
     # must be offloaded to a thread executor so a concurrent coroutine on the
     # same event loop keeps making progress while it runs. Regression test for
     # the event-loop-blocking defect found in Task 4 review.
+    #
+    # I-1 fast-follow (Plan 2B final review): the original version of this
+    # test (`await ticker()` unconditionally, then assert `ticks >= 4`) is
+    # tautological -- it passes even if run_loop blocks the loop, because the
+    # ticker's sleeps just fire LATE once run_once finally releases the loop;
+    # nothing bounds the wall-clock. Rewritten to bound it: the ticker's 5 x
+    # 0.02s iterations are wrapped in `asyncio.wait_for(..., timeout=0.25)`.
+    # With the run_in_executor offload, run_once's 0.3s sleep runs on a
+    # separate thread, so the ticker finishes in ~0.1s and wait_for does NOT
+    # raise. If run_loop were reverted to calling the blocking run_once
+    # inline, the ticker would be stalled behind the 0.3s sleep and wait_for
+    # WOULD raise TimeoutError -- making this test an actual regression guard.
     def slow_once(client, base_url, headers, mode):
         time.sleep(0.3)
         return "idle"
     monkeypatch.setattr(runner, "run_once", slow_once)
+
+    # run_loop constructs a real httpx.Client(timeout=330) synchronously
+    # before its first `await` -- in this environment that constructor alone
+    # takes ~2.3s (Windows system cert-store loading), which would blow any
+    # tight budget regardless of the run_once-offload fix under test. Stub it
+    # out with a near-instant fake context manager so the test isolates
+    # exactly the thing it's meant to check.
+    class _FakeHttpxClient:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
 
     ticks = 0
 
     async def ticker():
         nonlocal ticks
         for _ in range(5):
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.02)
             ticks += 1
 
     loop_task = asyncio.create_task(
         runner.run_loop("http://127.0.0.1:8099", lambda: {}, "live", 0))
-    await ticker()
-    loop_task.cancel()
     try:
-        await loop_task
-    except asyncio.CancelledError:
-        pass
+        await asyncio.wait_for(ticker(), timeout=0.25)
+    except asyncio.TimeoutError:
+        pytest.fail(
+            "ticker did not complete within budget -- run_loop appears to be "
+            "blocking the event loop instead of offloading run_once"
+        )
+    finally:
+        loop_task.cancel()
+        try:
+            await loop_task
+        except asyncio.CancelledError:
+            pass
 
-    assert ticks >= 4  # ticker kept running during the slow (offloaded) run_once
+    assert ticks == 5  # all ticker iterations completed within the tight budget
