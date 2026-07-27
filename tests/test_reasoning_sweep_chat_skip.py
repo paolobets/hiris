@@ -48,6 +48,10 @@ def _load_real_reasoning_sweep(reasoning_queue, run_decision):
         "SITUATION_HOLISTIC_SYSTEM": SITUATION_HOLISTIC_SYSTEM,
         "reasoning_queue": reasoning_queue,
         "_run_decision": run_decision,
+        # SP-2 tech-debt: _reasoning_sweep now reads BRIDGE_ENABLED via the
+        # shared env_util.env_bool helper (module-level import in server.py);
+        # the extracted-source exec namespace must provide it too.
+        "env_bool": server.env_bool,
     }
     exec(compile(func_src, "<_reasoning_sweep extracted from server.py>", "exec"), namespace)
     return namespace["_reasoning_sweep"]

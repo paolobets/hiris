@@ -97,5 +97,6 @@ def test_coverage_review_runs_before_bridge_enabled_branch():
 
     src = inspect.getsource(server._on_startup)
     review_pos = src.index("coverage-review")
-    bridge_pos = src.index('BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")')
+    # SP-2 tech-debt: the BRIDGE_ENABLED gate now reads via env_util.env_bool.
+    bridge_pos = src.index('env_bool("BRIDGE_ENABLED")')
     assert review_pos < bridge_pos
