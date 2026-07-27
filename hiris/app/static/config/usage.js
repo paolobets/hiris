@@ -21,16 +21,16 @@ function updateAgentUsageToggleBtn(agent) {
   var btn = document.getElementById('u-ag-toggle-btn');
   if (!agent) return;
   if (agent.enabled) {
-    btn.textContent = '⊘ Blocca agente';
+    btn.textContent = '⊘ Blocca Chatbot';
     btn.className = 'btn-usage-block';
   } else {
-    btn.textContent = '✓ Riabilita agente';
+    btn.textContent = '✓ Riabilita Chatbot';
     btn.className = 'btn-usage-enable';
   }
 }
 
 document.getElementById('u-ag-reset-btn').onclick = async function() {
-  if (!currentId || !confirm('Azzerare i contatori di consumo per questo agente?')) return;
+  if (!currentId || !confirm('Azzerare i contatori di consumo per questo Chatbot?')) return;
   try {
     await fetch('api/agents/' + currentId + '/usage/reset', { method: 'POST', headers: {'X-Requested-With': 'fetch'} });
     await loadAgentUsage(currentId);
@@ -43,8 +43,8 @@ document.getElementById('u-ag-toggle-btn').onclick = async function() {
   if (!agent) return;
   var newEnabled = !agent.enabled;
   var confirmMsg = newEnabled
-    ? 'Riabilitare questo agente?'
-    : 'Bloccare questo agente? Non verrà più eseguito automaticamente.';
+    ? 'Riabilitare questo Chatbot?'
+    : 'Bloccare questo Chatbot? Non verrà più eseguito automaticamente.';
   if (!confirm(confirmMsg)) return;
   try {
     var r = await fetch('api/agents/' + currentId, {

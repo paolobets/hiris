@@ -16,7 +16,7 @@
     var outlet = document.getElementById('route-outlet');
     outlet.innerHTML =
       '<div class="page-title">Consumi globali</div>' +
-      '<p class="page-subtitle">Token, costi e budget per agente. Stat aggregate dall\'avvio o dall\'ultimo reset.</p>' +
+      '<p class="page-subtitle">Token, costi e budget per Chatbot. Stat aggregate dall\'avvio o dall\'ultimo reset.</p>' +
       '<div class="stat-grid" id="usage-global-grid">' +
         '<div class="stat-tile"><div class="st-label">Richieste</div><div class="st-value">—</div></div>' +
         '<div class="stat-tile"><div class="st-label">Token IN</div><div class="st-value">—</div></div>' +
@@ -27,7 +27,7 @@
         '<button class="btn btn-danger" id="usage-reset-global">↺ Azzera contatori globali</button>' +
       '</div>' +
       '<div class="dash-list" style="margin-top:24px">' +
-        '<h3>Per agente <span class="right" id="usage-per-agent-count">—</span></h3>' +
+        '<h3>Per Chatbot <span class="right" id="usage-per-agent-count">—</span></h3>' +
         '<div id="usage-per-agent-body"><div style="padding:24px;color:var(--text-3)">Caricamento…</div></div>' +
       '</div>';
 
@@ -65,7 +65,7 @@
       if (countEl) countEl.textContent = list.length + ' totali';
       if (!body) return;
       if (!list.length) {
-        body.innerHTML = '<div style="padding:24px;color:var(--text-3)">Nessun agente configurato.</div>';
+        body.innerHTML = '<div style="padding:24px;color:var(--text-3)">Nessun Chatbot configurato.</div>';
         return;
       }
       var sorted = list.slice().sort(function(a, b) {
@@ -104,7 +104,7 @@
       var body = document.getElementById('usage-per-agent-body');
       var countEl = document.getElementById('usage-per-agent-count');
       if (countEl) countEl.textContent = '—';
-      if (body) body.innerHTML = '<div class="proposals-error">Errore caricamento agenti.</div>';
+      if (body) body.innerHTML = '<div class="proposals-error">Errore caricamento Chatbot.</div>';
     });
 
     /* Reset button */

@@ -78,13 +78,13 @@ async function loadModels() {
         opt.value = m;
         var isFree = /:free$/.test(m);
         if (m === 'auto') {
-          opt.textContent = 'auto — segue tipo agente';
+          opt.textContent = 'auto — segue tipo Chatbot';
         } else if (isFree) {
           /* Visual hint that the model carries OpenRouter's free-tier
              constraints (low daily quota, frequent upstream rate-limits).
              Tooltip explains the implications for scheduled agents. */
           opt.textContent = m + '  • free';
-          opt.title = 'Modello gratuito: quota giornaliera bassa e rate-limit upstream frequenti. Adatto a chat occasionale, sconsigliato per agenti schedulati.';
+          opt.title = 'Modello gratuito: quota giornaliera bassa e rate-limit upstream frequenti. Adatto a chat occasionale, sconsigliato per Chatbot schedulati.';
         } else {
           opt.textContent = m;
         }
@@ -103,7 +103,7 @@ async function loadModels() {
     if (hint && providers.length > 0) {
       hint.textContent = 'Seleziona il modello AI. Sono disponibili '
         + providers.map(function(p){return p.label;}).join(', ')
-        + '. «auto» sceglie in base al tipo agente.';
+        + '. «auto» sceglie in base al tipo Chatbot.';
     }
   } catch(e) {
     console.warn('loadModels failed:', e);

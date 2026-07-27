@@ -329,7 +329,7 @@ window.HirisSentinelRoute = (function () {
 
     var lensCard = el('section', 'section-card');
     var lensBody = el('div', 'sc-body');
-    lensBody.appendChild(el('div', 'page-title', 'Agentbot'));
+    lensBody.appendChild(el('div', 'page-title', 'Regole Agentbot'));
     lensBody.appendChild(el('p', 'sc-desc',
       'Regole personalizzate: trigger (evento o pianificazione), ragionamento AI opzionale, azione.'));
 
