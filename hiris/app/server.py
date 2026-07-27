@@ -10,6 +10,7 @@ import shutil
 import time
 from datetime import date
 import aiohttp
+import uvicorn
 from aiohttp import web
 from apscheduler.triggers.cron import CronTrigger
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
@@ -750,10 +751,27 @@ async def _run_internal_mcp(server) -> None:
         logger.exception("Internal MCP server terminato con errore")
 
 
+class _EmbeddedMCPServer(uvicorn.Server):
+    """uvicorn.Server subclass for the embedded internal MCP server.
+
+    install_signal_handlers() is a no-op here: the internal MCP server runs
+    as a background asyncio task on the SAME event loop/process as the
+    aiohttp addon (see _on_startup/_on_cleanup below). uvicorn.Server.serve()
+    normally calls install_signal_handlers() and replaces the process-wide
+    SIGTERM/SIGINT handlers for the whole lifetime of the process -- that
+    would hijack the addon's own shutdown signals. The aiohttp app + s6 own
+    process shutdown; this task's cleanup is already driven by _on_cleanup
+    cancelling internal_mcp_task, so the embedded uvicorn must never touch
+    process signals.
+    """
+
+    def install_signal_handlers(self) -> None:
+        return
+
+
 def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
     """Costruisce (client, uvicorn.Config) per il server MCP interno su loopback.
     Isolato dall'avvio dell'app cosi' e' testabile senza bootare tutto."""
-    import uvicorn
     from .mcp.local_client import LocalExecuteClient
     from .mcp.server import build_mcp, make_asgi_app
     port = int(os.environ.get("INTERNAL_MCP_PORT", "8199"))
@@ -1830,10 +1848,9 @@ async def _on_startup(app: web.Application) -> None:
     # 127.0.0.1 only -- never reachable off-box. Runs as a background asyncio
     # task on the SAME event loop as the rest of the app; cancelled + the
     # client's aiohttp session closed in _on_cleanup below.
-    import uvicorn as _uvicorn
     _mcp_client, _mcp_config = build_internal_mcp_server()
     await _mcp_client.start()
-    _mcp_server = _uvicorn.Server(_mcp_config)
+    _mcp_server = _EmbeddedMCPServer(_mcp_config)
     app["internal_mcp_client"] = _mcp_client
     # Through _spawn() (not a bare asyncio.create_task) per review C/#15's
     # convention for every fire-and-forget task in this module -- _spawn's

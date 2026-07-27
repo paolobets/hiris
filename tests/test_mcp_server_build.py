@@ -1,4 +1,5 @@
 import pytest
+from fastmcp import Client
 from hiris.app.mcp.tiers import TOOLS, get_tool
 from hiris.app.mcp.server import build_mcp
 
@@ -25,9 +26,9 @@ async def test_build_mcp_registers_all_tools_and_forwards():
     tools = await mcp.get_tools()
     assert set(tools.keys()) >= {t.name for t in TOOLS}
 
-    # Forwarding: invoke one tool through the real MCP call path (2.14.7's
-    # public-ish call entrypoint is _call_tool_mcp; there is no stable public
-    # call_tool in this version) and assert the fake client received the
-    # translated hiris_tool name and inputs.
-    await mcp._call_tool_mcp("call_service", {"inputs": {"x": 1}})
+    # Forwarding: invoke one tool through the public in-memory FastMCP client
+    # and assert the fake client received the translated hiris_tool name and
+    # inputs.
+    async with Client(mcp) as c:
+        await c.call_tool("call_service", {"inputs": {"x": 1}})
     assert ("call_ha_service", {"x": 1}) in calls

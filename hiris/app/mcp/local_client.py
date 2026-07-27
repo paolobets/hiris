@@ -25,6 +25,8 @@ class LocalExecuteClient:
             self._session = None
 
     async def execute(self, tool: str, inputs: dict) -> dict:
+        if self._session is None:
+            await self.start()
         headers = {"X-HIRIS-Internal-Token": self._token} if self._token else {}
         body = {"tool": tool, "input": inputs, "origin": "hiris-chat"}
         try:

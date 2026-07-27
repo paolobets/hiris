@@ -1,3 +1,4 @@
+import logging
 import pytest
 from hiris.app.server import build_internal_mcp_server
 
@@ -20,7 +21,9 @@ async def test_run_internal_mcp_contains_systemexit(caplog):
         async def serve(self):
             raise SystemExit(3)  # uvicorn does this on bind failure
 
+    caplog.set_level(logging.ERROR)
     # must NOT raise -- a bind failure on the internal MCP port must be
     # contained to this optional feature, never propagate into the shared
     # asyncio loop and kill the whole addon.
     await _run_internal_mcp(_BoomServer())
+    assert "Internal MCP server non avviato" in caplog.text
