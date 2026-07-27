@@ -37,6 +37,8 @@ export BRIDGE_DEADLINE_MIN=$(bashio::config 'bridge_deadline_min' '5')
 export BRIDGE_FALLBACK=$(bashio::config 'bridge_fallback' 'true')
 export CHAT_DAILY_CAP=$(bashio::config 'chat_daily_cap' '50')
 export CHAT_VIA_SUBSCRIPTION=$(bashio::config 'chat_via_subscription' 'false')
+export CLAUDE_CODE_OAUTH_TOKEN=$(bashio::config 'claude_code_oauth_token' '')
+export CLAUDE_CONFIG_DIR=/data/claude
 
 export LOCAL_MODEL_URL=$(bashio::config 'local_model.url' '')
 export LOCAL_MODEL_NAME=$(bashio::config 'local_model.model' '')
