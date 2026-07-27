@@ -1,5 +1,23 @@
 # HIRIS — Changelog
 
+## [0.99.5] — Rinomina AI: Chatbot / Agentbot / Brain (SP-1a) (2026-07-27)
+
+Fondazione dei nomi (SP-1 della north-star). Rinominato **solo il testo
+visibile** delle entità AI, senza toccare codice interno, API, route o DB:
+
+- **Chatbot** = assistente conversazionale, a interrogazione (chiedi → risponde).
+- **Agentbot** = entità autonoma/proattiva, agisce o segnala da sola su trigger.
+- **Brain** = il core che ragiona, traccia le abitudini e propone nuovi Agentbot,
+  automazioni HA ed evoluzioni.
+
+Aggiornati: navigazione/breadcrumb, editor e lista Chatbot, viste proattive,
+pagina chat + card Lovelace, dropdown modelli, pagine consumi/task, e
+`PRODUCT.md`. Identificatori, endpoint `api/agents`, route `#/agents`/`#/sentinel`
+e la colonna DB restano invariati: **nessuna rottura**, i dati esistenti non
+sono toccati. Il wizard di onboarding usa il termine neutro "assistente" perché
+copre più tipi.
+
+
 ## [0.99.4] — Diagnostica errori chat abbonamento (2026-07-27)
 
 - Il runner chat via abbonamento ora, se `claude -p` fallisce, logga stdout+stderr
