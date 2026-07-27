@@ -1406,8 +1406,7 @@ async def _on_startup(app: web.Application) -> None:
                 decision, wake,
                 tiers=tiers, entity_tiers=entity_tiers,
                 notify=_notify, act=_act, propose=_propose,
-                allow_green_auto=os.environ.get("SENTINEL_ALLOW_GREEN_AUTO", "0")
-                in ("1", "true", "yes", "on"))
+                allow_green_auto=env_bool("SENTINEL_ALLOW_GREEN_AUTO"))
         except Exception:
             logger.exception("sentinel on_wake failed")
             outcome = "error"
@@ -1501,8 +1500,7 @@ async def _on_startup(app: web.Application) -> None:
             decision, wake,
             tiers=_ep.get("tiers") or {}, entity_tiers=_ep.get("entity_tiers") or {},
             notify=_notify, act=_act, propose=_propose,
-            allow_green_auto=os.environ.get("SENTINEL_ALLOW_GREEN_AUTO", "0")
-            in ("1", "true", "yes", "on"))
+            allow_green_auto=env_bool("SENTINEL_ALLOW_GREEN_AUTO"))
         await _record_situation_event(wake.signal_kind, wake.entity_id, decision, outcome)
 
     async def _on_situation(wake, suggested):
@@ -1528,8 +1526,7 @@ async def _on_startup(app: web.Application) -> None:
             store=sentinel_store, run_decision=_run_decision, execute=execute,
             notify=_notify, act=_act, propose=_propose,
             get_execute_policy=lambda: app.get("execute_policy") or {},
-            allow_green_auto=os.environ.get("SENTINEL_ALLOW_GREEN_AUTO", "0")
-            in ("1", "true", "yes", "on"),
+            allow_green_auto=env_bool("SENTINEL_ALLOW_GREEN_AUTO"),
             record_event=sentinel_store.record_event,
             sentinel_system=SENTINEL_SYSTEM,
             cooldown_sec=cooldown_sec if cooldown_sec is not None
@@ -1584,8 +1581,7 @@ async def _on_startup(app: web.Application) -> None:
             d, wake,
             tiers=_ep.get("tiers") or {}, entity_tiers=_ep.get("entity_tiers") or {},
             notify=_notify, act=_act, propose=_propose,
-            allow_green_auto=os.environ.get("SENTINEL_ALLOW_GREEN_AUTO", "0")
-            in ("1", "true", "yes", "on"))
+            allow_green_auto=env_bool("SENTINEL_ALLOW_GREEN_AUTO"))
         sentinel_store.record_event({
             "ts": _time.time(), "kind": wake.signal_kind, "entity_id": wake.entity_id,
             "verdict": d.verdict, "severity": d.severity,
