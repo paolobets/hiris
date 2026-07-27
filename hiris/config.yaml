@@ -38,6 +38,15 @@ options:
   claude_api_key: ""
   openai_api_key: ""
   openrouter_api_key: ""
+  # ── Attivazione provider (SP-2) ───────────────────────────────────────────
+  # Un provider è usato solo se attivo E con credenziale. Se lasci tutti a
+  # false su un install esistente, HIRIS deriva gli attivi dalle credenziali
+  # già presenti (retro-compat).
+  provider_subscription: false
+  provider_claude: false
+  provider_openai: false
+  provider_openrouter: false
+  provider_ollama: false
   hide_free_models: false
   llm_strategy: "balanced"
   automatic_policy: ""
@@ -120,6 +129,11 @@ schema:
   claude_api_key: password
   openai_api_key: password
   openrouter_api_key: password
+  provider_subscription: bool?
+  provider_claude: bool?
+  provider_openai: bool?
+  provider_openrouter: bool?
+  provider_ollama: bool?
   hide_free_models: bool?
   llm_strategy: "list(balanced|cost_first|quality_first)"
   automatic_policy: "str?"

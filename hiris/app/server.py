@@ -973,6 +973,25 @@ async def _on_startup(app: web.Application) -> None:
     automatic_policy = _parse_policy_csv(os.environ.get("AUTOMATIC_POLICY", ""))
     chat_policy = _parse_policy_csv(os.environ.get("CHAT_POLICY", ""))
 
+    from .model_activation import derive_active_providers
+    _prov_cfg = {
+        "provider_subscription": os.environ.get("PROVIDER_SUBSCRIPTION", "") in ("1", "true", "yes", "on"),
+        "provider_claude": os.environ.get("PROVIDER_CLAUDE", "") in ("1", "true", "yes", "on"),
+        "provider_openai": os.environ.get("PROVIDER_OPENAI", "") in ("1", "true", "yes", "on"),
+        "provider_openrouter": os.environ.get("PROVIDER_OPENROUTER", "") in ("1", "true", "yes", "on"),
+        "provider_ollama": os.environ.get("PROVIDER_OLLAMA", "") in ("1", "true", "yes", "on"),
+        "chat_via_subscription": os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on"),
+    }
+    _prov_creds = {
+        "subscription": bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()),
+        "claude": bool(api_key),
+        "openai": bool(openai_api_key),
+        "openrouter": bool(openrouter_api_key),
+        "ollama": bool(local_model_url and local_model_name),
+    }
+    _active = derive_active_providers(_prov_cfg, _prov_creds)
+    app["active_providers"] = _active
+
     # Memory / RAG config
     mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
     mem_model = os.environ.get("MEMORY_EMBEDDING_MODEL", "")
@@ -1767,7 +1786,7 @@ async def _on_startup(app: web.Application) -> None:
     )
 
     claude_runner = None
-    if api_key:
+    if api_key and _active["claude"]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
             dispatcher=dispatcher,
@@ -1778,7 +1797,7 @@ async def _on_startup(app: web.Application) -> None:
     _usage_ext = _usage_ext or ".json"
 
     openai_runner = None
-    if openai_api_key:
+    if openai_api_key and _active["openai"]:
         openai_runner = OpenAICompatRunner(
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
@@ -1787,7 +1806,7 @@ async def _on_startup(app: web.Application) -> None:
         )
 
     ollama_runner = None
-    if local_model_url and local_model_name:
+    if local_model_url and local_model_name and _active["ollama"]:
         ollama_runner = OpenAICompatRunner(
             base_url=local_model_url.rstrip("/") + "/v1",
             api_key="ollama",
@@ -1823,7 +1842,7 @@ async def _on_startup(app: web.Application) -> None:
             )
 
     openrouter_runner = None
-    if openrouter_api_key:
+    if openrouter_api_key and _active["openrouter"]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
             dispatcher=dispatcher,
