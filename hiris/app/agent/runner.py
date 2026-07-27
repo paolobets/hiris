@@ -127,8 +127,18 @@ def _reason_chat(job: dict, mode: str) -> dict:
         proc = subprocess.run(argv, capture_output=True, text=True,
                               timeout=300, env=_safe_subprocess_env())
         if proc.returncode != 0:
-            log.warning("claude rc=%s: %s", proc.returncode, proc.stderr[:300])
-            return {"reply": "[errore runner]"}
+            # claude -p --output-format json mette gli errori (auth 401, quota,
+            # ecc.) su STDOUT come JSON, non su stderr: logga entrambi e prova a
+            # estrarre un dettaglio leggibile per non nascondere la causa.
+            log.warning("claude rc=%s stderr=%r stdout=%r", proc.returncode,
+                        proc.stderr[:300], proc.stdout[:500])
+            detail = ""
+            try:
+                j = json.loads(proc.stdout)
+                detail = j.get("result") or j.get("error") or j.get("subtype") or ""
+            except (ValueError, TypeError):
+                detail = (proc.stdout or proc.stderr or "").strip()
+            return {"reply": f"[errore runner rc={proc.returncode}] {str(detail)[:300]}".strip()}
         try:
             data = json.loads(proc.stdout)
             text = data.get("result") or ""

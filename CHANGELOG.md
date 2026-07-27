@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [0.99.4] — Diagnostica errori chat abbonamento (2026-07-27)
+
+- Il runner chat via abbonamento ora, se `claude -p` fallisce, logga stdout+stderr
+  e restituisce il dettaglio dell'errore (auth/quota/ecc.) invece del muto
+  "[errore runner]" — sia nel log sia nella risposta, per diagnosi.
+
+
 ## [0.99.3] — Chat via abbonamento self-contained (MCP interno + runner in-addon) (2026-07-27)
 
 Passo verso un'app unica: la chat via abbonamento può ora girare **interamente
