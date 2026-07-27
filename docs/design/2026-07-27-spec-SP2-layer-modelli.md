@@ -126,11 +126,16 @@ SP-2 collassa a **una catena auto globale**:
 - **Chatbot:** già ha `model` (default `"auto"`, `agent_engine.py:71`,
   editabile). Invariato concettualmente; la tendina attinge dai modelli dei
   provider attivi.
-- **Agentbot:** oggi il modello è **nascosto** — risolto da `agent_type` →
-  `AUTO_MODEL_MAP` (`claude_runner.py:236`, `backends/openai_compat_runner.py:52`).
-  SP-2 **espone** un campo `model` per Agentbot (default `"auto"`), come per il
-  Chatbot. `AUTO_MODEL_MAP` diventa il **fallback** quando `model="auto"` e la
-  catena non impone un esplicito — non più l'unica via.
+- **Agentbot:** gli Agentbot **sono le "lenses"** — entità già discrete
+  (`watcher/lenses.py`, CRUD `handlers_lenses.py`, form in `sentinel-route.js`,
+  persistenza `sentinel_lenses.json`, **una LLM call indipendente per-istanza**).
+  Vedi survey `.superpowers/sdd/agentbot-substrate.md`. SP-2 **espone un campo
+  `reasoning.model`** (default `"auto"`) **per singolo Agentbot** nel suo editor
+  esistente — il plumbing (`reason(model=...)` → `_llm_reason` →
+  `run_with_actions`) c'è già, manca solo il campo e il threading in
+  `_run_decision`. `AUTO_MODEL_MAP` resta il **fallback** per `"auto"`.
+  (Questo soddisfa "materializzare gli Agentbot": sono già entità; nessun
+  SP-2A separato necessario.)
 - **Brain:** un campo `model` (default `"auto"`) per il core di ragionamento.
 
 `model = "auto"` ⇒ segue la catena globale (§2). `model = <esplicito>` ⇒ usa
