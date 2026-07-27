@@ -1,30 +1,47 @@
-/* HIRIS · Designer · models route mount (SP-2 Task 7)
+/* HIRIS · Designer · models route mount (SP-2 Task 7 + Task 7-fix)
    Sezione #/models — implementa il contratto UX di
    docs/design/2026-07-27-ux-models-section.md:
-     01 Provider attivi (GET api/models, badge stato + picker default per-provider)
-     02 Catena automatica (GET/PUT api/models/config chain_order, riordino frecce)
+     01 Provider attivi (GET api/models/config -> providers[], badge stato +
+        picker default per-provider da GET api/models)
+     02 Catena automatica (GET/PUT api/models/config chain_order, riordino
+        frecce, preset llm_strategy)
      03 Assegnazione per entità (Chatbot -> PUT api/agents/{id}, Brain -> PUT
         api/models/config brain_model, Agentbot -> rimando a #/sentinel)
-     04 Embeddings (riga informativa, sola lettura)
+     04 Embeddings (riga informativa, sola lettura, da GET api/models/config)
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
-   (stesso vincolo di sentinel-route.js). */
+   (stesso vincolo di sentinel-route.js).
+
+   Task 7B ha arricchito GET /api/models/config con:
+     providers: [{id: subscription|claude|openai|openrouter|ollama, label,
+                  active, has_credential}]  (tutti e 5, ordine fisso)
+     llm_strategy: string
+     embeddings: {provider, model}
+     ollama_model: nome del modello Ollama fisso configurato
+   (oltre a chain_order/brain_model/provider_models già presenti). Questo file
+   consuma quell'arricchimento invece di dedurre badge/stato da GET /api/models
+   (che elenca solo i provider già credenziati, senza i disattivi/senza
+   credenziale — vedi report Task 7-fix). */
 (function() {
   'use strict';
 
-  /* Ordine fisso di visualizzazione Parte 1/2 (design §3.1: "sempre in
-     quest'ordine, attivi o no, così la lista non salta"). "id" è l'id nel
-     payload GET /api/models; "key" è la chiave usata in chain_order /
-     provider_models (vedi handlers_models.py _VALID_BACKENDS).
-     Nota implementazione (assunzione risolta, vedi report): il contratto
-     GET /api/models attuale (Task 5) espone solo anthropic/openai/openrouter/
-     ollama -- non esiste un provider "subscription/Abbonamento" separato nel
-     payload, quindi quella riga del wireframe di design non è renderizzabile
-     e viene omessa qui. */
+  /* Ordine fisso di visualizzazione Parte 1 (design §3.1: "sempre in
+     quest'ordine, attivi o no, così la lista non salta"): Abbonamento, Claude
+     API, OpenAI, OpenRouter, Ollama.
+     - "configId" è l'id nel payload GET /api/models/config -> providers[]
+       (subscription/claude/openai/openrouter/ollama, Task 7B).
+     - "id" è l'id nel payload GET /api/models (anthropic/openai/openrouter/
+       ollama — SOLO per i provider già credenziati, usato per i modelli
+       disponibili nei picker; "anthropic" diverge da "claude" per storia
+       dell'endpoint, vedi handlers_models.py _ACTIVE_PROVIDERS_KEY).
+     - "key" è la chiave usata in chain_order / provider_models (vedi
+       handlers_models.py _VALID_BACKENDS) — null per "subscription", che non
+       fa parte della catena/assegnazione automatica nel contratto attuale. */
   var PROVIDER_ORDER = [
-    { id: 'anthropic', key: 'claude', fallbackLabel: 'Claude API' },
-    { id: 'openai', key: 'openai', fallbackLabel: 'OpenAI' },
-    { id: 'openrouter', key: 'openrouter', fallbackLabel: 'OpenRouter' },
-    { id: 'ollama', key: 'ollama', fallbackLabel: 'Locale (Ollama)' }
+    { configId: 'subscription', id: null, key: null, fallbackLabel: 'Abbonamento (Claude Max)' },
+    { configId: 'claude', id: 'anthropic', key: 'claude', fallbackLabel: 'Claude API' },
+    { configId: 'openai', id: 'openai', key: 'openai', fallbackLabel: 'OpenAI' },
+    { configId: 'openrouter', id: 'openrouter', key: 'openrouter', fallbackLabel: 'OpenRouter' },
+    { configId: 'ollama', id: 'ollama', key: 'ollama', fallbackLabel: 'Locale (Ollama)' }
   ];
 
   function el(tag, cls, text) {
@@ -68,11 +85,38 @@
     return modelId;
   }
 
+  /* ── Feedback di successo condiviso (design §7.2.3): un check "✓" che
+     compare per ~1.2s accanto al controllo toccato poi svanisce. Testo via
+     textContent (mai innerHTML), contenitore aria-live="polite" già impostato
+     da chi crea il badge con buildSuccessBadge(). Riusato sia dai PUT
+     models-config (§7.2) sia dal PUT per-Chatbot (§7.3). */
+  function buildSuccessBadge() {
+    var b = el('span', 'agent-badge badge-on', '');
+    b.style.display = 'none';
+    b.setAttribute('aria-live', 'polite');
+    return b;
+  }
+
+  function flashSuccess(badge) {
+    if (!badge) return;
+    badge.textContent = '✓';
+    badge.style.display = '';
+    if (badge._flashTimer) clearTimeout(badge._flashTimer);
+    badge._flashTimer = setTimeout(function() {
+      badge.style.display = 'none';
+      badge.textContent = '';
+    }, 1200);
+  }
+
   /* ── Stato locale ──────────────────────────────────────────────────── */
   var state = {
-    providers: [],  // GET api/models -> providers[]
+    providers: [],        // GET api/models -> providers[] (solo credenziati, id anthropic/openai/openrouter/ollama)
+    configProviders: [],  // GET api/models/config -> providers[] (tutti e 5, id subscription/claude/openai/openrouter/ollama)
+    llmStrategy: '',       // GET api/models/config -> llm_strategy
+    embeddings: { provider: '', model: '' },  // GET api/models/config -> embeddings
+    ollamaModel: '',       // GET api/models/config -> ollama_model
     cfg: { chain_order: [], brain_model: 'auto', provider_models: { claude: '', openai: '', openrouter: '' } },
-    agents: []      // GET api/agents
+    agents: []            // GET api/agents
   };
   var providersReady = false;
   var agentsReady = false;
@@ -84,13 +128,21 @@
     return null;
   }
 
-  /* Provider "usabili" = attivi + con credenziale (design §0.5/§4.1). Con il
-     contratto attuale has_credential è sempre true quando active è true (vedi
-     report), ma il controllo esplicito resta per fedeltà al contratto
-     documentato. */
+  function findConfigProvider(configId) {
+    for (var i = 0; i < state.configProviders.length; i++) {
+      if (state.configProviders[i].id === configId) return state.configProviders[i];
+    }
+    return null;
+  }
+
+  /* Provider "usabili" = attivi + con credenziale (design §0.5/§4.1), fonte:
+     GET /api/models (che lista solo chi ha già una lista modelli disponibile).
+     "subscription" (key null) non entra mai qui: non fa parte di chain_order/
+     provider_models nel contratto backend attuale (_VALID_BACKENDS). */
   function usableProviders() {
     var list = [];
     PROVIDER_ORDER.forEach(function(pd) {
+      if (!pd.key) return;
       var p = findProvider(pd.id);
       if (p && p.active && p.has_credential) list.push(p);
     });
@@ -104,11 +156,41 @@
     });
   }
 
-  /* ── PUT api/models/config — SEMPRE l'oggetto intero (§7.2) ─────────── */
+  /* ── PUT api/models/config — SEMPRE l'oggetto intero (§7.2), serializzato ──
+     Task 7-fix punto 4: due controlli che scrivono quasi in contemporanea
+     (es. picker default-provider + riordino catena) potrebbero far arrivare
+     le risposte fuori ordine se le richieste partono in parallelo, e un PUT
+     con uno snapshot "vecchio" di state.cfg potrebbe sovrascrivere sul server
+     una modifica concorrente più recente. Mutex a catena di promise: al più
+     una richiesta in volo per volta, e ogni richiesta legge state.cfg SOLO
+     quando è il suo turno di partire (non quando viene accodata) — così
+     include sempre anche le modifiche sincrone fatte nel frattempo da altri
+     handler. */
+  var putChain = Promise.resolve();
   function putModelsConfig() {
-    return api('api/models/config', { method: 'PUT', body: JSON.stringify(state.cfg) })
-      .then(function(r) { return r.ok; })
-      .catch(function() { return false; });
+    var result = putChain.then(function() {
+      return api('api/models/config', { method: 'PUT', body: JSON.stringify(state.cfg) })
+        .then(function(r) { return r.ok; })
+        .catch(function() { return false; });
+    });
+    /* La catena deve proseguire anche se questa chiamata fallisce, altrimenti
+       un fallimento bloccherebbe per sempre le PUT successive in coda. */
+    putChain = result.catch(function() { return null; });
+    return result;
+  }
+
+  /* Inserisce (in testa) e seleziona un'opzione "orfana" quando il valore
+     salvato non è (più) tra le opzioni disponibili — così il valore non viene
+     perso silenziosamente (design §5.1). Usata sia dal picker condiviso
+     Brain/Chatbot (fillModelOptions) sia dal picker default-provider di
+     Parte 1 (Task 7-fix punto 5). */
+  function ensureOrphanOption(sel, val, suffix) {
+    if (!val) return;
+    if (sel.value === val) return; // già selezionabile, nessuna orfana da inserire
+    var orphan = el('option', null, val + suffix);
+    orphan.value = val;
+    sel.insertBefore(orphan, sel.firstChild);
+    sel.value = val;
   }
 
   /* ── Sezione 3: dropdown modello condivisa (Brain / Chatbot) ─────────
@@ -133,15 +215,10 @@
     });
     var val = currentValue || 'auto';
     sel.value = val;
-    if (sel.value !== val) {
-      /* Il modello salvato non è più offerto da nessun provider usabile
-         (provider disattivato nel frattempo) — resta selezionato e visibile,
-         segnalato, nessuna azione forzata (design §5.1). */
-      var orphan = el('option', null, val + ' (provider non attivo)');
-      orphan.value = val;
-      sel.insertBefore(orphan, sel.firstChild);
-      sel.value = val;
-    }
+    /* Il modello salvato non è più offerto da nessun provider usabile
+       (provider disattivato nel frattempo) — resta selezionato e visibile,
+       segnalato, nessuna azione forzata (design §5.1). */
+    ensureOrphanOption(sel, val, ' (provider non attivo)');
   }
 
   /* ── Sezione 1: Provider attivi ──────────────────────────────────────── */
@@ -151,85 +228,101 @@
 
     var anyActive = false;
     PROVIDER_ORDER.forEach(function(pd) {
-      var p = findProvider(pd.id);
-      var active = !!(p && p.active);
-      var hasCred = !!(p && p.has_credential);
+      var cp = findConfigProvider(pd.configId);
+      var active = !!(cp && cp.active);
+      var hasCred = !!(cp && cp.has_credential);
       if (active) anyActive = true;
-      var label = p ? p.label : pd.fallbackLabel;
+      var label = cp ? cp.label : pd.fallbackLabel;
 
       var row = el('div', 'provider-row');
       var head = el('div', 'provider-row-head');
-      var dotCls = active ? 'on' : ((p && !hasCred) ? 'warn' : 'off');
+      var dotCls = !active ? 'off' : (hasCred ? 'on' : 'warn');
       head.appendChild(el('span', 'dot ' + dotCls));
       head.appendChild(el('span', 'provider-row-label', label));
-      var badgeCls = active ? 'badge-on' : ((p && !hasCred) ? 'badge-warn' : 'badge-off');
-      var badgeTxt = active ? 'Attivo' : ((p && !hasCred) ? '⚠ manca credenziale' : 'Disattivato');
+      var badgeCls = !active ? 'badge-off' : (hasCred ? 'badge-on' : 'badge-warn');
+      var badgeTxt = !active ? 'Disattivato' : (hasCred ? 'Attivo' : '⚠ manca credenziale');
       head.appendChild(el('span', 'agent-badge ' + badgeCls, badgeTxt));
       row.appendChild(head);
 
-      if (active && p && !hasCred) {
+      if (active && !hasCred) {
         row.appendChild(el('p', 'field-hint', 'Aggiungi la chiave in Configurazione add-on per attivarlo davvero.'));
-      } else if (active && pd.id === 'ollama') {
-        var fixedModel = (p.models && p.models[0]) || '';
-        row.appendChild(el('p', 'field-hint', 'Modello: ' + fixedModel + ' (fisso, da config add-on)'));
-      } else if (active && p && p.models && p.models.length) {
-        var field = el('div', 'field');
-        var selId = 'model-provider-' + pd.key;
-        var lbl = el('label', null, 'Modello di default');
-        lbl.setAttribute('for', selId);
-        var sel = el('select', 'select');
-        sel.id = selId;
-        var currentVal = state.cfg.provider_models[pd.key] || '';
-        if (!currentVal) {
-          var ph = el('option', null, '(usa il default interno)');
-          ph.value = '';
-          ph.disabled = true;
-          ph.selected = true;
-          sel.appendChild(ph);
-        }
-        p.models.forEach(function(m) {
-          if (m === 'auto') return; // design §3.3: nessuna "auto" nel picker default
-          var opt = el('option', null, modelLabel(p.id, m));
-          opt.value = m;
-          if (m === currentVal) opt.selected = true;
-          sel.appendChild(opt);
-        });
-        field.appendChild(lbl);
-        field.appendChild(sel);
-        var errBadge = el('span', 'agent-badge badge-warn', '⚠ Salvataggio non riuscito');
-        errBadge.style.display = 'none';
-        errBadge.setAttribute('aria-live', 'polite');
-        field.appendChild(errBadge);
-        field.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell’addon'));
-        row.appendChild(field);
-
-        sel.addEventListener('change', function() {
-          var prev = currentVal;
-          currentVal = sel.value;
-          state.cfg.provider_models[pd.key] = sel.value;
-          errBadge.style.display = 'none';
-          putModelsConfig().then(function(ok) {
-            if (!ok) {
-              currentVal = prev;
-              state.cfg.provider_models[pd.key] = prev;
-              sel.value = prev;
-              errBadge.style.display = '';
-            }
+      } else if (active && hasCred && pd.configId === 'ollama') {
+        var fixedModel = state.ollamaModel || '';
+        row.appendChild(el('p', 'field-hint',
+          fixedModel ? ('Modello: ' + fixedModel + ' (fisso, da config add-on)') : 'Non configurato'));
+      } else if (active && hasCred && pd.key) {
+        /* Picker "Modello di default" — SOLO per provider con una lista
+           modelli (claude/openai/openrouter): opzioni da GET /api/models
+           (id "anthropic"/"openai"/"openrouter"), non dal payload config
+           che non porta la lista modelli. */
+        var mp = findProvider(pd.id);
+        if (mp && mp.models && mp.models.length) {
+          var field = el('div', 'field');
+          var selId = 'model-provider-' + pd.key;
+          var lbl = el('label', null, 'Modello di default');
+          lbl.setAttribute('for', selId);
+          var sel = el('select', 'select');
+          sel.id = selId;
+          var currentVal = state.cfg.provider_models[pd.key] || '';
+          if (!currentVal) {
+            var ph = el('option', null, '(usa il default interno)');
+            ph.value = '';
+            ph.disabled = true;
+            ph.selected = true;
+            sel.appendChild(ph);
+          }
+          mp.models.forEach(function(m) {
+            if (m === 'auto') return; // design §3.3: nessuna "auto" nel picker default
+            var opt = el('option', null, modelLabel(mp.id, m));
+            opt.value = m;
+            if (m === currentVal) opt.selected = true;
+            sel.appendChild(opt);
           });
-        });
+          if (currentVal) {
+            sel.value = currentVal;
+            ensureOrphanOption(sel, currentVal, ' (provider non attivo)');
+          }
+          field.appendChild(lbl);
+          field.appendChild(sel);
+          var okBadge = buildSuccessBadge();
+          field.appendChild(okBadge);
+          var errBadge = el('span', 'agent-badge badge-warn', '⚠ Salvataggio non riuscito');
+          errBadge.style.display = 'none';
+          errBadge.setAttribute('aria-live', 'polite');
+          field.appendChild(errBadge);
+          field.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell\'addon'));
+          row.appendChild(field);
+
+          sel.addEventListener('change', function() {
+            var prev = currentVal;
+            currentVal = sel.value;
+            state.cfg.provider_models[pd.key] = sel.value;
+            errBadge.style.display = 'none';
+            putModelsConfig().then(function(ok) {
+              if (!ok) {
+                currentVal = prev;
+                state.cfg.provider_models[pd.key] = prev;
+                sel.value = prev;
+                errBadge.style.display = '';
+              } else {
+                flashSuccess(okBadge);
+              }
+            });
+          });
+        }
       }
       body.appendChild(row);
     });
 
     if (!anyActive) {
       body.appendChild(el('p', 'banner-warn',
-        'Nessun provider attivo. HIRIS non può rispondere finché non ne attivi almeno uno nella configurazione dell’add-on.'));
+        'Nessun provider attivo. HIRIS non può rispondere finché non ne attivi almeno uno nella configurazione dell\'add-on.'));
     }
 
     var callout = el('div', 'info-callout');
     callout.appendChild(el('span', null, 'ℹ'));
     callout.appendChild(el('span', null,
-      'I toggle vivono nella configurazione dell’add-on, non qui. Attivarne uno da lì non riattiva ' +
+      'I toggle vivono nella configurazione dell\'add-on, non qui. Attivarne uno da lì non riattiva ' +
       'automaticamente gli altri provider oggi spenti — vanno riattivati singolarmente se ti servono anche loro attivi in parallelo.'));
     body.appendChild(callout);
   }
@@ -247,6 +340,8 @@
     if (body2) body2.appendChild(el('p', 'field-hint', 'Impossibile caricare la catena — vedi Provider attivi qui sopra.'));
     var brainBody = clearEl(byId('sec3-brain-body'));
     if (brainBody) brainBody.appendChild(el('p', 'field-hint', 'Impossibile caricare i modelli disponibili.'));
+    var body4 = clearEl(byId('sec4-body'));
+    if (body4) body4.appendChild(el('p', 'field-hint', 'Non configurato — vedi local_model in Configurazione add-on.'));
   }
 
   /* ── Sezione 2: Catena automatica ─────────────────────────────────────
@@ -269,6 +364,11 @@
   function renderSection2(errText) {
     var body = clearEl(byId('sec2-body'));
     if (!body) return;
+
+    /* Task 7-fix punto 6: preset reale da llm_strategy (payload config),
+       non una stringa generica. */
+    body.appendChild(el('p', 'field-hint', 'Preset: ' + (state.llmStrategy || 'balanced')));
+
     var keys = usableKeys();
     var shown = buildDisplayChain(keys);
 
@@ -304,7 +404,7 @@
       body.appendChild(row);
     });
 
-    body.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell’addon'));
+    body.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell\'addon'));
     if (errText) body.appendChild(el('p', 'proposals-error', errText));
   }
 
@@ -339,6 +439,8 @@
     fillModelOptions(sel, state.cfg.brain_model);
     field.appendChild(lbl);
     field.appendChild(sel);
+    var okBadge = buildSuccessBadge();
+    field.appendChild(okBadge);
     var errBadge = el('span', 'agent-badge badge-warn', '⚠ Salvataggio non riuscito');
     errBadge.style.display = 'none';
     errBadge.setAttribute('aria-live', 'polite');
@@ -354,6 +456,8 @@
           state.cfg.brain_model = prev;
           sel.value = prev;
           errBadge.style.display = '';
+        } else {
+          flashSuccess(okBadge);
         }
       });
     });
@@ -386,6 +490,8 @@
       fillModelOptions(sel, a.model || 'auto');
       field.appendChild(lbl);
       field.appendChild(sel);
+      var okBadge = buildSuccessBadge();
+      field.appendChild(okBadge);
       var errBadge = el('span', 'agent-badge badge-warn', '⚠ Salvataggio non riuscito');
       errBadge.style.display = 'none';
       errBadge.setAttribute('aria-live', 'polite');
@@ -404,6 +510,7 @@
           return r.json();
         }).then(function(updated) {
           a.model = (updated && updated.model) || next;
+          flashSuccess(okBadge);
         }).catch(function(err) {
           console.error('save agent model failed', err);
           sel.value = prev;
@@ -419,22 +526,27 @@
   }
 
   /* ── Sezione 4: Embeddings ────────────────────────────────────────────
-     Sola lettura, dato statico: né GET api/models né GET api/models/config
-     espongono embedding_provider/embedding_model oggi (assunzione aperta
-     #1 del design doc) -- fuori scope per Task 7 (frontend-only), quindi si
-     mostra il fallback "non configurato" documentato dal design invece di
-     inventare un terzo endpoint o dati non disponibili. */
+     Sola lettura. Task 7B ha aggiunto embeddings.{provider,model} al payload
+     GET /api/models/config — mostrato qui invece del fallback statico
+     precedente (assunzione aperta #1 del design doc, ora risolta). */
   function renderSection4() {
     var body = clearEl(byId('sec4-body'));
     if (!body) return;
-    body.appendChild(el('p', null, 'Non configurato — vedi local_model in Configurazione add-on.'));
-    body.appendChild(el('p', 'field-hint', 'L’Abbonamento non fa embeddings.'));
+    var provider = state.embeddings && state.embeddings.provider;
+    var model = state.embeddings && state.embeddings.model;
+    if (provider && model) {
+      body.appendChild(el('p', null, 'Provider: ' + provider + ' · Modello: ' + model));
+    } else {
+      body.appendChild(el('p', null, 'Non configurato — vedi local_model in Configurazione add-on.'));
+    }
+    body.appendChild(el('p', 'field-hint', 'L\'Abbonamento non fa embeddings.'));
   }
 
   /* ── Caricamento dati ─────────────────────────────────────────────────
-     Le tre fetch (providers+config, agents) partono in parallelo (§7.1);
-     providers+config sono trattati come un'unica unità dati perché Parte 1
-     (picker), Parte 2 (catena) e Parte 3-Brain dipendono da entrambe. */
+     Le tre fetch (models, models/config, agents) partono in parallelo (§7.1);
+     models+models/config sono trattati come un'unica unità dati perché
+     Parte 1 (picker), Parte 2 (catena), Parte 3-Brain e Parte 4 (embeddings)
+     dipendono da entrambe. */
   function loadModelsAndConfig() {
     var body1 = byId('sec1-body');
     if (body1) { clearEl(body1); body1.appendChild(el('p', 'field-hint', 'Caricamento…')); }
@@ -455,10 +567,16 @@
         brain_model: cfgRaw.brain_model || 'auto',
         provider_models: Object.assign({ claude: '', openai: '', openrouter: '' }, cfgRaw.provider_models || {})
       };
+      state.configProviders = Array.isArray(cfgRaw.providers) ? cfgRaw.providers : [];
+      state.llmStrategy = cfgRaw.llm_strategy || '';
+      state.embeddings = (cfgRaw.embeddings && typeof cfgRaw.embeddings === 'object')
+        ? cfgRaw.embeddings : { provider: '', model: '' };
+      state.ollamaModel = cfgRaw.ollama_model || '';
       providersReady = true;
       renderSection1();
       renderSection2();
       renderSection3Brain();
+      renderSection4();
       if (agentsReady) renderSection3Chatbot();
     }).catch(function(err) {
       console.error('models/config fetch failed', err);
@@ -505,9 +623,9 @@
     outlet.appendChild(el('p', 'page-subtitle', 'Chi usa cosa: provider attivi, catena automatica e modello per entità.'));
 
     outlet.appendChild(buildSectionShell('01', 'sec1', 'Provider attivi',
-      'Riflesso della configurazione dell’add-on. Per attivare o disattivare un provider vai su Impostazioni → Add-on → HIRIS → Configurazione.'));
+      'Riflesso della configurazione dell\'add-on. Per attivare o disattivare un provider vai su Impostazioni → Add-on → HIRIS → Configurazione.'));
     outlet.appendChild(buildSectionShell('02', 'sec2', 'Catena automatica',
-      'Ordine di failover quando un’entità è in "auto". Riordina con le frecce. Il preset attivo (llm_strategy) si imposta in Configurazione add-on.'));
+      'Ordine di failover quando un\'entità è in "auto". Riordina con le frecce. Il preset attivo (llm_strategy) si imposta in Configurazione add-on.'));
 
     var sec3 = buildSectionShell('03', 'sec3', 'Assegnazione per entità',
       'Ogni entità usa "auto" (segue la catena) o un modello esplicito.');
@@ -548,7 +666,9 @@
 
     providersReady = false;
     agentsReady = false;
-    renderSection4();
+    /* Sezione 4 parte con il placeholder "Caricamento…" di buildSectionShell;
+       viene popolata con i dati reali (o il fallback) da loadModelsAndConfig
+       una volta arrivato GET /api/models/config (Task 7-fix punto 7). */
     loadModelsAndConfig();
     loadAgents();
   }
