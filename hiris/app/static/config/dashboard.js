@@ -114,7 +114,7 @@
       '<div class="dash-cols">' +
         '<div>' +
           '<div class="dash-list">' +
-            '<h3>Ultimi log <span class="right" id="dash-logs-count">cross-agent</span></h3>' +
+            '<h3>Ultimi log <span class="right" id="dash-logs-count">cross-chatbot</span></h3>' +
             '<div id="dash-last-logs-body"><div style="padding:24px;color:var(--text-3)">Caricamento…</div></div>' +
           '</div>' +
         '</div>' +
