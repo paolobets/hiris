@@ -726,7 +726,7 @@ class HirisCard extends HTMLElement {
           this._budgetLimitEur = agent.budget_limit_eur || 0;
           this._error = null;
         } else {
-          this._error = 'Agente non configurato';
+          this._error = 'Chatbot non configurato';
         }
       }
     } catch {
@@ -920,7 +920,7 @@ class HirisCard extends HTMLElement {
         return;
       }
       if (!skipUndo) {
-        const label = wasEnabled ? 'Agente disabilitato' : 'Agente abilitato';
+        const label = wasEnabled ? 'Chatbot disabilitato' : 'Chatbot abilitato';
         this._showSnack(label, 'Annulla', () => this._toggleAgent(true));
       }
       await this._fetchStatus();
@@ -999,7 +999,7 @@ class HirisCard extends HTMLElement {
             <div style="opacity:.7">${this._iconHtml(38)}</div>
             <div>
               <div class="unc-title">Card non configurata</div>
-              <div class="unc-sub">Apri il menu della card (… in alto a destra)<br>e seleziona <strong>Modifica</strong> per scegliere un agente.</div>
+              <div class="unc-sub">Apri il menu della card (… in alto a destra)<br>e seleziona <strong>Modifica</strong> per scegliere un Chatbot.</div>
             </div>
           </div>
         </div>`;
@@ -1023,7 +1023,7 @@ class HirisCard extends HTMLElement {
         </div>`;
       }
       if (m.streaming && !m.text) {
-        return `<div class="typing-row" aria-label="L'agente sta rispondendo">
+        return `<div class="typing-row" aria-label="Il Chatbot sta rispondendo">
           <div class="avatar${grouped ? ' invisible' : ''}">${this._iconHtml(26)}</div>
           <div class="typing-bubble" aria-hidden="true">
             <div class="typing-dot"></div>
@@ -1054,7 +1054,7 @@ class HirisCard extends HTMLElement {
     const showSuggestions = !hasMessages && this._suggestions && this._suggestions.length > 0;
 
     const placeholder = !this._enabled
-      ? 'Agente disabilitato — riattivalo dallo switch ↑'
+      ? 'Chatbot disabilitato — riattivalo dallo switch ↑'
       : (this._loading ? 'Elaborazione…' : 'Scrivi un messaggio…');
 
     const emptyHtml = showSuggestions ? `
@@ -1077,15 +1077,15 @@ class HirisCard extends HTMLElement {
             <div class="status-pill ${this._statusClass()}" role="status">${this._statusLabel()}</div>
             <button class="switch ${this._enabled ? 'on' : ''}" id="tog"
               role="switch" aria-checked="${this._enabled ? 'true' : 'false'}"
-              aria-label="${this._enabled ? 'Disabilita agente' : 'Abilita agente'}"
-              title="${this._enabled ? 'Disabilita agente' : 'Abilita agente'}"></button>
+              aria-label="${this._enabled ? 'Disabilita Chatbot' : 'Abilita Chatbot'}"
+              title="${this._enabled ? 'Disabilita Chatbot' : 'Abilita Chatbot'}"></button>
           </div>
         </div>
         ${this._budgetLimitEur > 0 ? `
           <div class="budget-wrap" role="meter"
               aria-valuemin="0" aria-valuemax="${this._budgetLimitEur.toFixed(2)}"
               aria-valuenow="${this._budgetEur.toFixed(2)}"
-              aria-label="Budget agente">
+              aria-label="Budget Chatbot">
             <div class="budget-bar"><div class="budget-fill ${budgetCls}" style="width:${pct.toFixed(1)}%"></div></div>
             <div class="budget-text">
               <span>&#x20AC;${this._budgetEur.toFixed(2)} / &#x20AC;${this._budgetLimitEur.toFixed(2)}</span>
@@ -1094,7 +1094,7 @@ class HirisCard extends HTMLElement {
           </div>
         ` : ''}
         ${this._error ? `<div class="banner error" role="alert">${this._esc(this._error)}</div>` : ''}
-        ${!this._enabled && !this._error ? `<div class="banner disabled">Agente disabilitato. Le richieste sono in pausa.</div>` : ''}
+        ${!this._enabled && !this._error ? `<div class="banner disabled">Chatbot disabilitato. Le richieste sono in pausa.</div>` : ''}
         <div class="messages" id="msgs" role="log" aria-live="polite" aria-label="Cronologia messaggi">
           ${msgs || emptyHtml}
         </div>
@@ -1107,7 +1107,7 @@ class HirisCard extends HTMLElement {
           <div class="input-inner">
             <textarea class="input" id="inp" rows="1"
               placeholder="${this._esc(placeholder)}"
-              aria-label="Messaggio per l'agente"
+              aria-label="Messaggio per il Chatbot"
               ${!this._enabled ? 'disabled' : ''}></textarea>
             <button class="send${this._loading ? ' loading' : ''}" id="snd"
               ${this._loading || !this._enabled ? 'disabled' : ''}
@@ -1278,7 +1278,7 @@ class HirisChatCardEditor extends HTMLElement {
 
     let agentField;
     if (this._agents === null || this._agents === 'loading') {
-      agentField = `<div class="field-loading">Caricamento agenti…</div>`;
+      agentField = `<div class="field-loading">Caricamento Chatbot…</div>`;
     } else if (this._agents === 'error' || this._agents.length === 0) {
       agentField = `<input id="agentInput" class="field-input" type="text"
         value="${this._esc(agentId)}" placeholder="es. hiris-default">`;
@@ -1361,9 +1361,9 @@ class HirisChatCardEditor extends HTMLElement {
         </div>
 
         <div class="field">
-          <div class="field-label">Agente</div>
+          <div class="field-label">Chatbot</div>
           ${agentField}
-          <div class="field-hint">Solo agenti di tipo Chat</div>
+          <div class="field-hint">Solo Chatbot</div>
         </div>
 
         <div class="field">
