@@ -67,10 +67,23 @@ dismissione è l'**ultimo** passo, dopo che la chat gira end-to-end sull'host HA
   immagine, compatibilità Alpine (o base image diversa), e che non rallenti il boot per
   gli utenti API-key che non usano il runner. Il subprocess `claude -p` gira come utente
   dell'addon con `CLAUDE_CONFIG_DIR` in `/data`.
-- **R3 — Auth abbonamento dentro l'addon:** `claude setup-token` è interattivo (gotcha già
-  visto sul volume `.31`). Definire il flusso una-tantum: un pulsante/step nella UI addon
-  o un comando `docker exec … claude setup-token`, con creds persistite in `/data`. È il
-  rischio più concreto per la distribuibilità (per la community è uno step power-user).
+- **R3 — Auth abbonamento dentro l'addon → RISOLTO via `CLAUDE_CODE_OAUTH_TOKEN`.**
+  Niente `setup-token` interattivo nell'addon: l'utente lancia `claude setup-token` UNA
+  VOLTA su qualsiasi macchina con browser → ottiene un **token OAuth long-lived (~1 anno)**
+  → lo incolla in un campo **secret** dell'addon config, esposto al runner come env
+  `CLAUDE_CODE_OAUTH_TOKEN`. `claude -p` lo usa headless. Nessun `docker exec`, distribuibile.
+  ⚠️ Caveat: bug noto sul refresh dell'access token in modalità `-p --output-format json`
+  (anthropics/claude-code #28827) → il token da `setup-token` (1 anno) è il path raccomandato;
+  gestire il 401 con un messaggio chiaro "riautentica" invece di un fallimento opaco.
+
+### Verdetto spike (2026-07-27): tutti e 3 i rischi VERDI (con caveat) → si può pianificare
+- **R1 ✅** FastMCP+aiohttp in un processo = pattern noto (uvicorn `Server.serve()` +
+  aiohttp `AppRunner/TCPSite` via `asyncio.gather`, come il gateway fa mcp+panel); tool
+  MCP → dispatcher in-process.
+- **R2bis ✅ con caveat** claude-code supporta musl (`linux-*-musl`); su base HA Alpine:
+  `apk add nodejs npm libgcc libstdc++ ripgrep` (node **22+**) + `USE_BUILTIN_RIPGREP=0`;
+  +~100-150MB immagine (peso morto per utenti solo-API-key; runner attivo solo se abbonamento).
+- **R3 ✅** via `CLAUDE_CODE_OAUTH_TOKEN` (sopra).
 
 ## Non-goal
 
