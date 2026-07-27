@@ -1,6 +1,9 @@
+import asyncio
 import os
 import stat
 import subprocess
+import time
+import pytest
 from unittest.mock import patch
 from hiris.app.agent import runner, prompts
 
@@ -112,3 +115,34 @@ def test_run_once_chat_reasons_and_submits(monkeypatch):
         out = runner.run_once(c, "http://127.0.0.1:8099", {"X-HIRIS-Internal-Token": "TOK"}, "live")
     assert out == "done"
     assert c.submitted and c.submitted[0]["decision"] == {"reply": "2 luci accese"}
+
+
+@pytest.mark.asyncio
+async def test_run_loop_does_not_block_event_loop(monkeypatch):
+    # run_once is slow+sync (real impl uses httpx.Client + subprocess.run); it
+    # must be offloaded to a thread executor so a concurrent coroutine on the
+    # same event loop keeps making progress while it runs. Regression test for
+    # the event-loop-blocking defect found in Task 4 review.
+    def slow_once(client, base_url, headers, mode):
+        time.sleep(0.3)
+        return "idle"
+    monkeypatch.setattr(runner, "run_once", slow_once)
+
+    ticks = 0
+
+    async def ticker():
+        nonlocal ticks
+        for _ in range(5):
+            await asyncio.sleep(0.05)
+            ticks += 1
+
+    loop_task = asyncio.create_task(
+        runner.run_loop("http://127.0.0.1:8099", lambda: {}, "live", 0))
+    await ticker()
+    loop_task.cancel()
+    try:
+        await loop_task
+    except asyncio.CancelledError:
+        pass
+
+    assert ticks >= 4  # ticker kept running during the slow (offloaded) run_once

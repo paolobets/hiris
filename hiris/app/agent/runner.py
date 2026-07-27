@@ -179,20 +179,23 @@ def run_once(client, base_url: str, headers: dict, mode: str) -> str:
     return "done" if (sr.json() or {}).get("ok") else "failed"
 
 def poll_seconds() -> int:
-    return int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "30"))
+    return int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "3"))
 
 
 async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> None:
     """Coroutine per il task asyncio in-addon (server.py, task 4). `run_once`
-    resta sincrono (subprocess.run + httpx.Client), quindi qui usiamo un
-    client sincrono e cediamo il controllo tra un'iterazione e l'altra con
-    `await asyncio.sleep(...)` — semplice e testabile, niente doppio stack
-    async/sync per un blocco I/O che comunque dura secondi (claude -p)."""
+    resta sincrono (subprocess.run + httpx.Client): girano sullo stesso loop
+    asyncio dell'intero addon (aiohttp), quindi vanno eseguiti in un thread
+    executor (`run_in_executor`) e MAI chiamati direttamente nella coroutine,
+    altrimenti un job claimato blocca l'intero addon fino a ~5 minuti
+    (subprocess timeout=300, httpx.Client timeout=330)."""
+    loop = asyncio.get_event_loop()
     with httpx.Client(timeout=330) as client:
         while True:
             try:
                 headers = get_headers()
-                outcome = run_once(client, base_url, headers, mode)
+                outcome = await loop.run_in_executor(
+                    None, run_once, client, base_url, headers, mode)
                 if outcome != "idle":
                     log.info("run: %s", outcome)
             except Exception as exc:
