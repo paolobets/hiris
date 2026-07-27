@@ -195,6 +195,7 @@ class OpenAICompatRunner:
         *,
         fixed_model: str = "",
         usage_path: str = "",
+        default_model: str = "",
     ) -> None:
         if fixed_model:
             from ..backends.ollama import _validate_ollama_url
@@ -218,6 +219,7 @@ class OpenAICompatRunner:
             timeout=_client_timeout, max_retries=_max_retries,
         )
         self._dispatcher = dispatcher
+        self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto" (unused for Ollama, see fixed_model)
         self._fixed_model = fixed_model   # Ollama: always use this model; empty for OpenAI
         self._is_cloud = not bool(fixed_model)  # True = cloud (OpenAI); False = local (Ollama)
         # Circuit-breaker message noun, so a cloud backend doesn't report
@@ -362,7 +364,7 @@ class OpenAICompatRunner:
         if self._fixed_model:
             return self._fixed_model
         if model == "auto":
-            return AUTO_MODEL_MAP.get(agent_type, "gpt-4o-mini")
+            return self._default_model or AUTO_MODEL_MAP.get(agent_type, "gpt-4o-mini")
         return model
 
     # ------------------------------------------------------------------

@@ -1834,12 +1834,19 @@ async def _on_startup(app: web.Application) -> None:
         lambda evt: _spawn(arrival_watcher.on_state_changed(evt), name="arrival_watcher_on_state_changed")
     )
 
+    # SP-2 T5C: per-provider DEFAULT model chosen by the user (used when an
+    # entity's model is "auto"); Ollama excluded — it uses local_model.model
+    # via fixed_model instead. Empty string ("") preserves today's behaviour
+    # (fall back to AUTO_MODEL_MAP).
+    _pm = app["models_config"].get("provider_models", {})
+
     claude_runner = None
     if api_key and _active["claude"]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
             dispatcher=dispatcher,
             usage_path=usage_path,
+            default_model=_pm.get("claude", ""),
         )
 
     _usage_base, _usage_ext = os.path.splitext(usage_path)
@@ -1852,6 +1859,7 @@ async def _on_startup(app: web.Application) -> None:
             api_key=openai_api_key,
             dispatcher=dispatcher,
             usage_path=f"{_usage_base}_openai{_usage_ext}",
+            default_model=_pm.get("openai", ""),
         )
 
     ollama_runner = None
@@ -1896,6 +1904,7 @@ async def _on_startup(app: web.Application) -> None:
             api_key=openrouter_api_key,
             dispatcher=dispatcher,
             usage_path=f"{_usage_base}_openrouter{_usage_ext}",
+            default_model=_pm.get("openrouter", ""),
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 

@@ -12,6 +12,20 @@ logger = logging.getLogger(__name__)
 # SP-2 Task 4: models-config store (chain_order + brain_model), see §8 code map.
 _VALID_BACKENDS = ("claude", "openai", "openrouter", "ollama")
 
+# SP-2 Task 5C: per-provider DEFAULT model, e.g. {"claude": "claude-opus-4-7"}.
+# Empty string ("") = auto (fall back to AUTO_MODEL_MAP). Ollama excluded — it
+# always uses its fixed `local_model.model`.
+_PROVIDER_MODEL_KEYS = ("claude", "openai", "openrouter")
+
+
+def _clean_provider_models(raw) -> dict:
+    raw = raw if isinstance(raw, dict) else {}
+    out = {}
+    for k in _PROVIDER_MODEL_KEYS:
+        v = raw.get(k, "")
+        out[k] = v if isinstance(v, str) else ""
+    return out
+
 
 def _models_config_path(data_dir: str) -> str:
     return os.path.join(data_dir, "models_config.json")
@@ -34,7 +48,11 @@ def load_models_config(data_dir: str) -> dict:
     brain = raw.get("brain_model", "auto")
     if not isinstance(brain, str) or not brain:
         brain = "auto"
-    return {"chain_order": chain, "brain_model": brain}
+    return {
+        "chain_order": chain,
+        "brain_model": brain,
+        "provider_models": _clean_provider_models(raw.get("provider_models")),
+    }
 
 
 def save_models_config(data_dir: str, data: dict) -> dict:
@@ -46,6 +64,7 @@ def save_models_config(data_dir: str, data: dict) -> dict:
     clean = {
         "chain_order": [n for n in raw_chain if n in _VALID_BACKENDS],
         "brain_model": data.get("brain_model", "auto"),
+        "provider_models": _clean_provider_models(data.get("provider_models")),
     }
     if not isinstance(clean["brain_model"], str) or not clean["brain_model"]:
         clean["brain_model"] = "auto"
