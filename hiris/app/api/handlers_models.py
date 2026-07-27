@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import logging
 import os
 import re
@@ -7,6 +8,63 @@ import aiohttp
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
+
+# SP-2 Task 4: models-config store (chain_order + brain_model), see §8 code map.
+_VALID_BACKENDS = ("claude", "openai", "openrouter", "ollama")
+
+
+def _models_config_path(data_dir: str) -> str:
+    return os.path.join(data_dir, "models_config.json")
+
+
+def load_models_config(data_dir: str) -> dict:
+    try:
+        with open(_models_config_path(data_dir), encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except FileNotFoundError:
+        raw = {}
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    chain = [n for n in raw.get("chain_order", []) if n in _VALID_BACKENDS]
+    brain = raw.get("brain_model", "auto")
+    if not isinstance(brain, str) or not brain:
+        brain = "auto"
+    return {"chain_order": chain, "brain_model": brain}
+
+
+def save_models_config(data_dir: str, data: dict) -> dict:
+    if not isinstance(data, dict):
+        data = {}
+    clean = {
+        "chain_order": [n for n in data.get("chain_order", []) if n in _VALID_BACKENDS],
+        "brain_model": data.get("brain_model", "auto"),
+    }
+    if not isinstance(clean["brain_model"], str) or not clean["brain_model"]:
+        clean["brain_model"] = "auto"
+    path = _models_config_path(data_dir)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(clean, fh)
+    os.replace(tmp, path)
+    return clean
+
+
+async def handle_get_models_config(request: web.Request) -> web.Response:
+    data_dir = request.app.get("data_dir") or "/data"
+    return web.json_response(load_models_config(data_dir))
+
+
+async def handle_save_models_config(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+    data_dir = request.app.get("data_dir") or "/data"
+    clean = save_models_config(data_dir, body if isinstance(body, dict) else {})
+    request.app["models_config"] = clean   # hot-update per la sessione corrente
+    return web.json_response({"ok": True, **clean})
 
 
 def _hide_free_models_enabled() -> bool:

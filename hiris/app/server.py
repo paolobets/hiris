@@ -871,6 +871,12 @@ async def _on_startup(app: web.Application) -> None:
     data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
     data_dir = os.path.dirname(os.path.abspath(data_path))
     app["data_dir"] = data_dir
+    # SP-2 Task 4: models-config store (chain_order + brain_model), letta prima
+    # della costruzione LLMRouter più sotto così il chain-build (Task 2 Step 5)
+    # può leggere chain_order, e prima di _holistic_reason (Brain) che legge
+    # brain_model.
+    from .api.handlers_models import load_models_config
+    app["models_config"] = load_models_config(data_dir)
     # If the user manages the gateway policy from the UI, it overrides the env CSV.
     from .api.handlers_gateway_policy import apply_saved_policy
     apply_saved_policy(app)
@@ -1662,8 +1668,12 @@ async def _on_startup(app: web.Application) -> None:
                 except Exception:
                     logger.warning("holistic memory retrieval failed", exc_info=True)
                 _ctx = build_review_context(snapshot, _inventory, _current, memory=_mem)
+                # SP-2 Task 4: il Brain (questo passaggio olistico) usa il
+                # modello scelto per il Brain, se esplicito; "auto" (default)
+                # -> catena, invariato.
+                _brain_model = (app.get("models_config") or {}).get("brain_model", "auto")
                 _text = await _llm_reason(COVERAGE_REVIEW_SYSTEM, build_review_message(_ctx),
-                                          model="auto", max_tokens=1536)
+                                          model=_brain_model, max_tokens=1536)
                 _suggs = parse_suggestions(_text)
 
                 def _mk_proposal(c):
@@ -1893,12 +1903,17 @@ async def _on_startup(app: web.Application) -> None:
         # Task 4) filtrato ai provider ATTIVI (Task 1). Sub non è un backend del
         # router (gira via runner in-addon), quindi non entra qui.
         from .llm_router import _STRATEGY_ORDER
-        _chain = [n for n in _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
-                  if app["active_providers"].get(n)]
-        # override manuale (Task 4) — se presente in models_config, vince
+        _strategy_active = [n for n in _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
+                             if app["active_providers"].get(n)]
+        # override manuale (Task 4) — se presente in models_config, vince.
+        # Review Task 2: se _manual è non-vuoto ma filtra a lista vuota (tutti
+        # i backend elencati sono inattivi), non lasciare che _chain diventi []
+        # -- il router degraderebbe silenziosamente alla strategia FULL invece
+        # che ai provider attivi in ordine di strategia. Fallback esplicito.
         _manual = app.get("models_config", {}).get("chain_order")
-        if _manual:
-            _chain = [n for n in _manual if app["active_providers"].get(n)]
+        _chain = [n for n in _manual if app["active_providers"].get(n)] if _manual else list(_strategy_active)
+        if not _chain:
+            _chain = list(_strategy_active)
 
         router = LLMRouter(
             claude=claude_runner,
