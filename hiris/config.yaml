@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.99.2"
+version: "0.99.3"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -72,6 +72,10 @@ options:
   execute_api_tools: ""
   execute_api_entities: ""
   execute_api_services: ""
+  # Server MCP interno (loopback-only, non esposto in rete): porta locale su
+  # cui HIRIS espone i tool MCP per client MCP-aware. Mai raggiungibile fuori
+  # da 127.0.0.1 dentro il container.
+  internal_mcp_port: 8199
   # CR-1: CIDR sorgenti fidate per il bypass-ingress (X-Ingress-Path). Solo le
   # richieste da questi range sono trattate come ingress del Supervisor; tutto
   # il resto richiede internal_token. Default = rete Docker standard del
@@ -94,6 +98,7 @@ options:
   bridge_fallback: true
   chat_daily_cap: 50
   chat_via_subscription: false
+  claude_code_oauth_token: ""
 
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:
@@ -145,6 +150,7 @@ schema:
   execute_api_tools: "str?"
   execute_api_entities: "str?"
   execute_api_services: "str?"
+  internal_mcp_port: port?
   supervisor_ingress_cidr: "str?"
   log_level: "list(debug|info|warning|error)"
   theme: "list(light|dark|auto)"
@@ -164,6 +170,7 @@ schema:
   bridge_fallback: bool
   chat_daily_cap: int(0,1000)?
   chat_via_subscription: bool?
+  claude_code_oauth_token: password
 
   # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
   mayan:
