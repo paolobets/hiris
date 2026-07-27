@@ -1,4 +1,4 @@
-from hiris.app.model_activation import derive_active_providers
+from hiris.app.model_activation import derive_active_providers, reconcile_chain
 
 
 def _creds(**kw):
@@ -38,3 +38,46 @@ def test_legacy_subscription_flag_migrates():
     creds = _creds(subscription=True)
     active = derive_active_providers(cfg, creds)
     assert active["subscription"] is True
+
+
+_STRATEGY = ["claude", "openrouter", "openai", "ollama"]  # "balanced" order
+
+
+def test_reconcile_chain_appends_newly_active_provider_missing_from_manual():
+    # Fail-open regression (SP-2 final review): chain_order=["ollama"] was
+    # persisted when only Ollama was active; Claude becomes active later
+    # without the user re-saving #/models. The reconciled chain must
+    # include BOTH -- Ollama first (honors the saved order), Claude appended
+    # (never silently dropped from failover / from the egress classification).
+    active = {"ollama": True, "claude": True, "openai": False, "openrouter": False}
+    chain = reconcile_chain(_STRATEGY, ["ollama"], active)
+    assert chain == ["ollama", "claude"]
+
+
+def test_reconcile_chain_no_manual_uses_strategy_active_order():
+    active = {"claude": True, "openrouter": False, "openai": True, "ollama": True}
+    chain = reconcile_chain(_STRATEGY, None, active)
+    assert chain == ["claude", "openai", "ollama"]
+
+    # empty list treated same as absent
+    chain_empty = reconcile_chain(_STRATEGY, [], active)
+    assert chain_empty == ["claude", "openai", "ollama"]
+
+
+def test_reconcile_chain_manual_drops_inactive_provider():
+    # manual lists a provider that is no longer active -- it must be dropped,
+    # not just left in place.
+    active = {"claude": False, "openrouter": True, "openai": False, "ollama": True}
+    chain = reconcile_chain(_STRATEGY, ["claude", "ollama"], active)
+    # "claude" dropped (inactive); "ollama" kept from manual;
+    # "openrouter" appended afterwards (active, missing from manual).
+    assert chain == ["ollama", "openrouter"]
+
+
+def test_reconcile_chain_all_invalid_manual_falls_back_to_strategy_active():
+    active = {"claude": True, "openrouter": False, "openai": False, "ollama": False}
+    # manual only references inactive/unknown providers -> filters to [] ->
+    # fallback appends strategy-active providers (same as the empty-result
+    # guard for the pre-fix inline logic).
+    chain = reconcile_chain(_STRATEGY, ["openai", "openrouter"], active)
+    assert chain == ["claude"]

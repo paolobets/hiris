@@ -32,3 +32,48 @@ def derive_active_providers(cfg: dict, creds: dict) -> dict[str, bool]:
         else:
             active[p] = toggles[p] and has_cred
     return active
+
+
+def reconcile_chain(
+    strategy_order: list[str],
+    manual: list[str] | None,
+    active_providers: dict,
+) -> list[str]:
+    """Build the effective boot-time model chain (SP-2 final review fix).
+
+    ``strategy_order`` is the provider order for the current strategy (e.g.
+    ``_STRATEGY_ORDER["balanced"]``); ``manual`` is the persisted
+    ``chain_order`` override (``None``/empty when the user never saved one);
+    ``active_providers`` maps provider name -> bool (Task 1 activation).
+
+    Behaviour:
+      - No manual override: the chain is simply the active providers in
+        strategy order.
+      - Manual override present: it is filtered to active providers
+        (inactive/unknown names dropped), THEN any active provider from
+        ``strategy_order`` that is missing from that filtered list is
+        APPENDED, in strategy order. This mirrors the frontend's
+        ``buildDisplayChain`` (models-route.js) and closes a fail-open seam:
+        a partial persisted ``chain_order`` (saved back when fewer providers
+        were active) must never silently drop a provider that becomes active
+        later — that provider's runner is built and reachable via explicit
+        model selection regardless, so leaving it out of the chain only
+        misleads ``automatic_allows_sensitive()`` into thinking egress is
+        more restricted than it actually is.
+      - If the result is empty either way (e.g. all overrides invalid AND no
+        active strategy providers), it falls back to ``strategy_order``
+        filtered to active providers -- callers still get an explicit,
+        non-empty-when-possible chain rather than an empty one degrading to
+        undefined router behavior.
+    """
+    strategy_active = [n for n in strategy_order if active_providers.get(n)]
+    if manual:
+        chain = [n for n in manual if active_providers.get(n)]
+        for n in strategy_active:
+            if n not in chain:
+                chain.append(n)
+    else:
+        chain = list(strategy_active)
+    if not chain:
+        chain = list(strategy_active)
+    return chain

@@ -106,6 +106,10 @@ class LLMRouter:
     run_with_actions ("chat" → chat_policy, else → automatic_policy).
     If a policy is not supplied (None/empty), it derives from
     _STRATEGY_ORDER[strategy] — unchanged behavior for existing callers.
+    When the caller instead passes `model_chain` (the boot-time reconciled
+    chain built by model_activation.reconcile_chain — see server.py), that
+    single list is used as the unified chain for BOTH chat_policy and
+    automatic_policy, superseding the two-policy split above.
 
     Explicit model routing (when model != "auto"):
       - 'claude-*'                  → Claude runner

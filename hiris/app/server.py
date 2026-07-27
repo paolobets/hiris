@@ -1919,17 +1919,19 @@ async def _on_startup(app: web.Application) -> None:
         # Task 4) filtrato ai provider ATTIVI (Task 1). Sub non è un backend del
         # router (gira via runner in-addon), quindi non entra qui.
         from .llm_router import _STRATEGY_ORDER
-        _strategy_active = [n for n in _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
-                             if app["active_providers"].get(n)]
-        # override manuale (Task 4) — se presente in models_config, vince.
-        # Review Task 2: se _manual è non-vuoto ma filtra a lista vuota (tutti
-        # i backend elencati sono inattivi), non lasciare che _chain diventi []
-        # -- il router degraderebbe silenziosamente alla strategia FULL invece
-        # che ai provider attivi in ordine di strategia. Fallback esplicito.
+        from .model_activation import reconcile_chain
+        # override manuale (Task 4) — se presente in models_config, filtra ai
+        # provider attivi, poi (review finale SP-2) i provider attivi mancanti
+        # dall'override vengono APPENDED in ordine di strategia -- una
+        # chain_order parziale salvata quando meno provider erano attivi non
+        # deve MAI far sparire dalla catena un provider che diventa attivo
+        # dopo (fail-open su automatic_allows_sensitive() + provider escluso
+        # dal failover finché l'utente non riapre #/models e risalva).
+        # Se il risultato è comunque vuoto, fallback esplicito ai provider
+        # attivi in ordine di strategia (mai degradare silenziosamente).
+        _strategy_order = _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
         _manual = app.get("models_config", {}).get("chain_order")
-        _chain = [n for n in _manual if app["active_providers"].get(n)] if _manual else list(_strategy_active)
-        if not _chain:
-            _chain = list(_strategy_active)
+        _chain = reconcile_chain(_strategy_order, _manual, app["active_providers"])
 
         router = LLMRouter(
             claude=claude_runner,
