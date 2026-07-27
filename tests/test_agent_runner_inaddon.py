@@ -1,4 +1,6 @@
-import pytest
+import os
+import stat
+import subprocess
 from unittest.mock import patch
 from hiris.app.agent import runner, prompts
 
@@ -13,8 +15,76 @@ def test_mcp_config_loopback_no_auth():
     cfg = runner.build_mcp_config("http://127.0.0.1:8199/mcp")
     srv = cfg["mcpServers"]["hiris"]
     assert srv["type"] == "http" and srv["url"] == "http://127.0.0.1:8199/mcp"
-    assert "Authorization" not in srv.get("headers", {})
-    assert "X-HIRIS-Internal-Token" not in srv.get("headers", {})
+    assert "headers" not in srv
+
+
+def test_configure_chat_mcp_writes_no_auth_config(tmp_path, monkeypatch):
+    # configure_chat_mcp() writes the mcp-config actually used by `claude
+    # --mcp-config`: it must be the loopback/no-auth shape (no headers key at
+    # all), and (on POSIX) locked down to 0600 since it lives in a shared tmp dir.
+    cfg_path = tmp_path / "hiris-mcp.json"
+    monkeypatch.setenv("HIRIS_AGENT_MCP_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("HIRIS_AGENT_MCP_URL", "http://127.0.0.1:8199/mcp")
+
+    returned_path = runner.configure_chat_mcp()
+
+    assert returned_path == str(cfg_path)
+    assert runner._CHAT_MCP_CONFIG_PATH == str(cfg_path)
+    assert cfg_path.exists()
+
+    import json
+    with open(cfg_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    srv = data["mcpServers"]["hiris"]
+    assert srv["type"] == "http" and srv["url"] == "http://127.0.0.1:8199/mcp"
+    assert "headers" not in srv
+
+    if os.name != "nt":
+        mode = stat.S_IMODE(os.stat(cfg_path).st_mode)
+        assert mode == 0o600
+
+
+def test_build_headers_only_internal_token_no_cf_access(monkeypatch):
+    # Loopback-only reasoning API: only the internal token travels, never a
+    # CF-Access service credential or a generic Authorization header.
+    monkeypatch.setenv("INTERNAL_TOKEN", "TOK")
+    headers = runner.build_headers()
+    assert headers["X-HIRIS-Internal-Token"] == "TOK"
+    assert "CF-Access-Client-Id" not in headers
+    assert "CF-Access-Client-Secret" not in headers
+    assert "Authorization" not in headers
+
+
+def test_reason_chat_returns_fallback_reply_on_nonzero_returncode(monkeypatch):
+    job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
+                                        "history": [{"role": "user", "content": "ciao"}]}}
+    monkeypatch.setattr(runner, "_CHAT_MCP_CONFIG_PATH", "/tmp/hiris-mcp.json")
+
+    class _Proc:
+        returncode = 1
+        stdout = ""
+        stderr = "boom"
+
+    with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
+        result = runner._reason_chat(job, "live")
+
+    assert isinstance(result, dict)
+    assert isinstance(result.get("reply"), str) and result["reply"]
+
+
+def test_reason_chat_returns_fallback_reply_on_timeout(monkeypatch):
+    job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
+                                        "history": [{"role": "user", "content": "ciao"}]}}
+    monkeypatch.setattr(runner, "_CHAT_MCP_CONFIG_PATH", "/tmp/hiris-mcp.json")
+
+    def _raise_timeout(*a, **k):
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=300)
+
+    with patch.object(runner.subprocess, "run", _raise_timeout):
+        result = runner._reason_chat(job, "live")
+
+    assert isinstance(result, dict)
+    assert isinstance(result.get("reply"), str) and result["reply"]
 
 
 class _Resp:
