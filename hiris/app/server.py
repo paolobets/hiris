@@ -27,7 +27,9 @@ from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
 from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
 from .api.handlers_tasks import handle_list_tasks, handle_get_task, handle_cancel_task
-from .api.handlers_models import handle_list_models
+from .api.handlers_models import (
+    handle_list_models, handle_get_models_config, handle_save_models_config,
+)
 from .api.handlers_health import handle_get_ha_health, handle_refresh_ha_health
 from .api.handlers_proposals import (
     handle_list_proposals, handle_get_proposal,
@@ -2111,6 +2113,8 @@ def create_app() -> web.Application:
     app.router.add_get("/api/tasks/{task_id}", handle_get_task)
     app.router.add_delete("/api/tasks/{task_id}", handle_cancel_task)
     app.router.add_get("/api/models", handle_list_models)
+    app.router.add_get("/api/models/config", handle_get_models_config)
+    app.router.add_put("/api/models/config", handle_save_models_config)
     app.router.add_get("/api/health/ha", handle_get_ha_health)
     app.router.add_post("/api/health/ha/refresh", handle_refresh_ha_health)
     app.router.add_get("/api/proposals", handle_list_proposals)

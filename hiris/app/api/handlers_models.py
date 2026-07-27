@@ -27,7 +27,10 @@ def load_models_config(data_dir: str) -> dict:
         raw = {}
     if not isinstance(raw, dict):
         raw = {}
-    chain = [n for n in raw.get("chain_order", []) if n in _VALID_BACKENDS]
+    raw_chain = raw.get("chain_order", [])
+    if not isinstance(raw_chain, list):
+        raw_chain = []
+    chain = [n for n in raw_chain if n in _VALID_BACKENDS]
     brain = raw.get("brain_model", "auto")
     if not isinstance(brain, str) or not brain:
         brain = "auto"
@@ -37,8 +40,11 @@ def load_models_config(data_dir: str) -> dict:
 def save_models_config(data_dir: str, data: dict) -> dict:
     if not isinstance(data, dict):
         data = {}
+    raw_chain = data.get("chain_order", [])
+    if not isinstance(raw_chain, list):
+        raw_chain = []
     clean = {
-        "chain_order": [n for n in data.get("chain_order", []) if n in _VALID_BACKENDS],
+        "chain_order": [n for n in raw_chain if n in _VALID_BACKENDS],
         "brain_model": data.get("brain_model", "auto"),
     }
     if not isinstance(clean["brain_model"], str) or not clean["brain_model"]:
@@ -283,24 +289,58 @@ async def is_openrouter_model_tool_capable(model: str, api_key: str) -> bool | N
         return None
 
 
+# Maps the provider "id" used in the /api/models payload to the key used in
+# app["active_providers"] (populated by model_activation.derive_active_providers).
+# Note: the payload id for Claude is "anthropic" but the activation key is
+# "claude" — they diverge, hence the explicit mapping instead of a 1:1 lookup.
+_ACTIVE_PROVIDERS_KEY = {
+    "anthropic": "claude",
+    "openai": "openai",
+    "openrouter": "openrouter",
+    "ollama": "ollama",
+}
+
+
+def _enrich_provider(request: web.Request, entry: dict, has_credential: bool) -> dict:
+    """Attach activation state to a provider entry, never the credential value itself."""
+    active_providers = request.app.get("active_providers", {}) or {}
+    active_key = _ACTIVE_PROVIDERS_KEY.get(entry["id"], entry["id"])
+    entry["active"] = bool(active_providers.get(active_key))
+    entry["has_credential"] = bool(has_credential)
+    return entry
+
+
 async def handle_list_models(request: web.Request) -> web.Response:
     providers = []
 
     # Anthropic / Claude
-    if request.app.get("claude_runner") is not None:
-        providers.append({"id": "anthropic", "label": "Claude (Anthropic)", "models": _CLAUDE_MODELS})
+    claude_runner = request.app.get("claude_runner")
+    if claude_runner is not None:
+        providers.append(_enrich_provider(
+            request,
+            {"id": "anthropic", "label": "Claude (Anthropic)", "models": _CLAUDE_MODELS},
+            has_credential=True,
+        ))
 
     # OpenAI
     openai_key = request.app.get("openai_api_key", "")
     if openai_key:
         models = await _fetch_openai_models(openai_key)
-        providers.append({"id": "openai", "label": "OpenAI", "models": models})
+        providers.append(_enrich_provider(
+            request,
+            {"id": "openai", "label": "OpenAI", "models": models},
+            has_credential=bool(openai_key),
+        ))
 
     # OpenRouter (200+ models via single API key, includes free tier)
     openrouter_key = request.app.get("openrouter_api_key", "")
     if openrouter_key:
         models = await _fetch_openrouter_models(openrouter_key)
-        providers.append({"id": "openrouter", "label": "OpenRouter (200+ modelli)", "models": models})
+        providers.append(_enrich_provider(
+            request,
+            {"id": "openrouter", "label": "OpenRouter (200+ modelli)", "models": models},
+            has_credential=bool(openrouter_key),
+        ))
 
     # Ollama / local
     local_url = request.app.get("local_model_url", "")
@@ -308,6 +348,10 @@ async def handle_list_models(request: web.Request) -> web.Response:
     if local_url:
         models = await _fetch_ollama_models(local_url, local_name)
         if models:
-            providers.append({"id": "ollama", "label": "Locale (Ollama)", "models": models})
+            providers.append(_enrich_provider(
+                request,
+                {"id": "ollama", "label": "Locale (Ollama)", "models": models},
+                has_credential=bool(local_url),
+            ))
 
     return web.json_response({"providers": providers})
