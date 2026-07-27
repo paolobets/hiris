@@ -1857,14 +1857,26 @@ async def _on_startup(app: web.Application) -> None:
     app["local_model_name"] = local_model_name
 
     if any([claude_runner, openai_runner, openrouter_runner, ollama_runner]):
+        # SP-2: una catena unica = ordine di strategia (o override manuale futuro,
+        # Task 4) filtrato ai provider ATTIVI (Task 1). Sub non è un backend del
+        # router (gira via runner in-addon), quindi non entra qui.
+        from .llm_router import _STRATEGY_ORDER
+        _chain = [n for n in _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
+                  if app["active_providers"].get(n)]
+        # override manuale (Task 4) — se presente in models_config, vince
+        _manual = app.get("models_config", {}).get("chain_order")
+        if _manual:
+            _chain = [n for n in _manual if app["active_providers"].get(n)]
+
         router = LLMRouter(
             claude=claude_runner,
             openai=openai_runner,
             openrouter=openrouter_runner,
             ollama=ollama_runner,
             strategy=llm_strategy,
-            automatic_policy=automatic_policy,
-            chat_policy=chat_policy,
+            automatic_policy=automatic_policy,  # deprecato, tenuto per retro-compat
+            chat_policy=chat_policy,            # deprecato
+            model_chain=_chain,
         )
         semantic_map.set_router(router)
         app["claude_runner"] = claude_runner  # backward compat (may be None)

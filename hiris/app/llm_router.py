@@ -123,6 +123,7 @@ class LLMRouter:
         strategy: str = "balanced",
         automatic_policy: list[str] | None = None,
         chat_policy: list[str] | None = None,
+        model_chain: list[str] | None = None,
     ) -> None:
         self._claude = claude
         self._openai = openai
@@ -132,8 +133,17 @@ class LLMRouter:
         self._all = [r for r in [claude, openai, openrouter, ollama] if r is not None]
         # Two ordered backend policies (proactive/agents vs interactive chat).
         # Each falls back to the strategy's default order when not provided.
-        self._automatic_policy = _norm_policy(automatic_policy, self._strategy)
-        self._chat_policy = _norm_policy(chat_policy, self._strategy)
+        # SP-2: una catena unica. Se model_chain è fornito, sostituisce ENTRAMBE
+        # le policy (chat + automatic) con lo stesso ordine, così _ordered_backends
+        # e automatic_allows_sensitive restano corretti invariati. Se None,
+        # comportamento legacy (due policy indipendenti).
+        if model_chain:
+            chain = _norm_policy(model_chain, self._strategy)
+            self._automatic_policy = list(chain)
+            self._chat_policy = list(chain)
+        else:
+            self._automatic_policy = _norm_policy(automatic_policy, self._strategy)
+            self._chat_policy = _norm_policy(chat_policy, self._strategy)
 
     def automatic_allows_sensitive(self) -> bool:
         """True only if the whole *available* automatic chain is local.
