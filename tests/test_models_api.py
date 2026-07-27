@@ -31,10 +31,11 @@ async def test_get_models_config_enriched_providers(client):
     providers = body["providers"]
     assert [p["id"] for p in providers] == list(_CONFIG_PROVIDER_IDS)
     for entry in providers:
-        assert set(entry.keys()) == {"id", "label", "active", "has_credential"}
+        assert set(entry.keys()) == {"id", "label", "active", "has_credential", "toggle"}
         assert isinstance(entry["label"], str) and entry["label"]
         assert isinstance(entry["active"], bool)
         assert isinstance(entry["has_credential"], bool)
+        assert isinstance(entry["toggle"], bool)
 
     # The test client fixture wires app["claude_runner"] to a mock — so the
     # "claude" provider must report a credential even without CLAUDE_API_KEY.
@@ -47,6 +48,43 @@ async def test_get_models_config_enriched_providers(client):
     for pid in ("subscription", "openai", "openrouter", "ollama"):
         entry = next(p for p in providers if p["id"] == pid)
         assert entry["has_credential"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_models_config_missing_credential_state(client, monkeypatch):
+    """Critical fix (SP-2 T7-fix2): a provider whose addon toggle is ON but
+    with NO credential must report active=false (derive_active_providers
+    still requires the credential) while exposing toggle=true, so the UI can
+    tell "manca credenziale" apart from "Disattivato" instead of both
+    collapsing into the same active=false state."""
+    monkeypatch.setenv("PROVIDER_OPENROUTER", "true")
+    # No openrouter_api_key set on the app -> has_credential must be False.
+    client.app.pop("openrouter_api_key", None)
+    client.app["active_providers"] = {
+        "subscription": False,
+        "claude": False,
+        "openai": False,
+        "openrouter": False,  # derive_active_providers: toggle AND credential -> False
+        "ollama": False,
+    }
+
+    resp = await client.get("/api/models/config")
+    assert resp.status == 200
+    body = await resp.json()
+    dumped = json.dumps(body)
+
+    providers_by_id = {p["id"]: p for p in body["providers"]}
+    openrouter_entry = providers_by_id["openrouter"]
+    assert openrouter_entry["toggle"] is True
+    assert openrouter_entry["has_credential"] is False
+    assert openrouter_entry["active"] is False
+
+    # "toggle" must exist (and be a plain bool) for all five providers, and
+    # no secret value should ever leak through the payload.
+    for pid in _CONFIG_PROVIDER_IDS:
+        assert "toggle" in providers_by_id[pid]
+        assert isinstance(providers_by_id[pid]["toggle"], bool)
+    assert "sk-" not in dumped and "api_key" not in dumped
 
 
 @pytest.mark.asyncio

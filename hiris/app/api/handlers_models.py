@@ -77,6 +77,11 @@ def save_models_config(data_dir: str, data: dict) -> dict:
 
 
 
+# SP-2 Task 7-fix2: each entry also carries "toggle" (raw addon toggle,
+# read straight from env — NOT the effective `active`) so the UI can render
+# the "toggle ON but credential MISSING" amber state instead of collapsing
+# it into "Disattivato".
+#
 # SP-2 Task 7B: fixed provider order + labels for the enriched config payload.
 # Distinct from handle_list_models' "anthropic" id — here we use the same ids
 # as app["active_providers"] (subscription/claude/openai/openrouter/ollama) so
@@ -89,6 +94,28 @@ _CONFIG_PROVIDERS = (
     ("openrouter", "OpenRouter"),
     ("ollama", "Locale (Ollama)"),
 )
+
+
+_TOGGLE_ENV_VARS = {
+    "subscription": "PROVIDER_SUBSCRIPTION",
+    "claude": "PROVIDER_CLAUDE",
+    "openai": "PROVIDER_OPENAI",
+    "openrouter": "PROVIDER_OPENROUTER",
+    "ollama": "PROVIDER_OLLAMA",
+}
+
+
+def _config_raw_toggle(provider_id: str) -> bool:
+    """Raw addon toggle value read directly from env — NOT the effective
+    `active` (toggle AND credential) computed by
+    model_activation.derive_active_providers(). Needed so the UI can detect
+    "toggle ON but credential MISSING" (design §3.2 amber "manca
+    credenziale"), a state that collapses into active=false and would
+    otherwise be indistinguishable from "toggle OFF"."""
+    env_var = _TOGGLE_ENV_VARS.get(provider_id)
+    if not env_var:
+        return False
+    return os.environ.get(env_var, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _config_has_credential(request: web.Request, provider_id: str) -> bool:
@@ -116,6 +143,7 @@ def _build_config_providers(request: web.Request) -> list[dict]:
             "label": label,
             "active": bool(active_providers.get(pid)),
             "has_credential": _config_has_credential(request, pid),
+            "toggle": _config_raw_toggle(pid),
         }
         for pid, label in _CONFIG_PROVIDERS
     ]

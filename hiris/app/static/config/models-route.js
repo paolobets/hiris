@@ -13,7 +13,11 @@
 
    Task 7B ha arricchito GET /api/models/config con:
      providers: [{id: subscription|claude|openai|openrouter|ollama, label,
-                  active, has_credential}]  (tutti e 5, ordine fisso)
+                  active, has_credential, toggle}]  (tutti e 5, ordine fisso;
+                  "toggle" aggiunto in Task 7-fix2: valore grezzo del toggle
+                  addon, letto da env, distinto da "active" che è già
+                  toggle AND credenziale — serve per lo stato "manca
+                  credenziale" quando active è false ma il toggle è acceso)
      llm_strategy: string
      embeddings: {provider, model}
      ollama_model: nome del modello Ollama fisso configurato
@@ -231,20 +235,27 @@
       var cp = findConfigProvider(pd.configId);
       var active = !!(cp && cp.active);
       var hasCred = !!(cp && cp.has_credential);
+      var toggle = !!(cp && cp.toggle);
+      /* design §3.2: "active" (toggle AND credential, già calcolato lato
+         server) collassa "toggle ON ma credenziale mancante" in false, quindi
+         non basta per distinguere "Disattivato" da "⚠ manca credenziale" — da
+         qui l'uso del campo "toggle" grezzo (Task 7-fix2) solo per lo stato
+         intermedio quando active è false. */
+      var missingCred = !active && toggle && !hasCred;
       if (active) anyActive = true;
       var label = cp ? cp.label : pd.fallbackLabel;
 
       var row = el('div', 'provider-row');
       var head = el('div', 'provider-row-head');
-      var dotCls = !active ? 'off' : (hasCred ? 'on' : 'warn');
+      var dotCls = active ? 'on' : (missingCred ? 'warn' : 'off');
       head.appendChild(el('span', 'dot ' + dotCls));
       head.appendChild(el('span', 'provider-row-label', label));
-      var badgeCls = !active ? 'badge-off' : (hasCred ? 'badge-on' : 'badge-warn');
-      var badgeTxt = !active ? 'Disattivato' : (hasCred ? 'Attivo' : '⚠ manca credenziale');
+      var badgeCls = active ? 'badge-on' : (missingCred ? 'badge-warn' : 'badge-off');
+      var badgeTxt = active ? 'Attivo' : (missingCred ? '⚠ manca credenziale' : 'Disattivato');
       head.appendChild(el('span', 'agent-badge ' + badgeCls, badgeTxt));
       row.appendChild(head);
 
-      if (active && !hasCred) {
+      if (missingCred) {
         row.appendChild(el('p', 'field-hint', 'Aggiungi la chiave in Configurazione add-on per attivarlo davvero.'));
       } else if (active && hasCred && pd.configId === 'ollama') {
         var fixedModel = state.ollamaModel || '';
@@ -354,6 +365,20 @@
     return order;
   }
 
+  /* Mappa label preset llm_strategy -> IT (design §4, "Mappa label preset").
+     Fallback al valore grezzo se sconosciuto (design §11 punto 2, stesso
+     pattern di modelLabel per provider senza mapping). */
+  var STRATEGY_LABELS = {
+    balanced: 'Bilanciato',
+    cost_first: 'Risparmio',
+    quality_first: 'Qualità massima'
+  };
+
+  function strategyLabel(raw) {
+    raw = raw || 'balanced';
+    return STRATEGY_LABELS[raw] || raw;
+  }
+
   function providerLabelForKey(key) {
     var pd = PROVIDER_ORDER.filter(function(x) { return x.key === key; })[0];
     if (!pd) return key;
@@ -367,7 +392,7 @@
 
     /* Task 7-fix punto 6: preset reale da llm_strategy (payload config),
        non una stringa generica. */
-    body.appendChild(el('p', 'field-hint', 'Preset: ' + (state.llmStrategy || 'balanced')));
+    body.appendChild(el('p', 'field-hint', 'Preset: ' + strategyLabel(state.llmStrategy)));
 
     var keys = usableKeys();
     var shown = buildDisplayChain(keys);
