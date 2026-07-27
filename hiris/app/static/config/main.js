@@ -111,20 +111,20 @@
     }
   });
   HirisRouter.register(/^#\/agents\/?$/, function() {
-    setCrumbHere('Agenti');
+    setCrumbHere('Chatbot');
     if (window.HirisAgentsList) {
       HirisAgentsList.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Lista agenti</div>';
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Lista Chatbot</div>';
     }
   });
   HirisRouter.register(/^#\/agents\/new\/?$/, function() {
-    setCrumbHere('Agenti / Nuovo');
+    setCrumbHere('Chatbot / Nuovo');
     HirisState.set('activeAgentId', null);
     HirisAgentEditor.mount(null);
   });
   HirisRouter.register(/^#\/agents\/([^/]+)$/, function(m) {
-    setCrumbHere('Agenti / ' + m[1]);
+    setCrumbHere('Chatbot / ' + m[1]);
     HirisState.set('activeAgentId', m[1]);
     HirisAgentEditor.mount(m[1]);
   });
@@ -186,11 +186,11 @@
     }
   });
   HirisRouter.register(/^#\/sentinel\/?$/, function() {
-    setCrumbHere('Sentinella');
+    setCrumbHere('Agentbot');
     if (window.HirisSentinelRoute) {
       HirisSentinelRoute.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Sentinella</div>';
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Agentbot</div>';
     }
   });
   /* v0.10.5: rimosso route /settings — la nav voce è stata tolta da config.html
