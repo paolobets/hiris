@@ -772,12 +772,14 @@ class _EmbeddedMCPServer(uvicorn.Server):
 def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
     """Costruisce (client, uvicorn.Config) per il server MCP interno su loopback.
     Isolato dall'avvio dell'app cosi' e' testabile senza bootare tutto."""
+    from .mcp.guard import McpGuard
     from .mcp.local_client import LocalExecuteClient
     from .mcp.server import build_mcp, make_asgi_app
     port = int(os.environ.get("INTERNAL_MCP_PORT", "8199"))
     token = os.environ.get("INTERNAL_TOKEN", "")
     client = LocalExecuteClient(hiris_base_url, token)
-    asgi = make_asgi_app(build_mcp(client))
+    guard = McpGuard()
+    asgi = make_asgi_app(build_mcp(client, guard))
     config = uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="warning")
     return client, config
 

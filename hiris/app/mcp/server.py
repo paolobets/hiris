@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import time
 from typing import Any
 from fastmcp import FastMCP
 from .tiers import TOOLS
@@ -14,12 +15,24 @@ _INSTRUCTIONS = (
 )
 
 
-def build_mcp(client: Any) -> FastMCP:
+def build_mcp(client: Any, guard: Any = None) -> FastMCP:
     mcp = FastMCP("HIRIS", instructions=_INSTRUCTIONS)
 
     def _make(hiris_tool: str):
         async def _handler(inputs: dict | None = None) -> Any:
-            return await client.execute(hiris_tool, inputs or {})
+            if guard is not None and guard.is_killed():
+                return {"error": "kill-switch attivo", "blocked": True}
+            start = time.monotonic()
+            outcome = "ok"
+            try:
+                return await client.execute(hiris_tool, inputs or {})
+            except Exception:
+                outcome = "error"
+                raise
+            finally:
+                if guard is not None:
+                    latency_ms = int((time.monotonic() - start) * 1000)
+                    guard.record(hiris_tool, outcome, latency_ms)
         return _handler
 
     for t in TOOLS:
