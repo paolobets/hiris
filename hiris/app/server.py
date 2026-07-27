@@ -1476,8 +1476,13 @@ async def _on_startup(app: web.Application) -> None:
             "verdict": getattr(decision, "verdict", None), "severity": getattr(decision, "severity", None),
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
-    async def _run_decision(wake, suggested, system, force_notify_only=False):
-        decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system)
+    async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
+        # Task 4B: `model` lets a per-lens `reasoning.model` (threaded in by
+        # `watcher/lens_runner.py`'s `_on_wake`) pick its OWN model for this
+        # single reason() call. Callers that don't pass it (the built-in
+        # situations path, `_on_situation`/holistic below -- Task 4's brain
+        # path, UNCHANGED) keep the "auto" default, exactly as before.
+        decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system, model=model)
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested  # target deterministico dalla config, non dall'LLM
         if force_notify_only:

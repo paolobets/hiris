@@ -215,6 +215,42 @@ window.HirisSentinelRoute = (function () {
       parent.appendChild(wrap);
       return sel;
     }
+    function modelSelectField(parent, labelText, value) {
+      // Task 4B: per-Agentbot model. Starts with just "auto" (always valid,
+      // matches reasoning.model's own validation default) then fills in
+      // with the models of active providers from GET /api/models -- same
+      // async-populate-after-render approach as `entityField` above, so a
+      // slow/failed fetch never blocks rendering the row.
+      var sel = selectField(parent, labelText, [{ value: 'auto', label: 'auto' }], value || 'auto');
+      api('api/models', { method: 'GET' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (data) {
+          var providers = data.providers || [];
+          var current = sel.value;
+          providers.forEach(function (p) {
+            (p.models || []).forEach(function (m) {
+              if (m === 'auto') return; // already the default option
+              var opt = el('option');
+              opt.value = m;
+              opt.textContent = p.label ? (m + ' (' + p.label + ')') : m;
+              sel.appendChild(opt);
+            });
+          });
+          sel.value = current;
+          if (sel.value !== current) {
+            // The Agentbot's saved model isn't offered by any active
+            // provider (e.g. provider since disabled) -- keep it selected
+            // and visible rather than silently discarding the user's choice.
+            var orphan = el('option');
+            orphan.value = current;
+            orphan.textContent = current + ' (provider non configurato)';
+            sel.insertBefore(orphan, sel.firstChild);
+            sel.value = current;
+          }
+        })
+        .catch(function () { /* select resta con solo 'auto' */ });
+      return sel;
+    }
     function textareaField(parent, labelText, value) {
       var wrap = el('div');
       wrap.style.cssText = 'margin-top:8px';
@@ -322,7 +358,7 @@ window.HirisSentinelRoute = (function () {
       return {
         id: null, name: '', enabled: true, severity: 'info',
         trigger: { type: 'event', entity_id: '', operator: '==', threshold: '' },
-        reasoning: { enabled: false, prompt: '' },
+        reasoning: { enabled: false, model: 'auto', prompt: '' },
         action: { type: 'notify', message: '' }
       };
     }
@@ -420,6 +456,7 @@ window.HirisSentinelRoute = (function () {
       // Ragionamento AI
       row.appendChild(el('p', 'sc-desc', 'Ragionamento AI'));
       var reasoningChk = checkboxField(row, 'Abilita ragionamento AI', (lens.reasoning || {}).enabled);
+      var reasoningModelSel = modelSelectField(row, 'Modello', (lens.reasoning || {}).model);
       var reasoningPrompt = textareaField(row, 'Prompt personalizzato', (lens.reasoning || {}).prompt);
 
       // Azione
@@ -492,6 +529,7 @@ window.HirisSentinelRoute = (function () {
         }
         payload.reasoning = {
           enabled: reasoningChk.checked,
+          model: reasoningModelSel.value,
           prompt: reasoningPrompt.value
         };
         if (actionTypeSel.value === 'notify') {

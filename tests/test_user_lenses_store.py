@@ -158,6 +158,34 @@ def test_validate_reasoning_enabled_non_bool_falls_back_to_default_false():
     assert cleaned3["reasoning"]["enabled"] is False
 
 
+# ---------------------------------------------------------------------------
+# reasoning.model (Task 4B: per-Agentbot model, threaded end-to-end)
+# ---------------------------------------------------------------------------
+
+def test_reasoning_model_defaults_to_auto():
+    raw = {**VALID_EVENT_LENS, "reasoning": {"enabled": True, "prompt": "controlla"}}
+    cleaned = validate_lens(raw)
+    assert cleaned["reasoning"]["model"] == "auto"
+
+
+def test_reasoning_model_explicit_preserved():
+    raw = {**VALID_EVENT_LENS, "reasoning": {"enabled": True, "model": "gpt-4o"}}
+    cleaned = validate_lens(raw)
+    assert cleaned["reasoning"]["model"] == "gpt-4o"
+
+
+def test_reasoning_model_non_string_falls_back():
+    raw = {**VALID_EVENT_LENS, "reasoning": {"enabled": True, "model": 123}}
+    cleaned = validate_lens(raw)
+    assert cleaned["reasoning"]["model"] == "auto"
+
+
+def test_reasoning_model_empty_string_falls_back():
+    raw = {**VALID_EVENT_LENS, "reasoning": {"enabled": True, "model": ""}}
+    cleaned = validate_lens(raw)
+    assert cleaned["reasoning"]["model"] == "auto"
+
+
 def test_validate_enabled_real_bools_pass_through():
     raw = {**VALID_EVENT_LENS, "enabled": True}
     cleaned = validate_lens(raw)

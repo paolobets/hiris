@@ -124,10 +124,10 @@ def _policy(tiers=None, entity_tiers=None):
 def _make_run_decision_from_llm(llm_reason, *, gather_context=None, notify, act, propose,
                                  execute_policy, allow_green_auto):
     """Test-local stand-in for server.py's real `_run_decision(wake, suggested,
-    system, force_notify_only=False)` (verified against the current
-    `hiris/app/server.py` body, lines ~953-966): calls `reason()` (the LLM
-    edge is the only fake), re-injects the deterministic `suggested` action
-    onto the parsed Decision (mirroring `server.py:955-956`'s
+    system, force_notify_only=False, model="auto")` (verified against the
+    current `hiris/app/server.py` body, `_run_decision`): calls `reason()`
+    (the LLM edge is the only fake), re-injects the deterministic
+    `suggested` action onto the parsed Decision (mirroring `_run_decision`'s
     `decision.action = suggested`), then -- if `force_notify_only` -- forces
     the action back to `None` before the executor ever sees it (Task 3
     review fix: a notify-type lens must NEVER actuate, even when `suggested`
@@ -135,10 +135,15 @@ def _make_run_decision_from_llm(llm_reason, *, gather_context=None, notify, act,
     runs the result through the REAL `executor.execute`. This is the same
     "not practical to instantiate the real _on_startup closure, so mirror
     the composed logic against real reason()/execute()" approach already
-    used by `tests/test_sentinel_wiring.py`'s `_resolve_verdict` mirror."""
-    async def _run_decision(wake, suggested, system, force_notify_only=False):
+    used by `tests/test_sentinel_wiring.py`'s `_resolve_verdict` mirror.
+
+    Task 4B: `model` is accepted and threaded straight into `reason()`,
+    exactly like the real `_run_decision` -- so this mirror still matches
+    the production wiring now that `lens_runner.py`'s `_on_wake` passes
+    `model=reasoning.get("model") or "auto"` into `run_decision`."""
+    async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
         decision = await reason(wake, gather_context=gather_context or (lambda w: {}),
-                                 llm_reason=llm_reason, system=system)
+                                 llm_reason=llm_reason, system=system, model=model)
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested
         if force_notify_only:
@@ -544,3 +549,94 @@ async def test_omitted_cooldown_sec_still_defaults_to_thirty_minutes(store):
     assert out1 == "woke"
     assert out2 == "cooldown"
     assert len(rec.notified) == 1
+
+
+# ---------------------------------------------------------------------------
+# (g) Task 4B: `reasoning.model` (per-Agentbot model) must reach
+# `run_decision`'s `model` kwarg unchanged -- this is the actual runtime
+# threading point (server.py's `_run_decision` has no `lens` in scope; the
+# lens's `reasoning` dict is only in scope HERE, in `_on_wake`).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ai_lens_threads_its_own_reasoning_model_into_run_decision(store):
+    rec = _Rec()
+    seen = {}
+
+    async def _run_decision_spy(wake, suggested, system, force_notify_only=False, model="auto"):
+        seen["model"] = model
+        return None
+
+    lens_with_model = {**AI_SERVICE_LENS,
+                        "reasoning": {"enabled": True, "prompt": "x", "model": "gpt-4o"}}
+
+    await run_lens(
+        lens_with_model, {"entity_id": "switch.pompa", "value": 150},
+        store=store, run_decision=_run_decision_spy, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-24",
+    )
+
+    assert seen["model"] == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_ai_lens_without_configured_model_defaults_to_auto(store):
+    rec = _Rec()
+    seen = {}
+
+    async def _run_decision_spy(wake, suggested, system, force_notify_only=False, model="auto"):
+        seen["model"] = model
+        return None
+
+    # AI_SERVICE_LENS's reasoning dict has no "model" key at all.
+    await run_lens(
+        AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
+        store=store, run_decision=_run_decision_spy, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-24",
+    )
+
+    assert seen["model"] == "auto"
+
+
+@pytest.mark.asyncio
+async def test_ai_lens_two_agentbots_use_independent_models(store):
+    """Two Agentbots firing on their own entities must each reason with
+    THEIR OWN configured model -- one Agentbot's choice must never leak
+    into another's `reason()` call."""
+    rec = _Rec()
+    seen = []
+
+    async def _run_decision_spy(wake, suggested, system, force_notify_only=False, model="auto"):
+        seen.append(model)
+        return None
+
+    lens_a = {**AI_SERVICE_LENS, "id": "aaaaaaaaaaaa",
+              "reasoning": {"enabled": True, "model": "claude-3-5-haiku"}}
+    lens_b = {**AI_SERVICE_LENS, "id": "bbbbbbbbbbbb",
+              "trigger": {**AI_SERVICE_LENS["trigger"], "entity_id": "switch.pompa2"},
+              "reasoning": {"enabled": True, "model": "gpt-4o-mini"}}
+
+    await run_lens(
+        lens_a, {"entity_id": "switch.pompa", "value": 150},
+        store=store, run_decision=_run_decision_spy, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-24",
+    )
+    await run_lens(
+        lens_b, {"entity_id": "switch.pompa2", "value": 150},
+        store=store, run_decision=_run_decision_spy, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-24",
+    )
+
+    assert seen == ["claude-3-5-haiku", "gpt-4o-mini"]
