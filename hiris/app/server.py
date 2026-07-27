@@ -1002,7 +1002,12 @@ async def _on_startup(app: web.Application) -> None:
     # poco più in basso), così ognuno di quei tre punti vede l'abbonamento
     # senza duplicare il parsing env. Vedi task-3-report.md per il grep
     # BRIDGE_ENABLED che ha individuato tutti e tre i gate.
-    _sub_first_class = _prov_cfg["provider_subscription"]
+    # SP-2 T3 review: usa lo stato di attivazione CREDENZIALE-CONSAPEVOLE
+    # (_active["subscription"] = toggle AND token presente, o derivato legacy),
+    # non il toggle grezzo: così provider_subscription=true SENZA token non apre
+    # i gate di enqueue mentre il worker (gated dal token) non parte — evitando
+    # richieste chat accodate e mai servite. Simmetrico a should_start_agent_worker.
+    _sub_first_class = _active["subscription"]
 
     # Memory / RAG config
     mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
