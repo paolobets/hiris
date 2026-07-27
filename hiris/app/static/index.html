@@ -44,7 +44,7 @@
     </div>
 
     <div class="ob-step" id="ob-step-1">
-      <div class="ob-title">Che tipo di Chatbot?</div>
+      <div class="ob-title">Che tipo di assistente?</div>
       <div class="ob-sub">Potrai sempre crearne altri dalla pagina di configurazione.</div>
       <div class="ob-types">
         <button class="ob-type-btn" onclick="obSelectType('monitor', this)">
@@ -70,10 +70,10 @@
     </div>
 
     <div class="ob-step" id="ob-step-2">
-      <div class="ob-title">Configura il tuo Chatbot</div>
+      <div class="ob-title">Configura il tuo assistente</div>
       <div class="ob-sub">Pochi dettagli per iniziare — potrai modificarli in seguito.</div>
       <div class="ob-field">
-        <label>Nome Chatbot</label>
+        <label>Nome assistente</label>
         <input type="text" id="ob-name" placeholder="Es: Iris, Monitor Energia…" maxlength="60">
       </div>
       <div class="ob-field">
@@ -82,7 +82,7 @@
       </div>
       <div class="ob-actions">
         <button class="btn ob-btn-skip" onclick="obGo(1)">&#8592; Indietro</button>
-        <button class="btn btn-primary ob-btn-next" id="ob-create-btn" onclick="obCreate()">Crea Chatbot &#10003;</button>
+        <button class="btn btn-primary ob-btn-next" id="ob-create-btn" onclick="obCreate()">Crea assistente &#10003;</button>
       </div>
     </div>
   </div>
@@ -763,7 +763,7 @@ async function obCreate() {
   btn.disabled = true;
   try {
     var r = await fetch('api/agents', { method: 'POST', headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload) });
-    if (!r.ok) { btn.disabled = false; alert('Errore nella creazione Chatbot. Riprova.'); return; }
+    if (!r.ok) { btn.disabled = false; alert('Errore nella creazione assistente. Riprova.'); return; }
     var agent = await r.json();
     await loadAgents();
     if (agent.id) setActiveAgent(agent.id, agent.name || agent.id);
