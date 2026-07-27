@@ -22,13 +22,12 @@ def build_mcp(client: Any, guard: Any = None) -> FastMCP:
         async def _handler(inputs: dict | None = None) -> Any:
             if guard is not None and guard.is_killed():
                 return {"error": "kill-switch attivo", "blocked": True}
+            outcome = "error"  # pessimistic: exception/cancel stays "error"
             start = time.monotonic()
-            outcome = "ok"
             try:
-                return await client.execute(hiris_tool, inputs or {})
-            except Exception:
-                outcome = "error"
-                raise
+                result = await client.execute(hiris_tool, inputs or {})
+                outcome = "error" if isinstance(result, dict) and result.get("error") else "ok"
+                return result
             finally:
                 if guard is not None:
                     latency_ms = int((time.monotonic() - start) * 1000)

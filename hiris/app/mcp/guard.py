@@ -7,7 +7,11 @@ logger = logging.getLogger(__name__)
 
 class McpGuard:
     """Kill-switch + audit in-memory per l'MCP interno (item I2). Il semaforo
-    HIRIS resta il gate delle azioni; questo aggiunge stop d'emergenza + traccia."""
+    HIRIS resta il gate delle azioni; questo aggiunge stop d'emergenza + traccia.
+
+    Non thread-safe: assume esecuzione su un unico event loop asyncio. Una
+    futura attivazione del kill-switch da un thread separato deve rivedere
+    questa assunzione (serve un lock o comunicazione cross-thread sicura)."""
 
     def __init__(self, audit_max: int = 200) -> None:
         self._killed = False
