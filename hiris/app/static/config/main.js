@@ -86,6 +86,7 @@
         (route === 'agents' && hash.indexOf('#/agents') === 0) ||
         (route === 'proposals' && hash.indexOf('#/proposals') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
+        (route === 'models' && hash.indexOf('#/models') === 0) ||
         (route === 'tasks' && hash.indexOf('#/tasks') === 0) ||
         (route === 'gateway' && hash.indexOf('#/gateway') === 0) ||
         (route === 'history' && hash.indexOf('#/history') === 0) ||
@@ -159,6 +160,14 @@
       HirisUsageRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Consumi</div>';
+    }
+  });
+  HirisRouter.register(/^#\/models\/?$/, function() {
+    setCrumbHere('Modelli');
+    if (window.HirisModelsRoute) {
+      HirisModelsRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Modelli</div>';
     }
   });
   HirisRouter.register(/^#\/tasks\/?$/, function() {
