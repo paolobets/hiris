@@ -149,6 +149,20 @@ quel modello (con failover alla catena solo se quel provider è giù, se
    `AUTO_MODEL_MAP[agent_type]`.
 3. Failover lungo la catena su errore/indisponibilità.
 
+### 3.2b Modello di default per-provider (richiesta utente 2026-07-27)
+
+Oltre al modello per-entità, per **ogni provider attivo** si sceglie **quale
+modello** usare di default (Claude → opus/sonnet/haiku; OpenAI → quale GPT;
+OpenRouter → quale). Vive in `models_config.provider_models = {claude, openai,
+openrouter}` (Ollama usa già il suo `local_model.model` fisso). Semantica:
+quando un'entità è in `auto` e la catena atterra su un provider, si usa
+`provider_models[provider]` **al posto** dell'hardcoded `AUTO_MODEL_MAP`; se
+vuoto, resta `AUTO_MODEL_MAP`. Un modello **esplicito per-entità** vince sempre.
+Implementazione pulita: ogni runner riceve al boot il suo `default_model`; il
+suo `resolve_model("auto", agent_type)` ritorna `self._default_model or
+AUTO_MODEL_MAP[agent_type]`. UI: un picker per-provider nella sezione `#/models`
+accanto al toggle/stato del provider.
+
 ### 3.3 Embeddings (dichiarati separati)
 `#/models` mostra una riga esplicita **"Embeddings (RAG/memoria)"** legata a
 `local_model.embedding_provider`/`embedding_model`, con nota chiara:
