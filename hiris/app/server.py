@@ -27,7 +27,9 @@ from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
 from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
 from .api.handlers_tasks import handle_list_tasks, handle_get_task, handle_cancel_task
-from .api.handlers_models import handle_list_models
+from .api.handlers_models import (
+    handle_list_models, handle_get_models_config, handle_save_models_config,
+)
 from .api.handlers_health import handle_get_ha_health, handle_refresh_ha_health
 from .api.handlers_proposals import (
     handle_list_proposals, handle_get_proposal,
@@ -794,13 +796,14 @@ def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
 
 
 def should_start_agent_worker() -> bool:
-    """Gate for the in-addon chat-via-subscription worker (Plan 2B Task 4):
-    only when explicitly enabled AND a subscription OAuth token is present --
-    otherwise there is nothing for the worker to authenticate `claude` with."""
-    return (
-        os.environ.get("CHAT_VIA_SUBSCRIPTION", "").strip().lower() == "true"
-        and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+    """Gate worker chat-via-abbonamento in-addon (SP-2): attivo quando
+    l'abbonamento è attivo (provider_subscription, o il legacy
+    chat_via_subscription) E un token OAuth è presente."""
+    sub_on = (
+        os.environ.get("PROVIDER_SUBSCRIPTION", "").strip().lower() in ("1", "true", "yes", "on")
+        or os.environ.get("CHAT_VIA_SUBSCRIPTION", "").strip().lower() == "true"
     )
+    return sub_on and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
 
 
 async def _on_startup(app: web.Application) -> None:
@@ -870,6 +873,12 @@ async def _on_startup(app: web.Application) -> None:
     data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
     data_dir = os.path.dirname(os.path.abspath(data_path))
     app["data_dir"] = data_dir
+    # SP-2 Task 4: models-config store (chain_order + brain_model), letta prima
+    # della costruzione LLMRouter più sotto così il chain-build (Task 2 Step 5)
+    # può leggere chain_order, e prima di _holistic_reason (Brain) che legge
+    # brain_model.
+    from .api.handlers_models import load_models_config
+    app["models_config"] = load_models_config(data_dir)
     # If the user manages the gateway policy from the UI, it overrides the env CSV.
     from .api.handlers_gateway_policy import apply_saved_policy
     apply_saved_policy(app)
@@ -972,6 +981,41 @@ async def _on_startup(app: web.Application) -> None:
     llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
     automatic_policy = _parse_policy_csv(os.environ.get("AUTOMATIC_POLICY", ""))
     chat_policy = _parse_policy_csv(os.environ.get("CHAT_POLICY", ""))
+
+    from .model_activation import derive_active_providers
+    _prov_cfg = {
+        "provider_subscription": os.environ.get("PROVIDER_SUBSCRIPTION", "") in ("1", "true", "yes", "on"),
+        "provider_claude": os.environ.get("PROVIDER_CLAUDE", "") in ("1", "true", "yes", "on"),
+        "provider_openai": os.environ.get("PROVIDER_OPENAI", "") in ("1", "true", "yes", "on"),
+        "provider_openrouter": os.environ.get("PROVIDER_OPENROUTER", "") in ("1", "true", "yes", "on"),
+        "provider_ollama": os.environ.get("PROVIDER_OLLAMA", "") in ("1", "true", "yes", "on"),
+        "chat_via_subscription": os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on"),
+    }
+    _prov_creds = {
+        "subscription": bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()),
+        "claude": bool(api_key),
+        "openai": bool(openai_api_key),
+        "openrouter": bool(openrouter_api_key),
+        "ollama": bool(local_model_url and local_model_name),
+    }
+    _active = derive_active_providers(_prov_cfg, _prov_creds)
+    app["active_providers"] = _active
+
+    # SP-2 T3: l'abbonamento first-class (provider_subscription) implica il
+    # bridge attivo -- il fail-safe #1 (_chat_subscription_active = cfg AND
+    # bridge, invariato) altrimenti bloccherebbe la chat lasciando i job
+    # 'chat' in coda senza nessuno che li spazzi/reclami/pruni. Calcolato qui,
+    # PRIMA di ogni gate più sotto che legge BRIDGE_ENABLED dall'env
+    # (_holistic_reason, _reasoning_sweep, il wiring di chat_via_subscription
+    # poco più in basso), così ognuno di quei tre punti vede l'abbonamento
+    # senza duplicare il parsing env. Vedi task-3-report.md per il grep
+    # BRIDGE_ENABLED che ha individuato tutti e tre i gate.
+    # SP-2 T3 review: usa lo stato di attivazione CREDENZIALE-CONSAPEVOLE
+    # (_active["subscription"] = toggle AND token presente, o derivato legacy),
+    # non il toggle grezzo: così provider_subscription=true SENZA token non apre
+    # i gate di enqueue mentre il worker (gated dal token) non parte — evitando
+    # richieste chat accodate e mai servite. Simmetrico a should_start_agent_worker.
+    _sub_first_class = _active["subscription"]
 
     # Memory / RAG config
     mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
@@ -1434,8 +1478,13 @@ async def _on_startup(app: web.Application) -> None:
             "verdict": getattr(decision, "verdict", None), "severity": getattr(decision, "severity", None),
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
-    async def _run_decision(wake, suggested, system, force_notify_only=False):
-        decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system)
+    async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
+        # Task 4B: `model` lets a per-lens `reasoning.model` (threaded in by
+        # `watcher/lens_runner.py`'s `_on_wake`) pick its OWN model for this
+        # single reason() call. Callers that don't pass it (the built-in
+        # situations path, `_on_situation`/holistic below -- Task 4's brain
+        # path, UNCHANGED) keep the "auto" default, exactly as before.
+        decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system, model=model)
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested  # target deterministico dalla config, non dall'LLM
         if force_notify_only:
@@ -1626,8 +1675,12 @@ async def _on_startup(app: web.Application) -> None:
                 except Exception:
                     logger.warning("holistic memory retrieval failed", exc_info=True)
                 _ctx = build_review_context(snapshot, _inventory, _current, memory=_mem)
+                # SP-2 Task 4: il Brain (questo passaggio olistico) usa il
+                # modello scelto per il Brain, se esplicito; "auto" (default)
+                # -> catena, invariato.
+                _brain_model = (app.get("models_config") or {}).get("brain_model", "auto")
                 _text = await _llm_reason(COVERAGE_REVIEW_SYSTEM, build_review_message(_ctx),
-                                          model="auto", max_tokens=1536)
+                                          model=_brain_model, max_tokens=1536)
                 _suggs = parse_suggestions(_text)
 
                 def _mk_proposal(c):
@@ -1677,7 +1730,7 @@ async def _on_startup(app: web.Application) -> None:
         except Exception:
             logger.exception("coverage-review failed")
 
-        if os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on"):
+        if os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on") or _sub_first_class:
             wake = {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
                     "evidence": {}, "ts": _time.time()}
             ctx = {"snapshot": {k: (_san(v) if isinstance(v, str) else v) for k, v in (snapshot or {}).items()}}
@@ -1704,7 +1757,7 @@ async def _on_startup(app: web.Application) -> None:
     # lo stesso _run_decision (e quindi lo stesso cap del router LLM) delle
     # situazioni sopra — nessun path metrico/actuation nuovo.
     async def _reasoning_sweep() -> None:
-        if os.environ.get("BRIDGE_ENABLED", "0") not in ("1", "true", "yes", "on"):
+        if os.environ.get("BRIDGE_ENABLED", "0") not in ("1", "true", "yes", "on") and not _sub_first_class:
             return
         fallback = os.environ.get("BRIDGE_FALLBACK", "1") in ("1", "true", "yes", "on")
         for job in reasoning_queue.sweep_expired(_time.time()):
@@ -1742,8 +1795,23 @@ async def _on_startup(app: web.Application) -> None:
     # the queue directly without touching env vars, while still making sure
     # chat_via_subscription=true + BRIDGE_ENABLED=0 enqueues nothing that
     # would sit pending forever and grow the DB.
-    _bridge_enabled = os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")
-    _chat_via_subscription_cfg = os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")
+    #
+    # SP-2 T3: provider_subscription (first-class) must ALSO force the bridge
+    # on, everywhere BRIDGE_ENABLED is read -- not just here. _sub_first_class
+    # (computed once, right after _active above) is OR'd into all THREE
+    # BRIDGE_ENABLED reads in this module: _holistic_reason's enqueue gate,
+    # _reasoning_sweep's early-return, and this cfg/bridge derivation. Missing
+    # any one of them would leave a hole where the fail-safe below
+    # (_chat_subscription_active, still a strict AND) blocks chat while the
+    # sweep that's supposed to drain the queue never runs.
+    _bridge_enabled = (
+        os.environ.get("BRIDGE_ENABLED", "0") in ("1", "true", "yes", "on")
+        or _sub_first_class  # SP-2: abbonamento attivo implica il bridge (sweep coda)
+    )
+    _chat_via_subscription_cfg = (
+        os.environ.get("CHAT_VIA_SUBSCRIPTION", "0") in ("1", "true", "yes", "on")
+        or _sub_first_class
+    )
     app["chat_via_subscription"] = _chat_subscription_active(_chat_via_subscription_cfg, _bridge_enabled)
 
     # ── Arrivo serale (fetta 3): riusa lo stesso adapter _on_situation ──────
@@ -1766,28 +1834,36 @@ async def _on_startup(app: web.Application) -> None:
         lambda evt: _spawn(arrival_watcher.on_state_changed(evt), name="arrival_watcher_on_state_changed")
     )
 
+    # SP-2 T5C: per-provider DEFAULT model chosen by the user (used when an
+    # entity's model is "auto"); Ollama excluded — it uses local_model.model
+    # via fixed_model instead. Empty string ("") preserves today's behaviour
+    # (fall back to AUTO_MODEL_MAP).
+    _pm = app["models_config"].get("provider_models", {})
+
     claude_runner = None
-    if api_key:
+    if api_key and _active["claude"]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
             dispatcher=dispatcher,
             usage_path=usage_path,
+            default_model=_pm.get("claude", ""),
         )
 
     _usage_base, _usage_ext = os.path.splitext(usage_path)
     _usage_ext = _usage_ext or ".json"
 
     openai_runner = None
-    if openai_api_key:
+    if openai_api_key and _active["openai"]:
         openai_runner = OpenAICompatRunner(
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
             dispatcher=dispatcher,
             usage_path=f"{_usage_base}_openai{_usage_ext}",
+            default_model=_pm.get("openai", ""),
         )
 
     ollama_runner = None
-    if local_model_url and local_model_name:
+    if local_model_url and local_model_name and _active["ollama"]:
         ollama_runner = OpenAICompatRunner(
             base_url=local_model_url.rstrip("/") + "/v1",
             api_key="ollama",
@@ -1823,11 +1899,12 @@ async def _on_startup(app: web.Application) -> None:
             )
 
     openrouter_runner = None
-    if openrouter_api_key:
+    if openrouter_api_key and _active["openrouter"]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
             dispatcher=dispatcher,
             usage_path=f"{_usage_base}_openrouter{_usage_ext}",
+            default_model=_pm.get("openrouter", ""),
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 
@@ -1838,14 +1915,33 @@ async def _on_startup(app: web.Application) -> None:
     app["local_model_name"] = local_model_name
 
     if any([claude_runner, openai_runner, openrouter_runner, ollama_runner]):
+        # SP-2: una catena unica = ordine di strategia (o override manuale futuro,
+        # Task 4) filtrato ai provider ATTIVI (Task 1). Sub non è un backend del
+        # router (gira via runner in-addon), quindi non entra qui.
+        from .llm_router import _STRATEGY_ORDER
+        from .model_activation import reconcile_chain
+        # override manuale (Task 4) — se presente in models_config, filtra ai
+        # provider attivi, poi (review finale SP-2) i provider attivi mancanti
+        # dall'override vengono APPENDED in ordine di strategia -- una
+        # chain_order parziale salvata quando meno provider erano attivi non
+        # deve MAI far sparire dalla catena un provider che diventa attivo
+        # dopo (fail-open su automatic_allows_sensitive() + provider escluso
+        # dal failover finché l'utente non riapre #/models e risalva).
+        # Se il risultato è comunque vuoto, fallback esplicito ai provider
+        # attivi in ordine di strategia (mai degradare silenziosamente).
+        _strategy_order = _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
+        _manual = app.get("models_config", {}).get("chain_order")
+        _chain = reconcile_chain(_strategy_order, _manual, app["active_providers"])
+
         router = LLMRouter(
             claude=claude_runner,
             openai=openai_runner,
             openrouter=openrouter_runner,
             ollama=ollama_runner,
             strategy=llm_strategy,
-            automatic_policy=automatic_policy,
-            chat_policy=chat_policy,
+            automatic_policy=automatic_policy,  # deprecato, tenuto per retro-compat
+            chat_policy=chat_policy,            # deprecato
+            model_chain=_chain,
         )
         semantic_map.set_router(router)
         app["claude_runner"] = claude_runner  # backward compat (may be None)
@@ -2028,6 +2124,8 @@ def create_app() -> web.Application:
     app.router.add_get("/api/tasks/{task_id}", handle_get_task)
     app.router.add_delete("/api/tasks/{task_id}", handle_cancel_task)
     app.router.add_get("/api/models", handle_list_models)
+    app.router.add_get("/api/models/config", handle_get_models_config)
+    app.router.add_put("/api/models/config", handle_save_models_config)
     app.router.add_get("/api/health/ha", handle_get_ha_health)
     app.router.add_post("/api/health/ha/refresh", handle_refresh_ha_health)
     app.router.add_get("/api/proposals", handle_list_proposals)

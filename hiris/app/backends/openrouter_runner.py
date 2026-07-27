@@ -52,6 +52,7 @@ class OpenRouterRunner(OpenAICompatRunner):
         dispatcher: "ToolDispatcher",
         *,
         usage_path: str = "",
+        default_model: str = "",
     ) -> None:
         # No `fixed_model`: OpenRouter expects a different model per request,
         # selected by the user via the Designer model field. Default agent
@@ -62,6 +63,7 @@ class OpenRouterRunner(OpenAICompatRunner):
             api_key=api_key,
             dispatcher=dispatcher,
             usage_path=usage_path,
+            default_model=default_model,
         )
         # OpenRouter is always a US cloud proxy — override the parent default
         # (_is_cloud = not bool(fixed_model) would yield True since fixed_model=""
@@ -71,7 +73,10 @@ class OpenRouterRunner(OpenAICompatRunner):
     def _resolve_model(self, model: str, agent_type: str) -> str:
         """Strip 'openrouter:' / 'openrouter/' prefix before sending to OR."""
         if model == "auto":
-            # Sensible default: Claude Sonnet via OpenRouter (paid but reliable);
-            # users wanting free should set explicit model in Designer.
-            return "anthropic/claude-sonnet-4-6"
+            # SP-2 T5C: user-chosen per-provider default wins; otherwise the
+            # sensible built-in default (Claude Sonnet via OpenRouter — paid
+            # but reliable). Strip in both cases since the stored default may
+            # carry the HIRIS 'openrouter:' tag (same format as the picker).
+            default = self._default_model or "anthropic/claude-sonnet-4-6"
+            return _strip_openrouter_prefix(default)
         return _strip_openrouter_prefix(model)

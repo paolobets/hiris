@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import logging
 import os
 import re
@@ -7,6 +8,169 @@ import aiohttp
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
+
+# SP-2 Task 4: models-config store (chain_order + brain_model), see §8 code map.
+_VALID_BACKENDS = ("claude", "openai", "openrouter", "ollama")
+
+# SP-2 Task 5C: per-provider DEFAULT model, e.g. {"claude": "claude-opus-4-7"}.
+# Empty string ("") = auto (fall back to AUTO_MODEL_MAP). Ollama excluded — it
+# always uses its fixed `local_model.model`.
+_PROVIDER_MODEL_KEYS = ("claude", "openai", "openrouter")
+
+
+def _clean_provider_models(raw) -> dict:
+    raw = raw if isinstance(raw, dict) else {}
+    out = {}
+    for k in _PROVIDER_MODEL_KEYS:
+        v = raw.get(k, "")
+        out[k] = v if isinstance(v, str) else ""
+    return out
+
+
+def _models_config_path(data_dir: str) -> str:
+    return os.path.join(data_dir, "models_config.json")
+
+
+def load_models_config(data_dir: str) -> dict:
+    try:
+        with open(_models_config_path(data_dir), encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except FileNotFoundError:
+        raw = {}
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    raw_chain = raw.get("chain_order", [])
+    if not isinstance(raw_chain, list):
+        raw_chain = []
+    chain = [n for n in raw_chain if n in _VALID_BACKENDS]
+    brain = raw.get("brain_model", "auto")
+    if not isinstance(brain, str) or not brain:
+        brain = "auto"
+    return {
+        "chain_order": chain,
+        "brain_model": brain,
+        "provider_models": _clean_provider_models(raw.get("provider_models")),
+    }
+
+
+def save_models_config(data_dir: str, data: dict) -> dict:
+    if not isinstance(data, dict):
+        data = {}
+    raw_chain = data.get("chain_order", [])
+    if not isinstance(raw_chain, list):
+        raw_chain = []
+    clean = {
+        "chain_order": [n for n in raw_chain if n in _VALID_BACKENDS],
+        "brain_model": data.get("brain_model", "auto"),
+        "provider_models": _clean_provider_models(data.get("provider_models")),
+    }
+    if not isinstance(clean["brain_model"], str) or not clean["brain_model"]:
+        clean["brain_model"] = "auto"
+    path = _models_config_path(data_dir)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(clean, fh)
+    os.replace(tmp, path)
+    return clean
+
+
+
+# SP-2 Task 7-fix2: each entry also carries "toggle" (raw addon toggle,
+# read straight from env — NOT the effective `active`) so the UI can render
+# the "toggle ON but credential MISSING" amber state instead of collapsing
+# it into "Disattivato".
+#
+# SP-2 Task 7B: fixed provider order + labels for the enriched config payload.
+# Distinct from handle_list_models' "anthropic" id — here we use the same ids
+# as app["active_providers"] (subscription/claude/openai/openrouter/ollama) so
+# the UI can honestly show ALL five, including subscription and any
+# uncredentialed provider, without needing a separate id-mapping table.
+_CONFIG_PROVIDERS = (
+    ("subscription", "Abbonamento Claude (subscription)"),
+    ("claude", "Claude (Anthropic API)"),
+    ("openai", "OpenAI"),
+    ("openrouter", "OpenRouter"),
+    ("ollama", "Locale (Ollama)"),
+)
+
+
+_TOGGLE_ENV_VARS = {
+    "subscription": "PROVIDER_SUBSCRIPTION",
+    "claude": "PROVIDER_CLAUDE",
+    "openai": "PROVIDER_OPENAI",
+    "openrouter": "PROVIDER_OPENROUTER",
+    "ollama": "PROVIDER_OLLAMA",
+}
+
+
+def _config_raw_toggle(provider_id: str) -> bool:
+    """Raw addon toggle value read directly from env — NOT the effective
+    `active` (toggle AND credential) computed by
+    model_activation.derive_active_providers(). Needed so the UI can detect
+    "toggle ON but credential MISSING" (design §3.2 amber "manca
+    credenziale"), a state that collapses into active=false and would
+    otherwise be indistinguishable from "toggle OFF"."""
+    env_var = _TOGGLE_ENV_VARS.get(provider_id)
+    if not env_var:
+        return False
+    return os.environ.get(env_var, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _config_has_credential(request: web.Request, provider_id: str) -> bool:
+    """Boolean-only credential presence check — NEVER return the secret value."""
+    if provider_id == "subscription":
+        return bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+    if provider_id == "claude":
+        if os.environ.get("CLAUDE_API_KEY", "").strip():
+            return True
+        return request.app.get("claude_runner") is not None
+    if provider_id == "openai":
+        return bool(request.app.get("openai_api_key"))
+    if provider_id == "openrouter":
+        return bool(request.app.get("openrouter_api_key"))
+    if provider_id == "ollama":
+        return bool(request.app.get("local_model_url") and request.app.get("local_model_name"))
+    return False
+
+
+def _build_config_providers(request: web.Request) -> list[dict]:
+    active_providers = request.app.get("active_providers", {}) or {}
+    return [
+        {
+            "id": pid,
+            "label": label,
+            "active": bool(active_providers.get(pid)),
+            "has_credential": _config_has_credential(request, pid),
+            "toggle": _config_raw_toggle(pid),
+        }
+        for pid, label in _CONFIG_PROVIDERS
+    ]
+
+
+async def handle_get_models_config(request: web.Request) -> web.Response:
+    data_dir = request.app.get("data_dir") or "/data"
+    payload = load_models_config(data_dir)
+    payload["providers"] = _build_config_providers(request)
+    payload["llm_strategy"] = os.environ.get("LLM_STRATEGY", "balanced")
+    payload["embeddings"] = {
+        "provider": os.environ.get("MEMORY_EMBEDDING_PROVIDER", ""),
+        "model": os.environ.get("MEMORY_EMBEDDING_MODEL", ""),
+    }
+    payload["ollama_model"] = request.app.get("local_model_name", "")
+    return web.json_response(payload)
+
+
+async def handle_save_models_config(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+    data_dir = request.app.get("data_dir") or "/data"
+    clean = save_models_config(data_dir, body if isinstance(body, dict) else {})
+    request.app["models_config"] = clean   # hot-update per la sessione corrente
+    return web.json_response({"ok": True, **clean})
 
 
 def _hide_free_models_enabled() -> bool:
@@ -225,24 +389,58 @@ async def is_openrouter_model_tool_capable(model: str, api_key: str) -> bool | N
         return None
 
 
+# Maps the provider "id" used in the /api/models payload to the key used in
+# app["active_providers"] (populated by model_activation.derive_active_providers).
+# Note: the payload id for Claude is "anthropic" but the activation key is
+# "claude" — they diverge, hence the explicit mapping instead of a 1:1 lookup.
+_ACTIVE_PROVIDERS_KEY = {
+    "anthropic": "claude",
+    "openai": "openai",
+    "openrouter": "openrouter",
+    "ollama": "ollama",
+}
+
+
+def _enrich_provider(request: web.Request, entry: dict, has_credential: bool) -> dict:
+    """Attach activation state to a provider entry, never the credential value itself."""
+    active_providers = request.app.get("active_providers", {}) or {}
+    active_key = _ACTIVE_PROVIDERS_KEY.get(entry["id"], entry["id"])
+    entry["active"] = bool(active_providers.get(active_key))
+    entry["has_credential"] = bool(has_credential)
+    return entry
+
+
 async def handle_list_models(request: web.Request) -> web.Response:
     providers = []
 
     # Anthropic / Claude
-    if request.app.get("claude_runner") is not None:
-        providers.append({"id": "anthropic", "label": "Claude (Anthropic)", "models": _CLAUDE_MODELS})
+    claude_runner = request.app.get("claude_runner")
+    if claude_runner is not None:
+        providers.append(_enrich_provider(
+            request,
+            {"id": "anthropic", "label": "Claude (Anthropic)", "models": _CLAUDE_MODELS},
+            has_credential=True,
+        ))
 
     # OpenAI
     openai_key = request.app.get("openai_api_key", "")
     if openai_key:
         models = await _fetch_openai_models(openai_key)
-        providers.append({"id": "openai", "label": "OpenAI", "models": models})
+        providers.append(_enrich_provider(
+            request,
+            {"id": "openai", "label": "OpenAI", "models": models},
+            has_credential=bool(openai_key),
+        ))
 
     # OpenRouter (200+ models via single API key, includes free tier)
     openrouter_key = request.app.get("openrouter_api_key", "")
     if openrouter_key:
         models = await _fetch_openrouter_models(openrouter_key)
-        providers.append({"id": "openrouter", "label": "OpenRouter (200+ modelli)", "models": models})
+        providers.append(_enrich_provider(
+            request,
+            {"id": "openrouter", "label": "OpenRouter (200+ modelli)", "models": models},
+            has_credential=bool(openrouter_key),
+        ))
 
     # Ollama / local
     local_url = request.app.get("local_model_url", "")
@@ -250,6 +448,10 @@ async def handle_list_models(request: web.Request) -> web.Response:
     if local_url:
         models = await _fetch_ollama_models(local_url, local_name)
         if models:
-            providers.append({"id": "ollama", "label": "Locale (Ollama)", "models": models})
+            providers.append(_enrich_provider(
+                request,
+                {"id": "ollama", "label": "Locale (Ollama)", "models": models},
+                has_credential=bool(local_url),
+            ))
 
     return web.json_response({"providers": providers})

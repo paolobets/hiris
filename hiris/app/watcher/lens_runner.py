@@ -121,10 +121,11 @@ async def run_lens(
 
     `store` is the sentinel store (cooldown/cap bookkeeping, same schema
     used by the guardian/situations paths). `run_decision` is server.py's
-    real `_run_decision(wake, suggested, system, force_notify_only=False)`
-    (the optional-reasoning path: reason() judges verdict/severity/message,
-    then re-injects `suggested` as the action, then -- if
-    `force_notify_only` -- forces it back to None -- see module docstring).
+    real `_run_decision(wake, suggested, system, force_notify_only=False,
+    model="auto")` (the optional-reasoning path: reason() judges
+    verdict/severity/message using THIS lens's own `reasoning.model`, then
+    re-injects `suggested` as the action, then -- if `force_notify_only` --
+    forces it back to None -- see module docstring).
     `execute` is the real `watcher.executor.execute` (the zero-AI path
     calls it directly, exactly like `_run_decision`'s own tail call).
 
@@ -161,9 +162,15 @@ async def run_lens(
         if reasoning.get("enabled"):
             system = sentinel_system + "\n\n" + (reasoning.get("prompt") or "")
             action_type = (lens.get("action") or {}).get("type")
+            # Task 4B: this Agentbot's OWN model (validated by
+            # `watcher.lenses._validate_reasoning`, default "auto") --
+            # threaded into `run_decision` (server.py's `_run_decision`)
+            # so each Agentbot reasons with its configured model instead of
+            # always falling back to "auto".
+            model = reasoning.get("model") or "auto"
             await run_decision(
                 w, suggested=suggested, system=system,
-                force_notify_only=(action_type == "notify"))
+                force_notify_only=(action_type == "notify"), model=model)
             return
         decision = Decision(
             verdict="anomalia",

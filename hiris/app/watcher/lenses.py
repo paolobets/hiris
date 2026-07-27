@@ -353,8 +353,15 @@ def _validate_reasoning(raw) -> dict:
     # reasoning missing/malformed -> safe default is zero-AI (enabled: False),
     # never an error: reasoning is inert (no side effects) unlike trigger/action.
     if not isinstance(raw, dict):
-        return {"enabled": False}
+        return {"enabled": False, "model": "auto"}
     out = {"enabled": _coerce_bool(raw.get("enabled", False), False)}
+    # Task 4B: per-Agentbot model, threaded end-to-end into reason(model=...).
+    # Absent/non-string/empty -> "auto" (same convention as the brain's
+    # per-agent model field): never reject the lens over a malformed model.
+    model = raw.get("model", "auto")
+    if not isinstance(model, str) or not model:
+        model = "auto"
+    out["model"] = model
     prompt = raw.get("prompt")
     if isinstance(prompt, str) and prompt:
         out["prompt"] = prompt[:2000]

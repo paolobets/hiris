@@ -336,3 +336,50 @@ async def test_classify_entities_empty_response_returns_empty():
     result = await router.classify_entities([{"id": "sensor.x", "state": "1", "name": "X"}])
     assert result == {}
     ollama.simple_chat.assert_awaited_once()
+
+
+class _Dummy:
+    async def chat(self, **k): return "ok"
+
+
+def test_model_chain_sets_single_chain_for_both_modes():
+    claude, ollama = _Dummy(), _Dummy()
+    r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced",
+                  model_chain=["ollama", "claude"])
+    # entrambe le mode usano la stessa catena unica, nell'ordine dato
+    assert r._ordered_backends("chat") == [ollama, claude]
+    assert r._ordered_backends("automatic") == [ollama, claude]
+
+
+def test_model_chain_all_local_allows_sensitive():
+    ollama = _Dummy()
+    r = LLMRouter(ollama=ollama, strategy="cost_first", model_chain=["ollama"])
+    assert r.automatic_allows_sensitive() is True
+
+
+def test_model_chain_with_cloud_blocks_sensitive():
+    claude, ollama = _Dummy(), _Dummy()
+    r = LLMRouter(claude=claude, ollama=ollama, model_chain=["ollama", "claude"])
+    assert r.automatic_allows_sensitive() is False
+
+
+def test_none_model_chain_preserves_legacy_two_policies():
+    claude, ollama = _Dummy(), _Dummy()
+    r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced",
+                  automatic_policy=["ollama"], chat_policy=["claude"])
+    assert r._ordered_backends("automatic") == [ollama]
+    assert r._ordered_backends("chat") == [claude]
+
+
+def test_all_inactive_fails_closed_for_sensitive_egress():
+    # Security lock-in (SP-2 T2 review): with no backends registered (every
+    # provider inactive → every runner None), the sensitive-memory egress gate
+    # must fail CLOSED regardless of model_chain, and nothing must be routable.
+    r_empty = LLMRouter(strategy="balanced", model_chain=[])
+    assert r_empty.automatic_allows_sensitive() is False
+    assert r_empty._ordered_backends("automatic") == []
+    assert r_empty._ordered_backends("chat") == []
+    # Same guarantee when model_chain is None (legacy path) and no runners exist.
+    r_legacy = LLMRouter(strategy="quality_first")
+    assert r_legacy.automatic_allows_sensitive() is False
+    assert r_legacy._ordered_backends("automatic") == []

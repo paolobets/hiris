@@ -241,9 +241,9 @@ AUTO_MODEL_MAP: dict[str, str] = {
 from .backends.pricing import PRICING as _PRICING
 
 
-def resolve_model(model: str, agent_type: str) -> str:
+def resolve_model(model: str, agent_type: str, default_model: str = "") -> str:
     if model == "auto":
-        return AUTO_MODEL_MAP.get(agent_type, MODEL)
+        return default_model or AUTO_MODEL_MAP.get(agent_type, MODEL)
     return model
 
 # Models that support Anthropic Extended Thinking. For others (e.g. Haiku 4.5,
@@ -452,10 +452,12 @@ class ClaudeRunner:
         api_key: str,
         dispatcher: ToolDispatcher,
         usage_path: str = "",
+        default_model: str = "",
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._dispatcher = dispatcher
         self._usage_path = usage_path
+        self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto"
         self._is_cloud = True  # Anthropic cloud — always pseudonymize sensitive content
         # last_tool_calls / last_thinking_blocks are intentionally NOT
         # initialized here — they are per-call/per-Task class-level
@@ -645,7 +647,7 @@ class ClaudeRunner:
         system_blocks[-1] = {**system_blocks[-1], "cache_control": {"type": "ephemeral"}}
         if context_str:
             system_blocks.append({"type": "text", "text": context_str})
-        effective_model = resolve_model(model, agent_type)
+        effective_model = resolve_model(model, agent_type, self._default_model)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
         if allowed_endpoints is None:
             tools = [t for t in tools if t["name"] != "http_request"]
