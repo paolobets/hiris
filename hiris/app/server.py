@@ -729,6 +729,20 @@ async def run_urgent_nudges(store, *, today, seen, notify_item) -> int:
     return count
 
 
+def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
+    """Costruisce (client, uvicorn.Config) per il server MCP interno su loopback.
+    Isolato dall'avvio dell'app cosi' e' testabile senza bootare tutto."""
+    import uvicorn
+    from .mcp.local_client import LocalExecuteClient
+    from .mcp.server import build_mcp, make_asgi_app
+    port = int(os.environ.get("INTERNAL_MCP_PORT", "8199"))
+    token = os.environ.get("INTERNAL_TOKEN", "")
+    client = LocalExecuteClient(hiris_base_url, token)
+    asgi = make_asgi_app(build_mcp(client))
+    config = uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="warning")
+    return client, config
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner, RunnerBackendError
     from .proxy.semantic_map import SemanticMap
@@ -1789,9 +1803,29 @@ async def _on_startup(app: web.Application) -> None:
         app["claude_runner"] = None
         app["llm_router"] = None
 
+    # ── Internal MCP server (loopback-only, Plan 2A Task 3) ────────────────
+    # Serves the MCP tool surface over the local execute-API to an MCP-aware
+    # LLM client (e.g. Claude Desktop/Code via a local bridge), bound to
+    # 127.0.0.1 only -- never reachable off-box. Runs as a background asyncio
+    # task on the SAME event loop as the rest of the app; cancelled + the
+    # client's aiohttp session closed in _on_cleanup below.
+    import uvicorn as _uvicorn
+    _mcp_client, _mcp_config = build_internal_mcp_server()
+    await _mcp_client.start()
+    _mcp_server = _uvicorn.Server(_mcp_config)
+    app["internal_mcp_client"] = _mcp_client
+    app["internal_mcp_task"] = asyncio.create_task(_mcp_server.serve())
+    logger.info("Internal MCP server avviato su 127.0.0.1:%s", _mcp_config.port)
+
 
 async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
+    task = app.get("internal_mcp_task")
+    if task is not None:
+        task.cancel()
+    client = app.get("internal_mcp_client")
+    if client is not None:
+        await client.stop()
     if app.get("mayan_client") is not None:
         await app["mayan_client"].aclose()
     if "mqtt_publisher" in app:

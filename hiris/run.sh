@@ -17,6 +17,7 @@ export EXECUTE_API_TOOLS=$(bashio::config 'execute_api_tools' '')
 export EXECUTE_API_ENTITIES=$(bashio::config 'execute_api_entities' '')
 export EXECUTE_API_SERVICES=$(bashio::config 'execute_api_services' '')
 export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
+export INTERNAL_MCP_PORT=$(bashio::config 'internal_mcp_port' '8199')
 # Guard the jq parse (review medium): a malformed options.json used to silently
 # blank APPRISE_URLS with no hint. Warn and fall back to an empty list.
 export APPRISE_URLS=$(jq -c '.apprise_urls // []' /data/options.json 2>/dev/null)
