@@ -19,9 +19,15 @@ async def test_build_mcp_registers_all_tools_and_forwards():
             calls.append((tool, inputs)); return {"result": "ok"}
 
     mcp = build_mcp(_Client())
-    # Installed FastMCP (3.x) exposes async introspection as list_tools(),
-    # not get_tools() (2.x API from the brief). Adapted per brief's fallback
-    # note: the real assertion is that every catalog tool name is registered.
-    tools = await mcp.list_tools()
-    tool_names = {t.name for t in tools}
-    assert tool_names >= {t.name for t in TOOLS}
+    # Pinned dependency is fastmcp>=2.11.0,<3.0.0 (resolves to 2.14.7), whose
+    # async introspection API is get_tools() -> dict[str, Tool], not the 3.x
+    # list_tools(). Assert every catalog tool name is registered.
+    tools = await mcp.get_tools()
+    assert set(tools.keys()) >= {t.name for t in TOOLS}
+
+    # Forwarding: invoke one tool through the real MCP call path (2.14.7's
+    # public-ish call entrypoint is _call_tool_mcp; there is no stable public
+    # call_tool in this version) and assert the fake client received the
+    # translated hiris_tool name and inputs.
+    await mcp._call_tool_mcp("call_service", {"inputs": {"x": 1}})
+    assert ("call_ha_service", {"x": 1}) in calls
