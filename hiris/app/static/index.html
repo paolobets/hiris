@@ -36,7 +36,7 @@
     <div class="ob-step active" id="ob-step-0">
       <img src="static/hiris-icon.svg" class="ob-icon" alt="HIRIS">
       <div class="ob-title">Benvenuto in HIRIS</div>
-      <div class="ob-sub">Il tuo assistente AI per Home Assistant.<br>Creiamo il primo agente — meno di un minuto.</div>
+      <div class="ob-sub">Il tuo assistente AI per Home Assistant.<br>Creiamo il primo assistente — meno di un minuto.</div>
       <div class="ob-actions">
         <button class="btn ob-btn-skip" onclick="obDismiss()">Salta</button>
         <button class="btn btn-primary ob-btn-next" onclick="obGo(1)">Inizia &#8594;</button>
@@ -44,7 +44,7 @@
     </div>
 
     <div class="ob-step" id="ob-step-1">
-      <div class="ob-title">Che tipo di agente?</div>
+      <div class="ob-title">Che tipo di assistente?</div>
       <div class="ob-sub">Potrai sempre crearne altri dalla pagina di configurazione.</div>
       <div class="ob-types">
         <button class="ob-type-btn" onclick="obSelectType('monitor', this)">
@@ -70,19 +70,19 @@
     </div>
 
     <div class="ob-step" id="ob-step-2">
-      <div class="ob-title">Configura il tuo agente</div>
+      <div class="ob-title">Configura il tuo assistente</div>
       <div class="ob-sub">Pochi dettagli per iniziare — potrai modificarli in seguito.</div>
       <div class="ob-field">
-        <label>Nome agente</label>
+        <label>Nome assistente</label>
         <input type="text" id="ob-name" placeholder="Es: Iris, Monitor Energia…" maxlength="60">
       </div>
       <div class="ob-field">
         <label>Istruzioni (opzionale)</label>
-        <textarea id="ob-prompt" placeholder="Descrivi come deve comportarsi questo agente…"></textarea>
+        <textarea id="ob-prompt" placeholder="Descrivi come deve comportarsi questo assistente…"></textarea>
       </div>
       <div class="ob-actions">
         <button class="btn ob-btn-skip" onclick="obGo(1)">&#8592; Indietro</button>
-        <button class="btn btn-primary ob-btn-next" id="ob-create-btn" onclick="obCreate()">Crea agente &#10003;</button>
+        <button class="btn btn-primary ob-btn-next" id="ob-create-btn" onclick="obCreate()">Crea assistente &#10003;</button>
       </div>
     </div>
   </div>
@@ -91,7 +91,7 @@
 <div id="app">
   <div id="sidebar-overlay" style="display:none" onclick="toggleSidebar(false)"></div>
   <aside id="sidebar">
-    <div id="sidebar-header"><h2>Agenti chat</h2></div>
+    <div id="sidebar-header"><h2>Chatbot</h2></div>
     <div id="agent-list"></div>
     <div id="sidebar-footer">
       <a href="config" class="sb-nav-item">
@@ -143,7 +143,7 @@
           <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a7 7 0 0 1 12-5l2 2M16 4v3h-3M16 9a7 7 0 0 1-12 5l-2-2M2 14v-3h3"/></svg>
           Nuova conv.
         </button>
-        <div id="agent-pill" title="Agente chat attivo">
+        <div id="agent-pill" title="Chatbot attivo">
           <span class="ap-avatar" id="ap-avatar">I</span>
           <span class="ap-name" id="ap-name">Iris</span>
           <span class="ap-live"></span>
@@ -763,7 +763,7 @@ async function obCreate() {
   btn.disabled = true;
   try {
     var r = await fetch('api/agents', { method: 'POST', headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload) });
-    if (!r.ok) { btn.disabled = false; alert('Errore nella creazione agente. Riprova.'); return; }
+    if (!r.ok) { btn.disabled = false; alert('Errore nella creazione assistente. Riprova.'); return; }
     var agent = await r.json();
     await loadAgents();
     if (agent.id) setActiveAgent(agent.id, agent.name || agent.id);

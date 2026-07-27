@@ -28,7 +28,7 @@ window.HirisSentinelRoute = (function () {
 
   function render(outlet, data) {
     outlet.innerHTML = '';
-    outlet.appendChild(el('div', 'page-title', 'Sentinella'));
+    outlet.appendChild(el('div', 'page-title', 'Agentbot'));
     outlet.appendChild(el('p', 'page-subtitle',
       'Detector di anomalie: quali entità monitorare e con quali soglie.'));
 
@@ -329,18 +329,18 @@ window.HirisSentinelRoute = (function () {
 
     var lensCard = el('section', 'section-card');
     var lensBody = el('div', 'sc-body');
-    lensBody.appendChild(el('div', 'page-title', 'Lenti'));
+    lensBody.appendChild(el('div', 'page-title', 'Regole Agentbot'));
     lensBody.appendChild(el('p', 'sc-desc',
       'Regole personalizzate: trigger (evento o pianificazione), ragionamento AI opzionale, azione.'));
 
     var lensListEl = el('div');
     lensBody.appendChild(lensListEl);
-    var lensEmptyMsg = el('p', 'sc-desc', 'Nessuna lente configurata.');
+    var lensEmptyMsg = el('p', 'sc-desc', 'Nessun Agentbot configurato.');
     lensListEl.appendChild(lensEmptyMsg);
 
     var lensAddBar = el('div');
     lensAddBar.style.cssText = 'margin-top:12px';
-    var lensAddBtn = el('button', 'btn', '+ Nuova lente');
+    var lensAddBtn = el('button', 'btn', '+ Nuovo Agentbot');
     lensAddBar.appendChild(lensAddBtn);
     lensBody.appendChild(lensAddBar);
 
@@ -451,7 +451,7 @@ window.HirisSentinelRoute = (function () {
 
       var bar = el('div');
       bar.style.cssText = 'margin-top:12px;display:flex;gap:10px;align-items:center';
-      var saveBtn = el('button', 'btn btn-primary', 'Salva lente');
+      var saveBtn = el('button', 'btn btn-primary', 'Salva Agentbot');
       var delBtn = el('button', 'btn', 'Elimina');
       var lensStatus = el('span', 'sc-desc', '');
       bar.appendChild(saveBtn); bar.appendChild(delBtn); bar.appendChild(lensStatus);
@@ -563,7 +563,7 @@ window.HirisSentinelRoute = (function () {
         });
       })
       .catch(function () {
-        lensEmptyMsg.textContent = 'Errore nel caricamento delle lenti.';
+        lensEmptyMsg.textContent = 'Errore nel caricamento degli Agentbot.';
       });
 
     function buildPreparationPayload() {
@@ -620,7 +620,7 @@ window.HirisSentinelRoute = (function () {
       })
       .catch(function () { list.appendChild(el('p', 'sc-desc', 'Errore nel caricamento della timeline.')); });
 
-    outlet.appendChild(el('p', 'page-subtitle', 'Suggerimenti del cervello'));
+    outlet.appendChild(el('p', 'page-subtitle', 'Suggerimenti del Brain'));
     var suggList = el('div');
     outlet.appendChild(suggList);
     api('api/suggestions', { method: 'GET' })
@@ -628,13 +628,13 @@ window.HirisSentinelRoute = (function () {
       .then(function (j) {
         var suggs = j.suggestions || [];
         if (!suggs.length) {
-          suggList.appendChild(el('p', 'sc-desc', 'Nessun suggerimento del cervello.'));
+          suggList.appendChild(el('p', 'sc-desc', 'Nessun suggerimento del Brain.'));
           return;
         }
         suggs.forEach(function (s) {
           var row = el('div', 'log-row');
 
-          var badge = el('span', 'sc-badge', 'brain');
+          var badge = el('span', 'sc-badge', 'Brain');
           badge.style.cssText = 'font-size:11px;padding:2px 6px;border-radius:6px;background:var(--accent,#3a6);color:#fff;margin-right:8px';
           row.appendChild(badge);
 
@@ -683,14 +683,14 @@ window.HirisSentinelRoute = (function () {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
     outlet.innerHTML = '';
-    outlet.appendChild(el('div', 'page-title', 'Sentinella'));
+    outlet.appendChild(el('div', 'page-title', 'Agentbot'));
     outlet.appendChild(el('p', 'page-subtitle', 'Caricamento…'));
     api('api/sentinel/policy', { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (data) { render(outlet, data); })
       .catch(function () {
         outlet.innerHTML = '';
-        outlet.appendChild(el('div', 'page-title', 'Sentinella'));
+        outlet.appendChild(el('div', 'page-title', 'Agentbot'));
         outlet.appendChild(el('p', 'page-subtitle', 'Errore nel caricamento.'));
       });
   }

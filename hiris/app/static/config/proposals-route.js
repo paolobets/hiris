@@ -4,7 +4,7 @@
     var outlet = document.getElementById('route-outlet');
     outlet.innerHTML =
       '<div class="page-title">Proposte automazione</div>' +
-      '<p class="page-subtitle">Una proposta attivata genera una <strong>automation HA nativa</strong>. Le proposte sono generate dagli agenti HIRIS sulla base dei loro pattern di osservazione.</p>' +
+      '<p class="page-subtitle">Una proposta attivata genera una <strong>automation HA nativa</strong>. Le proposte sono generate dal Brain HIRIS sulla base dei suoi pattern di osservazione.</p>' +
       '<div class="proposals-tabs" style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:8px">' +
         '<button class="proposals-tab active" id="prop-tab-pending" data-tab="pending">In attesa <span class="fc-count" id="prop-count-pending">—</span></button>' +
         '<button class="proposals-tab" id="prop-tab-archived" data-tab="archived">Archivio <span class="fc-count" id="prop-count-archived">—</span></button>' +

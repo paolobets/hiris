@@ -90,7 +90,7 @@
         '<p class="field-hint">Informazioni stabili sulla casa. Precedono il System Prompt.</p></div>' +
       '<div class="field"><label for="f-prompt">System Prompt</label>' +
         '<textarea class="textarea" id="f-prompt" rows="4" placeholder="Descrivi il comportamento specifico..."></textarea>' +
-        '<p class="field-hint">Istruzioni operative specifiche per questo agente.</p></div>' +
+        '<p class="field-hint">Istruzioni operative specifiche per questo Chatbot.</p></div>' +
       '<div class="token-bar" id="token-bar">' +
         '<div class="token-row"><span class="token-label">Contesto strategico</span><span class="token-val" id="tc-strategic">—</span></div>' +
         '<div class="token-sep"></div>' +
@@ -163,7 +163,7 @@
 
   function populateStato() {
     document.getElementById('sc-body-stato').innerHTML =
-      '<label class="checkbox-row"><input type="checkbox" id="f-enabled"> Agente abilitato</label>' +
+      '<label class="checkbox-row"><input type="checkbox" id="f-enabled"> Chatbot abilitato</label>' +
       '<p class="field-hint">Disabilitato = non gira automaticamente, ma può essere lanciato con Test Run.</p>' +
       '<label class="checkbox-row"><input type="checkbox" id="f-require-confirmation"> Richiedi conferma prima delle azioni</label>' +
       '<p class="field-hint">Attende "sì/ok" prima di chiamare call_ha_service.</p>';
@@ -194,7 +194,7 @@
         '<div class="usage-last-run">Ultima esecuzione: <span id="u-ag-last-run">—</span></div>' +
         '<div class="usage-actions">' +
           '<button type="button" class="btn btn-sm" id="u-ag-reset-btn">↺ Azzera contatori</button>' +
-          '<button type="button" class="btn btn-sm btn-danger" id="u-ag-toggle-btn">⊘ Blocca agente</button>' +
+          '<button type="button" class="btn btn-sm btn-danger" id="u-ag-toggle-btn">⊘ Blocca Chatbot</button>' +
         '</div>' +
       '</div>';
   }
@@ -420,7 +420,7 @@
     if (ur) ur.onclick = function() {
       if (typeof window === 'undefined' || !window.HirisState) return;
       var aid = HirisState.get('activeAgentId');
-      if (!aid || !confirm('Azzerare i contatori di questo agente?')) return;
+      if (!aid || !confirm('Azzerare i contatori di questo Chatbot?')) return;
       fetch('api/agents/' + encodeURIComponent(aid) + '/usage/reset', {
         method: 'POST', headers: { 'X-Requested-With': 'fetch' }
       }).then(function(r) {
@@ -440,7 +440,7 @@
       }).then(function(r) {
         if (r.ok) {
           document.getElementById('f-enabled').checked = newVal;
-          ut.textContent = newVal ? '⊘ Blocca agente' : '✓ Riabilita agente';
+          ut.textContent = newVal ? '⊘ Blocca Chatbot' : '✓ Riabilita Chatbot';
         }
       }).catch(function(){});
     };
@@ -506,7 +506,7 @@
     }).then(function(r) {
       if (!r.ok) {
         return r.json().catch(function() { return {}; }).then(function(d) {
-          alert(d.error || ('Errore salvataggio agente (HTTP ' + r.status + ')'));
+          alert(d.error || ('Errore salvataggio Chatbot (HTTP ' + r.status + ')'));
           throw new Error('save failed');
         });
       }
@@ -562,7 +562,7 @@
       sb.innerHTML =
         '<div class="run-running-banner" id="run-running-banner">' +
           '<span class="spinner"></span>' +
-          '<span><strong>Test Run in corso…</strong> &nbsp;l\'agente sta elaborando, attendere fino a 10 minuti.</span>' +
+          '<span><strong>Test Run in corso…</strong> &nbsp;il Chatbot sta elaborando, attendere fino a 10 minuti.</span>' +
         '</div>' +
         '<pre id="run-output" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;white-space:pre-wrap;min-height:60px;font-family:var(--font-mono);font-size:12px"></pre>';
       out = document.getElementById('run-output');
@@ -611,7 +611,7 @@
       if (out) {
         if (!raw) {
           out.className = 'run-empty';
-          out.textContent = '(nessun risultato restituito dall\'agente)';
+          out.textContent = '(nessun risultato restituito dal Chatbot)';
         } else if (hasError) {
           out.className = 'run-error-text';
           out.textContent = '✗ ' + raw;
@@ -635,7 +635,7 @@
       if (out) {
         out.className = 'run-error-text';
         out.textContent = e.name === 'AbortError'
-          ? '⏱ Timeout: l\'agente non ha risposto entro 10 minuti. Il modello locale potrebbe essere troppo lento o stuck — verifica i log Ollama.'
+          ? '⏱ Timeout: il Chatbot non ha risposto entro 10 minuti. Il modello locale potrebbe essere troppo lento o stuck — verifica i log Ollama.'
           : '✗ Errore: ' + (e.message || e);
       }
     });
@@ -644,7 +644,7 @@
   window.deleteAgent = function() {
     var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeAgentId');
     if (!cid) return;
-    if (!confirm('Eliminare questo agente?')) return;
+    if (!confirm('Eliminare questo Chatbot?')) return;
     return fetch('api/agents/' + encodeURIComponent(cid), {
       method: 'DELETE', headers: { 'X-Requested-With': 'fetch' }
     }).then(function(r) {
@@ -678,7 +678,7 @@
         /* Also populate legacy global so renderList etc work */
         if (typeof window !== 'undefined') window.agents = list;
         var found = list.filter(function(a) { return a.id === agentId; })[0];
-        if (!found) throw new Error('Agente non trovato: ' + agentId);
+        if (!found) throw new Error('Chatbot non trovato: ' + agentId);
         return found;
       });
   }
@@ -742,7 +742,7 @@
           /* Update breadcrumb con nome agente invece di id bare */
           var hereEl = document.getElementById('chrome-here');
           if (hereEl && agentObj && agentObj.name) {
-            hereEl.textContent = 'Agenti / ' + agentObj.name;
+            hereEl.textContent = 'Chatbot / ' + agentObj.name;
           }
           /* v0.10.5: hide btn-delete per default agents (HIRIS) */
           var btnDel = document.getElementById('btn-delete');

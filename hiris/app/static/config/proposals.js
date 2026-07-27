@@ -25,7 +25,7 @@ function renderProposals(proposals, status) {
   }
   list.innerHTML = proposals.map(function(p) {
     var TYPE_LABELS = {
-      ha_automation: '→ automazione HA', hiris_agent: '→ agent HIRIS',
+      ha_automation: '→ automazione HA', hiris_agent: '→ Agentbot',
       ha_dashboard: '→ dashboard', ha_script: '→ script', ha_scene: '→ scena'
     };
     var typeLabel = TYPE_LABELS[p.type] || ('→ ' + (p.type || 'config'));

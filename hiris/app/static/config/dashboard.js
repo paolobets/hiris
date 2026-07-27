@@ -44,7 +44,7 @@
   function renderEmpty(outlet) {
     outlet.innerHTML =
       '<div class="page-title">Benvenuto in HIRIS</div>' +
-      '<p class="page-subtitle">Configura il tuo primo agente AI per Home Assistant. Scegli un template per iniziare velocemente, oppure parti da zero.</p>' +
+      '<p class="page-subtitle">Configura il tuo primo Chatbot per Home Assistant. Scegli un template per iniziare velocemente, oppure parti da zero.</p>' +
       '<div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr))">' +
         '<a class="stat-tile" href="#/agents/new" style="text-decoration:none">' +
           '<div class="st-label">⚡ Energia</div>' +
@@ -63,7 +63,7 @@
         '</a>' +
       '</div>' +
       '<div style="margin-top:24px;display:flex;gap:12px">' +
-        '<a class="btn btn-primary" href="#/agents/new">+ Crea agente vuoto</a>' +
+        '<a class="btn btn-primary" href="#/agents/new">+ Crea Chatbot vuoto</a>' +
         '<a class="btn btn-ghost" href="docs/" target="_blank">Cosa è HIRIS?</a>' +
       '</div>';
   }
@@ -78,19 +78,19 @@
         '<div>' +
           '<h1 style="font-size:var(--fs-24);font-weight:600;letter-spacing:-0.02em">' + greeting() + '</h1>' +
           '<p style="font-size:var(--fs-13);color:var(--text-3);margin-top:4px">' +
-            agents.length + ' agenti configurati · ' + enabled + ' abilitati' +
+            agents.length + ' Chatbot configurati · ' + enabled + ' abilitati' +
             (paused ? ' · ' + paused + ' in pausa rate-limit' : '') +
           '</p>' +
         '</div>' +
         '<div style="display:flex;gap:8px">' +
-          '<a class="btn btn-primary" href="#/agents/new">+ Nuovo agente</a>' +
+          '<a class="btn btn-primary" href="#/agents/new">+ Nuovo Chatbot</a>' +
           '<a class="btn" href="./">Vai alla chat</a>' +
         '</div>' +
       '</div>' +
 
       '<div class="stat-grid">' +
         '<div class="stat-tile">' +
-          '<div class="st-label">Agenti attivi</div>' +
+          '<div class="st-label">Chatbot attivi</div>' +
           '<div class="st-value">' + enabled + '<span class="text-muted" style="font-weight:400;font-size:var(--fs-15)"> / ' + agents.length + '</span></div>' +
           '<div class="st-delta">' + paused + ' in pausa, ' + disabled + ' disabilitat' + (disabled !== 1 ? 'i' : 'o') + '</div>' +
         '</div>' +
@@ -114,7 +114,7 @@
       '<div class="dash-cols">' +
         '<div>' +
           '<div class="dash-list">' +
-            '<h3>Ultimi log <span class="right" id="dash-logs-count">cross-agent</span></h3>' +
+            '<h3>Ultimi log <span class="right" id="dash-logs-count">cross-chatbot</span></h3>' +
             '<div id="dash-last-logs-body"><div style="padding:24px;color:var(--text-3)">Caricamento…</div></div>' +
           '</div>' +
         '</div>' +

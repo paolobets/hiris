@@ -148,7 +148,7 @@
     if (!outlet) return;
     outlet.innerHTML =
       '<div class="page-title">Task pianificati</div>' +
-      '<p class="page-subtitle">Task asincrone schedulate dagli agenti (es. <code class="code-inline">create_task()</code> in irrigazione, scenari rientro, ecc).</p>' +
+      '<p class="page-subtitle">Task asincrone schedulate dai Chatbot (es. <code class="code-inline">create_task()</code> in irrigazione, scenari rientro, ecc).</p>' +
       '<div class="log-toolbar">' +
         '<button type="button" class="filter-chip active" data-filter="all" aria-pressed="true">tutti<span class="fc-count" id="tasks-count-all">—</span></button>' +
         '<button type="button" class="filter-chip" data-filter="pending" aria-pressed="false">⏱ in attesa<span class="fc-count" id="tasks-count-pending">—</span></button>' +
