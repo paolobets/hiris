@@ -152,7 +152,17 @@ embeddings in SP-2 — solo trasparenza in UI.
 
 ---
 
-## 4. UI `#/models` (minima)
+## 4. UI `#/models` (minima) — UX-first
+
+**Priorità UX (direttiva utente):** in HIRIS **ogni** sviluppo front-end passa
+dall'agente **`ux-ui-specialist`** — sia come **design pass** prima di
+implementare la sezione `#/models`, sia come **gate di review UX** dopo
+l'implementazione (in aggiunta alla review spec+qualità). Obiettivo dichiarato:
+la UX della config dell'addom è oggi il punto più debole (frammentata/criptica)
+e va **elevata di priorità**; `#/models` è il primo tassello di questa pulizia,
+il resto prosegue verso SP-4. Mentre si tocca la config SPA, applicare piccoli
+miglioramenti di coerenza UX contigui (etichette/raggruppamenti) se a costo
+marginale, **senza** allargare lo scope a un redesign completo (quello è SP-4).
 
 Nuova voce di navigazione **"Modelli"** nella config SPA. Sezioni:
 1. **Provider attivi** (read-only riflesso della addon-config): lista con
