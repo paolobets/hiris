@@ -76,9 +76,62 @@ def save_models_config(data_dir: str, data: dict) -> dict:
     return clean
 
 
+
+# SP-2 Task 7B: fixed provider order + labels for the enriched config payload.
+# Distinct from handle_list_models' "anthropic" id — here we use the same ids
+# as app["active_providers"] (subscription/claude/openai/openrouter/ollama) so
+# the UI can honestly show ALL five, including subscription and any
+# uncredentialed provider, without needing a separate id-mapping table.
+_CONFIG_PROVIDERS = (
+    ("subscription", "Abbonamento Claude (subscription)"),
+    ("claude", "Claude (Anthropic API)"),
+    ("openai", "OpenAI"),
+    ("openrouter", "OpenRouter"),
+    ("ollama", "Locale (Ollama)"),
+)
+
+
+def _config_has_credential(request: web.Request, provider_id: str) -> bool:
+    """Boolean-only credential presence check — NEVER return the secret value."""
+    if provider_id == "subscription":
+        return bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+    if provider_id == "claude":
+        if os.environ.get("CLAUDE_API_KEY", "").strip():
+            return True
+        return request.app.get("claude_runner") is not None
+    if provider_id == "openai":
+        return bool(request.app.get("openai_api_key"))
+    if provider_id == "openrouter":
+        return bool(request.app.get("openrouter_api_key"))
+    if provider_id == "ollama":
+        return bool(request.app.get("local_model_url") and request.app.get("local_model_name"))
+    return False
+
+
+def _build_config_providers(request: web.Request) -> list[dict]:
+    active_providers = request.app.get("active_providers", {}) or {}
+    return [
+        {
+            "id": pid,
+            "label": label,
+            "active": bool(active_providers.get(pid)),
+            "has_credential": _config_has_credential(request, pid),
+        }
+        for pid, label in _CONFIG_PROVIDERS
+    ]
+
+
 async def handle_get_models_config(request: web.Request) -> web.Response:
     data_dir = request.app.get("data_dir") or "/data"
-    return web.json_response(load_models_config(data_dir))
+    payload = load_models_config(data_dir)
+    payload["providers"] = _build_config_providers(request)
+    payload["llm_strategy"] = os.environ.get("LLM_STRATEGY", "balanced")
+    payload["embeddings"] = {
+        "provider": os.environ.get("MEMORY_EMBEDDING_PROVIDER", ""),
+        "model": os.environ.get("MEMORY_EMBEDDING_MODEL", ""),
+    }
+    payload["ollama_model"] = request.app.get("local_model_name", "")
+    return web.json_response(payload)
 
 
 async def handle_save_models_config(request: web.Request) -> web.Response:
