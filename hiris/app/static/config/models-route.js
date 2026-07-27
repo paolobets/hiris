@@ -45,7 +45,7 @@
     { configId: 'claude', id: 'anthropic', key: 'claude', fallbackLabel: 'Claude API' },
     { configId: 'openai', id: 'openai', key: 'openai', fallbackLabel: 'OpenAI' },
     { configId: 'openrouter', id: 'openrouter', key: 'openrouter', fallbackLabel: 'OpenRouter' },
-    { configId: 'ollama', id: 'ollama', key: 'ollama', fallbackLabel: 'Locale (Ollama)' }
+    { configId: 'ollama', id: 'ollama', key: 'ollama', fallbackLabel: 'Ollama (locale)' }
   ];
 
   function el(tag, cls, text) {
@@ -110,6 +110,35 @@
       badge.style.display = 'none';
       badge.textContent = '';
     }, 1200);
+  }
+
+  /* ── Feedback di errore condiviso (design §7.2/§7.3 + fix UX review) ────
+     aria-live="polite" annuncia MUTAZIONI di contenuto, non cambi di
+     visibilità: un badge creato una sola volta con testo fisso e poi solo
+     mostrato/nascosto via style.display non viene mai riletto da uno
+     screen reader al secondo fallimento (il testo non cambia mai). Per
+     questo showErrBadge svuota e riscrive textContent ad ogni fallimento —
+     così c'è sempre una mutazione da annunciare, anche quando il messaggio
+     è identico alla volta precedente. */
+  var ERR_BADGE_TEXT = '⚠ Salvataggio non riuscito';
+
+  function buildErrorBadge() {
+    var b = el('span', 'agent-badge badge-warn', '');
+    b.style.display = 'none';
+    b.setAttribute('aria-live', 'polite');
+    return b;
+  }
+
+  function showErrBadge(badge) {
+    if (!badge) return;
+    badge.textContent = '';
+    badge.style.display = '';
+    badge.textContent = ERR_BADGE_TEXT;
+  }
+
+  function hideErrBadge(badge) {
+    if (!badge) return;
+    badge.style.display = 'none';
   }
 
   /* ── Stato locale ──────────────────────────────────────────────────── */
@@ -297,24 +326,22 @@
           field.appendChild(sel);
           var okBadge = buildSuccessBadge();
           field.appendChild(okBadge);
-          var errBadge = el('span', 'agent-badge badge-warn', '⚠ Salvataggio non riuscito');
-          errBadge.style.display = 'none';
-          errBadge.setAttribute('aria-live', 'polite');
+          var errBadge = buildErrorBadge();
           field.appendChild(errBadge);
-          field.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell\'addon'));
+          field.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell\'add-on'));
           row.appendChild(field);
 
           sel.addEventListener('change', function() {
             var prev = currentVal;
             currentVal = sel.value;
             state.cfg.provider_models[pd.key] = sel.value;
-            errBadge.style.display = 'none';
+            hideErrBadge(errBadge);
             putModelsConfig().then(function(ok) {
               if (!ok) {
                 currentVal = prev;
                 state.cfg.provider_models[pd.key] = prev;
                 sel.value = prev;
-                errBadge.style.display = '';
+                showErrBadge(errBadge);
               } else {
                 flashSuccess(okBadge);
               }
@@ -351,6 +378,23 @@
     if (body2) body2.appendChild(el('p', 'field-hint', 'Impossibile caricare la catena — vedi Provider attivi qui sopra.'));
     var brainBody = clearEl(byId('sec3-brain-body'));
     if (brainBody) brainBody.appendChild(el('p', 'field-hint', 'Impossibile caricare i modelli disponibili.'));
+    /* UX review fix: senza questo blocco, sec3-chatbot-body non viene mai
+       toccato da questa funzione. Se GET /api/agents nel frattempo va a
+       buon fine (agentsReady=true), renderSection3Chatbot() resta gated su
+       providersReady — che qui non diventa mai true — e la sezione Chatbot
+       resta bloccata sul placeholder "Caricamento…" iniziale per sempre,
+       senza errore né modo di recuperare. Stesso Riprova di Parte 1: rilancia
+       loadModelsAndConfig(), che a sua volta chiama renderSection3Chatbot()
+       (se agentsReady) una volta che providersReady torna true. */
+    var chatbotBody = clearEl(byId('sec3-chatbot-body'));
+    if (chatbotBody) {
+      chatbotBody.appendChild(el('p', 'proposals-error',
+        'Errore caricamento provider — impossibile mostrare i modelli Chatbot.'));
+      var chatbotBtn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
+      chatbotBtn.type = 'button';
+      chatbotBtn.addEventListener('click', function() { loadModelsAndConfig(); });
+      chatbotBody.appendChild(chatbotBtn);
+    }
     var body4 = clearEl(byId('sec4-body'));
     if (body4) body4.appendChild(el('p', 'field-hint', 'Non configurato — vedi local_model in Configurazione add-on.'));
   }
@@ -390,9 +434,11 @@
     var body = clearEl(byId('sec2-body'));
     if (!body) return;
 
-    /* Task 7-fix punto 6: preset reale da llm_strategy (payload config),
-       non una stringa generica. */
-    body.appendChild(el('p', 'field-hint', 'Preset: ' + strategyLabel(state.llmStrategy)));
+    /* Task 7-fix punto 6: preset reale da llm_strategy (payload config), non
+       una stringa generica. UX review: era duplicato con la sc-desc statica
+       ("Il preset attivo... si imposta in Configurazione add-on") — consolidato
+       in un'unica frase qui; la sc-desc statica ora parla solo di ordine/frecce. */
+    body.appendChild(el('p', 'field-hint', 'Preset corrente: ' + strategyLabel(state.llmStrategy) + '.'));
 
     var keys = usableKeys();
     var shown = buildDisplayChain(keys);
@@ -429,7 +475,7 @@
       body.appendChild(row);
     });
 
-    body.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell\'addon'));
+    body.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell\'add-on'));
     if (errText) body.appendChild(el('p', 'proposals-error', errText));
   }
 
@@ -466,21 +512,19 @@
     field.appendChild(sel);
     var okBadge = buildSuccessBadge();
     field.appendChild(okBadge);
-    var errBadge = el('span', 'agent-badge badge-warn', '⚠ Salvataggio non riuscito');
-    errBadge.style.display = 'none';
-    errBadge.setAttribute('aria-live', 'polite');
+    var errBadge = buildErrorBadge();
     field.appendChild(errBadge);
     wrap.appendChild(field);
 
     sel.addEventListener('change', function() {
       var prev = state.cfg.brain_model;
       state.cfg.brain_model = sel.value;
-      errBadge.style.display = 'none';
+      hideErrBadge(errBadge);
       putModelsConfig().then(function(ok) {
         if (!ok) {
           state.cfg.brain_model = prev;
           sel.value = prev;
-          errBadge.style.display = '';
+          showErrBadge(errBadge);
         } else {
           flashSuccess(okBadge);
         }
@@ -517,16 +561,14 @@
       field.appendChild(sel);
       var okBadge = buildSuccessBadge();
       field.appendChild(okBadge);
-      var errBadge = el('span', 'agent-badge badge-warn', '⚠ Salvataggio non riuscito');
-      errBadge.style.display = 'none';
-      errBadge.setAttribute('aria-live', 'polite');
+      var errBadge = buildErrorBadge();
       field.appendChild(errBadge);
       body.appendChild(field);
 
       sel.addEventListener('change', function() {
         var prev = a.model || 'auto';
         var next = sel.value;
-        errBadge.style.display = 'none';
+        hideErrBadge(errBadge);
         api('api/agents/' + encodeURIComponent(a.id), {
           method: 'PUT',
           body: JSON.stringify({ model: next })
@@ -539,7 +581,7 @@
         }).catch(function(err) {
           console.error('save agent model failed', err);
           sel.value = prev;
-          errBadge.style.display = '';
+          showErrBadge(errBadge);
         });
       });
     });
@@ -547,7 +589,12 @@
 
   function renderSection3ChatbotError() {
     var body = clearEl(byId('sec3-chatbot-body'));
-    if (body) body.appendChild(el('p', 'proposals-error', 'Errore caricamento Chatbot.'));
+    if (!body) return;
+    body.appendChild(el('p', 'proposals-error', 'Errore caricamento Chatbot.'));
+    var btn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
+    btn.type = 'button';
+    btn.addEventListener('click', function() { loadAgents(); });
+    body.appendChild(btn);
   }
 
   /* ── Sezione 4: Embeddings ────────────────────────────────────────────
@@ -626,7 +673,7 @@
   }
 
   /* ── Shell statico ────────────────────────────────────────────────────── */
-  function buildSectionShell(num, idPrefix, title, desc) {
+  function buildSectionShell(num, idPrefix, title, desc, bodyRole) {
     var section = el('section', 'section-card');
     section.id = idPrefix + '-card';
     var head = el('div', 'sc-header');
@@ -636,6 +683,10 @@
     section.appendChild(el('p', 'sc-desc', desc));
     var body = el('div', 'sc-body');
     body.id = idPrefix + '-body';
+    /* Sezione 2 (Catena automatica): le righe hanno role="listitem"
+       (renderSection2) — serve role="list" sul contenitore perché la
+       relazione list/listitem sia esposta correttamente all'AT. */
+    if (bodyRole) body.setAttribute('role', bodyRole);
     body.appendChild(el('p', 'field-hint', 'Caricamento…'));
     section.appendChild(body);
     return section;
@@ -650,7 +701,7 @@
     outlet.appendChild(buildSectionShell('01', 'sec1', 'Provider attivi',
       'Riflesso della configurazione dell\'add-on. Per attivare o disattivare un provider vai su Impostazioni → Add-on → HIRIS → Configurazione.'));
     outlet.appendChild(buildSectionShell('02', 'sec2', 'Catena automatica',
-      'Ordine di failover quando un\'entità è in "auto". Riordina con le frecce. Il preset attivo (llm_strategy) si imposta in Configurazione add-on.'));
+      'Ordine di failover quando un\'entità è in "auto". Riordina con le frecce.', 'list'));
 
     var sec3 = buildSectionShell('03', 'sec3', 'Assegnazione per entità',
       'Ogni entità usa "auto" (segue la catena) o un modello esplicito.');
