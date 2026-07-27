@@ -10,3 +10,17 @@ def test_build_internal_mcp_server_binds_loopback(monkeypatch):
     assert config.host == "127.0.0.1"
     assert config.port == 8199
     assert client._token == "TOK"
+
+
+@pytest.mark.asyncio
+async def test_run_internal_mcp_contains_systemexit(caplog):
+    from hiris.app.server import _run_internal_mcp
+
+    class _BoomServer:
+        async def serve(self):
+            raise SystemExit(3)  # uvicorn does this on bind failure
+
+    # must NOT raise -- a bind failure on the internal MCP port must be
+    # contained to this optional feature, never propagate into the shared
+    # asyncio loop and kill the whole addon.
+    await _run_internal_mcp(_BoomServer())

@@ -1,5 +1,6 @@
 # hiris/app/server.py
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -727,6 +728,26 @@ async def run_urgent_nudges(store, *, today, seen, notify_item) -> int:
             logger.error("run_urgent_nudges: notify/mark failed for key=%r", n.get("key"), exc_info=True)
             continue
     return count
+
+
+async def _run_internal_mcp(server) -> None:
+    """Run the internal MCP server, containing a bind/startup failure to this
+    optional feature instead of letting SystemExit kill the whole addon.
+
+    uvicorn.Server.serve() calls sys.exit() when it can't bind its port (e.g.
+    INTERNAL_MCP_PORT already in use). Since this task is scheduled on the
+    SAME asyncio loop as the aiohttp app (see _on_startup below), an
+    unwrapped SystemExit would propagate through that shared loop and take
+    down the entire HIRIS process over what should be an optional, isolated
+    feature. Module-level (not inlined in _on_startup) so tests can exercise
+    the containment directly without booting the whole app.
+    """
+    try:
+        await server.serve()
+    except SystemExit as exc:
+        logger.error("Internal MCP server non avviato (porta occupata?): %s", exc)
+    except Exception:
+        logger.exception("Internal MCP server terminato con errore")
 
 
 def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
@@ -1814,7 +1835,14 @@ async def _on_startup(app: web.Application) -> None:
     await _mcp_client.start()
     _mcp_server = _uvicorn.Server(_mcp_config)
     app["internal_mcp_client"] = _mcp_client
-    app["internal_mcp_task"] = asyncio.create_task(_mcp_server.serve())
+    # Through _spawn() (not a bare asyncio.create_task) per review C/#15's
+    # convention for every fire-and-forget task in this module -- _spawn's
+    # strong reference is redundant here (app already holds one via
+    # internal_mcp_task) but keeps this the ONE call site the AST-enforced
+    # test_only_spawn_itself_calls_asyncio_create_task expects.
+    app["internal_mcp_task"] = _spawn(
+        _run_internal_mcp(_mcp_server), name="internal_mcp_server"
+    )
     logger.info("Internal MCP server avviato su 127.0.0.1:%s", _mcp_config.port)
 
 
@@ -1823,6 +1851,8 @@ async def _on_cleanup(app: web.Application) -> None:
     task = app.get("internal_mcp_task")
     if task is not None:
         task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     client = app.get("internal_mcp_client")
     if client is not None:
         await client.stop()
