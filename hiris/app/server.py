@@ -782,6 +782,16 @@ def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
     return client, config
 
 
+def should_start_agent_worker() -> bool:
+    """Gate for the in-addon chat-via-subscription worker (Plan 2B Task 4):
+    only when explicitly enabled AND a subscription OAuth token is present --
+    otherwise there is nothing for the worker to authenticate `claude` with."""
+    return (
+        os.environ.get("CHAT_VIA_SUBSCRIPTION", "").strip().lower() == "true"
+        and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+    )
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner, RunnerBackendError
     from .proxy.semantic_map import SemanticMap
@@ -1862,6 +1872,31 @@ async def _on_startup(app: web.Application) -> None:
     )
     logger.info("Internal MCP server avviato su 127.0.0.1:%s", _mcp_config.port)
 
+    # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
+    # Polls the internal reasoning queue and reasons via `claude -p` under the
+    # user's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN) instead of metered
+    # API spend. Off unless both the feature flag and the token are present
+    # (should_start_agent_worker); gated separately from the MCP server above
+    # since a subscription may be absent even when the MCP tool surface is
+    # up. Same _spawn()/app[...] cancel-in-cleanup convention as
+    # internal_mcp_task.
+    if should_start_agent_worker():
+        from .agent import runner as _agent_runner
+
+        _agent_runner.configure_chat_mcp()
+        app["agent_worker_task"] = _spawn(
+            _agent_runner.run_loop(
+                "http://127.0.0.1:8099",
+                _agent_runner.build_headers,
+                os.environ.get("HIRIS_AGENT_MODE", "live"),
+                int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "3")),
+            ),
+            name="agent_worker",
+        )
+        logger.info("Chat-via-abbonamento worker in-addon avviato")
+    else:
+        logger.info("Chat-via-abbonamento worker NON avviato (flag/token assenti)")
+
 
 async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
@@ -1870,6 +1905,11 @@ async def _on_cleanup(app: web.Application) -> None:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+    aw = app.get("agent_worker_task")
+    if aw is not None:
+        aw.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await aw
     client = app.get("internal_mcp_client")
     if client is not None:
         await client.stop()
