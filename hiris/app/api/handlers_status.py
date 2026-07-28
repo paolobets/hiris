@@ -5,7 +5,7 @@ from ..version import read_version
 
 async def handle_status(request: web.Request) -> web.Response:
     engine = request.app["engine"]
-    agents = engine.list_agents()
+    agents = engine.list_chatbots()
     return web.json_response({
         "version": read_version(),
         "agents": {

@@ -73,8 +73,8 @@ def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=
 
     agent = _make_agent()
     engine = MagicMock()
-    engine.get_agent.return_value = agent
-    engine.get_default_agent.return_value = agent
+    engine.get_chatbot.return_value = agent
+    engine.get_default_chatbot.return_value = agent
 
     if runner is None:
         runner = AsyncMock()

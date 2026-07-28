@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from hiris.app.agent_engine import AgentEngine
+from hiris.app.chatbot_engine import ChatbotEngine
 from hiris.app.claude_runner import _max_tokens_message, _TRUNCATION_NOTICE, CHAT_MAX_TOKENS
 
 
 @pytest.fixture
 def engine(tmp_path):
-    return AgentEngine(ha_client=AsyncMock(), data_path=str(tmp_path / "agents.json"))
+    return ChatbotEngine(ha_client=AsyncMock(), data_path=str(tmp_path / "agents.json"))
 
 
 # --- Part 1: max_tokens cap ---
@@ -16,30 +16,30 @@ def engine(tmp_path):
 # variant to clamp lower).
 
 def test_cap_allows_up_to_16000():
-    assert AgentEngine._cap_max_tokens(16000) == 16000
-    assert AgentEngine._cap_max_tokens(99999) == 16000  # clamped to the cap
-    assert AgentEngine._cap_max_tokens(12000) == 12000  # below cap kept
+    assert ChatbotEngine._cap_max_tokens(16000) == 16000
+    assert ChatbotEngine._cap_max_tokens(99999) == 16000  # clamped to the cap
+    assert ChatbotEngine._cap_max_tokens(12000) == 12000  # below cap kept
 
 
 def test_create_agent_keeps_high_max_tokens(engine):
-    agent = engine.create_agent({"name": "Chat", "max_tokens": 16000})
+    agent = engine.create_chatbot({"name": "Chat", "max_tokens": 16000})
     assert agent.max_tokens == 16000
 
 
 def test_create_agent_clamped_to_16000(engine):
-    agent = engine.create_agent({"name": "Persona", "max_tokens": 99999})
+    agent = engine.create_chatbot({"name": "Persona", "max_tokens": 99999})
     assert agent.max_tokens == 16000
 
 
 def test_update_agent_raises_cap(engine):
-    agent = engine.create_agent({"name": "Chat", "max_tokens": 4096})
-    engine.update_agent(agent.id, {"max_tokens": 16000})
-    assert engine.get_agent(agent.id).max_tokens == 16000
+    agent = engine.create_chatbot({"name": "Chat", "max_tokens": 4096})
+    engine.update_chatbot(agent.id, {"max_tokens": 16000})
+    assert engine.get_chatbot(agent.id).max_tokens == 16000
 
 
 def test_chat_max_tokens_constant_matches_cap():
     # The runtime chat floor and the persistence cap must agree.
-    assert CHAT_MAX_TOKENS == AgentEngine._CHAT_MAX_TOKENS_CAP == 16000
+    assert CHAT_MAX_TOKENS == ChatbotEngine._CHAT_MAX_TOKENS_CAP == 16000
 
 
 # --- Part 2: max_tokens truncation message ---

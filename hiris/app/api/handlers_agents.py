@@ -73,9 +73,9 @@ async def handle_list_agents(request: web.Request) -> web.Response:
     engine = request.app["engine"]
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     result = []
-    for agent_id, agent_data in engine.list_agents().items():
+    for agent_id, agent_data in engine.list_chatbots().items():
         entry = dict(agent_data)
-        entry["status"] = engine.get_agent_status(agent_id)
+        entry["status"] = engine.get_chatbot_status(agent_id)
         budget_eur = 0.0
         usage_payload: dict = {}
         if runner:
@@ -139,7 +139,7 @@ async def handle_create_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]
-    agent = engine.create_agent(body)
+    agent = engine.create_chatbot(body)
     return web.json_response(asdict(agent), status=201)
 
 
@@ -148,7 +148,7 @@ async def handle_get_agent(request: web.Request) -> web.Response:
     if err := _check_agent_id(agent_id):
         return err
     engine = request.app["engine"]
-    agent = engine.get_agent(agent_id)
+    agent = engine.get_chatbot(agent_id)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
     return web.json_response(asdict(agent))
@@ -170,7 +170,7 @@ async def handle_update_agent(request: web.Request) -> web.Response:
         return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]
-    agent = engine.update_agent(agent_id, body)
+    agent = engine.update_chatbot(agent_id, body)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
     return web.json_response(asdict(agent))
@@ -181,10 +181,10 @@ async def handle_delete_agent(request: web.Request) -> web.Response:
     if err := _check_agent_id(agent_id):
         return err
     engine = request.app["engine"]
-    agent = engine.get_agent(agent_id)
+    agent = engine.get_chatbot(agent_id)
     if agent is not None and agent.is_default:
         return web.json_response({"error": "Cannot delete default agent"}, status=409)
-    deleted = engine.delete_agent(agent_id)
+    deleted = engine.delete_chatbot(agent_id)
     if not deleted:
         return web.json_response({"error": "Not found"}, status=404)
     # Clean up orphaned data: long-term memories (lens-scoped KnowledgeStore
@@ -210,10 +210,10 @@ async def handle_run_agent(request: web.Request) -> web.Response:
     if err := _check_agent_id(agent_id):
         return err
     engine = request.app["engine"]
-    agent = engine.get_agent(agent_id)
+    agent = engine.get_chatbot(agent_id)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
-    result = await engine.run_agent(agent)
+    result = await engine.run_chatbot(agent)
     return web.json_response({"result": result})
 
 
@@ -246,7 +246,7 @@ async def handle_get_agent_usage(request: web.Request) -> web.Response:
     if err := _check_agent_id(agent_id):
         return err
     engine = request.app["engine"]
-    if not engine.get_agent(agent_id):
+    if not engine.get_chatbot(agent_id):
         return web.json_response({"error": "Not found"}, status=404)
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -270,7 +270,7 @@ async def handle_reset_agent_usage(request: web.Request) -> web.Response:
     if err := _check_agent_id(agent_id):
         return err
     engine = request.app["engine"]
-    if not engine.get_agent(agent_id):
+    if not engine.get_chatbot(agent_id):
         return web.json_response({"error": "Not found"}, status=404)
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -285,7 +285,7 @@ async def handle_context_preview(request: web.Request) -> web.Response:
     if err := _check_agent_id(agent_id):
         return err
     engine = request.app["engine"]
-    agent = engine.get_agent(agent_id)
+    agent = engine.get_chatbot(agent_id)
     if agent is None:
         return web.json_response({"error": "Not found"}, status=404)
 

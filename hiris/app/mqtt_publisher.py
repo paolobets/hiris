@@ -6,11 +6,17 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 _DISCOVERY_PREFIX = "homeassistant"
-_STATE_PREFIX = "hiris/agents"
+_STATE_PREFIX = "hiris/chatbots"
 _RECONNECT_MAX = 60
 
 
 class MQTTPublisher:
+    # Pre-rename (SP-4 Fase A Task 1) discovery scheme — kept only so
+    # cleanup_legacy_discovery() can address the orphaned HA entities it
+    # replaces. Never used to publish new state/discovery.
+    _OLD_STATE_PREFIX = "hiris/agents"
+    _OLD_ID_FMT = "hiris_{id}"
+
     def __init__(self) -> None:
         self._task: Optional[asyncio.Task] = None
         self._connected = False
@@ -135,27 +141,27 @@ class MQTTPublisher:
 
     # ── Discovery ──────────────────────────────────────────────────────────────
 
-    def _build_discovery_payload(self, agent, metric: str, component: str) -> dict:
+    def _build_discovery_payload(self, chatbot, metric: str, component: str) -> dict:
         payload: dict = {
-            "unique_id": f"hiris_{agent.id}_{metric}",
+            "unique_id": f"chatbot_{chatbot.id}_{metric}",
             "name": metric.replace("_", " ").title(),
             "device": {
-                "identifiers": [f"hiris_{agent.id}"],
-                "name": f"HIRIS {agent.name}",
+                "identifiers": [f"chatbot_{chatbot.id}"],
+                "name": f"HIRIS {chatbot.name}",
                 "manufacturer": "HIRIS",
                 # Slice 5 Task 2 dropped Agent.type — every persona is the
-                # chat entity now, so there is no per-agent "model" variant
+                # chat entity now, so there is no per-chatbot "model" variant
                 # left to report here.
                 "model": "Persona",
             },
         }
         if component == "button":
-            payload["command_topic"] = f"{_STATE_PREFIX}/{agent.id}/{metric}/set"
+            payload["command_topic"] = f"{_STATE_PREFIX}/{chatbot.id}/{metric}/set"
             payload["payload_press"] = "PRESS"
         else:
-            payload["state_topic"] = f"{_STATE_PREFIX}/{agent.id}/{metric}"
+            payload["state_topic"] = f"{_STATE_PREFIX}/{chatbot.id}/{metric}"
             if component == "switch":
-                payload["command_topic"] = f"{_STATE_PREFIX}/{agent.id}/{metric}/set"
+                payload["command_topic"] = f"{_STATE_PREFIX}/{chatbot.id}/{metric}/set"
                 payload["payload_on"] = "ON"
                 payload["payload_off"] = "OFF"
             elif metric == "budget_eur":
@@ -170,7 +176,7 @@ class MQTTPublisher:
 
     def _build_state_topics(
         self,
-        agent,
+        chatbot,
         budget_eur: float = 0.0,
         status: str = "idle",
         budget_remaining_eur: str | float = "unlimited",
@@ -182,13 +188,13 @@ class MQTTPublisher:
             else str(round(budget_remaining_eur, 4))
         )
         return {
-            f"{_STATE_PREFIX}/{agent.id}/status": status,
-            f"{_STATE_PREFIX}/{agent.id}/enabled": "ON" if agent.enabled else "OFF",
-            f"{_STATE_PREFIX}/{agent.id}/budget_eur": str(round(budget_eur, 4)),
-            f"{_STATE_PREFIX}/{agent.id}/last_run": agent.last_run or "",
-            f"{_STATE_PREFIX}/{agent.id}/last_result": (agent.last_result or "")[:255],
-            f"{_STATE_PREFIX}/{agent.id}/budget_remaining_eur": remaining,
-            f"{_STATE_PREFIX}/{agent.id}/tokens_used_today": str(tokens_used_today),
+            f"{_STATE_PREFIX}/{chatbot.id}/status": status,
+            f"{_STATE_PREFIX}/{chatbot.id}/enabled": "ON" if chatbot.enabled else "OFF",
+            f"{_STATE_PREFIX}/{chatbot.id}/budget_eur": str(round(budget_eur, 4)),
+            f"{_STATE_PREFIX}/{chatbot.id}/last_run": chatbot.last_run or "",
+            f"{_STATE_PREFIX}/{chatbot.id}/last_result": (chatbot.last_result or "")[:255],
+            f"{_STATE_PREFIX}/{chatbot.id}/budget_remaining_eur": remaining,
+            f"{_STATE_PREFIX}/{chatbot.id}/tokens_used_today": str(tokens_used_today),
         }
 
     # Task 1 removed the MQTT command callback (no scheduler/autonomous
@@ -200,32 +206,29 @@ class MQTTPublisher:
     # release, instead of leaving it visible-but-inert.
     _RETIRED_COMMAND_ENTITIES = (("enabled", "switch"), ("run_now", "button"))
 
-    async def publish_discovery(self, agent) -> None:
+    # Metric list mirrored by cleanup_legacy_discovery() below — keep the two
+    # in sync (this is the real list published for every chatbot, read off
+    # the live code rather than assumed).
+    _DISCOVERY_METRICS = (
+        "status", "last_run", "last_result", "budget_eur",
+        "budget_remaining_eur", "tokens_used_today", "enabled",
+    )
+
+    async def publish_discovery(self, chatbot) -> None:
         if not self._enabled:
             return
-        metrics = [
-            ("status", "sensor"),
-            ("last_run", "sensor"),
-            ("last_result", "sensor"),
-            ("budget_eur", "sensor"),
-            ("budget_remaining_eur", "sensor"),
-            ("tokens_used_today", "sensor"),
-            # Read-only now (was a "switch" with a dead command_topic): still
-            # worth surfacing whether a persona is enabled, just not as a
-            # control.
-            ("enabled", "sensor"),
-        ]
+        metrics = [(m, "sensor") for m in self._DISCOVERY_METRICS]
         for metric, component in metrics:
-            payload = self._build_discovery_payload(agent, metric, component)
-            topic = f"{_DISCOVERY_PREFIX}/{component}/hiris_{agent.id}_{metric}/config"
+            payload = self._build_discovery_payload(chatbot, metric, component)
+            topic = f"{_DISCOVERY_PREFIX}/{component}/chatbot_{chatbot.id}_{metric}/config"
             await self._pending.put((topic, json.dumps(payload)))
         for metric, component in self._RETIRED_COMMAND_ENTITIES:
-            topic = f"{_DISCOVERY_PREFIX}/{component}/hiris_{agent.id}_{metric}/config"
+            topic = f"{_DISCOVERY_PREFIX}/{component}/chatbot_{chatbot.id}_{metric}/config"
             await self._pending.put((topic, ""))
 
-    async def publish_agent_state(
+    async def publish_chatbot_state(
         self,
-        agent,
+        chatbot,
         budget_eur: float = 0.0,
         status: str = "idle",
         budget_remaining_eur: str | float = "unlimited",
@@ -234,10 +237,42 @@ class MQTTPublisher:
         if not self._connected:
             return
         for topic, payload in self._build_state_topics(
-            agent,
+            chatbot,
             budget_eur=budget_eur,
             status=status,
             budget_remaining_eur=budget_remaining_eur,
             tokens_used_today=tokens_used_today,
         ).items():
             await self._pending.put((topic, payload))
+
+    # ── Legacy discovery cleanup (SP-4 Fase A Task 1) ──────────────────────
+    # The Agent -> Chatbot rename changed the discovery unique_id/device
+    # scheme from "hiris_<id>" to "chatbot_<id>" and the state topic prefix
+    # from "hiris/agents" to "hiris/chatbots". Home Assistant does not drop
+    # the old entities on its own — they'd sit orphaned in the registry
+    # forever unless we explicitly retract them (empty retained payload on
+    # their old discovery config topics). Called once at boot (server.py),
+    # guarded by a marker file, after chatbots are loaded and before any
+    # new-scheme publish_discovery() runs for them.
+    #
+    # NOTE: the plan's reference snippet used a stored `self._client.publish`
+    # — this class has no such attribute (the aiomqtt client is local to
+    # `_connect_loop`; every other publish method here goes through the
+    # `_pending` queue drained by `_publish_drain`). Reusing that same queue
+    # keeps this consistent with publish_discovery/publish_chatbot_state
+    # instead of introducing a second, parallel publish path.
+    async def cleanup_legacy_discovery(self, chatbot_ids: list[str], metrics: list[str]) -> None:
+        """Remove HA entities discovered under the pre-rename id scheme
+        (``hiris_<id>``) by publishing an empty retained payload on each old
+        discovery topic — HA drops the entity (and, once all its entities
+        are gone, the device) when it sees an empty config payload."""
+        if not self._enabled:
+            return
+        for cid in chatbot_ids:
+            old_id = self._OLD_ID_FMT.format(id=cid)
+            for metric in metrics:
+                topic = f"{_DISCOVERY_PREFIX}/sensor/{old_id}_{metric}/config"
+                try:
+                    await self._pending.put((topic, ""))
+                except Exception:
+                    logger.warning("legacy discovery cleanup failed for %s", topic, exc_info=True)

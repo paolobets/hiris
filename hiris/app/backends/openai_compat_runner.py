@@ -209,7 +209,7 @@ class OpenAICompatRunner:
         else:
             _client_timeout = _httpx.Timeout(600.0, connect=5.0)
         # Ollama: disabilita auto-retry SDK. Default openai 2.x = 2 retry, che
-        # cumulativamente possono superare il wrapper agent_engine 300s
+        # cumulativamente possono superare il wrapper chatbot_engine 300s
         # producendo "Timeout dopo 300s" generico senza log specifici. Con
         # max_retries=0 il primo APIError/Timeout viene loggato e ritornato.
         # Cloud OpenAI: lascia il default (2) — la rete cloud è meno volatile.

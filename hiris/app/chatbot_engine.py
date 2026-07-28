@@ -16,46 +16,46 @@ from .proxy._sanitize import sanitize_ha_value as _sanitize_ha_value
 from .claude_runner import RunnerBackendError
 from .config import EUR_RATE
 
-# Timeout complessivo per un singolo run di agente. Evita che un modello locale
+# Timeout complessivo per un singolo run di chatbot. Evita che un modello locale
 # lento (Ollama) blocchi APScheduler per ore. Configurabile via env.
 #
 # v0.10.4 fix: il default deve almeno coprire il timeout configurato dall'utente
 # per il modello locale via local_model.request_timeout (esportato da run.sh
 # come OLLAMA_REQUEST_TIMEOUT). Senza questo fallback, anche se l'utente alza
 # OLLAMA_REQUEST_TIMEOUT a 600/800s, l'asyncio.wait_for esterno cuttava sempre
-# a 300s perché AGENT_RUN_TIMEOUT non è esportato da run.sh. Margine 1.2x
+# a 300s perché CHATBOT_RUN_TIMEOUT non è esportato da run.sh. Margine 1.2x
 # garantisce che il run completi prima dell'aborto outer.
 _OLLAMA_REQUEST_TIMEOUT_FALLBACK = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "120"))
-_AGENT_RUN_TIMEOUT = int(
+_CHATBOT_RUN_TIMEOUT = int(
     os.environ.get(
-        "AGENT_RUN_TIMEOUT",
+        "CHATBOT_RUN_TIMEOUT",
         str(max(int(_OLLAMA_REQUEST_TIMEOUT_FALLBACK * 1.2), 300)),
     )
 )
 
-# Rate-limit auto-backoff per agente (v0.9.10). Quando un agente schedulato
+# Rate-limit auto-backoff per chatbot (v0.9.10). Quando un chatbot schedulato
 # riceve N risposte indicanti rate-limit upstream entro la finestra, lo
 # pausiamo per il cooldown indicato — evita di bruciare la quota giornaliera
 # OpenRouter free-tier su trigger ripetuti che falliranno tutti.
-_RATE_LIMIT_THRESHOLD = int(os.environ.get("AGENT_RATE_LIMIT_THRESHOLD", "3"))
-_RATE_LIMIT_WINDOW_SEC = int(os.environ.get("AGENT_RATE_LIMIT_WINDOW_SEC", "600"))
-_RATE_LIMIT_COOLDOWN_SEC = int(os.environ.get("AGENT_RATE_LIMIT_COOLDOWN_SEC", "3600"))
+_RATE_LIMIT_THRESHOLD = int(os.environ.get("CHATBOT_RATE_LIMIT_THRESHOLD", "3"))
+_RATE_LIMIT_WINDOW_SEC = int(os.environ.get("CHATBOT_RATE_LIMIT_WINDOW_SEC", "600"))
+_RATE_LIMIT_COOLDOWN_SEC = int(os.environ.get("CHATBOT_RATE_LIMIT_COOLDOWN_SEC", "3600"))
 _RATE_LIMIT_RE = re.compile(r"rate[\s\-]?limit", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_AGENTS_DATA_PATH = "/data/agents.json"
-DEFAULT_AGENT_ID = "hiris-default"
+DEFAULT_CHATBOTS_DATA_PATH = "/data/chatbots.json"
+DEFAULT_CHATBOT_ID = "hiris-default"
 
 
 @dataclass
-class Agent:
+class Chatbot:
     # Slice 5 Task 2: this dataclass is a persona (used only by chat) — the
     # "proactive" execution fields that used to describe an autonomous agent
     # (type, triggers, action_mode, rules, states, fallback_action,
     # budget_eur_limit) are gone. Task 1 already retired the engine code that
-    # scheduled/reacted/executed on them (see AgentEngine._run_agent); this
+    # scheduled/reacted/executed on them (see ChatbotEngine._run_chatbot); this
     # task trims the schema itself now that nothing reads those fields.
     id: str
     name: str
@@ -87,28 +87,28 @@ class Agent:
 # Engine
 # ---------------------------------------------------------------------------
 
-class AgentEngine:
-    def __init__(self, ha_client: HAClient, data_path: str = DEFAULT_AGENTS_DATA_PATH) -> None:
-        self._agents: dict[str, Agent] = {}
+class ChatbotEngine:
+    def __init__(self, ha_client: HAClient, data_path: str = DEFAULT_CHATBOTS_DATA_PATH) -> None:
+        self._chatbots: dict[str, Chatbot] = {}
         self._scheduler = AsyncIOScheduler()
         self._claude_runner: Any = None
         self._ha = ha_client
         self._data_path = data_path
         self._entity_cache: Any = None
-        self._running_agents: set[str] = set()
-        self._error_agents: set[str] = set()
+        self._running_chatbots: set[str] = set()
+        self._error_chatbots: set[str] = set()
         self._mqtt_publisher = None
         self._task_engine: Any = None
         # Serialize tmp-write + os.replace across concurrent _save() calls
         # (executor uses a thread pool — two fire-and-forget _save() can otherwise
         # overlap on the same .tmp file and corrupt state).
         self._save_lock = threading.Lock()
-        # Per-agent backoff for upstream rate-limit / generic API errors.
+        # Per-chatbot backoff for upstream rate-limit / generic API errors.
         # _rate_limit_failures[agent_id] = list of monotonic-second timestamps.
         # _rate_limit_paused_until[agent_id] = monotonic seconds, or None.
         # When N=_RATE_LIMIT_THRESHOLD failures occur within
-        # _RATE_LIMIT_WINDOW_SEC, the agent is paused for
-        # _RATE_LIMIT_COOLDOWN_SEC. Schedule keeps firing but _run_agent
+        # _RATE_LIMIT_WINDOW_SEC, the chatbot is paused for
+        # _RATE_LIMIT_COOLDOWN_SEC. Schedule keeps firing but _run_chatbot
         # short-circuits during the cooldown — quota is preserved.
         self._rate_limit_failures: dict[str, list[float]] = {}
         self._rate_limit_paused_until: dict[str, float] = {}
@@ -129,20 +129,21 @@ class AgentEngine:
         self._scheduler.start()
         await self._ha.start_websocket()
         self._load()
-        self._seed_default_agent()
-        logger.info("AgentEngine started")
+        self._seed_default_chatbot()
+        logger.info("ChatbotEngine started")
 
     async def stop(self) -> None:
         self._scheduler.shutdown(wait=False)
-        logger.info("AgentEngine stopped")
+        logger.info("ChatbotEngine stopped")
 
     def _save(self) -> None:
-        # schema_version 3 (Slice 5 Task 2): dropped the proactive-only
+        # schema_version 4 (SP-4 Fase A Task 1: Agent -> Chatbot rename).
+        # schema_version 3 (Slice 5 Task 2) dropped the proactive-only
         # fields (type/triggers/action_mode/rules/states/fallback_action/
         # budget_eur_limit) from the persisted shape. No migration on load —
         # a v1/v2 file simply has those keys ignored by _load()'s explicit
         # field list below.
-        data = {"schema_version": 3, "agents": [asdict(a) for a in self._agents.values()]}
+        data = {"schema_version": 4, "chatbots": [asdict(c) for c in self._chatbots.values()]}
         tmp = self._data_path + ".tmp"
         lock = self._save_lock
 
@@ -154,7 +155,7 @@ class AgentEngine:
                         json.dump(data, f, indent=2, default=str)
                     os.replace(tmp, self._data_path)
                 except Exception as exc:
-                    logger.error("Failed to persist agents: %s", exc)
+                    logger.error("Failed to persist chatbots: %s", exc)
 
         try:
             loop = asyncio.get_running_loop()
@@ -163,13 +164,28 @@ class AgentEngine:
             _write()
 
     def _load(self) -> None:
+        # One-time migration agents.json -> chatbots.json (idempotente).
+        legacy = self._data_path.replace("chatbots.json", "agents.json")
+        if not os.path.exists(self._data_path) and os.path.exists(legacy):
+            try:
+                with open(legacy, encoding="utf-8") as f:
+                    raw = json.load(f)
+                raw.setdefault("chatbots", raw.pop("agents", []))
+                raw["schema_version"] = 4
+                tmp = self._data_path + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(raw, f, indent=2, default=str)
+                os.replace(tmp, self._data_path)
+                logger.info("Migrated agents.json -> chatbots.json")
+            except Exception:
+                logger.warning("agents.json migration failed", exc_info=True)
         if not os.path.exists(self._data_path):
             return
         try:
             with open(self._data_path, encoding="utf-8") as f:
                 data = json.load(f)
-            for raw in data.get("agents", []):
-                agent = Agent(
+            for raw in data.get("chatbots", data.get("agents", [])):
+                chatbot = Chatbot(
                     id=raw["id"],
                     name=raw["name"],
                     system_prompt=raw.get("system_prompt", ""),
@@ -192,9 +208,9 @@ class AgentEngine:
                     thinking_budget=int(raw.get("thinking_budget", 0) or 0),
                     knowledge_access=raw.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
                 )
-                self._agents[agent.id] = agent
+                self._chatbots[chatbot.id] = chatbot
         except Exception as exc:
-            logger.error("Failed to load agents from %s: %s", self._data_path, exc)
+            logger.error("Failed to load chatbots from %s: %s", self._data_path, exc)
 
     _DEFAULT_SYSTEM_PROMPT = (
         "Sei l'assistente principale per la gestione della smart home.\n"
@@ -208,32 +224,32 @@ class AgentEngine:
         "You are HIRIS, an AI assistant for smart home management. Respond in the same language as the user.",
     }
 
-    def _seed_default_agent(self) -> None:
-        if DEFAULT_AGENT_ID not in self._agents:
-            agent = Agent(
-                id=DEFAULT_AGENT_ID,
+    def _seed_default_chatbot(self) -> None:
+        if DEFAULT_CHATBOT_ID not in self._chatbots:
+            chatbot = Chatbot(
+                id=DEFAULT_CHATBOT_ID,
                 name="HIRIS",
                 system_prompt=self._DEFAULT_SYSTEM_PROMPT,
                 allowed_tools=[],
                 enabled=True,
                 is_default=True,
             )
-            self._agents[DEFAULT_AGENT_ID] = agent
+            self._chatbots[DEFAULT_CHATBOT_ID] = chatbot
             self._save()
         else:
-            agent = self._agents[DEFAULT_AGENT_ID]
+            chatbot = self._chatbots[DEFAULT_CHATBOT_ID]
             changed = False
-            if agent.system_prompt in self._LEGACY_DEFAULT_PROMPTS:
-                agent.system_prompt = self._DEFAULT_SYSTEM_PROMPT
+            if chatbot.system_prompt in self._LEGACY_DEFAULT_PROMPTS:
+                chatbot.system_prompt = self._DEFAULT_SYSTEM_PROMPT
                 changed = True
-            if agent.allowed_tools:
-                agent.allowed_tools = []
+            if chatbot.allowed_tools:
+                chatbot.allowed_tools = []
                 changed = True
             if changed:
                 self._save()
 
-    def get_default_agent(self) -> Optional[Agent]:
-        return self._agents.get(DEFAULT_AGENT_ID)
+    def get_default_chatbot(self) -> Optional[Chatbot]:
+        return self._chatbots.get(DEFAULT_CHATBOT_ID)
 
     # Output-token ceiling for personas. Chat needs room for large outputs
     # (multi-view dashboards, long scripts) — every persona is a chat entity
@@ -246,8 +262,8 @@ class AgentEngine:
     def _cap_max_tokens(cls, value: Any) -> int:
         return min(int(value), cls._CHAT_MAX_TOKENS_CAP)
 
-    def create_agent(self, data: dict) -> Agent:
-        agent = Agent(
+    def create_chatbot(self, data: dict) -> Chatbot:
+        chatbot = Chatbot(
             id=str(uuid.uuid4()),
             name=data["name"],
             system_prompt=data.get("system_prompt", ""),
@@ -267,17 +283,17 @@ class AgentEngine:
             thinking_budget=max(0, int(data.get("thinking_budget", 0) or 0)),
             knowledge_access=data.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
         )
-        self._agents[agent.id] = agent
+        self._chatbots[chatbot.id] = chatbot
         if self._mqtt_publisher:
             asyncio.create_task(
-                self._mqtt_publisher.publish_discovery(agent),
-                name=f"mqtt_disc_{agent.id}",
+                self._mqtt_publisher.publish_discovery(chatbot),
+                name=f"mqtt_disc_{chatbot.id}",
             )
         self._save()
-        return agent
+        return chatbot
 
-    def get_agent(self, agent_id: str) -> Optional[Agent]:
-        return self._agents.get(agent_id)
+    def get_chatbot(self, agent_id: str) -> Optional[Chatbot]:
+        return self._chatbots.get(agent_id)
 
     UPDATABLE_FIELDS = {
         "name", "system_prompt", "allowed_tools", "enabled",
@@ -287,54 +303,54 @@ class AgentEngine:
         "response_mode", "thinking_budget", "knowledge_access",
     }
 
-    def update_agent(self, agent_id: str, data: dict) -> Optional[Agent]:
-        agent = self._agents.get(agent_id)
-        if not agent:
+    def update_chatbot(self, agent_id: str, data: dict) -> Optional[Chatbot]:
+        chatbot = self._chatbots.get(agent_id)
+        if not chatbot:
             return None
-        enabled_before = agent.enabled
-        self._unschedule_agent(agent_id)
+        enabled_before = chatbot.enabled
+        self._unschedule_chatbot(agent_id)
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
         _INT_FIELDS = {"max_chat_turns"}
         for key in self.UPDATABLE_FIELDS:
             if key in data:
                 if key in _BOOL_FIELDS:
-                    setattr(agent, key, bool(data[key]))
+                    setattr(chatbot, key, bool(data[key]))
                 elif key in _INT_FIELDS:
-                    setattr(agent, key, int(data[key]))
+                    setattr(chatbot, key, int(data[key]))
                 elif key == "max_tokens":
-                    setattr(agent, key, self._cap_max_tokens(data[key]))
+                    setattr(chatbot, key, self._cap_max_tokens(data[key]))
                 else:
-                    setattr(agent, key, data[key])
+                    setattr(chatbot, key, data[key])
         self._save()
-        if self._mqtt_publisher and agent.enabled != enabled_before:
+        if self._mqtt_publisher and chatbot.enabled != enabled_before:
             try:
                 asyncio.create_task(
-                    self._mqtt_publisher.publish_agent_state(agent, budget_eur=0.0, status="idle"),
-                    name=f"mqtt_enable_{agent.id}",
+                    self._mqtt_publisher.publish_chatbot_state(chatbot, budget_eur=0.0, status="idle"),
+                    name=f"mqtt_enable_{chatbot.id}",
                 )
             except RuntimeError:
                 pass
-        return agent
+        return chatbot
 
-    def delete_agent(self, agent_id: str) -> bool:
-        agent = self._agents.get(agent_id)
-        if agent is None or agent.is_default:
+    def delete_chatbot(self, agent_id: str) -> bool:
+        chatbot = self._chatbots.get(agent_id)
+        if chatbot is None or chatbot.is_default:
             return False
-        self._unschedule_agent(agent_id)
-        del self._agents[agent_id]
+        self._unschedule_chatbot(agent_id)
+        del self._chatbots[agent_id]
         self._save()
         return True
 
-    async def run_agent(self, agent: "Agent") -> str:
-        return await self._run_agent(agent)
+    async def run_chatbot(self, chatbot: "Chatbot") -> str:
+        return await self._run_chatbot(chatbot)
 
-    def list_agents(self) -> dict[str, dict]:
-        return {a.id: asdict(a) for a in self._agents.values()}
+    def list_chatbots(self) -> dict[str, dict]:
+        return {c.id: asdict(c) for c in self._chatbots.values()}
 
-    def get_agent_status(self, agent_id: str) -> str:
-        if agent_id in self._running_agents:
+    def get_chatbot_status(self, agent_id: str) -> str:
+        if agent_id in self._running_chatbots:
             return "running"
-        if agent_id in self._error_agents:
+        if agent_id in self._error_chatbots:
             return "error"
         return "idle"
 
@@ -343,11 +359,11 @@ class AgentEngine:
     # ------------------------------------------------------------------
     # Autonomous agent scheduling (interval/cron triggers) and reactive
     # state-change dispatch were retired in Slice 5 — the Sentinella
-    # (watcher/) is now the sole proactive engine. `_unschedule_agent`
+    # (watcher/) is now the sole proactive engine. `_unschedule_chatbot`
     # remains as a defensive no-op-safe cleanup for any job left over from
     # a pre-upgrade scheduler state.
 
-    def _unschedule_agent(self, agent_id: str) -> None:
+    def _unschedule_chatbot(self, agent_id: str) -> None:
         for job in list(self._scheduler.get_jobs()):
             if job.id == agent_id or job.id.startswith(f"{agent_id}__"):
                 try:
@@ -359,14 +375,14 @@ class AgentEngine:
     # Context helpers
     # ------------------------------------------------------------------
 
-    def _build_entity_context(self, agent: "Agent") -> str:
+    def _build_entity_context(self, chatbot: "Chatbot") -> str:
         if self._entity_cache is None:
             return ""
         all_entities = self._entity_cache.get_all_useful()
-        if agent.allowed_entities:
+        if chatbot.allowed_entities:
             relevant = [
                 e for e in all_entities
-                if any(fnmatch.fnmatch(e["id"], pat) for pat in agent.allowed_entities)
+                if any(fnmatch.fnmatch(e["id"], pat) for pat in chatbot.allowed_entities)
             ]
         else:
             relevant = all_entities
@@ -385,12 +401,12 @@ class AgentEngine:
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
-    # Agent run
+    # Chatbot run
     # ------------------------------------------------------------------
     # Slice 5 retired the action/rules execution machinery (AZIONI parsing,
     # configured rules, action chains/batches) and the notion of an agent
     # "acting" on its own conclusions. The Sentinella (watcher/) is now the
-    # sole proactive/actuating engine. `_run_agent` below only ever produces
+    # sole proactive/actuating engine. `_run_chatbot` below only ever produces
     # text via the runner's plain chat() — it never executes actions.
     #
     # Slice 5 Task 2: every persona is a chat entity now (the "agent"/
@@ -409,7 +425,7 @@ class AgentEngine:
         return bool(_RATE_LIMIT_RE.search(result))
 
     def _record_rate_limit_failure(self, agent_id: str) -> None:
-        """Track a rate-limit failure timestamp; pause the agent if the
+        """Track a rate-limit failure timestamp; pause the chatbot if the
         threshold is crossed inside the window."""
         now = time.monotonic()
         # Drop timestamps outside the window
@@ -423,8 +439,8 @@ class AgentEngine:
             paused_until = now + _RATE_LIMIT_COOLDOWN_SEC
             self._rate_limit_paused_until[agent_id] = paused_until
             logger.warning(
-                "Agent %s: %d rate-limit failures in %ds — pausing for %ds. "
-                "Considera passare a un modello a pagamento per agenti schedulati.",
+                "Chatbot %s: %d rate-limit failures in %ds — pausing for %ds. "
+                "Considera passare a un modello a pagamento per chatbot schedulati.",
                 agent_id, len(recent), _RATE_LIMIT_WINDOW_SEC, _RATE_LIMIT_COOLDOWN_SEC,
             )
             # Clear the failure list so the next pause requires fresh evidence
@@ -436,23 +452,23 @@ class AgentEngine:
         self._rate_limit_failures.pop(agent_id, None)
 
     def _is_in_rate_limit_pause(self, agent_id: str) -> bool:
-        """Return True if the agent is currently in cooldown after too many
+        """Return True if the chatbot is currently in cooldown after too many
         rate-limit failures. Auto-clears expired pauses."""
         until = self._rate_limit_paused_until.get(agent_id)
         if until is None:
             return False
         if time.monotonic() >= until:
             self._rate_limit_paused_until.pop(agent_id, None)
-            logger.info("Agent %s: rate-limit cooldown expired, resuming.", agent_id)
+            logger.info("Chatbot %s: rate-limit cooldown expired, resuming.", agent_id)
             return False
         return True
 
-    async def _run_agent(
-        self, agent: Agent, context: Optional[dict] = None, trigger_fired: Optional[dict] = None
+    async def _run_chatbot(
+        self, chatbot: Chatbot, context: Optional[dict] = None, trigger_fired: Optional[dict] = None
     ) -> str:
         """Run a persona once and return its reply text — no autonomous actuation.
 
-        Reachable from the manual "run" API (`run_agent` → `handle_run_agent`).
+        Reachable from the manual "run" API (`run_chatbot` → `handle_run_agent`).
         `context`/`trigger_fired` are kept for the execution-log record shape;
         callers other than the manual API no longer exist (Slice 5 retired the
         scheduler/reactive triggers that used to pass them).
@@ -460,30 +476,30 @@ class AgentEngine:
         if not self._claude_runner:
             logger.warning("No runner configured")
             return ""
-        # Per-agent concurrency guard: a manual run landing while another run
-        # for the same agent is still in flight is skipped rather than run
+        # Per-chatbot concurrency guard: a manual run landing while another run
+        # for the same chatbot is still in flight is skipped rather than run
         # concurrently — avoids racing on shared ClaudeRunner state
         # (last_tool_calls, usage).
-        if agent.id in self._running_agents:
-            logger.info("Agent %s already running — skipping overlapping trigger", agent.id)
+        if chatbot.id in self._running_chatbots:
+            logger.info("Chatbot %s already running — skipping overlapping trigger", chatbot.id)
             return "[skipped: already running]"
-        if self._is_in_rate_limit_pause(agent.id):
-            remaining = int(self._rate_limit_paused_until[agent.id] - time.monotonic())
+        if self._is_in_rate_limit_pause(chatbot.id):
+            remaining = int(self._rate_limit_paused_until[chatbot.id] - time.monotonic())
             logger.info(
-                "Agent %s: skipping run, in rate-limit cooldown for %ds more.",
-                agent.id, remaining,
+                "Chatbot %s: skipping run, in rate-limit cooldown for %ds more.",
+                chatbot.id, remaining,
             )
             return f"[skipped: rate-limit cooldown, retry in {remaining}s]"
-        logger.info("Running agent: %s (%s)", agent.name, agent.id)
+        logger.info("Running chatbot: %s (%s)", chatbot.name, chatbot.id)
         inp_before = getattr(self._claude_runner, "total_input_tokens", 0)
         out_before = getattr(self._claude_runner, "total_output_tokens", 0)
-        self._running_agents.add(agent.id)
+        self._running_chatbots.add(chatbot.id)
         _had_error = False
         try:
-            agent.last_run = datetime.now(timezone.utc).isoformat()
+            chatbot.last_run = datetime.now(timezone.utc).isoformat()
             effective_prompt = (
-                f"{agent.strategic_context}\n\n---\n\n{agent.system_prompt}"
-                if agent.strategic_context else agent.system_prompt
+                f"{chatbot.strategic_context}\n\n---\n\n{chatbot.system_prompt}"
+                if chatbot.strategic_context else chatbot.system_prompt
             )
             if context:
                 effective_prompt = f"{effective_prompt}\n\nContext: {context}"
@@ -491,7 +507,7 @@ class AgentEngine:
             fired_type = (trigger_fired or {}).get("type", "unknown")
             user_message = f"[Agent trigger: {fired_type}]"
 
-            _ka = (agent.knowledge_access or {}) if isinstance(agent.knowledge_access, dict) else {}
+            _ka = (chatbot.knowledge_access or {}) if isinstance(chatbot.knowledge_access, dict) else {}
             _allow_sensitive = bool(_ka.get("allow_sensitive", False))
             _kinds_raw = _ka.get("kinds", "all")
             _knowledge_kinds = None if _kinds_raw == "all" else _kinds_raw
@@ -500,32 +516,32 @@ class AgentEngine:
                 # a NEW Task on Python 3.11, which gets a COPY of the context, so
                 # the runner's per-call ContextVar tool-calls/thinking (review A/#3)
                 # would be invisible here. asyncio.timeout awaits in THIS Task.
-                async with asyncio.timeout(_AGENT_RUN_TIMEOUT):
+                async with asyncio.timeout(_CHATBOT_RUN_TIMEOUT):
                     result = await self._claude_runner.chat(
                         user_message=user_message,
                         system_prompt=effective_prompt,
-                        allowed_tools=agent.allowed_tools or None,
-                        allowed_entities=agent.allowed_entities or None,
-                        allowed_services=agent.allowed_services or None,
-                        allowed_endpoints=agent.allowed_endpoints,
-                        model=agent.model,
+                        allowed_tools=chatbot.allowed_tools or None,
+                        allowed_entities=chatbot.allowed_entities or None,
+                        allowed_services=chatbot.allowed_services or None,
+                        allowed_endpoints=chatbot.allowed_endpoints,
+                        model=chatbot.model,
                         mode="automatic",
-                        max_tokens=agent.max_tokens,
+                        max_tokens=chatbot.max_tokens,
                         # Every persona is the chat entity now (Slice 5 Task 2
                         # dropped the `type` field) — "chat" is not read off
-                        # `agent`, it's simply what a persona is.
+                        # `chatbot`, it's simply what a persona is.
                         agent_type="chat",
-                        restrict_to_home=agent.restrict_to_home,
-                        require_confirmation=agent.require_confirmation,
-                        agent_id=agent.id,
-                        response_mode=agent.response_mode,
-                        thinking_budget=agent.thinking_budget,
+                        restrict_to_home=chatbot.restrict_to_home,
+                        require_confirmation=chatbot.require_confirmation,
+                        agent_id=chatbot.id,
+                        response_mode=chatbot.response_mode,
+                        thinking_budget=chatbot.thinking_budget,
                         knowledge_allow_sensitive=_allow_sensitive,
                         knowledge_kinds=_knowledge_kinds,
                     )
             except asyncio.TimeoutError:
                 raise RuntimeError(
-                    f"Timeout dopo {_AGENT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
+                    f"Timeout dopo {_CHATBOT_RUN_TIMEOUT}s — il modello non ha risposto in tempo"
                 )
             except RunnerBackendError as exc:
                 # Runner API failure (rate limit/connection/timeout/auth/5xx).
@@ -539,13 +555,13 @@ class AgentEngine:
                 result = exc.friendly_message
 
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
-            agent.last_result = result
-            # Track upstream rate-limit replies and pause the agent if they
+            chatbot.last_result = result
+            # Track upstream rate-limit replies and pause the chatbot if they
             # repeat — protects the daily quota on OpenRouter free models.
             if self._is_rate_limited(result):
-                self._record_rate_limit_failure(agent.id)
+                self._record_rate_limit_failure(chatbot.id)
             else:
-                self._clear_rate_limit_failures(agent.id)
+                self._clear_rate_limit_failures(chatbot.id)
             # Detect upstream API failures returned as a string by the runner
             # (no exception raised). Without this the row would log success=True
             # while the summary reads "Errore temporaneo del servizio AI…".
@@ -554,7 +570,7 @@ class AgentEngine:
                 or self._is_rate_limited(result)
             )
             self._append_execution_log(
-                agent, result, inp_before, out_before, tool_calls_snapshot,
+                chatbot, result, inp_before, out_before, tool_calls_snapshot,
                 success=not _is_upstream_err, trigger_fired=trigger_fired,
             )
             self._save()
@@ -562,45 +578,45 @@ class AgentEngine:
         except Exception as exc:
             tool_calls_snapshot = list(getattr(self._claude_runner, "last_tool_calls", None) or [])
             _had_error = True
-            logger.error("Agent %s failed: %s", agent.name, exc)
-            agent.last_result = f"Error: {exc}"
+            logger.error("Chatbot %s failed: %s", chatbot.name, exc)
+            chatbot.last_result = f"Error: {exc}"
             self._append_execution_log(
-                agent, agent.last_result, inp_before, out_before, tool_calls_snapshot, success=False
+                chatbot, chatbot.last_result, inp_before, out_before, tool_calls_snapshot, success=False
             )
             self._save()
-            return agent.last_result
+            return chatbot.last_result
         finally:
-            self._running_agents.discard(agent.id)
+            self._running_chatbots.discard(chatbot.id)
             if _had_error:
-                self._error_agents.add(agent.id)
+                self._error_chatbots.add(chatbot.id)
             else:
-                self._error_agents.discard(agent.id)
+                self._error_chatbots.discard(chatbot.id)
             if self._mqtt_publisher:
                 runner = self._claude_runner
                 budget_eur = 0.0
                 tokens_today = 0
                 if runner and hasattr(runner, "get_agent_usage"):
                     try:
-                        usage = runner.get_agent_usage(agent.id)
+                        usage = runner.get_agent_usage(chatbot.id)
                         budget_eur = round(usage.get("cost_usd", 0.0) * EUR_RATE, 4)
                         tokens_today = usage.get("tokens_today", 0)
                     except Exception as exc:
-                        logger.debug("get_agent_usage(%s) failed: %s", agent.id, exc)
+                        logger.debug("get_agent_usage(%s) failed: %s", chatbot.id, exc)
                 asyncio.create_task(
-                    self._mqtt_publisher.publish_agent_state(
-                        agent, budget_eur=budget_eur,
+                    self._mqtt_publisher.publish_chatbot_state(
+                        chatbot, budget_eur=budget_eur,
                         status="error" if _had_error else "idle",
-                        # No more per-agent budget_eur_limit (Slice 5 Task 2) —
+                        # No more per-chatbot budget_eur_limit (Slice 5 Task 2) —
                         # there is nothing left to subtract a remainder from.
                         budget_remaining_eur="unlimited",
                         tokens_used_today=tokens_today,
                     ),
-                    name=f"mqtt_pub_{agent.id}",
+                    name=f"mqtt_pub_{chatbot.id}",
                 )
 
     def _append_execution_log(
         self,
-        agent: Agent,
+        chatbot: Chatbot,
         result: str,
         inp_before: int,
         out_before: int,
@@ -611,13 +627,13 @@ class AgentEngine:
         inp_after = getattr(self._claude_runner, "total_input_tokens", 0)
         out_after = getattr(self._claude_runner, "total_output_tokens", 0)
         # Capture extended-thinking blocks if any. Truncate per-block to keep
-        # the agents.json file from growing unbounded — full reasoning is
+        # the chatbots.json file from growing unbounded — full reasoning is
         # rarely needed in the UI, just the gist for debug.
         thinking_blocks = list(getattr(self._claude_runner, "last_thinking_blocks", None) or [])
         thinking_blocks = [(t or "")[:2000] for t in thinking_blocks]
         record = {
-            "timestamp": agent.last_run,
-            # No more `agent.triggers` to fall back on (Slice 5 Task 2 removed
+            "timestamp": chatbot.last_run,
+            # No more `chatbot.triggers` to fall back on (Slice 5 Task 2 removed
             # the field) — "manual" is the only source left for a persona run.
             "trigger": (trigger_fired or {}).get("type", "manual"),
             "tool_calls": [t.get("tool", "") for t in tool_calls_snapshot],
@@ -634,4 +650,4 @@ class AgentEngine:
             "action_taken": None,
             "thinking_blocks": thinking_blocks,
         }
-        agent.execution_log = (agent.execution_log + [record])[-20:]
+        chatbot.execution_log = (chatbot.execution_log + [record])[-20:]

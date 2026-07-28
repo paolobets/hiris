@@ -100,7 +100,7 @@ async def test_get_agent_usage_returns_stats():
         "requests": 5, "cost_usd": 0.005, "last_run": "2026-04-21T10:00:00Z",
     })
     engine = MagicMock()
-    engine.get_agent.return_value = MagicMock(id="agent-1")
+    engine.get_chatbot.return_value = MagicMock(id="agent-1")
 
     app = MagicMock()
     app.__getitem__ = MagicMock(side_effect=lambda k: engine if k == "engine" else None)
@@ -126,7 +126,7 @@ async def test_reset_agent_usage():
     runner = MagicMock()
     runner.reset_agent_usage = MagicMock()
     engine = MagicMock()
-    engine.get_agent.return_value = MagicMock(id="agent-1")
+    engine.get_chatbot.return_value = MagicMock(id="agent-1")
 
     app = MagicMock()
     app.__getitem__ = MagicMock(side_effect=lambda k: engine if k == "engine" else None)
@@ -148,14 +148,14 @@ async def test_reset_agent_usage():
 def _dashboard_app(tmp_path):
     """Shared app factory for dashboard-field tests."""
     from hiris.app.server import create_app
-    from hiris.app.agent_engine import AgentEngine
+    from hiris.app.chatbot_engine import ChatbotEngine
     app = create_app()
     mock_ha = AsyncMock()
     mock_ha.start = AsyncMock()
     mock_ha.stop = AsyncMock()
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
-    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
     mock_runner = AsyncMock()
@@ -224,7 +224,7 @@ async def test_list_agents_budget_computed_from_usage(dashboard_client):
 @pytest.mark.asyncio
 async def test_created_agent_has_all_dashboard_fields(dashboard_client):
     # Slice 5 Task 2 dropped Agent.type (personas are chat-only now — see
-    # hiris/app/agent_engine.py's Agent dataclass); "type"/"trigger" here are
+    # hiris/app/chatbot_engine.py's Chatbot dataclass); "type"/"trigger" here are
     # just stray keys in the payload that create_agent ignores. Task 3 stops
     # handlers_agents.py from validating them at all (no more _VALID_AGENT_TYPES
     # / _VALID_TRIGGER_TYPES enum checks, no more required "type" key).
@@ -260,8 +260,8 @@ async def test_delete_agent_cleans_memory_and_chat_history():
     engine = MagicMock()
     fake_agent = MagicMock()
     fake_agent.is_default = False
-    engine.get_agent.return_value = fake_agent
-    engine.delete_agent.return_value = True
+    engine.get_chatbot.return_value = fake_agent
+    engine.delete_chatbot.return_value = True
 
     knowledge_store = MagicMock()
     knowledge_store.delete_by_lens = MagicMock()
@@ -334,7 +334,7 @@ async def test_create_agent_rejects_broken_openrouter_model(monkeypatch):
     payload = json.loads(resp.body)
     assert "tool" in payload["error"].lower()
     assert "hermes-3" in payload["error"]
-    engine.create_agent.assert_not_called()
+    engine.create_chatbot.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -358,7 +358,7 @@ async def test_update_agent_accepts_tool_capable_openrouter_model(monkeypatch):
         type: str = "chat"
 
     engine = MagicMock()
-    engine.update_agent = MagicMock(return_value=_Agent())
+    engine.update_chatbot = MagicMock(return_value=_Agent())
     app = MagicMock()
     app.get = MagicMock(side_effect=lambda k, d=None: {
         "openrouter_api_key": "sk-or-test",
@@ -399,7 +399,7 @@ async def test_update_agent_skips_check_for_non_openrouter_models(monkeypatch):
         type: str = "chat"
 
     engine = MagicMock()
-    engine.update_agent = MagicMock(return_value=_Agent())
+    engine.update_chatbot = MagicMock(return_value=_Agent())
     app = MagicMock()
     app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
@@ -446,7 +446,7 @@ async def test_create_agent_succeeds_with_free_model(monkeypatch):
         name: str = "monitor"
 
     engine = MagicMock()
-    engine.create_agent = MagicMock(return_value=_Agent())
+    engine.create_chatbot = MagicMock(return_value=_Agent())
     app = MagicMock()
     app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
@@ -456,7 +456,7 @@ async def test_create_agent_succeeds_with_free_model(monkeypatch):
 
     resp = await handle_create_agent(req)
     assert resp.status == 201
-    engine.create_agent.assert_called_once()
+    engine.create_chatbot.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -514,7 +514,7 @@ async def test_create_agent_accepts_payload_with_bogus_proactive_fields(monkeypa
         name: str = "test"
 
     engine = MagicMock()
-    engine.create_agent = MagicMock(return_value=_Agent())
+    engine.create_chatbot = MagicMock(return_value=_Agent())
     app = MagicMock()
     app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
@@ -524,7 +524,7 @@ async def test_create_agent_accepts_payload_with_bogus_proactive_fields(monkeypa
 
     resp = await handle_create_agent(req)
     assert resp.status == 201
-    engine.create_agent.assert_called_once_with(body)
+    engine.create_chatbot.assert_called_once_with(body)
 
 
 @pytest.mark.asyncio
@@ -540,7 +540,7 @@ async def test_create_agent_no_longer_requires_type_field(monkeypatch):
         name: str = "no-type-here"
 
     engine = MagicMock()
-    engine.create_agent = MagicMock(return_value=_Agent())
+    engine.create_chatbot = MagicMock(return_value=_Agent())
     app = MagicMock()
     app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
@@ -571,7 +571,7 @@ async def test_update_agent_accepts_payload_with_bogus_proactive_fields(monkeypa
         name: str = "x"
 
     engine = MagicMock()
-    engine.update_agent = MagicMock(return_value=_Agent())
+    engine.update_chatbot = MagicMock(return_value=_Agent())
     app = MagicMock()
     app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
@@ -585,7 +585,7 @@ async def test_update_agent_accepts_payload_with_bogus_proactive_fields(monkeypa
     req.json = AsyncMock(return_value=body)
     resp = await handle_update_agent(req)
     assert resp.status == 200
-    engine.update_agent.assert_called_once_with(aid, body)
+    engine.update_chatbot.assert_called_once_with(aid, body)
 
 
 # ---------------------------------------------------------------------------
@@ -599,8 +599,8 @@ async def test_handle_run_agent_returns_plain_text_result():
 
     engine = MagicMock()
     fake_agent = MagicMock()
-    engine.get_agent.return_value = fake_agent
-    engine.run_agent = AsyncMock(return_value="Ciao! Come posso aiutarti?")
+    engine.get_chatbot.return_value = fake_agent
+    engine.run_chatbot = AsyncMock(return_value="Ciao! Come posso aiutarti?")
 
     app = MagicMock()
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
@@ -616,4 +616,4 @@ async def test_handle_run_agent_returns_plain_text_result():
     assert resp.status == 200
     payload = json.loads(resp.body)
     assert payload == {"result": "Ciao! Come posso aiutarti?"}
-    engine.run_agent.assert_called_once_with(fake_agent)
+    engine.run_chatbot.assert_called_once_with(fake_agent)

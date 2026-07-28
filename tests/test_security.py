@@ -39,8 +39,8 @@ def _make_app_with_runner(runner):
     agent.max_chat_turns = 0
 
     engine = MagicMock()
-    engine.get_agent.return_value = agent
-    engine.get_default_agent.return_value = agent
+    engine.get_chatbot.return_value = agent
+    engine.get_default_chatbot.return_value = agent
 
     app = web.Application(middlewares=[_security_headers])
     app["llm_router"] = runner
@@ -185,17 +185,17 @@ def test_create_agent_caps_max_tokens():
     """Every persona is a chat entity now (Slice 5 Task 2 dropped `type`),
     so there is a single cap regardless of what a stray "type" payload key
     says — 16000, not the old non-chat 8192."""
-    from hiris.app.agent_engine import AgentEngine
+    from hiris.app.chatbot_engine import ChatbotEngine
     from unittest.mock import MagicMock, patch
-    engine = AgentEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
+    engine = ChatbotEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
     with patch.object(engine, "_save"):
-        agent = engine.create_agent({
+        agent = engine.create_chatbot({
             "name": "Test",
             "type": "chat",
             "trigger": {"type": "manual"},
             "max_tokens": 99999,
         })
-        formerly_non_chat = engine.create_agent({
+        formerly_non_chat = engine.create_chatbot({
             "name": "Mon",
             "type": "monitor",
             "trigger": {"type": "manual"},
@@ -206,19 +206,19 @@ def test_create_agent_caps_max_tokens():
 
 
 def test_update_agent_caps_max_tokens():
-    from hiris.app.agent_engine import AgentEngine
+    from hiris.app.chatbot_engine import ChatbotEngine
     from unittest.mock import MagicMock, patch
-    engine = AgentEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
+    engine = ChatbotEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
     with patch.object(engine, "_save"):
-        agent = engine.create_agent({
+        agent = engine.create_chatbot({
             "name": "Test",
             "type": "chat",
             "trigger": {"type": "manual"},
             "max_tokens": 4096,
         })
     with patch.object(engine, "_save"):
-        with patch.object(engine, "_unschedule_agent"):
-            updated = engine.update_agent(agent.id, {"max_tokens": 50000})
+        with patch.object(engine, "_unschedule_chatbot"):
+            updated = engine.update_chatbot(agent.id, {"max_tokens": 50000})
     assert updated.max_tokens == 16000  # chat cap
 
 
@@ -255,7 +255,7 @@ def test_config_yaml_no_direct_port():
 # SEC-021 — APScheduler cron coalesce
 # ---------------------------------------------------------------------------
 # Retired (Slice 5): _schedule_agent and all autonomous-agent scheduling was
-# removed from AgentEngine — the Sentinella (watcher/) is now the sole
+# removed from ChatbotEngine — the Sentinella (watcher/) is now the sole
 # proactive engine, and it does not use APScheduler add_job() at all.
 
 

@@ -156,9 +156,9 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     agent = None
     if agent_id:
-        agent = engine.get_agent(agent_id)
+        agent = engine.get_chatbot(agent_id)
     if agent is None:
-        agent = engine.get_default_agent()
+        agent = engine.get_default_chatbot()
 
     effective_agent_id = getattr(agent, "id", None) if agent else None
 

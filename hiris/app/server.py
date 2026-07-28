@@ -41,7 +41,7 @@ from .api.handlers_knowledge import (
 from .api.handlers_gateway_pending import verify_otp, execute_pending, resolve_pending
 from .proxy.health_monitor import HealthMonitor
 from .proxy.proposal_store import ProposalStore
-from .agent_engine import AgentEngine
+from .chatbot_engine import ChatbotEngine
 from .task_engine import TaskEngine
 from .version import read_version
 from .proxy.ha_client import HAClient
@@ -542,7 +542,7 @@ async def register_lens_schedules(app: web.Application) -> None:
 
     # Remove orphaned jobs: a lens that was deleted, disabled, or switched
     # away from a schedule trigger since the last registration. Enumeration
-    # pattern mirrors `agent_engine.py:350-353`'s `_unschedule_agent`.
+    # pattern mirrors `chatbot_engine.py`'s `_unschedule_chatbot`.
     for job in list(scheduler.get_jobs()):
         if not job.id.startswith(_LENS_JOB_PREFIX):
             continue
@@ -871,7 +871,7 @@ async def _on_startup(app: web.Application) -> None:
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
 
-    data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
+    data_path = os.environ.get("CHATBOTS_DATA_PATH", "/data/chatbots.json")
     data_dir = os.path.dirname(os.path.abspath(data_path))
     app["data_dir"] = data_dir
     # SP-2 Task 4: models-config store (chain_order + brain_model), letta prima
@@ -899,7 +899,7 @@ async def _on_startup(app: web.Application) -> None:
     app["semantic_map"] = semantic_map
     ha_client.add_registry_listener(semantic_map.on_entity_added)
 
-    engine = AgentEngine(ha_client=ha_client, data_path=data_path)
+    engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)
     await engine.start()
     app["engine"] = engine
@@ -965,6 +965,24 @@ async def _on_startup(app: web.Application) -> None:
     )
     app["mqtt_publisher"] = mqtt_pub
     engine.set_mqtt_publisher(mqtt_pub)
+
+    # SP-4 Fase A Task 1: one-time removal of HA entities discovered under
+    # the pre-rename MQTT scheme (hiris_<id> / hiris/agents) for chatbots
+    # already loaded from disk — guarded by a marker file so it only runs
+    # once per install, before anything republishes discovery under the new
+    # chatbot_<id> / hiris/chatbots scheme.
+    _mqtt_migration_marker = os.path.join(data_dir, ".mqtt_discovery_migrated")
+    if mqtt_pub._enabled and not os.path.exists(_mqtt_migration_marker):
+        try:
+            await mqtt_pub.cleanup_legacy_discovery(
+                list(engine.list_chatbots().keys()),
+                list(mqtt_pub._DISCOVERY_METRICS),
+            )
+            os.makedirs(data_dir, exist_ok=True)
+            with open(_mqtt_migration_marker, "w", encoding="utf-8") as f:
+                f.write(datetime.now(timezone.utc).isoformat())
+        except Exception as exc:
+            logger.warning("MQTT legacy discovery cleanup failed: %s", exc)
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")

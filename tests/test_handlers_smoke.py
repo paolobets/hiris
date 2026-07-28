@@ -17,7 +17,7 @@ from aiohttp.test_utils import make_mocked_request
 async def test_handle_status_returns_version_and_agent_counts():
     from hiris.app.api.handlers_status import handle_status
     engine = MagicMock()
-    engine.list_agents.return_value = {
+    engine.list_chatbots.return_value = {
         "a1": {"enabled": True},
         "a2": {"enabled": False},
         "a3": {"enabled": True},
@@ -193,7 +193,7 @@ async def test_handle_refresh_ha_health_calls_refresh():
 async def test_handle_run_agent_unknown_returns_404():
     from hiris.app.api.handlers_agents import handle_run_agent
     engine = MagicMock()
-    engine.get_agent.return_value = None
+    engine.get_chatbot.return_value = None
     app = MagicMock()
     app.__getitem__ = MagicMock(side_effect=lambda k: engine if k == "engine" else None)
     aid = "550e8400-e29b-41d4-a716-446655440000"

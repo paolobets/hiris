@@ -71,8 +71,8 @@ def _make_app(tmp_path, *, chat_via_subscription=True, with_queue=True,
 
     agent = _make_agent(agent_id)
     engine = MagicMock()
-    engine.get_agent.return_value = agent
-    engine.get_default_agent.return_value = agent
+    engine.get_chatbot.return_value = agent
+    engine.get_default_chatbot.return_value = agent
 
     if runner is None:
         runner = AsyncMock()
@@ -241,7 +241,7 @@ async def test_second_enqueue_same_conversation_returns_409(tmp_path):
 async def test_409_guard_scoped_per_conversation_not_global(tmp_path):
     app, q, runner, agent, data_dir = _make_app(tmp_path)
     other_agent = _make_agent("other-agent")
-    app["engine"].get_agent.side_effect = lambda aid: agent if aid == agent.id else other_agent
+    app["engine"].get_chatbot.side_effect = lambda aid: agent if aid == agent.id else other_agent
 
     async with TestClient(TestServer(app)) as client:
         first = await client.post("/api/chat", json={"message": "prima", "agent_id": agent.id})

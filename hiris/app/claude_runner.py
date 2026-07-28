@@ -69,7 +69,7 @@ class RunnerBackendError(Exception):
     backend, and once every backend in the chain has failed, surfaces the
     LAST failure's `friendly_message` to the end user — the router becomes
     the single place that produces the user-facing degradation. Callers that
-    bypass the router (e.g. AgentEngine._run_agent, handlers_chat.handle_chat
+    bypass the router (e.g. ChatbotEngine._run_chatbot, handlers_chat.handle_chat
     when an agent pins an explicit non-"auto" model) catch it directly at
     their own call site to preserve their pre-existing graceful-degradation
     behavior instead of crashing.
@@ -473,7 +473,7 @@ class ClaudeRunner:
         # Serialize tmp-write + os.replace across concurrent _save_usage() calls.
         # _save_usage runs on every API response and is reachable from multiple
         # concurrent agent runs / chats; without this two writers race on the
-        # same .tmp path and can corrupt usage.json (agent_engine._save already
+        # same .tmp path and can corrupt usage.json (chatbot_engine._save already
         # guards its own save the same way).
         self._save_lock = threading.Lock()
         self._load_usage()

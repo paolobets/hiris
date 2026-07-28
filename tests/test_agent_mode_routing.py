@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock
 
 from hiris.app.llm_router import LLMRouter
-from hiris.app.agent_engine import AgentEngine
+from hiris.app.chatbot_engine import ChatbotEngine
 
 
 class _R:
@@ -38,12 +38,12 @@ def mock_ha():
 
 @pytest.fixture
 def engine(mock_ha, tmp_path):
-    return AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    return ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
 
 
 @pytest.mark.asyncio
 async def test_scheduled_chat_agent_run_passes_mode_automatic_to_runner(engine):
-    """The real call site: agent_engine's scheduled type=='chat' run must pass
+    """The real call site: chatbot_engine's scheduled type=='chat' run must pass
     mode="automatic" to router.chat(...) so it routes via automatic_policy
     (autonomous run), not chat_policy (reserved for interactive chat)."""
     mock_runner = AsyncMock()
@@ -53,13 +53,13 @@ async def test_scheduled_chat_agent_run_passes_mode_automatic_to_runner(engine):
     mock_runner.total_output_tokens = 0
     engine.set_claude_runner(mock_runner)
 
-    agent = engine.create_agent({
+    agent = engine.create_chatbot({
         "name": "Scheduled Chat Agent", "type": "chat",
         "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "do stuff", "allowed_tools": [], "enabled": False,
         "model": "auto",
     })
-    await engine.run_agent(agent)
+    await engine.run_chatbot(agent)
 
     call_kwargs = mock_runner.chat.call_args.kwargs
     assert call_kwargs["mode"] == "automatic"
@@ -68,7 +68,7 @@ async def test_scheduled_chat_agent_run_passes_mode_automatic_to_runner(engine):
 
 @pytest.mark.asyncio
 async def test_agent_type_run_uses_chat_with_mode_automatic(engine):
-    """Slice 5: AgentEngine no longer calls run_with_actions at all — every
+    """Slice 5: ChatbotEngine no longer calls run_with_actions at all — every
     agent type (including the legacy 'agent' type) runs through the plain
     chat() path and passes mode="automatic" for router backend-policy
     selection, same as 'chat'-type agents."""
@@ -80,13 +80,13 @@ async def test_agent_type_run_uses_chat_with_mode_automatic(engine):
     mock_runner.total_output_tokens = 0
     engine.set_claude_runner(mock_runner)
 
-    agent = engine.create_agent({
+    agent = engine.create_chatbot({
         "name": "Proactive Agent", "type": "agent",
         "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "system_prompt": "do stuff", "allowed_tools": [], "enabled": False,
         "model": "auto",
     })
-    await engine.run_agent(agent)
+    await engine.run_chatbot(agent)
 
     mock_runner.run_with_actions.assert_not_called()
     call_kwargs = mock_runner.chat.call_args.kwargs
