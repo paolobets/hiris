@@ -54,55 +54,66 @@ class AdvisoryStore:
                   *, now: str | None = None) -> dict:
         now = now or _now_iso()
         res = {"inserted": 0, "updated": 0, "reopened": 0, "resolved": 0}
+
+        # Dedupe candidates by source_ref (last-wins)
+        _seen = {}
+        for c in candidates:
+            _seen[c["source_ref"]] = c
+        candidates = list(_seen.values())
+
         with self._lock:
-            existing = {
-                r["source_ref"]: r
-                for r in self._conn.execute(
-                    "SELECT id, source_ref, status, check_id FROM advisories"
-                ).fetchall()
-            }
-            cand_refs = set()
-            for c in candidates:
-                ref = c["source_ref"]
-                cand_refs.add(ref)
-                ev = json.dumps(c.get("evidence") or {}, ensure_ascii=False)
-                row = existing.get(ref)
-                if row is None:
-                    self._conn.execute(
-                        "INSERT INTO advisories(check_id, ts_created, ts_updated, "
-                        "severity, title, evidence, suggested_fix, fix_kind, status, "
-                        "source_ref, resolved_auto) VALUES(?,?,?,?,?,?,?,?, 'open', ?, 0)",
-                        (c["check_id"], now, now, c["severity"], c["title"], ev,
-                         c["suggested_fix"], c["fix_kind"], ref),
-                    )
-                    res["inserted"] += 1
-                elif row["status"] in ("open", "acknowledged"):
-                    self._conn.execute(
-                        "UPDATE advisories SET ts_updated=?, severity=?, title=?, "
-                        "evidence=?, suggested_fix=? WHERE id=?",
-                        (now, c["severity"], c["title"], ev, c["suggested_fix"], row["id"]),
-                    )
-                    res["updated"] += 1
-                elif row["status"] == "resolved":
-                    self._conn.execute(
-                        "UPDATE advisories SET status='open', resolved_auto=0, "
-                        "ts_updated=?, severity=?, title=?, evidence=?, suggested_fix=? "
-                        "WHERE id=?",
-                        (now, c["severity"], c["title"], ev, c["suggested_fix"], row["id"]),
-                    )
-                    res["reopened"] += 1
-                # status == 'dismissed' -> suppressed, skip
-            for ref, row in existing.items():
-                if (row["status"] in ("open", "acknowledged")
-                        and row["check_id"] in check_ids
-                        and ref not in cand_refs):
-                    self._conn.execute(
-                        "UPDATE advisories SET status='resolved', resolved_auto=1, "
-                        "ts_updated=? WHERE id=?",
-                        (now, row["id"]),
-                    )
-                    res["resolved"] += 1
-            self._conn.commit()
+            try:
+                existing = {
+                    r["source_ref"]: r
+                    for r in self._conn.execute(
+                        "SELECT id, source_ref, status, check_id FROM advisories"
+                    ).fetchall()
+                }
+                cand_refs = set()
+                for c in candidates:
+                    ref = c["source_ref"]
+                    cand_refs.add(ref)
+                    ev = json.dumps(c.get("evidence") or {}, ensure_ascii=False)
+                    row = existing.get(ref)
+                    if row is None:
+                        self._conn.execute(
+                            "INSERT INTO advisories(check_id, ts_created, ts_updated, "
+                            "severity, title, evidence, suggested_fix, fix_kind, status, "
+                            "source_ref, resolved_auto) VALUES(?,?,?,?,?,?,?,?, 'open', ?, 0)",
+                            (c["check_id"], now, now, c["severity"], c["title"], ev,
+                             c["suggested_fix"], c["fix_kind"], ref),
+                        )
+                        res["inserted"] += 1
+                    elif row["status"] in ("open", "acknowledged"):
+                        self._conn.execute(
+                            "UPDATE advisories SET ts_updated=?, severity=?, title=?, "
+                            "evidence=?, suggested_fix=? WHERE id=?",
+                            (now, c["severity"], c["title"], ev, c["suggested_fix"], row["id"]),
+                        )
+                        res["updated"] += 1
+                    elif row["status"] == "resolved":
+                        self._conn.execute(
+                            "UPDATE advisories SET status='open', resolved_auto=0, "
+                            "ts_updated=?, severity=?, title=?, evidence=?, suggested_fix=? "
+                            "WHERE id=?",
+                            (now, c["severity"], c["title"], ev, c["suggested_fix"], row["id"]),
+                        )
+                        res["reopened"] += 1
+                    # status == 'dismissed' -> suppressed, skip
+                for ref, row in existing.items():
+                    if (row["status"] in ("open", "acknowledged")
+                            and row["check_id"] in check_ids
+                            and ref not in cand_refs):
+                        self._conn.execute(
+                            "UPDATE advisories SET status='resolved', resolved_auto=1, "
+                            "ts_updated=? WHERE id=?",
+                            (now, row["id"]),
+                        )
+                        res["resolved"] += 1
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
         return res
 
     def list(self, *, status: str | None = None) -> list[dict]:

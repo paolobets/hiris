@@ -69,3 +69,25 @@ def test_auto_resolve_scoped_to_ran_checks(tmp_path):
     assert r["resolved"] == 0
     assert s.list()[0]["status"] == "open"
     s.close()
+
+
+def test_reconcile_dedupes_duplicate_source_ref(tmp_path):
+    # Test that reconcile dedupes candidates with duplicate source_ref (last-wins).
+    # This ensures the UNIQUE(source_ref) constraint never crashes during reconcile.
+    s = AdvisoryStore(str(tmp_path / "a.db"))
+    ref = "low_battery:sensor.a"
+    cands = [
+        {"check_id": "low_battery", "severity": "warn", "title": "first",
+         "evidence": {"entity_id": ref}, "suggested_fix": "fix1",
+         "fix_kind": "manual", "source_ref": ref},
+        {"check_id": "low_battery", "severity": "error", "title": "second",
+         "evidence": {"entity_id": ref}, "suggested_fix": "fix2",
+         "fix_kind": "manual", "source_ref": ref},
+    ]
+    r = s.reconcile(cands, CHECK_IDS, now="2026-07-28T08:00:00Z")
+    assert r["inserted"] == 1
+    rows = s.list()
+    assert len(rows) == 1
+    assert rows[0]["source_ref"] == ref
+    assert rows[0]["title"] == "second"  # last-wins
+    s.close()
