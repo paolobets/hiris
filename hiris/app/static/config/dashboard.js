@@ -68,19 +68,19 @@
       '</div>';
   }
 
+  /* v0.28+ (SP-3 Task 9): #/ diventa la home del Brain, in 3 zone:
+     1. Supervisione casa (stat tiles: Chatbot / Segnalazioni aperte / Proposte)
+     2. Stream ragionamenti (api/brain/feed — reasoning + brain_action)
+     3. Azioni: Segnalazioni del Brain (advisories, ack/dismiss) + Proposte pending
+     Il vecchio pannello "Esecuzioni 24h / Token / Costo" + "Ultimi log" resta
+     raggiungibile da #/usage; qui teniamo solo ciò che serve a capire "cosa
+     osserva/deduce/propone" il Brain, come da task brief. */
   function renderPopulated(outlet, agents) {
-    var enabled = agents.filter(function(a) { return a.enabled; }).length;
-    var paused = agents.filter(function(a) { return a._rate_limit_paused; }).length;
-    var disabled = agents.length - enabled - paused;
-
     outlet.innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:24px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:8px">' +
         '<div>' +
           '<h1 style="font-size:var(--fs-24);font-weight:600;letter-spacing:-0.02em">' + greeting() + '</h1>' +
-          '<p style="font-size:var(--fs-13);color:var(--text-3);margin-top:4px">' +
-            agents.length + ' Chatbot configurati · ' + enabled + ' abilitati' +
-            (paused ? ' · ' + paused + ' in pausa rate-limit' : '') +
-          '</p>' +
+          '<p class="page-subtitle" style="margin-top:4px">Cosa osserva, deduce e propone la tua casa.</p>' +
         '</div>' +
         '<div style="display:flex;gap:8px">' +
           '<a class="btn btn-primary" href="#/agents/new">+ Nuovo Chatbot</a>' +
@@ -88,119 +88,135 @@
         '</div>' +
       '</div>' +
 
-      '<div class="stat-grid">' +
+      /* Zona 1 — Supervisione casa */
+      '<div class="stat-grid" id="dash-supervision">' +
         '<div class="stat-tile">' +
-          '<div class="st-label">Chatbot attivi</div>' +
-          '<div class="st-value">' + enabled + '<span class="text-muted" style="font-weight:400;font-size:var(--fs-15)"> / ' + agents.length + '</span></div>' +
-          '<div class="st-delta">' + paused + ' in pausa, ' + disabled + ' disabilitat' + (disabled !== 1 ? 'i' : 'o') + '</div>' +
+          '<div class="st-label">Chatbot</div>' +
+          '<div class="st-value">' + escHtml(String(agents.length)) + '</div>' +
+          '<div class="st-delta">configurati</div>' +
         '</div>' +
         '<div class="stat-tile">' +
-          '<div class="st-label">Esecuzioni 24h</div>' +
-          '<div class="st-value" id="dash-exec24h">—</div>' +
-          '<div class="st-delta" id="dash-exec24h-delta"></div>' +
+          '<div class="st-label">Segnalazioni aperte</div>' +
+          '<div class="st-value" id="dash-adv-count">—</div>' +
+          '<div class="st-delta">dal Brain</div>' +
         '</div>' +
         '<div class="stat-tile">' +
-          '<div class="st-label">Token oggi</div>' +
-          '<div class="st-value" id="dash-tokens">—</div>' +
-          '<div class="st-delta" id="dash-tokens-delta"></div>' +
-        '</div>' +
-        '<div class="stat-tile">' +
-          '<div class="st-label">Costo mese</div>' +
-          '<div class="st-value" id="dash-cost">—</div>' +
-          '<div class="st-delta" id="dash-cost-delta"></div>' +
+          '<div class="st-label">Proposte</div>' +
+          '<div class="st-value" id="dash-prop-count">—</div>' +
+          '<div class="st-delta">in attesa</div>' +
         '</div>' +
       '</div>' +
 
-      '<div class="dash-cols">' +
-        '<div>' +
-          '<div class="dash-list">' +
-            '<h3>Ultimi log <span class="right" id="dash-logs-count">cross-chatbot</span></h3>' +
-            '<div id="dash-last-logs-body"><div style="padding:24px;color:var(--text-3)">Caricamento…</div></div>' +
-          '</div>' +
-        '</div>' +
-        '<div style="display:flex;flex-direction:column;gap:20px">' +
-          '<div class="dash-list">' +
-            '<h3>Proposte pending <span class="right" id="dash-prop-count">—</span></h3>' +
-            '<div id="dash-proposals-body"><div style="padding:16px;color:var(--text-3)">Caricamento…</div></div>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+      /* Zona 2 — Stream ragionamenti */
+      '<section class="dash-list dash-section">' +
+        '<h3>Stream ragionamenti</h3>' +
+        '<div id="dash-reasoning-body"><div style="padding:16px;color:var(--text-3)">Caricamento…</div></div>' +
+      '</section>' +
 
-    /* Async loaders */
-    fetch('api/usage').then(function(r) {
+      /* Zona 3 — Azioni: advisory + proposte */
+      '<section class="dash-list dash-section">' +
+        '<h3>Segnalazioni del Brain</h3>' +
+        '<div id="dash-advisories-body"><div style="padding:16px;color:var(--text-3)">Caricamento…</div></div>' +
+      '</section>' +
+      '<section class="dash-list dash-section">' +
+        '<h3>Proposte</h3>' +
+        '<div id="dash-proposals-body"><div style="padding:16px;color:var(--text-3)">Caricamento…</div></div>' +
+      '</section>';
+
+    loadReasoning();
+    loadAdvisories();
+    loadProposalsPeek();
+  }
+
+  function loadReasoning() {
+    fetch('api/brain/feed?type=reasoning,brain_action&limit=10').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
-    }).then(function(u) {
-      var execEl = document.getElementById('dash-exec24h');
-      var tokEl = document.getElementById('dash-tokens');
-      var tokDeltaEl = document.getElementById('dash-tokens-delta');
-      var costEl = document.getElementById('dash-cost');
-      var costDeltaEl = document.getElementById('dash-cost-delta');
-      if (execEl) execEl.textContent = u.executions_24h != null ? u.executions_24h : (u.total_requests || 0);
-      var tin = u.total_input_tokens || u.input_tokens || 0;
-      var tout = u.total_output_tokens || u.output_tokens || 0;
-      if (tokEl) tokEl.textContent = formatTokens(tin + tout);
-      if (tokDeltaEl) tokDeltaEl.textContent = formatTokens(tin) + ' in · ' + formatTokens(tout) + ' out';
-      var cost = u.total_cost_eur || u.cost_eur || 0;
-      if (costEl) costEl.textContent = '€ ' + Number(cost).toFixed(2);
-      if (costDeltaEl) costDeltaEl.textContent = u.budget_eur ? ('budget €' + Number(u.budget_eur).toFixed(2)) : '';
-    }).catch(function(err) {
-      console.error('dashboard usage fetch failed', err);
-      var execEl = document.getElementById('dash-exec24h');
-      var tokEl = document.getElementById('dash-tokens');
-      var tokDeltaEl = document.getElementById('dash-tokens-delta');
-      var costEl = document.getElementById('dash-cost');
-      var costDeltaEl = document.getElementById('dash-cost-delta');
-      if (execEl) execEl.textContent = '⚠';
-      if (tokEl) tokEl.textContent = '⚠';
-      if (costEl) costEl.textContent = '⚠';
-      if (tokDeltaEl) { tokDeltaEl.textContent = 'Errore caricamento'; tokDeltaEl.style.color = 'var(--danger)'; }
-      if (costDeltaEl) { costDeltaEl.textContent = 'Errore caricamento'; costDeltaEl.style.color = 'var(--danger)'; }
-    });
-
-    /* Cross-agent last logs (limit to first 6 agents to avoid N+1 explosion) */
-    var subset = agents.slice(0, 6);
-    Promise.all(subset.map(function(a) {
-      return fetch('api/agents/' + encodeURIComponent(a.id)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
-        if (!d) return [];
-        var ag = d.agent || d;
-        return (ag.execution_log || []).slice(-3).map(function(l) {
-          return { agent_id: a.id, agent_name: a.name, timestamp: l.timestamp, success: l.success, summary: l.result_summary || '' };
-        });
-      }).catch(function() { return []; });
-    })).then(function(arr) {
-      var flat = [].concat.apply([], arr).sort(function(a, b) {
-        return new Date(b.timestamp) - new Date(a.timestamp);
-      }).slice(0, 8);
-      var body = document.getElementById('dash-last-logs-body');
+    }).then(function(d) {
+      var body = document.getElementById('dash-reasoning-body');
       if (!body) return;
-      if (!flat.length) {
-        body.innerHTML = '<div style="padding:24px;color:var(--text-3)">Nessun log recente.</div>';
+      var items = d.items || [];
+      if (!items.length) {
+        body.innerHTML = '<div style="padding:16px;color:var(--text-3)">Il Brain non ha ancora ragionamenti registrati.</div>';
         return;
       }
-      body.innerHTML = flat.map(function(item) {
-        var t = new Date(item.timestamp);
-        var timeStr = t.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-        return '<a class="dl-row" href="#/agents/' + escHtml(item.agent_id) + '">' +
-          '<span class="dl-time">' + escHtml(timeStr) + '</span>' +
-          '<span class="dl-content">' +
-            '<span class="dl-agent">' + escHtml(item.agent_name) + '</span>' +
-            '<span class="dl-text">' + escHtml(midTruncate(item.summary, 70)) + '</span>' +
-          '</span>' +
-          '<span class="dl-status" style="color:var(--' + (item.success ? 'ok' : 'err') + ')">' + (item.success ? '✓' : '✗') + '</span>' +
-        '</a>';
+      body.innerHTML = items.map(function(it) {
+        return '<div class="log-row">' +
+          '<span class="dl-time">' + escHtml(it.ts || '') + '</span>' +
+          '<span class="dl-text">' + escHtml(it.body || '') + '</span>' +
+        '</div>';
       }).join('');
+    }).catch(function(err) {
+      console.error('dashboard reasoning fetch failed', err);
+      var body = document.getElementById('dash-reasoning-body');
+      if (body) body.innerHTML = '<div class="proposals-error">Errore nel caricamento dei ragionamenti.</div>';
     });
+  }
 
-    /* Proposals peek */
+  function loadAdvisories() {
+    fetch('api/brain/advisories?status=open').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(d) {
+      var advs = d.advisories || [];
+      var countEl = document.getElementById('dash-adv-count');
+      if (countEl) countEl.textContent = advs.length;
+      var body = document.getElementById('dash-advisories-body');
+      if (!body) return;
+      if (!advs.length) {
+        body.innerHTML = '<div style="padding:16px;color:var(--text-3)">Nessuna segnalazione. Tutto in ordine.</div>';
+        return;
+      }
+      body.innerHTML = advs.map(function(a) {
+        var link = (a.fix_kind === 'hiris_config')
+          ? '<a class="btn btn-sm" href="#/gateway">Apri Gateway</a>' : '';
+        return '<div class="prop-card" id="adv-' + escHtml(String(a.id)) + '">' +
+          '<div class="prop-title">' + escHtml(a.title || '') + '</div>' +
+          '<div class="prop-desc">' + escHtml(a.suggested_fix || '') + '</div>' +
+          '<div class="prop-actions">' + link +
+            '<button class="btn btn-sm" data-adv-act="ack" data-aid="' + escHtml(String(a.id)) + '">Ho capito</button>' +
+            '<button class="btn btn-sm" data-adv-act="dismiss" data-aid="' + escHtml(String(a.id)) + '">Ignora</button>' +
+          '</div></div>';
+      }).join('');
+      body.querySelectorAll('[data-adv-act]').forEach(function(b) {
+        b.addEventListener('click', function() {
+          advisoryAction(b.dataset.aid, b.dataset.advAct);
+        });
+      });
+    }).catch(function(err) {
+      console.error('dashboard advisories fetch failed', err);
+      var countEl = document.getElementById('dash-adv-count');
+      if (countEl) countEl.textContent = '—';
+      var body = document.getElementById('dash-advisories-body');
+      if (body) body.innerHTML = '<div class="proposals-error">Errore nel caricamento delle segnalazioni.</div>';
+    });
+  }
+
+  function advisoryAction(id, act) {
+    /* act is always 'ack' or 'dismiss' (set via data-adv-act on the buttons
+       rendered by loadAdvisories); branch explicitly rather than
+       concatenating act into the URL, so both endpoints are literal here. */
+    var url = (act === 'dismiss')
+      ? 'api/brain/advisories/' + encodeURIComponent(id) + '/dismiss'
+      : 'api/brain/advisories/' + encodeURIComponent(id) + '/ack';
+    fetch(url, {
+      method: 'POST', headers: { 'X-Requested-With': 'fetch' }
+    }).then(function(r) {
+      if (!r.ok) { alert('Errore'); return; }
+      var row = document.getElementById('adv-' + id);
+      if (row) { row.style.opacity = '0.5'; setTimeout(function() { loadAdvisories(); }, 600); }
+    }).catch(function() { alert('Errore di rete'); });
+  }
+
+  function loadProposalsPeek() {
     fetch('api/proposals?status=pending').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function(d) {
-      var props = (d.proposals || []).slice(0, 3);
-      var body = document.getElementById('dash-proposals-body');
+      var props = (d.proposals || []).slice(0, 5);
       var countEl = document.getElementById('dash-prop-count');
-      if (countEl) countEl.textContent = (d.proposals || []).length + ' nuove';
+      if (countEl) countEl.textContent = (d.proposals || []).length;
+      var body = document.getElementById('dash-proposals-body');
       if (!body) return;
       if (!props.length) {
         body.innerHTML = '<div style="padding:16px;color:var(--text-3)">Nessuna proposta pending.</div>';

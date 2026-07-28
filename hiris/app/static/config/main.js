@@ -75,6 +75,17 @@
         el.textContent = n;
         el.classList.toggle('is-empty', n === 0);
       }).catch(function() { /* silent */ });
+
+    /* Update Brain advisories count badge on Dashboard nav item — hide when 0
+       (SP-3 Task 9: #/ è la home del Brain, il badge segnala segnalazioni aperte) */
+    fetch('api/brain/advisories?status=open').then(function(r) { return r.ok ? r.json() : { advisories: [] }; })
+      .then(function(d) {
+        var el = document.getElementById('nav-adv-count');
+        if (!el) return;
+        var n = (d.advisories || []).length;
+        el.textContent = n;
+        el.classList.toggle('is-empty', n === 0);
+      }).catch(function() { /* silent */ });
   }
 
   function updateNavActive() {
