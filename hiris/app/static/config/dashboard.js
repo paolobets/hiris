@@ -141,7 +141,7 @@
         return;
       }
       body.innerHTML = items.map(function(it) {
-        return '<div class="log-row">' +
+        return '<div class="dl-row">' +
           '<span class="dl-time">' + escHtml(it.ts || '') + '</span>' +
           '<span class="dl-text">' + escHtml(it.body || '') + '</span>' +
         '</div>';
