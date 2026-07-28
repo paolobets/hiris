@@ -49,6 +49,7 @@ const SCRIPTS = [
   'config/state.js',
   'config/api.js',
   'config/entity-picker.js',
+  'config/editor-kit.js',
   'config/templates.js',
   'config/permessi.js',
   'config/log-row.js',

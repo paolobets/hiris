@@ -20,6 +20,36 @@
      buildPayload) è un file separato senza accesso a questa closure. */
   var entityPickerInstance = null;
 
+  /* SP-4 Fase B Task 3: stato del kit editor condiviso (config/editor-kit.js).
+     - dirtyTrackHandle: il MutationObserver di HirisEditorKit.dirty.track(),
+       ricreato a ogni mount (setupStickyActions) e fermato prima di quello
+       nuovo — evita di accumulare observer su nodi ormai detached.
+     - entityPickerOnDirty: riferimento a markDirty(), letto da
+       populatePermessi() per agganciare l'onChange dell'entity-picker (i
+       chip non sono <input>, quindi il MutationObserver da solo non li
+       vedrebbe mai cambiare valore — vanno notificati esplicitamente).
+       populatePermessi() gira DOPO setupStickyActions nel mount() qui
+       sotto, così markDirty esiste già quando viene letto.
+     - saveBarHandle: HirisEditorKit.saveBar(), il suo setDirty(bool)
+       sostituisce il vecchio btnSave.disabled diretto.
+     - toolCheckGroupInstance / actionCheckGroupInstance: le due istanze
+       HirisEditorKit.checkGroup() (sostituiscono buildToolChecks/
+       buildActionChecks/getSelectedTools/getSelectedActions di permessi.js,
+       Task 3) esposte su window perché chatbot-form.js (openAgent/
+       buildPayload) è un file separato senza accesso a questa closure —
+       stesso pattern di window.HirisAgentEntityPicker (Task 1). */
+  var dirtyTrackHandle = null;
+  var entityPickerOnDirty = null;
+  var saveBarHandle = null;
+
+  /* Guard di navigazione (bug live #2): installato UNA VOLTA al caricamento
+     dello script, non per-mount — 'unsaved' è uno stato HirisState globale,
+     valido a prescindere da quale route lo abbia impostato. Deve girare
+     PRIMA che main.js registri il proprio listener 'hashchange' (main.js
+     carica per ultimo e si aggancia solo a DOMContentLoaded), così il
+     guard intercetta la navigazione prima che il router rimonti la pagina. */
+  HirisEditorKit.dirty.guard(function() { return !!HirisState.get('unsaved'); });
+
   /* Task 4 (Slice 5): rimossi il selettore Tipo (agent/chat) e l'intera
      sezione Trigger — l'esecuzione trigger-based/autonoma è stata ritirata
      (Task 1-3). Il Designer edita solo Persona: il campo Nome è quanto
@@ -77,9 +107,8 @@
      chat). max-turns-row era nascosta di default e mostrata solo per
      type==='chat'; ora è sempre visibile (nessun altro tipo esiste). */
   function populateModello() {
-    document.getElementById('sc-body-modello').innerHTML =
-      '<div class="field"><label for="f-model">Modello</label><select class="select" id="f-model"><option value="auto">auto — sceglie il modello migliore</option></select>' +
-      '<p class="field-hint" id="model-hint">Seleziona il modello AI. <em>auto</em> sceglie automaticamente.</p></div>' +
+    var body = document.getElementById('sc-body-modello');
+    body.innerHTML = '<div id="model-select-root"></div>' +
       '<div class="field-row">' +
         '<div class="field"><label for="f-max-tokens">Max token risposta</label><input class="input" type="number" id="f-max-tokens" value="4096" min="256" max="16000"></div>' +
         '<div class="field"><label for="f-thinking-budget">Extended Thinking budget</label><select class="select" id="f-thinking-budget">' +
@@ -99,6 +128,18 @@
         '<option value="compact">compact (max 2-3 frasi)</option>' +
         '<option value="minimal">minimal (1 riga)</option>' +
       '</select></div>';
+
+    /* SP-4 Fase B Task 3: il <select> modello (prima markup statico +
+       api.js.loadModels()) è ora HirisEditorKit.modelSelect() — stessi id
+       (f-model / model-hint) per non toccare i lettori esterni
+       (chatbot-form.js openAgent/buildPayload), ma la fetch api/models è
+       condivisa/cachata nel kit invece che riscaricata a ogni mount. */
+    HirisEditorKit.modelSelect(document.getElementById('model-select-root'), {
+      id: 'f-model',
+      hintId: 'model-hint',
+      label: 'Modello',
+      value: 'auto',
+    });
   }
 
   function populatePermessi() {
@@ -112,13 +153,16 @@
 
     document.getElementById('sc-body-permessi').innerHTML =
       '<div class="field-group"><div class="fg-label">Strumenti</div>' +
-        '<div class="tool-checkboxes" id="tool-checks"></div></div>' +
+        '<div id="tool-checks-root"></div></div>' +
       '<div class="field-group"><div class="fg-label">Entità accessibili</div>' +
         '<div id="entity-picker-root"></div></div>' +
       '<div id="f-actions-section" class="field-group" style="display:none">' +
         '<div class="fg-label">Azioni permesse</div>' +
-        '<div class="tool-checkboxes" id="action-checks"></div></div>';
+        '<div id="action-checks-root"></div></div>';
 
+    /* Chip entità: non sono <input>, quindi dirty.track (MutationObserver su
+       input/select/textarea) non le vedrebbe mai cambiare — l'onChange del
+       picker va agganciato esplicitamente a markDirty (nota del Task 3). */
     entityPickerInstance = HirisEntityPicker.create(document.getElementById('entity-picker-root'), {
       placeholder: 'Cerca entità…',
       pills: [
@@ -131,8 +175,44 @@
         { label: '⚡ binari', pattern: 'binary_sensor.*' },
         { label: '🧑 persone', pattern: 'person.*' },
       ],
+      onChange: function() { if (entityPickerOnDirty) entityPickerOnDirty(); },
     });
     window.HirisAgentEntityPicker = entityPickerInstance;
+
+    /* SP-4 Fase B Task 3: buildToolChecks/buildActionChecks/getSelectedTools/
+       getSelectedActions (ex permessi.js) assorbiti in
+       HirisEditorKit.checkGroup — istanza-scoped, non più #tool-checks/
+       #action-checks globali. Esposte su window per chatbot-form.js
+       (openAgent/buildPayload), stesso pattern dell'entity-picker sopra.
+       La regola "call_ha_service abilita la sezione Azioni" resta qui
+       (business logic dell'editor, non generica del kit): il kit si limita
+       a rendere i checkbox, il caller decide cosa farne al change. */
+    var actionsSection = document.getElementById('f-actions-section');
+    var actionCheckGroup = HirisEditorKit.checkGroup(document.getElementById('action-checks-root'), {
+      items: ACTIONS,
+      selected: [],
+      idPrefix: 'action',
+    });
+    var toolsRoot = document.getElementById('tool-checks-root');
+    var toolCheckGroup = HirisEditorKit.checkGroup(toolsRoot, {
+      items: TOOLS,
+      selected: [],
+      idPrefix: 'tool',
+    });
+    function syncActionsVisibility() {
+      actionsSection.style.display = toolCheckGroup.getSelected().indexOf('call_ha_service') >= 0 ? '' : 'none';
+    }
+    toolsRoot.addEventListener('change', syncActionsVisibility);
+    syncActionsVisibility();
+
+    window.HirisAgentActionChecks = actionCheckGroup;
+    window.HirisAgentToolChecks = {
+      getSelected: toolCheckGroup.getSelected,
+      setSelected: function(vals) {
+        toolCheckGroup.setSelected(vals);
+        syncActionsVisibility();
+      },
+    };
   }
 
   function populateStato() {
@@ -204,63 +284,68 @@
     sections.forEach(function(s) { io.observe(s); });
   }
 
+  /* SP-4 Fase B Task 3: sticky actions ricostruita sul kit condiviso.
+     Prima: un singolo querySelectorAll('.section-card input, select,
+     textarea') FOTOGRAFAVA i controlli presenti al momento della chiamata —
+     i checkbox tool/azioni e i chip entità, creati DOPO (dentro
+     populatePermessi/openAgent), non erano mai agganciati a markDirty
+     (bug live #1). Ora HirisEditorKit.dirty.track() osserva il sottoalbero
+     con un MutationObserver: qualunque input/select/textarea aggiunto in
+     seguito viene wired automaticamente. Per questo setupStickyActions gira
+     PRIMA di populateIdentita/.../populatePermessi nel mount() qui sotto —
+     il tracking è già attivo quando quei populate*() riempiono il DOM. */
   function setupStickyActions(agentId) {
-    var btnSave = document.getElementById('btn-save');
-    var btnCancel = document.getElementById('btn-cancel');
-    var btnTestRun = document.getElementById('btn-test-run');
-    var btnDelete = document.getElementById('btn-delete');
-    /* v0.10.8: rimosso sa-status. Lo stato dirty/saved è indicato dal solo
-       pulsante Salva (disabled = saved, enabled = changes pending). */
+    var outlet = document.getElementById('route-outlet');
 
-    function markDirty() {
-      HirisState.set('unsaved', true);
-      if (btnSave) btnSave.disabled = false;
-    }
-    function markClean() {
-      HirisState.set('unsaved', false);
-      if (btnSave) btnSave.disabled = true;
-    }
+    /* Reset esplicito: senza, uno stato 'unsaved' lasciato true da un mount
+       precedente (es. l'utente ha confermato "esci senza salvare" sul
+       guard) sopravviverebbe al remount e il guard richiederebbe conferma
+       di nuovo alla prossima navigazione, anche a editor pulito. */
+    HirisState.set('unsaved', false);
 
-    document.querySelectorAll('.section-card input, .section-card select, .section-card textarea').forEach(function(el) {
-      el.addEventListener('change', markDirty);
-      el.addEventListener('input', markDirty);
-    });
+    function markDirty() { HirisState.set('unsaved', true); if (saveBarHandle) saveBarHandle.setDirty(true); }
+    function markClean() { HirisState.set('unsaved', false); if (saveBarHandle) saveBarHandle.setDirty(false); }
 
-    btnSave.addEventListener('click', function() {
-      if (typeof saveAgent === 'function') {
-        try {
-          var p = saveAgent();
-          if (p && p.then) p.then(function(res) { markClean(); }).catch(function(err) { console.error('save rejected:', err); });
-          else markClean();
-        } catch(e) { console.error('saveAgent threw:', e); alert('Save error: ' + (e.message || e)); }
-      } else {
-        console.warn('saveAgent not defined — markClean only');
-        alert('window.saveAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
-        markClean();
-      }
-    });
-    btnCancel.addEventListener('click', function() {
-      if (HirisState.get('unsaved') && !confirm('Annullare le modifiche non salvate?')) return;
-      window.location.hash = '#/chatbots';
-    });
-    btnTestRun.addEventListener('click', function() {
-      if (typeof runAgent === 'function') {
-        try { runAgent(); } catch(e) { console.error('runAgent threw:', e); alert('TestRun error: ' + (e.message || e)); }
-      } else {
-        console.warn('runAgent not defined');
-        alert('window.runAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
-      }
-    });
-    btnDelete.addEventListener('click', function() {
-      if (typeof deleteAgent === 'function') {
-        try { deleteAgent(); } catch(e) { console.error('deleteAgent threw:', e); alert('Delete error: ' + (e.message || e)); }
-      } else {
-        console.warn('deleteAgent not defined');
-        alert('window.deleteAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
-      }
-    });
+    if (dirtyTrackHandle) { dirtyTrackHandle.stop(); dirtyTrackHandle = null; }
+    dirtyTrackHandle = HirisEditorKit.dirty.track(outlet, markDirty);
+    entityPickerOnDirty = markDirty;
 
-    btnDelete.style.display = agentId ? '' : 'none';
+    saveBarHandle = HirisEditorKit.saveBar(outlet, {
+      onSave: function() {
+        if (typeof saveAgent === 'function') {
+          try {
+            var p = saveAgent();
+            if (p && p.then) p.then(function(res) { markClean(); }).catch(function(err) { console.error('save rejected:', err); });
+            else markClean();
+          } catch(e) { console.error('saveAgent threw:', e); alert('Save error: ' + (e.message || e)); }
+        } else {
+          console.warn('saveAgent not defined — markClean only');
+          alert('window.saveAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
+          markClean();
+        }
+      },
+      onCancel: function() {
+        if (HirisState.get('unsaved') && !confirm('Annullare le modifiche non salvate?')) return;
+        window.location.hash = '#/chatbots';
+      },
+      onDelete: agentId ? function() {
+        if (typeof deleteAgent === 'function') {
+          try { deleteAgent(); } catch(e) { console.error('deleteAgent threw:', e); alert('Delete error: ' + (e.message || e)); }
+        } else {
+          console.warn('deleteAgent not defined');
+          alert('window.deleteAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
+        }
+      } : null,
+      onTestRun: function() {
+        if (typeof runAgent === 'function') {
+          try { runAgent(); } catch(e) { console.error('runAgent threw:', e); alert('TestRun error: ' + (e.message || e)); }
+        } else {
+          console.warn('runAgent not defined');
+          alert('window.runAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
+        }
+      },
+    });
+    saveBarHandle.setDirty(false);
   }
 
   /* Init form for "Nuovo agente" (was in chatbot-form.js #new-btn IIFE handler).
@@ -272,8 +357,8 @@
     /* chatbot-form.js currentId — reset */
     if (typeof window !== 'undefined') window.currentId = null;
     if (window.HirisAgentEntityPicker) window.HirisAgentEntityPicker.setValue([]);
-    if (typeof buildToolChecks === 'function') buildToolChecks([]);
-    if (typeof buildActionChecks === 'function') buildActionChecks([]);
+    if (window.HirisAgentToolChecks) window.HirisAgentToolChecks.setSelected([]);
+    if (window.HirisAgentActionChecks) window.HirisAgentActionChecks.setSelected([]);
 
     var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; };
     var setChk = function(id, v) { var el = document.getElementById(id); if (el) el.checked = v; };
@@ -283,7 +368,7 @@
     setVal('f-prompt', '');
     setVal('f-strategic', '');
     setChk('f-enabled', true);
-    if (typeof _setModelValue === 'function') _setModelValue('auto');
+    HirisEditorKit.setModelValue(document.getElementById('f-model'), 'auto');
     setVal('f-max-tokens', 4096);
     setChk('f-restrict', false);
     setChk('f-require-confirmation', false);
@@ -532,6 +617,14 @@
         if (!tpl) throw new Error('tpl-agent-editor not in config.html — BROKEN BUILD');
         outlet.appendChild(tpl.content.cloneNode(true));
       });
+      /* SP-4 Fase B Task 3: setupStickyActions gira SUBITO dopo il clone,
+         PRIMA di ogni populate*() — installa HirisEditorKit.dirty.track()
+         su un outlet ancora vuoto, così il MutationObserver è già attivo
+         quando populateModello/populatePermessi/ecc. riempiono il DOM (i
+         loro input/select/textarea vengono wired dall'observer stesso,
+         nessuna scansione a posteriori necessaria — era questo lo shape
+         del bug live #1: uno snapshot preso troppo presto). */
+      step('setupStickyActions', function() { setupStickyActions(agentId); });
       step('populateIdentita', populateIdentita);
       step('populateIstruzioni', populateIstruzioni);
       step('populateModello', populateModello);
@@ -544,10 +637,6 @@
       step('populateTemplateSelector', function() {
         if (typeof populateTemplateSelector === 'function') populateTemplateSelector();
       });
-      step('loadModels', function() {
-        if (typeof loadModels === 'function') loadModels();
-      });
-      step('setupStickyActions', function() { setupStickyActions(agentId); });
 
       if (agentId && typeof openAgent === 'function') {
         return resolveAgent(agentId).then(function(agentObj) {

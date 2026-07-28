@@ -43,72 +43,12 @@ async function applyTheme() {
   } catch(e) {}
 }
 
-function _setModelValue(val) {
-  var sel = document.getElementById('f-model');
-  /* v0.10.6 guard: chiamato anche fuori dal contesto agent-editor (es.
-     loadModels async in flight quando user naviga via). Senza il guard:
-     TypeError: Cannot set properties of null (setting 'value'). */
-  if (!sel) return;
-  sel.value = val;
-  if (sel.value !== val) {
-    /* Model not in list (provider not configured) — add as orphan option */
-    var opt = document.createElement('option');
-    opt.value = val;
-    opt.textContent = val + ' (provider non configurato)';
-    sel.insertBefore(opt, sel.firstChild);
-    sel.value = val;
-  }
-}
-
-async function loadModels() {
-  var sel = document.getElementById('f-model');
-  if (!sel) return;
-  try {
-    var r = await fetch('api/models');
-    if (!r.ok) return;
-    var d = await r.json();
-    var providers = d.providers || [];
-    var current = sel.value;
-    sel.innerHTML = '';
-    providers.forEach(function(p) {
-      var grp = document.createElement('optgroup');
-      grp.label = p.label;
-      p.models.forEach(function(m) {
-        var opt = document.createElement('option');
-        opt.value = m;
-        var isFree = /:free$/.test(m);
-        if (m === 'auto') {
-          opt.textContent = 'auto — segue tipo Chatbot';
-        } else if (isFree) {
-          /* Visual hint that the model carries OpenRouter's free-tier
-             constraints (low daily quota, frequent upstream rate-limits).
-             Tooltip explains the implications for scheduled agents. */
-          opt.textContent = m + '  • free';
-          opt.title = 'Modello gratuito: quota giornaliera bassa e rate-limit upstream frequenti. Adatto a chat occasionale, sconsigliato per Chatbot schedulati.';
-        } else {
-          opt.textContent = m;
-        }
-        grp.appendChild(opt);
-      });
-      sel.appendChild(grp);
-    });
-    if (providers.length === 0) {
-      var opt = document.createElement('option');
-      opt.value = 'auto';
-      opt.textContent = 'auto — nessun provider configurato';
-      sel.appendChild(opt);
-    }
-    _setModelValue(current || 'auto');
-    var hint = document.getElementById('model-hint');
-    if (hint && providers.length > 0) {
-      hint.textContent = 'Seleziona il modello AI. Sono disponibili '
-        + providers.map(function(p){return p.label;}).join(', ')
-        + '. «auto» sceglie in base al tipo Chatbot.';
-    }
-  } catch(e) {
-    console.warn('loadModels failed:', e);
-  }
-}
+/* loadModels()/_setModelValue() spostate in config/editor-kit.js
+   (HirisEditorKit.modelSelect / HirisEditorKit.setModelValue) — SP-4 Fase B
+   Task 3: erano codice editor (popolano #f-model) dentro un file di utility
+   pure, e ogni chiamante (agentbot-route.js) ne rifaceva una fetch propria
+   per riga invece di condividerla. Vedi editor-kit.js per la cache
+   condivisa. */
 
 async function loadUsage() {
   try {

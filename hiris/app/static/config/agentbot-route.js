@@ -217,38 +217,21 @@ window.HirisAgentbotRoute = (function () {
     }
     function modelSelectField(parent, labelText, value) {
       // Task 4B: per-Agentbot model. Starts with just "auto" (always valid,
-      // matches reasoning.model's own validation default) then fills in
-      // with the models of active providers from GET /api/models -- same
-      // async-populate-after-render approach as `entityField` above, so a
-      // slow/failed fetch never blocks rendering the row.
+      // matches reasoning.model's own validation default), then
+      // HirisEditorKit.modelSelect() fills it in from GET api/models --
+      // async-populate-after-render, so a slow/failed fetch never blocks
+      // rendering the row.
+      //
+      // SP-4 Fase B Task 3: prima ogni riga (buildLensRow) rifaceva una
+      // fetch api/models propria -- N righe = N fetch identiche. Il kit
+      // condivide UNA sola promise cachata (HirisEditorKit.modelSelect con
+      // selectEl: popola dentro il <select> già creato da selectField qui
+      // sopra, senza duplicare il wrapper/etichetta locale di questa
+      // pagina -- il resto della card "Regole Agentbot" viene assorbito nel
+      // kit dal Task 5, quando questo blocco si sposta in
+      // agentbot-editor.js).
       var sel = selectField(parent, labelText, [{ value: 'auto', label: 'auto' }], value || 'auto');
-      api('api/models', { method: 'GET' })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-        .then(function (data) {
-          var providers = data.providers || [];
-          var current = sel.value;
-          providers.forEach(function (p) {
-            (p.models || []).forEach(function (m) {
-              if (m === 'auto') return; // already the default option
-              var opt = el('option');
-              opt.value = m;
-              opt.textContent = p.label ? (m + ' (' + p.label + ')') : m;
-              sel.appendChild(opt);
-            });
-          });
-          sel.value = current;
-          if (sel.value !== current) {
-            // The Agentbot's saved model isn't offered by any active
-            // provider (e.g. provider since disabled) -- keep it selected
-            // and visible rather than silently discarding the user's choice.
-            var orphan = el('option');
-            orphan.value = current;
-            orphan.textContent = current + ' (provider non configurato)';
-            sel.insertBefore(orphan, sel.firstChild);
-            sel.value = current;
-          }
-        })
-        .catch(function () { /* select resta con solo 'auto' */ });
+      HirisEditorKit.modelSelect(parent, { selectEl: sel, value: value || 'auto' });
       return sel;
     }
     function textareaField(parent, labelText, value) {

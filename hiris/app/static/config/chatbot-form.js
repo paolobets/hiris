@@ -12,7 +12,10 @@
    Azioni, ritirati insieme alla macchina action/rules/states (Task 1-3). Il
    Designer ora edita solo Persona: prompt, tool scope, memory scope, chat
    policy, override modello.
-   Calls into permessi.js, logs.js, usage.js. */
+   Calls into config/editor-kit.js (HirisEditorKit.setModelValue,
+   window.HirisAgentToolChecks/HirisAgentActionChecks -- SP-4 Fase B Task 3,
+   sostituiscono api.js._setModelValue e permessi.js buildToolChecks/
+   buildActionChecks/getSelectedTools/getSelectedActions), logs.js, usage.js. */
 
 var chatbots = [];
 var currentId = null;
@@ -42,20 +45,23 @@ function openAgent(a) {
   document.getElementById('f-strategic').value = a.strategic_context || '';
   if (window.HirisAgentEntityPicker) window.HirisAgentEntityPicker.setValue(a.allowed_entities || []);
   document.getElementById('f-enabled').checked = a.enabled;
-  _setModelValue(a.model || 'auto');
+  HirisEditorKit.setModelValue(document.getElementById('f-model'), a.model || 'auto');
   document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
   document.getElementById('f-restrict').checked = !!a.restrict_to_home;
   document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
   document.getElementById('f-max-chat-turns').value = a.max_chat_turns || 0;
   document.getElementById('f-response-mode').value = a.response_mode || 'auto';
   document.getElementById('f-thinking-budget').value = String(a.thinking_budget || 0);
-  buildActionChecks(a.allowed_services || []);
+  if (window.HirisAgentActionChecks) window.HirisAgentActionChecks.setSelected(a.allowed_services || []);
   var _db = document.getElementById('delete-btn');
   if (_db) _db.style.display = a.is_default ? 'none' : '';
   var ro = document.getElementById('run-output');
   if (ro) { ro.style.display = 'none'; ro.textContent = ''; ro.className = ''; }
-  /* buildToolChecks must run after buildActionChecks — it owns the final updateServicesVisibility() call */
-  buildToolChecks(a.allowed_tools || []);
+  /* setSelected sul gruppo tool deve girare dopo quello azioni: la sua
+     wrapper (chatbot-editor.js populatePermessi) sincronizza la visibilità
+     della sezione Azioni in base a call_ha_service — stesso ordine di
+     dipendenza del vecchio buildToolChecks/buildActionChecks. */
+  if (window.HirisAgentToolChecks) window.HirisAgentToolChecks.setSelected(a.allowed_tools || []);
   /* v0.10.5: niente renderList (rimosso in cleanup, lista agenti gestita
      da chatbots-list.js sulla route #/chatbots) */
   renderExecutionLog(a);
@@ -74,9 +80,9 @@ function buildPayload() {
     name: document.getElementById('f-name').value,
     system_prompt: document.getElementById('f-prompt').value,
     strategic_context: document.getElementById('f-strategic').value,
-    allowed_tools: getSelectedTools(),
+    allowed_tools: window.HirisAgentToolChecks ? window.HirisAgentToolChecks.getSelected() : [],
     allowed_entities: window.HirisAgentEntityPicker ? window.HirisAgentEntityPicker.getValue() : [],
-    allowed_services: getSelectedActions(),
+    allowed_services: window.HirisAgentActionChecks ? window.HirisAgentActionChecks.getSelected() : [],
     model: document.getElementById('f-model').value,
     max_tokens: parseInt(document.getElementById('f-max-tokens').value) || 4096,
     restrict_to_home: document.getElementById('f-restrict').checked,

@@ -225,6 +225,13 @@
        (api.js) — deve caricare dopo api.js e prima di chatbot-editor.js,
        che lo istanzia in populatePermessi(). -->
   <script src="static/config/entity-picker.js"></script>
+  <!-- SP-4 Fase B Task 3: kit editor condiviso (fabbriche di campo, select
+       modello con fetch cachata, checkGroup, dirty tracking reale + guard di
+       navigazione, save bar). Deve caricare prima di permessi.js (assorbe
+       buildToolChecks/buildActionChecks), chatbot-form.js/chatbot-editor.js
+       (usano checkGroup/modelSelect/dirty/saveBar) e agentbot-route.js
+       (modelSelect cachato). -->
+  <script src="static/config/editor-kit.js"></script>
   <script src="static/config/templates.js"></script>
   <script src="static/config/permessi.js"></script>
   <script src="static/config/log-row.js"></script>

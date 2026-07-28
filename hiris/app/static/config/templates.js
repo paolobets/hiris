@@ -2,7 +2,8 @@
    TEMPLATES seeds the f-template dropdown (prompt + strategic_context only —
    Task 4/Slice 5 dropped the agent-type/trigger/states preset fields along
    with the action/trigger machinery).
-   TOOLS, ACTIONS feed buildToolChecks / buildActionChecks (in permessi.js). */
+   TOOLS, ACTIONS feed HirisEditorKit.checkGroup (config/editor-kit.js,
+   SP-4 Fase B Task 3 — prima buildToolChecks/buildActionChecks in permessi.js). */
 
 var TEMPLATES = [
   {
