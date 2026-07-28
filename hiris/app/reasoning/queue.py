@@ -129,7 +129,10 @@ class ReasoningQueue:
                 ctx = json.loads(r["context_json"])
             except (TypeError, ValueError):
                 continue
-            if isinstance(ctx, dict) and ctx.get("chatbot_id") == chatbot_id:
+            # Retro-compat (one-deploy window): jobs enqueued before the
+            # agent_id->chatbot_id rename still carry the legacy key. Fall
+            # back to it so an in-flight pre-deploy job is still recognized.
+            if isinstance(ctx, dict) and (ctx.get("chatbot_id") or ctx.get("agent_id")) == chatbot_id:
                 return True
         return False
 

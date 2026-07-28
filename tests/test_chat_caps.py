@@ -171,6 +171,19 @@ def test_has_pending_chat_false_for_expired_but_unswept_job(tmp_path):
     assert q.has_pending_chat("agentX", now=200.0) is False
 
 
+def test_has_pending_chat_recognizes_legacy_agent_id_context_key(tmp_path):
+    """Retro-compat: a job enqueued PRE-deploy (before the agent_id ->
+    chatbot_id rename) has context_json = {"agent_id": ...} only. Without
+    the dual-key fallback in has_pending_chat, this in-flight job would
+    silently stop being recognized post-deploy (losing the duplicate-turn
+    guard, though not dropping data by itself -- see
+    test_reasoning_api.py::test_submit_recognizes_legacy_agent_id_context_key
+    for the data-loss half of this bug)."""
+    q = ReasoningQueue(str(tmp_path / "r.db"))
+    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+    assert q.has_pending_chat("agentX", now=50.0) is True
+
+
 
 # ---------------------------------------------------------------------------
 # ReasoningQueue.count_chat_today
