@@ -81,17 +81,13 @@
   var saveBarHandle = null;
 
   /* Guard di navigazione (bug live #2): NON installato di nuovo qui.
-     chatbot-editor.js lo installa GIA' una volta al parse dello script
-     (HirisEditorKit.dirty.guard(...) al livello top del suo IIFE) su
-     HirisState.get('unsaved') -- che è una chiave GLOBALE condivisa (vedi
-     C9 nel grounding), non per-editor. config.html carica sempre
-     chatbot-editor.js insieme a questo file (nessuna route carica solo
-     l'uno o solo l'altro): un secondo guard() qui aprirebbe DUE listener
-     su 'hashchange'/'beforeunload' che leggono la STESSA chiave, quindi
-     un confirm() doppio a ogni navigazione con modifiche pendenti.
-     Se in futuro questo file dovesse mai vivere senza chatbot-editor.js,
-     va spostato un guard() unico in un punto certamente condiviso
-     (es. main.js) -- non duplicato qui. */
+     Dal Task 6, main.js lo installa UNA volta a livello top del proprio
+     IIFE (era chatbot-editor.js prima -- hoistato per non dipendere dal
+     fatto che quel file capitasse di essere incluso) su
+     HirisState.get('unsaved') -- chiave GLOBALE condivisa (vedi C9 nel
+     grounding), non per-editor. Un secondo guard() qui aprirebbe DUE
+     listener su 'hashchange'/'beforeunload' che leggono la STESSA chiave,
+     quindi un confirm() doppio a ogni navigazione con modifiche pendenti. */
 
   function api(path, opts) {
     opts = opts || {};

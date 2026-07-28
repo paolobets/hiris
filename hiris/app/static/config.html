@@ -220,6 +220,13 @@
        caricati sopra -- l'ordine relativo ad agentbot-route.js non conta
        (moduli indipendenti su window), ma deve caricare dopo di loro. -->
   <script src="static/config/agentbot-editor.js"></script>
+  <!-- SP-4 Fase B Task 6: wizard di creazione goal-first. Usa
+       HirisEditorKit (field.*/checkGroup), HirisEntityPicker e i cataloghi
+       TOOLS/KNOWLEDGE_KINDS di templates.js -- deve caricare dopo tutti e
+       tre. Referenziato solo dentro closure di route in main.js (deferred),
+       quindi l'ordine relativo a main.js stesso non conta, ma resta prima
+       per coerenza con lo stesso pattern di agentbot-editor.js sopra. -->
+  <script src="static/config/create-wizard.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>

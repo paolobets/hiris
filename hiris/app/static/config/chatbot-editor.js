@@ -86,13 +86,16 @@
   var markDirtyRef = null;              /* letto dall'onChange dell'entity-picker (i chip non sono <input>, dirty.track da solo non li vede) */
   var saveBarHandle = null;             /* HirisEditorKit.saveBar() */
 
-  /* Guard di navigazione (bug live #2, chiuso nel Task 3): installato UNA
-     VOLTA al parse dello script -- 'unsaved' è uno stato HirisState
-     globale, valido a prescindere da quale route lo abbia impostato. Deve
-     girare PRIMA che main.js registri il proprio listener 'hashchange'
-     (main.js carica per ultimo e si aggancia solo dentro DOMContentLoaded),
-     così il guard intercetta la navigazione prima che il router rimonti. */
-  HirisEditorKit.dirty.guard(function() { return !!HirisState.get('unsaved'); });
+  /* Guard di navigazione (bug live #2, chiuso nel Task 3): NON più
+     installato qui dal Task 6 in poi -- era un accoppiamento strutturale
+     fragile (funzionava solo perché config.html carica SEMPRE questo file,
+     non perché ogni route fosse garantita protetta). Hoistato in main.js
+     (installato UNA VOLTA a livello top del suo IIFE, prima che
+     DOMContentLoaded/HirisRouter.start() registrino i propri listener):
+     main.js è l'ultimo script caricato ed è comune a OGNI route, quindi la
+     garanzia è "per costruzione" invece che "perché questo file capita di
+     essere incluso". 'unsaved' resta la chiave HirisState GLOBALE (vedi
+     C9 nel grounding) -- un solo guard() per l'intera pagina. */
 
   /* ───────────────────────── data layer (ex chatbot-form.js) ───────────────────────── */
 
