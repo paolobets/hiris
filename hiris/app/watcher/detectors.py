@@ -105,7 +105,7 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
             return attrs.get(attribute)
         return new.get("state")
 
-    def detect_user_lens(entity_id, old, new, cfg, now) -> Optional[Signal]:
+    def detect_user_agentbot(entity_id, old, new, cfg, now) -> Optional[Signal]:
         try:
             raw = _raw_value(new)
             if raw is None:
@@ -169,7 +169,7 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
                 evidence["needs_duration"] = True
                 evidence["threshold_min"] = duration_min
 
-            return Signal(kind="user_lens", entity_id=entity_id, severity=severity,
+            return Signal(kind="user_agentbot", entity_id=entity_id, severity=severity,
                           evidence=evidence, ts=now)
         except Exception:
             # fail-safe: a user lens must never crash the Guardian, but a
@@ -178,4 +178,4 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
                       entity_id, exc_info=True)
             return None
 
-    return detect_user_lens
+    return detect_user_agentbot

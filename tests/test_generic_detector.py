@@ -213,10 +213,10 @@ def test_severity_read_from_cfg():
     assert sig.severity == "critico"
 
 
-def test_kind_identifies_user_lens():
+def test_kind_identifies_user_agentbot():
     fn = make_generic_detector({"entity_id": "sensor.x", "operator": ">", "threshold": 8})
     sig = fn("sensor.x", None, _st("9"), {}, 1.0)
-    assert sig.kind == "user_lens"
+    assert sig.kind == "user_agentbot"
 
 
 def test_ts_is_the_now_argument():
