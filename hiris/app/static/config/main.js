@@ -142,27 +142,13 @@
   });
   HirisRouter.register(/^#\/proposals\/?$/, function() {
     setCrumbHere('Proposte');
+    /* SP-4 Fase B Task 2: proposals.js è ora un <script src> statico in
+       config.html (era l'unico loader ad-hoc rimasto, separato da quello di
+       chatbot-editor.js) — loadProposals() è già definita a questo punto. */
     if (window.HirisProposalsRoute) {
       HirisProposalsRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Proposte</div>';
-    }
-    /* proposals.js è in LEGACY_SCRIPTS — lo carichiamo on-demand qui */
-    if (typeof loadProposals !== 'function' && window.HirisChatbotEditor) {
-      /* Reuse the legacy loader from chatbot-editor.js by triggering a no-op mount path? */
-      /* Simpler: load proposals.js directly */
-      var s = document.querySelector('script[data-legacy="static/config/proposals.js"]');
-      if (!s) {
-        s = document.createElement('script');
-        s.src = 'static/config/proposals.js';
-        s.dataset.legacy = 'static/config/proposals.js';
-        s.onload = function() {
-          if (typeof loadProposals === 'function' && window.HirisProposalsRoute) {
-            loadProposals('pending');
-          }
-        };
-        document.head.appendChild(s);
-      }
     }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {

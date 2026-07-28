@@ -1,6 +1,23 @@
 /* HIRIS · Designer · per-agent usage panel
    Reads/displays per-agent usage; lets user reset counters, block/unblock.
-   Task 4 (Slice 5): rimosso il set-budget control (vedi nota più sotto). */
+   Task 4 (Slice 5): rimosso il set-budget control (vedi nota più sotto).
+
+   SP-4 Fase B Task 2: #u-ag-reset-btn/#u-ag-toggle-btn vivono dentro
+   #route-outlet, ricreati a ogni mount dell'editor Chatbot (populateConsumi
+   in chatbot-editor.js). Con lo script ora caricato in modo statico (non più
+   iniettato dopo il mount), un binding IIFE-time via getElementById(...)
+   .onclick lancerebbe un TypeError al primo load (i bottoni non esistono
+   ancora) e comunque smetterebbe di funzionare dopo un remount (nodo
+   sostituito). Delegation su #route-outlet (contenitore stabile, mai
+   ricreato — solo il suo innerHTML cambia) risolve entrambi i problemi in
+   un colpo solo: nessun rebind manuale necessario.
+
+   Vincitori (grounding SP-4 Fase B, A1):
+   - reset consumi (#u-ag-reset-btn): versione editor — usa
+     HirisState.get('activeChatbotId'), non il global currentId.
+   - toggle abilitato (#u-ag-toggle-btn): versione usage.js — ha il
+     confirm() e ricarica la lista + riapre l'agente (l'editor non lo
+     faceva: miglioramento reale, non solo parità). */
 
 async function loadAgentUsage(agentId) {
   if (!agentId) return;
@@ -19,7 +36,7 @@ async function loadAgentUsage(agentId) {
 
 function updateAgentUsageToggleBtn(agent) {
   var btn = document.getElementById('u-ag-toggle-btn');
-  if (!agent) return;
+  if (!agent || !btn) return;
   if (agent.enabled) {
     btn.textContent = '⊘ Blocca Chatbot';
     btn.className = 'btn-usage-block';
@@ -29,15 +46,16 @@ function updateAgentUsageToggleBtn(agent) {
   }
 }
 
-document.getElementById('u-ag-reset-btn').onclick = async function() {
-  if (!currentId || !confirm('Azzerare i contatori di consumo per questo Chatbot?')) return;
+async function _resetAgentUsage() {
+  var aid = window.HirisState && HirisState.get('activeChatbotId');
+  if (!aid || !confirm('Azzerare i contatori di consumo per questo Chatbot?')) return;
   try {
-    await fetch('api/chatbots/' + currentId + '/usage/reset', { method: 'POST', headers: {'X-Requested-With': 'fetch'} });
-    await loadAgentUsage(currentId);
+    await fetch('api/chatbots/' + encodeURIComponent(aid) + '/usage/reset', { method: 'POST', headers: {'X-Requested-With': 'fetch'} });
+    await loadAgentUsage(aid);
   } catch(e) {}
-};
+}
 
-document.getElementById('u-ag-toggle-btn').onclick = async function() {
+async function _toggleAgentUsage() {
   if (!currentId) return;
   var agent = chatbots.find(function(a) { return a.id === currentId; });
   if (!agent) return;
@@ -47,7 +65,7 @@ document.getElementById('u-ag-toggle-btn').onclick = async function() {
     : 'Bloccare questo Chatbot? Non verrà più eseguito automaticamente.';
   if (!confirm(confirmMsg)) return;
   try {
-    var r = await fetch('api/chatbots/' + currentId, {
+    var r = await fetch('api/chatbots/' + encodeURIComponent(currentId), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       body: JSON.stringify({ enabled: newEnabled }),
@@ -55,21 +73,15 @@ document.getElementById('u-ag-toggle-btn').onclick = async function() {
     await r.json();
     await loadChatbots();
     var fresh = chatbots.find(function(a) { return a.id === currentId; });
-    if (fresh) openAgent(fresh);
+    if (fresh && typeof openAgent === 'function') openAgent(fresh);
   } catch(e) {}
-};
+}
 
-/* Task 4 (Slice 5) review fix: rimosso il binding di u-ag-budget-save-btn
-   (PUT budget_eur_limit) — il campo e il pulsante non esistono più nel
-   markup (rimossi da populateConsumi in chatbot-editor.js) e il backend
-   scarta comunque quella chiave. Lasciarlo qui avrebbe fatto sì che
-   getElementById('u-ag-budget-save-btn') restituisse null e il successivo
-   .onclick lanciasse un TypeError non gestito al primo mount dell'editor. */
-
-document.getElementById('usage-reset-btn').onclick = async function() {
-  if (!confirm('Azzerare i contatori di utilizzo API?')) return;
-  try {
-    var r = await fetch('api/usage/reset', {method: 'POST', headers: {'X-Requested-With': 'fetch'}});
-    if (r.ok) await loadUsage();
-  } catch(e) {}
-};
+(function() {
+  var outlet = document.getElementById('route-outlet');
+  var target = outlet || document;
+  target.addEventListener('click', function(e) {
+    if (e.target.closest('#u-ag-reset-btn')) { _resetAgentUsage(); return; }
+    if (e.target.closest('#u-ag-toggle-btn')) { _toggleAgentUsage(); return; }
+  });
+})();

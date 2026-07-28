@@ -3,32 +3,13 @@
    Tipo/Trigger da Identità e l'intera section-card Azioni) e bridge alla
    logica legacy in chatbot-form.js. */
 (function() {
-  /* Cache-bust automatico per i 7 legacy script dynamic-loaded via loadScript().
-     Il backend (_inject_version in server.py, via _ASSET_REF_RE/_asset_fingerprint)
-     appende già un content-hash "?v=<hash>" alla src di QUESTO script quando
-     serve config.html — lo leggiamo qui (nessuna chiamata di rete aggiuntiva,
-     solo lettura sincrona di document.currentScript.src) e lo riusiamo per
-     bustare la cache dei legacy script iniettati lato client. Così il bust
-     cambia automaticamente ogni volta che chatbot-editor.js viene modificato,
-     senza bump manuale.
-     Limite noto: l'hash è quello di QUESTO file, non dei singoli LEGACY_SCRIPTS
-     (che non passano da _inject_version perché iniettati via JS, non presenti
-     come <script src> in config.html). Se cambia SOLO uno dei LEGACY_SCRIPTS
-     senza toccare questo file, il bust non cambia — in quel caso serve comunque
-     un tocco (anche solo un commento) a questo file per forzare il refresh.
-     Fallback alla costante sotto se lo script non è servito con query string
-     (es. accesso diretto al file senza passare da _serve_config). */
-  var V6_CACHE_BUST = (function() {
-    try {
-      var selfScript = document.currentScript ||
-        document.querySelector('script[src*="chatbot-editor.js"]');
-      if (selfScript && selfScript.src) {
-        var m = /[?&]v=([^&]+)/.exec(selfScript.src);
-        if (m && m[1]) return decodeURIComponent(m[1]);
-      }
-    } catch (e) {}
-    return '0.11.0'; /* fallback manuale se non c'è query string sulla src */
-  })();
+  /* SP-4 Fase B Task 2: rimosso il loader dinamico (cache-bust constant,
+     lista script, funzione di caricamento a catena) — i 7 file prima
+     iniettati dopo il mount sono ora <script src> statici in config.html
+     (ordine dipendenze in testa al file). Questo risolve anche il
+     cache-busting: _inject_version (server.py) fingerprinta ogni
+     <script src> letterale individualmente, quindi ognuno di quei file
+     ha ora il proprio hash invece di ereditare quello di chatbot-editor.js. */
 
   /* Istanza corrente del selettore entità (config/entity-picker.js,
      istanziabile — non più il vecchio singleton _entitySelectionSet di
@@ -38,42 +19,6 @@
      window.HirisAgentEntityPicker perché chatbot-form.js (openAgent/
      buildPayload) è un file separato senza accesso a questa closure. */
   var entityPickerInstance = null;
-
-  var legacyLoaded = false;
-  /* Task 4 (Slice 5): rimossi cron.js/cron-popover.js/triggers.js/
-     action-editor.js/script-action.js — erano la macchina di trigger e
-     sequenza-azioni ritirata insieme al backend (Task 1-3). Il Designer
-     ora carica solo i moduli di un editor Persona. */
-  var LEGACY_SCRIPTS = [
-    'static/config/templates.js',
-    'static/config/permessi.js',
-    'static/config/log-row.js',
-    'static/config/logs.js',
-    'static/config/usage.js',
-    'static/config/proposals.js',
-    'static/config/chatbot-form.js',
-  ];
-
-  function loadScript(src) {
-    return new Promise(function(resolve, reject) {
-      if (document.querySelector('script[data-legacy="' + src + '"]')) {
-        resolve(); return;
-      }
-      var s = document.createElement('script');
-      s.src = src + (src.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(V6_CACHE_BUST);
-      s.dataset.legacy = src;
-      s.onload = resolve;
-      s.onerror = function() { reject(new Error('failed to load ' + src)); };
-      document.head.appendChild(s);
-    });
-  }
-
-  function ensureLegacy() {
-    if (legacyLoaded) return Promise.resolve();
-    return LEGACY_SCRIPTS.reduce(function(p, src) {
-      return p.then(function() { return loadScript(src); });
-    }, Promise.resolve()).then(function() { legacyLoaded = true; });
-  }
 
   /* Task 4 (Slice 5): rimossi il selettore Tipo (agent/chat) e l'intera
      sezione Trigger — l'esecuzione trigger-based/autonoma è stata ritirata
@@ -113,6 +58,18 @@
         '<summary>🔍 Anteprima context_str</summary>' +
         '<pre id="context-preview-content"></pre>' +
       '</details>';
+
+    /* Token counter (logs.js) — wired qui direttamente al momento della
+       creazione dei campi, invece che in un rewire differito dopo il mount:
+       ogni populateIstruzioni() crea nodi nuovi, quindi il binding è sempre
+       fresco (nessun rischio di nodo detached). Vincitore SP-4 Fase B Task 2
+       (copia editor; l'originale in logs.js era già stato rimosso). */
+    if (typeof updateTokenCounter === 'function') {
+      var fst = document.getElementById('f-strategic');
+      if (fst) fst.oninput = updateTokenCounter;
+      var fp = document.getElementById('f-prompt');
+      if (fp) fp.oninput = updateTokenCounter;
+    }
   }
 
   /* Task 4 (Slice 5): rimossa la riga "confirm-free" (era legata al tipo
@@ -304,118 +261,6 @@
     });
 
     btnDelete.style.display = agentId ? '' : 'none';
-  }
-
-  /* Compatibility shims for legacy chatbot-form.js & friends — they touch DOM IDs
-     of the old config.html markup that don't exist in v6 long-form. We create
-     hidden stubs so .style/.textContent/.innerHTML/.classList accesses don't
-     throw. Also provide no-op stubs for missing global functions (resetToFirstTab
-     was in tabs.js which is removed in v6). */
-  function addLegacyShims() {
-    var shim = document.getElementById('legacy-shim-container');
-    if (shim) return; /* already mounted (cached after first mount) */
-    shim = document.createElement('div');
-    shim.id = 'legacy-shim-container';
-    shim.style.display = 'none';
-    shim.setAttribute('aria-hidden', 'true');
-    /* v0.10.5 cleanup: ridotto stub list a soli ID ancora referenziati dal
-       codice legacy live (openAgent + usage.js IIFE).
-       Rimossi: new-btn/save-btn/run-btn (handler IIFE eliminati in cleanup),
-       agent-list/agent-tabs/tab-azioni (renderList + #agent-tabs querySelector
-       eliminati).
-       delete-btn ancora qui perché openAgent setta is_default visibility su
-       quel ID (legacy markup); il vero pulsante v6 è #btn-delete e la sua
-       visibility è gestita da setupStickyActions + resolveAgent then-block. */
-    var stubIds = [
-      'no-selection',     /* chatbot-form.js openAgent legacy compat */
-      'form',             /* chatbot-form.js openAgent legacy compat */
-      'form-title',       /* chatbot-form.js openAgent legacy compat */
-      'delete-btn',       /* chatbot-form.js openAgent is_default check (legacy) */
-      'usage-reset-btn',  /* usage.js IIFE — id legacy global panel rimosso in v6 */
-    ];
-    stubIds.forEach(function(id) {
-      if (document.getElementById(id)) return;
-      var el = document.createElement('div');
-      el.id = id;
-      shim.appendChild(el);
-    });
-    document.body.appendChild(shim);
-
-    /* No-op global stubs for functions whose modules were removed in v6 refactor */
-    if (typeof window.resetToFirstTab !== 'function') {
-      window.resetToFirstTab = function() { /* no-op: v6 long-form has no tabs */ };
-    }
-    if (typeof window.switchTab !== 'function') {
-      window.switchTab = function() { /* no-op: v6 long-form has no tabs */ };
-    }
-  }
-
-  /* Rebind legacy IIFE-time event listeners to the v6 DOM nodes.
-     Le legacy attaccano i listener a getElementById(...) UNA VOLTA al loro IIFE
-     load. Ad ogni mount, populate*() rimpiazza l'innerHTML dei sc-body con
-     nodi NUOVI ma stessi ID — i listener IIFE-bound puntano a nodi rimossi.
-     Qui rebindiamo via .onchange/.onclick/.oninput (overwrite) sui nodi nuovi. */
-  function rewireLegacyAfterMount() {
-    /* Task 4 (Slice 5): rimossi i rebind di new-trigger-type/nt-entity/
-       btn-add-trigger/triggers-list — la sezione Trigger e triggers.js sono
-       stati ritirati insieme alla macchina action/rules/states (Task 1-3). */
-
-    /* SP-4 Fase B Task 1: rimosso il rebind manuale di domain-pill/
-       entity-search/entity-suggestions. Il selettore entità ora è
-       config/entity-picker.js (HirisEntityPicker.create), istanziato da
-       populatePermessi() con listener propri per istanza — questo
-       "rewire dopo il fatto" esisteva solo per ricollegare i listener
-       IIFE-time del vecchio singleton (permessi.js) a nodi rimontati.
-       Non serve più: ogni mount crea una nuova istanza con i propri
-       listener già corretti, e la vecchia viene distrutta (destroy(),
-       che stacca il listener documento del click-fuori invece di
-       lasciarlo agganciato a nodi detached — era un leak). */
-
-    /* Task 4 (Slice 5): rimossi i rebind di f-type/f-action-mode/f-states —
-       quei campi non esistono più nel markup (Tipo/Azioni/Stati ritirati).
-       f-model non ha più un handler qui: updateConfirmFreeVisibility era
-       legato solo al tipo agente autonomo, anch'esso ritirato. */
-
-    /* logs.js — token counter on input */
-    if (typeof updateTokenCounter === 'function') {
-      var fst = document.getElementById('f-strategic');
-      if (fst) fst.oninput = updateTokenCounter;
-      var fp = document.getElementById('f-prompt');
-      if (fp) fp.oninput = updateTokenCounter;
-    }
-
-    /* usage.js — agent-level usage buttons (overwrite IIFE-bound onclick) */
-    var ur = document.getElementById('u-ag-reset-btn');
-    if (ur) ur.onclick = function() {
-      if (typeof window === 'undefined' || !window.HirisState) return;
-      var aid = HirisState.get('activeChatbotId');
-      if (!aid || !confirm('Azzerare i contatori di questo Chatbot?')) return;
-      fetch('api/chatbots/' + encodeURIComponent(aid) + '/usage/reset', {
-        method: 'POST', headers: { 'X-Requested-With': 'fetch' }
-      }).then(function(r) {
-        if (r.ok && typeof loadAgentUsage === 'function') loadAgentUsage(aid);
-      }).catch(function(){});
-    };
-    var ut = document.getElementById('u-ag-toggle-btn');
-    if (ut) ut.onclick = function() {
-      var aid = HirisState.get('activeChatbotId');
-      if (!aid) return;
-      var enabledNow = document.getElementById('f-enabled').checked;
-      var newVal = !enabledNow;
-      fetch('api/chatbots/' + encodeURIComponent(aid), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-        body: JSON.stringify({ enabled: newVal })
-      }).then(function(r) {
-        if (r.ok) {
-          document.getElementById('f-enabled').checked = newVal;
-          ut.textContent = newVal ? '⊘ Blocca Chatbot' : '✓ Riabilita Chatbot';
-        }
-      }).catch(function(){});
-    };
-    /* Task 4 (Slice 5) review fix: rimosso il rebind di u-ag-budget-save-btn
-       — il controllo "Budget massimo (€)" (PUT budget_eur_limit) è stato
-       tolto dal markup in populateConsumi(), il backend scarta quel campo. */
   }
 
   /* Init form for "Nuovo agente" (was in chatbot-form.js #new-btn IIFE handler).
@@ -668,14 +513,18 @@
   }
 
   function mount(agentId) {
-    console.log('[HirisChatbotEditor] mount v' + V6_CACHE_BUST + ' agentId=' + agentId);
+    console.log('[HirisChatbotEditor] mount agentId=' + agentId);
     var outlet = document.getElementById('route-outlet');
     if (!outlet) {
       console.error('route-outlet element missing — config.html broken');
       return;
     }
 
-    /* Use Promise chain so all steps fall into the .catch with named errors */
+    /* Use Promise chain so all steps fall into the .catch with named errors.
+       SP-4 Fase B Task 2: rimosso lo step di caricamento a runtime — i moduli
+       prima "legacy" (templates/permessi/log-row/logs/usage/proposals/
+       chatbot-form) sono ora <script src> statici in config.html, già
+       disponibili qui senza attendere un caricamento di rete a metà mount. */
     Promise.resolve().then(function() {
       step('clear outlet', function() { outlet.innerHTML = ''; });
       step('clone template', function() {
@@ -692,17 +541,12 @@
       step('populateRun', populateRun);
       step('populateConsumi', populateConsumi);
       step('setupAnchorNav', setupAnchorNav);
-      step('addLegacyShims', addLegacyShims);
-    }).then(function() {
-      return ensureLegacy();
-    }).then(function() {
       step('populateTemplateSelector', function() {
         if (typeof populateTemplateSelector === 'function') populateTemplateSelector();
       });
       step('loadModels', function() {
         if (typeof loadModels === 'function') loadModels();
       });
-      step('rewireLegacyAfterMount', rewireLegacyAfterMount);
       step('setupStickyActions', function() { setupStickyActions(agentId); });
 
       if (agentId && typeof openAgent === 'function') {
@@ -733,7 +577,7 @@
             '<h2>Errore caricamento editor</h2>' +
             '<p>' + msg + '</p>' +
             '<p style="font-size:12px;color:var(--text-3);font-family:var(--font-mono);margin-top:16px">' +
-              'Step: <strong>' + stepName + '</strong> · v' + V6_CACHE_BUST +
+              'Step: <strong>' + stepName + '</strong>' +
             '</p>' +
             '<p style="font-size:12px;color:var(--text-3)">' +
               'Se questo errore persiste dopo l\'aggiornamento dell\'addon HIRIS, fai <strong>hard reload</strong>: ' +

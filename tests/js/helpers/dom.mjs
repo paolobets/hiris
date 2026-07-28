@@ -30,33 +30,58 @@ const globalEval = (0, eval);
  * perché i test lo attraversano sempre tramite lo stesso `document` — mentre
  * i dati semplici (array, stringhe) restano nel realm host, combaciando con
  * i literal scritti nei test.
+ *
+ * SP-4 Fase B Task 2: ogni modulo `config/*.js` di questo repo espone la
+ * propria API con `window.Foo = ...` dentro un IIFE (mai `var Foo = ...` a
+ * livello globale). In un vero browser è equivalente a un global bare
+ * (`window === globalThis` lì), ma qui `window` è un oggetto bridged
+ * DIVERSO da `globalThis` — quindi `window.Foo = ...` non creava
+ * `globalThis.Foo`, e un secondo script che referenzia `Foo` bare (es.
+ * `chatbot-editor.js` che chiama `HirisEntityPicker.create(...)` o
+ * `HirisState.set(...)`) falliva con ReferenceError. Il proxy sotto
+ * intercetta ogni assegnazione `window.X = ...` e la specchia anche su
+ * `globalThis.X`, replicando la semantica reale del browser. Necessario da
+ * quando i test hanno iniziato a caricare più moduli che si referenziano a
+ * vicenda (prima, i soli test su entity-picker.js accedevano sempre via
+ * `window.HirisEntityPicker` esplicito dal lato test, non da altro codice
+ * IIFE caricato insieme).
  */
 export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {}) {
   const dom = new JSDOM(html, { url: 'http://localhost/' });
-  const { window } = dom;
+  const rawWindow = dom.window;
+
+  const windowProxy = new Proxy(rawWindow, {
+    set(target, prop, value) {
+      target[prop] = value;
+      if (typeof prop === 'string') {
+        try { globalThis[prop] = value; } catch (e) { /* proprietà read-only del global host, ignora */ }
+      }
+      return true;
+    },
+  });
 
   const define = (name, value) =>
     Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
-  define('window', window);
-  define('document', window.document);
-  define('navigator', window.navigator);
-  define('Event', window.Event);
-  define('localStorage', window.localStorage);
+  define('window', windowProxy);
+  define('document', rawWindow.document);
+  define('navigator', rawWindow.navigator);
+  define('Event', rawWindow.Event);
+  define('localStorage', rawWindow.localStorage);
   // `fetch` è normalmente sovrascritto per-test da stubFetch(window, ...);
   // la getter/setter lo tiene agganciato dinamicamente a window.fetch così
   // gli script (che lo chiamano non qualificato, come farebbero nel browser)
   // vedono sempre lo stub corrente.
   Object.defineProperty(globalThis, 'fetch', {
     configurable: true,
-    get() { return window.fetch ? window.fetch.bind(window) : undefined; },
-    set(fn) { window.fetch = fn; },
+    get() { return rawWindow.fetch ? rawWindow.fetch.bind(rawWindow) : undefined; },
+    set(fn) { rawWindow.fetch = fn; },
   });
 
   for (const p of paths) {
     const code = readFileSync(join(STATIC, p), 'utf8');
     globalEval(code);
   }
-  return { dom, window, document: window.document };
+  return { dom, window: windowProxy, document: rawWindow.document };
 }
 
 /** fetch finto: mappa url-substring -> payload JSON. */
