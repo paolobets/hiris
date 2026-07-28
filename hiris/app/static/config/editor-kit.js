@@ -1,7 +1,7 @@
 /* HIRIS · Designer · editor-kit (SP-4 Fase B Task 3)
-   Kit condiviso fra gli editor Chatbot/Agentbot: fabbriche di campo, select
-   modello con fetch cachata, gruppo checkbox istanza-scoped, dirty tracking
-   reale (MutationObserver, non uno snapshot one-shot) + guard di navigazione,
+   Kit condiviso fra gli editor Chatbot/Agentbot: select modello con fetch
+   cachata, gruppo checkbox istanza-scoped, dirty tracking reale
+   (MutationObserver, non uno snapshot one-shot) + guard di navigazione,
    barra Salva/Annulla sticky.
 
    Chiude due bug live (vedi docs/design/2026-07-28-piano-SP4b1-cornice-
@@ -13,7 +13,14 @@
       sottoalbero con un MutationObserver, non lo fotografa.
    2) navigare via con modifiche non salvate le perdeva in silenzio -- 'unsaved'
       era letto solo dal bottone Annulla, nessun guard su hashchange/beforeunload.
-      dirty.guard() qui sotto lo installa.
+      dirty.guard() qui sotto lo installa PER IL PERCORSO "conferma -> esci".
+      Il percorso "rifiuta -> resta" restava aperto: il revert dell'hash che
+      il guard fa quando l'utente rifiuta genera un secondo hashchange (l'eco)
+      sul quale il guard non richiama più stopImmediatePropagation() -- il
+      router rimontava la route corrente su quell'eco, cancellando comunque
+      le modifiche. Chiuso in router.js (resolveRoute ignora un hashchange
+      che risolve allo stesso hash già montato), non qui: il guard da solo
+      non può sapere se il router ha già visto/ignorato l'evento originale.
 
    loadModels()/_setModelValue() vivevano in api.js (file di utility pure) ma
    sono codice editor -- assorbiti qui in modelSelect()/setModelValue() con
@@ -31,11 +38,24 @@
     return (prefix || 'hk') + '-' + _seq;
   }
 
-  /* ── field factories ──────────────────────────────────────────────
-     Ognuna ritorna l'elemento input/select/textarea creato. Stessa
-     struttura visiva (classi field/input/select/textarea/checkbox-row,
-     field-hint) già usata dal markup statico di chatbot-editor.js, così
-     la CSS esistente (hiris-config.css) si applica senza modifiche. */
+  /* ── fieldWrap: helper di layout condiviso da modelSelect() ─────────
+     Stessa struttura visiva (div.field + label[for]) già usata dal markup
+     statico di chatbot-editor.js, così la CSS esistente (hiris-config.css)
+     si applica senza modifiche.
+
+     Fix guard/router echo (review CRITICAL): questo file esportava anche
+     una famiglia di fabbriche field.text/number/checkbox/select/textarea
+     (e il loro helper appendHint) con ZERO call site — agentbot-route.js
+     ha mantenuto le proprie closure locali, chatbot-editor.js costruisce
+     i campi semplici con innerHTML grezzo (vedi populateIdentita/
+     populateModello/populateStato qui sotto), quindi in pagina convivevano
+     TRE modi di costruire un campo, uno dei quali mai raggiunto. Rimossa:
+     riscrivere chatbot-editor.js per usarla avrebbe richiesto rifare ogni
+     populate*() (field-row affiancati, hint già incorporati nel markup
+     esistente, oninput speciale su f-strategic/f-prompt) — un refactor
+     estraneo allo scope di questo fix, con solo rischio di regressioni
+     visive. Task 5 (agentbot-editor.js, editor Agentbot da zero) la
+     reintrodurrà quando servirà un consumatore reale. */
 
   function fieldWrap(parent, labelText, forId) {
     var wrap = document.createElement('div');
@@ -48,95 +68,6 @@
     }
     parent.appendChild(wrap);
     return wrap;
-  }
-
-  function appendHint(wrap, hintText) {
-    if (!hintText) return null;
-    var h = document.createElement('p');
-    h.className = 'field-hint';
-    h.textContent = hintText;
-    wrap.appendChild(h);
-    return h;
-  }
-
-  function text(parent, opts) {
-    opts = opts || {};
-    var id = opts.id || nextId('hk-text');
-    var wrap = fieldWrap(parent, opts.label, id);
-    var inp = document.createElement('input');
-    inp.type = 'text';
-    inp.className = 'input';
-    inp.id = id;
-    inp.value = opts.value != null ? opts.value : '';
-    if (opts.placeholder) inp.placeholder = opts.placeholder;
-    wrap.appendChild(inp);
-    appendHint(wrap, opts.hint);
-    return inp;
-  }
-
-  function number(parent, opts) {
-    opts = opts || {};
-    var id = opts.id || nextId('hk-number');
-    var wrap = fieldWrap(parent, opts.label, id);
-    var inp = document.createElement('input');
-    inp.type = 'number';
-    inp.className = 'input';
-    inp.id = id;
-    inp.value = opts.value != null ? opts.value : '';
-    if (opts.min != null) inp.min = opts.min;
-    if (opts.max != null) inp.max = opts.max;
-    wrap.appendChild(inp);
-    appendHint(wrap, opts.hint);
-    return inp;
-  }
-
-  function checkbox(parent, opts) {
-    opts = opts || {};
-    var id = opts.id || nextId('hk-check');
-    var row = document.createElement('label');
-    row.className = 'checkbox-row';
-    var inp = document.createElement('input');
-    inp.type = 'checkbox';
-    inp.id = id;
-    inp.checked = !!opts.value;
-    row.appendChild(inp);
-    row.appendChild(document.createTextNode(' ' + (opts.label || '')));
-    parent.appendChild(row);
-    return inp;
-  }
-
-  function select(parent, opts) {
-    opts = opts || {};
-    var id = opts.id || nextId('hk-select');
-    var wrap = fieldWrap(parent, opts.label, id);
-    var sel = document.createElement('select');
-    sel.className = 'select';
-    sel.id = id;
-    (opts.options || []).forEach(function(o) {
-      var opt = document.createElement('option');
-      opt.value = o.value;
-      opt.textContent = o.label != null ? o.label : o.value;
-      if (o.value === opts.value) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    wrap.appendChild(sel);
-    appendHint(wrap, opts.hint);
-    return sel;
-  }
-
-  function textarea(parent, opts) {
-    opts = opts || {};
-    var id = opts.id || nextId('hk-textarea');
-    var wrap = fieldWrap(parent, opts.label, id);
-    var ta = document.createElement('textarea');
-    ta.className = 'textarea';
-    ta.id = id;
-    ta.rows = opts.rows || 3;
-    ta.value = opts.value != null ? opts.value : '';
-    if (opts.placeholder) ta.placeholder = opts.placeholder;
-    wrap.appendChild(ta);
-    appendHint(wrap, opts.hint);
-    return ta;
   }
 
   /* ── modelSelect: UNA fetch api/models condivisa e cachata ──────────
@@ -412,7 +343,6 @@
   }
 
   window.HirisEditorKit = {
-    field: { text: text, number: number, checkbox: checkbox, select: select, textarea: textarea },
     modelSelect: modelSelect,
     setModelValue: setModelValue,
     checkGroup: checkGroup,
