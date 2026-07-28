@@ -44,7 +44,7 @@
       paint(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
 
-    /* v0.10.5: fetch diretto invece di loadChatbots() (in chatbot-form.js, caricato
+    /* v0.10.5: fetch diretto invece di loadChatbots() (in chatbot-editor.js, caricato
        solo quando user apre editor). Al boot loadChatbots non è ancora definito,
        quindi badge restava "—" finché user non apriva un agente. */
     fetch('api/chatbots').then(function(r) { return r.ok ? r.json() : []; })

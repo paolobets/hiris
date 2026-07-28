@@ -91,10 +91,20 @@ def test_new_sections_present_scope_knowledge_autonomia():
 
 def test_autonomia_is_read_only_and_does_not_touch_the_semaphore():
     """Autonomia summarizes the gateway tier + require_confirmation; it must
-    never write policy -- the only api/gateway call is a plain GET (no
-    method: 'POST'/'PUT' anywhere near it)."""
+    never write policy. Review finding (Important, SP-4 Fase B Task 4): the
+    summary used to recompute the tier client-side, mirroring
+    handlers_gateway_policy.py::effective_tier WITHOUT the DANGEROUS_DOMAINS
+    denylist security/semaphore.py::gate_action always applies on top --
+    could show a domain like `cover` as green while the backend would always
+    deny it. Fix: the summary now asks the backend (POST
+    api/gateway/autonomy-summary, backend-authoritative, uses
+    summarize_autonomy = same function gate_action's tier logic is built
+    from) instead of recomputing anything -- so the guard here is that it
+    calls the READ-ONLY summary endpoint and never the POLICY-writing one
+    (api/gateway/policy, mutated only by config/gateway-route.js)."""
     code = _editor_code()
-    assert "fetch('api/gateway', { headers: { 'X-Requested-With': 'fetch' } })" in code
+    assert "fetch('api/gateway/autonomy-summary'" in code
+    assert "api/gateway/policy" not in code, "Autonomia non deve mai scrivere la policy Gateway"
     assert "require_confirmation" in code
 
 

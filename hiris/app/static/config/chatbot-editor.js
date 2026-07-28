@@ -33,14 +33,30 @@
    setattr grezzo, accettava qualunque tipo JSON).
 
    Autonomia (Task 4, nuova sezione): riepilogo READ-ONLY del tier
-   semaforo delle entità in scope (fetch api/gateway, stesso calcolo di
-   effective_tier in handlers_gateway_policy.py, rifatto qui lato client
-   sui dati letti) + il setting require_confirmation (spostato qui da
-   Abilitazione: è un consenso sull'autonomia del Chatbot, non uno stato
-   on/off del Chatbot stesso). La pagina Gateway (#/gateway) resta
-   l'UNICA fonte per CONFIGURARE i tier -- questa sezione non scrive mai
-   una policy, si limita a leggerla e a contare. Nessuna fusione del
-   semaforo (vincolo esplicito del piano). */
+   semaforo delle entità in scope + il setting require_confirmation
+   (spostato qui da Abilitazione: è un consenso sull'autonomia del
+   Chatbot, non uno stato on/off del Chatbot stesso). La pagina Gateway
+   (#/gateway) resta l'UNICA fonte per CONFIGURARE i tier -- questa
+   sezione non scrive mai una policy, si limita a leggerla e a contare.
+   Nessuna fusione del semaforo (vincolo esplicito del piano).
+
+   Review finding (Important, chiuso in questo stesso task): il riepilogo
+   ricalcolava il tier lato client, mirror di effective_tier in
+   handlers_gateway_policy.py, MA senza la denylist DANGEROUS_DOMAINS che
+   security/semaphore.py::gate_action applica sempre sopra al tier (lock/
+   alarm_control_panel/cover/siren/garage_door -- "difesa in profondità").
+   Risultato: bastava mettere `cover.*` in scope (uno dei SCOPE_PILLS qui
+   sotto) e impostarlo verde in #/gateway perché il riepilogo mostrasse
+   "verde" su un dominio che il backend nega SEMPRE. Display-only (nessun
+   buco di sicurezza, l'enforcement non era toccato) ma disinformava
+   l'utente proprio sui domini più delicati. Fix: niente più calcolo lato
+   client -- renderAutonomiaSummary() chiama POST api/gateway/autonomy-
+   summary, che nel backend usa security/semaphore.py::summarize_autonomy
+   (la STESSA funzione che gate_action userebbe) e ritorna i conteggi già
+   corretti, incluso un bucket "dangerous" separato dai tier. Un'unica
+   implementazione: un domino aggiunto a DANGEROUS_DOMAINS non può più
+   disallineare silenziosamente la UI. Vedi tests/js/chatbot-editor.test.mjs
+   ("cover.* pericoloso non è mai verde") e tests/test_gateway_policy.py. */
 (function() {
 
   /* ── sezione: fonte unica per section-card + anchor-nav ─────────────── */
@@ -339,12 +355,14 @@
     syncKnowledgeKindsVisibility();
   }
 
-  /* Riepilogo READ-ONLY: legge api/gateway (categorie + livelli + override
-     per-entità) e replica lato client lo stesso calcolo di
-     handlers_gateway_policy.py::effective_tier -- override per-entità
-     batte il livello di dominio, dominio non configurato = 'off'
-     (fail-closed, stessa semantica del backend). Non scrive mai nulla: la
-     pagina #/gateway resta l'unica fonte per configurare i tier. */
+  /* Riepilogo READ-ONLY: chiede al backend (POST api/gateway/autonomy-
+     summary) i conteggi tier delle entità/pattern in scope. Il backend usa
+     security/semaphore.py::summarize_autonomy -- la stessa funzione che
+     gate_action() userebbe per una vera azione, denylist DANGEROUS_DOMAINS
+     inclusa -- quindi qui non si ricalcola più nulla: nessun rischio che
+     questa vista disallinei dal reale enforcement (vedi il commento in
+     testa al file). Non scrive mai nulla: la pagina #/gateway resta
+     l'unica fonte per configurare i tier. */
   function renderAutonomiaSummary() {
     var el = document.getElementById('autonomia-summary');
     if (!el) return;
@@ -354,26 +372,26 @@
       return;
     }
     el.textContent = 'Calcolo tier in corso…';
-    fetch('api/gateway', { headers: { 'X-Requested-With': 'fetch' } })
+    fetch('api/gateway/autonomy-summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+      body: JSON.stringify({ entities: entities }),
+    })
       .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(policy) {
-        if (!policy) { el.textContent = 'Impossibile leggere la policy Gateway.'; return; }
-        var domainLevel = {};
-        (policy.categories || []).forEach(function(c) {
-          domainLevel[c.domain] = (policy.levels || {})[c.id] || 'off';
-        });
-        var overrides = policy.entities || {};
-        var counts = { green: 0, yellow: 0, red: 0, off: 0 };
-        entities.forEach(function(pattern) {
-          var domain = pattern.split('.')[0];
-          var isGlob = pattern.indexOf('*') !== -1;
-          var level = isGlob
-            ? (domainLevel[domain] || 'off')
-            : (overrides[pattern] || domainLevel[domain] || 'off');
-          counts[level] = (counts[level] || 0) + 1;
-        });
-        el.textContent = '🟢 ' + counts.green + ' verde · 🟡 ' + counts.yellow + ' giallo · 🔴 ' +
-          counts.red + ' rosso · ⚪ ' + counts.off + ' spenta (su ' + entities.length + ' voci di scope).';
+      .then(function(data) {
+        var counts = data && data.counts;
+        if (!counts) { el.textContent = 'Impossibile leggere la policy Gateway.'; return; }
+        var text = '🟢 ' + (counts.green || 0) + ' verde · 🟡 ' + (counts.yellow || 0) + ' giallo · 🔴 ' +
+          (counts.red || 0) + ' rosso · ⚪ ' + (counts.off || 0) + ' spenta';
+        if (counts.dangerous) {
+          /* Mai un tier: dominio nella denylist DANGEROUS_DOMAINS -- il
+             backend nega SEMPRE, qualunque tier sia configurato in
+             #/gateway. Etichetta esplicita, non conteggiato come verde/
+             giallo/rosso/spenta, così non può leggersi come "permesso". */
+          text += ' · 🔒 ' + counts.dangerous + ' sempre bloccato (dominio pericoloso)';
+        }
+        text += ' (su ' + entities.length + ' voci di scope).';
+        el.textContent = text;
       })
       .catch(function() { el.textContent = 'Impossibile leggere la policy Gateway.'; });
   }

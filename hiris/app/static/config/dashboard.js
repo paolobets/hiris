@@ -25,8 +25,10 @@
     return 'Buonasera';
   }
 
-  /* Fallback fetch: loadChatbots() in chatbot-form.js mutates module state and
-     touches DOM (#agent-list); not safe to call before that DOM exists. */
+  /* Fallback fetch: loadChatbots() in chatbot-editor.js mutates module state
+     and touches DOM (#agent-list, dell'editor); non è sicuro chiamarlo prima
+     che quel DOM esista, né lo script è detto sia già caricato in questa
+     route. */
   function fetchAgentsDirect() {
     /* Rejects on failure (does NOT coerce to []) so mount() can tell a real
        network/server error apart from a genuinely-empty first run -- otherwise
@@ -273,7 +275,7 @@
     var agents = HirisState.get('chatbots') || [];
 
     if (agents.length === 0) {
-      /* Fetch agents directly (avoids depending on chatbot-form.js loadChatbots) */
+      /* Fetch agents directly (avoids depending on chatbot-editor.js loadChatbots) */
       fetchAgentsDirect().then(function(loaded) {
         HirisState.set('chatbots', loaded);
         if (loaded.length === 0) renderEmpty(outlet);

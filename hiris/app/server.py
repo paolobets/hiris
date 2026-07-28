@@ -2241,10 +2241,11 @@ def create_app() -> web.Application:
     app.router.add_post("/api/execute", handle_execute)
 
     from .api.handlers_gateway_policy import (
-        handle_get_gateway_policy, handle_save_gateway_policy,
+        handle_get_gateway_policy, handle_save_gateway_policy, handle_autonomy_summary,
     )
     app.router.add_get("/api/gateway/policy", handle_get_gateway_policy)
     app.router.add_post("/api/gateway/policy", handle_save_gateway_policy)
+    app.router.add_post("/api/gateway/autonomy-summary", handle_autonomy_summary)
 
     from .api.handlers_history_policy import (
         handle_get_history_policy, handle_save_history_policy,

@@ -81,7 +81,11 @@ function setup(extraRoutes) {
   const ctx = loadScripts(SCRIPTS, { html: HTML });
   const calls = stubFetch(ctx.window, Object.assign({
     'api/models': { providers: [] },
-    'api/gateway': { categories: [], levels: {}, entities: {} },
+    // Riepilogo Autonomia: il backend (POST api/gateway/autonomy-summary,
+    // handlers_gateway_policy.py::handle_autonomy_summary) è l'unica fonte
+    // dei conteggi tier -- vedi il test dedicato più sotto per il caso
+    // "dominio pericoloso" (denylist DANGEROUS_DOMAINS).
+    'api/gateway/autonomy-summary': { counts: { green: 0, yellow: 0, red: 0, off: 0, dangerous: 0 }, total: 0 },
     'usage': { requests: 0, input_tokens: 0, output_tokens: 0 },
     'context-preview': { context_str: '', token_estimate: 0 },
     'api/chatbots/agent-1': AGENT,
@@ -157,6 +161,50 @@ test('Annulla con modifiche non salvate chiede conferma (e non naviga se l\'uten
 
   assert.equal(confirmCalls, 1, 'Annulla con modifiche non salvate deve chiedere conferma');
   assert.notEqual(window.location.hash, '#/chatbots', 'rifiutando la conferma non deve navigare via');
+});
+
+test('un dominio pericoloso (cover) in scope non è MAI presentato come verde/permesso nel riepilogo Autonomia', async () => {
+  // Review finding (Important): il riepilogo ricalcolava il tier lato
+  // client senza la denylist DANGEROUS_DOMAINS che security/semaphore.py::
+  // gate_action applica sempre sopra al tier -- bastava scope=cover.* +
+  // cover=verde in #/gateway perché il riepilogo mostrasse "🟢 verde" su un
+  // dominio che il backend nega SEMPRE (cover è in DANGEROUS_DOMAINS).
+  // Fix: il riepilogo ora chiede il conteggio al backend (POST
+  // api/gateway/autonomy-summary), che usa la STESSA denylist -- questo
+  // test stuba una risposta backend "1 entità, tutta 'dangerous'" (esattamente
+  // ciò che il backend risponderebbe per cover.living anche con cover
+  // configurato verde) e verifica che la UI non la legga mai come verde.
+  // resolveAgent() (chatbot-editor.js) risolve l'agente dalla LISTA
+  // 'api/chatbots' (o dallo HirisState cache), non da 'api/chatbots/<id>' --
+  // va sovrascritta la lista, non il singolo record.
+  const AGENT_WITH_DANGEROUS_SCOPE = Object.assign({}, AGENT, { allowed_entities: ['cover.living'] });
+  const { window, document, calls } = setup({
+    'api/chatbots/agent-1': AGENT_WITH_DANGEROUS_SCOPE,
+    'api/chatbots': [AGENT_WITH_DANGEROUS_SCOPE],
+    'api/gateway/autonomy-summary': { counts: { green: 0, yellow: 0, red: 0, off: 0, dangerous: 1 }, total: 1 },
+  });
+
+  window.HirisState.set('activeChatbotId', 'agent-1');
+  window.HirisChatbotEditor.mount('agent-1');
+  await tick(30);
+
+  const summaryEl = document.getElementById('autonomia-summary');
+  assert.ok(summaryEl, 'la sezione Autonomia deve avere il nodo #autonomia-summary');
+  assert.doesNotMatch(
+    summaryEl.textContent, /🟢\s*1\s*verde/,
+    'un\'entità di dominio pericoloso non deve MAI comparire come verde/permessa nel riepilogo'
+  );
+  assert.match(
+    summaryEl.textContent, /sempre bloccato/,
+    'il dominio pericoloso va etichettato esplicitamente come sempre bloccato, non come un tier qualunque'
+  );
+
+  const summaryCall = calls.find((c) => c.url === 'api/gateway/autonomy-summary');
+  assert.ok(
+    summaryCall,
+    'il riepilogo deve chiedere il calcolo al backend (unica fonte autoritativa, niente più mirror lato client di effective_tier)'
+  );
+  assert.deepEqual(JSON.parse(summaryCall.opts.body).entities, ['cover.living']);
 });
 
 test('Annulla con modifiche non salvate: confermando, naviga a #/chatbots', async () => {
