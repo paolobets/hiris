@@ -978,7 +978,13 @@ async def _on_startup(app: web.Application) -> None:
     # already loaded from disk — guarded by a marker file so it only runs
     # once per install, before anything republishes discovery under the new
     # chatbot_<id> / hiris/chatbots scheme.
-    _mqtt_migration_marker = os.path.join(data_dir, ".mqtt_discovery_migrated")
+    # SP-4 Fase B Task 3: cleanup_legacy_discovery() now also retracts the
+    # old-scheme COMMAND entities (switch/button) — installs that already
+    # booted 0.102.0 have the v1 marker written and would never re-run the
+    # fixed cleanup, so the marker is bumped to a new versioned name. This
+    # makes the cleanup run once more for exactly the affected installs
+    # without ever re-running for everyone else on every boot.
+    _mqtt_migration_marker = os.path.join(data_dir, ".mqtt_discovery_migrated_v2")
     if mqtt_pub._enabled and not os.path.exists(_mqtt_migration_marker):
         try:
             await mqtt_pub.cleanup_legacy_discovery(
