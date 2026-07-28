@@ -4,3 +4,5 @@
 **/*.pyd
 .env
 .git
+node_modules
+package*.json

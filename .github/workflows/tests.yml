@@ -41,3 +41,15 @@ jobs:
           HIRIS_ALLOW_NO_CSRF: "1"
         run: |
           pytest -q --maxfail=10 --durations=20
+
+  jstest:
+    name: frontend (node --test + jsdom)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
