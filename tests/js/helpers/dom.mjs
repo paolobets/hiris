@@ -103,6 +103,22 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
   define('navigator', rawWindow.navigator);
   define('Event', rawWindow.Event);
   define('localStorage', rawWindow.localStorage);
+  // SP-4 Fase B Task 7 (rebuild card Lovelace): hiris-chat-card.js è il primo
+  // modulo caricato da questo harness che è un vero Custom Element
+  // (`class HirisCard extends HTMLElement`, `customElements.define(...)`,
+  // `this.attachShadow(...)`), non un IIFE `config/*.js`. `HTMLElement` e
+  // `customElements` non sono global di Node — esistono solo su
+  // `window` in jsdom — quindi vanno bridged sul globalThis dell'host
+  // esattamente come document/navigator/Event sopra, altrimenti
+  // `class HirisCard extends HTMLElement` lancia un ReferenceError al load.
+  // `CustomEvent` idem, usato da HirisChatCardEditor per l'evento
+  // `config-changed`. Verificato con jsdom 25 + Node 24: attachShadow,
+  // customElements.define su una classe extends HTMLElement, e la
+  // costruzione diretta (`new Ctor()`, non solo document.createElement)
+  // funzionano tutti out of the box in questo bridge.
+  define('HTMLElement', rawWindow.HTMLElement);
+  define('customElements', rawWindow.customElements);
+  define('CustomEvent', rawWindow.CustomEvent);
   // `fetch` è normalmente sovrascritto per-test da stubFetch(window, ...);
   // la getter/setter lo tiene agganciato dinamicamente a window.fetch così
   // gli script (che lo chiamano non qualificato, come farebbero nel browser)
