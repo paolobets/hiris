@@ -40,7 +40,7 @@ function openAgent(a) {
   var _fn = document.getElementById('f-name'); if (_fn) _fn.value = a.name;
   document.getElementById('f-prompt').value = a.system_prompt || '';
   document.getElementById('f-strategic').value = a.strategic_context || '';
-  _entitySelectorLoad(a.allowed_entities || []);
+  if (window.HirisAgentEntityPicker) window.HirisAgentEntityPicker.setValue(a.allowed_entities || []);
   document.getElementById('f-enabled').checked = a.enabled;
   _setModelValue(a.model || 'auto');
   document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
@@ -75,7 +75,7 @@ function buildPayload() {
     system_prompt: document.getElementById('f-prompt').value,
     strategic_context: document.getElementById('f-strategic').value,
     allowed_tools: getSelectedTools(),
-    allowed_entities: (function() { try { return JSON.parse(document.getElementById('f-entities').value || '[]'); } catch(e) { return []; } })(),
+    allowed_entities: window.HirisAgentEntityPicker ? window.HirisAgentEntityPicker.getValue() : [],
     allowed_services: getSelectedActions(),
     model: document.getElementById('f-model').value,
     max_tokens: parseInt(document.getElementById('f-max-tokens').value) || 4096,

@@ -1,7 +1,9 @@
-/* HIRIS · Designer · permessi (tools, actions, entity selector)
+/* HIRIS · Designer · permessi (tools, actions)
    - tool checkboxes (call_ha_service toggles the action checkboxes section)
    - action domain checkboxes (light.*, climate.*, etc.)
-   - entity selector with domain pills + search + chips */
+   Il selettore entità è stato estratto in config/entity-picker.js
+   (istanziabile — HirisEntityPicker.create()), vedi chatbot-editor.js
+   populatePermessi() per l'istanza usata dall'editor Persona. */
 
 function buildToolChecks(selected) {
   var el = document.getElementById('tool-checks');
@@ -67,97 +69,3 @@ function buildActionChecks(selected) {
 function getSelectedActions() {
   return Array.from(document.querySelectorAll('#action-checks input:checked')).map(function(i) { return i.value; });
 }
-
-/* ── Entity Selector ───────────────────────────────────────── */
-var _entitySelectionSet = new Set();
-
-function _entitySelectorRender() {
-  var chips = document.getElementById('entity-chips');
-  chips.innerHTML = '';
-  _entitySelectionSet.forEach(function(pattern) {
-    var chip = document.createElement('span');
-    chip.className = 'entity-chip';
-    chip.innerHTML = '<span>' + esc(pattern) + '</span><span class="chip-remove" data-p="' + esc(pattern) + '">×</span>';
-    chip.querySelector('.chip-remove').addEventListener('click', function() {
-      _entitySelectionSet.delete(this.dataset.p);
-      _entitySelectorRender();
-    });
-    chips.appendChild(chip);
-  });
-  document.getElementById('f-entities').value = JSON.stringify(Array.from(_entitySelectionSet));
-}
-
-function _entitySelectorAdd(pattern) {
-  if (pattern && !_entitySelectionSet.has(pattern)) {
-    _entitySelectionSet.add(pattern);
-    _entitySelectorRender();
-  }
-}
-
-function _entitySelectorLoad(patterns) {
-  _entitySelectionSet = new Set(Array.isArray(patterns) ? patterns : []);
-  _entitySelectorRender();
-  var srch = document.getElementById('entity-search');
-  var sugg = document.getElementById('entity-suggestions');
-  if (srch) srch.value = '';
-  if (sugg) sugg.style.display = 'none';
-}
-
-/* domain pills */
-document.querySelectorAll('.domain-pill').forEach(function(pill) {
-  pill.addEventListener('click', function() {
-    _entitySelectorAdd(this.dataset.pattern);
-    document.getElementById('entity-search').value = '';
-  });
-});
-
-/* search with debounce */
-var _entitySearchTimer = null;
-var _entitySearchInput = document.getElementById('entity-search');
-var _entitySuggestions = document.getElementById('entity-suggestions');
-
-_entitySearchInput.addEventListener('input', function() {
-  clearTimeout(_entitySearchTimer);
-  var q = _entitySearchInput.value.trim();
-  if (!q) { _entitySuggestions.style.display = 'none'; return; }
-  _entitySearchTimer = setTimeout(async function() {
-    try {
-      var resp = await fetch('api/entities?q=' + encodeURIComponent(q));
-      var data = await resp.json();
-      var items = (data && data.entities) || [];
-      _entitySuggestions.innerHTML = '';
-      if (!items.length) { _entitySuggestions.style.display = 'none'; return; }
-      items.slice(0, 20).forEach(function(e) {
-        var div = document.createElement('div');
-        div.className = 'suggestion-item';
-        div.innerHTML = '<span>' + esc(e.entity_id) + '</span><span class="s-name">' + esc(e.friendly_name || '') + '</span>';
-        div.addEventListener('click', function() {
-          _entitySelectorAdd(e.entity_id);
-          _entitySearchInput.value = '';
-          _entitySuggestions.style.display = 'none';
-        });
-        _entitySuggestions.appendChild(div);
-      });
-      _entitySuggestions.style.display = 'block';
-    } catch(err) { /* ignore network errors */ }
-  }, 300);
-});
-
-_entitySearchInput.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    var q = _entitySearchInput.value.trim();
-    if (q) {
-      _entitySelectorAdd(q);
-      _entitySearchInput.value = '';
-      _entitySuggestions.style.display = 'none';
-    }
-  }
-  if (e.key === 'Escape') { _entitySuggestions.style.display = 'none'; }
-});
-
-document.addEventListener('click', function(e) {
-  if (_entitySearchInput && !_entitySearchInput.contains(e.target) && !_entitySuggestions.contains(e.target)) {
-    _entitySuggestions.style.display = 'none';
-  }
-});

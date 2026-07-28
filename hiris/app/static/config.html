@@ -225,6 +225,12 @@
        generici riusabili da feature future. -->
   <script src="static/config/drawer.js"></script>
   <script src="static/config/popover.js"></script>
+  <!-- SP-4 Fase B Task 1: entity-picker.js sostituisce il selettore entità
+       singleton di permessi.js (istanziabile, serve l'editor Chatbot ora e
+       l'editor Agentbot in seguito, che ne userà tre per riga). Usa escHtml
+       (api.js) — deve caricare dopo api.js e prima di chatbot-editor.js,
+       che lo istanzia in populatePermessi(). -->
+  <script src="static/config/entity-picker.js"></script>
   <script src="static/config/chatbot-editor.js"></script>
   <script src="static/config/dashboard.js"></script>
   <script src="static/config/chatbots-list.js"></script>

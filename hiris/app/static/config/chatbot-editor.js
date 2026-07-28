@@ -30,6 +30,15 @@
     return '0.11.0'; /* fallback manuale se non c'è query string sulla src */
   })();
 
+  /* Istanza corrente del selettore entità (config/entity-picker.js,
+     istanziabile — non più il vecchio singleton _entitySelectionSet di
+     permessi.js). Ricreata a ogni populatePermessi(); la vecchia istanza
+     viene distrutta prima (destroy() stacca il listener documento del
+     click-fuori, altrimenti leak a ogni remount). Esposta anche su
+     window.HirisAgentEntityPicker perché chatbot-form.js (openAgent/
+     buildPayload) è un file separato senza accesso a questa closure. */
+  var entityPickerInstance = null;
+
   var legacyLoaded = false;
   /* Task 4 (Slice 5): rimossi cron.js/cron-popover.js/triggers.js/
      action-editor.js/script-action.js — erano la macchina di trigger e
@@ -136,29 +145,37 @@
   }
 
   function populatePermessi() {
+    /* Istanza precedente (mount precedente) non ancora distrutta -> stacca
+       il suo listener documento prima di buttare via il DOM sotto di lei. */
+    if (entityPickerInstance) {
+      entityPickerInstance.destroy();
+      entityPickerInstance = null;
+      window.HirisAgentEntityPicker = null;
+    }
+
     document.getElementById('sc-body-permessi').innerHTML =
       '<div class="field-group"><div class="fg-label">Strumenti</div>' +
         '<div class="tool-checkboxes" id="tool-checks"></div></div>' +
       '<div class="field-group"><div class="fg-label">Entità accessibili</div>' +
-        '<div class="entity-selector">' +
-          '<div class="entity-domain-pills" id="entity-domain-pills">' +
-            '<span class="domain-pill" data-pattern="light.*">💡 luci</span>' +
-            '<span class="domain-pill" data-pattern="switch.*">🔌 switch</span>' +
-            '<span class="domain-pill" data-pattern="sensor.*">📊 sensori</span>' +
-            '<span class="domain-pill" data-pattern="climate.*">🌡️ clima</span>' +
-            '<span class="domain-pill" data-pattern="cover.*">🪟 tapparelle</span>' +
-            '<span class="domain-pill" data-pattern="valve.*">🚰 valvole</span>' +
-            '<span class="domain-pill" data-pattern="binary_sensor.*">⚡ binari</span>' +
-            '<span class="domain-pill" data-pattern="person.*">🧑 persone</span>' +
-          '</div>' +
-          '<input class="input" id="entity-search" placeholder="Cerca entità…" aria-label="Cerca entità">' +
-          '<div id="entity-suggestions" class="entity-suggestions" style="display:none"></div>' +
-          '<div id="entity-chips" class="entity-chips"></div>' +
-          '<input type="hidden" id="f-entities">' +
-        '</div></div>' +
+        '<div id="entity-picker-root"></div></div>' +
       '<div id="f-actions-section" class="field-group" style="display:none">' +
         '<div class="fg-label">Azioni permesse</div>' +
         '<div class="tool-checkboxes" id="action-checks"></div></div>';
+
+    entityPickerInstance = HirisEntityPicker.create(document.getElementById('entity-picker-root'), {
+      placeholder: 'Cerca entità…',
+      pills: [
+        { label: '💡 luci', pattern: 'light.*' },
+        { label: '🔌 switch', pattern: 'switch.*' },
+        { label: '📊 sensori', pattern: 'sensor.*' },
+        { label: '🌡️ clima', pattern: 'climate.*' },
+        { label: '🪟 tapparelle', pattern: 'cover.*' },
+        { label: '🚰 valvole', pattern: 'valve.*' },
+        { label: '⚡ binari', pattern: 'binary_sensor.*' },
+        { label: '🧑 persone', pattern: 'person.*' },
+      ],
+    });
+    window.HirisAgentEntityPicker = entityPickerInstance;
   }
 
   function populateStato() {
@@ -343,65 +360,16 @@
        btn-add-trigger/triggers-list — la sezione Trigger e triggers.js sono
        stati ritirati insieme alla macchina action/rules/states (Task 1-3). */
 
-    /* permessi.js — domain pills + entity search */
-    document.querySelectorAll('.domain-pill').forEach(function(pill) {
-      pill.onclick = function() {
-        if (typeof _entitySelectorAdd === 'function') {
-          _entitySelectorAdd(this.dataset.pattern);
-        }
-        var s = document.getElementById('entity-search');
-        if (s) s.value = '';
-      };
-    });
-    var es = document.getElementById('entity-search');
-    var sg = document.getElementById('entity-suggestions');
-    if (es && sg) {
-      var searchTimer = null;
-      es.oninput = function() {
-        clearTimeout(searchTimer);
-        var q = es.value.trim();
-        if (!q) { sg.style.display = 'none'; return; }
-        searchTimer = setTimeout(function() {
-          fetch('api/entities?q=' + encodeURIComponent(q))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-              var items = (data && data.entities) || [];
-              sg.innerHTML = '';
-              if (!items.length) { sg.style.display = 'none'; return; }
-              items.slice(0, 20).forEach(function(item) {
-                var div = document.createElement('div');
-                div.className = 'suggestion-item';
-                var nm = item.friendly_name || '';
-                // Review L/6: the old ad-hoc `.replace(/[<>&]/g, '')` stripped
-                // <>& but never touched quotes -- harmless here (text-node
-                // content, not an attribute) but a landmine if this pattern
-                // were ever copied into attribute-building code. Use the
-                // shared escHtml() (api.js, loaded before this file), which
-                // also escapes quotes, instead of a bespoke partial escaper.
-                div.innerHTML = '<span>' + escHtml(item.entity_id) + '</span><span class="s-name">' + escHtml(nm) + '</span>';
-                div.addEventListener('click', function() {
-                  if (typeof _entitySelectorAdd === 'function') _entitySelectorAdd(item.entity_id);
-                  es.value = ''; sg.style.display = 'none';
-                });
-                sg.appendChild(div);
-              });
-              sg.style.display = 'block';
-            }).catch(function() {});
-        }, 300);
-      };
-      es.onkeydown = function(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          var q = es.value.trim();
-          if (q && typeof _entitySelectorAdd === 'function') {
-            _entitySelectorAdd(q);
-            es.value = ''; sg.style.display = 'none';
-          }
-        } else if (e.key === 'Escape') {
-          sg.style.display = 'none';
-        }
-      };
-    }
+    /* SP-4 Fase B Task 1: rimosso il rebind manuale di domain-pill/
+       entity-search/entity-suggestions. Il selettore entità ora è
+       config/entity-picker.js (HirisEntityPicker.create), istanziato da
+       populatePermessi() con listener propri per istanza — questo
+       "rewire dopo il fatto" esisteva solo per ricollegare i listener
+       IIFE-time del vecchio singleton (permessi.js) a nodi rimontati.
+       Non serve più: ogni mount crea una nuova istanza con i propri
+       listener già corretti, e la vecchia viene distrutta (destroy(),
+       che stacca il listener documento del click-fuori invece di
+       lasciarlo agganciato a nodi detached — era un leak). */
 
     /* Task 4 (Slice 5): rimossi i rebind di f-type/f-action-mode/f-states —
        quei campi non esistono più nel markup (Tipo/Azioni/Stati ritirati).
@@ -458,7 +426,7 @@
   function initNewAgent() {
     /* chatbot-form.js currentId — reset */
     if (typeof window !== 'undefined') window.currentId = null;
-    if (typeof _entitySelectorLoad === 'function') _entitySelectorLoad([]);
+    if (window.HirisAgentEntityPicker) window.HirisAgentEntityPicker.setValue([]);
     if (typeof buildToolChecks === 'function') buildToolChecks([]);
     if (typeof buildActionChecks === 'function') buildActionChecks([]);
 
