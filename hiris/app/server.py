@@ -8,7 +8,7 @@ import os
 import re
 import shutil
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 import aiohttp
 import uvicorn
 from aiohttp import web
@@ -1230,6 +1230,13 @@ async def _on_startup(app: web.Application) -> None:
     suggestion_store = SuggestionStore(os.path.join(data_dir, "suggestions.db"))
     app["suggestion_store"] = suggestion_store
 
+    from .brain.reasoning_log import ReasoningLog
+    from .brain.advisory_store import AdvisoryStore
+    reasoning_log = ReasoningLog(os.path.join(data_dir, "brain_reasoning.db"))
+    app["reasoning_log"] = reasoning_log
+    advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
+    app["advisory_store"] = advisory_store
+
     async def _gather_context(wake) -> dict:
         # Best-effort friendly_name from the entity cache; falls back to the
         # raw entity_id when unavailable. This part is unchanged from before
@@ -1680,6 +1687,13 @@ async def _on_startup(app: web.Application) -> None:
                                           model=_brain_model, max_tokens=1536)
                 _suggs = parse_suggestions(_text)
 
+                try:
+                    _rlog = app.get("reasoning_log")
+                    if _rlog is not None and _text and _text.strip():
+                        _rlog.capture(mode="holistic", text=_text)
+                except Exception:
+                    logger.warning("reasoning capture failed", exc_info=True)
+
                 def _mk_proposal(c):
                     return _spawn(create_automation_proposal(
                         proposal_store, proposal_type="ha_automation",
@@ -1748,6 +1762,35 @@ async def _on_startup(app: web.Application) -> None:
         situation_evaluator.run_evaluation, trigger="interval",
         minutes=int(os.environ.get("SENTINEL_RONDA_MINUTES", "15")),
         id="hiris_sentinel_ronda", replace_existing=True, misfire_grace_time=300)
+
+    # SP-3 Task 8: periodic read-only health scan (5 checks) reconciled into
+    # the AdvisoryStore, plus a nightly prune of the reasoning capture log.
+    from .brain.health_scan import run_health_scan
+
+    async def _run_health_scan():
+        try:
+            pol = app.get("execute_policy") or {}
+            await run_health_scan(
+                ha_client=ha_client, entity_cache=app.get("entity_cache"),
+                tiers=pol.get("tiers") or {}, entity_tiers=pol.get("entity_tiers") or {},
+                store=advisory_store, now=datetime.now(timezone.utc))
+        except Exception:
+            logger.exception("health scan failed")
+
+    engine._scheduler.add_job(
+        _run_health_scan, trigger="interval",
+        minutes=int(os.environ.get("HIRIS_HEALTH_SCAN_MINUTES", "30")),
+        id="hiris_health_scan", replace_existing=True, misfire_grace_time=300)
+
+    def _run_reasoning_prune():
+        try:
+            reasoning_log.prune(max_rows=500, max_age_days=30)
+        except Exception:
+            logger.exception("reasoning prune failed")
+
+    engine._scheduler.add_job(
+        _run_reasoning_prune, trigger="cron", hour=3, minute=15,
+        id="hiris_reasoning_prune", replace_existing=True, misfire_grace_time=3600)
 
     # ── Ponte push (Piano A): spazzata di fallback per i job scaduti senza risposta dal
     # runner remoto. Se BRIDGE_FALLBACK è attivo, ragiona in locale riusando
@@ -2050,6 +2093,10 @@ async def _on_cleanup(app: web.Application) -> None:
         app["sentinel_store"].close()
     if "suggestion_store" in app:
         app["suggestion_store"].close()
+    if "reasoning_log" in app:
+        app["reasoning_log"].close()
+    if "advisory_store" in app:
+        app["advisory_store"].close()
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "task_engine" in app:
@@ -2179,6 +2226,16 @@ def create_app() -> web.Application:
     from .api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
+
+    from .api.handlers_brain import (
+        handle_brain_feed, handle_brain_reasoning, handle_list_advisories,
+        handle_ack_advisory, handle_dismiss_advisory,
+    )
+    app.router.add_get("/api/brain/feed", handle_brain_feed)
+    app.router.add_get("/api/brain/reasoning", handle_brain_reasoning)
+    app.router.add_get("/api/brain/advisories", handle_list_advisories)
+    app.router.add_post("/api/brain/advisories/{id}/ack", handle_ack_advisory)
+    app.router.add_post("/api/brain/advisories/{id}/dismiss", handle_dismiss_advisory)
 
     return app
 
