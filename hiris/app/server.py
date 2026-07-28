@@ -985,9 +985,24 @@ async def _on_startup(app: web.Application) -> None:
                 list(engine.list_chatbots().keys()),
                 list(mqtt_pub._DISCOVERY_METRICS),
             )
-            os.makedirs(data_dir, exist_ok=True)
-            with open(_mqtt_migration_marker, "w", encoding="utf-8") as f:
-                f.write(datetime.now(timezone.utc).isoformat())
+            # The marker must only be written once the retraction publishes
+            # above have actually reached the broker, not merely been
+            # enqueued: if MQTT is unreachable at boot (HA host and add-ons
+            # routinely start together), writing the marker right after
+            # enqueueing would permanently skip the retraction, orphaning
+            # the old hiris_<id>_* entities in HA forever. Bounded wait so a
+            # genuinely-down broker doesn't hang startup; on timeout the
+            # marker is left absent so the next boot retries.
+            if await mqtt_pub.wait_drained(timeout=30.0):
+                os.makedirs(data_dir, exist_ok=True)
+                with open(_mqtt_migration_marker, "w", encoding="utf-8") as f:
+                    f.write(datetime.now(timezone.utc).isoformat())
+            else:
+                logger.warning(
+                    "MQTT legacy discovery cleanup: publish queue did not "
+                    "drain within 30s (broker unreachable?) — marker not "
+                    "written, retraction will retry on next boot"
+                )
         except Exception as exc:
             logger.warning("MQTT legacy discovery cleanup failed: %s", exc)
 

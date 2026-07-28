@@ -11,9 +11,10 @@ _RECONNECT_MAX = 60
 
 
 class MQTTPublisher:
-    # Pre-rename (SP-4 Fase A Task 1) discovery scheme — kept only so
-    # cleanup_legacy_discovery() can address the orphaned HA entities it
-    # replaces. Never used to publish new state/discovery.
+    # Pre-rename (SP-4 Fase A Task 1) discovery/state scheme — kept only so
+    # cleanup_legacy_discovery() can retract the orphaned discovery configs
+    # AND the stale retained state messages published under it. Never used
+    # to publish new state/discovery.
     _OLD_STATE_PREFIX = "hiris/agents"
     _OLD_ID_FMT = "hiris_{id}"
 
@@ -265,7 +266,13 @@ class MQTTPublisher:
         """Remove HA entities discovered under the pre-rename id scheme
         (``hiris_<id>``) by publishing an empty retained payload on each old
         discovery topic — HA drops the entity (and, once all its entities
-        are gone, the device) when it sees an empty config payload."""
+        are gone, the device) when it sees an empty config payload.
+
+        Also retracts the old retained STATE topics (``hiris/agents/<id>/
+        <metric>``, the pre-rename ``_OLD_STATE_PREFIX``): an empty retained
+        publish clears the broker's retained message so a client subscribing
+        fresh no longer receives the stale value, mirroring the discovery
+        retraction above so no piece of the old scheme is left behind."""
         if not self._enabled:
             return
         for cid in chatbot_ids:
@@ -276,3 +283,27 @@ class MQTTPublisher:
                     await self._pending.put((topic, ""))
                 except Exception:
                     logger.warning("legacy discovery cleanup failed for %s", topic, exc_info=True)
+            for metric in metrics:
+                state_topic = f"{self._OLD_STATE_PREFIX}/{cid}/{metric}"
+                try:
+                    await self._pending.put((state_topic, ""))
+                except Exception:
+                    logger.warning("legacy state cleanup failed for %s", state_topic, exc_info=True)
+
+    async def wait_drained(self, timeout: float = 30.0) -> bool:
+        """Block until every item currently on the outbound ``_pending``
+        queue has been published (or the wait times out).
+
+        Used by server.py's one-time legacy-discovery-cleanup marker: that
+        marker must only be written once the retraction publishes enqueued
+        by ``cleanup_legacy_discovery`` have actually reached the broker —
+        writing it right after they're merely *enqueued* would permanently
+        skip the retraction if the broker happens to be unreachable at boot
+        (routine: HA host and add-ons start together). Returns True if the
+        queue drained within ``timeout`` seconds, False on timeout (caller
+        must then NOT write the marker, so the next boot retries)."""
+        try:
+            await asyncio.wait_for(self._pending.join(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False

@@ -101,6 +101,15 @@ class Guardian:
             if trigger.get("type") != "event" or trigger.get("entity_id") != eid:
                 continue
             agentbot_id = agentbot.get("id", "-")
+            # NOTE (SP-4 Fase A Task 3 rename): this duration-timer key
+            # changed from `lens:{id}:{eid}` to `agentbot:{id}:{eid}` — the
+            # sibling of the cap/cooldown key rename documented in
+            # `lens_runner.run_agentbot` (see that docstring for the full
+            # rationale). Any Agentbot with an in-progress "needs_duration"
+            # condition timer under the OLD `lens:*` key becomes an
+            # unreachable orphan row in the store on the day this ships and
+            # restarts its wait from zero under the new key — same
+            # deliberate, documented one-time reset, not a bug.
             key = f"agentbot:{agentbot_id}:{eid}"
             try:
                 sig = make_generic_detector(trigger)(eid, old, new, {}, now)

@@ -20,6 +20,43 @@ async def test_start_disabled_when_host_empty():
     assert not pub.is_connected
 
 
+# ---------------------------------------------------------------------------
+# wait_drained — used by server.py to gate writing the one-time
+# .mqtt_discovery_migrated marker on the retraction publishes having
+# actually reached the broker, not merely been enqueued.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_wait_drained_true_when_queue_already_empty():
+    pub = MQTTPublisher()
+    assert await pub.wait_drained(timeout=1.0) is True
+
+
+@pytest.mark.asyncio
+async def test_wait_drained_true_once_pending_items_are_processed():
+    pub = MQTTPublisher()
+    await pub._pending.put(("some/topic", "payload"))
+
+    async def _consume():
+        topic, payload = await pub._pending.get()
+        pub._pending.task_done()
+
+    import asyncio
+    consumer = asyncio.create_task(_consume())
+    assert await pub.wait_drained(timeout=2.0) is True
+    await consumer
+
+
+@pytest.mark.asyncio
+async def test_wait_drained_false_on_timeout_when_nothing_drains_it():
+    """Simulates an unreachable broker: items sit on the queue forever
+    (nothing is running _publish_drain), so wait_drained must time out and
+    return False rather than hang or falsely report success."""
+    pub = MQTTPublisher()
+    await pub._pending.put(("some/topic", "payload"))
+    assert await pub.wait_drained(timeout=0.2) is False
+
+
 @pytest.mark.asyncio
 async def test_stop_without_start_does_not_raise():
     pub = MQTTPublisher()
@@ -172,12 +209,38 @@ async def test_cleanup_legacy_discovery_noop_when_disabled():
 
 
 @pytest.mark.asyncio
+async def test_cleanup_legacy_discovery_retracts_old_state_topics():
+    """The old-scheme cleanup must also retract the old retained STATE
+    topics (hiris/agents/<id>/<metric>), not just the discovery configs —
+    otherwise a fresh subscriber would still see the stale retained value."""
+    pub = MQTTPublisher()
+    pub._enabled = True
+    metrics = ["status", "last_run", "last_result", "budget_eur",
+               "budget_remaining_eur", "tokens_used_today", "enabled"]
+
+    await pub.cleanup_legacy_discovery(["chat-a", "chat-b"], metrics)
+    topics = await _drain(pub)
+
+    for cid in ("chat-a", "chat-b"):
+        for metric in metrics:
+            topic = f"hiris/agents/{cid}/{metric}"
+            assert topic in topics
+            assert topics[topic] == ""  # empty retained payload -> clears the retained value
+
+
+@pytest.mark.asyncio
 async def test_cleanup_legacy_discovery_does_not_touch_new_scheme_topics():
-    """The old-scheme cleanup must only ever publish to hiris_<id> topics —
-    never collide with the new chatbot_<id> discovery scheme."""
+    """The old-scheme cleanup (discovery configs + state topics) must only
+    ever touch the old hiris_<id> / hiris/agents scheme — never collide
+    with the new chatbot_<id> discovery / hiris/chatbots state scheme."""
     pub = MQTTPublisher()
     pub._enabled = True
     await pub.cleanup_legacy_discovery(["chat-a"], ["status"])
     topics = await _drain(pub)
     assert all("chatbot_" not in topic for topic in topics)
-    assert all(topic.startswith("homeassistant/sensor/hiris_") for topic in topics)
+    assert all("hiris/chatbots" not in topic for topic in topics)
+    for topic in topics:
+        assert (
+            topic.startswith("homeassistant/sensor/hiris_")
+            or topic.startswith("hiris/agents/")
+        )

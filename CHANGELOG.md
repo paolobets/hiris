@@ -38,6 +38,24 @@ scheduling.
   ragionamento, non l'entità Chatbot); il prefisso discovery HA
   `"homeassistant"`; l'aggettivo "agentic" nei runner.
 
+**⚠️ Note operative per l'aggiornamento:**
+
+- **Aggiornare HIRIS e Retro Panel insieme.** L'API è cambiata: Retro Panel
+  ≥ 2.24.0 richiede HIRIS ≥ 0.102.0 (il proxy RP chiama `/api/chatbots`, che
+  non esiste sulle versioni HIRIS precedenti).
+- **Aggiornamento non reversibile.** Le migrazioni automatiche riscrivono
+  `knowledge.db` (schema v3) e `chat_history.db`, e rinominano
+  `sentinel_lenses.json`→`agentbots.json` sul disco. Un downgrade a una
+  0.101.x precedente **non è supportato** dopo l'aggiornamento — fare uno
+  snapshot dell'add-on/HA prima di aggiornare.
+- **Reset una-tantum atteso (non è un bug).** Al primo avvio dopo
+  l'aggiornamento: il cooldown e il cap giornaliero degli Agentbot, e i
+  timer di durata (`duration_min`) delle condizioni in corso, ripartono da
+  zero (cambio di chiave interna `lens:*`→`agentbot:*`); le entità MQTT
+  scoperte col vecchio schema (`hiris_<id>_*`) vengono ritirate e
+  ripubblicate col nuovo schema (`chatbot_<id>_*`) — un eventuale riordino
+  delle entità HIRIS in Home Assistant è quindi atteso.
+
 ## [0.101.0] — Brain come fulcro: home, stream ragionamenti, health-scan advisory (SP-3 v1) (2026-07-28)
 
 **Home del Brain su `#/`:** supervisione casa + stream ragionamenti (cattura rationale del giro olistico, nessuna nuova chiamata LLM) + segnalazioni (health-scan a 5 check read-only: entità non disponibili, batterie scariche, automazioni rotte, domini pericolosi in verde, entità senza area).

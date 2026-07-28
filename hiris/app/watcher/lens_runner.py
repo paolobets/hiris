@@ -151,6 +151,14 @@ async def run_agentbot(
     does not touch the semaforo (dangerous-domain denylist / tier gate /
     step-up), which is unconditional and unaffected by this rename. See
     Task 3 report for the full rationale.
+
+    Sibling reset: `watcher.guardian.Guardian._dispatch_user_agentbots`
+    changed its OWN per-Agentbot duration-timer key the same way
+    (`lens:{id}:{eid}` -> `agentbot:{id}:{eid}`) for the `needs_duration`
+    gating on EVENT-triggered Agentbots -- any in-progress duration timer
+    under the old key becomes an unreachable orphan row and restarts from
+    zero under the new key on the same boot. Same deliberate one-time
+    reset, not a bug.
     """
     _cooldown_sec = 1800 if cooldown_sec is None else cooldown_sec
     agentbot = agentbot or {}

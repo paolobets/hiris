@@ -112,7 +112,7 @@ async def handle_create_agentbot(request: web.Request) -> web.Response:
     body = {k: v for k, v in body.items() if k != "id"}
     cleaned = _store.validate_agentbot(body)
     if cleaned is None:
-        return web.json_response({"error": "invalid lens"}, status=400)
+        return web.json_response({"error": "invalid agentbot"}, status=400)
     data_dir = _data_dir(request)
     all_agentbots = _store.upsert_agentbot(data_dir, cleaned)
     await _apply_mutation(request.app, all_agentbots)
@@ -132,14 +132,14 @@ async def handle_update_agentbot(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "invalid JSON"}, status=400)
     if not isinstance(body, dict):
-        return web.json_response({"error": "invalid lens"}, status=400)
+        return web.json_response({"error": "invalid agentbot"}, status=400)
     # The path id is authoritative -- a client-supplied body["id"] can never
     # smuggle an update onto a DIFFERENT existing Agentbot than the URL
     # names.
     body = {**body, "id": agentbot_id}
     cleaned = _store.validate_agentbot(body)
     if cleaned is None:
-        return web.json_response({"error": "invalid lens"}, status=400)
+        return web.json_response({"error": "invalid agentbot"}, status=400)
     all_agentbots = _store.upsert_agentbot(data_dir, cleaned)
     await _apply_mutation(request.app, all_agentbots)
     return web.json_response({"ok": True, "agentbot": cleaned, "agentbots": all_agentbots})
