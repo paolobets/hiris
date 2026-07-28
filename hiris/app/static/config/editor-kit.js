@@ -1,8 +1,21 @@
-/* HIRIS · Designer · editor-kit (SP-4 Fase B Task 3)
-   Kit condiviso fra gli editor Chatbot/Agentbot: select modello con fetch
+/* HIRIS · Designer · editor-kit (SP-4 Fase B Task 3, field.* in Task 5)
+   Kit condiviso fra gli editor Chatbot/Agentbot: fabbriche di campo
+   (field.text/number/checkbox/select/textarea), select modello con fetch
    cachata, gruppo checkbox istanza-scoped, dirty tracking reale
    (MutationObserver, non uno snapshot one-shot) + guard di navigazione,
    barra Salva/Annulla sticky.
+
+   field.* (Task 5): reintrodotte come consumatore reale di
+   agentbot-editor.js -- l'editor Agentbot per-entità (Identità, Trigger,
+   Modello, Verdetto, Azione, Abilitazione) ha ~15 campi input/select/
+   textarea "semplici" (non picker, non checkGroup, non modelSelect) che
+   PRIMA di questo task vivevano come closure private duplicate dentro
+   agentbot-route.js (textField/numberField/checkboxField/selectField/
+   textareaField, righe 128-268 del file pre-split -- vedi grounding A5).
+   Un'unica implementazione qui, niente più fabbriche private nell'editor.
+   agentbot-route.js (blocchi Situazioni/Preparazione, che RESTANO) tiene
+   le proprie closure locali: non toccate da questo task, sono fuori dal
+   confine del taglio (righe 340-605 si spostano, non le altre).
 
    Chiude due bug live (vedi docs/design/2026-07-28-piano-SP4b1-cornice-
    unificata.md):
@@ -38,24 +51,22 @@
     return (prefix || 'hk') + '-' + _seq;
   }
 
-  /* ── fieldWrap: helper di layout condiviso da modelSelect() ─────────
-     Stessa struttura visiva (div.field + label[for]) già usata dal markup
-     statico di chatbot-editor.js, così la CSS esistente (hiris-config.css)
-     si applica senza modifiche.
+  /* ── field factories ──────────────────────────────────────────────
+     Ognuna ritorna l'elemento input/select/textarea creato. Stessa
+     struttura visiva (div.field + label[for], classi input/select/
+     textarea/checkbox-row, field-hint) già usata dal markup statico di
+     chatbot-editor.js, così la CSS esistente (hiris-config.css) si
+     applica senza modifiche.
 
-     Fix guard/router echo (review CRITICAL): questo file esportava anche
-     una famiglia di fabbriche field.text/number/checkbox/select/textarea
-     (e il loro helper appendHint) con ZERO call site — agentbot-route.js
-     ha mantenuto le proprie closure locali, chatbot-editor.js costruisce
-     i campi semplici con innerHTML grezzo (vedi populateIdentita/
-     populateModello/populateStato qui sotto), quindi in pagina convivevano
-     TRE modi di costruire un campo, uno dei quali mai raggiunto. Rimossa:
-     riscrivere chatbot-editor.js per usarla avrebbe richiesto rifare ogni
-     populate*() (field-row affiancati, hint già incorporati nel markup
-     esistente, oninput speciale su f-strategic/f-prompt) — un refactor
-     estraneo allo scope di questo fix, con solo rischio di regressioni
-     visive. Task 5 (agentbot-editor.js, editor Agentbot da zero) la
-     reintrodurrà quando servirà un consumatore reale. */
+     Storia (per chi legge git blame): questo file le esportava già dal
+     Task 3 ma con ZERO call site -- agentbot-route.js manteneva le
+     proprie closure locali (textField/entityField/numberField/...),
+     chatbot-editor.js costruisce i campi con innerHTML grezzo nei suoi
+     populate*(). Rimosse in un fix successivo come dead code, con la nota
+     esplicita che il Task 5 le avrebbe reintrodotte con un consumatore
+     reale. Quel consumatore è agentbot-editor.js (editor Agentbot
+     per-entità): niente più fabbriche di campo private duplicate lì
+     dentro, una sola implementazione qui. */
 
   function fieldWrap(parent, labelText, forId) {
     var wrap = document.createElement('div');
@@ -68,6 +79,95 @@
     }
     parent.appendChild(wrap);
     return wrap;
+  }
+
+  function appendHint(wrap, hintText) {
+    if (!hintText) return null;
+    var h = document.createElement('p');
+    h.className = 'field-hint';
+    h.textContent = hintText;
+    wrap.appendChild(h);
+    return h;
+  }
+
+  function fieldText(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-text');
+    var wrap = fieldWrap(parent, opts.label, id);
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'input';
+    inp.id = id;
+    inp.value = opts.value != null ? opts.value : '';
+    if (opts.placeholder) inp.placeholder = opts.placeholder;
+    wrap.appendChild(inp);
+    appendHint(wrap, opts.hint);
+    return inp;
+  }
+
+  function fieldNumber(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-number');
+    var wrap = fieldWrap(parent, opts.label, id);
+    var inp = document.createElement('input');
+    inp.type = 'number';
+    inp.className = 'input';
+    inp.id = id;
+    inp.value = opts.value != null ? opts.value : '';
+    if (opts.min != null) inp.min = opts.min;
+    if (opts.max != null) inp.max = opts.max;
+    wrap.appendChild(inp);
+    appendHint(wrap, opts.hint);
+    return inp;
+  }
+
+  function fieldCheckbox(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-check');
+    var row = document.createElement('label');
+    row.className = 'checkbox-row';
+    var inp = document.createElement('input');
+    inp.type = 'checkbox';
+    inp.id = id;
+    inp.checked = !!opts.value;
+    row.appendChild(inp);
+    row.appendChild(document.createTextNode(' ' + (opts.label || '')));
+    parent.appendChild(row);
+    return inp;
+  }
+
+  function fieldSelect(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-select');
+    var wrap = fieldWrap(parent, opts.label, id);
+    var sel = document.createElement('select');
+    sel.className = 'select';
+    sel.id = id;
+    (opts.options || []).forEach(function(o) {
+      var opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label != null ? o.label : o.value;
+      if (o.value === opts.value) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    wrap.appendChild(sel);
+    appendHint(wrap, opts.hint);
+    return sel;
+  }
+
+  function fieldTextarea(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-textarea');
+    var wrap = fieldWrap(parent, opts.label, id);
+    var ta = document.createElement('textarea');
+    ta.className = 'textarea';
+    ta.id = id;
+    ta.rows = opts.rows || 3;
+    ta.value = opts.value != null ? opts.value : '';
+    if (opts.placeholder) ta.placeholder = opts.placeholder;
+    wrap.appendChild(ta);
+    appendHint(wrap, opts.hint);
+    return ta;
   }
 
   /* ── modelSelect: UNA fetch api/models condivisa e cachata ──────────
@@ -343,6 +443,13 @@
   }
 
   window.HirisEditorKit = {
+    field: {
+      text: fieldText,
+      number: fieldNumber,
+      checkbox: fieldCheckbox,
+      select: fieldSelect,
+      textarea: fieldTextarea
+    },
     modelSelect: modelSelect,
     setModelValue: setModelValue,
     checkGroup: checkGroup,

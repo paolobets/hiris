@@ -214,6 +214,12 @@
   <script src="static/config/gateway-route.js"></script>
   <script src="static/config/history-route.js"></script>
   <script src="static/config/agentbot-route.js"></script>
+  <!-- SP-4 Fase B Task 5: editor Agentbot per-entità, estratto dal blocco
+       CRUD che viveva dentro agentbot-route.js. Usa HirisEntityPicker
+       (entity-picker.js) ed HirisEditorKit (editor-kit.js), entrambi già
+       caricati sopra -- l'ordine relativo ad agentbot-route.js non conta
+       (moduli indipendenti su window), ma deve caricare dopo di loro. -->
+  <script src="static/config/agentbot-editor.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>

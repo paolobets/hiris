@@ -199,6 +199,22 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Agentbot</div>';
     }
   });
+  /* SP-4 Fase B Task 5: editor per-entità (config/agentbot-editor.js),
+     estratto dal blocco CRUD che agentbot-route.js possedeva -- stesso
+     pattern di #/chatbots/new e #/chatbots/{id} sopra. Il pattern "/new"
+     va registrato PRIMA di quello generico "/([^/]+)$": altrimenti
+     "#/agentbots/new" combacerebbe comunque con [^/]+ e finirebbe nel ramo
+     sbagliato (stesso ordine già usato per i Chatbot qui sopra). */
+  HirisRouter.register(/^#\/agentbots\/new\/?$/, function() {
+    setCrumbHere('Agentbot / Nuovo');
+    HirisState.set('activeAgentbotId', null);
+    HirisAgentbotEditor.mount(null);
+  });
+  HirisRouter.register(/^#\/agentbots\/([^/]+)$/, function(m) {
+    setCrumbHere('Agentbot / ' + m[1]);
+    HirisState.set('activeAgentbotId', m[1]);
+    HirisAgentbotEditor.mount(m[1]);
+  });
   /* v0.10.5: rimosso route /settings — la nav voce è stata tolta da config.html
      (era solo placeholder "Implementata in Phase 11"). Re-aggiungere quando
      ci sarà contenuto reale (theme persist, version info, diagnostic export). */
