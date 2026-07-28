@@ -1,5 +1,65 @@
 # HIRIS — Changelog
 
+## [1.0.0] — Prima versione definitiva (2026-07-29)
+
+Chiude l'arco SP-1→SP-4: HIRIS non è più uno stage sperimentale, è un
+add-on con un modello mentale stabile e una cornice front-end coerente.
+Nessuna capacità nuova rispetto alla 0.102.x — questa release **consolida**
+ciò che le release 0.99.x→0.102.x hanno già introdotto e chiude il rebuild
+dell'editor che le sosteneva.
+
+- **Tre entità AI con nomi definitivi.** **Chatbot** — conversazionale, a
+  interrogazione: prompt libero, legge HA liberamente, le azioni passano dal
+  semaforo. **Agentbot** — autonomo: agisce o segnala **da solo** su un
+  proprio trigger (cron/interval/evento), contratto a **verdetto JSON**,
+  azione **dichiarata in configurazione**, mai scelta dall'AI. **Brain** —
+  il fulcro: ragiona, traccia le abitudini della casa e propone (nuovi
+  Agentbot, automazioni HA, evoluzioni), preferendo segnalare-e-chiedere
+  piuttosto che agire di testa propria.
+- **Home del Brain (`#/`).** Stream dei ragionamenti (rationale del giro
+  olistico, nessuna nuova chiamata LLM), segnalazioni da un health-scan a
+  **5 controlli read-only** (entità non disponibili, batterie scariche,
+  automazioni rotte, domini pericolosi in verde, entità senza area — si
+  auto-risolvono quando il problema sparisce), e proposte in attesa di
+  revisione, tutto in un unico stream.
+- **Layer Modelli (`#/models`).** Attivazione provider esplicita (un
+  provider è usato solo se attivo *e* credenziato), **Abbonamento Claude
+  Max first-class** (sostituisce la vecchia accoppiata
+  `chat_via_subscription`+`bridge_enabled`), catena di fallback unica
+  riordinabile, e **modello per-entità**: ogni Chatbot e ogni Agentbot
+  sceglie il proprio modello, il Brain il suo (`brain_model`).
+- **Cornice unificata.** Un solo editor per Chatbot e Agentbot (stesso kit
+  condiviso: dirty-tracking reale, guard di navigazione, selettore entità
+  istanziabile — i puntelli legacy che tenevano insieme l'editor precedente
+  sono stati smontati). Creazione **goal-first** (`#/nuovo`): l'utente
+  scrive l'obiettivo in linguaggio naturale, HIRIS deriva il tipo giusto
+  (Chatbot o Agentbot, euristica deterministica — nessuna chiamata LLM, e
+  la scelta resta sempre modificabile), poi passa all'editor avanzato per
+  rifinire. `#/chatbots/new` resta la via diretta per chi preferisce
+  partire dall'editor vuoto. `knowledge_access` (scope memoria) è ora
+  **configurabile dalla UI** invece che solo da API.
+- **Sicurezza invariata.** Il **semaforo** resta l'unico gate delle azioni
+  (tier + denylist domini pericolosi); l'Agentbot ragiona **senza tool
+  liberi** (single-shot, ristretto a tool di sola lettura) e la sua azione
+  è sempre dichiarata in configurazione, mai scelta dall'AI — la linea
+  rossa fra prompt libero (Chatbot) e verdetto-JSON (Agentbot) è tenuta
+  strutturalmente (due builder disgiunti su due endpoint disgiunti).
+- **Qualità.** Alla suite Python si aggiunge una nuova suite di **test
+  comportamentali front-end** (`node --test` + jsdom, DOM vero e
+  interazione, non solo asserzioni di testo) eseguita in CI insieme a
+  pytest.
+
+**Nota operativa per chi aggiorna:**
+
+- Chi arriva da una versione **≤ 0.101.x** ha già eseguito le migrazioni
+  dati (rename `agent→chatbot`/`lente→agentbot`, `knowledge.db`,
+  `chat_history.db`, MQTT) al passaggio per la 0.102.0 — vedi le note
+  operative di quella release. Non c'è nessuna migrazione dati aggiuntiva
+  per la 1.0.0: solo il front-end è stato ricostruito.
+- **Aggiornare HIRIS e Retro Panel insieme**: Retro Panel **≥ 2.24.0**
+  richiede HIRIS **≥ 0.102.0** (il proxy chiama `/api/chatbots`, non
+  `/api/agents`).
+
 ## [0.102.0] — SP-4 Fase A: rename profondo Chatbot/Agentbot (2026-07-28)
 
 Rinominato in modo esteso `agente→Chatbot` e `lente→Agentbot` in tutto HIRIS
