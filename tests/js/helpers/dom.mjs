@@ -45,16 +45,52 @@ const globalEval = (0, eval);
  * vicenda (prima, i soli test su entity-picker.js accedevano sempre via
  * `window.HirisEntityPicker` esplicito dal lato test, non da altro codice
  * IIFE caricato insieme).
+ *
+ * Isolamento fra test() nello stesso file: `node --test` isola i FILE di
+ * test in processi separati, ma NON le singole `test()` dentro lo stesso
+ * file — girano nello stesso processo/globalThis. Senza teardown, ogni
+ * chiave che il proxy sotto specchia su `globalThis` (HirisState,
+ * HirisChatbotEditor, HirisEntityPicker, ...) sopravviverebbe alla
+ * chiamata di `loadScripts()` successiva: oggi innocuo (i test ricaricano
+ * sempre la stessa lista di script, quindi il valore viene sovrascritto),
+ * ma un futuro test che carica un SOTTOINSIEME diverso di script
+ * troverebbe comunque il global lasciato da un test "fratello" — un
+ * `typeof X === 'function'` potrebbe risultare vero per un global
+ * ereditato, non prodotto dagli script appena caricati (falso positivo).
+ * Rimedio a due livelli, pensato per essere difficile da usare male:
+ * 1) ogni chiamata di `loadScripts()` traccia le chiavi che IL PROPRIO
+ *    proxy specchia su `globalThis` e, PRIMA di iniziare, ripulisce quelle
+ *    lasciate dall'istanza precedente (`previousMirroredKeys`) — pulizia
+ *    automatica, non serve ricordarsene nel test;
+ * 2) restituisce comunque un `dispose()` esplicito, per chi vuole liberare
+ *    i global a metà test senza aspettare la prossima `loadScripts()`.
  */
+let previousMirroredKeys = null;
+
+function cleanupKeys(keys) {
+  for (const key of keys) {
+    try { delete globalThis[key]; } catch (e) { /* proprietà non configurabile del global host, ignora */ }
+  }
+}
+
 export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {}) {
+  // Auto-teardown: rimuove i global lasciati dall'istanza precedente di
+  // loadScripts() PRIMA di caricarne una nuova, cosi' un test non puo'
+  // accidentalmente vedere un global di un test "fratello" nello stesso file.
+  if (previousMirroredKeys) {
+    cleanupKeys(previousMirroredKeys);
+    previousMirroredKeys = null;
+  }
+
   const dom = new JSDOM(html, { url: 'http://localhost/' });
   const rawWindow = dom.window;
+  const mirroredKeys = new Set();
 
   const windowProxy = new Proxy(rawWindow, {
     set(target, prop, value) {
       target[prop] = value;
       if (typeof prop === 'string') {
-        try { globalThis[prop] = value; } catch (e) { /* proprietà read-only del global host, ignora */ }
+        try { globalThis[prop] = value; mirroredKeys.add(prop); } catch (e) { /* proprietà read-only del global host, ignora */ }
       }
       return true;
     },
@@ -81,7 +117,20 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
     const code = readFileSync(join(STATIC, p), 'utf8');
     globalEval(code);
   }
-  return { dom, window: windowProxy, document: rawWindow.document };
+
+  // `previousMirroredKeys` punta allo stesso Set restituito da `mirroredKeys`:
+  // eventuali chiavi aggiunte DOPO il return (es. `stubFetch(window, ...)`
+  // che fa `window.fetch = ...`) restano tracciate, perché il Set è lo
+  // stesso oggetto, non una copia.
+  previousMirroredKeys = mirroredKeys;
+
+  const dispose = () => {
+    cleanupKeys(mirroredKeys);
+    mirroredKeys.clear();
+    if (previousMirroredKeys === mirroredKeys) previousMirroredKeys = null;
+  };
+
+  return { dom, window: windowProxy, document: rawWindow.document, dispose };
 }
 
 /** fetch finto: mappa url-substring -> payload JSON. */

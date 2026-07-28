@@ -4,7 +4,9 @@
    esistono in v6 — HirisLogRow.render in log-row.js produce il markup
    v6 .log-row/.lr-collapsed/.lr-detail con il proprio click handler).
    IIFE listeners su #f-strategic/#f-prompt rimossi: ora gestiti da
-   rewireLegacyAfterMount in chatbot-editor.js (rebind ad ogni mount). */
+   populateIstruzioni() in chatbot-editor.js (wiring diretto sui nodi
+   appena creati a ogni mount — rewireLegacyAfterMount non esiste più,
+   vedi SP-4 Fase B Task 2: collassato il loader dinamico). */
 
 function renderExecutionLog(a) {
   var body = document.getElementById('log-body');

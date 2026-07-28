@@ -50,8 +50,8 @@ async function _resetAgentUsage() {
   var aid = window.HirisState && HirisState.get('activeChatbotId');
   if (!aid || !confirm('Azzerare i contatori di consumo per questo Chatbot?')) return;
   try {
-    await fetch('api/chatbots/' + encodeURIComponent(aid) + '/usage/reset', { method: 'POST', headers: {'X-Requested-With': 'fetch'} });
-    await loadAgentUsage(aid);
+    var r = await fetch('api/chatbots/' + encodeURIComponent(aid) + '/usage/reset', { method: 'POST', headers: {'X-Requested-With': 'fetch'} });
+    if (r.ok) await loadAgentUsage(aid);
   } catch(e) {}
 }
 
