@@ -5,9 +5,10 @@
 //   type: module
 // Dashboard config:
 //   type: custom:hiris-chat-card
-//   agent_id: hiris-default
+//   chatbot_id: hiris-default
 //   title: "Assistente Casa"
 //   hiris_slug: hiris
+// (retro-compat: older dashboards using `agent_id:` still work — see setConfig)
 
 const POLL_MS = 30_000;
 const CHAT_TIMEOUT_MS = 30_000;
@@ -601,7 +602,7 @@ class HirisCard extends HTMLElement {
   static getConfigElement() { return document.createElement('hiris-chat-card-editor'); }
   static getStubConfig() {
     return {
-      agent_id: 'hiris-default',
+      chatbot_id: 'hiris-default',
       title: 'HIRIS Chat',
       hiris_slug: 'hiris',
       suggestions: [
@@ -614,7 +615,10 @@ class HirisCard extends HTMLElement {
 
   setConfig(config) {
     const prevAgent = this._agentId;
-    this._agentId = config.agent_id || null;
+    // "chatbot_id" is the current config key; "agent_id" is the retro-compat
+    // fallback for dashboard YAML written before the SP-4 Fase A rename —
+    // never break an existing Lovelace card config.
+    this._agentId = config.chatbot_id || config.agent_id || null;
     this._slug = config.hiris_slug || 'hiris';
     this._title = config.title || 'HIRIS Chat';
     this._suggestions = Array.isArray(config.suggestions) && config.suggestions.length
@@ -759,7 +763,7 @@ class HirisCard extends HTMLElement {
           'Authorization': `Bearer ${this._authToken()}`,
           'X-Requested-With': 'fetch',
         },
-        body: JSON.stringify({ message: text, agent_id: this._agentId, stream: true }),
+        body: JSON.stringify({ message: text, chatbot_id: this._agentId, stream: true }),
         signal: controller.signal,
       });
 
@@ -1270,7 +1274,9 @@ class HirisChatCardEditor extends HTMLElement {
   }
 
   _render() {
-    const agentId = this._config.agent_id || '';
+    // Read the new key first; fall back to legacy "agent_id" so the editor
+    // shows the right value for dashboard configs saved before the rename.
+    const agentId = this._config.chatbot_id || this._config.agent_id || '';
     const title = this._config.title || 'HIRIS Chat';
     const suggestions = Array.isArray(this._config.suggestions)
       ? this._config.suggestions.join('\n') : '';
@@ -1398,13 +1404,17 @@ class HirisChatCardEditor extends HTMLElement {
 
     if (agentSelect) {
       agentSelect.onchange = (e) => {
-        this._config = { ...this._config, agent_id: e.target.value };
+        // Write the new key going forward; drop any stale legacy key so the
+        // saved config doesn't carry both.
+        const { agent_id, ...rest } = this._config;
+        this._config = { ...rest, chatbot_id: e.target.value };
         this._fireConfigChanged();
       };
     }
     if (agentInput) {
       agentInput.oninput = (e) => {
-        this._config = { ...this._config, agent_id: e.target.value };
+        const { agent_id, ...rest } = this._config;
+        this._config = { ...rest, chatbot_id: e.target.value };
         this._fireConfigChanged();
       };
     }

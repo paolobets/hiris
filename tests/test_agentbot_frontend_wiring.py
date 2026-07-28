@@ -1,7 +1,7 @@
 from pathlib import Path
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
-def test_sentinel_route_js_exists_and_exposes_mount():
+def test_agentbot_route_js_exists_and_exposes_mount():
     js = (BASE / "config" / "agentbot-route.js").read_text(encoding="utf-8")
     assert "HirisAgentbotRoute" in js and "mount" in js
     # api/sentinel/policy and api/sentinel/timeline are OUT of the SP-4 Fase A
@@ -18,11 +18,11 @@ def test_main_js_registers_route():
     js = (BASE / "config" / "main.js").read_text(encoding="utf-8")
     assert "#/agentbots" in js
 
-def test_sentinel_route_has_situations_section():
+def test_agentbot_route_has_situations_section():
     js = (BASE / "config" / "agentbot-route.js").read_text(encoding="utf-8")
     assert "situations" in js
     assert "hot_and_away" in js and "away_alarm_off" in js
 
-def test_sentinel_route_has_preparation_section():
+def test_agentbot_route_has_preparation_section():
     js = (BASE / "config" / "agentbot-route.js").read_text(encoding="utf-8")
     assert "preparation" in js and "evening_arrival" in js

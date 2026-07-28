@@ -75,7 +75,7 @@
       '<div class="field-group">' +
         '<div class="fg-label">Identità</div>' +
         '<div class="field-row">' +
-          '<div class="field"><label for="f-name">Nome</label><input class="input" type="text" id="f-name" placeholder="Es: Monitor energia"></div>' +
+          '<div class="field"><label for="f-name">Nome</label><input class="input" type="text" id="f-name" placeholder="Es: Assistente Cucina"></div>' +
         '</div>' +
       '</div>';
   }
@@ -164,7 +164,7 @@
   function populateStato() {
     document.getElementById('sc-body-stato').innerHTML =
       '<label class="checkbox-row"><input type="checkbox" id="f-enabled"> Chatbot abilitato</label>' +
-      '<p class="field-hint">Disabilitato = non gira automaticamente, ma può essere lanciato con Test Run.</p>' +
+      '<p class="field-hint">Controlla solo lo stato dell\'entità switch Home Assistant di questo Chatbot; puoi comunque verificarlo con Test Run indipendentemente da questo interruttore.</p>' +
       '<label class="checkbox-row"><input type="checkbox" id="f-require-confirmation"> Richiedi conferma prima delle azioni</label>' +
       '<p class="field-hint">Attende "sì/ok" prima di chiamare call_ha_service.</p>';
   }

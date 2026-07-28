@@ -1,5 +1,43 @@
 # HIRIS — Changelog
 
+## [0.102.0] — SP-4 Fase A: rename profondo Chatbot/Agentbot (2026-07-28)
+
+Rinominato in modo esteso `agente→Chatbot` e `lente→Agentbot` in tutto HIRIS
+(entità, API, route, DB, storage, frontend, wire MQTT, plumbing interno) e
+aggiornato Retro Panel in lockstep. **Comportamento invariato** — solo nomi:
+stesso semaforo, stessi contratti Agentbot (verdetto-JSON senza tool) e
+Chatbot (tool liberi senza trigger), stesso runner, stessa memoria, stesso
+scheduling.
+
+- **API/route:** `/api/agents`→`/api/chatbots`, `/api/lenses`→`/api/agentbots`,
+  `#/agents`→`#/chatbots`, `#/sentinel` (lenti)→`#/agentbots`. Le route
+  `/api/chat`, `/api/entities`, `/api/suggestions*`, `/api/sentinel/policy`,
+  `/api/sentinel/timeline` (config/timeline Sentinella, non le lenti
+  user-defined) restano invariate.
+- **DB/storage:** colonna `knowledge_items.lens`→`chatbot_id`; colonne e indici
+  `chat_store` (`agent_id`→`chatbot_id`, `idx_msg_agent/idx_sess_agent`→
+  `idx_msg_chatbot/idx_sess_chatbot`); `agents.json`→`chatbots.json`,
+  `sentinel_lenses.json`→`agentbots.json`. Migrazioni automatiche, idempotenti
+  e non-fatali al boot: nessuna perdita dati, nessun intervento manuale
+  richiesto.
+- **Wire MQTT:** topic `hiris/agents`→`hiris/chatbots`, nuovo schema id
+  discovery. **Le entità Home Assistant scoperte col vecchio schema vengono
+  ripulite automaticamente e ricreate col nuovo** al primo avvio — un
+  eventuale riordino delle entità HIRIS in Home Assistant dopo l'aggiornamento
+  è atteso.
+- **Chat-wire coerente:** il body di `/api/chat` accetta ora `chatbot_id` come
+  chiave primaria, con `agent_id` mantenuto come fallback retro-compat — le
+  dashboard Lovelace esistenti continuano a funzionare senza modifiche;
+  la card `hiris-chat-card.js` scrive `chatbot_id` nelle nuove configurazioni.
+- **Retro Panel aggiornato in lockstep** (v2.24.0): il proxy HIRIS chiama ora
+  `/api/chatbots` invece di `/api/agents`.
+- **Non rinominato (per design):** l'etichetta di origine richiesta
+  `agent_id="mcp-gateway"/"unknown"` in `handlers_execute.py` /
+  `handlers_gateway_pending.py` / `http_tools.py` (è un'origine, non un id di
+  Chatbot); il subsystem `hiris/app/agent/runner.py` (poller della coda di
+  ragionamento, non l'entità Chatbot); il prefisso discovery HA
+  `"homeassistant"`; l'aggettivo "agentic" nei runner.
+
 ## [0.101.0] — Brain come fulcro: home, stream ragionamenti, health-scan advisory (SP-3 v1) (2026-07-28)
 
 **Home del Brain su `#/`:** supervisione casa + stream ragionamenti (cattura rationale del giro olistico, nessuna nuova chiamata LLM) + segnalazioni (health-scan a 5 check read-only: entità non disponibili, batterie scariche, automazioni rotte, domini pericolosi in verde, entità senza area).

@@ -497,7 +497,7 @@ async function sendMessage(text) {
     var r = await fetch('api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Requested-With': 'fetch'},
-      body: JSON.stringify({ message: text, agent_id: activeAgentId }),
+      body: JSON.stringify({ message: text, chatbot_id: activeAgentId }),
     });
     var data = await r.json();
     typing.remove();

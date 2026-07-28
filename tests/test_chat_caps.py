@@ -326,6 +326,32 @@ async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_chat_accepts_new_chatbot_id_key(tmp_path):
+    """SP-4 Fase A chat-wire coherence: the new "chatbot_id" body key must
+    resolve the same chatbot as the legacy "agent_id" key did."""
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=False)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao", "chatbot_id": agent.id})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["response"] == "sync reply"
+    app["engine"].get_chatbot.assert_called_with(agent.id)
+
+
+@pytest.mark.asyncio
+async def test_chat_still_accepts_legacy_agent_id_key(tmp_path):
+    """Retro-compat: older clients / Lovelace card configs sending "agent_id"
+    must keep working unchanged after the chat-wire rename to "chatbot_id"."""
+    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=False)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["response"] == "sync reply"
+    app["engine"].get_chatbot.assert_called_with(agent.id)
+
+
+@pytest.mark.asyncio
 async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
     """Review C/#13: runners now raise RunnerBackendError instead of
     returning a friendly string on an API failure (needed so LLMRouter's

@@ -9,7 +9,7 @@
         api/models/config brain_model, Agentbot -> rimando a #/agentbots)
      04 Embeddings (riga informativa, sola lettura, da GET api/models/config)
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
-   (stesso vincolo di sentinel-route.js).
+   (stesso vincolo di agentbot-route.js).
 
    Task 7B ha arricchito GET /api/models/config con:
      providers: [{id: subscription|claude|openai|openrouter|ollama, label,
@@ -227,8 +227,8 @@
   }
 
   /* ── Sezione 3: dropdown modello condivisa (Brain / Chatbot) ─────────
-     Stesso value-format già in uso in tutta la SPA (agent.model, sentinel
-     per-Agentbot picker in sentinel-route.js): id modello grezzo così come
+     Stesso value-format già in uso in tutta la SPA (agent.model, il
+     per-Agentbot picker in agentbot-route.js): id modello grezzo così come
      ritornato da GET api/models, "auto" come opzione top-level unica. */
   function fillModelOptions(sel, currentValue) {
     clearEl(sel);

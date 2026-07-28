@@ -61,7 +61,7 @@ document.getElementById('u-ag-toggle-btn').onclick = async function() {
 
 /* Task 4 (Slice 5) review fix: rimosso il binding di u-ag-budget-save-btn
    (PUT budget_eur_limit) — il campo e il pulsante non esistono più nel
-   markup (rimossi da populateConsumi in agent-editor.js) e il backend
+   markup (rimossi da populateConsumi in chatbot-editor.js) e il backend
    scarta comunque quella chiave. Lasciarlo qui avrebbe fatto sì che
    getElementById('u-ag-budget-save-btn') restituisse null e il successivo
    .onclick lanciasse un TypeError non gestito al primo mount dell'editor. */

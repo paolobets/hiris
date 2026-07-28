@@ -150,7 +150,10 @@ async def handle_chat(request: web.Request) -> web.Response:
     if len(message) > 4000:
         return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
 
-    chatbot_id = body.get("agent_id")
+    # "chatbot_id" is the current wire key (SP-4 Fase A rename); "agent_id" is
+    # kept as a retro-compat fallback so existing Lovelace card configs / older
+    # clients that still send the pre-rename key keep working unchanged.
+    chatbot_id = body.get("chatbot_id") or body.get("agent_id")
     data_dir = request.app.get("data_dir", "/data")
     engine = request.app["engine"]
 
