@@ -66,6 +66,24 @@ def _validate_chatbot_payload(body: dict) -> str | None:
             if not isinstance(url, str) or not url.startswith("http"):
                 return f"allowed_endpoints[{i}].url must be a string starting with 'http'"
 
+    # knowledge_access (SP-4 Fase B Task 4): finally editable in the UI, so
+    # it can now arrive as arbitrary attacker/typo-controlled JSON instead of
+    # the trusted default the engine used to seed it with. Before this check
+    # the value went straight into a raw setattr (chatbot_engine.py) with no
+    # shape validation at all.
+    ka = body.get("knowledge_access")
+    if ka is not None:
+        if not isinstance(ka, dict):
+            return "knowledge_access must be an object"
+        if "allow_sensitive" in ka and not isinstance(ka["allow_sensitive"], bool):
+            return "knowledge_access.allow_sensitive must be a boolean"
+        if "kinds" in ka:
+            kinds = ka["kinds"]
+            if kinds != "all" and (
+                not isinstance(kinds, list) or not all(isinstance(k, str) for k in kinds)
+            ):
+                return "knowledge_access.kinds must be \"all\" or a list of strings"
+
     return None
 
 

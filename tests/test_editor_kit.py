@@ -42,8 +42,9 @@ def test_permessi_no_longer_owns_tool_action_checkboxes():
 def test_config_html_includes_editor_kit_before_consumers():
     html = (BASE / "config.html").read_text(encoding="utf-8")
     assert "config/editor-kit.js" in html
-    consumers = ["config/permessi.js", "config/chatbot-form.js",
-                 "config/chatbot-editor.js", "config/agentbot-route.js"]
+    # chatbot-form.js is gone (SP-4 Fase B Task 4: absorbed into
+    # chatbot-editor.js, which is now the sole editor-kit consumer here).
+    consumers = ["config/permessi.js", "config/chatbot-editor.js", "config/agentbot-route.js"]
     kit_pos = html.index("config/editor-kit.js")
     for c in consumers:
         assert kit_pos < html.index(c), f"editor-kit.js deve caricare prima di {c}"

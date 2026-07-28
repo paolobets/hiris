@@ -541,3 +541,40 @@ async def test_handle_run_agent_returns_plain_text_result():
     payload = json.loads(resp.body)
     assert payload == {"result": "Ciao! Come posso aiutarti?"}
     engine.run_chatbot.assert_called_once_with(fake_agent)
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (SP-4 Fase B): knowledge_access is finally editable in the UI, so it
+# can now arrive as arbitrary JSON instead of the trusted engine default --
+# _validate_chatbot_payload used to accept ANY type via a raw setattr.
+# ---------------------------------------------------------------------------
+
+
+def test_knowledge_access_is_validated():
+    """Prima accettava qualunque tipo JSON (setattr grezzo)."""
+    assert _validate_chatbot_payload({"knowledge_access": "nope"}) is not None
+    assert _validate_chatbot_payload({"knowledge_access": {"allow_sensitive": "si"}}) is not None
+    assert _validate_chatbot_payload({"knowledge_access": {"allow_sensitive": True, "kinds": "all"}}) is None
+
+
+def test_knowledge_access_rejects_non_dict():
+    for bad in ("nope", 42, [1, 2], True, None):
+        if bad is None:
+            continue  # None is "not provided", explicitly allowed
+        assert _validate_chatbot_payload({"knowledge_access": bad}) is not None
+
+
+def test_knowledge_access_rejects_bad_kinds():
+    assert _validate_chatbot_payload({"knowledge_access": {"kinds": 123}}) is not None
+    assert _validate_chatbot_payload({"knowledge_access": {"kinds": ["fact", 5]}}) is not None
+    assert _validate_chatbot_payload({"knowledge_access": {"kinds": "not-all"}}) is not None
+
+
+def test_knowledge_access_accepts_valid_shapes():
+    assert _validate_chatbot_payload({"knowledge_access": {"allow_sensitive": False, "kinds": "all"}}) is None
+    assert _validate_chatbot_payload({"knowledge_access": {"allow_sensitive": True, "kinds": ["fact", "note"]}}) is None
+    # kinds=[] is a valid, meaningful choice ("no knowledge access at all" --
+    # see brain/knowledge_store.py).
+    assert _validate_chatbot_payload({"knowledge_access": {"kinds": []}}) is None
+    # knowledge_access entirely absent stays valid (untouched field).
+    assert _validate_chatbot_payload({"name": "x"}) is None

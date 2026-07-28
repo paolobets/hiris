@@ -15,22 +15,17 @@ import { loadScripts, stubFetch, tick } from './helpers/dom.mjs';
    mount deve funzionare SENZA alcun rewire. */
 
 // Frammento minimo di config.html sufficiente per HirisChatbotEditor.mount():
-// route-outlet + tpl-agent-editor (stessa struttura/id del file reale) +
-// chrome-here (breadcrumb, letto ma non richiesto).
+// route-outlet + tpl-agent-editor (stessa struttura/id del file reale --
+// SP-4 Fase B Task 4: le section-card non sono più hardcoded nel template,
+// chatbot-editor.js le genera da SECTIONS/buildSections(), quindi qui basta
+// la cornice: .editor-content con la sola sticky-actions-wrap + <aside>
+// anchor-nav vuoto) + chrome-here (breadcrumb, letto ma non richiesto).
 const HTML = `<!doctype html><body>
   <div id="chrome-here"></div>
   <div id="route-outlet"></div>
   <template id="tpl-agent-editor">
     <div class="editor-grid">
       <div class="editor-content">
-        <section class="section-card" id="sec-identita"><div class="sc-body" id="sc-body-identita"></div></section>
-        <section class="section-card" id="sec-istruzioni"><div class="sc-body" id="sc-body-istruzioni"></div></section>
-        <section class="section-card" id="sec-modello"><div class="sc-body" id="sc-body-modello"></div></section>
-        <section class="section-card" id="sec-permessi"><div class="sc-body" id="sc-body-permessi"></div></section>
-        <section class="section-card" id="sec-stato"><div class="sc-body" id="sc-body-stato"></div></section>
-        <section class="section-card" id="sec-log"><div class="sc-body" id="sc-body-log"></div></section>
-        <section class="section-card" id="sec-run"><div class="sc-body" id="sc-body-run"></div></section>
-        <section class="section-card" id="sec-consumi"><div class="sc-body" id="sc-body-consumi"></div></section>
         <div class="sticky-actions-wrap" id="sticky-actions-wrap">
           <div class="sticky-actions" id="sticky-actions">
             <button class="btn btn-ghost" id="btn-cancel">Annulla</button>
@@ -45,6 +40,8 @@ const HTML = `<!doctype html><body>
   </template>
 </body>`;
 
+// chatbot-form.js non compare più (SP-4 Fase B Task 4: assorbito in
+// chatbot-editor.js, che è ora l'unico owner di load+payload).
 const SCRIPTS = [
   'config/state.js',
   'config/api.js',
@@ -56,7 +53,6 @@ const SCRIPTS = [
   'config/logs.js',
   'config/usage.js',
   'config/proposals.js',
-  'config/chatbot-form.js',
   'config/chatbot-editor.js',
 ];
 
@@ -82,7 +78,7 @@ test('al SECONDO mount (remount dopo navigazione) i controlli rispondono ancora'
   window.HirisChatbotEditor.mount(null);
   await tick(20);
 
-  let pill = document.querySelector('#sc-body-permessi .domain-pill');
+  let pill = document.querySelector('#sc-body-scope .domain-pill');
   assert.ok(pill, 'la pillola di dominio deve esistere al primo mount');
   pill.dispatchEvent(new window.Event('click', { bubbles: true }));
   assert.deepEqual(
@@ -104,7 +100,7 @@ test('al SECONDO mount (remount dopo navigazione) i controlli rispondono ancora'
   window.HirisChatbotEditor.mount(null);
   await tick(20);
 
-  pill = document.querySelector('#sc-body-permessi .domain-pill');
+  pill = document.querySelector('#sc-body-scope .domain-pill');
   assert.ok(pill, 'la pillola di dominio deve esistere anche al secondo mount');
   assert.deepEqual(
     window.HirisAgentEntityPicker.getValue(),
@@ -121,7 +117,7 @@ test('al SECONDO mount (remount dopo navigazione) i controlli rispondono ancora'
   // Anche la ricerca testuale (Enter per aggiungere) deve rispondere al
   // secondo mount — altro comportamento prima reimplementato a mano in
   // rewireLegacyAfterMount().
-  const search = document.querySelector('#sc-body-permessi .ep-search');
+  const search = document.querySelector('#sc-body-scope .ep-search');
   assert.ok(search, 'il campo di ricerca entità deve esistere al secondo mount');
   search.value = 'switch.cucina';
   search.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));

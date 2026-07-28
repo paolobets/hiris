@@ -45,11 +45,16 @@ def test_no_pre_rename_agent_sentinel_traces_in_static():
 def test_renamed_fe_files_exist():
     cfg = STATIC / "config"
     for name in (
-        "chatbot-editor.js", "chatbot-form.js", "chatbots-list.js", "agentbot-route.js",
+        "chatbot-editor.js", "chatbots-list.js", "agentbot-route.js",
     ):
         assert (cfg / name).is_file(), f"expected renamed file missing: {name}"
-    for old in ("agent-editor.js", "agent-form.js", "agents-list.js", "sentinel-route.js"):
-        assert not (cfg / old).exists(), f"pre-rename file still present: {old}"
+    # chatbot-form.js (SP-4 Fase B Task 4): absorbed into chatbot-editor.js
+    # (single owner of load+payload) and deleted -- it must NOT exist.
+    for old in (
+        "agent-editor.js", "agent-form.js", "agents-list.js", "sentinel-route.js",
+        "chatbot-form.js",
+    ):
+        assert not (cfg / old).exists(), f"pre-rename/absorbed file still present: {old}"
 
 
 def test_sentinel_config_timeline_routes_untouched():

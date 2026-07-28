@@ -30,7 +30,12 @@ import { loadScripts, stubFetch, tick } from './helpers/dom.mjs';
    che non se ne accorgerebbe. */
 
 const HTML = '<!doctype html><body><div id="chrome-here"></div><div id="route-outlet"></div></body>';
-const SCRIPTS = ['config/api.js', 'config/state.js', 'config/chatbot-form.js', 'config/usage.js'];
+// SP-4 Fase B Task 4: chatbot-form.js è stato assorbito in chatbot-editor.js
+// (unico owner di openAgent/loadChatbots, esposti come globali bare -- vedi
+// il commento in fondo a chatbot-editor.js) ed eliminato. editor-kit.js è
+// richiesto perché chatbot-editor.js chiama HirisEditorKit.dirty.guard(...)
+// al parse time (top-level, non dentro mount()).
+const SCRIPTS = ['config/api.js', 'config/state.js', 'config/editor-kit.js', 'config/chatbot-editor.js', 'config/usage.js'];
 
 function injectButtons(document) {
   const outlet = document.getElementById('route-outlet');
@@ -60,7 +65,7 @@ test('click delegato su #u-ag-toggle-btn (iniettato DOPO il load): PUT + reload 
   const { window, document } = loadScripts(SCRIPTS, { html: HTML });
   const outlet = injectButtons(document);
 
-  window.currentId = 'agent-1';
+  window.HirisState.set('activeChatbotId', 'agent-1');
   window.chatbots = [{ id: 'agent-1', name: 'Test', enabled: true }];
   window.confirm = () => true;
 
@@ -104,7 +109,7 @@ test('il click delegato funziona ANCHE dopo un remount (outlet.innerHTML sostitu
   const { window, document } = loadScripts(SCRIPTS, { html: HTML });
   let outlet = injectButtons(document);
 
-  window.currentId = 'agent-1';
+  window.HirisState.set('activeChatbotId', 'agent-1');
   window.chatbots = [{ id: 'agent-1', name: 'Test', enabled: true }];
   window.confirm = () => true;
   const calls = stubFetch(window, {

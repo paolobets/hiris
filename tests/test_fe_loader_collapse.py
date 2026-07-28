@@ -11,7 +11,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
 LEGACY = ["templates.js", "permessi.js", "log-row.js", "logs.js", "usage.js",
-          "proposals.js", "chatbot-form.js"]
+          "proposals.js"]
 
 
 def test_no_runtime_script_injection():
@@ -61,14 +61,15 @@ def test_winners_table_applied():
 
 def test_config_html_script_order_respects_dependencies():
     """state -> router -> api -> entity-picker -> templates -> permessi ->
-    log-row -> logs -> usage -> proposals -> chatbot-form -> ... ->
-    chatbot-editor -> ... -> main, come da grounding A1/A3 e dal piano."""
+    log-row -> logs -> usage -> proposals -> chatbot-editor -> ... -> main,
+    come da grounding A1/A3 e dal piano. chatbot-form.js non compare più
+    (SP-4 Fase B Task 4: assorbito in chatbot-editor.js ed eliminato)."""
     html = (BASE / "config.html").read_text(encoding="utf-8")
     order = [
         "config/state.js", "config/router.js", "config/api.js",
         "config/entity-picker.js", "config/templates.js", "config/permessi.js",
         "config/log-row.js", "config/logs.js", "config/usage.js",
-        "config/proposals.js", "config/chatbot-form.js", "config/chatbot-editor.js",
+        "config/proposals.js", "config/chatbot-editor.js",
         "config/main.js",
     ]
     positions = [html.index(name) for name in order]

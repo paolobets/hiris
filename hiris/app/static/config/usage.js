@@ -56,8 +56,13 @@ async function _resetAgentUsage() {
 }
 
 async function _toggleAgentUsage() {
-  if (!currentId) return;
-  var agent = chatbots.find(function(a) { return a.id === currentId; });
+  /* SP-4 Fase B Task 4: chatbot-editor.js ha assorbito chatbot-form.js ed
+     eliminato il global window.currentId (doppia fonte di verità con
+     HirisState.get('activeChatbotId') — vedi il commento in testa a
+     chatbot-editor.js). HirisState.activeChatbotId resta l'unico owner. */
+  var cid = window.HirisState && HirisState.get('activeChatbotId');
+  if (!cid) return;
+  var agent = (chatbots || []).find(function(a) { return a.id === cid; });
   if (!agent) return;
   var newEnabled = !agent.enabled;
   var confirmMsg = newEnabled
@@ -65,14 +70,14 @@ async function _toggleAgentUsage() {
     : 'Bloccare questo Chatbot? Non verrà più eseguito automaticamente.';
   if (!confirm(confirmMsg)) return;
   try {
-    var r = await fetch('api/chatbots/' + encodeURIComponent(currentId), {
+    var r = await fetch('api/chatbots/' + encodeURIComponent(cid), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       body: JSON.stringify({ enabled: newEnabled }),
     });
     await r.json();
     await loadChatbots();
-    var fresh = chatbots.find(function(a) { return a.id === currentId; });
+    var fresh = (chatbots || []).find(function(a) { return a.id === cid; });
     if (fresh && typeof openAgent === 'function') openAgent(fresh);
   } catch(e) {}
 }
