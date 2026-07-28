@@ -479,6 +479,17 @@ class ToolDispatcher:
             if name == "get_ha_health":
                 return get_ha_health(self._health_monitor, inputs.get("sections") or ["all"])
             if name == "create_automation_proposal":
+                # Explicit up-front validation: the LLM's tool call does not
+                # hard-guarantee every "required" input_schema key is actually
+                # populated (prompt/context compression, model hiccups). Bare
+                # inputs[...] access below would raise KeyError and be masked
+                # by the blanket except at the bottom of dispatch() as a
+                # generic "non riuscito" message the model can't act on.
+                # Check up front and return a specific, retriable error instead.
+                _required = ("type", "name", "description", "config", "routing_reason")
+                _missing = [k for k in _required if k not in inputs]
+                if _missing:
+                    return {"error": f"Campi obbligatori mancanti: {', '.join(_missing)}"}
                 return await create_automation_proposal(
                     self._proposal_store,
                     proposal_type=inputs["type"],
@@ -575,6 +586,18 @@ class ToolDispatcher:
                     "Non inventare nomi di tool."
                 )
             }
+        except KeyError as exc:
+            # Several tool branches build kwargs from bare inputs["..."]
+            # access. When the LLM's tool call omits a required key, that
+            # raises a KeyError which -- without this arm -- would fall into
+            # the blanket except below and come back as the generic "non
+            # riuscito" message: no indication of which field was missing,
+            # so the model (and therefore the user) can't retry meaningfully.
+            # Catch it specifically, name the missing field, and log for
+            # diagnosability. Must NOT leak anything beyond the field name.
+            missing_field = exc.args[0] if exc.args else str(exc)
+            logger.warning("Tool %s missing required field: %s", name, missing_field, exc_info=True)
+            return {"error": f"Campo obbligatorio mancante per '{name}': {missing_field}"}
         except Exception:
             # Review L/2: never echo str(exc) back to the caller -- it can
             # leak internal detail (paths, hostnames, connection strings).

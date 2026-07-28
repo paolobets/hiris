@@ -1,5 +1,8 @@
 from __future__ import annotations
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
     "name": "create_automation_proposal",
@@ -85,4 +88,9 @@ async def create_automation_proposal(
             ),
         }
     except Exception as exc:
-        return {"error": str(exc)}
+        # Never echo str(exc) back to the caller (same policy as the
+        # dispatcher's own catch-all, dispatcher.py's bottom except): it can
+        # leak internal detail (e.g. a raw sqlite3.OperationalError with a
+        # file path). Log server-side, return a generic-but-useful message.
+        logger.exception("create_automation_proposal: save failed")
+        return {"error": "Impossibile salvare la proposta. Riprova più tardi."}

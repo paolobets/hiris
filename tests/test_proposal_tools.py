@@ -89,8 +89,10 @@ async def test_create_proposal_no_store_returns_error():
 
 @pytest.mark.asyncio
 async def test_create_proposal_exception_returns_error():
+    """No-leak policy (mirrors dispatcher.py's catch-all): the raw exception
+    text must never reach the caller, only a generic-but-useful message."""
     mock_store = MagicMock()
     mock_store.save = AsyncMock(side_effect=Exception("db error"))
     result = await create_automation_proposal(mock_store, **_sample_args())
     assert "error" in result
-    assert "db error" in result["error"]
+    assert "db error" not in result["error"]
