@@ -1,5 +1,20 @@
 # HIRIS — Changelog
 
+## [0.102.1] — Fix: le proposte non falliscono più con un errore indefinito (2026-07-28)
+
+### Corretto
+- **Proposte di automazione**: quando il modello ometteva un campo obbligatorio nella
+  chiamata allo strumento, l'errore risultante era un `KeyError` intercettato dal
+  gestore generico — l'utente vedeva solo *"Strumento non riuscito. Riprova più tardi"*
+  e la proposta non veniva mai creata. Ora il messaggio nomina il campo mancante
+  (es. *"Campi obbligatori mancanti: routing_reason"*), così il modello può correggersi
+  e riprovare.
+- Stesso difetto chiuso **come classe**: ogni strumento a cui manchi un campo
+  obbligatorio (`send_notification`, `call_ha_service`, `create_task`, …) ora riporta
+  quale campo manca invece di un errore indistinto.
+- Rimossa una fuga di dettagli interni (`str(exc)` grezzo) nel percorso di salvataggio
+  delle proposte.
+
 ## [0.102.0] — SP-4 Fase A: rename profondo Chatbot/Agentbot (2026-07-28)
 
 Rinominato in modo esteso `agente→Chatbot` e `lente→Agentbot` in tutto HIRIS
