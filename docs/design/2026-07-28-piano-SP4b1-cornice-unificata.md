@@ -22,6 +22,7 @@
 - **`tests/test_fe_rename_regression.py:45-52` fissa i nomi dei 4 file FE**: rinominare o eliminarli fa fallire la CI → va aggiornato **nello stesso task** che li tocca.
 - `escHtml`/`esc` su ogni valore interpolato (XSS).
 - Suite completa verde dopo ogni task (baseline **1816**); `node --check` su ogni JS toccato.
+- **TEST FE REALI (richiesta utente 2026-07-28):** dal Task 1b in poi, ogni task che tocca il front-end DEVE consegnare test **comportamentali** (DOM vero, interazione, asserzioni sullo stato) con `node --test` + jsdom — non solo asserzioni di testo sul sorgente. Le asserzioni di testo restano ammesse **solo** come guardie di wiring (che un file sia incluso in `config.html`, che una route sia registrata); non contano come copertura del comportamento.
 - Commit per task. Nessun merge/tag senza conferma esplicita utente.
 
 ### Bug live che il rebuild deve chiudere (scoperti nel grounding)
@@ -210,6 +211,196 @@ In `permessi.js` **rimuovi** `_entitySelectionSet`, `_entitySelectorRender/Add/L
 - [ ] **Step 4: Verifica** — `pytest tests/test_entity_picker.py tests/test_entities_frontend_wiring.py -v`, poi `pytest -q --maxfail=10`, poi `node --check` su `entity-picker.js`, `permessi.js`, `chatbot-editor.js`, `chatbot-form.js`.
 
 - [ ] **Step 5: Commit** — `feat(fe): componente entity-picker istanziabile (sostituisce il selettore singleton)`
+
+---
+
+## Task 1b: infrastruttura per test front-end REALI
+
+**Perché ora:** i quattro bug live di questa fase erano tutti **invisibili** alla suite, e uno era perfino "coperto" da 5 test verdi su codice irraggiungibile. I test FE attuali sono `read_text()` + `in` — utili come guardie di wiring, inutili sul comportamento. Tutti i task successivi (rebuild di editor, card e pagina chat) devono nascere con test veri.
+
+**Sicurezza del packaging (verificata):** il `Dockerfile` copia solo `app/`, `config.yaml`, `run.sh` → `package.json`/`node_modules` di sviluppo **non entrano nell'immagine**. Node è già presente nell'immagine per la CLI Claude, quindi non si introduce una tecnologia estranea.
+
+**Files:**
+- Create: `package.json` (root, dev-only), `tests/js/helpers/dom.mjs` (bootstrap jsdom + caricamento degli IIFE), `tests/js/entity-picker.test.mjs`
+- Modify: `.github/workflows/tests.yml` (job node), `.gitignore` (`node_modules/`), `.dockerignore` (difesa in profondità: `node_modules`, `package*.json`)
+- Test: i test JS stessi + `tests/test_js_suite_wired.py` (guardia: il job CI esiste e i file test JS ci sono)
+
+**Interfaces:**
+- Produces: `npm test` → `node --test tests/js/**/*.test.mjs`. Helper `loadScripts(...paths)` che crea un `JSDOM`, espone `window`/`document` come globali, esegue gli IIFE di `static/config/*.js` nel contesto e ritorna `{ window, document }`.
+- Runner: **`node --test` (stdlib, nessun framework)**. Unica dipendenza dev: **jsdom**.
+
+- [ ] **Step 1: Scaffold + primo test che fallisce**
+
+`package.json` (root):
+```json
+{
+  "name": "hiris-frontend-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/js/"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}
+```
+
+`tests/js/helpers/dom.mjs`:
+```javascript
+import { JSDOM } from 'jsdom';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const STATIC = join(ROOT, 'hiris', 'app', 'static');
+
+/** Crea un DOM e valuta gli script indicati (path relativi a static/). */
+export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {}) {
+  const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'http://localhost/' });
+  const { window } = dom;
+  for (const p of paths) {
+    const code = readFileSync(join(STATIC, p), 'utf8');
+    window.eval(code);
+  }
+  return { dom, window, document: window.document };
+}
+
+/** fetch finto: mappa url-substring -> payload JSON. */
+export function stubFetch(window, routes) {
+  const calls = [];
+  window.fetch = (url, opts) => {
+    calls.push({ url: String(url), opts });
+    const hit = Object.entries(routes).find(([frag]) => String(url).includes(frag));
+    const body = hit ? hit[1] : {};
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+  };
+  return calls;
+}
+
+export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+```
+
+`tests/js/entity-picker.test.mjs` — i primi test **comportamentali** veri (coprono ciò che il Task 1 aveva potuto verificare solo leggendo il codice):
+```javascript
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadScripts, stubFetch, tick } from './helpers/dom.mjs';
+
+function setup() {
+  const ctx = loadScripts(['config/api.js', 'config/entity-picker.js']);
+  const root = ctx.document.createElement('div');
+  ctx.document.body.appendChild(root);
+  return { ...ctx, root };
+}
+
+test('due picker sulla stessa pagina hanno stato indipendente', () => {
+  const { window, document } = setup();
+  const a = document.createElement('div'), b = document.createElement('div');
+  document.body.append(a, b);
+  const p1 = window.HirisEntityPicker.create(a, {});
+  const p2 = window.HirisEntityPicker.create(b, {});
+  p1.add('light.salotto');
+  p2.add('sensor.porta');
+  assert.deepEqual(p1.getValue(), ['light.salotto']);
+  assert.deepEqual(p2.getValue(), ['sensor.porta']);   // il singleton fallirebbe qui
+});
+
+test('setValue NON emette onChange, add/remove si', () => {
+  const { window, root } = setup();
+  let n = 0;
+  const p = window.HirisEntityPicker.create(root, { onChange: () => { n++; } });
+  p.setValue(['light.a']);
+  assert.equal(n, 0, 'setValue e il caricamento, non una modifica utente');
+  p.add('light.b');
+  assert.equal(n, 1);
+  p.remove('light.b');
+  assert.equal(n, 2);
+});
+
+test('single:true tiene una sola entita', () => {
+  const { window, root } = setup();
+  const p = window.HirisEntityPicker.create(root, { single: true });
+  p.add('light.a'); p.add('light.b');
+  assert.deepEqual(p.getValue(), ['light.b']);
+});
+
+test('destroy() stacca il listener documento (niente handler accumulati)', () => {
+  const { window, document, root } = setup();
+  const before = window.document.body.innerHTML;
+  const p = window.HirisEntityPicker.create(root, {});
+  p.destroy();
+  // dopo destroy un click sul documento non deve piu' toccare nulla del picker
+  document.body.dispatchEvent(new window.Event('click', { bubbles: true }));
+  assert.equal(root.innerHTML, '', 'destroy() deve svuotare il root');
+});
+
+test('il chip rimuove il valore al click (interazione vera)', () => {
+  const { window, document, root } = setup();
+  const p = window.HirisEntityPicker.create(root, {});
+  p.add('light.salotto');
+  const x = root.querySelector('.chip-remove');
+  assert.ok(x, 'il chip deve esistere nel DOM');
+  x.dispatchEvent(new window.Event('click', { bubbles: true }));
+  assert.deepEqual(p.getValue(), []);
+});
+
+test('la ricerca legge la forma canonica {entities:[{entity_id}]}', async () => {
+  const { window, document, root } = setup();
+  stubFetch(window, { 'api/entities': { entities: [
+    { entity_id: 'light.salotto', friendly_name: 'Luce Salotto' } ] } });
+  const p = window.HirisEntityPicker.create(root, {});
+  const search = root.querySelector('input');
+  search.value = 'sal';
+  search.dispatchEvent(new window.Event('input', { bubbles: true }));
+  await tick(350);                       // oltre il debounce
+  const sugg = root.querySelector('.ep-suggestion');
+  assert.ok(sugg, 'il suggerimento deve comparire (era il bug della forma sbagliata)');
+  sugg.dispatchEvent(new window.Event('click', { bubbles: true }));
+  assert.deepEqual(p.getValue(), ['light.salotto']);
+});
+```
+
+- [ ] **Step 2: Verifica che fallisca** — `npm install` poi `npm test`. Attesi fallimenti finché l'helper non è corretto; itera finché **tutti** passano. Se un test rivela un difetto reale nel componente del Task 1, **correggi il componente** (è il valore di avere test veri).
+
+- [ ] **Step 3: Wire in CI** — in `.github/workflows/tests.yml` aggiungi un job:
+```yaml
+  jstest:
+    name: frontend (node --test + jsdom)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+```
+Aggiungi `node_modules/` a `.gitignore` e (difesa in profondità) `node_modules` + `package*.json` a `.dockerignore`. Committa il `package-lock.json` (serve a `npm ci`).
+
+- [ ] **Step 4: Guardia lato pytest**
+```python
+# tests/test_js_suite_wired.py
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_js_test_suite_exists_and_is_ci_wired():
+    assert (ROOT / "package.json").exists()
+    assert list((ROOT / "tests" / "js").glob("*.test.mjs")), "nessun test JS comportamentale"
+    ci = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    assert "npm test" in ci, "i test JS devono girare in CI"
+
+
+def test_js_deps_are_not_shipped_in_the_image():
+    df = (ROOT / "hiris" / "Dockerfile").read_text(encoding="utf-8")
+    assert "package.json" not in df and "node_modules" not in df
+```
+
+- [ ] **Step 5: Verifica** — `npm test` verde (riporta il numero di test), `pytest -q --maxfail=10` verde.
+- [ ] **Step 6: Commit** — `test(fe): infrastruttura test comportamentali (node --test + jsdom) + primi test veri sull'entity-picker`
 
 ---
 
@@ -500,6 +691,20 @@ Blocchi da riportare: chat + turn limit, lista chatbot, tasks panel, usage widge
 - [ ] Review whole-branch indipendente: contratti C9 onorati (mount unguarded, HirisState, route, CSRF, path relativi); linea rossa E.2 intatta; i 4 bug live chiusi con test.
 - [ ] **Live-verify utente**: creare un Chatbot e un Agentbot dal wizard; la ricerca entità funziona in tutti e tre i punti dell'Agentbot; Salva si attiva modificando chip/tool; navigare via con modifiche chiede conferma; la card Lovelace e la pagina chat funzionano.
 - [ ] Conferma esplicita → merge + tag **v1.0.0** + release.
+
+## Test comportamentali richiesti per task (dal Task 1b in poi)
+
+Ogni task consegna i propri `tests/js/*.test.mjs` **oltre** alle guardie di wiring pytest. Minimo richiesto:
+
+| Task | Test comportamentali obbligatori (`node --test` + jsdom) |
+|---|---|
+| **2** loader | Al **secondo** mount dell'editor i controlli rispondono ancora (era il difetto che `rewireLegacyAfterMount` mascherava): monta, smonta, rimonta, clicca una pill → il valore cambia. Nessun `document.querySelector('script[data-legacy]')` creato a runtime. |
+| **3** kit | **dirty**: un input creato DOPO il mount (chip/checkbox) marca dirty e abilita Salva (bug live #1). **guard**: con dirty attivo, un `hashchange` chiede conferma e annullando NON naviga (bug live #2). **modelSelect**: due `modelSelect` fanno **una sola** fetch `api/models` (conta le chiamate sullo stub). |
+| **4** editor Chatbot | Caricato un chatbot, il payload di `save` contiene esattamente i campi attesi **incluso `knowledge_access`**; modificare un chip abilita Salva; l'annulla con modifiche chiede conferma. |
+| **5** editor Agentbot | **Tre** picker indipendenti in una riga (trigger/condizione/target) non si interferiscono; passare da trigger `event` a `schedule` mostra/nasconde i campi giusti; il payload salvato ha la forma accettata da `validate_agentbot` (azione **dichiarata**, mai dall'LLM). |
+| **6** wizard | Da un obiettivo "avvisami se il garage resta aperto di notte" deriva **Agentbot**; da "assistente che risponde sui consumi" deriva **Chatbot**; la scelta resta modificabile; nessuna chiamata a endpoint LLM (asserire sullo stub fetch). |
+| **7** card | `setConfig` con la sola chiave legacy `agent_id` risolve comunque l'id; i **tre** modi di risposta (202→polling, SSE, JSON) producono il messaggio giusto (stub di `fetch`/reader); `X-Requested-With` presente sulle scritture. |
+| **8** pagina chat | Invio messaggio → POST con `chatbot_id`; risposta 202 → il polling completa; il turn-limit blocca l'invio; il pannello task carica e cancella. |
 
 ## Copertura (self-review)
 
