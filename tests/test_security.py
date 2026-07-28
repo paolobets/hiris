@@ -18,9 +18,9 @@ from aiohttp import web
 def _make_app_with_runner(runner):
     """Minimal aiohttp app wired like the real server but without startup hooks."""
     from hiris.app.api.handlers_chat import handle_chat
-    from hiris.app.api.handlers_agents import (
-        handle_get_agent, handle_update_agent, handle_delete_agent,
-        handle_run_agent, handle_get_agent_usage, handle_reset_agent_usage,
+    from hiris.app.api.handlers_chatbots import (
+        handle_get_chatbot, handle_update_chatbot, handle_delete_chatbot,
+        handle_run_chatbot, handle_get_chatbot_usage, handle_reset_chatbot_usage,
     )
     from hiris.app.server import _security_headers
 
@@ -49,12 +49,12 @@ def _make_app_with_runner(runner):
     app["data_dir"] = "/tmp"
 
     app.router.add_post("/api/chat", handle_chat)
-    app.router.add_get("/api/agents/{agent_id}", handle_get_agent)
-    app.router.add_put("/api/agents/{agent_id}", handle_update_agent)
-    app.router.add_delete("/api/agents/{agent_id}", handle_delete_agent)
-    app.router.add_post("/api/agents/{agent_id}/run", handle_run_agent)
-    app.router.add_get("/api/agents/{agent_id}/usage", handle_get_agent_usage)
-    app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
+    app.router.add_get("/api/chatbots/{agent_id}", handle_get_chatbot)
+    app.router.add_put("/api/chatbots/{agent_id}", handle_update_chatbot)
+    app.router.add_delete("/api/chatbots/{agent_id}", handle_delete_chatbot)
+    app.router.add_post("/api/chatbots/{agent_id}/run", handle_run_chatbot)
+    app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
+    app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
     return app
 
 
@@ -96,7 +96,7 @@ async def test_agent_path_rejects_path_traversal():
     runner = AsyncMock()
     app = _make_app_with_runner(runner)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/agents/../../etc/passwd")
+        resp = await client.get("/api/chatbots/../../etc/passwd")
         # aiohttp URL routing won't match, but validate it doesn't 200 OK
         assert resp.status in (400, 404)
 
@@ -106,7 +106,7 @@ async def test_agent_get_rejects_invalid_id_characters():
     runner = AsyncMock()
     app = _make_app_with_runner(runner)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/agents/bad<script>id")
+        resp = await client.get("/api/chatbots/bad<script>id")
         assert resp.status in (400, 404)
 
 
@@ -115,7 +115,7 @@ async def test_agent_get_accepts_valid_uuid():
     runner = AsyncMock()
     app = _make_app_with_runner(runner)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/agents/550e8400-e29b-41d4-a716-446655440000")
+        resp = await client.get("/api/chatbots/550e8400-e29b-41d4-a716-446655440000")
         # 404 because engine mock returns agent but asdict() might fail; the key
         # check is that we don't get 400 (validation reject)
         assert resp.status != 400

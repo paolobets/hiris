@@ -1,4 +1,4 @@
-# hiris/app/api/handlers_agents.py
+# hiris/app/api/handlers_chatbots.py
 import logging
 import re
 from dataclasses import asdict
@@ -7,16 +7,16 @@ from ..config import EUR_RATE as _EUR_RATE
 
 logger = logging.getLogger(__name__)
 
-_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_CHATBOT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
-def _check_agent_id(agent_id: str) -> web.Response | None:
-    if not _AGENT_ID_RE.match(agent_id):
+def _check_chatbot_id(agent_id: str) -> web.Response | None:
+    if not _CHATBOT_ID_RE.match(agent_id):
         return web.json_response({"error": "invalid agent_id"}, status=400)
     return None
 
 
-def _validate_agent_payload(body: dict) -> str | None:
+def _validate_chatbot_payload(body: dict) -> str | None:
     """Return an error message string if the payload is invalid, else None."""
     name = body.get("name")
     if name is not None:
@@ -69,7 +69,7 @@ def _validate_agent_payload(body: dict) -> str | None:
     return None
 
 
-async def handle_list_agents(request: web.Request) -> web.Response:
+async def handle_list_chatbots(request: web.Request) -> web.Response:
     engine = request.app["engine"]
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     result = []
@@ -121,7 +121,7 @@ async def _validate_openrouter_model(request: web.Request, body: dict) -> str | 
     return None
 
 
-async def handle_create_agent(request: web.Request) -> web.Response:
+async def handle_create_chatbot(request: web.Request) -> web.Response:
     try:
         body = await request.json()
     except Exception:
@@ -132,7 +132,7 @@ async def handle_create_agent(request: web.Request) -> web.Response:
     if missing:
         return web.json_response({"error": f"Missing required fields: {missing}"}, status=400)
 
-    if err := _validate_agent_payload(body):
+    if err := _validate_chatbot_payload(body):
         return web.json_response({"error": err}, status=400)
 
     if err := await _validate_openrouter_model(request, body):
@@ -143,9 +143,9 @@ async def handle_create_agent(request: web.Request) -> web.Response:
     return web.json_response(asdict(agent), status=201)
 
 
-async def handle_get_agent(request: web.Request) -> web.Response:
+async def handle_get_chatbot(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
     agent = engine.get_chatbot(agent_id)
@@ -154,16 +154,16 @@ async def handle_get_agent(request: web.Request) -> web.Response:
     return web.json_response(asdict(agent))
 
 
-async def handle_update_agent(request: web.Request) -> web.Response:
+async def handle_update_chatbot(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
 
-    if err := _validate_agent_payload(body):
+    if err := _validate_chatbot_payload(body):
         return web.json_response({"error": err}, status=400)
 
     if err := await _validate_openrouter_model(request, body):
@@ -176,9 +176,9 @@ async def handle_update_agent(request: web.Request) -> web.Response:
     return web.json_response(asdict(agent))
 
 
-async def handle_delete_agent(request: web.Request) -> web.Response:
+async def handle_delete_chatbot(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
     agent = engine.get_chatbot(agent_id)
@@ -205,9 +205,9 @@ async def handle_delete_agent(request: web.Request) -> web.Response:
     return web.Response(status=204)
 
 
-async def handle_run_agent(request: web.Request) -> web.Response:
+async def handle_run_chatbot(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
     agent = engine.get_chatbot(agent_id)
@@ -241,9 +241,9 @@ async def handle_list_entities(request: web.Request) -> web.Response:
     return web.json_response(entities)
 
 
-async def handle_get_agent_usage(request: web.Request) -> web.Response:
+async def handle_get_chatbot_usage(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
     if not engine.get_chatbot(agent_id):
@@ -265,9 +265,9 @@ async def handle_get_agent_usage(request: web.Request) -> web.Response:
     })
 
 
-async def handle_reset_agent_usage(request: web.Request) -> web.Response:
+async def handle_reset_chatbot_usage(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
     if not engine.get_chatbot(agent_id):
@@ -282,7 +282,7 @@ async def handle_reset_agent_usage(request: web.Request) -> web.Response:
 async def handle_context_preview(request: web.Request) -> web.Response:
     """Return SemanticContextMap output for this agent (empty-string query = all relevant entities)."""
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
     agent = engine.get_chatbot(agent_id)

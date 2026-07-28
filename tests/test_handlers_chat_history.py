@@ -18,7 +18,7 @@ async def test_get_chat_history_returns_messages(tmp_path):
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "GET", "/api/agents/agent-x/chat-history", app=app,
+        "GET", "/api/chatbots/agent-x/chat-history", app=app,
         match_info={"agent_id": "agent-x"},
     )
 
@@ -31,7 +31,7 @@ async def test_get_chat_history_returns_messages(tmp_path):
 async def test_get_chat_history_empty_when_no_file(tmp_path):
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "GET", "/api/agents/missing/chat-history", app=app,
+        "GET", "/api/chatbots/missing/chat-history", app=app,
         match_info={"agent_id": "missing"},
     )
 
@@ -47,7 +47,7 @@ async def test_clear_chat_history_removes_messages(tmp_path):
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "DELETE", "/api/agents/agent-x/chat-history", app=app,
+        "DELETE", "/api/chatbots/agent-x/chat-history", app=app,
         match_info={"agent_id": "agent-x"},
     )
 
@@ -61,7 +61,7 @@ async def test_clear_chat_history_removes_messages(tmp_path):
 async def test_clear_chat_history_noop_when_no_file(tmp_path):
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "DELETE", "/api/agents/missing/chat-history", app=app,
+        "DELETE", "/api/chatbots/missing/chat-history", app=app,
         match_info={"agent_id": "missing"},
     )
 

@@ -3,7 +3,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import make_mocked_request
-from hiris.app.api.handlers_agents import handle_list_entities
+from hiris.app.api.handlers_chatbots import handle_list_entities
 
 
 @pytest.mark.asyncio
@@ -92,7 +92,7 @@ async def test_list_entities_search_case_insensitive():
 
 @pytest.mark.asyncio
 async def test_get_agent_usage_returns_stats():
-    from hiris.app.api.handlers_agents import handle_get_agent_usage
+    from hiris.app.api.handlers_chatbots import handle_get_chatbot_usage
 
     runner = MagicMock()
     runner.get_agent_usage = MagicMock(return_value={
@@ -107,11 +107,11 @@ async def test_get_agent_usage_returns_stats():
     app.get = MagicMock(side_effect=lambda k, *args: runner if k == "claude_runner" else None)
 
     request = make_mocked_request(
-        "GET", "/api/agents/agent-1/usage", app=app,
+        "GET", "/api/chatbots/agent-1/usage", app=app,
         match_info={"agent_id": "agent-1"},
     )
 
-    resp = await handle_get_agent_usage(request)
+    resp = await handle_get_chatbot_usage(request)
     data = json.loads(resp.body)
     assert data["requests"] == 5
     assert data["input_tokens"] == 1000
@@ -121,7 +121,7 @@ async def test_get_agent_usage_returns_stats():
 
 @pytest.mark.asyncio
 async def test_reset_agent_usage():
-    from hiris.app.api.handlers_agents import handle_reset_agent_usage
+    from hiris.app.api.handlers_chatbots import handle_reset_chatbot_usage
 
     runner = MagicMock()
     runner.reset_agent_usage = MagicMock()
@@ -133,11 +133,11 @@ async def test_reset_agent_usage():
     app.get = MagicMock(side_effect=lambda k, *args: runner if k == "claude_runner" else None)
 
     request = make_mocked_request(
-        "POST", "/api/agents/agent-1/usage/reset", app=app,
+        "POST", "/api/chatbots/agent-1/usage/reset", app=app,
         match_info={"agent_id": "agent-1"},
     )
 
-    resp = await handle_reset_agent_usage(request)
+    resp = await handle_reset_chatbot_usage(request)
     assert resp.status == 200
     runner.reset_agent_usage.assert_called_once_with("agent-1")
 
@@ -187,7 +187,7 @@ async def dashboard_client(aiohttp_client, _dashboard_app):
 
 @pytest.mark.asyncio
 async def test_list_agents_has_status_field(dashboard_client):
-    resp = await dashboard_client.get("/api/agents")
+    resp = await dashboard_client.get("/api/chatbots")
     assert resp.status == 200
     agents = await resp.json()
     assert isinstance(agents, list)
@@ -198,11 +198,11 @@ async def test_list_agents_has_status_field(dashboard_client):
 
 @pytest.mark.asyncio
 async def test_list_agents_has_budget_fields(dashboard_client):
-    """Task 3: `budget_limit_eur` is gone from the /api/agents payload — it
+    """Task 3: `budget_limit_eur` is gone from the /api/chatbots payload — it
     was a defensive `.get("budget_eur_limit", 0.0)` read of a dataclass field
     Task 2 already removed, so it was always hardcoded 0.0. `budget_eur`
     (actual computed usage cost) is the only budget field left."""
-    resp = await dashboard_client.get("/api/agents")
+    resp = await dashboard_client.get("/api/chatbots")
     assert resp.status == 200
     agents = await resp.json()
     for agent in agents:
@@ -213,7 +213,7 @@ async def test_list_agents_has_budget_fields(dashboard_client):
 
 @pytest.mark.asyncio
 async def test_list_agents_budget_computed_from_usage(dashboard_client):
-    resp = await dashboard_client.get("/api/agents")
+    resp = await dashboard_client.get("/api/chatbots")
     assert resp.status == 200
     agents = await resp.json()
     # mock_runner returns cost_usd=0.13, EUR rate=0.92 → 0.1196
@@ -226,9 +226,9 @@ async def test_created_agent_has_all_dashboard_fields(dashboard_client):
     # Slice 5 Task 2 dropped Agent.type (personas are chat-only now — see
     # hiris/app/chatbot_engine.py's Chatbot dataclass); "type"/"trigger" here are
     # just stray keys in the payload that create_agent ignores. Task 3 stops
-    # handlers_agents.py from validating them at all (no more _VALID_AGENT_TYPES
+    # handlers_chatbots.py from validating them at all (no more _VALID_AGENT_TYPES
     # / _VALID_TRIGGER_TYPES enum checks, no more required "type" key).
-    resp = await dashboard_client.post("/api/agents", json={
+    resp = await dashboard_client.post("/api/chatbots", json={
         "name": "Test",
         "type": "chat",
         "trigger": {"type": "manual"},
@@ -236,7 +236,7 @@ async def test_created_agent_has_all_dashboard_fields(dashboard_client):
     })
     assert resp.status == 201
 
-    resp = await dashboard_client.get("/api/agents")
+    resp = await dashboard_client.get("/api/chatbots")
     assert resp.status == 200
     agents = await resp.json()
     required = {"id", "name", "enabled", "status", "last_run",
@@ -254,8 +254,8 @@ async def test_created_agent_has_all_dashboard_fields(dashboard_client):
 
 @pytest.mark.asyncio
 async def test_delete_agent_cleans_memory_and_chat_history():
-    """handle_delete_agent must call knowledge_store.delete_by_lens + clear_history."""
-    from hiris.app.api.handlers_agents import handle_delete_agent
+    """handle_delete_chatbot must call knowledge_store.delete_by_lens + clear_history."""
+    from hiris.app.api.handlers_chatbots import handle_delete_chatbot
 
     engine = MagicMock()
     fake_agent = MagicMock()
@@ -277,7 +277,7 @@ async def test_delete_agent_cleans_memory_and_chat_history():
 
     aid = "550e8400-e29b-41d4-a716-446655440000"
     request = make_mocked_request(
-        "DELETE", f"/api/agents/{aid}",
+        "DELETE", f"/api/chatbots/{aid}",
         match_info={"agent_id": aid},
         app=app,
     )
@@ -288,7 +288,7 @@ async def test_delete_agent_cleans_memory_and_chat_history():
         def fake_clear(agent_id, data_dir):
             called["clear"] = (agent_id, data_dir)
         mp.setattr("hiris.app.chat_store.clear_history", fake_clear)
-        resp = await handle_delete_agent(request)
+        resp = await handle_delete_chatbot(request)
 
     assert resp.status == 204
     knowledge_store.delete_by_lens.assert_called_once_with(aid)
@@ -299,7 +299,7 @@ async def test_delete_agent_cleans_memory_and_chat_history():
 # Regression: PUT/POST agent rejects non-tool-capable OpenRouter model (v0.9.9)
 # ---------------------------------------------------------------------------
 
-from hiris.app.api.handlers_agents import handle_create_agent, handle_update_agent
+from hiris.app.api.handlers_chatbots import handle_create_chatbot, handle_update_chatbot
 
 
 @pytest.mark.asyncio
@@ -326,10 +326,10 @@ async def test_create_agent_rejects_broken_openrouter_model(monkeypatch):
     }.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
 
-    req = make_mocked_request("POST", "/api/agents", app=app)
+    req = make_mocked_request("POST", "/api/chatbots", app=app)
     req.json = AsyncMock(return_value=body)
 
-    resp = await handle_create_agent(req)
+    resp = await handle_create_chatbot(req)
     assert resp.status == 400
     payload = json.loads(resp.body)
     assert "tool" in payload["error"].lower()
@@ -367,12 +367,12 @@ async def test_update_agent_accepts_tool_capable_openrouter_model(monkeypatch):
 
     aid = "550e8400-e29b-41d4-a716-446655440000"
     req = make_mocked_request(
-        "PUT", f"/api/agents/{aid}",
+        "PUT", f"/api/chatbots/{aid}",
         match_info={"agent_id": aid},
         app=app,
     )
     req.json = AsyncMock(return_value=body)
-    resp = await handle_update_agent(req)
+    resp = await handle_update_chatbot(req)
     assert resp.status == 200
 
 
@@ -406,12 +406,12 @@ async def test_update_agent_skips_check_for_non_openrouter_models(monkeypatch):
 
     aid = "550e8400-e29b-41d4-a716-446655440000"
     req = make_mocked_request(
-        "PUT", f"/api/agents/{aid}",
+        "PUT", f"/api/chatbots/{aid}",
         match_info={"agent_id": aid},
         app=app,
     )
     req.json = AsyncMock(return_value=body)
-    resp = await handle_update_agent(req)
+    resp = await handle_update_chatbot(req)
     assert resp.status == 200
     assert cap_called["n"] == 0  # No OpenRouter call for Claude models
 
@@ -425,7 +425,7 @@ async def test_update_agent_skips_check_for_non_openrouter_models(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_create_agent_succeeds_with_free_model(monkeypatch):
-    """End-to-end: POST /api/agents accepts a persona on a :free model."""
+    """End-to-end: POST /api/chatbots accepts a persona on a :free model."""
     body = {
         "name": "monitor",
         "model": "openrouter:meta-llama/llama-3.3-70b-instruct:free",
@@ -451,23 +451,23 @@ async def test_create_agent_succeeds_with_free_model(monkeypatch):
     app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
 
-    req = make_mocked_request("POST", "/api/agents", app=app)
+    req = make_mocked_request("POST", "/api/chatbots", app=app)
     req.json = AsyncMock(return_value=body)
 
-    resp = await handle_create_agent(req)
+    resp = await handle_create_chatbot(req)
     assert resp.status == 201
     engine.create_chatbot.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
-# Task 3: handlers_agents is personas-only — no more validation of the
+# Task 3: handlers_chatbots is personas-only — no more validation of the
 # proactive-only fields (type/trigger/triggers/action_mode/rules/states/
 # budget_eur_limit). A payload carrying garbage values for those fields must
 # still be accepted (201/200); create_agent/update_agent silently drop them
 # since the Persona dataclass has no such attributes (Task 2).
 # ---------------------------------------------------------------------------
 
-from hiris.app.api.handlers_agents import _validate_agent_payload
+from hiris.app.api.handlers_chatbots import _validate_chatbot_payload
 
 
 def test_validate_agent_payload_ignores_bogus_proactive_fields():
@@ -483,11 +483,11 @@ def test_validate_agent_payload_ignores_bogus_proactive_fields():
         "states": [],  # used to require non-empty
         "budget_eur_limit": -999,  # used to require >= 0
     }
-    assert _validate_agent_payload(body) is None
+    assert _validate_chatbot_payload(body) is None
 
 
 def test_validate_agent_payload_no_longer_defines_removed_constants():
-    import hiris.app.api.handlers_agents as mod
+    import hiris.app.api.handlers_chatbots as mod
     assert not hasattr(mod, "_VALID_AGENT_TYPES")
     assert not hasattr(mod, "_VALID_TRIGGER_TYPES")
     assert not hasattr(mod, "_VALID_ACTION_MODES")
@@ -495,7 +495,7 @@ def test_validate_agent_payload_no_longer_defines_removed_constants():
 
 @pytest.mark.asyncio
 async def test_create_agent_accepts_payload_with_bogus_proactive_fields(monkeypatch):
-    """End-to-end: POST /api/agents with garbage proactive-field values
+    """End-to-end: POST /api/chatbots with garbage proactive-field values
     still returns 201 — the fields are stray keys that create_agent ignores."""
     body = {
         "name": "test",
@@ -519,10 +519,10 @@ async def test_create_agent_accepts_payload_with_bogus_proactive_fields(monkeypa
     app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
 
-    req = make_mocked_request("POST", "/api/agents", app=app)
+    req = make_mocked_request("POST", "/api/chatbots", app=app)
     req.json = AsyncMock(return_value=body)
 
-    resp = await handle_create_agent(req)
+    resp = await handle_create_chatbot(req)
     assert resp.status == 201
     engine.create_chatbot.assert_called_once_with(body)
 
@@ -545,16 +545,16 @@ async def test_create_agent_no_longer_requires_type_field(monkeypatch):
     app.get = MagicMock(side_effect=lambda k, d=None: {}.get(k, d))
     app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
 
-    req = make_mocked_request("POST", "/api/agents", app=app)
+    req = make_mocked_request("POST", "/api/chatbots", app=app)
     req.json = AsyncMock(return_value=body)
 
-    resp = await handle_create_agent(req)
+    resp = await handle_create_chatbot(req)
     assert resp.status == 201
 
 
 @pytest.mark.asyncio
 async def test_update_agent_accepts_payload_with_bogus_proactive_fields(monkeypatch):
-    """End-to-end: PUT /api/agents/{id} with garbage proactive-field values
+    """End-to-end: PUT /api/chatbots/{id} with garbage proactive-field values
     still returns 200 — the fields are stray keys that update_agent ignores."""
     body = {
         "type": "not-a-real-type",
@@ -578,24 +578,24 @@ async def test_update_agent_accepts_payload_with_bogus_proactive_fields(monkeypa
 
     aid = "550e8400-e29b-41d4-a716-446655440000"
     req = make_mocked_request(
-        "PUT", f"/api/agents/{aid}",
+        "PUT", f"/api/chatbots/{aid}",
         match_info={"agent_id": aid},
         app=app,
     )
     req.json = AsyncMock(return_value=body)
-    resp = await handle_update_agent(req)
+    resp = await handle_update_chatbot(req)
     assert resp.status == 200
     engine.update_chatbot.assert_called_once_with(aid, body)
 
 
 # ---------------------------------------------------------------------------
-# Task 3: handle_run_agent stays a minimal "run the persona once, return its
+# Task 3: handle_run_chatbot stays a minimal "run the persona once, return its
 # text reply" — no action execution, no structured-output parsing.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_handle_run_agent_returns_plain_text_result():
-    from hiris.app.api.handlers_agents import handle_run_agent
+    from hiris.app.api.handlers_chatbots import handle_run_chatbot
 
     engine = MagicMock()
     fake_agent = MagicMock()
@@ -607,12 +607,12 @@ async def test_handle_run_agent_returns_plain_text_result():
 
     aid = "550e8400-e29b-41d4-a716-446655440000"
     req = make_mocked_request(
-        "POST", f"/api/agents/{aid}/run",
+        "POST", f"/api/chatbots/{aid}/run",
         match_info={"agent_id": aid},
         app=app,
     )
 
-    resp = await handle_run_agent(req)
+    resp = await handle_run_chatbot(req)
     assert resp.status == 200
     payload = json.loads(resp.body)
     assert payload == {"result": "Ciao! Come posso aiutarti?"}

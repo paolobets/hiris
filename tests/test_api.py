@@ -90,20 +90,20 @@ async def test_agents_crud(client):
         "allowed_tools": ["get_entity_states"],
         "enabled": False,
     }
-    create_resp = await client.post("/api/agents", json=payload)
+    create_resp = await client.post("/api/chatbots", json=payload)
     assert create_resp.status == 201
     agent = await create_resp.json()
     agent_id = agent["id"]
 
-    list_resp = await client.get("/api/agents")
+    list_resp = await client.get("/api/chatbots")
     assert list_resp.status == 200
     agents = await list_resp.json()
     assert any(a["id"] == agent_id for a in agents)
 
-    get_resp = await client.get(f"/api/agents/{agent_id}")
+    get_resp = await client.get(f"/api/chatbots/{agent_id}")
     assert get_resp.status == 200
 
-    del_resp = await client.delete(f"/api/agents/{agent_id}")
+    del_resp = await client.delete(f"/api/chatbots/{agent_id}")
     assert del_resp.status == 204
 
 
@@ -140,7 +140,7 @@ async def test_chat_no_runner(aiohttp_client):
 
 @pytest.mark.asyncio
 async def test_agent_not_found(client):
-    resp = await client.get("/api/agents/nonexistent-id")
+    resp = await client.get("/api/chatbots/nonexistent-id")
     assert resp.status == 404
 
 
@@ -155,11 +155,11 @@ async def test_agent_update(client):
         "allowed_tools": [],
         "enabled": False,
     }
-    create_resp = await client.post("/api/agents", json=payload)
+    create_resp = await client.post("/api/chatbots", json=payload)
     agent_id = (await create_resp.json())["id"]
 
     # Update
-    update_resp = await client.put(f"/api/agents/{agent_id}", json={"system_prompt": "updated"})
+    update_resp = await client.put(f"/api/chatbots/{agent_id}", json={"system_prompt": "updated"})
     assert update_resp.status == 200
     data = await update_resp.json()
     assert data["system_prompt"] == "updated"
@@ -175,10 +175,10 @@ async def test_agent_run(client):
         "allowed_tools": [],
         "enabled": False,
     }
-    create_resp = await client.post("/api/agents", json=payload)
+    create_resp = await client.post("/api/chatbots", json=payload)
     agent_id = (await create_resp.json())["id"]
 
-    run_resp = await client.post(f"/api/agents/{agent_id}/run")
+    run_resp = await client.post(f"/api/chatbots/{agent_id}/run")
     assert run_resp.status == 200
     data = await run_resp.json()
     assert "result" in data
@@ -192,7 +192,7 @@ async def test_delete_default_agent_returns_409(client):
         id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="",
         allowed_tools=[], enabled=True, is_default=True,
     )
-    resp = await client.delete(f"/api/agents/{DEFAULT_CHATBOT_ID}")
+    resp = await client.delete(f"/api/chatbots/{DEFAULT_CHATBOT_ID}")
     assert resp.status == 409
     data = await resp.json()
     assert "error" in data

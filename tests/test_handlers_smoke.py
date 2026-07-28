@@ -186,34 +186,34 @@ async def test_handle_refresh_ha_health_calls_refresh():
 
 
 # ---------------------------------------------------------------------------
-# handle_run_agent + handle_context_preview (handlers_agents.py)
+# handle_run_chatbot + handle_context_preview (handlers_chatbots.py)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_handle_run_agent_unknown_returns_404():
-    from hiris.app.api.handlers_agents import handle_run_agent
+    from hiris.app.api.handlers_chatbots import handle_run_chatbot
     engine = MagicMock()
     engine.get_chatbot.return_value = None
     app = MagicMock()
     app.__getitem__ = MagicMock(side_effect=lambda k: engine if k == "engine" else None)
     aid = "550e8400-e29b-41d4-a716-446655440000"
     request = make_mocked_request(
-        "POST", f"/api/agents/{aid}/run",
+        "POST", f"/api/chatbots/{aid}/run",
         match_info={"agent_id": aid},
         app=app,
     )
-    resp = await handle_run_agent(request)
+    resp = await handle_run_chatbot(request)
     assert resp.status == 404
 
 
 @pytest.mark.asyncio
 async def test_handle_run_agent_invalid_id_returns_400():
-    from hiris.app.api.handlers_agents import handle_run_agent
+    from hiris.app.api.handlers_chatbots import handle_run_chatbot
     app = MagicMock()
     request = make_mocked_request(
-        "POST", "/api/agents/bad<script>id/run",
+        "POST", "/api/chatbots/bad<script>id/run",
         match_info={"agent_id": "bad<script>id"},
         app=app,
     )
-    resp = await handle_run_agent(request)
+    resp = await handle_run_chatbot(request)
     assert resp.status == 400

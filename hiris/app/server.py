@@ -14,10 +14,10 @@ import uvicorn
 from aiohttp import web
 from apscheduler.triggers.cron import CronTrigger
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
-from .api.handlers_agents import (
-    handle_list_agents, handle_create_agent, handle_get_agent,
-    handle_update_agent, handle_delete_agent, handle_run_agent,
-    handle_get_agent_usage, handle_reset_agent_usage,
+from .api.handlers_chatbots import (
+    handle_list_chatbots, handle_create_chatbot, handle_get_chatbot,
+    handle_update_chatbot, handle_delete_chatbot, handle_run_chatbot,
+    handle_get_chatbot_usage, handle_reset_chatbot_usage,
     handle_context_preview,
 )
 from .api.handlers_entities import handle_list_entities
@@ -2168,20 +2168,20 @@ def create_app() -> web.Application:
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
-    app.router.add_get("/api/agents", handle_list_agents)
-    app.router.add_post("/api/agents", handle_create_agent)
-    app.router.add_get("/api/agents/{agent_id}", handle_get_agent)
-    app.router.add_put("/api/agents/{agent_id}", handle_update_agent)
-    app.router.add_delete("/api/agents/{agent_id}", handle_delete_agent)
-    app.router.add_post("/api/agents/{agent_id}/run", handle_run_agent)
+    app.router.add_get("/api/chatbots", handle_list_chatbots)
+    app.router.add_post("/api/chatbots", handle_create_chatbot)
+    app.router.add_get("/api/chatbots/{agent_id}", handle_get_chatbot)
+    app.router.add_put("/api/chatbots/{agent_id}", handle_update_chatbot)
+    app.router.add_delete("/api/chatbots/{agent_id}", handle_delete_chatbot)
+    app.router.add_post("/api/chatbots/{agent_id}/run", handle_run_chatbot)
     app.router.add_get("/api/entities", handle_list_entities)
     app.router.add_get("/api/suggestions", handle_list_suggestions)
     app.router.add_post("/api/suggestions/{id}/undo", handle_undo_suggestion)
-    app.router.add_get("/api/agents/{agent_id}/usage", handle_get_agent_usage)
-    app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
-    app.router.add_get("/api/agents/{agent_id}/context-preview", handle_context_preview)
-    app.router.add_get("/api/agents/{agent_id}/chat-history", handle_get_chat_history)
-    app.router.add_delete("/api/agents/{agent_id}/chat-history", handle_clear_chat_history)
+    app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
+    app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
+    app.router.add_get("/api/chatbots/{agent_id}/context-preview", handle_context_preview)
+    app.router.add_get("/api/chatbots/{agent_id}/chat-history", handle_get_chat_history)
+    app.router.add_delete("/api/chatbots/{agent_id}/chat-history", handle_clear_chat_history)
     app.router.add_get("/api/tasks", handle_list_tasks)
     app.router.add_get("/api/tasks/{task_id}", handle_get_task)
     app.router.add_delete("/api/tasks/{task_id}", handle_cancel_task)
