@@ -1,8 +1,8 @@
-/* HIRIS · Config · Sentinella (route #/sentinel)
+/* HIRIS · Config · Sentinella (route #/agentbots)
    Configura i detector di anomalia/sicurezza (soglie, entità monitorate) e
    mostra la timeline degli eventi rilevati di recente.
    Sicurezza: testi via textContent / nodi DOM, mai innerHTML su dati server. */
-window.HirisSentinelRoute = (function () {
+window.HirisAgentbotRoute = (function () {
   'use strict';
 
   var entityFieldSeq = 0;
@@ -552,12 +552,12 @@ window.HirisSentinelRoute = (function () {
         var payload = buildPayload();
         saveBtn.disabled = true; lensStatus.textContent = 'Salvataggio…';
         var isUpdate = !!lens.id;
-        var url = isUpdate ? ('api/lenses/' + encodeURIComponent(lens.id)) : 'api/lenses';
+        var url = isUpdate ? ('api/agentbots/' + encodeURIComponent(lens.id)) : 'api/agentbots';
         var method = isUpdate ? 'PUT' : 'POST';
         api(url, { method: method, body: JSON.stringify(payload) })
           .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
           .then(function (res) {
-            if (res && res.lens && res.lens.id) lens.id = res.lens.id;
+            if (res && res.agentbot && res.agentbot.id) lens.id = res.agentbot.id;
             lensStatus.textContent = 'Salvato ✓';
             saveBtn.disabled = false;
           })
@@ -573,7 +573,7 @@ window.HirisSentinelRoute = (function () {
           return;
         }
         delBtn.disabled = true; lensStatus.textContent = 'Eliminazione…';
-        api('api/lenses/' + encodeURIComponent(lens.id), { method: 'DELETE' })
+        api('api/agentbots/' + encodeURIComponent(lens.id), { method: 'DELETE' })
           .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
           .then(function () { row.remove(); })
           .catch(function () {
@@ -590,10 +590,10 @@ window.HirisSentinelRoute = (function () {
       lensListEl.appendChild(buildLensRow(emptyLens()));
     });
 
-    api('api/lenses', { method: 'GET' })
+    api('api/agentbots', { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (j) {
-        var lenses = j.lenses || [];
+        var lenses = j.agentbots || [];
         if (!lenses.length) return;
         lensEmptyMsg.remove();
         lenses.forEach(function (lens) {

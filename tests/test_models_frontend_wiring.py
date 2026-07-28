@@ -29,4 +29,4 @@ def test_models_route_puts_full_config_object():
     # brain_model, provider_models} object (never a partial patch) --
     # the backend replaces the whole file on PUT.
     assert "JSON.stringify(state.cfg)" in js
-    assert "api/agents/" in js  # per-Chatbot model uses a separate endpoint
+    assert "api/chatbots/" in js  # per-Chatbot model uses a separate endpoint

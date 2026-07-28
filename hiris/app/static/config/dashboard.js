@@ -25,17 +25,17 @@
     return 'Buonasera';
   }
 
-  /* Fallback fetch: loadAgents() in agent-form.js mutates module state and
+  /* Fallback fetch: loadChatbots() in chatbot-form.js mutates module state and
      touches DOM (#agent-list); not safe to call before that DOM exists. */
   function fetchAgentsDirect() {
     /* Rejects on failure (does NOT coerce to []) so mount() can tell a real
        network/server error apart from a genuinely-empty first run -- otherwise
        a blip would show the first-run onboarding to a user who has agents. */
-    return fetch('api/agents').then(function(r) {
+    return fetch('api/chatbots').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function(d) {
-      /* api/agents returns either an array or {agents: [...]} */
+      /* api/chatbots returns either an array or {agents: [...]} */
       if (Array.isArray(d)) return d;
       return d.agents || [];
     });
@@ -46,24 +46,24 @@
       '<div class="page-title">Benvenuto in HIRIS</div>' +
       '<p class="page-subtitle">Configura il tuo primo Chatbot per Home Assistant. Scegli un template per iniziare velocemente, oppure parti da zero.</p>' +
       '<div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr))">' +
-        '<a class="stat-tile" href="#/agents/new" style="text-decoration:none">' +
+        '<a class="stat-tile" href="#/chatbots/new" style="text-decoration:none">' +
           '<div class="st-label">⚡ Energia</div>' +
           '<div class="st-value" style="font-size:var(--fs-15);font-weight:500;letter-spacing:normal">Monitor consumi</div>' +
           '<div class="st-delta">Rileva anomalie e suggerisce azioni</div>' +
         '</a>' +
-        '<a class="stat-tile" href="#/agents/new" style="text-decoration:none">' +
+        '<a class="stat-tile" href="#/chatbots/new" style="text-decoration:none">' +
           '<div class="st-label">🏠 Rientro</div>' +
           '<div class="st-value" style="font-size:var(--fs-15);font-weight:500;letter-spacing:normal">Scenario casa</div>' +
           '<div class="st-delta">Attiva luci/clima al rientro</div>' +
         '</a>' +
-        '<a class="stat-tile" href="#/agents/new" style="text-decoration:none">' +
+        '<a class="stat-tile" href="#/chatbots/new" style="text-decoration:none">' +
           '<div class="st-label">⏰ Promemoria</div>' +
           '<div class="st-value" style="font-size:var(--fs-15);font-weight:500;letter-spacing:normal">Notifiche schedulate</div>' +
           '<div class="st-delta">Reminder ricorrenti</div>' +
         '</a>' +
       '</div>' +
       '<div style="margin-top:24px;display:flex;gap:12px">' +
-        '<a class="btn btn-primary" href="#/agents/new">+ Crea Chatbot vuoto</a>' +
+        '<a class="btn btn-primary" href="#/chatbots/new">+ Crea Chatbot vuoto</a>' +
         '<a class="btn btn-ghost" href="docs/" target="_blank">Cosa è HIRIS?</a>' +
       '</div>';
   }
@@ -83,7 +83,7 @@
           '<p class="page-subtitle" style="margin-top:4px">Cosa osserva, deduce e propone la tua casa.</p>' +
         '</div>' +
         '<div style="display:flex;gap:8px">' +
-          '<a class="btn btn-primary" href="#/agents/new">+ Nuovo Chatbot</a>' +
+          '<a class="btn btn-primary" href="#/chatbots/new">+ Nuovo Chatbot</a>' +
           '<a class="btn" href="./">Vai alla chat</a>' +
         '</div>' +
       '</div>' +
@@ -259,12 +259,12 @@
   function mount() {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
-    var agents = HirisState.get('agents') || [];
+    var agents = HirisState.get('chatbots') || [];
 
     if (agents.length === 0) {
-      /* Fetch agents directly (avoids depending on agent-form.js loadAgents) */
+      /* Fetch agents directly (avoids depending on chatbot-form.js loadChatbots) */
       fetchAgentsDirect().then(function(loaded) {
-        HirisState.set('agents', loaded);
+        HirisState.set('chatbots', loaded);
         if (loaded.length === 0) renderEmpty(outlet);
         else renderPopulated(outlet, loaded);
       }).catch(function(err) {

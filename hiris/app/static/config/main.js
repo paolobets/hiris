@@ -44,17 +44,17 @@
       paint(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
 
-    /* v0.10.5: fetch diretto invece di loadAgents() (in agent-form.js, caricato
-       solo quando user apre editor). Al boot loadAgents non è ancora definito,
+    /* v0.10.5: fetch diretto invece di loadChatbots() (in chatbot-form.js, caricato
+       solo quando user apre editor). Al boot loadChatbots non è ancora definito,
        quindi badge restava "—" finché user non apriva un agente. */
-    fetch('api/agents').then(function(r) { return r.ok ? r.json() : []; })
+    fetch('api/chatbots').then(function(r) { return r.ok ? r.json() : []; })
       .then(function(d) {
         var agents = Array.isArray(d) ? d : (d.agents || []);
-        var el = document.getElementById('nav-agents-count');
+        var el = document.getElementById('nav-chatbots-count');
         if (el) el.textContent = agents.length;
-        HirisState.set('agents', agents);
-        /* Anche populate window.agents per legacy compat */
-        if (typeof window !== 'undefined') window.agents = agents;
+        HirisState.set('chatbots', agents);
+        /* Anche populate window.chatbots per legacy compat */
+        if (typeof window !== 'undefined') window.chatbots = agents;
       }).catch(function() { /* silent */ });
 
     /* Update proposals count badge — hide when 0 (no work pending) */
@@ -94,14 +94,14 @@
       var route = item.getAttribute('data-route');
       var isActive =
         (route === 'dashboard' && (hash === '#/' || hash === '')) ||
-        (route === 'agents' && hash.indexOf('#/agents') === 0) ||
+        (route === 'chatbots' && hash.indexOf('#/chatbots') === 0) ||
         (route === 'proposals' && hash.indexOf('#/proposals') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
         (route === 'tasks' && hash.indexOf('#/tasks') === 0) ||
         (route === 'gateway' && hash.indexOf('#/gateway') === 0) ||
         (route === 'history' && hash.indexOf('#/history') === 0) ||
-        (route === 'sentinel' && hash.indexOf('#/sentinel') === 0) ||
+        (route === 'agentbots' && hash.indexOf('#/agentbots') === 0) ||
         (route === 'settings' && hash.indexOf('#/settings') === 0);
       item.classList.toggle('active', isActive);
     });
@@ -122,23 +122,23 @@
         '<div class="page-title">Dashboard</div><p class="page-subtitle">Caricamento…</p>';
     }
   });
-  HirisRouter.register(/^#\/agents\/?$/, function() {
+  HirisRouter.register(/^#\/chatbots\/?$/, function() {
     setCrumbHere('Chatbot');
-    if (window.HirisAgentsList) {
-      HirisAgentsList.mount();
+    if (window.HirisChatbotsList) {
+      HirisChatbotsList.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Lista Chatbot</div>';
     }
   });
-  HirisRouter.register(/^#\/agents\/new\/?$/, function() {
+  HirisRouter.register(/^#\/chatbots\/new\/?$/, function() {
     setCrumbHere('Chatbot / Nuovo');
-    HirisState.set('activeAgentId', null);
-    HirisAgentEditor.mount(null);
+    HirisState.set('activeChatbotId', null);
+    HirisChatbotEditor.mount(null);
   });
-  HirisRouter.register(/^#\/agents\/([^/]+)$/, function(m) {
+  HirisRouter.register(/^#\/chatbots\/([^/]+)$/, function(m) {
     setCrumbHere('Chatbot / ' + m[1]);
-    HirisState.set('activeAgentId', m[1]);
-    HirisAgentEditor.mount(m[1]);
+    HirisState.set('activeChatbotId', m[1]);
+    HirisChatbotEditor.mount(m[1]);
   });
   HirisRouter.register(/^#\/proposals\/?$/, function() {
     setCrumbHere('Proposte');
@@ -148,8 +148,8 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Proposte</div>';
     }
     /* proposals.js è in LEGACY_SCRIPTS — lo carichiamo on-demand qui */
-    if (typeof loadProposals !== 'function' && window.HirisAgentEditor) {
-      /* Reuse the legacy loader from agent-editor.js by triggering a no-op mount path? */
+    if (typeof loadProposals !== 'function' && window.HirisChatbotEditor) {
+      /* Reuse the legacy loader from chatbot-editor.js by triggering a no-op mount path? */
       /* Simpler: load proposals.js directly */
       var s = document.querySelector('script[data-legacy="static/config/proposals.js"]');
       if (!s) {
@@ -205,10 +205,10 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Storicizzazione</div>';
     }
   });
-  HirisRouter.register(/^#\/sentinel\/?$/, function() {
+  HirisRouter.register(/^#\/agentbots\/?$/, function() {
     setCrumbHere('Agentbot');
-    if (window.HirisSentinelRoute) {
-      HirisSentinelRoute.mount();
+    if (window.HirisAgentbotRoute) {
+      HirisAgentbotRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Agentbot</div>';
     }

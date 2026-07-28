@@ -1,9 +1,9 @@
 /* HIRIS · Designer · agent form (CRUD + run)
    v0.10.5 cleanup: rimossi renderList (target #agent-list shim invisibile in v6 —
-   la lista è gestita da agents-list.js), querySelector #agent-tabs/.tab-btn
+   la lista è gestita da chatbots-list.js), querySelector #agent-tabs/.tab-btn
    (markup tab orizzontale rimosso in v6), e gli IIFE handler di
    #new-btn/#save-btn/#delete-btn/#run-btn (shimmati a div invisibili,
-   sostituiti da window.saveAgent/runAgent/deleteAgent in agent-editor.js
+   sostituiti da window.saveAgent/runAgent/deleteAgent in chatbot-editor.js
    + initNewAgent path). Restano: openAgent, buildPayload
    (essenziali per il form long-form v6).
    Task 4 (Slice 5): rimossi showAgentMode/showActionMode/_defaultStates/
@@ -14,15 +14,15 @@
    policy, override modello.
    Calls into permessi.js, logs.js, usage.js. */
 
-var agents = [];
+var chatbots = [];
 var currentId = null;
 
-async function loadAgents() {
+async function loadChatbots() {
   try {
-    var r = await fetch('api/agents');
-    agents = await r.json();
+    var r = await fetch('api/chatbots');
+    chatbots = await r.json();
     /* v0.10.5: niente renderList — la lista agenti è renderizzata da
-       agents-list.js sulla route #/agents. agents global resta popolata
+       chatbots-list.js sulla route #/chatbots. agents global resta popolata
        per le chiamate downstream (openAgent, ecc.). */
   } catch(e) {}
 }
@@ -57,7 +57,7 @@ function openAgent(a) {
   /* buildToolChecks must run after buildActionChecks — it owns the final updateServicesVisibility() call */
   buildToolChecks(a.allowed_tools || []);
   /* v0.10.5: niente renderList (rimosso in cleanup, lista agenti gestita
-     da agents-list.js sulla route #/agents) */
+     da chatbots-list.js sulla route #/chatbots) */
   renderExecutionLog(a);
   loadAgentUsage(a.id);
   updateAgentUsageToggleBtn(a);
@@ -66,8 +66,8 @@ function openAgent(a) {
 }
 
 /* v0.10.5 cleanup: rimosso handler #new-btn (era IIFE su shim div invisibile).
-   Il path "Nuovo agente" v6 è gestito da HirisAgentEditor.initNewAgent() in
-   agent-editor.js (chiamato dal route #/agents/new). */
+   Il path "Nuovo agente" v6 è gestito da HirisChatbotEditor.initNewAgent() in
+   chatbot-editor.js (chiamato dal route #/chatbots/new). */
 
 function buildPayload() {
   return {
@@ -91,7 +91,7 @@ function buildPayload() {
 /* v0.10.5 cleanup: rimossi handler IIFE per #save-btn, #delete-btn, #run-btn.
    Erano inerti su shim div invisibili. La logica equivalente è in
    window.saveAgent / window.deleteAgent / window.runAgent definite in
-   agent-editor.js (chiamate da setupStickyActions sui veri pulsanti
+   chatbot-editor.js (chiamate da setupStickyActions sui veri pulsanti
    #btn-save / #btn-delete / #btn-test-run del template v6). */
 
 function highlightOutput(text) {

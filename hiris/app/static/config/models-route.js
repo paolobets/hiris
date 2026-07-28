@@ -5,8 +5,8 @@
         picker default per-provider da GET api/models)
      02 Catena automatica (GET/PUT api/models/config chain_order, riordino
         frecce, preset llm_strategy)
-     03 Assegnazione per entità (Chatbot -> PUT api/agents/{id}, Brain -> PUT
-        api/models/config brain_model, Agentbot -> rimando a #/sentinel)
+     03 Assegnazione per entità (Chatbot -> PUT api/chatbots/{id}, Brain -> PUT
+        api/models/config brain_model, Agentbot -> rimando a #/agentbots)
      04 Embeddings (riga informativa, sola lettura, da GET api/models/config)
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
    (stesso vincolo di sentinel-route.js).
@@ -149,7 +149,7 @@
     embeddings: { provider: '', model: '' },  // GET api/models/config -> embeddings
     ollamaModel: '',       // GET api/models/config -> ollama_model
     cfg: { chain_order: [], brain_model: 'auto', provider_models: { claude: '', openai: '', openrouter: '' } },
-    agents: []            // GET api/agents
+    agents: []            // GET api/chatbots
   };
   var providersReady = false;
   var agentsReady = false;
@@ -379,7 +379,7 @@
     var brainBody = clearEl(byId('sec3-brain-body'));
     if (brainBody) brainBody.appendChild(el('p', 'field-hint', 'Impossibile caricare i modelli disponibili.'));
     /* UX review fix: senza questo blocco, sec3-chatbot-body non viene mai
-       toccato da questa funzione. Se GET /api/agents nel frattempo va a
+       toccato da questa funzione. Se GET /api/chatbots nel frattempo va a
        buon fine (agentsReady=true), renderSection3Chatbot() resta gated su
        providersReady — che qui non diventa mai true — e la sezione Chatbot
        resta bloccata sul placeholder "Caricamento…" iniziale per sempre,
@@ -540,7 +540,7 @@
     if (!state.agents.length) {
       body.appendChild(el('p', 'field-hint', 'Nessun Chatbot configurato.'));
       var link = el('a', 'btn btn-ghost btn-sm', 'Crea il primo Chatbot →');
-      link.href = '#/agents';
+      link.href = '#/chatbots';
       body.appendChild(link);
       return;
     }
@@ -569,7 +569,7 @@
         var prev = a.model || 'auto';
         var next = sel.value;
         hideErrBadge(errBadge);
-        api('api/agents/' + encodeURIComponent(a.id), {
+        api('api/chatbots/' + encodeURIComponent(a.id), {
           method: 'PUT',
           body: JSON.stringify({ model: next })
         }).then(function(r) {
@@ -593,7 +593,7 @@
     body.appendChild(el('p', 'proposals-error', 'Errore caricamento Chatbot.'));
     var btn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
     btn.type = 'button';
-    btn.addEventListener('click', function() { loadAgents(); });
+    btn.addEventListener('click', function() { loadChatbots(); });
     body.appendChild(btn);
   }
 
@@ -656,10 +656,10 @@
     });
   }
 
-  function loadAgents() {
+  function loadChatbots() {
     var body = byId('sec3-chatbot-body');
     if (body) { clearEl(body); body.appendChild(el('p', 'field-hint', 'Caricamento…')); }
-    fetch('api/agents').then(function(r) {
+    fetch('api/chatbots').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function(d) {
@@ -732,7 +732,7 @@
     var agentbotBlock = el('div', 'field-hint-block');
     agentbotBlock.appendChild(el('p', null, 'Il modello per singolo Agentbot si imposta nel suo editor, non qui.'));
     var sentinelLink = el('a', 'btn btn-ghost btn-sm', 'Vai a Agentbot →');
-    sentinelLink.href = '#/sentinel';
+    sentinelLink.href = '#/agentbots';
     agentbotBlock.appendChild(sentinelLink);
     gAgentbot.appendChild(agentbotBlock);
     sec3body.appendChild(gAgentbot);
@@ -746,7 +746,7 @@
        viene popolata con i dati reali (o il fallback) da loadModelsAndConfig
        una volta arrivato GET /api/models/config (Task 7-fix punto 7). */
     loadModelsAndConfig();
-    loadAgents();
+    loadChatbots();
   }
 
   window.HirisModelsRoute = { mount: mount };

@@ -81,45 +81,45 @@ async def test_crud_end_to_end(aiohttp_client, tmp_path):
     # empty list initially
     r = await client.get("/api/agentbots")
     assert r.status == 200
-    assert (await r.json())["lenses"] == []
+    assert (await r.json())["agentbots"] == []
 
     # create
     r = await client.post("/api/agentbots", json=VALID_EVENT_LENS)
     assert r.status == 201
     body = await r.json()
     assert body["ok"] is True
-    lens = body["lens"]
+    lens = body["agentbot"]
     lens_id = lens["id"]
     assert lens["name"] == "Porta aperta"
     assert spy.calls == 1
 
     # list now contains it
     r = await client.get("/api/agentbots")
-    listed = (await r.json())["lenses"]
+    listed = (await r.json())["agentbots"]
     assert [l["id"] for l in listed] == [lens_id]
 
     # update
     updated_body = {**VALID_EVENT_LENS, "name": "Porta aperta (agg.)", "severity": "alert"}
     r = await client.put(f"/api/agentbots/{lens_id}", json=updated_body)
     assert r.status == 200
-    updated = (await r.json())["lens"]
+    updated = (await r.json())["agentbot"]
     assert updated["id"] == lens_id            # id from the URL, not re-minted
     assert updated["name"] == "Porta aperta (agg.)"
     assert updated["severity"] == "alert"
     assert spy.calls == 2
 
     r = await client.get("/api/agentbots")
-    listed = (await r.json())["lenses"]
+    listed = (await r.json())["agentbots"]
     assert len(listed) == 1 and listed[0]["severity"] == "alert"
 
     # delete
     r = await client.delete(f"/api/agentbots/{lens_id}")
     assert r.status == 200
-    assert (await r.json())["lenses"] == []
+    assert (await r.json())["agentbots"] == []
     assert spy.calls == 3
 
     r = await client.get("/api/agentbots")
-    assert (await r.json())["lenses"] == []
+    assert (await r.json())["agentbots"] == []
 
     # persisted to disk too (not just the in-memory cache)
     assert load_agentbots(str(tmp_path)) == []
@@ -157,7 +157,7 @@ async def test_create_with_existing_id_in_body_creates_new_lens_not_overwrite(ai
     # create the original lens
     r = await client.post("/api/agentbots", json=VALID_EVENT_LENS)
     assert r.status == 201
-    original = (await r.json())["lens"]
+    original = (await r.json())["agentbot"]
     original_id = original["id"]
 
     # POST again, this time smuggling the existing id in the body, with a
@@ -165,7 +165,7 @@ async def test_create_with_existing_id_in_body_creates_new_lens_not_overwrite(ai
     hijack_body = {**VALID_EVENT_LENS, "id": original_id, "name": "Hijack"}
     r = await client.post("/api/agentbots", json=hijack_body)
     assert r.status == 201
-    created = (await r.json())["lens"]
+    created = (await r.json())["agentbot"]
 
     # a brand-new id was minted -- never the client-supplied one
     assert created["id"] != original_id
@@ -239,7 +239,7 @@ async def test_register_agentbot_schedules_called_after_post_put_delete(aiohttp_
     client = await aiohttp_client(app)
 
     r = await client.post("/api/agentbots", json=VALID_EVENT_LENS)
-    lens_id = (await r.json())["lens"]["id"]
+    lens_id = (await r.json())["agentbot"]["id"]
     assert spy.calls == 1
 
     await client.put(f"/api/agentbots/{lens_id}", json=VALID_EVENT_LENS)
@@ -273,7 +273,7 @@ async def test_cache_refreshed_after_create_update_delete(aiohttp_client, tmp_pa
     client = await aiohttp_client(app)
 
     r = await client.post("/api/agentbots", json=VALID_EVENT_LENS)
-    lens_id = (await r.json())["lens"]["id"]
+    lens_id = (await r.json())["agentbot"]["id"]
 
     assert app["user_agentbots"] == load_agentbots(str(tmp_path))
     assert [l["id"] for l in app["user_agentbots"]] == [lens_id]
@@ -294,7 +294,7 @@ async def test_list_endpoint_serves_the_cache_not_disk(aiohttp_client, tmp_path)
     client = await aiohttp_client(app)
 
     r = await client.get("/api/agentbots")
-    listed = (await r.json())["lenses"]
+    listed = (await r.json())["agentbots"]
     assert listed == [{"id": "abcdef012345", "name": "cache-only", "enabled": True}]
     # disk is (and stays) empty -- the handler never fell back to it
     assert load_agentbots(str(tmp_path)) == []

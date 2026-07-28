@@ -711,7 +711,7 @@ class HirisCard extends HTMLElement {
     if (!this._hass) return;
     await _discoverIngressBase(this._slug);
     try {
-      const resp = await _hirisFetch(this._hass, this._hirisUrl('api/agents'), {
+      const resp = await _hirisFetch(this._hass, this._hirisUrl('api/chatbots'), {
         headers: { 'Authorization': `Bearer ${this._authToken()}` },
       });
       if (!resp.ok) {
@@ -903,7 +903,7 @@ class HirisCard extends HTMLElement {
     this._render();
     await _discoverIngressBase(this._slug);
     try {
-      const resp = await _hirisFetch(this._hass, this._hirisUrl(`api/agents/${this._agentId}`), {
+      const resp = await _hirisFetch(this._hass, this._hirisUrl(`api/chatbots/${this._agentId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1217,7 +1217,7 @@ class HirisChatCardEditor extends HTMLElement {
 
     this._config = {};
     this._hass = null;
-    this._agents = null;
+    this._chatbots = null;
   }
 
   connectedCallback() { this._render(); }
@@ -1229,11 +1229,11 @@ class HirisChatCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this._agents === null) this._loadAgents();
+    if (this._chatbots === null) this._loadChatbots();
   }
 
-  async _loadAgents() {
-    this._agents = 'loading';
+  async _loadChatbots() {
+    this._chatbots = 'loading';
     const slug = this._config.hiris_slug || 'hiris';
     await _discoverIngressBase(slug);
     const base = _cachedIngressBase
@@ -1241,18 +1241,18 @@ class HirisChatCardEditor extends HTMLElement {
     const auth = this._hass?.connection?.options?.auth;
     const token = auth?.accessToken ?? auth?.data?.access_token ?? '';
     try {
-      const resp = await _hirisFetch(this._hass, `${base}api/agents`, {
+      const resp = await _hirisFetch(this._hass, `${base}api/chatbots`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (resp.ok) {
         const result = await resp.json();
         // Only chat-type agents are compatible with this card
-        this._agents = Array.isArray(result) ? result.filter(a => a.type === 'chat') : [];
+        this._chatbots = Array.isArray(result) ? result.filter(a => a.type === 'chat') : [];
       } else {
-        this._agents = 'error';
+        this._chatbots = 'error';
       }
     } catch {
-      this._agents = 'error';
+      this._chatbots = 'error';
     }
     this._render();
   }
@@ -1277,13 +1277,13 @@ class HirisChatCardEditor extends HTMLElement {
     const height = this._config.height || '';
 
     let agentField;
-    if (this._agents === null || this._agents === 'loading') {
+    if (this._chatbots === null || this._chatbots === 'loading') {
       agentField = `<div class="field-loading">Caricamento Chatbot…</div>`;
-    } else if (this._agents === 'error' || this._agents.length === 0) {
+    } else if (this._chatbots === 'error' || this._chatbots.length === 0) {
       agentField = `<input id="agentInput" class="field-input" type="text"
         value="${this._esc(agentId)}" placeholder="es. hiris-default">`;
     } else {
-      const options = this._agents.map(a => {
+      const options = this._chatbots.map(a => {
         const sel = a.id === agentId ? ' selected' : '';
         return `<option value="${this._esc(a.id)}"${sel}>${this._esc(a.name || a.id)} (${this._esc(a.id)})</option>`;
       }).join('');

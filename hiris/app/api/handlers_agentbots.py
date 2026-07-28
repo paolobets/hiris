@@ -90,7 +90,7 @@ async def handle_list_agentbots(request: web.Request) -> web.Response:
     holder = request.app.get("user_agentbots")
     if holder is None:
         holder = _store.load_agentbots(_data_dir(request))
-    return web.json_response({"lenses": holder})
+    return web.json_response({"agentbots": holder})
 
 
 async def handle_create_agentbot(request: web.Request) -> web.Response:
@@ -116,7 +116,7 @@ async def handle_create_agentbot(request: web.Request) -> web.Response:
     data_dir = _data_dir(request)
     all_agentbots = _store.upsert_agentbot(data_dir, cleaned)
     await _apply_mutation(request.app, all_agentbots)
-    return web.json_response({"ok": True, "lens": cleaned, "lenses": all_agentbots}, status=201)
+    return web.json_response({"ok": True, "agentbot": cleaned, "agentbots": all_agentbots}, status=201)
 
 
 async def handle_update_agentbot(request: web.Request) -> web.Response:
@@ -142,7 +142,7 @@ async def handle_update_agentbot(request: web.Request) -> web.Response:
         return web.json_response({"error": "invalid lens"}, status=400)
     all_agentbots = _store.upsert_agentbot(data_dir, cleaned)
     await _apply_mutation(request.app, all_agentbots)
-    return web.json_response({"ok": True, "lens": cleaned, "lenses": all_agentbots})
+    return web.json_response({"ok": True, "agentbot": cleaned, "agentbots": all_agentbots})
 
 
 async def handle_delete_agentbot(request: web.Request) -> web.Response:
@@ -154,4 +154,4 @@ async def handle_delete_agentbot(request: web.Request) -> web.Response:
         return web.json_response({"error": "not found"}, status=404)
     all_agentbots = _store.delete_agentbot(data_dir, agentbot_id)
     await _apply_mutation(request.app, all_agentbots)
-    return web.json_response({"ok": True, "lenses": all_agentbots})
+    return web.json_response({"ok": True, "agentbots": all_agentbots})

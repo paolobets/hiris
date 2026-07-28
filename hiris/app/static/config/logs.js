@@ -43,7 +43,7 @@ async function loadContextPreview(agentId) {
   var pre   = document.getElementById('context-preview-content');
   if (!agentId) { if (ctxEl) ctxEl.textContent = '—'; return; }
   try {
-    var r = await fetch('api/agents/' + agentId + '/context-preview');
+    var r = await fetch('api/chatbots/' + agentId + '/context-preview');
     if (!r.ok) throw new Error();
     var d = await r.json();
     if (ctxEl) ctxEl.textContent = d.token_estimate > 0 ? '~' + fmtTok(d.token_estimate) : '—';
