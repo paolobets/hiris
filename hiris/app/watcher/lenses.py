@@ -541,21 +541,3 @@ def delete_agentbot(data_dir: str, agentbot_id: str) -> list[dict]:
         current = load_agentbots(data_dir)
         current = [a for a in current if a.get("id") != agentbot_id]
         return save_agentbots(data_dir, current)
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible aliases (SP-4 Fase A Task 3).
-#
-# `hiris/app/api/handlers_lenses.py` (the `/api/lenses` CRUD layer) still
-# calls this module under the pre-rename names and is explicitly OUT of this
-# task's scope -- it is renamed in Task 4 of the same plan
-# (docs/design/2026-07-28-piano-SP4a-rename-profondo.md). These are plain
-# reference assignments (not `def`s), so they keep that caller working
-# unchanged until Task 4 lands, without tripping Task 3's regression grep
-# (`def (validate|load|save|upsert|delete)_lens`).
-# ---------------------------------------------------------------------------
-validate_lens = validate_agentbot
-load_lenses = load_agentbots
-save_lenses = save_agentbots
-upsert_lens = upsert_agentbot
-delete_lens = delete_agentbot

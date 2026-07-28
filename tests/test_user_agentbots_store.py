@@ -350,7 +350,7 @@ def test_validate_accepts_well_formed_cron():
 
 # ---------------------------------------------------------------------------
 # Task L/1: shape-valid but VALUE-invalid cron (e.g. hour=99) must be
-# rejected at creation (validate_agentbot -> None -> handlers_lenses.py 400),
+# rejected at creation (validate_agentbot -> None -> handlers_agentbots.py 400),
 # not silently accepted at 201 only to fail later, invisibly, at
 # `register_agentbot_schedules` time (server.py's CronTrigger.from_crontab).
 # ---------------------------------------------------------------------------

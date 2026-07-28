@@ -1451,21 +1451,21 @@ async def _on_startup(app: web.Application) -> None:
     # in SP-4 Fase A Task 3), dispatched by the SAME Guardian.on_state_changed
     # alongside (not instead of) the built-in DETECTORS above.
     # `get_user_agentbots` reads the in-memory Agentbot cache (Task 6,
-    # `handlers_lenses.set_lenses`/`get_event_lenses` -- Task 4 of the rename
-    # plan, not yet renamed, out of THIS task's scope) instead of
-    # re-reading+re-validating agentbots.json on every single state_changed
-    # event (Task 4 review finding). The cache is populated right here from
-    # the current disk contents, and refreshed after every CRUD mutation by
-    # the `/api/lenses` handlers -- so freshly-saved Agentbots are still
+    # `handlers_agentbots.set_agentbots`/`get_event_agentbots` -- SP-4 Fase A
+    # Task 4 of the rename plan) instead of re-reading+re-validating
+    # agentbots.json on every single state_changed event (Task 4 review
+    # finding). The cache is populated right here from the current disk
+    # contents, and refreshed after every CRUD mutation by the
+    # `/api/agentbots` handlers -- so freshly-saved Agentbots are still
     # live without a restart, just without the per-event disk hit.
     from .watcher.lenses import load_agentbots as _load_agentbots
-    from .api.handlers_lenses import set_lenses as _set_lenses_cache
-    from .api.handlers_lenses import get_event_lenses as _get_event_lenses_cache
+    from .api.handlers_agentbots import set_agentbots as _set_agentbots_cache
+    from .api.handlers_agentbots import get_event_agentbots as _get_event_agentbots_cache
 
-    _set_lenses_cache(app, _load_agentbots(data_dir))
+    _set_agentbots_cache(app, _load_agentbots(data_dir))
 
     def _get_event_agentbots() -> list:
-        return _get_event_lenses_cache(app)
+        return _get_event_agentbots_cache(app)
 
     async def _dispatch_run_agentbot(agentbot: dict, evidence: dict) -> str:
         return await app["run_agentbot"](agentbot, evidence)
@@ -1585,16 +1585,6 @@ async def _on_startup(app: web.Application) -> None:
     # re-invoke it after every Agentbot save/delete without a server.py
     # import (avoids a circular import back from api/handlers_*.py).
     app["register_agentbot_schedules"] = register_agentbot_schedules
-    # SP-4 Fase A Task 3 bridge: `hiris/app/api/handlers_lenses.py` (the
-    # `/api/lenses` CRUD layer, Task 4 of the rename plan, explicitly OUT of
-    # THIS task's scope) still reads `app.get("register_lens_schedules")`
-    # after every mutation to re-register schedule jobs. Keep this legacy
-    # key pointing at the SAME function until Task 4 migrates that reader --
-    # dropping it here would silently stop re-registering schedules after
-    # every Agentbot CRUD save/delete (a real behavior regression not
-    # caught by any Task 3 test, since those exercise register_agentbot_
-    # schedules directly). Remove this line when Task 4 lands.
-    app["register_lens_schedules"] = register_agentbot_schedules
     await register_agentbot_schedules(app)
 
     # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
@@ -2247,16 +2237,17 @@ def create_app() -> web.Application:
     app.router.add_post("/api/sentinel/policy", handle_save_sentinel_policy)
     app.router.add_get("/api/sentinel/timeline", handle_sentinel_timeline)
 
-    # Slice 5b Task 6: user-lens CRUD. Same app-level internal_auth_middleware
-    # + csrf_middleware protection as every other /api/* route above -- no
-    # per-route auth here, just registration under the same app.router.
-    from .api.handlers_lenses import (
-        handle_list_lenses, handle_create_lens, handle_update_lens, handle_delete_lens,
+    # Slice 5b Task 6: user-Agentbot CRUD (renamed from "lens" in SP-4 Fase A
+    # Task 4). Same app-level internal_auth_middleware + csrf_middleware
+    # protection as every other /api/* route above -- no per-route auth
+    # here, just registration under the same app.router.
+    from .api.handlers_agentbots import (
+        handle_list_agentbots, handle_create_agentbot, handle_update_agentbot, handle_delete_agentbot,
     )
-    app.router.add_get("/api/lenses", handle_list_lenses)
-    app.router.add_post("/api/lenses", handle_create_lens)
-    app.router.add_put("/api/lenses/{id}", handle_update_lens)
-    app.router.add_delete("/api/lenses/{id}", handle_delete_lens)
+    app.router.add_get("/api/agentbots", handle_list_agentbots)
+    app.router.add_post("/api/agentbots", handle_create_agentbot)
+    app.router.add_put("/api/agentbots/{id}", handle_update_agentbot)
+    app.router.add_delete("/api/agentbots/{id}", handle_delete_agentbot)
 
     from .api.handlers_gateway_pending import (
         handle_list_pending as _gw_list_pending,
