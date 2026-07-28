@@ -30,48 +30,21 @@
     <div class="ob-progress">
       <div class="ob-dot active" id="ob-dot-0"></div>
       <div class="ob-dot" id="ob-dot-1"></div>
-      <div class="ob-dot" id="ob-dot-2"></div>
     </div>
 
     <div class="ob-step active" id="ob-step-0">
       <img src="static/hiris-icon.svg" class="ob-icon" alt="HIRIS">
       <div class="ob-title">Benvenuto in HIRIS</div>
-      <div class="ob-sub">Il tuo assistente AI per Home Assistant.<br>Creiamo il primo assistente — meno di un minuto.</div>
+      <div class="ob-sub">Il tuo Chatbot per Home Assistant.<br>Creiamo il primo assistente — meno di un minuto.</div>
       <div class="ob-actions">
-        <button class="btn ob-btn-skip" onclick="obDismiss()">Salta</button>
-        <button class="btn btn-primary ob-btn-next" onclick="obGo(1)">Inizia &#8594;</button>
+        <button class="btn ob-btn-skip" type="button" id="ob-btn-skip-0">Salta</button>
+        <button class="btn btn-primary ob-btn-next" type="button" id="ob-btn-start">Inizia &#8594;</button>
       </div>
     </div>
 
     <div class="ob-step" id="ob-step-1">
-      <div class="ob-title">Che tipo di assistente?</div>
-      <div class="ob-sub">Potrai sempre crearne altri dalla pagina di configurazione.</div>
-      <div class="ob-types">
-        <button class="ob-type-btn" onclick="obSelectType('monitor', this)">
-          <span class="ob-type-icon">&#x1F4CA;</span>
-          <span class="ob-type-name">Monitor</span>
-          <span class="ob-type-desc">Controlla la casa a intervalli</span>
-        </button>
-        <button class="ob-type-btn selected" onclick="obSelectType('chat', this)">
-          <span class="ob-type-icon">&#x1F4AC;</span>
-          <span class="ob-type-name">Chat</span>
-          <span class="ob-type-desc">Risponde alle domande</span>
-        </button>
-        <button class="ob-type-btn" onclick="obSelectType('reactive', this)">
-          <span class="ob-type-icon">&#x26A1;</span>
-          <span class="ob-type-name">Reattivo</span>
-          <span class="ob-type-desc">Reagisce ai cambiamenti</span>
-        </button>
-      </div>
-      <div class="ob-actions">
-        <button class="btn ob-btn-skip" onclick="obGo(0)">&#8592; Indietro</button>
-        <button class="btn btn-primary ob-btn-next" onclick="obGo(2)">Avanti &#8594;</button>
-      </div>
-    </div>
-
-    <div class="ob-step" id="ob-step-2">
-      <div class="ob-title">Configura il tuo assistente</div>
-      <div class="ob-sub">Pochi dettagli per iniziare — potrai modificarli in seguito.</div>
+      <div class="ob-title">Configura il tuo Chatbot</div>
+      <div class="ob-sub">Pochi dettagli per iniziare — potrai modificarli in seguito dalla Configurazione.</div>
       <div class="ob-field">
         <label>Nome assistente</label>
         <input type="text" id="ob-name" placeholder="Es: Iris, Monitor Energia…" maxlength="60">
@@ -81,15 +54,15 @@
         <textarea id="ob-prompt" placeholder="Descrivi come deve comportarsi questo assistente…"></textarea>
       </div>
       <div class="ob-actions">
-        <button class="btn ob-btn-skip" onclick="obGo(1)">&#8592; Indietro</button>
-        <button class="btn btn-primary ob-btn-next" id="ob-create-btn" onclick="obCreate()">Crea assistente &#10003;</button>
+        <button class="btn ob-btn-skip" type="button" id="ob-btn-back-1">&#8592; Indietro</button>
+        <button class="btn btn-primary ob-btn-next" id="ob-create-btn" type="button">Crea assistente &#10003;</button>
       </div>
     </div>
   </div>
 </div>
 
 <div id="app">
-  <div id="sidebar-overlay" style="display:none" onclick="toggleSidebar(false)"></div>
+  <div id="sidebar-overlay" style="display:none"></div>
   <aside id="sidebar">
     <div id="sidebar-header"><h2>Chatbot</h2></div>
     <div id="agent-list"></div>
@@ -100,7 +73,7 @@
         </span>
         <span>Configurazione</span>
       </a>
-      <a href="#" id="nav-tasks" class="sb-nav-item" onclick="showPanel('tasks'); return false;">
+      <a href="#" id="nav-tasks" class="sb-nav-item">
         <span class="ic">
           <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="6.5"/><path d="M9 5.5V9l2.5 1.5"/></svg>
         </span>
@@ -111,23 +84,27 @@
     <div id="usage-widget">
       <div class="usage-title">Utilizzo</div>
       <div class="usage-row">
-        <span class="usage-label">Token</span>
-        <span class="usage-val" id="u-tokens">—</span>
+        <span class="usage-label">Richieste</span>
+        <span class="usage-val" id="u-requests">—</span>
+      </div>
+      <div class="usage-row">
+        <span class="usage-label">Token input</span>
+        <span class="usage-val" id="u-input">—</span>
+      </div>
+      <div class="usage-row">
+        <span class="usage-label">Token output</span>
+        <span class="usage-val" id="u-output">—</span>
       </div>
       <div class="usage-row">
         <span class="usage-label">Costo</span>
         <span class="usage-val" id="u-cost">—</span>
-      </div>
-      <div class="usage-row">
-        <span class="usage-label">Richieste</span>
-        <span class="usage-val" id="u-reqs">—</span>
       </div>
     </div>
   </aside>
 
   <main id="main">
     <header id="header">
-      <button id="menu-btn" onclick="toggleSidebar()" aria-label="Apri menu" title="Menu">
+      <button id="menu-btn" aria-label="Apri menu" title="Menu">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       </button>
       <img id="header-icon" src="static/hiris-icon.svg" alt="HIRIS">
@@ -136,10 +113,10 @@
         <div id="header-subtitle">Home Intelligent Reasoning &amp; Integration</div>
       </div>
       <div id="header-tools">
-        <button id="mobile-task-btn" onclick="showPanel('tasks'); return false;" title="Task pianificati">
+        <button id="mobile-task-btn" title="Task pianificati">
           Task<span id="mobile-task-badge" data-count="0"></span>
         </button>
-        <button id="new-conv-btn" class="btn" onclick="clearConversation()" title="Nuova conversazione">
+        <button id="new-conv-btn" class="btn" title="Nuova conversazione">
           <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a7 7 0 0 1 12-5l2 2M16 4v3h-3M16 9a7 7 0 0 1-12 5l-2-2M2 14v-3h3"/></svg>
           Nuova conv.
         </button>
@@ -160,12 +137,12 @@
       <div id="welcome">
         <img src="static/hiris-icon.svg" class="welcome-mark" alt="HIRIS">
         <h3 id="welcome-greeting"><span id="welcome-hello">Ciao</span>, <span class="grad">come posso aiutarti?</span></h3>
-        <p>Il tuo assistente per la smart home. Chiedimi qualsiasi cosa — interrogo Home Assistant in tempo reale e ragiono prima di rispondere.</p>
+        <p>Il tuo Chatbot per la smart home. Chiedimi qualsiasi cosa — interrogo Home Assistant in tempo reale e ragiono prima di rispondere.</p>
         <div class="quick-chips">
-          <button class="chip" onclick="sendQuick('Stato casa')"><span class="chip-glyph">⚡</span> Stato casa</button>
-          <button class="chip" onclick="sendQuick('Temperatura camere')"><span class="chip-glyph">🌡</span> Temperatura camere</button>
-          <button class="chip" onclick="sendQuick('Consumi energia')"><span class="chip-glyph">💡</span> Consumi energia</button>
-          <button class="chip" onclick="sendQuick('Briefing del mattino')"><span class="chip-glyph">☀️</span> Briefing del mattino</button>
+          <button class="chip" type="button" data-quick="Stato casa"><span class="chip-glyph">⚡</span> Stato casa</button>
+          <button class="chip" type="button" data-quick="Temperatura camere"><span class="chip-glyph">🌡</span> Temperatura camere</button>
+          <button class="chip" type="button" data-quick="Consumi energia"><span class="chip-glyph">💡</span> Consumi energia</button>
+          <button class="chip" type="button" data-quick="Briefing del mattino"><span class="chip-glyph">☀️</span> Briefing del mattino</button>
         </div>
       </div>
     </div>
@@ -186,7 +163,7 @@
     <div id="task-panel">
       <div id="task-panel-header">
         <span>Task pianificati</span>
-        <button class="btn" onclick="showPanel('chat')">&#8592; Chat</button>
+        <button class="btn" type="button" id="task-panel-back-btn">&#8592; Chat</button>
       </div>
       <div class="task-section-title">Task attive</div>
       <div id="task-active-list"></div>
@@ -196,616 +173,16 @@
   </main>
 </div>
 
-<script>
-/* HIRIS petals avatar — used for assistant bubbles */
-var HIRIS_AVATAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="28" height="28" style="display:block;border-radius:50%">'
-  + '<defs><radialGradient id="hbg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#2a0a4e"/><stop offset="100%" stop-color="#0a0015"/></radialGradient></defs>'
-  + '<circle cx="50" cy="50" r="50" fill="url(#hbg)"/>'
-  + '<g transform="translate(50,50)">'
-  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#c084fc"/>'
-  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#818cf8" transform="rotate(60)"/>'
-  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#60a5fa" transform="rotate(120)"/>'
-  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#22d3ee" transform="rotate(180)"/>'
-  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#2dd4bf" transform="rotate(240)"/>'
-  + '<path d="M0 0 C-4.2 -9 -5.1 -31.2 0 -43 C5.1 -31.2 4.2 -9 0 0 Z" fill="#e879f9" transform="rotate(300)"/>'
-  + '</g>'
-  + '<circle cx="50" cy="50" r="4.5" fill="white"/>'
-  + '</svg>';
-
-var messagesEl = document.getElementById('messages');
-var inputEl    = document.getElementById('input');
-var sendBtn    = document.getElementById('send-btn');
-var agentListEl= document.getElementById('agent-list');
-var welcomeEl  = document.getElementById('welcome');
-var connDot    = document.getElementById('conn-dot');
-
-var activeAgentId = 'hiris-default';
-var hasMessages = false;
-var agentMaxTurns = {};
-var agentTurnCounts = {};
-var _isLoading = false;
-
-function updateTurnCounter() {
-  var counter = document.getElementById('turn-counter');
-  var max = agentMaxTurns[activeAgentId] || 0;
-  if (!activeAgentId || max === 0) { counter.style.display = 'none'; return; }
-  var current = agentTurnCounts[activeAgentId] || 0;
-  counter.style.display = '';
-  counter.textContent = current + ' / ' + max + ' messaggi';
-  counter.style.color = current >= max ? 'var(--err)' : 'var(--text-3)';
-}
-
-function checkTurnLimit() {
-  var max = agentMaxTurns[activeAgentId] || 0;
-  var sessionMsg = document.getElementById('session-ended-msg');
-  if (max === 0) {
-    inputEl.disabled = false;
-    sendBtn.disabled = false;
-    if (sessionMsg) sessionMsg.style.display = 'none';
-    return;
-  }
-  var current = agentTurnCounts[activeAgentId] || 0;
-  var reached = current >= max;
-  inputEl.disabled = reached;
-  sendBtn.disabled = reached;
-  if (sessionMsg) sessionMsg.style.display = reached ? '' : 'none';
-}
-
-async function clearConversation() {
-  if (!activeAgentId) return;
-  try {
-    await fetch('api/chatbots/' + activeAgentId + '/chat-history', { method: 'DELETE', headers: {'X-Requested-With': 'fetch'} });
-  } catch(e) {}
-  messagesEl.innerHTML = '';
-  messagesEl.appendChild(welcomeEl);
-  welcomeEl.style.display = '';
-  hasMessages = false;
-  agentTurnCounts[activeAgentId] = 0;
-  updateTurnCounter();
-  checkTurnLimit();
-}
-
-function updateAgentPill(agentName) {
-  var pill = document.getElementById('agent-pill');
-  if (!pill) return;
-  var avatar = document.getElementById('ap-avatar');
-  var name = document.getElementById('ap-name');
-  var letter = (agentName || 'I').trim().charAt(0).toUpperCase();
-  if (avatar) avatar.textContent = letter;
-  if (name) name.textContent = agentName || 'Iris';
-}
-
-function updateGreeting() {
-  var hello = document.getElementById('welcome-hello');
-  if (!hello) return;
-  var h = new Date().getHours();
-  var word = (h < 5 || h >= 22) ? 'Buonanotte'
-           : (h < 12)  ? 'Buongiorno'
-           : (h < 18)  ? 'Buon pomeriggio'
-           : 'Buonasera';
-  hello.textContent = word;
-}
-
-async function loadChatbots() {
-  try {
-    var r = await fetch('api/chatbots');
-    if (!r.ok) throw new Error();
-    var agents = await r.json();
-    connDot.classList.remove('offline');
-    connDot.textContent = 'connesso';
-    agentListEl.innerHTML = '';
-    var chatAgents = agents;
-    chatAgents.forEach(function(a) {
-      agentMaxTurns[a.id] = a.max_chat_turns || 0;
-      var div = document.createElement('div');
-      div.className = 'agent-item' + (a.id === activeAgentId ? ' agent-active' : '');
-      div.onclick = function() { setActiveAgent(a.id, a.name); };
-      div.innerHTML =
-        '<div class="dot ' + (a.enabled ? 'on' : 'off') + '"></div>' +
-        '<span>' + esc(a.name) + '</span>' +
-        (a.is_default ? '<span class="meta">default</span>' : '');
-      agentListEl.appendChild(div);
-    });
-    /* keep pill in sync with active agent */
-    var current = chatAgents.find(function(a) { return a.id === activeAgentId; }) || chatAgents[0];
-    if (current) updateAgentPill(current.name);
-  } catch(e) {
-    connDot.classList.add('offline');
-    connDot.textContent = 'offline';
-  }
-}
-
-async function setActiveAgent(agentId, agentName) {
-  if (agentId === activeAgentId) return;
-  activeAgentId = agentId;
-  messagesEl.innerHTML = '';
-  messagesEl.appendChild(welcomeEl);
-  welcomeEl.style.display = '';
-  hasMessages = false;
-  document.getElementById('header-title').firstChild.nodeValue = agentName + ' ';
-  updateAgentPill(agentName);
-  agentTurnCounts[agentId] = 0;
-  updateTurnCounter();
-  checkTurnLimit();
-  // Capture local id: if the user clicks another agent before history loads,
-  // a stale response would otherwise rewrite the new agent's empty chat.
-  var localId = agentId;
-  try {
-    var r = await fetch('api/chatbots/' + agentId + '/chat-history');
-    if (localId !== activeAgentId) return;
-    if (r.ok) {
-      var data = await r.json();
-      if (localId !== activeAgentId) return;
-      var msgs = data.messages || [];
-      msgs.forEach(function(m) {
-        appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
-      });
-      agentTurnCounts[agentId] = msgs.filter(function(m) { return m.role === 'user'; }).length;
-      updateTurnCounter();
-      checkTurnLimit();
-    }
-  } catch(e) {}
-  loadChatbots();
-}
-
-function nowHHMM() {
-  return new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
-}
-
-function esc(t) {
-  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-}
-
-function _formatContent(text) {
-  return esc(text)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code style="font-family:var(--font-mono);font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border)">$1</code>')
-    .replace(/\n/g,'<br>');
-}
-
-function appendMsg(role, text) {
-  if (!hasMessages) { welcomeEl.style.display = 'none'; hasMessages = true; }
-  var row = document.createElement('div');
-  row.className = 'msg-row ' + role;
-  var time = nowHHMM();
-  var content = _formatContent(text);
-  if (role === 'assistant') {
-    row.innerHTML =
-      '<div class="avatar">' + HIRIS_AVATAR + '</div>' +
-      '<div class="msg-col"><div class="bubble">' + content + '</div><div class="msg-time">' + time + '</div></div>';
-  } else {
-    row.innerHTML =
-      '<div class="msg-col"><div class="bubble">' + content + '</div><div class="msg-time">' + time + '</div></div>' +
-      '<div class="avatar user">io</div>';
-  }
-  messagesEl.appendChild(row);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  return row;
-}
-
-function _updateMsgBubble(row, text) {
-  if (!row) return;
-  var bubble = row.querySelector('.bubble');
-  if (bubble) bubble.innerHTML = _formatContent(text);
-}
-
-/* Slice 4b (chat via abbonamento): when the backend enqueues the turn to the
- * subscription runner instead of replying synchronously, it returns HTTP 202
- * {status:"pending", job_id}. Poll the reply endpoint every ~3.5s, replacing
- * the placeholder bubble once a terminal state ("done" or "error") arrives.
- * Gives up after CHAT_POLL_MAX_MS so the UI never spins forever. */
-var CHAT_POLL_INTERVAL_MS = 3500;
-var CHAT_POLL_MAX_MS = 5 * 60 * 1000;
-
-function _sleep(ms) {
-  return new Promise(function(resolve) { setTimeout(resolve, ms); });
-}
-
-async function pollChatReply(jobId, placeholderRow) {
-  var start = Date.now();
-  while (Date.now() - start < CHAT_POLL_MAX_MS) {
-    await _sleep(CHAT_POLL_INTERVAL_MS);
-    try {
-      var r = await fetch('api/chat/reply/' + encodeURIComponent(jobId));
-      var data = await r.json();
-      if (data.status === 'done') {
-        _updateMsgBubble(placeholderRow, data.reply || '');
-        agentTurnCounts[activeAgentId] = (agentTurnCounts[activeAgentId] || 0) + 1;
-        updateTurnCounter();
-        checkTurnLimit();
-        return;
-      }
-      if (data.status === 'error') {
-        _updateMsgBubble(placeholderRow, data.message || 'Errore nella risposta.');
-        return;
-      }
-      /* status === 'pending' (or unexpected 404/503 body without a status)
-       * -- keep polling until CHAT_POLL_MAX_MS is reached. */
-    } catch (e) {
-      /* Transient network hiccup while polling -- keep retrying until the
-       * overall timeout above gives up. */
-    }
-  }
-  _updateMsgBubble(placeholderRow, 'La risposta non è arrivata in tempo. Riprova.');
-}
-
-function appendDebug(tools) {
-  var row = document.createElement('div');
-  row.className = 'debug-row';
-  /* Render tool calls as inline mono chips. Click to expand/collapse the args. */
-  var chips = tools.map(function(t) {
-    // Defensive: never let a malformed debug payload throw here — an exception
-    // would be swallowed by sendMessage()'s catch and mislabeled as a
-    // connection error, AFTER the answer has already rendered.
-    if (!t || typeof t !== 'object') return '';
-    var inp = JSON.stringify(t.input !== undefined && t.input !== null ? t.input : {});
-    return '<button class="tool-chip" data-args="' + esc(inp) + '" type="button">'
-         + '<svg viewBox="0 0 24 24" class="tc-ic" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
-         + '<span class="tc-name">' + esc(t.tool || '') + '</span>'
-         + '</button>';
-  }).filter(Boolean).join('');
-  row.innerHTML = '<div class="tool-chips">' + chips + '</div><div class="tool-args" style="display:none"></div>';
-  /* Toggle args panel on chip click */
-  row.querySelectorAll('.tool-chip').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var panel = row.querySelector('.tool-args');
-      var args = btn.getAttribute('data-args');
-      var name = btn.querySelector('.tc-name').textContent;
-      var open = panel.dataset.openName === name && panel.style.display !== 'none';
-      if (open) {
-        panel.style.display = 'none';
-        panel.dataset.openName = '';
-      } else {
-        panel.innerHTML = '<code><b>' + esc(name) + '</b>(' + esc(args) + ')</code>';
-        panel.style.display = '';
-        panel.dataset.openName = name;
-      }
-    });
-  });
-  messagesEl.appendChild(row);
-}
-
-function showTyping() {
-  var row = document.createElement('div');
-  row.className = 'typing-row';
-  row.id = 'typing-indicator';
-  row.innerHTML =
-    '<div class="avatar">' + HIRIS_AVATAR + '</div>' +
-    '<div class="typing-bubble">' +
-    '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>' +
-    '</div>';
-  messagesEl.appendChild(row);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  return row;
-}
-
-function _setLoadingState(loading) {
-  _isLoading = loading;
-  sendBtn.disabled = loading || inputEl.disabled;
-  sendBtn.classList.toggle('loading', loading);
-}
-
-async function sendMessage(text) {
-  text = (text !== undefined) ? text : inputEl.value.trim();
-  if (!text || _isLoading) return;
-  inputEl.value = '';
-  autoResize();
-  _setLoadingState(true);
-  appendMsg('user', text);
-  var typing = showTyping();
-  try {
-    var r = await fetch('api/chat', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'fetch'},
-      body: JSON.stringify({ message: text, chatbot_id: activeAgentId }),
-    });
-    var data = await r.json();
-    typing.remove();
-    if (r.status === 202 && data.status === 'pending' && data.job_id) {
-      var placeholder = appendMsg('assistant', 'HIRIS sta pensando… (risposta in arrivo)');
-      pollChatReply(data.job_id, placeholder);
-      return;
-    }
-    if (data.error === 'max_turns_reached') {
-      appendMsg('assistant', 'Sessione completata. Avvia una nuova conversazione.');
-      checkTurnLimit();
-      return;
-    }
-    appendMsg('assistant', data.response || data.error || 'Errore sconosciuto');
-    if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
-      appendDebug(data.debug.tools_called);
-    }
-    agentTurnCounts[activeAgentId] = (agentTurnCounts[activeAgentId] || 0) + 1;
-    updateTurnCounter();
-    checkTurnLimit();
-  } catch(e) {
-    typing.remove();
-    appendMsg('assistant', 'Errore di connessione. Riprova tra poco.');
-  } finally {
-    _setLoadingState(false);
-    if (!inputEl.disabled) inputEl.focus();
-  }
-}
-
-function sendQuick(text) { sendMessage(text); }
-
-function autoResize() {
-  inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
-}
-
-var _enterSent = false;
-inputEl.addEventListener('keydown', function(e) {
-  if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
-    e.preventDefault();
-    _enterSent = true;
-    sendMessage();
-    setTimeout(function() { _enterSent = false; }, 200);
-  }
-});
-inputEl.addEventListener('input', function() {
-  autoResize();
-  if (!_enterSent && inputEl.value.includes('\n')) {
-    var msg = inputEl.value.replace(/\n/g, '').trim();
-    inputEl.value = msg;
-    autoResize();
-    if (msg) sendMessage(msg);
-  }
-});
-sendBtn.addEventListener('click', function() { sendMessage(); });
-
-async function applyTheme() {
-  /* localStorage > server config > system */
-  var local = (function(){ try { return localStorage.getItem('hiris-theme'); } catch(e) { return null; } })();
-  if (local === 'light' || local === 'dark') {
-    document.documentElement.setAttribute('data-theme', local);
-    paintThemeBtn();
-    return;
-  }
-  try {
-    var r = await fetch('api/config');
-    var cfg = await r.json();
-    var theme = cfg.theme || 'auto';
-    if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
-    else document.documentElement.removeAttribute('data-theme');
-  } catch(e) {}
-  paintThemeBtn();
-}
-function currentTheme() {
-  var t = document.documentElement.getAttribute('data-theme');
-  if (t === 'light' || t === 'dark') return t;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-function paintThemeBtn() {
-  var btn = document.getElementById('theme-toggle');
-  if (!btn) return;
-  var t = currentTheme();
-  var sun = btn.querySelector('.ic-sun');
-  var moon = btn.querySelector('.ic-moon');
-  if (sun)  sun.style.display  = (t === 'dark') ? '' : 'none';
-  if (moon) moon.style.display = (t === 'dark') ? 'none' : '';
-}
-(function wireThemeToggle() {
-  document.addEventListener('click', function(e) {
-    var btn = e.target.closest && e.target.closest('#theme-toggle');
-    if (!btn) return;
-    var next = currentTheme() === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('hiris-theme', next); } catch(e) {}
-    paintThemeBtn();
-  });
-})();
-async function loadUsage() {
-  try {
-    var r = await fetch('api/usage');
-    if (!r.ok) return;
-    var d = await r.json();
-    var tok = (d.total_tokens || 0).toLocaleString('it-IT');
-    var usd = d.cost_usd != null ? '$' + d.cost_usd.toFixed(4) : '—';
-    var eur = d.cost_eur != null ? ' / €' + d.cost_eur.toFixed(4) : '';
-    document.getElementById('u-tokens').textContent = tok;
-    document.getElementById('u-cost').textContent = usd + eur;
-    document.getElementById('u-reqs').textContent = d.total_requests || 0;
-  } catch(e) {}
-}
-
-applyTheme();
-fetch('api/health').then(function(r){ return r.json(); }).then(function(d){
-  var el = document.getElementById('header-version');
-  if (el && d.version) el.textContent = 'v' + d.version;
-}).catch(function(){});
-
-loadChatbots();
-loadUsage();
-updateGreeting();
-setInterval(loadChatbots, 30000);
-setInterval(loadUsage, 30000);
-setInterval(updateGreeting, 60 * 60 * 1000);  /* refresh greeting every hour */
-
-/* ── Off-canvas sidebar (mobile) ─────────────────────────── */
-function toggleSidebar(force) {
-  var sb = document.getElementById('sidebar');
-  var ov = document.getElementById('sidebar-overlay');
-  if (!sb) return;
-  var open = (force === undefined) ? !sb.classList.contains('open') : !!force;
-  sb.classList.toggle('open', open);
-  if (ov) ov.style.display = open ? 'block' : 'none';
-}
-/* Close the drawer after picking an agent (tap inside the sidebar list). */
-document.addEventListener('DOMContentLoaded', function () {
-  var sb = document.getElementById('sidebar');
-  if (sb) sb.addEventListener('click', function (e) {
-    var hit = e.target.closest('.agent-item, .sb-nav-item');
-    if (hit && window.matchMedia('(max-width: 720px)').matches) toggleSidebar(false);
-  });
-});
-
-/* ── Tasks panel ─────────────────────────────────────────── */
-function showPanel(name) {
-  var isTask = name === 'tasks';
-  document.getElementById('messages').style.display = isTask ? 'none' : '';
-  document.getElementById('input-area').style.display = isTask ? 'none' : '';
-  var tc = document.getElementById('turn-counter'); if (tc) tc.style.display = isTask ? 'none' : '';
-  var se = document.getElementById('session-ended-msg'); if (se) se.style.display = isTask ? 'none' : '';
-  document.getElementById('task-panel').style.display = isTask ? 'flex' : 'none';
-  var navTasks = document.getElementById('nav-tasks');
-  if (navTasks) navTasks.classList.toggle('active', isTask);
-  var mobileBtn = document.getElementById('mobile-task-btn');
-  if (mobileBtn) mobileBtn.classList.toggle('active', isTask);
-  var taskHeader = document.getElementById('task-panel-header');
-  if (taskHeader) taskHeader.style.display = (isTask && window.innerWidth <= 720) ? 'flex' : 'none';
-  if (isTask) loadTasks();
-}
-
-function formatTrigger(trigger) {
-  if (!trigger) return '';
-  if (trigger.type === 'delay') return 'tra ' + trigger.minutes + ' min';
-  if (trigger.type === 'at_time') return 'alle ' + trigger.time;
-  if (trigger.type === 'at_datetime') return trigger.datetime;
-  if (trigger.type === 'time_window') return 'finestra ' + trigger.from + '–' + trigger.to;
-  return trigger.type;
-}
-function renderTask(task) {
-  var isPending = task.status === 'pending';
-  var safeId = esc(task.id);
-  // Pass the id via a data-attribute (HTML-escaped, safe) and read it back from
-  // the DOM in the handler, instead of interpolating it into the onclick JS
-  // string (where an HTML-escaped quote still breaks the JS). Ids are uuids
-  // today, but this removes the injection landmine entirely.
-  var cancelBtn = isPending ? '<button class="task-cancel-btn" data-task-id="' + safeId + '" onclick="cancelTask(this.dataset.taskId)">Annulla</button>' : '';
-  var rawMeta = task.result || task.error || formatTrigger(task.trigger);
-  var meta = rawMeta ? esc(rawMeta) : '';
-  return '<div class="task-card" id="task-' + safeId + '">'
-    + '<div class="task-card-header">'
-    + '<span class="task-label">' + esc(task.label) + '</span>'
-    + '<span class="task-status ' + esc(task.status) + '">' + esc(task.status) + '</span>'
-    + cancelBtn
-    + '</div>'
-    + (meta ? '<div class="task-meta">' + meta + '</div>' : '')
-    + '</div>';
-}
-
-async function loadTasks() {
-  try {
-    var resp = await fetch('api/tasks');
-    var tasks = await resp.json();
-    var active = tasks.filter(function(t) { return t.status === 'pending' || t.status === 'running'; });
-    var recent = tasks.filter(function(t) { return t.status !== 'pending' && t.status !== 'running'; });
-    var activeEl = document.getElementById('task-active-list');
-    var recentEl = document.getElementById('task-recent-list');
-    if (activeEl) activeEl.innerHTML = active.length ? active.map(renderTask).join('') : '<div class="task-empty">Nessuna task attiva</div>';
-    if (recentEl) recentEl.innerHTML = recent.length ? recent.map(renderTask).join('') : '<div class="task-empty">Nessuna task recente</div>';
-    var badge = document.getElementById('task-badge');
-    if (badge) { badge.textContent = active.length || ''; badge.dataset.count = active.length; }
-    var mbadge = document.getElementById('mobile-task-badge');
-    if (mbadge) { mbadge.textContent = active.length || ''; mbadge.dataset.count = active.length; }
-  } catch(e) { console.error('loadTasks failed', e); }
-}
-
-async function cancelTask(taskId) {
-  if (!confirm('Annullare questa task?')) return;
-  try {
-    var resp = await fetch('api/tasks/' + taskId, {method: 'DELETE', headers: {'X-Requested-With': 'fetch'}});
-    if (resp.ok || resp.status === 204) loadTasks();
-  } catch(e) { console.error('cancelTask failed', e); }
-}
-
-setInterval(loadTasks, 30000);
-loadTasks();
-
-/* ── Onboarding wizard ───────────────────────────────────── */
-var _obType = 'chat';
-
-async function checkOnboarding() {
-  if (localStorage.getItem('hiris_onboarding_v1')) return;
-  try {
-    var r = await fetch('api/chatbots');
-    if (!r.ok) return;
-    var agents = await r.json();
-    var nonDefault = agents.filter(function(a) { return !a.is_default; });
-    if (nonDefault.length > 0) { localStorage.setItem('hiris_onboarding_v1', '1'); return; }
-  } catch(e) { return; }
-  document.getElementById('onboarding').style.display = 'flex';
-}
-
-function obDismiss() {
-  localStorage.setItem('hiris_onboarding_v1', '1');
-  document.getElementById('onboarding').style.display = 'none';
-}
-
-function obGo(step) {
-  for (var i = 0; i < 3; i++) {
-    document.getElementById('ob-step-' + i).classList.toggle('active', i === step);
-    document.getElementById('ob-dot-' + i).classList.toggle('active', i === step);
-  }
-}
-
-function obSelectType(type, btn) {
-  _obType = type;
-  document.querySelectorAll('.ob-type-btn').forEach(function(b) { b.classList.remove('selected'); });
-  btn.classList.add('selected');
-}
-
-async function obCreate() {
-  var name = (document.getElementById('ob-name').value || '').trim();
-  if (!name) { document.getElementById('ob-name').focus(); return; }
-  var prompt = (document.getElementById('ob-prompt').value || '').trim();
-  // Backend types are only 'chat' | 'agent'. Map onboarding intent → backend type.
-  var backendType = _obType === 'chat' ? 'chat' : 'agent';
-  // Triggers must be a list. Monitor preset = schedule every 60 min. Others
-  // start with no triggers and the user wires them up in the Designer.
-  var triggers = _obType === 'monitor'
-    ? [{ type: 'schedule', interval_minutes: 60 }]
-    : [];
-  var payload = { name: name, type: backendType, triggers: triggers };
-  if (prompt) payload.system_prompt = prompt;
-  var btn = document.getElementById('ob-create-btn');
-  btn.disabled = true;
-  try {
-    var r = await fetch('api/chatbots', { method: 'POST', headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload) });
-    if (!r.ok) { btn.disabled = false; alert('Errore nella creazione assistente. Riprova.'); return; }
-    var agent = await r.json();
-    await loadChatbots();
-    if (agent.id) setActiveAgent(agent.id, agent.name || agent.id);
-    obDismiss();
-  } catch(e) { btn.disabled = false; alert('Errore di rete. Riprova.'); }
-}
-
-checkOnboarding();
-
-/* ── Mobile keyboard fix (preserved from original) ───────── */
-(function () {
-  var appEl = document.getElementById('app');
-  var isTouchDevice = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
-  function applyKbH(kbH) {
-    var vvh = window.innerHeight - Math.max(0, kbH);
-    document.body.style.height = vvh + 'px';
-    appEl.style.height = vvh + 'px';
-    if (kbH > 50) messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-  function resetKbH() { document.body.style.height = ''; appEl.style.height = ''; }
-  if (window.visualViewport) {
-    function onVV() { applyKbH(window.innerHeight - window.visualViewport.height); }
-    window.visualViewport.addEventListener('resize', onVV);
-    window.visualViewport.addEventListener('scroll', onVV);
-  }
-  inputEl.addEventListener('focus', function () {
-    if (!isTouchDevice) return;
-    setTimeout(function () {
-      var vvKbH = window.visualViewport ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
-      if (vvKbH < 50) {
-        var est = Math.min(Math.max(Math.round(window.innerHeight * 0.44), 220), 380);
-        applyKbH(est);
-      }
-    }, 400);
-  });
-  inputEl.addEventListener('blur', function () {
-    setTimeout(function () {
-      var vvKbH = window.visualViewport ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
-      if (vvKbH < 50) resetKbH();
-    }, 300);
-  });
-}());
-</script>
+<script src="static/config/api.js"></script>
+<script src="static/chat/state.js"></script>
+<script src="static/chat/messages.js"></script>
+<script src="static/chat/agents.js"></script>
+<script src="static/chat/send.js"></script>
+<script src="static/chat/theme.js"></script>
+<script src="static/chat/tasks.js"></script>
+<script src="static/chat/onboarding.js"></script>
+<script src="static/chat/sidebar.js"></script>
+<script src="static/chat/keyboard.js"></script>
+<script src="static/chat/main.js"></script>
 </body>
 </html>
