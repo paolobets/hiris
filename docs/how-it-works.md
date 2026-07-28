@@ -179,6 +179,26 @@ version — today the proactive layer only covers the built-in lenti above.
 
 ---
 
+## The Brain Home (`#/`)
+
+The **Dashboard** (accessible at `#/`) is the Brain's home — the central place where HIRIS
+shows you what it observes and reasons about your home, alerts you to problems that need
+attention, and gathers all proposed actions for your approval.
+
+### Three zones
+
+1. **Home oversight** — compact status strip showing: current door/window openings, presence,
+   offline devices, last reasoning round timestamp, and active AI provider.
+2. **Reasoning stream** — reverse-chronological cards that surface the Brain's rationale:
+   "At 08:00 I observed…" with deductions and related findings. No new LLM call — the text
+   is captured from reasoning already performed by the Sentinella during its cycle.
+3. **Actions and alerts** — two lists: **Proposals** (suggested automations, approve/reject)
+   and **Alerts** (5 read-only checks: unavailable entities, low batteries, broken automations,
+   dangerous domains, unassigned entities). Alerts auto-resolve when the issue disappears;
+   you can also manually acknowledge them.
+
+---
+
 ## The Semantic Home Map
 
 The Semantic Map is the cognitive model HIRIS builds of your home. It maps every HA entity to a **semantic role** (what it is) and a **readable label** (what it's called).

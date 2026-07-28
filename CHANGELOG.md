@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## [0.101.0] — Brain come fulcro: home, stream ragionamenti, health-scan advisory (SP-3 v1) (2026-07-28)
+
+**Home del Brain su `#/`:** supervisione casa + stream ragionamenti (cattura rationale del giro olistico, nessuna nuova chiamata LLM) + segnalazioni (health-scan a 5 check read-only: entità non disponibili, batterie scariche, automazioni rotte, domini pericolosi in verde, entità senza area).
+
+- **Nuovi endpoint `/api/brain/feed|reasoning|advisories`:** aggregatore unificato, endpoint advisory con ack/dismiss.
+- **Advisory sola-lettura:** non attuano mai; i fix passano dal percorso proposte→semaforo.
+- **Feed unificato:** 4 sorgenti tipizzate + timestamp: rationale + health-scan + proposte + sentinel tracce.
+- **Cattura rationale:** sanitizzato, retention-capped, no nuovo egress LLM.
+
+---
+
 ## [0.100.0] — Layer Modelli: attivazione provider, una catena, modello per-entità e per-provider (SP-2) (2026-07-27)
 
 Ridisegno della gestione dei modelli AI (retro-compatibile: nessun install

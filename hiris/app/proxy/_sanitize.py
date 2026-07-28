@@ -65,12 +65,21 @@ _INJECTION_RE = re.compile(
 )
 
 
-def sanitize_ha_value(v) -> str:
-    """Strip injection markers and clamp length. Non-strings pass through stringified."""
+def sanitize_text(v, max_len: int = 2000) -> str:
+    """Strip prompt-injection markers and clamp length. Non-strings stringified.
+
+    Like sanitize_ha_value but with a configurable, larger clamp — for
+    persisting cleartext reasoning that must stay readable (display-only).
+    """
     if v is None:
         return ""
     if not isinstance(v, str):
         v = str(v)
     v = v.strip()
     v = _INJECTION_RE.sub("[FILTERED]", v)
-    return v[:120]
+    return v[:max_len]
+
+
+def sanitize_ha_value(v) -> str:
+    """Strip injection markers and clamp to 120 chars (HA attribute values)."""
+    return sanitize_text(v, 120)

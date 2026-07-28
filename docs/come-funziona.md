@@ -181,6 +181,26 @@ copre solo le lenti built-in elencate sopra.
 
 ---
 
+## La home del Brain (`#/`)
+
+La **Dashboard** (raggiungibile da `#/`) è la home del Brain — il luogo dove HIRIS mostra
+in chiaro cosa osserva e ragiona sulla casa, segnala problemi che richiedono intervento,
+e raccoglie in un unico posto le azioni proposte per l'approvazione.
+
+### Tre zone
+
+1. **Supervisione casa** — striscia compatta con stato generale: aperture/presenze attuali,
+   dispositivi offline, ultimo giro di ragionamento, provider AI attivo.
+2. **Stream ragionamenti** — card reverse-cronologiche che mostrano il rationale del Brain:
+   "Alle 08:00 ho osservato…" con deduzione e osservazioni correlate. Nessuna nuova
+   chiamata LLM — il testo è catturato dal ragionamento già eseguito dalla Sentinella.
+3. **Azioni e segnalazioni** — due liste: **Proposte** (automazioni suggerite, approva/rifiuta)
+   e **Segnalazioni** (5 check read-only: entità non disponibili, batterie scariche,
+   automazioni rotte, domini pericolosi, entità senza area). Le segnalazioni si risolvono
+   automaticamente quando il problema scompare; l'utente può anche ackizzarle manualmente.
+
+---
+
 ## La Semantic Map
 
 La Semantic Map è il "modello cognitivo" che HIRIS costruisce della casa. Mappa ogni entità HA a un **ruolo semantico** e una **label leggibile**.
