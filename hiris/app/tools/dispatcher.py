@@ -194,7 +194,7 @@ class ToolDispatcher:
         allowed_entities: Optional[list[str]] = None,
         allowed_services: Optional[list[str]] = None,
         allowed_endpoints: Optional[list[dict]] = None,
-        agent_id: Optional[str] = None,
+        chatbot_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
         knowledge_allow_sensitive: bool = False,
         knowledge_kinds: list[str] | str | None = None,
@@ -375,7 +375,7 @@ class ToolDispatcher:
                     actions=inputs["actions"],
                     condition=inputs.get("condition"),
                     one_shot=inputs.get("one_shot", True),
-                    agent_id=agent_id or "hiris-default",
+                    chatbot_id=chatbot_id or "hiris-default",
                     allowed_entities=allowed_entities,
                     allowed_services=allowed_services,
                 )
@@ -384,7 +384,7 @@ class ToolDispatcher:
                     return {"error": "TaskEngine not available"}
                 return list_tasks_tool(
                     task_engine=self._task_engine,
-                    agent_id=inputs.get("agent_id"),
+                    chatbot_id=inputs.get("chatbot_id"),
                     status=inputs.get("status"),
                 )
             if name == "cancel_task":
@@ -465,7 +465,7 @@ class ToolDispatcher:
                 return await _handle_recall_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
-                    chatbot_id=agent_id or "hiris-default",
+                    chatbot_id=chatbot_id or "hiris-default",
                 )
             if name == "save_memory":
                 if self._knowledge_store is None or self._knowledge_embedder is None:
@@ -473,7 +473,7 @@ class ToolDispatcher:
                 return await _handle_save_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
-                    chatbot_id=agent_id or "hiris-default",
+                    chatbot_id=chatbot_id or "hiris-default",
                     retention_days=self._memory_retention_days,
                 )
             if name == "get_ha_health":
@@ -507,7 +507,7 @@ class ToolDispatcher:
                 return await handle_recall_knowledge(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
-                    chatbot_id=agent_id or "hiris-default",
+                    chatbot_id=chatbot_id or "hiris-default",
                     allow_sensitive=knowledge_allow_sensitive,
                     kinds=knowledge_kinds,
                     pseudonymizer=self._pseudonymizer,

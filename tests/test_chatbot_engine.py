@@ -922,7 +922,7 @@ async def test_agent_not_auto_disabled_regardless_of_usage(tmp_path):
     mock_runner.total_output_tokens = 0
     # Usage that would have blown past even a generous limit under the old
     # (now-removed) auto-disable check.
-    mock_runner.get_agent_usage = MagicMock(return_value={
+    mock_runner.get_chatbot_usage = MagicMock(return_value={
         "input_tokens": 5_000_000, "output_tokens": 2_000_000,
         "requests": 1, "cost_usd": 500.0,
         "last_run": "2026-04-21T10:00:00Z",

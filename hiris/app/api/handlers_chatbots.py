@@ -80,7 +80,7 @@ async def handle_list_chatbots(request: web.Request) -> web.Response:
         usage_payload: dict = {}
         if runner:
             try:
-                usage = runner.get_agent_usage(agent_id) or {}
+                usage = runner.get_chatbot_usage(agent_id) or {}
                 cost_usd = usage.get("cost_usd", 0.0)
                 budget_eur = round(float(cost_usd) * _EUR_RATE, 4)
                 usage_payload = {
@@ -91,7 +91,7 @@ async def handle_list_chatbots(request: web.Request) -> web.Response:
                     "last_run": usage.get("last_run"),
                 }
             except Exception as exc:
-                logger.warning("get_agent_usage(%s) failed: %s", agent_id, exc)
+                logger.warning("get_chatbot_usage(%s) failed: %s", agent_id, exc)
                 budget_eur = 0.0
         entry["budget_eur"] = budget_eur
         entry["usage"] = usage_payload
@@ -251,7 +251,7 @@ async def handle_get_chatbot_usage(request: web.Request) -> web.Response:
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response({"error": "runner not configured"}, status=503)
-    usage = runner.get_agent_usage(agent_id)
+    usage = runner.get_chatbot_usage(agent_id)
     cost_usd = usage.get("cost_usd", 0.0)
     return web.json_response({
         "agent_id": agent_id,
@@ -275,7 +275,7 @@ async def handle_reset_chatbot_usage(request: web.Request) -> web.Response:
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response({"error": "runner not configured"}, status=503)
-    runner.reset_agent_usage(agent_id)
+    runner.reset_chatbot_usage(agent_id)
     return web.json_response({"reset": True, "agent_id": agent_id})
 
 

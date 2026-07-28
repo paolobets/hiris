@@ -8,7 +8,7 @@ tests/test_chat_subscription_path.py):
 - handle_chat gates on app["chat_via_subscription"] AND app["reasoning_queue"]
   present (``_bridge_on``) before taking the async branch.
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
-  stores context as JSON; the chat job context carries "agent_id" (NOT
+  stores context as JSON; the chat job context carries "chatbot_id" (NOT
   "conversation_id" -- chat_store has no separate conversation_id concept,
   confirmed in Task 1/2).
 - ReasoningQueue.submit(job_id, nonce, decision, now) -> bool resolves a job
@@ -16,8 +16,8 @@ tests/test_chat_subscription_path.py):
   stop counting as "in flight" (pending/claimed).
 
 New in this task:
-- ReasoningQueue.has_pending_chat(agent_id) -> bool: a kind="chat" job in
-  pending/claimed state whose context_json carries this agent_id.
+- ReasoningQueue.has_pending_chat(chatbot_id) -> bool: a kind="chat" job in
+  pending/claimed state whose context_json carries this chatbot_id.
 - ReasoningQueue.count_chat_today(now=None) -> int: kind="chat" jobs whose
   created_ts falls on the same local calendar day as `now` (defaults to
   time.time()). Takes an explicit `now` -- like every other method on this
@@ -109,7 +109,7 @@ def test_has_pending_chat_false_when_no_jobs(tmp_path):
 
 def test_has_pending_chat_true_for_pending_job(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
     # `now` explicit and still before deadline_ts (100.0) -- job is
     # genuinely in-flight, not merely unswept-but-expired.
     assert q.has_pending_chat("agentX", now=50.0) is True
@@ -117,14 +117,14 @@ def test_has_pending_chat_true_for_pending_job(tmp_path):
 
 def test_has_pending_chat_true_for_claimed_job(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
     q.claim(now=2.0)
     assert q.has_pending_chat("agentX", now=50.0) is True
 
 
 def test_has_pending_chat_false_after_submit_resolves_job(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
     claimed = q.claim(now=2.0)
     q.submit(claimed["job_id"], claimed["nonce"], {"reply": "ciao"}, now=3.0)
     assert q.has_pending_chat("agentX") is False
@@ -132,14 +132,14 @@ def test_has_pending_chat_false_after_submit_resolves_job(tmp_path):
 
 def test_has_pending_chat_false_after_expiry(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
     q.sweep_expired(now=200.0)
     assert q.has_pending_chat("agentX") is False
 
 
 def test_has_pending_chat_scoped_to_agent_id_not_other_conversations(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
     assert q.has_pending_chat("agentY") is False
 
 
@@ -147,7 +147,7 @@ def test_has_pending_chat_ignores_non_chat_kinds(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
     q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home",
               "severity_hint": "info", "evidence": {}, "ts": 1.0},
-              {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+              {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
     assert q.has_pending_chat("agentX") is False
 
 
@@ -165,7 +165,7 @@ def test_has_pending_chat_false_for_expired_but_unswept_job(tmp_path):
     Still status='pending' in the DB (no sweep_expired call here), but
     `now` is past its deadline_ts."""
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
     # Still 'pending' in the DB -- no sweep_expired call -- but `now` (200.0)
     # is already past deadline_ts (100.0).
     assert q.has_pending_chat("agentX", now=200.0) is False
@@ -184,8 +184,8 @@ def test_count_chat_today_zero_when_no_jobs(tmp_path):
 def test_count_chat_today_counts_jobs_created_same_day(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
     base = 1_700_000_000.0  # arbitrary anchor timestamp
-    q.enqueue("chat", {}, {"agent_id": "a1"}, deadline_ts=base + 300, now=base)
-    q.enqueue("chat", {}, {"agent_id": "a2"}, deadline_ts=base + 300, now=base + 60)
+    q.enqueue("chat", {}, {"chatbot_id": "a1"}, deadline_ts=base + 300, now=base)
+    q.enqueue("chat", {}, {"chatbot_id": "a2"}, deadline_ts=base + 300, now=base + 60)
     assert q.count_chat_today(now=base + 120) == 2
 
 
@@ -193,8 +193,8 @@ def test_count_chat_today_excludes_other_days(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
     base = 1_700_000_000.0
     yesterday = base - 86400
-    q.enqueue("chat", {}, {"agent_id": "a1"}, deadline_ts=yesterday + 300, now=yesterday)
-    q.enqueue("chat", {}, {"agent_id": "a2"}, deadline_ts=base + 300, now=base)
+    q.enqueue("chat", {}, {"chatbot_id": "a1"}, deadline_ts=yesterday + 300, now=yesterday)
+    q.enqueue("chat", {}, {"chatbot_id": "a2"}, deadline_ts=base + 300, now=base)
     assert q.count_chat_today(now=base) == 1
 
 
@@ -212,10 +212,10 @@ def test_count_chat_today_counts_regardless_of_status(tmp_path):
     are still in flight -- a resolved/expired job still consumed the cap."""
     q = ReasoningQueue(str(tmp_path / "r.db"))
     base = 1_700_000_000.0
-    q.enqueue("chat", {}, {"agent_id": "a1"}, deadline_ts=base + 300, now=base)
+    q.enqueue("chat", {}, {"chatbot_id": "a1"}, deadline_ts=base + 300, now=base)
     claimed = q.claim(now=base + 1)
     q.submit(claimed["job_id"], claimed["nonce"], {"reply": "x"}, now=base + 2)
-    q.enqueue("chat", {}, {"agent_id": "a2"}, deadline_ts=base + 300, now=base + 3)
+    q.enqueue("chat", {}, {"chatbot_id": "a2"}, deadline_ts=base + 300, now=base + 3)
     q.sweep_expired(now=base + 10_000_000)  # would expire a2 if far enough, unrelated to count
     assert q.count_chat_today(now=base) == 2
 
@@ -301,7 +301,7 @@ async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
         tmp_path, chat_via_subscription=False, chat_daily_cap=0)
     # Pre-seed a "pending" chat job for this agent directly on the queue --
     # if the guard wrongly applied to the sync path this would still 409.
-    q.enqueue("chat", {}, {"agent_id": agent.id}, deadline_ts=time.time() + 300, now=time.time())
+    q.enqueue("chat", {}, {"chatbot_id": agent.id}, deadline_ts=time.time() + 300, now=time.time())
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})

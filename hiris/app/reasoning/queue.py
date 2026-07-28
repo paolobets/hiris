@@ -93,8 +93,8 @@ class ReasoningQueue:
         out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
         return out
 
-    def has_pending_chat(self, agent_id: Optional[str], now: Optional[float] = None) -> bool:
-        """True if a kind="chat" job for this agent_id is still in flight
+    def has_pending_chat(self, chatbot_id: Optional[str], now: Optional[float] = None) -> bool:
+        """True if a kind="chat" job for this chatbot_id is still in flight
         (status 'pending' or 'claimed') AND its deadline hasn't passed yet.
         Slice 4b Task 3 -- "one answer in flight per conversation" guard on
         the async subscription path.
@@ -110,13 +110,13 @@ class ReasoningQueue:
         the caller (production code) doesn't pass one.
 
         Chat jobs have no dedicated conversation_id column: Task 2 put
-        agent_id inside context_json (a conversation IS an agent's active
-        session, keyed by agent_id -- there's no separate concept). So this
+        chatbot_id inside context_json (a conversation IS a chatbot's active
+        session, keyed by chatbot_id -- there's no separate concept). So this
         scans the in-flight chat-kind rows (typically a handful -- bounded by
         chat_daily_cap and by the fact that most turns resolve quickly) and
-        parses each row's context to match agent_id, rather than adding a
+        parses each row's context to match chatbot_id, rather than adding a
         dedicated indexed column for a query this cheap in practice."""
-        if not agent_id:
+        if not chatbot_id:
             return False
         ts = time.time() if now is None else now
         with self._lock:
@@ -129,7 +129,7 @@ class ReasoningQueue:
                 ctx = json.loads(r["context_json"])
             except (TypeError, ValueError):
                 continue
-            if isinstance(ctx, dict) and ctx.get("agent_id") == agent_id:
+            if isinstance(ctx, dict) and ctx.get("chatbot_id") == chatbot_id:
                 return True
         return False
 

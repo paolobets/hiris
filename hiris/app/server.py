@@ -1633,13 +1633,13 @@ async def _on_startup(app: web.Application) -> None:
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
     # jobs — writes the runner's reply into chat_store instead of actuating
     # the house. chat_store has no separate "conversation_id"; a conversation
-    # IS an agent's active session, keyed by agent_id, so that's what the job
-    # context carries and what this receives.
+    # IS a chatbot's active session, keyed by chatbot_id, so that's what the
+    # job context carries and what this receives.
     from .chat_store import append_messages as _append_chat_messages
     from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
 
-    async def _submit_chat_reply(agent_id: str, reply_text: str) -> None:
-        if not agent_id or not reply_text:
+    async def _submit_chat_reply(chatbot_id: str, reply_text: str) -> None:
+        if not chatbot_id or not reply_text:
             return
         # Final-review Fix 3 (Slice 4b): mirror the sync path's two
         # persistence guards (handlers_chat.py, ~line 423) so a reply that
@@ -1667,7 +1667,7 @@ async def _on_startup(app: web.Application) -> None:
             # long ago) -- the poll route's chat_reply_skipped handling is
             # the user-facing side of this.
             return
-        _append_chat_messages(agent_id, [{"role": "assistant", "content": reply_text}], data_dir)
+        _append_chat_messages(chatbot_id, [{"role": "assistant", "content": reply_text}], data_dir)
     app["submit_chat_reply"] = _submit_chat_reply
 
     # Slice 4b Task 3: separate daily cap for chat-via-abbonamento, checked by

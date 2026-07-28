@@ -95,7 +95,7 @@ async def test_get_agent_usage_returns_stats():
     from hiris.app.api.handlers_chatbots import handle_get_chatbot_usage
 
     runner = MagicMock()
-    runner.get_agent_usage = MagicMock(return_value={
+    runner.get_chatbot_usage = MagicMock(return_value={
         "input_tokens": 1000, "output_tokens": 400,
         "requests": 5, "cost_usd": 0.005, "last_run": "2026-04-21T10:00:00Z",
     })
@@ -124,7 +124,7 @@ async def test_reset_agent_usage():
     from hiris.app.api.handlers_chatbots import handle_reset_chatbot_usage
 
     runner = MagicMock()
-    runner.reset_agent_usage = MagicMock()
+    runner.reset_chatbot_usage = MagicMock()
     engine = MagicMock()
     engine.get_chatbot.return_value = MagicMock(id="agent-1")
 
@@ -139,7 +139,7 @@ async def test_reset_agent_usage():
 
     resp = await handle_reset_chatbot_usage(request)
     assert resp.status == 200
-    runner.reset_agent_usage.assert_called_once_with("agent-1")
+    runner.reset_chatbot_usage.assert_called_once_with("agent-1")
 
 
 # ---- Dashboard field tests (Task 2) ----
@@ -161,7 +161,7 @@ def _dashboard_app(tmp_path):
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="ok")
     mock_runner.last_tool_calls = []
-    mock_runner.get_agent_usage = MagicMock(return_value={
+    mock_runner.get_chatbot_usage = MagicMock(return_value={
         "input_tokens": 100, "output_tokens": 50,
         "requests": 2, "cost_usd": 0.13, "last_run": None,
     })

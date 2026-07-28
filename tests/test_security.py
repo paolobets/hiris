@@ -288,7 +288,7 @@ async def test_trigger_automation_blocked_by_allowed_services():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "evil_one"},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=["light.turn_on"],
         allowed_entities=None,
     )
@@ -305,7 +305,7 @@ async def test_trigger_automation_blocked_by_allowed_entities():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "evil_one"},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=None,
         allowed_entities=["automation.allowed_one"],
     )
@@ -326,7 +326,7 @@ async def test_trigger_automation_allowed_when_whitelisted():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=["automation.trigger"],
         allowed_entities=["automation.morning_*"],
     )
@@ -343,7 +343,7 @@ async def test_toggle_automation_blocked_by_allowed_services():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "x", "enabled": True},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=["light.turn_on"],
         allowed_entities=None,
     )
@@ -360,7 +360,7 @@ async def test_toggle_automation_blocked_by_allowed_entities():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "x", "enabled": False},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=None,
         allowed_entities=["automation.allowed_one"],
     )
@@ -381,7 +381,7 @@ async def test_toggle_automation_allowed_when_whitelisted():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "morning_briefing", "enabled": False},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=["automation.turn_off"],
         allowed_entities=["automation.morning_*"],
     )
@@ -406,7 +406,7 @@ async def test_trigger_automation_denied_when_domain_not_green():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -418,7 +418,7 @@ async def test_trigger_automation_denied_when_domain_off():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -439,7 +439,7 @@ async def test_trigger_automation_confirmation_required_when_yellow():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
         user_id="paolo",
     )
     assert out["status"] == "confirmation_required" and out["id"] == "nonce-trig"
@@ -454,7 +454,7 @@ async def test_trigger_automation_executes_when_domain_green():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert out is True
     d._ha.call_service.assert_awaited_once_with(
@@ -468,7 +468,7 @@ async def test_toggle_automation_denied_when_domain_not_green():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "morning_briefing", "enabled": True},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -480,7 +480,7 @@ async def test_toggle_automation_executes_when_domain_green():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "morning_briefing", "enabled": True},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert out is True
     d._ha.call_service.assert_awaited_once_with(
@@ -499,7 +499,7 @@ async def test_set_input_helper_denied_when_domain_not_green():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_boolean.guest_mode", "value": True},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -520,7 +520,7 @@ async def test_set_input_helper_confirmation_required_when_yellow():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_boolean.guest_mode", "value": True},
-        agent_id="a",
+        chatbot_id="a",
         user_id="paolo",
     )
     assert out["status"] == "confirmation_required" and out["id"] == "nonce-ih"
@@ -535,7 +535,7 @@ async def test_set_input_helper_executes_when_domain_green():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_boolean.guest_mode", "value": True},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert out == {"entity_id": "input_boolean.guest_mode", "service": "input_boolean.turn_on", "ok": True}
     d._ha.call_service.assert_awaited_once_with(
@@ -549,7 +549,7 @@ async def test_set_input_helper_number_executes_when_domain_green():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_number.target_temp", "value": 21.5},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert out["ok"] is True
     d._ha.call_service.assert_awaited_once_with(
@@ -563,7 +563,7 @@ async def test_set_input_helper_number_denied_when_domain_not_green():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_number.target_temp", "value": 21.5},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -588,7 +588,7 @@ async def test_trigger_automation_rejects_malformed_id(evil_id):
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": evil_id},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=None,
         allowed_entities=None,
     )
@@ -608,7 +608,7 @@ async def test_toggle_automation_rejects_malformed_id(evil_id):
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": evil_id, "enabled": True},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=None,
         allowed_entities=None,
     )

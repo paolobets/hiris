@@ -10,7 +10,7 @@ from hiris.app.task_engine import Task, TaskEngine
 
 def _make_task(task_id="t-001", label="Test task", status="pending"):
     return Task(
-        id=task_id, label=label, agent_id="hiris-default",
+        id=task_id, label=label, chatbot_id="hiris-default",
         created_at=datetime.now(timezone.utc).isoformat(),
         trigger={"type": "delay", "minutes": 5}, actions=[],
         status=status,

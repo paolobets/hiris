@@ -117,7 +117,7 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
     job = q.get(body["job_id"])
     assert job["kind"] == "chat"
-    assert job["context"]["agent_id"] == agent.id
+    assert job["context"]["chatbot_id"] == agent.id
 
 
 @pytest.mark.asyncio

@@ -62,7 +62,7 @@ class _FakeDispatcher:
         self.calls = []
 
     async def dispatch(self, name, inputs, allowed_services=None, allowed_entities=None,
-                       agent_id=None, cloud=True, **kw):
+                       chatbot_id=None, cloud=True, **kw):
         self.calls.append((name, inputs, allowed_services))
         return {"ok": name}
 

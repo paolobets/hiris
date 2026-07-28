@@ -88,15 +88,15 @@ def test_load_filters_messages_older_than_30_days(tmp_path):
         session_id = "sess-old"
         conn = store._conn
         conn.execute(
-            "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) VALUES(?,?,?,?)",
+            "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at) VALUES(?,?,?,?)",
             (session_id, "agent1", old_ts, new_ts),
         )
         conn.execute(
-            "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
+            "INSERT INTO chat_messages(chatbot_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
             ("agent1", session_id, "user", "old msg", old_ts),
         )
         conn.execute(
-            "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
+            "INSERT INTO chat_messages(chatbot_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
             ("agent1", session_id, "assistant", "new msg", new_ts),
         )
         conn.commit()
@@ -115,23 +115,23 @@ def test_load_filters_messages_older_than_30_days(tmp_path):
 
 def test_new_session_after_gap(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
-    agent_id = "agent-gap"
+    chatbot_id = "agent-gap"
     # Create a first session with a timestamp > 2h ago
     old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime(_TS_FMT)
     sid1 = "sess-stale"
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) VALUES(?,?,?,?)",
-        (sid1, agent_id, old_ts, old_ts),
+        "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at) VALUES(?,?,?,?)",
+        (sid1, chatbot_id, old_ts, old_ts),
     )
     conn.execute(
-        "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
-        (agent_id, sid1, "assistant", "old reply", old_ts),
+        "INSERT INTO chat_messages(chatbot_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
+        (chatbot_id, sid1, "assistant", "old reply", old_ts),
     )
     conn.commit()
 
     # Appending now should start a new session
-    store.append(agent_id, [{"role": "user", "content": "fresh"}])
+    store.append(chatbot_id, [{"role": "user", "content": "fresh"}])
 
     # The old session should now be closed (summary set)
     row = conn.execute(
@@ -141,8 +141,8 @@ def test_new_session_after_gap(tmp_path):
 
     # New session message should be in a different session
     active = conn.execute(
-        "SELECT session_id FROM chat_sessions WHERE agent_id = ? AND summary IS NULL",
-        (agent_id,),
+        "SELECT session_id FROM chat_sessions WHERE chatbot_id = ? AND summary IS NULL",
+        (chatbot_id,),
     ).fetchone()
     assert active is not None
     assert active["session_id"] != sid1
@@ -154,7 +154,7 @@ def test_active_session_reused_within_gap(tmp_path):
     store.append("ag", [{"role": "user", "content": "msg1"}])
     store.append("ag", [{"role": "assistant", "content": "reply1"}])
     conn = store._conn
-    sessions = conn.execute("SELECT * FROM chat_sessions WHERE agent_id = 'ag'").fetchall()
+    sessions = conn.execute("SELECT * FROM chat_sessions WHERE chatbot_id = 'ag'").fetchall()
     assert len(sessions) == 1  # still same session
     store.close()
 
@@ -166,11 +166,11 @@ def test_load_context_returns_empty_for_stale_session(tmp_path):
     sid = "stale-read"
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) VALUES(?,?,?,?)",
+        "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at) VALUES(?,?,?,?)",
         (sid, "ag", old_ts, old_ts),
     )
     conn.execute(
-        "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
+        "INSERT INTO chat_messages(chatbot_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
         ("ag", sid, "user", "old", old_ts),
     )
     conn.commit()
@@ -191,17 +191,17 @@ def test_load_context_returns_empty_for_stale_session(tmp_path):
 
 def test_get_past_summaries_returns_closed_sessions(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
-    agent_id = "agent-mem"
+    chatbot_id = "agent-mem"
     ts = datetime.now(timezone.utc).strftime(_TS_FMT)
     for i in range(4):
         sid = f"closed-{i}"
         store._conn.execute(
-            "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at, summary) "
+            "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at, summary) "
             "VALUES(?,?,?,?,?)",
-            (sid, agent_id, ts, ts, f"summary {i}"),
+            (sid, chatbot_id, ts, ts, f"summary {i}"),
         )
     store._conn.commit()
-    summaries = store.get_past_summaries(agent_id, n=3)
+    summaries = store.get_past_summaries(chatbot_id, n=3)
     assert len(summaries) == 3
     assert all(s["summary"] is not None for s in summaries)
     store.close()
@@ -241,36 +241,36 @@ def test_count_user_turns_zero_when_empty(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_migrate_from_json(tmp_path):
-    agent_id = "migrated-agent"
+    chatbot_id = "migrated-agent"
     ts = datetime.now(timezone.utc).strftime(_TS_FMT)
     data = {
         "schema_version": 1,
-        "agent_id": agent_id,
+        "agent_id": chatbot_id,  # legacy JSON key, migrate_from_json still reads this literal
         "messages": [
             {"role": "user", "content": "q", "timestamp": ts},
             {"role": "assistant", "content": "a", "timestamp": ts},
         ],
     }
-    json_path = tmp_path / f"chat_history_{agent_id}.json"
+    json_path = tmp_path / f"chat_history_{chatbot_id}.json"
     json_path.write_text(json.dumps(data), encoding="utf-8")
 
     store = ChatStore(str(tmp_path / "chat_history.db"))
     store.migrate_from_json(str(tmp_path))
 
     # Migrated history should appear as a closed session
-    summaries = store.get_past_summaries(agent_id)
+    summaries = store.get_past_summaries(chatbot_id)
     assert len(summaries) == 1
     assert summaries[0]["summary"] == "a"
     store.close()
 
 
 def test_migrate_skips_already_migrated(tmp_path):
-    agent_id = "ag-skip"
+    chatbot_id = "ag-skip"
     ts = datetime.now(timezone.utc).strftime(_TS_FMT)
-    data = {"schema_version": 1, "agent_id": agent_id, "messages": [
+    data = {"schema_version": 1, "agent_id": chatbot_id, "messages": [
         {"role": "user", "content": "x", "timestamp": ts},
     ]}
-    json_path = tmp_path / f"chat_history_{agent_id}.json"
+    json_path = tmp_path / f"chat_history_{chatbot_id}.json"
     json_path.write_text(json.dumps(data), encoding="utf-8")
 
     store = ChatStore(str(tmp_path / "chat_history.db"))
@@ -278,7 +278,7 @@ def test_migrate_skips_already_migrated(tmp_path):
     store.migrate_from_json(str(tmp_path))  # second call must be idempotent
 
     conn = store._conn
-    count = conn.execute("SELECT COUNT(*) FROM chat_sessions WHERE agent_id = ?", (agent_id,)).fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM chat_sessions WHERE chatbot_id = ?", (chatbot_id,)).fetchone()[0]
     assert count == 1
     store.close()
 
@@ -294,11 +294,11 @@ def test_summary_truncated_to_200_chars(tmp_path):
     sid = "sess-long"
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at) VALUES(?,?,?,?)",
+        "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at) VALUES(?,?,?,?)",
         (sid, "ag", ts_old, ts_old),
     )
     conn.execute(
-        "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
+        "INSERT INTO chat_messages(chatbot_id, session_id, role, content, timestamp) VALUES(?,?,?,?,?)",
         ("ag", sid, "assistant", long_text, ts_old),
     )
     conn.commit()
@@ -410,3 +410,112 @@ def test_load_history_purges_pre_v098_corrupted_history(tmp_path):
         {"role": "user", "content": "ora?"},
         {"role": "assistant", "content": "**Tutto ok**"},
     ]
+
+
+# ---------------------------------------------------------------------------
+# SP-4a Task 6: agent_id -> chatbot_id schema migration (v1 -> v2)
+# ---------------------------------------------------------------------------
+
+def _make_legacy_v1_db(db_path: str) -> None:
+    """Build a v1 chat_history.db exactly as pre-Task-6 HIRIS would have
+    left it: agent_id columns + idx_msg_agent/idx_sess_agent indexes, no
+    user_version stamped (pre-versioning DB, same as init_schema's
+    'pre_tables > 0 and user_version == 0' baseline-to-1 case)."""
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE chat_messages ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, agent_id TEXT NOT NULL, "
+        "session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, "
+        "timestamp TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE chat_sessions ("
+        "session_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, "
+        "started_at TEXT NOT NULL, last_msg_at TEXT NOT NULL, summary TEXT)"
+    )
+    conn.execute("CREATE INDEX idx_msg_agent ON chat_messages(agent_id, timestamp)")
+    conn.execute("CREATE INDEX idx_sess_agent ON chat_sessions(agent_id, last_msg_at)")
+    conn.execute(
+        "INSERT INTO chat_sessions(session_id, agent_id, started_at, last_msg_at, summary) "
+        "VALUES('sess-legacy', 'legacy-bot', '2026-01-01T00:00:00Z', "
+        "'2026-01-01T00:05:00Z', 'old summary')"
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) "
+        "VALUES('legacy-bot', 'sess-legacy', 'user', 'ciao', '2026-01-01T00:00:00Z')"
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(agent_id, session_id, role, content, timestamp) "
+        "VALUES('legacy-bot', 'sess-legacy', 'assistant', 'salve', '2026-01-01T00:01:00Z')"
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_migration_renames_agent_id_column_and_indexes_preserving_data(tmp_path):
+    """Opening a legacy v1 db (agent_id columns + idx_msg_agent/idx_sess_agent)
+    through ChatStore must: rename both columns to chatbot_id, drop the old
+    indexes, create idx_msg_chatbot/idx_sess_chatbot, preserve every row, and
+    leave the db queryable via the new column name -- with no data loss."""
+    db_path = str(tmp_path / "chat_history.db")
+    _make_legacy_v1_db(db_path)
+
+    store = ChatStore(db_path)
+    try:
+        conn = store._conn
+
+        msg_cols = {r[1] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()}
+        sess_cols = {r[1] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()}
+        assert "chatbot_id" in msg_cols and "agent_id" not in msg_cols
+        assert "chatbot_id" in sess_cols and "agent_id" not in sess_cols
+
+        indexes = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        ).fetchall()}
+        assert "idx_msg_chatbot" in indexes
+        assert "idx_sess_chatbot" in indexes
+        assert "idx_msg_agent" not in indexes
+        assert "idx_sess_agent" not in indexes
+
+        # Data preserved, queryable via the new column name.
+        msg_row = conn.execute(
+            "SELECT chatbot_id, role, content FROM chat_messages ORDER BY id"
+        ).fetchall()
+        assert [dict(r) for r in msg_row] == [
+            {"chatbot_id": "legacy-bot", "role": "user", "content": "ciao"},
+            {"chatbot_id": "legacy-bot", "role": "assistant", "content": "salve"},
+        ]
+        sess_row = conn.execute(
+            "SELECT chatbot_id, summary FROM chat_sessions WHERE session_id = 'sess-legacy'"
+        ).fetchone()
+        assert dict(sess_row) == {"chatbot_id": "legacy-bot", "summary": "old summary"}
+
+        # user_version stamped at the latest schema version.
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+
+        # The public, chatbot_id-keyed API works against the migrated rows too.
+        summaries = store.get_past_summaries("legacy-bot")
+        assert len(summaries) == 1
+        assert summaries[0]["summary"] == "old summary"
+    finally:
+        store.close()
+
+
+def test_migration_is_idempotent_on_reopen(tmp_path):
+    """A second ChatStore open (simulating an add-on restart post-migration)
+    must not fail or re-run the rename against an already-migrated db."""
+    db_path = str(tmp_path / "chat_history.db")
+    _make_legacy_v1_db(db_path)
+
+    store1 = ChatStore(db_path)
+    store1.close()
+
+    store2 = ChatStore(db_path)  # must not raise
+    try:
+        conn = store2._conn
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()}
+        assert "chatbot_id" in cols and "agent_id" not in cols
+        count = conn.execute("SELECT COUNT(*) FROM chat_messages").fetchone()[0]
+        assert count == 2  # rows not duplicated by re-running migration
+    finally:
+        store2.close()

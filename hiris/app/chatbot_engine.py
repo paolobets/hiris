@@ -595,13 +595,13 @@ class ChatbotEngine:
                 runner = self._claude_runner
                 budget_eur = 0.0
                 tokens_today = 0
-                if runner and hasattr(runner, "get_agent_usage"):
+                if runner and hasattr(runner, "get_chatbot_usage"):
                     try:
-                        usage = runner.get_agent_usage(chatbot.id)
+                        usage = runner.get_chatbot_usage(chatbot.id)
                         budget_eur = round(usage.get("cost_usd", 0.0) * EUR_RATE, 4)
                         tokens_today = usage.get("tokens_today", 0)
                     except Exception as exc:
-                        logger.debug("get_agent_usage(%s) failed: %s", chatbot.id, exc)
+                        logger.debug("get_chatbot_usage(%s) failed: %s", chatbot.id, exc)
                 asyncio.create_task(
                     self._mqtt_publisher.publish_chatbot_state(
                         chatbot, budget_eur=budget_eur,

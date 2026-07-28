@@ -30,14 +30,14 @@ async def test_save_memory_writes_chatbot_item_and_recall_finds_it(tmp_path):
     disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
                           knowledge_store=store, embedder=_Emb())
     await disp.dispatch("save_memory", {"content": "l'utente preferisce 21°C"},
-                        agent_id="agentA", user_id="paolo")
+                        chatbot_id="agentA", user_id="paolo")
     res = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
-                              agent_id="agentA", user_id="paolo")
+                              chatbot_id="agentA", user_id="paolo")
     # the recalled result mentions the stored memory
     assert "21" in str(res)
     # a different agent does NOT see agentA's chatbot-scoped memory
     res_b = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
-                                agent_id="agentB", user_id="paolo")
+                                chatbot_id="agentB", user_id="paolo")
     assert "21" not in str(res_b)
     store.close()
 
@@ -55,7 +55,7 @@ async def test_save_memory_writes_real_owner_not_hardcoded_home(tmp_path):
 
     saved_memory = await disp.dispatch(
         "save_memory", {"content": "nota di paolo"},
-        agent_id="agentA", user_id="paolo",
+        chatbot_id="agentA", user_id="paolo",
     )
     mem_item = store.get_item(saved_memory["id"])
     assert mem_item["owner"] == "paolo"
@@ -79,24 +79,24 @@ async def test_recall_memory_two_users_same_agent_no_leak(tmp_path):
                           knowledge_store=store, embedder=_Emb())
 
     await disp.dispatch("save_memory", {"content": "userA preferisce 21 gradi"},
-                        agent_id="agentA", user_id="userA")
+                        chatbot_id="agentA", user_id="userA")
 
     res_a = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
-                                agent_id="agentA", user_id="userA")
+                                chatbot_id="agentA", user_id="userA")
     assert "21" in str(res_a)
 
     res_b = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
-                                agent_id="agentA", user_id="userB")
+                                chatbot_id="agentA", user_id="userB")
     assert "21" not in str(res_b)
 
     # A home-owned chatbot-scoped item (e.g. saved with no user_id) is
     # shared across both users of this same agent.
     await disp.dispatch("save_memory", {"content": "nota condivisa casa 99"},
-                        agent_id="agentA")  # no user_id -> owner defaults to 'home'
+                        chatbot_id="agentA")  # no user_id -> owner defaults to 'home'
     res_a2 = await disp.dispatch("recall_memory", {"query": "nota condivisa"},
-                                 agent_id="agentA", user_id="userA")
+                                 chatbot_id="agentA", user_id="userA")
     res_b2 = await disp.dispatch("recall_memory", {"query": "nota condivisa"},
-                                 agent_id="agentA", user_id="userB")
+                                 chatbot_id="agentA", user_id="userB")
     assert "99" in str(res_a2)
     assert "99" in str(res_b2)
     store.close()
@@ -108,7 +108,7 @@ async def test_save_memory_defaults_owner_to_home_without_user_id(tmp_path):
     disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
                           knowledge_store=store, embedder=_Emb())
     saved = await disp.dispatch("save_memory", {"content": "ricordo senza utente"},
-                                agent_id="agentA")
+                                chatbot_id="agentA")
     assert saved.get("saved") is True
     item = store.get_item(saved["id"])
     assert item["owner"] == "home"
@@ -124,7 +124,7 @@ async def test_save_memory_sets_valid_until_from_retention_days(tmp_path):
                           knowledge_store=store, embedder=_Emb(),
                           memory_retention_days=30)
     saved = await disp.dispatch("save_memory", {"content": "scade tra 30gg"},
-                                agent_id="agentA", user_id="paolo")
+                                chatbot_id="agentA", user_id="paolo")
     item = store.get_item(saved["id"])
     assert item["valid_until"] is not None
     valid_until = datetime.strptime(item["valid_until"], "%Y-%m-%dT%H:%M:%SZ").replace(
@@ -186,10 +186,10 @@ async def test_recall_memory_does_not_leak_non_memory_kinds(tmp_path):
         chatbot_id=None, status="approved", embedding=[0.1, 0.2, 0.3],
     )
     await disp.dispatch("save_memory", {"content": "l'utente preferisce il te verde"},
-                        agent_id="agentA", user_id="paolo")
+                        chatbot_id="agentA", user_id="paolo")
 
     res = await disp.dispatch("recall_memory", {"query": "bolletta luce spesa"},
-                              agent_id="agentA", user_id="paolo")
+                              chatbot_id="agentA", user_id="paolo")
     assert "123" not in str(res)
     assert "bolletta" not in str(res)
     store.close()
@@ -204,9 +204,9 @@ async def test_recall_knowledge_includes_agents_own_chatbot_memory(tmp_path):
     disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
                           knowledge_store=store, embedder=_Emb())
     await disp.dispatch("save_memory", {"content": "nota privata agente"},
-                        agent_id="agentA", user_id="paolo")
+                        chatbot_id="agentA", user_id="paolo")
     res = await disp.dispatch("recall_knowledge", {"query": "nota privata"},
-                              agent_id="agentA", user_id="paolo")
+                              chatbot_id="agentA", user_id="paolo")
     contents = [r["content"] for r in res.get("results", [])]
     assert "nota privata agente" in contents
     store.close()

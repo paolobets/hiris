@@ -6,11 +6,11 @@ Real APIs verified before writing this test:
 - ReasoningQueue.claim(now) -> dict with job_id/kind/context/nonce/status
 - ReasoningQueue.submit(job_id, nonce, decision, now) -> bool
 - ReasoningQueue.get(job_id) -> dict including "kind", "context", "decision"
-- chat_store.append_messages(agent_id, messages, data_dir) — chat_store has no
+- chat_store.append_messages(chatbot_id, messages, data_dir) — chat_store has no
   "conversation_id" concept; a conversation IS an agent's active session, keyed
-  by agent_id. So the job context carries "agent_id" (the brief's
-  "conversation_id" maps onto this real key) and submit_chat_reply(agent_id,
-  reply_text) calls append_messages(agent_id, [{"role": "assistant", ...}], data_dir).
+  by chatbot_id. So the job context carries "chatbot_id" (the brief's
+  "conversation_id" maps onto this real key) and submit_chat_reply(chatbot_id,
+  reply_text) calls append_messages(chatbot_id, [{"role": "assistant", ...}], data_dir).
 """
 import os
 
@@ -47,8 +47,8 @@ def _app(tmp_path, *, submit_chat_reply=None, execute_decision=None):
 async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client, tmp_path):
     recorded = []
 
-    async def _submit_chat_reply(agent_id, reply_text):
-        recorded.append((agent_id, reply_text))
+    async def _submit_chat_reply(chatbot_id, reply_text):
+        recorded.append((chatbot_id, reply_text))
 
     executed = []
 
@@ -57,7 +57,7 @@ async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client,
         return "notify"
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply, execute_decision=_exec)
-    q.enqueue("chat", {}, {"agent_id": "agentX", "history": []}, deadline_ts=100.0, job_id="C1", now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX", "history": []}, deadline_ts=100.0, job_id="C1", now=1.0)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -77,11 +77,11 @@ async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client,
 async def test_chat_job_missing_reply_fails_closed_but_job_resolved(aiohttp_client, tmp_path):
     recorded = []
 
-    async def _submit_chat_reply(agent_id, reply_text):
-        recorded.append((agent_id, reply_text))
+    async def _submit_chat_reply(chatbot_id, reply_text):
+        recorded.append((chatbot_id, reply_text))
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, job_id="C2", now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, job_id="C2", now=1.0)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -100,11 +100,11 @@ async def test_chat_job_missing_reply_fails_closed_but_job_resolved(aiohttp_clie
 async def test_chat_job_missing_agent_id_fails_closed(aiohttp_client, tmp_path):
     recorded = []
 
-    async def _submit_chat_reply(agent_id, reply_text):
-        recorded.append((agent_id, reply_text))
+    async def _submit_chat_reply(chatbot_id, reply_text):
+        recorded.append((chatbot_id, reply_text))
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
-    q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C3", now=1.0)  # no agent_id in context
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C3", now=1.0)  # no chatbot_id in context
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -127,8 +127,8 @@ async def test_non_chat_job_still_uses_execute_decision_unchanged(aiohttp_client
 
     recorded = []
 
-    async def _submit_chat_reply(agent_id, reply_text):
-        recorded.append((agent_id, reply_text))
+    async def _submit_chat_reply(chatbot_id, reply_text):
+        recorded.append((chatbot_id, reply_text))
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply, execute_decision=_exec)
     q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
@@ -151,7 +151,7 @@ async def test_chat_job_missing_submit_chat_reply_handler_does_not_crash(aiohttp
     """If app["submit_chat_reply"] isn't wired (misconfiguration), submit must
     still resolve the job instead of 500ing."""
     app, q = _app(tmp_path)  # no submit_chat_reply, no execute_decision
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, job_id="C4", now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, job_id="C4", now=1.0)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -170,13 +170,13 @@ async def test_chat_reply_lands_in_real_chat_store(aiohttp_client, tmp_path):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
 
-    async def _submit_chat_reply(agent_id, reply_text):
-        if not agent_id or not reply_text:
+    async def _submit_chat_reply(chatbot_id, reply_text):
+        if not chatbot_id or not reply_text:
             return
-        append_messages(agent_id, [{"role": "assistant", "content": reply_text}], data_dir)
+        append_messages(chatbot_id, [{"role": "assistant", "content": reply_text}], data_dir)
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
-    q.enqueue("chat", {}, {"agent_id": "agentY", "history": []}, deadline_ts=100.0, job_id="C5", now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentY", "history": []}, deadline_ts=100.0, job_id="C5", now=1.0)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()

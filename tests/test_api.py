@@ -475,7 +475,7 @@ async def test_create_task_tool_via_chat(client):
     from hiris.app.task_engine import Task
     from datetime import datetime, timezone
     fake_task = Task(
-        id="t-001", label="Test", agent_id=DEFAULT_CHATBOT_ID,
+        id="t-001", label="Test", chatbot_id=DEFAULT_CHATBOT_ID,
         created_at=datetime.now(timezone.utc).isoformat(),
         trigger={"type": "delay", "minutes": 5}, actions=[],
     )
