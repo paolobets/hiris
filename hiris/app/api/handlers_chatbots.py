@@ -187,14 +187,14 @@ async def handle_delete_chatbot(request: web.Request) -> web.Response:
     deleted = engine.delete_chatbot(agent_id)
     if not deleted:
         return web.json_response({"error": "Not found"}, status=404)
-    # Clean up orphaned data: long-term memories (lens-scoped KnowledgeStore
-    # rows, Slice 3) and persisted chat history.
+    # Clean up orphaned data: long-term memories (chatbot_id-scoped
+    # KnowledgeStore rows, Slice 3) and persisted chat history.
     knowledge_store = request.app.get("knowledge_store")
     if knowledge_store is not None:
         try:
-            knowledge_store.delete_by_lens(agent_id)
+            knowledge_store.delete_by_chatbot(agent_id)
         except Exception as exc:
-            logger.warning("knowledge_store.delete_by_lens(%s) failed: %s", agent_id, exc)
+            logger.warning("knowledge_store.delete_by_chatbot(%s) failed: %s", agent_id, exc)
     data_dir = request.app.get("data_dir")
     if data_dir:
         try:

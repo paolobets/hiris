@@ -1,5 +1,5 @@
 """Slice 3 Task 2: save_memory/recall_memory routed into the unified
-KnowledgeStore as lens-scoped memory, with the real user_id as owner."""
+KnowledgeStore as chatbot-scoped memory, with the real user_id as owner."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -25,7 +25,7 @@ class _Emb:
         return 3
 
 
-async def test_save_memory_writes_lens_item_and_recall_finds_it(tmp_path):
+async def test_save_memory_writes_chatbot_item_and_recall_finds_it(tmp_path):
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
                           knowledge_store=store, embedder=_Emb())
@@ -35,7 +35,7 @@ async def test_save_memory_writes_lens_item_and_recall_finds_it(tmp_path):
                               agent_id="agentA", user_id="paolo")
     # the recalled result mentions the stored memory
     assert "21" in str(res)
-    # a different agent does NOT see agentA's lens memory
+    # a different agent does NOT see agentA's chatbot-scoped memory
     res_b = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
                                 agent_id="agentB", user_id="paolo")
     assert "21" not in str(res_b)
@@ -71,8 +71,9 @@ async def test_save_memory_writes_real_owner_not_hardcoded_home(tmp_path):
 
 async def test_recall_memory_two_users_same_agent_no_leak(tmp_path):
     """Two different HA users chatting with the SAME agent must not see
-    each other's save_memory (lens) items — the cross-user leak this task
-    fixes. A home-owned lens item, however, is visible to both."""
+    each other's save_memory (chatbot-scoped) items — the cross-user leak
+    this task fixes. A home-owned chatbot-scoped item, however, is visible
+    to both."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
                           knowledge_store=store, embedder=_Emb())
@@ -88,8 +89,8 @@ async def test_recall_memory_two_users_same_agent_no_leak(tmp_path):
                                 agent_id="agentA", user_id="userB")
     assert "21" not in str(res_b)
 
-    # A home-owned lens item (e.g. saved with no user_id) is shared across
-    # both users of this same agent.
+    # A home-owned chatbot-scoped item (e.g. saved with no user_id) is
+    # shared across both users of this same agent.
     await disp.dispatch("save_memory", {"content": "nota condivisa casa 99"},
                         agent_id="agentA")  # no user_id -> owner defaults to 'home'
     res_a2 = await disp.dispatch("recall_memory", {"query": "nota condivisa"},
@@ -111,7 +112,7 @@ async def test_save_memory_defaults_owner_to_home_without_user_id(tmp_path):
     assert saved.get("saved") is True
     item = store.get_item(saved["id"])
     assert item["owner"] == "home"
-    assert item["lens"] == "agentA"
+    assert item["chatbot_id"] == "agentA"
     assert item["kind"] == "memory"
     assert item["status"] == "approved"
     store.close()
@@ -134,39 +135,39 @@ async def test_save_memory_sets_valid_until_from_retention_days(tmp_path):
     store.close()
 
 
-async def test_purge_expired_lens_deletes_only_expired_lens_rows(tmp_path):
+async def test_purge_expired_chatbot_deletes_only_expired_chatbot_rows(tmp_path):
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     past = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     future = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    expired_lens_id = store.add_item(
-        kind="memory", content="scaduto", lens="agentA", valid_until=past
+    expired_chatbot_id = store.add_item(
+        kind="memory", content="scaduto", chatbot_id="agentA", valid_until=past
     )
-    fresh_lens_id = store.add_item(
-        kind="memory", content="fresco", lens="agentA", valid_until=future
+    fresh_chatbot_id = store.add_item(
+        kind="memory", content="fresco", chatbot_id="agentA", valid_until=future
     )
-    no_expiry_lens_id = store.add_item(
-        kind="memory", content="senza scadenza", lens="agentA", valid_until=None
+    no_expiry_chatbot_id = store.add_item(
+        kind="memory", content="senza scadenza", chatbot_id="agentA", valid_until=None
     )
     shared_knowledge_id = store.add_item(
-        kind="fact", content="conoscenza condivisa", lens=None, valid_until=past
+        kind="fact", content="conoscenza condivisa", chatbot_id=None, valid_until=past
     )
 
-    deleted = store.purge_expired_lens()
+    deleted = store.purge_expired_chatbot()
 
     assert deleted == 1
-    assert store.get_item(expired_lens_id) is None
-    assert store.get_item(fresh_lens_id) is not None
-    assert store.get_item(no_expiry_lens_id) is not None
-    # Shared (non-lens) knowledge is untouched even if expired — Task 2 scope
-    # is only per-agent lens memory retention.
+    assert store.get_item(expired_chatbot_id) is None
+    assert store.get_item(fresh_chatbot_id) is not None
+    assert store.get_item(no_expiry_chatbot_id) is not None
+    # Shared (non-chatbot) knowledge is untouched even if expired — Task 2
+    # scope is only per-agent chatbot memory retention.
     assert store.get_item(shared_knowledge_id) is not None
     store.close()
 
 
 async def test_recall_memory_does_not_leak_non_memory_kinds(tmp_path):
     """recall_memory must only ever return kind='memory' items. The unified
-    scope WHERE also returns un-lensed knowledge rows (expenses, obligations,
+    scope WHERE also returns unscoped knowledge rows (expenses, obligations,
     facts...) owned by the same user, so without an explicit kinds=['memory']
     filter an agent could use recall_memory to read data outside its
     configured kinds egress filter (e.g. an agent restricted to
@@ -176,13 +177,13 @@ async def test_recall_memory_does_not_leak_non_memory_kinds(tmp_path):
     disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
                           knowledge_store=store, embedder=_Emb())
 
-    # An approved, un-lensed knowledge item (e.g. an expense the user already
+    # An approved, unscoped knowledge item (e.g. an expense the user already
     # approved) — this is the kind of row the unified scope WHERE also
-    # matches for owner=paolo regardless of lens, which is exactly what
-    # recall_memory must NOT expose.
+    # matches for owner=paolo regardless of chatbot_id, which is exactly
+    # what recall_memory must NOT expose.
     store.add_item(
         kind="expense", content="bolletta luce 123 euro", owner="paolo",
-        lens=None, status="approved", embedding=[0.1, 0.2, 0.3],
+        chatbot_id=None, status="approved", embedding=[0.1, 0.2, 0.3],
     )
     await disp.dispatch("save_memory", {"content": "l'utente preferisce il te verde"},
                         agent_id="agentA", user_id="paolo")
@@ -194,8 +195,8 @@ async def test_recall_memory_does_not_leak_non_memory_kinds(tmp_path):
     store.close()
 
 
-async def test_recall_knowledge_includes_agents_own_lens_memory(tmp_path):
-    """recall_knowledge must also pass lens=agent_id so an agent's own
+async def test_recall_knowledge_includes_agents_own_chatbot_memory(tmp_path):
+    """recall_knowledge must also pass chatbot_id=agent_id so an agent's own
     working memory shows up alongside shared knowledge."""
     from hiris.app.tools.knowledge_tools import handle_save_knowledge
 

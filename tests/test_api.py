@@ -422,11 +422,11 @@ async def test_chat_context_map_injects_area_context(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_rag_injects_lens_memory_from_knowledge_store(client):
+async def test_chat_rag_injects_chatbot_memory_from_knowledge_store(client):
     """Slice 3 Task 4: chat's RAG auto-injection was repointed from the
     retired MemoryStore onto the unified KnowledgeStore. This guards that a
-    lens-scoped memory saved for the default agent is found and injected into
-    context_str on a matching query."""
+    chatbot-scoped memory saved for the default agent is found and injected
+    into context_str on a matching query."""
     from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from hiris.app.brain.knowledge_store import KnowledgeStore
 
@@ -439,7 +439,7 @@ async def test_chat_rag_injects_lens_memory_from_knowledge_store(client):
     store = KnowledgeStore(":memory:")
     store.add_item(
         kind="memory", content="l'utente preferisce 21 gradi", owner="home",
-        lens=DEFAULT_CHATBOT_ID, status="approved", embedding=[0.1, 0.2, 0.3],
+        chatbot_id=DEFAULT_CHATBOT_ID, status="approved", embedding=[0.1, 0.2, 0.3],
     )
     client.app["knowledge_store"] = store
 

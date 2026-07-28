@@ -465,7 +465,7 @@ class ToolDispatcher:
                 return await _handle_recall_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
-                    lens=agent_id or "hiris-default",
+                    chatbot_id=agent_id or "hiris-default",
                 )
             if name == "save_memory":
                 if self._knowledge_store is None or self._knowledge_embedder is None:
@@ -473,7 +473,7 @@ class ToolDispatcher:
                 return await _handle_save_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
-                    lens=agent_id or "hiris-default",
+                    chatbot_id=agent_id or "hiris-default",
                     retention_days=self._memory_retention_days,
                 )
             if name == "get_ha_health":
@@ -507,7 +507,7 @@ class ToolDispatcher:
                 return await handle_recall_knowledge(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
-                    lens=agent_id or "hiris-default",
+                    chatbot_id=agent_id or "hiris-default",
                     allow_sensitive=knowledge_allow_sensitive,
                     kinds=knowledge_kinds,
                     pseudonymizer=self._pseudonymizer,

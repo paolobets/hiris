@@ -1099,9 +1099,9 @@ async def _on_startup(app: web.Application) -> None:
             n = _delete_old_messages(data_dir, HISTORY_RETENTION_DAYS)
             if n:
                 logger.info("Retention: deleted %d old chat messages", n)
-        n2 = knowledge_store.purge_expired_lens()
+        n2 = knowledge_store.purge_expired_chatbot()
         if n2:
-            logger.info("Retention: purged %d expired lens memories", n2)
+            logger.info("Retention: purged %d expired chatbot memories", n2)
 
     engine._scheduler.add_job(
         _run_retention,

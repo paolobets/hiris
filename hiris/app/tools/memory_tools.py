@@ -78,14 +78,14 @@ async def handle_save_memory(
     tool_input: dict,
     *,
     owner: str,
-    lens: str,
+    chatbot_id: str,
     retention_days: int | None = None,
 ) -> dict:
-    """Save agent working-memory ("lens" memory) into the unified KnowledgeStore.
+    """Save agent working-memory (chatbot-scoped memory) into the unified KnowledgeStore.
 
     kind='memory', status='approved' (no human-in-the-loop gate like
     save_knowledge — this is the agent's own scratch memory), scoped by
-    owner (who it belongs to) AND lens (which agent wrote it).
+    owner (who it belongs to) AND chatbot_id (which agent wrote it).
     """
     content = tool_input["content"]
     if len(content) > 1000:
@@ -111,7 +111,7 @@ async def handle_save_memory(
                 kind="memory",
                 content=content,
                 owner=owner,
-                lens=lens,
+                chatbot_id=chatbot_id,
                 data={"tags": tags},
                 embedding=embedding or None,
                 sensitivity="normal",
@@ -132,12 +132,12 @@ async def handle_recall_memory(
     tool_input: dict,
     *,
     owner: str,
-    lens: str,
+    chatbot_id: str,
 ) -> dict:
     """Recall from the unified KnowledgeStore, restricted to kind='memory'
-    rows scoped to this owner's lens (this agent's own memory only). The
-    kinds=['memory'] filter is required: the unified scope WHERE also
-    matches un-lensed knowledge rows (facts, expenses, obligations...) owned
+    rows scoped to this owner's chatbot_id (this agent's own memory only).
+    The kinds=['memory'] filter is required: the unified scope WHERE also
+    matches unscoped knowledge rows (facts, expenses, obligations...) owned
     by this owner, and without it recall_memory would let an agent read
     knowledge outside its configured kinds egress filter."""
     k = min(max(1, int(tool_input.get("k", 5))), 20)
@@ -157,7 +157,7 @@ async def handle_recall_memory(
         # starve the result set below k.
         search_k = k * 4 if tags else k
         rows = store.search(
-            query_vec=query_vec, k=search_k, owner=owner, lens=lens,
+            query_vec=query_vec, k=search_k, owner=owner, chatbot_id=chatbot_id,
             kinds=["memory"],
         )
         if tags:

@@ -91,7 +91,7 @@ async def handle_recall_knowledge(
     tool_input: dict,
     *,
     owner: str,
-    lens: str | None = None,
+    chatbot_id: str | None = None,
     allow_sensitive: bool = False,
     kinds: list[str] | str | None = None,
     pseudonymizer: Any = None,
@@ -112,7 +112,7 @@ async def handle_recall_knowledge(
             query_vec=qv,
             k=k,
             owner=owner,
-            lens=lens,
+            chatbot_id=chatbot_id,
             allow_sensitive=allow_sensitive,
             kinds=kinds,
         )

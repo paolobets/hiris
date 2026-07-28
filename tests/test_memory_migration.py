@@ -27,8 +27,8 @@ def _seed_legacy(data_dir, rows):
     conn.close()
 
 
-def _by_lens(store, lens, kind="memory"):
-    return [it for it in store.list_items(kind=kind, limit=200) if it["lens"] == lens]
+def _by_chatbot(store, chatbot_id, kind="memory"):
+    return [it for it in store.list_items(kind=kind, limit=200) if it["chatbot_id"] == chatbot_id]
 
 
 def test_migration_moves_rows_and_is_idempotent(tmp_path):
@@ -41,8 +41,8 @@ def test_migration_moves_rows_and_is_idempotent(tmp_path):
     n = migrate_agent_memories(d, store)
     assert n == 1
 
-    # the memory is now a lens item, recallable/gettable for that agent
-    matches = _by_lens(store, "agentA")
+    # the memory is now a chatbot-scoped item, recallable/gettable for that agent
+    matches = _by_chatbot(store, "agentA")
     assert len(matches) == 1
     item = matches[0]
     assert item["content"] == "memoria vecchia"
@@ -52,14 +52,14 @@ def test_migration_moves_rows_and_is_idempotent(tmp_path):
     assert item["source"] == "migrated"
     assert item["valid_until"] == "2027-01-01T00:00:00Z"
     full = store.get_item(item["id"])
-    assert full is not None and full["lens"] == "agentA"
+    assert full is not None and full["chatbot_id"] == "agentA"
 
     # legacy db renamed -> a second run is a no-op
     assert not os.path.exists(os.path.join(d, "hiris_memory.db"))
     assert os.path.exists(os.path.join(d, "hiris_memory.db.migrated"))
     assert migrate_agent_memories(d, store) == 0
     # and no duplicate got created by the no-op second run
-    assert len(_by_lens(store, "agentA")) == 1
+    assert len(_by_chatbot(store, "agentA")) == 1
     store.close()
 
 
@@ -73,7 +73,7 @@ def test_migration_keeps_null_embedding_rows(tmp_path):
     n = migrate_agent_memories(d, store)
     assert n == 1
 
-    matches = _by_lens(store, "agentB")
+    matches = _by_chatbot(store, "agentB")
     assert len(matches) == 1
     assert matches[0]["content"] == "no vector here"
     assert matches[0]["valid_until"] is None
@@ -92,11 +92,11 @@ def test_migration_decodes_real_embedding_and_tags(tmp_path):
     assert n == 1
 
     # recallable via vector search using the decoded embedding
-    got = store.search(query_vec=vec, owner="home", lens="agentC", k=5)
+    got = store.search(query_vec=vec, owner="home", chatbot_id="agentC", k=5)
     assert any("with vector" in (r.get("content") or "") for r in got)
 
     # tags preserved into `data`
-    match = _by_lens(store, "agentC")[0]
+    match = _by_chatbot(store, "agentC")[0]
     assert match["data"].get("tags") == ["pref"]
     store.close()
 
@@ -112,7 +112,7 @@ def test_migration_handles_corrupt_embedding_blob_without_dropping_row(tmp_path)
     n = migrate_agent_memories(d, store)
     assert n == 1
 
-    matches = _by_lens(store, "agentD")
+    matches = _by_chatbot(store, "agentD")
     assert len(matches) == 1
     assert matches[0]["content"] == "corrupt blob"
     store.close()
@@ -128,8 +128,8 @@ def test_migration_multiple_rows_and_agents(tmp_path):
     store = KnowledgeStore(os.path.join(d, "knowledge.db"))
     n = migrate_agent_memories(d, store)
     assert n == 3
-    assert len(_by_lens(store, "agentA")) == 2
-    assert len(_by_lens(store, "agentE")) == 1
+    assert len(_by_chatbot(store, "agentA")) == 2
+    assert len(_by_chatbot(store, "agentE")) == 1
     store.close()
 
 
