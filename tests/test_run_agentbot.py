@@ -1,6 +1,7 @@
 """Tests for the shared `_run_agentbot` flow (Slice 5b, Task 3; renamed lens
--> Agentbot in SP-4 Fase A Task 3):
-`hiris.app.watcher.lens_runner.run_agentbot` + its pure helpers
+-> Agentbot in SP-4 Fase A Task 3; the module file itself was renamed to
+`agentbot_runner.py` in SP-4 Fase B Task 5):
+`hiris.app.watcher.agentbot_runner.run_agentbot` + its pure helpers
 (`agentbot_action`, `agentbot_message`, `normalize_agentbot_severity`).
 
 `run_agentbot` is the function `server.py`'s `_on_startup` binds onto
@@ -22,7 +23,7 @@ different target. See `test_ai_lens_llm_attempts_to_override_action_*`.
 import pytest
 
 from hiris.app.watcher.executor import execute as real_execute
-from hiris.app.watcher.lens_runner import (
+from hiris.app.watcher.agentbot_runner import (
     agentbot_action,
     agentbot_message,
     normalize_agentbot_severity,
@@ -141,7 +142,7 @@ def _make_run_decision_from_llm(llm_reason, *, gather_context=None, notify, act,
 
     Task 4B: `model` is accepted and threaded straight into `reason()`,
     exactly like the real `_run_decision` -- so this mirror still matches
-    the production wiring now that `lens_runner.py`'s `_on_wake` passes
+    the production wiring now that `agentbot_runner.py`'s `_on_wake` passes
     `model=reasoning.get("model") or "auto"` into `run_decision`."""
     async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
         decision = await reason(wake, gather_context=gather_context or (lambda w: {}),

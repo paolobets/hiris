@@ -42,7 +42,7 @@ from typing import Any, Awaitable, Callable, Optional
 from .signals import Decision, WakeEvent
 from .wake import maybe_wake
 
-# Agentbot severity vocabulary (watcher.lenses.ALLOWED_SEVERITIES =
+# Agentbot severity vocabulary (watcher.agentbots.ALLOWED_SEVERITIES =
 # {"info","warn","alert"}) does not match the Signal/Decision/WakeEvent
 # vocabulary (watcher.signals.SEVERITIES = ("info","warn","critico")) --
 # this is the single place an Agentbot's user-authored severity crosses into
@@ -183,7 +183,7 @@ async def run_agentbot(
             system = sentinel_system + "\n\n" + (reasoning.get("prompt") or "")
             action_type = (agentbot.get("action") or {}).get("type")
             # Task 4B: this Agentbot's OWN model (validated by
-            # `watcher.lenses._validate_reasoning`, default "auto") --
+            # `watcher.agentbots._validate_reasoning`, default "auto") --
             # threaded into `run_decision` (server.py's `_run_decision`)
             # so each Agentbot reasons with its configured model instead of
             # always falling back to "auto".

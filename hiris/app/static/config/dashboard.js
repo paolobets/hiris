@@ -170,8 +170,10 @@
       body.innerHTML = advs.map(function(a) {
         var link = (a.fix_kind === 'hiris_config')
           ? '<a class="btn btn-sm" href="#/gateway">Apri Gateway</a>' : '';
-        return '<div class="prop-card" id="adv-' + escHtml(String(a.id)) + '">' +
-          '<div class="prop-title">' + escHtml(a.title || '') + '</div>' +
+        var severity = a.severity || 'info';
+        return '<div class="adv-card adv-' + escHtml(severity) + '" id="adv-' + escHtml(String(a.id)) + '">' +
+          '<div class="adv-sev">' + escHtml(severity.toUpperCase()) + '</div>' +
+          '<div class="adv-title">' + escHtml(a.title || '') + '</div>' +
           '<div class="prop-desc">' + escHtml(a.suggested_fix || '') + '</div>' +
           '<div class="prop-actions">' + link +
             '<button class="btn btn-sm" data-adv-act="ack" data-aid="' + escHtml(String(a.id)) + '">Ho capito</button>' +
@@ -208,6 +210,14 @@
     }).catch(function() { alert('Errore di rete'); });
   }
 
+  var PROPOSAL_LABELS = {
+    ha_automation: '→ automazione HA',
+    ha_dashboard: '→ dashboard HA',
+    ha_script: '→ script HA',
+    ha_scene: '→ scena HA',
+    hiris_agent: '→ Agentbot'
+  };
+
   function loadProposalsPeek() {
     fetch('api/proposals?status=pending').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -223,9 +233,10 @@
         return;
       }
       body.innerHTML = props.map(function(p) {
+        var typeLabel = PROPOSAL_LABELS[p.type] || ('→ ' + escHtml(p.type || ''));
         return '<div class="prop-card">' +
           '<div class="prop-title">' +
-            '<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;background:var(--accent-tint);color:var(--accent-ink);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);margin-right:6px;vertical-align:middle">→ automazione HA</span>' +
+            '<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;background:var(--accent-tint);color:var(--accent-ink);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);margin-right:6px;vertical-align:middle">' + escHtml(typeLabel) + '</span>' +
             escHtml(p.name) +
           '</div>' +
           '<div class="prop-desc">' + escHtml(p.description || '') + '</div>' +

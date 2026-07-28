@@ -242,5 +242,29 @@ async def test_cleanup_legacy_discovery_does_not_touch_new_scheme_topics():
     for topic in topics:
         assert (
             topic.startswith("homeassistant/sensor/hiris_")
+            or topic.startswith("homeassistant/switch/hiris_")
+            or topic.startswith("homeassistant/button/hiris_")
             or topic.startswith("hiris/agents/")
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (SP-4 Fase B) — cleanup_legacy_discovery retracted the old-scheme
+# sensor discovery + old state topics but NOT the old-scheme COMMAND
+# entities (switch/button), which were only ever retracted by
+# publish_discovery() under the NEW id scheme — leaving two dead entities
+# per chatbot in HA for anyone who upgraded through the rename.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cleanup_retracts_legacy_command_entities(tmp_path):
+    """Le vecchie switch/button (schema hiris_<id>_*) devono essere ritirate."""
+    pub = MQTTPublisher()
+    pub._enabled = True
+    await pub.cleanup_legacy_discovery(["cb1"], list(pub._DISCOVERY_METRICS))
+    topics = await _drain(pub)
+    assert "homeassistant/switch/hiris_cb1_enabled/config" in topics
+    assert "homeassistant/button/hiris_cb1_run_now/config" in topics
+    for t, payload in topics.items():
+        if t.endswith("/config"):
+            assert payload == "", "il ritiro deve essere un payload vuoto retained"

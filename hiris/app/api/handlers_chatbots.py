@@ -217,30 +217,6 @@ async def handle_run_chatbot(request: web.Request) -> web.Response:
     return web.json_response({"result": result})
 
 
-async def handle_list_entities(request: web.Request) -> web.Response:
-    cache = request.app["entity_cache"]
-    q = request.rel_url.query.get("q", "").lower().strip()
-    _MAX_Q_LEN = 100
-    if len(q) > _MAX_Q_LEN:
-        return web.json_response({"error": "Query too long"}, status=400)
-    entities = []
-    for e in cache.get_all():
-        domain = e["id"].split(".")[0]
-        entities.append({
-            "id": e["id"],
-            "name": e.get("name", ""),
-            "state": e.get("state", ""),
-            "domain": domain,
-        })
-    if q:
-        entities = [
-            e for e in entities
-            if q in e["id"].lower() or q in e["name"].lower() or q in e["domain"].lower()
-        ]
-    entities.sort(key=lambda e: e["id"])
-    return web.json_response(entities)
-
-
 async def handle_get_chatbot_usage(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
     if err := _check_chatbot_id(agent_id):

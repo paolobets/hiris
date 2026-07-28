@@ -272,13 +272,26 @@ class MQTTPublisher:
         <metric>``, the pre-rename ``_OLD_STATE_PREFIX``): an empty retained
         publish clears the broker's retained message so a client subscribing
         fresh no longer receives the stale value, mirroring the discovery
-        retraction above so no piece of the old scheme is left behind."""
+        retraction above so no piece of the old scheme is left behind.
+
+        Task 3 (SP-4 Fase B): also retracts the old-scheme COMMAND entities
+        (``switch``/``button``) — previously only ``publish_discovery()``
+        retracted them, and only under the NEW id scheme, so the old-scheme
+        ``homeassistant/switch/hiris_<id>_enabled/config`` and
+        ``homeassistant/button/hiris_<id>_run_now/config`` topics were never
+        touched, leaving two dead entities per chatbot in HA."""
         if not self._enabled:
             return
         for cid in chatbot_ids:
             old_id = self._OLD_ID_FMT.format(id=cid)
             for metric in metrics:
                 topic = f"{_DISCOVERY_PREFIX}/sensor/{old_id}_{metric}/config"
+                try:
+                    await self._pending.put((topic, ""))
+                except Exception:
+                    logger.warning("legacy discovery cleanup failed for %s", topic, exc_info=True)
+            for metric, component in self._RETIRED_COMMAND_ENTITIES:
+                topic = f"{_DISCOVERY_PREFIX}/{component}/{old_id}_{metric}/config"
                 try:
                     await self._pending.put((topic, ""))
                 except Exception:

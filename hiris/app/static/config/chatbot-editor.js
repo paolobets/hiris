@@ -364,22 +364,23 @@
         searchTimer = setTimeout(function() {
           fetch('api/entities?q=' + encodeURIComponent(q))
             .then(function(r) { return r.json(); })
-            .then(function(items) {
+            .then(function(data) {
+              var items = (data && data.entities) || [];
               sg.innerHTML = '';
               if (!items.length) { sg.style.display = 'none'; return; }
               items.slice(0, 20).forEach(function(item) {
                 var div = document.createElement('div');
                 div.className = 'suggestion-item';
-                var nm = item.name || '';
+                var nm = item.friendly_name || '';
                 // Review L/6: the old ad-hoc `.replace(/[<>&]/g, '')` stripped
                 // <>& but never touched quotes -- harmless here (text-node
                 // content, not an attribute) but a landmine if this pattern
                 // were ever copied into attribute-building code. Use the
                 // shared escHtml() (api.js, loaded before this file), which
                 // also escapes quotes, instead of a bespoke partial escaper.
-                div.innerHTML = '<span>' + escHtml(item.id) + '</span><span class="s-name">' + escHtml(nm) + '</span>';
+                div.innerHTML = '<span>' + escHtml(item.entity_id) + '</span><span class="s-name">' + escHtml(nm) + '</span>';
                 div.addEventListener('click', function() {
-                  if (typeof _entitySelectorAdd === 'function') _entitySelectorAdd(item.id);
+                  if (typeof _entitySelectorAdd === 'function') _entitySelectorAdd(item.entity_id);
                   es.value = ''; sg.style.display = 'none';
                 });
                 sg.appendChild(div);

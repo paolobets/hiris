@@ -27,7 +27,7 @@ from hiris.app.api.handlers_agentbots import (
     handle_update_agentbot,
     set_agentbots,
 )
-from hiris.app.watcher.lenses import load_agentbots, save_agentbots
+from hiris.app.watcher.agentbots import load_agentbots, save_agentbots
 
 
 class _RegisterSpy:

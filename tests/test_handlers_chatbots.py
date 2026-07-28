@@ -3,91 +3,15 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import make_mocked_request
-from hiris.app.api.handlers_chatbots import handle_list_entities
 
 
-@pytest.mark.asyncio
-async def test_list_entities_returns_sorted_entities():
-    cache = MagicMock()
-    cache.get_all.return_value = [
-        {"id": "switch.relay", "state": "off",  "name": "Relay",   "unit": ""},
-        {"id": "light.salon",  "state": "on",   "name": "Salon",   "unit": ""},
-        {"id": "sensor.temp",  "state": "21.5", "name": "Temp",    "unit": "°C"},
-    ]
-    app = MagicMock()
-    app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
-    request = make_mocked_request("GET", "/api/entities", app=app)
-
-    resp = await handle_list_entities(request)
-    entities = json.loads(resp.body)
-
-    assert len(entities) == 3
-    ids = [e["id"] for e in entities]
-    assert ids == sorted(ids)
-    assert entities[0]["domain"] == entities[0]["id"].split(".")[0]
-
-
-@pytest.mark.asyncio
-async def test_list_entities_search_filter():
-    cache = MagicMock()
-    cache.get_all.return_value = [
-        {"id": "light.salon",   "state": "on",  "name": "Salon Light", "unit": ""},
-        {"id": "sensor.temp",   "state": "21",  "name": "Temperature", "unit": "°C"},
-        {"id": "light.kitchen", "state": "off", "name": "Kitchen",     "unit": ""},
-    ]
-    app = MagicMock()
-    app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
-    request = make_mocked_request("GET", "/api/entities?q=light", app=app)
-
-    resp = await handle_list_entities(request)
-    entities = json.loads(resp.body)
-    assert all("light" in e["id"] or "light" in e["name"].lower() for e in entities)
-
-
-@pytest.mark.asyncio
-async def test_list_entities_empty_cache():
-    cache = MagicMock()
-    cache.get_all.return_value = []
-    app = MagicMock()
-    app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
-    request = make_mocked_request("GET", "/api/entities", app=app)
-
-    resp = await handle_list_entities(request)
-    entities = json.loads(resp.body)
-    assert entities == []
-
-
-@pytest.mark.asyncio
-async def test_list_entities_missing_name_field():
-    cache = MagicMock()
-    cache.get_all.return_value = [
-        {"id": "sensor.weird", "state": "unavailable"},  # no "name" or "unit"
-    ]
-    app = MagicMock()
-    app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
-    request = make_mocked_request("GET", "/api/entities", app=app)
-
-    resp = await handle_list_entities(request)
-    entities = json.loads(resp.body)
-    assert len(entities) == 1
-    assert entities[0]["name"] == ""
-    assert entities[0]["domain"] == "sensor"
-
-
-@pytest.mark.asyncio
-async def test_list_entities_search_case_insensitive():
-    cache = MagicMock()
-    cache.get_all.return_value = [
-        {"id": "light.salon", "state": "on", "name": "Luce Soggiorno", "unit": ""},
-    ]
-    app = MagicMock()
-    app.__getitem__ = MagicMock(side_effect=lambda k: cache if k == "entity_cache" else None)
-    request = make_mocked_request("GET", "/api/entities?q=SOGGIORNO", app=app)
-
-    resp = await handle_list_entities(request)
-    entities = json.loads(resp.body)
-    assert len(entities) == 1
-    assert entities[0]["id"] == "light.salon"
+# NOTE (SP-4 Fase B Task 1): the 5 /api/entities tests that used to live here
+# exercised handlers_chatbots.handle_list_entities -- an unreachable copy that
+# was never registered on any route (server.py registers
+# handlers_entities.handle_list_entities on GET /api/entities instead). That
+# dead function has been deleted; its tests were false confidence (green on
+# code nothing ever called) and have been moved + rewritten against the real,
+# canonical handler in tests/test_handlers_entities.py.
 
 
 @pytest.mark.asyncio

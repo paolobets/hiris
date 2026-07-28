@@ -6,21 +6,40 @@ def _csv(v: str | None):
     return {x.strip() for x in v.split(",") if x.strip()} if v else None
 
 
-def filter_entities(states: list[dict], domains: set | None, device_classes: set | None) -> list[dict]:
+def filter_entities(states: list[dict], domains: set | None, device_classes: set | None,
+                     q: str | None = None, limit: int = 1000) -> list[dict]:
+    """Filtra l'inventario entità -- unica forma canonica per /api/entities.
+
+    `domains`/`device_classes` sono set già pre-parsati (CSV split a monte,
+    tipicamente dall'handler via `_csv`). `q` è un substring case-insensitive
+    cercato sia sull'entity_id sia sul friendly_name (nome), combinabile con
+    i filtri domain/device_class.
+    """
     out = []
+    q_low = (q or "").strip().lower()[:100] or None
     for s in states or []:
         eid = s.get("id") or s.get("entity_id")
         if not eid:
             continue
-        dom = eid.split(".", 1)[0]
+        dom = s.get("domain") or eid.split(".", 1)[0]
         dc = s.get("device_class")
+        name = s.get("name") or ""
         if domains and dom not in domains:
             continue
         if device_classes and dc not in device_classes:
             continue
-        out.append({"entity_id": eid, "friendly_name": s.get("name") or eid,
-                    "domain": dom, "device_class": dc})
-    return out[:1000]
+        if q_low and q_low not in eid.lower() and q_low not in name.lower():
+            continue
+        out.append({
+            "entity_id": eid,
+            "friendly_name": name or eid,
+            "domain": dom,
+            "device_class": dc,
+            "state": s.get("state"),
+        })
+        if len(out) >= limit:
+            break
+    return out
 
 
 async def handle_list_entities(request: web.Request) -> web.Response:
@@ -29,5 +48,6 @@ async def handle_list_entities(request: web.Request) -> web.Response:
         return web.json_response({"entities": []})
     ents = filter_entities(cache.all_states(),
                            _csv(request.query.get("domain")),
-                           _csv(request.query.get("device_class")))
+                           _csv(request.query.get("device_class")),
+                           request.rel_url.query.get("q"))
     return web.json_response({"entities": ents})

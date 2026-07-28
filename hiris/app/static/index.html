@@ -294,7 +294,7 @@ async function loadChatbots() {
     connDot.classList.remove('offline');
     connDot.textContent = 'connesso';
     agentListEl.innerHTML = '';
-    var chatAgents = agents.filter(function(a) { return a.type === 'chat'; });
+    var chatAgents = agents;
     chatAgents.forEach(function(a) {
       agentMaxTurns[a.id] = a.max_chat_turns || 0;
       var div = document.createElement('div');

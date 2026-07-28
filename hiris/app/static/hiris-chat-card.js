@@ -1250,8 +1250,7 @@ class HirisChatCardEditor extends HTMLElement {
       });
       if (resp.ok) {
         const result = await resp.json();
-        // Only chat-type agents are compatible with this card
-        this._chatbots = Array.isArray(result) ? result.filter(a => a.type === 'chat') : [];
+        this._chatbots = Array.isArray(result) ? result : [];
       } else {
         this._chatbots = 'error';
       }

@@ -1,7 +1,7 @@
 """TDD for Slice 5b Task 2 -- make_generic_detector.
 
 A user lens's event trigger (already whitelist-validated by
-watcher.lenses.validate_lens: operator in {>,<,>=,<=,==,!=}, threshold a
+watcher.agentbots.validate_agentbot: operator in {>,<,>=,<=,==,!=}, threshold a
 finite number, duration_min a finite non-negative number if present) must
 produce a callable with the SAME signature as the built-in detectors
 (`fn(entity_id, old, new, cfg, now) -> Optional[Signal]`), so the Guardian
