@@ -1,17 +1,10 @@
 # HIRIS — MQTT Integration
 
-> Version: 0.33.0 · Updated: 2026-07-24
+> Version: 1.0.0 · Updated: 2026-07-29
 
-HIRIS publishes native Home Assistant entities via MQTT discovery, making every Persona's status and usage available as first-class HA entities — usable in dashboards and automations without any manual YAML configuration.
+HIRIS publishes native Home Assistant entities via MQTT discovery, making every Chatbot's status and usage available as first-class HA entities — usable in dashboards and automations without any manual YAML configuration.
 
-MQTT publishing is **outbound-only** (discovery + state). There is no longer a
-2-way command channel: an earlier version exposed a writable `enabled` switch
-and a `run_now` button over MQTT, wired to the old autonomous-agent scheduler.
-That scheduler was retired — the proactive layer today is the built-in
-Sentinella (see `docs/how-it-works.md`), and Personas run only on demand from
-chat — so there is nothing left in HIRIS to enable/disable or "run now" via a
-remote command. Both controls were removed; see "Upgrading from an older
-version" below.
+MQTT publishing is **outbound-only** (discovery + state) and covers **Chatbots only** — Agentbots and the Brain are not published as MQTT entities. There is no 2-way command channel: an earlier version exposed a writable `enabled` switch and a `run_now` button over MQTT, wired to the old autonomous-agent scheduler. That scheduler was retired — the proactive layer today is Agentbots (own trigger, own declared action), and Chatbots run only on demand from chat — so there is nothing left to enable/disable or "run now" via a remote command. Both controls were removed; see "Upgrading from an older version" below.
 
 ---
 
@@ -35,11 +28,11 @@ HIRIS connects to the broker on startup and reconnects automatically with expone
 
 ## Published entities
 
-For each configured Persona, HIRIS publishes the following entities via MQTT auto-discovery. Replace `{agent_id}` with the Persona's ID (hyphens are converted to underscores in entity IDs — e.g. ID `hiris-default` → entity IDs use `hiris_default`). All of them are **read-only** (`sensor`) — there is no writable control entity anymore.
+For each configured Chatbot, HIRIS publishes the following entities via MQTT auto-discovery. Every entity is registered under discovery `unique_id` `chatbot_{id}_{metric}` and state topic `hiris/chatbots/{id}/{metric}`, with device identifier `chatbot_{id}`. The actual `entity_id` Home Assistant assigns is derived from the Chatbot's display name, not from `{id}` directly — check **Settings → Devices & Services → MQTT** for the exact entity IDs on your installation. All published entities are **read-only** (`sensor`) — there is no writable control entity anymore.
 
-### `sensor.hiris_{agent_id}_status`
+### `status`
 
-Current operational state of the Persona.
+Current operational state of the Chatbot.
 
 | Value | Meaning |
 |-------|---------|
@@ -47,44 +40,44 @@ Current operational state of the Persona.
 | `running` | Currently executing a chat turn |
 | `error` | Last run failed |
 
-### `sensor.hiris_{agent_id}_budget_eur`
+### `budget_eur`
 
-Cumulative cost (EUR) accrued by this Persona so far. Informational only.
+Cumulative cost (EUR) accrued by this Chatbot so far. Informational only.
 
 - Unit of measurement: `EUR`
 - Device class: `monetary`
 
-### `sensor.hiris_{agent_id}_budget_remaining_eur`
+### `budget_remaining_eur`
 
-Always reports `unlimited` — Personas no longer have a per-agent budget cap or auto-disable (that mechanism was retired along with the old autonomous-agent fields). Kept for backward compatibility with existing dashboards/automations built on this entity.
+Always reports `unlimited` — Chatbots have no per-entity budget cap or auto-disable (that mechanism was retired). Kept for backward compatibility with existing dashboards/automations built on this entity.
 
-### `sensor.hiris_{agent_id}_tokens_used_today`
+### `tokens_used_today`
 
-Total tokens consumed by the Persona since UTC midnight.
+Total tokens consumed by the Chatbot since UTC midnight.
 
 - Resets daily at 00:00 UTC
 
-### `sensor.hiris_{agent_id}_enabled`
+### `enabled`
 
-Whether the Persona is enabled (`ON`/`OFF`). Read-only — enable/disable it from the HIRIS config UI, not via MQTT (see "Upgrading from an older version" below for what changed).
+Whether the Chatbot is enabled (`ON`/`OFF`). Read-only — enable/disable it from the HIRIS config UI, not via MQTT (see "Upgrading from an older version" below for what changed).
 
-### `sensor.hiris_{agent_id}_last_run`
+### `last_run`
 
-Timestamp of the Persona's most recent run.
+Timestamp of the Chatbot's most recent run.
 
-### `sensor.hiris_{agent_id}_last_result`
+### `last_result`
 
-Text output of the Persona's most recent run. Updated after every execution.
+Text output of the Chatbot's most recent run (truncated to 255 characters). Updated after every execution.
 
 ---
 
 ## Using entities in dashboards
 
-Once MQTT is configured and the add-on has started, all entities appear in HA automatically. A minimal status card in YAML:
+Once MQTT is configured and the add-on has started, all entities appear in HA automatically. Look up the exact entity IDs under **Settings → Devices & Services → MQTT** (search for the device named `HIRIS <chatbot name>`), then reference them in a minimal status card:
 
 ```yaml
 type: entities
-title: HIRIS Personas
+title: HIRIS Chatbots
 entities:
   - entity: sensor.hiris_default_status
     name: Status
@@ -100,9 +93,9 @@ entities:
 
 ## Upgrading from an older version
 
-Versions before this one published a writable `switch.hiris_{agent_id}_enabled` and a `button.hiris_{agent_id}_run_now`, plus two inbound MQTT command topics (`hiris/agents/{agent_id}/enabled/set`, `hiris/agents/{agent_id}/run_now/set`). Both entities and topics were wired to the old autonomous-agent scheduler/executor, which has been retired — flipping the switch or pressing the button did nothing useful even before this doc was updated.
+Versions before 0.102.0 published entities under the pre-rename scheme: discovery `unique_id` `hiris_{id}_{metric}` and state topic `hiris/agents/{id}/{metric}` (plus a writable `switch.hiris_{id}_enabled` and a `button.hiris_{id}_run_now`, wired to the old autonomous-agent scheduler/executor, which has been retired — flipping the switch or pressing the button did nothing useful even before this doc was updated).
 
-On first restart after upgrading, HIRIS publishes an empty discovery payload on the old `switch`/`button` config topics, which causes HA to remove those two stale entities automatically. The `enabled` state itself is still available, just as the read-only `sensor.hiris_{agent_id}_enabled` described above. Any automation that called `switch.turn_on/off` or `button.press` on the old entities will need to be updated to use the HIRIS config UI instead.
+On first restart after upgrading, HIRIS retracts every old-scheme discovery config (both the `sensor` entities and the retired `switch`/`button` entities) and the old retained state topics under `hiris/agents/...`, then republishes everything under the new `chatbot_{id}` / `hiris/chatbots/...` scheme. A reorder of the HIRIS entities in Home Assistant after upgrading is expected. The `enabled` state itself is still available, just as the read-only `enabled` sensor described above — any automation that called `switch.turn_on/off` or `button.press` on the old entities needs to be updated to use the HIRIS config UI instead.
 
 ---
 
