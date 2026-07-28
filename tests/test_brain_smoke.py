@@ -23,10 +23,12 @@ def test_brain_pipeline_e2e_inventory_to_undo(tmp_path):
 
     # 1) Inventory, built the real way from a minimal entity_cache-like list.
     states = [{"id": "sensor.freezer", "name": "Freezer", "domain": "sensor",
-               "device_class": "temperature"}]
+               "device_class": "temperature", "state": "-18"}]
     inventory = filter_entities(states, None, None)
+    # Canonical /api/entities shape (SP-4 Fase B Task 1) always includes "state".
     assert inventory == [{"entity_id": "sensor.freezer", "friendly_name": "Freezer",
-                           "domain": "sensor", "device_class": "temperature"}]
+                           "domain": "sensor", "device_class": "temperature",
+                           "state": "-18"}]
 
     # 2) Coverage-review context/message (real), only the LLM reason is mocked.
     ctx = build_review_context(snapshot={}, inventory=inventory,

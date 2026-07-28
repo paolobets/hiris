@@ -123,15 +123,16 @@ _entitySearchInput.addEventListener('input', function() {
   _entitySearchTimer = setTimeout(async function() {
     try {
       var resp = await fetch('api/entities?q=' + encodeURIComponent(q));
-      var items = await resp.json();
+      var data = await resp.json();
+      var items = (data && data.entities) || [];
       _entitySuggestions.innerHTML = '';
       if (!items.length) { _entitySuggestions.style.display = 'none'; return; }
       items.slice(0, 20).forEach(function(e) {
         var div = document.createElement('div');
         div.className = 'suggestion-item';
-        div.innerHTML = '<span>' + esc(e.id) + '</span><span class="s-name">' + esc(e.name || '') + '</span>';
+        div.innerHTML = '<span>' + esc(e.entity_id) + '</span><span class="s-name">' + esc(e.friendly_name || '') + '</span>';
         div.addEventListener('click', function() {
-          _entitySelectorAdd(e.id);
+          _entitySelectorAdd(e.entity_id);
           _entitySearchInput.value = '';
           _entitySuggestions.style.display = 'none';
         });
