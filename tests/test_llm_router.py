@@ -45,8 +45,8 @@ def mock_runner():
     runner.total_cost_usd = 0.001
     runner.total_rate_limit_errors = 0
     runner.usage_last_reset = "2026-04-22T00:00:00Z"
-    runner.get_agent_usage = MagicMock(return_value={"input_tokens": 10})
-    runner.reset_agent_usage = MagicMock()
+    runner.get_chatbot_usage = MagicMock(return_value={"input_tokens": 10})
+    runner.reset_chatbot_usage = MagicMock()
     runner.reset_usage = MagicMock()
     return runner
 

@@ -50,7 +50,7 @@
   }
 
   function buildRow(t, agentNamesById) {
-    var agentName = agentNamesById[t.agent_id] || t.agent_id || '—';
+    var agentName = agentNamesById[t.chatbot_id] || t.chatbot_id || '—';
     var statusCls = STATUS_CLS[t.status] || '';
     var statusLabel = STATUS_LABELS[t.status] || t.status || '—';
     var actionsCount = (t.actions && t.actions.length) || 0;
@@ -99,7 +99,7 @@
     /* Fetch tasks + agents in parallel for name resolution */
     Promise.all([
       fetchTasks(filterStatus),
-      fetch('api/agents').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
+      fetch('api/chatbots').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
     ]).then(function(results) {
       var tasks = results[0] || [];
       var agents = Array.isArray(results[1]) ? results[1] : (results[1].agents || []);

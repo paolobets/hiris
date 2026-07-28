@@ -65,7 +65,7 @@ async def test_expired_chat_job_not_sent_to_holistic_reasoning(tmp_path, monkeyp
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue(
-        "chat", {}, {"agent_id": "a1", "history": [], "system_prompt": ""},
+        "chat", {}, {"chatbot_id": "a1", "history": [], "system_prompt": ""},
         now - 10, job_id="chat-job", now=now - 100,
     )
 
@@ -125,7 +125,7 @@ async def test_mixed_sweep_only_holistic_reasoned_chat_left_expired(tmp_path, mo
 
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
-    q.enqueue("chat", {}, {"agent_id": "a1", "history": [], "system_prompt": ""},
+    q.enqueue("chat", {}, {"chatbot_id": "a1", "history": [], "system_prompt": ""},
               now - 10, job_id="chat-job", now=now - 100)
     q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info"},
               {"snapshot": {}}, now - 10, job_id="holistic-job", now=now - 100)

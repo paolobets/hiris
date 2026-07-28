@@ -1,12 +1,12 @@
 # HIRIS — Come funziona
 
-> Versione: 0.33.0 · Aggiornato: 2026-07-24
+> Versione: 0.102.0 · Aggiornato: 2026-07-28
 
 ---
 
 ## Cos'è HIRIS
 
-**HIRIS** (Home Intelligent Reasoning & Integration System) è un Add-on per Home Assistant che aggiunge un layer di intelligenza artificiale alla smart home. Espone una chat in linguaggio naturale configurata tramite **Personas**, ed esegue un livello proattivo built-in — la **Sentinella** — che sorveglia un set fisso di situazioni tarabili ("lenti") e ragiona su di esse tramite Claude (o OpenAI / Ollama) come motore di ragionamento.
+**HIRIS** (Home Intelligent Reasoning & Integration System) è un Add-on per Home Assistant che aggiunge un layer di intelligenza artificiale alla smart home. Espone una chat in linguaggio naturale configurata tramite **Chatbot**, ed esegue un livello proattivo — la **Sentinella** — che sorveglia situazioni tarabili built-in ("lenti") e **Agentbot** definiti dall'utente, ragionando su di esse tramite Claude (o OpenAI / Ollama) come motore di ragionamento.
 
 HIRIS **non sostituisce** Home Assistant — si affianca a esso. Le automazioni semplici (luci al tramonto, sveglie) restano nel Layer 1 locale. Il ragionamento complesso, le anomalie, e le domande in linguaggio libero vanno al Layer 2 AI.
 
@@ -17,8 +17,8 @@ HIRIS **non sostituisce** Home Assistant — si affianca a esso. Le automazioni 
 ```
 ┌───────────────────────────────────────────────────────┐
 │  LAYER 2 — AI Agentic Loop                            │
-│  • Chat in linguaggio naturale (Personas)              │
-│  • Sentinella: lenti proattive built-in                │
+│  • Chat in linguaggio naturale (Chatbot)                │
+│  • Sentinella: Agentbot (built-in + definiti dall'utente)│
 │    (opening, fridge_temp, power, battery,              │
 │     hot_and_away, arrival, ...)                         │
 │  • Ragionamento multi-sorgente (meteo + energia + HA) │
@@ -50,8 +50,8 @@ Quando l'utente scrive un messaggio, HIRIS esegue questi passi in sequenza:
 
 `POST /api/chat` → `handlers_chat.py`
 
-- Legge `{message, agent_id}` dal body JSON
-- Identifica l'agente richiesto (o usa `hiris-default`)
+- Legge `{message, chatbot_id}` dal body JSON (accetta anche il legacy `agent_id`, retro-compat)
+- Identifica il Chatbot richiesto (o usa `hiris-default`)
 - Carica la cronologia della conversazione da SQLite (`chat_history.db`)
 - Recupera le memorie rilevanti dallo store vettoriale (RAG injection)
 
@@ -60,8 +60,8 @@ Quando l'utente scrive un messaggio, HIRIS esegue questi passi in sequenza:
 Il system prompt è composto a strati, nell'ordine:
 
 ```
-[1] strategic_context dell'agente  ("Sei il controllore della casa Rossi…")
-[2] system_prompt dell'agente      (istruzioni, tool, regole)
+[1] strategic_context del Chatbot  ("Sei il controllore della casa Rossi…")
+[2] system_prompt del Chatbot      (istruzioni, tool, regole)
 [3] --- separatore ---
 [4] Semantic Map Snippet           (snapshot live della casa, ~5 righe)
 [5] --- separatore ---
@@ -109,7 +109,7 @@ Il loop si ripete fino a **10 iterazioni** (protezione da loop infiniti). Claude
 
 - La risposta torna al frontend come `{response: "...", debug: {tools_called: [...]}}`
 - Il turno (utente + assistente) viene scritto atomicamente su SQLite
-- I token usati vengono contabilizzati per modello e per agente
+- I token usati vengono contabilizzati per modello e per Chatbot
 
 ---
 
@@ -133,51 +133,51 @@ Il loop si ripete fino a **10 iterazioni** (protezione da loop infiniti). Claude
 | `set_input_helper(entity_id, value)` | Imposta input_boolean / input_number / input_text |
 | `create_task(...)` / `list_tasks()` / `cancel_task(id)` | Gestione task interni |
 | `recall_memory(query, k, tags)` | Ricerca memorie passate (similarità vettoriale) |
-| `save_memory(content, tags)` | Salva una nuova memoria (solo agenti chat) |
+| `save_memory(content, tags)` | Salva una nuova memoria (solo Chatbot) |
 | `http_request(url, method, headers, body)` | Chiamata HTTP verso endpoint approvati |
 | `get_ha_health(sections)` | Snapshot salute HA: entità non disponibili, errori integrazioni, aggiornamenti, info sistema |
-| `create_automation_proposal(type, name, description, config, routing_reason)` | Propone una nuova automazione per revisione umana (solo agenti chat) |
+| `create_automation_proposal(type, name, description, config, routing_reason)` | Propone una nuova automazione per revisione umana (solo Chatbot) |
 
 ---
 
-## Personas e Sentinella
+## Chatbot e Agentbot
 
 Non esiste più un unico concetto di "agente" diviso in tipi (`chat` /
 `monitor` / `reactive` / `preventive`) con regole e stati personalizzati.
-HIRIS oggi ragiona sulla casa in due soli modi:
+HIRIS oggi distingue due entità, con comportamento inequivocabile: il
+**Chatbot** (conversazionale, a interrogazione) e l'**Agentbot** (autonomo,
+a trigger).
 
-### Personas — conversazionale
+### Chatbot — conversazionale
 
-Attivata dall'utente tramite UI (o la card Lovelace). Ogni Persona è una
+Attivato dall'utente tramite UI (o la card Lovelace). Ogni Chatbot è una
 configurazione — system prompt + contesto strategico, scope tool/entità/
 servizi, scope memoria (`knowledge_access`), politica chat
 (`max_chat_turns`, `require_confirmation`, `response_mode`) — mai uno
 scheduling autonomo. Usa Claude Sonnet per la massima qualità di default.
 
-### Sentinella — proattiva, lenti built-in
+### Agentbot — proattivo (motore Sentinella)
 
-Un set fisso di **lenti** (detector/situazioni), ciascuna abilitabile e
-tarabile singolarmente (selettore entità + soglie) dalla pagina di
-configurazione Sentinella: `opening` (apertura prolungata),
-`fridge_temp` (catena del freddo), `power` (consumo anomalo), `battery`
-(batteria scarica), `hot_and_away` (fa caldo e non c'è nessuno →
-suggerisce di accendere una valvola/relè per N minuti), `evening_arrival`
-(rientro serale → suggerisce una scena). Un segnale da una lente sveglia
-un reasoner LLM single-shot (Claude Haiku di default, ristretto a tool
-di sola lettura) che decide se notificare e/o suggerire un'unica azione
-a basso rischio, filtrata dal semaforo (tier + denylist domini
-pericolosi) prima che venga davvero eseguita.
+Un set di detector/situazioni **built-in** (tarabili, ciascuno abilitabile
+singolarmente con selettore entità + soglie dalla pagina di configurazione
+Sentinella: `opening` — apertura prolungata, `fridge_temp` — catena del
+freddo, `power` — consumo anomalo, `battery` — batteria scarica,
+`hot_and_away` — fa caldo e non c'è nessuno → suggerisce di accendere una
+valvola/relè per N minuti, `evening_arrival` — rientro serale → suggerisce
+una scena) **più** gli **Agentbot definiti dall'utente** (`/api/agentbots`,
+persistiti in `agentbots.json` — nati da una proposta del Brain oppure
+creati a mano), ciascuno con il proprio trigger (cron/interval/evento). Un
+segnale/trigger sveglia un reasoner LLM single-shot (Claude Haiku di
+default, ristretto a tool di sola lettura) che decide se notificare e/o
+suggerire un'unica azione a basso rischio, filtrata dal semaforo (tier +
+denylist domini pericolosi) prima che venga davvero eseguita. Contratto a
+**verdetto** (JSON); niente tool liberi (pilastro di sicurezza).
 
-Esempio della risposta strutturata del reasoner (interna — non più una
-sintassi da scrivere nel prompt utente):
+Esempio della risposta strutturata del reasoner (interna — non una sintassi
+da scrivere nel prompt utente):
 ```json
 {"verdict": "anomalia", "severity": "warn", "message": "Consumo anomalo — lavatrice attiva da 3 ore", "action": null}
 ```
-
-Le lenti definite dall'utente (trigger/prompt personalizzati, in
-sostituzione dei vecchi agenti autonomi `monitor`/`reactive`/`preventive`)
-sono previste in una versione successiva — oggi il livello proattivo
-copre solo le lenti built-in elencate sopra.
 
 ---
 
@@ -237,7 +237,7 @@ La mappa è:
 ### Strategy e fallback
 
 ```
-HIRIS (handlers, agents)
+HIRIS (handlers, chatbots/agentbots)
         │
         ▼
    LLMRouter (strategy: balanced / quality_first / cost_first)
@@ -257,10 +257,10 @@ Se il backend primario fallisce, viene tentato automaticamente il successivo nel
 
 ## Memoria e RAG
 
-HIRIS salva le memorie degli agenti in SQLite con ricerca per similarità vettoriale (coseno puro Python — nessuna estensione nativa, compatibile Alpine/ARM).
+HIRIS salva le memorie dei Chatbot in SQLite con ricerca per similarità vettoriale (coseno puro Python — nessuna estensione nativa, compatibile Alpine/ARM).
 
 - `recall_memory(query, k, tags)` — recupera le top-k memorie più simili alla query
-- `save_memory(content, tags)` — salva una nuova memoria (solo agenti chat, per sicurezza)
+- `save_memory(content, tags)` — salva una nuova memoria (solo Chatbot, per sicurezza)
 - Le memorie sono marcate come dati non fidati nel system prompt (protezione prompt injection)
 - Retention configurabile (default 90 giorni)
 
@@ -268,7 +268,7 @@ HIRIS salva le memorie degli agenti in SQLite con ricerca per similarità vettor
 
 ## Sicurezza e permessi
 
-Ogni Persona può essere limitata tramite:
+Ogni Chatbot può essere limitato tramite:
 
 | Campo | Funzione | Esempio |
 |---|---|---|
@@ -281,10 +281,10 @@ Ogni Persona può essere limitata tramite:
 | `knowledge_access` | Scope memoria (dati sensibili, quali kind) | `{"allow_sensitive": false, "kinds": "all"}` |
 | `max_chat_turns` | Limita lunghezza conversazione | `20` |
 
-Costi/token restano tracciati per Persona (visibili nella UI di
+Costi/token restano tracciati per Chatbot (visibili nella UI di
 configurazione e via MQTT), ma non esiste più un tetto di budget per
-Persona né un auto-disable — quel meccanismo è stato ritirato insieme ai
-vecchi campi degli agenti autonomi.
+Chatbot né un auto-disable — quel meccanismo è stato ritirato insieme ai
+vecchi campi ritirati in Slice 5.
 
 Protezione SSRF su `http_request`: range RFC1918, IPv6 mapped-IPv4, loopback e link-local bloccati. Redirect disabilitati. Risposta cappata a 4KB.
 
@@ -294,8 +294,9 @@ Protezione SSRF su `http_request`: range RFC1918, IPv6 mapped-IPv4, loopback e l
 
 | File | Contenuto |
 |---|---|
-| `/data/agents.json` | Configurazione di tutti gli agenti |
-| `/data/usage.json` | Contatori token e costi per agente |
+| `/data/chatbots.json` | Configurazione di tutti i Chatbot |
+| `/data/agentbots.json` | Configurazione degli Agentbot definiti dall'utente |
+| `/data/usage.json` | Contatori token e costi per Chatbot |
 | `/data/home_semantic_map.json` | Classificazione semantica entità HA |
 | `/data/chat_history.db` | SQLite: cronologia conversazioni + memorie |
 | `/data/ha_health.json` | Snapshot salute HA (HealthMonitor — entità non disponibili, errori integrazioni, aggiornamenti) |
@@ -307,7 +308,7 @@ Tutti i file vengono scritti atomicamente (temp file + rename o commit SQLite vi
 
 ## Costi e tracciamento
 
-HIRIS traccia ogni richiesta per modello e per agente:
+HIRIS traccia ogni richiesta per modello e per Chatbot:
 
 | Modello | Input (1M tok) | Output (1M tok) |
 |---|---|---|
@@ -317,4 +318,4 @@ HIRIS traccia ogni richiesta per modello e per agente:
 | gpt-4o-mini | $0.15 | $0.60 |
 | Ollama (locale) | gratis | gratis |
 
-I dati sono consultabili via `/api/usage` e visibili nella UI di configurazione HIRIS per ogni agente.
+I dati sono consultabili via `/api/usage` e visibili nella UI di configurazione HIRIS per ogni Chatbot.

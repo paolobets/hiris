@@ -9,31 +9,31 @@ var TEMPLATES = [
     id: 'energy-solar',
     label: 'Monitor Energia Solare',
     strategic: 'SISTEMA ENERGETICO:\n- Usa search_entities("produzione solare") per trovare il sensore fotovoltaico\n- Usa search_entities("batteria percentuale") per lo stato batteria\n- Usa search_entities("consumo totale potenza") per il consumo casa\n- Usa search_entities("importazione rete") per l\'importazione rete\n\nSOGLIE:\n- Importazione > 100W sostenuta: stai comprando energia — avvisa\n- Batteria < 15%: livello critico — avvisa\n- Surplus solare > 300W: momento ottimale per carichi\n\nCARICHI DIFFERIBILI: lavatrice, lavastoviglie, forno elettrico\nPICCO SOLARE: tipicamente 10:00-14:00',
-    prompt: 'Analizza lo stato energetico. Se rilevi importazione dalla rete o batteria bassa, invia notifica. Se c\'è surplus solare, suggerisci un\'azione.',
+    prompt: 'Quando ti chiedo dello stato energetico, controlla produzione solare, batteria e consumo casa. Segnalami se c\'è importazione dalla rete o la batteria è scarica, e suggeriscimi quando conviene avviare un carico differibile in caso di surplus solare.',
   },
   {
     id: 'security',
     label: 'Sicurezza Casa',
     strategic: 'SENSORI:\n- Porte/finestre: search_entities("porta aperta") o search_entities("finestra aperta")\n- Movimento: search_entities("sensore movimento")\n- Persone in casa: person.* (state="home" = presente)\n\nREGOLE:\n- Porta/finestra aperta oltre 30 min: notifica\n- Movimento con nessuno in casa: notifica urgente\n- Controlla presenze con get_home_status() prima di agire',
-    prompt: 'Controlla sicurezza casa: porte, finestre, sensori movimento. Notifica anomalie.',
+    prompt: 'Quando ti chiedo della sicurezza in casa, controlla porte, finestre e sensori di movimento, e segnalami eventuali anomalie.',
   },
   {
     id: 'family-presence',
     label: 'Presenza Famiglia',
     strategic: 'PERSONE:\n- Tracker: search_entities("persona") — state="home" significa in casa\n\nAZIONI TIPICHE:\n- Arrivo: pre-riscalda climate, accendi luci benvenuto\n- Partenza: spegni climate, luci off, verifica serrature\n\nABITUDINI:\n- Rientro tipico: [modifica qui]\n- Temperatura preferita: [modifica qui, es. 21°C diurno / 18°C notturno]',
-    prompt: 'Verifica presenze. Se cambiano, adatta riscaldamento e luci di conseguenza.',
+    prompt: 'Quando ti chiedo di chi è in casa, controlla le presenze e suggeriscimi le regolazioni di riscaldamento e luci più adatte in base agli arrivi o alle partenze.',
   },
   {
     id: 'climate',
     label: 'Monitor Clima',
     strategic: 'TERMOSTATI: get_entities_by_domain("climate")\nMETEO: get_weather_forecast(hours=24)\n\nPREFERENCE:\n- Temperatura diurna: [es. 21°C]\n- Temperatura notturna: [es. 18°C]\n- Orario diurno: 07:00-23:00\n\nREGOLE:\n- Non riscaldare con finestre aperte (search_entities("finestra"))\n- Anticipa riscaldamento di 30 min rispetto al rientro\n- In estate: preferisci ventilazione naturale a condizionamento',
-    prompt: 'Analizza temperatura attuale vs preferita. Ottimizza riscaldamento. Segnala anomalie.',
+    prompt: 'Quando ti chiedo del clima in casa, confronta la temperatura attuale con quella preferita e suggeriscimi le regolazioni più adatte per il riscaldamento, segnalando eventuali anomalie (es. finestre aperte col riscaldamento acceso).',
   },
   {
     id: 'irrigation',
     label: 'Irrigazione Giardino',
     strategic: 'ZONE DI IRRIGAZIONE:\n[Descrivi qui le zone — usa valve.* se disponibile (HA 2023.9+), altrimenti switch.*]\n[Es. "Prato nord" valve.irrigazione_prato_nord, "Aiuole" valve.irrigazione_aiuole]\n[Indica posizione e tipo di terreno: es. "Prato nord — terreno argilloso, esposizione sole pieno"]\n\nSENSOR METEO:\n- Pioggia recente: search_entities("pioggia") o search_entities("precipitazione")\n- Umidità suolo: search_entities("umidità suolo") per ogni zona se disponibile\n- Meteo: get_weather_forecast(hours=48) per previsioni 2 giorni\n\nSTATI IRRIGAZIONE:\n- SKIP: ha piovuto abbastanza o previste piogge significative oggi/domani\n- LEGGERA: irrigazione breve (10-15 min per zona) — condizioni borderline\n- PIENA: irrigazione completa (20-30 min per zona) — terreno asciutto, nessuna pioggia prevista\n\nSOGLIE PIOGGIA:\n- Pioggia passata 24h > 5mm: SKIP\n- Pioggia passata 48h > 10mm: SKIP o LEGGERA\n- Previsione pioggia oggi > 3mm: SKIP\n- Previsione pioggia domani > 5mm: considera LEGGERA invece di PIENA',
-    prompt: 'Valuta se e quanto irrigare oggi. Controlla le precipitazioni degli ultimi 3 giorni con get_entity_states sui sensori pioggia, le previsioni meteo con get_weather_forecast(hours=48), e l\'umidità del suolo se disponibile.\n\nPer ogni zona decide durata in minuti (0 = salta).\n\nSe decidi di irrigare, usa create_task() per programmare call_ha_service su ogni valvola/switch di zona:\n- Accensione (valve: service=open_valve; switch: service=turn_on): ora attuale + 2 min di buffer\n- Spegnimento (valve: service=close_valve; switch: service=turn_off): accensione + durata zona\n- Sequenza: una zona alla volta per non sovraccaricare la pompa\n\nConcludi indicando per ogni zona se salti l\'irrigazione, la fai leggera o completa, motivando brevemente la scelta.',
+    prompt: 'Quando ti chiedo se irrigare il giardino, controlla le precipitazioni degli ultimi giorni con get_entity_states sui sensori pioggia, le previsioni meteo con get_weather_forecast(hours=48), e l\'umidità del suolo se disponibile.\n\nPer ogni zona suggeriscimi una durata in minuti (0 = salta), motivando brevemente la scelta (SKIP / irrigazione leggera / completa).\n\nEsegui l\'irrigazione solo se te lo chiedo esplicitamente, chiamando call_ha_service sulla valvola/switch della zona indicata (valve: service=open_valve poi close_valve; switch: service=turn_on poi turn_off), una zona alla volta per non sovraccaricare la pompa.',
   },
 ];
 

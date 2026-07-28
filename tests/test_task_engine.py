@@ -38,17 +38,17 @@ def engine(tmp_path, mock_ha, mock_cache):
 def test_add_task_returns_pending(engine):
     task = engine.add_task(
         {"label": "Test", "trigger": {"type": "delay", "minutes": 5}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     assert task.status == "pending"
-    assert task.agent_id == "hiris-default"
+    assert task.chatbot_id == "hiris-default"
     assert task.id is not None
 
 
 def test_cancel_pending_task(engine):
     task = engine.add_task(
         {"label": "Test", "trigger": {"type": "delay", "minutes": 5}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     result = engine.cancel_task(task.id)
     assert result is True
@@ -62,7 +62,7 @@ def test_cancel_nonexistent_task(engine):
 def test_cancel_done_task_returns_false(engine):
     task = engine.add_task(
         {"label": "Test", "trigger": {"type": "delay", "minutes": 5}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     engine._tasks[task.id].status = "done"
     assert engine.cancel_task(task.id) is False
@@ -71,11 +71,11 @@ def test_cancel_done_task_returns_false(engine):
 def test_list_tasks_filter_by_status(engine):
     engine.add_task(
         {"label": "A", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="agent-1",
+        chatbot_id="agent-1",
     )
     t2 = engine.add_task(
         {"label": "B", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="agent-2",
+        chatbot_id="agent-2",
     )
     engine._tasks[t2.id].status = "done"
     pending = engine.list_tasks(status="pending")
@@ -86,13 +86,13 @@ def test_list_tasks_filter_by_status(engine):
 def test_list_tasks_filter_by_agent(engine):
     engine.add_task(
         {"label": "A", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="agent-1",
+        chatbot_id="agent-1",
     )
     engine.add_task(
         {"label": "B", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="agent-2",
+        chatbot_id="agent-2",
     )
-    result = engine.list_tasks(agent_id="agent-1")
+    result = engine.list_tasks(chatbot_id="agent-1")
     assert len(result) == 1
     assert result[0]["label"] == "A"
 
@@ -100,7 +100,7 @@ def test_list_tasks_filter_by_agent(engine):
 def test_cleanup_removes_old_terminal_tasks(engine):
     task = engine.add_task(
         {"label": "Old", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     old_ts = (datetime.now(timezone.utc) - timedelta(hours=169)).isoformat()
     engine._tasks[task.id].status = "done"
@@ -112,7 +112,7 @@ def test_cleanup_removes_old_terminal_tasks(engine):
 def test_cleanup_keeps_recent_terminal_tasks(engine):
     task = engine.add_task(
         {"label": "Recent", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     engine._tasks[task.id].status = "done"
     engine._tasks[task.id].executed_at = datetime.now(timezone.utc).isoformat()
@@ -135,7 +135,7 @@ def test_cleanup_survives_concurrent_task_insertion(engine):
     for i in range(5):
         t = engine.add_task(
             {"label": f"Old{i}", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-            agent_id="hiris-default",
+            chatbot_id="hiris-default",
         )
         engine._tasks[t.id].status = "done"
         engine._tasks[t.id].executed_at = old_ts
@@ -162,7 +162,7 @@ def test_cleanup_survives_concurrent_task_insertion(engine):
                 engine.add_task(
                     {"label": "concurrent", "trigger": {"type": "delay", "minutes": 1},
                      "actions": []},
-                    agent_id="hiris-default",
+                    chatbot_id="hiris-default",
                 )
             return real_datetime.fromisoformat(s)
 
@@ -185,7 +185,7 @@ def test_persistence_roundtrip(tmp_path, mock_ha, mock_cache):
     te1._scheduler = MagicMock()
     task = te1.add_task(
         {"label": "Persist me", "trigger": {"type": "delay", "minutes": 10}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
 
     te2 = TaskEngine(ha_client=mock_ha, entity_cache=mock_cache, notify_config={}, data_path=path)
@@ -233,7 +233,7 @@ async def test_execute_task_done_on_success(engine, mock_ha):
         "trigger": {"type": "delay", "minutes": 1},
         "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on",
                      "data": {"entity_id": "light.test"}}],
-    }, agent_id="hiris-default")
+    }, chatbot_id="hiris-default")
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "done"
     mock_ha.call_service.assert_called_once_with("light", "turn_on", {"entity_id": "light.test"})
@@ -247,7 +247,7 @@ async def test_execute_task_skipped_when_condition_false(engine, mock_cache):
         "trigger": {"type": "delay", "minutes": 1},
         "condition": {"entity_id": "sensor.temp", "operator": "<", "value": 19},
         "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on", "data": {}}],
-    }, agent_id="hiris-default")
+    }, chatbot_id="hiris-default")
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "skipped"
 
@@ -259,7 +259,7 @@ async def test_execute_task_failed_on_ha_error(engine, mock_ha):
         "label": "Fail task",
         "trigger": {"type": "delay", "minutes": 1},
         "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on", "data": {}, "on_fail": "stop"}],
-    }, agent_id="hiris-default")
+    }, chatbot_id="hiris-default")
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "failed"
     assert "HA error" in engine._tasks[task.id].error
@@ -278,7 +278,7 @@ async def test_execute_task_chain_creates_child(engine):
                 "actions": [],
             }
         }],
-    }, agent_id="hiris-default")
+    }, chatbot_id="hiris-default")
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "done"
     children = [t for t in engine._tasks.values() if t.parent_task_id == task.id]
@@ -312,7 +312,7 @@ async def test_check_time_window_within_window(engine, mock_ha):
                 }
             ],
         },
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "done"
@@ -343,7 +343,7 @@ async def test_check_time_window_overnight_active_at_night(engine, mock_ha, monk
          "to": "06:00", "check_interval_minutes": 5},
          "actions": [{"type": "call_ha_service", "domain": "light",
                       "service": "turn_off", "data": {"entity_id": "light.x"}}]},
-        agent_id="hiris-default")
+        chatbot_id="hiris-default")
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "done"
 
@@ -358,7 +358,7 @@ async def test_check_time_window_overnight_dead_zone_waits_not_expired(engine, m
          "to": "06:00", "check_interval_minutes": 5},
          "actions": [{"type": "call_ha_service", "domain": "light",
                       "service": "turn_off", "data": {"entity_id": "light.x"}}]},
-        agent_id="hiris-default")
+        chatbot_id="hiris-default")
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "pending"
 
@@ -372,7 +372,7 @@ async def test_check_time_window_normal_expires_after_to(engine, mock_ha, monkey
          "to": "10:00", "check_interval_minutes": 5},
          "actions": [{"type": "call_ha_service", "domain": "light",
                       "service": "turn_on", "data": {"entity_id": "light.x"}}]},
-        agent_id="hiris-default")
+        chatbot_id="hiris-default")
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "expired"
 
@@ -388,7 +388,7 @@ async def test_check_time_window_degenerate_from_equals_to_expires(engine, mock_
          "to": "08:00", "check_interval_minutes": 5},
          "actions": [{"type": "call_ha_service", "domain": "light",
                       "service": "turn_on", "data": {"entity_id": "light.x"}}]},
-        agent_id="hiris-default")
+        chatbot_id="hiris-default")
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "expired"
 
@@ -398,7 +398,7 @@ def test_at_datetime_schedules_correct_run_date(engine):
     future_iso = future.replace(microsecond=0).isoformat()
     task = engine.add_task(
         {"label": "Future", "trigger": {"type": "at_datetime", "datetime": future_iso}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     run_date = engine._scheduler.add_job.call_args[1]["run_date"]
     assert abs((run_date - future).total_seconds()) < 2
@@ -407,7 +407,7 @@ def test_at_datetime_schedules_correct_run_date(engine):
 def test_at_time_rollover(engine):
     task = engine.add_task(
         {"label": "Night", "trigger": {"type": "at_time", "time": "00:01"}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     run_date = engine._scheduler.add_job.call_args[1]["run_date"]
     tomorrow = (datetime.now() + timedelta(days=1)).date()
@@ -422,7 +422,7 @@ async def test_unknown_action_marks_failed(engine):
             "trigger": {"type": "delay", "minutes": 1},
             "actions": [{"type": "unknown_action", "foo": "bar", "on_fail": "stop"}],
         },
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "failed"
@@ -432,7 +432,7 @@ async def test_unknown_action_marks_failed(engine):
 def test_cancel_removes_scheduler_job(engine):
     task = engine.add_task(
         {"label": "Cancel me", "trigger": {"type": "delay", "minutes": 5}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     engine.cancel_task(task.id)
     removed = [c[0][0] for c in engine._scheduler.remove_job.call_args_list]
@@ -464,7 +464,7 @@ async def test_task_green_action_runs():
     eng = _engine({"tiers": {"light": "green"}})
     action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
               "data": {"entity_id": "light.kitchen"}}
-    t = Task(id="t1", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t1", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     res = await eng._run_action(action, t)
     assert res == {"ok": True}
@@ -476,7 +476,7 @@ async def test_task_off_action_skipped():
     eng = _engine({})  # fail-closed
     action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
               "data": {"entity_id": "light.kitchen"}}
-    t = Task(id="t2", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t2", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     res = await eng._run_action(action, t)
     assert isinstance(res, str) and "skipped" in res
@@ -488,7 +488,7 @@ async def test_task_dangerous_action_skipped():
     eng = _engine({"tiers": {"lock": "green"}})
     action = {"type": "call_ha_service", "domain": "lock", "service": "unlock",
               "data": {"entity_id": "lock.front"}}
-    t = Task(id="t3", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t3", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     res = await eng._run_action(action, t)
     assert isinstance(res, str) and "skipped" in res
@@ -502,7 +502,7 @@ async def test_task_area_target_without_entities_skipped():
     eng = _engine({"tiers": {"light": "green"}})
     action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
               "data": {"area_id": "cucina"}}
-    t = Task(id="t4", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t4", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     res = await eng._run_action(action, t)
     assert isinstance(res, str) and res.startswith("skipped")
@@ -519,7 +519,7 @@ async def test_task_group_target_log_message_matches_dispatcher_wording(caplog):
     eng = _engine({"tiers": {"light": "green"}})
     action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
               "data": {"label_id": "salotto", "entity_id": "light.sofa"}}
-    t = Task(id="t4b", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t4b", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     with caplog.at_level("WARNING", logger="hiris.app.task_engine"):
         res = await eng._run_action(action, t)
@@ -542,7 +542,7 @@ async def test_task_target_only_scoped_call_not_broadcast_to_domain():
     eng = _engine({"tiers": {"light": "green"}})
     action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
               "target": {"entity_id": "light.kitchen"}}
-    t = Task(id="t5", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t5", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     res = await eng._run_action(action, t)
     assert res == {"ok": True}
@@ -557,7 +557,7 @@ async def test_task_group_target_in_target_field_fail_closed():
     eng = _engine({"tiers": {"light": "green"}})
     action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
               "target": {"area_id": "cucina"}}
-    t = Task(id="t6", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t6", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     res = await eng._run_action(action, t)
     assert isinstance(res, str) and res.startswith("skipped")
@@ -572,7 +572,7 @@ async def test_task_domain_wide_call_without_entity_still_works():
     eng = _engine({"tiers": {"light": "green"}})
     action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
               "data": {}}
-    t = Task(id="t7", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t7", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     res = await eng._run_action(action, t)
     assert res == {"ok": True}
@@ -587,7 +587,7 @@ async def test_task_non_string_entity_id_does_not_crash():
     eng = _engine({})  # domain unconfigured -> off, fail-closed
     action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
               "data": {"entity_id": [123]}}
-    t = Task(id="t5", label="x", agent_id="a", created_at=_now_iso(),
+    t = Task(id="t5", label="x", chatbot_id="a", created_at=_now_iso(),
               trigger={"type": "immediate"}, actions=[action])
     res = await eng._run_action(action, t)
     assert isinstance(res, str) and "skipped" in res
@@ -603,7 +603,7 @@ async def test_execute_task_records_gated_skip_honestly(engine):
         "trigger": {"type": "delay", "minutes": 1},
         "actions": [{"type": "call_ha_service", "domain": "lock", "service": "unlock",
                      "data": {"entity_id": "lock.front"}}],
-    }, agent_id="hiris-default")
+    }, chatbot_id="hiris-default")
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "done"
     assert "skipped" in engine._tasks[task.id].result
@@ -618,7 +618,7 @@ def test_cleanup_keeps_tasks_within_7_days(engine):
 
     old_task = engine.add_task(
         {"label": "old", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="test",
+        chatbot_id="test",
     )
     old_task.status = "done"
     old_task.created_at = (
@@ -628,7 +628,7 @@ def test_cleanup_keeps_tasks_within_7_days(engine):
 
     recent_task = engine.add_task(
         {"label": "recent", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="test",
+        chatbot_id="test",
     )
     recent_task.status = "done"
     recent_task.created_at = (
@@ -654,7 +654,7 @@ def test_add_task_rejects_condition_missing_operator(engine):
                 "actions": [],
                 "condition": {"entity_id": "sensor.temp", "value": 10},
             },
-            agent_id="hiris-default",
+            chatbot_id="hiris-default",
         )
 
 
@@ -667,7 +667,7 @@ def test_add_task_rejects_condition_missing_value(engine):
                 "actions": [],
                 "condition": {"entity_id": "sensor.temp", "operator": "<"},
             },
-            agent_id="hiris-default",
+            chatbot_id="hiris-default",
         )
 
 
@@ -680,7 +680,7 @@ def test_add_task_rejects_condition_missing_entity_id(engine):
                 "actions": [],
                 "condition": {"operator": "<", "value": 10},
             },
-            agent_id="hiris-default",
+            chatbot_id="hiris-default",
         )
 
 
@@ -693,7 +693,7 @@ def test_add_task_rejects_condition_unknown_operator(engine):
                 "actions": [],
                 "condition": {"entity_id": "sensor.temp", "operator": "??", "value": 10},
             },
-            agent_id="hiris-default",
+            chatbot_id="hiris-default",
         )
 
 
@@ -706,7 +706,7 @@ def test_add_task_rejects_condition_not_a_dict(engine):
                 "actions": [],
                 "condition": "not-a-dict",
             },
-            agent_id="hiris-default",
+            chatbot_id="hiris-default",
         )
 
 
@@ -718,7 +718,7 @@ def test_add_task_accepts_valid_condition(engine):
             "actions": [],
             "condition": {"entity_id": "sensor.temp", "operator": "<", "value": 19},
         },
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     assert task.status == "pending"
     assert task.condition == {"entity_id": "sensor.temp", "operator": "<", "value": 19}
@@ -727,7 +727,7 @@ def test_add_task_accepts_valid_condition(engine):
 def test_add_task_no_condition_still_works(engine):
     task = engine.add_task(
         {"label": "No cond", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     assert task.status == "pending"
     assert task.condition is None
@@ -744,7 +744,7 @@ async def test_execute_task_condition_crash_ends_terminal_not_stuck_running(engi
     exercises the execution-time fail-safe independently)."""
     task = engine.add_task(
         {"label": "Crash cond", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     # Simulate a condition that raises inside _evaluate_condition (missing
     # 'operator' -> KeyError on condition["operator"]).
@@ -776,7 +776,7 @@ async def test_execute_task_condition_crash_not_cancellable_but_not_stuck(engine
     bug where the task was permanently 'running' and ALSO uncancellable."""
     task = engine.add_task(
         {"label": "Crash cond 2", "trigger": {"type": "delay", "minutes": 1}, "actions": []},
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     # Missing 'value' -> KeyError inside _evaluate_condition.
     engine._tasks[task.id].condition = {"entity_id": "sensor.temp", "operator": "<"}
@@ -803,7 +803,7 @@ async def test_execute_task_runs_when_valid_condition_met(engine, mock_cache, mo
             "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on",
                          "data": {"entity_id": "light.test"}}],
         },
-        agent_id="hiris-default",
+        chatbot_id="hiris-default",
     )
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "done"

@@ -2,7 +2,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 from hiris.app.server import create_app
-from hiris.app.agent_engine import AgentEngine
+from hiris.app.chatbot_engine import ChatbotEngine
 from hiris.app.chat_store import close_all_stores
 
 
@@ -20,13 +20,13 @@ async def client(aiohttp_client, tmp_path):
     mock_ha.stop = AsyncMock()
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
-    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="SSE test response text")
     mock_runner.last_tool_calls = []
-    mock_runner.get_agent_usage = MagicMock(return_value={"cost_usd": 0.0})
+    mock_runner.get_chatbot_usage = MagicMock(return_value={"cost_usd": 0.0})
 
     async def fake_chat_stream(**kwargs):
         import json

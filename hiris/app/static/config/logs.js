@@ -4,7 +4,7 @@
    esistono in v6 — HirisLogRow.render in log-row.js produce il markup
    v6 .log-row/.lr-collapsed/.lr-detail con il proprio click handler).
    IIFE listeners su #f-strategic/#f-prompt rimossi: ora gestiti da
-   rewireLegacyAfterMount in agent-editor.js (rebind ad ogni mount). */
+   rewireLegacyAfterMount in chatbot-editor.js (rebind ad ogni mount). */
 
 function renderExecutionLog(a) {
   var body = document.getElementById('log-body');
@@ -43,7 +43,7 @@ async function loadContextPreview(agentId) {
   var pre   = document.getElementById('context-preview-content');
   if (!agentId) { if (ctxEl) ctxEl.textContent = '—'; return; }
   try {
-    var r = await fetch('api/agents/' + agentId + '/context-preview');
+    var r = await fetch('api/chatbots/' + agentId + '/context-preview');
     if (!r.ok) throw new Error();
     var d = await r.json();
     if (ctxEl) ctxEl.textContent = d.token_estimate > 0 ? '~' + fmtTok(d.token_estimate) : '—';

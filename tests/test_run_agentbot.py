@@ -1,9 +1,10 @@
-"""Tests for the shared `_run_lens` flow (Slice 5b, Task 3):
-`hiris.app.watcher.lens_runner.run_lens` + its pure helpers
-(`lens_action`, `lens_message`, `normalize_lens_severity`).
+"""Tests for the shared `_run_agentbot` flow (Slice 5b, Task 3; renamed lens
+-> Agentbot in SP-4 Fase A Task 3):
+`hiris.app.watcher.lens_runner.run_agentbot` + its pure helpers
+(`agentbot_action`, `agentbot_message`, `normalize_agentbot_severity`).
 
-`run_lens` is the function `server.py`'s `_on_startup` binds onto
-`app["run_lens"]` (a thin closure over the real sentinel_store/execute/
+`run_agentbot` is the function `server.py`'s `_on_startup` binds onto
+`app["run_agentbot"]` (a thin closure over the real sentinel_store/execute/
 _run_decision/notify/act/propose adapters) -- it lives in its own module
 precisely so it can be exercised here with real collaborators
 (`watcher.reasoner.reason`, `watcher.executor.execute`, a real
@@ -13,19 +14,19 @@ notify/act/propose), instead of needing to boot the whole aiohttp app
 practical in a unit test, same reasoning as the existing
 `test_sentinel_evaluator.py`/`test_sentinel_executor.py` suites).
 
-SECURITY FOCUS: the executed action must always be the lens's own
-deterministic config (`lens_action(lens)`), never derived from the LLM's
-output, even when a malicious/broken LLM fake tries to propose a
+SECURITY FOCUS: the executed action must always be the Agentbot's own
+deterministic config (`agentbot_action(agentbot)`), never derived from the
+LLM's output, even when a malicious/broken LLM fake tries to propose a
 different target. See `test_ai_lens_llm_attempts_to_override_action_*`.
 """
 import pytest
 
 from hiris.app.watcher.executor import execute as real_execute
 from hiris.app.watcher.lens_runner import (
-    lens_action,
-    lens_message,
-    normalize_lens_severity,
-    run_lens,
+    agentbot_action,
+    agentbot_message,
+    normalize_agentbot_severity,
+    run_agentbot,
 )
 from hiris.app.watcher.reasoner import SENTINEL_SYSTEM, reason
 from hiris.app.watcher.sentinel_store import SentinelStore
@@ -36,59 +37,59 @@ from hiris.app.watcher.sentinel_store import SentinelStore
 # ---------------------------------------------------------------------------
 
 def test_normalize_lens_severity_maps_alert_to_critico():
-    assert normalize_lens_severity("alert") == "critico"
+    assert normalize_agentbot_severity("alert") == "critico"
 
 
 def test_normalize_lens_severity_passes_through_info_and_warn():
-    assert normalize_lens_severity("info") == "info"
-    assert normalize_lens_severity("warn") == "warn"
+    assert normalize_agentbot_severity("info") == "info"
+    assert normalize_agentbot_severity("warn") == "warn"
 
 
 def test_normalize_lens_severity_unknown_defaults_to_info():
-    assert normalize_lens_severity("bogus") == "info"
-    assert normalize_lens_severity(None) == "info"
-    assert normalize_lens_severity(123) == "info"
+    assert normalize_agentbot_severity("bogus") == "info"
+    assert normalize_agentbot_severity(None) == "info"
+    assert normalize_agentbot_severity(123) == "info"
 
 
 def test_lens_action_service_type_returns_deterministic_shape():
     lens = {"action": {"type": "service", "domain": "switch", "service": "turn_off",
                         "entity_id": "switch.stufa", "off_after_min": 5, "message": "x"}}
-    assert lens_action(lens) == {"domain": "switch", "service": "turn_off",
-                                  "entity_id": "switch.stufa", "off_after_min": 5}
+    assert agentbot_action(lens) == {"domain": "switch", "service": "turn_off",
+                                      "entity_id": "switch.stufa", "off_after_min": 5}
 
 
 def test_lens_action_service_type_without_off_after_min_omits_key():
     lens = {"action": {"type": "service", "domain": "light", "service": "turn_on",
                         "entity_id": "light.x"}}
-    out = lens_action(lens)
+    out = agentbot_action(lens)
     assert out == {"domain": "light", "service": "turn_on", "entity_id": "light.x"}
     assert "off_after_min" not in out
 
 
 def test_lens_action_notify_type_returns_none():
     lens = {"action": {"type": "notify", "message": "ciao"}}
-    assert lens_action(lens) is None
+    assert agentbot_action(lens) is None
 
 
 def test_lens_action_missing_or_malformed_action_returns_none():
-    assert lens_action({}) is None
-    assert lens_action({"action": None}) is None
-    assert lens_action({"action": {"type": "bogus"}}) is None
+    assert agentbot_action({}) is None
+    assert agentbot_action({"action": None}) is None
+    assert agentbot_action({"action": {"type": "bogus"}}) is None
 
 
 def test_lens_message_uses_configured_message():
     lens = {"action": {"type": "notify", "message": "Attenzione: porta aperta"}}
-    assert lens_message(lens, {"entity_id": "sensor.x"}) == "Attenzione: porta aperta"
+    assert agentbot_message(lens, {"entity_id": "sensor.x"}) == "Attenzione: porta aperta"
 
 
 def test_lens_message_falls_back_when_no_configured_message():
     lens = {"id": "abc123abc123", "name": "Porta garage", "action": {"type": "notify"}}
-    msg = lens_message(lens, {"entity_id": "binary_sensor.garage"})
+    msg = agentbot_message(lens, {"entity_id": "binary_sensor.garage"})
     assert "Porta garage" in msg and "binary_sensor.garage" in msg
 
 
 def test_lens_message_never_raises_on_empty_input():
-    assert lens_message({}, {}) != ""
+    assert agentbot_message({}, {}) != ""
 
 
 # ---------------------------------------------------------------------------
@@ -130,12 +131,13 @@ def _make_run_decision_from_llm(llm_reason, *, gather_context=None, notify, act,
     `suggested` action onto the parsed Decision (mirroring `_run_decision`'s
     `decision.action = suggested`), then -- if `force_notify_only` -- forces
     the action back to `None` before the executor ever sees it (Task 3
-    review fix: a notify-type lens must NEVER actuate, even when `suggested`
-    is None and the LLM's own parsed action would otherwise survive), then
-    runs the result through the REAL `executor.execute`. This is the same
-    "not practical to instantiate the real _on_startup closure, so mirror
-    the composed logic against real reason()/execute()" approach already
-    used by `tests/test_sentinel_wiring.py`'s `_resolve_verdict` mirror.
+    review fix: a notify-type Agentbot must NEVER actuate, even when
+    `suggested` is None and the LLM's own parsed action would otherwise
+    survive), then runs the result through the REAL `executor.execute`.
+    This is the same "not practical to instantiate the real _on_startup
+    closure, so mirror the composed logic against real reason()/execute()"
+    approach already used by `tests/test_sentinel_wiring.py`'s
+    `_resolve_verdict` mirror.
 
     Task 4B: `model` is accepted and threaded straight into `reason()`,
     exactly like the real `_run_decision` -- so this mirror still matches
@@ -181,7 +183,7 @@ DANGEROUS_LENS = {
 }
 
 AI_SERVICE_LENS = {
-    "id": "dddddddddddd", "name": "Lente AI", "enabled": True,
+    "id": "dddddddddddd", "name": "Agentbot AI", "enabled": True,
     "trigger": {"type": "event", "entity_id": "switch.pompa", "operator": ">", "threshold": 100},
     "reasoning": {"enabled": True, "prompt": "Valuta se la pompa e' davvero in anomalia."},
     "action": {"type": "service", "domain": "switch", "service": "turn_off", "entity_id": "switch.pompa"},
@@ -197,7 +199,7 @@ def store(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# (a) zero-AI lens, notify action -> executor called with Decision(action=None)
+# (a) zero-AI Agentbot, notify action -> executor called with Decision(action=None)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -207,7 +209,7 @@ async def test_zero_ai_notify_lens_calls_executor_notify_path(store):
     async def _run_decision_unused(wake, suggested, system):
         raise AssertionError("reasoning disabled -- run_decision must not be called")
 
-    outcome = await run_lens(
+    outcome = await run_agentbot(
         NOTIFY_LENS, {"entity_id": "sensor.temp", "value": 35},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -220,11 +222,11 @@ async def test_zero_ai_notify_lens_calls_executor_notify_path(store):
     assert rec.notified and rec.notified[0][1] == "Temperatura troppo alta!"
     assert not rec.acted
     assert rec.events and rec.events[0]["outcome"] == "notify"
-    assert rec.events[0]["kind"] == "lens:aaaaaaaaaaaa"
+    assert rec.events[0]["kind"] == "agentbot:aaaaaaaaaaaa"
 
 
 # ---------------------------------------------------------------------------
-# (b) zero-AI lens, service action, green tier + opt-in -> executor acts
+# (b) zero-AI Agentbot, service action, green tier + opt-in -> executor acts
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -234,7 +236,7 @@ async def test_zero_ai_service_lens_green_tier_acts(store):
     async def _run_decision_unused(wake, suggested, system):
         raise AssertionError("reasoning disabled -- run_decision must not be called")
 
-    outcome = await run_lens(
+    outcome = await run_agentbot(
         SERVICE_LENS, {"entity_id": "switch.stufa", "value": 3500},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -261,7 +263,7 @@ async def test_dangerous_domain_service_lens_only_alerts(store):
     async def _run_decision_unused(wake, suggested, system):
         raise AssertionError("reasoning disabled -- run_decision must not be called")
 
-    outcome = await run_lens(
+    outcome = await run_agentbot(
         DANGEROUS_LENS, {"entity_id": "sensor.x", "value": 2},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -274,13 +276,13 @@ async def test_dangerous_domain_service_lens_only_alerts(store):
     assert rec.events[0]["outcome"] == "alert"
     assert not rec.acted
     assert not rec.proposed
-    assert rec.notified  # alert = notify with the lens's message
+    assert rec.notified  # alert = notify with the Agentbot's message
 
 
 # ---------------------------------------------------------------------------
-# (d) AI-enabled lens: reasoner invoked with the custom prompt appended to
-#     SENTINEL_SYSTEM; a malicious LLM fake tries to redirect the action ->
-#     ignored, the executed action is still the lens's config action.
+# (d) AI-enabled Agentbot: reasoner invoked with the custom prompt appended
+#     to SENTINEL_SYSTEM; a malicious LLM fake tries to redirect the action
+#     -> ignored, the executed action is still the Agentbot's config action.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -296,7 +298,7 @@ async def test_ai_lens_system_contains_custom_prompt(store):
         _llm_reason, notify=rec.notify, act=rec.act, propose=rec.propose,
         execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True)
 
-    await run_lens(
+    await run_agentbot(
         AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=run_decision, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -313,14 +315,15 @@ async def test_ai_lens_system_contains_custom_prompt(store):
 @pytest.mark.asyncio
 async def test_ai_lens_llm_attempts_to_override_action_is_ignored(store):
     """The malicious action deliberately targets a SAFE (non-dangerous)
-    domain with its OWN tier=green, distinct from the lens's real
+    domain with its OWN tier=green, distinct from the Agentbot's real
     `switch.pompa` target. This makes the test actually discriminating: if
-    `run_lens` failed to pass the lens's deterministic `suggested` action
-    into `run_decision`, the LLM's `light.malicious_target` action would
-    sail through the (non-dangerous) tier gate and `act` would be called
-    with it -- unlike a dangerous-domain target, which the executor's
-    denylist would block regardless of whether the override happened,
-    making that variant non-discriminating for this specific guarantee."""
+    `run_agentbot` failed to pass the Agentbot's deterministic `suggested`
+    action into `run_decision`, the LLM's `light.malicious_target` action
+    would sail through the (non-dangerous) tier gate and `act` would be
+    called with it -- unlike a dangerous-domain target, which the
+    executor's denylist would block regardless of whether the override
+    happened, making that variant non-discriminating for this specific
+    guarantee."""
     rec = _Rec()
 
     async def _malicious_llm_reason(system, user, *, model, max_tokens):
@@ -335,7 +338,7 @@ async def test_ai_lens_llm_attempts_to_override_action_is_ignored(store):
         _malicious_llm_reason, notify=rec.notify, act=rec.act, propose=rec.propose,
         execute_policy=_policy(tiers=tiers), allow_green_auto=True)
 
-    await run_lens(
+    await run_agentbot(
         AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=run_decision, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -344,18 +347,19 @@ async def test_ai_lens_llm_attempts_to_override_action_is_ignored(store):
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
 
-    # The executed action must be the LENS's config action, never the LLM's.
+    # The executed action must be the AGENTBOT's config action, never the LLM's.
     assert rec.acted == [{"domain": "switch", "service": "turn_off", "entity_id": "switch.pompa"}]
     assert not any(a.get("domain") == "light" for a in rec.acted)
 
 
 @pytest.mark.asyncio
 async def test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied(store):
-    """Even in the one case where `lens_action` legitimately returns None
-    (a `notify`-type lens) and the LLM's own proposed action therefore
-    isn't overridden by a `suggested` value, the real `executor.execute`'s
-    dangerous-domain denylist is still the final backstop: a lock/alarm/
-    cover/siren/garage target from the LLM is still never acted upon."""
+    """Even in the one case where `agentbot_action` legitimately returns
+    None (a `notify`-type Agentbot) and the LLM's own proposed action
+    therefore isn't overridden by a `suggested` value, the real
+    `executor.execute`'s dangerous-domain denylist is still the final
+    backstop: a lock/alarm/cover/siren/garage target from the LLM is still
+    never acted upon."""
     rec = _Rec()
     notify_lens_ai = {**NOTIFY_LENS, "reasoning": {"enabled": True, "prompt": "Sii prudente."}}
 
@@ -370,7 +374,7 @@ async def test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied(st
         _malicious_llm_reason, notify=rec.notify, act=rec.act, propose=rec.propose,
         execute_policy=_policy(tiers={"lock": "green"}), allow_green_auto=True)
 
-    await run_lens(
+    await run_agentbot(
         notify_lens_ai, {"entity_id": "sensor.temp", "value": 35},
         store=store, run_decision=run_decision, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -384,13 +388,14 @@ async def test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied(st
 
 @pytest.mark.asyncio
 async def test_ai_notify_lens_never_actuates_even_on_safe_green_domain(store):
-    """Task 3 review fix: for a `notify`-type lens, `lens_action` legitimately
-    returns `None`, so the reasoning path's `if suggested and ...` guard
-    never re-injects a deterministic action. Without `force_notify_only`,
-    that leaves the LLM's OWN parsed `action` sitting on the Decision, and
-    on a SAFE (non-dangerous) domain with a green tier + `allow_green_auto`,
-    `executor.execute` would actuate it -- even though the user explicitly
-    configured this lens as "just notify". Unlike
+    """Task 3 review fix: for a `notify`-type Agentbot, `agentbot_action`
+    legitimately returns `None`, so the reasoning path's `if suggested and
+    ...` guard never re-injects a deterministic action. Without
+    `force_notify_only`, that leaves the LLM's OWN parsed `action` sitting
+    on the Decision, and on a SAFE (non-dangerous) domain with a green tier
+    + `allow_green_auto`, `executor.execute` would actuate it -- even
+    though the user explicitly configured this Agentbot as "just notify".
+    Unlike
     `test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied`
     (which uses a dangerous `lock` domain, so the denylist alone would save
     it regardless of this fix), this test uses `light` -- a safe domain --
@@ -410,7 +415,7 @@ async def test_ai_notify_lens_never_actuates_even_on_safe_green_domain(store):
         _llm_proposes_safe_action, notify=rec.notify, act=rec.act, propose=rec.propose,
         execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True)
 
-    outcome = await run_lens(
+    outcome = await run_agentbot(
         notify_lens_ai, {"entity_id": "sensor.temp", "value": 35},
         store=store, run_decision=run_decision, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -420,7 +425,7 @@ async def test_ai_notify_lens_never_actuates_even_on_safe_green_domain(store):
     )
 
     assert outcome == "woke"
-    assert not rec.acted  # notify lens must NEVER actuate, safe domain or not
+    assert not rec.acted  # notify Agentbot must NEVER actuate, safe domain or not
     assert rec.notified  # the AI verdict/message still reaches the user
 
 
@@ -437,7 +442,7 @@ async def test_cooldown_blocks_second_fire_within_window(store):
         raise AssertionError("reasoning disabled")
 
     async def _run(clock_val):
-        return await run_lens(
+        return await run_agentbot(
             NOTIFY_LENS, {"entity_id": "sensor.temp"},
             store=store, run_decision=_run_decision_unused, execute=real_execute,
             notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -457,15 +462,16 @@ async def test_cooldown_blocks_second_fire_within_window(store):
 
 @pytest.mark.asyncio
 async def test_key_scopes_cooldown_per_lens_and_entity(store):
-    """A lens firing on two different entities in the same evaluation batch
-    (e.g. an event trigger matched via different evidence) must not share a
-    single cooldown slot -- `key` includes the evidence's entity_id."""
+    """An Agentbot firing on two different entities in the same evaluation
+    batch (e.g. an event trigger matched via different evidence) must not
+    share a single cooldown slot -- `key` includes the evidence's
+    entity_id."""
     rec = _Rec()
 
     async def _run_decision_unused(wake, suggested, system):
         raise AssertionError("reasoning disabled")
 
-    out_a = await run_lens(
+    out_a = await run_agentbot(
         NOTIFY_LENS, {"entity_id": "sensor.temp_a"},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -473,7 +479,7 @@ async def test_key_scopes_cooldown_per_lens_and_entity(store):
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
-    out_b = await run_lens(
+    out_b = await run_agentbot(
         NOTIFY_LENS, {"entity_id": "sensor.temp_b"},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -487,10 +493,10 @@ async def test_key_scopes_cooldown_per_lens_and_entity(store):
 
 
 # ---------------------------------------------------------------------------
-# (f) Task 5 review Fix 2: a SCHEDULED lens's own interval/cron cadence IS
-# its rate limiter -- passing cooldown_sec=0 must bypass the cooldown gate
-# entirely, while daily_cap (an unrelated, unchanged safety net) still
-# applies. Event lenses (which never pass cooldown_sec) must keep the
+# (f) Task 5 review Fix 2: a SCHEDULED Agentbot's own interval/cron cadence
+# IS its rate limiter -- passing cooldown_sec=0 must bypass the cooldown
+# gate entirely, while daily_cap (an unrelated, unchanged safety net) still
+# applies. Event Agentbots (which never pass cooldown_sec) must keep the
 # default ~30-min cooldown -- verified by OMITTING the kwarg entirely,
 # not just passing 1800 explicitly (regression against Fix 2's new
 # `cooldown_sec: int | None = None` default).
@@ -504,7 +510,7 @@ async def test_cooldown_sec_zero_bypasses_cooldown_but_daily_cap_still_applies(s
         raise AssertionError("reasoning disabled")
 
     async def _run(clock_val):
-        return await run_lens(
+        return await run_agentbot(
             NOTIFY_LENS, {"entity_id": "sensor.temp"},
             store=store, run_decision=_run_decision_unused, execute=real_execute,
             notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -532,7 +538,7 @@ async def test_omitted_cooldown_sec_still_defaults_to_thirty_minutes(store):
         raise AssertionError("reasoning disabled")
 
     async def _run(clock_val):
-        return await run_lens(
+        return await run_agentbot(
             NOTIFY_LENS, {"entity_id": "sensor.temp"},
             store=store, run_decision=_run_decision_unused, execute=real_execute,
             notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -540,7 +546,7 @@ async def test_omitted_cooldown_sec_still_defaults_to_thirty_minutes(store):
             record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
             clock=lambda: clock_val, today=lambda: "2026-07-24",
             # cooldown_sec intentionally omitted -- must resolve to the
-            # same default (~1800s) as before Fix 2, for EVENT lenses.
+            # same default (~1800s) as before Fix 2, for EVENT Agentbots.
         )
 
     out1 = await _run(1000.0)
@@ -554,8 +560,8 @@ async def test_omitted_cooldown_sec_still_defaults_to_thirty_minutes(store):
 # ---------------------------------------------------------------------------
 # (g) Task 4B: `reasoning.model` (per-Agentbot model) must reach
 # `run_decision`'s `model` kwarg unchanged -- this is the actual runtime
-# threading point (server.py's `_run_decision` has no `lens` in scope; the
-# lens's `reasoning` dict is only in scope HERE, in `_on_wake`).
+# threading point (server.py's `_run_decision` has no `agentbot` in scope;
+# the Agentbot's `reasoning` dict is only in scope HERE, in `_on_wake`).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -570,7 +576,7 @@ async def test_ai_lens_threads_its_own_reasoning_model_into_run_decision(store):
     lens_with_model = {**AI_SERVICE_LENS,
                         "reasoning": {"enabled": True, "prompt": "x", "model": "gpt-4o"}}
 
-    await run_lens(
+    await run_agentbot(
         lens_with_model, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -592,7 +598,7 @@ async def test_ai_lens_without_configured_model_defaults_to_auto(store):
         return None
 
     # AI_SERVICE_LENS's reasoning dict has no "model" key at all.
-    await run_lens(
+    await run_agentbot(
         AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -622,7 +628,7 @@ async def test_ai_lens_two_agentbots_use_independent_models(store):
               "trigger": {**AI_SERVICE_LENS["trigger"], "entity_id": "switch.pompa2"},
               "reasoning": {"enabled": True, "model": "gpt-4o-mini"}}
 
-    await run_lens(
+    await run_agentbot(
         lens_a, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,
@@ -630,7 +636,7 @@ async def test_ai_lens_two_agentbots_use_independent_models(store):
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
-    await run_lens(
+    await run_agentbot(
         lens_b, {"entity_id": "switch.pompa2", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
         notify=rec.notify, act=rec.act, propose=rec.propose,

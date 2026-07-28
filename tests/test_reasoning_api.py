@@ -42,6 +42,30 @@ async def test_claim_then_submit_executes(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_submit_recognizes_legacy_agent_id_context_key(aiohttp_client, tmp_path):
+    """Retro-compat: a kind="chat" job enqueued PRE-deploy (before the
+    agent_id -> chatbot_id rename) has context_json = {"agent_id": ...}
+    only. Without the dual-key fallback in handle_reasoning_submit, a
+    real computed assistant reply for this in-flight job would be
+    silently dropped (outcome "chat_reply_skipped", submit_chat_reply
+    never called) because chatbot_id resolves to None."""
+    app, q = _app(tmp_path)
+    replies = []
+    async def _submit_chat_reply(chatbot_id, reply):
+        replies.append((chatbot_id, reply))
+    app["submit_chat_reply"] = _submit_chat_reply
+    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, job_id="J", now=1.0)
+    client = await aiohttp_client(app)
+    c = await (await client.post("/api/reasoning/claim")).json()
+    assert c["job"]["job_id"] == "J"
+    r = await client.post("/api/reasoning/submit", json={"job_id": "J", "nonce": c["job"]["nonce"],
+        "decision": {"reply": "ecco la risposta"}})
+    body = await r.json()
+    assert body["ok"] is True and body["outcome"] == "chat_reply_recorded"
+    assert replies == [("agentX", "ecco la risposta")]
+
+
+@pytest.mark.asyncio
 async def test_submit_bad_nonce_409(aiohttp_client, tmp_path):
     app, q = _app(tmp_path)
     q.enqueue("holistic", {}, {}, deadline_ts=100.0, job_id="J", now=1.0)

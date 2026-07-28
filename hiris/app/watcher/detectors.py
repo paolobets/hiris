@@ -105,7 +105,7 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
             return attrs.get(attribute)
         return new.get("state")
 
-    def detect_user_lens(entity_id, old, new, cfg, now) -> Optional[Signal]:
+    def detect_user_agentbot(entity_id, old, new, cfg, now) -> Optional[Signal]:
         try:
             raw = _raw_value(new)
             if raw is None:
@@ -140,15 +140,16 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
             # Severity vocabulary mismatch note: watcher.lenses.ALLOWED_SEVERITIES
             # is {"info","warn","alert"} but watcher.signals.SEVERITIES is
             # ("info","warn","critico"). This is ALREADY handled --
-            # `normalize_lens_severity` (watcher/lens_runner.py) maps
-            # "alert"->"critico" (falling back to "info" for anything
-            # unrecognized) when a lens fires. This detector's own Signal.severity
-            # (computed below from `cfg`, always `{}` on the guardian's
-            # event-lens path -- see guardian.py's `_dispatch_user_lenses`) is
-            # discarded anyway: only `sig.evidence` is forwarded to `run_lens`,
-            # which re-derives severity straight from `lens["severity"]` via
-            # `normalize_lens_severity`. So the value assigned here never
-            # reaches a notification/decision.
+            # `normalize_agentbot_severity` (watcher/lens_runner.py, renamed
+            # from "lens" in SP-4 Fase A Task 3) maps "alert"->"critico"
+            # (falling back to "info" for anything unrecognized) when an
+            # Agentbot fires. This detector's own Signal.severity (computed
+            # below from `cfg`, always `{}` on the guardian's event-Agentbot
+            # path -- see guardian.py's `_dispatch_user_agentbots`) is
+            # discarded anyway: only `sig.evidence` is forwarded to
+            # `run_agentbot`, which re-derives severity straight from
+            # `agentbot["severity"]` via `normalize_agentbot_severity`. So
+            # the value assigned here never reaches a notification/decision.
             severity = "warn"
             if isinstance(cfg, dict):
                 # `cfg.get("severity", "warn")` alone is not enough: a key
@@ -168,7 +169,7 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
                 evidence["needs_duration"] = True
                 evidence["threshold_min"] = duration_min
 
-            return Signal(kind="user_lens", entity_id=entity_id, severity=severity,
+            return Signal(kind="user_agentbot", entity_id=entity_id, severity=severity,
                           evidence=evidence, ts=now)
         except Exception:
             # fail-safe: a user lens must never crash the Guardian, but a
@@ -177,4 +178,4 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
                       entity_id, exc_info=True)
             return None
 
-    return detect_user_lens
+    return detect_user_agentbot

@@ -343,14 +343,14 @@ class LLMRouter:
         resets = [getattr(r, "usage_last_reset", "") for r in self._all]
         return min((s for s in resets if s), default="")
 
-    def get_agent_usage(self, agent_id: str) -> dict:
+    def get_chatbot_usage(self, chatbot_id: str) -> dict:
         result = {
             "input_tokens": 0, "output_tokens": 0,
             "requests": 0, "cost_usd": 0.0, "last_run": None,
             "tokens_today": 0, "tokens_today_date": "",
         }
         for r in self._all:
-            u = r.get_agent_usage(agent_id)
+            u = r.get_chatbot_usage(chatbot_id)
             result["input_tokens"] += u.get("input_tokens", 0)
             result["output_tokens"] += u.get("output_tokens", 0)
             result["requests"] += u.get("requests", 0)
@@ -361,9 +361,9 @@ class LLMRouter:
                 result["last_run"] = run_at
         return result
 
-    def reset_agent_usage(self, agent_id: str) -> None:
+    def reset_chatbot_usage(self, chatbot_id: str) -> None:
         for r in self._all:
-            r.reset_agent_usage(agent_id)
+            r.reset_chatbot_usage(chatbot_id)
 
     def reset_usage(self) -> None:
         for r in self._all:

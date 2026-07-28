@@ -485,7 +485,7 @@ def test_resolve_model_auto_agent_returns_haiku():
     assert resolve_model("auto", "agent") == "claude-haiku-4-5-20251001"
 
 
-def test_get_agent_usage_returns_zeros_for_unknown_agent():
+def test_get_chatbot_usage_returns_zeros_for_unknown_agent():
     from unittest.mock import MagicMock
     from hiris.app.claude_runner import ClaudeRunner
     runner = ClaudeRunner(
@@ -493,7 +493,7 @@ def test_get_agent_usage_returns_zeros_for_unknown_agent():
         dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path="",
     )
-    usage = runner.get_agent_usage("agent-xyz")
+    usage = runner.get_chatbot_usage("agent-xyz")
     assert usage["input_tokens"] == 0
     assert usage["output_tokens"] == 0
     assert usage["requests"] == 0
@@ -501,8 +501,8 @@ def test_get_agent_usage_returns_zeros_for_unknown_agent():
     assert usage["last_run"] is None
 
 
-def test_per_agent_usage_accumulates_after_chat():
-    """chat() with agent_id accumulates tokens in _per_agent_usage."""
+def test_per_chatbot_usage_accumulates_after_chat():
+    """chat() with agent_id accumulates tokens in _per_chatbot_usage."""
     import asyncio
     from unittest.mock import MagicMock
     from hiris.app.claude_runner import ClaudeRunner
@@ -526,9 +526,9 @@ def test_per_agent_usage_accumulates_after_chat():
 
     runner._call_api = fake_call
 
-    asyncio.run(runner.chat(user_message="hello", agent_id="agent-abc"))
+    asyncio.run(runner.chat(user_message="hello", chatbot_id="agent-abc"))
 
-    usage = runner.get_agent_usage("agent-abc")
+    usage = runner.get_chatbot_usage("agent-abc")
     assert usage["input_tokens"] == 100
     assert usage["output_tokens"] == 50
     assert usage["requests"] == 1
@@ -536,7 +536,7 @@ def test_per_agent_usage_accumulates_after_chat():
     assert usage["last_run"] is not None
 
 
-def test_reset_agent_usage_clears_counters():
+def test_reset_chatbot_usage_clears_counters():
     from unittest.mock import MagicMock
     from hiris.app.claude_runner import ClaudeRunner
 
@@ -545,18 +545,18 @@ def test_reset_agent_usage_clears_counters():
         dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path="",
     )
-    runner._per_agent_usage["agent-abc"] = {
+    runner._per_chatbot_usage["agent-abc"] = {
         "input_tokens": 500, "output_tokens": 200,
         "requests": 3, "cost_usd": 0.002, "last_run": "2026-01-01T00:00:00Z",
     }
-    runner.reset_agent_usage("agent-abc")
-    usage = runner.get_agent_usage("agent-abc")
+    runner.reset_chatbot_usage("agent-abc")
+    usage = runner.get_chatbot_usage("agent-abc")
     assert usage["input_tokens"] == 0
     assert usage["requests"] == 0
     assert usage["last_run"] is None
 
 
-def test_per_agent_usage_persists_and_reloads(tmp_path):
+def test_per_chatbot_usage_persists_and_reloads(tmp_path):
     from unittest.mock import MagicMock
     from hiris.app.claude_runner import ClaudeRunner
 
@@ -566,7 +566,7 @@ def test_per_agent_usage_persists_and_reloads(tmp_path):
         dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path=usage_file,
     )
-    runner._per_agent_usage["agent-persist"] = {
+    runner._per_chatbot_usage["agent-persist"] = {
         "input_tokens": 1000, "output_tokens": 400,
         "requests": 5, "cost_usd": 0.005, "last_run": "2026-04-01T10:00:00Z",
     }
@@ -577,7 +577,7 @@ def test_per_agent_usage_persists_and_reloads(tmp_path):
         dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path=usage_file,
     )
-    usage = runner2.get_agent_usage("agent-persist")
+    usage = runner2.get_chatbot_usage("agent-persist")
     assert usage["input_tokens"] == 1000
     assert usage["requests"] == 5
 

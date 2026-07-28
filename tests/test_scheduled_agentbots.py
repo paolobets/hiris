@@ -1,27 +1,29 @@
-"""TDD for Slice 5b Task 5 -- SCHEDULED (cron/interval) user lenses.
+"""TDD for Slice 5b Task 5 -- SCHEDULED (cron/interval) user Agentbots
+(renamed from "lens" in SP-4 Fase A Task 3).
 
-`register_lens_schedules(app)` (registered in `hiris/app/server.py`) reads the
-current enabled, `trigger.type == "schedule"` lenses (`watcher.lenses.load_lenses`)
-and (re)registers one job per lens on `engine._scheduler` (the SAME
-AsyncIOScheduler instance the built-in ronda/reset jobs already use),
-`id=f"hiris_lens_{lens_id}"`, `replace_existing=True`, `trigger="cron"` (from
-`trigger.cron`, mapped onto APScheduler's minute/hour/day/month/day_of_week
-fields) or `trigger="interval"` (minutes=`trigger.interval_min`). It also
-removes any `hiris_lens_*` job whose lens no longer exists, is disabled, or is
+`register_agentbot_schedules(app)` (registered in `hiris/app/server.py`)
+reads the current enabled, `trigger.type == "schedule"` Agentbots
+(`watcher.lenses.load_agentbots`) and (re)registers one job per Agentbot on
+`engine._scheduler` (the SAME AsyncIOScheduler instance the built-in
+ronda/reset jobs already use), `id=f"hiris_agentbot_{agentbot_id}"`,
+`replace_existing=True`, `trigger="cron"` (from `trigger.cron`, mapped onto
+APScheduler's minute/hour/day/month/day_of_week fields) or
+`trigger="interval"` (minutes=`trigger.interval_min`). It also removes any
+`hiris_agentbot_*` job whose Agentbot no longer exists, is disabled, or is
 no longer schedule-triggered -- mirroring `agent_engine.py`'s
 `_unschedule_agent` job-enumeration pattern.
 
-The per-lens job callback (`_run_scheduled_lens`) optionally gates on
-`trigger.condition` (evaluated against the CURRENT cached state via
+The per-Agentbot job callback (`_run_scheduled_agentbot`) optionally gates
+on `trigger.condition` (evaluated against the CURRENT cached state via
 `_condition_holds`, reusing `make_generic_detector` from Task 2 -- same
 operator/threshold comparison, same no-data guard) before calling
-`app["run_lens"](lens, {"entity_id": ...})`.
+`app["run_agentbot"](agentbot, {"entity_id": ...})`.
 
-These tests exercise `register_lens_schedules`/`_run_scheduled_lens`/
+These tests exercise `register_agentbot_schedules`/`_run_scheduled_agentbot`/
 `_condition_holds` directly against fakes (a fake scheduler recording
-add_job/remove_job calls, a fake entity_cache, a fake `run_lens` spy) --
+add_job/remove_job calls, a fake entity_cache, a fake `run_agentbot` spy) --
 never booting the real aiohttp app (`_on_startup` connects to HA, writes
-ingress config, etc., same reasoning as `test_run_lens.py`).
+ingress config, etc., same reasoning as `test_run_agentbot.py`).
 """
 from types import SimpleNamespace
 
@@ -29,10 +31,10 @@ import pytest
 
 from hiris.app.server import (
     _condition_holds,
-    _run_scheduled_lens,
-    register_lens_schedules,
+    _run_scheduled_agentbot,
+    register_agentbot_schedules,
 )
-from hiris.app.watcher.lenses import save_lenses
+from hiris.app.watcher.lenses import save_agentbots
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +44,7 @@ from hiris.app.watcher.lenses import save_lenses
 class FakeScheduler:
     """Records add_job/remove_job calls; mimics just enough of APScheduler's
     surface (`get_jobs()` -> objects with `.id`, `add_job(...)`,
-    `remove_job(job_id)`) for `register_lens_schedules` to drive."""
+    `remove_job(job_id)`) for `register_agentbot_schedules` to drive."""
 
     def __init__(self):
         self.jobs: dict[str, SimpleNamespace] = {}
@@ -75,12 +77,12 @@ class FakeCache:
         return self._states.get(entity_id)
 
 
-def _app(scheduler, data_dir, *, cache=None, run_lens=None):
+def _app(scheduler, data_dir, *, cache=None, run_agentbot=None):
     return {
         "engine": FakeEngine(scheduler),
         "data_dir": str(data_dir),
         "entity_cache": cache,
-        "run_lens": run_lens,
+        "run_agentbot": run_agentbot,
     }
 
 
@@ -121,18 +123,18 @@ CONDITION_LENS = {
 
 
 # ---------------------------------------------------------------------------
-# register_lens_schedules: registration
+# register_agentbot_schedules: registration
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_register_creates_job_for_interval_lens(tmp_path):
-    save_lenses(str(tmp_path), [INTERVAL_LENS])
+    save_agentbots(str(tmp_path), [INTERVAL_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)
+    await register_agentbot_schedules(app)
 
-    job = scheduler.jobs.get("hiris_lens_111111111111")
+    job = scheduler.jobs.get("hiris_agentbot_111111111111")
     assert job is not None
     assert job.trigger == "interval"
     assert job.kwargs.get("minutes") == 5
@@ -151,13 +153,13 @@ def _trigger_fields(job) -> dict[str, str]:
 async def test_register_creates_job_for_cron_lens_mapped_to_apscheduler_fields(tmp_path):
     from apscheduler.triggers.cron import CronTrigger
 
-    save_lenses(str(tmp_path), [CRON_LENS])
+    save_agentbots(str(tmp_path), [CRON_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)
+    await register_agentbot_schedules(app)
 
-    job = scheduler.jobs.get("hiris_lens_222222222222")
+    job = scheduler.jobs.get("hiris_agentbot_222222222222")
     assert job is not None
     assert isinstance(job.trigger, CronTrigger)
     # "0 3 * * *" -> minute hour day month day_of_week; day_of_week=="*"
@@ -169,8 +171,8 @@ async def test_register_creates_job_for_cron_lens_mapped_to_apscheduler_fields(t
     assert fields["month"] == "*"
     assert fields["day_of_week"] == "*"
     # Review fix: same 3600s misfire grace as every other scheduler job in
-    # server.py -- a daily cron lens must not get silently skipped for 24h
-    # just because the loop was briefly busy at fire time.
+    # server.py -- a daily cron Agentbot must not get silently skipped for
+    # 24h just because the loop was briefly busy at fire time.
     assert job.kwargs.get("misfire_grace_time") == 3600
 
 
@@ -191,13 +193,13 @@ async def test_register_cron_sunday_dow0_maps_to_apscheduler_sunday(tmp_path):
         "action": {"type": "notify", "message": "domenica"},
         "severity": "info",
     }
-    save_lenses(str(tmp_path), [sunday_lens])
+    save_agentbots(str(tmp_path), [sunday_lens])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)
+    await register_agentbot_schedules(app)
 
-    job = scheduler.jobs["hiris_lens_777777777777"]
+    job = scheduler.jobs["hiris_agentbot_777777777777"]
     # APScheduler's Sunday is day_of_week=6 -- NOT a bare passthrough of the
     # crontab "0" (which would be APScheduler's Monday, the pre-fix bug).
     assert _trigger_fields(job)["day_of_week"] == "6"
@@ -212,13 +214,13 @@ async def test_register_cron_dow7_legal_posix_sunday_is_accepted(tmp_path):
         "action": {"type": "notify", "message": "domenica"},
         "severity": "info",
     }
-    save_lenses(str(tmp_path), [sunday7_lens])
+    save_agentbots(str(tmp_path), [sunday7_lens])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)  # must not raise / skip -- "7" is legal POSIX cron
+    await register_agentbot_schedules(app)  # must not raise / skip -- "7" is legal POSIX cron
 
-    job = scheduler.jobs.get("hiris_lens_888888888888")
+    job = scheduler.jobs.get("hiris_agentbot_888888888888")
     assert job is not None
     assert _trigger_fields(job)["day_of_week"] == "6"
 
@@ -233,82 +235,82 @@ async def test_register_cron_weekday_range_maps_each_day(tmp_path):
         "action": {"type": "notify", "message": "feriale"},
         "severity": "info",
     }
-    save_lenses(str(tmp_path), [weekday_lens])
+    save_agentbots(str(tmp_path), [weekday_lens])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)
+    await register_agentbot_schedules(app)
 
-    job = scheduler.jobs["hiris_lens_999999999999"]
+    job = scheduler.jobs["hiris_agentbot_999999999999"]
     assert _trigger_fields(job)["day_of_week"] == "0,1,2,3,4"
 
 
 @pytest.mark.asyncio
 async def test_register_ignores_event_trigger_lenses(tmp_path):
-    save_lenses(str(tmp_path), [EVENT_LENS])
+    save_agentbots(str(tmp_path), [EVENT_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)
+    await register_agentbot_schedules(app)
 
     assert scheduler.jobs == {}
 
 
 @pytest.mark.asyncio
 async def test_register_ignores_disabled_schedule_lens(tmp_path):
-    save_lenses(str(tmp_path), [DISABLED_SCHEDULE_LENS])
+    save_agentbots(str(tmp_path), [DISABLED_SCHEDULE_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)
+    await register_agentbot_schedules(app)
 
     assert scheduler.jobs == {}
 
 
 @pytest.mark.asyncio
 async def test_register_is_idempotent_replace_existing(tmp_path):
-    save_lenses(str(tmp_path), [INTERVAL_LENS])
+    save_agentbots(str(tmp_path), [INTERVAL_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)
-    await register_lens_schedules(app)
+    await register_agentbot_schedules(app)
+    await register_agentbot_schedules(app)
 
     assert len(scheduler.jobs) == 1
-    assert scheduler.jobs["hiris_lens_111111111111"].replace_existing is True
+    assert scheduler.jobs["hiris_agentbot_111111111111"].replace_existing is True
 
 
 # ---------------------------------------------------------------------------
-# register_lens_schedules: deregistration of orphaned jobs
+# register_agentbot_schedules: deregistration of orphaned jobs
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_register_removes_job_for_deleted_lens(tmp_path):
-    save_lenses(str(tmp_path), [INTERVAL_LENS, CRON_LENS])
+    save_agentbots(str(tmp_path), [INTERVAL_LENS, CRON_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
-    await register_lens_schedules(app)
-    assert set(scheduler.jobs) == {"hiris_lens_111111111111", "hiris_lens_222222222222"}
+    await register_agentbot_schedules(app)
+    assert set(scheduler.jobs) == {"hiris_agentbot_111111111111", "hiris_agentbot_222222222222"}
 
-    # Lens deleted -> only CRON_LENS remains in the store.
-    save_lenses(str(tmp_path), [CRON_LENS])
-    await register_lens_schedules(app)
+    # Agentbot deleted -> only CRON_LENS remains in the store.
+    save_agentbots(str(tmp_path), [CRON_LENS])
+    await register_agentbot_schedules(app)
 
-    assert set(scheduler.jobs) == {"hiris_lens_222222222222"}
+    assert set(scheduler.jobs) == {"hiris_agentbot_222222222222"}
 
 
 @pytest.mark.asyncio
 async def test_register_removes_job_when_lens_disabled(tmp_path):
-    save_lenses(str(tmp_path), [INTERVAL_LENS])
+    save_agentbots(str(tmp_path), [INTERVAL_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
-    await register_lens_schedules(app)
-    assert "hiris_lens_111111111111" in scheduler.jobs
+    await register_agentbot_schedules(app)
+    assert "hiris_agentbot_111111111111" in scheduler.jobs
 
-    save_lenses(str(tmp_path), [{**INTERVAL_LENS, "enabled": False}])
-    await register_lens_schedules(app)
+    save_agentbots(str(tmp_path), [{**INTERVAL_LENS, "enabled": False}])
+    await register_agentbot_schedules(app)
 
-    assert "hiris_lens_111111111111" not in scheduler.jobs
+    assert "hiris_agentbot_111111111111" not in scheduler.jobs
 
 
 @pytest.mark.asyncio
@@ -318,7 +320,7 @@ async def test_register_leaves_non_lens_jobs_untouched(tmp_path):
                        replace_existing=True, hour=0, minute=1)
     app = _app(scheduler, tmp_path)
 
-    await register_lens_schedules(app)
+    await register_agentbot_schedules(app)
 
     assert "hiris_sentinel_reset" in scheduler.jobs
 
@@ -326,7 +328,7 @@ async def test_register_leaves_non_lens_jobs_untouched(tmp_path):
 # ---------------------------------------------------------------------------
 # Fail-safe cron parsing: a value-invalid cron (passes the store's shape
 # regex but is rejected by APScheduler's own field validation) must not
-# crash registration -- it is skipped, and OTHER valid lenses still register.
+# crash registration -- it is skipped, and OTHER valid Agentbots still register.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -343,16 +345,16 @@ async def test_bad_cron_value_is_skipped_without_crashing_registration(tmp_path)
         "action": {"type": "notify", "message": "x"},
         "severity": "info",
     }
-    save_lenses(str(tmp_path), [INTERVAL_LENS, bad_cron_lens])
+    save_agentbots(str(tmp_path), [INTERVAL_LENS, bad_cron_lens])
 
     real_scheduler = AsyncIOScheduler()  # not started -- add_job still validates
     app = _app(real_scheduler, tmp_path)
 
-    await register_lens_schedules(app)  # must not raise
+    await register_agentbot_schedules(app)  # must not raise
 
     ids = {job.id for job in real_scheduler.get_jobs()}
-    assert "hiris_lens_111111111111" in ids
-    assert "hiris_lens_666666666666" not in ids
+    assert "hiris_agentbot_111111111111" in ids
+    assert "hiris_agentbot_666666666666" not in ids
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +402,7 @@ def test_condition_holds_no_cache_is_false():
 
 
 # ---------------------------------------------------------------------------
-# _run_scheduled_lens (the job callback)
+# _run_scheduled_agentbot (the job callback)
 # ---------------------------------------------------------------------------
 
 class _RunLensSpy:
@@ -418,7 +420,7 @@ class _RunLensSpy:
 @pytest.mark.asyncio
 async def test_run_scheduled_lens_no_condition_calls_run_lens():
     spy = _RunLensSpy()
-    await _run_scheduled_lens(INTERVAL_LENS, cache=None, run_lens=spy)
+    await _run_scheduled_agentbot(INTERVAL_LENS, cache=None, run_agentbot=spy)
     assert spy.calls == [(INTERVAL_LENS, {"entity_id": "-"}, {"cooldown_sec": 0})]
 
 
@@ -426,20 +428,20 @@ async def test_run_scheduled_lens_no_condition_calls_run_lens():
 async def test_run_scheduled_lens_condition_satisfied_calls_run_lens():
     spy = _RunLensSpy()
     cache = FakeCache({"person.paolo": {"state": "home"}})
-    await _run_scheduled_lens(CONDITION_LENS, cache=cache, run_lens=spy)
+    await _run_scheduled_agentbot(CONDITION_LENS, cache=cache, run_agentbot=spy)
     assert spy.calls == [(CONDITION_LENS, {"entity_id": "person.paolo"}, {"cooldown_sec": 0})]
 
 
 # ---------------------------------------------------------------------------
-# FIX 2 (Task 5 review): the scheduled-lens callback must pass
-# `cooldown_sec=0` to `run_lens` -- its own interval/cron cadence IS the
+# FIX 2 (Task 5 review): the scheduled-Agentbot callback must pass
+# `cooldown_sec=0` to `run_agentbot` -- its own interval/cron cadence IS the
 # rate limiter, not the sentinel's default ~30-min cooldown.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_run_scheduled_lens_bypasses_cooldown_via_zero_override():
     spy = _RunLensSpy()
-    await _run_scheduled_lens(INTERVAL_LENS, cache=None, run_lens=spy)
+    await _run_scheduled_agentbot(INTERVAL_LENS, cache=None, run_agentbot=spy)
     assert spy.calls[0][2] == {"cooldown_sec": 0}
 
 
@@ -447,33 +449,34 @@ async def test_run_scheduled_lens_bypasses_cooldown_via_zero_override():
 async def test_run_scheduled_lens_condition_not_satisfied_does_not_call_run_lens():
     spy = _RunLensSpy()
     cache = FakeCache({"person.paolo": {"state": "not_home"}})
-    await _run_scheduled_lens(CONDITION_LENS, cache=cache, run_lens=spy)
+    await _run_scheduled_agentbot(CONDITION_LENS, cache=cache, run_agentbot=spy)
     assert spy.calls == []
 
 
 @pytest.mark.asyncio
 async def test_run_scheduled_lens_swallows_run_lens_exception():
     spy = _RunLensSpy(raise_exc=True)
-    # Must not raise -- a broken scheduled lens can't kill the scheduler.
-    await _run_scheduled_lens(INTERVAL_LENS, cache=None, run_lens=spy)
+    # Must not raise -- a broken scheduled Agentbot can't kill the scheduler.
+    await _run_scheduled_agentbot(INTERVAL_LENS, cache=None, run_agentbot=spy)
     assert spy.calls  # it was still invoked before raising
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: registered job's callback wired through register_lens_schedules
-# actually consults the condition and the real run_lens closure.
+# End-to-end: registered job's callback wired through
+# register_agentbot_schedules actually consults the condition and the real
+# run_agentbot closure.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_registered_job_callback_honors_condition_end_to_end(tmp_path):
-    save_lenses(str(tmp_path), [CONDITION_LENS])
+    save_agentbots(str(tmp_path), [CONDITION_LENS])
     scheduler = FakeScheduler()
     spy = _RunLensSpy()
     cache = FakeCache({"person.paolo": {"state": "not_home"}})
-    app = _app(scheduler, tmp_path, cache=cache, run_lens=spy)
+    app = _app(scheduler, tmp_path, cache=cache, run_agentbot=spy)
 
-    await register_lens_schedules(app)
-    job = scheduler.jobs["hiris_lens_555555555555"]
+    await register_agentbot_schedules(app)
+    job = scheduler.jobs["hiris_agentbot_555555555555"]
     await job.func()
 
     assert spy.calls == []  # condition not satisfied

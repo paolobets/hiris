@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import TestClient
 from hiris.app.server import create_app
-from hiris.app.agent_engine import AgentEngine
+from hiris.app.chatbot_engine import ChatbotEngine
 from hiris.app.task_engine import Task, TaskEngine
 
 
 def _make_task(task_id="t-001", label="Test task", status="pending"):
     return Task(
-        id=task_id, label=label, agent_id="hiris-default",
+        id=task_id, label=label, chatbot_id="hiris-default",
         created_at=datetime.now(timezone.utc).isoformat(),
         trigger={"type": "delay", "minutes": 5}, actions=[],
         status=status,
@@ -24,7 +24,7 @@ async def client(aiohttp_client, tmp_path):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
 

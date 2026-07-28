@@ -209,7 +209,7 @@ class OpenAICompatRunner:
         else:
             _client_timeout = _httpx.Timeout(600.0, connect=5.0)
         # Ollama: disabilita auto-retry SDK. Default openai 2.x = 2 retry, che
-        # cumulativamente possono superare il wrapper agent_engine 300s
+        # cumulativamente possono superare il wrapper chatbot_engine 300s
         # producendo "Timeout dopo 300s" generico senza log specifici. Con
         # max_retries=0 il primo APIError/Timeout viene loggato e ritornato.
         # Cloud OpenAI: lascia il default (2) — la rete cloud è meno volatile.
@@ -241,7 +241,7 @@ class OpenAICompatRunner:
         self.total_cost_usd: float = 0.0
         self.total_rate_limit_errors: int = 0
         self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
-        self._per_agent_usage: dict[str, dict] = {}
+        self._per_chatbot_usage: dict[str, dict] = {}
         self._load_usage()
 
     # ------------------------------------------------------------------
@@ -260,7 +260,7 @@ class OpenAICompatRunner:
             self.usage_last_reset = data.get("last_reset", self.usage_last_reset)
             self.total_cost_usd = data.get("total_cost_usd", 0.0)
             self.total_rate_limit_errors = data.get("total_rate_limit_errors", 0)
-            self._per_agent_usage = data.get("per_agent", {})
+            self._per_chatbot_usage = data.get("per_agent", {})
         except Exception as exc:
             logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
 
@@ -275,7 +275,7 @@ class OpenAICompatRunner:
             "last_reset": self.usage_last_reset,
             "total_cost_usd": self.total_cost_usd,
             "total_rate_limit_errors": self.total_rate_limit_errors,
-            "per_agent": dict(self._per_agent_usage),
+            "per_agent": dict(self._per_chatbot_usage),
         }
         tmp = self._usage_path + ".tmp"
 
@@ -310,8 +310,8 @@ class OpenAICompatRunner:
             pau["tokens_today"] = 0
             pau["tokens_today_date"] = today
 
-    def get_agent_usage(self, agent_id: str) -> dict:
-        pau = self._per_agent_usage.get(agent_id)
+    def get_chatbot_usage(self, chatbot_id: str) -> dict:
+        pau = self._per_chatbot_usage.get(chatbot_id)
         if pau is None:
             return {
                 "input_tokens": 0, "output_tokens": 0,
@@ -321,15 +321,15 @@ class OpenAICompatRunner:
         self._ensure_today_reset(pau)
         return dict(pau)
 
-    def reset_agent_usage(self, agent_id: str) -> None:
-        self._per_agent_usage[agent_id] = {
+    def reset_chatbot_usage(self, chatbot_id: str) -> None:
+        self._per_chatbot_usage[chatbot_id] = {
             "input_tokens": 0, "output_tokens": 0,
             "requests": 0, "cost_usd": 0.0, "last_run": None,
             "tokens_today": 0, "tokens_today_date": "",
         }
         self._save_usage()
 
-    def _track_usage(self, response: Any, model: str, agent_id: Optional[str]) -> None:
+    def _track_usage(self, response: Any, model: str, chatbot_id: Optional[str]) -> None:
         usage = getattr(response, "usage", None)
         if not usage:
             logger.debug("Model %s did not return usage info — token tracking skipped", model)
@@ -341,14 +341,14 @@ class OpenAICompatRunner:
         self.total_input_tokens += inp
         self.total_output_tokens += out
         self.total_cost_usd += cost
-        if agent_id:
-            if agent_id not in self._per_agent_usage:
-                self._per_agent_usage[agent_id] = {
+        if chatbot_id:
+            if chatbot_id not in self._per_chatbot_usage:
+                self._per_chatbot_usage[chatbot_id] = {
                     "input_tokens": 0, "output_tokens": 0,
                     "requests": 0, "cost_usd": 0.0, "last_run": None,
                     "tokens_today": 0, "tokens_today_date": "",
                 }
-            pau = self._per_agent_usage[agent_id]
+            pau = self._per_chatbot_usage[chatbot_id]
             pau["input_tokens"] += inp
             pau["output_tokens"] += out
             pau["cost_usd"] += cost
@@ -436,7 +436,7 @@ class OpenAICompatRunner:
         agent_type: str = "chat",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
-        agent_id: Optional[str] = None,
+        chatbot_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
@@ -464,15 +464,15 @@ class OpenAICompatRunner:
                 "consecutivi (circuito aperto). Riprova tra qualche istante."
             )
 
-        if agent_id:
-            if agent_id not in self._per_agent_usage:
-                self._per_agent_usage[agent_id] = {
+        if chatbot_id:
+            if chatbot_id not in self._per_chatbot_usage:
+                self._per_chatbot_usage[chatbot_id] = {
                     "input_tokens": 0, "output_tokens": 0,
                     "requests": 0, "cost_usd": 0.0, "last_run": None,
                     "tokens_today": 0, "tokens_today_date": "",
                 }
-            self._per_agent_usage[agent_id]["requests"] += 1
-            self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
+            self._per_chatbot_usage[chatbot_id]["requests"] += 1
+            self._per_chatbot_usage[chatbot_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         # Fresh per-exchange pseudonymization map (review B/#7).
         self.last_pseudonym_map = {}
@@ -547,7 +547,7 @@ class OpenAICompatRunner:
                     logger.info(
                         "Ollama call: model=%s iter=%d/%d agent=%s tools=%d msg_chars=%d",
                         effective_model, iter_idx + 1, max_iter,
-                        agent_id or "-", len(oai_tools or []), msg_chars,
+                        chatbot_id or "-", len(oai_tools or []), msg_chars,
                     )
                 response = await self._client.chat.completions.create(**kwargs)
                 if self._fixed_model:
@@ -603,7 +603,7 @@ class OpenAICompatRunner:
                     ) from exc
 
             self._record_success()
-            self._track_usage(response, effective_model, agent_id)
+            self._track_usage(response, effective_model, chatbot_id)
             choice = response.choices[0]
 
             if choice.finish_reason == "stop":
@@ -660,7 +660,7 @@ class OpenAICompatRunner:
                         allowed_entities=allowed_entities,
                         allowed_services=allowed_services,
                         allowed_endpoints=allowed_endpoints,
-                        agent_id=agent_id,
+                        chatbot_id=chatbot_id,
                         visible_entity_ids=visible_entity_ids,
                         knowledge_allow_sensitive=knowledge_allow_sensitive,
                         knowledge_kinds=knowledge_kinds,
@@ -709,7 +709,7 @@ class OpenAICompatRunner:
         agent_type: str = "chat",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
-        agent_id: Optional[str] = None,
+        chatbot_id: Optional[str] = None,
         visible_entity_ids=None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
@@ -746,15 +746,15 @@ class OpenAICompatRunner:
         # Fresh per-exchange pseudonymization map (review B/#7).
         self.last_pseudonym_map = {}
         self.total_requests += 1
-        if agent_id:
-            if agent_id not in self._per_agent_usage:
-                self._per_agent_usage[agent_id] = {
+        if chatbot_id:
+            if chatbot_id not in self._per_chatbot_usage:
+                self._per_chatbot_usage[chatbot_id] = {
                     "input_tokens": 0, "output_tokens": 0,
                     "requests": 0, "cost_usd": 0.0, "last_run": None,
                     "tokens_today": 0, "tokens_today_date": "",
                 }
-            self._per_agent_usage[agent_id]["requests"] += 1
-            self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
+            self._per_chatbot_usage[chatbot_id]["requests"] += 1
+            self._per_chatbot_usage[chatbot_id]["last_run"] = datetime.now(timezone.utc).isoformat()
 
         effective_model = self._resolve_model(model, agent_type)
         system_parts = [BASE_SYSTEM_PROMPT]
@@ -950,7 +950,7 @@ class OpenAICompatRunner:
                         allowed_entities=allowed_entities,
                         allowed_services=allowed_services,
                         allowed_endpoints=allowed_endpoints,
-                        agent_id=agent_id,
+                        chatbot_id=chatbot_id,
                         visible_entity_ids=visible_entity_ids,
                         knowledge_allow_sensitive=knowledge_allow_sensitive,
                         knowledge_kinds=knowledge_kinds,
@@ -970,7 +970,7 @@ class OpenAICompatRunner:
             yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
             return
 
-        yield f'data: {json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": _redact_stream_tool_calls(self.last_tool_calls)})}\n\n'
+        yield f'data: {json.dumps({"type": "done", "agent_id": chatbot_id, "tool_calls": _redact_stream_tool_calls(self.last_tool_calls)})}\n\n'
 
     async def run_with_actions(
         self,
@@ -985,7 +985,7 @@ class OpenAICompatRunner:
         agent_type: str = "agent",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
-        agent_id: Optional[str] = None,
+        chatbot_id: Optional[str] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
@@ -1019,7 +1019,7 @@ class OpenAICompatRunner:
             agent_type=agent_type,
             restrict_to_home=restrict_to_home,
             require_confirmation=require_confirmation,
-            agent_id=agent_id,
+            chatbot_id=chatbot_id,
             response_mode=response_mode,
             knowledge_allow_sensitive=knowledge_allow_sensitive,
             knowledge_kinds=knowledge_kinds,

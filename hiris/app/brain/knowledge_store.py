@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS knowledge_items (
     valid_until  TEXT,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
-    lens         TEXT
+    chatbot_id   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ki_owner    ON knowledge_items(owner);
 CREATE INDEX IF NOT EXISTS idx_ki_kind     ON knowledge_items(kind);
@@ -71,11 +71,22 @@ def _migrate_v2(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE knowledge_items ADD COLUMN lens TEXT")
 
 
+def _migrate_v3(conn: sqlite3.Connection) -> None:
+    """v2 -> v3: rinomina la colonna `lens` (id del Chatbot che scopa la memoria)
+    in `chatbot_id`. Idempotente: salta se gia' rinominata."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(knowledge_items)").fetchall()]
+    if "lens" in cols and "chatbot_id" not in cols:
+        conn.execute("ALTER TABLE knowledge_items RENAME COLUMN lens TO chatbot_id")
+
+
 class KnowledgeStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._mu = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migrate_v2})
+        init_schema(
+            self._conn, _SCHEMA, version=3,
+            migrations={2: _migrate_v2, 3: _migrate_v3},
+        )
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).strftime(_TS_FMT)
@@ -88,7 +99,7 @@ class KnowledgeStore:
         sensitivity: str = "normal", source: str = "manual",
         source_ref: str | None = None, confidence: float = 1.0,
         status: str = "approved", valid_from: str | None = None,
-        valid_until: str | None = None, lens: str | None = None,
+        valid_until: str | None = None, chatbot_id: str | None = None,
     ) -> int:
         now = self._now()
         blob = vec_to_blob(embedding) if embedding else None
@@ -97,11 +108,11 @@ class KnowledgeStore:
                 "INSERT INTO knowledge_items"
                 "(kind, owner, title, content, data, amount, due_date, category,"
                 " embedding, sensitivity, source, source_ref, confidence, status,"
-                " valid_from, valid_until, created_at, updated_at, lens)"
+                " valid_from, valid_until, created_at, updated_at, chatbot_id)"
                 " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (kind, owner, title, content, json.dumps(data or {}), amount,
                  due_date, category, blob, sensitivity, source, source_ref,
-                 confidence, status, valid_from, valid_until, now, now, lens),
+                 confidence, status, valid_from, valid_until, now, now, chatbot_id),
             )
             self._conn.commit()
             return cur.lastrowid or 0
@@ -199,7 +210,7 @@ class KnowledgeStore:
 
     def search(
         self, *, query_vec: list[float], k: int = 5,
-        owner: str | None = None, lens: str | None = None,
+        owner: str | None = None, chatbot_id: str | None = None,
         allow_sensitive: bool = False,
         kinds: list[str] | str | None = None,
     ) -> list[dict]:
@@ -208,26 +219,29 @@ class KnowledgeStore:
         if owner is not None:
             # Unified scope (Slice 3): a row must always be scoped to this
             # owner (or shared as 'home') -- the owner check applies whether
-            # or not the row carries a lens. On top of that, lens rows are
-            # further restricted to the caller's own lens (or knowledge rows
-            # with no lens at all). This prevents two different HA users
-            # chatting with the SAME agent (same lens) from seeing each
-            # other's save_memory items: owner is no longer ignored just
-            # because lens matched. With lens=None this reduces to the
-            # pre-Slice3 filter `(owner=? OR owner='home')` restricted to
-            # un-lensed (knowledge) rows, preserving backward compatibility.
+            # or not the row carries a chatbot_id. On top of that, chatbot_id
+            # rows are further restricted to the caller's own chatbot_id (or
+            # knowledge rows with no chatbot_id at all). This prevents two
+            # different HA users chatting with the SAME chatbot (same
+            # chatbot_id) from seeing each other's save_memory items: owner
+            # is no longer ignored just because chatbot_id matched. With
+            # chatbot_id=None this reduces to the pre-Slice3 filter
+            # `(owner=? OR owner='home')` restricted to un-scoped (knowledge)
+            # rows, preserving backward compatibility.
             clauses.append(
-                "(owner = :owner OR owner = 'home') AND (lens = :lens OR lens IS NULL)"
+                "(owner = :owner OR owner = 'home') AND"
+                " (chatbot_id = :chatbot_id OR chatbot_id IS NULL)"
             )
-            bind["lens"] = lens
+            bind["chatbot_id"] = chatbot_id
             bind["owner"] = owner
-        elif lens is not None:
-            # No owner passed but a lens was: don't fail open and expose all
-            # lens memory across owners -- still scope by lens (or knowledge
-            # rows with no lens). Current production callers always pass
-            # owner alongside lens; this branch only guards future callers.
-            clauses.append("(lens = :lens OR lens IS NULL)")
-            bind["lens"] = lens
+        elif chatbot_id is not None:
+            # No owner passed but a chatbot_id was: don't fail open and
+            # expose all chatbot memory across owners -- still scope by
+            # chatbot_id (or knowledge rows with no chatbot_id). Current
+            # production callers always pass owner alongside chatbot_id;
+            # this branch only guards future callers.
+            clauses.append("(chatbot_id = :chatbot_id OR chatbot_id IS NULL)")
+            bind["chatbot_id"] = chatbot_id
         if not allow_sensitive:
             clauses.append("sensitivity='normal'")
         if isinstance(kinds, str):
@@ -384,27 +398,28 @@ class KnowledgeStore:
                         "sensitivity": r["sensitivity"], "score": sim})
         return out
 
-    def delete_by_lens(self, lens: str) -> int:
-        """Delete every row scoped to this lens (an agent's own working
-        memory), regardless of expiry. Used when an agent is deleted, to
+    def delete_by_chatbot(self, chatbot_id: str) -> int:
+        """Delete every row scoped to this chatbot (a chatbot's own working
+        memory), regardless of expiry. Used when a chatbot is deleted, to
         clean up its orphaned memory -- the KnowledgeStore equivalent of the
         legacy MemoryStore.delete_by_agent (Slice 3 Task 4)."""
         with self._mu:
             cur = self._conn.execute(
-                "DELETE FROM knowledge_items WHERE lens = ?", (lens,),
+                "DELETE FROM knowledge_items WHERE chatbot_id = ?", (chatbot_id,),
             )
             self._conn.commit()
             return cur.rowcount
 
-    def purge_expired_lens(self) -> int:
-        """Delete lens-scoped rows (per-agent working memory) whose retention
-        has elapsed. Rows with lens IS NULL (shared knowledge) or with no
-        valid_until (no retention set) are never touched here."""
+    def purge_expired_chatbot(self) -> int:
+        """Delete chatbot-scoped rows (per-chatbot working memory) whose
+        retention has elapsed. Rows with chatbot_id IS NULL (shared
+        knowledge) or with no valid_until (no retention set) are never
+        touched here."""
         now = self._now()
         with self._mu:
             cur = self._conn.execute(
                 "DELETE FROM knowledge_items"
-                " WHERE lens IS NOT NULL AND valid_until IS NOT NULL AND valid_until < ?",
+                " WHERE chatbot_id IS NOT NULL AND valid_until IS NOT NULL AND valid_until < ?",
                 (now,),
             )
             self._conn.commit()

@@ -321,6 +321,9 @@ async def execute_pending(app: web.Application, entry: dict) -> object:
     return await dispatcher.dispatch(
         entry["tool"], inputs,
         allowed_services=allowed_services, allowed_entities=None,
-        agent_id=entry.get("origin", "mcp-gateway"), cloud=True,
+        # dispatcher.dispatch's kwarg is chatbot_id (Task 6 rename) but the
+        # VALUE here is a request-origin label ("mcp-gateway"), not a
+        # Chatbot id -- intentionally frozen.
+        chatbot_id=entry.get("origin", "mcp-gateway"), cloud=True,
         tier_confirmed=True,
     )

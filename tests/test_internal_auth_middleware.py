@@ -2,7 +2,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 from hiris.app.server import create_app
-from hiris.app.agent_engine import AgentEngine
+from hiris.app.chatbot_engine import ChatbotEngine
 from hiris.app.chat_store import close_all_stores
 
 
@@ -19,7 +19,7 @@ def _make_app(tmp_path, token, cidrs=None):
     mock_ha.stop = AsyncMock()
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
-    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
     app["ha_client"] = mock_ha

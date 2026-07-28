@@ -1,7 +1,7 @@
 /* HIRIS · Designer · agent editor mount (long-form, Phase 4.2)
    Mount delle 8 section-card di un editor Persona (Task 4/Slice 5 rimosse
    Tipo/Trigger da Identità e l'intera section-card Azioni) e bridge alla
-   logica legacy in agent-form.js. */
+   logica legacy in chatbot-form.js. */
 (function() {
   /* Cache-bust automatico per i 7 legacy script dynamic-loaded via loadScript().
      Il backend (_inject_version in server.py, via _ASSET_REF_RE/_asset_fingerprint)
@@ -9,7 +9,7 @@
      serve config.html — lo leggiamo qui (nessuna chiamata di rete aggiuntiva,
      solo lettura sincrona di document.currentScript.src) e lo riusiamo per
      bustare la cache dei legacy script iniettati lato client. Così il bust
-     cambia automaticamente ogni volta che agent-editor.js viene modificato,
+     cambia automaticamente ogni volta che chatbot-editor.js viene modificato,
      senza bump manuale.
      Limite noto: l'hash è quello di QUESTO file, non dei singoli LEGACY_SCRIPTS
      (che non passano da _inject_version perché iniettati via JS, non presenti
@@ -21,7 +21,7 @@
   var V6_CACHE_BUST = (function() {
     try {
       var selfScript = document.currentScript ||
-        document.querySelector('script[src*="agent-editor.js"]');
+        document.querySelector('script[src*="chatbot-editor.js"]');
       if (selfScript && selfScript.src) {
         var m = /[?&]v=([^&]+)/.exec(selfScript.src);
         if (m && m[1]) return decodeURIComponent(m[1]);
@@ -42,7 +42,7 @@
     'static/config/logs.js',
     'static/config/usage.js',
     'static/config/proposals.js',
-    'static/config/agent-form.js',
+    'static/config/chatbot-form.js',
   ];
 
   function loadScript(src) {
@@ -75,7 +75,7 @@
       '<div class="field-group">' +
         '<div class="fg-label">Identità</div>' +
         '<div class="field-row">' +
-          '<div class="field"><label for="f-name">Nome</label><input class="input" type="text" id="f-name" placeholder="Es: Monitor energia"></div>' +
+          '<div class="field"><label for="f-name">Nome</label><input class="input" type="text" id="f-name" placeholder="Es: Assistente Cucina"></div>' +
         '</div>' +
       '</div>';
   }
@@ -164,7 +164,7 @@
   function populateStato() {
     document.getElementById('sc-body-stato').innerHTML =
       '<label class="checkbox-row"><input type="checkbox" id="f-enabled"> Chatbot abilitato</label>' +
-      '<p class="field-hint">Disabilitato = non gira automaticamente, ma può essere lanciato con Test Run.</p>' +
+      '<p class="field-hint">Controlla solo lo stato dell\'entità switch Home Assistant di questo Chatbot; puoi comunque verificarlo con Test Run indipendentemente da questo interruttore.</p>' +
       '<label class="checkbox-row"><input type="checkbox" id="f-require-confirmation"> Richiedi conferma prima delle azioni</label>' +
       '<p class="field-hint">Attende "sì/ok" prima di chiamare call_ha_service.</p>';
   }
@@ -208,7 +208,7 @@
          Click <a href="#sec-X"> nativo cambia URL hash → router fires
          hashchange → no route matched → service worker HA Ingress prova
          fetch del nuovo URL e fallisce ("Uncaught (in promise) Object").
-         Più: history pollution + remount loop quando user torna su #/agents/<id>. */
+         Più: history pollution + remount loop quando user torna su #/chatbots/<id>. */
       l.addEventListener('click', function(e) {
         e.preventDefault();
         var targetId = l.getAttribute('href').slice(1);
@@ -267,7 +267,7 @@
     });
     btnCancel.addEventListener('click', function() {
       if (HirisState.get('unsaved') && !confirm('Annullare le modifiche non salvate?')) return;
-      window.location.hash = '#/agents';
+      window.location.hash = '#/chatbots';
     });
     btnTestRun.addEventListener('click', function() {
       if (typeof runAgent === 'function') {
@@ -289,7 +289,7 @@
     btnDelete.style.display = agentId ? '' : 'none';
   }
 
-  /* Compatibility shims for legacy agent-form.js & friends — they touch DOM IDs
+  /* Compatibility shims for legacy chatbot-form.js & friends — they touch DOM IDs
      of the old config.html markup that don't exist in v6 long-form. We create
      hidden stubs so .style/.textContent/.innerHTML/.classList accesses don't
      throw. Also provide no-op stubs for missing global functions (resetToFirstTab
@@ -310,10 +310,10 @@
        quel ID (legacy markup); il vero pulsante v6 è #btn-delete e la sua
        visibility è gestita da setupStickyActions + resolveAgent then-block. */
     var stubIds = [
-      'no-selection',     /* agent-form.js openAgent legacy compat */
-      'form',             /* agent-form.js openAgent legacy compat */
-      'form-title',       /* agent-form.js openAgent legacy compat */
-      'delete-btn',       /* agent-form.js openAgent is_default check (legacy) */
+      'no-selection',     /* chatbot-form.js openAgent legacy compat */
+      'form',             /* chatbot-form.js openAgent legacy compat */
+      'form-title',       /* chatbot-form.js openAgent legacy compat */
+      'delete-btn',       /* chatbot-form.js openAgent is_default check (legacy) */
       'usage-reset-btn',  /* usage.js IIFE — id legacy global panel rimosso in v6 */
     ];
     stubIds.forEach(function(id) {
@@ -419,9 +419,9 @@
     var ur = document.getElementById('u-ag-reset-btn');
     if (ur) ur.onclick = function() {
       if (typeof window === 'undefined' || !window.HirisState) return;
-      var aid = HirisState.get('activeAgentId');
+      var aid = HirisState.get('activeChatbotId');
       if (!aid || !confirm('Azzerare i contatori di questo Chatbot?')) return;
-      fetch('api/agents/' + encodeURIComponent(aid) + '/usage/reset', {
+      fetch('api/chatbots/' + encodeURIComponent(aid) + '/usage/reset', {
         method: 'POST', headers: { 'X-Requested-With': 'fetch' }
       }).then(function(r) {
         if (r.ok && typeof loadAgentUsage === 'function') loadAgentUsage(aid);
@@ -429,11 +429,11 @@
     };
     var ut = document.getElementById('u-ag-toggle-btn');
     if (ut) ut.onclick = function() {
-      var aid = HirisState.get('activeAgentId');
+      var aid = HirisState.get('activeChatbotId');
       if (!aid) return;
       var enabledNow = document.getElementById('f-enabled').checked;
       var newVal = !enabledNow;
-      fetch('api/agents/' + encodeURIComponent(aid), {
+      fetch('api/chatbots/' + encodeURIComponent(aid), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
         body: JSON.stringify({ enabled: newVal })
@@ -449,13 +449,13 @@
        tolto dal markup in populateConsumi(), il backend scarta quel campo. */
   }
 
-  /* Init form for "Nuovo agente" (was in agent-form.js #new-btn IIFE handler).
+  /* Init form for "Nuovo agente" (was in chatbot-form.js #new-btn IIFE handler).
      Replicates the reset sequence: clear fields + load empty persona state.
      Task 4 (Slice 5): rimossi i reset di triggers/actions/stati/action-mode/
      tipo/confirm-free/budget — tutti campi ritirati insieme alla macchina
      action/rules/states (Task 1-3) e al tab Azioni (questo task). */
   function initNewAgent() {
-    /* agent-form.js currentId — reset */
+    /* chatbot-form.js currentId — reset */
     if (typeof window !== 'undefined') window.currentId = null;
     if (typeof _entitySelectorLoad === 'function') _entitySelectorLoad([]);
     if (typeof buildToolChecks === 'function') buildToolChecks([]);
@@ -486,7 +486,7 @@
     if (ro) { ro.style.display = 'none'; ro.textContent = ''; ro.className = ''; }
   }
 
-  /* Save / Run / Delete globals — agent-form.js bind these via IIFE on save-btn/
+  /* Save / Run / Delete globals — chatbot-form.js bind these via IIFE on save-btn/
      run-btn/delete-btn (ID legacy non più presenti in v6), e i suoi binding NON
      vengono mai eseguiti per il TypeError IIFE. setupStickyActions cerca le
      callback come typeof === 'function' → senza queste rimangono no-op. */
@@ -496,9 +496,9 @@
       return Promise.reject(new Error('buildPayload missing'));
     }
     var payload = buildPayload();
-    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeAgentId');
+    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeChatbotId');
     var method = cid ? 'PUT' : 'POST';
-    var url = cid ? ('api/agents/' + encodeURIComponent(cid)) : 'api/agents';
+    var url = cid ? ('api/chatbots/' + encodeURIComponent(cid)) : 'api/chatbots';
     return fetch(url, {
       method: method,
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
@@ -512,11 +512,11 @@
       }
       return r.json();
     }).then(function(a) {
-      if (typeof loadAgents === 'function') {
-        return loadAgents().then(function() {
+      if (typeof loadChatbots === 'function') {
+        return loadChatbots().then(function() {
           if (typeof openAgent === 'function') openAgent(a);
           /* If new agent: navigate to its detail route */
-          if (!cid && a.id) window.location.hash = '#/agents/' + encodeURIComponent(a.id);
+          if (!cid && a.id) window.location.hash = '#/chatbots/' + encodeURIComponent(a.id);
           return a;
         });
       }
@@ -532,7 +532,7 @@
       console.warn('runAgent già in flight — click ignorato');
       return Promise.resolve();
     }
-    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeAgentId');
+    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeChatbotId');
     if (!cid) {
       console.warn('runAgent: nessun agentId attivo');
       return Promise.resolve();
@@ -599,7 +599,7 @@
       if (banner) banner.remove();
     }
 
-    return fetch('api/agents/' + encodeURIComponent(cid) + '/run', {
+    return fetch('api/chatbots/' + encodeURIComponent(cid) + '/run', {
       method: 'POST', headers: { 'X-Requested-With': 'fetch' }, signal: ctrl.signal,
     }).then(function(r) {
       return r.json();
@@ -624,7 +624,7 @@
         }
       }
       /* Refresh log + usage after run */
-      fetch('api/agents/' + encodeURIComponent(cid)).then(function(r){return r.ok?r.json():null;}).then(function(a){
+      fetch('api/chatbots/' + encodeURIComponent(cid)).then(function(r){return r.ok?r.json():null;}).then(function(a){
         if (a && typeof renderExecutionLog === 'function') renderExecutionLog(a);
         if (a && typeof loadAgentUsage === 'function') loadAgentUsage(cid);
       }).catch(function(){});
@@ -642,10 +642,10 @@
   };
 
   window.deleteAgent = function() {
-    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeAgentId');
+    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeChatbotId');
     if (!cid) return;
     if (!confirm('Eliminare questo Chatbot?')) return;
-    return fetch('api/agents/' + encodeURIComponent(cid), {
+    return fetch('api/chatbots/' + encodeURIComponent(cid), {
       method: 'DELETE', headers: { 'X-Requested-With': 'fetch' }
     }).then(function(r) {
       if (!r.ok && r.status !== 204) {
@@ -655,28 +655,28 @@
         });
       }
       window.currentId = null;
-      if (typeof loadAgents === 'function') loadAgents();
-      window.location.hash = '#/agents';
+      if (typeof loadChatbots === 'function') loadChatbots();
+      window.location.hash = '#/chatbots';
     });
   };
 
   /* Resolve an agentId to a full agent object via the API. The legacy openAgent()
-     in agent-form.js expects the full object, not just an id. */
+     in chatbot-form.js expects the full object, not just an id. */
   function resolveAgent(agentId) {
     /* Try cached list from HirisState first */
-    var cached = HirisState.get('agents');
+    var cached = HirisState.get('chatbots');
     if (cached && cached.length) {
       var hit = cached.filter(function(a) { return a.id === agentId; })[0];
       if (hit) return Promise.resolve(hit);
     }
     /* Fallback: fetch full list and find */
-    return fetch('api/agents')
+    return fetch('api/chatbots')
       .then(function(r) { return r.ok ? r.json() : []; })
       .then(function(d) {
         var list = Array.isArray(d) ? d : (d.agents || []);
-        HirisState.set('agents', list);
+        HirisState.set('chatbots', list);
         /* Also populate legacy global so renderList etc work */
-        if (typeof window !== 'undefined') window.agents = list;
+        if (typeof window !== 'undefined') window.chatbots = list;
         var found = list.filter(function(a) { return a.id === agentId; })[0];
         if (!found) throw new Error('Chatbot non trovato: ' + agentId);
         return found;
@@ -699,7 +699,7 @@
   }
 
   function mount(agentId) {
-    console.log('[HirisAgentEditor] mount v' + V6_CACHE_BUST + ' agentId=' + agentId);
+    console.log('[HirisChatbotEditor] mount v' + V6_CACHE_BUST + ' agentId=' + agentId);
     var outlet = document.getElementById('route-outlet');
     if (!outlet) {
       console.error('route-outlet element missing — config.html broken');
@@ -754,7 +754,7 @@
         step('initNewAgent', initNewAgent);
       }
     }).catch(function(e) {
-      console.error('[HirisAgentEditor] mount failed:', e);
+      console.error('[HirisChatbotEditor] mount failed:', e);
       var outlet2 = document.getElementById('route-outlet');
       if (outlet2) {
         var msg = (e && e.message) ? e.message : String(e);
@@ -776,5 +776,5 @@
     });
   }
 
-  window.HirisAgentEditor = { mount: mount };
+  window.HirisChatbotEditor = { mount: mount };
 })();

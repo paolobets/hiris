@@ -14,10 +14,10 @@ import uvicorn
 from aiohttp import web
 from apscheduler.triggers.cron import CronTrigger
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
-from .api.handlers_agents import (
-    handle_list_agents, handle_create_agent, handle_get_agent,
-    handle_update_agent, handle_delete_agent, handle_run_agent,
-    handle_get_agent_usage, handle_reset_agent_usage,
+from .api.handlers_chatbots import (
+    handle_list_chatbots, handle_create_chatbot, handle_get_chatbot,
+    handle_update_chatbot, handle_delete_chatbot, handle_run_chatbot,
+    handle_get_chatbot_usage, handle_reset_chatbot_usage,
     handle_context_preview,
 )
 from .api.handlers_entities import handle_list_entities
@@ -41,7 +41,7 @@ from .api.handlers_knowledge import (
 from .api.handlers_gateway_pending import verify_otp, execute_pending, resolve_pending
 from .proxy.health_monitor import HealthMonitor
 from .proxy.proposal_store import ProposalStore
-from .agent_engine import AgentEngine
+from .chatbot_engine import ChatbotEngine
 from .task_engine import TaskEngine
 from .version import read_version
 from .proxy.ha_client import HAClient
@@ -62,9 +62,9 @@ from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
 from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 from .watcher.detectors import make_generic_detector
-from .watcher.lenses import load_lenses as _load_scheduled_lenses
+from .watcher.lenses import load_agentbots as _load_scheduled_agentbots
 # to_apscheduler_crontab moved to watcher/lenses.py (review L/1) so
-# validate_lens() can reuse the exact same translation to reject a
+# validate_agentbot() can reuse the exact same translation to reject a
 # shape-valid-but-value-invalid cron (e.g. hour=99) AT CREATION time,
 # instead of only failing later, silently, here at registration.
 from .watcher.lenses import to_apscheduler_crontab as _to_apscheduler_crontab
@@ -434,16 +434,17 @@ async def request_confirmation_stepup(
 
 
 # ---------------------------------------------------------------------------
-# Slice 5b Task 5: SCHEDULED (cron/interval) user lenses -- per-lens jobs on
-# `engine._scheduler`, the SAME AsyncIOScheduler instance the built-in
-# ronda/reset/due-reminders jobs use (verified: `_on_startup` never creates a
-# second scheduler). Module-level (same rationale as
-# confirm_pending_execute/request_confirmation_stepup above) so tests can
-# drive `register_lens_schedules` against a fake scheduler + fake
-# entity_cache without booting the whole aiohttp app.
+# Slice 5b Task 5: SCHEDULED (cron/interval) user Agentbots (renamed from
+# "lens" in SP-4 Fase A Task 3) -- per-Agentbot jobs on `engine._scheduler`,
+# the SAME AsyncIOScheduler instance the built-in ronda/reset/due-reminders
+# jobs use (verified: `_on_startup` never creates a second scheduler).
+# Module-level (same rationale as confirm_pending_execute/
+# request_confirmation_stepup above) so tests can drive
+# `register_agentbot_schedules` against a fake scheduler + fake entity_cache
+# without booting the whole aiohttp app.
 # ---------------------------------------------------------------------------
 
-_LENS_JOB_PREFIX = "hiris_lens_"
+_AGENTBOT_JOB_PREFIX = "hiris_agentbot_"
 
 
 def _condition_holds(condition: dict | None, cache) -> bool:
@@ -455,15 +456,15 @@ def _condition_holds(condition: dict | None, cache) -> bool:
 
     Reuses `make_generic_detector` (Task 2) with a synthesized one-shot
     trigger dict so the exact same operator/threshold comparison applies
-    here as to a real event-triggered lens -- including the no-data guard
-    for "unavailable"/"unknown"/"" states and the numeric-vs-string
+    here as to a real event-triggered Agentbot -- including the no-data
+    guard for "unavailable"/"unknown"/"" states and the numeric-vs-string
     fallback for ==/!= -- rather than a second, driftable implementation of
     the same comparison.
 
     Fail-safe: missing cache, missing entity_id, an entity never seen by the
     cache, or the detector raising all resolve to False -- a conditioned
-    scheduled lens must never fire when its condition can't be positively
-    confirmed.
+    scheduled Agentbot must never fire when its condition can't be
+    positively confirmed.
     """
     if not condition:
         return True
@@ -475,7 +476,7 @@ def _condition_holds(condition: dict | None, cache) -> bool:
     try:
         state = cache.get_state(entity_id)
     except Exception:
-        logger.debug("register_lens_schedules: cache.get_state(%s) failed", entity_id, exc_info=True)
+        logger.debug("register_agentbot_schedules: cache.get_state(%s) failed", entity_id, exc_info=True)
         return False
     if state is None:
         return False
@@ -487,46 +488,50 @@ def _condition_holds(condition: dict | None, cache) -> bool:
     try:
         sig = detector(entity_id, None, state, {}, time.time())
     except Exception:
-        logger.debug("register_lens_schedules: condition detector failed for %s", entity_id, exc_info=True)
+        logger.debug("register_agentbot_schedules: condition detector failed for %s", entity_id, exc_info=True)
         return False
     return sig is not None
 
 
-async def _run_scheduled_lens(lens: dict, *, cache, run_lens) -> None:
-    """The per-lens job callback registered by `register_lens_schedules`.
-    Wrapped end-to-end in try/except (log + return) so one broken scheduled
-    lens (a condition entity that vanished, `run_lens` raising, ...) can
-    never take down the shared AsyncIOScheduler or any sibling job."""
-    lens_id = lens.get("id", "-")
+async def _run_scheduled_agentbot(agentbot: dict, *, cache, run_agentbot) -> None:
+    """The per-Agentbot job callback registered by
+    `register_agentbot_schedules`. Wrapped end-to-end in try/except (log +
+    return) so one broken scheduled Agentbot (a condition entity that
+    vanished, `run_agentbot` raising, ...) can never take down the shared
+    AsyncIOScheduler or any sibling job."""
+    agentbot_id = agentbot.get("id", "-")
     try:
-        trigger = lens.get("trigger") or {}
+        trigger = agentbot.get("trigger") or {}
         condition = trigger.get("condition")
         if condition and not _condition_holds(condition, cache):
             return
         entity_id = condition.get("entity_id", "-") if condition else "-"
-        # Task 5 review Fix 2: a scheduled lens's own interval/cron cadence
-        # IS its rate limiter -- bypass the ~30-min sentinel cooldown here
-        # (cooldown_sec=0) so e.g. an interval_min=5 lens isn't silently
-        # suppressed by it. `run_lens`'s daily_cap (an unrelated, unchanged
-        # safety net) and every other gate still apply unchanged.
-        await run_lens(lens, {"entity_id": entity_id}, cooldown_sec=0)
+        # Task 5 review Fix 2: a scheduled Agentbot's own interval/cron
+        # cadence IS its rate limiter -- bypass the ~30-min sentinel
+        # cooldown here (cooldown_sec=0) so e.g. an interval_min=5 Agentbot
+        # isn't silently suppressed by it. `run_agentbot`'s daily_cap (an
+        # unrelated, unchanged safety net) and every other gate still apply
+        # unchanged.
+        await run_agentbot(agentbot, {"entity_id": entity_id}, cooldown_sec=0)
     except Exception:
-        logger.exception("scheduled lens %s failed", lens_id)
+        logger.exception("scheduled agentbot %s failed", agentbot_id)
 
 
-async def register_lens_schedules(app: web.Application) -> None:
-    """(Re)register per-lens scheduler jobs for every enabled,
-    SCHEDULE-triggered user lens (Slice 5b Task 5), and remove any
-    `hiris_lens_*` job whose lens no longer exists, is disabled, or is no
-    longer schedule-triggered. Idempotent -- safe to call at startup and
-    again after every lens save (Task 6, via `app["register_lens_schedules"]`).
+async def register_agentbot_schedules(app: web.Application) -> None:
+    """(Re)register per-Agentbot scheduler jobs for every enabled,
+    SCHEDULE-triggered user Agentbot (Slice 5b Task 5), and remove any
+    `hiris_agentbot_*` job whose Agentbot no longer exists, is disabled, or
+    is no longer schedule-triggered. Idempotent -- safe to call at startup
+    and again after every Agentbot save (Task 6, via
+    `app["register_agentbot_schedules"]`).
 
     Reads `engine._scheduler` (the SAME scheduler instance the built-in
-    ronda/reset jobs use), `data_dir` (to reload the current lens set) and
-    `entity_cache` (for the schedule trigger's optional `condition`, checked
-    at fire time by `_run_scheduled_lens`/`_condition_holds`) straight off
-    `app`, mirroring `confirm_pending_execute`'s "module-level, reads from
-    app, testable without booting `_on_startup`" shape.
+    ronda/reset jobs use), `data_dir` (to reload the current Agentbot set)
+    and `entity_cache` (for the schedule trigger's optional `condition`,
+    checked at fire time by `_run_scheduled_agentbot`/`_condition_holds`)
+    straight off `app`, mirroring `confirm_pending_execute`'s
+    "module-level, reads from app, testable without booting `_on_startup`"
+    shape.
     """
     engine = app.get("engine")
     scheduler = getattr(engine, "_scheduler", None)
@@ -534,62 +539,64 @@ async def register_lens_schedules(app: web.Application) -> None:
         return
 
     data_dir = app.get("data_dir")
-    lenses = _load_scheduled_lenses(data_dir) if data_dir else []
+    agentbots = _load_scheduled_agentbots(data_dir) if data_dir else []
     scheduled = {
-        l["id"]: l for l in lenses
-        if l.get("enabled") and (l.get("trigger") or {}).get("type") == "schedule"
+        a["id"]: a for a in agentbots
+        if a.get("enabled") and (a.get("trigger") or {}).get("type") == "schedule"
     }
 
-    # Remove orphaned jobs: a lens that was deleted, disabled, or switched
-    # away from a schedule trigger since the last registration. Enumeration
-    # pattern mirrors `agent_engine.py:350-353`'s `_unschedule_agent`.
+    # Remove orphaned jobs: an Agentbot that was deleted, disabled, or
+    # switched away from a schedule trigger since the last registration.
+    # Enumeration pattern mirrors `chatbot_engine.py`'s `_unschedule_chatbot`.
     for job in list(scheduler.get_jobs()):
-        if not job.id.startswith(_LENS_JOB_PREFIX):
+        if not job.id.startswith(_AGENTBOT_JOB_PREFIX):
             continue
-        lens_id = job.id[len(_LENS_JOB_PREFIX):]
-        if lens_id not in scheduled:
+        agentbot_id = job.id[len(_AGENTBOT_JOB_PREFIX):]
+        if agentbot_id not in scheduled:
             try:
                 scheduler.remove_job(job.id)
             except Exception:
-                logger.debug("register_lens_schedules: remove_job(%s) failed", job.id, exc_info=True)
+                logger.debug("register_agentbot_schedules: remove_job(%s) failed", job.id, exc_info=True)
 
     cache = app.get("entity_cache")
-    run_lens = app.get("run_lens")
+    run_agentbot = app.get("run_agentbot")
 
-    def _make_callback(lens: dict):
-        # Bind `lens` via this factory's own parameter (a fresh scope per
-        # call) rather than closing directly over the loop variable below,
-        # which would otherwise let every job share the LAST lens iterated.
+    def _make_callback(agentbot: dict):
+        # Bind `agentbot` via this factory's own parameter (a fresh scope
+        # per call) rather than closing directly over the loop variable
+        # below, which would otherwise let every job share the LAST
+        # agentbot iterated.
         async def _cb() -> None:
-            await _run_scheduled_lens(lens, cache=cache, run_lens=run_lens)
+            await _run_scheduled_agentbot(agentbot, cache=cache, run_agentbot=run_agentbot)
         return _cb
 
-    for lens_id, lens in scheduled.items():
-        trigger = lens.get("trigger") or {}
-        job_id = f"{_LENS_JOB_PREFIX}{lens_id}"
+    for agentbot_id, agentbot in scheduled.items():
+        trigger = agentbot.get("trigger") or {}
+        job_id = f"{_AGENTBOT_JOB_PREFIX}{agentbot_id}"
         cron = trigger.get("cron")
         interval_min = trigger.get("interval_min")
         try:
             if cron:
                 trigger = CronTrigger.from_crontab(_to_apscheduler_crontab(cron))
                 scheduler.add_job(
-                    _make_callback(lens), trigger=trigger, id=job_id,
+                    _make_callback(agentbot), trigger=trigger, id=job_id,
                     replace_existing=True, misfire_grace_time=3600)
             elif interval_min:
                 scheduler.add_job(
-                    _make_callback(lens), trigger="interval", minutes=interval_min,
+                    _make_callback(agentbot), trigger="interval", minutes=interval_min,
                     id=job_id, replace_existing=True, misfire_grace_time=3600)
             else:
                 # Neither cron nor interval_min -- shouldn't happen for a
-                # store-validated lens (XOR enforced at validation time),
-                # but skip defensively rather than register a no-op job.
+                # store-validated Agentbot (XOR enforced at validation
+                # time), but skip defensively rather than register a no-op
+                # job.
                 continue
         except Exception:
             # A shape-valid but value-invalid cron (e.g. hour=99) surfaces
             # here as APScheduler's own ValueError at add_job time -- one
-            # broken lens's schedule must never crash registration for the
-            # rest.
-            logger.warning("register_lens_schedules: failed to schedule lens %s, skipping", lens_id, exc_info=True)
+            # broken Agentbot's schedule must never crash registration for
+            # the rest.
+            logger.warning("register_agentbot_schedules: failed to schedule agentbot %s, skipping", agentbot_id, exc_info=True)
             continue
 
 
@@ -871,7 +878,7 @@ async def _on_startup(app: web.Application) -> None:
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
 
-    data_path = os.environ.get("AGENTS_DATA_PATH", "/data/agents.json")
+    data_path = os.environ.get("CHATBOTS_DATA_PATH", "/data/chatbots.json")
     data_dir = os.path.dirname(os.path.abspath(data_path))
     app["data_dir"] = data_dir
     # SP-2 Task 4: models-config store (chain_order + brain_model), letta prima
@@ -899,7 +906,7 @@ async def _on_startup(app: web.Application) -> None:
     app["semantic_map"] = semantic_map
     ha_client.add_registry_listener(semantic_map.on_entity_added)
 
-    engine = AgentEngine(ha_client=ha_client, data_path=data_path)
+    engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)
     await engine.start()
     app["engine"] = engine
@@ -965,6 +972,39 @@ async def _on_startup(app: web.Application) -> None:
     )
     app["mqtt_publisher"] = mqtt_pub
     engine.set_mqtt_publisher(mqtt_pub)
+
+    # SP-4 Fase A Task 1: one-time removal of HA entities discovered under
+    # the pre-rename MQTT scheme (hiris_<id> / hiris/agents) for chatbots
+    # already loaded from disk — guarded by a marker file so it only runs
+    # once per install, before anything republishes discovery under the new
+    # chatbot_<id> / hiris/chatbots scheme.
+    _mqtt_migration_marker = os.path.join(data_dir, ".mqtt_discovery_migrated")
+    if mqtt_pub._enabled and not os.path.exists(_mqtt_migration_marker):
+        try:
+            await mqtt_pub.cleanup_legacy_discovery(
+                list(engine.list_chatbots().keys()),
+                list(mqtt_pub._DISCOVERY_METRICS),
+            )
+            # The marker must only be written once the retraction publishes
+            # above have actually reached the broker, not merely been
+            # enqueued: if MQTT is unreachable at boot (HA host and add-ons
+            # routinely start together), writing the marker right after
+            # enqueueing would permanently skip the retraction, orphaning
+            # the old hiris_<id>_* entities in HA forever. Bounded wait so a
+            # genuinely-down broker doesn't hang startup; on timeout the
+            # marker is left absent so the next boot retries.
+            if await mqtt_pub.wait_drained(timeout=30.0):
+                os.makedirs(data_dir, exist_ok=True)
+                with open(_mqtt_migration_marker, "w", encoding="utf-8") as f:
+                    f.write(datetime.now(timezone.utc).isoformat())
+            else:
+                logger.warning(
+                    "MQTT legacy discovery cleanup: publish queue did not "
+                    "drain within 30s (broker unreachable?) — marker not "
+                    "written, retraction will retry on next boot"
+                )
+        except Exception as exc:
+            logger.warning("MQTT legacy discovery cleanup failed: %s", exc)
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
@@ -1074,9 +1114,9 @@ async def _on_startup(app: web.Application) -> None:
             n = _delete_old_messages(data_dir, HISTORY_RETENTION_DAYS)
             if n:
                 logger.info("Retention: deleted %d old chat messages", n)
-        n2 = knowledge_store.purge_expired_lens()
+        n2 = knowledge_store.purge_expired_chatbot()
         if n2:
-            logger.info("Retention: purged %d expired lens memories", n2)
+            logger.info("Retention: purged %d expired chatbot memories", n2)
 
     engine._scheduler.add_job(
         _run_retention,
@@ -1422,33 +1462,35 @@ async def _on_startup(app: web.Application) -> None:
             "verdict": getattr(decision, "verdict", None), "severity": wake.severity_hint,
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
-    # Slice 5b / Task 4: EVENT-triggered user lenses, dispatched by the SAME
-    # Guardian.on_state_changed alongside (not instead of) the built-in
-    # DETECTORS above. `get_user_lenses` reads the in-memory lens cache
-    # (Task 6, `handlers_lenses.set_lenses`/`get_event_lenses`) instead of
-    # re-reading+re-validating sentinel_lenses.json on every single
-    # state_changed event (Task 4 review finding). The cache is populated
-    # right here from the current disk contents, and refreshed after every
-    # CRUD mutation by the `/api/lenses` handlers -- so freshly-saved lenses
-    # are still live without a restart, just without the per-event disk hit.
-    from .watcher.lenses import load_lenses as _load_lenses
-    from .api.handlers_lenses import set_lenses as _set_lenses_cache
-    from .api.handlers_lenses import get_event_lenses as _get_event_lenses_cache
+    # Slice 5b / Task 4: EVENT-triggered user Agentbots (renamed from "lens"
+    # in SP-4 Fase A Task 3), dispatched by the SAME Guardian.on_state_changed
+    # alongside (not instead of) the built-in DETECTORS above.
+    # `get_user_agentbots` reads the in-memory Agentbot cache (Task 6,
+    # `handlers_agentbots.set_agentbots`/`get_event_agentbots` -- SP-4 Fase A
+    # Task 4 of the rename plan) instead of re-reading+re-validating
+    # agentbots.json on every single state_changed event (Task 4 review
+    # finding). The cache is populated right here from the current disk
+    # contents, and refreshed after every CRUD mutation by the
+    # `/api/agentbots` handlers -- so freshly-saved Agentbots are still
+    # live without a restart, just without the per-event disk hit.
+    from .watcher.lenses import load_agentbots as _load_agentbots
+    from .api.handlers_agentbots import set_agentbots as _set_agentbots_cache
+    from .api.handlers_agentbots import get_event_agentbots as _get_event_agentbots_cache
 
-    _set_lenses_cache(app, _load_lenses(data_dir))
+    _set_agentbots_cache(app, _load_agentbots(data_dir))
 
-    def _get_event_lenses() -> list:
-        return _get_event_lenses_cache(app)
+    def _get_event_agentbots() -> list:
+        return _get_event_agentbots_cache(app)
 
-    async def _dispatch_run_lens(lens: dict, evidence: dict) -> str:
-        return await app["run_lens"](lens, evidence)
+    async def _dispatch_run_agentbot(agentbot: dict, evidence: dict) -> str:
+        return await app["run_agentbot"](agentbot, evidence)
 
     guardian = Guardian(
         sentinel_store, lambda: load_policy(data_dir), _on_wake,
         cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
         daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")),
-        get_user_lenses=_get_event_lenses,
-        run_lens=_dispatch_run_lens)
+        get_user_agentbots=_get_event_agentbots,
+        run_agentbot=_dispatch_run_agentbot)
     guardian.set_policy(load_policy(data_dir))
     app["guardian"] = guardian
     ha_client.add_state_listener(
@@ -1486,21 +1528,23 @@ async def _on_startup(app: web.Application) -> None:
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
     async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
-        # Task 4B: `model` lets a per-lens `reasoning.model` (threaded in by
-        # `watcher/lens_runner.py`'s `_on_wake`) pick its OWN model for this
-        # single reason() call. Callers that don't pass it (the built-in
-        # situations path, `_on_situation`/holistic below -- Task 4's brain
-        # path, UNCHANGED) keep the "auto" default, exactly as before.
+        # Task 4B: `model` lets a per-Agentbot `reasoning.model` (threaded in
+        # by `watcher/lens_runner.py`'s `_on_wake`) pick its OWN model for
+        # this single reason() call. Callers that don't pass it (the
+        # built-in situations path, `_on_situation`/holistic below -- Task
+        # 4's brain path, UNCHANGED) keep the "auto" default, exactly as
+        # before.
         decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system, model=model)
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested  # target deterministico dalla config, non dall'LLM
         if force_notify_only:
-            # Task 3 review fix: a notify-type lens has `suggested is None`
-            # (lens_action() returns None for action.type=="notify"), so the
-            # guard above never fires and the LLM's OWN parsed action would
-            # otherwise survive onto the Decision. Force it back to None
-            # here, BEFORE execute() runs, so a notify lens can never
-            # actuate -- the AI still gets to pick verdict/severity/message.
+            # Task 3 review fix: a notify-type Agentbot has `suggested is
+            # None` (agentbot_action() returns None for
+            # action.type=="notify"), so the guard above never fires and the
+            # LLM's OWN parsed action would otherwise survive onto the
+            # Decision. Force it back to None here, BEFORE execute() runs,
+            # so a notify Agentbot can never actuate -- the AI still gets to
+            # pick verdict/severity/message.
             decision.action = None
         _ep = app.get("execute_policy") or {}
         outcome = await execute(
@@ -1513,23 +1557,26 @@ async def _on_startup(app: web.Application) -> None:
     async def _on_situation(wake, suggested):
         await _run_decision(wake, suggested, SENTINEL_SYSTEM)
 
-    # ── Lenti definite dall'utente (Slice 5b, Task 3): flusso condiviso ─────
-    # `_run_lens` è un thin wiring del vero flusso (in `watcher/lens_runner.py`,
-    # testabile in isolamento) sugli stessi adapter reali già usati sopra
-    # (sentinel_store, _run_decision, execute, _notify/_act/_propose,
-    # execute_policy) — nessun path di actuation nuovo: stesso semaforo,
-    # stesso allowed_tools=[] della reasoning (via _run_decision → reason →
-    # _llm_reason), stessa denylist domini pericolosi (via executor.execute).
-    from .watcher.lens_runner import run_lens as _run_lens_flow
+    # ── Agentbot definiti dall'utente (Slice 5b, Task 3; rinominati da
+    # "lenti" in SP-4 Fase A Task 3): flusso condiviso ─────────────────────
+    # `_run_agentbot` è un thin wiring del vero flusso (in
+    # `watcher/lens_runner.py`, testabile in isolamento) sugli stessi
+    # adapter reali già usati sopra (sentinel_store, _run_decision, execute,
+    # _notify/_act/_propose, execute_policy) — nessun path di actuation
+    # nuovo: stesso semaforo, stesso allowed_tools=[] della reasoning (via
+    # _run_decision → reason → _llm_reason), stessa denylist domini
+    # pericolosi (via executor.execute).
+    from .watcher.lens_runner import run_agentbot as _run_agentbot_flow
 
-    async def _run_lens(lens: dict, evidence: dict, *, cooldown_sec: int | None = None) -> str:
-        # Task 5 review Fix 2: `cooldown_sec` is None for every EVENT-lens
-        # caller (`_dispatch_run_lens` above never passes it), so behavior
-        # there is UNCHANGED -- the env-configured (default 1800s) cooldown
-        # still applies. `_run_scheduled_lens` (server.py, schedule-trigger
-        # callback) is the only caller that overrides it, with 0.
-        return await _run_lens_flow(
-            lens, evidence,
+    async def _run_agentbot(agentbot: dict, evidence: dict, *, cooldown_sec: int | None = None) -> str:
+        # Task 5 review Fix 2: `cooldown_sec` is None for every EVENT-Agentbot
+        # caller (`_dispatch_run_agentbot` above never passes it), so
+        # behavior there is UNCHANGED -- the env-configured (default 1800s)
+        # cooldown still applies. `_run_scheduled_agentbot` (server.py,
+        # schedule-trigger callback) is the only caller that overrides it,
+        # with 0.
+        return await _run_agentbot_flow(
+            agentbot, evidence,
             store=sentinel_store, run_decision=_run_decision, execute=execute,
             notify=_notify, act=_act, propose=_propose,
             get_execute_policy=lambda: app.get("execute_policy") or {},
@@ -1541,17 +1588,19 @@ async def _on_startup(app: web.Application) -> None:
             daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")),
         )
 
-    app["run_lens"] = _run_lens
+    app["run_agentbot"] = _run_agentbot
 
-    # ── Lenti definite dall'utente (Slice 5b, Task 5): trigger SCHEDULATO ───
-    # `register_lens_schedules` (module-level, above) reads `app["run_lens"]`
-    # (just bound) and `engine._scheduler` (already started, `engine.start()`
-    # ran earlier in this function) to (re)register a per-lens cron/interval
-    # job for every enabled schedule-type lens. Exposed on `app` so Task 6's
-    # CRUD handlers can re-invoke it after every lens save/delete without a
-    # server.py import (avoids a circular import back from api/handlers_*.py).
-    app["register_lens_schedules"] = register_lens_schedules
-    await register_lens_schedules(app)
+    # ── Agentbot definiti dall'utente (Slice 5b, Task 5): trigger
+    # SCHEDULATO ──────────────────────────────────────────────────────────
+    # `register_agentbot_schedules` (module-level, above) reads
+    # `app["run_agentbot"]` (just bound) and `engine._scheduler` (already
+    # started, `engine.start()` ran earlier in this function) to
+    # (re)register a per-Agentbot cron/interval job for every enabled
+    # schedule-type Agentbot. Exposed on `app` so Task 6's CRUD handlers can
+    # re-invoke it after every Agentbot save/delete without a server.py
+    # import (avoids a circular import back from api/handlers_*.py).
+    app["register_agentbot_schedules"] = register_agentbot_schedules
+    await register_agentbot_schedules(app)
 
     # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
     # runner remoto. execute_decision applica una Decisione GIA' PRESA dal
@@ -1599,13 +1648,13 @@ async def _on_startup(app: web.Application) -> None:
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
     # jobs — writes the runner's reply into chat_store instead of actuating
     # the house. chat_store has no separate "conversation_id"; a conversation
-    # IS an agent's active session, keyed by agent_id, so that's what the job
-    # context carries and what this receives.
+    # IS a chatbot's active session, keyed by chatbot_id, so that's what the
+    # job context carries and what this receives.
     from .chat_store import append_messages as _append_chat_messages
     from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
 
-    async def _submit_chat_reply(agent_id: str, reply_text: str) -> None:
-        if not agent_id or not reply_text:
+    async def _submit_chat_reply(chatbot_id: str, reply_text: str) -> None:
+        if not chatbot_id or not reply_text:
             return
         # Final-review Fix 3 (Slice 4b): mirror the sync path's two
         # persistence guards (handlers_chat.py, ~line 423) so a reply that
@@ -1633,7 +1682,7 @@ async def _on_startup(app: web.Application) -> None:
             # long ago) -- the poll route's chat_reply_skipped handling is
             # the user-facing side of this.
             return
-        _append_chat_messages(agent_id, [{"role": "assistant", "content": reply_text}], data_dir)
+        _append_chat_messages(chatbot_id, [{"role": "assistant", "content": reply_text}], data_dir)
     app["submit_chat_reply"] = _submit_chat_reply
 
     # Slice 4b Task 3: separate daily cap for chat-via-abbonamento, checked by
@@ -2150,20 +2199,20 @@ def create_app() -> web.Application:
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
-    app.router.add_get("/api/agents", handle_list_agents)
-    app.router.add_post("/api/agents", handle_create_agent)
-    app.router.add_get("/api/agents/{agent_id}", handle_get_agent)
-    app.router.add_put("/api/agents/{agent_id}", handle_update_agent)
-    app.router.add_delete("/api/agents/{agent_id}", handle_delete_agent)
-    app.router.add_post("/api/agents/{agent_id}/run", handle_run_agent)
+    app.router.add_get("/api/chatbots", handle_list_chatbots)
+    app.router.add_post("/api/chatbots", handle_create_chatbot)
+    app.router.add_get("/api/chatbots/{agent_id}", handle_get_chatbot)
+    app.router.add_put("/api/chatbots/{agent_id}", handle_update_chatbot)
+    app.router.add_delete("/api/chatbots/{agent_id}", handle_delete_chatbot)
+    app.router.add_post("/api/chatbots/{agent_id}/run", handle_run_chatbot)
     app.router.add_get("/api/entities", handle_list_entities)
     app.router.add_get("/api/suggestions", handle_list_suggestions)
     app.router.add_post("/api/suggestions/{id}/undo", handle_undo_suggestion)
-    app.router.add_get("/api/agents/{agent_id}/usage", handle_get_agent_usage)
-    app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
-    app.router.add_get("/api/agents/{agent_id}/context-preview", handle_context_preview)
-    app.router.add_get("/api/agents/{agent_id}/chat-history", handle_get_chat_history)
-    app.router.add_delete("/api/agents/{agent_id}/chat-history", handle_clear_chat_history)
+    app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
+    app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
+    app.router.add_get("/api/chatbots/{agent_id}/context-preview", handle_context_preview)
+    app.router.add_get("/api/chatbots/{agent_id}/chat-history", handle_get_chat_history)
+    app.router.add_delete("/api/chatbots/{agent_id}/chat-history", handle_clear_chat_history)
     app.router.add_get("/api/tasks", handle_list_tasks)
     app.router.add_get("/api/tasks/{task_id}", handle_get_task)
     app.router.add_delete("/api/tasks/{task_id}", handle_cancel_task)
@@ -2203,16 +2252,17 @@ def create_app() -> web.Application:
     app.router.add_post("/api/sentinel/policy", handle_save_sentinel_policy)
     app.router.add_get("/api/sentinel/timeline", handle_sentinel_timeline)
 
-    # Slice 5b Task 6: user-lens CRUD. Same app-level internal_auth_middleware
-    # + csrf_middleware protection as every other /api/* route above -- no
-    # per-route auth here, just registration under the same app.router.
-    from .api.handlers_lenses import (
-        handle_list_lenses, handle_create_lens, handle_update_lens, handle_delete_lens,
+    # Slice 5b Task 6: user-Agentbot CRUD (renamed from "lens" in SP-4 Fase A
+    # Task 4). Same app-level internal_auth_middleware + csrf_middleware
+    # protection as every other /api/* route above -- no per-route auth
+    # here, just registration under the same app.router.
+    from .api.handlers_agentbots import (
+        handle_list_agentbots, handle_create_agentbot, handle_update_agentbot, handle_delete_agentbot,
     )
-    app.router.add_get("/api/lenses", handle_list_lenses)
-    app.router.add_post("/api/lenses", handle_create_lens)
-    app.router.add_put("/api/lenses/{id}", handle_update_lens)
-    app.router.add_delete("/api/lenses/{id}", handle_delete_lens)
+    app.router.add_get("/api/agentbots", handle_list_agentbots)
+    app.router.add_post("/api/agentbots", handle_create_agentbot)
+    app.router.add_put("/api/agentbots/{id}", handle_update_agentbot)
+    app.router.add_delete("/api/agentbots/{id}", handle_delete_agentbot)
 
     from .api.handlers_gateway_pending import (
         handle_list_pending as _gw_list_pending,

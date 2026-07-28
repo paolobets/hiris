@@ -1,6 +1,6 @@
 # HIRIS — Technical Architecture
 
-> Version: 0.33.0 · Updated: 2026-07-24
+> Version: 0.102.0 · Updated: 2026-07-28
 
 ---
 
@@ -13,12 +13,12 @@ The system is structured in three logical layers:
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  PRESENTATION LAYER                                          │
-│  Static HTML/JS frontend (chat UI, agent designer)          │
+│  Static HTML/JS frontend (chat UI, Chatbot/Agentbot designer)│
 │  Lovelace custom card (hiris-chat-card)                     │
 └──────────────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────────────┐
 │  APPLICATION LAYER                                           │
-│  aiohttp REST API · Agent Engine · LLM Router               │
+│  aiohttp REST API · Chatbot Engine · LLM Router              │
 │  Tool Dispatcher · Task Engine · Semantic Map               │
 └──────────────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────────────┐
@@ -36,7 +36,7 @@ The system is structured in three logical layers:
 hiris/app/
 ├── server.py                    Application factory, startup/cleanup lifecycle
 ├── routes.py                    Route registration
-├── agent_engine.py              Persona store (CRUD, manual run) — no autonomous scheduling/actions
+├── chatbot_engine.py             Chatbot store (CRUD, manual run) — no autonomous scheduling/actions
 ├── claude_runner.py             Anthropic SDK agentic loop
 ├── llm_router.py                Backend routing, strategy, fallback chain
 ├── task_engine.py               Deferred task execution (delay/cron/time_window)
@@ -45,8 +45,9 @@ hiris/app/
 │
 ├── api/
 │   ├── handlers_chat.py         POST /api/chat, GET /api/chat/stream
-│   ├── handlers_chat_history.py GET/DELETE /api/chat/history/:agent_id
-│   ├── handlers_agents.py       CRUD /api/agents
+│   ├── handlers_chat_history.py GET/DELETE /api/chatbots/{id}/chat-history
+│   ├── handlers_chatbots.py     CRUD /api/chatbots
+│   ├── handlers_agentbots.py    CRUD /api/agentbots
 │   ├── handlers_usage.py        GET /api/usage, POST /api/usage/reset
 │   ├── handlers_status.py       GET /api/health, GET /api/status
 │   ├── handlers_models.py       GET /api/models (available backends)
@@ -86,14 +87,15 @@ hiris/app/
 │
 ├── brain/
 │   └── knowledge_store.py       Unified second brain (`knowledge.db`): personal/shared
-│                                 knowledge + per-agent "lens" working memory, vector search
+│                                 knowledge + per-Chatbot working memory (`chatbot_id`
+│                                 column), vector search
 │
-├── watcher/                     Sentinella — built-in proactive lenti (detectors/situations),
-│                                 reasoner, executor, semaforo gate (unchanged this slice)
+├── watcher/                     Sentinella — Agentbot engine (built-in detectors/situations
+│                                 + user-defined Agentbot), reasoner, executor, semaforo gate
 ├── mqtt_publisher.py            MQTT Discovery + state publish (outbound only — no command subscribe)
 └── static/
     ├── index.html               Chat UI
-    └── config.html              Agent designer UI
+    └── config.html              Chatbot/Agentbot designer UI
 ```
 
 ---
@@ -103,13 +105,14 @@ hiris/app/
 ```
 Browser / Lovelace card
         │
-        │  POST /api/chat  {message, agent_id, stream}
+        │  POST /api/chat  {message, chatbot_id, stream}
+        │  (legacy "agent_id" still accepted for retro-compat)
         ▼
 middleware_internal_auth.py
         │  validates X-HIRIS-Internal-Token (non-Ingress only)
         ▼
 handlers_chat.py
-        │  1. Load agent config from agents.json
+        │  1. Load Chatbot config from chatbots.json
         │  2. Load conversation history (ChatStore → SQLite)
         │  3. RAG: recall_memory(message, k=5) → inject as untrusted context
         │  4. Build system prompt layers
@@ -144,7 +147,7 @@ ClaudeRunner.chat()  or  OpenAICompatRunner.chat()
 handlers_chat.py
         │  6. Save turn to SQLite (atomic write)
         │  7. Update usage counters
-        │  8. Track per-agent token usage
+        │  8. Track per-Chatbot token usage
         ▼
 Response: {response, debug: {tools_called}}
   or SSE stream: data: {"type":"token","text":"..."}
@@ -155,13 +158,15 @@ Response: {response, debug: {tools_called}}
 
 ## Sentinella execution lifecycle (proactive layer)
 
-There is no autonomous "agent" anymore — no scheduler, no rules/states machine,
-no MQTT command channel. The only proactive layer is the **Sentinella**
-(`hiris/app/watcher/`, unchanged by this slice): a fixed set of built-in,
-tunable **lenti** (detectors/situations), each independently enabled with its
-own entity selector and thresholds in `sentinel_policy.json` (config UI:
-Sentinella page). User-defined lenti (custom triggers/prompts) are planned for
-a later version.
+The proactive layer is the **Sentinella** (`hiris/app/watcher/`): it runs both
+a fixed set of built-in, tunable detectors/situations (each independently
+enabled with its own entity selector and thresholds in `sentinel_policy.json`
+— config UI: Sentinella page) and user-defined **Agentbot** (`/api/agentbots`,
+persisted in `agentbots.json`) — autonomous entities that act or flag **on
+their own**, on their own trigger (cron/interval/event), with a verdict-JSON
+contract and no free tool use (security pillar). A Chatbot, by contrast, has
+no scheduling of its own — it only responds on demand (see "Request lifecycle
+— chat" above).
 
 ```
 watcher/
@@ -192,9 +197,6 @@ watcher/
                     └── act (only if the semaforo allows it) → ToolDispatcher
 ```
 
-Chat (Personas) is a separate, always-on-demand path — see "Request lifecycle
-— chat" above; it has no scheduling of its own.
-
 ---
 
 ## Data stores
@@ -205,7 +207,7 @@ Chat (Personas) is a separate, always-on-demand path — see "Request lifecycle
 -- Conversation sessions (gap detection: 2h inactivity = new session)
 CREATE TABLE chat_sessions (
     id TEXT PRIMARY KEY,
-    agent_id TEXT,
+    chatbot_id TEXT,
     started_at TEXT,
     last_message_at TEXT,
     message_count INTEGER,
@@ -216,25 +218,27 @@ CREATE TABLE chat_sessions (
 CREATE TABLE chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT,
-    agent_id TEXT,
+    chatbot_id TEXT,
     role TEXT,          -- 'user' | 'assistant'
     content TEXT,
     ts TEXT,
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
 );
 
+-- indexes idx_msg_chatbot(chatbot_id, timestamp) / idx_sess_chatbot(chatbot_id, last_msg_at)
+-- (renamed from idx_msg_agent/idx_sess_agent in SP-4 Fase A)
 ```
 
 ### SQLite — `/data/knowledge.db`
 
 Unified second brain: personal/shared knowledge (facts, expenses, obligations, notes, ...)
-**and** per-agent "lens" working memory (what used to be the separate `hiris_memory.db`)
-in a single table, distinguished by `kind` and scoped by `owner` + `lens`.
+**and** per-Chatbot working memory (what used to be the separate `hiris_memory.db`)
+in a single table, distinguished by `kind` and scoped by `owner` + `chatbot_id`.
 
 ```sql
 CREATE TABLE knowledge_items (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind         TEXT NOT NULL,       -- 'memory' = agent working memory; other kinds = knowledge
+    kind         TEXT NOT NULL,       -- 'memory' = Chatbot working memory; other kinds = knowledge
     owner        TEXT NOT NULL DEFAULT 'home',  -- HA user id, or 'home' for shared knowledge
     title        TEXT NOT NULL DEFAULT '',
     content      TEXT NOT NULL,
@@ -246,23 +250,25 @@ CREATE TABLE knowledge_items (
     valid_until  TEXT,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
-    lens         TEXT                          -- agent_id: scopes 'memory' rows to that agent
+    chatbot_id   TEXT                          -- scopes 'memory' rows to that Chatbot
+                                                -- (column renamed from `lens` in SP-4 Fase A)
 );
 ```
 
 `save_memory`/`recall_memory` read/write `kind='memory'` rows scoped by `owner`
-(who it belongs to) + `lens` (which agent wrote it) — private to each user's
-session with that agent. Similarity search uses pure Python cosine similarity
-— no native extensions required, Alpine/ARM compatible. Pre-existing per-agent
-memory is migrated once, automatically, into this table on first startup of
-this version.
+(who it belongs to) + `chatbot_id` (which Chatbot wrote it) — private to each
+user's session with that Chatbot. Similarity search uses pure Python cosine
+similarity — no native extensions required, Alpine/ARM compatible. Pre-existing
+per-Chatbot memory is migrated once, automatically, into this table on first
+startup of this version.
 
 ### JSON files — `/data/`
 
 | File | Schema |
 |---|---|
-| `agents.json` | `[{id, name, enabled, is_default, system_prompt, strategic_context, allowed_tools, allowed_entities, allowed_services, allowed_endpoints, restrict_to_home, knowledge_access, model, max_tokens, thinking_budget, response_mode, require_confirmation, max_chat_turns, last_run, last_result, execution_log, ...}]` (personas — no `type`/`triggers`/`action_mode`/`rules`/`states`/`budget_eur_limit`) |
-| `usage.json` | `{schema_version, total_input_tokens, total_output_tokens, total_requests, total_cost_usd, last_reset, per_agent: {agent_id: {...}}}` |
+| `chatbots.json` | `{schema_version: 4, chatbots: [{id, name, enabled, is_default, system_prompt, strategic_context, allowed_tools, allowed_entities, allowed_services, allowed_endpoints, restrict_to_home, knowledge_access, model, max_tokens, thinking_budget, response_mode, require_confirmation, max_chat_turns, last_run, last_result, execution_log, ...}]}` (Chatbot — no `type`/`triggers`/`action_mode`/`rules`/`states`/`budget_eur_limit`). Auto-migrated, one-time, from the previous `agents.json` (legacy `agents` key read as a fallback). |
+| `agentbots.json` | `[{id, name, ...}]` — user-defined Agentbot (or born from a Brain proposal). Auto-migrated from the previous `sentinel_lenses.json`. |
+| `usage.json` | `{schema_version, total_input_tokens, total_output_tokens, total_requests, total_cost_usd, last_reset, per_agent: {chatbot_id: {...}}}` (JSON key `per_agent` unchanged — not part of the SP-4 Fase A rename map) |
 | `home_semantic_map.json` | `{entity_id: {role, label, confidence, classified_at}}` |
 | `ha_health.json` | `{last_updated, unavailable_entities, integration_errors, error_log_summary, updates_available, system_info}` — HealthMonitor snapshot |
 
@@ -285,6 +291,8 @@ CREATE TABLE automation_proposals (
     archived_at TEXT
 );
 ```
+
+Automation proposals generated by a Chatbot (`create_automation_proposal` tool, chat-only — excluded from the Agentbot reasoner) or by the Brain, awaiting human review.
 
 Lifecycle: `pending` → `applied`/`rejected` (permanent) or archived after 7 days → deleted after 30 days.
 
@@ -336,14 +344,14 @@ Request
             └── token match? → allow | 401
 ```
 
-### Per-agent permission enforcement (ToolDispatcher)
+### Per-Chatbot/Agentbot permission enforcement (ToolDispatcher)
 
 Every tool call passes through `ToolDispatcher.dispatch()`:
 
 1. **Entity filter** — `allowed_entities` glob patterns applied to `get_entity_states`, `get_home_status`, `get_entities_on`, `get_entities_by_domain`
 2. **Service filter** — `allowed_services` glob patterns checked before every `call_ha_service`
 3. **Endpoint filter** — `http_request` hidden from Claude unless `allowed_endpoints` is configured; each call validated against the allowlist
-4. **Usage tracking** — cost/tokens tracked per persona (`get_agent_usage`) and published via MQTT/UI; there is no per-persona budget cap or auto-disable anymore (removed together with the retired agent fields — `budget_remaining_eur` is always reported as `"unlimited"`)
+4. **Usage tracking** — cost/tokens tracked per Chatbot (`get_chatbot_usage`) and published via MQTT/UI; there is no per-persona budget cap or auto-disable anymore (removed together with the retired fields — `budget_remaining_eur` is always reported as `"unlimited"`)
 5. **Memory scope** — `save_memory` is available to personas (chat), governed by `knowledge_access`; the Sentinella's single-shot reasoner is restricted to `EVALUATION_ONLY_TOOLS`, which excludes `save_memory` (it only ever calls `recall_memory`)
 
 ### SSRF protection (`http_tools.py`)
@@ -388,38 +396,46 @@ The `debug.tools_called` field in API responses is redacted to tool names only (
 Outbound-only: HIRIS publishes discovery + state to Home Assistant via MQTT
 and never subscribes to anything. There are no command topics — the
 `enabled`/`run_now` switch+button pair (and the scheduler/autonomous
-execution they used to drive) were retired; a persona's `enabled` flag is
+execution they used to drive) were retired; a Chatbot's `enabled` flag is
 now surfaced as a plain read-only sensor.
 
+**SP-4 Fase A** renamed the discovery id scheme from `hiris_<id>` to
+`chatbot_<id>` and the state topic prefix from `hiris/agents` to
+`hiris/chatbots`.
+
 ```
-AgentEngine
+ChatbotEngine
     │
     └── MQTTPublisher (outbound-only — no subscriptions)
             │
             ├── Discovery messages (retain=True)
-            │   homeassistant/sensor/hiris_{id}_status/config
-            │   homeassistant/sensor/hiris_{id}_last_run/config
-            │   homeassistant/sensor/hiris_{id}_last_result/config
-            │   homeassistant/sensor/hiris_{id}_budget_eur/config
-            │   homeassistant/sensor/hiris_{id}_budget_remaining_eur/config
-            │   homeassistant/sensor/hiris_{id}_tokens_used_today/config
-            │   homeassistant/sensor/hiris_{id}_enabled/config       (read-only)
+            │   homeassistant/sensor/chatbot_{id}_status/config
+            │   homeassistant/sensor/chatbot_{id}_last_run/config
+            │   homeassistant/sensor/chatbot_{id}_last_result/config
+            │   homeassistant/sensor/chatbot_{id}_budget_eur/config
+            │   homeassistant/sensor/chatbot_{id}_budget_remaining_eur/config
+            │   homeassistant/sensor/chatbot_{id}_tokens_used_today/config
+            │   homeassistant/sensor/chatbot_{id}_enabled/config       (read-only)
             │
-            └── State updates (on every agent run)
-                hiris/agents/{id}/status               → idle|running|error|disabled
-                hiris/agents/{id}/enabled               → "ON"|"OFF" (read-only sensor)
-                hiris/agents/{id}/last_run              → ISO 8601
-                hiris/agents/{id}/last_result           → truncated text (255 chars)
-                hiris/agents/{id}/budget_eur             → float EUR
-                hiris/agents/{id}/budget_remaining_eur  → float EUR (or "unlimited")
-                hiris/agents/{id}/tokens_used_today     → int (daily reset)
+            └── State updates (on every Chatbot run)
+                hiris/chatbots/{id}/status               → idle|running|error|disabled
+                hiris/chatbots/{id}/enabled               → "ON"|"OFF" (read-only sensor)
+                hiris/chatbots/{id}/last_run              → ISO 8601
+                hiris/chatbots/{id}/last_result           → truncated text (255 chars)
+                hiris/chatbots/{id}/budget_eur             → float EUR
+                hiris/chatbots/{id}/budget_remaining_eur  → float EUR (or "unlimited")
+                hiris/chatbots/{id}/tokens_used_today     → int (daily reset)
 ```
 
 On startup, HIRIS also publishes an empty discovery payload on the old
 `homeassistant/switch/hiris_{id}_enabled/config` and
-`homeassistant/button/hiris_{id}_run_now/config` topics, so Home Assistant
-drops the now-inert control entities from any install upgrading from a
-pre-Slice-5 release.
+`homeassistant/button/hiris_{id}_run_now/config` topics (retired commands from
+Slice 5), so Home Assistant drops the now-inert control entities from any
+install upgrading from a pre-Slice-5 release. SP-4 Fase A adds a similar
+one-time cleanup (`cleanup_legacy_discovery`, run at boot, marker-guarded for
+idempotency) for sensors discovered under the old `hiris_{id}_*` id scheme,
+so entities orphaned by the rename are removed and recreated under the new
+`chatbot_{id}_*` scheme.
 
 Reconnect uses exponential backoff. All state publishes are fire-and-forget (non-blocking via `run_in_executor`).
 
@@ -466,13 +482,13 @@ server.py: _on_startup(app)
     ├── 3. Initialize EntityCache (subscribe to state_changed)
     ├── 4. Initialize SemanticMap + SemanticContextMap (load from disk)
     ├── 5. Initialize KnowledgeStore (open `knowledge.db`, run migrations, one-time
-    │      migration of legacy per-agent memory into the agent "lens" scope)
+    │      migration of legacy per-Chatbot memory into the `chatbot_id` column)
     ├── 6. Initialize EmbeddingProvider (OpenAI / Ollama / Null)
     ├── 7. Initialize ToolDispatcher
     ├── 8. Initialize ClaudeRunner (if CLAUDE_API_KEY set)
     ├── 9. Initialize OpenAICompatRunner x2 (OpenAI + Ollama, if configured)
     ├── 10. Initialize LLMRouter with strategy from LLM_STRATEGY env var
-    ├── 11. Initialize AgentEngine → load agents.json → start APScheduler
+    ├── 11. Initialize ChatbotEngine → load chatbots.json (migrates from agents.json if present) → start APScheduler
     ├── 12. Initialize MQTTPublisher (if MQTT_HOST set)
     ├── 13. Initialize TaskEngine
     ├── 14. Auto-deploy Lovelace card to /local/hiris/ via HA WebSocket

@@ -5,9 +5,10 @@
 //   type: module
 // Dashboard config:
 //   type: custom:hiris-chat-card
-//   agent_id: hiris-default
+//   chatbot_id: hiris-default
 //   title: "Assistente Casa"
 //   hiris_slug: hiris
+// (retro-compat: older dashboards using `agent_id:` still work — see setConfig)
 
 const POLL_MS = 30_000;
 const CHAT_TIMEOUT_MS = 30_000;
@@ -601,7 +602,7 @@ class HirisCard extends HTMLElement {
   static getConfigElement() { return document.createElement('hiris-chat-card-editor'); }
   static getStubConfig() {
     return {
-      agent_id: 'hiris-default',
+      chatbot_id: 'hiris-default',
       title: 'HIRIS Chat',
       hiris_slug: 'hiris',
       suggestions: [
@@ -614,7 +615,10 @@ class HirisCard extends HTMLElement {
 
   setConfig(config) {
     const prevAgent = this._agentId;
-    this._agentId = config.agent_id || null;
+    // "chatbot_id" is the current config key; "agent_id" is the retro-compat
+    // fallback for dashboard YAML written before the SP-4 Fase A rename —
+    // never break an existing Lovelace card config.
+    this._agentId = config.chatbot_id || config.agent_id || null;
     this._slug = config.hiris_slug || 'hiris';
     this._title = config.title || 'HIRIS Chat';
     this._suggestions = Array.isArray(config.suggestions) && config.suggestions.length
@@ -711,7 +715,7 @@ class HirisCard extends HTMLElement {
     if (!this._hass) return;
     await _discoverIngressBase(this._slug);
     try {
-      const resp = await _hirisFetch(this._hass, this._hirisUrl('api/agents'), {
+      const resp = await _hirisFetch(this._hass, this._hirisUrl('api/chatbots'), {
         headers: { 'Authorization': `Bearer ${this._authToken()}` },
       });
       if (!resp.ok) {
@@ -759,7 +763,7 @@ class HirisCard extends HTMLElement {
           'Authorization': `Bearer ${this._authToken()}`,
           'X-Requested-With': 'fetch',
         },
-        body: JSON.stringify({ message: text, agent_id: this._agentId, stream: true }),
+        body: JSON.stringify({ message: text, chatbot_id: this._agentId, stream: true }),
         signal: controller.signal,
       });
 
@@ -903,7 +907,7 @@ class HirisCard extends HTMLElement {
     this._render();
     await _discoverIngressBase(this._slug);
     try {
-      const resp = await _hirisFetch(this._hass, this._hirisUrl(`api/agents/${this._agentId}`), {
+      const resp = await _hirisFetch(this._hass, this._hirisUrl(`api/chatbots/${this._agentId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1217,7 +1221,7 @@ class HirisChatCardEditor extends HTMLElement {
 
     this._config = {};
     this._hass = null;
-    this._agents = null;
+    this._chatbots = null;
   }
 
   connectedCallback() { this._render(); }
@@ -1229,11 +1233,11 @@ class HirisChatCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this._agents === null) this._loadAgents();
+    if (this._chatbots === null) this._loadChatbots();
   }
 
-  async _loadAgents() {
-    this._agents = 'loading';
+  async _loadChatbots() {
+    this._chatbots = 'loading';
     const slug = this._config.hiris_slug || 'hiris';
     await _discoverIngressBase(slug);
     const base = _cachedIngressBase
@@ -1241,18 +1245,18 @@ class HirisChatCardEditor extends HTMLElement {
     const auth = this._hass?.connection?.options?.auth;
     const token = auth?.accessToken ?? auth?.data?.access_token ?? '';
     try {
-      const resp = await _hirisFetch(this._hass, `${base}api/agents`, {
+      const resp = await _hirisFetch(this._hass, `${base}api/chatbots`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (resp.ok) {
         const result = await resp.json();
         // Only chat-type agents are compatible with this card
-        this._agents = Array.isArray(result) ? result.filter(a => a.type === 'chat') : [];
+        this._chatbots = Array.isArray(result) ? result.filter(a => a.type === 'chat') : [];
       } else {
-        this._agents = 'error';
+        this._chatbots = 'error';
       }
     } catch {
-      this._agents = 'error';
+      this._chatbots = 'error';
     }
     this._render();
   }
@@ -1270,20 +1274,22 @@ class HirisChatCardEditor extends HTMLElement {
   }
 
   _render() {
-    const agentId = this._config.agent_id || '';
+    // Read the new key first; fall back to legacy "agent_id" so the editor
+    // shows the right value for dashboard configs saved before the rename.
+    const agentId = this._config.chatbot_id || this._config.agent_id || '';
     const title = this._config.title || 'HIRIS Chat';
     const suggestions = Array.isArray(this._config.suggestions)
       ? this._config.suggestions.join('\n') : '';
     const height = this._config.height || '';
 
     let agentField;
-    if (this._agents === null || this._agents === 'loading') {
+    if (this._chatbots === null || this._chatbots === 'loading') {
       agentField = `<div class="field-loading">Caricamento Chatbot…</div>`;
-    } else if (this._agents === 'error' || this._agents.length === 0) {
+    } else if (this._chatbots === 'error' || this._chatbots.length === 0) {
       agentField = `<input id="agentInput" class="field-input" type="text"
         value="${this._esc(agentId)}" placeholder="es. hiris-default">`;
     } else {
-      const options = this._agents.map(a => {
+      const options = this._chatbots.map(a => {
         const sel = a.id === agentId ? ' selected' : '';
         return `<option value="${this._esc(a.id)}"${sel}>${this._esc(a.name || a.id)} (${this._esc(a.id)})</option>`;
       }).join('');
@@ -1398,13 +1404,17 @@ class HirisChatCardEditor extends HTMLElement {
 
     if (agentSelect) {
       agentSelect.onchange = (e) => {
-        this._config = { ...this._config, agent_id: e.target.value };
+        // Write the new key going forward; drop any stale legacy key so the
+        // saved config doesn't carry both.
+        const { agent_id, ...rest } = this._config;
+        this._config = { ...rest, chatbot_id: e.target.value };
         this._fireConfigChanged();
       };
     }
     if (agentInput) {
       agentInput.oninput = (e) => {
-        this._config = { ...this._config, agent_id: e.target.value };
+        const { agent_id, ...rest } = this._config;
+        this._config = { ...rest, chatbot_id: e.target.value };
         this._fireConfigChanged();
       };
     }

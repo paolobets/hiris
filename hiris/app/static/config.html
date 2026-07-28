@@ -58,12 +58,12 @@
       <span class="nav-label">Dashboard</span>
       <span class="nav-badge" id="nav-adv-count">—</span>
     </a>
-    <a class="nav-item" href="#/agents" data-route="agents">
+    <a class="nav-item" href="#/chatbots" data-route="chatbots">
       <span class="nav-icon">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M3 21c0-4 4-7 9-7s9 3 9 7"/></svg>
       </span>
       <span class="nav-label">Chatbot</span>
-      <span class="nav-badge" id="nav-agents-count">—</span>
+      <span class="nav-badge" id="nav-chatbots-count">—</span>
     </a>
     <a class="nav-item" href="#/proposals" data-route="proposals">
       <span class="nav-icon">
@@ -103,7 +103,7 @@
       </span>
       <span class="nav-label">Storicizzazione</span>
     </a>
-    <a class="nav-item" href="#/sentinel" data-route="sentinel">
+    <a class="nav-item" href="#/agentbots" data-route="agentbots">
       <span class="nav-icon">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
       </span>
@@ -219,22 +219,22 @@
   <script src="static/config/state.js"></script>
   <script src="static/config/router.js"></script>
   <script src="static/config/api.js"></script>
-  <!-- v0.10.5: drawer + popover atom modules MUST be loaded before agent-editor.js.
+  <!-- v0.10.5: drawer + popover atom modules MUST be loaded before chatbot-editor.js.
        Task 4 (Slice 5) rimosse script-action.js e cron-popover.js (macchina
        azioni/trigger, ritirata); drawer.js/popover.js restano come atomi UI
        generici riusabili da feature future. -->
   <script src="static/config/drawer.js"></script>
   <script src="static/config/popover.js"></script>
-  <script src="static/config/agent-editor.js"></script>
+  <script src="static/config/chatbot-editor.js"></script>
   <script src="static/config/dashboard.js"></script>
-  <script src="static/config/agents-list.js"></script>
+  <script src="static/config/chatbots-list.js"></script>
   <script src="static/config/proposals-route.js"></script>
   <script src="static/config/usage-route.js"></script>
   <script src="static/config/models-route.js"></script>
   <script src="static/config/tasks-route.js"></script>
   <script src="static/config/gateway-route.js"></script>
   <script src="static/config/history-route.js"></script>
-  <script src="static/config/sentinel-route.js"></script>
+  <script src="static/config/agentbot-route.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>

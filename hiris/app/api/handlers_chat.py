@@ -64,7 +64,7 @@ def _bridge_on(app) -> bool:
 
 
 async def _enqueue_chat_job(
-    request: web.Request, agent, effective_agent_id: str | None,
+    request: web.Request, agent, effective_chatbot_id: str | None,
     message: str, data_dir: str,
 ) -> web.Response:
     """Chat-via-abbonamento (Slice 4b, Task 2): hand the turn to the async
@@ -77,14 +77,14 @@ async def _enqueue_chat_job(
     ultimately read history back, before this request even returns, and a
     session that opens on an assistant turn is rejected by the Claude API.
     """
-    if effective_agent_id:
-        append_messages(effective_agent_id, [
+    if effective_chatbot_id:
+        append_messages(effective_chatbot_id, [
             {"role": "user", "content": message},
         ], data_dir)
 
     # Built AFTER the append above, so the current user turn is the last
     # entry — the external runner needs it to know what it's replying to.
-    history = load_history(effective_agent_id, data_dir) if effective_agent_id else []
+    history = load_history(effective_chatbot_id, data_dir) if effective_chatbot_id else []
     sanitized_history = _trim_history(history)
     system_prompt = _build_system_prompt(agent)
 
@@ -92,7 +92,7 @@ async def _enqueue_chat_job(
     now = time.time()
     deadline = now + int(os.environ.get("BRIDGE_DEADLINE_MIN", "5")) * 60
     context = {
-        "agent_id": effective_agent_id,
+        "chatbot_id": effective_chatbot_id,
         "history": sanitized_history,
         "system_prompt": system_prompt,
     }
@@ -150,17 +150,20 @@ async def handle_chat(request: web.Request) -> web.Response:
     if len(message) > 4000:
         return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
 
-    agent_id = body.get("agent_id")
+    # "chatbot_id" is the current wire key (SP-4 Fase A rename); "agent_id" is
+    # kept as a retro-compat fallback so existing Lovelace card configs / older
+    # clients that still send the pre-rename key keep working unchanged.
+    chatbot_id = body.get("chatbot_id") or body.get("agent_id")
     data_dir = request.app.get("data_dir", "/data")
     engine = request.app["engine"]
 
     agent = None
-    if agent_id:
-        agent = engine.get_agent(agent_id)
+    if chatbot_id:
+        agent = engine.get_chatbot(chatbot_id)
     if agent is None:
-        agent = engine.get_default_agent()
+        agent = engine.get_default_chatbot()
 
-    effective_agent_id = getattr(agent, "id", None) if agent else None
+    effective_chatbot_id = getattr(agent, "id", None) if agent else None
 
     # Enforce max turns limit (count from DB, not from the trimmed context
     # window). Final-review Fix 1 (Slice 4b): hoisted ABOVE the subscription
@@ -172,7 +175,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # was never reached in that mode).
     max_turns = getattr(agent, "max_chat_turns", 0) if agent else 0
     if max_turns > 0:
-        turn_count = count_user_turns(effective_agent_id, data_dir) if effective_agent_id else 0
+        turn_count = count_user_turns(effective_chatbot_id, data_dir) if effective_chatbot_id else 0
         if turn_count >= max_turns:
             return web.json_response({
                 "error": "max_turns_reached",
@@ -195,7 +198,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # In-flight guard first: it's the more specific, more actionable
         # signal for the user (retry once the current answer lands), so it
         # wins even if the daily cap is ALSO exhausted.
-        if reasoning_queue.has_pending_chat(effective_agent_id):
+        if reasoning_queue.has_pending_chat(effective_chatbot_id):
             return web.json_response(
                 {"error": "C'è già una risposta in arrivo per questa conversazione."},
                 status=409,
@@ -207,7 +210,7 @@ async def handle_chat(request: web.Request) -> web.Response:
                 {"error": "Limite giornaliero di messaggi chat raggiunto."},
                 status=429,
             )
-        return await _enqueue_chat_job(request, agent, effective_agent_id, message, data_dir)
+        return await _enqueue_chat_job(request, agent, effective_chatbot_id, message, data_dir)
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -216,7 +219,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         )
 
     # Load server-side history (client-sent history field is ignored)
-    history = load_history(effective_agent_id, data_dir) if effective_agent_id else []
+    history = load_history(effective_chatbot_id, data_dir) if effective_chatbot_id else []
 
     # (max-turns check now runs above, before the subscription branch — see
     # Fix 1 comment there.)
@@ -228,7 +231,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         allowed_entities = agent.allowed_entities or None
         allowed_services = agent.allowed_services or None
     else:
-        logger.warning("No agent found (requested: %s). BASE_SYSTEM_PROMPT will be used.", agent_id)
+        logger.warning("No agent found (requested: %s). BASE_SYSTEM_PROMPT will be used.", chatbot_id)
         allowed_tools = None
         allowed_entities = None
         allowed_services = None
@@ -238,7 +241,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     system_prompt = _build_system_prompt(agent)
 
     # Inject closed-session summaries so Claude remembers previous conversations.
-    past = get_past_summaries(effective_agent_id, data_dir) if effective_agent_id else []
+    past = get_past_summaries(effective_chatbot_id, data_dir) if effective_chatbot_id else []
     past_str = ""
     if past:
         lines = ["Sessioni precedenti (memoria):"]
@@ -262,14 +265,14 @@ async def handle_chat(request: web.Request) -> web.Response:
         )
         context_str = ctx_str.strip() if ctx_str else ""
 
-    # RAG memory injection -- unified KnowledgeStore, lens-scoped to this
-    # agent (Slice 3 Task 4: this used to read the legacy MemoryStore, which
+    # RAG memory injection -- unified KnowledgeStore, chatbot_id-scoped to
+    # this agent (Slice 3 Task 4: this used to read the legacy MemoryStore, which
     # save_memory stopped writing to back in Task 2; repointed here so the
     # feature keeps working against the store that is actually written).
     knowledge_store = request.app.get("knowledge_store")
     embedder = request.app.get("embedding_provider")
     rag_str = ""
-    if knowledge_store is not None and embedder is not None and effective_agent_id:
+    if knowledge_store is not None and embedder is not None and effective_chatbot_id:
         try:
             rag_k = int(request.app.get("memory_rag_k", 5))
             query_vec = await embedder.embed(message)
@@ -281,7 +284,7 @@ async def handle_chat(request: web.Request) -> web.Response:
                         query_vec=query_vec,
                         k=rag_k,
                         owner=owner,
-                        lens=effective_agent_id,
+                        chatbot_id=effective_chatbot_id,
                         kinds=["memory"],
                     ),
                 )
@@ -365,7 +368,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             agent_type=agent_type,
             restrict_to_home=agent_restrict,
             require_confirmation=agent_require_confirmation,
-            agent_id=effective_agent_id,
+            chatbot_id=effective_chatbot_id,
             visible_entity_ids=visible_ids,
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
@@ -405,8 +408,8 @@ async def handle_chat(request: web.Request) -> web.Response:
         # zeroes collected_tokens for tool-call leaks; this also covers the
         # rare case where the runner returns a known-bad payload some other
         # way (e.g. partial leak that slipped past detection).
-        if effective_agent_id and full_response and not _is_toxic_assistant(full_response):
-            append_messages(effective_agent_id, [
+        if effective_chatbot_id and full_response and not _is_toxic_assistant(full_response):
+            append_messages(effective_chatbot_id, [
                 {"role": "user", "content": message},
                 {"role": "assistant", "content": full_response},
             ], data_dir)
@@ -426,7 +429,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             agent_type=agent_type,
             restrict_to_home=agent_restrict,
             require_confirmation=agent_require_confirmation,
-            agent_id=effective_agent_id,
+            chatbot_id=effective_chatbot_id,
             visible_entity_ids=visible_ids,
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
@@ -458,8 +461,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     # returned a synthetic error / leak sentinel, so the next turn doesn't
     # inherit a degraded history. The user retains the visible error in the
     # current response payload.
-    if effective_agent_id and not _is_toxic_assistant(response):
-        append_messages(effective_agent_id, [
+    if effective_chatbot_id and not _is_toxic_assistant(response):
+        append_messages(effective_chatbot_id, [
             {"role": "user", "content": message},
             {"role": "assistant", "content": response},
         ], data_dir)

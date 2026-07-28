@@ -1,19 +1,22 @@
-"""User-defined Sentinella "lenses" -- store + strict whitelist validation.
+"""User-defined Sentinella "Agentbot" rules -- store + strict whitelist validation.
 
-A lens is a user-authored rule on top of the Sentinella pipeline (Slice 5b):
-a trigger (event or schedule), optional AI reasoning, an action, and a
-severity. Lenses are persisted as a sidecar `sentinel_lenses.json` (a JSON
-list), independent from `sentinel_policy.json` (see watcher.policy).
+An Agentbot is a user-authored rule on top of the Sentinella pipeline
+(Slice 5b; renamed from "lens" in SP-4 Fase A Task 3): a trigger (event or
+schedule), optional AI reasoning, an action, and a severity. Agentbots are
+persisted as `agentbots.json` (a JSON list), independent from
+`sentinel_policy.json` (see watcher.policy). A legacy `sentinel_lenses.json`
+sidecar from before the rename is migrated one-time by `load_agentbots`
+(see its docstring).
 
 Validation is fail-safe by construction, mirroring
 brain.suggestions.validate_coverage / brain.coverage_review.parse_suggestions:
 every field is whitelisted and unknown keys are silently dropped. Malformed
-*required* fields make the whole lens invalid (returns None). Optional
+*required* fields make the whole Agentbot invalid (returns None). Optional
 fields follow the rule "absent -> default, PRESENT but invalid -> reject the
-whole lens" (never silently dropped) -- this is a fail-safe gate in front of
-an LLM prompt and a semaphore-gated Home Assistant action, so a malformed
-optional must never cause the action to fire *more* broadly than the user
-wrote. validate_lens() NEVER raises.
+whole Agentbot" (never silently dropped) -- this is a fail-safe gate in
+front of an LLM prompt and a semaphore-gated Home Assistant action, so a
+malformed optional must never cause the action to fire *more* broadly than
+the user wrote. validate_agentbot() NEVER raises.
 
 Atomic write + lock mirror watcher.policy.save_policy: write to a .tmp file
 then os.replace() it into place, guarded by a module-level RLock (single
@@ -33,14 +36,18 @@ from apscheduler.triggers.cron import CronTrigger
 
 log = logging.getLogger(__name__)
 
-_PATH = "sentinel_lenses.json"
+_PATH = "agentbots.json"
+# Pre-rename sidecar filename (SP-4 Fase A Task 3). Migrated one-time by
+# load_agentbots() the first time it runs against a data_dir that still has
+# this legacy file but no agentbots.json yet.
+_LEGACY_PATH = "sentinel_lenses.json"
 
-# Guards the load_lenses -> mutate -> save_lenses critical sections in
-# upsert_lens/delete_lens against a concurrent save_lenses call (e.g. two web
-# UI requests racing). Single process only, mirrors watcher.policy._POLICY_LOCK.
-# Reentrant because upsert_lens/delete_lens call save_lenses while already
-# holding it.
-_LENSES_LOCK = threading.RLock()
+# Guards the load_agentbots -> mutate -> save_agentbots critical sections in
+# upsert_agentbot/delete_agentbot against a concurrent save_agentbots call
+# (e.g. two web UI requests racing). Single process only, mirrors
+# watcher.policy._POLICY_LOCK. Reentrant because upsert_agentbot/
+# delete_agentbot call save_agentbots while already holding it.
+_AGENTBOTS_LOCK = threading.RLock()
 
 ALLOWED_OPERATORS = {">", "<", ">=", "<=", "==", "!="}
 ALLOWED_TRIGGER_TYPES = {"event", "schedule"}
@@ -63,7 +70,7 @@ _MESSAGE_MAX_LEN = 1000
 def translate_cron_dow(field: str) -> str:
     """Remap a cron day-of-week FIELD from STANDARD crontab numbering
     (POSIX cron(5): 0 or 7 = Sunday, 1 = Monday, ..., 6 = Saturday -- what
-    every SCHEDULE-trigger user lens is authored against, and what
+    every SCHEDULE-trigger user Agentbot is authored against, and what
     `_CRON_RE` whitelists) to APScheduler's OWN CronTrigger day_of_week
     numbering (0 = Monday, ..., 6 = Sunday, i.e. Python's
     `datetime.weekday()`).
@@ -84,8 +91,8 @@ def translate_cron_dow(field: str) -> str:
     digits, `*`, `,`, `/`, `-` -- i.e. bare values, comma-lists, ranges, and
     step values, in any combination (e.g. "1-5", "0,6", "*/2"). Any field
     this can't parse, or that resolves to a value outside 0-7, raises
-    ValueError -- callers (`validate_lens`, `server.register_lens_schedules`)
-    catch this per-lens so one broken cron never blocks the others / gets
+    ValueError -- callers (`validate_agentbot`, `server.register_agentbot_schedules`)
+    catch this per-Agentbot so one broken cron never blocks the others / gets
     persisted.
     """
     field = field.strip()
@@ -134,8 +141,9 @@ def to_apscheduler_crontab(cron: str) -> str:
     ValueError if the field count is off (defensive -- the store's regex
     already guarantees exactly 5 whitespace-separated fields) or the
     day_of_week field doesn't parse; callers turn either into "reject this
-    lens" (validate_lens) or "skip this lens" (server.register_lens_schedules)
-    without crashing. Per-field VALUE validity of minute/hour/day/month
+    Agentbot" (validate_agentbot) or "skip this Agentbot"
+    (server.register_agentbot_schedules) without crashing. Per-field VALUE
+    validity of minute/hour/day/month
     (e.g. an out-of-range hour) is left to `CronTrigger.from_crontab`
     itself, raised at construction/`add_job` time and caught there."""
     parts = cron.split()
@@ -189,7 +197,7 @@ def _validate_threshold(operator, threshold):
     For the equality operators ("==" / "!=") a non-empty stripped string is
     ALSO accepted (capped to `_THRESHOLD_STR_MAX_LEN`, mirroring this
     file's general truncation policy) -- this is what makes state-matching
-    lenses possible (e.g. "person.paolo != home", "lock.porta == unlocked",
+    Agentbots possible (e.g. "person.paolo != home", "lock.porta == unlocked",
     "binary_sensor.x == on"), which are core Home Assistant automations and
     were previously impossible because this validator forced threshold to
     be numeric. detectors.make_generic_detector already string-compares for
@@ -198,7 +206,7 @@ def _validate_threshold(operator, threshold):
 
     Ordering operators (">", "<", ">=", "<=") keep the numeric-only rule: no
     total order is defined over arbitrary strings, so a string threshold
-    there is rejected (present-but-invalid -> reject the whole lens, per
+    there is rejected (present-but-invalid -> reject the whole Agentbot, per
     this module's fail-safe-optional convention).
 
     Returns the cleaned threshold (the number as-is, or the stripped/
@@ -249,7 +257,7 @@ def _validate_trigger(raw) -> dict | None:
         # attribute is optional: absent -> fine (compares the entity's main
         # state, per make_generic_detector). PRESENT but not a clean,
         # HA-attribute-shaped string (wrong type, empty/whitespace-only, or
-        # outside the snake_case charset) -> reject the whole lens rather
+        # outside the snake_case charset) -> reject the whole Agentbot rather
         # than silently dropping it: a dropped attribute would rebind the
         # trigger to compare against the *state* instead of the intended
         # attribute -- wider than the user wrote, same failure shape as the
@@ -261,7 +269,7 @@ def _validate_trigger(raw) -> dict | None:
             out["attribute"] = attribute
         # duration_min is optional: absent -> fine (no duration gate).
         # PRESENT but not a finite non-negative number -> reject the whole
-        # lens rather than silently dropping it (a dropped duration gate
+        # Agentbot rather than silently dropping it (a dropped duration gate
         # would make the trigger fire on the very first sample, wider than
         # the user wrote).
         if "duration_min" in raw and raw.get("duration_min") is not None:
@@ -283,11 +291,11 @@ def _validate_trigger(raw) -> dict | None:
         # Review L/1: _CRON_RE only checks SHAPE (5 numeric/*/,/-// fields);
         # a shape-valid but VALUE-invalid cron (e.g. hour=99) used to be
         # accepted here and only fail later, silently, at schedule
-        # registration time (server.register_lens_schedules), leaving a
-        # lens that looks saved/enabled but never actually runs with no
+        # registration time (server.register_agentbot_schedules), leaving an
+        # Agentbot that looks saved/enabled but never actually runs with no
         # status surfaced. Reject-at-create instead: run it through the
         # exact same translation + CronTrigger construction the scheduler
-        # itself uses, and fail the whole lens now if that raises.
+        # itself uses, and fail the whole Agentbot now if that raises.
         try:
             CronTrigger.from_crontab(to_apscheduler_crontab(cron))
         except Exception:
@@ -357,7 +365,7 @@ def _validate_reasoning(raw) -> dict:
     out = {"enabled": _coerce_bool(raw.get("enabled", False), False)}
     # Task 4B: per-Agentbot model, threaded end-to-end into reason(model=...).
     # Absent/non-string/empty -> "auto" (same convention as the brain's
-    # per-agent model field): never reject the lens over a malformed model.
+    # per-agent model field): never reject the Agentbot over a malformed model.
     model = raw.get("model", "auto")
     if not isinstance(model, str) or not model:
         model = "auto"
@@ -368,10 +376,10 @@ def _validate_reasoning(raw) -> dict:
     return out
 
 
-def validate_lens(raw: dict) -> dict | None:
-    """Whitelist-validate a single raw lens dict against the Slice 5b schema.
+def validate_agentbot(raw: dict) -> dict | None:
+    """Whitelist-validate a single raw Agentbot dict against the Slice 5b schema.
 
-    Returns a cleaned, fully-shaped lens dict, or None if the lens is
+    Returns a cleaned, fully-shaped Agentbot dict, or None if the Agentbot is
     unsalvageable (unknown trigger/action type, invalid operator, a service
     action missing domain/service/entity_id, an event trigger missing
     entity_id/operator/threshold, a schedule trigger without exactly one of
@@ -393,7 +401,7 @@ def validate_lens(raw: dict) -> dict | None:
             return None
 
         # severity: absent -> default "info"; PRESENT but not in the allowed
-        # set -> reject the whole lens (don't silently coerce to "info",
+        # set -> reject the whole Agentbot (don't silently coerce to "info",
         # which would understate a user-authored "alert").
         severity = raw.get("severity")
         if severity is not None:
@@ -402,20 +410,20 @@ def validate_lens(raw: dict) -> dict | None:
         else:
             severity = "info"
 
-        lens_id = raw.get("id")
-        if not isinstance(lens_id, str) or not _ID_RE.match(lens_id):
+        agentbot_id = raw.get("id")
+        if not isinstance(agentbot_id, str) or not _ID_RE.match(agentbot_id):
             # Absent, wrong shape, or not the token_hex(6) format we mint ->
             # never trust an arbitrary client-supplied id, re-mint one.
-            lens_id = secrets.token_hex(6)
+            agentbot_id = secrets.token_hex(6)
 
         name = raw.get("name")
         name = name[:80] if isinstance(name, str) else ""
 
         # enabled: absent -> default True; PRESENT but not a real bool (e.g.
-        # the string "false", 0, "no") -> reject the whole lens, mirroring
+        # the string "false", 0, "no") -> reject the whole Agentbot, mirroring
         # severity's absent-vs-present convention just above. Unlike
         # reasoning.enabled (inert, no side effects -- safe to lenient-
-        # default to False), this flag gates whether the lens's action can
+        # default to False), this flag gates whether the Agentbot's action can
         # fire at all: silently coercing a present-but-invalid value to True
         # would invert a user's explicit disable intent.
         if "enabled" in raw and raw.get("enabled") is not None:
@@ -428,7 +436,7 @@ def validate_lens(raw: dict) -> dict | None:
         reasoning = _validate_reasoning(raw.get("reasoning"))
 
         return {
-            "id": lens_id,
+            "id": agentbot_id,
             "name": name,
             "enabled": enabled,
             "trigger": trigger,
@@ -437,81 +445,99 @@ def validate_lens(raw: dict) -> dict | None:
             "severity": severity,
         }
     except Exception:
-        log.warning("validate_lens: unsalvageable lens, dropping", exc_info=True)
+        log.warning("validate_agentbot: unsalvageable Agentbot, dropping", exc_info=True)
         return None
 
 
-def load_lenses(data_dir: str) -> list[dict]:
-    """Read+validate sentinel_lenses.json. Missing file -> []. Unreadable
+def load_agentbots(data_dir: str) -> list[dict]:
+    """Read+validate agentbots.json. Missing file -> []. Unreadable
     (corrupted JSON, wrong top-level type, I/O error) -> [] (logged).
-    Invalid individual lenses are dropped, valid ones are kept."""
+    Invalid individual Agentbots are dropped, valid ones are kept.
+
+    One-time migration (SP-4 Fase A Task 3): if agentbots.json doesn't exist
+    yet but the pre-rename sidecar `sentinel_lenses.json` does, rename it in
+    place (os.replace, same filesystem so this is atomic) before reading.
+    Wrapped in try/except and logged, never fatal -- a migration failure
+    (e.g. permissions) just leaves the legacy file in place and this call
+    falls through to "file not found" -> [] like any other missing store.
+    """
+    path = _file(data_dir)
+    legacy = os.path.join(data_dir, _LEGACY_PATH)
+    if not os.path.exists(path) and os.path.exists(legacy):
+        try:
+            os.replace(legacy, path)
+            log.info("Migrated %s -> %s", _LEGACY_PATH, _PATH)
+        except Exception:
+            log.warning("agentbots migration failed", exc_info=True)
+
     try:
-        with open(_file(data_dir), "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
     except FileNotFoundError:
         return []
     except (ValueError, OSError):
-        log.warning("load_lenses: %s unreadable/corrupted, treating as empty", _file(data_dir), exc_info=True)
+        log.warning("load_agentbots: %s unreadable/corrupted, treating as empty", path, exc_info=True)
         return []
 
     if not isinstance(data, list):
-        log.warning("load_lenses: %s is not a JSON list, treating as empty", _file(data_dir))
+        log.warning("load_agentbots: %s is not a JSON list, treating as empty", path)
         return []
 
     out = []
     for item in data:
-        cleaned = validate_lens(item)
+        cleaned = validate_agentbot(item)
         if cleaned is not None:
             out.append(cleaned)
         else:
-            # Don't let a stored-but-now-invalid lens vanish silently: stricter
-            # validation (e.g. an old interval_min below the floor, a non-bool
-            # enabled, a value-invalid cron) would otherwise drop it with no
-            # trace, and the next save persists the deletion.
+            # Don't let a stored-but-now-invalid Agentbot vanish silently:
+            # stricter validation (e.g. an old interval_min below the floor,
+            # a non-bool enabled, a value-invalid cron) would otherwise drop
+            # it with no trace, and the next save persists the deletion.
             lid = item.get("id") if isinstance(item, dict) else None
-            log.warning("load_lenses: dropping invalid stored lens id=%r", lid)
+            log.warning("load_agentbots: dropping invalid stored Agentbot id=%r", lid)
     return out
 
 
-def save_lenses(data_dir: str, lenses: list) -> list[dict]:
-    """Validate every lens, then atomically persist the cleaned list
-    (tmp file + os.replace, under _LENSES_LOCK). Returns the cleaned list."""
+def save_agentbots(data_dir: str, agentbots: list) -> list[dict]:
+    """Validate every Agentbot, then atomically persist the cleaned list
+    (tmp file + os.replace, under _AGENTBOTS_LOCK). Returns the cleaned list."""
     clean = []
-    if isinstance(lenses, list):
-        for item in lenses:
-            cleaned = validate_lens(item)
+    if isinstance(agentbots, list):
+        for item in agentbots:
+            cleaned = validate_agentbot(item)
             if cleaned is not None:
                 clean.append(cleaned)
 
     os.makedirs(data_dir, exist_ok=True)
     tmp = _file(data_dir) + ".tmp"
-    with _LENSES_LOCK:
+    with _AGENTBOTS_LOCK:
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(clean, fh, ensure_ascii=False, indent=2)
         os.replace(tmp, _file(data_dir))
     return clean
 
 
-def upsert_lens(data_dir: str, lens: dict) -> list[dict]:
-    """Validate `lens` and insert it, or replace the existing lens with the
-    same id. An invalid `lens` is a no-op (current store is returned unchanged)."""
-    with _LENSES_LOCK:
-        cleaned = validate_lens(lens)
+def upsert_agentbot(data_dir: str, agentbot: dict) -> list[dict]:
+    """Validate `agentbot` and insert it, or replace the existing Agentbot
+    with the same id. An invalid `agentbot` is a no-op (current store is
+    returned unchanged)."""
+    with _AGENTBOTS_LOCK:
+        cleaned = validate_agentbot(agentbot)
         if cleaned is None:
-            return load_lenses(data_dir)
-        current = load_lenses(data_dir)
+            return load_agentbots(data_dir)
+        current = load_agentbots(data_dir)
         for i, existing in enumerate(current):
             if existing.get("id") == cleaned["id"]:
                 current[i] = cleaned
                 break
         else:
             current.append(cleaned)
-        return save_lenses(data_dir, current)
+        return save_agentbots(data_dir, current)
 
 
-def delete_lens(data_dir: str, lens_id: str) -> list[dict]:
-    """Remove the lens with id == lens_id, if present. No-op otherwise."""
-    with _LENSES_LOCK:
-        current = load_lenses(data_dir)
-        current = [l for l in current if l.get("id") != lens_id]
-        return save_lenses(data_dir, current)
+def delete_agentbot(data_dir: str, agentbot_id: str) -> list[dict]:
+    """Remove the Agentbot with id == agentbot_id, if present. No-op otherwise."""
+    with _AGENTBOTS_LOCK:
+        current = load_agentbots(data_dir)
+        current = [a for a in current if a.get("id") != agentbot_id]
+        return save_agentbots(data_dir, current)

@@ -53,8 +53,8 @@ def reset_stores():
 
 def _load_real_submit_chat_reply(app, data_dir, append_fn=None):
     src = inspect.getsource(server._on_startup)
-    start = src.index("    async def _submit_chat_reply(agent_id: str, reply_text: str) -> None:")
-    end_marker = '_append_chat_messages(agent_id, [{"role": "assistant", "content": reply_text}], data_dir)'
+    start = src.index("    async def _submit_chat_reply(chatbot_id: str, reply_text: str) -> None:")
+    end_marker = '_append_chat_messages(chatbot_id, [{"role": "assistant", "content": reply_text}], data_dir)'
     end = src.index(end_marker, start) + len(end_marker)
     func_src = textwrap.dedent(src[start:end])
 
@@ -113,8 +113,8 @@ async def test_toxic_reply_is_dropped_not_persisted(tmp_path):
     data_dir = str(tmp_path / "data")
     calls = []
 
-    def _fake_append(agent_id, messages, data_dir):
-        calls.append((agent_id, messages))
+    def _fake_append(chatbot_id, messages, data_dir):
+        calls.append((chatbot_id, messages))
 
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
@@ -174,8 +174,8 @@ async def test_detokenize_runs_before_toxicity_check(tmp_path):
     )
     calls = []
 
-    def _fake_append(agent_id, messages, data_dir):
-        calls.append((agent_id, messages))
+    def _fake_append(chatbot_id, messages, data_dir):
+        calls.append((chatbot_id, messages))
 
     app = {"pseudonymizer": pseudonymizer}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
@@ -211,8 +211,8 @@ async def test_empty_agent_id_or_reply_still_short_circuits(tmp_path):
     data_dir = str(tmp_path / "data")
     calls = []
 
-    def _fake_append(agent_id, messages, data_dir):
-        calls.append((agent_id, messages))
+    def _fake_append(chatbot_id, messages, data_dir):
+        calls.append((chatbot_id, messages))
 
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)

@@ -5,7 +5,7 @@ import pathlib
 from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import TestClient
 from hiris.app.server import create_app
-from hiris.app.agent_engine import AgentEngine
+from hiris.app.chatbot_engine import ChatbotEngine
 from hiris.app.chat_store import close_all_stores
 
 
@@ -33,7 +33,7 @@ async def client(aiohttp_client, tmp_path):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
 
@@ -90,20 +90,20 @@ async def test_agents_crud(client):
         "allowed_tools": ["get_entity_states"],
         "enabled": False,
     }
-    create_resp = await client.post("/api/agents", json=payload)
+    create_resp = await client.post("/api/chatbots", json=payload)
     assert create_resp.status == 201
     agent = await create_resp.json()
     agent_id = agent["id"]
 
-    list_resp = await client.get("/api/agents")
+    list_resp = await client.get("/api/chatbots")
     assert list_resp.status == 200
     agents = await list_resp.json()
     assert any(a["id"] == agent_id for a in agents)
 
-    get_resp = await client.get(f"/api/agents/{agent_id}")
+    get_resp = await client.get(f"/api/chatbots/{agent_id}")
     assert get_resp.status == 200
 
-    del_resp = await client.delete(f"/api/agents/{agent_id}")
+    del_resp = await client.delete(f"/api/chatbots/{agent_id}")
     assert del_resp.status == 204
 
 
@@ -122,8 +122,8 @@ async def test_chat_no_runner(aiohttp_client):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    from hiris.app.agent_engine import AgentEngine
-    engine = AgentEngine(ha_client=mock_ha)
+    from hiris.app.chatbot_engine import ChatbotEngine
+    engine = ChatbotEngine(ha_client=mock_ha)
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
 
@@ -140,7 +140,7 @@ async def test_chat_no_runner(aiohttp_client):
 
 @pytest.mark.asyncio
 async def test_agent_not_found(client):
-    resp = await client.get("/api/agents/nonexistent-id")
+    resp = await client.get("/api/chatbots/nonexistent-id")
     assert resp.status == 404
 
 
@@ -155,11 +155,11 @@ async def test_agent_update(client):
         "allowed_tools": [],
         "enabled": False,
     }
-    create_resp = await client.post("/api/agents", json=payload)
+    create_resp = await client.post("/api/chatbots", json=payload)
     agent_id = (await create_resp.json())["id"]
 
     # Update
-    update_resp = await client.put(f"/api/agents/{agent_id}", json={"system_prompt": "updated"})
+    update_resp = await client.put(f"/api/chatbots/{agent_id}", json={"system_prompt": "updated"})
     assert update_resp.status == 200
     data = await update_resp.json()
     assert data["system_prompt"] == "updated"
@@ -175,10 +175,10 @@ async def test_agent_run(client):
         "allowed_tools": [],
         "enabled": False,
     }
-    create_resp = await client.post("/api/agents", json=payload)
+    create_resp = await client.post("/api/chatbots", json=payload)
     agent_id = (await create_resp.json())["id"]
 
-    run_resp = await client.post(f"/api/agents/{agent_id}/run")
+    run_resp = await client.post(f"/api/chatbots/{agent_id}/run")
     assert run_resp.status == 200
     data = await run_resp.json()
     assert "result" in data
@@ -186,13 +186,13 @@ async def test_agent_run(client):
 
 @pytest.mark.asyncio
 async def test_delete_default_agent_returns_409(client):
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     engine = client.app["engine"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="",
         allowed_tools=[], enabled=True, is_default=True,
     )
-    resp = await client.delete(f"/api/agents/{DEFAULT_AGENT_ID}")
+    resp = await client.delete(f"/api/chatbots/{DEFAULT_CHATBOT_ID}")
     assert resp.status == 409
     data = await resp.json()
     assert "error" in data
@@ -200,9 +200,9 @@ async def test_delete_default_agent_returns_409(client):
 
 @pytest.mark.asyncio
 async def test_chat_with_agent_id_uses_agent_system_prompt(client):
-    from hiris.app.agent_engine import Agent
+    from hiris.app.chatbot_engine import Chatbot
     engine = client.app["engine"]
-    engine._agents["agent-chat-001"] = Agent(
+    engine._chatbots["agent-chat-001"] = Chatbot(
         id="agent-chat-001", name="Energia", system_prompt="Sei un esperto di energia.",
         allowed_tools=[], enabled=True, is_default=False,
         strategic_context="Contesto: casa a Milano.",
@@ -224,10 +224,10 @@ async def test_chat_with_agent_id_uses_agent_system_prompt(client):
 
 @pytest.mark.asyncio
 async def test_chat_without_agent_id_uses_default_agent(client):
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     engine = client.app["engine"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="Prompt default HIRIS.",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="Prompt default HIRIS.",
         allowed_tools=[], enabled=True, is_default=True,
     )
     runner = client.app["claude_runner"]
@@ -241,10 +241,10 @@ async def test_chat_without_agent_id_uses_default_agent(client):
 
 @pytest.mark.asyncio
 async def test_chat_with_unknown_agent_id_fallback_to_default(client):
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     engine = client.app["engine"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="Fallback prompt.",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="Fallback prompt.",
         allowed_tools=[], enabled=True, is_default=True,
     )
     runner = client.app["claude_runner"]
@@ -270,9 +270,9 @@ async def test_config_endpoint_returns_theme(client):
 
 @pytest.mark.asyncio
 async def test_chat_passes_model_to_runner(client):
-    from hiris.app.agent_engine import Agent
+    from hiris.app.chatbot_engine import Chatbot
     engine = client.app["engine"]
-    engine._agents["agent-haiku-001"] = Agent(
+    engine._chatbots["agent-haiku-001"] = Chatbot(
         id="agent-haiku-001", name="Haiku Agent", system_prompt="Chat test",
         allowed_tools=[], enabled=True, is_default=False,
         model="claude-haiku-4-5-20251001", max_tokens=1024, restrict_to_home=False,
@@ -293,11 +293,11 @@ async def test_chat_passes_model_to_runner(client):
 
 @pytest.mark.asyncio
 async def test_chat_max_turns_blocks_when_limit_reached(client):
-    from hiris.app.agent_engine import Agent
+    from hiris.app.chatbot_engine import Chatbot
     from hiris.app.chat_store import append_messages
     engine = client.app["engine"]
     data_dir = client.app["data_dir"]
-    engine._agents["agent-limited"] = Agent(
+    engine._chatbots["agent-limited"] = Chatbot(
         id="agent-limited", name="Limited", system_prompt="test",
         allowed_tools=[], enabled=True, is_default=False,
         max_chat_turns=2,
@@ -323,12 +323,12 @@ async def test_chat_max_turns_blocks_when_limit_reached(client):
 
 @pytest.mark.asyncio
 async def test_chat_persists_exchange_in_history(client):
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from hiris.app.chat_store import load_history
     engine = client.app["engine"]
     data_dir = client.app["data_dir"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="test",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="test",
         allowed_tools=[], enabled=True, is_default=True,
     )
     runner = client.app["claude_runner"]
@@ -336,7 +336,7 @@ async def test_chat_persists_exchange_in_history(client):
 
     await client.post("/api/chat", json={"message": "persist me"})
 
-    history = load_history(DEFAULT_AGENT_ID, data_dir)
+    history = load_history(DEFAULT_CHATBOT_ID, data_dir)
     assert any(m["content"] == "persist me" for m in history)
     assert any(m["content"] == "stored response" for m in history)
 
@@ -347,12 +347,12 @@ async def test_chat_does_not_persist_toxic_response(client):
     tool calls, etc.) must not be persisted to chat history — they would
     poison subsequent turns and the user already sees the error in the
     current response payload."""
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from hiris.app.chat_store import load_history
     engine = client.app["engine"]
     data_dir = client.app["data_dir"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="test",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="test",
         allowed_tools=[], enabled=True, is_default=True,
     )
     runner = client.app["claude_runner"]
@@ -362,7 +362,7 @@ async def test_chat_does_not_persist_toxic_response(client):
 
     await client.post("/api/chat", json={"message": "fail me"})
 
-    history = load_history(DEFAULT_AGENT_ID, data_dir)
+    history = load_history(DEFAULT_CHATBOT_ID, data_dir)
     assert history == []  # nothing persisted
 
 
@@ -370,13 +370,13 @@ async def test_chat_does_not_persist_toxic_response(client):
 async def test_chat_does_not_persist_leaked_tool_call_response(client):
     """Same protection for the TOOL_LEAK_USER_MSG sentinel returned by the
     runner when a model emits a tool call as raw text content."""
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from hiris.app.chat_store import load_history
     from hiris.app.backends.openai_compat_runner import TOOL_LEAK_USER_MSG
     engine = client.app["engine"]
     data_dir = client.app["data_dir"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="test",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="test",
         allowed_tools=[], enabled=True, is_default=True,
     )
     runner = client.app["claude_runner"]
@@ -384,18 +384,18 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
 
     await client.post("/api/chat", json={"message": "leak me"})
 
-    history = load_history(DEFAULT_AGENT_ID, data_dir)
+    history = load_history(DEFAULT_CHATBOT_ID, data_dir)
     assert history == []
 
 
 @pytest.mark.asyncio
 async def test_chat_context_map_injects_area_context(client):
     from unittest.mock import MagicMock
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
 
     engine = client.app["engine"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="base prompt",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
         allowed_tools=[], enabled=True, is_default=True,
     )
 
@@ -422,24 +422,24 @@ async def test_chat_context_map_injects_area_context(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_rag_injects_lens_memory_from_knowledge_store(client):
+async def test_chat_rag_injects_chatbot_memory_from_knowledge_store(client):
     """Slice 3 Task 4: chat's RAG auto-injection was repointed from the
     retired MemoryStore onto the unified KnowledgeStore. This guards that a
-    lens-scoped memory saved for the default agent is found and injected into
-    context_str on a matching query."""
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    chatbot-scoped memory saved for the default agent is found and injected
+    into context_str on a matching query."""
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from hiris.app.brain.knowledge_store import KnowledgeStore
 
     engine = client.app["engine"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="base prompt",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
         allowed_tools=[], enabled=True, is_default=True,
     )
 
     store = KnowledgeStore(":memory:")
     store.add_item(
         kind="memory", content="l'utente preferisce 21 gradi", owner="home",
-        lens=DEFAULT_AGENT_ID, status="approved", embedding=[0.1, 0.2, 0.3],
+        chatbot_id=DEFAULT_CHATBOT_ID, status="approved", embedding=[0.1, 0.2, 0.3],
     )
     client.app["knowledge_store"] = store
 
@@ -462,12 +462,12 @@ async def test_chat_rag_injects_lens_memory_from_knowledge_store(client):
 
 @pytest.mark.asyncio
 async def test_create_task_tool_via_chat(client):
-    from hiris.app.agent_engine import DEFAULT_AGENT_ID, Agent
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from unittest.mock import MagicMock, AsyncMock
 
     engine = client.app["engine"]
-    engine._agents[DEFAULT_AGENT_ID] = Agent(
-        id=DEFAULT_AGENT_ID, name="HIRIS", system_prompt="test",
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="test",
         allowed_tools=["create_task"], enabled=True, is_default=True,
     )
 
@@ -475,7 +475,7 @@ async def test_create_task_tool_via_chat(client):
     from hiris.app.task_engine import Task
     from datetime import datetime, timezone
     fake_task = Task(
-        id="t-001", label="Test", agent_id=DEFAULT_AGENT_ID,
+        id="t-001", label="Test", chatbot_id=DEFAULT_CHATBOT_ID,
         created_at=datetime.now(timezone.utc).isoformat(),
         trigger={"type": "delay", "minutes": 5}, actions=[],
     )
@@ -551,7 +551,7 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
 
@@ -608,7 +608,7 @@ async def test_chat_does_not_detokenize_cross_request_token(aiohttp_client, tmp_
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = AgentEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     engine.start = AsyncMock()
     engine.stop = AsyncMock()
 

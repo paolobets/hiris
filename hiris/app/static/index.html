@@ -254,7 +254,7 @@ function checkTurnLimit() {
 async function clearConversation() {
   if (!activeAgentId) return;
   try {
-    await fetch('api/agents/' + activeAgentId + '/chat-history', { method: 'DELETE', headers: {'X-Requested-With': 'fetch'} });
+    await fetch('api/chatbots/' + activeAgentId + '/chat-history', { method: 'DELETE', headers: {'X-Requested-With': 'fetch'} });
   } catch(e) {}
   messagesEl.innerHTML = '';
   messagesEl.appendChild(welcomeEl);
@@ -286,9 +286,9 @@ function updateGreeting() {
   hello.textContent = word;
 }
 
-async function loadAgents() {
+async function loadChatbots() {
   try {
-    var r = await fetch('api/agents');
+    var r = await fetch('api/chatbots');
     if (!r.ok) throw new Error();
     var agents = await r.json();
     connDot.classList.remove('offline');
@@ -331,7 +331,7 @@ async function setActiveAgent(agentId, agentName) {
   // a stale response would otherwise rewrite the new agent's empty chat.
   var localId = agentId;
   try {
-    var r = await fetch('api/agents/' + agentId + '/chat-history');
+    var r = await fetch('api/chatbots/' + agentId + '/chat-history');
     if (localId !== activeAgentId) return;
     if (r.ok) {
       var data = await r.json();
@@ -345,7 +345,7 @@ async function setActiveAgent(agentId, agentName) {
       checkTurnLimit();
     }
   } catch(e) {}
-  loadAgents();
+  loadChatbots();
 }
 
 function nowHHMM() {
@@ -497,7 +497,7 @@ async function sendMessage(text) {
     var r = await fetch('api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Requested-With': 'fetch'},
-      body: JSON.stringify({ message: text, agent_id: activeAgentId }),
+      body: JSON.stringify({ message: text, chatbot_id: activeAgentId }),
     });
     var data = await r.json();
     typing.remove();
@@ -615,10 +615,10 @@ fetch('api/health').then(function(r){ return r.json(); }).then(function(d){
   if (el && d.version) el.textContent = 'v' + d.version;
 }).catch(function(){});
 
-loadAgents();
+loadChatbots();
 loadUsage();
 updateGreeting();
-setInterval(loadAgents, 30000);
+setInterval(loadChatbots, 30000);
 setInterval(loadUsage, 30000);
 setInterval(updateGreeting, 60 * 60 * 1000);  /* refresh greeting every hour */
 
@@ -719,7 +719,7 @@ var _obType = 'chat';
 async function checkOnboarding() {
   if (localStorage.getItem('hiris_onboarding_v1')) return;
   try {
-    var r = await fetch('api/agents');
+    var r = await fetch('api/chatbots');
     if (!r.ok) return;
     var agents = await r.json();
     var nonDefault = agents.filter(function(a) { return !a.is_default; });
@@ -762,10 +762,10 @@ async function obCreate() {
   var btn = document.getElementById('ob-create-btn');
   btn.disabled = true;
   try {
-    var r = await fetch('api/agents', { method: 'POST', headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload) });
+    var r = await fetch('api/chatbots', { method: 'POST', headers: {'Content-Type':'application/json', 'X-Requested-With': 'fetch'}, body: JSON.stringify(payload) });
     if (!r.ok) { btn.disabled = false; alert('Errore nella creazione assistente. Riprova.'); return; }
     var agent = await r.json();
-    await loadAgents();
+    await loadChatbots();
     if (agent.id) setActiveAgent(agent.id, agent.name || agent.id);
     obDismiss();
   } catch(e) { btn.disabled = false; alert('Errore di rete. Riprova.'); }

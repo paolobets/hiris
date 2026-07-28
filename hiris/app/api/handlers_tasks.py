@@ -6,9 +6,12 @@ async def handle_list_tasks(request: web.Request) -> web.Response:
     task_engine = request.app.get("task_engine")
     if task_engine is None:
         return web.json_response([])
-    agent_id = request.rel_url.query.get("agent_id")
+    # "chatbot_id" is the current wire key; "agent_id" kept as a retro-compat
+    # fallback (SP-4 Fase A rename) so older RP/dashboard callers filtering
+    # by the pre-rename query param keep working unchanged.
+    chatbot_id = request.rel_url.query.get("chatbot_id") or request.rel_url.query.get("agent_id")
     status = request.rel_url.query.get("status")
-    tasks = task_engine.list_tasks(agent_id=agent_id or None, status=status or None)
+    tasks = task_engine.list_tasks(chatbot_id=chatbot_id or None, status=status or None)
     return web.json_response(tasks)
 
 

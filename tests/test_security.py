@@ -18,9 +18,9 @@ from aiohttp import web
 def _make_app_with_runner(runner):
     """Minimal aiohttp app wired like the real server but without startup hooks."""
     from hiris.app.api.handlers_chat import handle_chat
-    from hiris.app.api.handlers_agents import (
-        handle_get_agent, handle_update_agent, handle_delete_agent,
-        handle_run_agent, handle_get_agent_usage, handle_reset_agent_usage,
+    from hiris.app.api.handlers_chatbots import (
+        handle_get_chatbot, handle_update_chatbot, handle_delete_chatbot,
+        handle_run_chatbot, handle_get_chatbot_usage, handle_reset_chatbot_usage,
     )
     from hiris.app.server import _security_headers
 
@@ -39,8 +39,8 @@ def _make_app_with_runner(runner):
     agent.max_chat_turns = 0
 
     engine = MagicMock()
-    engine.get_agent.return_value = agent
-    engine.get_default_agent.return_value = agent
+    engine.get_chatbot.return_value = agent
+    engine.get_default_chatbot.return_value = agent
 
     app = web.Application(middlewares=[_security_headers])
     app["llm_router"] = runner
@@ -49,12 +49,12 @@ def _make_app_with_runner(runner):
     app["data_dir"] = "/tmp"
 
     app.router.add_post("/api/chat", handle_chat)
-    app.router.add_get("/api/agents/{agent_id}", handle_get_agent)
-    app.router.add_put("/api/agents/{agent_id}", handle_update_agent)
-    app.router.add_delete("/api/agents/{agent_id}", handle_delete_agent)
-    app.router.add_post("/api/agents/{agent_id}/run", handle_run_agent)
-    app.router.add_get("/api/agents/{agent_id}/usage", handle_get_agent_usage)
-    app.router.add_post("/api/agents/{agent_id}/usage/reset", handle_reset_agent_usage)
+    app.router.add_get("/api/chatbots/{agent_id}", handle_get_chatbot)
+    app.router.add_put("/api/chatbots/{agent_id}", handle_update_chatbot)
+    app.router.add_delete("/api/chatbots/{agent_id}", handle_delete_chatbot)
+    app.router.add_post("/api/chatbots/{agent_id}/run", handle_run_chatbot)
+    app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
+    app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
     return app
 
 
@@ -96,7 +96,7 @@ async def test_agent_path_rejects_path_traversal():
     runner = AsyncMock()
     app = _make_app_with_runner(runner)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/agents/../../etc/passwd")
+        resp = await client.get("/api/chatbots/../../etc/passwd")
         # aiohttp URL routing won't match, but validate it doesn't 200 OK
         assert resp.status in (400, 404)
 
@@ -106,7 +106,7 @@ async def test_agent_get_rejects_invalid_id_characters():
     runner = AsyncMock()
     app = _make_app_with_runner(runner)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/agents/bad<script>id")
+        resp = await client.get("/api/chatbots/bad<script>id")
         assert resp.status in (400, 404)
 
 
@@ -115,7 +115,7 @@ async def test_agent_get_accepts_valid_uuid():
     runner = AsyncMock()
     app = _make_app_with_runner(runner)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/agents/550e8400-e29b-41d4-a716-446655440000")
+        resp = await client.get("/api/chatbots/550e8400-e29b-41d4-a716-446655440000")
         # 404 because engine mock returns agent but asdict() might fail; the key
         # check is that we don't get 400 (validation reject)
         assert resp.status != 400
@@ -185,17 +185,17 @@ def test_create_agent_caps_max_tokens():
     """Every persona is a chat entity now (Slice 5 Task 2 dropped `type`),
     so there is a single cap regardless of what a stray "type" payload key
     says — 16000, not the old non-chat 8192."""
-    from hiris.app.agent_engine import AgentEngine
+    from hiris.app.chatbot_engine import ChatbotEngine
     from unittest.mock import MagicMock, patch
-    engine = AgentEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
+    engine = ChatbotEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
     with patch.object(engine, "_save"):
-        agent = engine.create_agent({
+        agent = engine.create_chatbot({
             "name": "Test",
             "type": "chat",
             "trigger": {"type": "manual"},
             "max_tokens": 99999,
         })
-        formerly_non_chat = engine.create_agent({
+        formerly_non_chat = engine.create_chatbot({
             "name": "Mon",
             "type": "monitor",
             "trigger": {"type": "manual"},
@@ -206,19 +206,19 @@ def test_create_agent_caps_max_tokens():
 
 
 def test_update_agent_caps_max_tokens():
-    from hiris.app.agent_engine import AgentEngine
+    from hiris.app.chatbot_engine import ChatbotEngine
     from unittest.mock import MagicMock, patch
-    engine = AgentEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
+    engine = ChatbotEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
     with patch.object(engine, "_save"):
-        agent = engine.create_agent({
+        agent = engine.create_chatbot({
             "name": "Test",
             "type": "chat",
             "trigger": {"type": "manual"},
             "max_tokens": 4096,
         })
     with patch.object(engine, "_save"):
-        with patch.object(engine, "_unschedule_agent"):
-            updated = engine.update_agent(agent.id, {"max_tokens": 50000})
+        with patch.object(engine, "_unschedule_chatbot"):
+            updated = engine.update_chatbot(agent.id, {"max_tokens": 50000})
     assert updated.max_tokens == 16000  # chat cap
 
 
@@ -255,7 +255,7 @@ def test_config_yaml_no_direct_port():
 # SEC-021 — APScheduler cron coalesce
 # ---------------------------------------------------------------------------
 # Retired (Slice 5): _schedule_agent and all autonomous-agent scheduling was
-# removed from AgentEngine — the Sentinella (watcher/) is now the sole
+# removed from ChatbotEngine — the Sentinella (watcher/) is now the sole
 # proactive engine, and it does not use APScheduler add_job() at all.
 
 
@@ -288,7 +288,7 @@ async def test_trigger_automation_blocked_by_allowed_services():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "evil_one"},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=["light.turn_on"],
         allowed_entities=None,
     )
@@ -305,7 +305,7 @@ async def test_trigger_automation_blocked_by_allowed_entities():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "evil_one"},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=None,
         allowed_entities=["automation.allowed_one"],
     )
@@ -326,7 +326,7 @@ async def test_trigger_automation_allowed_when_whitelisted():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=["automation.trigger"],
         allowed_entities=["automation.morning_*"],
     )
@@ -343,7 +343,7 @@ async def test_toggle_automation_blocked_by_allowed_services():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "x", "enabled": True},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=["light.turn_on"],
         allowed_entities=None,
     )
@@ -360,7 +360,7 @@ async def test_toggle_automation_blocked_by_allowed_entities():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "x", "enabled": False},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=None,
         allowed_entities=["automation.allowed_one"],
     )
@@ -381,7 +381,7 @@ async def test_toggle_automation_allowed_when_whitelisted():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "morning_briefing", "enabled": False},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=["automation.turn_off"],
         allowed_entities=["automation.morning_*"],
     )
@@ -406,7 +406,7 @@ async def test_trigger_automation_denied_when_domain_not_green():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -418,7 +418,7 @@ async def test_trigger_automation_denied_when_domain_off():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -439,7 +439,7 @@ async def test_trigger_automation_confirmation_required_when_yellow():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
         user_id="paolo",
     )
     assert out["status"] == "confirmation_required" and out["id"] == "nonce-trig"
@@ -454,7 +454,7 @@ async def test_trigger_automation_executes_when_domain_green():
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": "morning_briefing"},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert out is True
     d._ha.call_service.assert_awaited_once_with(
@@ -468,7 +468,7 @@ async def test_toggle_automation_denied_when_domain_not_green():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "morning_briefing", "enabled": True},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -480,7 +480,7 @@ async def test_toggle_automation_executes_when_domain_green():
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": "morning_briefing", "enabled": True},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert out is True
     d._ha.call_service.assert_awaited_once_with(
@@ -499,7 +499,7 @@ async def test_set_input_helper_denied_when_domain_not_green():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_boolean.guest_mode", "value": True},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -520,7 +520,7 @@ async def test_set_input_helper_confirmation_required_when_yellow():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_boolean.guest_mode", "value": True},
-        agent_id="a",
+        chatbot_id="a",
         user_id="paolo",
     )
     assert out["status"] == "confirmation_required" and out["id"] == "nonce-ih"
@@ -535,7 +535,7 @@ async def test_set_input_helper_executes_when_domain_green():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_boolean.guest_mode", "value": True},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert out == {"entity_id": "input_boolean.guest_mode", "service": "input_boolean.turn_on", "ok": True}
     d._ha.call_service.assert_awaited_once_with(
@@ -549,7 +549,7 @@ async def test_set_input_helper_number_executes_when_domain_green():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_number.target_temp", "value": 21.5},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert out["ok"] is True
     d._ha.call_service.assert_awaited_once_with(
@@ -563,7 +563,7 @@ async def test_set_input_helper_number_denied_when_domain_not_green():
     out = await d.dispatch(
         "set_input_helper",
         {"entity_id": "input_number.target_temp", "value": 21.5},
-        agent_id="a",
+        chatbot_id="a",
     )
     assert isinstance(out, dict) and "error" in out
     d._ha.call_service.assert_not_called()
@@ -588,7 +588,7 @@ async def test_trigger_automation_rejects_malformed_id(evil_id):
     out = await d.dispatch(
         "trigger_automation",
         {"automation_id": evil_id},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=None,
         allowed_entities=None,
     )
@@ -608,7 +608,7 @@ async def test_toggle_automation_rejects_malformed_id(evil_id):
     out = await d.dispatch(
         "toggle_automation",
         {"automation_id": evil_id, "enabled": True},
-        agent_id="a",
+        chatbot_id="a",
         allowed_services=None,
         allowed_entities=None,
     )

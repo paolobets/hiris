@@ -1,4 +1,4 @@
-# hiris/app/api/handlers_agents.py
+# hiris/app/api/handlers_chatbots.py
 import logging
 import re
 from dataclasses import asdict
@@ -7,16 +7,16 @@ from ..config import EUR_RATE as _EUR_RATE
 
 logger = logging.getLogger(__name__)
 
-_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_CHATBOT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
-def _check_agent_id(agent_id: str) -> web.Response | None:
-    if not _AGENT_ID_RE.match(agent_id):
+def _check_chatbot_id(agent_id: str) -> web.Response | None:
+    if not _CHATBOT_ID_RE.match(agent_id):
         return web.json_response({"error": "invalid agent_id"}, status=400)
     return None
 
 
-def _validate_agent_payload(body: dict) -> str | None:
+def _validate_chatbot_payload(body: dict) -> str | None:
     """Return an error message string if the payload is invalid, else None."""
     name = body.get("name")
     if name is not None:
@@ -69,18 +69,18 @@ def _validate_agent_payload(body: dict) -> str | None:
     return None
 
 
-async def handle_list_agents(request: web.Request) -> web.Response:
+async def handle_list_chatbots(request: web.Request) -> web.Response:
     engine = request.app["engine"]
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     result = []
-    for agent_id, agent_data in engine.list_agents().items():
+    for agent_id, agent_data in engine.list_chatbots().items():
         entry = dict(agent_data)
-        entry["status"] = engine.get_agent_status(agent_id)
+        entry["status"] = engine.get_chatbot_status(agent_id)
         budget_eur = 0.0
         usage_payload: dict = {}
         if runner:
             try:
-                usage = runner.get_agent_usage(agent_id) or {}
+                usage = runner.get_chatbot_usage(agent_id) or {}
                 cost_usd = usage.get("cost_usd", 0.0)
                 budget_eur = round(float(cost_usd) * _EUR_RATE, 4)
                 usage_payload = {
@@ -91,7 +91,7 @@ async def handle_list_agents(request: web.Request) -> web.Response:
                     "last_run": usage.get("last_run"),
                 }
             except Exception as exc:
-                logger.warning("get_agent_usage(%s) failed: %s", agent_id, exc)
+                logger.warning("get_chatbot_usage(%s) failed: %s", agent_id, exc)
                 budget_eur = 0.0
         entry["budget_eur"] = budget_eur
         entry["usage"] = usage_payload
@@ -121,7 +121,7 @@ async def _validate_openrouter_model(request: web.Request, body: dict) -> str | 
     return None
 
 
-async def handle_create_agent(request: web.Request) -> web.Response:
+async def handle_create_chatbot(request: web.Request) -> web.Response:
     try:
         body = await request.json()
     except Exception:
@@ -132,69 +132,69 @@ async def handle_create_agent(request: web.Request) -> web.Response:
     if missing:
         return web.json_response({"error": f"Missing required fields: {missing}"}, status=400)
 
-    if err := _validate_agent_payload(body):
+    if err := _validate_chatbot_payload(body):
         return web.json_response({"error": err}, status=400)
 
     if err := await _validate_openrouter_model(request, body):
         return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]
-    agent = engine.create_agent(body)
+    agent = engine.create_chatbot(body)
     return web.json_response(asdict(agent), status=201)
 
 
-async def handle_get_agent(request: web.Request) -> web.Response:
+async def handle_get_chatbot(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
-    agent = engine.get_agent(agent_id)
+    agent = engine.get_chatbot(agent_id)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
     return web.json_response(asdict(agent))
 
 
-async def handle_update_agent(request: web.Request) -> web.Response:
+async def handle_update_chatbot(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
 
-    if err := _validate_agent_payload(body):
+    if err := _validate_chatbot_payload(body):
         return web.json_response({"error": err}, status=400)
 
     if err := await _validate_openrouter_model(request, body):
         return web.json_response({"error": err}, status=400)
 
     engine = request.app["engine"]
-    agent = engine.update_agent(agent_id, body)
+    agent = engine.update_chatbot(agent_id, body)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
     return web.json_response(asdict(agent))
 
 
-async def handle_delete_agent(request: web.Request) -> web.Response:
+async def handle_delete_chatbot(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
-    agent = engine.get_agent(agent_id)
+    agent = engine.get_chatbot(agent_id)
     if agent is not None and agent.is_default:
         return web.json_response({"error": "Cannot delete default agent"}, status=409)
-    deleted = engine.delete_agent(agent_id)
+    deleted = engine.delete_chatbot(agent_id)
     if not deleted:
         return web.json_response({"error": "Not found"}, status=404)
-    # Clean up orphaned data: long-term memories (lens-scoped KnowledgeStore
-    # rows, Slice 3) and persisted chat history.
+    # Clean up orphaned data: long-term memories (chatbot_id-scoped
+    # KnowledgeStore rows, Slice 3) and persisted chat history.
     knowledge_store = request.app.get("knowledge_store")
     if knowledge_store is not None:
         try:
-            knowledge_store.delete_by_lens(agent_id)
+            knowledge_store.delete_by_chatbot(agent_id)
         except Exception as exc:
-            logger.warning("knowledge_store.delete_by_lens(%s) failed: %s", agent_id, exc)
+            logger.warning("knowledge_store.delete_by_chatbot(%s) failed: %s", agent_id, exc)
     data_dir = request.app.get("data_dir")
     if data_dir:
         try:
@@ -205,15 +205,15 @@ async def handle_delete_agent(request: web.Request) -> web.Response:
     return web.Response(status=204)
 
 
-async def handle_run_agent(request: web.Request) -> web.Response:
+async def handle_run_chatbot(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
-    agent = engine.get_agent(agent_id)
+    agent = engine.get_chatbot(agent_id)
     if not agent:
         return web.json_response({"error": "Not found"}, status=404)
-    result = await engine.run_agent(agent)
+    result = await engine.run_chatbot(agent)
     return web.json_response({"result": result})
 
 
@@ -241,17 +241,17 @@ async def handle_list_entities(request: web.Request) -> web.Response:
     return web.json_response(entities)
 
 
-async def handle_get_agent_usage(request: web.Request) -> web.Response:
+async def handle_get_chatbot_usage(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
-    if not engine.get_agent(agent_id):
+    if not engine.get_chatbot(agent_id):
         return web.json_response({"error": "Not found"}, status=404)
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response({"error": "runner not configured"}, status=503)
-    usage = runner.get_agent_usage(agent_id)
+    usage = runner.get_chatbot_usage(agent_id)
     cost_usd = usage.get("cost_usd", 0.0)
     return web.json_response({
         "agent_id": agent_id,
@@ -265,27 +265,27 @@ async def handle_get_agent_usage(request: web.Request) -> web.Response:
     })
 
 
-async def handle_reset_agent_usage(request: web.Request) -> web.Response:
+async def handle_reset_chatbot_usage(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
-    if not engine.get_agent(agent_id):
+    if not engine.get_chatbot(agent_id):
         return web.json_response({"error": "Not found"}, status=404)
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
         return web.json_response({"error": "runner not configured"}, status=503)
-    runner.reset_agent_usage(agent_id)
+    runner.reset_chatbot_usage(agent_id)
     return web.json_response({"reset": True, "agent_id": agent_id})
 
 
 async def handle_context_preview(request: web.Request) -> web.Response:
     """Return SemanticContextMap output for this agent (empty-string query = all relevant entities)."""
     agent_id = request.match_info["agent_id"]
-    if err := _check_agent_id(agent_id):
+    if err := _check_chatbot_id(agent_id):
         return err
     engine = request.app["engine"]
-    agent = engine.get_agent(agent_id)
+    agent = engine.get_chatbot(agent_id)
     if agent is None:
         return web.json_response({"error": "Not found"}, status=404)
 

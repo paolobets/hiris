@@ -233,13 +233,13 @@ async def get_agent_usage(req):
 
 def build_app():
     app = web.Application()
-    app.router.add_get("/api/agents", list_agents)
-    app.router.add_get("/api/agents/{id}", get_agent)
-    app.router.add_put("/api/agents/{id}", update_agent)
-    app.router.add_post("/api/agents", update_agent)  # create same shape
-    app.router.add_post("/api/agents/{id}/run", run_agent)
-    app.router.add_delete("/api/agents/{id}", lambda r: web.Response(status=204))
-    app.router.add_get("/api/agents/{id}/usage", get_agent_usage)
+    app.router.add_get("/api/chatbots", list_agents)
+    app.router.add_get("/api/chatbots/{id}", get_agent)
+    app.router.add_put("/api/chatbots/{id}", update_agent)
+    app.router.add_post("/api/chatbots", update_agent)  # create same shape
+    app.router.add_post("/api/chatbots/{id}/run", run_agent)
+    app.router.add_delete("/api/chatbots/{id}", lambda r: web.Response(status=204))
+    app.router.add_get("/api/chatbots/{id}/usage", get_agent_usage)
     app.router.add_get("/api/proposals", list_proposals)
     app.router.add_post("/api/proposals/{id}/apply", lambda r: web.Response(status=204))
     app.router.add_post("/api/proposals/{id}/reject", lambda r: web.Response(status=204))

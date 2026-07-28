@@ -34,14 +34,18 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
     if (job or {}).get("kind") == "chat":
         # Chat-via-abbonamento (Slice 4b): a chat job's submit writes the
         # reply into chat_store — it must NEVER actuate the house through
-        # execute_decision. Fail-closed: missing agent_id/reply -> no write,
+        # execute_decision. Fail-closed: missing chatbot_id/reply -> no write,
         # but the job stays "decided" (already committed by q.submit above).
-        agent_id = ((job or {}).get("context") or {}).get("agent_id")
+        # Retro-compat (one-deploy window): jobs enqueued before the
+        # agent_id->chatbot_id rename still carry the legacy key. Fall back
+        # to it so an in-flight pre-deploy job's reply isn't dropped.
+        _ctx = (job or {}).get("context") or {}
+        chatbot_id = _ctx.get("chatbot_id") or _ctx.get("agent_id")
         reply = decision.get("reply")
         submit_chat_reply = request.app.get("submit_chat_reply")
-        if submit_chat_reply is not None and agent_id and reply:
+        if submit_chat_reply is not None and chatbot_id and reply:
             try:
-                await submit_chat_reply(agent_id, reply)
+                await submit_chat_reply(chatbot_id, reply)
                 outcome = "chat_reply_recorded"
             except Exception:
                 logger.exception("submit_chat_reply failed")

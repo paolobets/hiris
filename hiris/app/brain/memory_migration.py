@@ -5,10 +5,11 @@ KnowledgeStore (Slice 3).
 Historically each agent's long-term memory lived in its own SQLite database
 (`hiris_memory.db`, table `agent_memories` -- see `proxy/memory_store.py`).
 Slice 3 unifies all memory/knowledge under `knowledge_items` in
-`knowledge.db`, using the `lens` column to keep memories scoped per agent.
+`knowledge.db`, using the `chatbot_id` column to keep memories scoped per
+agent.
 
 `migrate_agent_memories()` copies every legacy row into KnowledgeStore as a
-`kind="memory"` item (`lens=<agent_id>`, `source="migrated"`), then renames
+`kind="memory"` item (`chatbot_id=<agent_id>`, `source="migrated"`), then renames
 the legacy DB to `hiris_memory.db.migrated` so it is never processed again.
 It must be safe to call on every startup: idempotent, and it must never drop
 a row (including rows with a NULL embedding).
@@ -96,7 +97,7 @@ def migrate_agent_memories(data_dir: str, knowledge_store) -> int:
             kind="memory",
             content=row["content"],
             owner="home",
-            lens=row["agent_id"],
+            chatbot_id=row["agent_id"],
             status="approved",
             sensitivity="normal",
             embedding=embedding,

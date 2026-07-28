@@ -27,9 +27,13 @@ class _FakeDispatcher:
         self.calls = []
 
     async def dispatch(self, name, inputs, allowed_entities=None,
-                       allowed_services=None, agent_id=None, cloud=True, **kw):
+                       allowed_services=None, chatbot_id=None, cloud=True, **kw):
         self.calls.append((name, inputs, allowed_entities, allowed_services))
-        self.last_agent_id = agent_id
+        # dispatcher.dispatch's kwarg is chatbot_id (Task 6 rename); this
+        # attribute is named last_agent_id because in handlers_execute.py the
+        # VALUE is a request-origin label ("mcp-gateway"/"unknown"), not a
+        # Chatbot id -- kept for readability of the assertions below.
+        self.last_agent_id = chatbot_id
         return {"ok": name}
 
 

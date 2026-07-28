@@ -55,7 +55,7 @@
     });
 
     /* Per-agent table */
-    fetch('api/agents').then(function(r) {
+    fetch('api/chatbots').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function(d) {
@@ -89,7 +89,7 @@
           : (enabled
               ? '<span class="agent-badge badge-on">● Attivo</span>'
               : '<span class="agent-badge badge-off">○ Disabilitato</span>');
-        return '<a class="' + rowCls + '" href="#/agents/' + escHtml(a.id) + '">' +
+        return '<a class="' + rowCls + '" href="#/chatbots/' + escHtml(a.id) + '">' +
           '<span class="dl-time"><span class="dot ' + (paused ? 'iris' : (enabled ? 'on' : 'off')) + '"></span></span>' +
           '<span class="dl-content">' +
             '<span class="dl-agent">' + escHtml(a.name) + '</span>' +

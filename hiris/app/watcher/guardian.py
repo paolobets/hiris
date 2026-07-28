@@ -17,8 +17,8 @@ class Guardian:
                  *, clock: Callable[[], float] = time.time,
                  today: Callable[[], str] = _default_today,
                  cooldown_sec: int = 1800, daily_cap: int = 20,
-                 get_user_lenses: Optional[Callable[[], list]] = None,
-                 run_lens: Optional[Callable[[dict, dict], Awaitable]] = None) -> None:
+                 get_user_agentbots: Optional[Callable[[], list]] = None,
+                 run_agentbot: Optional[Callable[[dict, dict], Awaitable]] = None) -> None:
         self._store = store
         self._get_policy = get_policy
         self._policy_override: dict | None = None
@@ -27,15 +27,17 @@ class Guardian:
         self._today = today
         self._cooldown = cooldown_sec
         self._cap = daily_cap
-        # Slice 5b / Task 4: EVENT-triggered user lenses, dispatched ALONGSIDE
-        # (never instead of) the built-in DETECTORS loop below. `get_user_lenses`
-        # returns the current enabled event-type lenses (server.py wires it to
-        # `watcher.lenses.load_lenses(data_dir)` filtered accordingly); `run_lens`
-        # is `app["run_lens"]` (the shared Task-3 flow). Both optional so every
-        # existing built-in-only call site (and every built-in regression test)
-        # keeps working unchanged with zero user-lens overhead.
-        self._get_user_lenses = get_user_lenses or (lambda: [])
-        self._run_lens = run_lens
+        # Slice 5b / Task 4: EVENT-triggered user Agentbots (renamed from
+        # "lens" in SP-4 Fase A Task 3), dispatched ALONGSIDE (never instead
+        # of) the built-in DETECTORS loop below. `get_user_agentbots` returns
+        # the current enabled event-type Agentbots (server.py wires it to
+        # `watcher.lenses.load_agentbots(data_dir)` filtered accordingly);
+        # `run_agentbot` is `app["run_agentbot"]` (the shared Task-3 flow).
+        # Both optional so every existing built-in-only call site (and every
+        # built-in regression test) keeps working unchanged with zero
+        # user-Agentbot overhead.
+        self._get_user_agentbots = get_user_agentbots or (lambda: [])
+        self._run_agentbot = run_agentbot
 
     def set_policy(self, policy: dict) -> None:
         """Apply a policy override live (e.g. right after the UI saves new
@@ -72,37 +74,47 @@ class Guardian:
                     sig.evidence["minutes"] = round((now - started) / 60.0, 1)
                 await self._maybe_wake(key, sig, now)
 
-            # Slice 5b / Task 4: EVENT-triggered user lenses. Same eid, same
-            # `now`, same duration-timer gating as the built-ins above (the
-            # store's timers table is keyed by string, so a `lens:<id>:<eid>`
-            # key can't collide with a built-in `<kind>:<eid>` key) — but
-            # cooldown/daily-cap gating for user lenses lives INSIDE
-            # `run_lens` (its own `maybe_wake` call, per-lens `cap_scope`),
-            # not here, so it is deliberately NOT re-done via
-            # `self._maybe_wake` for this branch.
-            if self._run_lens is not None:
-                await self._dispatch_user_lenses(eid, old, new, now)
+            # Slice 5b / Task 4: EVENT-triggered user Agentbots. Same eid,
+            # same `now`, same duration-timer gating as the built-ins above
+            # (the store's timers table is keyed by string, so an
+            # `agentbot:<id>:<eid>` key can't collide with a built-in
+            # `<kind>:<eid>` key) — but cooldown/daily-cap gating for user
+            # Agentbots lives INSIDE `run_agentbot` (its own `maybe_wake`
+            # call, per-Agentbot `cap_scope`), not here, so it is
+            # deliberately NOT re-done via `self._maybe_wake` for this
+            # branch.
+            if self._run_agentbot is not None:
+                await self._dispatch_user_agentbots(eid, old, new, now)
         except Exception:  # noqa: BLE001 — mai far crollare il listener
             log.exception("guardian on_state_changed failed")
 
-    async def _dispatch_user_lenses(self, eid: str, old, new, now: float) -> None:
+    async def _dispatch_user_agentbots(self, eid: str, old, new, now: float) -> None:
         try:
-            lenses = self._get_user_lenses() or []
+            agentbots = self._get_user_agentbots() or []
         except Exception:
-            log.exception("guardian: get_user_lenses failed")
+            log.exception("guardian: get_user_agentbots failed")
             return
-        for lens in lenses:
-            if not isinstance(lens, dict) or not lens.get("enabled"):
-                continue  # review fix: never fire a disabled lens
-            trigger = lens.get("trigger") or {}
+        for agentbot in agentbots:
+            if not isinstance(agentbot, dict) or not agentbot.get("enabled"):
+                continue  # review fix: never fire a disabled Agentbot
+            trigger = agentbot.get("trigger") or {}
             if trigger.get("type") != "event" or trigger.get("entity_id") != eid:
                 continue
-            lens_id = lens.get("id", "-")
-            key = f"lens:{lens_id}:{eid}"
+            agentbot_id = agentbot.get("id", "-")
+            # NOTE (SP-4 Fase A Task 3 rename): this duration-timer key
+            # changed from `lens:{id}:{eid}` to `agentbot:{id}:{eid}` — the
+            # sibling of the cap/cooldown key rename documented in
+            # `lens_runner.run_agentbot` (see that docstring for the full
+            # rationale). Any Agentbot with an in-progress "needs_duration"
+            # condition timer under the OLD `lens:*` key becomes an
+            # unreachable orphan row in the store on the day this ships and
+            # restarts its wait from zero under the new key — same
+            # deliberate, documented one-time reset, not a bug.
+            key = f"agentbot:{agentbot_id}:{eid}"
             try:
                 sig = make_generic_detector(trigger)(eid, old, new, {}, now)
             except Exception:
-                log.exception("guardian: user lens detector failed for lens %s", lens_id)
+                log.exception("guardian: user Agentbot detector failed for agentbot %s", agentbot_id)
                 continue
             if sig is None:
                 self._store.clear_timer(key)   # condizione rientrata
@@ -115,11 +127,11 @@ class Guardian:
                     continue
                 sig.evidence["minutes"] = round((now - started) / 60.0, 1)
             try:
-                # review fix: a broken lens (bad adapter, LLM hiccup, ...)
+                # review fix: a broken Agentbot (bad adapter, LLM hiccup, ...)
                 # must never take down the rest of this dispatch batch.
-                await self._run_lens(lens, sig.evidence)
+                await self._run_agentbot(agentbot, sig.evidence)
             except Exception:
-                log.exception("guardian: run_lens failed for lens %s", lens_id)
+                log.exception("guardian: run_agentbot failed for agentbot %s", agentbot_id)
                 continue
 
     async def _maybe_wake(self, key: str, sig, now: float) -> None:

@@ -8,31 +8,31 @@ def _store(tmp_path):
     return KnowledgeStore(str(tmp_path / "knowledge.db"))
 
 
-def test_lens_item_isolated_from_other_agents(tmp_path):
+def test_chatbot_item_isolated_from_other_agents(tmp_path):
     s = _store(tmp_path)
-    a = s.add_item(kind="memory", content="pref A", owner="paolo", lens="agentA",
+    a = s.add_item(kind="memory", content="pref A", owner="paolo", chatbot_id="agentA",
                     status="approved", embedding=[0.1, 0.2])
-    got_a = s.search(query_vec=[0.1, 0.2], owner="paolo", lens="agentA", k=5)
-    got_b = s.search(query_vec=[0.1, 0.2], owner="paolo", lens="agentB", k=5)
+    got_a = s.search(query_vec=[0.1, 0.2], owner="paolo", chatbot_id="agentA", k=5)
+    got_b = s.search(query_vec=[0.1, 0.2], owner="paolo", chatbot_id="agentB", k=5)
     assert any(r["id"] == a for r in got_a)
     assert all(r["id"] != a for r in got_b)
     s.close()
 
 
-def test_home_knowledge_visible_regardless_of_lens(tmp_path):
+def test_home_knowledge_visible_regardless_of_chatbot(tmp_path):
     s = _store(tmp_path)
-    k = s.add_item(kind="fact", content="solare 6kWp", owner="home", lens=None,
+    k = s.add_item(kind="fact", content="solare 6kWp", owner="home", chatbot_id=None,
                     status="approved", embedding=[0.3, 0.3])
-    got = s.search(query_vec=[0.3, 0.3], owner="paolo", lens="agentA", k=5)
+    got = s.search(query_vec=[0.3, 0.3], owner="paolo", chatbot_id="agentA", k=5)
     assert any(r["id"] == k for r in got)
     s.close()
 
 
 def test_owner_scoped_not_visible_to_other_user(tmp_path):
     s = _store(tmp_path)
-    k = s.add_item(kind="fact", content="scadenza TARI", owner="paolo", lens=None,
+    k = s.add_item(kind="fact", content="scadenza TARI", owner="paolo", chatbot_id=None,
                     status="approved", embedding=[0.4, 0.4])
-    got = s.search(query_vec=[0.4, 0.4], owner="altro", lens=None, k=5)
+    got = s.search(query_vec=[0.4, 0.4], owner="altro", chatbot_id=None, k=5)
     assert all(r["id"] != k for r in got)
     s.close()
 
@@ -96,12 +96,12 @@ def test_expired_valid_until_excluded(tmp_path):
     s.close()
 
 
-def test_get_item_includes_lens(tmp_path):
+def test_get_item_includes_chatbot_id(tmp_path):
     s = _store(tmp_path)
-    a = s.add_item(kind="memory", content="pref A", owner="paolo", lens="agentA",
+    a = s.add_item(kind="memory", content="pref A", owner="paolo", chatbot_id="agentA",
                     status="approved", embedding=[0.1, 0.2])
     row = s.get_item(a)
-    assert row["lens"] == "agentA"
+    assert row["chatbot_id"] == "agentA"
     s.close()
 
 
@@ -129,10 +129,18 @@ CREATE TABLE IF NOT EXISTS knowledge_items (
 );
 """
 
+_V2_SCHEMA = _V1_SCHEMA.replace(
+    "updated_at   TEXT NOT NULL\n);",
+    "updated_at   TEXT NOT NULL,\n    lens         TEXT\n);",
+)
 
-def test_migration_v1_to_v2_adds_lens(tmp_path):
-    # Build a genuine pre-Slice3 v1 DB (no lens column, user_version=1) by hand,
-    # mirroring the schema KnowledgeStore used before this change.
+
+def test_migration_v1_to_v3_ends_with_chatbot_id(tmp_path):
+    # Build a genuine pre-Slice3 v1 DB (no lens/chatbot_id column,
+    # user_version=1) by hand, mirroring the schema KnowledgeStore used
+    # before Slice 3. Reopening it must cascade v1->v2 (adds `lens`) then
+    # v2->v3 (renames `lens`->`chatbot_id`), landing on `chatbot_id` with no
+    # `lens` column left behind.
     db = str(tmp_path / "knowledge.db")
     conn = sqlite3.connect(db)
     conn.executescript(_V1_SCHEMA)
@@ -147,48 +155,113 @@ def test_migration_v1_to_v2_adds_lens(tmp_path):
     conn.commit()
     conn.close()
 
-    s2 = KnowledgeStore(db)  # reopen triggers v1 -> v2 migration
+    s2 = KnowledgeStore(db)  # reopen triggers v1 -> v2 -> v3 migration chain
     row = s2.get_item(old)
-    assert "lens" in row and row["lens"] is None
+    assert "chatbot_id" in row and row["chatbot_id"] is None
+    assert "lens" not in row
     conn2 = sqlite3.connect(db)
     cols = {r[1] for r in conn2.execute("PRAGMA table_info(knowledge_items)").fetchall()}
-    assert "lens" in cols
+    assert "chatbot_id" in cols
+    assert "lens" not in cols
     conn2.close()
     s2.close()
 
 
-def test_lens_memory_not_leaked_across_users_of_same_agent(tmp_path):
-    """Two different HA users chatting with the SAME agent (same lens) must
-    not see each other's lens-scoped memory. Before the owner-scope fix, the
-    search WHERE was `(lens=:lens OR (lens IS NULL AND (owner=... )))` — once
-    `lens` matched, `owner` was ignored entirely, leaking userA's memory to
-    userB. The fix ANDs the owner-scope with the lens clause."""
+def test_migration_v2_to_v3_renames_lens_to_chatbot_id_preserving_data(tmp_path):
+    """Dedicated v2->v3 test: build a knowledge.db already at user_version=2
+    (the real production shape -- a genuine `lens` column with data), open it
+    through KnowledgeStore and assert the rename to `chatbot_id` happened and
+    every row's data (including the scoping value) survived intact."""
+    db = str(tmp_path / "knowledge.db")
+    conn = sqlite3.connect(db)
+    conn.executescript(_V2_SCHEMA)
+    now = "2026-01-01T00:00:00Z"
+    cur1 = conn.execute(
+        "INSERT INTO knowledge_items"
+        "(kind, owner, title, content, data, created_at, updated_at, lens)"
+        " VALUES(?,?,?,?,?,?,?,?)",
+        ("memory", "home", "", "scoped to agentA", "{}", now, now, "agentA"),
+    )
+    scoped_id = cur1.lastrowid
+    cur2 = conn.execute(
+        "INSERT INTO knowledge_items"
+        "(kind, owner, title, content, data, created_at, updated_at, lens)"
+        " VALUES(?,?,?,?,?,?,?,?)",
+        ("fact", "home", "", "shared knowledge", "{}", now, now, None),
+    )
+    shared_id = cur2.lastrowid
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit()
+    conn.close()
+
+    s = KnowledgeStore(db)  # reopen triggers v2 -> v3 migration (RENAME COLUMN)
+
+    conn2 = sqlite3.connect(db)
+    cols = {r[1] for r in conn2.execute("PRAGMA table_info(knowledge_items)").fetchall()}
+    assert "chatbot_id" in cols
+    assert "lens" not in cols
+    conn2.close()
+
+    scoped = s.get_item(scoped_id)
+    assert scoped["chatbot_id"] == "agentA"
+    assert scoped["content"] == "scoped to agentA"
+
+    shared = s.get_item(shared_id)
+    assert shared["chatbot_id"] is None
+    assert shared["content"] == "shared knowledge"
+
+    s.close()
+
+
+def test_migration_v2_to_v3_idempotent_when_reopened_twice(tmp_path):
+    """Reopening an already-migrated (v3) DB must not fail or re-run the
+    RENAME COLUMN (which would raise since `lens` no longer exists)."""
+    db = str(tmp_path / "knowledge.db")
+    s1 = KnowledgeStore(db)
+    s1.add_item(kind="memory", content="x", chatbot_id="agentA")
+    s1.close()
+
+    s2 = KnowledgeStore(db)  # second open at already-v3: must be a no-op
+    items = s2.list_items(limit=10)
+    assert len(items) == 1
+    assert items[0]["chatbot_id"] == "agentA"
+    s2.close()
+
+
+def test_chatbot_memory_not_leaked_across_users_of_same_agent(tmp_path):
+    """Two different HA users chatting with the SAME agent (same chatbot_id)
+    must not see each other's chatbot-scoped memory. Before the owner-scope
+    fix, the search WHERE was `(lens=:lens OR (lens IS NULL AND (owner=...
+    )))` — once `lens` matched, `owner` was ignored entirely, leaking
+    userA's memory to userB. The fix ANDs the owner-scope with the
+    chatbot_id clause."""
     s = _store(tmp_path)
     a = s.add_item(kind="memory", content="userA pref 21C", owner="userA",
-                    lens="agentA", status="approved", embedding=[0.2, 0.2])
-    got_by_a = s.search(query_vec=[0.2, 0.2], owner="userA", lens="agentA", k=5)
-    got_by_b = s.search(query_vec=[0.2, 0.2], owner="userB", lens="agentA", k=5)
+                    chatbot_id="agentA", status="approved", embedding=[0.2, 0.2])
+    got_by_a = s.search(query_vec=[0.2, 0.2], owner="userA", chatbot_id="agentA", k=5)
+    got_by_b = s.search(query_vec=[0.2, 0.2], owner="userB", chatbot_id="agentA", k=5)
     assert any(r["id"] == a for r in got_by_a)
     assert all(r["id"] != a for r in got_by_b)
     s.close()
 
 
-def test_home_owned_lens_memory_shared_across_users_of_same_agent(tmp_path):
-    """A lens item explicitly owned by 'home' is shared across users of that
-    agent (owner='home' still matches the (owner=? OR owner='home') clause)."""
+def test_home_owned_chatbot_memory_shared_across_users_of_same_agent(tmp_path):
+    """A chatbot-scoped item explicitly owned by 'home' is shared across
+    users of that agent (owner='home' still matches the
+    (owner=? OR owner='home') clause)."""
     s = _store(tmp_path)
     h = s.add_item(kind="memory", content="shared agent note", owner="home",
-                    lens="agentA", status="approved", embedding=[0.25, 0.25])
-    got_by_a = s.search(query_vec=[0.25, 0.25], owner="userA", lens="agentA", k=5)
-    got_by_b = s.search(query_vec=[0.25, 0.25], owner="userB", lens="agentA", k=5)
+                    chatbot_id="agentA", status="approved", embedding=[0.25, 0.25])
+    got_by_a = s.search(query_vec=[0.25, 0.25], owner="userA", chatbot_id="agentA", k=5)
+    got_by_b = s.search(query_vec=[0.25, 0.25], owner="userB", chatbot_id="agentA", k=5)
     assert any(r["id"] == h for r in got_by_a)
     assert any(r["id"] == h for r in got_by_b)
     s.close()
 
 
-def test_backward_compat_lens_none_equivalent_to_previous_owner_scope(tmp_path):
-    """With lens=None, the unified WHERE must give identical results to the
-    pre-Slice3 scope filter (owner=? OR owner='home')."""
+def test_backward_compat_chatbot_id_none_equivalent_to_previous_owner_scope(tmp_path):
+    """With chatbot_id=None, the unified WHERE must give identical results
+    to the pre-Slice3 scope filter (owner=? OR owner='home')."""
     s = _store(tmp_path)
     mine = s.add_item(kind="fact", content="mio", owner="paolo", status="approved",
                        embedding=[0.9, 0.1])

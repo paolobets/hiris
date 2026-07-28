@@ -12,21 +12,21 @@ function ok(label, cond) { log.push((cond ? 'PASS' : 'FAIL') + ' · ' + label); 
 
 var calls = [];
 HirisRouter.register(/^#\/?$/,             function(){ calls.push(['root']); });
-HirisRouter.register(/^#\/agents\/?$/,     function(){ calls.push(['list']); });
-HirisRouter.register(/^#\/agents\/([^/]+)$/, function(m){ calls.push(['detail', m[1]]); });
+HirisRouter.register(/^#\/chatbots\/?$/,     function(){ calls.push(['list']); });
+HirisRouter.register(/^#\/chatbots\/([^/]+)$/, function(m){ calls.push(['detail', m[1]]); });
 
 HirisRouter.start();
 ok('start with no hash → calls root', JSON.stringify(calls[0]) === JSON.stringify(['root']));
 
 calls = [];
-window.location.hash = '#/agents';
+window.location.hash = '#/chatbots';
 setTimeout(function() {
-  ok('navigate #/agents → calls list', JSON.stringify(calls[0]) === JSON.stringify(['list']));
+  ok('navigate #/chatbots → calls list', JSON.stringify(calls[0]) === JSON.stringify(['list']));
 
   calls = [];
-  window.location.hash = '#/agents/abc123';
+  window.location.hash = '#/chatbots/abc123';
   setTimeout(function() {
-    ok('navigate #/agents/abc123 → calls detail with id', JSON.stringify(calls[0]) === JSON.stringify(['detail', 'abc123']));
+    ok('navigate #/chatbots/abc123 → calls detail with id', JSON.stringify(calls[0]) === JSON.stringify(['detail', 'abc123']));
     out.textContent = log.join('\n');
     console.log(log.join('\n'));
   }, 50);

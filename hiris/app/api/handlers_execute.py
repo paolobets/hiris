@@ -233,7 +233,10 @@ async def handle_execute(request: web.Request) -> web.Response:
         inputs,
         allowed_entities=None if is_read else policy.get("allowed_entities"),
         allowed_services=None if is_read else policy.get("allowed_services"),
-        agent_id=_origin(body),
+        # dispatcher.dispatch's kwarg is chatbot_id (Task 6 rename) but the
+        # VALUE here is a request-origin label ("mcp-gateway"/"unknown"), not
+        # a Chatbot id -- intentionally frozen, see _origin().
+        chatbot_id=_origin(body),
         cloud=True,
     )
     return web.json_response({"result": result})

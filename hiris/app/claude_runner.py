@@ -69,7 +69,7 @@ class RunnerBackendError(Exception):
     backend, and once every backend in the chain has failed, surfaces the
     LAST failure's `friendly_message` to the end user — the router becomes
     the single place that produces the user-facing degradation. Callers that
-    bypass the router (e.g. AgentEngine._run_agent, handlers_chat.handle_chat
+    bypass the router (e.g. ChatbotEngine._run_chatbot, handlers_chat.handle_chat
     when an agent pins an explicit non-"auto" model) catch it directly at
     their own call site to preserve their pre-existing graceful-degradation
     behavior instead of crashing.
@@ -469,11 +469,11 @@ class ClaudeRunner:
         self.total_cost_usd: float = 0.0
         self.total_rate_limit_errors: int = 0
         self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
-        self._per_agent_usage: dict[str, dict] = {}
+        self._per_chatbot_usage: dict[str, dict] = {}
         # Serialize tmp-write + os.replace across concurrent _save_usage() calls.
         # _save_usage runs on every API response and is reachable from multiple
         # concurrent agent runs / chats; without this two writers race on the
-        # same .tmp path and can corrupt usage.json (agent_engine._save already
+        # same .tmp path and can corrupt usage.json (chatbot_engine._save already
         # guards its own save the same way).
         self._save_lock = threading.Lock()
         self._load_usage()
@@ -493,7 +493,7 @@ class ClaudeRunner:
             self.usage_last_reset = data.get("last_reset", self.usage_last_reset)
             self.total_cost_usd = data.get("total_cost_usd", 0.0)
             self.total_rate_limit_errors = data.get("total_rate_limit_errors", 0)
-            self._per_agent_usage = data.get("per_agent", {})
+            self._per_chatbot_usage = data.get("per_agent", {})
         except Exception as exc:
             logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
 
@@ -508,7 +508,7 @@ class ClaudeRunner:
             "last_reset": self.usage_last_reset,
             "total_cost_usd": self.total_cost_usd,
             "total_rate_limit_errors": self.total_rate_limit_errors,
-            "per_agent": dict(self._per_agent_usage),
+            "per_agent": dict(self._per_chatbot_usage),
         }
         tmp = self._usage_path + ".tmp"
 
@@ -543,9 +543,9 @@ class ClaudeRunner:
             pau["tokens_today"] = 0
             pau["tokens_today_date"] = today
 
-    def get_agent_usage(self, agent_id: str) -> dict:
+    def get_chatbot_usage(self, chatbot_id: str) -> dict:
         """Return usage stats for a specific agent. Returns zero-filled dict if not found."""
-        pau = self._per_agent_usage.get(agent_id)
+        pau = self._per_chatbot_usage.get(chatbot_id)
         if pau is None:
             return {
                 "input_tokens": 0, "output_tokens": 0,
@@ -555,9 +555,9 @@ class ClaudeRunner:
         self._ensure_today_reset(pau)
         return dict(pau)
 
-    def reset_agent_usage(self, agent_id: str) -> None:
+    def reset_chatbot_usage(self, chatbot_id: str) -> None:
         """Reset usage counters for a specific agent."""
-        self._per_agent_usage[agent_id] = {
+        self._per_chatbot_usage[chatbot_id] = {
             "input_tokens": 0, "output_tokens": 0,
             "requests": 0, "cost_usd": 0.0, "last_run": None,
             "tokens_today": 0, "tokens_today_date": "",
@@ -591,7 +591,7 @@ class ClaudeRunner:
         agent_type: str = "chat",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
-        agent_id: Optional[str] = None,
+        chatbot_id: Optional[str] = None,
         visible_entity_ids: Optional[frozenset] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
@@ -599,15 +599,15 @@ class ClaudeRunner:
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
     ) -> str:
-        if agent_id:
-            if agent_id not in self._per_agent_usage:
-                self._per_agent_usage[agent_id] = {
+        if chatbot_id:
+            if chatbot_id not in self._per_chatbot_usage:
+                self._per_chatbot_usage[chatbot_id] = {
                     "input_tokens": 0, "output_tokens": 0,
                     "requests": 0, "cost_usd": 0.0, "last_run": None,
                     "tokens_today": 0, "tokens_today_date": "",
                 }
-            self._per_agent_usage[agent_id]["requests"] += 1
-            self._per_agent_usage[agent_id]["last_run"] = datetime.now(timezone.utc).isoformat()
+            self._per_chatbot_usage[chatbot_id]["requests"] += 1
+            self._per_chatbot_usage[chatbot_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         # Fresh per-exchange pseudonymization map (review B/#7) — populated by
         # the recall_knowledge tool path below, read by the caller afterwards.
@@ -715,8 +715,8 @@ class ClaudeRunner:
                 + out * prices["output"]
             ) / 1_000_000
             self.total_cost_usd += cost
-            if agent_id and agent_id in self._per_agent_usage:
-                pau = self._per_agent_usage[agent_id]
+            if chatbot_id and chatbot_id in self._per_chatbot_usage:
+                pau = self._per_chatbot_usage[chatbot_id]
                 pau["input_tokens"] += inp + cache_creation + cache_read
                 pau["output_tokens"] += out
                 pau["cost_usd"] += cost
@@ -738,7 +738,7 @@ class ClaudeRunner:
                             allowed_entities=allowed_entities,
                             allowed_services=allowed_services,
                             allowed_endpoints=allowed_endpoints,
-                            agent_id=agent_id,
+                            chatbot_id=chatbot_id,
                             visible_entity_ids=visible_entity_ids,
                             knowledge_allow_sensitive=knowledge_allow_sensitive,
                             knowledge_kinds=knowledge_kinds,
@@ -779,7 +779,7 @@ class ClaudeRunner:
         agent_type: str = "chat",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
-        agent_id: Optional[str] = None,
+        chatbot_id: Optional[str] = None,
         visible_entity_ids=None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
@@ -815,7 +815,7 @@ class ClaudeRunner:
                 agent_type=agent_type,
                 restrict_to_home=restrict_to_home,
                 require_confirmation=require_confirmation,
-                agent_id=agent_id,
+                chatbot_id=chatbot_id,
                 visible_entity_ids=visible_entity_ids,
                 response_mode=response_mode,
                 thinking_budget=thinking_budget,
@@ -833,7 +833,7 @@ class ClaudeRunner:
 
         tool_calls = self.last_tool_calls if isinstance(self.last_tool_calls, list) else []
         tool_calls = _redact_stream_tool_calls(tool_calls)
-        yield f'data: {_json.dumps({"type": "done", "agent_id": agent_id, "tool_calls": tool_calls})}\n\n'
+        yield f'data: {_json.dumps({"type": "done", "agent_id": chatbot_id, "tool_calls": tool_calls})}\n\n'
 
     async def run_with_actions(
         self,
@@ -848,7 +848,7 @@ class ClaudeRunner:
         agent_type: str = "agent",
         restrict_to_home: bool = False,
         require_confirmation: bool = False,
-        agent_id: Optional[str] = None,
+        chatbot_id: Optional[str] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
         knowledge_allow_sensitive: bool = False,
@@ -876,7 +876,7 @@ class ClaudeRunner:
             agent_type: Used for model auto-resolution (``"agent"`` maps to Haiku).
             restrict_to_home: Inject home-topic restriction prompt.
             require_confirmation: Not used for agents; present for API symmetry.
-            agent_id: Agent ID for per-agent usage tracking.
+            chatbot_id: Chatbot ID for per-chatbot usage tracking.
             response_mode: ``"minimal"`` for terse motivazione, ``"auto"`` for standard.
 
         Returns:
@@ -907,7 +907,7 @@ class ClaudeRunner:
             agent_type=agent_type,
             restrict_to_home=restrict_to_home,
             require_confirmation=require_confirmation,
-            agent_id=agent_id,
+            chatbot_id=chatbot_id,
             response_mode=response_mode,
             thinking_budget=thinking_budget,
             knowledge_allow_sensitive=knowledge_allow_sensitive,
