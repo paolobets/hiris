@@ -197,6 +197,39 @@ attention, and gathers all proposed actions for your approval.
    dangerous domains, unassigned entities). Alerts auto-resolve when the issue disappears;
    you can also manually acknowledge them.
 
+Behind the scenes: `brain/health_scan.py` runs the 5 checks and writes/updates the
+advisory rows (`advisory.db`); `brain/feed.py` assembles the single stream the
+Dashboard renders by combining reasoning rounds (`brain_reasoning.db`), open/
+acknowledged alerts, and proposals, served over `GET /api/brain/feed`.
+
+---
+
+## The Models layer (`#/models`)
+
+The **Models** page (SP-2) is the single place where the user sees and governs
+which LLM provider/model is used where, without editing environment variables
+or add-on options. It reads/writes `GET`/`PUT /api/models/config`
+(`handlers_models.py`, persisted to `/data/models_config.json`) and has four
+parts:
+
+1. **Active providers** — all 5 providers (Claude Max subscription, Claude API,
+   OpenAI, OpenRouter, Ollama) in a fixed order, with a status badge (active /
+   missing credential / off) and, for already-credentialed providers, a picker
+   for the default model (`provider_models`).
+2. **Automatic chain** — the fallback order (`chain_order`) used when a Chatbot
+   or Agentbot has `model="auto"`: reorderable with arrows, with presets that
+   mirror `LLMRouter`'s strategies (`cost_first` / `quality_first` / `balanced`).
+3. **Per-entity assignment** — a Chatbot's model is set in the Chatbot editor
+   itself (`PUT /api/chatbots/{id}`); the Brain's is set here (`brain_model` in
+   `models_config.json`, used by the proactive/cognitive reasoner whenever it
+   isn't "auto"); an Agentbot's is set in the Agentbot editor (`#/agentbots`,
+   per-Agentbot `reasoning.model` field).
+4. **Embeddings** — a read-only informational row (active embedding
+   provider/model), useful to see what powers the second brain's vector search.
+
+Frontend implementation: `static/config/models-route.js`. The backend never
+returns secrets (API keys) — only `has_credential: true/false` per provider.
+
 ---
 
 ## The Semantic Home Map

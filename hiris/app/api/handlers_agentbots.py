@@ -1,10 +1,11 @@
 """User-defined "Agentbot" CRUD API (Slice 5b, Task 6; renamed from "lens"
 in SP-4 Fase A Task 4).
 
-Thin HTTP layer over `watcher.lenses` (Task 1's validated store, module
-filename unchanged): every mutation (POST/PUT/DELETE) validates via
-`lenses.validate_agentbot` (create/update) or checks existence
-(update/delete), persists via `lenses.save_agentbots`/`upsert_agentbot`/
+Thin HTTP layer over `watcher.agentbots` (Task 1's validated store; the
+module file was renamed from its Fase A filename in SP-4 Fase B Task 5 --
+it contains only Agentbot symbols): every mutation (POST/PUT/DELETE) validates via
+`agentbots.validate_agentbot` (create/update) or checks existence
+(update/delete), persists via `agentbots.save_agentbots`/`upsert_agentbot`/
 `delete_agentbot`, re-registers the scheduler jobs
 (`app["register_agentbot_schedules"]`, Task 5) so a schedule
 edit/delete/create applies immediately, and refreshes the in-memory
@@ -20,7 +21,7 @@ middlewares=[...])`) -- there is no per-route auth to replicate, only
 route registration under the same `app.router`.
 
 In-memory Agentbot cache (Task 4 review): the Guardian's event-Agentbot
-source used to call `watcher.lenses.load_agentbots(data_dir)` -- a disk
+source used to call `watcher.agentbots.load_agentbots(data_dir)` -- a disk
 read + full re-validation of every Agentbot -- on EVERY `state_changed`
 event. `set_agentbots`/`get_event_agentbots` hold a live, in-place-mutated
 list on `app["user_agentbots"]` instead (aiohttp forbids rebinding
@@ -34,7 +35,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..watcher import lenses as _store
+from ..watcher import agentbots as _store
 
 
 def set_agentbots(app, agentbots: list[dict]) -> None:

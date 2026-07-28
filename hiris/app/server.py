@@ -62,12 +62,13 @@ from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
 from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 from .watcher.detectors import make_generic_detector
-from .watcher.lenses import load_agentbots as _load_scheduled_agentbots
-# to_apscheduler_crontab moved to watcher/lenses.py (review L/1) so
+from .watcher.agentbots import load_agentbots as _load_scheduled_agentbots
+# to_apscheduler_crontab moved to watcher/agentbots.py (review L/1; this
+# module file was renamed from its Fase A filename in SP-4 Fase B Task 5) so
 # validate_agentbot() can reuse the exact same translation to reject a
 # shape-valid-but-value-invalid cron (e.g. hour=99) AT CREATION time,
 # instead of only failing later, silently, here at registration.
-from .watcher.lenses import to_apscheduler_crontab as _to_apscheduler_crontab
+from .watcher.agentbots import to_apscheduler_crontab as _to_apscheduler_crontab
 
 logger = logging.getLogger(__name__)
 
@@ -450,7 +451,7 @@ _AGENTBOT_JOB_PREFIX = "hiris_agentbot_"
 def _condition_holds(condition: dict | None, cache) -> bool:
     """Evaluate a schedule trigger's optional `trigger.condition`
     (`{entity_id, operator, threshold}`, already whitelist-validated by
-    `watcher.lenses._validate_condition`) against the CURRENT cached state
+    `watcher.agentbots._validate_condition`) against the CURRENT cached state
     of `condition["entity_id"]` (`entity_cache.get_state`). Absent condition
     -> True (nothing to gate on).
 
@@ -1479,7 +1480,7 @@ async def _on_startup(app: web.Application) -> None:
     # contents, and refreshed after every CRUD mutation by the
     # `/api/agentbots` handlers -- so freshly-saved Agentbots are still
     # live without a restart, just without the per-event disk hit.
-    from .watcher.lenses import load_agentbots as _load_agentbots
+    from .watcher.agentbots import load_agentbots as _load_agentbots
     from .api.handlers_agentbots import set_agentbots as _set_agentbots_cache
     from .api.handlers_agentbots import get_event_agentbots as _get_event_agentbots_cache
 
@@ -1535,7 +1536,7 @@ async def _on_startup(app: web.Application) -> None:
 
     async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
         # Task 4B: `model` lets a per-Agentbot `reasoning.model` (threaded in
-        # by `watcher/lens_runner.py`'s `_on_wake`) pick its OWN model for
+        # by `watcher/agentbot_runner.py`'s `_on_wake`) pick its OWN model for
         # this single reason() call. Callers that don't pass it (the
         # built-in situations path, `_on_situation`/holistic below -- Task
         # 4's brain path, UNCHANGED) keep the "auto" default, exactly as
@@ -1566,13 +1567,13 @@ async def _on_startup(app: web.Application) -> None:
     # ── Agentbot definiti dall'utente (Slice 5b, Task 3; rinominati da
     # "lenti" in SP-4 Fase A Task 3): flusso condiviso ─────────────────────
     # `_run_agentbot` è un thin wiring del vero flusso (in
-    # `watcher/lens_runner.py`, testabile in isolamento) sugli stessi
+    # `watcher/agentbot_runner.py`, testabile in isolamento) sugli stessi
     # adapter reali già usati sopra (sentinel_store, _run_decision, execute,
     # _notify/_act/_propose, execute_policy) — nessun path di actuation
     # nuovo: stesso semaforo, stesso allowed_tools=[] della reasoning (via
     # _run_decision → reason → _llm_reason), stessa denylist domini
     # pericolosi (via executor.execute).
-    from .watcher.lens_runner import run_agentbot as _run_agentbot_flow
+    from .watcher.agentbot_runner import run_agentbot as _run_agentbot_flow
 
     async def _run_agentbot(agentbot: dict, evidence: dict, *, cooldown_sec: int | None = None) -> str:
         # Task 5 review Fix 2: `cooldown_sec` is None for every EVENT-Agentbot

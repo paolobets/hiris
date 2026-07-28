@@ -34,8 +34,8 @@ Il sistema è strutturato in tre livelli logici:
 
 ```
 hiris/app/
-├── server.py                    Factory applicazione, lifecycle startup/cleanup
-├── routes.py                    Registrazione route
+├── server.py                    Factory applicazione, lifecycle startup/cleanup, route inline
+│                                 (non esiste un routes.py separato: la registrazione è in server.py)
 ├── chatbot_engine.py             Store Chatbot (CRUD, esecuzione manuale) — niente scheduling/azioni autonome
 ├── claude_runner.py             Loop agentico Anthropic SDK
 ├── llm_router.py                Routing backend, strategia, catena di fallback
@@ -43,16 +43,33 @@ hiris/app/
 ├── chat_store.py                Gestione storico conversazioni SQLite
 ├── config.py                    Helper configurazione, tasso EUR, default variabili env
 │
-├── api/
+├── api/                          21 handler + 2 middleware (tutti registrati in server.py)
 │   ├── handlers_chat.py         POST /api/chat, GET /api/chat/stream
 │   ├── handlers_chat_history.py GET/DELETE /api/chatbots/{id}/chat-history
 │   ├── handlers_chatbots.py     CRUD /api/chatbots
-│   ├── handlers_agentbots.py    CRUD /api/agentbots
+│   ├── handlers_agentbots.py    CRUD /api/agentbots (store: watcher/agentbots.py)
+│   ├── handlers_entities.py     GET /api/entities — forma canonica {entities:[...]}, `?q=`/`?domain=`/`?device_class=`
 │   ├── handlers_usage.py        GET /api/usage, POST /api/usage/reset
 │   ├── handlers_status.py       GET /api/health, GET /api/status
-│   ├── handlers_models.py       GET /api/models (backend disponibili)
+│   ├── handlers_models.py       GET/PUT /api/models, /api/models/config (provider, catena, modello Brain)
 │   ├── handlers_health.py       GET /api/health/ha, POST /api/health/ha/refresh
 │   ├── handlers_proposals.py    GET /api/proposals, GET/POST /api/proposals/{id}
+│   ├── handlers_brain.py        GET /api/brain/feed, /api/brain/reasoning, /api/brain/advisories,
+│   │                             POST /api/brain/advisories/{id}/ack|dismiss — home del Brain (`#/`)
+│   ├── handlers_reasoning.py    POST /api/reasoning/claim, /api/reasoning/submit — coda di reasoning
+│   │                             offload (`reasoning.db`, es. chat-via-abbonamento) — NON la home del Brain
+│   ├── handlers_suggestions.py  GET /api/suggestions, POST /api/suggestions/{id}/undo — proposte Brain
+│   │                             (coverage/management)
+│   ├── handlers_knowledge.py    GET /api/knowledge/pending, POST /api/knowledge(/{id}/approve|reject)
+│   │                             — second brain (`knowledge.db`)
+│   ├── handlers_gateway_pending.py  Flusso approvazione yellow/red per azioni del gateway MCP
+│   ├── handlers_gateway_policy.py   Policy accesso gateway per categoria (config UI `#/gateway`)
+│   ├── handlers_history_policy.py   Policy storicizzazione entità (HistoryStore, `#/history`)
+│   ├── handlers_config.py       GET /api/config (tema UI)
+│   ├── handlers_execute.py      POST /api/execute — API non-LLM per il gateway MCP (tool allowlist server-side)
+│   ├── handlers_sentinel.py     Policy Sentinella (detector built-in) + timeline eventi
+│   ├── handlers_tasks.py        GET /api/tasks, GET/DELETE /api/tasks/{id} (`#/tasks`)
+│   ├── middleware_csrf.py       Richiede X-Requested-With sulle richieste che modificano stato
 │   └── middleware_internal_auth.py  Controllo X-HIRIS-Internal-Token
 │
 ├── backends/
@@ -85,18 +102,75 @@ hiris/app/
 │   ├── health_monitor.py        Snapshot salute HA: WebSocket + polling 30min + persist JSON
 │   └── proposal_store.py        Store SQLite proposte automazione (gestione lifecycle)
 │
-├── brain/
-│   └── knowledge_store.py       Second brain unificato (`knowledge.db`): conoscenza
-│                                 personale/condivisa + memoria di lavoro per-Chatbot
-│                                 (colonna `chatbot_id`), ricerca vettoriale
+├── brain/                        21 moduli — "second brain" + livello proattivo cognitivo
+│   ├── knowledge_store.py       Second brain unificato (`knowledge.db`): conoscenza
+│   │                             personale/condivisa + memoria di lavoro per-Chatbot
+│   │                             (colonna `chatbot_id`), ricerca vettoriale
+│   ├── advisory_store.py        Store advisory (`advisory.db`): 5 segnalazioni di salute, stato
+│   │                             open/acknowledged/dismissed/resolved
+│   ├── reasoning_log.py         Log ragionamenti del Brain (`brain_reasoning.db`, tabella `brain_reasoning`)
+│   ├── health_scan.py           Esegue i 5 health check (`health_checks.py`) → righe advisory
+│   ├── health_checks.py         Le 5 funzioni di check: entità non disponibili, batterie scariche,
+│   │                             automazioni rotte, domini pericolosi, entità senza area
+│   ├── feed.py                  Assembla lo stream della home del Brain (reasoning + advisory + proposal items)
+│   ├── cognitive_loop.py        Round del ciclo cognitivo: soglie auto-apprese + coverage review
+│   ├── briefing.py              Bundle briefing giornaliero (Maggiordomo) + composer in linguaggio naturale
+│   ├── suggestions.py           Store suggerimenti Brain (coverage/management) + auto-apply + undo
+│   ├── coverage_review.py       Parsing/validazione delle proposte di coverage dal round olistico
+│   ├── brain_trace.py           Traccia le azioni autonome del brain nel KnowledgeStore
+│   ├── reasoner_memory.py       Recupero memoria bounded per il contesto del reasoner proattivo
+│   ├── memory_migration.py      Migrazione una-tantum della memoria legacy per-agente
+│   ├── history_digest.py        Digest settimanale rule-based dai bucket giornalieri di HistoryStore
+│   ├── mayan_ingest.py          Ingest documenti verso Mayan EDMS
+│   ├── mayan_client.py          Client HTTP verso l'istanza Mayan EDMS
+│   ├── privacy.py               Pseudonimizzazione dati sensibili (`pseudonym_vault`)
+│   ├── chunking.py              Chunking testo per l'ingest documentale (RAG)
+│   ├── identity.py              Risoluzione dell'utente HA che ha fatto la richiesta
+│   ├── learned_thresholds.py    Calcolo deterministico e limitato delle soglie auto-apprese
+│   └── reminders.py             Store promemoria
 │
 ├── watcher/                     Sentinella — motore Agentbot (detector/situazioni built-in
-│                                 + Agentbot definiti dall'utente), reasoner, executor, semaforo
+│   │                             + Agentbot definiti dall'utente), reasoner, executor, semaforo
+│   ├── agentbots.py             Store + validazione whitelist Agentbot (rinominato da `lenses.py`
+│   │                             in SP-4 Fase B Task 5 — contiene solo simboli Agentbot)
+│   └── agentbot_runner.py       Flusso condiviso `run_agentbot` (rinominato da `lens_runner.py`
+│                                 nello stesso Task 5)
 ├── mqtt_publisher.py            Discovery MQTT + pubblicazione stati (solo outbound — niente subscribe comandi)
-└── static/
-    ├── index.html               Interfaccia chat
-    └── config.html              Designer Chatbot/Agentbot
+└── static/                       SPA a moduli (non due semplici file HTML)
+    ├── index.html               Interfaccia chat (card standalone)
+    ├── config.html              Shell del Designer, monta la SPA sotto static/config/
+    ├── hiris-chat-card.js       Custom card Lovelace
+    └── config/                  Designer: router hash-based (`#/...`) + una vista per route
+        ├── router.js / state.js / api.js / templates.js  Infrastruttura SPA condivisa
+        ├── main.js               Registrazione di tutte le route (vedi tabella sotto)
+        ├── dashboard.js          Vista `#/` — home del Brain
+        ├── chatbots-list.js / chatbot-form.js / chatbot-editor.js   Viste `#/chatbots*`
+        ├── agentbot-route.js    Vista `#/agentbots`
+        ├── models-route.js      Vista `#/models`
+        ├── proposals-route.js / proposals.js   Vista `#/proposals`
+        ├── usage-route.js / usage.js   Vista `#/usage`
+        ├── tasks-route.js       Vista `#/tasks`
+        ├── gateway-route.js     Vista `#/gateway`
+        ├── history-route.js     Vista `#/history`
+        ├── permessi.js          Editor permessi (entità/servizi/endpoint) riusato da più viste
+        └── drawer.js / popover.js / log-row.js / logs.js   Componenti UI condivisi
 ```
+
+### Route del frontend (`config.html`, router hash-based)
+
+| Hash | Vista | Modulo JS |
+|---|---|---|
+| `#/` | Home del Brain (Dashboard) | `dashboard.js` |
+| `#/chatbots` | Lista Chatbot | `chatbots-list.js` |
+| `#/chatbots/new` | Nuovo Chatbot | `chatbot-form.js` |
+| `#/chatbots/{id}` | Editor Chatbot | `chatbot-editor.js` |
+| `#/agentbots` | Editor Agentbot | `agentbot-route.js` |
+| `#/models` | Provider/modelli LLM | `models-route.js` |
+| `#/proposals` | Proposte automazione | `proposals-route.js` |
+| `#/usage` | Consumi/costi | `usage-route.js` |
+| `#/tasks` | Task differiti | `tasks-route.js` |
+| `#/gateway` | Policy gateway MCP | `gateway-route.js` |
+| `#/history` | Policy storicizzazione | `history-route.js` |
 
 ---
 
@@ -274,6 +348,41 @@ questa tabella al primo avvio di questa versione.
 
 Tutti i file JSON sono scritti atomicamente tramite file temporaneo + `os.replace()`.
 
+### SQLite — `/data/advisory.db`
+
+Segnalazioni di salute prodotte da `health_scan.py` (i 5 check di `health_checks.py`) e mostrate nella zona "Azioni e segnalazioni" della home del Brain (`#/`).
+
+```sql
+CREATE TABLE advisories (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    check_id      TEXT NOT NULL,
+    ts_created    TEXT NOT NULL,
+    ts_updated    TEXT NOT NULL,
+    severity      TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    evidence      TEXT NOT NULL,
+    suggested_fix TEXT NOT NULL,
+    fix_kind      TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'open',
+    source_ref    TEXT NOT NULL UNIQUE,   -- limita strutturalmente la tabella: le righe si
+                                           -- riaprono, non si duplicano (niente prune necessario)
+    resolved_auto INTEGER NOT NULL DEFAULT 0
+);
+```
+
+### SQLite — `/data/brain_reasoning.db`
+
+Log dei ragionamenti del Brain (`reasoning_log.py`), mostrato nello stream della home del Brain (`#/`) tramite `feed.py`.
+
+```sql
+CREATE TABLE brain_reasoning (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts   TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+```
+
 ### SQLite — `/data/proposals.db`
 
 Proposte automazione generate da un Chatbot (tool `create_automation_proposal`, chat-only — escluso dal reasoner Agentbot) o dal Brain, in attesa di revisione umana.
@@ -435,7 +544,13 @@ qualunque installazione in upgrade da una release precedente a Slice 5. La
 SP-4 Fase A aggiunge un'analoga pulizia one-time (`cleanup_legacy_discovery`,
 eseguita al boot, con marker per restare idempotente) per i sensori
 discovered col vecchio schema id `hiris_{id}_*`, così le entità HA orfanizzate
-dal rename vengono ripulite e ricreate col nuovo schema `chatbot_{id}_*`.
+dal rename vengono ripulite e ricreate col nuovo schema `chatbot_{id}_*`. La
+SP-4 Fase B Task 3 estende `cleanup_legacy_discovery` anche alle entità
+comando vecchio-schema (`homeassistant/switch/hiris_{id}_enabled/config`,
+`homeassistant/button/hiris_{id}_run_now/config`), che prima restavano
+orfane: il marker è stato bumpato a `.mqtt_discovery_migrated_v2` così la
+pulizia corretta gira anche per chi aveva già eseguito il boot con la
+versione precedente del marker.
 
 Riconnessione usa backoff esponenziale. Tutti i publish di stato sono fire-and-forget (non bloccanti via `run_in_executor`).
 

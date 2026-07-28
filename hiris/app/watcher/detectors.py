@@ -71,7 +71,7 @@ _ORDER_OPS = {
 def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float], Optional[Signal]]:
     """Build a Guardian-compatible detector for a user-defined lens's event
     trigger (Slice 5b). `trigger` is the already whitelist-validated dict
-    produced by ``watcher.lenses.validate_lens``/``_validate_trigger``:
+    produced by ``watcher.agentbots.validate_agentbot``/``_validate_trigger``:
     ``{entity_id, attribute?, operator, threshold, duration_min?}`` --
     ``operator`` in ``{">","<",">=","<=","==","!="}``; ``threshold`` a finite
     number for every operator, OR (for ``==``/``!=`` only) a non-empty
@@ -137,10 +137,10 @@ def make_generic_detector(trigger: dict) -> Callable[[str, Any, Any, dict, float
             if not matched:
                 return None
 
-            # Severity vocabulary mismatch note: watcher.lenses.ALLOWED_SEVERITIES
+            # Severity vocabulary mismatch note: watcher.agentbots.ALLOWED_SEVERITIES
             # is {"info","warn","alert"} but watcher.signals.SEVERITIES is
             # ("info","warn","critico"). This is ALREADY handled --
-            # `normalize_agentbot_severity` (watcher/lens_runner.py, renamed
+            # `normalize_agentbot_severity` (watcher/agentbot_runner.py, renamed
             # from "lens" in SP-4 Fase A Task 3) maps "alert"->"critico"
             # (falling back to "info" for anything unrecognized) when an
             # Agentbot fires. This detector's own Signal.severity (computed

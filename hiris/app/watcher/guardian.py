@@ -31,7 +31,7 @@ class Guardian:
         # "lens" in SP-4 Fase A Task 3), dispatched ALONGSIDE (never instead
         # of) the built-in DETECTORS loop below. `get_user_agentbots` returns
         # the current enabled event-type Agentbots (server.py wires it to
-        # `watcher.lenses.load_agentbots(data_dir)` filtered accordingly);
+        # `watcher.agentbots.load_agentbots(data_dir)` filtered accordingly);
         # `run_agentbot` is `app["run_agentbot"]` (the shared Task-3 flow).
         # Both optional so every existing built-in-only call site (and every
         # built-in regression test) keeps working unchanged with zero
@@ -104,7 +104,7 @@ class Guardian:
             # NOTE (SP-4 Fase A Task 3 rename): this duration-timer key
             # changed from `lens:{id}:{eid}` to `agentbot:{id}:{eid}` — the
             # sibling of the cap/cooldown key rename documented in
-            # `lens_runner.run_agentbot` (see that docstring for the full
+            # `agentbot_runner.run_agentbot` (see that docstring for the full
             # rationale). Any Agentbot with an in-progress "needs_duration"
             # condition timer under the OLD `lens:*` key becomes an
             # unreachable orphan row in the store on the day this ships and

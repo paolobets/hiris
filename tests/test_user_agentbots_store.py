@@ -1,6 +1,6 @@
 import os
 
-from hiris.app.watcher.lenses import (
+from hiris.app.watcher.agentbots import (
     validate_agentbot, load_agentbots, save_agentbots, upsert_agentbot, delete_agentbot,
 )
 

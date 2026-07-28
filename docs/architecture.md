@@ -34,8 +34,8 @@ The system is structured in three logical layers:
 
 ```
 hiris/app/
-├── server.py                    Application factory, startup/cleanup lifecycle
-├── routes.py                    Route registration
+├── server.py                    Application factory, startup/cleanup lifecycle, inline routes
+│                                 (there is no separate routes.py — registration lives in server.py)
 ├── chatbot_engine.py             Chatbot store (CRUD, manual run) — no autonomous scheduling/actions
 ├── claude_runner.py             Anthropic SDK agentic loop
 ├── llm_router.py                Backend routing, strategy, fallback chain
@@ -43,16 +43,33 @@ hiris/app/
 ├── chat_store.py                SQLite conversation history management
 ├── config.py                    Config helpers, EUR rate, env var defaults
 │
-├── api/
+├── api/                          21 handlers + 2 middleware (all registered in server.py)
 │   ├── handlers_chat.py         POST /api/chat, GET /api/chat/stream
 │   ├── handlers_chat_history.py GET/DELETE /api/chatbots/{id}/chat-history
 │   ├── handlers_chatbots.py     CRUD /api/chatbots
-│   ├── handlers_agentbots.py    CRUD /api/agentbots
+│   ├── handlers_agentbots.py    CRUD /api/agentbots (store: watcher/agentbots.py)
+│   ├── handlers_entities.py     GET /api/entities — canonical shape {entities:[...]}, `?q=`/`?domain=`/`?device_class=`
 │   ├── handlers_usage.py        GET /api/usage, POST /api/usage/reset
 │   ├── handlers_status.py       GET /api/health, GET /api/status
-│   ├── handlers_models.py       GET /api/models (available backends)
+│   ├── handlers_models.py       GET/PUT /api/models, /api/models/config (providers, chain, Brain model)
 │   ├── handlers_health.py       GET /api/health/ha, POST /api/health/ha/refresh
 │   ├── handlers_proposals.py    GET /api/proposals, GET/POST /api/proposals/{id}
+│   ├── handlers_brain.py        GET /api/brain/feed, /api/brain/reasoning, /api/brain/advisories,
+│   │                             POST /api/brain/advisories/{id}/ack|dismiss — the Brain home (`#/`)
+│   ├── handlers_reasoning.py    POST /api/reasoning/claim, /api/reasoning/submit — reasoning offload
+│   │                             queue (`reasoning.db`, e.g. chat-via-subscription) — NOT the Brain home
+│   ├── handlers_suggestions.py  GET /api/suggestions, POST /api/suggestions/{id}/undo — Brain
+│   │                             proposals (coverage/management)
+│   ├── handlers_knowledge.py    GET /api/knowledge/pending, POST /api/knowledge(/{id}/approve|reject)
+│   │                             — second brain (`knowledge.db`)
+│   ├── handlers_gateway_pending.py  Yellow/red approval flow for MCP gateway actions
+│   ├── handlers_gateway_policy.py   Per-category gateway access policy (config UI `#/gateway`)
+│   ├── handlers_history_policy.py   Entity historicization policy (HistoryStore, `#/history`)
+│   ├── handlers_config.py       GET /api/config (UI theme)
+│   ├── handlers_execute.py      POST /api/execute — non-LLM API for the MCP gateway (server-side tool allowlist)
+│   ├── handlers_sentinel.py     Sentinella (built-in detectors) policy + event timeline
+│   ├── handlers_tasks.py        GET /api/tasks, GET/DELETE /api/tasks/{id} (`#/tasks`)
+│   ├── middleware_csrf.py       Requires X-Requested-With on state-changing requests
 │   └── middleware_internal_auth.py  X-HIRIS-Internal-Token enforcement
 │
 ├── backends/
@@ -85,18 +102,75 @@ hiris/app/
 │   ├── health_monitor.py        HA health snapshot: WebSocket + 30min polling + JSON persist
 │   └── proposal_store.py        Automation proposals SQLite store (lifecycle management)
 │
-├── brain/
-│   └── knowledge_store.py       Unified second brain (`knowledge.db`): personal/shared
-│                                 knowledge + per-Chatbot working memory (`chatbot_id`
-│                                 column), vector search
+├── brain/                        21 modules — the "second brain" + proactive cognitive layer
+│   ├── knowledge_store.py       Unified second brain (`knowledge.db`): personal/shared
+│   │                             knowledge + per-Chatbot working memory (`chatbot_id`
+│   │                             column), vector search
+│   ├── advisory_store.py        Advisory store (`advisory.db`): 5 health checks, status
+│   │                             open/acknowledged/dismissed/resolved
+│   ├── reasoning_log.py         Brain reasoning log (`brain_reasoning.db`, `brain_reasoning` table)
+│   ├── health_scan.py           Runs the 5 health checks (`health_checks.py`) → advisory rows
+│   ├── health_checks.py         The 5 check functions: unavailable entities, low batteries,
+│   │                             broken automations, dangerous domains, entities without an area
+│   ├── feed.py                  Assembles the Brain home stream (reasoning + advisory + proposal items)
+│   ├── cognitive_loop.py        Cognitive-loop round: auto-learned thresholds + coverage review
+│   ├── briefing.py              Daily briefing bundle (Maggiordomo) + natural-language composer
+│   ├── suggestions.py           Brain suggestion store (coverage/management) + auto-apply + undo
+│   ├── coverage_review.py       Parses/validates coverage proposals from the holistic round
+│   ├── brain_trace.py           Traces the brain's autonomous actions into the KnowledgeStore
+│   ├── reasoner_memory.py       Bounded memory retrieval for the proactive reasoner's context
+│   ├── memory_migration.py      One-time migration of the legacy per-agent memory store
+│   ├── history_digest.py        Rule-based weekly digest from HistoryStore's daily buckets
+│   ├── mayan_ingest.py          Document ingest into Mayan EDMS
+│   ├── mayan_client.py          HTTP client for the Mayan EDMS instance
+│   ├── privacy.py               Sensitive-data pseudonymization (`pseudonym_vault`)
+│   ├── chunking.py              Text chunking for document ingest (RAG)
+│   ├── identity.py              Resolves the HA user who made the request
+│   ├── learned_thresholds.py    Deterministic, bounded computation of auto-learned thresholds
+│   └── reminders.py             Reminders store
 │
 ├── watcher/                     Sentinella — Agentbot engine (built-in detectors/situations
-│                                 + user-defined Agentbot), reasoner, executor, semaforo gate
+│   │                             + user-defined Agentbot), reasoner, executor, semaforo gate
+│   ├── agentbots.py             Agentbot store + whitelist validation (renamed from `lenses.py`
+│   │                             in SP-4 Fase B Task 5 — contains only Agentbot symbols)
+│   └── agentbot_runner.py       Shared `run_agentbot` flow (renamed from `lens_runner.py` in
+│                                 the same Task 5)
 ├── mqtt_publisher.py            MQTT Discovery + state publish (outbound only — no command subscribe)
-└── static/
-    ├── index.html               Chat UI
-    └── config.html              Chatbot/Agentbot designer UI
+└── static/                       Multi-module SPA (not just two HTML files)
+    ├── index.html               Chat UI (standalone card)
+    ├── config.html              Designer shell, mounts the SPA under static/config/
+    ├── hiris-chat-card.js       Lovelace custom card
+    └── config/                  Designer: hash-based router (`#/...`) + one view per route
+        ├── router.js / state.js / api.js / templates.js  Shared SPA infrastructure
+        ├── main.js               Registers every route (see table below)
+        ├── dashboard.js          `#/` view — the Brain home
+        ├── chatbots-list.js / chatbot-form.js / chatbot-editor.js   `#/chatbots*` views
+        ├── agentbot-route.js    `#/agentbots` view
+        ├── models-route.js      `#/models` view
+        ├── proposals-route.js / proposals.js   `#/proposals` view
+        ├── usage-route.js / usage.js   `#/usage` view
+        ├── tasks-route.js       `#/tasks` view
+        ├── gateway-route.js     `#/gateway` view
+        ├── history-route.js     `#/history` view
+        ├── permessi.js          Permission editor (entities/services/endpoints), reused across views
+        └── drawer.js / popover.js / log-row.js / logs.js   Shared UI components
 ```
+
+### Frontend routes (`config.html`, hash-based router)
+
+| Hash | View | JS module |
+|---|---|---|
+| `#/` | Brain home (Dashboard) | `dashboard.js` |
+| `#/chatbots` | Chatbot list | `chatbots-list.js` |
+| `#/chatbots/new` | New Chatbot | `chatbot-form.js` |
+| `#/chatbots/{id}` | Chatbot editor | `chatbot-editor.js` |
+| `#/agentbots` | Agentbot editor | `agentbot-route.js` |
+| `#/models` | LLM providers/models | `models-route.js` |
+| `#/proposals` | Automation proposals | `proposals-route.js` |
+| `#/usage` | Usage/costs | `usage-route.js` |
+| `#/tasks` | Deferred tasks | `tasks-route.js` |
+| `#/gateway` | MCP gateway policy | `gateway-route.js` |
+| `#/history` | Historicization policy | `history-route.js` |
 
 ---
 
@@ -274,6 +348,41 @@ startup of this version.
 
 All JSON files are written atomically via temp-file + `os.replace()`.
 
+### SQLite — `/data/advisory.db`
+
+Health advisories produced by `health_scan.py` (the 5 checks in `health_checks.py`) and shown in the "Actions and advisories" area of the Brain home (`#/`).
+
+```sql
+CREATE TABLE advisories (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    check_id      TEXT NOT NULL,
+    ts_created    TEXT NOT NULL,
+    ts_updated    TEXT NOT NULL,
+    severity      TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    evidence      TEXT NOT NULL,
+    suggested_fix TEXT NOT NULL,
+    fix_kind      TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'open',
+    source_ref    TEXT NOT NULL UNIQUE,   -- structurally bounds the table: rows reopen
+                                           -- instead of duplicating (no pruning needed)
+    resolved_auto INTEGER NOT NULL DEFAULT 0
+);
+```
+
+### SQLite — `/data/brain_reasoning.db`
+
+Log of the Brain's reasoning rounds (`reasoning_log.py`), surfaced in the Brain home stream (`#/`) via `feed.py`.
+
+```sql
+CREATE TABLE brain_reasoning (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts   TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+```
+
 ### SQLite — `/data/proposals.db`
 
 ```sql
@@ -435,7 +544,13 @@ install upgrading from a pre-Slice-5 release. SP-4 Fase A adds a similar
 one-time cleanup (`cleanup_legacy_discovery`, run at boot, marker-guarded for
 idempotency) for sensors discovered under the old `hiris_{id}_*` id scheme,
 so entities orphaned by the rename are removed and recreated under the new
-`chatbot_{id}_*` scheme.
+`chatbot_{id}_*` scheme. SP-4 Fase B Task 3 extends `cleanup_legacy_discovery`
+to the old-scheme COMMAND entities too
+(`homeassistant/switch/hiris_{id}_enabled/config`,
+`homeassistant/button/hiris_{id}_run_now/config`), which had been left
+orphaned until then: the marker was bumped to `.mqtt_discovery_migrated_v2`
+so the fixed cleanup also runs for installs that had already booted with the
+older marker.
 
 Reconnect uses exponential backoff. All state publishes are fire-and-forget (non-blocking via `run_in_executor`).
 

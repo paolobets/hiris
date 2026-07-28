@@ -199,6 +199,40 @@ e raccoglie in un unico posto le azioni proposte per l'approvazione.
    automazioni rotte, domini pericolosi, entità senza area). Le segnalazioni si risolvono
    automaticamente quando il problema scompare; l'utente può anche ackizzarle manualmente.
 
+Dietro le quinte: `brain/health_scan.py` esegue i 5 check e scrive/aggiorna le righe
+advisory (`advisory.db`); `brain/feed.py` assembla lo stream unico che la Dashboard
+mostra combinando ragionamenti (`brain_reasoning.db`), segnalazioni aperte/ack e
+proposte, servito da `GET /api/brain/feed`.
+
+---
+
+## Il layer Modelli (`#/models`)
+
+La pagina **Modelli** (SP-2) è il punto unico in cui l'utente vede e governa quale
+provider/modello LLM viene usato dove, senza dover editare variabili d'ambiente o
+opzioni add-on. Legge/scrive `GET`/`PUT /api/models/config` (`handlers_models.py`,
+persistito in `/data/models_config.json`) e si divide in quattro parti:
+
+1. **Provider attivi** — tutti e 5 i provider (Abbonamento Claude Max, Claude API,
+   OpenAI, OpenRouter, Ollama) in ordine fisso, con badge di stato (attivo /
+   manca credenziale / disattivo) e, per i provider già credenziati, un picker
+   per scegliere il modello di default (`provider_models`).
+2. **Catena automatica** — l'ordine di fallback (`chain_order`) usato quando un
+   Chatbot o un Agentbot ha `model="auto"`: riordinabile con le frecce, con
+   preset che rispecchiano le strategie di `LLMRouter` (`cost_first` /
+   `quality_first` / `balanced`).
+3. **Assegnazione per entità** — il modello di un Chatbot si imposta
+   nell'editor del Chatbot stesso (`PUT /api/chatbots/{id}`); quello del Brain
+   si imposta qui (`brain_model` in `models_config.json`, usato dal reasoner
+   proattivo/cognitivo quando non è "auto"); quello di un Agentbot rimanda
+   all'editor Agentbot (`#/agentbots`, campo `reasoning.model` per-Agentbot).
+4. **Embeddings** — riga informativa in sola lettura (provider/modello embedding
+   attivo), utile per capire chi alimenta la ricerca vettoriale del second brain.
+
+Implementazione frontend: `static/config/models-route.js`. Nessun segreto (API
+key) viene mai restituito dal backend — solo `has_credential: true/false` per
+provider.
+
 ---
 
 ## La Semantic Map

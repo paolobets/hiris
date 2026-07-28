@@ -3,7 +3,7 @@
 
 `register_agentbot_schedules(app)` (registered in `hiris/app/server.py`)
 reads the current enabled, `trigger.type == "schedule"` Agentbots
-(`watcher.lenses.load_agentbots`) and (re)registers one job per Agentbot on
+(`watcher.agentbots.load_agentbots`) and (re)registers one job per Agentbot on
 `engine._scheduler` (the SAME AsyncIOScheduler instance the built-in
 ronda/reset jobs already use), `id=f"hiris_agentbot_{agentbot_id}"`,
 `replace_existing=True`, `trigger="cron"` (from `trigger.cron`, mapped onto
@@ -34,7 +34,7 @@ from hiris.app.server import (
     _run_scheduled_agentbot,
     register_agentbot_schedules,
 )
-from hiris.app.watcher.lenses import save_agentbots
+from hiris.app.watcher.agentbots import save_agentbots
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +337,7 @@ async def test_bad_cron_value_is_skipped_without_crashing_registration(tmp_path)
 
     bad_cron_lens = {
         "id": "666666666666", "name": "Cron rotto", "enabled": True,
-        # Shape-valid (5 numeric/`*` fields) per watcher.lenses._CRON_RE, but
+        # Shape-valid (5 numeric/`*` fields) per watcher.agentbots._CRON_RE, but
         # hour=99 is out of APScheduler's 0-23 range -> CronTrigger raises at
         # add_job time.
         "trigger": {"type": "schedule", "cron": "0 99 * * *"},
