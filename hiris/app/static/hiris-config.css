@@ -1622,6 +1622,32 @@
   line-height: 1.5; margin-bottom: var(--sp-2);
 }
 .prop-card .prop-actions { display: flex; gap: var(--sp-1); }
+.adv-card {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+}
+.adv-card:last-child { border-bottom: none; }
+.adv-card .adv-title {
+  font-size: var(--fs-13); font-weight: 500;
+  color: var(--text); margin-bottom: 2px;
+}
+.adv-card .prop-desc {
+  font-size: var(--fs-12); color: var(--text-3);
+  line-height: 1.5; margin-bottom: var(--sp-2);
+}
+.adv-card .adv-sev {
+  display: inline-block;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px;
+  font-family: var(--font-mono); margin-bottom: 4px;
+}
+.adv-card.adv-info { border-left-color: var(--accent-tint-2, var(--border)); }
+.adv-card.adv-info .adv-sev { background: var(--accent-tint); color: var(--accent-ink); }
+.adv-card.adv-warn { border-left-color: var(--warn); }
+.adv-card.adv-warn .adv-sev { background: var(--warn-tint); color: var(--warn); }
+.adv-card.adv-high { border-left-color: var(--err); }
+.adv-card.adv-high .adv-sev { background: var(--err-tint); color: var(--err); }
 .next-trigger {
   padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--border);
