@@ -1,12 +1,13 @@
-"""TDD for Slice 5b Task 4 -- EVENT-triggered user lenses via the Guardian.
+"""TDD for Slice 5b Task 4 -- EVENT-triggered user Agentbots (renamed from
+"lens" in SP-4 Fase A Task 3) via the Guardian.
 
 On a `state_changed` for an entity that is the `trigger.entity_id` of an
-enabled, event-type user lens, the Guardian must evaluate
-`make_generic_detector(lens["trigger"])` and, if it fires (honoring the
+enabled, event-type user Agentbot, the Guardian must evaluate
+`make_generic_detector(agentbot["trigger"])` and, if it fires (honoring the
 SAME duration-timer gating as the built-in DETECTORS), call the injected
-`run_lens(lens, evidence)` -- WITHOUT touching the built-in dispatch at all
-(regression-tested at the bottom of this file against the exact scenarios
-in `test_sentinel_guardian.py`).
+`run_agentbot(agentbot, evidence)` -- WITHOUT touching the built-in dispatch
+at all (regression-tested at the bottom of this file against the exact
+scenarios in `test_sentinel_guardian.py`).
 """
 import pytest
 from hiris.app.watcher.guardian import Guardian
@@ -65,13 +66,13 @@ class _Recorder:
     def __init__(self):
         self.calls = []
 
-    async def run_lens(self, lens, evidence):
-        self.calls.append((lens, evidence))
+    async def run_agentbot(self, agentbot, evidence):
+        self.calls.append((agentbot, evidence))
         return "woke"
 
 
 # ---------------------------------------------------------------------------
-# Core dispatch: above threshold -> run_lens invoked
+# Core dispatch: above threshold -> run_agentbot invoked
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -79,13 +80,13 @@ async def test_event_lens_above_threshold_invokes_run_lens(store):
     rec = _Recorder()
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [TEMP_LENS], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [TEMP_LENS], run_agentbot=rec.run_agentbot)
 
     await g.on_state_changed(_evt("sensor.temp", "20", "35"))
 
     assert len(rec.calls) == 1
-    lens, evidence = rec.calls[0]
-    assert lens["id"] == "aaaaaaaaaaaa"
+    agentbot, evidence = rec.calls[0]
+    assert agentbot["id"] == "aaaaaaaaaaaa"
     assert evidence["entity_id"] == "sensor.temp"
     assert evidence["value"] == 35.0
 
@@ -99,7 +100,7 @@ async def test_event_lens_below_threshold_does_not_invoke_run_lens(store):
     rec = _Recorder()
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [TEMP_LENS], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [TEMP_LENS], run_agentbot=rec.run_agentbot)
 
     await g.on_state_changed(_evt("sensor.temp", "20", "25"))
 
@@ -107,7 +108,7 @@ async def test_event_lens_below_threshold_does_not_invoke_run_lens(store):
 
 
 # ---------------------------------------------------------------------------
-# Disabled lens -> no call, even if the entity/threshold would otherwise match
+# Disabled Agentbot -> no call, even if the entity/threshold would otherwise match
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -115,7 +116,7 @@ async def test_disabled_lens_never_invokes_run_lens(store):
     rec = _Recorder()
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [DISABLED_LENS], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [DISABLED_LENS], run_agentbot=rec.run_agentbot)
 
     await g.on_state_changed(_evt("sensor.temp", "20", "999"))
 
@@ -131,7 +132,7 @@ async def test_non_target_entity_does_not_invoke_run_lens(store):
     rec = _Recorder()
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [TEMP_LENS], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [TEMP_LENS], run_agentbot=rec.run_agentbot)
 
     await g.on_state_changed(_evt("sensor.other", "20", "999"))
 
@@ -139,8 +140,8 @@ async def test_non_target_entity_does_not_invoke_run_lens(store):
 
 
 # ---------------------------------------------------------------------------
-# A schedule-type lens must never be picked up by the event dispatch path
-# (defense-in-depth: `get_user_lenses` is documented to already filter to
+# A schedule-type Agentbot must never be picked up by the event dispatch path
+# (defense-in-depth: `get_user_agentbots` is documented to already filter to
 # event-type, but the Guardian must not blindly trust that).
 # ---------------------------------------------------------------------------
 
@@ -149,7 +150,7 @@ async def test_schedule_type_lens_is_ignored_by_event_dispatch(store):
     rec = _Recorder()
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [SCHEDULE_LENS], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [SCHEDULE_LENS], run_agentbot=rec.run_agentbot)
 
     await g.on_state_changed(_evt("sensor.whatever", "1", "2"))
 
@@ -167,7 +168,7 @@ async def test_duration_gate_waits_before_invoking_run_lens(store):
     t = {"v": 0.0}
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: t["v"], today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [DURATION_LENS], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [DURATION_LENS], run_agentbot=rec.run_agentbot)
 
     await g.on_state_changed(_evt("binary_sensor.porta", "off", "on"))  # apre timer
     assert rec.calls == []
@@ -185,13 +186,13 @@ async def test_duration_gate_timer_cleared_when_condition_clears(store):
     t = {"v": 0.0}
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: t["v"], today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [DURATION_LENS], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [DURATION_LENS], run_agentbot=rec.run_agentbot)
 
     await g.on_state_changed(_evt("binary_sensor.porta", "off", "on"))   # apre timer
-    assert store.timer_started_at("lens:bbbbbbbbbbbb:binary_sensor.porta") == 0.0
+    assert store.timer_started_at("agentbot:bbbbbbbbbbbb:binary_sensor.porta") == 0.0
 
     await g.on_state_changed(_evt("binary_sensor.porta", "on", "off"))   # rientra -> detector None
-    assert store.timer_started_at("lens:bbbbbbbbbbbb:binary_sensor.porta") is None
+    assert store.timer_started_at("agentbot:bbbbbbbbbbbb:binary_sensor.porta") is None
 
     t["v"] = 20 * 60
     await g.on_state_changed(_evt("binary_sensor.porta", "off", "on"))   # riparte da capo
@@ -199,33 +200,34 @@ async def test_duration_gate_timer_cleared_when_condition_clears(store):
 
 
 # ---------------------------------------------------------------------------
-# A broken run_lens must not crash the listener, nor block other lenses in
-# the same dispatch batch.
+# A broken run_agentbot must not crash the listener, nor block other
+# Agentbots in the same dispatch batch.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_run_lens_exception_is_swallowed_and_other_lenses_still_run(store):
     calls = []
 
-    async def _broken_run_lens(lens, evidence):
+    async def _broken_run_agentbot(agentbot, evidence):
         raise RuntimeError("boom")
 
     other_lens = {**TEMP_LENS, "id": "eeeeeeeeeeee",
                   "trigger": {"type": "event", "entity_id": "sensor.temp2", "operator": ">", "threshold": 5}}
 
-    async def _dispatch(lens, evidence):
-        if lens["id"] == "aaaaaaaaaaaa":
+    async def _dispatch(agentbot, evidence):
+        if agentbot["id"] == "aaaaaaaaaaaa":
             raise RuntimeError("boom")
-        calls.append((lens, evidence))
+        calls.append((agentbot, evidence))
         return "woke"
 
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [TEMP_LENS, other_lens], run_lens=_dispatch)
+                 get_user_agentbots=lambda: [TEMP_LENS, other_lens], run_agentbot=_dispatch)
 
-    # Two separate events, each matching a different lens; the first lens's
-    # run_lens raises, but that must not prevent the second event (on a
-    # different entity, evaluated in its own call) from working either.
+    # Two separate events, each matching a different Agentbot; the first
+    # Agentbot's run_agentbot raises, but that must not prevent the second
+    # event (on a different entity, evaluated in its own call) from working
+    # either.
     await g.on_state_changed(_evt("sensor.temp", "0", "999"))   # TEMP_LENS -> raises, swallowed
     await g.on_state_changed(_evt("sensor.temp2", "0", "999"))  # other_lens -> succeeds
 
@@ -234,9 +236,9 @@ async def test_run_lens_exception_is_swallowed_and_other_lenses_still_run(store)
 
 @pytest.mark.asyncio
 async def test_run_lens_exception_within_same_batch_does_not_block_sibling_lens(store):
-    """Two lenses matching the SAME entity in the SAME dispatch call: the
-    first's run_lens raising must not stop the second from being evaluated
-    and invoked."""
+    """Two Agentbots matching the SAME entity in the SAME dispatch call: the
+    first's run_agentbot raising must not stop the second from being
+    evaluated and invoked."""
     calls = []
 
     lens_a = {**TEMP_LENS, "id": "111111111111",
@@ -244,15 +246,15 @@ async def test_run_lens_exception_within_same_batch_does_not_block_sibling_lens(
     lens_b = {**TEMP_LENS, "id": "222222222222",
               "trigger": {"type": "event", "entity_id": "sensor.multi", "operator": ">", "threshold": 5}}
 
-    async def _dispatch(lens, evidence):
-        if lens["id"] == "111111111111":
+    async def _dispatch(agentbot, evidence):
+        if agentbot["id"] == "111111111111":
             raise RuntimeError("boom")
-        calls.append(lens["id"])
+        calls.append(agentbot["id"])
         return "woke"
 
     g = Guardian(store, _empty_policy, lambda we: _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-24",
-                 get_user_lenses=lambda: [lens_a, lens_b], run_lens=_dispatch)
+                 get_user_agentbots=lambda: [lens_a, lens_b], run_agentbot=_dispatch)
 
     await g.on_state_changed(_evt("sensor.multi", "0", "999"))
 
@@ -260,8 +262,8 @@ async def test_run_lens_exception_within_same_batch_does_not_block_sibling_lens(
 
 
 # ---------------------------------------------------------------------------
-# No get_user_lenses/run_lens injected at all (default None) -> no crash,
-# behaves exactly like a plain built-in-only Guardian.
+# No get_user_agentbots/run_agentbot injected at all (default None) -> no
+# crash, behaves exactly like a plain built-in-only Guardian.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -277,9 +279,10 @@ async def _noop():
 
 # ---------------------------------------------------------------------------
 # Regression: the built-in DETECTORS dispatch must behave EXACTLY as before,
-# even with user-lens wiring present alongside it (mirrors
-# test_sentinel_guardian.py's own scenarios, now run with a get_user_lenses/
-# run_lens pair also wired in, to prove the two paths are independent).
+# even with user-Agentbot wiring present alongside it (mirrors
+# test_sentinel_guardian.py's own scenarios, now run with a
+# get_user_agentbots/run_agentbot pair also wired in, to prove the two paths
+# are independent).
 # ---------------------------------------------------------------------------
 
 def _builtin_policy():
@@ -295,10 +298,10 @@ async def test_builtin_instant_detector_still_wakes_with_lens_wiring_present(sto
     rec = _Recorder()
     g = Guardian(store, _builtin_policy, lambda we: woke.append(we) or _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-20",
-                 get_user_lenses=lambda: [], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [], run_agentbot=rec.run_agentbot)
     await g.on_state_changed(_evt("sensor.batt", "50", "8"))
     assert len(woke) == 1 and woke[0].signal_kind == "battery"
-    assert rec.calls == []  # no user lens matched this entity
+    assert rec.calls == []  # no user Agentbot matched this entity
 
 
 @pytest.mark.asyncio
@@ -308,7 +311,7 @@ async def test_builtin_duration_detector_still_waits_with_lens_wiring_present(st
     t = {"v": 0.0}
     g = Guardian(store, _builtin_policy, lambda we: woke.append(we) or _noop(),
                  clock=lambda: t["v"], today=lambda: "2026-07-20",
-                 get_user_lenses=lambda: [], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [], run_agentbot=rec.run_agentbot)
     await g.on_state_changed(_evt("binary_sensor.porta", "off", "on"))
     assert woke == []
     t["v"] = 11 * 60
@@ -318,16 +321,16 @@ async def test_builtin_duration_detector_still_waits_with_lens_wiring_present(st
 
 @pytest.mark.asyncio
 async def test_builtin_and_user_lens_can_both_fire_on_same_event(store):
-    """A built-in detector and a user lens both targeting the SAME entity
-    must both fire independently -- Task 4 must not short-circuit the
-    built-in loop nor vice versa."""
+    """A built-in detector and a user Agentbot both targeting the SAME
+    entity must both fire independently -- Task 4 must not short-circuit
+    the built-in loop nor vice versa."""
     woke = []
     rec = _Recorder()
     battery_lens = {**TEMP_LENS, "id": "333333333333",
                      "trigger": {"type": "event", "entity_id": "sensor.batt", "operator": "<", "threshold": 10}}
     g = Guardian(store, _builtin_policy, lambda we: woke.append(we) or _noop(),
                  clock=lambda: 1000.0, today=lambda: "2026-07-20",
-                 get_user_lenses=lambda: [battery_lens], run_lens=rec.run_lens)
+                 get_user_agentbots=lambda: [battery_lens], run_agentbot=rec.run_agentbot)
 
     await g.on_state_changed(_evt("sensor.batt", "50", "8"))
 

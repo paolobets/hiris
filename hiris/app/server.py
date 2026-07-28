@@ -62,9 +62,9 @@ from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
 from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 from .watcher.detectors import make_generic_detector
-from .watcher.lenses import load_lenses as _load_scheduled_lenses
+from .watcher.lenses import load_agentbots as _load_scheduled_agentbots
 # to_apscheduler_crontab moved to watcher/lenses.py (review L/1) so
-# validate_lens() can reuse the exact same translation to reject a
+# validate_agentbot() can reuse the exact same translation to reject a
 # shape-valid-but-value-invalid cron (e.g. hour=99) AT CREATION time,
 # instead of only failing later, silently, here at registration.
 from .watcher.lenses import to_apscheduler_crontab as _to_apscheduler_crontab
@@ -434,16 +434,17 @@ async def request_confirmation_stepup(
 
 
 # ---------------------------------------------------------------------------
-# Slice 5b Task 5: SCHEDULED (cron/interval) user lenses -- per-lens jobs on
-# `engine._scheduler`, the SAME AsyncIOScheduler instance the built-in
-# ronda/reset/due-reminders jobs use (verified: `_on_startup` never creates a
-# second scheduler). Module-level (same rationale as
-# confirm_pending_execute/request_confirmation_stepup above) so tests can
-# drive `register_lens_schedules` against a fake scheduler + fake
-# entity_cache without booting the whole aiohttp app.
+# Slice 5b Task 5: SCHEDULED (cron/interval) user Agentbots (renamed from
+# "lens" in SP-4 Fase A Task 3) -- per-Agentbot jobs on `engine._scheduler`,
+# the SAME AsyncIOScheduler instance the built-in ronda/reset/due-reminders
+# jobs use (verified: `_on_startup` never creates a second scheduler).
+# Module-level (same rationale as confirm_pending_execute/
+# request_confirmation_stepup above) so tests can drive
+# `register_agentbot_schedules` against a fake scheduler + fake entity_cache
+# without booting the whole aiohttp app.
 # ---------------------------------------------------------------------------
 
-_LENS_JOB_PREFIX = "hiris_lens_"
+_AGENTBOT_JOB_PREFIX = "hiris_agentbot_"
 
 
 def _condition_holds(condition: dict | None, cache) -> bool:
@@ -455,15 +456,15 @@ def _condition_holds(condition: dict | None, cache) -> bool:
 
     Reuses `make_generic_detector` (Task 2) with a synthesized one-shot
     trigger dict so the exact same operator/threshold comparison applies
-    here as to a real event-triggered lens -- including the no-data guard
-    for "unavailable"/"unknown"/"" states and the numeric-vs-string
+    here as to a real event-triggered Agentbot -- including the no-data
+    guard for "unavailable"/"unknown"/"" states and the numeric-vs-string
     fallback for ==/!= -- rather than a second, driftable implementation of
     the same comparison.
 
     Fail-safe: missing cache, missing entity_id, an entity never seen by the
     cache, or the detector raising all resolve to False -- a conditioned
-    scheduled lens must never fire when its condition can't be positively
-    confirmed.
+    scheduled Agentbot must never fire when its condition can't be
+    positively confirmed.
     """
     if not condition:
         return True
@@ -475,7 +476,7 @@ def _condition_holds(condition: dict | None, cache) -> bool:
     try:
         state = cache.get_state(entity_id)
     except Exception:
-        logger.debug("register_lens_schedules: cache.get_state(%s) failed", entity_id, exc_info=True)
+        logger.debug("register_agentbot_schedules: cache.get_state(%s) failed", entity_id, exc_info=True)
         return False
     if state is None:
         return False
@@ -487,46 +488,50 @@ def _condition_holds(condition: dict | None, cache) -> bool:
     try:
         sig = detector(entity_id, None, state, {}, time.time())
     except Exception:
-        logger.debug("register_lens_schedules: condition detector failed for %s", entity_id, exc_info=True)
+        logger.debug("register_agentbot_schedules: condition detector failed for %s", entity_id, exc_info=True)
         return False
     return sig is not None
 
 
-async def _run_scheduled_lens(lens: dict, *, cache, run_lens) -> None:
-    """The per-lens job callback registered by `register_lens_schedules`.
-    Wrapped end-to-end in try/except (log + return) so one broken scheduled
-    lens (a condition entity that vanished, `run_lens` raising, ...) can
-    never take down the shared AsyncIOScheduler or any sibling job."""
-    lens_id = lens.get("id", "-")
+async def _run_scheduled_agentbot(agentbot: dict, *, cache, run_agentbot) -> None:
+    """The per-Agentbot job callback registered by
+    `register_agentbot_schedules`. Wrapped end-to-end in try/except (log +
+    return) so one broken scheduled Agentbot (a condition entity that
+    vanished, `run_agentbot` raising, ...) can never take down the shared
+    AsyncIOScheduler or any sibling job."""
+    agentbot_id = agentbot.get("id", "-")
     try:
-        trigger = lens.get("trigger") or {}
+        trigger = agentbot.get("trigger") or {}
         condition = trigger.get("condition")
         if condition and not _condition_holds(condition, cache):
             return
         entity_id = condition.get("entity_id", "-") if condition else "-"
-        # Task 5 review Fix 2: a scheduled lens's own interval/cron cadence
-        # IS its rate limiter -- bypass the ~30-min sentinel cooldown here
-        # (cooldown_sec=0) so e.g. an interval_min=5 lens isn't silently
-        # suppressed by it. `run_lens`'s daily_cap (an unrelated, unchanged
-        # safety net) and every other gate still apply unchanged.
-        await run_lens(lens, {"entity_id": entity_id}, cooldown_sec=0)
+        # Task 5 review Fix 2: a scheduled Agentbot's own interval/cron
+        # cadence IS its rate limiter -- bypass the ~30-min sentinel
+        # cooldown here (cooldown_sec=0) so e.g. an interval_min=5 Agentbot
+        # isn't silently suppressed by it. `run_agentbot`'s daily_cap (an
+        # unrelated, unchanged safety net) and every other gate still apply
+        # unchanged.
+        await run_agentbot(agentbot, {"entity_id": entity_id}, cooldown_sec=0)
     except Exception:
-        logger.exception("scheduled lens %s failed", lens_id)
+        logger.exception("scheduled agentbot %s failed", agentbot_id)
 
 
-async def register_lens_schedules(app: web.Application) -> None:
-    """(Re)register per-lens scheduler jobs for every enabled,
-    SCHEDULE-triggered user lens (Slice 5b Task 5), and remove any
-    `hiris_lens_*` job whose lens no longer exists, is disabled, or is no
-    longer schedule-triggered. Idempotent -- safe to call at startup and
-    again after every lens save (Task 6, via `app["register_lens_schedules"]`).
+async def register_agentbot_schedules(app: web.Application) -> None:
+    """(Re)register per-Agentbot scheduler jobs for every enabled,
+    SCHEDULE-triggered user Agentbot (Slice 5b Task 5), and remove any
+    `hiris_agentbot_*` job whose Agentbot no longer exists, is disabled, or
+    is no longer schedule-triggered. Idempotent -- safe to call at startup
+    and again after every Agentbot save (Task 6, via
+    `app["register_agentbot_schedules"]`).
 
     Reads `engine._scheduler` (the SAME scheduler instance the built-in
-    ronda/reset jobs use), `data_dir` (to reload the current lens set) and
-    `entity_cache` (for the schedule trigger's optional `condition`, checked
-    at fire time by `_run_scheduled_lens`/`_condition_holds`) straight off
-    `app`, mirroring `confirm_pending_execute`'s "module-level, reads from
-    app, testable without booting `_on_startup`" shape.
+    ronda/reset jobs use), `data_dir` (to reload the current Agentbot set)
+    and `entity_cache` (for the schedule trigger's optional `condition`,
+    checked at fire time by `_run_scheduled_agentbot`/`_condition_holds`)
+    straight off `app`, mirroring `confirm_pending_execute`'s
+    "module-level, reads from app, testable without booting `_on_startup`"
+    shape.
     """
     engine = app.get("engine")
     scheduler = getattr(engine, "_scheduler", None)
@@ -534,62 +539,64 @@ async def register_lens_schedules(app: web.Application) -> None:
         return
 
     data_dir = app.get("data_dir")
-    lenses = _load_scheduled_lenses(data_dir) if data_dir else []
+    agentbots = _load_scheduled_agentbots(data_dir) if data_dir else []
     scheduled = {
-        l["id"]: l for l in lenses
-        if l.get("enabled") and (l.get("trigger") or {}).get("type") == "schedule"
+        a["id"]: a for a in agentbots
+        if a.get("enabled") and (a.get("trigger") or {}).get("type") == "schedule"
     }
 
-    # Remove orphaned jobs: a lens that was deleted, disabled, or switched
-    # away from a schedule trigger since the last registration. Enumeration
-    # pattern mirrors `chatbot_engine.py`'s `_unschedule_chatbot`.
+    # Remove orphaned jobs: an Agentbot that was deleted, disabled, or
+    # switched away from a schedule trigger since the last registration.
+    # Enumeration pattern mirrors `chatbot_engine.py`'s `_unschedule_chatbot`.
     for job in list(scheduler.get_jobs()):
-        if not job.id.startswith(_LENS_JOB_PREFIX):
+        if not job.id.startswith(_AGENTBOT_JOB_PREFIX):
             continue
-        lens_id = job.id[len(_LENS_JOB_PREFIX):]
-        if lens_id not in scheduled:
+        agentbot_id = job.id[len(_AGENTBOT_JOB_PREFIX):]
+        if agentbot_id not in scheduled:
             try:
                 scheduler.remove_job(job.id)
             except Exception:
-                logger.debug("register_lens_schedules: remove_job(%s) failed", job.id, exc_info=True)
+                logger.debug("register_agentbot_schedules: remove_job(%s) failed", job.id, exc_info=True)
 
     cache = app.get("entity_cache")
-    run_lens = app.get("run_lens")
+    run_agentbot = app.get("run_agentbot")
 
-    def _make_callback(lens: dict):
-        # Bind `lens` via this factory's own parameter (a fresh scope per
-        # call) rather than closing directly over the loop variable below,
-        # which would otherwise let every job share the LAST lens iterated.
+    def _make_callback(agentbot: dict):
+        # Bind `agentbot` via this factory's own parameter (a fresh scope
+        # per call) rather than closing directly over the loop variable
+        # below, which would otherwise let every job share the LAST
+        # agentbot iterated.
         async def _cb() -> None:
-            await _run_scheduled_lens(lens, cache=cache, run_lens=run_lens)
+            await _run_scheduled_agentbot(agentbot, cache=cache, run_agentbot=run_agentbot)
         return _cb
 
-    for lens_id, lens in scheduled.items():
-        trigger = lens.get("trigger") or {}
-        job_id = f"{_LENS_JOB_PREFIX}{lens_id}"
+    for agentbot_id, agentbot in scheduled.items():
+        trigger = agentbot.get("trigger") or {}
+        job_id = f"{_AGENTBOT_JOB_PREFIX}{agentbot_id}"
         cron = trigger.get("cron")
         interval_min = trigger.get("interval_min")
         try:
             if cron:
                 trigger = CronTrigger.from_crontab(_to_apscheduler_crontab(cron))
                 scheduler.add_job(
-                    _make_callback(lens), trigger=trigger, id=job_id,
+                    _make_callback(agentbot), trigger=trigger, id=job_id,
                     replace_existing=True, misfire_grace_time=3600)
             elif interval_min:
                 scheduler.add_job(
-                    _make_callback(lens), trigger="interval", minutes=interval_min,
+                    _make_callback(agentbot), trigger="interval", minutes=interval_min,
                     id=job_id, replace_existing=True, misfire_grace_time=3600)
             else:
                 # Neither cron nor interval_min -- shouldn't happen for a
-                # store-validated lens (XOR enforced at validation time),
-                # but skip defensively rather than register a no-op job.
+                # store-validated Agentbot (XOR enforced at validation
+                # time), but skip defensively rather than register a no-op
+                # job.
                 continue
         except Exception:
             # A shape-valid but value-invalid cron (e.g. hour=99) surfaces
             # here as APScheduler's own ValueError at add_job time -- one
-            # broken lens's schedule must never crash registration for the
-            # rest.
-            logger.warning("register_lens_schedules: failed to schedule lens %s, skipping", lens_id, exc_info=True)
+            # broken Agentbot's schedule must never crash registration for
+            # the rest.
+            logger.warning("register_agentbot_schedules: failed to schedule agentbot %s, skipping", agentbot_id, exc_info=True)
             continue
 
 
@@ -1440,33 +1447,35 @@ async def _on_startup(app: web.Application) -> None:
             "verdict": getattr(decision, "verdict", None), "severity": wake.severity_hint,
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
-    # Slice 5b / Task 4: EVENT-triggered user lenses, dispatched by the SAME
-    # Guardian.on_state_changed alongside (not instead of) the built-in
-    # DETECTORS above. `get_user_lenses` reads the in-memory lens cache
-    # (Task 6, `handlers_lenses.set_lenses`/`get_event_lenses`) instead of
-    # re-reading+re-validating sentinel_lenses.json on every single
-    # state_changed event (Task 4 review finding). The cache is populated
-    # right here from the current disk contents, and refreshed after every
-    # CRUD mutation by the `/api/lenses` handlers -- so freshly-saved lenses
-    # are still live without a restart, just without the per-event disk hit.
-    from .watcher.lenses import load_lenses as _load_lenses
+    # Slice 5b / Task 4: EVENT-triggered user Agentbots (renamed from "lens"
+    # in SP-4 Fase A Task 3), dispatched by the SAME Guardian.on_state_changed
+    # alongside (not instead of) the built-in DETECTORS above.
+    # `get_user_agentbots` reads the in-memory Agentbot cache (Task 6,
+    # `handlers_lenses.set_lenses`/`get_event_lenses` -- Task 4 of the rename
+    # plan, not yet renamed, out of THIS task's scope) instead of
+    # re-reading+re-validating agentbots.json on every single state_changed
+    # event (Task 4 review finding). The cache is populated right here from
+    # the current disk contents, and refreshed after every CRUD mutation by
+    # the `/api/lenses` handlers -- so freshly-saved Agentbots are still
+    # live without a restart, just without the per-event disk hit.
+    from .watcher.lenses import load_agentbots as _load_agentbots
     from .api.handlers_lenses import set_lenses as _set_lenses_cache
     from .api.handlers_lenses import get_event_lenses as _get_event_lenses_cache
 
-    _set_lenses_cache(app, _load_lenses(data_dir))
+    _set_lenses_cache(app, _load_agentbots(data_dir))
 
-    def _get_event_lenses() -> list:
+    def _get_event_agentbots() -> list:
         return _get_event_lenses_cache(app)
 
-    async def _dispatch_run_lens(lens: dict, evidence: dict) -> str:
-        return await app["run_lens"](lens, evidence)
+    async def _dispatch_run_agentbot(agentbot: dict, evidence: dict) -> str:
+        return await app["run_agentbot"](agentbot, evidence)
 
     guardian = Guardian(
         sentinel_store, lambda: load_policy(data_dir), _on_wake,
         cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
         daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")),
-        get_user_lenses=_get_event_lenses,
-        run_lens=_dispatch_run_lens)
+        get_user_agentbots=_get_event_agentbots,
+        run_agentbot=_dispatch_run_agentbot)
     guardian.set_policy(load_policy(data_dir))
     app["guardian"] = guardian
     ha_client.add_state_listener(
@@ -1504,21 +1513,23 @@ async def _on_startup(app: web.Application) -> None:
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
     async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
-        # Task 4B: `model` lets a per-lens `reasoning.model` (threaded in by
-        # `watcher/lens_runner.py`'s `_on_wake`) pick its OWN model for this
-        # single reason() call. Callers that don't pass it (the built-in
-        # situations path, `_on_situation`/holistic below -- Task 4's brain
-        # path, UNCHANGED) keep the "auto" default, exactly as before.
+        # Task 4B: `model` lets a per-Agentbot `reasoning.model` (threaded in
+        # by `watcher/lens_runner.py`'s `_on_wake`) pick its OWN model for
+        # this single reason() call. Callers that don't pass it (the
+        # built-in situations path, `_on_situation`/holistic below -- Task
+        # 4's brain path, UNCHANGED) keep the "auto" default, exactly as
+        # before.
         decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system, model=model)
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested  # target deterministico dalla config, non dall'LLM
         if force_notify_only:
-            # Task 3 review fix: a notify-type lens has `suggested is None`
-            # (lens_action() returns None for action.type=="notify"), so the
-            # guard above never fires and the LLM's OWN parsed action would
-            # otherwise survive onto the Decision. Force it back to None
-            # here, BEFORE execute() runs, so a notify lens can never
-            # actuate -- the AI still gets to pick verdict/severity/message.
+            # Task 3 review fix: a notify-type Agentbot has `suggested is
+            # None` (agentbot_action() returns None for
+            # action.type=="notify"), so the guard above never fires and the
+            # LLM's OWN parsed action would otherwise survive onto the
+            # Decision. Force it back to None here, BEFORE execute() runs,
+            # so a notify Agentbot can never actuate -- the AI still gets to
+            # pick verdict/severity/message.
             decision.action = None
         _ep = app.get("execute_policy") or {}
         outcome = await execute(
@@ -1531,23 +1542,26 @@ async def _on_startup(app: web.Application) -> None:
     async def _on_situation(wake, suggested):
         await _run_decision(wake, suggested, SENTINEL_SYSTEM)
 
-    # ── Lenti definite dall'utente (Slice 5b, Task 3): flusso condiviso ─────
-    # `_run_lens` è un thin wiring del vero flusso (in `watcher/lens_runner.py`,
-    # testabile in isolamento) sugli stessi adapter reali già usati sopra
-    # (sentinel_store, _run_decision, execute, _notify/_act/_propose,
-    # execute_policy) — nessun path di actuation nuovo: stesso semaforo,
-    # stesso allowed_tools=[] della reasoning (via _run_decision → reason →
-    # _llm_reason), stessa denylist domini pericolosi (via executor.execute).
-    from .watcher.lens_runner import run_lens as _run_lens_flow
+    # ── Agentbot definiti dall'utente (Slice 5b, Task 3; rinominati da
+    # "lenti" in SP-4 Fase A Task 3): flusso condiviso ─────────────────────
+    # `_run_agentbot` è un thin wiring del vero flusso (in
+    # `watcher/lens_runner.py`, testabile in isolamento) sugli stessi
+    # adapter reali già usati sopra (sentinel_store, _run_decision, execute,
+    # _notify/_act/_propose, execute_policy) — nessun path di actuation
+    # nuovo: stesso semaforo, stesso allowed_tools=[] della reasoning (via
+    # _run_decision → reason → _llm_reason), stessa denylist domini
+    # pericolosi (via executor.execute).
+    from .watcher.lens_runner import run_agentbot as _run_agentbot_flow
 
-    async def _run_lens(lens: dict, evidence: dict, *, cooldown_sec: int | None = None) -> str:
-        # Task 5 review Fix 2: `cooldown_sec` is None for every EVENT-lens
-        # caller (`_dispatch_run_lens` above never passes it), so behavior
-        # there is UNCHANGED -- the env-configured (default 1800s) cooldown
-        # still applies. `_run_scheduled_lens` (server.py, schedule-trigger
-        # callback) is the only caller that overrides it, with 0.
-        return await _run_lens_flow(
-            lens, evidence,
+    async def _run_agentbot(agentbot: dict, evidence: dict, *, cooldown_sec: int | None = None) -> str:
+        # Task 5 review Fix 2: `cooldown_sec` is None for every EVENT-Agentbot
+        # caller (`_dispatch_run_agentbot` above never passes it), so
+        # behavior there is UNCHANGED -- the env-configured (default 1800s)
+        # cooldown still applies. `_run_scheduled_agentbot` (server.py,
+        # schedule-trigger callback) is the only caller that overrides it,
+        # with 0.
+        return await _run_agentbot_flow(
+            agentbot, evidence,
             store=sentinel_store, run_decision=_run_decision, execute=execute,
             notify=_notify, act=_act, propose=_propose,
             get_execute_policy=lambda: app.get("execute_policy") or {},
@@ -1559,17 +1573,29 @@ async def _on_startup(app: web.Application) -> None:
             daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")),
         )
 
-    app["run_lens"] = _run_lens
+    app["run_agentbot"] = _run_agentbot
 
-    # ── Lenti definite dall'utente (Slice 5b, Task 5): trigger SCHEDULATO ───
-    # `register_lens_schedules` (module-level, above) reads `app["run_lens"]`
-    # (just bound) and `engine._scheduler` (already started, `engine.start()`
-    # ran earlier in this function) to (re)register a per-lens cron/interval
-    # job for every enabled schedule-type lens. Exposed on `app` so Task 6's
-    # CRUD handlers can re-invoke it after every lens save/delete without a
-    # server.py import (avoids a circular import back from api/handlers_*.py).
-    app["register_lens_schedules"] = register_lens_schedules
-    await register_lens_schedules(app)
+    # ── Agentbot definiti dall'utente (Slice 5b, Task 5): trigger
+    # SCHEDULATO ──────────────────────────────────────────────────────────
+    # `register_agentbot_schedules` (module-level, above) reads
+    # `app["run_agentbot"]` (just bound) and `engine._scheduler` (already
+    # started, `engine.start()` ran earlier in this function) to
+    # (re)register a per-Agentbot cron/interval job for every enabled
+    # schedule-type Agentbot. Exposed on `app` so Task 6's CRUD handlers can
+    # re-invoke it after every Agentbot save/delete without a server.py
+    # import (avoids a circular import back from api/handlers_*.py).
+    app["register_agentbot_schedules"] = register_agentbot_schedules
+    # SP-4 Fase A Task 3 bridge: `hiris/app/api/handlers_lenses.py` (the
+    # `/api/lenses` CRUD layer, Task 4 of the rename plan, explicitly OUT of
+    # THIS task's scope) still reads `app.get("register_lens_schedules")`
+    # after every mutation to re-register schedule jobs. Keep this legacy
+    # key pointing at the SAME function until Task 4 migrates that reader --
+    # dropping it here would silently stop re-registering schedules after
+    # every Agentbot CRUD save/delete (a real behavior regression not
+    # caught by any Task 3 test, since those exercise register_agentbot_
+    # schedules directly). Remove this line when Task 4 lands.
+    app["register_lens_schedules"] = register_agentbot_schedules
+    await register_agentbot_schedules(app)
 
     # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
     # runner remoto. execute_decision applica una Decisione GIA' PRESA dal
