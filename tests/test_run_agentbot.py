@@ -1513,6 +1513,109 @@ def test_measured_cheap_run_is_not_mistaken_for_an_unmeasurable_one(caplog):
         assert len(warnings) == 1, [r.getMessage() for r in warnings]
 
     # (c) niente da confrontare (runner assente, o backend senza
-    # `get_chatbot_usage`) -> nessuna misura, nessun bound.
+    # `get_chatbot_usage`) -> nessuna misura, nessun bound. Da questo fix in
+    # poi anche questo caso avvisa (stesso meccanismo, motivo "non
+    # leggibili") -- vedi i due test di pipeline sotto per la versione che
+    # attraversa `_run_decision` invece di chiamare la funzione da sola.
+    server._AGENT_UNMEASURED_WARNED.discard("aaaaaaaaaaaa")
     assert server.agent_run_tokens_spent(None, (10, 1), "aaaaaaaaaaaa") is None
     assert server.agent_run_tokens_spent((10, 1), None, "aaaaaaaaaaaa") is None
+
+
+@pytest.mark.asyncio
+async def test_unreadable_first_read_fails_open_and_says_so(store, caplog):
+    """Review Task 5, fix wave 2, finding minor B (ramo 1): se la PRIMA
+    lettura di `agent_run_usage` (`_usage_before`, presa PRIMA del
+    ragionamento) restituisce `None`, prima di questo fix il blocco
+    `if _usage_before is not None:` a `server.py:1868` saltava l'intero
+    controllo -- `agent_run_tokens_spent` non veniva nemmeno invocata, nessun
+    warning, solo il `logger.debug` dentro `agent_run_usage`.
+
+    Il fix sposta il cancello su `_budget_tokens is not None` (un bound e'
+    stato davvero richiesto -- l'unica cosa che deve distinguere "nessun
+    warning mai" da "warning se la misura fallisce"): la lettura fallita
+    arriva ora ad `agent_run_tokens_spent`, che la tratta con lo STESSO
+    meccanismo una-tantum del ramo "richieste ferme", ma un motivo diverso e
+    leggibile."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW,
+                                  "perimeter": {"budget_tokens": 10}})
+    # Consumo enorme rispetto al tetto: se il bound si applicasse per errore
+    # (non e' quello che vogliamo: fail-open resta fail-open) l'esecuzione
+    # verrebbe fermata e il test lo scoprirebbe.
+    runner = _MeteredReasoningRunner(tokens_in=99999, tokens_out=99999)
+    rec, events = _Rec(), []
+    server._AGENT_UNMEASURED_WARNED.discard(agentbot["id"])
+
+    calls = {"n": 0}
+
+    def _flaky_first_read(_runner, _agent_id):
+        calls["n"] += 1
+        # 1a chiamata (`_usage_before`, prima del ragionamento): fallita.
+        # 2a chiamata (dopo il ragionamento): leggibile -- ma ormai
+        # irrilevante, perche' senza un "prima" non c'e' differenza da fare.
+        return None if calls["n"] == 1 else (150, 1)
+
+    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+        outcome = await _fire_bounded_agentbot(
+            agentbot, store=store, runner=runner, rec=rec, events=events,
+            extra_globals={"agent_run_usage": _flaky_first_read})
+
+    # (a) fail-open: la prima lettura fallita non deve MAI fermare
+    # un'esecuzione che senza questo fix proseguiva.
+    assert outcome == "woke"
+    assert len(rec.notified) == 1
+    assert len(events) == 1 and events[0]["outcome"] == "notify"
+    # (b) ...ma e' visibile, col motivo giusto: "non leggibili", non
+    # "nessuna chiamata attribuita" (quello e' il ramo del fix precedente).
+    warnings = [r for r in caplog.records
+                if r.levelno >= logging.WARNING and r.name == "hiris.app.server"]
+    assert len(warnings) == 1, [r.getMessage() for r in warnings]
+    msg = warnings[0].getMessage()
+    assert agentbot["id"] in msg
+    assert "senza tetto sui token" in msg
+    assert "non sono leggibili" in msg
+    assert "nessuna chiamata" not in msg
+
+
+@pytest.mark.asyncio
+async def test_unreadable_second_read_fails_open_and_says_so(store, caplog):
+    """Review Task 5, fix wave 2, finding minor B (ramo 2): se la SECONDA
+    lettura di `agent_run_usage` (a ragionamento concluso) restituisce
+    `None`, prima di questo fix `agent_run_tokens_spent` usciva subito
+    (`before is None or after is None: return None`, `server.py:780-781`
+    pre-fix) senza mai arrivare al controllo su `requests` -- nessun warning.
+
+    E' lo STESSO ramo "contatori non leggibili" del test sopra (ramo 1), non
+    un secondo meccanismo: qui e' la seconda lettura a fallire invece della
+    prima, ma l'esito -- fail-open, un warning col motivo "non leggibili" --
+    dev'essere identico."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW,
+                                  "perimeter": {"budget_tokens": 10}})
+    runner = _MeteredReasoningRunner(tokens_in=99999, tokens_out=99999)
+    rec, events = _Rec(), []
+    server._AGENT_UNMEASURED_WARNED.discard(agentbot["id"])
+
+    calls = {"n": 0}
+
+    def _flaky_second_read(_runner, _agent_id):
+        calls["n"] += 1
+        # 1a chiamata (`_usage_before`): leggibile. 2a chiamata (dopo il
+        # ragionamento): fallita -- il caso che il ramo 1 non copriva.
+        return (0, 0) if calls["n"] == 1 else None
+
+    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+        outcome = await _fire_bounded_agentbot(
+            agentbot, store=store, runner=runner, rec=rec, events=events,
+            extra_globals={"agent_run_usage": _flaky_second_read})
+
+    assert outcome == "woke"
+    assert len(rec.notified) == 1
+    assert len(events) == 1 and events[0]["outcome"] == "notify"
+    warnings = [r for r in caplog.records
+                if r.levelno >= logging.WARNING and r.name == "hiris.app.server"]
+    assert len(warnings) == 1, [r.getMessage() for r in warnings]
+    msg = warnings[0].getMessage()
+    assert agentbot["id"] in msg
+    assert "senza tetto sui token" in msg
+    assert "non sono leggibili" in msg
+    assert "nessuna chiamata" not in msg

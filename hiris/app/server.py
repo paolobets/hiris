@@ -745,6 +745,27 @@ def agent_run_usage(runner, agent_id: str | None) -> tuple[int, int] | None:
 _AGENT_UNMEASURED_WARNED: set[str] = set()
 
 
+def _warn_agent_unmeasured(agent_id: str | None, reason: str) -> None:
+    """Emette IL warning una-tantum per agente (vedi `_AGENT_UNMEASURED_WARNED`
+    sopra) con un `reason` leggibile che dice PERCHE' la misura e' fallita.
+
+    Estratto da `agent_run_tokens_spent` cosi' che i due rami che quella
+    funzione copriva -- "richieste ferme" (misura c'e' ma non attribuita) -- e
+    i due rami muti chiusi dal fix successivo -- "prima lettura assente" e
+    "seconda lettura assente" (la misura stessa non esiste) -- condividano lo
+    STESSO stato globale e la STESSA soglia una-per-agente, invece di avere
+    ciascuno il proprio silenzio o il proprio contatore duplicato."""
+    key = agent_id or "?"
+    if key in _AGENT_UNMEASURED_WARNED:
+        return
+    _AGENT_UNMEASURED_WARNED.add(key)
+    logger.warning(
+        "agentbot %s: %s -- il consumo non e' misurabile, quindi il budget "
+        "per esecuzione NON e' stato applicato e questa esecuzione ha girato "
+        "senza tetto sui token. Resta la scadenza (deadline_min). Avviso "
+        "emesso una sola volta per agente.", key, reason)
+
+
 def agent_run_tokens_spent(
     before: tuple[int, int] | None, after: tuple[int, int] | None,
     agent_id: str | None,
@@ -765,6 +786,14 @@ def agent_run_tokens_spent(
     quello che ha davvero chiamato, backend senza contabilita' per-agente):
     la lettura dei token e' un tetto solo apparente.
 
+    `before is None` (prima lettura fallita, il chiamante ora ci arriva
+    comunque -- vedi `_budget_tokens is not None` in `_run_decision`) o
+    `after is None` (`agent_run_usage` e' fallita la SECONDA volta, a
+    ragionamento gia' concluso) sono lo stesso caso di fondo: i contatori
+    stessi non si leggono, non solo "non sono avanzati". Anche qui fail-open
+    con lo stesso warning una-tantum, motivo diverso perche' chi legge il log
+    capisca che il problema e' la lettura, non l'attribuzione.
+
     LIMITE NOTO, dichiarato invece che promesso (come `max_tier`): un backend
     che RISPONDE senza oggetto `usage` fa avanzare le richieste ma non i token
     (`OpenAICompatRunner._track_usage` esce subito, "token tracking skipped"),
@@ -778,22 +807,20 @@ def agent_run_tokens_spent(
     "budget esaurito"): un tetto che non sa contare non deve fermare un agente.
     Ma diventa VISIBILE, con un `logger.warning`."""
     if before is None or after is None:
+        _warn_agent_unmeasured(
+            agent_id,
+            "i contatori richieste/token per questo agente non sono "
+            "leggibili (lettura fallita prima o dopo l'esecuzione)")
         return None
     tokens = after[0] - before[0]
     requests = after[1] - before[1]
     if requests > 0:
         # Misurato. Zero token qui e' un legittimo giro economico.
         return tokens
-    key = agent_id or "?"
-    if key not in _AGENT_UNMEASURED_WARNED:
-        _AGENT_UNMEASURED_WARNED.add(key)
-        logger.warning(
-            "agentbot %s: nessuna chiamata LLM risulta attribuita a questo "
-            "agente (contatore richieste fermo attraverso l'esecuzione) -- il "
-            "consumo non e' misurabile, quindi il budget per esecuzione NON e' "
-            "stato applicato e questa esecuzione ha girato senza tetto sui "
-            "token. Resta la scadenza (deadline_min). Avviso emesso una sola "
-            "volta per agente.", key)
+    _warn_agent_unmeasured(
+        agent_id,
+        "nessuna chiamata LLM risulta attribuita a questo agente (contatore "
+        "richieste fermo attraverso l'esecuzione)")
     return None
 
 
@@ -1865,12 +1892,20 @@ async def _on_startup(app: web.Application) -> None:
                     wake.severity_hint),
                 AGENT_RUN_STOP_DEADLINE)
             return
-        if _usage_before is not None:
+        if _budget_tokens is not None:
+            # Cancello su `_budget_tokens`, NON su `_usage_before`: quando non
+            # c'e' bound (`_budget_tokens is None` -- mode="rule", o objective
+            # senza perimetro) questo blocco resta zitto esattamente come
+            # prima, nessun warning. Quando invece un bound e' stato
+            # richiesto, vogliamo arrivare ad `agent_run_tokens_spent` anche
+            # se la PRIMA lettura (`_usage_before`) e' gia' fallita -- prima
+            # di questo fix quel caso saltava il blocco intero (nessun
+            # warning, solo il `logger.debug` di `agent_run_usage`).
             # `agent_run_tokens_spent` restituisce `None` quando la misura non
-            # e' avvenuta (nessuna chiamata risulta attribuita a questo
-            # agente): fail-open, nessun bound -- ma con un warning, non in
-            # silenzio. Un delta di zero token MISURATO resta invece un giro
-            # economico e non ferma nulla.
+            # e' avvenuta (prima o seconda lettura assente, oppure nessuna
+            # chiamata risulta attribuita a questo agente): fail-open, nessun
+            # bound -- ma con un warning, non in silenzio. Un delta di zero
+            # token MISURATO resta invece un giro economico e non ferma nulla.
             _tokens_run = agent_run_tokens_spent(
                 _usage_before, agent_run_usage(_runner, agent_id), agent_id)
             if _tokens_run is not None and _tokens_run > _budget_tokens:
