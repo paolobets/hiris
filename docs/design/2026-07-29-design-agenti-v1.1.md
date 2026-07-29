@@ -213,6 +213,9 @@ La modalità regola **non ha** (e non può avere) un blocco `perimeter`: `valida
 **3. Asimmetria di `create_task` (Task 3, review minor #7).**
 Il ramo `create_task` del dispatcher rifiuta alla **creazione** un *servizio* fuori perimetro, ma lascia passare un'*entità* fuori perimetro, che viene rifiutata solo all'**esecuzione** da `task_engine._run_action`. L'LLM può quindi ricevere «task creato» per un task che non farà nulla. Voluto: `allowed_entities` ha **un solo punto di enforcement**, e aggiungerne un secondo lo farebbe divergere nel tempo. Il costo è un messaggio d'errore peggiore, non un confine più debole.
 
+**4. `max_tier` è accettato e persistito, ma non onorato da nessun percorso di runtime (Task 2, review minor B).**
+`_validate_perimeter` valida `max_tier` e lo scrive nel blocco `perimeter`, ma nessun punto della catena che lo esegue — dispatcher, `task_engine._run_action`, `claude_runner` — lo legge mai: il campo esiste sulla carta e non fa nulla. Questo pesa esattamente sul default appena allargato in Task 3: un Agentbot senza perimetro dichiarato resta confinato **dal solo semaforo** (denylist + tier), non anche da `max_tier` come un commento precedente affermava per errore. Va onorato a runtime in una fase successiva, oppure rimosso dallo schema se resta permanentemente inerte — ma non va lasciato promettere una garanzia che nessuno applica.
+
 ## Versione: 1.1, non 2.0
 
 **Condizione che rende onesto il numero: nessuna rottura per le configurazioni esistenti.**

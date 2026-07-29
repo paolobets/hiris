@@ -417,8 +417,8 @@ def _validate_str_list(raw, key):
 
       * Absent (missing key, or explicit `null`) -> `None` = NO RESTRICTION
         on this axis. The Agentbot is still confined by the semaforo
-        (denylist + tier) and by `max_tier`, but this particular allow-list
-        imposes no extra boundary.
+        (denylist + tier), but this particular allow-list imposes no extra
+        boundary.
       * An EXPLICITLY empty list (`[]`) stays `[]` = DENY EVERYTHING. The
         user wrote "grant nothing", and nothing is what gets granted; it is
         never widened into `None`.

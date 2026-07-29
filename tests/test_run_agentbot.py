@@ -1057,8 +1057,8 @@ async def test_task_from_agent_without_declared_perimeter_is_unconfined(store, t
     """L'altro lato: se l'utente non ha dichiarato NULLA, il blocco
     `perimeter` resta comunque materializzato (Task 2) ma le due allow-list
     valgono `None` = "nessuna restrizione su quell'asse". L'agente resta
-    confinato dal semaforo (denylist + tier) e da `max_tier`, non da una
-    allow-list che nessuno ha scritto.
+    confinato dal solo semaforo (denylist + tier), non da una allow-list
+    che nessuno ha scritto.
 
     Prima di questo fix il default era `[]`, che il dispatcher leggeva come
     "nessun limite" (l'agente leggeva tutta la casa) e il task_engine come
