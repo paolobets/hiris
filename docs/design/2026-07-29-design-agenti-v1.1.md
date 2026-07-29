@@ -1,8 +1,9 @@
 # Agenti 2.0 — Brain che orchestra, Agenti che fanno, Task come atto
 
 **Data:** 2026-07-29 · Repo: `hiris` · Base: **v1.0.0** (`3b75dfd`)
-**Stato:** documento di design, **non approvato per lo sviluppo**. Serve a valutare l'idea.
+**Stato:** design **completo** — tutti i punti aperti chiusi il 2026-07-29. Target: **v1.1**.
 **Origine:** conversazione di design con l'utente, 2026-07-29, dopo il rilascio della 1.0.
+**Prossimo passo:** piano d'implementazione (skill `writing-plans`), su conferma.
 
 ## Il problema
 
@@ -156,13 +157,37 @@ allowed_tools=[]   # oggi hardcodato nel ragionamento dell'Agentbot
 
 Diventa **una lista chiusa di tool di sola lettura**, imposta nel codice — mai configurabile, mai estendibile da configurazione umana o generata. È l'unico invariante di sicurezza della 1.0 che questo design modifica, e va trattato come tale: nessun tool che attua può entrare in quella lista.
 
-## Punti aperti (da chiudere prima di uno spec implementativo)
+## Decisioni (punti chiusi il 2026-07-29)
 
-1. **Chi autorizza.** L'utente parla di *«utente admin»*, ma HIRIS ha l'identità (`owner`, propagata dall'Ingress, usata per step-up e scoping memoria) e **non ha ruoli**. Va deciso: chiunque acceda dall'Ingress? Un owner configurato? Decisione di prodotto.
-2. **Cosa innesca un agente in modalità obiettivo** — pianificazione, invocazione del Brain, evento, lancio manuale? Probabilmente più d'uno, ma va scelto.
-3. **Dove vivono i resoconti** — la home del Brain è naturale (esiste), ma gli agenti vorranno una pagina propria.
-4. **Forma della richiesta cumulativa** per evitare raffiche di conferme al primo giro.
-5. **Persistenza della fiducia** — dove si registra la coppia (agente, verbo, entità) concessa, e come si revoca in modo visibile.
+**1. Chi autorizza — owner configurato.** Nelle opzioni dell'addon si indicano uno o più utenti HA come **proprietari**. Solo loro autorizzano agenti e concedono i "Sempre"; gli altri usano la chat e vedono cosa succede, ma non possono ampliare i poteri di un agente.
+*Vincolo tecnico:* l'Ingress passa l'identità (`X-Remote-User-Id`, nome) ma **non** dice se l'utente è amministratore di HA — quindi la proprietà va dichiarata in configurazione, non dedotta.
+
+**2. Inneschi della modalità obiettivo — manuale, pianificato, invocazione del Brain.** Gli **eventi restano dominio della modalità regola**, che costa zero. Se una regola rileva qualcosa che merita ragionamento, **invoca lei** l'agente-obiettivo:
+
+```
+REGOLA (deterministica, gratis)
+  "consumo orario > 3kW per 30 min"
+        └── invoca ──▶ AGENTE OBIETTIVO
+                       "scopri cosa lo causa e proponi un rimedio"
+```
+
+Così il pensiero costoso parte solo quando c'è davvero qualcosa da pensare — e non a ogni ricorrenza di un evento rumoroso.
+
+**3. Dove vivono i resoconti — in entrambi i posti, con ruoli diversi.** Una riga di sintesi nel **feed della home del Brain** (che già aggrega ragionamenti, segnalazioni e proposte: risponde a *«è successo qualcosa?»*), e il dettaglio completo nella **pagina dell'agente** insieme al suo storico di esecuzioni (risponde a *«cosa ha fatto esattamente e perché»*).
+
+**4. Richiesta cumulativa.** Quando in un singolo giro un agente deve chiedere più azioni della stessa forma, parte **una sola richiesta raggruppata** — *«vuole spegnere 6 interruttori in Lavanderia: sempre per tutti / solo stavolta / scegli quali»* — **con l'elenco visibile**. Un "sempre per tutti" senza vedere la lista sarebbe l'assegno in bianco che questo design evita.
+
+**5. Persistenza e revoca della fiducia — nella pagina dell'agente.** Ogni agente ha una sezione **«Cosa gli hai permesso»**: l'elenco delle coppie *verbo + entità* concesse, con la data, una revoca puntuale per ciascuna e un **«Revoca tutto»** che riporta l'agente allo stato di appena autorizzato.
+
+> La fiducia progressiva **accumula potere nel tempo**. Tenerla visibile dove l'agente vive — e non in una pagina che nessuno apre — è ciò che impedisce che dopo tre mesi tu non sappia più cosa possono fare i tuoi agenti.
+
+## Versione: 1.1, non 2.0
+
+**Condizione che rende onesto il numero: nessuna rottura per le configurazioni esistenti.**
+
+Il design regge questa promessa: gli Agentbot di oggi diventano *modalità regola* con migrazione trasparente, il rename `chatbot_id → agent_id` è interno, e tutto il resto è additivo. Il Chatbot non si tocca, il semaforo non si tocca.
+
+Se durante lo sviluppo emergesse qualcosa che rompe una configurazione utente, **quello è il segnale che è diventata una 2.0** — e va detto, non aggirato.
 
 ## Non-goal
 
@@ -175,6 +200,6 @@ Diventa **una lista chiusa di tool di sola lettura**, imposta nel codice — mai
 
 Il design è **più coerente e più difendibile del modello 1.0** su due fronti: sposta la sicurezza dalla verifica a runtime alla **struttura** (il Brain non può eseguire; l'LLM emette solo dichiarazioni), e riduce le entità invece di aggiungerne (Task diventa unità, non fratello).
 
-Il costo è reale: tocca `task_engine`, il ragionamento dell'Agentbot e il modello di autorizzazione. È una **2.0**, non una patch.
+Il costo è reale: tocca `task_engine`, il ragionamento dell'Agentbot e il modello di autorizzazione. Ma è **additivo per l'utente** — chi ha configurato Agentbot oggi non deve rifare nulla — quindi **v1.1**.
 
-**Prerequisito consigliato:** uso sul campo della 1.0. Molti dei difetti peggiori trovati costruendo la 1.0 erano invisibili finché non sono stati cercati davvero; il modello dell'agente merita di nascere dagli attriti reali, non solo dal ragionamento.
+**Raccomandazione:** far girare la 1.0 sul campo in parallelo allo sviluppo. Molti dei difetti peggiori trovati costruendo la 1.0 erano invisibili finché non sono stati cercati davvero; il modello dell'agente guadagna dagli attriti reali, non solo dal ragionamento a tavolino.
