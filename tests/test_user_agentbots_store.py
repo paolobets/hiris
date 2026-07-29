@@ -785,6 +785,33 @@ def test_load_agentbots_no_legacy_file_no_migration_needed(tmp_path):
     assert not (tmp_path / "agentbots.json").exists()
 
 
+def test_objective_required_and_bounded():
+    base = {"mode": "objective", "trigger": {"type": "schedule", "interval_min": 60}}
+    assert validate_agentbot({**base}) is None                     # assente
+    assert validate_agentbot({**base, "objective": "   "}) is None  # vuoto
+    cleaned = validate_agentbot({**base, "objective": "x" * 5000})
+    assert cleaned is not None and len(cleaned["objective"]) == 2000
+
+
+def test_rule_mode_rejects_objective_field():
+    assert validate_agentbot({
+        "mode": "rule", "objective": "non dovrei esserci",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    }) is None
+
+
+def test_objective_mode_rejects_event_trigger():
+    """Design: gli eventi restano alle REGOLE (costo zero); una regola puo'
+    invocare un agente-obiettivo, ma l'obiettivo non si aggancia all'evento."""
+    assert validate_agentbot({
+        "mode": "objective", "objective": "valuta i consumi",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+    }) is None
+
+
 def test_load_agentbots_migration_failure_is_non_fatal(tmp_path, monkeypatch):
     """A migration failure (e.g. os.replace raising) must be swallowed and
     logged, never propagated -- the caller still gets a usable (here, empty,

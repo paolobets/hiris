@@ -419,6 +419,37 @@ def validate_agentbot(raw: dict) -> dict | None:
                 return None
             action = None
 
+        # objective: same shape as action's rule/objective split, mirrored --
+        # required and non-empty in mode="objective" (an objective Agentbot
+        # with nothing to accomplish is unsalvageable, same reasoning as a
+        # rule with no action); forbidden in mode="rule" (present -> reject:
+        # a rule has no objective of its own, declaring one is a
+        # contradiction, not an oversight to silently drop -- same reasoning
+        # as `action` above). Truncated to 2000 chars, mirroring
+        # reasoning.prompt's own bound.
+        if mode == "objective":
+            objective = _clean_nonempty_str(raw.get("objective"))
+            if objective is None:
+                return None
+            objective = objective[:2000]
+        else:  # rule
+            if raw.get("objective") is not None:
+                return None
+            objective = None
+
+        # Cross-field gate (first one in this validator -- every other check
+        # here is single-field). Design decision: HA events stay the domain
+        # of RULE mode, where they cost nothing (the watcher is already
+        # subscribed to the event bus). An objective Agentbot is heavier --
+        # it runs an LLM turn -- so it is deliberately NOT allowed to hang
+        # off an event directly; it is launched manually, on a schedule, or
+        # invoked BY a rule/the Brain. Placed here, after both `mode` and
+        # `trigger` are already resolved, so both operands of the check are
+        # in scope and validated; a reader hitting this for the first time
+        # should not mistake it for an arbitrary restriction.
+        if mode == "objective" and trigger["type"] == "event":
+            return None
+
         # severity: absent -> default "info"; PRESENT but not in the allowed
         # set -> reject the whole Agentbot (don't silently coerce to "info",
         # which would understate a user-authored "alert").
@@ -463,6 +494,7 @@ def validate_agentbot(raw: dict) -> dict | None:
             "action": action,
             "severity": severity,
             "mode": mode,
+            "objective": objective,
         }
     except Exception:
         log.warning("validate_agentbot: unsalvageable Agentbot, dropping", exc_info=True)
