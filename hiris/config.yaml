@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "0.102.1"
+version: "1.0.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -15,7 +15,6 @@ ingress_port: 8099
 panel_icon: mdi:home-automation
 panel_title: HIRIS
 startup: services
-stage: experimental
 init: false
 map:
   - config:rw

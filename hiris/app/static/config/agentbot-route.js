@@ -79,11 +79,26 @@ window.HirisAgentbotRoute = (function () {
       body.appendChild(row);
     });
 
+    // SP-4 Fase B Task 5 (accoppiamento 1 del grounding A5): il backend
+    // accetta un SOLO documento atomico (POST api/sentinel/policy con
+    // {detectors, situations, preparation} insieme) -- non esiste un
+    // endpoint per salvare una sola sezione. Dare a ciascuna card un
+    // proprio bottone "Salva" implicherebbe comunque inviare l'intero
+    // documento tre volte, con tre stati indipendenti che potrebbero
+    // disallinearsi (es. Situazioni mostra "Salvato" mentre Preparazione è
+    // ancora "Salvataggio…" per la STESSA richiesta HTTP). Scelta: UN solo
+    // bottone Salva (su questa card, Detector) con UNO status. Le card
+    // Situazioni/Preparazione non hanno più un proprio status "specchio"
+    // (`sitStatus`, scritto da questo stesso handler ma disegnato su
+    // un'altra card -- la vecchia fonte di ambiguità): mostrano invece un
+    // richiamo testuale al bottone unico qui sotto (vedi 'sc-desc' aggiunto
+    // alle loro card più sotto in questo file).
     var bar = el('div');
     bar.style.cssText = 'margin-top:16px;display:flex;gap:10px;align-items:center';
-    var save = el('button', 'btn btn-primary', 'Salva');
+    var save = el('button', 'btn btn-primary', 'Salva impostazioni Sentinella');
     var status = el('span', 'sc-desc', '');
     bar.appendChild(save); bar.appendChild(status);
+    body.appendChild(el('p', 'sc-desc', 'Salva insieme Detector, Situazioni e Preparazione (un unico documento).'));
     body.appendChild(bar);
 
     save.addEventListener('click', function () {
@@ -102,16 +117,14 @@ window.HirisAgentbotRoute = (function () {
       });
       payload.situations = buildSituationsPayload();
       payload.preparation = buildPreparationPayload();
-      save.disabled = true; status.textContent = 'Salvataggio…'; sitStatus.textContent = 'Salvataggio…';
+      save.disabled = true; status.textContent = 'Salvataggio…';
       api('api/sentinel/policy', { method: 'POST', body: JSON.stringify(payload) })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
         .then(function () {
           status.textContent = 'Salvato ✓'; save.disabled = false;
-          sitStatus.textContent = 'Salvato ✓';
         })
         .catch(function () {
           status.textContent = 'Errore nel salvataggio'; save.disabled = false;
-          sitStatus.textContent = 'Errore nel salvataggio';
         });
     });
 
@@ -215,42 +228,6 @@ window.HirisAgentbotRoute = (function () {
       parent.appendChild(wrap);
       return sel;
     }
-    function modelSelectField(parent, labelText, value) {
-      // Task 4B: per-Agentbot model. Starts with just "auto" (always valid,
-      // matches reasoning.model's own validation default) then fills in
-      // with the models of active providers from GET /api/models -- same
-      // async-populate-after-render approach as `entityField` above, so a
-      // slow/failed fetch never blocks rendering the row.
-      var sel = selectField(parent, labelText, [{ value: 'auto', label: 'auto' }], value || 'auto');
-      api('api/models', { method: 'GET' })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-        .then(function (data) {
-          var providers = data.providers || [];
-          var current = sel.value;
-          providers.forEach(function (p) {
-            (p.models || []).forEach(function (m) {
-              if (m === 'auto') return; // already the default option
-              var opt = el('option');
-              opt.value = m;
-              opt.textContent = p.label ? (m + ' (' + p.label + ')') : m;
-              sel.appendChild(opt);
-            });
-          });
-          sel.value = current;
-          if (sel.value !== current) {
-            // The Agentbot's saved model isn't offered by any active
-            // provider (e.g. provider since disabled) -- keep it selected
-            // and visible rather than silently discarding the user's choice.
-            var orphan = el('option');
-            orphan.value = current;
-            orphan.textContent = current + ' (provider non configurato)';
-            sel.insertBefore(orphan, sel.firstChild);
-            sel.value = current;
-          }
-        })
-        .catch(function () { /* select resta con solo 'auto' */ });
-      return sel;
-    }
     function textareaField(parent, labelText, value) {
       var wrap = el('div');
       wrap.style.cssText = 'margin-top:8px';
@@ -307,11 +284,11 @@ window.HirisAgentbotRoute = (function () {
     var holPerDay = numberField(holRow, 'Invii al giorno (per_day)', sitHolistic.per_day);
     sitBody.appendChild(holRow);
 
-    var sitBar = el('div');
-    sitBar.style.cssText = 'margin-top:16px;display:flex;gap:10px;align-items:center';
-    var sitStatus = el('span', 'sc-desc', '');
-    sitBar.appendChild(sitStatus);
-    sitBody.appendChild(sitBar);
+    // Accoppiamento 2 del grounding A5 (deciso sopra, vedi il commento sul
+    // bottone Salva del Detector): niente più status "specchio" scritto da
+    // un bottone che vive su un'altra card -- un solo richiamo testuale al
+    // punto reale dove si salva.
+    sitBody.appendChild(el('p', 'sc-desc', 'Si salva con "Salva impostazioni Sentinella" nella card Detector qui sopra.'));
 
     sitCard.appendChild(sitBody);
     outlet.appendChild(sitCard);
@@ -333,275 +310,61 @@ window.HirisAgentbotRoute = (function () {
     var prepSunEntity = entityField(prepRow, 'Entità sole', prepEvening.sun_entity != null ? prepEvening.sun_entity : 'sun.sun', 'domain=sun');
     var prepAfterHour = numberField(prepRow, 'Non prima delle ore', prepEvening.after_hour);
     prepBody.appendChild(prepRow);
+    prepBody.appendChild(el('p', 'sc-desc', 'Si salva con "Salva impostazioni Sentinella" nella card Detector qui sopra.'));
 
     prepCard.appendChild(prepBody);
     outlet.appendChild(prepCard);
 
-    // --- Lenti (Slice 5b, Task 7: lista lenti utente-definite) ---
-    var OPERATORS = [
-      { value: '>', label: '>' }, { value: '<', label: '<' },
-      { value: '>=', label: '>=' }, { value: '<=', label: '<=' },
-      { value: '==', label: '==' }, { value: '!=', label: '!=' }
-    ];
-    function isEqualityOp(op) { return op === '==' || op === '!='; }
-    function toNumOrNull(v) {
-      if (v === '' || v == null) return null;
-      var x = parseFloat(v);
-      return isNaN(x) ? null : x;
-    }
-    function buildThresholdValue(operator, raw) {
-      if (isEqualityOp(operator)) return raw;
-      var x = parseFloat(raw);
-      return isNaN(x) ? raw : x;
-    }
-    function emptyLens() {
-      return {
-        id: null, name: '', enabled: true, severity: 'info',
-        trigger: { type: 'event', entity_id: '', operator: '==', threshold: '' },
-        reasoning: { enabled: false, model: 'auto', prompt: '' },
-        action: { type: 'notify', message: '' }
-      };
-    }
+    // --- Regole Agentbot: elenco di navigazione, SOLA LETTURA -----------
+    // SP-4 Fase B Task 5: l'editor per-entità (creazione/modifica/salvataggio
+    // per riga, POST/PUT/DELETE api/agentbots) si è spostato in
+    // config/agentbot-editor.js (route #/agentbots/new e #/agentbots/{id}).
+    // Questa pagina resta "il documento" della policy Sentinella (un solo
+    // POST api/sentinel/policy per detector+situazioni+preparazione) più
+    // l'osservabilità (timeline, suggerimenti Brain) -- non possiede più
+    // alcun CRUD sugli Agentbot. Questo blocco si limita a elencarli con un
+    // link a testa (nessun form, nessun salvataggio, sola GET) così la
+    // pagina resta il punto da cui si arriva a un Agentbot esistente o se
+    // ne crea uno nuovo -- senza reintrodurre la logica rimossa.
+    var rulesCard = el('section', 'section-card');
+    var rulesBody = el('div', 'sc-body');
+    var rulesHeader = el('div');
+    rulesHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline';
+    rulesHeader.appendChild(el('div', 'page-title', 'Regole Agentbot'));
+    var newRuleLink = document.createElement('a');
+    newRuleLink.className = 'btn btn-primary';
+    newRuleLink.href = '#/agentbots/new';
+    newRuleLink.textContent = '+ Nuovo Agentbot';
+    rulesHeader.appendChild(newRuleLink);
+    rulesBody.appendChild(rulesHeader);
+    rulesBody.appendChild(el('p', 'sc-desc',
+      'Regole personalizzate: trigger (evento o pianificazione), ragionamento AI opzionale, azione. Click su una regola per aprirne l\'editor.'));
 
-    var lensCard = el('section', 'section-card');
-    var lensBody = el('div', 'sc-body');
-    lensBody.appendChild(el('div', 'page-title', 'Regole Agentbot'));
-    lensBody.appendChild(el('p', 'sc-desc',
-      'Regole personalizzate: trigger (evento o pianificazione), ragionamento AI opzionale, azione.'));
-
-    var lensListEl = el('div');
-    lensBody.appendChild(lensListEl);
-    var lensEmptyMsg = el('p', 'sc-desc', 'Nessun Agentbot configurato.');
-    lensListEl.appendChild(lensEmptyMsg);
-
-    var lensAddBar = el('div');
-    lensAddBar.style.cssText = 'margin-top:12px';
-    var lensAddBtn = el('button', 'btn', '+ Nuovo Agentbot');
-    lensAddBar.appendChild(lensAddBtn);
-    lensBody.appendChild(lensAddBar);
-
-    lensCard.appendChild(lensBody);
-    outlet.appendChild(lensCard);
-
-    function buildLensRow(lens) {
-      var row = el('div');
-      row.style.cssText = 'padding:14px 0;border-bottom:1px solid var(--border,#2a2a2a)';
-
-      var nameInp = textField(row, 'Nome', lens.name);
-      var enabledChk = checkboxField(row, 'Abilitata', lens.enabled);
-      var severitySel = selectField(row, 'Severità', [
-        { value: 'info', label: 'Info' },
-        { value: 'warn', label: 'Warn' },
-        { value: 'alert', label: 'Alert' }
-      ], lens.severity || 'info');
-
-      // Trigger
-      row.appendChild(el('p', 'sc-desc', 'Trigger'));
-      var trg = lens.trigger || {};
-      var triggerTypeSel = selectField(row, 'Tipo trigger', [
-        { value: 'event', label: 'Evento' },
-        { value: 'schedule', label: 'Pianificazione' }
-      ], trg.type || 'event');
-
-      var eventWrap = el('div');
-      var evEntity = entityField(eventWrap, 'Entità', trg.type === 'event' ? trg.entity_id : '', '');
-      var evOperator = selectField(eventWrap, 'Operatore', OPERATORS,
-        trg.type === 'event' ? (trg.operator || '==') : '==');
-      var evThreshold = textField(eventWrap, 'Soglia (numero, o testo per ==/!=)',
-        trg.type === 'event' && trg.threshold != null ? trg.threshold : '');
-      var evDuration = numberField(eventWrap, 'Durata (minuti, opzionale)',
-        trg.type === 'event' ? trg.duration_min : null);
-      row.appendChild(eventWrap);
-
-      var scheduleWrap = el('div');
-      var schKindSel = selectField(scheduleWrap, 'Modalità', [
-        { value: 'cron', label: 'Cron' },
-        { value: 'interval', label: 'Intervallo (minuti)' }
-      ], trg.type === 'schedule' && trg.interval_min != null ? 'interval' : 'cron');
-      var schCron = textField(scheduleWrap, 'Cron (es. "0 7 * * *")',
-        trg.type === 'schedule' ? (trg.cron || '') : '');
-      var schInterval = numberField(scheduleWrap, 'Intervallo (minuti)',
-        trg.type === 'schedule' ? trg.interval_min : null);
-      scheduleWrap.appendChild(el('p', 'sc-desc', 'Condizione aggiuntiva (opzionale)'));
-      var cond = trg.condition || {};
-      var schCondEntity = entityField(scheduleWrap, 'Entità condizione', cond.entity_id, '');
-      var schCondOperator = selectField(scheduleWrap, 'Operatore condizione', OPERATORS, cond.operator || '==');
-      var schCondThreshold = textField(scheduleWrap, 'Soglia condizione',
-        cond.threshold != null ? cond.threshold : '');
-      row.appendChild(scheduleWrap);
-
-      function updateTriggerVisibility() {
-        var isEvent = triggerTypeSel.value === 'event';
-        eventWrap.style.display = isEvent ? '' : 'none';
-        scheduleWrap.style.display = isEvent ? 'none' : '';
-      }
-      function updateScheduleKindVisibility() {
-        var isCron = schKindSel.value === 'cron';
-        schCron.parentNode.style.display = isCron ? '' : 'none';
-        schInterval.parentNode.style.display = isCron ? 'none' : '';
-      }
-      triggerTypeSel.addEventListener('change', updateTriggerVisibility);
-      schKindSel.addEventListener('change', updateScheduleKindVisibility);
-      evOperator.addEventListener('change', function () {
-        evThreshold.type = isEqualityOp(evOperator.value) ? 'text' : 'number';
-      });
-      schCondOperator.addEventListener('change', function () {
-        schCondThreshold.type = isEqualityOp(schCondOperator.value) ? 'text' : 'number';
-      });
-      updateTriggerVisibility();
-      updateScheduleKindVisibility();
-      evThreshold.type = isEqualityOp(evOperator.value) ? 'text' : 'number';
-      schCondThreshold.type = isEqualityOp(schCondOperator.value) ? 'text' : 'number';
-
-      // Ragionamento AI
-      row.appendChild(el('p', 'sc-desc', 'Ragionamento AI'));
-      var reasoningChk = checkboxField(row, 'Abilita ragionamento AI', (lens.reasoning || {}).enabled);
-      var reasoningModelSel = modelSelectField(row, 'Modello', (lens.reasoning || {}).model);
-      var reasoningPrompt = textareaField(row, 'Prompt personalizzato', (lens.reasoning || {}).prompt);
-
-      // Azione
-      row.appendChild(el('p', 'sc-desc', 'Azione'));
-      var act = lens.action || {};
-      var actionTypeSel = selectField(row, 'Tipo azione', [
-        { value: 'notify', label: 'Notifica' },
-        { value: 'service', label: 'Servizio HA' }
-      ], act.type || 'notify');
-
-      var notifyWrap = el('div');
-      var notifyMessage = textareaField(notifyWrap, 'Messaggio', act.type !== 'service' ? act.message : '');
-      row.appendChild(notifyWrap);
-
-      var serviceWrap = el('div');
-      var actDomain = textField(serviceWrap, 'Dominio (es. switch)', act.domain);
-      var actService = textField(serviceWrap, 'Servizio (es. turn_on)', act.service);
-      var actEntity = entityField(serviceWrap, 'Entità target', act.entity_id, '');
-      var actOffAfter = numberField(serviceWrap, 'Spegni dopo (minuti, opzionale)', act.off_after_min);
-      row.appendChild(serviceWrap);
-
-      function updateActionVisibility() {
-        var isNotify = actionTypeSel.value === 'notify';
-        notifyWrap.style.display = isNotify ? '' : 'none';
-        serviceWrap.style.display = isNotify ? 'none' : '';
-      }
-      actionTypeSel.addEventListener('change', updateActionVisibility);
-      updateActionVisibility();
-
-      var bar = el('div');
-      bar.style.cssText = 'margin-top:12px;display:flex;gap:10px;align-items:center';
-      var saveBtn = el('button', 'btn btn-primary', 'Salva Agentbot');
-      var delBtn = el('button', 'btn', 'Elimina');
-      var lensStatus = el('span', 'sc-desc', '');
-      bar.appendChild(saveBtn); bar.appendChild(delBtn); bar.appendChild(lensStatus);
-      row.appendChild(bar);
-
-      function buildPayload() {
-        var payload = {
-          name: nameInp.value,
-          enabled: enabledChk.checked,
-          severity: severitySel.value
-        };
-        if (triggerTypeSel.value === 'event') {
-          var trigger = {
-            type: 'event',
-            entity_id: evEntity.value,
-            operator: evOperator.value,
-            threshold: buildThresholdValue(evOperator.value, evThreshold.value)
-          };
-          var dur = toNumOrNull(evDuration.value);
-          if (dur != null) trigger.duration_min = dur;
-          payload.trigger = trigger;
-        } else {
-          var trigger2 = { type: 'schedule' };
-          if (schKindSel.value === 'cron') {
-            trigger2.cron = schCron.value;
-          } else {
-            var iv = toNumOrNull(schInterval.value);
-            if (iv != null) trigger2.interval_min = iv;
-          }
-          if (schCondEntity.value) {
-            trigger2.condition = {
-              entity_id: schCondEntity.value,
-              operator: schCondOperator.value,
-              threshold: buildThresholdValue(schCondOperator.value, schCondThreshold.value)
-            };
-          }
-          payload.trigger = trigger2;
-        }
-        payload.reasoning = {
-          enabled: reasoningChk.checked,
-          model: reasoningModelSel.value,
-          prompt: reasoningPrompt.value
-        };
-        if (actionTypeSel.value === 'notify') {
-          payload.action = { type: 'notify', message: notifyMessage.value };
-        } else {
-          var action = {
-            type: 'service',
-            domain: actDomain.value,
-            service: actService.value,
-            entity_id: actEntity.value
-          };
-          var off = toNumOrNull(actOffAfter.value);
-          if (off != null) action.off_after_min = off;
-          payload.action = action;
-        }
-        return payload;
-      }
-
-      saveBtn.addEventListener('click', function () {
-        var payload = buildPayload();
-        saveBtn.disabled = true; lensStatus.textContent = 'Salvataggio…';
-        var isUpdate = !!lens.id;
-        var url = isUpdate ? ('api/agentbots/' + encodeURIComponent(lens.id)) : 'api/agentbots';
-        var method = isUpdate ? 'PUT' : 'POST';
-        api(url, { method: method, body: JSON.stringify(payload) })
-          .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-          .then(function (res) {
-            if (res && res.agentbot && res.agentbot.id) lens.id = res.agentbot.id;
-            lensStatus.textContent = 'Salvato ✓';
-            saveBtn.disabled = false;
-          })
-          .catch(function () {
-            lensStatus.textContent = 'Errore nel salvataggio';
-            saveBtn.disabled = false;
-          });
-      });
-
-      delBtn.addEventListener('click', function () {
-        if (!lens.id) {
-          row.remove();
-          return;
-        }
-        delBtn.disabled = true; lensStatus.textContent = 'Eliminazione…';
-        api('api/agentbots/' + encodeURIComponent(lens.id), { method: 'DELETE' })
-          .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-          .then(function () { row.remove(); })
-          .catch(function () {
-            lensStatus.textContent = 'Errore nell\'eliminazione';
-            delBtn.disabled = false;
-          });
-      });
-
-      return row;
-    }
-
-    lensAddBtn.addEventListener('click', function () {
-      if (lensEmptyMsg.parentNode) lensEmptyMsg.remove();
-      lensListEl.appendChild(buildLensRow(emptyLens()));
-    });
+    var rulesListEl = el('div');
+    rulesBody.appendChild(rulesListEl);
+    rulesCard.appendChild(rulesBody);
+    outlet.appendChild(rulesCard);
 
     api('api/agentbots', { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (j) {
-        var lenses = j.agentbots || [];
-        if (!lenses.length) return;
-        lensEmptyMsg.remove();
-        lenses.forEach(function (lens) {
-          lensListEl.appendChild(buildLensRow(lens));
+        var rules = j.agentbots || [];
+        if (!rules.length) {
+          rulesListEl.appendChild(el('p', 'sc-desc', 'Nessun Agentbot configurato.'));
+          return;
+        }
+        rules.forEach(function (rule) {
+          var link = document.createElement('a');
+          link.className = 'log-row';
+          link.style.cssText = 'display:block;text-decoration:none;color:inherit';
+          link.href = '#/agentbots/' + encodeURIComponent(rule.id);
+          var badge = rule.enabled ? '● Attiva' : '○ Disabilitata';
+          link.textContent = (rule.name || '(senza nome)') + ' · ' + (rule.severity || 'info') + ' · ' + badge;
+          rulesListEl.appendChild(link);
         });
       })
       .catch(function () {
-        lensEmptyMsg.textContent = 'Errore nel caricamento degli Agentbot.';
+        rulesListEl.appendChild(el('p', 'sc-desc', 'Errore nel caricamento degli Agentbot.'));
       });
 
     function buildPreparationPayload() {

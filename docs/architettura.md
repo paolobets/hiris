@@ -1,6 +1,6 @@
 # HIRIS — Architettura Tecnica
 
-> Versione: 0.102.0 · Aggiornato: 2026-07-28
+> Versione: 1.0.0 · Aggiornato: 2026-07-29
 
 ---
 
@@ -142,29 +142,63 @@ hiris/app/
     ├── hiris-chat-card.js       Custom card Lovelace
     └── config/                  Designer: router hash-based (`#/...`) + una vista per route
         ├── router.js / state.js / api.js / templates.js  Infrastruttura SPA condivisa
-        ├── main.js               Registrazione di tutte le route (vedi tabella sotto)
+        ├── entity-picker.js     Selettore entità istanziabile (`HirisEntityPicker.create()`,
+        │                         Task 1 SP-4b1) — sostituisce il vecchio singleton globale
+        ├── editor-kit.js        Kit condiviso Chatbot/Agentbot (Task 3): dirty-tracking reale
+        │                         (`dirty.track`/`dirty.guard`), `modelSelect` con fetch cachata,
+        │                         `checkGroup` istanza-scoped, `field.*`, save-bar
+        ├── main.js               Registrazione di tutte le route (vedi tabella sotto) + guard
+        │                         di navigazione unico (`HirisEditorKit.dirty.guard`, hoistato
+        │                         qui nel Task 6 — copre ogni route editor per costruzione)
         ├── dashboard.js          Vista `#/` — home del Brain
-        ├── chatbots-list.js / chatbot-form.js / chatbot-editor.js   Viste `#/chatbots*`
-        ├── agentbot-route.js    Vista `#/agentbots`
+        ├── chatbots-list.js     Vista `#/chatbots` (lista)
+        ├── chatbot-editor.js    Editor unico Chatbot — viste `#/chatbots/new` e
+        │                         `#/chatbots/{id}` (Task 4; ha assorbito ed eliminato il
+        │                         precedente `chatbot-form.js`)
+        ├── create-wizard.js     Vista `#/nuovo` — creazione goal-first (Task 6): obiettivo in
+        │                         linguaggio naturale → deriva il tipo (euristica deterministica,
+        │                         nessun LLM) → step guidati → apre l'editor avanzato
+        ├── agentbot-route.js    Vista `#/agentbots` — policy Sentinella + osservabilità + lista
+        ├── agentbot-editor.js   Editor per-entità Agentbot — viste `#/agentbots/new` e
+        │                         `#/agentbots/{id}` (Task 5, tre `HirisEntityPicker` indipendenti
+        │                         per riga: trigger/condizione/target)
         ├── models-route.js      Vista `#/models`
         ├── proposals-route.js / proposals.js   Vista `#/proposals`
         ├── usage-route.js / usage.js   Vista `#/usage`
         ├── tasks-route.js       Vista `#/tasks`
         ├── gateway-route.js     Vista `#/gateway`
         ├── history-route.js     Vista `#/history`
-        ├── permessi.js          Editor permessi (entità/servizi/endpoint) riusato da più viste
+        ├── permessi.js          Stub vuoto (Task 3 ha assorbito la sua logica in editor-kit.js);
+        │                         tenuto solo per l'ordine di caricamento/cache-busting per-file
         └── drawer.js / popover.js / log-row.js / logs.js   Componenti UI condivisi
 ```
+
+Caricamento: `config.html` include ogni modulo come `<script src>` statico
+(fingerprint di cache-busting per-file lato server) nell'ordine di
+dipendenza sopra — non esiste più un loader dinamico a runtime (eliminato
+nel Task 2 della SP-4 Fase B insieme ai puntelli `ensureLegacy`/
+`rewireLegacyAfterMount`/`addLegacyShims`).
+
+`hiris/app/static/chat/` — pagina chat standalone (`index.html`), JS
+inline estratto in moduli (Task 8): `state.js`, `messages.js`, `agents.js`,
+`send.js`, `theme.js`, `tasks.js`, `onboarding.js`, `sidebar.js`,
+`keyboard.js`, `main.js` (più `static/config/api.js`, condiviso con il
+Designer). `pollChatReply` resta duplicato fra questa pagina e
+`hiris-chat-card.js` (la card si deploya via `/local/hiris/`, non può
+condividere uno `<script src>` con l'add-on).
 
 ### Route del frontend (`config.html`, router hash-based)
 
 | Hash | Vista | Modulo JS |
 |---|---|---|
 | `#/` | Home del Brain (Dashboard) | `dashboard.js` |
+| `#/nuovo` | Creazione goal-first | `create-wizard.js` |
 | `#/chatbots` | Lista Chatbot | `chatbots-list.js` |
-| `#/chatbots/new` | Nuovo Chatbot | `chatbot-form.js` |
+| `#/chatbots/new` | Nuovo Chatbot (editor vuoto, via diretta) | `chatbot-editor.js` |
 | `#/chatbots/{id}` | Editor Chatbot | `chatbot-editor.js` |
-| `#/agentbots` | Editor Agentbot | `agentbot-route.js` |
+| `#/agentbots` | Policy Sentinella + lista Agentbot | `agentbot-route.js` |
+| `#/agentbots/new` | Nuovo Agentbot | `agentbot-editor.js` |
+| `#/agentbots/{id}` | Editor Agentbot | `agentbot-editor.js` |
 | `#/models` | Provider/modelli LLM | `models-route.js` |
 | `#/proposals` | Proposte automazione | `proposals-route.js` |
 | `#/usage` | Consumi/costi | `usage-route.js` |
@@ -460,8 +494,8 @@ Ogni chiamata tool passa per `ToolDispatcher.dispatch()`:
 1. **Filtro entità** — pattern glob `allowed_entities` applicati a `get_entity_states`, `get_home_status`, `get_entities_on`, `get_entities_by_domain`
 2. **Filtro servizi** — pattern glob `allowed_services` verificati prima di ogni `call_ha_service`
 3. **Filtro endpoint** — `http_request` nascosto da Claude se `allowed_endpoints` non è configurato; ogni chiamata validata contro la lista consentita
-4. **Tracciamento consumi** — costo/token tracciati per Chatbot (`get_chatbot_usage`) e pubblicati via MQTT/UI; non esiste più un tetto di budget per persona né un auto-disable (rimosso insieme ai campi ritirati — `budget_remaining_eur` riporta sempre `"unlimited"`)
-5. **Scope memoria** — `save_memory` è disponibile alle personas (chat), governato da `knowledge_access`; il reasoner single-shot della Sentinella è ristretto a `EVALUATION_ONLY_TOOLS`, che esclude `save_memory` (chiama solo `recall_memory`)
+4. **Tracciamento consumi** — costo/token tracciati per Chatbot (`get_chatbot_usage`) e pubblicati via MQTT/UI; non esiste più un tetto di budget per Chatbot né un auto-disable (rimosso insieme ai campi ritirati — `budget_remaining_eur` riporta sempre `"unlimited"`)
+5. **Scope memoria** — `save_memory` è disponibile ai Chatbot (chat), governato da `knowledge_access`; il reasoner single-shot della Sentinella è ristretto a `EVALUATION_ONLY_TOOLS`, che esclude `save_memory` (chiama solo `recall_memory`)
 
 ### Protezione SSRF (`http_tools.py`)
 

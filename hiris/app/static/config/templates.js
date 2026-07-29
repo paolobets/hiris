@@ -2,7 +2,8 @@
    TEMPLATES seeds the f-template dropdown (prompt + strategic_context only —
    Task 4/Slice 5 dropped the agent-type/trigger/states preset fields along
    with the action/trigger machinery).
-   TOOLS, ACTIONS feed buildToolChecks / buildActionChecks (in permessi.js). */
+   TOOLS, ACTIONS feed HirisEditorKit.checkGroup (config/editor-kit.js,
+   SP-4 Fase B Task 3 — prima buildToolChecks/buildActionChecks in permessi.js). */
 
 var TEMPLATES = [
   {
@@ -82,4 +83,17 @@ var ACTIONS = [
   { id: 'notify.*',        label: 'Notifiche',      desc: 'Servizi di notifica push' },
   { id: 'input_boolean.*', label: 'Input Boolean',  desc: 'Toggle e variabili booleane virtuali' },
   { id: 'script.*',        label: 'Script',         desc: 'Esegui script e automazioni personalizzate' },
+];
+
+/* KNOWLEDGE_KINDS feeds HirisEditorKit.checkGroup nella sezione Knowledge
+   (SP-4 Fase B Task 4, chatbot-editor.js populateKnowledge()). Stessi 5
+   `kind` che save_knowledge accetta (hiris/app/tools/knowledge_tools.py
+   SAVE_KNOWLEDGE_TOOL_DEF.input_schema.properties.kind.enum) -- il filtro
+   lato UI deve restare in sincrono con ciò che il second brain sa salvare. */
+var KNOWLEDGE_KINDS = [
+  { id: 'fact',        label: 'Fatti',       desc: 'Informazioni stabili su casa/famiglia' },
+  { id: 'preference',  label: 'Preferenze',  desc: 'Abitudini e preferenze personali' },
+  { id: 'obligation',  label: 'Scadenze',    desc: 'Impegni e scadenze' },
+  { id: 'expense',     label: 'Spese',       desc: 'Spese registrate' },
+  { id: 'note',        label: 'Note',        desc: 'Appunti generici' },
 ];

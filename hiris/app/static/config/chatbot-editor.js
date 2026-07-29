@@ -1,75 +1,192 @@
-/* HIRIS · Designer · agent editor mount (long-form, Phase 4.2)
-   Mount delle 8 section-card di un editor Persona (Task 4/Slice 5 rimosse
-   Tipo/Trigger da Identità e l'intera section-card Azioni) e bridge alla
-   logica legacy in chatbot-form.js. */
-(function() {
-  /* Cache-bust automatico per i 7 legacy script dynamic-loaded via loadScript().
-     Il backend (_inject_version in server.py, via _ASSET_REF_RE/_asset_fingerprint)
-     appende già un content-hash "?v=<hash>" alla src di QUESTO script quando
-     serve config.html — lo leggiamo qui (nessuna chiamata di rete aggiuntiva,
-     solo lettura sincrona di document.currentScript.src) e lo riusiamo per
-     bustare la cache dei legacy script iniettati lato client. Così il bust
-     cambia automaticamente ogni volta che chatbot-editor.js viene modificato,
-     senza bump manuale.
-     Limite noto: l'hash è quello di QUESTO file, non dei singoli LEGACY_SCRIPTS
-     (che non passano da _inject_version perché iniettati via JS, non presenti
-     come <script src> in config.html). Se cambia SOLO uno dei LEGACY_SCRIPTS
-     senza toccare questo file, il bust non cambia — in quel caso serve comunque
-     un tocco (anche solo un commento) a questo file per forzare il refresh.
-     Fallback alla costante sotto se lo script non è servito con query string
-     (es. accesso diretto al file senza passare da _serve_config). */
-  var V6_CACHE_BUST = (function() {
-    try {
-      var selfScript = document.currentScript ||
-        document.querySelector('script[src*="chatbot-editor.js"]');
-      if (selfScript && selfScript.src) {
-        var m = /[?&]v=([^&]+)/.exec(selfScript.src);
-        if (m && m[1]) return decodeURIComponent(m[1]);
-      }
-    } catch (e) {}
-    return '0.11.0'; /* fallback manuale se non c'è query string sulla src */
-  })();
+/* HIRIS · Designer · Chatbot editor (SP-4 Fase B Task 4)
+   Editor unico per l'entità Chatbot, costruito sul kit condiviso
+   (config/editor-kit.js, Task 3) e sul componente entità istanziabile
+   (config/entity-picker.js, Task 1). Assorbe integralmente
+   chatbot-form.js (rimosso, DELETED da questo task): openAgent/
+   buildPayload/loadChatbots erano l'ultimo file separato del vecchio
+   editor -- ora questo file è l'UNICO owner del payload e del ciclo di
+   vita del form. Chiude anche la doppia fonte di verità che restava:
+   `window.currentId` (chatbot-form.js) vs `HirisState.get('activeChatbotId')`
+   (scritto dal router in main.js) -- resta solo la seconda, letta
+   ovunque questo file debba sapere quale Chatbot è in editing
+   (window.saveAgent/runAgent/deleteAgent sotto).
 
-  var legacyLoaded = false;
-  /* Task 4 (Slice 5): rimossi cron.js/cron-popover.js/triggers.js/
-     action-editor.js/script-action.js — erano la macchina di trigger e
-     sequenza-azioni ritirata insieme al backend (Task 1-3). Il Designer
-     ora carica solo i moduli di un editor Persona. */
-  var LEGACY_SCRIPTS = [
-    'static/config/templates.js',
-    'static/config/permessi.js',
-    'static/config/log-row.js',
-    'static/config/logs.js',
-    'static/config/usage.js',
-    'static/config/proposals.js',
-    'static/config/chatbot-form.js',
+   Sezioni -- fonte unica: l'array SECTIONS qui sotto genera SIA le
+   section-card in pagina SIA il rail anchor-nav (buildSections()). Prima
+   (grounding A3) lo stesso elenco di 8 voci era scritto 3 volte:
+   <template id="tpl-agent-editor"> (section-card statiche), l'<aside>
+   anchor-nav (link statici) e i letterali `sc-body-*` sparsi nei
+   populate*() -- cambiare/aggiungere una sezione richiedeva toccare 3
+   posti in sync. Ora `config.html` tiene solo la cornice (editor-grid +
+   sticky-actions-wrap + <aside> vuoto con la sola label "Indice"): tutto
+   il resto nasce da questo array.
+
+   knowledge_access (Task 4, nuovo): campo finora solo-API -- mai esposto
+   in UI, mai inviato dal payload (buildPayload() sotto lo ignorava del
+   tutto). Sezione Knowledge: un checkbox allow_sensitive + un gruppo di
+   checkbox "kinds" (fact/preference/obligation/expense/note, vedi
+   config/templates.js KNOWLEDGE_KINDS) dietro un master-switch "Tutte le
+   categorie" (kinds:"all" quando spuntato, altrimenti l'elenco dei kind
+   selezionati -- kinds:[] è una scelta valida e significa "nessun
+   accesso al second brain", vedi brain/knowledge_store.py). Validato
+   lato backend in handlers_chatbots.py::_validate_chatbot_payload (prima:
+   setattr grezzo, accettava qualunque tipo JSON).
+
+   Autonomia (Task 4, nuova sezione): riepilogo READ-ONLY del tier
+   semaforo delle entità in scope + il setting require_confirmation
+   (spostato qui da Abilitazione: è un consenso sull'autonomia del
+   Chatbot, non uno stato on/off del Chatbot stesso). La pagina Gateway
+   (#/gateway) resta l'UNICA fonte per CONFIGURARE i tier -- questa
+   sezione non scrive mai una policy, si limita a leggerla e a contare.
+   Nessuna fusione del semaforo (vincolo esplicito del piano).
+
+   Review finding (Important, chiuso in questo stesso task): il riepilogo
+   ricalcolava il tier lato client, mirror di effective_tier in
+   handlers_gateway_policy.py, MA senza la denylist DANGEROUS_DOMAINS che
+   security/semaphore.py::gate_action applica sempre sopra al tier (lock/
+   alarm_control_panel/cover/siren/garage_door -- "difesa in profondità").
+   Risultato: bastava mettere `cover.*` in scope (uno dei SCOPE_PILLS qui
+   sotto) e impostarlo verde in #/gateway perché il riepilogo mostrasse
+   "verde" su un dominio che il backend nega SEMPRE. Display-only (nessun
+   buco di sicurezza, l'enforcement non era toccato) ma disinformava
+   l'utente proprio sui domini più delicati. Fix: niente più calcolo lato
+   client -- renderAutonomiaSummary() chiama POST api/gateway/autonomy-
+   summary, che nel backend usa security/semaphore.py::summarize_autonomy
+   (la STESSA funzione che gate_action userebbe) e ritorna i conteggi già
+   corretti, incluso un bucket "dangerous" separato dai tier. Un'unica
+   implementazione: un domino aggiunto a DANGEROUS_DOMAINS non può più
+   disallineare silenziosamente la UI. Vedi tests/js/chatbot-editor.test.mjs
+   ("cover.* pericoloso non è mai verde") e tests/test_gateway_policy.py. */
+(function() {
+
+  /* ── sezione: fonte unica per section-card + anchor-nav ─────────────── */
+  var SECTIONS = [
+    { id: 'identita',   title: 'Identità',        desc: 'Nome della persona.' },
+    { id: 'istruzioni', title: 'Istruzioni',      desc: 'Cosa il Chatbot sa della casa e cosa deve fare.' },
+    { id: 'modello',    title: 'Modello AI',      desc: 'Quale modello usa, budget token, livello reasoning.' },
+    { id: 'scope',      title: 'Scope',           desc: 'Quali entità Home Assistant il Chatbot può leggere o usare.' },
+    { id: 'permessi',   title: 'Permessi',        desc: 'Quali tool e quali azioni HA può eseguire.' },
+    { id: 'knowledge',  title: 'Knowledge',       desc: 'Cosa può richiamare dal second brain di casa.' },
+    { id: 'autonomia',  title: 'Autonomia',       desc: 'Cosa può fare in autonomia: tier del semaforo e conferma.' },
+    { id: 'stato',      title: 'Abilitazione',    desc: 'Quando il Chatbot è abilitato.' },
+    { id: 'log',        title: 'Log esecuzioni',  desc: 'Ultimi 20 run. Click su una riga per il dettaglio.' },
+    { id: 'run',        title: 'Test Run',        desc: 'Ultimo Test Run lanciato manualmente. Non esegue azioni reali.' },
+    { id: 'consumi',    title: 'Consumi Chatbot', desc: 'Conteggio richieste, token e costo stimato.' }
   ];
 
-  function loadScript(src) {
-    return new Promise(function(resolve, reject) {
-      if (document.querySelector('script[data-legacy="' + src + '"]')) {
-        resolve(); return;
-      }
-      var s = document.createElement('script');
-      s.src = src + (src.indexOf('?') >= 0 ? '&' : '?') + 'v=' + encodeURIComponent(V6_CACHE_BUST);
-      s.dataset.legacy = src;
-      s.onload = resolve;
-      s.onerror = function() { reject(new Error('failed to load ' + src)); };
-      document.head.appendChild(s);
-    });
+  /* ── stato di modulo (un solo editor Chatbot montato alla volta) ─────── */
+  var chatbots = [];                    /* cache locale + mirror window.chatbots (usage.js/log-row.js la leggono bare) + HirisState('chatbots') */
+  var entityPickerInstance = null;      /* config/entity-picker.js -- sezione Scope */
+  var toolCheckGroup = null;            /* HirisEditorKit.checkGroup -- sezione Permessi (tool) */
+  var actionCheckGroup = null;          /* HirisEditorKit.checkGroup -- sezione Permessi (azioni, visibili solo con call_ha_service tra i tool) */
+  var syncActionsVisibilityRef = null;
+  var knowledgeKindsGroup = null;       /* HirisEditorKit.checkGroup -- sezione Knowledge (kinds) */
+  var syncKnowledgeKindsVisibilityRef = null;
+  var markDirtyRef = null;              /* letto dall'onChange dell'entity-picker (i chip non sono <input>, dirty.track da solo non li vede) */
+  var saveBarHandle = null;             /* HirisEditorKit.saveBar() */
+
+  /* Guard di navigazione (bug live #2, chiuso nel Task 3): NON più
+     installato qui dal Task 6 in poi -- era un accoppiamento strutturale
+     fragile (funzionava solo perché config.html carica SEMPRE questo file,
+     non perché ogni route fosse garantita protetta). Hoistato in main.js
+     (installato UNA VOLTA a livello top del suo IIFE, prima che
+     DOMContentLoaded/HirisRouter.start() registrino i propri listener):
+     main.js è l'ultimo script caricato ed è comune a OGNI route, quindi la
+     garanzia è "per costruzione" invece che "perché questo file capita di
+     essere incluso". 'unsaved' resta la chiave HirisState GLOBALE (vedi
+     C9 nel grounding) -- un solo guard() per l'intera pagina. */
+
+  /* ───────────────────────── data layer (ex chatbot-form.js) ───────────────────────── */
+
+  function loadChatbots() {
+    return fetch('api/chatbots').then(function(r) { return r.ok ? r.json() : []; }).then(function(d) {
+      chatbots = Array.isArray(d) ? d : (d.agents || []);
+      HirisState.set('chatbots', chatbots);
+      window.chatbots = chatbots;   /* letto bare da usage.js/log-row.js (globale non-strict, ex chatbot-form.js) */
+      return chatbots;
+    }).catch(function() { return chatbots; });
   }
 
-  function ensureLegacy() {
-    if (legacyLoaded) return Promise.resolve();
-    return LEGACY_SCRIPTS.reduce(function(p, src) {
-      return p.then(function() { return loadScript(src); });
-    }, Promise.resolve()).then(function() { legacyLoaded = true; });
+  function highlightOutput(text) {
+    return text
+      .replace(/("error")/g, '<span style="color:#ff7b72">$1</span>')
+      .replace(/("[\w_]+")\s*:/g, '<span style="color:#79c0ff">$1</span>:')
+      .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span style="color:#a5d6a7">$1</span>');
   }
 
-  /* Task 4 (Slice 5): rimossi il selettore Tipo (agent/chat) e l'intera
-     sezione Trigger — l'esecuzione trigger-based/autonoma è stata ritirata
-     (Task 1-3). Il Designer edita solo Persona: il campo Nome è quanto
-     resta di "Identità". */
+  function openAgent(a) {
+    var _fn = document.getElementById('f-name'); if (_fn) _fn.value = a.name;
+    document.getElementById('f-prompt').value = a.system_prompt || '';
+    document.getElementById('f-strategic').value = a.strategic_context || '';
+    if (entityPickerInstance) entityPickerInstance.setValue(a.allowed_entities || []);
+    document.getElementById('f-enabled').checked = a.enabled;
+    HirisEditorKit.setModelValue(document.getElementById('f-model'), a.model || 'auto');
+    document.getElementById('f-max-tokens').value = a.max_tokens || 4096;
+    document.getElementById('f-restrict').checked = !!a.restrict_to_home;
+    document.getElementById('f-require-confirmation').checked = !!a.require_confirmation;
+    document.getElementById('f-max-chat-turns').value = a.max_chat_turns || 0;
+    document.getElementById('f-response-mode').value = a.response_mode || 'auto';
+    document.getElementById('f-thinking-budget').value = String(a.thinking_budget || 0);
+    if (actionCheckGroup) actionCheckGroup.setSelected(a.allowed_services || []);
+    /* tool DOPO azioni: syncActionsVisibility dipende da call_ha_service
+       tra i tool selezionati -- stesso ordine di dipendenza di sempre. */
+    if (toolCheckGroup) toolCheckGroup.setSelected(a.allowed_tools || []);
+    if (syncActionsVisibilityRef) syncActionsVisibilityRef();
+
+    var ka = (a.knowledge_access && typeof a.knowledge_access === 'object') ? a.knowledge_access : {};
+    var sensitiveChk = document.getElementById('f-knowledge-sensitive');
+    if (sensitiveChk) sensitiveChk.checked = !!ka.allow_sensitive;
+    var allKindsChk = document.getElementById('f-knowledge-all-kinds');
+    var isAllKinds = ka.kinds == null || ka.kinds === 'all';
+    if (allKindsChk) allKindsChk.checked = isAllKinds;
+    if (knowledgeKindsGroup) knowledgeKindsGroup.setSelected(isAllKinds ? [] : (Array.isArray(ka.kinds) ? ka.kinds : []));
+    if (syncKnowledgeKindsVisibilityRef) syncKnowledgeKindsVisibilityRef();
+
+    var btnDel = document.getElementById('btn-delete');
+    if (btnDel) btnDel.style.display = a.is_default ? 'none' : '';
+    var ro = document.getElementById('run-output');
+    if (ro) { ro.style.display = 'none'; ro.textContent = ''; ro.className = ''; }
+
+    renderExecutionLog(a);
+    loadAgentUsage(a.id);
+    updateAgentUsageToggleBtn(a);
+    updateTokenCounter();
+    loadContextPreview(a.id);
+    /* setValue() sull'entity-picker sopra NON emette onChange (è il
+       caricamento, non una modifica utente) -- il riepilogo Autonomia va
+       quindi aggiornato esplicitamente qui con lo scope appena caricato. */
+    renderAutonomiaSummary();
+  }
+
+  function buildPayload() {
+    return {
+      name: document.getElementById('f-name').value,
+      system_prompt: document.getElementById('f-prompt').value,
+      strategic_context: document.getElementById('f-strategic').value,
+      allowed_tools: toolCheckGroup ? toolCheckGroup.getSelected() : [],
+      allowed_entities: entityPickerInstance ? entityPickerInstance.getValue() : [],
+      allowed_services: actionCheckGroup ? actionCheckGroup.getSelected() : [],
+      model: document.getElementById('f-model').value,
+      max_tokens: parseInt(document.getElementById('f-max-tokens').value) || 4096,
+      restrict_to_home: document.getElementById('f-restrict').checked,
+      require_confirmation: document.getElementById('f-require-confirmation').checked,
+      enabled: document.getElementById('f-enabled').checked,
+      max_chat_turns: parseInt(document.getElementById('f-max-chat-turns').value) || 0,
+      response_mode: document.getElementById('f-response-mode').value,
+      thinking_budget: parseInt(document.getElementById('f-thinking-budget').value) || 0,
+      /* Task 4: il dial knowledge non è più solo-API -- prima buildPayload()
+         non includeva affatto questa chiave. */
+      knowledge_access: {
+        allow_sensitive: !!document.getElementById('f-knowledge-sensitive').checked,
+        kinds: document.getElementById('f-knowledge-all-kinds').checked
+          ? 'all'
+          : (knowledgeKindsGroup ? knowledgeKindsGroup.getSelected() : []),
+      },
+    };
+  }
+
+  /* ───────────────────────── populate*() per sezione ───────────────────────── */
+
   function populateIdentita() {
     document.getElementById('sc-body-identita').innerHTML =
       '<div class="field-group">' +
@@ -104,16 +221,21 @@
         '<summary>🔍 Anteprima context_str</summary>' +
         '<pre id="context-preview-content"></pre>' +
       '</details>';
+
+    /* Token counter (logs.js) -- wired qui direttamente al momento della
+       creazione dei campi (ogni populateIstruzioni() crea nodi nuovi, il
+       binding è sempre fresco: nessun rischio di nodo detached). */
+    if (typeof updateTokenCounter === 'function') {
+      var fst = document.getElementById('f-strategic');
+      if (fst) fst.oninput = updateTokenCounter;
+      var fp = document.getElementById('f-prompt');
+      if (fp) fp.oninput = updateTokenCounter;
+    }
   }
 
-  /* Task 4 (Slice 5): rimossa la riga "confirm-free" (era legata al tipo
-     agente autonomo/schedulato, ritirato con Task 1-3 — ogni persona è
-     chat). max-turns-row era nascosta di default e mostrata solo per
-     type==='chat'; ora è sempre visibile (nessun altro tipo esiste). */
   function populateModello() {
-    document.getElementById('sc-body-modello').innerHTML =
-      '<div class="field"><label for="f-model">Modello</label><select class="select" id="f-model"><option value="auto">auto — sceglie il modello migliore</option></select>' +
-      '<p class="field-hint" id="model-hint">Seleziona il modello AI. <em>auto</em> sceglie automaticamente.</p></div>' +
+    var body = document.getElementById('sc-body-modello');
+    body.innerHTML = '<div id="model-select-root"></div>' +
       '<div class="field-row">' +
         '<div class="field"><label for="f-max-tokens">Max token risposta</label><input class="input" type="number" id="f-max-tokens" value="4096" min="256" max="16000"></div>' +
         '<div class="field"><label for="f-thinking-budget">Extended Thinking budget</label><select class="select" id="f-thinking-budget">' +
@@ -133,40 +255,168 @@
         '<option value="compact">compact (max 2-3 frasi)</option>' +
         '<option value="minimal">minimal (1 riga)</option>' +
       '</select></div>';
+
+    /* HirisEditorKit.modelSelect() -- stessi id (f-model / model-hint) dei
+       lettori (openAgent/buildPayload qui sopra), ma la fetch api/models è
+       condivisa/cachata nel kit invece che riscaricata a ogni mount. */
+    HirisEditorKit.modelSelect(document.getElementById('model-select-root'), {
+      id: 'f-model',
+      hintId: 'model-hint',
+      label: 'Modello',
+      value: 'auto',
+    });
+  }
+
+  var SCOPE_PILLS = [
+    { label: '💡 luci', pattern: 'light.*' },
+    { label: '🔌 switch', pattern: 'switch.*' },
+    { label: '📊 sensori', pattern: 'sensor.*' },
+    { label: '🌡️ clima', pattern: 'climate.*' },
+    { label: '🪟 tapparelle', pattern: 'cover.*' },
+    { label: '🚰 valvole', pattern: 'valve.*' },
+    { label: '⚡ binari', pattern: 'binary_sensor.*' },
+    { label: '🧑 persone', pattern: 'person.*' },
+  ];
+
+  function populateScope() {
+    /* Istanza precedente (mount precedente) non ancora distrutta -> stacca
+       il suo listener documento prima di buttare via il DOM sotto di lei. */
+    if (entityPickerInstance) {
+      entityPickerInstance.destroy();
+      entityPickerInstance = null;
+      window.HirisAgentEntityPicker = null;
+    }
+
+    document.getElementById('sc-body-scope').innerHTML =
+      '<div class="field-group"><div class="fg-label">Entità accessibili</div>' +
+        '<div id="entity-picker-root"></div></div>';
+
+    /* Chip entità: non sono <input>, quindi dirty.track (MutationObserver
+       su input/select/textarea) non le vedrebbe mai cambiare -- l'onChange
+       del picker va agganciato esplicitamente a markDirty. Aggiorna anche
+       il riepilogo Autonomia: il tier è funzione dello scope. */
+    entityPickerInstance = HirisEntityPicker.create(document.getElementById('entity-picker-root'), {
+      placeholder: 'Cerca entità…',
+      pills: SCOPE_PILLS,
+      onChange: function() {
+        if (markDirtyRef) markDirtyRef();
+        renderAutonomiaSummary();
+      },
+    });
+    window.HirisAgentEntityPicker = entityPickerInstance;   /* mirror esposto per debug/test -- nessun altro file lo consuma più */
   }
 
   function populatePermessi() {
     document.getElementById('sc-body-permessi').innerHTML =
       '<div class="field-group"><div class="fg-label">Strumenti</div>' +
-        '<div class="tool-checkboxes" id="tool-checks"></div></div>' +
-      '<div class="field-group"><div class="fg-label">Entità accessibili</div>' +
-        '<div class="entity-selector">' +
-          '<div class="entity-domain-pills" id="entity-domain-pills">' +
-            '<span class="domain-pill" data-pattern="light.*">💡 luci</span>' +
-            '<span class="domain-pill" data-pattern="switch.*">🔌 switch</span>' +
-            '<span class="domain-pill" data-pattern="sensor.*">📊 sensori</span>' +
-            '<span class="domain-pill" data-pattern="climate.*">🌡️ clima</span>' +
-            '<span class="domain-pill" data-pattern="cover.*">🪟 tapparelle</span>' +
-            '<span class="domain-pill" data-pattern="valve.*">🚰 valvole</span>' +
-            '<span class="domain-pill" data-pattern="binary_sensor.*">⚡ binari</span>' +
-            '<span class="domain-pill" data-pattern="person.*">🧑 persone</span>' +
-          '</div>' +
-          '<input class="input" id="entity-search" placeholder="Cerca entità…" aria-label="Cerca entità">' +
-          '<div id="entity-suggestions" class="entity-suggestions" style="display:none"></div>' +
-          '<div id="entity-chips" class="entity-chips"></div>' +
-          '<input type="hidden" id="f-entities">' +
-        '</div></div>' +
+        '<div id="tool-checks-root"></div></div>' +
       '<div id="f-actions-section" class="field-group" style="display:none">' +
         '<div class="fg-label">Azioni permesse</div>' +
-        '<div class="tool-checkboxes" id="action-checks"></div></div>';
+        '<div id="action-checks-root"></div></div>';
+
+    var actionsSection = document.getElementById('f-actions-section');
+    actionCheckGroup = HirisEditorKit.checkGroup(document.getElementById('action-checks-root'), {
+      items: ACTIONS,
+      selected: [],
+      idPrefix: 'action',
+    });
+    var toolsRoot = document.getElementById('tool-checks-root');
+    toolCheckGroup = HirisEditorKit.checkGroup(toolsRoot, {
+      items: TOOLS,
+      selected: [],
+      idPrefix: 'tool',
+    });
+    function syncActionsVisibility() {
+      actionsSection.style.display = toolCheckGroup.getSelected().indexOf('call_ha_service') >= 0 ? '' : 'none';
+    }
+    syncActionsVisibilityRef = syncActionsVisibility;
+    toolsRoot.addEventListener('change', syncActionsVisibility);
+    syncActionsVisibility();
   }
 
+  function populateKnowledge() {
+    document.getElementById('sc-body-knowledge').innerHTML =
+      '<label class="checkbox-row"><input type="checkbox" id="f-knowledge-sensitive"> Consenti dati sensibili</label>' +
+      '<p class="field-hint">Il Chatbot può leggere anche le voci del second brain marcate come sensibili (es. importi, documenti riservati).</p>' +
+      '<label class="checkbox-row"><input type="checkbox" id="f-knowledge-all-kinds" checked> Tutte le categorie</label>' +
+      '<div id="knowledge-kinds-root" style="display:none"></div>' +
+      '<p class="field-hint">Disattiva "Tutte le categorie" per scegliere quali tipi di informazione il Chatbot può richiamare dal second brain.</p>';
+
+    knowledgeKindsGroup = HirisEditorKit.checkGroup(document.getElementById('knowledge-kinds-root'), {
+      items: KNOWLEDGE_KINDS,
+      selected: [],
+      idPrefix: 'kind',
+    });
+    var allChk = document.getElementById('f-knowledge-all-kinds');
+    var kindsRoot = document.getElementById('knowledge-kinds-root');
+    function syncKnowledgeKindsVisibility() {
+      kindsRoot.style.display = allChk.checked ? 'none' : '';
+    }
+    syncKnowledgeKindsVisibilityRef = syncKnowledgeKindsVisibility;
+    allChk.addEventListener('change', syncKnowledgeKindsVisibility);
+    syncKnowledgeKindsVisibility();
+  }
+
+  /* Riepilogo READ-ONLY: chiede al backend (POST api/gateway/autonomy-
+     summary) i conteggi tier delle entità/pattern in scope. Il backend usa
+     security/semaphore.py::summarize_autonomy -- la stessa funzione che
+     gate_action() userebbe per una vera azione, denylist DANGEROUS_DOMAINS
+     inclusa -- quindi qui non si ricalcola più nulla: nessun rischio che
+     questa vista disallinei dal reale enforcement (vedi il commento in
+     testa al file). Non scrive mai nulla: la pagina #/gateway resta
+     l'unica fonte per configurare i tier. */
+  function renderAutonomiaSummary() {
+    var el = document.getElementById('autonomia-summary');
+    if (!el) return;
+    var entities = entityPickerInstance ? entityPickerInstance.getValue() : [];
+    if (!entities.length) {
+      el.textContent = 'Nessuna entità in scope: questo Chatbot non ha azioni da autorizzare.';
+      return;
+    }
+    el.textContent = 'Calcolo tier in corso…';
+    fetch('api/gateway/autonomy-summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+      body: JSON.stringify({ entities: entities }),
+    })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        var counts = data && data.counts;
+        if (!counts) { el.textContent = 'Impossibile leggere la policy Gateway.'; return; }
+        var text = '🟢 ' + (counts.green || 0) + ' verde · 🟡 ' + (counts.yellow || 0) + ' giallo · 🔴 ' +
+          (counts.red || 0) + ' rosso · ⚪ ' + (counts.off || 0) + ' spenta';
+        if (counts.dangerous) {
+          /* Mai un tier: dominio nella denylist DANGEROUS_DOMAINS -- il
+             backend nega SEMPRE, qualunque tier sia configurato in
+             #/gateway. Etichetta esplicita, non conteggiato come verde/
+             giallo/rosso/spenta, così non può leggersi come "permesso". */
+          text += ' · 🔒 ' + counts.dangerous + ' sempre bloccato (dominio pericoloso)';
+        }
+        text += ' (su ' + entities.length + ' voci di scope).';
+        el.textContent = text;
+      })
+      .catch(function() { el.textContent = 'Impossibile leggere la policy Gateway.'; });
+  }
+
+  function populateAutonomia() {
+    document.getElementById('sc-body-autonomia').innerHTML =
+      '<div class="field-group"><div class="fg-label">Tier semaforo (riepilogo)</div>' +
+        '<p id="autonomia-summary" class="field-hint">Caricamento…</p>' +
+        '<p class="field-hint">Il tier di ogni entità/dominio si configura nella pagina ' +
+          '<a href="#/gateway">Accessi Gateway</a> — questa sezione lo riepiloga soltanto, non lo modifica.</p></div>' +
+      '<div class="field-group"><div class="fg-label">Conferma</div>' +
+        '<label class="checkbox-row"><input type="checkbox" id="f-require-confirmation"> Richiedi conferma prima delle azioni</label>' +
+        '<p class="field-hint">Attende "sì/ok" prima di chiamare call_ha_service, indipendentemente dal tier.</p></div>';
+    renderAutonomiaSummary();
+  }
+
+  /* Task 4: solo lo stato on/off resta in Abilitazione -- require_confirmation
+     è ora nella sezione Autonomia (è un consenso sull'autonomia, non uno
+     stato del Chatbot). */
   function populateStato() {
     document.getElementById('sc-body-stato').innerHTML =
       '<label class="checkbox-row"><input type="checkbox" id="f-enabled"> Chatbot abilitato</label>' +
-      '<p class="field-hint">Controlla solo lo stato dell\'entità switch Home Assistant di questo Chatbot; puoi comunque verificarlo con Test Run indipendentemente da questo interruttore.</p>' +
-      '<label class="checkbox-row"><input type="checkbox" id="f-require-confirmation"> Richiedi conferma prima delle azioni</label>' +
-      '<p class="field-hint">Attende "sì/ok" prima di chiamare call_ha_service.</p>';
+      '<p class="field-hint">Controlla solo lo stato dell\'entità switch Home Assistant di questo Chatbot; puoi comunque verificarlo con Test Run indipendentemente da questo interruttore.</p>';
   }
 
   function populateLog() {
@@ -178,10 +428,6 @@
     document.getElementById('sc-body-run').innerHTML = '<pre id="run-output"></pre>';
   }
 
-  /* Task 4 (Slice 5) review fix: rimosso il controllo "Budget massimo (€)"
-     (PUT budget_eur_limit) — il backend ha ritirato quel campo (Task 2) e lo
-     scarta silenziosamente, quindi la UI mostrava un controllo che non
-     faceva più nulla. */
   function populateConsumi() {
     document.getElementById('sc-body-consumi').innerHTML =
       '<div class="usage-content">' +
@@ -199,16 +445,70 @@
       '</div>';
   }
 
+  /* Genera le section-card + i link anchor-nav dall'array SECTIONS (fonte
+     unica, vedi commento in testa al file). Le section-card sono inserite
+     PRIMA di #sticky-actions-wrap (che il template porta già con sé),
+     l'ordine dentro .editor-content resta identico a quello statico di
+     prima. textContent/createElement ovunque -- nessun rischio XSS anche
+     se in futuro SECTIONS venisse esteso con dati non hardcoded. */
+  function buildSections(content, anchorNav) {
+    var stickyWrap = content.querySelector('#sticky-actions-wrap');
+    SECTIONS.forEach(function(s, idx) {
+      var numStr = String(idx + 1);
+      if (numStr.length < 2) numStr = '0' + numStr;
+
+      var section = document.createElement('section');
+      section.className = 'section-card';
+      section.id = 'sec-' + s.id;
+
+      var header = document.createElement('div');
+      header.className = 'sc-header';
+      var num = document.createElement('span');
+      num.className = 'sc-num';
+      num.textContent = numStr;
+      var title = document.createElement('h2');
+      title.className = 'sc-title';
+      title.textContent = s.title;
+      header.appendChild(num);
+      header.appendChild(title);
+
+      var desc = document.createElement('p');
+      desc.className = 'sc-desc';
+      desc.textContent = s.desc;
+
+      var scBody = document.createElement('div');
+      scBody.className = 'sc-body';
+      scBody.id = 'sc-body-' + s.id;
+
+      section.appendChild(header);
+      section.appendChild(desc);
+      section.appendChild(scBody);
+      if (stickyWrap) content.insertBefore(section, stickyWrap);
+      else content.appendChild(section);
+
+      var link = document.createElement('a');
+      link.className = 'anchor-link';
+      link.setAttribute('href', '#sec-' + s.id);
+      var linkNum = document.createElement('span');
+      linkNum.textContent = numStr;
+      var linkTitle = document.createElement('span');
+      linkTitle.textContent = s.title;
+      link.appendChild(linkNum);
+      link.appendChild(linkTitle);
+      anchorNav.appendChild(link);
+    });
+  }
+
   function setupAnchorNav() {
     var sections = document.querySelectorAll('.section-card');
     var links = {};
     document.querySelectorAll('.anchor-link[href^="#sec-"]').forEach(function(l) {
       links[l.getAttribute('href').slice(1)] = l;
-      /* v0.10.5: intercetta click anchor per evitare cambio di hash.
-         Click <a href="#sec-X"> nativo cambia URL hash → router fires
-         hashchange → no route matched → service worker HA Ingress prova
-         fetch del nuovo URL e fallisce ("Uncaught (in promise) Object").
-         Più: history pollution + remount loop quando user torna su #/chatbots/<id>. */
+      /* Intercetta click anchor per evitare cambio di hash: un <a href="#sec-X">
+         nativo cambierebbe l'URL hash -> router fires hashchange -> nessuna
+         route combacia -> il service worker HA Ingress tenta il fetch del
+         nuovo URL e fallisce, più history pollution e remount loop quando
+         l'utente torna su #/chatbots/<id>. */
       l.addEventListener('click', function(e) {
         e.preventDefault();
         var targetId = l.getAttribute('href').slice(1);
@@ -230,237 +530,67 @@
     sections.forEach(function(s) { io.observe(s); });
   }
 
+  /* Sticky actions sul kit condiviso (Task 3): HirisEditorKit.dirty.track()
+     osserva il sottoalbero di #route-outlet con un MutationObserver -- ogni
+     input/select/textarea aggiunto DOPO il mount (checkbox tool/azioni/
+     knowledge, creati dai populate*() sotto) viene wired automaticamente.
+     Per questo setupStickyActions gira PRIMA di ogni populate*() nel
+     mount() sotto -- il tracking è già attivo quando i populate*()
+     riempiono il DOM. */
   function setupStickyActions(agentId) {
-    var btnSave = document.getElementById('btn-save');
-    var btnCancel = document.getElementById('btn-cancel');
-    var btnTestRun = document.getElementById('btn-test-run');
-    var btnDelete = document.getElementById('btn-delete');
-    /* v0.10.8: rimosso sa-status. Lo stato dirty/saved è indicato dal solo
-       pulsante Salva (disabled = saved, enabled = changes pending). */
+    var outlet = document.getElementById('route-outlet');
 
-    function markDirty() {
-      HirisState.set('unsaved', true);
-      if (btnSave) btnSave.disabled = false;
-    }
-    function markClean() {
-      HirisState.set('unsaved', false);
-      if (btnSave) btnSave.disabled = true;
-    }
+    /* Reset esplicito: senza, uno stato 'unsaved' lasciato true da un mount
+       precedente (es. l'utente ha confermato "esci senza salvare" sul
+       guard) sopravviverebbe al remount e il guard richiederebbe conferma
+       di nuovo alla prossima navigazione, anche a editor pulito. */
+    HirisState.set('unsaved', false);
 
-    document.querySelectorAll('.section-card input, .section-card select, .section-card textarea').forEach(function(el) {
-      el.addEventListener('change', markDirty);
-      el.addEventListener('input', markDirty);
-    });
+    function markDirty() { HirisState.set('unsaved', true); if (saveBarHandle) saveBarHandle.setDirty(true); }
+    function markClean() { HirisState.set('unsaved', false); if (saveBarHandle) saveBarHandle.setDirty(false); }
 
-    btnSave.addEventListener('click', function() {
-      if (typeof saveAgent === 'function') {
+    /* HirisEditorKit.dirty.track() è ora un singleton a livello di kit
+       (review finale pre-1.0, finding C1): ferma da sé qualunque tracker
+       precedente, anche se installato da un editor di TIPO diverso --
+       niente più handle locale da tenere/fermare qui. */
+    HirisEditorKit.dirty.track(outlet, markDirty);
+    markDirtyRef = markDirty;
+
+    saveBarHandle = HirisEditorKit.saveBar(outlet, {
+      onSave: function() {
         try {
           var p = saveAgent();
-          if (p && p.then) p.then(function(res) { markClean(); }).catch(function(err) { console.error('save rejected:', err); });
+          if (p && p.then) p.then(function() { markClean(); }).catch(function(err) { console.error('save rejected:', err); });
           else markClean();
         } catch(e) { console.error('saveAgent threw:', e); alert('Save error: ' + (e.message || e)); }
-      } else {
-        console.warn('saveAgent not defined — markClean only');
-        alert('window.saveAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
-        markClean();
-      }
-    });
-    btnCancel.addEventListener('click', function() {
-      if (HirisState.get('unsaved') && !confirm('Annullare le modifiche non salvate?')) return;
-      window.location.hash = '#/chatbots';
-    });
-    btnTestRun.addEventListener('click', function() {
-      if (typeof runAgent === 'function') {
-        try { runAgent(); } catch(e) { console.error('runAgent threw:', e); alert('TestRun error: ' + (e.message || e)); }
-      } else {
-        console.warn('runAgent not defined');
-        alert('window.runAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
-      }
-    });
-    btnDelete.addEventListener('click', function() {
-      if (typeof deleteAgent === 'function') {
+      },
+      onCancel: function() {
+        if (HirisState.get('unsaved') && !confirm('Annullare le modifiche non salvate?')) return;
+        /* Pulisce 'unsaved' PRIMA di cambiare hash (finding I2): l'utente
+           ha già confermato lo scarto qui sopra -- senza, il guard
+           installato in main.js vede lo stesso 'unsaved' ancora true sul
+           hashchange che questa riga genera e chiede conferma UNA SECONDA
+           volta, a vuoto, per una scelta già fatta. */
+        HirisState.set('unsaved', false);
+        window.location.hash = '#/chatbots';
+      },
+      onDelete: agentId ? function() {
         try { deleteAgent(); } catch(e) { console.error('deleteAgent threw:', e); alert('Delete error: ' + (e.message || e)); }
-      } else {
-        console.warn('deleteAgent not defined');
-        alert('window.deleteAgent non definito. Hard reload Ctrl+Shift+R per scaricare cache stale.');
-      }
+      } : null,
+      onTestRun: function() {
+        try { runAgent(); } catch(e) { console.error('runAgent threw:', e); alert('TestRun error: ' + (e.message || e)); }
+      },
     });
-
-    btnDelete.style.display = agentId ? '' : 'none';
+    saveBarHandle.setDirty(false);
   }
 
-  /* Compatibility shims for legacy chatbot-form.js & friends — they touch DOM IDs
-     of the old config.html markup that don't exist in v6 long-form. We create
-     hidden stubs so .style/.textContent/.innerHTML/.classList accesses don't
-     throw. Also provide no-op stubs for missing global functions (resetToFirstTab
-     was in tabs.js which is removed in v6). */
-  function addLegacyShims() {
-    var shim = document.getElementById('legacy-shim-container');
-    if (shim) return; /* already mounted (cached after first mount) */
-    shim = document.createElement('div');
-    shim.id = 'legacy-shim-container';
-    shim.style.display = 'none';
-    shim.setAttribute('aria-hidden', 'true');
-    /* v0.10.5 cleanup: ridotto stub list a soli ID ancora referenziati dal
-       codice legacy live (openAgent + usage.js IIFE).
-       Rimossi: new-btn/save-btn/run-btn (handler IIFE eliminati in cleanup),
-       agent-list/agent-tabs/tab-azioni (renderList + #agent-tabs querySelector
-       eliminati).
-       delete-btn ancora qui perché openAgent setta is_default visibility su
-       quel ID (legacy markup); il vero pulsante v6 è #btn-delete e la sua
-       visibility è gestita da setupStickyActions + resolveAgent then-block. */
-    var stubIds = [
-      'no-selection',     /* chatbot-form.js openAgent legacy compat */
-      'form',             /* chatbot-form.js openAgent legacy compat */
-      'form-title',       /* chatbot-form.js openAgent legacy compat */
-      'delete-btn',       /* chatbot-form.js openAgent is_default check (legacy) */
-      'usage-reset-btn',  /* usage.js IIFE — id legacy global panel rimosso in v6 */
-    ];
-    stubIds.forEach(function(id) {
-      if (document.getElementById(id)) return;
-      var el = document.createElement('div');
-      el.id = id;
-      shim.appendChild(el);
-    });
-    document.body.appendChild(shim);
-
-    /* No-op global stubs for functions whose modules were removed in v6 refactor */
-    if (typeof window.resetToFirstTab !== 'function') {
-      window.resetToFirstTab = function() { /* no-op: v6 long-form has no tabs */ };
-    }
-    if (typeof window.switchTab !== 'function') {
-      window.switchTab = function() { /* no-op: v6 long-form has no tabs */ };
-    }
-  }
-
-  /* Rebind legacy IIFE-time event listeners to the v6 DOM nodes.
-     Le legacy attaccano i listener a getElementById(...) UNA VOLTA al loro IIFE
-     load. Ad ogni mount, populate*() rimpiazza l'innerHTML dei sc-body con
-     nodi NUOVI ma stessi ID — i listener IIFE-bound puntano a nodi rimossi.
-     Qui rebindiamo via .onchange/.onclick/.oninput (overwrite) sui nodi nuovi. */
-  function rewireLegacyAfterMount() {
-    /* Task 4 (Slice 5): rimossi i rebind di new-trigger-type/nt-entity/
-       btn-add-trigger/triggers-list — la sezione Trigger e triggers.js sono
-       stati ritirati insieme alla macchina action/rules/states (Task 1-3). */
-
-    /* permessi.js — domain pills + entity search */
-    document.querySelectorAll('.domain-pill').forEach(function(pill) {
-      pill.onclick = function() {
-        if (typeof _entitySelectorAdd === 'function') {
-          _entitySelectorAdd(this.dataset.pattern);
-        }
-        var s = document.getElementById('entity-search');
-        if (s) s.value = '';
-      };
-    });
-    var es = document.getElementById('entity-search');
-    var sg = document.getElementById('entity-suggestions');
-    if (es && sg) {
-      var searchTimer = null;
-      es.oninput = function() {
-        clearTimeout(searchTimer);
-        var q = es.value.trim();
-        if (!q) { sg.style.display = 'none'; return; }
-        searchTimer = setTimeout(function() {
-          fetch('api/entities?q=' + encodeURIComponent(q))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-              var items = (data && data.entities) || [];
-              sg.innerHTML = '';
-              if (!items.length) { sg.style.display = 'none'; return; }
-              items.slice(0, 20).forEach(function(item) {
-                var div = document.createElement('div');
-                div.className = 'suggestion-item';
-                var nm = item.friendly_name || '';
-                // Review L/6: the old ad-hoc `.replace(/[<>&]/g, '')` stripped
-                // <>& but never touched quotes -- harmless here (text-node
-                // content, not an attribute) but a landmine if this pattern
-                // were ever copied into attribute-building code. Use the
-                // shared escHtml() (api.js, loaded before this file), which
-                // also escapes quotes, instead of a bespoke partial escaper.
-                div.innerHTML = '<span>' + escHtml(item.entity_id) + '</span><span class="s-name">' + escHtml(nm) + '</span>';
-                div.addEventListener('click', function() {
-                  if (typeof _entitySelectorAdd === 'function') _entitySelectorAdd(item.entity_id);
-                  es.value = ''; sg.style.display = 'none';
-                });
-                sg.appendChild(div);
-              });
-              sg.style.display = 'block';
-            }).catch(function() {});
-        }, 300);
-      };
-      es.onkeydown = function(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          var q = es.value.trim();
-          if (q && typeof _entitySelectorAdd === 'function') {
-            _entitySelectorAdd(q);
-            es.value = ''; sg.style.display = 'none';
-          }
-        } else if (e.key === 'Escape') {
-          sg.style.display = 'none';
-        }
-      };
-    }
-
-    /* Task 4 (Slice 5): rimossi i rebind di f-type/f-action-mode/f-states —
-       quei campi non esistono più nel markup (Tipo/Azioni/Stati ritirati).
-       f-model non ha più un handler qui: updateConfirmFreeVisibility era
-       legato solo al tipo agente autonomo, anch'esso ritirato. */
-
-    /* logs.js — token counter on input */
-    if (typeof updateTokenCounter === 'function') {
-      var fst = document.getElementById('f-strategic');
-      if (fst) fst.oninput = updateTokenCounter;
-      var fp = document.getElementById('f-prompt');
-      if (fp) fp.oninput = updateTokenCounter;
-    }
-
-    /* usage.js — agent-level usage buttons (overwrite IIFE-bound onclick) */
-    var ur = document.getElementById('u-ag-reset-btn');
-    if (ur) ur.onclick = function() {
-      if (typeof window === 'undefined' || !window.HirisState) return;
-      var aid = HirisState.get('activeChatbotId');
-      if (!aid || !confirm('Azzerare i contatori di questo Chatbot?')) return;
-      fetch('api/chatbots/' + encodeURIComponent(aid) + '/usage/reset', {
-        method: 'POST', headers: { 'X-Requested-With': 'fetch' }
-      }).then(function(r) {
-        if (r.ok && typeof loadAgentUsage === 'function') loadAgentUsage(aid);
-      }).catch(function(){});
-    };
-    var ut = document.getElementById('u-ag-toggle-btn');
-    if (ut) ut.onclick = function() {
-      var aid = HirisState.get('activeChatbotId');
-      if (!aid) return;
-      var enabledNow = document.getElementById('f-enabled').checked;
-      var newVal = !enabledNow;
-      fetch('api/chatbots/' + encodeURIComponent(aid), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-        body: JSON.stringify({ enabled: newVal })
-      }).then(function(r) {
-        if (r.ok) {
-          document.getElementById('f-enabled').checked = newVal;
-          ut.textContent = newVal ? '⊘ Blocca Chatbot' : '✓ Riabilita Chatbot';
-        }
-      }).catch(function(){});
-    };
-    /* Task 4 (Slice 5) review fix: rimosso il rebind di u-ag-budget-save-btn
-       — il controllo "Budget massimo (€)" (PUT budget_eur_limit) è stato
-       tolto dal markup in populateConsumi(), il backend scarta quel campo. */
-  }
-
-  /* Init form for "Nuovo agente" (was in chatbot-form.js #new-btn IIFE handler).
-     Replicates the reset sequence: clear fields + load empty persona state.
-     Task 4 (Slice 5): rimossi i reset di triggers/actions/stati/action-mode/
-     tipo/confirm-free/budget — tutti campi ritirati insieme alla macchina
-     action/rules/states (Task 1-3) e al tab Azioni (questo task). */
+  /* Init form per "Nuovo Chatbot" (#/chatbots/new). */
   function initNewAgent() {
-    /* chatbot-form.js currentId — reset */
-    if (typeof window !== 'undefined') window.currentId = null;
-    if (typeof _entitySelectorLoad === 'function') _entitySelectorLoad([]);
-    if (typeof buildToolChecks === 'function') buildToolChecks([]);
-    if (typeof buildActionChecks === 'function') buildActionChecks([]);
+    if (entityPickerInstance) entityPickerInstance.setValue([]);
+    if (toolCheckGroup) toolCheckGroup.setSelected([]);
+    if (actionCheckGroup) actionCheckGroup.setSelected([]);
+    if (syncActionsVisibilityRef) syncActionsVisibilityRef();
+    if (knowledgeKindsGroup) knowledgeKindsGroup.setSelected([]);
 
     var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; };
     var setChk = function(id, v) { var el = document.getElementById(id); if (el) el.checked = v; };
@@ -470,34 +600,35 @@
     setVal('f-prompt', '');
     setVal('f-strategic', '');
     setChk('f-enabled', true);
-    if (typeof _setModelValue === 'function') _setModelValue('auto');
+    HirisEditorKit.setModelValue(document.getElementById('f-model'), 'auto');
     setVal('f-max-tokens', 4096);
     setChk('f-restrict', false);
     setChk('f-require-confirmation', false);
     setVal('f-max-chat-turns', 0);
     setVal('f-response-mode', 'auto');
     setVal('f-thinking-budget', '0');
+    setChk('f-knowledge-sensitive', false);
+    setChk('f-knowledge-all-kinds', true);
+    if (syncKnowledgeKindsVisibilityRef) syncKnowledgeKindsVisibilityRef();
 
     if (typeof updateTokenCounter === 'function') updateTokenCounter();
 
-    /* Hide context preview, run output, agent usage stats */
     var ctxWrap = document.getElementById('context-preview-wrap');
     if (ctxWrap) ctxWrap.style.display = 'none';
     var ro = document.getElementById('run-output');
     if (ro) { ro.style.display = 'none'; ro.textContent = ''; ro.className = ''; }
+
+    renderAutonomiaSummary();
   }
 
-  /* Save / Run / Delete globals — chatbot-form.js bind these via IIFE on save-btn/
-     run-btn/delete-btn (ID legacy non più presenti in v6), e i suoi binding NON
-     vengono mai eseguiti per il TypeError IIFE. setupStickyActions cerca le
-     callback come typeof === 'function' → senza queste rimangono no-op. */
+  /* Save / Run / Delete globals -- chiamati da setupStickyActions sopra
+     tramite i bottoni #btn-save/#btn-test-run/#btn-delete. Restano globali
+     (window.X) senza bisogno di un typeof-guard: sono definiti qui, nello
+     stesso file/IIFE che li consuma, non più su un file "legacy" separato
+     che poteva non essere ancora caricato. */
   window.saveAgent = function() {
-    if (typeof buildPayload !== 'function') {
-      alert('buildPayload non caricato — riprova');
-      return Promise.reject(new Error('buildPayload missing'));
-    }
     var payload = buildPayload();
-    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeChatbotId');
+    var cid = HirisState.get('activeChatbotId');
     var method = cid ? 'PUT' : 'POST';
     var url = cid ? ('api/chatbots/' + encodeURIComponent(cid)) : 'api/chatbots';
     return fetch(url, {
@@ -513,27 +644,26 @@
       }
       return r.json();
     }).then(function(a) {
-      if (typeof loadChatbots === 'function') {
-        return loadChatbots().then(function() {
-          if (typeof openAgent === 'function') openAgent(a);
-          /* If new agent: navigate to its detail route */
-          if (!cid && a.id) window.location.hash = '#/chatbots/' + encodeURIComponent(a.id);
-          return a;
-        });
-      }
-      return a;
+      /* Refresh di HirisState.chatbots dopo create/update -- lo legge
+         dashboard.js:273 per decidere fra empty-state e dashboard popolata. */
+      return loadChatbots().then(function() {
+        openAgent(a);
+        /* Nuovo agente: naviga al suo dettaglio. HirisState.activeChatbotId
+           lo scrive il router (main.js) alla hashchange, non questo file
+           (contratto C9: un solo writer). */
+        if (!cid && a.id) window.location.hash = '#/chatbots/' + encodeURIComponent(a.id);
+        return a;
+      });
     });
   };
 
-  /* v0.10.8: flag globale anti-doppio-click (button.disabled non basta, il
-     click handler in setupStickyActions ha console.log PRIMA del check). */
   var _runInFlight = false;
   window.runAgent = function() {
     if (_runInFlight) {
       console.warn('runAgent già in flight — click ignorato');
       return Promise.resolve();
     }
-    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeChatbotId');
+    var cid = HirisState.get('activeChatbotId');
     if (!cid) {
       console.warn('runAgent: nessun agentId attivo');
       return Promise.resolve();
@@ -542,23 +672,16 @@
     _runInFlight = true;
 
     var btn = document.getElementById('btn-test-run');
-    var btnOriginalText = btn ? btn.textContent : '';
     var section = document.getElementById('sec-run');
     var sb = document.getElementById('sc-body-run');
     var out = document.getElementById('run-output');
 
-    /* v0.10.8: feedback visivo IMMEDIATO PRIMA del fetch:
-       - Banner "Test Run in corso" in cima alla section sec-run
-       - Spinner sul bottone (CSS .running) + label change "⏱ In esecuzione…"
-       - Scroll smooth alla section sec-run cosicché user veda il banner
-       - Pulsante disabled */
     if (btn) {
       btn.classList.add('running');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>⏱ In esecuzione…';
     }
 
-    /* Inietta banner + reset run-output dentro sc-body-run */
     if (sb) {
       sb.innerHTML =
         '<div class="run-running-banner" id="run-running-banner">' +
@@ -573,18 +696,16 @@
       out.textContent = 'Avvio esecuzione…';
     }
 
-    /* Scroll alla section dopo che il banner è in DOM (rAF garantisce paint) */
     if (section) {
       requestAnimationFrame(function() {
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
 
-    /* v0.10.9: timeout frontend 90s → 600s (10 min). Allineato al backend
-       AGENT_RUN_TIMEOUT che fallback su OLLAMA_REQUEST_TIMEOUT * 1.2 (default
-       600 con local_model.request_timeout=500). User con agente locale
-       (es. IRRIGAZIONE su gemma4:e4b) e setting 600/800s vedeva fetch
-       abortita lato frontend a 90s anche se backend era configurato per più. */
+    /* Timeout frontend allineato al backend AGENT_RUN_TIMEOUT (fallback su
+       OLLAMA_REQUEST_TIMEOUT * 1.2, default 600s con local_model.request_
+       timeout=500) -- un agente locale lento non deve vedere la fetch
+       abortita lato client prima che il backend abbia finito. */
     var ctrl = new AbortController();
     var FRONTEND_RUN_TIMEOUT_MS = 600000; /* 10 min */
     var timer = setTimeout(function() { ctrl.abort(); }, FRONTEND_RUN_TIMEOUT_MS);
@@ -616,7 +737,7 @@
         } else if (hasError) {
           out.className = 'run-error-text';
           out.textContent = '✗ ' + raw;
-        } else if (typeof highlightOutput === 'function' && typeof esc === 'function') {
+        } else if (typeof esc === 'function') {
           out.className = '';
           out.innerHTML = '<div style="color:var(--ok);font-size:11px;font-weight:600;margin-bottom:6px;font-family:var(--font-sans)">✓ ESEGUITO</div>' + highlightOutput(esc(raw));
         } else {
@@ -626,8 +747,8 @@
       }
       /* Refresh log + usage after run */
       fetch('api/chatbots/' + encodeURIComponent(cid)).then(function(r){return r.ok?r.json():null;}).then(function(a){
-        if (a && typeof renderExecutionLog === 'function') renderExecutionLog(a);
-        if (a && typeof loadAgentUsage === 'function') loadAgentUsage(cid);
+        if (a) renderExecutionLog(a);
+        if (a) loadAgentUsage(cid);
       }).catch(function(){});
     }).catch(function(e) {
       clearTimeout(timer);
@@ -643,7 +764,7 @@
   };
 
   window.deleteAgent = function() {
-    var cid = (typeof window.currentId !== 'undefined' && window.currentId) || HirisState.get('activeChatbotId');
+    var cid = HirisState.get('activeChatbotId');
     if (!cid) return;
     if (!confirm('Eliminare questo Chatbot?')) return;
     return fetch('api/chatbots/' + encodeURIComponent(cid), {
@@ -655,37 +776,45 @@
           throw new Error('delete failed');
         });
       }
-      window.currentId = null;
-      if (typeof loadChatbots === 'function') loadChatbots();
-      window.location.hash = '#/chatbots';
+      /* L'entità appena eliminata non esiste più: pulisce lo stato prima
+         che qualunque altro codice possa leggerlo (nessuna route verso
+         #/chatbots lo fa da sola). Pulisce anche 'unsaved' (finding I2):
+         senza, un editor lasciato dirty prima di premere Elimina fa
+         chiedere al guard "Ci sono modifiche non salvate…" SUBITO DOPO
+         l'eliminazione riuscita -- non ha più senso, l'entità non esiste
+         più e non c'è nulla da salvare. */
+      HirisState.set('activeChatbotId', null);
+      HirisState.set('unsaved', false);
+      return loadChatbots().then(function() {
+        window.location.hash = '#/chatbots';
+      });
     });
   };
 
-  /* Resolve an agentId to a full agent object via the API. The legacy openAgent()
-     in chatbot-form.js expects the full object, not just an id. */
+  /* Resolve un agentId nell'oggetto completo via API -- openAgent() sopra
+     si aspetta l'oggetto, non il solo id. */
   function resolveAgent(agentId) {
-    /* Try cached list from HirisState first */
     var cached = HirisState.get('chatbots');
     if (cached && cached.length) {
       var hit = cached.filter(function(a) { return a.id === agentId; })[0];
       if (hit) return Promise.resolve(hit);
     }
-    /* Fallback: fetch full list and find */
     return fetch('api/chatbots')
       .then(function(r) { return r.ok ? r.json() : []; })
       .then(function(d) {
         var list = Array.isArray(d) ? d : (d.agents || []);
+        chatbots = list;
         HirisState.set('chatbots', list);
-        /* Also populate legacy global so renderList etc work */
-        if (typeof window !== 'undefined') window.chatbots = list;
+        window.chatbots = list;
         var found = list.filter(function(a) { return a.id === agentId; })[0];
         if (!found) throw new Error('Chatbot non trovato: ' + agentId);
         return found;
       });
   }
 
-  /* Wrap a step in try/catch with named logging. Re-throws to bubble to mount catch
-     but prepends the step name so we can pinpoint which step crashed. */
+  /* Wrap di uno step in try/catch con logging per nome. Ripropaga l'errore
+     (con il nome dello step incollato) per farlo emergere nel .catch di
+     mount() qui sotto, così si capisce quale step è crashato. */
   function step(name, fn) {
     try {
       return fn();
@@ -700,14 +829,13 @@
   }
 
   function mount(agentId) {
-    console.log('[HirisChatbotEditor] mount v' + V6_CACHE_BUST + ' agentId=' + agentId);
+    console.log('[HirisChatbotEditor] mount agentId=' + agentId);
     var outlet = document.getElementById('route-outlet');
     if (!outlet) {
       console.error('route-outlet element missing — config.html broken');
       return;
     }
 
-    /* Use Promise chain so all steps fall into the .catch with named errors */
     Promise.resolve().then(function() {
       step('clear outlet', function() { outlet.innerHTML = ''; });
       step('clone template', function() {
@@ -715,43 +843,48 @@
         if (!tpl) throw new Error('tpl-agent-editor not in config.html — BROKEN BUILD');
         outlet.appendChild(tpl.content.cloneNode(true));
       });
+      /* setupStickyActions gira SUBITO dopo il clone, PRIMA di buildSections
+         e di ogni populate*() -- installa HirisEditorKit.dirty.track() su un
+         outlet ancora (quasi) vuoto, così il MutationObserver è già attivo
+         quando le sezioni e i loro campi vengono creati sotto. */
+      step('setupStickyActions', function() { setupStickyActions(agentId); });
+      step('buildSections', function() {
+        var content = outlet.querySelector('.editor-content');
+        var anchorNav = outlet.querySelector('.anchor-nav');
+        buildSections(content, anchorNav);
+      });
       step('populateIdentita', populateIdentita);
       step('populateIstruzioni', populateIstruzioni);
       step('populateModello', populateModello);
+      step('populateScope', populateScope);
       step('populatePermessi', populatePermessi);
+      step('populateKnowledge', populateKnowledge);
+      step('populateAutonomia', populateAutonomia);
       step('populateStato', populateStato);
       step('populateLog', populateLog);
       step('populateRun', populateRun);
       step('populateConsumi', populateConsumi);
       step('setupAnchorNav', setupAnchorNav);
-      step('addLegacyShims', addLegacyShims);
-    }).then(function() {
-      return ensureLegacy();
-    }).then(function() {
       step('populateTemplateSelector', function() {
         if (typeof populateTemplateSelector === 'function') populateTemplateSelector();
       });
-      step('loadModels', function() {
-        if (typeof loadModels === 'function') loadModels();
-      });
-      step('rewireLegacyAfterMount', rewireLegacyAfterMount);
-      step('setupStickyActions', function() { setupStickyActions(agentId); });
 
-      if (agentId && typeof openAgent === 'function') {
+      if (agentId) {
         return resolveAgent(agentId).then(function(agentObj) {
           step('openAgent', function() { openAgent(agentObj); });
-          /* Update breadcrumb con nome agente invece di id bare */
+          /* Breadcrumb con nome agente invece di id bare (main.js l'aveva
+             impostato al solo id prima del mount). */
           var hereEl = document.getElementById('chrome-here');
           if (hereEl && agentObj && agentObj.name) {
             hereEl.textContent = 'Chatbot / ' + agentObj.name;
           }
-          /* v0.10.5: hide btn-delete per default agents (HIRIS) */
+          /* Nasconde Elimina per gli agenti di default (HIRIS). */
           var btnDel = document.getElementById('btn-delete');
           if (btnDel && agentObj && agentObj.is_default) {
             btnDel.style.display = 'none';
           }
         });
-      } else if (!agentId) {
+      } else {
         step('initNewAgent', initNewAgent);
       }
     }).catch(function(e) {
@@ -765,7 +898,7 @@
             '<h2>Errore caricamento editor</h2>' +
             '<p>' + msg + '</p>' +
             '<p style="font-size:12px;color:var(--text-3);font-family:var(--font-mono);margin-top:16px">' +
-              'Step: <strong>' + stepName + '</strong> · v' + V6_CACHE_BUST +
+              'Step: <strong>' + stepName + '</strong>' +
             '</p>' +
             '<p style="font-size:12px;color:var(--text-3)">' +
               'Se questo errore persiste dopo l\'aggiornamento dell\'addon HIRIS, fai <strong>hard reload</strong>: ' +
@@ -776,6 +909,15 @@
       }
     });
   }
+
+  /* loadChatbots/openAgent restano globali (letti bare da usage.js e
+     log-row.js, ex chatbot-form.js -- vedi C9 nel grounding). buildPayload/
+     highlightOutput non servono più fuori da questo file (window.saveAgent/
+     runAgent qui sopra li chiamano come chiusure locali), quindi non sono
+     più esposte su window: erano globali solo perché prima vivevano in un
+     file diverso da chi le chiamava. */
+  window.loadChatbots = loadChatbots;
+  window.openAgent = openAgent;
 
   window.HirisChatbotEditor = { mount: mount };
 })();

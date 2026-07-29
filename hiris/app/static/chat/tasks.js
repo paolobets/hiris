@@ -1,0 +1,94 @@
+/* HIRIS · Chat page · scheduled tasks panel (SP-4 Fase B Task 8)
+   Load + cancel task cards in the sidebar-embedded panel. Independent from
+   config/tasks-route.js (a full CRUD-ish log view for the config SPA, with
+   its own markup) -- this is the compact panel embedded in the chat page,
+   not a duplicate to fold away. */
+(function() {
+  function formatTrigger(trigger) {
+    if (!trigger) return '';
+    if (trigger.type === 'delay') return 'tra ' + trigger.minutes + ' min';
+    if (trigger.type === 'at_time') return 'alle ' + trigger.time;
+    if (trigger.type === 'at_datetime') return trigger.datetime;
+    if (trigger.type === 'time_window') return 'finestra ' + trigger.from + '–' + trigger.to;
+    return trigger.type;
+  }
+
+  function renderTask(task) {
+    var isPending = task.status === 'pending';
+    var safeId = esc(task.id);
+    var cancelBtn = isPending ? '<button class="task-cancel-btn" data-task-id="' + safeId + '" type="button">Annulla</button>' : '';
+    var rawMeta = task.result || task.error || formatTrigger(task.trigger);
+    var meta = rawMeta ? esc(rawMeta) : '';
+    return '<div class="task-card" id="task-' + safeId + '">'
+      + '<div class="task-card-header">'
+      + '<span class="task-label">' + esc(task.label) + '</span>'
+      + '<span class="task-status ' + esc(task.status) + '">' + esc(task.status) + '</span>'
+      + cancelBtn
+      + '</div>'
+      + (meta ? '<div class="task-meta">' + meta + '</div>' : '')
+      + '</div>';
+  }
+
+  async function load() {
+    try {
+      var resp = await fetch('api/tasks');
+      var tasks = await resp.json();
+      var active = tasks.filter(function(t) { return t.status === 'pending' || t.status === 'running'; });
+      var recent = tasks.filter(function(t) { return t.status !== 'pending' && t.status !== 'running'; });
+      var activeEl = document.getElementById('task-active-list');
+      var recentEl = document.getElementById('task-recent-list');
+      if (activeEl) activeEl.innerHTML = active.length ? active.map(renderTask).join('') : '<div class="task-empty">Nessuna task attiva</div>';
+      if (recentEl) recentEl.innerHTML = recent.length ? recent.map(renderTask).join('') : '<div class="task-empty">Nessuna task recente</div>';
+      var badge = document.getElementById('task-badge');
+      if (badge) { badge.textContent = active.length || ''; badge.dataset.count = active.length; }
+      var mbadge = document.getElementById('mobile-task-badge');
+      if (mbadge) { mbadge.textContent = active.length || ''; mbadge.dataset.count = active.length; }
+    } catch (e) { console.error('loadTasks failed', e); }
+  }
+
+  async function cancel(taskId) {
+    if (!confirm('Annullare questa task?')) return;
+    try {
+      var resp = await fetch('api/tasks/' + taskId, { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
+      if (resp.ok || resp.status === 204) load();
+    } catch (e) { console.error('cancelTask failed', e); }
+  }
+
+  function showPanel(name) {
+    var isTask = name === 'tasks';
+    document.getElementById('messages').style.display = isTask ? 'none' : '';
+    document.getElementById('input-area').style.display = isTask ? 'none' : '';
+    var tc = document.getElementById('turn-counter'); if (tc) tc.style.display = isTask ? 'none' : '';
+    var se = document.getElementById('session-ended-msg'); if (se) se.style.display = isTask ? 'none' : '';
+    document.getElementById('task-panel').style.display = isTask ? 'flex' : 'none';
+    var navTasks = document.getElementById('nav-tasks');
+    if (navTasks) navTasks.classList.toggle('active', isTask);
+    var mobileBtn = document.getElementById('mobile-task-btn');
+    if (mobileBtn) mobileBtn.classList.toggle('active', isTask);
+    var taskHeader = document.getElementById('task-panel-header');
+    if (taskHeader) taskHeader.style.display = (isTask && window.innerWidth <= 720) ? 'flex' : 'none';
+    if (isTask) load();
+  }
+
+  function init() {
+    var navTasks = document.getElementById('nav-tasks');
+    if (navTasks) navTasks.addEventListener('click', function(e) { e.preventDefault(); showPanel('tasks'); });
+    var mobileBtn = document.getElementById('mobile-task-btn');
+    if (mobileBtn) mobileBtn.addEventListener('click', function(e) { e.preventDefault(); showPanel('tasks'); });
+    var backBtn = document.getElementById('task-panel-back-btn');
+    if (backBtn) backBtn.addEventListener('click', function() { showPanel('chat'); });
+
+    /* Delegated cancel click -- replaces the old inline
+       onclick="cancelTask(this.dataset.taskId)". */
+    var panel = document.getElementById('task-panel');
+    if (panel) panel.addEventListener('click', function(e) {
+      var btn = e.target.closest && e.target.closest('.task-cancel-btn');
+      if (btn) cancel(btn.dataset.taskId);
+    });
+
+    setInterval(load, 30000);
+    load();
+  }
+
+  window.HirisChatTasks = { showPanel: showPanel, load: load, cancel: cancel, init: init };
+})();

@@ -2,7 +2,7 @@
 
 ## What is HIRIS
 
-**HIRIS** (Home Intelligent Reasoning & Integration System) is a standalone **Home Assistant Add-on** that provides an AI-powered agent platform for smart home management. It combines a Python flow engine with a Claude API agentic loop.
+**HIRIS** (Home Intelligent Reasoning & Integration System) is a standalone **Home Assistant Add-on** that provides an AI-powered agent platform for smart home management, built around three AI entities — **Chatbot**, **Agentbot**, **Brain** (see below) — all gated by a single security **semaforo**.
 
 ---
 
@@ -19,31 +19,42 @@
 
 ---
 
-## Two-Layer Architecture
+## Architecture (current — see `docs/architecture.md` for full detail)
+
+> The "Two-Layer Architecture" this section used to describe (Layer 2 =
+> Claude agentic loop, Layer 1 = a 100%-offline, no-AI Python flow engine)
+> is retired along with the rest of the Sprint A/B autonomous-agent
+> machinery (Slice 5, v0.33.0). The AI-free automation path still exists,
+> per-Agentbot: `reasoning.enabled` (default `false`, see
+> `hiris/app/watcher/agentbot_runner.py::_on_wake`) opts an individual
+> Agentbot INTO a single-shot LLM reasoner (verdict-JSON, gated by the
+> semaforo before any action executes) — with it left off, the action
+> declared in config runs deterministically, no LLM call at all. See "The
+> current model" below.
 
 ```
-┌─────────────────────────────────────────────┐
-│  LAYER 2 — Claude Agentic Loop              │
-│  Claude API + tool use                      │
-│  • Chat NL interface                        │
-│  • Proactive monitors (anomaly detection)   │
-│  • Multi-source reasoning (meteo+energy)    │
-└─────────────────────────────────────────────┘
-┌─────────────────────────────────────────────┐
-│  LAYER 1 — Python Flow Engine (local)       │
-│  Runs 100% offline, no AI required          │
-│  • Triggers: schedule / state_changed /     │
-│    manual                                   │
-│  • Actions: HA service call, notification   │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  PRESENTATION LAYER                                           │
+│  Static HTML/JS frontend (chat UI, Chatbot/Agentbot designer)│
+│  Lovelace custom card (hiris-chat-card)                      │
+└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  APPLICATION LAYER                                            │
+│  aiohttp REST API · Chatbot Engine · LLM Router               │
+│  Tool Dispatcher · Task Engine · Semantic Map                 │
+└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  INFRASTRUCTURE LAYER                                         │
+│  HA WebSocket client · SQLite · MQTT publisher                │
+│  Anthropic SDK · OpenAI SDK · Ollama HTTP client               │
+└──────────────────────────────────────────────────────────────┘
 ```
-
-- Simple time-based automations → Layer 1 (no Claude cost, no internet)
-- Complex reasoning, NL chat, multi-source decisions → Layer 2
 
 ---
 
-## Claude Tools (Phase 1 — current)
+## Claude Tools (Phase 1 baseline — non-exhaustive)
+
+Core tool set from Phase 1, still valid. Many more tools have shipped since (memory/RAG, knowledge, proposals, HTTP, health, automation-config, dashboard authoring — see `hiris/app/tools/*.py` for the authoritative, current list; `EVALUATION_ONLY_TOOLS` in `hiris/app/claude_runner.py` marks which are Agentbot-safe).
 
 | Tool | Description |
 |---|---|
@@ -65,55 +76,61 @@
 
 ---
 
-## 4 Agent Types
+## The current model — three AI entities
 
-| Type | Trigger | Pattern |
-|---|---|---|
-| **Proactive Monitor** | Schedule (every N min) | gather → Claude reasons → if anomaly: notify |
-| **Reactive Agent** | HA `state_changed` WebSocket | state change → Claude → act/notify |
-| **Preventive Scheduler** | Fixed time (e.g. 06:00) | history + forecast → Claude → autonomous action |
-| **Chat NL Agent** | User message in UI | question → Claude + tools → NL response |
+*(supersedes the old "4 Agent Types" table — Proactive Monitor / Reactive Agent / Preventive Scheduler / Chat NL Agent — retired in Slice 5, v0.33.0; see the Roadmap history below for context, not as current fact)*
+
+| Entity | Role | Trigger | Reasoning | Action |
+|---|---|---|---|---|
+| **Chatbot** | Conversa: chiedi → risponde | User message (UI/Lovelace card) | Free-form prompt, tool use within its allowlist | Gated by the semaforo — **no autonomous trigger** |
+| **Agentbot** | Vigila: watches for a condition | Event / cron / interval (built-in Sentinella detectors **or** user-defined) | Single-shot LLM reasoner, **verdict-JSON contract, no free tool use** | Action **declared in config**, never chosen by the AI at runtime — gated by the semaforo |
+| **Brain** | Il fulcro: observes, reasons, proposes | Continuous (cognitive loop) | Cross-entity reasoning over knowledge/history | Surfaces proposals/advisories; home at `#/` |
+
+Storage: `chatbots.json`, `agentbots.json` (both under `/data`). DB: `knowledge.db` (per-Chatbot scoping via `chatbot_id` column), `advisory.db`, `chat_history.db`, `proposals.db`; the Brain's reasoning log lives in a `brain_reasoning` table.
+
+API surface: `/api/chatbots*`, `/api/agentbots*`, `/api/chat`, `/api/brain/*`, `/api/models*`, `/api/sentinel/*`, `/api/entities`, `/api/proposals*`.
+
+Frontend: no build step — `<script src>` tags with a per-file fingerprint appended server-side. Key modules: `hiris/app/static/config/entity-picker.js`, `editor-kit.js`, `chatbot-editor.js`, `agentbot-editor.js`, `create-wizard.js`; chat UI in `hiris/app/static/chat/*.js`.
+
+Security: the **semaforo** (`hiris/app/security/semaphore.py`) is the single gate for every action toward the house — tier (green/yellow/red/off) per domain/entity + denylist of dangerous domains + step-up — enforced from every surface (chat, agentbots, gateway, deferred tasks). Reads never go through it.
+
+Full narrative: `docs/how-it-works.md` ("Chatbot and Agentbot", "The Brain Home"), `docs/architecture.md`.
 
 ---
 
 ## Project Structure
 
-```
-hiris/
-├── config.yaml          # HA add-on manifest (name, arch, ingress, options)
-├── Dockerfile           # HA add-on container
-├── run.sh               # Entrypoint (bashio config → python -m app.main)
-├── requirements.txt     # aiohttp, anthropic, python-dotenv
-├── app/
-│   ├── main.py          # aiohttp app factory + web.run_app
-│   ├── routes.py        # Route registration
-│   ├── ha_client.py     # HA REST + History + WebSocket client
-│   └── config.py        # Config helpers
-└── docs/
-    └── 2026-04-18-hiris-design.md  # Full design spec
-```
+> The two trees below are Phase 0/1 scaffold planning (pre-implementation) and
+> are stale as a file listing — `app/routes.py`, top-level `app/ha_client.py`,
+> `app/agent_engine.py`, `api/handlers_agents.py` and
+> `docs/2026-04-18-hiris-design.md` do **not** exist. Kept only for roadmap
+> history below; do not `cd`/`Read` these paths expecting them to exist.
 
-**Target structure (Phase 1 implementation):**
+**Current structure** (verify with `ls hiris/app/` — this list drifts as the app grows):
 ```
-app/
-├── server.py            # aiohttp server + routes
-├── agent_engine.py      # Flow engine scheduler + state machine
-├── claude_runner.py     # Claude API agentic loop + tool orchestrator
-├── tools/
-│   ├── ha_tools.py
-│   ├── energy_tools.py
-│   ├── weather_tools.py
-│   ├── notify_tools.py
-│   └── automation_tools.py
-├── api/
-│   ├── handlers_chat.py
-│   ├── handlers_agents.py
-│   └── handlers_status.py
-├── proxy/
-│   └── ha_client.py
-└── static/
-    ├── index.html       # Chat UI (/)
-    └── config.html      # Agent Designer (/config)
+hiris/                    # add-on root: config.yaml, Dockerfile, run.sh, requirements.txt
+└── app/
+    ├── main.py           # aiohttp app factory + web.run_app
+    ├── server.py         # route registration (app.router.add_*) — routes live HERE, not routes.py
+    ├── claude_runner.py  # Claude API agentic loop + tool orchestrator (MODEL default, AUTO_MODEL_MAP)
+    ├── chatbot_engine.py
+    ├── llm_router.py     # provider order (cost_first/quality_first)
+    ├── model_activation.py
+    ├── storage.py
+    ├── chat_store.py     # chat_history.db
+    ├── config.py / env_util.py / version.py / mqtt_publisher.py / task_engine.py
+    ├── agent/            # runner.py, prompts.py (Chatbot agentic-loop internals)
+    ├── watcher/           # Sentinella: detectors/situations, agentbots.py, evaluator.py, executor.py
+    ├── brain/             # cognitive_loop.py, advisory_store.py, knowledge_store.py, reasoning_log.py
+    ├── security/          # semaphore.py — the semaforo gate
+    ├── api/                # handlers_chatbots.py, handlers_agentbots.py, handlers_brain.py, handlers_models.py, ...
+    ├── tools/              # ha_tools.py, calendar_tools.py, memory_tools.py, dispatcher.py, ...
+    ├── proxy/              # ha_client.py (real HA REST/WS client — NOT app/ha_client.py)
+    ├── mcp/, history/, reasoning/
+    └── static/
+        ├── index.html / config.html
+        ├── chat/           # agents.js, main.js, messages.js, sidebar.js, ...
+        └── config/         # entity-picker.js, editor-kit.js, chatbot-editor.js, agentbot-editor.js, create-wizard.js, ...
 ```
 
 ---
@@ -146,7 +163,7 @@ app/
 ### Phase 2 — Sprint Plan (v0.6.x → v0.8.x)
 
 Development organized in 6 competency-based sprints. **Sprint 0 must ship before any feature sprint.**
-Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMPT.md).
+Full detail was in `docs/HIRIS_CLAUDE_CODE_PROMPT.md` — **that file no longer exists**; treat the Roadmap entries below as the record.
 
 #### Sprint 0 — Critical Bugfixes ✅ done (v0.6.0)
 - `handlers_agents.py` + `handlers_usage.py` — `get("llm_router") or get("claude_runner")` fix
@@ -182,12 +199,17 @@ Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMP
 > `_parse_azioni_lines` added later), `on_fail`, the `VALUTAZIONE`/`AZIONI`
 > structured-output convention, per-agent `budget_eur_limit` auto-disable, and the
 > corresponding config.html trigger/action-sequence UI — has been deleted, not
-> deprecated. The proactive layer today is the built-in **Sentinella**
-> (`hiris/app/watcher/`: fixed, tunable detectors/situations — "lenti") and chat
-> is configured via **Personas** (prompt, tool/entity/service scope, memory
-> scope, chat policy). User-defined lenti (custom triggers/prompts) are planned
-> for a later version. See `docs/how-it-works.md` ("Personas and the
-> Sentinella") and `docs/architecture.md` ("Sentinella execution lifecycle").
+> deprecated.
+>
+> **Current model (superseded the Slice-5 "Personas" naming too):** chat is
+> configured via a **Chatbot** (prompt, tool/entity/service scope, memory
+> scope, chat policy — "Personas" was an interim name, no longer used). The
+> proactive layer is the **Sentinella** (`hiris/app/watcher/`): fixed, tunable
+> built-in detectors/situations ("lenti") **plus user-defined Agentbot**
+> (`/api/agentbots`, persisted in `agentbots.json`) — custom triggers/prompts
+> have shipped, this is not a future-version item. See `docs/how-it-works.md`
+> ("Chatbot and Agentbot") and `docs/architecture.md` ("Sentinella execution
+> lifecycle").
 
 #### Sprint C — Memory-RAG ✅ done (v0.7.x)
 *Competenza: SQLite + embeddings + AI context*
@@ -204,6 +226,15 @@ Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMP
 - LiteLLM integration in `backends/` (or custom shim — ADR decides)
 - Advanced LLM Router: strategy `cost_first`/`quality_first`, fallback chain, `task_routing` per agent type
 - `pricing.yaml`: centralized EUR/1M token cost map per model
+
+> **What actually shipped (superseded the plan above):** no `task_routing`
+> concept exists. Model selection is `hiris/app/llm_router.py`
+> (`cost_first`/`quality_first` provider order) + a persisted `chain_order`
+> (`/api/models/config`, edited at `#/models`) used as the fallback chain
+> when a Chatbot or Agentbot has `model="auto"`. Each Chatbot/Agentbot picks
+> its own model directly in its editor (not "per type"). `pricing.yaml` did
+> not materialize as a file — costs live in `hiris/app/backends/pricing.py`
+> (`PRICING` dict).
 
 #### Sprint E — Lovelace + HACS (v0.8.x)
 *Competenza: Web Components + distribution*
@@ -227,7 +258,7 @@ Full detail in [`docs/HIRIS_CLAUDE_CODE_PROMPT.md`](docs/HIRIS_CLAUDE_CODE_PROMP
 
 - `CLAUDE_API_KEY`: HA add-on option (encrypted by Supervisor), never exposed to browser
 - `SUPERVISOR_TOKEN`: env var injected by HA Supervisor
-- Service call whitelist: configurable per-agent
+- Every action toward HA is gated by the **semaforo** (`hiris/app/security/semaphore.py`) — tier per domain/entity + dangerous-domain denylist + step-up — not a flat per-agent whitelist. See "The current model" above.
 - Chat history persisted in SQLite (`/data/chat_history.db`), session-scoped with configurable retention
 
 ---

@@ -288,6 +288,45 @@ async def handle_get_gateway_policy(request: web.Request) -> web.Response:
     })
 
 
+async def handle_autonomy_summary(request: web.Request) -> web.Response:
+    """Read-only: per-entity/pattern tier counts for the Chatbot editor's
+    Autonomia summary (config/chatbot-editor.js::renderAutonomiaSummary).
+
+    Backend is the single authority here on purpose (review finding, SP-4
+    Fase B Task 4): the summary used to recompute the tier client-side,
+    mirroring ``effective_tier`` but WITHOUT the ``DANGEROUS_DOMAINS``
+    denylist ``security.semaphore.gate_action`` always applies on top (lock/
+    alarm_control_panel/cover/siren/garage_door — "difesa in profondità").
+    That let the UI show a domain like ``cover`` as green while
+    ``gate_action`` would always ``deny_dangerous`` it — display-only (no
+    security hole, enforcement itself was untouched) but actively
+    misinformed the user about the Chatbot's real autonomy in exactly the
+    highest-stakes domains. Computing the summary here, with the exact same
+    ``summarize_autonomy`` (which itself reuses ``effective_tier`` and
+    ``DANGEROUS_DOMAINS``) that real enforcement is built from, makes that
+    class of drift structurally impossible: one implementation, not two kept
+    in sync by hand.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+    entities = body.get("entities")
+    if not isinstance(entities, list):
+        return web.json_response({"error": "entities must be a list"}, status=400)
+    entities = [e for e in entities if isinstance(e, str)][:2000]
+    data_dir = request.app.get("data_dir") or "/data"
+    cats = load_categories(data_dir)
+    tiers = {_BY_ID[cid]["domain"]: level for cid, level in cats.items() if cid in _BY_ID}
+    entity_tiers = load_entities(data_dir)
+    # Lazy import: security.semaphore imports effective_tier FROM this module
+    # at module load time, so importing summarize_autonomy at module scope
+    # here would create an import cycle.
+    from ..security.semaphore import summarize_autonomy
+    counts = summarize_autonomy(entities, tiers, entity_tiers)
+    return web.json_response({"counts": counts, "total": len(entities)})
+
+
 async def handle_save_gateway_policy(request: web.Request) -> web.Response:
     try:
         body = await request.json()

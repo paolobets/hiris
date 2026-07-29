@@ -52,6 +52,30 @@
       }
     }
 
+    /* SP-4 Fase B Task 1: entity-picker.js (componente istanziabile) —
+       riusa lo stile del selettore entità legacy (.domain-pill/.entity-chip/
+       .suggestion-item sopra), solo i contenitori generati dal componente
+       hanno una classe propria .ep-* perché i loro id sono generati per
+       istanza (nessun id globale). */
+    .ep-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .ep-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 10px; margin-bottom: 8px; }
+    .ep-search {
+      width: 100%; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--input-bg); color: var(--text); font-size: 13px; box-sizing: border-box;
+    }
+    .ep-search:focus { outline: none; border-color: var(--accent); }
+    .ep-suggestions {
+      position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 100;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      max-height: 180px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .ep-suggestion {
+      padding: 7px 12px; cursor: pointer; font-size: 13px; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .ep-suggestion:hover { background: var(--surface-hover); }
+    .ep-suggestion .s-name { color: var(--text-muted); font-size: 11px; }
+
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {

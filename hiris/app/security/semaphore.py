@@ -88,6 +88,38 @@ def _domain_of(entity_id: str) -> str:
     return entity_id.split(".", 1)[0] if "." in entity_id else ""
 
 
+def summarize_autonomy(entities: list[str], tiers: dict, entity_tiers: dict) -> dict:
+    """Per-entity/pattern tier counts for DISPLAY (Chatbot editor's Autonomia
+    summary), computed with the SAME authority ``gate_action`` uses — not a
+    client-side mirror, so it cannot drift from real enforcement:
+
+    - a pattern whose domain is in ``DANGEROUS_DOMAINS`` is counted under
+      ``"dangerous"``, never under a tier, exactly like ``gate_action``'s
+      denylist check (1) that runs before any tier lookup and beats even a
+      configured 'green'.
+    - everything else uses ``effective_tier`` (per-entity override beats the
+      domain tier, unconfigured domain fails closed to 'off') — the identical
+      function ``gate_action`` calls for its own tier lookup (2).
+
+    ``entities`` accepts both concrete entity ids (``cover.living``) and the
+    domain-glob patterns the Scope picker's pills add (``cover.*``): both
+    resolve through the same domain-prefix logic ``effective_tier`` already
+    uses internally, so no separate glob-handling branch is needed here.
+    """
+    counts = {"green": 0, "yellow": 0, "red": 0, "off": 0, "dangerous": 0}
+    tiers = tiers or {}
+    entity_tiers = entity_tiers or {}
+    for pattern in entities or []:
+        if not isinstance(pattern, str):
+            continue
+        if _domain_of(pattern) in DANGEROUS_DOMAINS:
+            counts["dangerous"] += 1
+            continue
+        level = effective_tier(pattern, tiers, entity_tiers)
+        counts[level if level in counts else "off"] += 1
+    return counts
+
+
 def gate_action(
     *,
     domain: str,

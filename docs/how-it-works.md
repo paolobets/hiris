@@ -1,6 +1,6 @@
 # HIRIS — How It Works
 
-> Version: 0.102.0 · Updated: 2026-07-28
+> Version: 1.0.0 · Updated: 2026-07-29
 
 ---
 
@@ -176,6 +176,37 @@ prompt syntax; the reasoner always answers in Italian):
 ```json
 {"verdict": "anomalia", "severity": "warn", "message": "Consumo anomalo — lavatrice attiva da 3 ore", "action": null}
 ```
+
+---
+
+## Goal-first creation and the unified editor (`#/nuovo`)
+
+Chatbot and Agentbot share the same editor (the same front-end kit: entity
+picker, dirty-tracking, navigation guard, model picker) — not two separate
+forms with duplicated logic. The default creation path is **goal-first**,
+at `#/nuovo`:
+
+1. The user writes their objective in natural language (e.g. "alert me if
+   the garage is left open at night" or "an assistant that answers
+   questions about energy usage").
+2. HIRIS **derives the type** (Chatbot or Agentbot) with a deterministic,
+   client-side heuristic — no LLM call at this step. The proposed choice
+   always remains editable by the user before proceeding.
+3. A handful of type-specific guided steps follow.
+4. On confirmation, HIRIS creates the entity (`POST /api/chatbots` or
+   `POST /api/agentbots`) and immediately opens the full **advanced
+   editor** (`#/chatbots/{id}` or `#/agentbots/{id}`) to refine the
+   prompt, tools, permissions, trigger.
+
+Anyone who prefers to start directly from the empty editor, skipping the
+wizard, can do so from `#/chatbots/new` (Chatbot) or `#/agentbots/new`
+(Agentbot) — two direct paths onto the same entity, not an alias of the
+wizard.
+
+In the Chatbot editor, **memory scope** (`knowledge_access` — which
+knowledge kinds the Chatbot can read, whether sensitive data is included)
+is now configurable directly from the UI, with the same validation
+enforced server-side — it previously had to be set via the API.
 
 ---
 

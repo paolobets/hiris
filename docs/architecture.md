@@ -1,6 +1,6 @@
 # HIRIS — Technical Architecture
 
-> Version: 0.102.0 · Updated: 2026-07-28
+> Version: 1.0.0 · Updated: 2026-07-29
 
 ---
 
@@ -142,29 +142,62 @@ hiris/app/
     ├── hiris-chat-card.js       Lovelace custom card
     └── config/                  Designer: hash-based router (`#/...`) + one view per route
         ├── router.js / state.js / api.js / templates.js  Shared SPA infrastructure
-        ├── main.js               Registers every route (see table below)
+        ├── entity-picker.js     Instantiable entity picker (`HirisEntityPicker.create()`,
+        │                         Task 1 SP-4b1) — replaces the old global singleton
+        ├── editor-kit.js        Shared Chatbot/Agentbot kit (Task 3): real dirty-tracking
+        │                         (`dirty.track`/`dirty.guard`), cached-fetch `modelSelect`,
+        │                         instance-scoped `checkGroup`, `field.*`, save-bar
+        ├── main.js               Registers every route (see table below) + the single
+        │                         navigation guard (`HirisEditorKit.dirty.guard`, hoisted here
+        │                         in Task 6 — covers every editor route by construction)
         ├── dashboard.js          `#/` view — the Brain home
-        ├── chatbots-list.js / chatbot-form.js / chatbot-editor.js   `#/chatbots*` views
-        ├── agentbot-route.js    `#/agentbots` view
+        ├── chatbots-list.js     `#/chatbots` view (list)
+        ├── chatbot-editor.js    Unified Chatbot editor — `#/chatbots/new` and `#/chatbots/{id}`
+        │                         views (Task 4; absorbed and deleted the earlier `chatbot-form.js`)
+        ├── create-wizard.js     `#/nuovo` view — goal-first creation (Task 6): natural-language
+        │                         objective → derives the type (deterministic heuristic, no LLM)
+        │                         → guided steps → opens the advanced editor
+        ├── agentbot-route.js    `#/agentbots` view — Sentinella policy + observability + list
+        ├── agentbot-editor.js   Per-entity Agentbot editor — `#/agentbots/new` and
+        │                         `#/agentbots/{id}` views (Task 5, three independent
+        │                         `HirisEntityPicker` instances per row: trigger/condition/target)
         ├── models-route.js      `#/models` view
         ├── proposals-route.js / proposals.js   `#/proposals` view
         ├── usage-route.js / usage.js   `#/usage` view
         ├── tasks-route.js       `#/tasks` view
         ├── gateway-route.js     `#/gateway` view
         ├── history-route.js     `#/history` view
-        ├── permessi.js          Permission editor (entities/services/endpoints), reused across views
+        ├── permessi.js          Empty stub (Task 3 absorbed its logic into editor-kit.js); kept
+        │                         only for the per-file loading/cache-busting order
         └── drawer.js / popover.js / log-row.js / logs.js   Shared UI components
 ```
+
+Loading: `config.html` includes every module as a static `<script src>`
+(server-side per-file cache-busting fingerprint) in the dependency order
+above — there is no dynamic runtime loader anymore (eliminated in Task 2
+of SP-4 Fase B, together with the `ensureLegacy`/`rewireLegacyAfterMount`/
+`addLegacyShims` shims).
+
+`hiris/app/static/chat/` — standalone chat page (`index.html`), inline JS
+extracted into modules (Task 8): `state.js`, `messages.js`, `agents.js`,
+`send.js`, `theme.js`, `tasks.js`, `onboarding.js`, `sidebar.js`,
+`keyboard.js`, `main.js` (plus `static/config/api.js`, shared with the
+Designer). `pollChatReply` remains duplicated between this page and
+`hiris-chat-card.js` (the card deploys via `/local/hiris/` and can't share
+a `<script src>` with the add-on).
 
 ### Frontend routes (`config.html`, hash-based router)
 
 | Hash | View | JS module |
 |---|---|---|
 | `#/` | Brain home (Dashboard) | `dashboard.js` |
+| `#/nuovo` | Goal-first creation | `create-wizard.js` |
 | `#/chatbots` | Chatbot list | `chatbots-list.js` |
-| `#/chatbots/new` | New Chatbot | `chatbot-form.js` |
+| `#/chatbots/new` | New Chatbot (empty editor, direct path) | `chatbot-editor.js` |
 | `#/chatbots/{id}` | Chatbot editor | `chatbot-editor.js` |
-| `#/agentbots` | Agentbot editor | `agentbot-route.js` |
+| `#/agentbots` | Sentinella policy + Agentbot list | `agentbot-route.js` |
+| `#/agentbots/new` | New Agentbot | `agentbot-editor.js` |
+| `#/agentbots/{id}` | Agentbot editor | `agentbot-editor.js` |
 | `#/models` | LLM providers/models | `models-route.js` |
 | `#/proposals` | Automation proposals | `proposals-route.js` |
 | `#/usage` | Usage/costs | `usage-route.js` |
@@ -460,8 +493,8 @@ Every tool call passes through `ToolDispatcher.dispatch()`:
 1. **Entity filter** — `allowed_entities` glob patterns applied to `get_entity_states`, `get_home_status`, `get_entities_on`, `get_entities_by_domain`
 2. **Service filter** — `allowed_services` glob patterns checked before every `call_ha_service`
 3. **Endpoint filter** — `http_request` hidden from Claude unless `allowed_endpoints` is configured; each call validated against the allowlist
-4. **Usage tracking** — cost/tokens tracked per Chatbot (`get_chatbot_usage`) and published via MQTT/UI; there is no per-persona budget cap or auto-disable anymore (removed together with the retired fields — `budget_remaining_eur` is always reported as `"unlimited"`)
-5. **Memory scope** — `save_memory` is available to personas (chat), governed by `knowledge_access`; the Sentinella's single-shot reasoner is restricted to `EVALUATION_ONLY_TOOLS`, which excludes `save_memory` (it only ever calls `recall_memory`)
+4. **Usage tracking** — cost/tokens tracked per Chatbot (`get_chatbot_usage`) and published via MQTT/UI; there is no per-Chatbot budget cap or auto-disable anymore (removed together with the retired fields — `budget_remaining_eur` is always reported as `"unlimited"`)
+5. **Memory scope** — `save_memory` is available to Chatbot (chat), governed by `knowledge_access`; the Sentinella's single-shot reasoner is restricted to `EVALUATION_ONLY_TOOLS`, which excludes `save_memory` (it only ever calls `recall_memory`)
 
 ### SSRF protection (`http_tools.py`)
 

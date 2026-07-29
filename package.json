@@ -1,0 +1,11 @@
+{
+  "name": "hiris-frontend-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/js/*.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}

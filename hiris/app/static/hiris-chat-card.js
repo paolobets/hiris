@@ -40,6 +40,13 @@ function _renderMarkdown(escaped) {
     .replace(/\n/g, '<br>');
 }
 
+// Shared HTML-escaping used by both HirisCard and HirisChatCardEditor.
+// Previously duplicated as an identical-looking instance method on each
+// class (1.0 grounding B7) — one copy now, module-level, used by both.
+function _esc(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // localStorage helpers for chat persistence (H1). Keyed by (slug, agent_id)
 // so multiple cards/agents on the same dashboard don't collide.
 function _historyKey(slug, agentId) {
@@ -483,6 +490,66 @@ const CARD_CSS = `
     .title { display: none; }
     .header { padding: 12px; }
     .input-row { padding: 8px; }
+  }
+`;
+
+// Editor stylesheet — module-level so it's parsed once and mounted in the
+// shadow root at construction time (see HirisChatCardEditor constructor),
+// same pattern as CARD_CSS above. Previously this whole block (including a
+// second copy of IRIS_CSS) was re-inlined into a <style> tag rebuilt by
+// _render() on every keystroke (1.0 grounding B7) — one parse now, not one
+// per render.
+const EDITOR_CSS = `
+  .editor {
+    font-family: var(--i-font-sans);
+    font-size: 13px;
+    color: var(--i-text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .editor-header {
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--i-border);
+    margin-bottom: 16px;
+  }
+  .editor-title { font-size: 14px; font-weight: 600; color: var(--i-text); }
+  .editor-sub { font-size: 11px; color: var(--i-text-3); font-family: var(--i-font-mono); margin-top: 1px; }
+  .field { margin-bottom: 14px; }
+  .field-label {
+    font-size: 11px; font-weight: 600; font-family: var(--i-font-mono);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--i-text-3); margin-bottom: 6px;
+  }
+  .field-hint { font-size: 11px; color: var(--i-text-3); margin-top: 4px; }
+  .field-loading {
+    padding: 9px 12px;
+    background: var(--i-surface-2);
+    border: 1px solid var(--i-border);
+    border-radius: var(--i-r-sm);
+    font-size: 12.5px; color: var(--i-text-3);
+    font-family: var(--i-font-mono);
+  }
+  .field-input, .field-select {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--i-surface);
+    border: 1px solid var(--i-border);
+    border-radius: var(--i-r-sm);
+    font-size: 13px; font-family: var(--i-font-sans);
+    color: var(--i-text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+    appearance: none;
+  }
+  .field-input:focus, .field-select:focus {
+    border-color: var(--i-accent);
+    box-shadow: 0 0 0 3px var(--i-accent-tint);
+  }
+  .select-wrap { position: relative; }
+  .select-arrow {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    pointer-events: none; color: var(--i-text-3); font-size: 11px;
   }
 `;
 
@@ -939,8 +1006,8 @@ class HirisCard extends HTMLElement {
     if (!this._snackEl) return;
     if (this._snackTimer) clearTimeout(this._snackTimer);
     this._snackEl.innerHTML = `
-      <span class="snack-label">${this._esc(label)}</span>
-      ${actionLabel ? `<button class="snack-action" type="button">${this._esc(actionLabel)}</button>` : ''}
+      <span class="snack-label">${_esc(label)}</span>
+      ${actionLabel ? `<button class="snack-action" type="button">${_esc(actionLabel)}</button>` : ''}
     `;
     this._snackEl.classList.add('is-visible');
     const btn = this._snackEl.querySelector('.snack-action');
@@ -961,10 +1028,6 @@ class HirisCard extends HTMLElement {
 
   _iconHtml(size) {
     return `<img src="${_HIRIS_ICON_DATA}" width="${size}" height="${size}" style="border-radius:50%;display:block;flex-shrink:0" alt="HIRIS">`;
-  }
-
-  _esc(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   _statusClass() {
@@ -996,7 +1059,7 @@ class HirisCard extends HTMLElement {
           <div class="header">
             <div class="header-left">
               ${this._iconHtml(22)}
-              <span class="title">${this._esc(this._title)}</span>
+              <span class="title">${_esc(this._title)}</span>
             </div>
           </div>
           <div class="unconfigured">
@@ -1016,7 +1079,7 @@ class HirisCard extends HTMLElement {
     const budgetCls = this._budgetClass(pct);
 
     const msgs = this._messages.map((m, i) => {
-      const escaped = this._esc(m.text);
+      const escaped = _esc(m.text);
       const text = m.role === 'assistant' ? _renderMarkdown(escaped) : escaped.replace(/\n/g, '<br>');
       // (M2) Avatar grouping: hide avatar if previous bubble was also assistant
       const prev = this._messages[i - 1];
@@ -1065,7 +1128,7 @@ class HirisCard extends HTMLElement {
       <div class="empty">
         <span class="empty-title">Cosa posso fare per te?</span>
         <div class="suggestions">
-          ${this._suggestions.map(s => `<button class="suggestion" type="button" data-sugg="${this._esc(s)}">${this._esc(s)}</button>`).join('')}
+          ${this._suggestions.map(s => `<button class="suggestion" type="button" data-sugg="${_esc(s)}">${_esc(s)}</button>`).join('')}
         </div>
       </div>
     ` : `<div class="empty">Scrivi un messaggio per iniziare…</div>`;
@@ -1075,7 +1138,7 @@ class HirisCard extends HTMLElement {
         <div class="header">
           <div class="header-left">
             ${this._iconHtml(22)}
-            <span class="title">${this._esc(this._title)}</span>
+            <span class="title">${_esc(this._title)}</span>
           </div>
           <div class="header-right">
             <div class="status-pill ${this._statusClass()}" role="status">${this._statusLabel()}</div>
@@ -1097,7 +1160,7 @@ class HirisCard extends HTMLElement {
             </div>
           </div>
         ` : ''}
-        ${this._error ? `<div class="banner error" role="alert">${this._esc(this._error)}</div>` : ''}
+        ${this._error ? `<div class="banner error" role="alert">${_esc(this._error)}</div>` : ''}
         ${!this._enabled && !this._error ? `<div class="banner disabled">Chatbot disabilitato. Le richieste sono in pausa.</div>` : ''}
         <div class="messages" id="msgs" role="log" aria-live="polite" aria-label="Cronologia messaggi">
           ${msgs || emptyHtml}
@@ -1110,7 +1173,7 @@ class HirisCard extends HTMLElement {
           </div>
           <div class="input-inner">
             <textarea class="input" id="inp" rows="1"
-              placeholder="${this._esc(placeholder)}"
+              placeholder="${_esc(placeholder)}"
               aria-label="Messaggio per il Chatbot"
               ${!this._enabled ? 'disabled' : ''}></textarea>
             <button class="send${this._loading ? ' loading' : ''}" id="snd"
@@ -1216,6 +1279,12 @@ class HirisChatCardEditor extends HTMLElement {
     super();
     this._shadow = this.attachShadow({ mode: 'open' });
     // Font is injected at module-level (L1) — no per-instance <link>.
+    // Style is mounted once here, like HirisCard's constructor (L2) — the
+    // render method below only rewrites _container.innerHTML, never
+    // re-parses CSS.
+    this._styleEl = document.createElement('style');
+    this._styleEl.textContent = IRIS_CSS + EDITOR_CSS;
+    this._shadow.appendChild(this._styleEl);
     this._container = document.createElement('div');
     this._shadow.appendChild(this._container);
 
@@ -1268,10 +1337,6 @@ class HirisChatCardEditor extends HTMLElement {
     }));
   }
 
-  _esc(s) {
-    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
   _render() {
     // Read the new key first; fall back to legacy "agent_id" so the editor
     // shows the right value for dashboard configs saved before the rename.
@@ -1286,11 +1351,11 @@ class HirisChatCardEditor extends HTMLElement {
       agentField = `<div class="field-loading">Caricamento Chatbot…</div>`;
     } else if (this._chatbots === 'error' || this._chatbots.length === 0) {
       agentField = `<input id="agentInput" class="field-input" type="text"
-        value="${this._esc(agentId)}" placeholder="es. hiris-default">`;
+        value="${_esc(agentId)}" placeholder="es. hiris-default">`;
     } else {
       const options = this._chatbots.map(a => {
         const sel = a.id === agentId ? ' selected' : '';
-        return `<option value="${this._esc(a.id)}"${sel}>${this._esc(a.name || a.id)} (${this._esc(a.id)})</option>`;
+        return `<option value="${_esc(a.id)}"${sel}>${_esc(a.name || a.id)} (${_esc(a.id)})</option>`;
       }).join('');
       agentField = `<div class="select-wrap">
         <select id="agentSelect" class="field-select">
@@ -1301,60 +1366,6 @@ class HirisChatCardEditor extends HTMLElement {
     }
 
     this._container.innerHTML = `
-      <style>
-        ${IRIS_CSS}
-        .editor {
-          font-family: var(--i-font-sans);
-          font-size: 13px;
-          color: var(--i-text);
-          -webkit-font-smoothing: antialiased;
-        }
-        .editor-header {
-          display: flex; align-items: center; gap: 10px;
-          padding-bottom: 14px;
-          border-bottom: 1px solid var(--i-border);
-          margin-bottom: 16px;
-        }
-        .editor-title { font-size: 14px; font-weight: 600; color: var(--i-text); }
-        .editor-sub { font-size: 11px; color: var(--i-text-3); font-family: var(--i-font-mono); margin-top: 1px; }
-        .field { margin-bottom: 14px; }
-        .field-label {
-          font-size: 11px; font-weight: 600; font-family: var(--i-font-mono);
-          text-transform: uppercase; letter-spacing: 0.06em;
-          color: var(--i-text-3); margin-bottom: 6px;
-        }
-        .field-hint { font-size: 11px; color: var(--i-text-3); margin-top: 4px; }
-        .field-loading {
-          padding: 9px 12px;
-          background: var(--i-surface-2);
-          border: 1px solid var(--i-border);
-          border-radius: var(--i-r-sm);
-          font-size: 12.5px; color: var(--i-text-3);
-          font-family: var(--i-font-mono);
-        }
-        .field-input, .field-select {
-          width: 100%;
-          padding: 8px 12px;
-          background: var(--i-surface);
-          border: 1px solid var(--i-border);
-          border-radius: var(--i-r-sm);
-          font-size: 13px; font-family: var(--i-font-sans);
-          color: var(--i-text);
-          outline: none;
-          transition: border-color 0.15s, box-shadow 0.15s;
-          box-sizing: border-box;
-          appearance: none;
-        }
-        .field-input:focus, .field-select:focus {
-          border-color: var(--i-accent);
-          box-shadow: 0 0 0 3px var(--i-accent-tint);
-        }
-        .select-wrap { position: relative; }
-        .select-arrow {
-          position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-          pointer-events: none; color: var(--i-text-3); font-size: 11px;
-        }
-      </style>
       <div class="editor">
         <div class="editor-header">
           <img src="${_HIRIS_ICON_DATA}" width="30" height="30"
@@ -1374,7 +1385,7 @@ class HirisChatCardEditor extends HTMLElement {
         <div class="field">
           <div class="field-label">Titolo</div>
           <input id="titleInput" class="field-input" type="text"
-            value="${this._esc(title)}" aria-label="Titolo della card">
+            value="${_esc(title)}" aria-label="Titolo della card">
           <div class="field-hint">Mostrato nell'intestazione della card</div>
         </div>
 
@@ -1382,14 +1393,14 @@ class HirisChatCardEditor extends HTMLElement {
           <div class="field-label">Suggerimenti iniziali</div>
           <textarea id="suggInput" class="field-input" rows="3"
             placeholder="Una proposta per riga, max 6&#10;Es: Spegni le luci&#10;Consumi di oggi&#10;Riassumi gli eventi"
-            aria-label="Suggerimenti iniziali, uno per riga">${this._esc(suggestions)}</textarea>
+            aria-label="Suggerimenti iniziali, uno per riga">${_esc(suggestions)}</textarea>
           <div class="field-hint">Chip cliccabili nello stato vuoto. Una proposta per riga, max 6.</div>
         </div>
 
         <div class="field">
           <div class="field-label">Altezza area chat</div>
           <input id="heightInput" class="field-input" type="text"
-            value="${this._esc(height)}" placeholder="es. 320px o 60vh"
+            value="${_esc(height)}" placeholder="es. 320px o 60vh"
             aria-label="Altezza area messaggi">
           <div class="field-hint">Default: 60vh (responsive). Sovrascrivi per layout custom.</div>
         </div>

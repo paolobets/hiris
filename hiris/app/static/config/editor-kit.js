@@ -1,0 +1,510 @@
+/* HIRIS · Designer · editor-kit (SP-4 Fase B Task 3, field.* in Task 5)
+   Kit condiviso fra gli editor Chatbot/Agentbot: fabbriche di campo
+   (field.text/number/checkbox/select/textarea), select modello con fetch
+   cachata, gruppo checkbox istanza-scoped, dirty tracking reale
+   (MutationObserver, non uno snapshot one-shot) + guard di navigazione,
+   barra Salva/Annulla sticky.
+
+   field.* (Task 5): reintrodotte come consumatore reale di
+   agentbot-editor.js -- l'editor Agentbot per-entità (Identità, Trigger,
+   Modello, Verdetto, Azione, Abilitazione) ha ~15 campi input/select/
+   textarea "semplici" (non picker, non checkGroup, non modelSelect) che
+   PRIMA di questo task vivevano come closure private duplicate dentro
+   agentbot-route.js (textField/numberField/checkboxField/selectField/
+   textareaField, righe 128-268 del file pre-split -- vedi grounding A5).
+   Un'unica implementazione qui, niente più fabbriche private nell'editor.
+   agentbot-route.js (blocchi Situazioni/Preparazione, che RESTANO) tiene
+   le proprie closure locali: non toccate da questo task, sono fuori dal
+   confine del taglio (righe 340-605 si spostano, non le altre).
+
+   Chiude due bug live (vedi docs/design/2026-07-28-piano-SP4b1-cornice-
+   unificata.md):
+   1) le modifiche a chip/tool/azioni non attivavano "Salva" -- setupStickyActions
+      faceva un querySelectorAll UNA VOLTA al mount, i controlli creati dopo
+      (chip entity-picker, checkbox di buildToolChecks/buildActionChecks) non
+      erano mai agganciati a markDirty. dirty.track() qui sotto osserva il
+      sottoalbero con un MutationObserver, non lo fotografa.
+   2) navigare via con modifiche non salvate le perdeva in silenzio -- 'unsaved'
+      era letto solo dal bottone Annulla, nessun guard su hashchange/beforeunload.
+      dirty.guard() qui sotto lo installa PER IL PERCORSO "conferma -> esci".
+      Il percorso "rifiuta -> resta" restava aperto: il revert dell'hash che
+      il guard fa quando l'utente rifiuta genera un secondo hashchange (l'eco)
+      sul quale il guard non richiama più stopImmediatePropagation() -- il
+      router rimontava la route corrente su quell'eco, cancellando comunque
+      le modifiche. Chiuso in router.js (resolveRoute ignora un hashchange
+      che risolve allo stesso hash già montato), non qui: il guard da solo
+      non può sapere se il router ha già visto/ignorato l'evento originale.
+
+   loadModels()/_setModelValue() vivevano in api.js (file di utility pure) ma
+   sono codice editor -- assorbiti qui in modelSelect()/setModelValue() con
+   UNA fetch condivisa e cachata (prima: una per riga in agentbot-route.js).
+
+   buildToolChecks/buildActionChecks/getSelectedTools/getSelectedActions
+   (permessi.js) sono assorbiti in checkGroup(): istanza-scoped, non più
+   #tool-checks/#action-checks globali. */
+(function() {
+  'use strict';
+
+  var _seq = 0;
+  function nextId(prefix) {
+    _seq += 1;
+    return (prefix || 'hk') + '-' + _seq;
+  }
+
+  /* ── field factories ──────────────────────────────────────────────
+     Ognuna ritorna l'elemento input/select/textarea creato. Stessa
+     struttura visiva (div.field + label[for], classi input/select/
+     textarea/checkbox-row, field-hint) già usata dal markup statico di
+     chatbot-editor.js, così la CSS esistente (hiris-config.css) si
+     applica senza modifiche.
+
+     Storia (per chi legge git blame): questo file le esportava già dal
+     Task 3 ma con ZERO call site -- agentbot-route.js manteneva le
+     proprie closure locali (textField/entityField/numberField/...),
+     chatbot-editor.js costruisce i campi con innerHTML grezzo nei suoi
+     populate*(). Rimosse in un fix successivo come dead code, con la nota
+     esplicita che il Task 5 le avrebbe reintrodotte con un consumatore
+     reale. Quel consumatore è agentbot-editor.js (editor Agentbot
+     per-entità): niente più fabbriche di campo private duplicate lì
+     dentro, una sola implementazione qui. */
+
+  function fieldWrap(parent, labelText, forId) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field';
+    if (labelText) {
+      var lbl = document.createElement('label');
+      lbl.setAttribute('for', forId);
+      lbl.textContent = labelText;
+      wrap.appendChild(lbl);
+    }
+    parent.appendChild(wrap);
+    return wrap;
+  }
+
+  function appendHint(wrap, hintText) {
+    if (!hintText) return null;
+    var h = document.createElement('p');
+    h.className = 'field-hint';
+    h.textContent = hintText;
+    wrap.appendChild(h);
+    return h;
+  }
+
+  function fieldText(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-text');
+    var wrap = fieldWrap(parent, opts.label, id);
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'input';
+    inp.id = id;
+    inp.value = opts.value != null ? opts.value : '';
+    if (opts.placeholder) inp.placeholder = opts.placeholder;
+    wrap.appendChild(inp);
+    appendHint(wrap, opts.hint);
+    return inp;
+  }
+
+  function fieldNumber(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-number');
+    var wrap = fieldWrap(parent, opts.label, id);
+    var inp = document.createElement('input');
+    inp.type = 'number';
+    inp.className = 'input';
+    inp.id = id;
+    inp.value = opts.value != null ? opts.value : '';
+    if (opts.min != null) inp.min = opts.min;
+    if (opts.max != null) inp.max = opts.max;
+    wrap.appendChild(inp);
+    appendHint(wrap, opts.hint);
+    return inp;
+  }
+
+  function fieldCheckbox(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-check');
+    var row = document.createElement('label');
+    row.className = 'checkbox-row';
+    var inp = document.createElement('input');
+    inp.type = 'checkbox';
+    inp.id = id;
+    inp.checked = !!opts.value;
+    row.appendChild(inp);
+    row.appendChild(document.createTextNode(' ' + (opts.label || '')));
+    parent.appendChild(row);
+    return inp;
+  }
+
+  function fieldSelect(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-select');
+    var wrap = fieldWrap(parent, opts.label, id);
+    var sel = document.createElement('select');
+    sel.className = 'select';
+    sel.id = id;
+    (opts.options || []).forEach(function(o) {
+      var opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label != null ? o.label : o.value;
+      if (o.value === opts.value) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    wrap.appendChild(sel);
+    appendHint(wrap, opts.hint);
+    return sel;
+  }
+
+  function fieldTextarea(parent, opts) {
+    opts = opts || {};
+    var id = opts.id || nextId('hk-textarea');
+    var wrap = fieldWrap(parent, opts.label, id);
+    var ta = document.createElement('textarea');
+    ta.className = 'textarea';
+    ta.id = id;
+    ta.rows = opts.rows || 3;
+    ta.value = opts.value != null ? opts.value : '';
+    if (opts.placeholder) ta.placeholder = opts.placeholder;
+    wrap.appendChild(ta);
+    appendHint(wrap, opts.hint);
+    return ta;
+  }
+
+  /* ── modelSelect: UNA fetch api/models condivisa e cachata ──────────
+     Prima: agentbot-route.js chiamava GET api/models per OGNI riga
+     (modelSelectField, una per lens). api.js.loadModels() ne faceva
+     un'altra copia indipendente per l'editor Chatbot (#f-model). Qui:
+     un'unica promise a livello di modulo, risolta una sola volta, letta
+     da tutte le modelSelect() della pagina. */
+
+  var _modelsPromise = null;
+  function loadModelsOnce() {
+    if (!_modelsPromise) {
+      _modelsPromise = fetch('api/models')
+        .then(function(r) { return r.ok ? r.json() : { providers: [] }; })
+        .catch(function() { return { providers: [] }; });
+    }
+    return _modelsPromise;
+  }
+
+  function setModelValue(sel, val) {
+    if (!sel) return;
+    sel.value = val;
+    if (sel.value !== val) {
+      /* Modello non nell'elenco (provider non configurato) -- lo aggiunge
+         come opzione orfana invece di scartare silenziosamente la scelta
+         salvata dall'utente. */
+      var opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val + ' (provider non configurato)';
+      sel.insertBefore(opt, sel.firstChild);
+      sel.value = val;
+    }
+  }
+
+  function populateModelOptions(sel, opts) {
+    opts = opts || {};
+    return loadModelsOnce().then(function(data) {
+      var providers = data.providers || [];
+      var current = (opts.value != null ? opts.value : sel.value) || 'auto';
+      sel.innerHTML = '';
+      providers.forEach(function(p) {
+        var grp = document.createElement('optgroup');
+        grp.label = p.label;
+        (p.models || []).forEach(function(m) {
+          var opt = document.createElement('option');
+          opt.value = m;
+          var isFree = /:free$/.test(m);
+          if (m === 'auto') {
+            opt.textContent = 'auto — sceglie il modello migliore';
+          } else if (isFree) {
+            /* Hint visivo: il modello ha i vincoli del piano gratuito
+               OpenRouter (quota giornaliera bassa, rate-limit frequenti). */
+            opt.textContent = m + '  • free';
+            opt.title = 'Modello gratuito: quota giornaliera bassa e rate-limit upstream frequenti. Adatto a chat occasionale, sconsigliato per Chatbot/Agentbot schedulati.';
+          } else {
+            opt.textContent = m;
+          }
+          grp.appendChild(opt);
+        });
+        sel.appendChild(grp);
+      });
+      if (providers.length === 0) {
+        var opt = document.createElement('option');
+        opt.value = 'auto';
+        opt.textContent = 'auto — nessun provider configurato';
+        sel.appendChild(opt);
+      }
+      setModelValue(sel, current);
+      if (opts.hintEl && providers.length > 0) {
+        opts.hintEl.textContent = 'Seleziona il modello AI. Sono disponibili '
+          + providers.map(function(p) { return p.label; }).join(', ')
+          + '. «auto» sceglie automaticamente.';
+      }
+      return sel;
+    });
+  }
+
+  function modelSelect(parent, opts) {
+    opts = opts || {};
+    var sel = opts.selectEl;
+    var hint = opts.hintEl || null;
+    if (!sel) {
+      var id = opts.id || nextId('hk-model');
+      var wrap = fieldWrap(parent, opts.label, id);
+      sel = document.createElement('select');
+      sel.className = 'select';
+      sel.id = id;
+      var optAuto = document.createElement('option');
+      optAuto.value = 'auto';
+      optAuto.textContent = 'auto — sceglie il modello migliore';
+      sel.appendChild(optAuto);
+      wrap.appendChild(sel);
+      if (opts.hint !== false) {
+        hint = document.createElement('p');
+        hint.className = 'field-hint';
+        hint.id = opts.hintId || (id + '-hint');
+        hint.textContent = 'Seleziona il modello AI. «auto» sceglie automaticamente.';
+        wrap.appendChild(hint);
+      }
+    }
+    if (opts.value) setModelValue(sel, opts.value);
+    populateModelOptions(sel, { value: opts.value, hintEl: hint });
+    return sel;
+  }
+
+  /* ── checkGroup: gruppo checkbox istanza-scoped ──────────────────────
+     Sostituisce buildToolChecks/buildActionChecks/getSelectedTools/
+     getSelectedActions (permessi.js): non più #tool-checks/#action-checks
+     globali, ogni chiamata crea il proprio contenitore + stato. */
+
+  function checkGroup(parent, opts) {
+    opts = opts || {};
+    var items = opts.items || [];
+    var selected = (opts.selected || []).slice();
+    var wrap = document.createElement('div');
+    wrap.className = opts.className || 'tool-checkboxes';
+    var prefix = opts.idPrefix || nextId('hk-cg');
+
+    function safeId(rawId) {
+      return prefix + '-' + String(rawId).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    function render() {
+      wrap.innerHTML = '';
+      items.forEach(function(it) {
+        var row = document.createElement('div');
+        row.className = 'tool-item';
+        var chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.value = it.id;
+        chk.checked = selected.indexOf(it.id) >= 0;
+        chk.id = safeId(it.id);
+        var lbl = document.createElement('label');
+        lbl.htmlFor = chk.id;
+        lbl.appendChild(chk);
+        lbl.appendChild(document.createTextNode(' ' + (it.label || it.id)));
+        row.appendChild(lbl);
+        if (it.desc) {
+          var desc = document.createElement('div');
+          desc.className = 'tool-desc';
+          desc.textContent = it.desc;
+          row.appendChild(desc);
+        }
+        chk.addEventListener('change', function() {
+          var i = selected.indexOf(it.id);
+          if (chk.checked && i === -1) selected.push(it.id);
+          else if (!chk.checked && i !== -1) selected.splice(i, 1);
+        });
+        wrap.appendChild(row);
+      });
+    }
+
+    function getSelected() { return selected.slice(); }
+    function setSelected(vals) {
+      selected = Array.isArray(vals) ? vals.slice() : [];
+      render();
+    }
+
+    render();
+    parent.appendChild(wrap);
+    return { el: wrap, getSelected: getSelected, setSelected: setSelected };
+  }
+
+  /* ── dirty tracking: MutationObserver + delegation, non uno snapshot ──
+
+     Singleton a livello di KIT (review finale pre-1.0, finding C1 --
+     CRITICO, perdita silenziosa di dati). Un solo editor (Chatbot O
+     Agentbot) è mai montato alla volta, ma prima ogni modulo teneva la
+     propria handle a livello di modulo (dirtyTrackHandle in
+     chatbot-editor.js E in agentbot-editor.js) e fermava SOLO la propria
+     copia quando rimontava se stesso -- passare da un TIPO di editor
+     all'altro (Chatbot -> Agentbot o viceversa) lasciava DUE
+     MutationObserver live sullo stesso #route-outlet (il contenitore
+     STABILE condiviso da ogni route). setupStickyActions gira sempre
+     PRIMA di populate*(), quindi ogni campo viene iniettato mentre
+     ENTRAMBI gli observer sono attivi: il flag `el.__hkWired` sotto fa si'
+     che solo il PRIMO observer a processare un nodo nuovo lo agganci --
+     l'osservatore più VECCHIO (quello dell'editor già smontato) vinceva la
+     "wire race", legando i campi del nuovo editor alla closure markDirty
+     di quello morto (la cui saveBarHandle punta a bottoni ormai detached:
+     il Salva VISIBILE non si abilitava mai, e --peggio-- 'unsaved' restava
+     comunque scritto da quella closure morta in modo incoerente con lo
+     stato reale mostrato all'utente, rendendo silenzioso anche il nav
+     guard). Qui: track() stessa ferma qualunque tracker precedente,
+     CHIUNQUE l'avesse installato, prima di installare il proprio --
+     un'unica implementazione della garanzia "un solo tracker vivo alla
+     volta", non delegata (e duplicata) a ciascun chiamante. */
+
+  var _activeTracker = null;
+
+  function track(rootEl, onDirty) {
+    if (_activeTracker) {
+      _activeTracker.stop();
+      _activeTracker = null;
+    }
+
+    function wire(el) {
+      if (el.__hkWired) return;
+      el.__hkWired = true;
+      el.addEventListener('change', onDirty);
+      el.addEventListener('input', onDirty);
+    }
+    rootEl.querySelectorAll('input, select, textarea').forEach(wire);
+    var mo = new window.MutationObserver(function(muts) {
+      muts.forEach(function(m) {
+        Array.prototype.forEach.call(m.addedNodes, function(n) {
+          if (n.nodeType !== 1) return;
+          if (n.matches && n.matches('input, select, textarea')) wire(n);
+          if (n.querySelectorAll) n.querySelectorAll('input, select, textarea').forEach(wire);
+        });
+      });
+    });
+    mo.observe(rootEl, { childList: true, subtree: true });
+
+    var handle = {
+      stop: function() {
+        mo.disconnect();
+        if (_activeTracker === handle) _activeTracker = null;
+      }
+    };
+    _activeTracker = handle;
+    return handle;
+  }
+
+  /* ── guard: hashchange + beforeunload, chiede conferma se dirty ──────
+     Nota su hashchange: l'URL è GIA' cambiato quando l'evento arriva (non
+     è annullabile via preventDefault). "Annullare" qui significa: se
+     l'utente rifiuta, si ripristina l'hash precedente (che a sua volta
+     genera un secondo hashchange -- il flag `reverting` lo ignora per non
+     ri-chiedere conferma su un evento che il guard stesso ha causato).
+
+     onLeave (review finale pre-1.0, finding I2 -- Important): chiamato
+     quando l'utente CONFERMA di voler uscire con modifiche non salvate.
+     Prima 'unsaved' restava true dopo l'uscita -- lo azzerava solo il
+     mount successivo di UN EDITOR (setupStickyActions), quindi ogni
+     navigazione fra pagine SENZA form dopo aver lasciato un editor dirty
+     (es. Consumi -> Task) ririchiedeva la stessa conferma "Ci sono
+     modifiche non salvate…", a vuoto, finché l'utente non riapriva un
+     editor. main.js passa qui un callback che pulisce HirisState.get(
+     'unsaved') -- il guard resta comunque disaccoppiato da HirisState
+     (riceve/chiama funzioni, non lo importa direttamente), stesso
+     principio già in uso per isDirtyFn. */
+
+  function guard(isDirtyFn, onLeave) {
+    var lastHash = window.location.hash;
+    var reverting = false;
+
+    function onHashChange(e) {
+      if (reverting) {
+        reverting = false;
+        lastHash = window.location.hash;
+        return;
+      }
+      if (typeof isDirtyFn === 'function' && isDirtyFn()) {
+        var ok = window.confirm('Ci sono modifiche non salvate. Vuoi davvero uscire senza salvare?');
+        if (!ok) {
+          reverting = true;
+          window.location.hash = lastHash;
+          if (e && typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+          return;
+        }
+        if (typeof onLeave === 'function') onLeave();
+      }
+      lastHash = window.location.hash;
+    }
+
+    function onBeforeUnload(e) {
+      if (typeof isDirtyFn === 'function' && isDirtyFn()) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    }
+
+    window.addEventListener('hashchange', onHashChange);
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    return {
+      stop: function() {
+        window.removeEventListener('hashchange', onHashChange);
+        window.removeEventListener('beforeunload', onBeforeUnload);
+      }
+    };
+  }
+
+  /* ── saveBar: barra sticky unica, Salva disabled quando clean ────────
+     rootEl deve contenere i bottoni #btn-save/#btn-cancel/#btn-test-run/
+     #btn-delete (o [data-hk="save|cancel|test-run|delete"]). onDelete
+     assente -> il bottone Elimina resta nascosto (agente nuovo, non
+     ancora salvato -- stesso comportamento di prima). */
+
+  function saveBar(rootEl, opts) {
+    opts = opts || {};
+    function find(name, legacyId) {
+      return rootEl.querySelector('[data-hk="' + name + '"]') ||
+        (legacyId ? rootEl.querySelector('#' + legacyId) : null);
+    }
+    var btnSave = find('save', 'btn-save');
+    var btnCancel = find('cancel', 'btn-cancel');
+    var btnDelete = find('delete', 'btn-delete');
+    var btnTestRun = find('test-run', 'btn-test-run');
+
+    if (btnSave && opts.onSave) {
+      btnSave.addEventListener('click', function() { opts.onSave(); });
+    }
+    if (btnCancel && opts.onCancel) {
+      btnCancel.addEventListener('click', function() { opts.onCancel(); });
+    }
+    if (btnDelete) {
+      if (opts.onDelete) {
+        btnDelete.style.display = '';
+        btnDelete.addEventListener('click', function() { opts.onDelete(); });
+      } else {
+        btnDelete.style.display = 'none';
+      }
+    }
+    if (btnTestRun && opts.onTestRun) {
+      btnTestRun.addEventListener('click', function() { opts.onTestRun(); });
+    }
+
+    return {
+      setDirty: function(isDirty) { if (btnSave) btnSave.disabled = !isDirty; }
+    };
+  }
+
+  window.HirisEditorKit = {
+    field: {
+      text: fieldText,
+      number: fieldNumber,
+      checkbox: fieldCheckbox,
+      select: fieldSelect,
+      textarea: fieldTextarea
+    },
+    modelSelect: modelSelect,
+    setModelValue: setModelValue,
+    checkGroup: checkGroup,
+    dirty: { track: track, guard: guard },
+    saveBar: saveBar
+  };
+})();

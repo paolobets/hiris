@@ -166,3 +166,54 @@ def test_save_and_load_entities_roundtrip(tmp_path):
     save_categories(d, {"switch": "green"}, entities={"switch.gate": "off", "bad id": "green"})
     ents = load_entities(d)
     assert ents == {"switch.gate": "off"}                          # malformed id dropped
+
+
+# ---------------------------------------------------------------------------
+# handle_autonomy_summary: backend-authoritative Autonomia summary (review
+# finding, SP-4 Fase B Task 4) -- the Chatbot editor used to recompute the
+# tier client-side WITHOUT the DANGEROUS_DOMAINS denylist, so it could show
+# "green" for e.g. cover.* even though gate_action always deny_dangerous it.
+# The endpoint now uses security.semaphore.summarize_autonomy, the SAME
+# function real enforcement is built from -- no drift possible.
+# ---------------------------------------------------------------------------
+from hiris.app.api.handlers_gateway_policy import handle_autonomy_summary
+
+
+def _summary_app(tmp_path):
+    app = _app(tmp_path)
+    app.router.add_post("/api/gateway/autonomy-summary", handle_autonomy_summary)
+    return app
+
+
+@pytest.mark.asyncio
+async def test_autonomy_summary_dangerous_domain_never_green_even_if_configured_green(aiohttp_client, tmp_path):
+    save_categories(str(tmp_path), {"cover": "green"})
+    app = _summary_app(tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post("/api/gateway/autonomy-summary", json={"entities": ["cover.living"]})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["counts"] == {"green": 0, "yellow": 0, "red": 0, "off": 0, "dangerous": 1}
+    assert data["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_autonomy_summary_mixed_scope(aiohttp_client, tmp_path):
+    save_categories(str(tmp_path), {"light": "green", "switch": "red"}, entities={"fan.y": "off"})
+    app = _summary_app(tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post("/api/gateway/autonomy-summary", json={
+        "entities": ["light.kitchen", "switch.x", "cover.living", "fan.y"],
+    })
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["counts"] == {"green": 1, "yellow": 0, "red": 1, "off": 1, "dangerous": 1}
+    assert data["total"] == 4
+
+
+@pytest.mark.asyncio
+async def test_autonomy_summary_rejects_non_list_entities(aiohttp_client, tmp_path):
+    app = _summary_app(tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post("/api/gateway/autonomy-summary", json={"entities": "not-a-list"})
+    assert resp.status == 400

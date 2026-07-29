@@ -1,5 +1,51 @@
 /* HIRIS · Designer · bootstrap (Phase 4.1: chrome + nav active state) */
 (function() {
+  /* Guard di navigazione (bug live #2) -- hoistato qui dal Task 6 (SP-4
+     Fase B). Prima era installato dal top-level IIFE di chatbot-editor.js:
+     funzionava solo perché config.html carica SEMPRE quel file insieme a
+     ogni route, non perché ogni editor fosse garantito protetto -- un
+     accoppiamento strutturale fragile (una futura route/editor che non lo
+     includesse resterebbe silenziosamente senza guard). Qui la garanzia è
+     "per costruzione": main.js è l'ultimo script caricato da config.html
+     ed è comune a OGNI route. 'unsaved' resta la chiave HirisState
+     GLOBALE condivisa fra tutti gli editor (vedi C9 nel grounding) -- un
+     solo guard() per l'intera pagina, mai uno per editor (altrimenti
+     confirm() doppio -- vedi le note lasciate in chatbot-editor.js e
+     agentbot-editor.js). Deve girare PRIMA che HirisRouter.start() (sotto,
+     dentro DOMContentLoaded) registri il proprio listener 'hashchange':
+     gira qui a livello top dell'IIFE, cioè al parse dello script --
+     sempre prima che DOMContentLoaded scateni mountChrome()/
+     HirisRouter.start(). */
+  /* Secondo argomento (review finale pre-1.0, finding I2): quando l'utente
+     CONFERMA di uscire da un editor con modifiche non salvate, pulisce
+     'unsaved' -- senza, restava true dopo la navigazione e ogni click
+     successivo fra pagine SENZA form (es. Consumi -> Task) ririchiedeva la
+     stessa conferma a vuoto, finché l'utente non riapriva un editor
+     (unico altro punto che lo azzerava, setupStickyActions).
+
+     Guardia if(window.HirisEditorKit) (review finale pre-1.0, finding I5
+     -- Important): questa chiamata gira al PARSE del file, prima che
+     qualunque route si registri (vedi commento sopra) -- era l'unica
+     chiamata cross-file di main.js SENZA existence-check (ogni altro
+     window.HirisX qui sotto, es. HirisDashboard/HirisChatbotEditor/ecc.,
+     è dietro un `if (window.HirisX)`). Se editor-kit.js fallisse il parse
+     (sintassi rotta in un rilascio), questa riga lanciava un
+     ReferenceError NON catturato al top-level dell'IIFE -- l'intero resto
+     del file (tutte le HirisRouter.register() sotto + il DOMContentLoaded
+     che chiama HirisRouter.start()) non veniva mai eseguito: l'intera SPA
+     di config (Brain, Chatbot, Agentbot, Modelli, Gateway, Storico...)
+     renderizzava bianca, senza alcun errore visibile in pagina (solo in
+     console). Qui: se il kit manca, si salta silenziosamente
+     l'installazione del guard (nessuna protezione da modifiche non
+     salvate finché non si risolve il file rotto) invece di bloccare
+     l'intera pagina -- degradazione, non crash totale. */
+  if (window.HirisEditorKit && window.HirisEditorKit.dirty) {
+    HirisEditorKit.dirty.guard(
+      function() { return !!HirisState.get('unsaved'); },
+      function() { HirisState.set('unsaved', false); }
+    );
+  }
+
   function mountChrome() {
     var sn = document.getElementById('side-nav');
     var pc = document.getElementById('page-chrome');
@@ -44,7 +90,7 @@
       paint(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
 
-    /* v0.10.5: fetch diretto invece di loadChatbots() (in chatbot-form.js, caricato
+    /* v0.10.5: fetch diretto invece di loadChatbots() (in chatbot-editor.js, caricato
        solo quando user apre editor). Al boot loadChatbots non è ancora definito,
        quindi badge restava "—" finché user non apriva un agente. */
     fetch('api/chatbots').then(function(r) { return r.ok ? r.json() : []; })
@@ -130,6 +176,21 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Lista Chatbot</div>';
     }
   });
+  /* SP-4 Fase B Task 6: creazione goal-first (config/create-wizard.js).
+     #/nuovo È il percorso di creazione predefinito (le CTA di dashboard.js/
+     chatbots-list.js puntano qui): Obiettivo -> deriva il tipo (euristica
+     deterministica, nessun LLM, sempre modificabile) -> step guidati per
+     tipo -> crea via POST e apre l'editor completo su #/chatbots/{id} o
+     #/agentbots/{id} come livello "Avanzate". #/chatbots/new RESTA il
+     percorso diretto/avanzato (subito l'editor Chatbot vuoto) -- non
+     rimosso, non redirect: sono due ingressi distinti sulla stessa
+     entità, non un alias. */
+  HirisRouter.register(/^#\/nuovo\/?$/, function() {
+    setCrumbHere('Nuovo');
+    HirisState.set('activeChatbotId', null);
+    HirisState.set('activeAgentbotId', null);
+    HirisCreateWizard.mount();
+  });
   HirisRouter.register(/^#\/chatbots\/new\/?$/, function() {
     setCrumbHere('Chatbot / Nuovo');
     HirisState.set('activeChatbotId', null);
@@ -142,27 +203,13 @@
   });
   HirisRouter.register(/^#\/proposals\/?$/, function() {
     setCrumbHere('Proposte');
+    /* SP-4 Fase B Task 2: proposals.js è ora un <script src> statico in
+       config.html (era l'unico loader ad-hoc rimasto, separato da quello di
+       chatbot-editor.js) — loadProposals() è già definita a questo punto. */
     if (window.HirisProposalsRoute) {
       HirisProposalsRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Proposte</div>';
-    }
-    /* proposals.js è in LEGACY_SCRIPTS — lo carichiamo on-demand qui */
-    if (typeof loadProposals !== 'function' && window.HirisChatbotEditor) {
-      /* Reuse the legacy loader from chatbot-editor.js by triggering a no-op mount path? */
-      /* Simpler: load proposals.js directly */
-      var s = document.querySelector('script[data-legacy="static/config/proposals.js"]');
-      if (!s) {
-        s = document.createElement('script');
-        s.src = 'static/config/proposals.js';
-        s.dataset.legacy = 'static/config/proposals.js';
-        s.onload = function() {
-          if (typeof loadProposals === 'function' && window.HirisProposalsRoute) {
-            loadProposals('pending');
-          }
-        };
-        document.head.appendChild(s);
-      }
     }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {
@@ -212,6 +259,22 @@
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Agentbot</div>';
     }
+  });
+  /* SP-4 Fase B Task 5: editor per-entità (config/agentbot-editor.js),
+     estratto dal blocco CRUD che agentbot-route.js possedeva -- stesso
+     pattern di #/chatbots/new e #/chatbots/{id} sopra. Il pattern "/new"
+     va registrato PRIMA di quello generico "/([^/]+)$": altrimenti
+     "#/agentbots/new" combacerebbe comunque con [^/]+ e finirebbe nel ramo
+     sbagliato (stesso ordine già usato per i Chatbot qui sopra). */
+  HirisRouter.register(/^#\/agentbots\/new\/?$/, function() {
+    setCrumbHere('Agentbot / Nuovo');
+    HirisState.set('activeAgentbotId', null);
+    HirisAgentbotEditor.mount(null);
+  });
+  HirisRouter.register(/^#\/agentbots\/([^/]+)$/, function(m) {
+    setCrumbHere('Agentbot / ' + m[1]);
+    HirisState.set('activeAgentbotId', m[1]);
+    HirisAgentbotEditor.mount(m[1]);
   });
   /* v0.10.5: rimosso route /settings — la nav voce è stata tolta da config.html
      (era solo placeholder "Implementata in Phase 11"). Re-aggiungere quando

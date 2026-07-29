@@ -152,8 +152,14 @@ class MQTTPublisher:
                 "manufacturer": "HIRIS",
                 # Slice 5 Task 2 dropped Agent.type — every persona is the
                 # chat entity now, so there is no per-chatbot "model" variant
-                # left to report here.
-                "model": "Persona",
+                # left to report here. Review finale pre-1.0, finding m8:
+                # this device is built per-Chatbot (unique_id/identifiers are
+                # "chatbot_{id}_..."), and "Persona" is the retired Slice-5
+                # name for that same entity -- the current model (CLAUDE.md
+                # "The current model — three AI entities") calls it
+                # "Chatbot" everywhere else, so every HIRIS MQTT device was
+                # showing model "Persona" in HA instead of "Chatbot".
+                "model": "Chatbot",
             },
         }
         if component == "button":

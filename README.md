@@ -7,7 +7,6 @@
 
 <p align="center">
   <a href="https://github.com/paolobets/hiris/releases"><img src="https://img.shields.io/github/v/release/paolobets/hiris?label=version&color=blue" alt="version"/></a>
-  <img src="https://img.shields.io/badge/stage-experimental-orange" alt="stage"/>
   <img src="https://img.shields.io/badge/Home%20Assistant-2023.1%2B-41BDF5" alt="Home Assistant"/>
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-lightgrey" alt="arch"/>
   <img src="https://img.shields.io/badge/license-Proprietary-red" alt="license"/>
@@ -19,8 +18,6 @@
 
 ---
 
-> **Experimental** — HIRIS is under active development. APIs and configuration options may change between releases.
-
 ## Why HIRIS exists
 
 Most smart home AI tools are glorified voice assistants: they hear a command and execute it. HIRIS is different — it *thinks* before acting.
@@ -29,8 +26,8 @@ When you ask HIRIS why your electricity bill is higher this month, it queries yo
 
 HIRIS is built on four ideas:
 
-- **Agents as first-class citizens** — not a single chatbot, but a team of specialized agents each with their own trigger, permissions, and budget
-- **Cost visibility** — every euro spent on AI is tracked, capped, and visible; agents auto-disable when they exceed their budget
+- **Three clear entities, not one blob** — Chatbot, Agentbot and Brain each have one job and one contract (see below), so you always know why something happened
+- **Security is structural, not a setting** — every action, from any surface, passes through the same semaforo (tier + denylist + step-up); an Agentbot can never choose its own action, only trigger a declared one
 - **Local-first when possible** — simple automations run entirely offline; AI is called only when reasoning is actually needed
 - **Your home, not a generic demo** — context about your house, your family, your habits is part of every AI call
 
@@ -53,21 +50,33 @@ HIRIS: "Done. Current draw: 2.4 kW — oven (1.8 kW), fridge (0.6 kW).
         Solar is producing 0W (it's night)."
 ```
 
-### Two agent types, four trigger modes
+### Three entities, one clear job each
 
-| Type | What it does |
-|---|---|
-| **Chat** | Natural language interface — responds to user messages, full tool access |
-| **Agent** | Autonomous loop — gathers context, reasons, acts or notifies based on a trigger |
+| Entity | What it does | How it reasons | Who creates it |
+|---|---|---|---|
+| **Chatbot** | Conversational — you ask, it answers. | Free-form prompt; can read HA freely and use tools within its allowlist; actions are gated by the semaforo. **No autonomous trigger** — it only runs when you talk to it. | You |
+| **Agentbot** | Autonomous — acts or notifies on its own, on a trigger (event or schedule), without you asking. | A restricted, tool-free reasoning step (optional) that returns a JSON verdict — never a free-form action. The action it may take is **declared in its configuration**, never chosen by the AI. Gated by the semaforo. | The Brain proposes one, or you create it directly |
+| **Brain** | The fulcrum — observes the house, tracks habits, and proposes (new Agentbots, HA automations, config changes). Prefers flagging a problem and suggesting the fix over acting on its own. | Continuous reasoning over the home's state; lives on the app's home screen (`#/`). | Built-in — always there |
 
-Agent-type trigger modes:
+### Goal-first creation
 
-| Trigger | Example use case |
-|---|---|
-| **Periodic** (every N min) | Energy anomaly monitor, security sweep |
-| **Reactive** (HA `state_changed`) | Door left open, presence detected |
-| **Cron** (fixed time) | Morning briefing at 7:00, pre-heat at 17:30 |
-| **Manual** (test only) | On-demand test run from the UI |
+Instead of picking "Chatbot or Agentbot" in front of an empty form, you start
+from `#/nuovo` with a goal in plain language ("avvisami se la porta resta
+aperta" vs "rispondimi quante luci sono accese"). HIRIS derives the right
+entity type with a deterministic heuristic — **no LLM call** — walks you
+through a few guided steps for that type, and always lets you confirm or
+override the suggested type before continuing. The full editor (`#/chatbots/
+new`, `#/agentbots/new`) remains available for starting from a blank form.
+
+### Security: one gate, no exceptions
+
+Every action HIRIS could take on your home — from a Chatbot, an Agentbot, or
+the gateway — passes through the same **semaforo**: a tier per domain/entity
+(green/yellow/red/off), a hard denylist for dangerous domains (locks, alarms,
+covers, sirens, garage doors), and step-up confirmation for anything above
+green. There is no surface that bypasses it, and an Agentbot's reasoning step
+never gets to invent an action — only the action declared in its own
+configuration can ever fire.
 
 ### Semantic Home Map
 
@@ -79,21 +88,15 @@ HIRIS automatically builds a semantic model of your home by classifying every en
 
 ### Multi-provider LLM
 
-Supported backends: Anthropic Claude, OpenAI (GPT-4o, GPT-4.1, o-series), any Ollama-compatible local model.
+Supported backends: Anthropic Claude (API or Claude Max subscription), OpenAI (GPT-4o, GPT-4.1, o-series), OpenRouter, any Ollama-compatible local model — each toggled on independently, used only when active *and* credentialed.
 
-**When using Claude**, HIRIS selects models automatically by agent type:
-
-- **Chat agents** → Claude Sonnet (highest quality)
-- **Agent type** (periodic / reactive / cron) → Claude Haiku (cheaper for high-frequency tasks)
-- **Entity classification** → Local Ollama model (free, if configured)
-
-**When using Ollama**, the model is selected per-agent in the agent designer UI. The model dropdown is populated live from your Ollama instance and grouped by provider.
+Every Chatbot and every Agentbot picks its own model (or `auto`), and the Brain has its own `brain_model` setting — there's no more one-size-fits-all mapping by entity type. The model dropdown is populated live from your active, credentialed providers.
 
 **Fallback chain:** when `model="auto"`, if the primary backend is unavailable the next one in the strategy chain is tried automatically (`balanced`: Claude → OpenRouter → OpenAI → Ollama; `quality_first`: Claude → OpenAI → OpenRouter → Ollama; `cost_first`: Ollama → OpenRouter → OpenAI → Claude).
 
 ### Memory & RAG
 
-HIRIS stores and retrieves memories across conversations. Before every Claude call, relevant past interactions are injected as context — so agents remember what happened last Tuesday and can build on it.
+HIRIS stores and retrieves memories across conversations. Before every Claude call, relevant past interactions are injected as context — so a Chatbot remembers what happened last Tuesday and can build on it.
 
 ### Notifications everywhere
 
@@ -101,33 +104,40 @@ Send alerts via Home Assistant push, Telegram, WhatsApp, ntfy, Gotify, Pushover,
 
 ### HA health monitoring
 
-A live health snapshot of your Home Assistant installation — unavailable entities, integration errors, pending updates, and system info — updated in real time via WebSocket and refreshed every 30 minutes. Accessible to any agent via the `get_ha_health` tool and via `GET /api/health/ha`.
+A live health snapshot of your Home Assistant installation — unavailable entities, integration errors, pending updates, and system info — updated in real time via WebSocket and refreshed every 30 minutes. Accessible to any Chatbot (within its tool allowlist) via the `get_ha_health` tool, via `GET /api/health/ha`, and feeds the Brain's own read-only health scan.
 
-### Automation proposal workflow
+### Proposal workflow
 
-Agents can propose new automations (native HA or HIRIS agents) for human review instead of executing changes autonomously. Proposals are queued in a persistent store with pending/applied/rejected/archived lifecycle. The Agent Designer UI shows pending proposals with approve and reject actions, keeping a human in the loop for configuration changes.
+The Brain proposes new Agentbots, HA automations, and config changes for human review instead of applying them on its own — it prefers to flag a problem and suggest the fix. Proposals show up in the Brain's home stream (`#/`) and in `#/proposals`, with approve/reject actions, keeping a human in the loop for every configuration change.
 
 ---
 
 ## Use cases
 
-### Morning briefing
-A **preventive agent** triggers at 7:00 AM. It fetches yesterday's energy consumption, today's weather forecast, and any pending calendar events. Claude writes a concise briefing and sends it as a push notification.
-
-### Energy anomaly detection
-A **monitor agent** runs every 15 minutes. It checks consumption against historical patterns. If the house is drawing 3× more than usual at 11 PM with no one awake, it sends an alert with the specific culprits identified.
-
 ### Door left open
-A **reactive agent** listens to the front door contact sensor. If it's been open for more than 5 minutes, Claude checks whether someone is home (via presence sensors), decides if this is unusual, and sends a contextual notification — not just "door open" but "front door has been open 7 minutes, no motion detected inside for the last 20 minutes."
+An **Agentbot** with an event trigger on the front door contact sensor
+(`entity_id`, `operator: ">"` a duration in minutes) sends a notification the
+moment the condition is met — no polling, no custom code. Turn on its
+optional reasoning step to have the model phrase the alert instead of a flat
+template message.
 
-### Night security check
-A **monitor agent** runs at midnight. It reads all door/window sensors and presence detectors. If anything is unexpected, it sends a structured security report.
+### Energy anomaly alert
+An **Agentbot** with an event trigger on your grid power sensor
+(`threshold` in watts) notifies you the instant consumption crosses the
+line. Its action is declared up front — the AI never decides *what* to do,
+only whether and how to phrase the notification.
 
-### Pre-heat before arrival
-A **preventive agent** at 5:30 PM checks tomorrow's forecast and your calendar. If it's going to be cold and you have an early meeting, it starts heating 30 minutes earlier than usual.
+### Morning briefing, pre-heat, or a security sweep across multiple sensors
+These need to read several sources (forecast, calendar, more than one
+sensor) and reason across them — which is exactly what a **Chatbot**'s free
+tool access is for. Ask it in chat, or from a Lovelace card, whenever you
+want the answer: *"give me yesterday's energy summary and today's
+forecast"*. An Agentbot's reasoning step is intentionally tool-free, so this
+kind of multi-source, on-demand judgment call belongs to a Chatbot, not an
+Agentbot.
 
 ### Chat for guests
-A **chat agent** restricted to lighting and climate only, with `restrict_to_home: true` and `require_confirmation: true` — so guests can control the house without accessing sensitive data or executing unreviewed actions.
+A **Chatbot** restricted to lighting and climate only, with `restrict_to_home: true` and `require_confirmation: true` — so guests can control the house without accessing sensitive data or executing unreviewed actions.
 
 ---
 
@@ -161,7 +171,7 @@ A **chat agent** restricted to lighting and climate only, with `restrict_to_home
 | `apprise_urls` | Notification URLs — one per channel (optional) |
 | `internal_token` | Shared secret for inter-addon calls (optional) |
 
-> If `local_model.url` and `local_model.model` are set, HIRIS runs fully offline using Ollama as the AI backend — the full agentic loop, tool use, and all agent types remain available. No API key is required. If neither a cloud key nor a local model is configured, AI calls are disabled.
+> If `local_model.url` and `local_model.model` are set, HIRIS runs fully offline using Ollama as the AI backend — the full agentic loop, tool use, and all three entities remain available. No API key is required. If neither a cloud key nor a local model is configured, AI calls are disabled.
 
 ---
 
@@ -171,7 +181,7 @@ Add the chat card to any dashboard:
 
 ```yaml
 type: custom:hiris-chat-card
-agent_id: hiris-default
+chatbot_id: hiris-default
 title: "Home Assistant"
 ```
 
@@ -184,9 +194,10 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 ```
 ┌─────────────────────────────────────────────┐
 │  LAYER 2 — AI Reasoning                     │
-│  Claude / OpenAI / Ollama + tool use        │
-│  • Natural language chat                    │
-│  • Anomaly detection & reasoning            │
+│  Claude / OpenAI / OpenRouter / Ollama      │
+│  • Chatbot — free-form chat + tool use      │
+│  • Agentbot — tool-free JSON-verdict step   │
+│  • Brain — continuous reasoning + proposals │
 │  • Semantic Home Map + RAG pre-fetch        │
 │  • LLM Router with strategy + fallback      │
 │  • Memory store (vector search)             │
@@ -194,10 +205,10 @@ HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resour
 ┌─────────────────────────────────────────────┐
 │  LAYER 1 — Local Flow Engine                │
 │  Runs 100% offline — zero AI cost           │
-│  • APScheduler (monitor / preventive)       │
-│  • HA WebSocket (reactive triggers)         │
+│  • APScheduler (Agentbot schedule triggers) │
+│  • HA WebSocket (Agentbot event triggers)   │
+│  • Semaforo: tier + denylist + step-up gate │
 │  • Task engine with action chaining         │
-│  • Per-agent budget enforcement             │
 └─────────────────────────────────────────────┘
 ```
 
