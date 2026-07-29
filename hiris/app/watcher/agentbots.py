@@ -399,6 +399,29 @@ def _is_positive_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool) and v > 0
 
 
+def _validate_str_list(raw, key) -> list | None:
+    """Validate a perimeter allow-list field (`allowed_entities` /
+    `allowed_services` of `raw`, keyed by `key`). Absent (missing key, or
+    explicit `null`) -> `[]`, same absent-is-default convention as the rest
+    of `_validate_perimeter`. PRESENT but not a list, or containing any item
+    that isn't a clean non-empty string (`_clean_nonempty_str`), -> None,
+    i.e. present-but-invalid -> reject the WHOLE Agentbot, not just drop the
+    bad item -- same fail-safe-optional convention `_validate_perimeter`'s
+    own docstring describes for every one of its fields."""
+    values_raw = raw.get(key)
+    if values_raw is None:
+        return []
+    if not isinstance(values_raw, list):
+        return None
+    values = []
+    for item in values_raw:
+        cleaned_item = _clean_nonempty_str(item)
+        if cleaned_item is None:
+            return None  # present but invalid item -> reject the whole Agentbot
+        values.append(cleaned_item)
+    return values
+
+
 def _validate_perimeter(raw) -> dict | None:
     """Validate the `perimeter` block (Agenti v1.1 Fase 2 Task 2): the scope
     an objective Agentbot is allowed to reason/act over -- entities,
@@ -429,29 +452,13 @@ def _validate_perimeter(raw) -> dict | None:
     if not isinstance(raw, dict):
         return None
 
-    allowed_entities_raw = raw.get("allowed_entities")
-    if allowed_entities_raw is None:
-        allowed_entities_raw = []
-    if not isinstance(allowed_entities_raw, list):
-        return None
-    allowed_entities = []
-    for item in allowed_entities_raw:
-        cleaned_item = _clean_nonempty_str(item)
-        if cleaned_item is None:
-            return None  # present but invalid item -> reject the whole Agentbot
-        allowed_entities.append(cleaned_item)
+    allowed_entities = _validate_str_list(raw, "allowed_entities")
+    if allowed_entities is None:
+        return None  # present but invalid -> reject the whole Agentbot
 
-    allowed_services_raw = raw.get("allowed_services")
-    if allowed_services_raw is None:
-        allowed_services_raw = []
-    if not isinstance(allowed_services_raw, list):
-        return None
-    allowed_services = []
-    for item in allowed_services_raw:
-        cleaned_item = _clean_nonempty_str(item)
-        if cleaned_item is None:
-            return None
-        allowed_services.append(cleaned_item)
+    allowed_services = _validate_str_list(raw, "allowed_services")
+    if allowed_services is None:
+        return None  # present but invalid -> reject the whole Agentbot
 
     max_tier = raw.get("max_tier")
     if max_tier is None:

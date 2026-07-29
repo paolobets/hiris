@@ -905,6 +905,16 @@ def test_perimeter_forbidden_in_rule_mode_even_when_empty_dict():
     assert validate_agentbot(raw) is None
 
 
+def test_perimeter_empty_dict_yields_defaults_in_objective_mode():
+    """An explicit `{}` is a different shape than absent/null (it IS a dict,
+    just with no fields set) -- must still normalize to the full default
+    block, not be treated as malformed. The rule-mode side of `{}` is
+    already covered by test_perimeter_forbidden_in_rule_mode_even_when_empty_dict."""
+    cleaned = validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {}})
+    assert cleaned is not None
+    assert cleaned["perimeter"] == _DEFAULT_PERIMETER
+
+
 def test_perimeter_explicit_values_preserved_in_objective_mode():
     raw = {**_OBJECTIVE_BASE, "perimeter": {
         "allowed_entities": ["light.kitchen", "sensor.*"],
@@ -966,6 +976,13 @@ def test_perimeter_rejects_zero_and_negative_budget_tokens():
 
 def test_perimeter_rejects_non_int_deadline_min():
     raw = {**_OBJECTIVE_BASE, "perimeter": {"deadline_min": 1.5}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_bool_deadline_min():
+    """Same bool-is-an-int-subclass trap as budget_tokens -- both go through
+    the same `_is_positive_int`, so both need the same regression guard."""
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"deadline_min": True}}
     assert validate_agentbot(raw) is None
 
 
