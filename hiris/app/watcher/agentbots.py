@@ -399,25 +399,46 @@ def _is_positive_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool) and v > 0
 
 
-def _validate_str_list(raw, key) -> list | None:
+# Rejection sentinel for `_validate_str_list`. `None` is now a MEANINGFUL
+# RETURN VALUE for those fields ("absent -> no restriction on this axis"), so
+# it can no longer double as the "present but invalid" signal the way it does
+# for the other validators in this module.
+_INVALID_STR_LIST = object()
+
+
+def _validate_str_list(raw, key):
     """Validate a perimeter allow-list field (`allowed_entities` /
-    `allowed_services` of `raw`, keyed by `key`). Absent (missing key, or
-    explicit `null`) -> `[]`, same absent-is-default convention as the rest
-    of `_validate_perimeter`. PRESENT but not a list, or containing any item
-    that isn't a clean non-empty string (`_clean_nonempty_str`), -> None,
-    i.e. present-but-invalid -> reject the WHOLE Agentbot, not just drop the
-    bad item -- same fail-safe-optional convention `_validate_perimeter`'s
-    own docstring describes for every one of its fields."""
+    `allowed_services` of `raw`, keyed by `key`).
+
+    The two possible "empty" outcomes are OPPOSITE and must never be
+    collapsed into each other -- this is the single semantics the whole
+    chain (`tools/dispatcher.py` -> Task -> `task_engine._run_action`)
+    agrees on:
+
+      * Absent (missing key, or explicit `null`) -> `None` = NO RESTRICTION
+        on this axis. The Agentbot is still confined by the semaforo
+        (denylist + tier) and by `max_tier`, but this particular allow-list
+        imposes no extra boundary.
+      * An EXPLICITLY empty list (`[]`) stays `[]` = DENY EVERYTHING. The
+        user wrote "grant nothing", and nothing is what gets granted; it is
+        never widened into `None`.
+
+    PRESENT but not a list, or containing any item that isn't a clean
+    non-empty string (`_clean_nonempty_str`), -> `_INVALID_STR_LIST`, i.e.
+    present-but-invalid -> reject the WHOLE Agentbot, not just drop the bad
+    item -- same fail-safe-optional convention `_validate_perimeter`'s own
+    docstring describes for every one of its fields."""
     values_raw = raw.get(key)
     if values_raw is None:
-        return []
+        return None  # absent -> no restriction on this axis
     if not isinstance(values_raw, list):
-        return None
+        return _INVALID_STR_LIST
     values = []
     for item in values_raw:
         cleaned_item = _clean_nonempty_str(item)
         if cleaned_item is None:
-            return None  # present but invalid item -> reject the whole Agentbot
+            # present but invalid item -> reject the whole Agentbot
+            return _INVALID_STR_LIST
         values.append(cleaned_item)
     return values
 
@@ -426,15 +447,35 @@ def _validate_perimeter(raw) -> dict | None:
     """Validate the `perimeter` block (Agenti v1.1 Fase 2 Task 2): the scope
     an objective Agentbot is allowed to reason/act over -- entities,
     services, the autonomy ceiling (`max_tier`), and a per-execution budget/
-    deadline. Consumed by later tasks (3, 5, 6); THIS task only shapes and
-    validates it, no runtime enforcement here.
+    deadline.
+
+    ONE list governs BOTH SIGHT AND TOUCH (Fase 2, deliberate). Along the
+    whole chain the SAME `allowed_entities` list is used to filter what the
+    agent may READ (`tools/dispatcher.py`: `get_entity_states`,
+    `get_history`, `get_home_status`, `get_entities_on`,
+    `get_entities_by_domain`, `get_area_entities`) and to gate what it may
+    ACT ON (`call_ha_service`, `set_input_helper`, `trigger_automation`,
+    `toggle_automation`, and the Tasks it emits, enforced at execution time
+    by `task_engine._run_action`). There is no separate "readable" axis: an
+    entity that is not listed is not merely un-actuatable, it is NOT EVEN
+    VISIBLE to the agent's reasoning. So an Agentbot with
+    `allowed_entities: ["light.cucina"]` cannot read `sensor.consumo_cucina`
+    -- if the agent needs to SEE something to decide, that something must be
+    listed too. `allowed_services` is action-only (there is nothing to read
+    through a service).
+
+    The empty-vs-absent distinction is the same everywhere in the chain (see
+    `_validate_str_list`): `None` = no restriction on that axis, `[]` =
+    deny everything on that axis. They are opposites, never interchangeable.
 
     Absent (missing key, or explicit `null` -- same convention as `mode`/
     `severity`/`enabled`) -> a fully-populated block of explicit defaults,
     never a rejection: an objective Agentbot with no declared perimeter is
     still confined by the semaforo, but that confinement must be made
-    VISIBLE rather than silently implied. This mirrors `_validate_reasoning`
-    in that "absent" always normalizes rather than raising/rejecting.
+    VISIBLE rather than silently implied -- hence the block is ALWAYS
+    materialized, with the un-restricted allow-lists spelled out as explicit
+    `None`s rather than omitted. This mirrors `_validate_reasoning` in that
+    "absent" always normalizes rather than raising/rejecting.
 
     PRESENT but malformed (wrong shape, or any single field with a value
     outside its allowed space, e.g. `max_tier: "red"`) -> None, i.e. reject
@@ -453,11 +494,11 @@ def _validate_perimeter(raw) -> dict | None:
         return None
 
     allowed_entities = _validate_str_list(raw, "allowed_entities")
-    if allowed_entities is None:
+    if allowed_entities is _INVALID_STR_LIST:
         return None  # present but invalid -> reject the whole Agentbot
 
     allowed_services = _validate_str_list(raw, "allowed_services")
-    if allowed_services is None:
+    if allowed_services is _INVALID_STR_LIST:
         return None  # present but invalid -> reject the whole Agentbot
 
     max_tier = raw.get("max_tier")

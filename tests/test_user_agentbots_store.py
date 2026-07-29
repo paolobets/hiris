@@ -864,9 +864,15 @@ _OBJECTIVE_BASE = {
     "trigger": {"type": "schedule", "interval_min": 60},
 }
 
+# `None`, NOT `[]`: an undeclared allow-list is "no restriction on this axis",
+# and the whole chain (dispatcher -> Task -> task_engine._run_action) reads it
+# that way. `[]` is the OPPOSITE ("deny everything") and is only ever produced
+# by a user who explicitly wrote an empty list -- see
+# test_perimeter_explicit_empty_list_is_kept_as_deny_all below. The block is
+# still ALWAYS materialized, with the nulls spelled out.
 _DEFAULT_PERIMETER = {
-    "allowed_entities": [],
-    "allowed_services": [],
+    "allowed_entities": None,
+    "allowed_services": None,
     "max_tier": "green",
     "budget_tokens": 4096,
     "deadline_min": 5,
@@ -932,6 +938,50 @@ def test_perimeter_explicit_values_preserved_in_objective_mode():
         "budget_tokens": 2000,
         "deadline_min": 10,
     }
+
+
+def test_perimeter_explicit_empty_list_is_kept_as_deny_all():
+    """`[]` and "absent" are OPPOSITES and must never collapse into each
+    other. A user who writes `"allowed_entities": []` has said "grant
+    nothing", and that is what has to reach `tools/dispatcher.py` and
+    `task_engine._run_action` -- both of which read `[]` as "deny
+    everything". Widening it to `None` here would silently hand the agent
+    the whole house."""
+    raw = {**_OBJECTIVE_BASE, "perimeter": {
+        "allowed_entities": [], "allowed_services": [],
+    }}
+    cleaned = validate_agentbot(raw)
+    assert cleaned is not None
+    assert cleaned["perimeter"]["allowed_entities"] == []
+    assert cleaned["perimeter"]["allowed_services"] == []
+    # ...and NOT the "no restriction" default.
+    assert cleaned["perimeter"]["allowed_entities"] is not None
+    assert cleaned["perimeter"]["allowed_services"] is not None
+
+
+def test_perimeter_absent_allow_lists_are_none_not_empty_list():
+    """The other half of the same distinction: absent (or explicit `null`)
+    -> `None` = "no restriction on this axis". Materialized VISIBLY (the key
+    is present with a null value), never omitted."""
+    for perimeter_raw in (None, {}, {"max_tier": "yellow"},
+                          {"allowed_entities": None, "allowed_services": None}):
+        cleaned = validate_agentbot({**_OBJECTIVE_BASE, "perimeter": perimeter_raw})
+        assert cleaned is not None, perimeter_raw
+        assert "allowed_entities" in cleaned["perimeter"], perimeter_raw
+        assert "allowed_services" in cleaned["perimeter"], perimeter_raw
+        assert cleaned["perimeter"]["allowed_entities"] is None, perimeter_raw
+        assert cleaned["perimeter"]["allowed_services"] is None, perimeter_raw
+
+
+def test_perimeter_one_axis_declared_leaves_the_other_unrestricted():
+    """Per-axis, not all-or-nothing: declaring entities must not silently
+    lock down services (nor the reverse)."""
+    cleaned = validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {
+        "allowed_entities": ["light.cucina"],
+    }})
+    assert cleaned is not None
+    assert cleaned["perimeter"]["allowed_entities"] == ["light.cucina"]
+    assert cleaned["perimeter"]["allowed_services"] is None
 
 
 def test_perimeter_drops_unknown_nested_fields():

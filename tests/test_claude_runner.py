@@ -111,24 +111,45 @@ async def test_allowed_entities_filters_get_entity_states(runner):
     assert "sensor.temp" not in call_args
 
 
-@pytest.mark.asyncio
-async def test_allowed_entities_empty_means_no_restriction(runner):
+def _entity_states_tool_call(runner, tool_id):
     runner._ha.get_states = AsyncMock(return_value=[
         {"entity_id": "light.cucina", "state": "on", "attributes": {}},
     ])
     tool_block = MagicMock()
     tool_block.type = "tool_use"
-    tool_block.id = "tu_full"
+    tool_block.id = tool_id
     tool_block.name = "get_entity_states"
     tool_block.input = {"ids": ["light.cucina", "sensor.temp"]}
     msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
     text_block = MagicMock(type="text", text="OK")
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("Query libera", allowed_entities=[])
+
+
+@pytest.mark.asyncio
+async def test_allowed_entities_none_means_no_restriction(runner):
+    """`None` = ABSENCE of a perimeter -> every entity is readable. This is
+    the historical unscoped call (sentinel wakes, briefing, a chatbot with
+    no allow-list configured) and it must keep behaving exactly so."""
+    _entity_states_tool_call(runner, "tu_full")
+    await runner.chat("Query libera", allowed_entities=None)
     call_args = runner._ha.get_states.call_args[0][0]
     assert "light.cucina" in call_args
     assert "sensor.temp" in call_args
+
+
+@pytest.mark.asyncio
+async def test_allowed_entities_empty_list_denies_everything(runner):
+    """`[]` = "nothing granted" -> NOTHING is readable. Opposite of `None`.
+    This is the semantics `task_engine._run_action` has always enforced
+    (`if task.allowed_entities is not None`); before this fix the dispatcher
+    read the very same `[]` as "unrestricted", so an objective Agentbot with
+    an empty perimeter could READ the whole house while every Task it
+    emitted was silently inert."""
+    _entity_states_tool_call(runner, "tu_deny")
+    await runner.chat("Query vietata", allowed_entities=[])
+    call_args = runner._ha.get_states.call_args[0][0]
+    assert call_args == [], "un perimetro vuoto non concede NESSUNA entita'"
 
 
 @pytest.mark.asyncio
@@ -162,20 +183,34 @@ async def test_allowed_services_permits_matching_service(runner):
     runner._ha.call_service.assert_called_once_with("climate", "set_temperature", {"temperature": 21})
 
 
-@pytest.mark.asyncio
-async def test_allowed_services_empty_means_no_restriction(runner):
+def _call_service_tool_call(runner, tool_id):
     runner._ha.call_service = AsyncMock(return_value=True)
     tool_block = MagicMock()
     tool_block.type = "tool_use"
-    tool_block.id = "tu_free"
+    tool_block.id = tool_id
     tool_block.name = "call_ha_service"
     tool_block.input = {"domain": "light", "service": "turn_on", "data": {}}
     msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
     text_block = MagicMock(type="text", text="OK")
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("Accendi", allowed_services=[])
+
+
+@pytest.mark.asyncio
+async def test_allowed_services_none_means_no_restriction(runner):
+    """`None` = no service boundary (the semaforo still applies)."""
+    _call_service_tool_call(runner, "tu_free")
+    await runner.chat("Accendi", allowed_services=None)
     runner._ha.call_service.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_allowed_services_empty_list_denies_everything(runner):
+    """`[]` = no service granted -> the call never reaches HA. Same
+    `is not None` semantics as `task_engine._run_action`."""
+    _call_service_tool_call(runner, "tu_deny_svc")
+    await runner.chat("Accendi", allowed_services=[])
+    runner._ha.call_service.assert_not_called()
 
 
 @pytest.fixture

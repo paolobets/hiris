@@ -99,6 +99,8 @@ Questo è sicuro **perché il gate esiste già**: `automatic_allows_sensitive` c
 
 Il costo reale non è la privacy ma la **spesa**: più contesto = più token.
 
+> **Rettifica (Fase 2, Task 3).** Come implementata, la Fase 2 **non** rispetta questo paragrafo: `perimeter.allowed_entities` è **una sola lista che governa sia la lettura sia l'azione**. `tools/dispatcher.py` la usa per filtrare `get_entity_states`, `get_history`, `get_home_status`, `get_entities_on`, `get_entities_by_domain` e `get_area_entities` *oltre* che per rifiutare le attuazioni. Un agente con `allowed_entities: ["light.cucina"]` **non vede** `sensor.consumo_cucina`. Vedi `Debito noto — Fase 2`, voce 1.
+
 ## Ciclo di vita e fine corsa
 
 Budget (token/giorno) e scadenza per esecuzione sono parte del contratto, non opzionali.
@@ -195,6 +197,21 @@ Così il pensiero costoso parte solo quando c'è davvero qualcosa da pensare —
 **5. Persistenza e revoca della fiducia — nella pagina dell'agente.** Ogni agente ha una sezione **«Cosa gli hai permesso»**: l'elenco delle coppie *verbo + entità* concesse, con la data, una revoca puntuale per ciascuna e un **«Revoca tutto»** che riporta l'agente allo stato di appena autorizzato.
 
 > La fiducia progressiva **accumula potere nel tempo**. Tenerla visibile dove l'agente vive — e non in una pagina che nessuno apre — è ciò che impedisce che dopo tre mesi tu non sappia più cosa possono fare i tuoi agenti.
+
+## Debito noto — Fase 2
+
+Scelte prese **consapevolmente** durante la Fase 2 e non ancora chiuse. Sono qui perché siano **tracciate**, non perché siano sviste: la regola di questa fase è che il vincolo di **non-regressione** vince sulla completezza, quindi tutto ciò che avrebbe richiesto di toccare il comportamento esistente è stato rimandato invece che forzato.
+
+**1. Una sola lista governa vista e tatto (Task 3).**
+`perimeter.allowed_entities` confina **sia ciò che l'agente può vedere sia ciò che può toccare**: un'entità non elencata non è soltanto non attuabile, non è nemmeno **leggibile**. Contraddice il paragrafo *Ambito di lettura* (rettificato sopra). Accettato per questa fase: separare i due assi vorrebbe dire introdurre un secondo campo (`readable_entities`) e un secondo punto di controllo, cioè esattamente le due cose che questa fase evita. **Conseguenza pratica da documentare all'utente:** se un agente deve *guardare* qualcosa per decidere, quel qualcosa va **elencato nel perimetro**, non solo ciò su cui deve agire.
+
+**2. Un Agentbot `mode="rule"` con `reasoning.enabled` ragiona ancora senza confini (Task 3).**
+La modalità regola **non ha** (e non può avere) un blocco `perimeter`: `validate_agentbot` lo vieta. Ma se ha `reasoning.enabled`, il suo ragionatore riceve comunque l'intero set `EVALUATION_ONLY_TOOLS`, **`create_task` incluso**, e i Task che ne nascono hanno `agent_id="hiris-default"` e `allowed_entities`/`allowed_services` a `None` — cioè **nessun confine oltre al semaforo**.
+
+È il comportamento che le regole hanno **sempre** avuto, e il vincolo di non-regressione di questa fase è esplicito: *un Agentbot `mode="rule"` esistente non deve cambiare di una virgola*. Dargli un perimetro adesso significherebbe restringere in silenzio configurazioni utente già funzionanti. **Resta quindi vero che la modalità regola + ragionamento è il percorso meno confinato del sistema**, e va chiuso quando ci sarà una migrazione esplicita (fase 3 o 4), non di soppiatto. Il confine che regge oggi su quel percorso è il **semaforo** (denylist + tier + conferma), non il perimetro.
+
+**3. Asimmetria di `create_task` (Task 3, review minor #7).**
+Il ramo `create_task` del dispatcher rifiuta alla **creazione** un *servizio* fuori perimetro, ma lascia passare un'*entità* fuori perimetro, che viene rifiutata solo all'**esecuzione** da `task_engine._run_action`. L'LLM può quindi ricevere «task creato» per un task che non farà nulla. Voluto: `allowed_entities` ha **un solo punto di enforcement**, e aggiungerne un secondo lo farebbe divergere nel tempo. Il costo è un messaggio d'errore peggiore, non un confine più debole.
 
 ## Versione: 1.1, non 2.0
 

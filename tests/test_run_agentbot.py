@@ -816,7 +816,24 @@ class _FakeReasoningRunner:
 
 
 def _extract_closure(src: str, start_marker: str, end_marker: str) -> str:
+    """Ritaglia una closure da `src` fra due marker testuali.
+
+    `str.index` alza gia' ValueError se un marker sparisce del tutto, ma NON
+    protegge dal caso insidioso: un marker ancora presente che pero' delimita
+    una fetta DIVERSA (riformattazione, una closure spostata, un secondo
+    `return out or ""` comparso prima di quello giusto). In quel caso
+    l'estrazione riuscirebbe in silenzio e i test girerebbero su codice non
+    piu' rappresentativo, continuando a passare. Da qui gli assert
+    sull'unicita' dei marker e sull'ordine: meglio un fallimento rumoroso di
+    un verde che non dimostra nulla (review, minor #5)."""
+    assert src.count(start_marker) == 1, (
+        f"marker di inizio {start_marker!r} trovato "
+        f"{src.count(start_marker)} volte in server._on_startup: "
+        "l'estrazione non e' piu' univoca")
     start = src.index(start_marker)
+    assert end_marker in src[start:], (
+        f"marker di fine {end_marker!r} non trovato DOPO {start_marker!r}: "
+        "la closure e' stata riformattata o spostata")
     end = src.index(end_marker, start) + len(end_marker)
     return textwrap.dedent(src[start:end])
 
@@ -845,6 +862,28 @@ def _load_real_server_run_decision(*, app, gather_context, execute, notify, act,
         "_propose": propose,
         "_record_situation_event": record_situation_event,
     }
+    # Ogni closure porta con se' i frammenti che DEVONO comparire nella fetta
+    # estratta. Sono precisamente i kwarg che questo task propaga: se la
+    # propagazione viene rimossa o rinominata a monte, l'estrazione non deve
+    # restituire in silenzio una fetta che "compila comunque" -- deve
+    # fallire qui, prima che i test a valle costruiscano certezze su codice
+    # che non e' piu' quello di produzione (review, minor #5).
+    expected_fragments = {
+        "_llm_reason": (
+            "async def _llm_reason(system, user, *, model, max_tokens,",
+            "agent_id=None, allowed_entities=None, allowed_services=None)",
+            "chatbot_id=agent_id,",
+            "allowed_entities=allowed_entities, allowed_services=allowed_services",
+        ),
+        "_run_decision": (
+            "async def _run_decision(",
+            "agent_id=None, perimeter=None",
+            'perimeter.get("allowed_entities")',
+            'perimeter.get("allowed_services")',
+            "allowed_entities=_allowed_entities",
+            "allowed_services=_allowed_services",
+        ),
+    }
     for marker_start, marker_end, label in (
         ("    async def _llm_reason(", '        return out or ""', "_llm_reason"),
         ("    async def _run_decision(",
@@ -852,6 +891,13 @@ def _load_real_server_run_decision(*, app, gather_context, execute, notify, act,
          "_run_decision"),
     ):
         func_src = _extract_closure(src, marker_start, marker_end)
+        for fragment in expected_fragments[label]:
+            assert fragment in func_src, (
+                f"la closure {label} estratta da server.py non contiene piu' "
+                f"{fragment!r}: o la firma/propagazione e' cambiata, o "
+                "_extract_closure sta ritagliando la fetta sbagliata. In "
+                "entrambi i casi i test sottostanti non provano piu' cio' "
+                "che dicono di provare.")
         exec(compile(func_src, f"<{label} extracted from server.py>", "exec"), namespace)
     return namespace["_run_decision"]
 
@@ -944,30 +990,106 @@ async def test_task_emitted_by_an_agent_inherits_its_identity_and_perimeter(stor
 
 
 @pytest.mark.asyncio
-async def test_task_from_agent_with_empty_perimeter_is_fail_closed(store, tmp_path):
-    """Il perimetro di un agente objective e' SEMPRE materializzato (Task 2):
-    se l'utente non ha dichiarato nulla, `allowed_entities` e' `[]`. Quella
-    lista vuota va propagata com'e' -- non normalizzata a `None` -- perche'
-    l'enforcement in `task_engine` distingue `None` ("nessun confine") da `[]`
-    ("nessuna entita' concessa"). Tradurre "nulla di concesso" in "nessun
-    limite" sarebbe esattamente l'allargamento silenzioso che questa fase
-    esiste per chiudere."""
-    agentbot, ha, execute_policy, task_engine, runner = _perimeter_chain(tmp_path, None)
+async def test_task_from_agent_with_explicitly_empty_perimeter_is_fail_closed(store, tmp_path):
+    """Una allow-list ESPLICITAMENTE vuota (`"allowed_entities": []`) e' una
+    decisione dell'utente -- "non concedo nulla" -- e va propagata com'e' fino
+    in fondo, senza mai essere allargata a `None`. `task_engine._run_action`
+    ha sempre distinto `None` ("nessun confine") da `[]` ("nessuna entita'
+    concessa"); da questo fix il dispatcher legge `[]` allo stesso modo, cosi'
+    lo stesso valore non significa piu' cose opposte ai due capi della catena.
+
+    Sorella di `test_task_from_agent_without_declared_perimeter_is_unconfined`:
+    insieme inchiodano i due lati della distinzione lungo la catena REALE
+    (server._run_decision -> runner -> dispatcher -> Task -> TaskEngine)."""
+    # `allowed_services` concede il servizio, cosi' il task SUPERA il controllo
+    # alla creazione e si arriva davvero a misurare l'effetto di
+    # `allowed_entities: []` all'ESECUZIONE. (Con anche i servizi a `[]` il
+    # task verrebbe rifiutato prima, vedi il test successivo.)
+    agentbot, ha, execute_policy, task_engine, runner = _perimeter_chain(
+        tmp_path, {"allowed_entities": [], "allowed_services": ["light.*"]})
     assert agentbot["perimeter"]["allowed_entities"] == []
     rec = _Rec()
 
     await _fire_objective_agentbot(
         agentbot, store=store, execute_policy=execute_policy, runner=runner, rec=rec)
 
+    # La lista vuota arriva VERBATIM fino al ragionatore: non e' stata
+    # normalizzata a None da nessun anello intermedio.
+    assert runner.seen_kwargs[0]["allowed_entities"] == []
+    assert runner.seen_kwargs[0]["allowed_services"] == ["light.*"]
+
     task = next(iter(task_engine._tasks.values()))
     assert task.agent_id == "eeeeeeeeeeee"
     assert task.allowed_entities == []
-    assert task.allowed_services == []
+    assert task.allowed_services == ["light.*"]
 
     ha.call_service.reset_mock()
     await task_engine._execute_task(task.id)
     assert ha.call_service.await_count == 0
     assert "not permitted by policy" in (task.result or "")
+
+
+@pytest.mark.asyncio
+async def test_task_with_empty_service_perimeter_is_refused_at_creation(store, tmp_path):
+    """L'altro effetto di `[]` = "nessuna concessione": il ramo `create_task`
+    del dispatcher controlla il SERVIZIO gia' alla creazione, quindi con
+    `allowed_services: []` il task non nasce nemmeno e l'LLM riceve un errore
+    esplicito invece di un "task creato" che sarebbe poi rimasto inerte.
+
+    Nota l'asimmetria deliberata (commentata nel dispatcher, review minor
+    #7): l'ENTITA' fuori perimetro non e' controllata qui ma solo
+    all'esecuzione -- l'enforcement di `allowed_entities` resta in un unico
+    punto, `task_engine._run_action`."""
+    agentbot, ha, execute_policy, task_engine, runner = _perimeter_chain(
+        tmp_path, {"allowed_entities": [], "allowed_services": []})
+    rec = _Rec()
+
+    await _fire_objective_agentbot(
+        agentbot, store=store, execute_policy=execute_policy, runner=runner, rec=rec)
+
+    assert runner.seen_kwargs[0]["allowed_services"] == []
+    assert task_engine._tasks == {}, "nessun task deve nascere fuori dal perimetro"
+    assert ha.call_service.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_task_from_agent_without_declared_perimeter_is_unconfined(store, tmp_path):
+    """L'altro lato: se l'utente non ha dichiarato NULLA, il blocco
+    `perimeter` resta comunque materializzato (Task 2) ma le due allow-list
+    valgono `None` = "nessuna restrizione su quell'asse". L'agente resta
+    confinato dal semaforo (denylist + tier) e da `max_tier`, non da una
+    allow-list che nessuno ha scritto.
+
+    Prima di questo fix il default era `[]`, che il dispatcher leggeva come
+    "nessun limite" (l'agente leggeva tutta la casa) e il task_engine come
+    "nessuna concessione" (ogni Task emesso era inerte, con un solo
+    `logger.warning` a dirlo). Quel doppio significato e' cio' che questo
+    test impedisce di reintrodurre."""
+    agentbot, ha, execute_policy, task_engine, runner = _perimeter_chain(tmp_path, None)
+    assert agentbot["perimeter"]["allowed_entities"] is None
+    assert agentbot["perimeter"]["allowed_services"] is None
+    rec = _Rec()
+
+    await _fire_objective_agentbot(
+        agentbot, store=store, execute_policy=execute_policy, runner=runner, rec=rec)
+
+    assert runner.seen_kwargs[0]["allowed_entities"] is None
+    assert runner.seen_kwargs[0]["allowed_services"] is None
+
+    task = next(iter(task_engine._tasks.values()))
+    # L'IDENTITA' viene ereditata comunque: senza perimetro dichiarato il Task
+    # e' comunque attribuito all'agente che lo ha emesso, non a "hiris-default".
+    assert task.agent_id == "eeeeeeeeeeee"
+    assert task.allowed_entities is None
+    assert task.allowed_services is None
+
+    # ...e l'azione passa, perche' `light` e' verde e nessuna allow-list la
+    # nega: il confine e' il semaforo, esattamente come per ogni Task creato
+    # fuori dalla modalita' obiettivo.
+    ha.call_service.reset_mock()
+    await task_engine._execute_task(task.id)
+    assert ha.call_service.await_count == 1
+    assert "not permitted by policy" not in (task.result or "")
 
 
 @pytest.mark.asyncio

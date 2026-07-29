@@ -1593,18 +1593,31 @@ async def _on_startup(app: web.Application) -> None:
         # `reason()`, which has no business knowing about agents.
         llm_reason = _llm_reason
         if perimeter is not None:
-            # The lists are passed through VERBATIM, empty included. An
-            # objective Agentbot whose user declared nothing has
-            # `allowed_entities == []`, and `task_engine._run_action` reads
-            # `[]` ("nothing granted") differently from `None` ("no
-            # boundary") -- normalizing one into the other here would
-            # silently turn "no grants" into "no limits".
-            _allowed_entities = list(perimeter.get("allowed_entities") or [])
-            _allowed_services = list(perimeter.get("allowed_services") or [])
+            # The lists are passed through VERBATIM, `None` and empty
+            # included -- NO normalization in either direction. The whole
+            # chain (`tools/dispatcher.py` -> Task ->
+            # `task_engine._run_action`) agrees on one semantics:
+            # `None` = "no boundary on this axis", `[]` = "nothing granted".
+            # `validate_agentbot` already materializes the perimeter with
+            # `None` for an axis the user left undeclared, so an `or []`
+            # here would turn "no limits" into "deny everything" -- and a
+            # `or None` would do the exact opposite. Both are silent
+            # semantic changes; copying the list is all that's allowed.
+            _ae = perimeter.get("allowed_entities")
+            _as = perimeter.get("allowed_services")
+            _allowed_entities = list(_ae) if _ae is not None else None
+            _allowed_services = list(_as) if _as is not None else None
 
-            async def llm_reason(_system, _user, *, model, max_tokens):
+            async def llm_reason(system, user, *, model, max_tokens):
+                # `system`/`user` deliberately shadow the enclosing
+                # `_run_decision` locals of the same name: this closure
+                # replaces `_llm_reason` in `reason()`'s eyes, so its
+                # signature must MATCH `_llm_reason`'s parameter names
+                # rather than diverge from them (review, minor #4 -- the
+                # old `_system`/`_user` only worked because every caller
+                # happened to pass positionally).
                 return await _llm_reason(
-                    _system, _user, model=model, max_tokens=max_tokens,
+                    system, user, model=model, max_tokens=max_tokens,
                     agent_id=agent_id,
                     allowed_entities=_allowed_entities,
                     allowed_services=_allowed_services)
