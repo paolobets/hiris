@@ -375,7 +375,7 @@ class ToolDispatcher:
                     actions=inputs["actions"],
                     condition=inputs.get("condition"),
                     one_shot=inputs.get("one_shot", True),
-                    chatbot_id=chatbot_id or "hiris-default",
+                    agent_id=chatbot_id or "hiris-default",
                     allowed_entities=allowed_entities,
                     allowed_services=allowed_services,
                 )
@@ -384,7 +384,9 @@ class ToolDispatcher:
                     return {"error": "TaskEngine not available"}
                 return list_tasks_tool(
                     task_engine=self._task_engine,
-                    chatbot_id=inputs.get("chatbot_id"),
+                    # Shim 3: an external MCP client that learned the old key
+                    # ("chatbot_id") must not silently receive an unfiltered list.
+                    agent_id=inputs.get("agent_id") or inputs.get("chatbot_id"),
                     status=inputs.get("status"),
                 )
             if name == "cancel_task":

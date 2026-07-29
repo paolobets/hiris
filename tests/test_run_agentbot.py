@@ -611,6 +611,89 @@ async def test_ai_lens_without_configured_model_defaults_to_auto(store):
     assert seen["model"] == "auto"
 
 
+# ---------------------------------------------------------------------------
+# (h) Fase 1 fix-wave CRITICAL: an Agentbot whose `action` is legitimately
+# `None` (mode="objective") must ALSO get `force_notify_only=True` -- not
+# just a `"notify"`-type rule. Before the fix, `_on_wake` computed
+# `action_type = (agentbot.get("action") or {}).get("type")` and only forced
+# notify-only when that was the STRING "notify"; for `action=None` it was
+# `None`, so BOTH guards in server.py's `_run_decision` failed to fire
+# (`suggested` is also None) and the LLM's own emitted action would survive
+# onto the Decision and reach the executor.
+# ---------------------------------------------------------------------------
+
+OBJECTIVE_LENS = {
+    "id": "eeeeeeeeeeee", "name": "Obiettivo pompa", "enabled": True,
+    "mode": "objective", "objective": "Mantieni la pompa in sicurezza",
+    "trigger": {"type": "schedule", "interval_min": 30},
+    "reasoning": {"enabled": True, "prompt": "Valuta la situazione ed agisci se necessario."},
+    "action": None,
+    "severity": "warn",
+}
+
+
+@pytest.mark.asyncio
+async def test_objective_lens_action_none_forces_notify_only_true(store):
+    """Direct assertion on what `_on_wake` threads into `run_decision`: for
+    `action=None` (mode="objective"), `force_notify_only` must be True and
+    `suggested` must be None -- RED before the fix (`force_notify_only` was
+    False because `action_type` was `None`, not the string `"notify"`)."""
+    rec = _Rec()
+    seen = {}
+
+    async def _run_decision_spy(wake, suggested, system, force_notify_only=False, model="auto"):
+        seen["force_notify_only"] = force_notify_only
+        seen["suggested"] = suggested
+        return None
+
+    await run_agentbot(
+        OBJECTIVE_LENS, {"entity_id": "switch.pompa", "value": 150},
+        store=store, run_decision=_run_decision_spy, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-24",
+    )
+
+    assert seen["suggested"] is None
+    assert seen["force_notify_only"] is True
+
+
+@pytest.mark.asyncio
+async def test_objective_lens_llm_emitted_action_never_reaches_executor(store):
+    """End-to-end: an objective Agentbot (action=None) whose LLM response
+    fabricates a service action on a SAFE (non-dangerous) green-tier domain
+    must NEVER actuate it -- only `force_notify_only` forcing
+    `decision.action = None` before `execute()` runs can prevent this,
+    since `suggested` (from `agentbot_action`) is also None here so the
+    OTHER guard (`if suggested and ...`) never fires either. RED before the
+    fix: `rec.acted` would contain the LLM's fabricated action."""
+    rec = _Rec()
+
+    async def _llm_invents_an_action(system, user, *, model, max_tokens):
+        return (
+            '```json\n{"verdict":"anomalia","severity":"warn","message":"agisco",'
+            '"action":{"domain":"light","service":"turn_on","entity_id":"light.malicious_target"}}'
+            '\n```'
+        )
+
+    run_decision = _make_run_decision_from_llm(
+        _llm_invents_an_action, notify=rec.notify, act=rec.act, propose=rec.propose,
+        execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True)
+
+    await run_agentbot(
+        OBJECTIVE_LENS, {"entity_id": "switch.pompa", "value": 150},
+        store=store, run_decision=run_decision, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-24",
+    )
+
+    assert not rec.acted  # the LLM-invented action must never reach the executor
+    assert rec.notified   # the AI verdict/message still reaches the user
+
+
 @pytest.mark.asyncio
 async def test_ai_lens_two_agentbots_use_independent_models(store):
     """Two Agentbots firing on their own entities must each reason with

@@ -10,6 +10,19 @@ Deliberately NOT flagged (must stay, out of the SP-4 Fase A rename scope):
   - the `agent_id` wire key in the chat POST body / SSE "done" event --
     handlers_chat.py / claude_runner.py / openai_compat_runner.py still read
     and emit that literal key (unrelated to this FE-only task).
+
+Boundary moved for v1.1 (Fase 1, Task 5, 2026-07-29): this guard was written
+in the 1.0 rename to keep the codebase from drifting *back* to the
+pre-rename "agent" naming. Agenti v1.1 now moves the naming *forward* onto
+"agent" on purpose -- it unifies Chatbot + Agentbot into a single "Agente"
+entity with two modes (rule/objective) -- so a guard that still forbade the
+bare "agent editor" name would fight the new architecture instead of
+protecting it. `HirisAgentEditor` / `agent-editor.js` were released below
+for that reason. No FE file is renamed in this task (Fase 1 is
+schema/wire-only); this only removes the future roadblock. Everything else
+here still names a genuinely retired concept (the pre-rename raw "agents"
+list/route, the separate "lenses" surface, the absorbed Sentinel route) and
+stays forbidden.
 """
 import re
 from pathlib import Path
@@ -17,12 +30,17 @@ from pathlib import Path
 STATIC = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
 # Same shape as the task's regression grep:
-#   grep -rnE "api/agents|api/lenses|#/agents|#/sentinel|HirisAgentEditor|
+#   grep -rnE "api/agents|api/lenses|#/agents|#/sentinel|
 #               HirisAgentsList|HirisSentinelRoute|loadAgents\b" static/
 #   | grep -viE "chatbots|agentbots"
+#
+# `HirisAgentEditor` was removed from this list in v1.1 Fase 1 Task 5: the
+# rename direction reversed on purpose (unified "Agente" entity, two modes)
+# and this token is the JS global name of the editor v1.1 will reuse -- see
+# the module docstring. It is not a typo or an oversight; do not re-add it.
 _FORBIDDEN = re.compile(
     r"api/agents|api/lenses|#/agents|#/sentinel|"
-    r"HirisAgentEditor|HirisAgentsList|HirisSentinelRoute|loadAgents\b"
+    r"HirisAgentsList|HirisSentinelRoute|loadAgents\b"
 )
 _ALLOW_CONTEXT = re.compile(r"chatbots|agentbots", re.IGNORECASE)
 
@@ -50,8 +68,15 @@ def test_renamed_fe_files_exist():
         assert (cfg / name).is_file(), f"expected renamed file missing: {name}"
     # chatbot-form.js (SP-4 Fase B Task 4): absorbed into chatbot-editor.js
     # (single owner of load+payload) and deleted -- it must NOT exist.
+    #
+    # `agent-editor.js` was removed from this forbidden-absent list in v1.1
+    # Fase 1 Task 5: it names a genuinely dead concept in 1.0 but v1.1
+    # unifies Chatbot + Agentbot into one "Agente" entity, and this is the
+    # filename that unified editor will legitimately reuse in a later phase.
+    # No FE file is renamed yet in this task -- only the guard's future
+    # roadblock is removed. Do not re-add it here.
     for old in (
-        "agent-editor.js", "agent-form.js", "agents-list.js", "sentinel-route.js",
+        "agent-form.js", "agents-list.js", "sentinel-route.js",
         "chatbot-form.js",
     ):
         assert not (cfg / old).exists(), f"pre-rename/absorbed file still present: {old}"

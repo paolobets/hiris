@@ -99,3 +99,46 @@ async def test_call_ha_service_with_target_ok():
                             "data": {"entity_id": "light.sala"}},
                            allowed_services=["light.*"], allowed_entities=["light.*"])
     assert ha.calls == [("light", "turn_on", {"entity_id": "light.sala"})]
+
+
+# --- list_tasks MCP dispatcher fallback (Task 4 / Fase 1 review, gap 1):
+# dispatcher.py resolves the filter as inputs.get("agent_id") or
+# inputs.get("chatbot_id") so an external MCP client still using the old
+# "chatbot_id" key keeps getting a FILTERED list instead of silently falling
+# back to the unfiltered one. These exercise dispatch() end-to-end (not just
+# the tool schema) and record what the task engine actually received.
+
+class _ListTasksEngine:
+    def __init__(self):
+        self.calls = []
+
+    def list_tasks(self, agent_id=None, status=None):
+        self.calls.append({"agent_id": agent_id, "status": status})
+        return []
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_dispatch_filters_by_new_key():
+    d = ToolDispatcher(_FakeHASvc(), notify_config={})
+    eng = _ListTasksEngine()
+    d.set_task_engine(eng)
+    await d.dispatch("list_tasks", {"agent_id": "agent-x"})
+    assert eng.calls == [{"agent_id": "agent-x", "status": None}]
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_dispatch_falls_back_to_legacy_chatbot_id_key():
+    d = ToolDispatcher(_FakeHASvc(), notify_config={})
+    eng = _ListTasksEngine()
+    d.set_task_engine(eng)
+    await d.dispatch("list_tasks", {"chatbot_id": "agent-x"})
+    assert eng.calls == [{"agent_id": "agent-x", "status": None}]
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_dispatch_new_key_wins_when_both_present():
+    d = ToolDispatcher(_FakeHASvc(), notify_config={})
+    eng = _ListTasksEngine()
+    d.set_task_engine(eng)
+    await d.dispatch("list_tasks", {"agent_id": "new-agent", "chatbot_id": "old-agent"})
+    assert eng.calls == [{"agent_id": "new-agent", "status": None}]

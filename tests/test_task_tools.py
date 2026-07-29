@@ -12,7 +12,7 @@ def mock_engine():
     from hiris.app.task_engine import Task
     from datetime import datetime, timezone
     fake_task = Task(
-        id="task-001", label="Test", chatbot_id="hiris-default",
+        id="task-001", label="Test", agent_id="hiris-default",
         created_at=datetime.now(timezone.utc).isoformat(),
         trigger={"type": "delay", "minutes": 5},
         actions=[],
@@ -29,7 +29,7 @@ def test_create_task_tool_returns_id(mock_engine):
         label="Test",
         trigger={"type": "delay", "minutes": 5},
         actions=[],
-        chatbot_id="hiris-default",
+        agent_id="hiris-default",
     )
     assert result["task_id"] == "task-001"
     assert result["status"] == "pending"
@@ -56,3 +56,14 @@ def test_tool_defs_have_required_fields():
         assert "name" in defn
         assert "description" in defn
         assert "input_schema" in defn
+
+
+def test_list_tasks_tool_def_exposes_agent_id_property():
+    """Copre solo la FORMA dello schema (la property e' dichiarata). Il
+    comportamento effettivo del fallback chatbot_id/agent_id nel dispatcher
+    MCP e' esercitato via dispatch() in
+    tests/test_dispatcher_automation.py::test_list_tasks_dispatch_* — questo
+    test da solo NON dimostra che il filtro venga applicato."""
+    from hiris.app.tools.task_tools import LIST_TASKS_TOOL_DEF
+    props = LIST_TASKS_TOOL_DEF["input_schema"]["properties"]
+    assert "agent_id" in props

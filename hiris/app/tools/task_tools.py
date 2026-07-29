@@ -54,12 +54,12 @@ LIST_TASKS_TOOL_DEF = {
     "description": (
         "List scheduled tasks. Returns active tasks (pending, running) and recent completed "
         "tasks (done/failed/skipped in the last 24h). "
-        "Optionally filter by chatbot_id or status."
+        "Optionally filter by agent_id or status."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "chatbot_id": {"type": "string", "description": "Filter by chatbot ID (optional)"},
+            "agent_id": {"type": "string", "description": "Filter by agent ID (optional)"},
             "status": {
                 "type": "string",
                 "description": "Filter by status: pending|running|done|skipped|failed|expired|cancelled",
@@ -88,14 +88,14 @@ def create_task_tool(
     actions: list,
     condition: dict | None = None,
     one_shot: bool = True,
-    chatbot_id: str = "hiris-default",
+    agent_id: str = "hiris-default",
     allowed_entities: list | None = None,
     allowed_services: list | None = None,
 ) -> dict:
     task = task_engine.add_task(
         {"label": label, "trigger": trigger, "actions": actions,
          "condition": condition, "one_shot": one_shot},
-        chatbot_id=chatbot_id,
+        agent_id=agent_id,
         allowed_entities=allowed_entities,
         allowed_services=allowed_services,
     )
@@ -104,10 +104,10 @@ def create_task_tool(
 
 def list_tasks_tool(
     task_engine: "TaskEngine",
-    chatbot_id: str | None = None,
+    agent_id: str | None = None,
     status: str | None = None,
 ) -> list[dict]:
-    return task_engine.list_tasks(chatbot_id=chatbot_id, status=status)
+    return task_engine.list_tasks(agent_id=agent_id, status=status)
 
 
 def cancel_task_tool(task_engine: "TaskEngine", task_id: str) -> dict:

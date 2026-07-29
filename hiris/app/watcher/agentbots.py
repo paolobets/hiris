@@ -53,6 +53,7 @@ ALLOWED_OPERATORS = {">", "<", ">=", "<=", "==", "!="}
 ALLOWED_TRIGGER_TYPES = {"event", "schedule"}
 ALLOWED_ACTION_TYPES = {"notify", "service"}
 ALLOWED_SEVERITIES = {"info", "warn", "alert"}
+ALLOWED_MODES = frozenset({"rule", "objective"})
 
 # Home Assistant's real grammar for the bits of a lens that end up in an
 # actual HA API call (action target) or a cron parser. Presence-only
@@ -396,8 +397,73 @@ def validate_agentbot(raw: dict) -> dict | None:
         if trigger is None:
             return None
 
-        action = _validate_action(raw.get("action"))
-        if action is None:
+        # mode: absent -> "rule" (content-sniffed migration: every pre-1.1
+        # Agentbot is a rule, since "objective" didn't exist yet). Present
+        # but not in the allowed set -> reject the whole record, mirroring
+        # severity/enabled's absent-vs-present convention. Fase 1 fix-wave
+        # MINOR 1: an explicit `"mode": null` must behave the SAME as an
+        # absent key (mirrors enabled's own `"enabled" in raw and raw.get(
+        # "enabled") is not None` form just below) -- `raw.get("mode",
+        # "rule")` used to return `None` (not the default) for a
+        # present-but-null key, which then failed the ALLOWED_MODES check
+        # and rejected the whole Agentbot. An LLM proposal emitting `"mode":
+        # null` must not lose the entire Agentbot over this.
+        if "mode" in raw and raw.get("mode") is not None:
+            mode = raw.get("mode")
+        else:
+            mode = "rule"
+        if mode not in ALLOWED_MODES:
+            return None
+
+        # action: required in mode="rule" (unchanged 1.0 invariant -- a rule
+        # with no action is unsalvageable). Forbidden in mode="objective": an
+        # objective Agentbot's actions are born downstream as Tasks, so a
+        # declared action here is a contradiction, not an oversight to
+        # silently drop.
+        if mode == "rule":
+            action = _validate_action(raw.get("action"))
+            if action is None:
+                return None
+        else:  # objective
+            if raw.get("action") is not None:
+                return None
+            action = None
+
+        # objective: same shape as action's rule/objective split, mirrored --
+        # required and non-empty in mode="objective" (an objective Agentbot
+        # with nothing to accomplish is unsalvageable, same reasoning as a
+        # rule with no action); forbidden in mode="rule" (present -> reject:
+        # a rule has no objective of its own, declaring one is a
+        # contradiction, not an oversight to silently drop -- same reasoning
+        # as `action` above). Truncated to 2000 chars, mirroring
+        # reasoning.prompt's own bound.
+        if mode == "objective":
+            objective = _clean_nonempty_str(raw.get("objective"))
+            if objective is None:
+                return None
+            objective = objective[:2000]
+        else:  # rule
+            # Fase 1 fix-wave MINOR 2: use the non-empty check here too (the
+            # same `_clean_nonempty_str` the objective branch above already
+            # uses), not a bare `is not None` -- an empty/whitespace-only
+            # string is not a "declared" objective, it's the absence of one.
+            # A form that always serializes `objective: ''` for rules would
+            # otherwise 400 the whole Agentbot with no field-level cause.
+            if _clean_nonempty_str(raw.get("objective")) is not None:
+                return None
+            objective = None
+
+        # Cross-field gate (first one in this validator -- every other check
+        # here is single-field). Design decision: HA events stay the domain
+        # of RULE mode, where they cost nothing (the watcher is already
+        # subscribed to the event bus). An objective Agentbot is heavier --
+        # it runs an LLM turn -- so it is deliberately NOT allowed to hang
+        # off an event directly; it is launched manually, on a schedule, or
+        # invoked BY a rule/the Brain. Placed here, after both `mode` and
+        # `trigger` are already resolved, so both operands of the check are
+        # in scope and validated; a reader hitting this for the first time
+        # should not mistake it for an arbitrary restriction.
+        if mode == "objective" and trigger["type"] == "event":
             return None
 
         # severity: absent -> default "info"; PRESENT but not in the allowed
@@ -443,6 +509,8 @@ def validate_agentbot(raw: dict) -> dict | None:
             "reasoning": reasoning,
             "action": action,
             "severity": severity,
+            "mode": mode,
+            "objective": objective,
         }
     except Exception:
         log.warning("validate_agentbot: unsalvageable Agentbot, dropping", exc_info=True)

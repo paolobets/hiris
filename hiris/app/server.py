@@ -541,9 +541,21 @@ async def register_agentbot_schedules(app: web.Application) -> None:
 
     data_dir = app.get("data_dir")
     agentbots = _load_scheduled_agentbots(data_dir) if data_dir else []
+    # Fase 1 fix-wave IMPORTANT: `mode` gate added -- same "solo mode='rule'
+    # e' raggiungibile" constraint as `handlers_agentbots.get_event_agentbots`
+    # (see its docstring). Unlike event triggers, `validate_agentbot` DOES
+    # allow objective+schedule -- an objective Agentbot on a cadence is a
+    # valid, intended combination for Fase 3's own wiring -- but Fase 1
+    # itself must not let a schedule-triggered objective Agentbot actually
+    # fire yet (with reasoning off it would silently degenerate into a
+    # recurring bogus notify rule; the runtime path for objective Agentbots
+    # doesn't exist until a later phase). Gated here (the runtime scheduler
+    # registration), not in the HTTP handler, so Fase 3 only needs to drop
+    # this condition rather than rewire validation.
     scheduled = {
         a["id"]: a for a in agentbots
         if a.get("enabled") and (a.get("trigger") or {}).get("type") == "schedule"
+        and a.get("mode", "rule") == "rule"
     }
 
     # Remove orphaned jobs: an Agentbot that was deleted, disabled, or

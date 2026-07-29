@@ -668,6 +668,71 @@ def test_validate_accepts_interval_min_at_minimum():
 
 
 # ---------------------------------------------------------------------------
+# Agenti v1.1 Fase 1 Task 1+2: mode discriminator (rule|objective) + action
+# conditional on mode
+# ---------------------------------------------------------------------------
+
+def test_mode_defaults_to_rule_when_absent():
+    """Migrazione a fiuto: un agentbot pre-1.1 non ha `mode` -> e' una regola."""
+    cleaned = validate_agentbot({
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    })
+    assert cleaned is not None
+    assert cleaned["mode"] == "rule"
+
+
+def test_mode_objective_is_accepted():
+    cleaned = validate_agentbot({
+        "mode": "objective",
+        "objective": "valuta i consumi",
+        "trigger": {"type": "schedule", "interval_min": 60},
+    })
+    assert cleaned is not None
+    assert cleaned["mode"] == "objective"
+
+
+def test_mode_invalid_rejects_whole_record():
+    """Coerente con severity/enabled: presente-ma-invalido = rigetto."""
+    assert validate_agentbot({
+        "mode": "banana",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    }) is None
+
+
+def test_rule_mode_still_requires_action():
+    """Invariante 1.0: una REGOLA senza azione resta un rigetto."""
+    assert validate_agentbot({
+        "mode": "rule",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+    }) is None
+
+
+def test_objective_mode_has_no_action():
+    cleaned = validate_agentbot({
+        "mode": "objective",
+        "objective": "valuta i consumi",
+        "trigger": {"type": "schedule", "interval_min": 60},
+    })
+    assert cleaned is not None
+    assert cleaned.get("action") is None
+
+
+def test_objective_mode_rejects_a_declared_action():
+    """Un agente-obiettivo che dichiara un'azione e' una contraddizione."""
+    assert validate_agentbot({
+        "mode": "objective",
+        "objective": "valuta i consumi",
+        "trigger": {"type": "schedule", "interval_min": 60},
+        "action": {"type": "notify"},
+    }) is None
+
+
+# ---------------------------------------------------------------------------
 # SP-4 Fase A Task 3: one-time migration sentinel_lenses.json -> agentbots.json
 # ---------------------------------------------------------------------------
 
@@ -718,6 +783,74 @@ def test_load_agentbots_no_legacy_file_no_migration_needed(tmp_path):
     assert load_agentbots(str(tmp_path)) == []
     assert not (tmp_path / "sentinel_lenses.json").exists()
     assert not (tmp_path / "agentbots.json").exists()
+
+
+def test_objective_required_and_bounded():
+    base = {"mode": "objective", "trigger": {"type": "schedule", "interval_min": 60}}
+    assert validate_agentbot({**base}) is None                     # assente
+    assert validate_agentbot({**base, "objective": "   "}) is None  # vuoto
+    cleaned = validate_agentbot({**base, "objective": "x" * 5000})
+    assert cleaned is not None and len(cleaned["objective"]) == 2000
+
+
+def test_rule_mode_rejects_objective_field():
+    assert validate_agentbot({
+        "mode": "rule", "objective": "non dovrei esserci",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    }) is None
+
+
+def test_mode_null_behaves_as_absent():
+    """Fase 1 fix-wave MINOR 1: `severity`/`enabled` both treat an explicit
+    JSON `null` as "absent" and default; `mode` didn't -- `raw.get("mode",
+    "rule")` returns `None` (not the default) when the key is PRESENT with
+    value `None`, so `mode not in ALLOWED_MODES` rejected the whole record.
+    An LLM proposal emitting `"mode": null` must not lose the entire
+    Agentbot -- it must default to "rule" like an absent key does."""
+    cleaned = validate_agentbot({
+        "mode": None,
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    })
+    assert cleaned is not None
+    assert cleaned["mode"] == "rule"
+
+
+def test_rule_mode_empty_string_objective_does_not_reject():
+    """Fase 1 fix-wave MINOR 2: `is not None` treats an empty string as
+    "declared", so a form that always serializes `objective: ''` for rules
+    would 400 with no field-level cause. An empty/whitespace-only
+    `objective` in rule mode must be treated the same as absent."""
+    cleaned = validate_agentbot({
+        "mode": "rule", "objective": "",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    })
+    assert cleaned is not None
+    assert cleaned["objective"] is None
+
+    cleaned_ws = validate_agentbot({
+        "mode": "rule", "objective": "   ",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    })
+    assert cleaned_ws is not None
+    assert cleaned_ws["objective"] is None
+
+
+def test_objective_mode_rejects_event_trigger():
+    """Design: gli eventi restano alle REGOLE (costo zero); una regola puo'
+    invocare un agente-obiettivo, ma l'obiettivo non si aggancia all'evento."""
+    assert validate_agentbot({
+        "mode": "objective", "objective": "valuta i consumi",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+    }) is None
 
 
 def test_load_agentbots_migration_failure_is_non_fatal(tmp_path, monkeypatch):

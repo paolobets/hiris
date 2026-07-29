@@ -50,7 +50,10 @@
   }
 
   function buildRow(t, agentNamesById) {
-    var agentName = agentNamesById[t.chatbot_id] || t.chatbot_id || '—';
+    // Tollerante durante il rollout: preferisce la chiave nuova, ripiega
+    // sulla deprecata se un backend non ancora aggiornato la emette da sola.
+    var agentId = t.agent_id || t.chatbot_id;
+    var agentName = agentNamesById[agentId] || agentId || '—';
     var statusCls = STATUS_CLS[t.status] || '';
     var statusLabel = STATUS_LABELS[t.status] || t.status || '—';
     var actionsCount = (t.actions && t.actions.length) || 0;

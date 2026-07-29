@@ -329,6 +329,27 @@ def test_get_event_agentbots_empty_cache_is_empty_list():
     assert get_event_agentbots({}) == []
 
 
+def test_get_event_agentbots_excludes_objective_mode():
+    """Fase 1 fix-wave IMPORTANT: the plan's constraint is "solo mode=rule e'
+    raggiungibile" -- nothing filtered on `mode` before this fix, so an
+    objective-mode Agentbot sitting in the cache (even one that could only
+    get there by bypassing `validate_agentbot`'s own event-trigger gate, or
+    a future mode that allows it) would still be dispatched on events. RED
+    before the fix: both ids would come back."""
+    app = {}
+    set_agentbots(app, [
+        {"id": "1" * 12, "enabled": True, "mode": "rule",
+         "trigger": {"type": "event", "entity_id": "a"}},
+        {"id": "2" * 12, "enabled": True, "mode": "objective",
+         "trigger": {"type": "event", "entity_id": "b"}},
+        # absent mode == "rule" (pre-1.1 migration default) -- must still pass
+        {"id": "3" * 12, "enabled": True,
+         "trigger": {"type": "event", "entity_id": "c"}},
+    ])
+    out = get_event_agentbots(app)
+    assert [l["id"] for l in out] == ["1" * 12, "3" * 12]
+
+
 def test_set_agentbots_mutates_in_place_never_rebinds():
     """aiohttp forbids `app[key] = ...` after startup -- `set_agentbots`
     must mutate the SAME list object across calls, not create a new one."""

@@ -257,6 +257,30 @@ async def test_register_ignores_event_trigger_lenses(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_register_ignores_objective_mode_schedule_lens(tmp_path):
+    """Fase 1 fix-wave IMPORTANT: the plan's constraint is "solo mode=rule e'
+    raggiungibile", but nothing filtered on `mode` here before this fix -- a
+    schedule-triggered objective Agentbot (a valid combination per
+    `validate_agentbot`, which only forbids objective+event) would be
+    registered and fire on its own cadence. RED before the fix: a job would
+    be created for it."""
+    objective_schedule_lens = {
+        "id": "666666666666", "name": "Obiettivo schedulato", "enabled": True,
+        "mode": "objective", "objective": "valuta i consumi",
+        "trigger": {"type": "schedule", "interval_min": 15},
+        "reasoning": {"enabled": False},
+        "severity": "info",
+    }
+    save_agentbots(str(tmp_path), [objective_schedule_lens])
+    scheduler = FakeScheduler()
+    app = _app(scheduler, tmp_path)
+
+    await register_agentbot_schedules(app)
+
+    assert scheduler.jobs == {}
+
+
+@pytest.mark.asyncio
 async def test_register_ignores_disabled_schedule_lens(tmp_path):
     save_agentbots(str(tmp_path), [DISABLED_SCHEDULE_LENS])
     scheduler = FakeScheduler()
