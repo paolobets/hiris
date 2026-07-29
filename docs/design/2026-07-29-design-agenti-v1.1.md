@@ -157,6 +157,21 @@ allowed_tools=[]   # oggi hardcodato nel ragionamento dell'Agentbot
 
 Diventa **una lista chiusa di tool di sola lettura**, imposta nel codice — mai configurabile, mai estendibile da configurazione umana o generata. È l'unico invariante di sicurezza della 1.0 che questo design modifica, e va trattato come tale: nessun tool che attua può entrare in quella lista.
 
+## Riordino delle fasi (2026-07-29, dopo la Fase 1)
+
+La mappa originale metteva perimetro e concessioni **prima** della modalità obiettivo. La Fase 1 ha mostrato che non regge: **la fiducia progressiva ha senso solo quando l'agente sceglie le azioni**, e in modalità regola l'azione è dichiarata e approvata alla creazione. Perimetro e concessioni sarebbero rimasti **inerti** finché la modalità obiettivo non esiste — due fasi consecutive non verificabili sul campo, ed è esattamente nei percorsi non esercitati che si annidano i difetti (il Critical della Fase 1 stava in un percorso che nessun test attraversava).
+
+**Nuovo ordine — a fette verticali:**
+
+| Fase | Contenuto | Verificabile? |
+|---|---|---|
+| ~~1~~ | ✅ fondazione dello schema (fatta, merge `34789c7`) | invisibile per costruzione |
+| **2** | **modalità OBIETTIVO reale + perimetro minimo** (ambito azione, tetto tier, budget, scadenza). **Nessuna fiducia progressiva**: ogni azione chiede conferma, sempre | **sì, end-to-end** |
+| **3** | fiducia progressiva: store delle concessioni, "Sempre", revoca, richiesta cumulativa — **progettata su come la Fase 2 viene usata davvero** | sì |
+| **4** | ciclo di miglioramento (Brain propone agenti; regola invoca obiettivo; agente ripetuto → regola) + **tag v1.1** | sì |
+
+Un agente-obiettivo senza fiducia progressiva è **sicuro e usabile**, solo più chiacchierone: chiede conferma ogni volta. La fiducia progressiva è un'ottimizzazione di UX sopra un sistema già corretto — e va progettata sull'attrito reale, non immaginato.
+
 ## Decisioni (punti chiusi il 2026-07-29)
 
 **1. Chi autorizza — owner configurato.** Nelle opzioni dell'addon si indicano uno o più utenti HA come **proprietari**. Solo loro autorizzano agenti e concedono i "Sempre"; gli altri usano la chat e vedono cosa succede, ma non possono ampliare i poteri di un agente.
