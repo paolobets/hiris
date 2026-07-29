@@ -541,21 +541,21 @@ async def register_agentbot_schedules(app: web.Application) -> None:
 
     data_dir = app.get("data_dir")
     agentbots = _load_scheduled_agentbots(data_dir) if data_dir else []
-    # Fase 1 fix-wave IMPORTANT: `mode` gate added -- same "solo mode='rule'
-    # e' raggiungibile" constraint as `handlers_agentbots.get_event_agentbots`
-    # (see its docstring). Unlike event triggers, `validate_agentbot` DOES
-    # allow objective+schedule -- an objective Agentbot on a cadence is a
-    # valid, intended combination for Fase 3's own wiring -- but Fase 1
-    # itself must not let a schedule-triggered objective Agentbot actually
-    # fire yet (with reasoning off it would silently degenerate into a
-    # recurring bogus notify rule; the runtime path for objective Agentbots
-    # doesn't exist until a later phase). Gated here (the runtime scheduler
-    # registration), not in the HTTP handler, so Fase 3 only needs to drop
-    # this condition rather than rewire validation.
+    # Agenti v1.1 Fase 2 Task 4: the Fase 1 fix-wave `mode` gate that used to
+    # sit here (mirroring `handlers_agentbots.get_event_agentbots`'s own gate)
+    # is REMOVED for the planned path only, by design -- the plan's decision
+    # is "gli eventi restano dominio delle regole" (that gate stays on
+    # `get_event_agentbots`), but a schedule-triggered objective Agentbot is
+    # a valid, intended combination (`validate_agentbot` allows objective+
+    # schedule; only objective+event is forbidden) that must now actually
+    # fire on its cadence. No other change: same job registration, same
+    # `_run_scheduled_agentbot` callback, same `run_agentbot` call as any
+    # schedule-triggered rule -- the security posture (EVALUATION_ONLY_TOOLS,
+    # semaforo, force_notify_only) is entirely unrelated to this gate and is
+    # unchanged.
     scheduled = {
         a["id"]: a for a in agentbots
         if a.get("enabled") and (a.get("trigger") or {}).get("type") == "schedule"
-        and a.get("mode", "rule") == "rule"
     }
 
     # Remove orphaned jobs: an Agentbot that was deleted, disabled, or
