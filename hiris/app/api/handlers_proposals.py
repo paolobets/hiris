@@ -66,6 +66,41 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
             )
         applied = await proposal_store.apply(proposal_id)
         return web.json_response({"ok": bool(applied), "result": result})
+    # Brain-proposed Agentbot: materialize it through the SAME whitelist
+    # re-construction the HTTP /api/agentbots create path uses
+    # (`watcher.agentbots.validate_agentbot`) -- this config was authored by
+    # an LLM, so it is never trusted/persisted as-is. Only mark the
+    # proposal applied if a real, validated Agentbot was actually created;
+    # a rejected/unsalvageable config stays pending/retryable, mirroring the
+    # ha_automation and _CONFIG_TYPES branches above.
+    if proposal.get("type") == "hiris_agent":
+        data_dir = request.app.get("data_dir")
+        if not data_dir:
+            return web.json_response({"error": "data_dir non disponibile"}, status=503)
+        from ..watcher import agentbots as agentbots_store
+        from .handlers_agentbots import _apply_mutation
+        raw_config = proposal.get("config")
+        raw_config = raw_config if isinstance(raw_config, dict) else {}
+        # Applying a proposal always CREATES a brand-new Agentbot -- never
+        # trust an LLM-authored "id" (mirrors handle_create_agentbot's
+        # id-stripping discipline in handlers_agentbots.py), so
+        # validate_agentbot always mints a fresh one instead of silently
+        # overwriting an unrelated existing Agentbot that happens to share
+        # that id.
+        raw_config = {k: v for k, v in raw_config.items() if k != "id"}
+        cleaned = agentbots_store.validate_agentbot(raw_config)
+        if cleaned is None:
+            return web.json_response(
+                {"error": "Config Agentbot non valida o non sicura"}, status=400
+            )
+        all_agentbots = agentbots_store.upsert_agentbot(data_dir, cleaned)
+        # Same post-save step the /api/agentbots create handler runs: re-register
+        # scheduler jobs, then refresh the in-memory Agentbot cache the Guardian
+        # reads -- otherwise a newly created scheduled/event Agentbot would sit
+        # on disk but not actually run until the next restart.
+        await _apply_mutation(request.app, all_agentbots)
+        applied = await proposal_store.apply(proposal_id)
+        return web.json_response({"ok": bool(applied), "agentbot": cleaned})
     # Other proposal types: status-only apply (unchanged behavior).
     ok = await proposal_store.apply(proposal_id)
     if not ok:
