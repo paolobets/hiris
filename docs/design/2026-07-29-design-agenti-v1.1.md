@@ -185,7 +185,20 @@ Così il pensiero costoso parte solo quando c'è davvero qualcosa da pensare —
 
 **Condizione che rende onesto il numero: nessuna rottura per le configurazioni esistenti.**
 
-Il design regge questa promessa: gli Agentbot di oggi diventano *modalità regola* con migrazione trasparente, il rename `chatbot_id → agent_id` è interno, e tutto il resto è additivo. Il Chatbot non si tocca, il semaforo non si tocca.
+Il design regge questa promessa **sui dati persistiti**: gli Agentbot di oggi diventano *modalità regola* con migrazione a fiuto sul contenuto (`mode` assente ⇒ `"rule"`), e `tasks.json` ha già uno shim di lettura per-campo che copre tutte e tre le generazioni di nome.
+
+**Correzione (grounding 2026-07-29): non regge su due contratti wire, che vanno sanati esplicitamente nel piano.**
+
+| Contratto | Dove | Perché rompe |
+|---|---|---|
+| Corpo di risposta di `GET /api/tasks` e `/api/tasks/{id}` | `handlers_tasks.py:15,25` → `asdict(Task)` | Emette `chatbot_id` verbatim, **senza alias e senza test che lo copra**. Un consumatore esterno (card, script, template HA) leggerebbe `undefined`. |
+| Schema del tool MCP `list_tasks` | `task_tools.py:62`, letto in `dispatcher.py:387` | La proprietà `chatbot_id` è letta **senza fallback**: un client MCP esterno che ha imparato la vecchia chiave riceve silenziosamente la lista **non filtrata**. |
+
+Entrambi si chiudono emettendo/accettando **entrambe le chiavi**. Con quelle due righe la promessa 1.1 regge; senza, non regge.
+
+*(Il query param `?chatbot_id=` è già al sicuro: `handlers_tasks.py:12` accetta già `?agent_id=` come fallback.)*
+
+Il Chatbot non si tocca, il semaforo non si tocca.
 
 Se durante lo sviluppo emergesse qualcosa che rompe una configurazione utente, **quello è il segnale che è diventata una 2.0** — e va detto, non aggirato.
 
