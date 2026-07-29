@@ -53,6 +53,7 @@ ALLOWED_OPERATORS = {">", "<", ">=", "<=", "==", "!="}
 ALLOWED_TRIGGER_TYPES = {"event", "schedule"}
 ALLOWED_ACTION_TYPES = {"notify", "service"}
 ALLOWED_SEVERITIES = {"info", "warn", "alert"}
+ALLOWED_MODES = frozenset({"rule", "objective"})
 
 # Home Assistant's real grammar for the bits of a lens that end up in an
 # actual HA API call (action target) or a cron parser. Presence-only
@@ -396,9 +397,27 @@ def validate_agentbot(raw: dict) -> dict | None:
         if trigger is None:
             return None
 
-        action = _validate_action(raw.get("action"))
-        if action is None:
+        # mode: absent -> "rule" (content-sniffed migration: every pre-1.1
+        # Agentbot is a rule, since "objective" didn't exist yet). Present
+        # but not in the allowed set -> reject the whole record, mirroring
+        # severity/enabled's absent-vs-present convention.
+        mode = raw.get("mode", "rule")
+        if mode not in ALLOWED_MODES:
             return None
+
+        # action: required in mode="rule" (unchanged 1.0 invariant -- a rule
+        # with no action is unsalvageable). Forbidden in mode="objective": an
+        # objective Agentbot's actions are born downstream as Tasks, so a
+        # declared action here is a contradiction, not an oversight to
+        # silently drop.
+        if mode == "rule":
+            action = _validate_action(raw.get("action"))
+            if action is None:
+                return None
+        else:  # objective
+            if raw.get("action") is not None:
+                return None
+            action = None
 
         # severity: absent -> default "info"; PRESENT but not in the allowed
         # set -> reject the whole Agentbot (don't silently coerce to "info",
@@ -443,6 +462,7 @@ def validate_agentbot(raw: dict) -> dict | None:
             "reasoning": reasoning,
             "action": action,
             "severity": severity,
+            "mode": mode,
         }
     except Exception:
         log.warning("validate_agentbot: unsalvageable Agentbot, dropping", exc_info=True)

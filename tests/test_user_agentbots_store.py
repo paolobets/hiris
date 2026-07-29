@@ -668,6 +668,71 @@ def test_validate_accepts_interval_min_at_minimum():
 
 
 # ---------------------------------------------------------------------------
+# Agenti v1.1 Fase 1 Task 1+2: mode discriminator (rule|objective) + action
+# conditional on mode
+# ---------------------------------------------------------------------------
+
+def test_mode_defaults_to_rule_when_absent():
+    """Migrazione a fiuto: un agentbot pre-1.1 non ha `mode` -> e' una regola."""
+    cleaned = validate_agentbot({
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    })
+    assert cleaned is not None
+    assert cleaned["mode"] == "rule"
+
+
+def test_mode_objective_is_accepted():
+    cleaned = validate_agentbot({
+        "mode": "objective",
+        "objective": "valuta i consumi",
+        "trigger": {"type": "schedule", "interval_min": 60},
+    })
+    assert cleaned is not None
+    assert cleaned["mode"] == "objective"
+
+
+def test_mode_invalid_rejects_whole_record():
+    """Coerente con severity/enabled: presente-ma-invalido = rigetto."""
+    assert validate_agentbot({
+        "mode": "banana",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    }) is None
+
+
+def test_rule_mode_still_requires_action():
+    """Invariante 1.0: una REGOLA senza azione resta un rigetto."""
+    assert validate_agentbot({
+        "mode": "rule",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+    }) is None
+
+
+def test_objective_mode_has_no_action():
+    cleaned = validate_agentbot({
+        "mode": "objective",
+        "objective": "valuta i consumi",
+        "trigger": {"type": "schedule", "interval_min": 60},
+    })
+    assert cleaned is not None
+    assert cleaned.get("action") is None
+
+
+def test_objective_mode_rejects_a_declared_action():
+    """Un agente-obiettivo che dichiara un'azione e' una contraddizione."""
+    assert validate_agentbot({
+        "mode": "objective",
+        "objective": "valuta i consumi",
+        "trigger": {"type": "schedule", "interval_min": 60},
+        "action": {"type": "notify"},
+    }) is None
+
+
+# ---------------------------------------------------------------------------
 # SP-4 Fase A Task 3: one-time migration sentinel_lenses.json -> agentbots.json
 # ---------------------------------------------------------------------------
 
