@@ -51,13 +51,24 @@ def set_agentbots(app, agentbots: list[dict]) -> None:
 
 
 def get_event_agentbots(app) -> list[dict]:
-    """The enabled, EVENT-triggered Agentbots currently in the in-memory
-    cache -- what the Guardian's per-`state_changed` dispatch reads (never
-    the disk; see module docstring). Missing/uninitialized cache -> []."""
+    """The enabled, EVENT-triggered, RULE-mode Agentbots currently in the
+    in-memory cache -- what the Guardian's per-`state_changed` dispatch
+    reads (never the disk; see module docstring). Missing/uninitialized
+    cache -> [].
+
+    Fase 1 fix-wave IMPORTANT: `mode` gate added -- the plan's constraint is
+    "solo mode='rule' e' raggiungibile" (an objective Agentbot is heavier,
+    an LLM turn, and is meant to be launched manually/on a schedule/by a
+    rule, never directly off an event). `validate_agentbot` already forbids
+    the objective+event combination at the store layer, but this is the
+    actual runtime dispatch gate -- defense in depth against anything that
+    lands in the cache without going through that validator, and against a
+    future mode that doesn't share the same trigger restriction."""
     return [
         a for a in (app.get("user_agentbots") or [])
         if isinstance(a, dict) and a.get("enabled")
         and (a.get("trigger") or {}).get("type") == "event"
+        and a.get("mode", "rule") == "rule"
     ]
 
 

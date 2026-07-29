@@ -188,9 +188,35 @@ async def run_agentbot(
             # so each Agentbot reasons with its configured model instead of
             # always falling back to "auto".
             model = reasoning.get("model") or "auto"
+            # Fase 1 fix-wave CRITICAL: fail closed on SHAPE, not on the
+            # string "notify". This used to be `action_type == "notify"`,
+            # which was exhaustive ONLY because v1.0 guaranteed `action` is
+            # always a validated dict (`_validate_action` rejects `None`),
+            # so `action_type` was always either "service" (-> `suggested`
+            # non-None -> the OTHER guard in `_run_decision` re-injects it)
+            # or "notify" (-> this guard fires). Fase 1's mode="objective"
+            # broke that guarantee: `action` is `None` by design there, so
+            # `action_type` is `None` too -- neither guard used to fire, and
+            # the LLM's OWN parsed action would survive onto the Decision
+            # and reach `executor.execute()` unchecked by either of this
+            # module's two safety nets (only the denylist/tier gate inside
+            # `execute()` still applied). `!= "service"` instead makes ANY
+            # mode without a validated, deterministic service action --
+            # current or future -- force notify-only by construction,
+            # instead of requiring every new mode to remember to add itself
+            # to an allowlist of "safe" action_type strings here.
+            #
+            # LATENT DEPENDENCY (see also `run_agentbot`'s module
+            # docstring): this guard and `_run_decision`'s `if suggested`
+            # guard are only jointly exhaustive because of that invariant.
+            # Any FUTURE mode must either supply a validated service action
+            # (`agentbot_action` returns non-None) or be forced through this
+            # `force_notify_only` path -- there is no third option. A new
+            # mode that tries to thread its own action through some OTHER
+            # channel would reopen exactly this gap.
             await run_decision(
                 w, suggested=suggested, system=system,
-                force_notify_only=(action_type == "notify"), model=model)
+                force_notify_only=(action_type != "service"), model=model)
             return
         decision = Decision(
             verdict="anomalia",

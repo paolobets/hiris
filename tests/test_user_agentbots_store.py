@@ -802,6 +802,47 @@ def test_rule_mode_rejects_objective_field():
     }) is None
 
 
+def test_mode_null_behaves_as_absent():
+    """Fase 1 fix-wave MINOR 1: `severity`/`enabled` both treat an explicit
+    JSON `null` as "absent" and default; `mode` didn't -- `raw.get("mode",
+    "rule")` returns `None` (not the default) when the key is PRESENT with
+    value `None`, so `mode not in ALLOWED_MODES` rejected the whole record.
+    An LLM proposal emitting `"mode": null` must not lose the entire
+    Agentbot -- it must default to "rule" like an absent key does."""
+    cleaned = validate_agentbot({
+        "mode": None,
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    })
+    assert cleaned is not None
+    assert cleaned["mode"] == "rule"
+
+
+def test_rule_mode_empty_string_objective_does_not_reject():
+    """Fase 1 fix-wave MINOR 2: `is not None` treats an empty string as
+    "declared", so a form that always serializes `objective: ''` for rules
+    would 400 with no field-level cause. An empty/whitespace-only
+    `objective` in rule mode must be treated the same as absent."""
+    cleaned = validate_agentbot({
+        "mode": "rule", "objective": "",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    })
+    assert cleaned is not None
+    assert cleaned["objective"] is None
+
+    cleaned_ws = validate_agentbot({
+        "mode": "rule", "objective": "   ",
+        "trigger": {"type": "event", "entity_id": "sensor.x",
+                    "operator": ">", "threshold": 10},
+        "action": {"type": "notify"},
+    })
+    assert cleaned_ws is not None
+    assert cleaned_ws["objective"] is None
+
+
 def test_objective_mode_rejects_event_trigger():
     """Design: gli eventi restano alle REGOLE (costo zero); una regola puo'
     invocare un agente-obiettivo, ma l'obiettivo non si aggancia all'evento."""

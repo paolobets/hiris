@@ -400,8 +400,18 @@ def validate_agentbot(raw: dict) -> dict | None:
         # mode: absent -> "rule" (content-sniffed migration: every pre-1.1
         # Agentbot is a rule, since "objective" didn't exist yet). Present
         # but not in the allowed set -> reject the whole record, mirroring
-        # severity/enabled's absent-vs-present convention.
-        mode = raw.get("mode", "rule")
+        # severity/enabled's absent-vs-present convention. Fase 1 fix-wave
+        # MINOR 1: an explicit `"mode": null` must behave the SAME as an
+        # absent key (mirrors enabled's own `"enabled" in raw and raw.get(
+        # "enabled") is not None` form just below) -- `raw.get("mode",
+        # "rule")` used to return `None` (not the default) for a
+        # present-but-null key, which then failed the ALLOWED_MODES check
+        # and rejected the whole Agentbot. An LLM proposal emitting `"mode":
+        # null` must not lose the entire Agentbot over this.
+        if "mode" in raw and raw.get("mode") is not None:
+            mode = raw.get("mode")
+        else:
+            mode = "rule"
         if mode not in ALLOWED_MODES:
             return None
 
@@ -433,7 +443,13 @@ def validate_agentbot(raw: dict) -> dict | None:
                 return None
             objective = objective[:2000]
         else:  # rule
-            if raw.get("objective") is not None:
+            # Fase 1 fix-wave MINOR 2: use the non-empty check here too (the
+            # same `_clean_nonempty_str` the objective branch above already
+            # uses), not a bare `is not None` -- an empty/whitespace-only
+            # string is not a "declared" objective, it's the absence of one.
+            # A form that always serializes `objective: ''` for rules would
+            # otherwise 400 the whole Agentbot with no field-level cause.
+            if _clean_nonempty_str(raw.get("objective")) is not None:
                 return None
             objective = None
 
