@@ -62,7 +62,7 @@ from .watcher.signals import Decision
 # accetta `budget_tokens`/`deadline_min` (intero > 0, `bool` deliberatamente
 # escluso). Riusarlo invece di riscriverlo evita che il consumo del perimetro
 # finisca a ragionare con regole diverse da quelle con cui e' stato validato.
-from .watcher.agentbots import _is_positive_int
+from .watcher.agentbots import is_positive_int
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
@@ -631,9 +631,11 @@ async def register_agentbot_schedules(app: web.Application) -> None:
 # Sforare non e' un errore: e' un ESITO. L'esecuzione si ferma PRIMA di
 # eseguire la Decision e lascia una riga dove questo percorso registra gia'
 # ogni suo esito (`_record_situation_event` -> `sentinel_store.record_event`
-# -> `/api/sentinel/events`), con `outcome` che dice che e' stata interrotta e
+# -> `/api/sentinel/timeline`, servita da `api/handlers_sentinel.
+# handle_sentinel_timeline`), con `outcome` che dice che e' stata interrotta e
 # `message` che dice perche' -- i due campi che la lista eventi dell'editor
-# agentbot mostra all'utente (`static/config/agentbot-editor.js`).
+# agentbot mostra all'utente (`static/config/agentbot-editor.js`, che chiama
+# proprio quella rotta).
 AGENT_RUN_STOP_BUDGET = "interrotto:budget"
 AGENT_RUN_STOP_DEADLINE = "interrotto:scadenza"
 
@@ -662,7 +664,7 @@ def agent_run_bound(perimeter: dict | None) -> tuple[int | None, float | None]:
     esecuzione di prima di questo task, senza misure e senza scadenza.
 
     I due valori sono gia' stati validati da `_validate_perimeter`;
-    ricontrollarli con lo STESSO `_is_positive_int` non e' una seconda
+    ricontrollarli con lo STESSO `is_positive_int` non e' una seconda
     validazione ma un fail-safe di lettura -- un perimetro che arrivasse da
     altrove (un file scritto a mano, un test) con un valore non conforme vale
     "non dichiarato" = nessun bound, non un bound assurdo. I minuti diventano
@@ -672,8 +674,8 @@ def agent_run_bound(perimeter: dict | None) -> tuple[int | None, float | None]:
     budget_tokens = perimeter.get("budget_tokens")
     deadline_min = perimeter.get("deadline_min")
     return (
-        budget_tokens if _is_positive_int(budget_tokens) else None,
-        deadline_min * 60.0 if _is_positive_int(deadline_min) else None,
+        budget_tokens if is_positive_int(budget_tokens) else None,
+        deadline_min * 60.0 if is_positive_int(deadline_min) else None,
     )
 
 
@@ -691,17 +693,24 @@ def agent_run_deadline(deadline_sec: float | None):
     return asyncio.timeout(deadline_sec)
 
 
-def agent_tokens_used(runner, agent_id: str | None) -> int | None:
-    """Token (input+output) che il livello LLM ha gia' attribuito ad
-    `agent_id`, o `None` quando non sono misurabili.
+def agent_run_usage(runner, agent_id: str | None) -> tuple[int, int] | None:
+    """UNA lettura dei contatori per-agente: `(token, richieste)`, o `None`
+    quando non c'e' proprio nulla da leggere.
 
-    Non e' un contatore nuovo: e' lo stesso per-agente che `ClaudeRunner.chat`
-    incrementa a OGNI risposta dell'API (`usage.json`, blocco `per_agent`) e
-    che `LLMRouter` aggrega sui backend. Il consumo di una singola esecuzione
-    e' la differenza fra due letture attorno alla chiamata -- la stessa
-    tecnica con cui `chatbot_engine` misura il costo di un run. Poiche' il
-    contatore avanza a ogni risposta, la misura copre l'intero giro agentico
-    (piu' turni di tool use), non solo l'ultimo.
+    Non sono contatori nuovi: sono gli stessi per-agente che `ClaudeRunner.chat`
+    (`claude_runner.py`) e `OpenAICompatRunner` incrementano e che `LLMRouter`
+    aggrega sui backend (`llm_router.get_chatbot_usage`). Il consumo di una
+    singola esecuzione e' la differenza fra due letture attorno alla chiamata
+    -- la stessa tecnica con cui `chatbot_engine` misura il costo di un run.
+    Poiche' i contatori avanzano a ogni risposta, la misura copre l'intero
+    giro agentico (piu' turni di tool use), non solo l'ultimo.
+
+    Le RICHIESTE vengono lette insieme ai token perche' da sole dicono se una
+    chiamata e' stata davvero attribuita a questo agente: entrambi i runner le
+    incrementano all'INGRESSO della chiamata, prima di sapere cosa rispondera'
+    il modello (`claude_runner.chat`, `openai_compat_runner.chat` -- e quindi
+    anche `run_with_actions`, che passa da `chat`). I token invece dipendono
+    da cosa la risposta riporta. Vedi `agent_run_tokens_spent`.
 
     L'attribuzione per-agente esiste perche' `_llm_reason` passa gia'
     `chatbot_id=agent_id` al runner (Task 3). Senza identita' -- ogni
@@ -715,13 +724,77 @@ def agent_tokens_used(runner, agent_id: str | None) -> int | None:
         return None
     try:
         usage = get_usage(agent_id) or {}
-        return int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0))
+        return (
+            int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0)),
+            int(usage.get("requests", 0)),
+        )
     except Exception:
         # La misura e' un limite, non una funzionalita': se il backend non sa
         # rispondere si perde il bound sul budget (resta la scadenza), non
         # l'esecuzione.
-        logger.debug("agent_tokens_used(%s): misura non disponibile", agent_id, exc_info=True)
+        logger.debug("agent_run_usage(%s): misura non disponibile", agent_id, exc_info=True)
         return None
+
+
+# Un tetto che non puo' misurare deve DIRLO -- ma una volta, non a ogni giro:
+# questo percorso gira su pianificazione, e un warning per esecuzione
+# diventerebbe rumore che nessuno legge piu'. Insieme per agente, perche' il
+# backend che misura puo' essere diverso da agente ad agente (`model` per
+# Agentbot -> backend diverso in `LLMRouter`) e il silenzio di uno non deve
+# nascondere il silenzio di un altro.
+_AGENT_UNMEASURED_WARNED: set[str] = set()
+
+
+def agent_run_tokens_spent(
+    before: tuple[int, int] | None, after: tuple[int, int] | None,
+    agent_id: str | None,
+) -> int | None:
+    """Token spesi DA questa esecuzione (differenza fra due `agent_run_usage`),
+    oppure `None` = "non misurabile" -> nessun bound sul budget.
+
+    Il caso che questa funzione esiste per distinguere: un delta di ZERO token
+    puo' voler dire due cose OPPOSTE. "Giro economico misurato" (legittimo: il
+    bound resta in piedi, nessun rumore) oppure "non abbiamo misurato niente"
+    -- e in quel secondo caso `0 > budget_tokens` non sara' mai vero e
+    l'agente girerebbe senza alcun tetto, senza che nulla lo dica. Il
+    contatore delle RICHIESTE separa i due: avanza all'ingresso di ogni
+    chiamata attribuita a questo agente, su entrambi i runner, prima e
+    indipendentemente da cosa la risposta riportera'. Richieste ferme
+    attraverso l'esecuzione = nessuna chiamata e' stata attribuita a questo
+    agente (identita' non propagata al runner, runner risolto diverso da
+    quello che ha davvero chiamato, backend senza contabilita' per-agente):
+    la lettura dei token e' un tetto solo apparente.
+
+    LIMITE NOTO, dichiarato invece che promesso (come `max_tier`): un backend
+    che RISPONDE senza oggetto `usage` fa avanzare le richieste ma non i token
+    (`OpenAICompatRunner._track_usage` esce subito, "token tracking skipped"),
+    e per questa funzione e' indistinguibile da un giro economico -- il tetto
+    sui token non scatta. Distinguerlo richiederebbe un contatore che i runner
+    incrementino DENTRO `_track_usage` (cioe' solo quando la misura c'e'
+    davvero): cambiare la forma di `per_agent` in `usage.json` non e' materia
+    di questo fix. Resta la scadenza, che non dipende da nessuna misura.
+
+    Resta il fail-open gia' scelto (non misurabile -> nessun bound, non
+    "budget esaurito"): un tetto che non sa contare non deve fermare un agente.
+    Ma diventa VISIBILE, con un `logger.warning`."""
+    if before is None or after is None:
+        return None
+    tokens = after[0] - before[0]
+    requests = after[1] - before[1]
+    if requests > 0:
+        # Misurato. Zero token qui e' un legittimo giro economico.
+        return tokens
+    key = agent_id or "?"
+    if key not in _AGENT_UNMEASURED_WARNED:
+        _AGENT_UNMEASURED_WARNED.add(key)
+        logger.warning(
+            "agentbot %s: nessuna chiamata LLM risulta attribuita a questo "
+            "agente (contatore richieste fermo attraverso l'esecuzione) -- il "
+            "consumo non e' misurabile, quindi il budget per esecuzione NON e' "
+            "stato applicato e questa esecuzione ha girato senza tetto sui "
+            "token. Resta la scadenza (deadline_min). Avviso emesso una sola "
+            "volta per agente.", key)
+    return None
 
 
 def agent_run_stopped(why: str, severity: str | None) -> Decision:
@@ -1756,8 +1829,22 @@ async def _on_startup(app: web.Application) -> None:
         # Lo STESSO oggetto runner per le due letture: risolverlo due volte
         # rischierebbe di misurare la differenza fra i contatori di due
         # backend diversi se il router venisse sostituito nel frattempo.
+        #
+        # ASSUNZIONE (review Task 5, minor #4): i contatori per-agente sono
+        # CUMULATIVI e condivisi, quindi la differenza fra due letture e' il
+        # consumo di questa esecuzione solo se non ce n'e' un'altra dello
+        # STESSO agente in volo nello stesso momento (si attribuirebbero i
+        # token a vicenda: la piu' lenta pagherebbe anche per la piu' veloce).
+        # Oggi non succede -- un agente in modalita' obiettivo non e'
+        # event-triggered (Task 4: solo pianificazione) e il suo callback
+        # `_run_scheduled_agentbot` e' awaited inline sotto `max_instances=1`
+        # di APScheduler, che non ne fa partire una seconda finche' la prima
+        # non e' finita. Se un domani gli obiettivi diventassero anche
+        # event-triggered, o il callback smettesse di essere serializzato,
+        # questa misura andrebbe resa per-esecuzione (un contatore passato
+        # dentro alla chiamata) invece che per differenza.
         _runner = _reasoning_runner(app) if _budget_tokens is not None else None
-        _tokens_before = agent_tokens_used(_runner, agent_id)
+        _usage_before = agent_run_usage(_runner, agent_id)
         _deadline = agent_run_deadline(_deadline_sec)
         try:
             async with _deadline:
@@ -1778,9 +1865,14 @@ async def _on_startup(app: web.Application) -> None:
                     wake.severity_hint),
                 AGENT_RUN_STOP_DEADLINE)
             return
-        if _tokens_before is not None:
-            _tokens_after = agent_tokens_used(_runner, agent_id)
-            _tokens_run = None if _tokens_after is None else _tokens_after - _tokens_before
+        if _usage_before is not None:
+            # `agent_run_tokens_spent` restituisce `None` quando la misura non
+            # e' avvenuta (nessuna chiamata risulta attribuita a questo
+            # agente): fail-open, nessun bound -- ma con un warning, non in
+            # silenzio. Un delta di zero token MISURATO resta invece un giro
+            # economico e non ferma nulla.
+            _tokens_run = agent_run_tokens_spent(
+                _usage_before, agent_run_usage(_runner, agent_id), agent_id)
             if _tokens_run is not None and _tokens_run > _budget_tokens:
                 # Il ragionamento ha gia' risposto, ma e' costato piu' del
                 # concesso: la sua Decision NON viene eseguita (niente

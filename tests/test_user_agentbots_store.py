@@ -1031,7 +1031,7 @@ def test_perimeter_rejects_non_int_deadline_min():
 
 def test_perimeter_rejects_bool_deadline_min():
     """Same bool-is-an-int-subclass trap as budget_tokens -- both go through
-    the same `_is_positive_int`, so both need the same regression guard."""
+    the same `is_positive_int`, so both need the same regression guard."""
     raw = {**_OBJECTIVE_BASE, "perimeter": {"deadline_min": True}}
     assert validate_agentbot(raw) is None
 

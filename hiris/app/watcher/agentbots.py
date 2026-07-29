@@ -391,7 +391,7 @@ _PERIMETER_BUDGET_TOKENS_DEFAULT = 4096
 _PERIMETER_DEADLINE_MIN_DEFAULT = 5
 
 
-def _is_positive_int(v) -> bool:
+def is_positive_int(v) -> bool:
     # Same bool-is-an-int-subclass trap _is_number already guards against.
     # budget_tokens/deadline_min are per-execution ceilings, not "amount used
     # so far" -- 0 or negative is not a smaller ceiling, it's a nonsensical
@@ -510,13 +510,13 @@ def _validate_perimeter(raw) -> dict | None:
     budget_tokens = raw.get("budget_tokens")
     if budget_tokens is None:
         budget_tokens = _PERIMETER_BUDGET_TOKENS_DEFAULT
-    elif not _is_positive_int(budget_tokens):
+    elif not is_positive_int(budget_tokens):
         return None
 
     deadline_min = raw.get("deadline_min")
     if deadline_min is None:
         deadline_min = _PERIMETER_DEADLINE_MIN_DEFAULT
-    elif not _is_positive_int(deadline_min):
+    elif not is_positive_int(deadline_min):
         return None
 
     return {

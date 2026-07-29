@@ -1186,7 +1186,7 @@ async def test_rule_mode_agentbot_reasoning_call_is_unchanged(store, tmp_path):
 # notify/act/propose) NON avvenga, e che l'esito finisca leggibile dove il
 # sistema gia' registra gli esiti di queste esecuzioni
 # (`_record_situation_event` -> `sentinel_store.record_event` -> `/api/
-# sentinel/events` -> lista eventi dell'editor agentbot).
+# sentinel/timeline` -> lista eventi dell'editor agentbot).
 # ---------------------------------------------------------------------------
 
 _DECISION_TEXT = (
@@ -1205,15 +1205,24 @@ class _MeteredReasoningRunner:
 
     `tokens_in`/`tokens_out` sono contabilizzati DENTRO la chiamata, come fa
     il runner vero: se la chiamata viene annullata a meta' non si contano.
+    `requests` invece avanza all'INGRESSO della chiamata, prima di sapere cosa
+    rispondera' il modello -- esattamente dove lo incrementano i runner veri
+    (`claude_runner.py:609`, `openai_compat_runner.py:474` e `:756`), ed e'
+    cio' che dice al bound se una chiamata e' stata davvero attribuita a
+    questo agente. `track_usage=False` riproduce un runner che NON tiene
+    contabilita' per-agente (contatori sempre a zero): il consumo non e'
+    misurabile e il bound sul budget deve fallire aperto, dicendolo.
     `delay` serve a far scadere la scadenza; `usage_reads` conta le letture
     dei contatori, cosi' un test puo' dimostrare che per un Agentbot senza
     perimetro non viene nemmeno misurato nulla."""
 
-    def __init__(self, *, tokens_in=0, tokens_out=0, delay=0.0, text=_DECISION_TEXT):
+    def __init__(self, *, tokens_in=0, tokens_out=0, delay=0.0, text=_DECISION_TEXT,
+                 track_usage=True):
         self._tokens_in = tokens_in
         self._tokens_out = tokens_out
         self._delay = delay
         self._text = text
+        self._track_usage = track_usage
         self._usage = {}
         self.calls = 0
         self.completed = 0
@@ -1223,11 +1232,14 @@ class _MeteredReasoningRunner:
     async def run_with_actions(self, **kwargs):
         self.calls += 1
         self.seen_kwargs.append(kwargs)
+        cid = kwargs.get("chatbot_id")
+        if cid and self._track_usage:
+            u = self._usage.setdefault(
+                cid, {"input_tokens": 0, "output_tokens": 0, "requests": 0})
+            u["requests"] += 1
         if self._delay:
             await asyncio.sleep(self._delay)
-        cid = kwargs.get("chatbot_id")
-        if cid:
-            u = self._usage.setdefault(cid, {"input_tokens": 0, "output_tokens": 0})
+        if cid and self._track_usage:
             u["input_tokens"] += self._tokens_in
             u["output_tokens"] += self._tokens_out
         self.completed += 1
@@ -1239,7 +1251,8 @@ class _MeteredReasoningRunner:
         return {
             "input_tokens": u.get("input_tokens", 0),
             "output_tokens": u.get("output_tokens", 0),
-            "requests": 0, "cost_usd": 0.0, "last_run": None,
+            "requests": u.get("requests", 0),
+            "cost_usd": 0.0, "last_run": None,
             "tokens_today": 0, "tokens_today_date": "",
         }
 
@@ -1341,7 +1354,14 @@ async def test_run_over_deadline_stops_and_records_why(store):
     assert len(events) == 1
     ev = events[0]
     assert ev["outcome"] == "interrotto:scadenza"
-    assert "scadenza" in ev["message"].lower()
+    # Il messaggio nella sua forma REALE, non un "scadenza" case-insensitive:
+    # il numero e' quello del bound (qui i 50 ms del doppio, resi in minuti
+    # dal formato di produzione), non una costante scritta a mano. La resa del
+    # caso vero (300 s -> "5 min") e' asserita in
+    # `test_execution_bound_is_read_from_the_validated_perimeter`.
+    assert ev["message"] == (
+        "Esecuzione interrotta: superata la scadenza di 0.000833333 min "
+        "per questa esecuzione"), ev["message"]
 
 
 @pytest.mark.asyncio
@@ -1393,10 +1413,106 @@ async def test_rule_mode_agentbot_is_not_bounded_per_run(store):
 
 def test_execution_bound_is_read_from_the_validated_perimeter():
     """Il bound arriva dal perimetro VERO materializzato dal validatore
-    (default 4096 token / 5 minuti), e i minuti diventano secondi una volta
-    sola, qui."""
+    (default 4096 token / 5 minuti), i minuti diventano secondi una volta sola
+    qui, e quei secondi tornano minuti leggibili nel messaggio d'esito."""
     agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW, "perimeter": None})
-    assert server.agent_run_bound(agentbot["perimeter"]) == (4096, 300.0)
+    budget_tokens, deadline_sec = server.agent_run_bound(agentbot["perimeter"])
+    assert (budget_tokens, deadline_sec) == (4096, 300.0)
+    # Review Task 5, minor #5: la scadenza VERA e' >= 1 minuto, ma il test che
+    # la fa scattare deve accorciarla a 50 ms per non far attendere la suite --
+    # e cosi' nessuno asseriva mai la resa che l'utente legge davvero. Il
+    # formato e' quello di produzione (`_run_decision`, ramo TimeoutError):
+    # con `:g` i 300 s del perimetro reale diventano "5 min", non "5.0" ne'
+    # "0.08333 h".
+    stopped = server.agent_run_stopped(
+        f"superata la scadenza di {deadline_sec / 60:g} min per questa esecuzione",
+        "warn")
+    assert stopped.message == (
+        "Esecuzione interrotta: superata la scadenza di 5 min per questa esecuzione")
+    assert stopped.verdict == "interrotto" and stopped.action is None
     # Nessun perimetro (= ogni Agentbot mode="rule", e ogni chiamante
     # built-in del percorso di ragionamento) -> nessun bound.
     assert server.agent_run_bound(None) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_run_exactly_at_budget_is_not_over_it(store):
+    """Il limite e' un TETTO, non una soglia: spendere ESATTAMENTE
+    `budget_tokens` non sfora (`server.py` confronta con `>`), quindi
+    l'esecuzione prosegue e la Decision viene eseguita. Comportamento scelto,
+    non incidentale: senza questo test un refactoring potrebbe trasformare
+    `>` in `>=` senza che nulla protesti."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW,
+                                  "perimeter": {"budget_tokens": 150}})
+    assert agentbot["perimeter"]["budget_tokens"] == 150
+    # 120 + 30 = 150: esattamente il tetto, nemmeno un token oltre.
+    runner = _MeteredReasoningRunner(tokens_in=120, tokens_out=30)
+    rec, events = _Rec(), []
+
+    outcome = await _fire_bounded_agentbot(
+        agentbot, store=store, runner=runner, rec=rec, events=events)
+
+    assert outcome == "woke"
+    assert len(rec.notified) == 1, "esattamente al tetto non e' oltre il tetto"
+    assert len(events) == 1 and events[0]["outcome"] == "notify"
+
+
+@pytest.mark.asyncio
+async def test_unmeasurable_run_fails_open_and_says_so(store, caplog):
+    """Review Task 5, finding #1: se il consumo per-agente non e' misurabile
+    (nessuna chiamata risulta attribuita all'agente: contatore richieste fermo
+    attraverso l'esecuzione), il bound sul budget FALLISCE APERTO -- l'agente
+    non viene fermato -- ma la cosa dev'essere DETTA, non invisibile.
+
+    Il fail-open e' deliberato: un tetto che non sa contare non deve fermare un
+    agente. Prima di questo fix era anche silenzioso, e un tetto mai applicato
+    era indistinguibile da un tetto rispettato."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW,
+                                  "perimeter": {"budget_tokens": 10}})
+    # Consumo enorme, ben oltre i 10 token concessi -- ma il runner non tiene
+    # contabilita' per-agente, quindi non risulta da nessuna parte.
+    runner = _MeteredReasoningRunner(tokens_in=99999, tokens_out=99999,
+                                     track_usage=False)
+    rec, events = _Rec(), []
+    server._AGENT_UNMEASURED_WARNED.discard(agentbot["id"])
+
+    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+        outcome = await _fire_bounded_agentbot(
+            agentbot, store=store, runner=runner, rec=rec, events=events)
+
+    # (a) fail-open: l'esecuzione NON viene interrotta
+    assert outcome == "woke"
+    assert len(rec.notified) == 1
+    assert len(events) == 1 and events[0]["outcome"] == "notify"
+    # (b) ...ma il tetto mancante e' visibile
+    warnings = [r for r in caplog.records
+                if r.levelno >= logging.WARNING and r.name == "hiris.app.server"]
+    assert len(warnings) == 1, [r.getMessage() for r in warnings]
+    assert agentbot["id"] in warnings[0].getMessage()
+    assert "senza tetto sui token" in warnings[0].getMessage()
+
+
+def test_measured_cheap_run_is_not_mistaken_for_an_unmeasurable_one(caplog):
+    """Contro-prova del fix: zero token MISURATI (richieste avanzate) sono un
+    legittimo giro economico -- valgono 0, non "non misurabile", e non fanno
+    rumore. E l'avviso di misura assente esce UNA volta per agente, non a ogni
+    esecuzione: questo percorso gira su pianificazione, e un warning per giro
+    sarebbe rumore che nessuno legge piu'."""
+    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+        # (a) misurato: 1 richiesta in piu', 0 token in piu' -> 0, niente warning
+        assert server.agent_run_tokens_spent((500, 3), (500, 4), "aaaaaaaaaaaa") == 0
+        assert server.agent_run_tokens_spent((500, 3), (700, 4), "aaaaaaaaaaaa") == 200
+        assert [r for r in caplog.records if r.name == "hiris.app.server"] == []
+
+        # (b) non misurato: richieste ferme -> None (nessun bound) + avviso
+        server._AGENT_UNMEASURED_WARNED.discard("bbbbbbbbbbbb")
+        assert server.agent_run_tokens_spent((0, 0), (0, 0), "bbbbbbbbbbbb") is None
+        assert server.agent_run_tokens_spent((0, 0), (0, 0), "bbbbbbbbbbbb") is None
+        assert server.agent_run_tokens_spent((0, 0), (0, 0), "bbbbbbbbbbbb") is None
+        warnings = [r for r in caplog.records if r.name == "hiris.app.server"]
+        assert len(warnings) == 1, [r.getMessage() for r in warnings]
+
+    # (c) niente da confrontare (runner assente, o backend senza
+    # `get_chatbot_usage`) -> nessuna misura, nessun bound.
+    assert server.agent_run_tokens_spent(None, (10, 1), "aaaaaaaaaaaa") is None
+    assert server.agent_run_tokens_spent((10, 1), None, "aaaaaaaaaaaa") is None
