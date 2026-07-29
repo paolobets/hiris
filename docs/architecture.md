@@ -493,8 +493,8 @@ Every tool call passes through `ToolDispatcher.dispatch()`:
 1. **Entity filter** — `allowed_entities` glob patterns applied to `get_entity_states`, `get_home_status`, `get_entities_on`, `get_entities_by_domain`
 2. **Service filter** — `allowed_services` glob patterns checked before every `call_ha_service`
 3. **Endpoint filter** — `http_request` hidden from Claude unless `allowed_endpoints` is configured; each call validated against the allowlist
-4. **Usage tracking** — cost/tokens tracked per Chatbot (`get_chatbot_usage`) and published via MQTT/UI; there is no per-persona budget cap or auto-disable anymore (removed together with the retired fields — `budget_remaining_eur` is always reported as `"unlimited"`)
-5. **Memory scope** — `save_memory` is available to personas (chat), governed by `knowledge_access`; the Sentinella's single-shot reasoner is restricted to `EVALUATION_ONLY_TOOLS`, which excludes `save_memory` (it only ever calls `recall_memory`)
+4. **Usage tracking** — cost/tokens tracked per Chatbot (`get_chatbot_usage`) and published via MQTT/UI; there is no per-Chatbot budget cap or auto-disable anymore (removed together with the retired fields — `budget_remaining_eur` is always reported as `"unlimited"`)
+5. **Memory scope** — `save_memory` is available to Chatbot (chat), governed by `knowledge_access`; the Sentinella's single-shot reasoner is restricted to `EVALUATION_ONLY_TOOLS`, which excludes `save_memory` (it only ever calls `recall_memory`)
 
 ### SSRF protection (`http_tools.py`)
 

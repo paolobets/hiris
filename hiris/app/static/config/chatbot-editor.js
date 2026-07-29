@@ -82,7 +82,6 @@
   var syncActionsVisibilityRef = null;
   var knowledgeKindsGroup = null;       /* HirisEditorKit.checkGroup -- sezione Knowledge (kinds) */
   var syncKnowledgeKindsVisibilityRef = null;
-  var dirtyTrackHandle = null;          /* HirisEditorKit.dirty.track() -- fermato/ricreato a ogni mount */
   var markDirtyRef = null;              /* letto dall'onChange dell'entity-picker (i chip non sono <input>, dirty.track da solo non li vede) */
   var saveBarHandle = null;             /* HirisEditorKit.saveBar() */
 
@@ -550,8 +549,11 @@
     function markDirty() { HirisState.set('unsaved', true); if (saveBarHandle) saveBarHandle.setDirty(true); }
     function markClean() { HirisState.set('unsaved', false); if (saveBarHandle) saveBarHandle.setDirty(false); }
 
-    if (dirtyTrackHandle) { dirtyTrackHandle.stop(); dirtyTrackHandle = null; }
-    dirtyTrackHandle = HirisEditorKit.dirty.track(outlet, markDirty);
+    /* HirisEditorKit.dirty.track() è ora un singleton a livello di kit
+       (review finale pre-1.0, finding C1): ferma da sé qualunque tracker
+       precedente, anche se installato da un editor di TIPO diverso --
+       niente più handle locale da tenere/fermare qui. */
+    HirisEditorKit.dirty.track(outlet, markDirty);
     markDirtyRef = markDirty;
 
     saveBarHandle = HirisEditorKit.saveBar(outlet, {
@@ -564,6 +566,12 @@
       },
       onCancel: function() {
         if (HirisState.get('unsaved') && !confirm('Annullare le modifiche non salvate?')) return;
+        /* Pulisce 'unsaved' PRIMA di cambiare hash (finding I2): l'utente
+           ha già confermato lo scarto qui sopra -- senza, il guard
+           installato in main.js vede lo stesso 'unsaved' ancora true sul
+           hashchange che questa riga genera e chiede conferma UNA SECONDA
+           volta, a vuoto, per una scelta già fatta. */
+        HirisState.set('unsaved', false);
         window.location.hash = '#/chatbots';
       },
       onDelete: agentId ? function() {
@@ -770,8 +778,13 @@
       }
       /* L'entità appena eliminata non esiste più: pulisce lo stato prima
          che qualunque altro codice possa leggerlo (nessuna route verso
-         #/chatbots lo fa da sola). */
+         #/chatbots lo fa da sola). Pulisce anche 'unsaved' (finding I2):
+         senza, un editor lasciato dirty prima di premere Elimina fa
+         chiedere al guard "Ci sono modifiche non salvate…" SUBITO DOPO
+         l'eliminazione riuscita -- non ha più senso, l'entità non esiste
+         più e non c'è nulla da salvare. */
       HirisState.set('activeChatbotId', null);
+      HirisState.set('unsaved', false);
       return loadChatbots().then(function() {
         window.location.hash = '#/chatbots';
       });

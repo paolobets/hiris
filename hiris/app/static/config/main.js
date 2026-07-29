@@ -16,7 +16,35 @@
      gira qui a livello top dell'IIFE, cioè al parse dello script --
      sempre prima che DOMContentLoaded scateni mountChrome()/
      HirisRouter.start(). */
-  HirisEditorKit.dirty.guard(function() { return !!HirisState.get('unsaved'); });
+  /* Secondo argomento (review finale pre-1.0, finding I2): quando l'utente
+     CONFERMA di uscire da un editor con modifiche non salvate, pulisce
+     'unsaved' -- senza, restava true dopo la navigazione e ogni click
+     successivo fra pagine SENZA form (es. Consumi -> Task) ririchiedeva la
+     stessa conferma a vuoto, finché l'utente non riapriva un editor
+     (unico altro punto che lo azzerava, setupStickyActions).
+
+     Guardia if(window.HirisEditorKit) (review finale pre-1.0, finding I5
+     -- Important): questa chiamata gira al PARSE del file, prima che
+     qualunque route si registri (vedi commento sopra) -- era l'unica
+     chiamata cross-file di main.js SENZA existence-check (ogni altro
+     window.HirisX qui sotto, es. HirisDashboard/HirisChatbotEditor/ecc.,
+     è dietro un `if (window.HirisX)`). Se editor-kit.js fallisse il parse
+     (sintassi rotta in un rilascio), questa riga lanciava un
+     ReferenceError NON catturato al top-level dell'IIFE -- l'intero resto
+     del file (tutte le HirisRouter.register() sotto + il DOMContentLoaded
+     che chiama HirisRouter.start()) non veniva mai eseguito: l'intera SPA
+     di config (Brain, Chatbot, Agentbot, Modelli, Gateway, Storico...)
+     renderizzava bianca, senza alcun errore visibile in pagina (solo in
+     console). Qui: se il kit manca, si salta silenziosamente
+     l'installazione del guard (nessuna protezione da modifiche non
+     salvate finché non si risolve il file rotto) invece di bloccare
+     l'intera pagina -- degradazione, non crash totale. */
+  if (window.HirisEditorKit && window.HirisEditorKit.dirty) {
+    HirisEditorKit.dirty.guard(
+      function() { return !!HirisState.get('unsaved'); },
+      function() { HirisState.set('unsaved', false); }
+    );
+  }
 
   function mountChrome() {
     var sn = document.getElementById('side-nav');

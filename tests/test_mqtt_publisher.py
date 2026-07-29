@@ -178,6 +178,25 @@ async def test_publish_discovery_does_not_crash_without_agent_type():
     await pub.publish_discovery(chatbot)  # must not raise AttributeError
 
 
+@pytest.mark.asyncio
+async def test_discovery_device_model_is_chatbot_not_retired_persona_name():
+    """Review finale pre-1.0, finding m8: `_build_discovery_payload` still
+    shipped `"model": "Persona"` -- the Slice 5 name for this same entity,
+    retired everywhere else in favour of "Chatbot" (see CLAUDE.md "The
+    current model — three AI entities"). Every HIRIS MQTT device was
+    showing model "Persona" in Home Assistant instead of "Chatbot"."""
+    pub = MQTTPublisher()
+    pub._enabled = True
+    chatbot = _make_chatbot()
+    await pub.publish_discovery(chatbot)
+    topics = await _drain(pub)
+
+    import json
+    sensor_topic = "homeassistant/sensor/chatbot_test-001_enabled/config"
+    payload = json.loads(topics[sensor_topic])
+    assert payload["device"]["model"] == "Chatbot"
+
+
 # ---------------------------------------------------------------------------
 # SP-4 Fase A Task 1 — MQTT wire rename (hiris/agents -> hiris/chatbots,
 # hiris_<id> -> chatbot_<id>) + one-time legacy discovery cleanup.

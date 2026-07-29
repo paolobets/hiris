@@ -494,8 +494,8 @@ Ogni chiamata tool passa per `ToolDispatcher.dispatch()`:
 1. **Filtro entità** — pattern glob `allowed_entities` applicati a `get_entity_states`, `get_home_status`, `get_entities_on`, `get_entities_by_domain`
 2. **Filtro servizi** — pattern glob `allowed_services` verificati prima di ogni `call_ha_service`
 3. **Filtro endpoint** — `http_request` nascosto da Claude se `allowed_endpoints` non è configurato; ogni chiamata validata contro la lista consentita
-4. **Tracciamento consumi** — costo/token tracciati per Chatbot (`get_chatbot_usage`) e pubblicati via MQTT/UI; non esiste più un tetto di budget per persona né un auto-disable (rimosso insieme ai campi ritirati — `budget_remaining_eur` riporta sempre `"unlimited"`)
-5. **Scope memoria** — `save_memory` è disponibile alle personas (chat), governato da `knowledge_access`; il reasoner single-shot della Sentinella è ristretto a `EVALUATION_ONLY_TOOLS`, che esclude `save_memory` (chiama solo `recall_memory`)
+4. **Tracciamento consumi** — costo/token tracciati per Chatbot (`get_chatbot_usage`) e pubblicati via MQTT/UI; non esiste più un tetto di budget per Chatbot né un auto-disable (rimosso insieme ai campi ritirati — `budget_remaining_eur` riporta sempre `"unlimited"`)
+5. **Scope memoria** — `save_memory` è disponibile ai Chatbot (chat), governato da `knowledge_access`; il reasoner single-shot della Sentinella è ristretto a `EVALUATION_ONLY_TOOLS`, che esclude `save_memory` (chiama solo `recall_memory`)
 
 ### Protezione SSRF (`http_tools.py`)
 

@@ -22,7 +22,24 @@
       var r = routes[i];
       var m = hash.match(r.pattern);
       if (m) {
-        try { r.handler(m); } catch(e) { console.error('route handler error', e); }
+        try {
+          r.handler(m);
+        } catch(e) {
+          console.error('route handler error', e);
+          /* Review finale pre-1.0, finding I3 (Important): NON marcare
+             lastResolvedHash quando l'handler lancia. Prima veniva
+             comunque scritto (nel blocco try/catch/finally implicito che
+             seguiva SEMPRE, errore o no) -- una route andata in errore
+             risultava "già risolta", quindi ridispacciare lo stesso hash
+             (il solo modo che l'utente ha per "riprovare": dashboard.js e
+             usage-route.js non hanno un bottone Riprova dedicato, vedi i
+             rispettivi commenti) faceva early-return alla riga sopra senza
+             richiamare l'handler -- nessun modo di ritentare senza un hard
+             reload. Ritornando qui SENZA aggiornare lastResolvedHash (né
+             HirisState.route, sotto), un secondo dispatch dello stesso
+             hash rientra nel for e richiama di nuovo r.handler(m). */
+          return;
+        }
         lastResolvedHash = hash;
         HirisState.set('route', { hash: hash, pattern: String(r.pattern) });
         return;

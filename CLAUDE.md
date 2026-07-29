@@ -24,9 +24,13 @@
 > The "Two-Layer Architecture" this section used to describe (Layer 2 =
 > Claude agentic loop, Layer 1 = a 100%-offline, no-AI Python flow engine)
 > is retired along with the rest of the Sprint A/B autonomous-agent
-> machinery (Slice 5, v0.33.0). There is no AI-free automation path anymore:
-> every Agentbot trigger wakes an LLM reasoner (verdict-JSON, gated by the
-> semaforo before any action executes) — see "The current model" above.
+> machinery (Slice 5, v0.33.0). The AI-free automation path still exists,
+> per-Agentbot: `reasoning.enabled` (default `false`, see
+> `hiris/app/watcher/agentbot_runner.py::_on_wake`) opts an individual
+> Agentbot INTO a single-shot LLM reasoner (verdict-JSON, gated by the
+> semaforo before any action executes) — with it left off, the action
+> declared in config runs deterministically, no LLM call at all. See "The
+> current model" below.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐

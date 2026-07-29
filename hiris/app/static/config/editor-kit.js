@@ -331,9 +331,39 @@
     return { el: wrap, getSelected: getSelected, setSelected: setSelected };
   }
 
-  /* ── dirty tracking: MutationObserver + delegation, non uno snapshot ── */
+  /* ── dirty tracking: MutationObserver + delegation, non uno snapshot ──
+
+     Singleton a livello di KIT (review finale pre-1.0, finding C1 --
+     CRITICO, perdita silenziosa di dati). Un solo editor (Chatbot O
+     Agentbot) è mai montato alla volta, ma prima ogni modulo teneva la
+     propria handle a livello di modulo (dirtyTrackHandle in
+     chatbot-editor.js E in agentbot-editor.js) e fermava SOLO la propria
+     copia quando rimontava se stesso -- passare da un TIPO di editor
+     all'altro (Chatbot -> Agentbot o viceversa) lasciava DUE
+     MutationObserver live sullo stesso #route-outlet (il contenitore
+     STABILE condiviso da ogni route). setupStickyActions gira sempre
+     PRIMA di populate*(), quindi ogni campo viene iniettato mentre
+     ENTRAMBI gli observer sono attivi: il flag `el.__hkWired` sotto fa si'
+     che solo il PRIMO observer a processare un nodo nuovo lo agganci --
+     l'osservatore più VECCHIO (quello dell'editor già smontato) vinceva la
+     "wire race", legando i campi del nuovo editor alla closure markDirty
+     di quello morto (la cui saveBarHandle punta a bottoni ormai detached:
+     il Salva VISIBILE non si abilitava mai, e --peggio-- 'unsaved' restava
+     comunque scritto da quella closure morta in modo incoerente con lo
+     stato reale mostrato all'utente, rendendo silenzioso anche il nav
+     guard). Qui: track() stessa ferma qualunque tracker precedente,
+     CHIUNQUE l'avesse installato, prima di installare il proprio --
+     un'unica implementazione della garanzia "un solo tracker vivo alla
+     volta", non delegata (e duplicata) a ciascun chiamante. */
+
+  var _activeTracker = null;
 
   function track(rootEl, onDirty) {
+    if (_activeTracker) {
+      _activeTracker.stop();
+      _activeTracker = null;
+    }
+
     function wire(el) {
       if (el.__hkWired) return;
       el.__hkWired = true;
@@ -351,7 +381,15 @@
       });
     });
     mo.observe(rootEl, { childList: true, subtree: true });
-    return { stop: function() { mo.disconnect(); } };
+
+    var handle = {
+      stop: function() {
+        mo.disconnect();
+        if (_activeTracker === handle) _activeTracker = null;
+      }
+    };
+    _activeTracker = handle;
+    return handle;
   }
 
   /* ── guard: hashchange + beforeunload, chiede conferma se dirty ──────
@@ -359,9 +397,21 @@
      è annullabile via preventDefault). "Annullare" qui significa: se
      l'utente rifiuta, si ripristina l'hash precedente (che a sua volta
      genera un secondo hashchange -- il flag `reverting` lo ignora per non
-     ri-chiedere conferma su un evento che il guard stesso ha causato). */
+     ri-chiedere conferma su un evento che il guard stesso ha causato).
 
-  function guard(isDirtyFn) {
+     onLeave (review finale pre-1.0, finding I2 -- Important): chiamato
+     quando l'utente CONFERMA di voler uscire con modifiche non salvate.
+     Prima 'unsaved' restava true dopo l'uscita -- lo azzerava solo il
+     mount successivo di UN EDITOR (setupStickyActions), quindi ogni
+     navigazione fra pagine SENZA form dopo aver lasciato un editor dirty
+     (es. Consumi -> Task) ririchiedeva la stessa conferma "Ci sono
+     modifiche non salvate…", a vuoto, finché l'utente non riapriva un
+     editor. main.js passa qui un callback che pulisce HirisState.get(
+     'unsaved') -- il guard resta comunque disaccoppiato da HirisState
+     (riceve/chiama funzioni, non lo importa direttamente), stesso
+     principio già in uso per isDirtyFn. */
+
+  function guard(isDirtyFn, onLeave) {
     var lastHash = window.location.hash;
     var reverting = false;
 
@@ -379,6 +429,7 @@
           if (e && typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
           return;
         }
+        if (typeof onLeave === 'function') onLeave();
       }
       lastHash = window.location.hash;
     }
