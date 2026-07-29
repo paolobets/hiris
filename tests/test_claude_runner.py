@@ -481,6 +481,17 @@ async def test_run_with_actions_restricts_to_evaluation_only_tools():
     assert set(call_kwargs["allowed_tools"]) == set(EVALUATION_ONLY_TOOLS)
 
 
+def test_empty_allowed_tools_does_not_narrow_evaluation_set():
+    """allowed_tools=[] e' falsy: NON restringe. Il ragionatore riceve tutti
+    gli EVALUATION_ONLY_TOOLS. L'invariante e' che quel set esclude i tool
+    che attuano -- non che i tool siano zero."""
+    from hiris.app.claude_runner import EVALUATION_ONLY_TOOLS
+    for actuating in ("call_ha_service", "send_notification", "trigger_automation",
+                      "toggle_automation", "http_request"):
+        assert actuating not in EVALUATION_ONLY_TOOLS
+    assert "create_task" in EVALUATION_ONLY_TOOLS   # la capacita' c'e': documentala
+
+
 def test_resolve_model_auto_agent_returns_haiku():
     assert resolve_model("auto", "agent") == "claude-haiku-4-5-20251001"
 

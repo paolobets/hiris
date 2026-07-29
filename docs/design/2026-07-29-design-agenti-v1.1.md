@@ -25,7 +25,7 @@ Tutto poggia su due invarianti. Se cadono, cade il design.
 1. **Un task è sempre una dichiarazione**, mai una chiamata composta al volo: *«questo servizio, su questa entità, con questi parametri»*. L'intelligenza dell'agente sta nel decidere **quali** task creare; l'esecuzione resta deterministica e passa dal semaforo. **L'LLM non causa mai direttamente un'azione: emette intenzioni.**
 2. **Il Brain non esegue mai.** Analizza, ragiona, crea/invoca/schedula agenti. L'output di un modello non può causare un'azione se non attraverso un'entità autorizzata.
 
-Il pilastro 1 generalizza il contratto che l'Agentbot ha già oggi (verdetto-JSON senza tool): invece di un verdetto, emette task.
+Il pilastro 1 generalizza il contratto che l'Agentbot ha già oggi (verdetto-JSON senza tool che attuano: legge liberamente, non attua mai direttamente): invece di un verdetto, emette task.
 
 ## Le entità
 

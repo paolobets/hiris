@@ -1319,8 +1319,12 @@ async def _on_startup(app: web.Application) -> None:
         return {"friendly_name": friendly_name, "memory": mem}
 
     async def _llm_reason(system, user, *, model, max_tokens):
-        # allowed_tools=[] → this reasoning call performs NO home actions; the
-        # executor below is the only thing that acts, gated by the semaforo.
+        # allowed_tools=[] is falsy -> narrowing is SKIPPED (claude_runner.py:894-896):
+        # this reasoning call receives every EVALUATION_ONLY_TOOLS entry
+        # (claude_runner.py:210-222), create_task included -- NOT zero tools. The
+        # real invariant is that set excludes the tools that ACT (call_ha_service,
+        # send_notification, trigger_automation, toggle_automation, http_request).
+        # The executor below is the only thing that acts, gated by the semaforo.
         runner = app.get("llm_router")
         if runner is None:
             eng = app.get("engine")

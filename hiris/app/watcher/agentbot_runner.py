@@ -25,9 +25,15 @@ SECURITY (non-negotiable, see plan Global Constraints):
   can therefore NEVER actuate, reasoning-enabled or not — only its
   verdict/severity/message ever reach the user.
 - Reasoning always runs through `run_decision`, which (in production) is
-  server.py's `_run_decision` -> `reason()` -> `_llm_reason()`, and
-  `_llm_reason` calls the LLM with `allowed_tools=[]` -- this module does
-  not weaken or bypass that; it never talks to the LLM directly.
+  server.py's `_run_decision` -> `reason()` -> `_llm_reason()`. `_llm_reason`
+  calls the LLM with `allowed_tools=[]`, which is falsy and does NOT narrow
+  the tool set (`claude_runner.py:894-896`): the reasoner receives every
+  `EVALUATION_ONLY_TOOLS` entry (`claude_runner.py:210-222`), a set that
+  excludes only the tools that ACT (`call_ha_service`, `send_notification`,
+  `trigger_automation`, `toggle_automation`, `http_request`) -- it is not
+  "zero tools". This module does not weaken or bypass that; it never talks
+  to the LLM directly, and actuation only ever happens through
+  `executor.execute()`, gated by the semaforo, as described above.
 - The zero-AI path calls `execute` directly with the exact same adapters
   (`notify`/`act`/`propose`) and `tiers`/`entity_tiers`/`allow_green_auto`
   shape as `_run_decision`'s own tail call, so the dangerous-domain
