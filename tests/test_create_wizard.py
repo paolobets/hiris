@@ -97,3 +97,38 @@ def test_guard_hoisted_to_main_js_and_removed_from_chatbot_editor():
     assert "HirisEditorKit.dirty.guard(" in main_js
     assert "HirisEditorKit.dirty.guard(" not in chatbot_editor_js
     assert "HirisEditorKit.dirty.guard(" not in agentbot_editor_js
+
+
+# ── Agenti v1.1 Fase 2 Task 6: modalità obiettivo nel wizard ────────────
+def test_wizard_agentbot_payload_has_a_mode_branch():
+    """Il wizard è il posto naturale per «obiettivo»: la missione scritta al
+    passo 1 in linguaggio naturale È l'obiettivo. Il builder deve avere il
+    ramo, altrimenti dal wizard si può creare solo una regola."""
+    import re
+    js = _read("create-wizard.js")
+    code = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+    build_start = code.index("function buildAgentbotPayload")
+    builder = code[build_start:code.index("function renderStep4", build_start)]
+    for key in ("mode", "objective", "perimeter"):
+        assert key in builder, f"buildAgentbotPayload deve saper produrre `{key}`"
+    assert "allowed_tools" not in builder, (
+        "LINEA ROSSA E.2: nemmeno il ramo obiettivo introduce il vocabolario dei tool liberi"
+    )
+
+
+def test_wizard_perimeter_empty_selection_is_null_never_an_empty_array():
+    """buildChatbotPayload() manda `[]` per "nessuna selezione" — è la
+    convenzione OPPOSTA a quella del perimetro (null = nessuna restrizione,
+    [] = nega tutto). Ricopiarla qui farebbe nascere paralizzato ogni agente
+    creato senza selezione."""
+    import re
+    js = _read("create-wizard.js")
+    code = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+    build_start = code.index("function buildAgentbotPayload")
+    builder = code[build_start:code.index("function renderStep4", build_start)]
+    perimeter = builder[builder.index("payload.perimeter"):]
+    assert "allowed_entities: state.agentbotPerimeterLimitEntities" in perimeter, (
+        "il ramo null/elenco deve dipendere da un interruttore esplicito dell'utente"
+    )
+    assert ": null" in perimeter
+    assert "allowed_entities: []" not in perimeter and "allowed_services: []" not in perimeter

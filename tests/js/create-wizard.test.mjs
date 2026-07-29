@@ -223,9 +223,15 @@ test('LINEA ROSSA E.2: payload Agentbot creato dal wizard ha allowed_tools assen
   assert.equal('allowed_tools' in body, false, 'LINEA ROSSA: un Agentbot creato dal wizard non deve MAI avere allowed_tools (nemmeno vuoto per errore -- la chiave non esiste proprio)');
   assert.deepEqual(
     Object.keys(body).sort(),
-    ['action', 'enabled', 'name', 'reasoning', 'severity', 'trigger'].sort(),
+    ['action', 'enabled', 'mode', 'name', 'reasoning', 'severity', 'trigger'].sort(),
     'stessa forma esatta accettata da watcher/agentbots.py::validate_agentbot',
   );
+  // Agenti v1.1 Fase 2 Task 6: `mode` esplicito anche per le regole (il
+  // record salvato resta identico -- validate_agentbot fa gia' default
+  // "rule" -- ma non puo' piu' perdersi per strada).
+  assert.equal(body.mode, 'rule');
+  assert.equal('objective' in body, false, 'una regola non dichiara un obiettivo');
+  assert.equal('perimeter' in body, false, 'il perimetro e\' VIETATO in mode="rule"');
   assert.equal(body.trigger.entity_id, 'binary_sensor.garage');
   assert.ok(body.action && body.action.type, 'l\'azione deve essere DICHIARATA nel payload, non lasciata al ragionamento AI');
   assert.equal(body.action.type, 'notify');
@@ -265,4 +271,122 @@ test('naviga sull\'editor completo dopo la creazione (Agentbot -> #/agentbots/{i
   await tick(20);
 
   assert.equal(window.location.hash, '#/agentbots/ab-new-1');
+});
+
+/* ────────────────────────────────────────────────────────────────────────
+   Agenti v1.1 Fase 2 Task 6 — creare un agente in modalita' OBIETTIVO dal
+   wizard goal-first. Il wizard e' il posto naturale per «obiettivo»: la
+   missione scritta al passo 1 in linguaggio naturale E' l'obiettivo.
+
+   Contratto (watcher/agentbots.py::validate_agentbot): mode="objective"
+   richiede `objective` non vuoto e un `perimeter`; VIETA `action` e VIETA
+   un trigger a evento. Convenzione del perimetro: `null` = nessuna
+   restrizione, `[]` = nega tutto -- una selezione vuota nella UI deve
+   viaggiare come `null`, mai come `[]`.
+   ──────────────────────────────────────────────────────────────────────── */
+
+function gotoAgentbotStep3(window, document, name, mission) {
+  window.HirisCreateWizard.mount();
+  fillStep1(document, name, mission);
+  document.getElementById('cw-type-agentbot').click();
+  document.getElementById('cw-step2-next').click();
+}
+
+function chooseObjectiveMode(window, document) {
+  const modeSel = document.getElementById('cw-mode');
+  modeSel.value = 'objective';
+  modeSel.dispatchEvent(new window.Event('change', { bubbles: true }));
+  return modeSel;
+}
+
+test('wizard: la modalita\' obiettivo mostra obiettivo + perimetro e nasconde trigger-evento e azione', async () => {
+  const { window, document } = setup();
+  gotoAgentbotStep3(window, document, 'Consumi cucina', 'valuta i consumi della cucina ogni mattina');
+  await tick(10);
+
+  const objectiveWrap = document.getElementById('cw-objective-wrap');
+  const actionWrap = document.getElementById('cw-action-wrap');
+  assert.ok(objectiveWrap && actionWrap, 'lo step Agentbot deve avere entrambi i blocchi, uno per modalita\'');
+  assert.equal(objectiveWrap.style.display, 'none', 'in modalita\' regola il blocco obiettivo resta nascosto');
+  assert.notEqual(actionWrap.style.display, 'none');
+
+  chooseObjectiveMode(window, document);
+
+  assert.notEqual(objectiveWrap.style.display, 'none');
+  assert.equal(actionWrap.style.display, 'none', 'in modalita\' obiettivo non si dichiara un\'azione');
+  assert.equal(document.getElementById('cw-trigger-event-wrap').style.display, 'none',
+    'la modalita\' obiettivo non ammette un trigger a evento');
+  assert.notEqual(document.getElementById('cw-trigger-schedule-wrap').style.display, 'none');
+  assert.equal(document.getElementById('cw-trigger-type').value, 'schedule');
+});
+
+test('wizard: il testo del perimetro dice che limita anche la LETTURA', async () => {
+  const { window, document } = setup();
+  gotoAgentbotStep3(window, document, 'Consumi cucina', 'valuta i consumi della cucina ogni mattina');
+  await tick(10);
+  chooseObjectiveMode(window, document);
+
+  const testo = document.getElementById('cw-objective-wrap').textContent;
+  assert.match(testo, /sia ciò che l'agente può toccare sia ciò che può vedere/);
+  assert.match(testo, /non è nemmeno leggibile/);
+  assert.match(testo, /confinato dal solo semaforo/);
+});
+
+test('wizard: payload obiettivo con mode/objective/perimeter, nessun action, perimetro null (mai [])', async () => {
+  const { window, document, calls } = setup();
+  gotoAgentbotStep3(window, document, 'Consumi cucina', 'valuta i consumi della cucina ogni mattina');
+  await tick(10);
+  chooseObjectiveMode(window, document);
+  document.getElementById('cw-trigger-cron').value = '0 7 * * *';
+
+  document.getElementById('cw-step3-next').click();
+  await tick(10);
+  document.getElementById('cw-create-btn').click();
+  await tick(20);
+
+  assertOnlyAllowedFetches(calls);
+  const postCall = calls.find((c) => c.url === 'api/agentbots' && c.opts && c.opts.method === 'POST');
+  assert.ok(postCall);
+  const raw = postCall.opts.body;
+  const body = JSON.parse(raw);
+
+  assert.deepEqual(
+    Object.keys(body).sort(),
+    ['enabled', 'mode', 'name', 'objective', 'perimeter', 'reasoning', 'severity', 'trigger'].sort(),
+    'forma esatta accettata da validate_agentbot per mode="objective"',
+  );
+  assert.equal('allowed_tools' in body, false, 'LINEA ROSSA E.2: mai allowed_tools in un Agentbot, nemmeno in modalita\' obiettivo');
+  assert.equal('action' in body, false);
+  assert.equal(body.mode, 'objective');
+  assert.equal(body.objective, 'valuta i consumi della cucina ogni mattina', 'la missione scritta al passo 1 E\' l\'obiettivo');
+  assert.equal(body.trigger.type, 'schedule');
+  assert.equal(body.trigger.cron, '0 7 * * *');
+  assert.equal(body.reasoning.enabled, true, 'un agente-obiettivo senza ragionamento e\' inerte');
+  assert.strictEqual(body.perimeter.allowed_entities, null, 'nessuna selezione = nessuna restrizione (null), MAI []');
+  assert.strictEqual(body.perimeter.allowed_services, null);
+  assert.equal(/"allowed_entities":\s*\[\s*\]/.test(raw), false);
+});
+
+test('wizard: entita\' dichiarate nel perimetro arrivano in allowed_entities', async () => {
+  const { window, document, calls } = setup();
+  gotoAgentbotStep3(window, document, 'Consumi cucina', 'valuta i consumi della cucina ogni mattina');
+  await tick(10);
+  chooseObjectiveMode(window, document);
+  document.getElementById('cw-trigger-cron').value = '0 7 * * *';
+
+  const chk = document.getElementById('cw-per-entities-on');
+  chk.checked = true;
+  chk.dispatchEvent(new window.Event('change', { bubbles: true }));
+  const perInput = document.querySelector('#cw-per-entities-root .ep-search');
+  perInput.value = 'sensor.consumo_cucina';
+  perInput.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+
+  document.getElementById('cw-step3-next').click();
+  await tick(10);
+  document.getElementById('cw-create-btn').click();
+  await tick(20);
+
+  const postCall = calls.find((c) => c.url === 'api/agentbots' && c.opts && c.opts.method === 'POST');
+  const body = JSON.parse(postCall.opts.body);
+  assert.deepEqual(body.perimeter.allowed_entities, ['sensor.consumo_cucina']);
 });

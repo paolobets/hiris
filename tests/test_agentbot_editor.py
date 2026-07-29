@@ -41,3 +41,91 @@ def test_editor_kit_field_factories_reintroduced_with_a_real_consumer():
     assert "field:" in kit or "field :" in kit
     editor = (BASE / "config" / "agentbot-editor.js").read_text(encoding="utf-8")
     assert "HirisEditorKit.field." in editor, "agentbot-editor.js deve consumare HirisEditorKit.field.*, non ricostruirlo privatamente"
+
+
+# ── Agenti v1.1 Fase 2 Task 6: modalità obiettivo nell'editor ────────────
+# Guardie di WIRING (testo sul sorgente). La copertura COMPORTAMENTALE reale
+# — che cosa vede l'utente scegliendo la modalità obiettivo e che cosa parte
+# nel payload — vive in tests/js/agentbot-editor.test.mjs (node --test +
+# jsdom), per la Global Constraint "TEST FE REALI" del piano.
+import re
+
+
+def _editor_js() -> str:
+    return (BASE / "config" / "agentbot-editor.js").read_text(encoding="utf-8")
+
+
+def _wizard_js() -> str:
+    return (BASE / "config" / "create-wizard.js").read_text(encoding="utf-8")
+
+
+def _strip_js_comments(js: str) -> str:
+    js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+    return re.sub(r"//[^\n]*", "", js)
+
+
+def test_editor_build_payload_carries_mode_objective_and_perimeter():
+    """Trappola dichiarata del task: buildPayload() costruisce un payload
+    whitelistato DA ZERO. Senza `mode`/`objective`/`perimeter` un salvataggio
+    dalla SPA riconvertirebbe in silenzio un agente-obiettivo in regola."""
+    code = _strip_js_comments(_editor_js())
+    start = code.index("function buildPayload(")
+    builder = code[start:code.index("window.saveAgentbot", start)]
+    for key in ("mode", "objective", "perimeter"):
+        assert key in builder, f"buildPayload deve portare `{key}` o il salvataggio lo perde"
+
+
+def test_perimeter_empty_selection_is_null_never_an_empty_array():
+    """Convenzione unica della catena (watcher/agentbots.py::
+    _validate_str_list): null = nessuna restrizione, [] = nega tutto. Sono
+    OPPOSTI. Il builder del perimetro deve avere un ramo esplicito verso
+    `null`, non cadere sul `[]` che l'editor Chatbot usa per l'altra
+    convenzione."""
+    code = _strip_js_comments(_editor_js())
+    start = code.index("function buildPerimeter(")
+    builder = code[start:code.index("function buildPayload(", start)]
+    assert builder.count(": null") >= 2, (
+        "allowed_entities e allowed_services devono avere un ramo esplicito verso null "
+        "(interruttore spento = nessuna restrizione dichiarata)"
+    )
+    assert "checked" in builder, "il ramo null/elenco deve dipendere da un interruttore esplicito dell'utente"
+
+
+def test_ui_says_the_perimeter_limits_reading_too():
+    """Decisione esplicita di questa fase: `allowed_entities` filtra anche
+    le LETTURE del ragionatore (tools/dispatcher.py), non solo le azioni.
+    L'utente deve leggerlo nell'interfaccia, non scoprirlo dopo."""
+    for js in (_editor_js(), _wizard_js()):
+        # Nel sorgente l'apostrofo è escapato (`l\'agente`, stringa JS fra
+        # apici singoli): confronto sul testo che l'utente legge davvero.
+        js = js.replace("\\'", "'")
+        assert "sia ciò che l'agente può toccare sia ciò che può vedere" in js
+        assert "non è nemmeno leggibile" in js
+        assert "confinato dal solo semaforo" in js, (
+            "non dichiarare nulla significa «confinato dal solo semaforo», non «bloccato»"
+        )
+
+
+def test_max_tier_is_not_exposed_in_the_ui():
+    """`max_tier` è nello schema ma NESSUN runtime lo onora (debito noto
+    dichiarato della fase). Esporlo sarebbe una promessa falsa: omesso, il
+    validatore applica da sé il default più stretto ("green"). Questa
+    guardia va rimossa insieme al debito, non prima."""
+    for js in (_editor_js(), _wizard_js()):
+        code = _strip_js_comments(js)
+        assert "max_tier" not in code, (
+            "max_tier non deve comparire nel CODICE della UI finché nessun runtime lo onora"
+        )
+
+
+def test_objective_mode_never_declares_an_action_nor_an_event_trigger():
+    """validate_agentbot RIGETTA l'intero Agentbot se un objective porta una
+    `action` o un trigger a evento. Il ramo objective di buildPayload deve
+    uscire prima di toccare l'azione."""
+    code = _strip_js_comments(_editor_js())
+    start = code.index("function buildPayload(")
+    builder = code[start:code.index("window.saveAgentbot", start)]
+    objective_branch = builder[builder.index("if (mode === 'objective')"):]
+    assert "return payload;" in objective_branch.split("payload.action")[0], (
+        "il ramo objective deve uscire PRIMA di scrivere payload.action"
+    )
