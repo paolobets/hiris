@@ -54,6 +54,11 @@ ALLOWED_TRIGGER_TYPES = {"event", "schedule"}
 ALLOWED_ACTION_TYPES = {"notify", "service"}
 ALLOWED_SEVERITIES = {"info", "warn", "alert"}
 ALLOWED_MODES = frozenset({"rule", "objective"})
+# The ceiling an objective Agentbot can reach WITHOUT asking. "red" always
+# asks (see security.semaphore.gate_action) and "off" means nothing is
+# allowed at all -- neither is a coherent "how far without asking" value, so
+# both are excluded from the ceiling's own value space, not just left unset.
+ALLOWED_MAX_TIERS = frozenset({"green", "yellow"})
 
 # Home Assistant's real grammar for the bits of a lens that end up in an
 # actual HA API call (action target) or a cron parser. Presence-only
@@ -377,6 +382,104 @@ def _validate_reasoning(raw) -> dict:
     return out
 
 
+# Sane per-execution ceilings for an objective Agentbot that declares no
+# explicit budget/deadline. 4096 mirrors claude_runner.MAX_TOKENS (the
+# reasoner's own default output cap), and 5 mirrors BRIDGE_DEADLINE_MIN's
+# default (handlers_chat.py) -- both already-established "sensible single
+# turn" numbers elsewhere in this codebase, reused here rather than invented.
+_PERIMETER_BUDGET_TOKENS_DEFAULT = 4096
+_PERIMETER_DEADLINE_MIN_DEFAULT = 5
+
+
+def _is_positive_int(v) -> bool:
+    # Same bool-is-an-int-subclass trap _is_number already guards against.
+    # budget_tokens/deadline_min are per-execution ceilings, not "amount used
+    # so far" -- 0 or negative is not a smaller ceiling, it's a nonsensical
+    # one, so the floor is a real minimum of 1, not >=0.
+    return isinstance(v, int) and not isinstance(v, bool) and v > 0
+
+
+def _validate_perimeter(raw) -> dict | None:
+    """Validate the `perimeter` block (Agenti v1.1 Fase 2 Task 2): the scope
+    an objective Agentbot is allowed to reason/act over -- entities,
+    services, the autonomy ceiling (`max_tier`), and a per-execution budget/
+    deadline. Consumed by later tasks (3, 5, 6); THIS task only shapes and
+    validates it, no runtime enforcement here.
+
+    Absent (missing key, or explicit `null` -- same convention as `mode`/
+    `severity`/`enabled`) -> a fully-populated block of explicit defaults,
+    never a rejection: an objective Agentbot with no declared perimeter is
+    still confined by the semaforo, but that confinement must be made
+    VISIBLE rather than silently implied. This mirrors `_validate_reasoning`
+    in that "absent" always normalizes rather than raising/rejecting.
+
+    PRESENT but malformed (wrong shape, or any single field with a value
+    outside its allowed space, e.g. `max_tier: "red"`) -> None, i.e. reject
+    the WHOLE Agentbot -- unlike `_validate_reasoning` (always inert, never
+    rejects), a perimeter directly caps what an objective Agentbot may do
+    without asking, so a malformed value must never be smoothed into some
+    default that could turn out wider than the user intended. This mirrors
+    how the rest of this module already treats `severity`/`enabled`/`mode`:
+    present-but-invalid -> reject, not silently coerce.
+
+    Unknown nested keys are dropped, not rejected -- consistent with this
+    module's general whitelist policy (see module docstring)."""
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        return None
+
+    allowed_entities_raw = raw.get("allowed_entities")
+    if allowed_entities_raw is None:
+        allowed_entities_raw = []
+    if not isinstance(allowed_entities_raw, list):
+        return None
+    allowed_entities = []
+    for item in allowed_entities_raw:
+        cleaned_item = _clean_nonempty_str(item)
+        if cleaned_item is None:
+            return None  # present but invalid item -> reject the whole Agentbot
+        allowed_entities.append(cleaned_item)
+
+    allowed_services_raw = raw.get("allowed_services")
+    if allowed_services_raw is None:
+        allowed_services_raw = []
+    if not isinstance(allowed_services_raw, list):
+        return None
+    allowed_services = []
+    for item in allowed_services_raw:
+        cleaned_item = _clean_nonempty_str(item)
+        if cleaned_item is None:
+            return None
+        allowed_services.append(cleaned_item)
+
+    max_tier = raw.get("max_tier")
+    if max_tier is None:
+        max_tier = "green"
+    elif max_tier not in ALLOWED_MAX_TIERS:
+        return None  # includes "red"/"off"/anything else -> reject
+
+    budget_tokens = raw.get("budget_tokens")
+    if budget_tokens is None:
+        budget_tokens = _PERIMETER_BUDGET_TOKENS_DEFAULT
+    elif not _is_positive_int(budget_tokens):
+        return None
+
+    deadline_min = raw.get("deadline_min")
+    if deadline_min is None:
+        deadline_min = _PERIMETER_DEADLINE_MIN_DEFAULT
+    elif not _is_positive_int(deadline_min):
+        return None
+
+    return {
+        "allowed_entities": allowed_entities,
+        "allowed_services": allowed_services,
+        "max_tier": max_tier,
+        "budget_tokens": budget_tokens,
+        "deadline_min": deadline_min,
+    }
+
+
 def validate_agentbot(raw: dict) -> dict | None:
     """Whitelist-validate a single raw Agentbot dict against the Slice 5b schema.
 
@@ -501,6 +604,25 @@ def validate_agentbot(raw: dict) -> dict | None:
 
         reasoning = _validate_reasoning(raw.get("reasoning"))
 
+        # perimeter: same rule/objective split as action/objective above --
+        # forbidden in mode="rule" (a rule already declares its own entity
+        # via trigger/action; a perimeter block there is a contradiction,
+        # not an oversight to silently drop -- reject on ANY declared value,
+        # even a well-formed or empty one, mirroring the `action` check in
+        # objective mode just above). Materialized (never merely optional)
+        # in mode="objective": _validate_perimeter itself turns "absent" into
+        # explicit defaults rather than None, so an objective Agentbot's
+        # perimeter is always visible in the returned dict; only a
+        # PRESENT-but-malformed perimeter rejects the whole Agentbot.
+        if mode == "rule":
+            if raw.get("perimeter") is not None:
+                return None
+            perimeter = None
+        else:  # objective
+            perimeter = _validate_perimeter(raw.get("perimeter"))
+            if perimeter is None:
+                return None
+
         return {
             "id": agentbot_id,
             "name": name,
@@ -511,6 +633,7 @@ def validate_agentbot(raw: dict) -> dict | None:
             "severity": severity,
             "mode": mode,
             "objective": objective,
+            "perimeter": perimeter,
         }
     except Exception:
         log.warning("validate_agentbot: unsalvageable Agentbot, dropping", exc_info=True)

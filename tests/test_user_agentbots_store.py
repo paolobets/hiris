@@ -853,6 +853,164 @@ def test_objective_mode_rejects_event_trigger():
     }) is None
 
 
+# ---------------------------------------------------------------------------
+# Agenti v1.1 Fase 2 Task 2: perimeter block (scope, tier ceiling, budget,
+# deadline) -- obbligatorio in mode="objective" (assente -> default espliciti,
+# MAI rigetto per assenza), vietato in mode="rule".
+# ---------------------------------------------------------------------------
+
+_OBJECTIVE_BASE = {
+    "mode": "objective", "objective": "valuta i consumi",
+    "trigger": {"type": "schedule", "interval_min": 60},
+}
+
+_DEFAULT_PERIMETER = {
+    "allowed_entities": [],
+    "allowed_services": [],
+    "max_tier": "green",
+    "budget_tokens": 4096,
+    "deadline_min": 5,
+}
+
+
+def test_perimeter_defaults_when_absent_in_objective_mode():
+    cleaned = validate_agentbot(_OBJECTIVE_BASE)
+    assert cleaned is not None
+    assert cleaned["perimeter"] == _DEFAULT_PERIMETER
+
+
+def test_perimeter_null_behaves_as_absent_in_objective_mode():
+    """Same null-as-absent convention already used for `mode`/`enabled`/
+    `severity`: an explicit `"perimeter": null` must default, not reject."""
+    cleaned = validate_agentbot({**_OBJECTIVE_BASE, "perimeter": None})
+    assert cleaned is not None
+    assert cleaned["perimeter"] == _DEFAULT_PERIMETER
+
+
+def test_perimeter_is_none_in_rule_mode():
+    cleaned = validate_agentbot(VALID_EVENT_LENS)
+    assert cleaned is not None
+    assert cleaned["perimeter"] is None
+
+
+def test_perimeter_forbidden_in_rule_mode_rejects_whole_agentbot():
+    """A rule already declares its own entity via trigger/action -- a
+    perimeter block on a rule is a contradiction, not an oversight to drop."""
+    raw = {**VALID_EVENT_LENS, "perimeter": {"max_tier": "green"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_forbidden_in_rule_mode_even_when_empty_dict():
+    raw = {**VALID_EVENT_LENS, "perimeter": {}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_explicit_values_preserved_in_objective_mode():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {
+        "allowed_entities": ["light.kitchen", "sensor.*"],
+        "allowed_services": ["notify.*"],
+        "max_tier": "yellow",
+        "budget_tokens": 2000,
+        "deadline_min": 10,
+    }}
+    cleaned = validate_agentbot(raw)
+    assert cleaned is not None
+    assert cleaned["perimeter"] == {
+        "allowed_entities": ["light.kitchen", "sensor.*"],
+        "allowed_services": ["notify.*"],
+        "max_tier": "yellow",
+        "budget_tokens": 2000,
+        "deadline_min": 10,
+    }
+
+
+def test_perimeter_drops_unknown_nested_fields():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"bogus_key": "x"}}
+    cleaned = validate_agentbot(raw)
+    assert cleaned is not None
+    assert "bogus_key" not in cleaned["perimeter"]
+
+
+def test_perimeter_rejects_max_tier_red():
+    """The ceiling says how far the agent gets WITHOUT asking; red always
+    asks, so it can never be a ceiling value."""
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"max_tier": "red"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_max_tier_off():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"max_tier": "off"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_max_tier_unknown_value():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"max_tier": "banana"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_non_int_budget_tokens():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"budget_tokens": 100.5}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_bool_budget_tokens():
+    """bool is an int subclass in Python -- must not sneak through as 0/1."""
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"budget_tokens": True}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_zero_and_negative_budget_tokens():
+    assert validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {"budget_tokens": 0}}) is None
+    assert validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {"budget_tokens": -100}}) is None
+
+
+def test_perimeter_rejects_non_int_deadline_min():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"deadline_min": 1.5}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_zero_and_negative_deadline_min():
+    assert validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {"deadline_min": 0}}) is None
+    assert validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {"deadline_min": -5}}) is None
+
+
+def test_perimeter_rejects_wrong_type_allowed_entities():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"allowed_entities": "light.kitchen"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_non_string_item_in_allowed_entities():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"allowed_entities": [123]}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_wrong_type_allowed_services():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"allowed_services": "notify.mobile_app"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_empty_string_item_in_allowed_services():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"allowed_services": ["   "]}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_non_dict_perimeter_in_objective_mode():
+    raw = {**_OBJECTIVE_BASE, "perimeter": "not-a-dict"}
+    assert validate_agentbot(raw) is None
+
+
+def test_agentbot_dict_has_ten_whitelisted_keys():
+    """Whitelist grew 9 -> 10 with `perimeter`; a forgotten addition here
+    would make the field vanish silently even though validate_agentbot()
+    still returns 201."""
+    cleaned = validate_agentbot(VALID_EVENT_LENS)
+    assert cleaned is not None
+    assert set(cleaned.keys()) == {
+        "id", "name", "enabled", "trigger", "reasoning", "action",
+        "severity", "mode", "objective", "perimeter",
+    }
+
+
 def test_load_agentbots_migration_failure_is_non_fatal(tmp_path, monkeypatch):
     """A migration failure (e.g. os.replace raising) must be swallowed and
     logged, never propagated -- the caller still gets a usable (here, empty,
