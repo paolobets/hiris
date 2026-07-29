@@ -53,7 +53,7 @@ def _validate_condition(condition: Optional[dict]) -> None:
 class Task:
     id: str
     label: str
-    chatbot_id: str
+    agent_id: str
     created_at: str
     trigger: dict
     actions: list
@@ -115,7 +115,7 @@ class TaskEngine:
     def add_task(
         self,
         data: dict,
-        chatbot_id: str,
+        agent_id: str,
         parent_task_id: Optional[str] = None,
         allowed_entities: Optional[list] = None,
         allowed_services: Optional[list] = None,
@@ -130,7 +130,7 @@ class TaskEngine:
         task = Task(
             id=str(uuid.uuid4()),
             label=data["label"],
-            chatbot_id=chatbot_id,
+            agent_id=agent_id,
             created_at=datetime.now(timezone.utc).isoformat(),
             trigger=data["trigger"],
             actions=list(data.get("actions", [])),
@@ -158,12 +158,12 @@ class TaskEngine:
 
     def list_tasks(
         self,
-        chatbot_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         status: Optional[str] = None,
     ) -> list[dict]:
         result = []
         for t in self._tasks.values():
-            if chatbot_id and t.chatbot_id != chatbot_id:
+            if agent_id and t.agent_id != agent_id:
                 continue
             if status and t.status != status:
                 continue
@@ -205,10 +205,10 @@ class TaskEngine:
                 task = Task(
                     id=raw["id"],
                     label=raw["label"],
-                    # Retro-compat: tasks.json written before the agent_id ->
-                    # chatbot_id rename still carries the old key. New saves
-                    # (asdict(Task)) always emit "chatbot_id" going forward.
-                    chatbot_id=raw.get("chatbot_id", raw.get("agent_id", "hiris-default")),
+                    # Retro-compat a tre generazioni: agent_id (pre-SP4a),
+                    # chatbot_id (SP-4a), agent_id (v1.1). Le due estremita'
+                    # collassano sulla stessa chiave: nessuna riscrittura file.
+                    agent_id=raw.get("agent_id", raw.get("chatbot_id", "hiris-default")),
                     created_at=raw["created_at"],
                     trigger=raw["trigger"],
                     actions=raw.get("actions", []),
@@ -482,7 +482,7 @@ class TaskEngine:
         if a_type == "create_task":
             child = self.add_task(
                 action["task"],
-                chatbot_id=task.chatbot_id,
+                agent_id=task.agent_id,
                 parent_task_id=task.id,
                 allowed_entities=task.allowed_entities,
                 allowed_services=task.allowed_services,

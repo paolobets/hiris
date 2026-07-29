@@ -10,7 +10,7 @@ from hiris.app.task_engine import Task, TaskEngine
 
 def _make_task(task_id="t-001", label="Test task", status="pending"):
     return Task(
-        id=task_id, label=label, chatbot_id="hiris-default",
+        id=task_id, label=label, agent_id="hiris-default",
         created_at=datetime.now(timezone.utc).isoformat(),
         trigger={"type": "delay", "minutes": 5}, actions=[],
         status=status,
@@ -93,3 +93,19 @@ async def test_cancel_task_pending(client):
     client.app["task_engine"].cancel_task = MagicMock(return_value=True)
     resp = await client.delete("/api/tasks/t-001")
     assert resp.status == 204
+
+
+@pytest.mark.asyncio
+async def test_task_response_carries_both_keys(client):
+    """Il corpo di risposta emetteva chatbot_id verbatim, senza alias:
+    rinominare senza shim romperebbe in silenzio ogni consumatore esterno."""
+    task = _make_task()
+    from dataclasses import asdict
+    client.app["task_engine"].list_tasks = MagicMock(return_value=[asdict(task)])
+    resp = await client.get("/api/tasks")
+    body = await resp.json()
+    assert body, "il fixture deve produrre almeno un task"
+    t = body[0]
+    assert "agent_id" in t, "chiave nuova assente"
+    assert "chatbot_id" in t, "alias deprecato rimosso troppo presto"
+    assert t["agent_id"] == t["chatbot_id"]
