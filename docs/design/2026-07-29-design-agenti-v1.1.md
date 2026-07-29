@@ -216,6 +216,9 @@ Il ramo `create_task` del dispatcher rifiuta alla **creazione** un *servizio* fu
 **4. `max_tier` è accettato e persistito, ma non onorato da nessun percorso di runtime (Task 2, review minor B).**
 `_validate_perimeter` valida `max_tier` e lo scrive nel blocco `perimeter`, ma nessun punto della catena che lo esegue — dispatcher, `task_engine._run_action`, `claude_runner` — lo legge mai: il campo esiste sulla carta e non fa nulla. Questo pesa esattamente sul default appena allargato in Task 3: un Agentbot senza perimetro dichiarato resta confinato **dal solo semaforo** (denylist + tier), non anche da `max_tier` come un commento precedente affermava per errore. Va onorato a runtime in una fase successiva, oppure rimosso dallo schema se resta permanentemente inerte — ma non va lasciato promettere una garanzia che nessuno applica.
 
+**5. Il budget per esecuzione si accorge di essere stato sforato solo a chiamata finita (Task 5).**
+`deadline_min` interrompe il ragionamento **mentre gira** (`asyncio.timeout` annulla la chiamata a metà). `budget_tokens` no: i token di un'esecuzione si misurano come differenza dei contatori per-agente **attorno** alla chiamata, quindi lo sforamento è visibile solo quando il ragionatore ha già risposto. Ciò che il bound ferma in quel caso è **tutto il lavoro successivo** — la Decision non viene eseguita (niente notifica, niente attuazione, niente proposta) e resta l'esito `interrotto:budget` col motivo. I token già spesi sono spesi. Fermare *dentro* il giro agentico vorrebbe dire portare il controllo dentro `claude_runner` — cioè un secondo punto di enforcement in un file che questa fase non tocca. **Conseguenza pratica:** `budget_tokens` è un tetto per *«non proseguire oltre»*, non un rubinetto che chiude a metà frase; per limitare la singola risposta esiste già `max_tokens`.
+
 ## Versione: 1.1, non 2.0
 
 **Condizione che rende onesto il numero: nessuna rottura per le configurazioni esistenti.**

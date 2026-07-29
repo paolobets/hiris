@@ -57,6 +57,12 @@ from .brain.reasoner_memory import relevant_memory
 from .brain.briefing import build_briefing_bundle, compose_briefing
 from .brain.reminders import ReminderSeen, due_nudges
 from .watcher.policy import load_policy
+from .watcher.signals import Decision
+# Agenti v1.1 Fase 2 Task 5: STESSO predicato con cui `_validate_perimeter`
+# accetta `budget_tokens`/`deadline_min` (intero > 0, `bool` deliberatamente
+# escluso). Riusarlo invece di riscriverlo evita che il consumo del perimetro
+# finisca a ragionare con regole diverse da quelle con cui e' stato validato.
+from .watcher.agentbots import _is_positive_int
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
@@ -611,6 +617,123 @@ async def register_agentbot_schedules(app: web.Application) -> None:
             # the rest.
             logger.warning("register_agentbot_schedules: failed to schedule agentbot %s, skipping", agentbot_id, exc_info=True)
             continue
+
+
+# ── Agenti v1.1 Fase 2 Task 5: bound PER ESECUZIONE ────────────────────────
+# `perimeter.budget_tokens` e `perimeter.deadline_min` (validati e
+# materializzati da `watcher.agentbots._validate_perimeter`, default 4096
+# token e 5 minuti) limitano UNA SINGOLA esecuzione di ragionamento di un
+# agente in modalita' obiettivo -- che dal Task 4 gira da sola, su
+# pianificazione, senza nessuno a guardarla. NON sono contatori cumulativi: il
+# cap giornaliero della sentinella (`wake.maybe_wake`) e i totali in
+# `usage.json` misurano un'altra cosa e restano invariati.
+#
+# Sforare non e' un errore: e' un ESITO. L'esecuzione si ferma PRIMA di
+# eseguire la Decision e lascia una riga dove questo percorso registra gia'
+# ogni suo esito (`_record_situation_event` -> `sentinel_store.record_event`
+# -> `/api/sentinel/events`), con `outcome` che dice che e' stata interrotta e
+# `message` che dice perche' -- i due campi che la lista eventi dell'editor
+# agentbot mostra all'utente (`static/config/agentbot-editor.js`).
+AGENT_RUN_STOP_BUDGET = "interrotto:budget"
+AGENT_RUN_STOP_DEADLINE = "interrotto:scadenza"
+
+
+def _reasoning_runner(app: web.Application):
+    """L'oggetto a cui il percorso di ragionamento parla davvero: il router
+    LLM, o -- se non c'e' -- il ClaudeRunner dell'engine.
+
+    UNICA regola di risoluzione, condivisa da chi FA la chiamata
+    (`_llm_reason`) e da chi ne misura il costo (il bound per esecuzione):
+    due copie della stessa regola potrebbero finire a guardare due oggetti
+    diversi, e il budget misurerebbe i token di qualcun altro."""
+    runner = app.get("llm_router")
+    if runner is None:
+        eng = app.get("engine")
+        runner = getattr(eng, "_claude_runner", None) if eng is not None else None
+    return runner
+
+
+def agent_run_bound(perimeter: dict | None) -> tuple[int | None, float | None]:
+    """`(budget_tokens, deadline_sec)` per UNA esecuzione di ragionamento.
+
+    `perimeter is None` -- ogni Agentbot `mode="rule"` (il validatore gli
+    VIETA il blocco) e ogni chiamante built-in del percorso (guardiano,
+    situazioni, olistico, ronda) -- significa "nessun bound": stessa
+    esecuzione di prima di questo task, senza misure e senza scadenza.
+
+    I due valori sono gia' stati validati da `_validate_perimeter`;
+    ricontrollarli con lo STESSO `_is_positive_int` non e' una seconda
+    validazione ma un fail-safe di lettura -- un perimetro che arrivasse da
+    altrove (un file scritto a mano, un test) con un valore non conforme vale
+    "non dichiarato" = nessun bound, non un bound assurdo. I minuti diventano
+    secondi qui, una volta sola."""
+    if not perimeter:
+        return (None, None)
+    budget_tokens = perimeter.get("budget_tokens")
+    deadline_min = perimeter.get("deadline_min")
+    return (
+        budget_tokens if _is_positive_int(budget_tokens) else None,
+        deadline_min * 60.0 if _is_positive_int(deadline_min) else None,
+    )
+
+
+def agent_run_deadline(deadline_sec: float | None):
+    """Il contesto `async with` che limita la DURATA di una esecuzione di
+    ragionamento; `None` -> contesto inerte (nessuna scadenza).
+
+    `asyncio.timeout` e non `asyncio.wait_for`: `wait_for` avvolge la
+    coroutine in un Task NUOVO, che riceve una COPIA del contesto, e le
+    ContextVar per-chiamata del runner (tool calls / thinking) diventerebbero
+    invisibili a chi chiama. Stesso motivo per cui il timeout per-run del
+    Chatbot usa `asyncio.timeout` (`chatbot_engine.py`, `_CHATBOT_RUN_TIMEOUT`)."""
+    if deadline_sec is None:
+        return contextlib.nullcontext()
+    return asyncio.timeout(deadline_sec)
+
+
+def agent_tokens_used(runner, agent_id: str | None) -> int | None:
+    """Token (input+output) che il livello LLM ha gia' attribuito ad
+    `agent_id`, o `None` quando non sono misurabili.
+
+    Non e' un contatore nuovo: e' lo stesso per-agente che `ClaudeRunner.chat`
+    incrementa a OGNI risposta dell'API (`usage.json`, blocco `per_agent`) e
+    che `LLMRouter` aggrega sui backend. Il consumo di una singola esecuzione
+    e' la differenza fra due letture attorno alla chiamata -- la stessa
+    tecnica con cui `chatbot_engine` misura il costo di un run. Poiche' il
+    contatore avanza a ogni risposta, la misura copre l'intero giro agentico
+    (piu' turni di tool use), non solo l'ultimo.
+
+    L'attribuzione per-agente esiste perche' `_llm_reason` passa gia'
+    `chatbot_id=agent_id` al runner (Task 3). Senza identita' -- ogni
+    chiamante built-in, ogni regola -- non c'e' nulla da attribuire e questa
+    funzione restituisce `None` = "nessuna misura", che chi chiama tratta come
+    "nessun bound sul budget", MAI come "budget esaurito"."""
+    if runner is None or not agent_id:
+        return None
+    get_usage = getattr(runner, "get_chatbot_usage", None)
+    if get_usage is None:
+        return None
+    try:
+        usage = get_usage(agent_id) or {}
+        return int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0))
+    except Exception:
+        # La misura e' un limite, non una funzionalita': se il backend non sa
+        # rispondere si perde il bound sul budget (resta la scadenza), non
+        # l'esecuzione.
+        logger.debug("agent_tokens_used(%s): misura non disponibile", agent_id, exc_info=True)
+        return None
+
+
+def agent_run_stopped(why: str, severity: str | None) -> Decision:
+    """L'esito di un'esecuzione FERMATA dal bound per esecuzione.
+
+    E' una `Decision` perche' e' cio' che `_record_situation_event` sa
+    registrare, ma non e' un giudizio del ragionatore: `verdict="interrotto"`
+    la distingue da "anomalia"/"falso_positivo", e `action=None` fa si' che --
+    anche se un domani un refactoring la facesse arrivare per sbaglio in
+    `executor.execute()` -- non possa attuare nulla."""
+    return Decision(verdict="interrotto", severity=severity or "info",
+                    message=f"Esecuzione interrotta: {why}", action=None)
 
 
 async def _reason_memory_context(
@@ -1343,10 +1466,12 @@ async def _on_startup(app: web.Application) -> None:
         # Task itself -- where `task_engine._run_action`'s ALREADY EXISTING
         # check enforces them at execution time. Nothing new enforces
         # anything here.
-        runner = app.get("llm_router")
-        if runner is None:
-            eng = app.get("engine")
-            runner = getattr(eng, "_claude_runner", None) if eng is not None else None
+        # Fase 2 Task 5: la risoluzione del runner e' passata nel
+        # module-level `_reasoning_runner(app)` perche' ora la usa anche il
+        # bound per esecuzione, che deve misurare i token PROPRIO
+        # sull'oggetto che ha servito questa chiamata. Comportamento
+        # identico a prima (llm_router, poi engine._claude_runner).
+        runner = _reasoning_runner(app)
         if runner is None or not hasattr(runner, "run_with_actions"):
             return ""
         try:
@@ -1622,7 +1747,54 @@ async def _on_startup(app: web.Application) -> None:
                     allowed_entities=_allowed_entities,
                     allowed_services=_allowed_services)
 
-        decision = await reason(wake, gather_context=_gather_context, llm_reason=llm_reason, system=system, model=model)
+        # Agenti v1.1 Fase 2 Task 5: bound PER ESECUZIONE (vedi
+        # `agent_run_bound` & co. a livello di modulo). Senza perimetro --
+        # regole e chiamanti built-in -- `agent_run_bound` restituisce
+        # `(None, None)`: nessuna misura dei token, contesto di scadenza
+        # inerte, stessa identica chiamata di prima.
+        _budget_tokens, _deadline_sec = agent_run_bound(perimeter)
+        # Lo STESSO oggetto runner per le due letture: risolverlo due volte
+        # rischierebbe di misurare la differenza fra i contatori di due
+        # backend diversi se il router venisse sostituito nel frattempo.
+        _runner = _reasoning_runner(app) if _budget_tokens is not None else None
+        _tokens_before = agent_tokens_used(_runner, agent_id)
+        _deadline = agent_run_deadline(_deadline_sec)
+        try:
+            async with _deadline:
+                decision = await reason(wake, gather_context=_gather_context, llm_reason=llm_reason, system=system, model=model)
+        except TimeoutError:
+            # Solo la NOSTRA scadenza si ferma qui. `expired()` distingue il
+            # nostro timeout da un TimeoutError nato piu' in basso (una
+            # richiesta HTTP verso l'LLM, per dire), che deve continuare a
+            # risalire esattamente come ha sempre fatto: senza questo
+            # controllo il bound assorbirebbe in silenzio errori altrui e li
+            # racconterebbe come "scadenza superata".
+            if _deadline_sec is None or not _deadline.expired():
+                raise
+            await _record_situation_event(
+                wake.signal_kind, wake.entity_id,
+                agent_run_stopped(
+                    f"superata la scadenza di {_deadline_sec / 60:g} min per questa esecuzione",
+                    wake.severity_hint),
+                AGENT_RUN_STOP_DEADLINE)
+            return
+        if _tokens_before is not None:
+            _tokens_after = agent_tokens_used(_runner, agent_id)
+            _tokens_run = None if _tokens_after is None else _tokens_after - _tokens_before
+            if _tokens_run is not None and _tokens_run > _budget_tokens:
+                # Il ragionamento ha gia' risposto, ma e' costato piu' del
+                # concesso: la sua Decision NON viene eseguita (niente
+                # notifica, niente attuazione, niente proposta) e al suo
+                # posto resta il motivo. La domanda all'80% del budget e il
+                # resoconto strutturato sono Fase 3, non qui.
+                await _record_situation_event(
+                    wake.signal_kind, wake.entity_id,
+                    agent_run_stopped(
+                        f"superato il budget di {_budget_tokens} token per questa "
+                        f"esecuzione ({_tokens_run} consumati)",
+                        wake.severity_hint),
+                    AGENT_RUN_STOP_BUDGET)
+                return
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested  # target deterministico dalla config, non dall'LLM
         if force_notify_only:

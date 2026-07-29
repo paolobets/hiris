@@ -20,6 +20,7 @@ deterministic config (`agentbot_action(agentbot)`), never derived from the
 LLM's output, even when a malicious/broken LLM fake tries to propose a
 different target. See `test_ai_lens_llm_attempts_to_override_action_*`.
 """
+import asyncio
 import inspect
 import logging
 import textwrap
@@ -839,17 +840,30 @@ def _extract_closure(src: str, start_marker: str, end_marker: str) -> str:
 
 
 def _load_real_server_run_decision(*, app, gather_context, execute, notify, act, propose,
-                                   record_situation_event):
+                                   record_situation_event, extra_globals=None):
     """Carica le closure REALI `_llm_reason` + `_run_decision` da
     `server._on_startup`, legandole a doppi di test per le sole variabili
     libere che non sono simboli importabili (`app`, `_gather_context`,
     `_notify`/`_act`/`_propose`, `_record_situation_event`). Tutto il resto
     (`reason`, `execute`, `env_bool`, `RunnerBackendError`, `logger`) e' un
-    simbolo reale, quindi il legame e' esatto e non una supposizione."""
+    simbolo reale, quindi il legame e' esatto e non una supposizione.
+
+    La base del namespace sono i GLOBALI VERI di `server` (`vars(server)`):
+    le closure estratte chiamano anche collaboratori a livello di modulo
+    (`asyncio`, e da Fase 2 Task 5 gli helper del bound per esecuzione), e
+    partire dai globali reali li lega alla loro implementazione VERA invece
+    di far esplodere l'estrazione con un NameError a ogni nuovo helper -- o,
+    peggio, di lasciarli stubbare in silenzio. Le voci qui sotto restano
+    override espliciti perche' sono variabili LOCALI di `_on_startup`
+    (import locali, adapter) e in `vars(server)` non ci sono.
+    `extra_globals` e' l'unico modo per sostituire di proposito uno di quei
+    globali in un singolo test (usato per accorciare la scadenza sotto il
+    minuto senza far attendere la suite)."""
     from hiris.app.claude_runner import RunnerBackendError
 
     src = inspect.getsource(server._on_startup)
     namespace = {
+        **vars(server),
         "app": app,
         "logger": logging.getLogger("test_run_agentbot_perimeter"),
         "RunnerBackendError": RunnerBackendError,
@@ -862,6 +876,7 @@ def _load_real_server_run_decision(*, app, gather_context, execute, notify, act,
         "_propose": propose,
         "_record_situation_event": record_situation_event,
     }
+    namespace.update(extra_globals or {})
     # Ogni closure porta con se' i frammenti che DEVONO comparire nella fetta
     # estratta. Sono precisamente i kwarg che questo task propaga: se la
     # propagazione viene rimossa o rinominata a monte, l'estrazione non deve
@@ -1152,3 +1167,236 @@ async def test_rule_mode_agentbot_reasoning_call_is_unchanged(store, tmp_path):
     task = next(iter(task_engine._tasks.values()))
     assert task.agent_id == "hiris-default"
     assert task.allowed_entities is None
+
+
+# ---------------------------------------------------------------------------
+# (h) Agenti v1.1 Fase 2 Task 5: bound PER ESECUZIONE (budget + scadenza).
+#
+# `perimeter.budget_tokens` / `perimeter.deadline_min` esistevano gia'
+# (validati e materializzati da `_validate_perimeter`) ma non li consumava
+# nessuno: una singola esecuzione di ragionamento di un agente-obiettivo --
+# che dal Task 4 gira da sola, su pianificazione, senza nessuno a guardarla --
+# non aveva alcun limite. I contatori cumulativi giornalieri (daily cap della
+# sentinella, usage.json) sono un'altra cosa e restano invariati.
+#
+# Questi test girano sul VERO `_run_decision` estratto da `server._on_startup`
+# (stessa tecnica della sezione (g)): il bound e' proprio li' dentro, quindi
+# un mirror scritto a mano non proverebbe nulla. Cio' che viene verificato e'
+# COMPORTAMENTO: che il lavoro successivo (esecuzione della Decision:
+# notify/act/propose) NON avvenga, e che l'esito finisca leggibile dove il
+# sistema gia' registra gli esiti di queste esecuzioni
+# (`_record_situation_event` -> `sentinel_store.record_event` -> `/api/
+# sentinel/events` -> lista eventi dell'editor agentbot).
+# ---------------------------------------------------------------------------
+
+_DECISION_TEXT = (
+    '```json\n{"verdict":"anomalia","severity":"warn",'
+    '"message":"ho valutato la cucina","action":null}\n```'
+)
+
+
+class _MeteredReasoningRunner:
+    """Sta al posto di `app["llm_router"]` ed espone le DUE sole cose che il
+    percorso di ragionamento gli chiede: `run_with_actions` (il bordo di I/O
+    verso l'LLM) e `get_chatbot_usage(agent_id)` (i contatori per-agente che
+    il vero `ClaudeRunner.chat` incrementa a ogni risposta dell'API e che
+    `LLMRouter` aggrega -- vedi claude_runner.py:718-724 e
+    llm_router.py:346-362).
+
+    `tokens_in`/`tokens_out` sono contabilizzati DENTRO la chiamata, come fa
+    il runner vero: se la chiamata viene annullata a meta' non si contano.
+    `delay` serve a far scadere la scadenza; `usage_reads` conta le letture
+    dei contatori, cosi' un test puo' dimostrare che per un Agentbot senza
+    perimetro non viene nemmeno misurato nulla."""
+
+    def __init__(self, *, tokens_in=0, tokens_out=0, delay=0.0, text=_DECISION_TEXT):
+        self._tokens_in = tokens_in
+        self._tokens_out = tokens_out
+        self._delay = delay
+        self._text = text
+        self._usage = {}
+        self.calls = 0
+        self.completed = 0
+        self.usage_reads = 0
+        self.seen_kwargs = []
+
+    async def run_with_actions(self, **kwargs):
+        self.calls += 1
+        self.seen_kwargs.append(kwargs)
+        if self._delay:
+            await asyncio.sleep(self._delay)
+        cid = kwargs.get("chatbot_id")
+        if cid:
+            u = self._usage.setdefault(cid, {"input_tokens": 0, "output_tokens": 0})
+            u["input_tokens"] += self._tokens_in
+            u["output_tokens"] += self._tokens_out
+        self.completed += 1
+        return self._text, {}
+
+    def get_chatbot_usage(self, chatbot_id):
+        self.usage_reads += 1
+        u = self._usage.get(chatbot_id) or {}
+        return {
+            "input_tokens": u.get("input_tokens", 0),
+            "output_tokens": u.get("output_tokens", 0),
+            "requests": 0, "cost_usd": 0.0, "last_run": None,
+            "tokens_today": 0, "tokens_today_date": "",
+        }
+
+
+async def _fire_bounded_agentbot(agentbot, *, store, runner, rec, events,
+                                 extra_globals=None):
+    """Fa scattare l'agentbot attraverso il flusso reale
+    (`run_agentbot` -> `_run_decision` vero -> `reason` vero -> `execute`
+    vero), raccogliendo in `events` cio' che il percorso registra come esito
+    (l'argomento di `_record_situation_event`)."""
+    execute_policy = {"tiers": {"light": "green"}, "entity_tiers": {}}
+
+    async def _gather_context(wake):
+        return {}
+
+    async def _record_situation_event(kind, entity_id, decision, outcome):
+        events.append({
+            "kind": kind, "entity_id": entity_id, "outcome": outcome,
+            "verdict": getattr(decision, "verdict", None),
+            "severity": getattr(decision, "severity", None),
+            "message": getattr(decision, "message", ""),
+        })
+
+    run_decision = _load_real_server_run_decision(
+        app={"llm_router": runner, "execute_policy": execute_policy},
+        gather_context=_gather_context, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        record_situation_event=_record_situation_event,
+        extra_globals=extra_globals)
+
+    return await run_agentbot(
+        agentbot, {"entity_id": "light.cucina", "value": 1},
+        store=store, run_decision=run_decision, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=lambda: execute_policy, allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-29",
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_over_token_budget_stops_and_records_why(store):
+    """Sforare `budget_tokens` ferma l'esecuzione: la Decision del
+    ragionatore non viene eseguita (niente notify/act/propose) e al suo posto
+    resta un esito che dice perche'."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW,
+                                  "perimeter": {"budget_tokens": 100}})
+    assert agentbot["perimeter"]["budget_tokens"] == 100
+    # 120 + 30 = 150 token consumati da questa singola esecuzione: oltre i 100
+    # concessi.
+    runner = _MeteredReasoningRunner(tokens_in=120, tokens_out=30)
+    rec, events = _Rec(), []
+
+    outcome = await _fire_bounded_agentbot(
+        agentbot, store=store, runner=runner, rec=rec, events=events)
+
+    assert outcome == "woke"
+    assert runner.calls == 1, "il ragionamento parte comunque: il budget e' per esecuzione"
+    # (a) il lavoro successivo NON e' avvenuto
+    assert rec.notified == [], "la Decision non doveva essere eseguita"
+    assert rec.acted == [] and rec.proposed == []
+    # (b) ...e l'esito e' leggibile da dove il sistema espone gli esiti
+    assert len(events) == 1
+    ev = events[0]
+    assert ev["outcome"] == "interrotto:budget"
+    assert "budget" in ev["message"].lower()
+    assert "100" in ev["message"] and "150" in ev["message"], (
+        "il motivo deve dire il tetto e quanto e' stato consumato: "
+        f"{ev['message']!r}")
+
+
+@pytest.mark.asyncio
+async def test_run_over_deadline_stops_and_records_why(store):
+    """Sforare `deadline_min` ferma l'esecuzione allo stesso modo: il
+    ragionamento viene annullato a meta' (non e' un'eccezione che risale, non
+    e' un silenzio) e lascia il suo esito.
+
+    L'unico doppio e' `agent_run_bound`, che qui restituisce una scadenza di
+    50 ms invece dei 60 s minimi che lo schema ammette (`deadline_min` e'
+    un intero di MINUTI >= 1): far attendere un minuto alla suite non
+    proverebbe nulla di piu'. La conversione minuti->secondi che quel doppio
+    sostituisce e' coperta, sul perimetro VERO, da
+    `test_execution_bound_is_read_from_the_validated_perimeter`; tutto il
+    resto qui (asyncio.timeout, annullamento, registrazione dell'esito) e'
+    codice di produzione."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW, "perimeter": None})
+    assert agentbot["perimeter"]["deadline_min"] == 5
+    runner = _MeteredReasoningRunner(delay=5.0)
+    rec, events = _Rec(), []
+
+    outcome = await _fire_bounded_agentbot(
+        agentbot, store=store, runner=runner, rec=rec, events=events,
+        extra_globals={"agent_run_bound": lambda perimeter: (None, 0.05)})
+
+    assert outcome == "woke"
+    assert runner.calls == 1 and runner.completed == 0, (
+        "il ragionamento dev'essere stato annullato a meta', non atteso fino in fondo")
+    assert rec.notified == [] and rec.acted == [] and rec.proposed == []
+    assert len(events) == 1
+    ev = events[0]
+    assert ev["outcome"] == "interrotto:scadenza"
+    assert "scadenza" in ev["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_run_within_bounds_behaves_exactly_as_before(store):
+    """Contro-prova: un'esecuzione che sta nei limiti (default 4096 token,
+    5 minuti) fa esattamente cio' che faceva prima -- la Decision viene
+    eseguita e l'esito e' quello dell'executor."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW, "perimeter": None})
+    assert agentbot["perimeter"]["budget_tokens"] == 4096
+    runner = _MeteredReasoningRunner(tokens_in=40, tokens_out=10)
+    rec, events = _Rec(), []
+
+    outcome = await _fire_bounded_agentbot(
+        agentbot, store=store, runner=runner, rec=rec, events=events)
+
+    assert outcome == "woke"
+    assert len(rec.notified) == 1
+    assert rec.notified[0][1] == "ho valutato la cucina"
+    assert len(events) == 1 and events[0]["outcome"] == "notify"
+
+
+@pytest.mark.asyncio
+async def test_rule_mode_agentbot_is_not_bounded_per_run(store):
+    """Regressione: una regola non ha (e non puo' avere) un `perimeter`,
+    quindi non ha ne' budget ne' scadenza per esecuzione -- e non viene
+    nemmeno misurata: nessuna lettura dei contatori per-agente, nessun
+    cambiamento di comportamento."""
+    agentbot = validate_agentbot({
+        "id": "ffffffffffff", "name": "Regola cucina", "enabled": True,
+        "trigger": {"type": "event", "entity_id": "light.cucina",
+                    "operator": ">", "threshold": 0},
+        "reasoning": {"enabled": True, "prompt": "Valuta."},
+        "action": {"type": "notify", "message": "occhio"},
+        "severity": "warn",
+    })
+    assert agentbot is not None and agentbot["perimeter"] is None
+    runner = _MeteredReasoningRunner(tokens_in=99999, tokens_out=99999)
+    rec, events = _Rec(), []
+
+    outcome = await _fire_bounded_agentbot(
+        agentbot, store=store, runner=runner, rec=rec, events=events)
+
+    assert outcome == "woke"
+    assert runner.usage_reads == 0, (
+        "una regola non ha perimetro: non c'e' nulla da misurare")
+    assert len(rec.notified) == 1
+    assert len(events) == 1 and events[0]["outcome"] == "notify"
+
+
+def test_execution_bound_is_read_from_the_validated_perimeter():
+    """Il bound arriva dal perimetro VERO materializzato dal validatore
+    (default 4096 token / 5 minuti), e i minuti diventano secondi una volta
+    sola, qui."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW, "perimeter": None})
+    assert server.agent_run_bound(agentbot["perimeter"]) == (4096, 300.0)
+    # Nessun perimetro (= ogni Agentbot mode="rule", e ogni chiamante
+    # built-in del percorso di ragionamento) -> nessun bound.
+    assert server.agent_run_bound(None) == (None, None)
