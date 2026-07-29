@@ -58,9 +58,12 @@ def test_tool_defs_have_required_fields():
         assert "input_schema" in defn
 
 
-def test_list_tasks_tool_accepts_both_input_keys():
-    """dispatcher leggeva inputs['chatbot_id'] senza fallback: un client MCP
-    esterno con la vecchia chiave riceveva la lista NON filtrata."""
+def test_list_tasks_tool_def_exposes_agent_id_property():
+    """Copre solo la FORMA dello schema (la property e' dichiarata). Il
+    comportamento effettivo del fallback chatbot_id/agent_id nel dispatcher
+    MCP e' esercitato via dispatch() in
+    tests/test_dispatcher_automation.py::test_list_tasks_dispatch_* — questo
+    test da solo NON dimostra che il filtro venga applicato."""
     from hiris.app.tools.task_tools import LIST_TASKS_TOOL_DEF
     props = LIST_TASKS_TOOL_DEF["input_schema"]["properties"]
     assert "agent_id" in props
