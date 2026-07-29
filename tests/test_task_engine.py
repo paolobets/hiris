@@ -833,3 +833,109 @@ async def test_execute_task_runs_when_valid_condition_met(engine, mock_cache, mo
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "done"
     mock_ha.call_service.assert_called_once_with("light", "turn_on", {"entity_id": "light.test"})
+
+
+# ── Perimetro del Task (Agenti v1.1 Fase 2 Task 3) ─────────────────────────
+# L'enforcement esiste da sempre in `_run_action`; quello che mancava era
+# qualcuno che alimentasse `allowed_entities`/`allowed_services`. Questi test
+# fissano il punto di rifiuto DOVE GIA' E' -- il tier verde qui lascerebbe
+# passare l'azione, quindi l'unico motivo possibile dello skip e' il perimetro
+# del Task -- e pinnano la distinzione fra `None` e `[]`.
+
+
+@pytest.mark.asyncio
+async def test_task_entity_outside_allowed_entities_skipped():
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
+              "data": {"entity_id": "light.salotto"}}
+    t = Task(id="p1", label="x", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
+             trigger={"type": "immediate"}, actions=[action],
+             allowed_entities=["light.cucina"], allowed_services=["light.*"])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and "not permitted by policy" in res
+    assert "light.salotto" in res
+    assert eng._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_task_entity_inside_allowed_entities_runs():
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
+              "data": {"entity_id": "light.cucina"}}
+    t = Task(id="p2", label="x", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
+             trigger={"type": "immediate"}, actions=[action],
+             allowed_entities=["light.cucina"], allowed_services=["light.*"])
+    res = await eng._run_action(action, t)
+    assert res == {"ok": True}
+    assert eng._ha.calls == [("light", "turn_off", {"entity_id": "light.cucina"})]
+
+
+@pytest.mark.asyncio
+async def test_task_service_outside_allowed_services_skipped():
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
+              "data": {"entity_id": "light.cucina"}}
+    t = Task(id="p3", label="x", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
+             trigger={"type": "immediate"}, actions=[action],
+             allowed_entities=["light.cucina"], allowed_services=["light.turn_off"])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and "not permitted by policy" in res
+    assert eng._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_task_empty_allow_lists_refuse_everything():
+    """`[]` significa "nessuna concessione", non "nessun limite": e' la
+    distinzione su cui si regge il perimetro di default materializzato per un
+    Agentbot in modalita' obiettivo che non ha ancora dichiarato nulla."""
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
+              "data": {"entity_id": "light.cucina"}}
+    t = Task(id="p4", label="x", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
+             trigger={"type": "immediate"}, actions=[action],
+             allowed_entities=[], allowed_services=[])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and "not permitted by policy" in res
+    assert eng._ha.calls == []
+
+
+@pytest.mark.asyncio
+async def test_task_without_perimeter_is_unconfined_as_before():
+    """Regressione: un Task senza perimetro (`None`, il caso di ogni Task
+    creato fuori dalla modalita' obiettivo) resta confinato dal solo semaforo,
+    esattamente come prima."""
+    eng = _engine({"tiers": {"light": "green"}})
+    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
+              "data": {"entity_id": "light.salotto"}}
+    t = Task(id="p5", label="x", agent_id="hiris-default", created_at=_now_iso(),
+             trigger={"type": "immediate"}, actions=[action])
+    assert t.allowed_entities is None and t.allowed_services is None
+    res = await eng._run_action(action, t)
+    assert res == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_child_task_inherits_parent_identity_and_perimeter(tmp_path):
+    """Una catena di Task non e' una via d'uscita dal perimetro: il figlio
+    nasce con l'`agent_id` e le allow-list del padre (comportamento gia'
+    presente in `_run_action`, qui fissato perche' ora sono popolate)."""
+    eng = _engine({"tiers": {"light": "green"}})
+    # add_task persiste: senza questo il default "/data/tasks.json" verrebbe
+    # riscritto sul disco reale (gli altri test di questo blocco costruiscono
+    # i Task a mano e non salvano mai).
+    eng._data_path = str(tmp_path / "tasks.json")
+    eng._scheduler = MagicMock()
+    action = {"type": "create_task", "task": {
+        "label": "figlio", "trigger": {"type": "delay", "minutes": 5},
+        "actions": [{"type": "call_ha_service", "domain": "light",
+                     "service": "turn_off", "data": {"entity_id": "light.salotto"}}]}}
+    t = Task(id="p6", label="padre", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
+             trigger={"type": "immediate"}, actions=[action],
+             allowed_entities=["light.cucina"], allowed_services=["light.*"])
+    res = await eng._run_action(action, t)
+    assert isinstance(res, str) and res.startswith("created child task")
+    child = next(x for x in eng._tasks.values() if x.label == "figlio")
+    assert child.agent_id == "eeeeeeeeeeee"
+    assert child.allowed_entities == ["light.cucina"]
+    assert child.allowed_services == ["light.*"]
+    assert child.parent_task_id == "p6"

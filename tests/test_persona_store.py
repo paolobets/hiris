@@ -122,9 +122,16 @@ from hiris.app.watcher.reasoner import reason, SENTINEL_SYSTEM
 
 
 async def _llm_reason_like_server(runner, system, user, *, model, max_tokens):
-    """Mirrors server.py's `_llm_reason` closure verbatim (post Slice-5 edit):
-    no `action_mode` kwarg, `allowed_tools=[]`, unwraps the (text, structured)
-    tuple and returns only the text."""
+    """Mirrors the ANONYMOUS/UNSCOPED shape of server.py's `_llm_reason`
+    closure -- the one every built-in sentinel caller still uses (post
+    Slice-5 edit): no `action_mode` kwarg, `allowed_tools=[]`, unwraps the
+    (text, structured) tuple and returns only the text.
+
+    Agenti v1.1 Fase 2 Task 3 added optional `agent_id`/`allowed_entities`/
+    `allowed_services` to the real closure, supplied ONLY by an Agentbot with
+    a perimeter; they are deliberately absent here because this test guards
+    the run_with_actions -> reason() path, not the perimeter propagation
+    (that lives in tests/test_run_agentbot.py, against the REAL closure)."""
     out = await runner.run_with_actions(
         user_message=user, system_prompt=system,
         allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")

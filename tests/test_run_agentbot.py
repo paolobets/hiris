@@ -20,8 +20,17 @@ deterministic config (`agentbot_action(agentbot)`), never derived from the
 LLM's output, even when a malicious/broken LLM fake tries to propose a
 different target. See `test_ai_lens_llm_attempts_to_override_action_*`.
 """
+import inspect
+import logging
+import textwrap
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
+from hiris.app import server
+from hiris.app.task_engine import TaskEngine
+from hiris.app.tools.dispatcher import ToolDispatcher
+from hiris.app.watcher.agentbots import validate_agentbot
 from hiris.app.watcher.executor import execute as real_execute
 from hiris.app.watcher.agentbot_runner import (
     agentbot_action,
@@ -730,3 +739,294 @@ async def test_ai_lens_two_agentbots_use_independent_models(store):
     )
 
     assert seen == ["claude-3-5-haiku", "gpt-4o-mini"]
+
+
+# ---------------------------------------------------------------------------
+# (g) Agenti v1.1 Fase 2 Task 3: i Task emessi dal ragionatore di un agente
+#     ereditano la sua IDENTITA' e il suo PERIMETRO.
+#
+# Questo e' l'unico test del file che percorre la catena intera fino al
+# TaskEngine, quindi usa collaboratori reali fin dove e' possibile:
+#   - `_llm_reason` e `_run_decision` NON sono mirror scritti a mano ma le
+#     closure VERE estratte da `server._on_startup` con `inspect.getsource`
+#     (stessa tecnica di `tests/test_reasoning_sweep_chat_skip.py`), cosi'
+#     un drift della propagazione lato server fa fallire QUESTO test invece
+#     di essere assorbito da una copia;
+#   - `ToolDispatcher`, `create_task_tool`, `TaskEngine` e
+#     `executor.execute` sono i moduli reali;
+#   - l'unico finto e' il bordo di I/O vero (la chiamata all'LLM).
+# ---------------------------------------------------------------------------
+
+OBJECTIVE_AGENTBOT_RAW = {
+    "id": "eeeeeeeeeeee",
+    "name": "Custode cucina",
+    "enabled": True,
+    "mode": "objective",
+    "objective": "Tieni sotto controllo i consumi della cucina.",
+    "trigger": {"type": "schedule", "interval_min": 60},
+    "reasoning": {"enabled": True, "prompt": "Ragiona e pianifica se serve."},
+    "severity": "warn",
+    "perimeter": {"allowed_entities": ["light.cucina"], "allowed_services": ["light.*"]},
+}
+
+# Il task che l'LLM prova a creare punta a light.salotto: FUORI dal perimetro
+# dell'agente, ma su un dominio SICURO con tier verde -- cosi' il semaforo
+# (denylist + tier gate) lo lascerebbe passare e l'unico motivo possibile del
+# rifiuto e' il perimetro ereditato dal Task.
+_OUT_OF_PERIMETER_TASK_INPUTS = {
+    "label": "Spegni il salotto",
+    "trigger": {"type": "delay", "minutes": 10},
+    "actions": [{
+        "type": "call_ha_service", "domain": "light", "service": "turn_off",
+        "data": {"entity_id": "light.salotto"},
+    }],
+}
+
+
+class _FakeReasoningRunner:
+    """Sta al posto di `app["llm_router"]` all'UNICO bordo di I/O reale (la
+    chiamata all'LLM). Riproduce cio' che `ClaudeRunner.run_with_actions` ->
+    `chat()` gia' fa quando il modello emette un blocco `tool_use`
+    (claude_runner.py, ramo `stop_reason == "tool_use"`): inoltra
+    `allowed_entities`/`allowed_services`/`chatbot_id` verbatim al VERO
+    `ToolDispatcher`. Quel forwarding e' wiring preesistente e non toccato da
+    questo task; tutto cio' che sta a valle (dispatcher -> task_tools ->
+    TaskEngine) e' reale."""
+
+    def __init__(self, dispatcher, tool_call):
+        self._dispatcher = dispatcher
+        self._tool_call = tool_call
+        self.seen_kwargs = []
+
+    async def run_with_actions(self, **kwargs):
+        self.seen_kwargs.append(kwargs)
+        name, inputs = self._tool_call
+        await self._dispatcher.dispatch(
+            name, inputs,
+            allowed_entities=kwargs.get("allowed_entities"),
+            allowed_services=kwargs.get("allowed_services"),
+            allowed_endpoints=kwargs.get("allowed_endpoints"),
+            chatbot_id=kwargs.get("chatbot_id"),
+        )
+        return (
+            '```json\n{"verdict":"anomalia","severity":"warn",'
+            '"message":"ho pianificato un task","action":null}\n```',
+            {},
+        )
+
+
+def _extract_closure(src: str, start_marker: str, end_marker: str) -> str:
+    start = src.index(start_marker)
+    end = src.index(end_marker, start) + len(end_marker)
+    return textwrap.dedent(src[start:end])
+
+
+def _load_real_server_run_decision(*, app, gather_context, execute, notify, act, propose,
+                                   record_situation_event):
+    """Carica le closure REALI `_llm_reason` + `_run_decision` da
+    `server._on_startup`, legandole a doppi di test per le sole variabili
+    libere che non sono simboli importabili (`app`, `_gather_context`,
+    `_notify`/`_act`/`_propose`, `_record_situation_event`). Tutto il resto
+    (`reason`, `execute`, `env_bool`, `RunnerBackendError`, `logger`) e' un
+    simbolo reale, quindi il legame e' esatto e non una supposizione."""
+    from hiris.app.claude_runner import RunnerBackendError
+
+    src = inspect.getsource(server._on_startup)
+    namespace = {
+        "app": app,
+        "logger": logging.getLogger("test_run_agentbot_perimeter"),
+        "RunnerBackendError": RunnerBackendError,
+        "reason": reason,
+        "execute": execute,
+        "env_bool": server.env_bool,
+        "_gather_context": gather_context,
+        "_notify": notify,
+        "_act": act,
+        "_propose": propose,
+        "_record_situation_event": record_situation_event,
+    }
+    for marker_start, marker_end, label in (
+        ("    async def _llm_reason(", '        return out or ""', "_llm_reason"),
+        ("    async def _run_decision(",
+         "        await _record_situation_event(wake.signal_kind, wake.entity_id, decision, outcome)",
+         "_run_decision"),
+    ):
+        func_src = _extract_closure(src, marker_start, marker_end)
+        exec(compile(func_src, f"<{label} extracted from server.py>", "exec"), namespace)
+    return namespace["_run_decision"]
+
+
+def _perimeter_chain(tmp_path, perimeter_raw):
+    """Costruisce dispatcher+TaskEngine reali e l'agentbot objective validato
+    dal VERO `validate_agentbot`, cosi' il blocco `perimeter` ha esattamente
+    la forma che il validatore materializza in produzione."""
+    agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW, "perimeter": perimeter_raw})
+    assert agentbot is not None, "l'agentbot objective di prova deve essere valido"
+
+    ha = AsyncMock()
+    ha.call_service = AsyncMock(return_value=True)
+    cache = MagicMock()
+    cache.get_state = MagicMock(return_value={"state": "on"})
+    execute_policy = {"tiers": {"light": "green"}, "entity_tiers": {}}
+
+    task_engine = TaskEngine(
+        ha_client=ha, entity_cache=cache, notify_config={},
+        data_path=str(tmp_path / "tasks.json"), execute_policy=execute_policy)
+    task_engine._scheduler = MagicMock()  # niente scheduling reale
+
+    dispatcher = ToolDispatcher(
+        ha_client=ha, notify_config={}, entity_cache=cache, execute_policy=execute_policy)
+    dispatcher.set_task_engine(task_engine)
+
+    runner = _FakeReasoningRunner(dispatcher, ("create_task", _OUT_OF_PERIMETER_TASK_INPUTS))
+    return agentbot, ha, execute_policy, task_engine, runner
+
+
+async def _fire_objective_agentbot(agentbot, *, store, execute_policy, runner, rec):
+    async def _gather_context(wake):
+        return {}
+
+    async def _record_situation_event(kind, entity_id, decision, outcome):
+        return None
+
+    run_decision = _load_real_server_run_decision(
+        app={"llm_router": runner, "execute_policy": execute_policy},
+        gather_context=_gather_context, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        record_situation_event=_record_situation_event)
+
+    return await run_agentbot(
+        agentbot, {"entity_id": "light.cucina", "value": 1},
+        store=store, run_decision=run_decision, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=lambda: execute_policy, allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-29",
+    )
+
+
+@pytest.mark.asyncio
+async def test_task_emitted_by_an_agent_inherits_its_identity_and_perimeter(store, tmp_path):
+    """Oggi il task nasce come 'hiris-default' e senza perimetro: puo' agire
+    su entita' fuori dall'ambito dell'agente che lo ha creato."""
+    agentbot, ha, execute_policy, task_engine, runner = _perimeter_chain(
+        tmp_path, {"allowed_entities": ["light.cucina"], "allowed_services": ["light.*"]})
+    rec = _Rec()
+
+    outcome = await _fire_objective_agentbot(
+        agentbot, store=store, execute_policy=execute_policy, runner=runner, rec=rec)
+    assert outcome == "woke"
+
+    # (a) il task NASCE attribuito all'agente e confinato dal suo perimetro
+    tasks = list(task_engine._tasks.values())
+    assert len(tasks) == 1
+    task = tasks[0]
+    assert task.agent_id == "eeeeeeeeeeee", "il task deve essere attribuito all'agente che lo ha creato"
+    assert task.allowed_entities == ["light.cucina"]
+    assert task.allowed_services == ["light.*"]
+
+    # (b) alla sua ESECUZIONE l'azione su light.salotto e' RIFIUTATA --
+    # dall'enforcement gia' esistente in task_engine._run_action, non da un
+    # controllo nuovo: il semaforo (light -> green) l'avrebbe lasciata passare.
+    ha.call_service.reset_mock()
+    await task_engine._execute_task(task.id)
+    assert ha.call_service.await_count == 0, "l'azione fuori perimetro non deve raggiungere HA"
+    assert "light.salotto" in (task.result or "")
+    assert "not permitted by policy" in (task.result or "")
+
+    # ...e identita' + perimetro erano gia' visibili all'anello precedente,
+    # la chiamata all'LLM: e' li' che il ragionatore smette di essere anonimo
+    # e senza confini.
+    assert len(runner.seen_kwargs) == 1
+    assert runner.seen_kwargs[0]["chatbot_id"] == "eeeeeeeeeeee"
+    assert runner.seen_kwargs[0]["allowed_entities"] == ["light.cucina"]
+    assert runner.seen_kwargs[0]["allowed_services"] == ["light.*"]
+
+
+@pytest.mark.asyncio
+async def test_task_from_agent_with_empty_perimeter_is_fail_closed(store, tmp_path):
+    """Il perimetro di un agente objective e' SEMPRE materializzato (Task 2):
+    se l'utente non ha dichiarato nulla, `allowed_entities` e' `[]`. Quella
+    lista vuota va propagata com'e' -- non normalizzata a `None` -- perche'
+    l'enforcement in `task_engine` distingue `None` ("nessun confine") da `[]`
+    ("nessuna entita' concessa"). Tradurre "nulla di concesso" in "nessun
+    limite" sarebbe esattamente l'allargamento silenzioso che questa fase
+    esiste per chiudere."""
+    agentbot, ha, execute_policy, task_engine, runner = _perimeter_chain(tmp_path, None)
+    assert agentbot["perimeter"]["allowed_entities"] == []
+    rec = _Rec()
+
+    await _fire_objective_agentbot(
+        agentbot, store=store, execute_policy=execute_policy, runner=runner, rec=rec)
+
+    task = next(iter(task_engine._tasks.values()))
+    assert task.agent_id == "eeeeeeeeeeee"
+    assert task.allowed_entities == []
+    assert task.allowed_services == []
+
+    ha.call_service.reset_mock()
+    await task_engine._execute_task(task.id)
+    assert ha.call_service.await_count == 0
+    assert "not permitted by policy" in (task.result or "")
+
+
+@pytest.mark.asyncio
+async def test_rule_mode_agentbot_reasoning_call_is_unchanged(store, tmp_path):
+    """Regressione: un Agentbot in `mode="rule"` non ha (e non puo' avere) un
+    blocco `perimeter`, quindi la sua chiamata di ragionamento resta identica a
+    prima -- nessuna identita', nessun perimetro -- e i suoi task continuano a
+    nascere esattamente come nascevano."""
+    agentbot = validate_agentbot({
+        "id": "ffffffffffff", "name": "Regola stufa", "enabled": True,
+        "trigger": {"type": "event", "entity_id": "switch.stufa",
+                    "operator": ">", "threshold": 3000},
+        "reasoning": {"enabled": True, "prompt": "Valuta."},
+        "action": {"type": "service", "domain": "switch", "service": "turn_off",
+                   "entity_id": "switch.stufa"},
+        "severity": "warn",
+    })
+    assert agentbot is not None and agentbot["perimeter"] is None
+
+    ha = AsyncMock()
+    ha.call_service = AsyncMock(return_value=True)
+    cache = MagicMock()
+    execute_policy = {"tiers": {"switch": "green", "light": "green"}, "entity_tiers": {}}
+    task_engine = TaskEngine(
+        ha_client=ha, entity_cache=cache, notify_config={},
+        data_path=str(tmp_path / "tasks.json"), execute_policy=execute_policy)
+    task_engine._scheduler = MagicMock()
+    dispatcher = ToolDispatcher(
+        ha_client=ha, notify_config={}, entity_cache=cache, execute_policy=execute_policy)
+    dispatcher.set_task_engine(task_engine)
+    runner = _FakeReasoningRunner(dispatcher, ("create_task", _OUT_OF_PERIMETER_TASK_INPUTS))
+    rec = _Rec()
+
+    async def _gather_context(wake):
+        return {}
+
+    async def _record_situation_event(kind, entity_id, decision, outcome):
+        return None
+
+    run_decision = _load_real_server_run_decision(
+        app={"llm_router": runner, "execute_policy": execute_policy},
+        gather_context=_gather_context, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        record_situation_event=_record_situation_event)
+
+    await run_agentbot(
+        agentbot, {"entity_id": "switch.stufa", "value": 3500},
+        store=store, run_decision=run_decision, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=lambda: execute_policy, allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-29",
+    )
+
+    assert len(runner.seen_kwargs) == 1
+    kwargs = runner.seen_kwargs[0]
+    assert kwargs.get("chatbot_id") is None
+    assert kwargs.get("allowed_entities") is None
+    assert kwargs.get("allowed_services") is None
+    task = next(iter(task_engine._tasks.values()))
+    assert task.agent_id == "hiris-default"
+    assert task.allowed_entities is None

@@ -1318,13 +1318,31 @@ async def _on_startup(app: web.Application) -> None:
             return {"friendly_name": friendly_name}
         return {"friendly_name": friendly_name, "memory": mem}
 
-    async def _llm_reason(system, user, *, model, max_tokens):
+    async def _llm_reason(system, user, *, model, max_tokens,
+                          agent_id=None, allowed_entities=None, allowed_services=None):
         # allowed_tools=[] is falsy -> narrowing is SKIPPED (claude_runner.py:894-896):
         # this reasoning call receives every EVALUATION_ONLY_TOOLS entry
         # (claude_runner.py:210-222), create_task included -- NOT zero tools. The
         # real invariant is that set excludes the tools that ACT (call_ha_service,
         # send_notification, trigger_automation, toggle_automation, http_request).
         # The executor below is the only thing that acts, gated by the semaforo.
+        #
+        # Agenti v1.1 Fase 2 Task 3: `agent_id` + `allowed_entities`/
+        # `allowed_services` are the reasoning agent's IDENTITY and PERIMETER.
+        # They are `None` for every built-in sentinel caller (guardian wakes,
+        # situations, holistic, briefing, coverage review) -- those keep the
+        # exact anonymous/unscoped call they always made. Only an Agentbot
+        # that HAS a perimeter block (i.e. mode="objective", see
+        # `watcher/agentbot_runner.py`) supplies them, via `_run_decision`.
+        # `chatbot_id` is the runner-side name of that identity: the tool
+        # dispatcher already renames it back to `agent_id` when it stamps a
+        # freshly created Task (`tools/dispatcher.py`, create_task branch),
+        # so passing it here is what makes an emitted Task belong to the
+        # agent that emitted it instead of to "hiris-default". The two
+        # allow-lists ride the SAME dispatcher parameters, ending up on the
+        # Task itself -- where `task_engine._run_action`'s ALREADY EXISTING
+        # check enforces them at execution time. Nothing new enforces
+        # anything here.
         runner = app.get("llm_router")
         if runner is None:
             eng = app.get("engine")
@@ -1334,7 +1352,9 @@ async def _on_startup(app: web.Application) -> None:
         try:
             out = await runner.run_with_actions(
                 user_message=user, system_prompt=system,
-                allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
+                allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent",
+                chatbot_id=agent_id,
+                allowed_entities=allowed_entities, allowed_services=allowed_services)
         except RunnerBackendError:
             # All backends failed (or a pinned-model call with no fallback,
             # review C/#13). Reasoning degrades to empty -> the reasoner treats
@@ -1550,14 +1570,46 @@ async def _on_startup(app: web.Application) -> None:
             "verdict": getattr(decision, "verdict", None), "severity": getattr(decision, "severity", None),
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
-    async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
+    async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto",
+                            agent_id=None, perimeter=None):
         # Task 4B: `model` lets a per-Agentbot `reasoning.model` (threaded in
         # by `watcher/agentbot_runner.py`'s `_on_wake`) pick its OWN model for
         # this single reason() call. Callers that don't pass it (the
         # built-in situations path, `_on_situation`/holistic below -- Task
         # 4's brain path, UNCHANGED) keep the "auto" default, exactly as
         # before.
-        decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system, model=model)
+        #
+        # Agenti v1.1 Fase 2 Task 3: `agent_id` + `perimeter` arrive TOGETHER
+        # or not at all -- `watcher/agentbot_runner.py` only sends them for an
+        # Agentbot that HAS a perimeter block, which `validate_agentbot`
+        # materializes for mode="objective" and forbids for mode="rule". So
+        # every pre-existing caller (rule Agentbots, situations, holistic,
+        # the fallback sweep) lands here with both `None` and reasons exactly
+        # as before: anonymous, unscoped, same `reason()` call as ever.
+        #
+        # `reason()`'s contract with `llm_reason` (system, user, model,
+        # max_tokens) is deliberately left untouched: the identity/perimeter
+        # are BOUND onto the callable here instead of being threaded through
+        # `reason()`, which has no business knowing about agents.
+        llm_reason = _llm_reason
+        if perimeter is not None:
+            # The lists are passed through VERBATIM, empty included. An
+            # objective Agentbot whose user declared nothing has
+            # `allowed_entities == []`, and `task_engine._run_action` reads
+            # `[]` ("nothing granted") differently from `None` ("no
+            # boundary") -- normalizing one into the other here would
+            # silently turn "no grants" into "no limits".
+            _allowed_entities = list(perimeter.get("allowed_entities") or [])
+            _allowed_services = list(perimeter.get("allowed_services") or [])
+
+            async def llm_reason(_system, _user, *, model, max_tokens):
+                return await _llm_reason(
+                    _system, _user, model=model, max_tokens=max_tokens,
+                    agent_id=agent_id,
+                    allowed_entities=_allowed_entities,
+                    allowed_services=_allowed_services)
+
+        decision = await reason(wake, gather_context=_gather_context, llm_reason=llm_reason, system=system, model=model)
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested  # target deterministico dalla config, non dall'LLM
         if force_notify_only:

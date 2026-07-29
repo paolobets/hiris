@@ -34,6 +34,13 @@ SECURITY (non-negotiable, see plan Global Constraints):
   "zero tools". This module does not weaken or bypass that; it never talks
   to the LLM directly, and actuation only ever happens through
   `executor.execute()`, gated by the semaforo, as described above.
+- Agenti v1.1 Fase 2 Task 3: since `create_task` IS one of those tools, an
+  Agentbot with a `perimeter` (mode="objective") also passes its id and its
+  allow-lists into `run_decision`, so a Task the reasoner emits is born
+  attributed to that agent and confined to its perimeter. The refusal
+  itself still happens where it always did -- `task_engine._run_action`'s
+  `allowed_entities`/`allowed_services` check, at execution time. Nothing
+  here enforces anything new; it only stops leaving those fields empty.
 - The zero-AI path calls `execute` directly with the exact same adapters
   (`notify`/`act`/`propose`) and `tiers`/`entity_tiers`/`allow_green_auto`
   shape as `_run_decision`'s own tail call, so the dangerous-domain
@@ -220,9 +227,32 @@ async def run_agentbot(
             # `force_notify_only` path -- there is no third option. A new
             # mode that tries to thread its own action through some OTHER
             # channel would reopen exactly this gap.
+            #
+            # Agenti v1.1 Fase 2 Task 3: identity + perimeter travel TOGETHER
+            # and only exist together. `validate_agentbot` materializes
+            # `perimeter` for every mode="objective" Agentbot (with explicit
+            # defaults when the user declared none) and FORBIDS it for
+            # mode="rule" -- so `perimeter is None` is exactly "this is a
+            # rule", and a rule keeps the pre-Fase-2 call shape verbatim:
+            # no identity, no scope, byte-for-byte the reasoning call it
+            # always made. This matters beyond the Task it emits:
+            # `chatbot_id` also scopes the reasoner's `recall_memory` tool
+            # (`tools/dispatcher.py`), so handing a rule an identity it
+            # never had would silently move it to an empty memory bucket.
+            #
+            # Downstream, `run_decision` (server.py's `_run_decision`) binds
+            # both onto the `llm_reason` callable; the Task the reasoner
+            # emits is then stamped with this agent's id and confined to
+            # this perimeter, and `task_engine._run_action`'s ALREADY
+            # EXISTING allow-list check refuses anything outside it at
+            # execution time.
+            perimeter = agentbot.get("perimeter")
+            scope = {} if perimeter is None else {
+                "agent_id": agentbot_id, "perimeter": perimeter}
             await run_decision(
                 w, suggested=suggested, system=system,
-                force_notify_only=(action_type != "service"), model=model)
+                force_notify_only=(action_type != "service"), model=model,
+                **scope)
             return
         decision = Decision(
             verdict="anomalia",
