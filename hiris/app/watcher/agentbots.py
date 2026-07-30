@@ -656,10 +656,17 @@ def validate_agentbot(raw: dict) -> dict | None:
         # e' opzionale. `agentbot_runner._on_wake` porta identita' e perimetro
         # al modello SOLO nel ramo `if reasoning.get("enabled")`; un agente-
         # obiettivo con reasoning spento non entra mai in quel ramo, quindi
-        # non ragiona, non emette Task, non fa nulla -- resta inerte, e per
-        # giunta in SILENZIO se creato via API (il frontend aggira il caso
-        # forzando il flag, ma un client HTTP diretto no). Un agente-obiettivo
-        # che non ragiona non ha motivo di esistere, quindi lo chiudiamo qui,
+        # non ragiona e non emette Task: cade nel ramo zero-AI, che costruisce
+        # una `Decision` con `action=None` (in objective l'azione e' None per
+        # costruzione, vedi il gate `action` qui sopra) e chiama
+        # `executor.execute`, il quale per un'azione vuota NOTIFICA e ritorna
+        # "notify". Non e' quindi silenzio: e' una notifica generica, e da
+        # quando il Task 4 di questa fase ha smesso di filtrare le
+        # pianificazioni per `mode` un agente cosi' ottiene un vero job dello
+        # scheduler e ripete quella notifica a ogni scatto (con
+        # `cooldown_sec=0`, `server._run_scheduled_agentbot`). Un agente-
+        # obiettivo che non ragiona non ha motivo di esistere -- e nella forma
+        # peggiore fa rumore invece di lavoro -- quindi lo chiudiamo qui,
         # con lo STESSO schema che questo file usa gia' per gli altri
         # cross-field di `mode`:
         #   - assente / null -> MATERIALIZZA a True, esattamente come
@@ -667,7 +674,14 @@ def validate_agentbot(raw: dict) -> dict | None:
         #     objective (e come il gate `enabled` top-level defaulta a True):
         #     non si rigetta per un'assenza.
         #   - PRESENTE ma non `True` (un `false` dichiarato, o un non-bool
-        #     tipo "false"/"yes"/0/1) -> RIGETTA l'intero record. E' la stessa
+        #     tipo "false"/"yes"/0/1) -> RIGETTA l'intero record, e (fix-wave
+        #     MINOR 3) lo stesso vale quando e' l'INTERO blocco `reasoning` a
+        #     non essere un dict: `{"reasoning": false}` (o `"off"`, o una
+        #     lista) dichiara "questo agente-obiettivo non ragiona" tanto
+        #     quanto `{"reasoning": {"enabled": false}}`, mentre leggere
+        #     `enabled` solo dentro un dict lo appiattiva in silenzio su True
+        #     -- esattamente la coercizione che questo gate esiste per
+        #     vietare. E' la stessa
         #     famiglia di `action` dichiarata in objective, `objective`/
         #     `perimeter` dichiarati in rule, e il gate `enabled` top-level
         #     present-but-invalid: una contraddizione DICHIARATA non si
@@ -678,12 +692,17 @@ def validate_agentbot(raw: dict) -> dict | None:
         # default sicuro -- byte per byte come prima.
         if mode == "objective":
             raw_reasoning = raw.get("reasoning")
-            raw_enabled = (raw_reasoning.get("enabled")
-                           if isinstance(raw_reasoning, dict) else None)
-            if raw_enabled is None:
+            if raw_reasoning is None:
+                # assente o null -> non e' una dichiarazione -> materializza
                 reasoning["enabled"] = True
-            elif raw_enabled is not True:
-                return None  # dichiarato ma non True -> contraddizione -> rigetto
+            elif not isinstance(raw_reasoning, dict):
+                return None  # `reasoning: false`/"off"/[...] -> contraddizione
+            else:
+                raw_enabled = raw_reasoning.get("enabled")
+                if raw_enabled is None:
+                    reasoning["enabled"] = True
+                elif raw_enabled is not True:
+                    return None  # dichiarato ma non True -> contraddizione
 
         # perimeter: same rule/objective split as action/objective above --
         # forbidden in mode="rule" (a rule already declares its own entity

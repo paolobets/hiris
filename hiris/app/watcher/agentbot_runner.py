@@ -141,8 +141,23 @@ def agentbot_system(agentbot: dict, sentinel_system: str) -> str:
     (`validate_agentbot` rigetta il record), ma se ci arrivasse si torna alla
     forma della regola invece di emettere un'etichetta senza contenuto.
 
+    Fix-wave IMPORTANT 1: se `reasoning.prompt` e' lo STESSO testo
+    dell'obiettivo (a meno di spazi ai bordi) il blocco di affinamento viene
+    OMESSO. Non e' un'ottimizzazione: e' il percorso di DEFAULT del wizard di
+    creazione (`create-wizard.js` scrive `reasoning.prompt = missione` e
+    `objective = obiettivo || missione`, e l'editor avanzato ripropone
+    entrambi i campi precompilati dai valori salvati), quindi senza questo
+    filtro l'utente medio otteneva la stessa frase due volte, la seconda
+    sotto un'etichetta che annuncia indicazioni *aggiuntive* e poi ne
+    consegna una copia verbatim. Un'etichetta che mente al modello e' peggio
+    di un'etichetta assente. Il confronto e' su testo, non su identita' di
+    oggetto: due campi distinti con lo stesso contenuto sono lo stesso
+    contenuto.
+
     Nessuna sanitizzazione: `objective` e `reasoning.prompt` hanno la stessa
-    provenienza (l'utente che configura l'agente, non Home Assistant) e lo
+    provenienza (l'utente che configura o approva l'agente, non Home
+    Assistant -- `objective` puo' essere scritto da un LLM via proposta del
+    Brain, `handlers_proposals.py`, ma solo con approvazione esplicita) e lo
     stesso trattamento che `reasoning.prompt` ha sempre avuto -- e' il
     materiale che ARRIVA da HA a essere sanificato, in
     `reasoner.build_user_message`. La lunghezza e' gia' limitata a monte
@@ -154,7 +169,12 @@ def agentbot_system(agentbot: dict, sentinel_system: str) -> str:
     if (agentbot.get("mode") or "rule") != "objective" or not objective:
         return sentinel_system + "\n\n" + prompt
     blocks = [sentinel_system, f"{OBJECTIVE_PREAMBLE}\n{objective}"]
-    if prompt:
+    # `objective` e' gia' strippato qui sopra: il confronto e' strip-vs-strip.
+    # Il test `isinstance` non e' ridondante -- tiene un `prompt` non-str
+    # (che questa funzione tollerava prima) su esattamente il ramo che
+    # prendeva prima, senza trasformare un dato sporco in AttributeError.
+    same_text = isinstance(prompt, str) and prompt.strip() == objective
+    if prompt and not same_text:
         blocks.append(f"{REFINEMENT_PREAMBLE}\n{prompt}")
     return "\n\n".join(blocks)
 

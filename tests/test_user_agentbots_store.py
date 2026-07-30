@@ -1101,7 +1101,9 @@ def test_load_agentbots_migration_failure_is_non_fatal(tmp_path, monkeypatch):
 # Agenti v1.1 Fase 2 Task 7: in mode="objective" il ragionamento non e'
 # opzionale. Un agente-obiettivo che non ragiona non porta ne' identita' ne'
 # perimetro (`agentbot_runner._on_wake` non entra nemmeno nel ramo che li
-# passa): resta inerte, e per giunta in silenzio se creato via API.
+# passa): non emette Task, cade nel ramo zero-AI e -- avendo `action=None` per
+# costruzione in objective -- si limita a una NOTIFICA generica a ogni scatto
+# (`executor.execute` notifica per un'azione vuota). Non silenzio: rumore.
 # ---------------------------------------------------------------------------
 
 def test_objective_mode_defaults_reasoning_to_enabled_when_absent():
@@ -1138,6 +1140,28 @@ def test_objective_mode_rejects_non_bool_reasoning_enabled():
     for bad in ("false", "yes", 0, 1):
         assert validate_agentbot(
             {**_OBJECTIVE_BASE, "reasoning": {"enabled": bad}}) is None, bad
+
+
+def test_objective_mode_rejects_a_non_dict_reasoning_block():
+    """Fix-wave MINOR 3: la contraddizione dichiarata va rigettata anche quando
+    e' l'INTERO blocco a non essere un dict. `{"reasoning": false}` dice
+    "questo agente-obiettivo non ragiona" tanto quanto
+    `{"reasoning": {"enabled": false}}`; leggere `enabled` solo dentro un dict
+    lasciava passare il primo caso e lo appiattiva in silenzio su `true` --
+    esattamente la coercizione che questo gate esiste per vietare."""
+    for bad in (False, True, "off", "false", "enabled", 0, 1, [], ["enabled"], 3.5):
+        assert validate_agentbot(
+            {**_OBJECTIVE_BASE, "reasoning": bad}) is None, repr(bad)
+
+
+def test_rule_mode_non_dict_reasoning_stays_lenient():
+    """NON-REGRESSIONE del gemello: in rule `_validate_reasoning` resta la sola
+    autorita' e un `reasoning` non-dict continua a degradare al default sicuro
+    (spento), senza perdere l'intero record. MINOR 3 tocca solo objective."""
+    for bad in (False, "off", 0, []):
+        cleaned = validate_agentbot({**VALID_EVENT_LENS, "reasoning": bad})
+        assert cleaned is not None, repr(bad)
+        assert cleaned["reasoning"] == {"enabled": False, "model": "auto"}
 
 
 def test_objective_mode_accepts_explicit_reasoning_enabled_true():

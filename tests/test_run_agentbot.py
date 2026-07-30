@@ -34,8 +34,11 @@ from hiris.app.tools.dispatcher import ToolDispatcher
 from hiris.app.watcher.agentbots import validate_agentbot
 from hiris.app.watcher.executor import execute as real_execute
 from hiris.app.watcher.agentbot_runner import (
+    OBJECTIVE_PREAMBLE,
+    REFINEMENT_PREAMBLE,
     agentbot_action,
     agentbot_message,
+    agentbot_system,
     normalize_agentbot_severity,
     run_agentbot,
 )
@@ -1708,3 +1711,142 @@ async def test_rule_agentbot_system_prompt_is_byte_for_byte_unchanged(store):
 
     assert seen == [
         SENTINEL_SYSTEM + "\n\n" + AI_SERVICE_LENS["reasoning"]["prompt"]]
+
+
+# ---------------------------------------------------------------------------
+# (i-bis) Fix-wave della review sul Task 7.
+#
+# IMPORTANT 1: il wizard di creazione scrive `reasoning.prompt = missione` e
+# `objective = obiettivo || missione`, quindi nel percorso di DEFAULT (utente
+# che non compila un obiettivo separato) i due campi portano lo STESSO testo e
+# il prompt composto ripeteva la frase due volte -- la seconda sotto
+# un'etichetta che annuncia indicazioni *aggiuntive*.
+#
+# MINOR 4: la composizione in objective non aveva un lucchetto su stringa
+# esatta (solo startswith + substring + ordine), quindi cancellare uno dei due
+# preamboli sarebbe passato inosservato. Ora ce l'ha, come per rule.
+#
+# MINOR 5: `agentbot_system` e' una funzione pura mai chiamata direttamente
+# dai test; i suoi bordi (objective vuoto/di soli spazi, reasoning assente,
+# prompt vuoto vs assente) restavano coperti solo di riflesso.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_objective_is_not_repeated_as_if_it_were_a_refinement(store, tmp_path):
+    """IMPORTANT 1, il test che conta: quando `reasoning.prompt` e l'obiettivo
+    sono lo stesso testo -- il caso che il wizard produce da solo -- il testo
+    deve comparire nel prompt di sistema ESATTAMENTE UNA VOLTA, e il preambolo
+    di affinamento non deve esserci affatto (annuncerebbe un'aggiunta e
+    consegnerebbe una copia)."""
+    mission = OBJECTIVE_AGENTBOT_RAW["objective"]
+    system = await _system_prompt_seen_by_the_model(
+        store, tmp_path,
+        {**OBJECTIVE_AGENTBOT_RAW,
+         "reasoning": {"enabled": True, "prompt": mission}})
+    assert system.count(mission) == 1, \
+        "l'obiettivo non va ripetuto: e' una copia, non un affinamento"
+    assert REFINEMENT_PREAMBLE not in system
+    # e l'obiettivo continua ad arrivare, sotto il SUO preambolo
+    assert system == SENTINEL_SYSTEM + "\n\n" + OBJECTIVE_PREAMBLE + "\n" + mission
+
+
+def test_agentbot_system_dedupes_only_on_identical_text():
+    """Il filtro e' su testo (a meno di spazi ai bordi), non su identita' di
+    oggetto: spazi/newline attorno allo stesso contenuto contano come stesso
+    contenuto, un prompt DIVERSO resta un affinamento legittimo."""
+    def _sys(prompt):
+        return agentbot_system(
+            {"mode": "objective", "objective": "Obiettivo X",
+             "reasoning": {"enabled": True, "prompt": prompt}}, "SYS")
+
+    assert REFINEMENT_PREAMBLE not in _sys("Obiettivo X")
+    assert REFINEMENT_PREAMBLE not in _sys("  Obiettivo X\n\n")
+    assert REFINEMENT_PREAMBLE in _sys("Obiettivo X, ma solo di notte")
+    assert REFINEMENT_PREAMBLE in _sys("obiettivo x")  # case-sensitive: testo diverso
+
+
+def test_agentbot_system_objective_form_is_locked_to_an_exact_string():
+    """MINOR 4: lucchetto su stringa esatta per la forma a TRE blocchi, gemello
+    di quello che gia' esiste per rule. Cancellare `OBJECTIVE_PREAMBLE` o
+    `REFINEMENT_PREAMBLE`, invertire l'ordine dei blocchi o cambiare il
+    separatore fa fallire QUESTO test, non solo una substring."""
+    system = agentbot_system(
+        {"mode": "objective", "objective": "Obiettivo X",
+         "reasoning": {"enabled": True, "prompt": "Verdetto Y"}}, "SYS")
+    assert system == (
+        "SYS"
+        + "\n\n" + OBJECTIVE_PREAMBLE + "\n" + "Obiettivo X"
+        + "\n\n" + REFINEMENT_PREAMBLE + "\n" + "Verdetto Y")
+    # il contratto d'uscita resta in testa, byte zero
+    assert system.startswith("SYS\n\n")
+
+
+@pytest.mark.parametrize("agentbot", [
+    pytest.param({"mode": "objective", "objective": "",
+                  "reasoning": {"prompt": "P"}}, id="objective-vuoto"),
+    pytest.param({"mode": "objective", "objective": "   \n\t ",
+                  "reasoning": {"prompt": "P"}}, id="objective-soli-spazi"),
+    pytest.param({"mode": "objective", "objective": None,
+                  "reasoning": {"prompt": "P"}}, id="objective-null"),
+    pytest.param({"mode": "objective", "objective": 42,
+                  "reasoning": {"prompt": "P"}}, id="objective-non-str"),
+    pytest.param({"mode": "rule", "objective": "ignorato",
+                  "reasoning": {"prompt": "P"}}, id="rule-ignora-objective"),
+    pytest.param({"reasoning": {"prompt": "P"}}, id="mode-assente-default-rule"),
+])
+def test_agentbot_system_falls_back_to_the_rule_form(agentbot):
+    """MINOR 5: il fallback documentato. `validate_agentbot` non lascia
+    arrivare qui un objective vuoto/non-str, ma se ci arrivasse la funzione
+    deve tornare alla forma della REGOLA -- non emettere un'etichetta
+    "Obiettivo dell'agente:" seguita dal nulla."""
+    assert agentbot_system(agentbot, "SYS") == "SYS\n\nP"
+    assert OBJECTIVE_PREAMBLE not in agentbot_system(agentbot, "SYS")
+
+
+@pytest.mark.parametrize("reasoning, expected", [
+    pytest.param(None, "SYS\n\n", id="reasoning-null"),
+    pytest.param({}, "SYS\n\n", id="reasoning-vuoto"),
+    pytest.param({"enabled": True}, "SYS\n\n", id="prompt-assente"),
+    pytest.param({"enabled": True, "prompt": ""}, "SYS\n\n", id="prompt-vuoto"),
+    pytest.param({"enabled": True, "prompt": None}, "SYS\n\n", id="prompt-null"),
+])
+def test_agentbot_system_rule_form_survives_a_missing_reasoning(reasoning, expected):
+    """MINOR 5: in rule, `reasoning` assente/vuoto/senza prompt non deve
+    rompere nulla ne' cambiare la forma storica (`SYS + "\\n\\n" + prompt`,
+    con prompt vuoto)."""
+    assert agentbot_system({"mode": "rule", "reasoning": reasoning}, "SYS") == expected
+    assert agentbot_system({"reasoning": reasoning}, "SYS") == expected
+
+
+@pytest.mark.parametrize("reasoning", [
+    None, {}, {"enabled": True}, {"enabled": True, "prompt": ""},
+    {"enabled": True, "prompt": None}, {"enabled": True, "prompt": "   "},
+])
+def test_agentbot_system_objective_alone_when_there_is_no_refinement(reasoning):
+    """MINOR 5, lato objective: senza *Verdetto* (assente, vuoto, null o di
+    soli spazi) resta la forma a DUE blocchi, senza etichetta di affinamento
+    appesa al vuoto. Nota: `"   "` e' truthy, quindi passa dal ramo del
+    confronto, non da `if prompt`."""
+    system = agentbot_system(
+        {"mode": "objective", "objective": "Obiettivo X", "reasoning": reasoning},
+        "SYS")
+    if reasoning == {"enabled": True, "prompt": "   "}:
+        # spazi puri: != obiettivo, quindi il blocco c'e' -- documentato,
+        # non desiderabile, ma `_validate_reasoning` non lo produce mai
+        assert system.startswith("SYS\n\n" + OBJECTIVE_PREAMBLE + "\nObiettivo X")
+    else:
+        assert system == "SYS\n\n" + OBJECTIVE_PREAMBLE + "\nObiettivo X"
+        assert REFINEMENT_PREAMBLE not in system
+
+
+def test_agentbot_system_tolerates_garbage_without_raising():
+    """MINOR 5: la funzione non deve mai alzare -- e' invocata dentro
+    `_on_wake`, dove un'eccezione trasformerebbe un prompt malformato in un
+    Agentbot morto. `None`, dict vuoto e prompt non-str inclusi."""
+    assert agentbot_system(None, "SYS") == "SYS\n\n"
+    assert agentbot_system({}, "SYS") == "SYS\n\n"
+    # prompt non-str in objective: ramo tollerato (nessun AttributeError)
+    out = agentbot_system(
+        {"mode": "objective", "objective": "Obiettivo X",
+         "reasoning": {"prompt": ["non", "una", "stringa"]}}, "SYS")
+    assert OBJECTIVE_PREAMBLE in out and REFINEMENT_PREAMBLE in out
