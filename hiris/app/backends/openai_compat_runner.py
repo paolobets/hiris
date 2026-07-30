@@ -33,6 +33,13 @@ _CIRCUIT_THRESHOLD = 3
 _CIRCUIT_COOLDOWN_SEC = 60
 
 
+def _estimate_tokens(chars: int) -> int:
+    """Stima conservativa dei token da un conteggio di caratteri (~4 char/token).
+    Usata SOLO quando il backend non ritorna `usage`, per far mordere comunque
+    budget_tokens. 0 per chars<=0."""
+    return max(1, (chars + 3) // 4) if chars and chars > 0 else 0
+
+
 def _is_conn_error(exc: Exception) -> bool:
     """True for connection/timeout-class errors (endpoint unreachable), as
     opposed to API/validation errors which should NOT trip the breaker."""
@@ -329,10 +336,35 @@ class OpenAICompatRunner:
         }
         self._save_usage()
 
-    def _track_usage(self, response: Any, model: str, chatbot_id: Optional[str]) -> None:
+    def _track_usage(self, response: Any, model: str, chatbot_id: Optional[str],
+                     *, est_input_chars: int = 0) -> None:
         usage = getattr(response, "usage", None)
         if not usage:
-            logger.debug("Model %s did not return usage info — token tracking skipped", model)
+            # Fase 2.5 C4: nessun `usage` -> stima da lunghezza testo cosi'
+            # budget_tokens morde comunque (OpenRouter/Ollama). Conservativa.
+            try:
+                choices = getattr(response, "choices", None) or []
+                out_text = ""
+                if choices:
+                    out_text = getattr(getattr(choices[0], "message", None), "content", "") or ""
+            except Exception:
+                out_text = ""
+            est_in = _estimate_tokens(est_input_chars)
+            est_out = _estimate_tokens(len(out_text))
+            if chatbot_id and (est_in or est_out):
+                if chatbot_id not in self._per_chatbot_usage:
+                    self._per_chatbot_usage[chatbot_id] = {
+                        "input_tokens": 0, "output_tokens": 0,
+                        "requests": 0, "cost_usd": 0.0, "last_run": None,
+                        "tokens_today": 0, "tokens_today_date": "",
+                    }
+                pau = self._per_chatbot_usage[chatbot_id]
+                self._ensure_today_reset(pau)
+                pau["tokens_today"] = pau.get("tokens_today", 0) + est_in + est_out
+                pau["last_estimated"] = True
+                self._save_usage()
+            else:
+                logger.debug("Model %s: no usage and nothing to estimate — skipped", model)
             return
         inp = getattr(usage, "prompt_tokens", 0) or 0
         out = getattr(usage, "completion_tokens", 0) or 0
@@ -354,6 +386,7 @@ class OpenAICompatRunner:
             pau["cost_usd"] += cost
             self._ensure_today_reset(pau)
             pau["tokens_today"] = pau.get("tokens_today", 0) + inp + out
+            pau["last_estimated"] = False
         self._save_usage()
 
     # ------------------------------------------------------------------
@@ -603,7 +636,13 @@ class OpenAICompatRunner:
                     ) from exc
 
             self._record_success()
-            self._track_usage(response, effective_model, chatbot_id)
+            # Fase 2.5 C4: msg_chars e' calcolato solo dentro `if self._fixed_model`
+            # sopra (log Ollama) — non e' garantito in scope qui per tutti i
+            # backend (es. OpenRouter con self._fixed_model falsy). Ricalcolato
+            # localmente cosi' la stima di est_input_chars e' sempre disponibile.
+            _msg_chars = sum(len(str(m.get("content", ""))) for m in messages)
+            self._track_usage(response, effective_model, chatbot_id,
+                              est_input_chars=_msg_chars)
             choice = response.choices[0]
 
             if choice.finish_reason == "stop":
