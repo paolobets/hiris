@@ -1008,3 +1008,36 @@ async def test_confirm_tier_task_action_fails_closed_to_skip_without_stepup(tmp_
                   "service": "turn_on", "data": {"entity_id": "light.salotto"}}
         out = await eng._run_action(action, task)
         assert out == "skipped: confirm (light.turn_on)"
+
+
+@pytest.mark.asyncio
+async def test_max_tier_yellow_does_not_grant_yellow_auto_in_this_phase(tmp_path):
+    """C3: in Fase 2.5 max_tier NON abilita il giallo-auto (sarebbe fiducia
+    progressiva). Un'azione gialla passa per lo step-up (chiede), MAI
+    auto-eseguita, a prescindere dal max_tier dell'agente."""
+    from hiris.app.task_engine import TaskEngine, Task
+
+    called = {"stepup": 0}
+
+    async def fake_stepup(*, tool, inputs, tier):
+        called["stepup"] += 1
+        return {"nonce": "n1"}
+
+    class _HA:
+        async def call_service(self, *a, **k):
+            raise AssertionError("giallo NON deve auto-eseguire in questa fase")
+
+    eng = TaskEngine(
+        ha_client=_HA(), entity_cache=None, notify_config={},
+        data_path=str(tmp_path / "tasks.json"),
+        execute_policy={"tiers": {}, "entity_tiers": {"light.salotto": "yellow"}},
+        request_stepup=fake_stepup,
+    )
+    # il Task non porta alcun max_tier: la fetta non lo consuma a runtime
+    task = Task(id="t1", label="p", agent_id="ag1",
+                created_at="2026-01-01T00:00:00", trigger={}, actions=[])
+    action = {"type": "call_ha_service", "domain": "light",
+              "service": "turn_on", "data": {"entity_id": "light.salotto"}}
+    out = await eng._run_action(action, task)
+    assert out == "pending: confirmation (light.turn_on)"
+    assert called["stepup"] == 1  # ha CHIESTO, non auto-eseguito

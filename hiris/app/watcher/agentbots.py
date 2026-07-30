@@ -501,6 +501,12 @@ def _validate_perimeter(raw) -> dict | None:
     if allowed_services is _INVALID_STR_LIST:
         return None  # present but invalid -> reject the whole Agentbot
 
+    # max_tier: validato e persistito ({green,yellow}, default green). In Fase
+    # 2.5 e' onorato FINO AL VERDE: l'auto resta clampato al verde (il verde e'
+    # l'unico `allow` del semaforo), quindi max_tier="yellow" NON abilita il
+    # giallo-auto -- sarebbe fiducia progressiva, vietata in questa fase. Il
+    # campo discrimina davvero (sblocco auto per tier piu' alti) solo in Fase 3.
+    # Pinnato da test_max_tier_yellow_does_not_grant_yellow_auto_in_this_phase.
     max_tier = raw.get("max_tier")
     if max_tier is None:
         max_tier = "green"
