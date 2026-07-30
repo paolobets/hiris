@@ -440,6 +440,21 @@ async def request_confirmation_stepup(
     return {"id": entry["id"], "otp_sent": bool(otp_sent)}
 
 
+def _make_task_stepup(*, app, data_dir: str, owner: str | None):
+    """Fase 2.5 C2: chiusura di step-up per i Task autonomi. `owner` e'
+    l'identita' (chiave di notify_users) a cui recapitare tap/OTP. Falsy ->
+    None (TaskEngine fara' fail-closed allo skip). La guardia canale-privato
+    vive dentro request_confirmation_stepup (private_notify_service_for_user)."""
+    if not owner:
+        return None
+
+    async def _request_stepup(*, tool: str, inputs: dict, tier: str):
+        return await request_confirmation_stepup(
+            app, data_dir, tool=tool, inputs=inputs, tier=tier, user=owner)
+
+    return _request_stepup
+
+
 # ---------------------------------------------------------------------------
 # Slice 5b Task 5: SCHEDULED (cron/interval) user Agentbots (renamed from
 # "lens" in SP-4 Fase A Task 3) -- per-Agentbot jobs on `engine._scheduler`,
@@ -1189,12 +1204,14 @@ async def _on_startup(app: web.Application) -> None:
     app["theme"] = os.environ.get("THEME", "auto")
 
     tasks_data_path = os.environ.get("TASKS_DATA_PATH", "/data/tasks.json")
+    _agent_owner = os.environ.get("AGENT_OWNER", "").strip()
     task_engine = TaskEngine(
         ha_client=ha_client,
         entity_cache=entity_cache,
         notify_config=notify_config,
         data_path=tasks_data_path,
         execute_policy=app["execute_policy"],
+        request_stepup=_make_task_stepup(app=app, data_dir=app["data_dir"], owner=_agent_owner),
     )
     await task_engine.start()
     app["task_engine"] = task_engine

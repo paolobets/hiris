@@ -116,6 +116,9 @@ configuration:
   sentinel_ronda_min:
     name: "Sentinella — Intervallo ronda situazioni (minuti)"
     description: "Ogni quanti minuti la Sentinella scansiona le situazioni della casa (caldo+assenza, tutti-fuori+allarme-off, olistica). Predefinito: 15."
+  agent_owner:
+    name: "Owner degli agenti"
+    description: "Identità (una chiave di *Utenti notifica*) a cui recapitare tap/OTP quando un agente autonomo chiede conferma. Senza, le azioni oltre il verde vengono saltate."
   bridge_enabled:
     name: "Ponte abbonamento — attiva"
     description: "Instrada la scansione olistica del cervello a un runner esterno su abbonamento (via coda di ragionamento) invece di ragionare in locale/a consumo. Spento = ragionamento inline come prima."

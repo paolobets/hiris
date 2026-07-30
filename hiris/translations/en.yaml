@@ -116,6 +116,9 @@ configuration:
   sentinel_ronda_min:
     name: "Sentinella — Situation scan interval (minutes)"
     description: "How often Sentinella scans home situations (hot+absence, all-away+alarm-off, holistic scan). Default: 15."
+  agent_owner:
+    name: "Agents owner"
+    description: "Identity (a key of *Notify users*) that receives tap/OTP when an autonomous agent asks for confirmation. Without it, above-green actions are skipped."
   bridge_enabled:
     name: "Subscription bridge — enable"
     description: "Routes the brain's holistic scan to an external subscription runner (via the reasoning queue) instead of reasoning locally/pay-per-use. Off = inline reasoning as before."
