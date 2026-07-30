@@ -939,3 +939,72 @@ async def test_child_task_inherits_parent_identity_and_perimeter(tmp_path):
     assert child.allowed_entities == ["light.cucina"]
     assert child.allowed_services == ["light.*"]
     assert child.parent_task_id == "p6"
+
+
+def _yellow_policy():
+    # entity_tiers mette light.salotto in 'yellow' -> gate_action ritorna confirm
+    return {"tiers": {}, "entity_tiers": {"light.salotto": "yellow"}}
+
+
+@pytest.mark.asyncio
+async def test_confirm_tier_task_action_requests_stepup_and_holds(tmp_path):
+    from hiris.app.task_engine import TaskEngine, Task
+
+    seen = {}
+
+    async def fake_stepup(*, tool, inputs, tier):
+        seen["tool"] = tool
+        seen["inputs"] = inputs
+        seen["tier"] = tier
+        return {"nonce": "n1", "otp": "123456"}  # pending creato
+
+    class _HA:
+        async def call_service(self, *a, **k):
+            raise AssertionError("una azione confirm NON deve essere eseguita subito")
+
+    eng = TaskEngine(
+        ha_client=_HA(), entity_cache=None, notify_config={},
+        data_path=str(tmp_path / "tasks.json"),
+        execute_policy=_yellow_policy(), request_stepup=fake_stepup,
+    )
+    task = Task(id="t1", label="prova", agent_id="ag1",
+                created_at="2026-01-01T00:00:00", trigger={}, actions=[])
+    action = {"type": "call_ha_service", "domain": "light",
+              "service": "turn_on", "data": {"entity_id": "light.salotto"}}
+
+    out = await eng._run_action(action, task)
+
+    assert out == "pending: confirmation (light.turn_on)"
+    assert seen["tool"] == "call_ha_service"
+    assert seen["tier"] == "yellow"
+    # inputs congelato: gli entity_id sono i normalized (gated), dentro data
+    assert seen["inputs"]["domain"] == "light"
+    assert seen["inputs"]["service"] == "turn_on"
+    assert seen["inputs"]["data"].get("entity_id") == "light.salotto"
+
+
+@pytest.mark.asyncio
+async def test_confirm_tier_task_action_fails_closed_to_skip_without_stepup(tmp_path):
+    """Callable non iniettato (o ritorna None) -> fallback allo skip di oggi,
+    nessuna esecuzione, nessun pending."""
+    from hiris.app.task_engine import TaskEngine, Task
+
+    async def none_stepup(*, tool, inputs, tier):
+        return None
+
+    class _HA:
+        async def call_service(self, *a, **k):
+            raise AssertionError("skip: niente esecuzione")
+
+    for stepup in (None, none_stepup):
+        eng = TaskEngine(
+            ha_client=_HA(), entity_cache=None, notify_config={},
+            data_path=str(tmp_path / "tasks.json"),
+            execute_policy=_yellow_policy(), request_stepup=stepup,
+        )
+        task = Task(id="t1", label="prova", agent_id="ag1",
+                created_at="2026-01-01T00:00:00", trigger={}, actions=[])
+        action = {"type": "call_ha_service", "domain": "light",
+                  "service": "turn_on", "data": {"entity_id": "light.salotto"}}
+        out = await eng._run_action(action, task)
+        assert out == "skipped: confirm (light.turn_on)"
