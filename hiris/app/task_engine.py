@@ -456,6 +456,24 @@ class TaskEngine:
                 logger.warning("Task %s: call_ha_service gated: area/device/label target present (%s.%s)",
                                task.label, domain, service)
                 return f"skipped: group_target ({domain}.{service})"
+            # Fix-wave review finale (CRITICAL): il perimetro precede il gate
+            # cosi' OGNI verdetto (allow/confirm/deny) rispetta il perimetro --
+            # altrimenti un'azione fuori-perimetro a tier>verde verrebbe
+            # escalata a step-up invece di essere saltata come al verde.
+            if task.allowed_services is not None:
+                svc_key = f"{domain}.{service}"
+                if not any(fnmatch.fnmatch(svc_key, pat) for pat in task.allowed_services):
+                    logger.warning(
+                        "Task %s: service %s blocked by policy", task.label, svc_key
+                    )
+                    return f"skipped: {svc_key} not permitted by policy"
+            if task.allowed_entities is not None:
+                for e in normalized.entity_ids:
+                    if not any(fnmatch.fnmatch(e, pat) for pat in task.allowed_entities):
+                        logger.warning(
+                            "Task %s: entity %s blocked by policy", task.label, e
+                        )
+                        return f"skipped: entity {e!r} not permitted by policy"
             _v = gate_action(
                 domain=domain, service=service, entity_ids=normalized.entity_ids,
                 tiers=self._execute_policy.get("tiers") or {},
@@ -485,20 +503,6 @@ class TaskEngine:
                 logger.warning("Task %s: call_ha_service gated (%s) %s.%s",
                                task.label, _v.decision, domain, service)
                 return f"skipped: {_v.decision} ({domain}.{service})"
-            if task.allowed_services is not None:
-                svc_key = f"{domain}.{service}"
-                if not any(fnmatch.fnmatch(svc_key, pat) for pat in task.allowed_services):
-                    logger.warning(
-                        "Task %s: service %s blocked by policy", task.label, svc_key
-                    )
-                    return f"skipped: {svc_key} not permitted by policy"
-            if task.allowed_entities is not None:
-                for e in normalized.entity_ids:
-                    if not any(fnmatch.fnmatch(e, pat) for pat in task.allowed_entities):
-                        logger.warning(
-                            "Task %s: entity %s blocked by policy", task.label, e
-                        )
-                        return f"skipped: entity {e!r} not permitted by policy"
             return await self._ha.call_service(domain, service, normalized.data)
         if a_type == "send_notification":
             return await send_notification(

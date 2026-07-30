@@ -1041,3 +1041,36 @@ async def test_max_tier_yellow_does_not_grant_yellow_auto_in_this_phase(tmp_path
     out = await eng._run_action(action, task)
     assert out == "pending: confirmation (light.turn_on)"
     assert called["stepup"] == 1  # ha CHIESTO, non auto-eseguito
+
+
+@pytest.mark.asyncio
+async def test_confirm_tier_action_outside_perimeter_is_skipped_not_escalated(tmp_path):
+    """CRITICAL fix: un'azione a tier confirm (giallo) su un'entita' FUORI dal
+    perimetro dell'agente NON deve essere escalata a step-up -- va saltata,
+    come gia' avviene al verde. Il perimetro gate-a ogni verdetto."""
+    from hiris.app.task_engine import TaskEngine, Task
+
+    called = {"stepup": 0}
+
+    async def fake_stepup(*, tool, inputs, tier):
+        called["stepup"] += 1
+        return {"nonce": "n1"}
+
+    class _HA:
+        async def call_service(self, *a, **k):
+            raise AssertionError("fuori perimetro: niente esecuzione")
+
+    eng = TaskEngine(
+        ha_client=_HA(), entity_cache=None, notify_config={},
+        data_path=str(tmp_path / "tasks.json"),
+        execute_policy={"tiers": {}, "entity_tiers": {"light.salotto": "yellow"}},
+        request_stepup=fake_stepup,
+    )
+    task = Task(id="t1", label="p", agent_id="ag1",
+                created_at="2026-01-01T00:00:00", trigger={}, actions=[],
+                allowed_entities=["light.cucina"])
+    action = {"type": "call_ha_service", "domain": "light",
+              "service": "turn_on", "data": {"entity_id": "light.salotto"}}
+    out = await eng._run_action(action, task)
+    assert out == "skipped: entity 'light.salotto' not permitted by policy"
+    assert called["stepup"] == 0  # MAI escalato a step-up

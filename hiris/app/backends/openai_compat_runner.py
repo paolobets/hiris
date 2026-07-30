@@ -360,8 +360,15 @@ class OpenAICompatRunner:
                     }
                 pau = self._per_chatbot_usage[chatbot_id]
                 self._ensure_today_reset(pau)
+                # Fix-wave review finale (IMPORTANT): il budget per-esecuzione
+                # legge input_tokens+output_tokens (server.py agent_run_usage ->
+                # get_chatbot_usage), non tokens_today -- senza questi due
+                # incrementi la stima non fa mordere il budget_tokens.
+                pau["input_tokens"] += est_in
+                pau["output_tokens"] += est_out
                 pau["tokens_today"] = pau.get("tokens_today", 0) + est_in + est_out
                 pau["last_estimated"] = True
+                logger.debug("Model %s: usage assente, stima input=%d output=%d token", model, est_in, est_out)
                 self._save_usage()
             else:
                 logger.debug("Model %s: no usage and nothing to estimate — skipped", model)

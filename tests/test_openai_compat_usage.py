@@ -38,6 +38,7 @@ def test_track_usage_estimates_when_usage_absent():
     r._track_usage(_NoUsageResp(), "some/model", "ag1", est_input_chars=200)
     pau = r._per_chatbot_usage["ag1"]
     assert pau["tokens_today"] >= 50          # il tetto ora MORDE
+    assert pau["input_tokens"] + pau["output_tokens"] >= 50  # cio' che agent_run_usage legge -> il budget morde
     assert pau.get("last_estimated") is True
 
 
