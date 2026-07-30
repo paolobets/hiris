@@ -652,6 +652,39 @@ def validate_agentbot(raw: dict) -> dict | None:
 
         reasoning = _validate_reasoning(raw.get("reasoning"))
 
+        # Agenti v1.1 Fase 2 Task 7: in mode="objective" il ragionamento NON
+        # e' opzionale. `agentbot_runner._on_wake` porta identita' e perimetro
+        # al modello SOLO nel ramo `if reasoning.get("enabled")`; un agente-
+        # obiettivo con reasoning spento non entra mai in quel ramo, quindi
+        # non ragiona, non emette Task, non fa nulla -- resta inerte, e per
+        # giunta in SILENZIO se creato via API (il frontend aggira il caso
+        # forzando il flag, ma un client HTTP diretto no). Un agente-obiettivo
+        # che non ragiona non ha motivo di esistere, quindi lo chiudiamo qui,
+        # con lo STESSO schema che questo file usa gia' per gli altri
+        # cross-field di `mode`:
+        #   - assente / null -> MATERIALIZZA a True, esattamente come
+        #     `_validate_perimeter` materializza il perimetro assente in
+        #     objective (e come il gate `enabled` top-level defaulta a True):
+        #     non si rigetta per un'assenza.
+        #   - PRESENTE ma non `True` (un `false` dichiarato, o un non-bool
+        #     tipo "false"/"yes"/0/1) -> RIGETTA l'intero record. E' la stessa
+        #     famiglia di `action` dichiarata in objective, `objective`/
+        #     `perimeter` dichiarati in rule, e il gate `enabled` top-level
+        #     present-but-invalid: una contraddizione DICHIARATA non si
+        #     appiattisce in silenzio su True (sarebbe la coercizione che il
+        #     resto del file vieta), la si rifiuta con causa esplicita.
+        # In mode="rule" nulla cambia: `_validate_reasoning` resta la sola
+        # autorita', assente->spento, `false` accettato, non-bool degradato al
+        # default sicuro -- byte per byte come prima.
+        if mode == "objective":
+            raw_reasoning = raw.get("reasoning")
+            raw_enabled = (raw_reasoning.get("enabled")
+                           if isinstance(raw_reasoning, dict) else None)
+            if raw_enabled is None:
+                reasoning["enabled"] = True
+            elif raw_enabled is not True:
+                return None  # dichiarato ma non True -> contraddizione -> rigetto
+
         # perimeter: same rule/objective split as action/objective above --
         # forbidden in mode="rule" (a rule already declares its own entity
         # via trigger/action; a perimeter block there is a contradiction,

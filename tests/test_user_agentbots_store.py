@@ -1095,3 +1095,69 @@ def test_load_agentbots_migration_failure_is_non_fatal(tmp_path, monkeypatch):
 
     assert result == []  # agentbots.json still doesn't exist; legacy untouched
     assert legacy_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Agenti v1.1 Fase 2 Task 7: in mode="objective" il ragionamento non e'
+# opzionale. Un agente-obiettivo che non ragiona non porta ne' identita' ne'
+# perimetro (`agentbot_runner._on_wake` non entra nemmeno nel ramo che li
+# passa): resta inerte, e per giunta in silenzio se creato via API.
+# ---------------------------------------------------------------------------
+
+def test_objective_mode_defaults_reasoning_to_enabled_when_absent():
+    """Assente -> default della MODALITA' (true), come `perimeter` che in
+    objective si materializza invece di rigettare."""
+    cleaned = validate_agentbot(_OBJECTIVE_BASE)
+    assert cleaned is not None
+    assert cleaned["reasoning"]["enabled"] is True
+
+
+def test_objective_mode_null_reasoning_behaves_as_absent():
+    """Stessa convenzione null-come-assente di `mode`/`enabled`/`severity`/
+    `perimeter`."""
+    cleaned = validate_agentbot({**_OBJECTIVE_BASE, "reasoning": None})
+    assert cleaned is not None
+    assert cleaned["reasoning"]["enabled"] is True
+
+    cleaned2 = validate_agentbot({**_OBJECTIVE_BASE, "reasoning": {"enabled": None}})
+    assert cleaned2 is not None
+    assert cleaned2["reasoning"]["enabled"] is True
+
+
+def test_objective_mode_rejects_declared_reasoning_disabled():
+    """Contraddizione DICHIARATA, stessa famiglia di `action` in objective /
+    `objective` in rule / `perimeter` in rule: rigetto dell'intero record,
+    non una coercizione silenziosa di un `false` scritto dall'utente."""
+    assert validate_agentbot({**_OBJECTIVE_BASE, "reasoning": {"enabled": False}}) is None
+
+
+def test_objective_mode_rejects_non_bool_reasoning_enabled():
+    """In objective l'unico valore DICHIARABILE e' `true`: una stringa
+    "false"/"yes" o uno 0 non devono essere appiattiti su true (sarebbe la
+    coercizione che il gate di `enabled` top-level vieta esplicitamente)."""
+    for bad in ("false", "yes", 0, 1):
+        assert validate_agentbot(
+            {**_OBJECTIVE_BASE, "reasoning": {"enabled": bad}}) is None, bad
+
+
+def test_objective_mode_accepts_explicit_reasoning_enabled_true():
+    cleaned = validate_agentbot(
+        {**_OBJECTIVE_BASE, "reasoning": {"enabled": True, "prompt": "affina"}})
+    assert cleaned is not None
+    assert cleaned["reasoning"]["enabled"] is True
+    assert cleaned["reasoning"]["prompt"] == "affina"
+
+
+def test_rule_mode_reasoning_defaults_and_disabled_are_unchanged():
+    """NON-REGRESSIONE: una REGOLA non ha obiettivo, e il suo ragionamento
+    resta esattamente quello di prima -- assente = spento, `false` esplicito
+    accettato, non-bool degradato al default sicuro."""
+    cleaned = validate_agentbot(VALID_EVENT_LENS)
+    assert cleaned is not None
+    assert cleaned["reasoning"] == {"enabled": False, "model": "auto"}
+
+    off = validate_agentbot({**VALID_EVENT_LENS, "reasoning": {"enabled": False}})
+    assert off is not None and off["reasoning"]["enabled"] is False
+
+    junk = validate_agentbot({**VALID_EVENT_LENS, "reasoning": {"enabled": "false"}})
+    assert junk is not None and junk["reasoning"]["enabled"] is False

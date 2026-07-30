@@ -256,11 +256,17 @@ async def test_register_ignores_event_trigger_lenses(tmp_path):
     assert scheduler.jobs == {}
 
 
+# Agenti v1.1 Fase 2 Task 7: in mode="objective" il ragionamento non e' piu'
+# opzionale -- `validate_agentbot` ora RIGETTA un `reasoning.enabled=false`
+# dichiarato (un agente-obiettivo che non ragiona e' inerte, vedi
+# `agentbot_runner._on_wake`). Questi test riguardano lo SCHEDULING, non il
+# flag di reasoning, quindi la fixture porta un reasoning acceso: resta un
+# obiettivo+schedule valido e l'intento del test e' preservato.
 OBJECTIVE_SCHEDULE_LENS = {
     "id": "666666666666", "name": "Obiettivo schedulato", "enabled": True,
     "mode": "objective", "objective": "valuta i consumi",
     "trigger": {"type": "schedule", "interval_min": 15},
-    "reasoning": {"enabled": False},
+    "reasoning": {"enabled": True, "prompt": "valuta e pianifica"},
     "severity": "info",
 }
 

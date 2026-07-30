@@ -1619,3 +1619,92 @@ async def test_unreadable_second_read_fails_open_and_says_so(store, caplog):
     assert "senza tetto sui token" in msg
     assert "non sono leggibili" in msg
     assert "nessuna chiamata" not in msg
+
+
+# ---------------------------------------------------------------------------
+# (i) Agenti v1.1 Fase 2 Task 7: l'OBIETTIVO guida davvero il ragionamento.
+#
+# Fino a qui `objective` era decorativo: `_on_wake` componeva il prompt di
+# sistema come `sentinel_system + "\n\n" + reasoning.prompt` e basta, quindi
+# un agente mode="objective" inseguiva il campo *Verdetto* e non l'Obiettivo
+# che l'utente aveva scritto. Questi test guardano cosa arriva DAVVERO al
+# modello -- il `system_prompt` che `run_with_actions` riceve -- non che una
+# variabile sia stata assegnata.
+# ---------------------------------------------------------------------------
+
+async def _system_prompt_seen_by_the_model(store, tmp_path, agentbot_raw):
+    """Fa scattare un agente-obiettivo lungo la catena VERA (le closure
+    `_llm_reason`/`_run_decision` estratte da `server._on_startup`, il
+    dispatcher e il TaskEngine reali) e restituisce il `system_prompt` che il
+    runner -- l'unico bordo finto, la chiamata all'LLM -- si e' visto
+    arrivare. E' letteralmente la stringa che il modello leggerebbe."""
+    agentbot = validate_agentbot(agentbot_raw)
+    assert agentbot is not None, "l'agentbot di prova deve essere valido"
+    _, _, execute_policy, _, runner = _perimeter_chain(tmp_path, None)
+    rec = _Rec()
+    outcome = await _fire_objective_agentbot(
+        agentbot, store=store, execute_policy=execute_policy, runner=runner, rec=rec)
+    assert outcome == "woke"
+    assert runner.seen_kwargs, "il ragionatore deve essere stato invocato"
+    return runner.seen_kwargs[0]["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_objective_reaches_the_model(store, tmp_path):
+    """(a) L'obiettivo scritto dall'utente deve comparire nel prompt di
+    sistema che il modello riceve. RED prima del fix: il prompt conteneva
+    solo SENTINEL_SYSTEM + reasoning.prompt."""
+    system = await _system_prompt_seen_by_the_model(store, tmp_path, OBJECTIVE_AGENTBOT_RAW)
+    assert "Tieni sotto controllo i consumi della cucina." in system
+
+
+@pytest.mark.asyncio
+async def test_objective_precedes_the_reasoning_prompt_which_still_counts(store, tmp_path):
+    """(b) Il `reasoning.prompt` (il *Verdetto*) resta valido e usato: e'
+    l'affinamento, non la sostanza. Quindi deve continuare ad arrivare al
+    modello, DOPO l'obiettivo -- e il contratto di uscita di SENTINEL_SYSTEM
+    (il blocco ```json``` che `parse_decision` legge) deve restare in testa,
+    o la Decision non sarebbe piu' parsabile."""
+    system = await _system_prompt_seen_by_the_model(store, tmp_path, OBJECTIVE_AGENTBOT_RAW)
+    assert system.startswith(SENTINEL_SYSTEM)
+    assert "Ragiona e pianifica se serve." in system
+    assert system.index("Tieni sotto controllo i consumi della cucina.") < \
+        system.index("Ragiona e pianifica se serve."), \
+        "l'obiettivo e' la sostanza: deve precedere l'affinamento del verdetto"
+
+
+@pytest.mark.asyncio
+async def test_objective_agentbot_without_reasoning_prompt_still_carries_its_objective(store, tmp_path):
+    """Un agente-obiettivo senza *Verdetto* non e' un agente senza scopo:
+    l'obiettivo da solo deve bastare ad arrivare al modello."""
+    system = await _system_prompt_seen_by_the_model(
+        store, tmp_path,
+        {**OBJECTIVE_AGENTBOT_RAW, "reasoning": {"enabled": True}})
+    assert system.startswith(SENTINEL_SYSTEM)
+    assert "Tieni sotto controllo i consumi della cucina." in system
+
+
+@pytest.mark.asyncio
+async def test_rule_agentbot_system_prompt_is_byte_for_byte_unchanged(store):
+    """(d) NON-REGRESSIONE, la piu' importante: una REGOLA non ha obiettivo e
+    deve comporre il prompt di sistema esattamente come prima --
+    `sentinel_system + "\n\n" + reasoning.prompt`, nemmeno una virgola in
+    piu'. Verde prima e dopo il fix: e' il lucchetto."""
+    rec = _Rec()
+    seen = []
+
+    async def _run_decision_spy(wake, suggested, system, force_notify_only=False, model="auto"):
+        seen.append(system)
+        return None
+
+    await run_agentbot(
+        AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
+        store=store, run_decision=_run_decision_spy, execute=real_execute,
+        notify=rec.notify, act=rec.act, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
+        clock=lambda: 1.0, today=lambda: "2026-07-24",
+    )
+
+    assert seen == [
+        SENTINEL_SYSTEM + "\n\n" + AI_SERVICE_LENS["reasoning"]["prompt"]]

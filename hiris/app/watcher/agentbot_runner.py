@@ -93,6 +93,72 @@ def agentbot_action(agentbot: dict) -> Optional[dict]:
     return out
 
 
+# Agenti v1.1 Fase 2 Task 7. Fino a qui `objective` era un campo
+# DECORATIVO: nessun runtime lo leggeva (compariva solo dentro commenti in
+# `server.py`, qui e in `api/handlers_agentbots.py`), e il prompt di sistema
+# del ragionamento era `sentinel_system + "\n\n" + reasoning.prompt` e basta
+# -- cioe' un agente mode="objective" inseguiva il campo *Verdetto* invece
+# dell'Obiettivo che l'utente aveva scritto.
+#
+# Questi due preamboli sono l'unica cosa che quel campo aggiunge al prompt.
+# Sono etichette, non istruzioni di sicurezza: cio' che l'agente puo'
+# leggere e toccare resta deciso altrove (EVALUATION_ONLY_TOOLS lato
+# ragionatore, semaforo + perimetro lato attuazione) e NON e' negoziabile
+# da nulla di scritto qui dentro.
+OBJECTIVE_PREAMBLE = (
+    "Questo agente lavora per un OBIETTIVO: e' il criterio con cui valuti la "
+    "situazione e decidi. Obiettivo dell'agente:"
+)
+REFINEMENT_PREAMBLE = (
+    "Indicazioni aggiuntive per il verdetto (affinano l'obiettivo, non lo "
+    "sostituiscono):"
+)
+
+
+def agentbot_system(agentbot: dict, sentinel_system: str) -> str:
+    """Prompt di sistema del ragionamento per QUESTO Agentbot.
+
+    `sentinel_system` resta SEMPRE in testa, in entrambe le modalita': non e'
+    decorazione, e' il contratto di uscita (il blocco ```json``` con
+    verdict/severity/message/action che `reasoner.parse_decision` legge, piu'
+    il divieto di proporre azioni su serrature/allarmi/tapparelle/sirene).
+    Sostituirlo con un preambolo "da agente-obiettivo" avrebbe fatto sparire
+    quel contratto e ogni Decision sarebbe degradata al ramo di fallback di
+    `parse_decision` (testo grezzo come messaggio, severity dal solo hint).
+    Da qui la forma scelta: si AGGIUNGE, non si rimpiazza.
+
+    mode="rule" -> `sentinel_system + "\\n\\n" + reasoning.prompt`, byte per
+    byte com'era prima di Fase 2 Task 7 (una regola non ha obiettivo:
+    `validate_agentbot` lo VIETA in quella modalita').
+
+    mode="objective" -> in mezzo entra l'obiettivo dell'utente, PRIMA del
+    `reasoning.prompt`: l'obiettivo e' la sostanza, il *Verdetto* resta
+    valido e usato ma come affinamento. L'ordine e' la parte che conta --
+    l'ultima parola in un prompt di sistema pesa, e a pesare deve essere il
+    criterio, non la rifinitura.
+
+    Un `objective` vuoto/assente in objective mode non puo' arrivare qui
+    (`validate_agentbot` rigetta il record), ma se ci arrivasse si torna alla
+    forma della regola invece di emettere un'etichetta senza contenuto.
+
+    Nessuna sanitizzazione: `objective` e `reasoning.prompt` hanno la stessa
+    provenienza (l'utente che configura l'agente, non Home Assistant) e lo
+    stesso trattamento che `reasoning.prompt` ha sempre avuto -- e' il
+    materiale che ARRIVA da HA a essere sanificato, in
+    `reasoner.build_user_message`. La lunghezza e' gia' limitata a monte
+    (2000 caratteri per entrambi, `watcher.agentbots`)."""
+    agentbot = agentbot or {}
+    prompt = (agentbot.get("reasoning") or {}).get("prompt") or ""
+    objective = agentbot.get("objective")
+    objective = objective.strip() if isinstance(objective, str) else ""
+    if (agentbot.get("mode") or "rule") != "objective" or not objective:
+        return sentinel_system + "\n\n" + prompt
+    blocks = [sentinel_system, f"{OBJECTIVE_PREAMBLE}\n{objective}"]
+    if prompt:
+        blocks.append(f"{REFINEMENT_PREAMBLE}\n{prompt}")
+    return "\n\n".join(blocks)
+
+
 def agentbot_message(agentbot: dict, evidence: dict) -> str:
     """Zero-AI Decision message: the Agentbot's own configured
     `action.message` if the user set one, else a generic fallback naming
@@ -193,7 +259,13 @@ async def run_agentbot(
         reasoning = agentbot.get("reasoning") or {}
         suggested = agentbot_action(agentbot)  # deterministic, from config -- never from the LLM
         if reasoning.get("enabled"):
-            system = sentinel_system + "\n\n" + (reasoning.get("prompt") or "")
+            # Task 7: in mode="objective" l'obiettivo dell'utente entra nel
+            # prompt di sistema PRIMA del reasoning.prompt; in mode="rule"
+            # (nessun obiettivo) la forma resta byte per byte
+            # `sentinel_system + "\n\n" + reasoning.prompt`. Tutta la
+            # composizione vive in `agentbot_system` (testabile in
+            # isolamento).
+            system = agentbot_system(agentbot, sentinel_system)
             action_type = (agentbot.get("action") or {}).get("type")
             # Task 4B: this Agentbot's OWN model (validated by
             # `watcher.agentbots._validate_reasoning`, default "auto") --
