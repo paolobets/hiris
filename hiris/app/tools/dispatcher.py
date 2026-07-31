@@ -41,9 +41,26 @@ from ..security.semaphore import gate_action, normalize_target
 logger = logging.getLogger(__name__)
 
 
+# `None` vs `[]` -- ONE semantics for the whole chain (dispatcher -> Task ->
+# `task_engine._run_action`), see `watcher/agentbots.py::_validate_str_list`:
+#
+#   allowed_* is None  -> NO RESTRICTION on that axis (the historical
+#                         "unscoped caller" case: sentinel wakes, briefing,
+#                         a chatbot with no allow-list configured).
+#   allowed_* == []    -> DENY EVERYTHING on that axis. "Nothing granted" is
+#                         not "no limits"; an empty allow-list is a decision,
+#                         not an omission.
+#
+# Hence every check below tests `is None` / `is not None`, NEVER truthiness --
+# truthiness would silently read `[]` as "unrestricted" here while
+# `task_engine._run_action` (which has always used `is not None`) reads the
+# very same `[]` as "deny", so the same value would mean opposite things at
+# the two ends of one call.
 def _filter_entities(entities: list[dict], allowed_entities: list[str] | None) -> list[dict]:
-    """Return only entities whose ID matches any allowed_entities glob pattern."""
-    if not allowed_entities:
+    """Return only entities whose ID matches any allowed_entities glob pattern.
+
+    `None` -> unrestricted (every entity passes); `[]` -> nothing passes."""
+    if allowed_entities is None:
         return entities
     return [
         e for e in entities
@@ -56,8 +73,10 @@ def _filter_area_map(
 ) -> dict[str, list[str]]:
     """Filter an area→[entity_id] map through the same _filter_entities allowlist
     used by get_home_status/get_entities_on/get_entities_by_domain (review B/#11):
-    drop non-permitted entity_ids within each area, then drop areas left empty."""
-    if not allowed_entities:
+    drop non-permitted entity_ids within each area, then drop areas left empty.
+
+    `None` -> unrestricted (map returned as-is); `[]` -> every area drops out."""
+    if allowed_entities is None:
         return area_map
     result: dict[str, list[str]] = {}
     for area, eids in area_map.items():
@@ -70,8 +89,10 @@ def _filter_area_map(
 def _check_service_allowed(
     service_key: str, allowed_services: list[str] | None
 ) -> dict | None:
-    """Return error dict if service blocked, None if allowed."""
-    if allowed_services and not any(
+    """Return error dict if service blocked, None if allowed.
+
+    `allowed_services is None` -> unrestricted; `[]` -> everything blocked."""
+    if allowed_services is not None and not any(
         fnmatch.fnmatch(service_key, pat) for pat in allowed_services
     ):
         logger.warning("Service %s blocked by policy", service_key)
@@ -82,8 +103,10 @@ def _check_service_allowed(
 def _check_entity_allowed(
     entity_id: str, allowed_entities: list[str] | None
 ) -> dict | None:
-    """Return error dict if entity blocked, None if allowed."""
-    if allowed_entities and not any(
+    """Return error dict if entity blocked, None if allowed.
+
+    `allowed_entities is None` -> unrestricted; `[]` -> everything blocked."""
+    if allowed_entities is not None and not any(
         fnmatch.fnmatch(entity_id, pat) for pat in allowed_entities
     ):
         logger.warning("Entity %s blocked by allowed_entities policy", entity_id)
@@ -214,14 +237,14 @@ class ToolDispatcher:
                 ids = inputs.get("ids", [])
                 if visible_entity_ids:
                     ids = [eid for eid in ids if eid in visible_entity_ids]
-                if allowed_entities:
+                if allowed_entities is not None:
                     ids = [eid for eid in ids if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                 return await get_entity_states(self._ha, ids, entity_cache=self._cache)
             if name == "get_history":
                 entity_ids = inputs.get("entity_ids", [])
                 if visible_entity_ids:
                     entity_ids = [eid for eid in entity_ids if eid in visible_entity_ids]
-                if allowed_entities:
+                if allowed_entities is not None:
                     entity_ids = [eid for eid in entity_ids
                                   if any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities)]
                 return await _get_history(
@@ -340,12 +363,12 @@ class ToolDispatcher:
                     )
                     if gate_result is not None:
                         return gate_result
-                if allowed_services:
+                if allowed_services is not None:
                     service_key = f"{domain}.{service}"
                     if not any(fnmatch.fnmatch(service_key, pat) for pat in allowed_services):
                         logger.warning("Service %s.%s blocked by policy", domain, service)
                         return {"error": f"Service {domain}.{service} not permitted by policy"}
-                if allowed_entities:
+                if allowed_entities is not None:
                     eids = normalized.entity_ids
                     if not eids:
                         logger.warning("call_ha_service blocked: no target entity under an active entity whitelist")
@@ -363,7 +386,25 @@ class ToolDispatcher:
                     if atype not in _ALLOWED_TASK_ACTIONS:
                         logger.warning("create_task blocked: action type %r not permitted", atype)
                         return {"error": f"Action type {atype!r} not permitted in tasks"}
-                    if atype == "call_ha_service" and allowed_services:
+                    # ASYMMETRY, deliberate (Task 3 review, minor #7): the
+                    # SERVICE of a task action is checked here at CREATION
+                    # time, but its ENTITY is not -- an action targeting an
+                    # out-of-perimeter entity is accepted here and only
+                    # refused later, by `task_engine._run_action`, when the
+                    # task actually fires. So the LLM can be told "task
+                    # created" for a task that will do nothing.
+                    #
+                    # It is left this way on purpose: `allowed_entities` is
+                    # enforced in exactly ONE place (the executor), and
+                    # adding a second enforcement point here would duplicate
+                    # the boundary and let the two drift apart -- the very
+                    # failure mode this phase exists to avoid. The trade-off
+                    # is a worse error message, not a weaker boundary: the
+                    # action is still refused before it reaches HA. The
+                    # service check below predates this task and is kept
+                    # only because removing it would WIDEN what create_task
+                    # accepts.
+                    if atype == "call_ha_service" and allowed_services is not None:
                         svc_key = f"{action.get('domain', '')}.{action.get('service', '')}"
                         if not any(fnmatch.fnmatch(svc_key, pat) for pat in allowed_services):
                             logger.warning("create_task blocked: action %s not permitted", svc_key)
@@ -407,7 +448,13 @@ class ToolDispatcher:
                 if "value" not in inputs:
                     return {"error": "Missing required parameter: value"}
                 ih_domain = eid.split(".")[0] if "." in eid else ""
-                if allowed_services and ih_domain:
+                # Same `is not None` semantics as every other check in this
+                # file (see the module comment above `_filter_entities`): a
+                # perimeter of `[]` must deny set_input_helper too, otherwise
+                # this one actuating tool would stay fail-OPEN while
+                # call_ha_service/trigger_automation/toggle_automation and
+                # the Task executor all read `[]` as "deny".
+                if allowed_services is not None and ih_domain:
                     if not any(
                         fnmatch.fnmatch(f"{ih_domain}.turn_on", pat)
                         or fnmatch.fnmatch(f"{ih_domain}.set_value", pat)
@@ -416,7 +463,7 @@ class ToolDispatcher:
                     ):
                         logger.warning("set_input_helper on %r blocked by allowed_services policy", ih_domain)
                         return {"error": f"Domain {ih_domain!r} not permitted by allowed_services policy"}
-                if allowed_entities and eid:
+                if allowed_entities is not None and eid:
                     if not any(fnmatch.fnmatch(eid, pat) for pat in allowed_entities):
                         logger.warning("set_input_helper on %r blocked by allowed_entities policy", eid)
                         return {"error": f"Entity {eid!r} not permitted by policy"}

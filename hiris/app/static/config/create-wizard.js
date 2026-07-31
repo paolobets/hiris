@@ -33,7 +33,30 @@
        trigger autonomi + attuazione": mappa l'obiettivo sull'entità
        GIUSTA (Chatbot O Agentbot), non fonde i due contratti — sono due
        builder separati, con due whitelist di campi separate, verso due
-       endpoint separati. */
+       endpoint separati.
+
+   Agenti v1.1 Fase 2 Task 6 — la MODALITÀ dell'Agentbot. Qui l'obiettivo
+   scritto al passo 1 in linguaggio naturale può diventare due cose diverse:
+     mode="rule"       trigger + AZIONE dichiarata (comportamento storico).
+     mode="objective"  `objective` (= la missione del passo 1) + `perimetro`,
+                       NESSUNA azione dichiarata (le azioni nascono a valle
+                       come Task confinati dal perimetro), e solo su
+                       pianificazione (gli eventi restano alle regole).
+   Il ramo non intacca la linea rossa E.2: `allowed_tools` continua a non
+   esistere in nessun ramo di buildAgentbotPayload().
+
+   Convenzione null-vs-[] del perimetro (watcher/agentbots.py::
+   _validate_str_list): `null` = NESSUNA restrizione su quell'asse, `[]` =
+   NEGA TUTTO. Sono opposti. Attenzione: buildChatbotPayload() qui sotto
+   manda `allowed_entities: []`/`allowed_services: []` per "nessuna
+   selezione" — è la convenzione OPPOSTA, e vale solo per il contratto
+   Chatbot. Ricopiarla nel perimetro di un agente-obiettivo lo farebbe
+   nascere paralizzato: da lì l'interruttore esplicito qui sotto.
+
+   `max_tier` non è esposto: è nello schema ma nessun runtime lo onora
+   (debito noto dichiarato della fase). Omesso, il validatore applica il
+   default più stretto ("green") -- meglio del promettere un controllo che
+   non fa nulla. */
 (function() {
   'use strict';
 
@@ -129,6 +152,17 @@
   var triggerTypeSel = null, triggerPicker = null, triggerOperatorSel = null, triggerThresholdInp = null, triggerCronInp = null;
   var reasoningChk = null, actionTypeSel = null, actionMessageTa = null;
   var actionDomainInp = null, actionServiceInp = null, targetPicker = null;
+  var modeSel = null, objectiveTa = null, perimeterEntitiesChk = null, perimeterPicker = null;
+
+  /* Vedi il commento in testa al file: stesso testo dell'editor completo
+     (config/agentbot-editor.js, PERIMETER_HELP) -- la cosa meno intuitiva
+     del perimetro è che NON limita solo l'azione. */
+  var PERIMETER_HELP =
+    'Il perimetro limita sia ciò che l\'agente può toccare sia ciò che può vedere: ' +
+    'un\'entità fuori dall\'elenco non è solo non azionabile, non è nemmeno leggibile ' +
+    'dal suo ragionamento — un agente limitato a light.cucina non può leggere ' +
+    'sensor.consumo_cucina, quindi va elencato anche ciò che gli serve solo per capire. ' +
+    'Se non dichiari nulla non è bloccato: resta confinato dal solo semaforo.';
 
   function freshState() {
     return {
@@ -138,11 +172,18 @@
       type: null,
       chatbotTools: [], chatbotScope: [],
       chatbotKnowledgeAll: true, chatbotKnowledgeKinds: [], chatbotKnowledgeSensitive: false,
+      agentbotMode: 'rule',
       agentbotTriggerType: 'event', agentbotTriggerEntity: '',
       agentbotOperator: '==', agentbotThreshold: '', agentbotCron: '',
       agentbotReasoningEnabled: false,
       agentbotActionType: 'notify', agentbotMessage: '',
       agentbotDomain: '', agentbotService: '', agentbotTargetEntity: '',
+      /* Perimetro (solo mode="objective"). `agentbotPerimeterLimitEntities`
+         è l'interruttore che tiene distinti i due "vuoti": spento -> null
+         (nessuna restrizione), acceso -> l'elenco così com'è, [] compreso
+         (nega tutto). Vedi il commento in testa al file. */
+      agentbotObjective: '',
+      agentbotPerimeterLimitEntities: false, agentbotPerimeterEntities: [],
     };
   }
 
@@ -152,6 +193,7 @@
   function destroyAgentbotPickers() {
     if (triggerPicker) { triggerPicker.destroy(); triggerPicker = null; }
     if (targetPicker) { targetPicker.destroy(); targetPicker = null; }
+    if (perimeterPicker) { perimeterPicker.destroy(); perimeterPicker = null; }
   }
 
   /* Travasa i valori correnti dei controlli step 3 (se montati) in
@@ -163,6 +205,10 @@
     if (knowledgeAllChk) state.chatbotKnowledgeAll = knowledgeAllChk.checked;
     if (knowledgeGroup) state.chatbotKnowledgeKinds = knowledgeGroup.getSelected();
     if (knowledgeSensitiveChk) state.chatbotKnowledgeSensitive = knowledgeSensitiveChk.checked;
+    if (modeSel) state.agentbotMode = modeSel.value;
+    if (objectiveTa) state.agentbotObjective = objectiveTa.value;
+    if (perimeterEntitiesChk) state.agentbotPerimeterLimitEntities = perimeterEntitiesChk.checked;
+    if (perimeterPicker) state.agentbotPerimeterEntities = perimeterPicker.getValue();
     if (triggerTypeSel) state.agentbotTriggerType = triggerTypeSel.value;
     if (triggerPicker) state.agentbotTriggerEntity = triggerPicker.getValue()[0] || '';
     if (triggerOperatorSel) state.agentbotOperator = triggerOperatorSel.value;
@@ -344,6 +390,17 @@
   }
 
   function renderAgentbotGuidedFields(body) {
+    body.appendChild(el('div', 'fg-label', 'Modalità'));
+    modeSel = HirisEditorKit.field.select(body, {
+      id: 'cw-mode', label: 'Come deve lavorare',
+      options: [
+        { value: 'rule', label: 'Regola — scatta e fa l\'azione che dichiari' },
+        { value: 'objective', label: 'Obiettivo — ragiona verso un traguardo ed emette task' },
+      ],
+      value: state.agentbotMode,
+      hint: 'Una regola è deterministica: trigger e azione li scrivi tu. Un agente-obiettivo ragiona da solo dentro un perimetro; gira solo su pianificazione e non dichiara un\'azione propria.',
+    });
+
     body.appendChild(el('div', 'fg-label', 'Trigger'));
     triggerTypeSel = HirisEditorKit.field.select(body, {
       id: 'cw-trigger-type', label: 'Tipo trigger',
@@ -373,6 +430,14 @@
     });
     body.appendChild(scheduleWrap);
 
+    /* Mostrata al posto della scelta evento/pianificazione in modalità
+       obiettivo: il validatore rifiuta objective+evento, quindi lì non c'è
+       una scelta da fare -- va detto perché, non lasciato sparire. */
+    var scheduleOnlyNote = el('p', 'sc-desc',
+      'La modalità obiettivo gira solo su pianificazione: un turno di ragionamento è pesante, gli eventi restano dominio delle regole.');
+    scheduleOnlyNote.id = 'cw-schedule-only-note';
+    body.appendChild(scheduleOnlyNote);
+
     function updateTriggerVisibility() {
       var isEvent = triggerTypeSel.value === 'event';
       eventWrap.style.display = isEvent ? '' : 'none';
@@ -380,6 +445,40 @@
     }
     triggerTypeSel.addEventListener('change', updateTriggerVisibility);
     updateTriggerVisibility();
+
+    /* ── Obiettivo + perimetro (solo mode="objective") ── */
+    var objectiveWrap = el('div'); objectiveWrap.id = 'cw-objective-wrap';
+    objectiveWrap.appendChild(el('div', 'fg-label', 'Obiettivo'));
+    objectiveTa = HirisEditorKit.field.textarea(objectiveWrap, {
+      id: 'cw-objective', label: 'Cosa deve ottenere', rows: 3,
+      value: state.agentbotObjective || state.mission,
+      hint: 'Cosa deve ottenere l\'agente, non come. Di default è la missione che hai scritto al primo passo.',
+    });
+    objectiveWrap.appendChild(el('div', 'fg-label', 'Perimetro'));
+    objectiveWrap.appendChild(el('p', 'sc-desc', PERIMETER_HELP));
+    /* Interruttore + elenco: un picker vuoto da solo non sa dire se
+       l'utente intendeva "nessuna restrizione" (null) o "non concedere
+       niente" ([]) -- e sono opposti. */
+    perimeterEntitiesChk = HirisEditorKit.field.checkbox(objectiveWrap, {
+      id: 'cw-per-entities-on', label: 'Limita le entità a un elenco',
+      value: state.agentbotPerimeterLimitEntities,
+    });
+    var perimeterWrap = el('div'); perimeterWrap.id = 'cw-per-entities-wrap';
+    perimeterWrap.appendChild(el('p', 'field-hint',
+      'Spuntato: l\'agente vede e tocca solo quello che elenchi qui. Non spuntato: nessuna restrizione di entità, resta il solo semaforo. Il perimetro completo (servizi, budget, scadenza) si affina poi nell\'editor.'));
+    var perimeterRoot = el('div'); perimeterRoot.id = 'cw-per-entities-root';
+    perimeterWrap.appendChild(perimeterRoot);
+    perimeterPicker = HirisEntityPicker.create(perimeterRoot, {
+      placeholder: 'Cerca entità…', initial: state.agentbotPerimeterEntities, pills: SCOPE_PILLS,
+    });
+    objectiveWrap.appendChild(perimeterWrap);
+    body.appendChild(objectiveWrap);
+
+    function updatePerimeterVisibility() {
+      perimeterWrap.style.display = perimeterEntitiesChk.checked ? '' : 'none';
+    }
+    perimeterEntitiesChk.addEventListener('change', updatePerimeterVisibility);
+    updatePerimeterVisibility();
 
     body.appendChild(el('div', 'fg-label', 'Verdetto'));
     /* Se abilitato, il ragionamento AI viene interpellato SOLO al momento
@@ -392,9 +491,18 @@
     });
     body.appendChild(el('p', 'field-hint',
       'Se abilitato, il modello legge la tua missione come istruzione e restituisce solo un verdetto testuale -- nessun tool, nessuna scelta d\'azione: quella resta sempre quella dichiarata sotto.'));
+    /* In modalità obiettivo il ragionamento NON è opzionale: senza,
+       watcher/agentbot_runner.py::_on_wake non entra mai nel ramo che porta
+       identità e perimetro a run_decision, e l'agente non emette task. */
+    var reasoningLockNote = el('p', 'field-hint',
+      'In modalità obiettivo il ragionamento è sempre attivo: è l\'agente stesso.');
+    reasoningLockNote.id = 'cw-reasoning-lock-note';
+    body.appendChild(reasoningLockNote);
 
-    body.appendChild(el('div', 'fg-label', 'Azione'));
-    actionTypeSel = HirisEditorKit.field.select(body, {
+    /* ── Azione dichiarata (solo mode="rule") ── */
+    var actionWrap = el('div'); actionWrap.id = 'cw-action-wrap';
+    actionWrap.appendChild(el('div', 'fg-label', 'Azione'));
+    actionTypeSel = HirisEditorKit.field.select(actionWrap, {
       id: 'cw-action-type', label: 'Tipo azione',
       options: [{ value: 'notify', label: 'Notifica' }, { value: 'service', label: 'Servizio HA' }],
       value: state.agentbotActionType,
@@ -405,7 +513,7 @@
       id: 'cw-action-message', label: 'Messaggio', rows: 2,
       value: state.agentbotMessage || state.mission,
     });
-    body.appendChild(notifyWrap);
+    actionWrap.appendChild(notifyWrap);
 
     var serviceWrap = el('div'); serviceWrap.id = 'cw-action-service-wrap';
     actionDomainInp = HirisEditorKit.field.text(serviceWrap, {
@@ -421,7 +529,8 @@
       single: true, placeholder: 'Cerca entità…',
       initial: state.agentbotTargetEntity ? [state.agentbotTargetEntity] : [],
     });
-    body.appendChild(serviceWrap);
+    actionWrap.appendChild(serviceWrap);
+    body.appendChild(actionWrap);
 
     function updateActionVisibility() {
       var isNotify = actionTypeSel.value === 'notify';
@@ -430,6 +539,24 @@
     }
     actionTypeSel.addEventListener('change', updateActionVisibility);
     updateActionVisibility();
+
+    /* ── ramo modalità: che cosa esiste in "regola" e che cosa in "obiettivo" ── */
+    function updateModeVisibility() {
+      var objective = modeSel.value === 'objective';
+      objectiveWrap.style.display = objective ? '' : 'none';
+      actionWrap.style.display = objective ? 'none' : '';
+      /* Objective ammette SOLO la pianificazione: la scelta
+         evento/pianificazione sparisce e al suo posto compare il motivo. */
+      if (objective) triggerTypeSel.value = 'schedule';
+      triggerTypeSel.parentNode.style.display = objective ? 'none' : '';
+      scheduleOnlyNote.style.display = objective ? '' : 'none';
+      updateTriggerVisibility();
+      if (objective) reasoningChk.checked = true;
+      reasoningChk.disabled = objective;
+      reasoningLockNote.style.display = objective ? '' : 'none';
+    }
+    modeSel.addEventListener('change', updateModeVisibility);
+    updateModeVisibility();
   }
 
   function renderStep3(outlet) {
@@ -439,6 +566,7 @@
     toolGroup = null; knowledgeGroup = null; knowledgeAllChk = null; knowledgeSensitiveChk = null;
     triggerTypeSel = null; triggerOperatorSel = null; triggerThresholdInp = null; triggerCronInp = null;
     reasoningChk = null; actionTypeSel = null; actionMessageTa = null; actionDomainInp = null; actionServiceInp = null;
+    modeSel = null; objectiveTa = null; perimeterEntitiesChk = null;
 
     outlet.innerHTML = '';
     var isAgentbot = state.type === 'agentbot';
@@ -502,8 +630,16 @@
      trigger, reasoning, action) -- mai un `id` nel body (create sempre
      fresh, come agentbot-editor.js). */
   function buildAgentbotPayload() {
-    var payload = { name: state.name, enabled: true, severity: 'info' };
-    if (state.agentbotTriggerType === 'schedule') {
+    /* `mode` è ESPLICITO anche per una regola: il payload è whitelistato da
+       zero, e un `mode` omesso si affiderebbe al default del validatore --
+       corretto per una regola, ma per un agente-obiettivo lo
+       riconvertirebbe in regola in silenzio. */
+    var isObjective = state.agentbotMode === 'objective';
+    var payload = {
+      name: state.name, enabled: true, severity: 'info',
+      mode: isObjective ? 'objective' : 'rule',
+    };
+    if (isObjective || state.agentbotTriggerType === 'schedule') {
       payload.trigger = { type: 'schedule', cron: state.agentbotCron };
     } else {
       payload.trigger = {
@@ -514,10 +650,29 @@
       };
     }
     payload.reasoning = {
-      enabled: !!state.agentbotReasoningEnabled,
+      /* Un agente-obiettivo senza ragionamento è inerte (agentbot_runner
+         ::_on_wake non entra mai nel ramo con identità+perimetro). */
+      enabled: isObjective ? true : !!state.agentbotReasoningEnabled,
       model: 'auto',
       prompt: state.mission,
     };
+    if (isObjective) {
+      payload.objective = state.agentbotObjective || state.mission;
+      /* TRAPPOLA null-vs-[]: interruttore spento = "non ho dichiarato
+         restrizioni" -> null. MAI [] (= "nega tutto"), che farebbe nascere
+         paralizzato ogni agente creato senza selezione. `allowed_services`
+         non è editabile in questo passo: null, non [] -- si affina
+         nell'editor completo, dove non dichiararlo resta legittimo. */
+      payload.perimeter = {
+        allowed_entities: state.agentbotPerimeterLimitEntities
+          ? state.agentbotPerimeterEntities.slice()
+          : null,
+        allowed_services: null,
+      };
+      /* Nessun `action`: in mode="objective" il validatore rigetta l'intero
+         Agentbot se ne trova una. Le azioni nascono a valle come Task. */
+      return payload;
+    }
     if (state.agentbotActionType === 'service') {
       payload.action = {
         type: 'service',
@@ -539,6 +694,10 @@
     var body = el('div', 'sc-body');
     body.appendChild(el('p', null, 'Nome: ' + state.name));
     body.appendChild(el('p', null, 'Tipo: ' + (state.type === 'agentbot' ? 'Agentbot' : 'Chatbot')));
+    if (state.type === 'agentbot') {
+      body.appendChild(el('p', null, 'Modalità: ' +
+        (state.agentbotMode === 'objective' ? 'Obiettivo (ragiona ed emette task)' : 'Regola (azione dichiarata)')));
+    }
     body.appendChild(el('p', 'sc-desc', state.mission));
     card.appendChild(body);
     outlet.appendChild(card);
@@ -613,6 +772,7 @@
     toolGroup = null; knowledgeGroup = null; knowledgeAllChk = null; knowledgeSensitiveChk = null;
     triggerTypeSel = null; triggerOperatorSel = null; triggerThresholdInp = null; triggerCronInp = null;
     reasoningChk = null; actionTypeSel = null; actionMessageTa = null; actionDomainInp = null; actionServiceInp = null;
+    modeSel = null; objectiveTa = null; perimeterEntitiesChk = null;
     state = freshState();
     render();
   }

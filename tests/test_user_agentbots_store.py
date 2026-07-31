@@ -853,6 +853,231 @@ def test_objective_mode_rejects_event_trigger():
     }) is None
 
 
+# ---------------------------------------------------------------------------
+# Agenti v1.1 Fase 2 Task 2: perimeter block (scope, tier ceiling, budget,
+# deadline) -- obbligatorio in mode="objective" (assente -> default espliciti,
+# MAI rigetto per assenza), vietato in mode="rule".
+# ---------------------------------------------------------------------------
+
+_OBJECTIVE_BASE = {
+    "mode": "objective", "objective": "valuta i consumi",
+    "trigger": {"type": "schedule", "interval_min": 60},
+}
+
+# `None`, NOT `[]`: an undeclared allow-list is "no restriction on this axis",
+# and the whole chain (dispatcher -> Task -> task_engine._run_action) reads it
+# that way. `[]` is the OPPOSITE ("deny everything") and is only ever produced
+# by a user who explicitly wrote an empty list -- see
+# test_perimeter_explicit_empty_list_is_kept_as_deny_all below. The block is
+# still ALWAYS materialized, with the nulls spelled out.
+_DEFAULT_PERIMETER = {
+    "allowed_entities": None,
+    "allowed_services": None,
+    "max_tier": "green",
+    "budget_tokens": 4096,
+    "deadline_min": 5,
+}
+
+
+def test_perimeter_defaults_when_absent_in_objective_mode():
+    cleaned = validate_agentbot(_OBJECTIVE_BASE)
+    assert cleaned is not None
+    assert cleaned["perimeter"] == _DEFAULT_PERIMETER
+
+
+def test_perimeter_null_behaves_as_absent_in_objective_mode():
+    """Same null-as-absent convention already used for `mode`/`enabled`/
+    `severity`: an explicit `"perimeter": null` must default, not reject."""
+    cleaned = validate_agentbot({**_OBJECTIVE_BASE, "perimeter": None})
+    assert cleaned is not None
+    assert cleaned["perimeter"] == _DEFAULT_PERIMETER
+
+
+def test_perimeter_is_none_in_rule_mode():
+    cleaned = validate_agentbot(VALID_EVENT_LENS)
+    assert cleaned is not None
+    assert cleaned["perimeter"] is None
+
+
+def test_perimeter_forbidden_in_rule_mode_rejects_whole_agentbot():
+    """A rule already declares its own entity via trigger/action -- a
+    perimeter block on a rule is a contradiction, not an oversight to drop."""
+    raw = {**VALID_EVENT_LENS, "perimeter": {"max_tier": "green"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_forbidden_in_rule_mode_even_when_empty_dict():
+    raw = {**VALID_EVENT_LENS, "perimeter": {}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_empty_dict_yields_defaults_in_objective_mode():
+    """An explicit `{}` is a different shape than absent/null (it IS a dict,
+    just with no fields set) -- must still normalize to the full default
+    block, not be treated as malformed. The rule-mode side of `{}` is
+    already covered by test_perimeter_forbidden_in_rule_mode_even_when_empty_dict."""
+    cleaned = validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {}})
+    assert cleaned is not None
+    assert cleaned["perimeter"] == _DEFAULT_PERIMETER
+
+
+def test_perimeter_explicit_values_preserved_in_objective_mode():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {
+        "allowed_entities": ["light.kitchen", "sensor.*"],
+        "allowed_services": ["notify.*"],
+        "max_tier": "yellow",
+        "budget_tokens": 2000,
+        "deadline_min": 10,
+    }}
+    cleaned = validate_agentbot(raw)
+    assert cleaned is not None
+    assert cleaned["perimeter"] == {
+        "allowed_entities": ["light.kitchen", "sensor.*"],
+        "allowed_services": ["notify.*"],
+        "max_tier": "yellow",
+        "budget_tokens": 2000,
+        "deadline_min": 10,
+    }
+
+
+def test_perimeter_explicit_empty_list_is_kept_as_deny_all():
+    """`[]` and "absent" are OPPOSITES and must never collapse into each
+    other. A user who writes `"allowed_entities": []` has said "grant
+    nothing", and that is what has to reach `tools/dispatcher.py` and
+    `task_engine._run_action` -- both of which read `[]` as "deny
+    everything". Widening it to `None` here would silently hand the agent
+    the whole house."""
+    raw = {**_OBJECTIVE_BASE, "perimeter": {
+        "allowed_entities": [], "allowed_services": [],
+    }}
+    cleaned = validate_agentbot(raw)
+    assert cleaned is not None
+    assert cleaned["perimeter"]["allowed_entities"] == []
+    assert cleaned["perimeter"]["allowed_services"] == []
+    # ...and NOT the "no restriction" default.
+    assert cleaned["perimeter"]["allowed_entities"] is not None
+    assert cleaned["perimeter"]["allowed_services"] is not None
+
+
+def test_perimeter_absent_allow_lists_are_none_not_empty_list():
+    """The other half of the same distinction: absent (or explicit `null`)
+    -> `None` = "no restriction on this axis". Materialized VISIBLY (the key
+    is present with a null value), never omitted."""
+    for perimeter_raw in (None, {}, {"max_tier": "yellow"},
+                          {"allowed_entities": None, "allowed_services": None}):
+        cleaned = validate_agentbot({**_OBJECTIVE_BASE, "perimeter": perimeter_raw})
+        assert cleaned is not None, perimeter_raw
+        assert "allowed_entities" in cleaned["perimeter"], perimeter_raw
+        assert "allowed_services" in cleaned["perimeter"], perimeter_raw
+        assert cleaned["perimeter"]["allowed_entities"] is None, perimeter_raw
+        assert cleaned["perimeter"]["allowed_services"] is None, perimeter_raw
+
+
+def test_perimeter_one_axis_declared_leaves_the_other_unrestricted():
+    """Per-axis, not all-or-nothing: declaring entities must not silently
+    lock down services (nor the reverse)."""
+    cleaned = validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {
+        "allowed_entities": ["light.cucina"],
+    }})
+    assert cleaned is not None
+    assert cleaned["perimeter"]["allowed_entities"] == ["light.cucina"]
+    assert cleaned["perimeter"]["allowed_services"] is None
+
+
+def test_perimeter_drops_unknown_nested_fields():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"bogus_key": "x"}}
+    cleaned = validate_agentbot(raw)
+    assert cleaned is not None
+    assert "bogus_key" not in cleaned["perimeter"]
+
+
+def test_perimeter_rejects_max_tier_red():
+    """The ceiling says how far the agent gets WITHOUT asking; red always
+    asks, so it can never be a ceiling value."""
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"max_tier": "red"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_max_tier_off():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"max_tier": "off"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_max_tier_unknown_value():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"max_tier": "banana"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_non_int_budget_tokens():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"budget_tokens": 100.5}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_bool_budget_tokens():
+    """bool is an int subclass in Python -- must not sneak through as 0/1."""
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"budget_tokens": True}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_zero_and_negative_budget_tokens():
+    assert validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {"budget_tokens": 0}}) is None
+    assert validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {"budget_tokens": -100}}) is None
+
+
+def test_perimeter_rejects_non_int_deadline_min():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"deadline_min": 1.5}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_bool_deadline_min():
+    """Same bool-is-an-int-subclass trap as budget_tokens -- both go through
+    the same `is_positive_int`, so both need the same regression guard."""
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"deadline_min": True}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_zero_and_negative_deadline_min():
+    assert validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {"deadline_min": 0}}) is None
+    assert validate_agentbot({**_OBJECTIVE_BASE, "perimeter": {"deadline_min": -5}}) is None
+
+
+def test_perimeter_rejects_wrong_type_allowed_entities():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"allowed_entities": "light.kitchen"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_non_string_item_in_allowed_entities():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"allowed_entities": [123]}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_wrong_type_allowed_services():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"allowed_services": "notify.mobile_app"}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_empty_string_item_in_allowed_services():
+    raw = {**_OBJECTIVE_BASE, "perimeter": {"allowed_services": ["   "]}}
+    assert validate_agentbot(raw) is None
+
+
+def test_perimeter_rejects_non_dict_perimeter_in_objective_mode():
+    raw = {**_OBJECTIVE_BASE, "perimeter": "not-a-dict"}
+    assert validate_agentbot(raw) is None
+
+
+def test_agentbot_dict_has_ten_whitelisted_keys():
+    """Whitelist grew 9 -> 10 with `perimeter`; a forgotten addition here
+    would make the field vanish silently even though validate_agentbot()
+    still returns 201."""
+    cleaned = validate_agentbot(VALID_EVENT_LENS)
+    assert cleaned is not None
+    assert set(cleaned.keys()) == {
+        "id", "name", "enabled", "trigger", "reasoning", "action",
+        "severity", "mode", "objective", "perimeter",
+    }
+
+
 def test_load_agentbots_migration_failure_is_non_fatal(tmp_path, monkeypatch):
     """A migration failure (e.g. os.replace raising) must be swallowed and
     logged, never propagated -- the caller still gets a usable (here, empty,
@@ -870,3 +1095,93 @@ def test_load_agentbots_migration_failure_is_non_fatal(tmp_path, monkeypatch):
 
     assert result == []  # agentbots.json still doesn't exist; legacy untouched
     assert legacy_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Agenti v1.1 Fase 2 Task 7: in mode="objective" il ragionamento non e'
+# opzionale. Un agente-obiettivo che non ragiona non porta ne' identita' ne'
+# perimetro (`agentbot_runner._on_wake` non entra nemmeno nel ramo che li
+# passa): non emette Task, cade nel ramo zero-AI e -- avendo `action=None` per
+# costruzione in objective -- si limita a una NOTIFICA generica a ogni scatto
+# (`executor.execute` notifica per un'azione vuota). Non silenzio: rumore.
+# ---------------------------------------------------------------------------
+
+def test_objective_mode_defaults_reasoning_to_enabled_when_absent():
+    """Assente -> default della MODALITA' (true), come `perimeter` che in
+    objective si materializza invece di rigettare."""
+    cleaned = validate_agentbot(_OBJECTIVE_BASE)
+    assert cleaned is not None
+    assert cleaned["reasoning"]["enabled"] is True
+
+
+def test_objective_mode_null_reasoning_behaves_as_absent():
+    """Stessa convenzione null-come-assente di `mode`/`enabled`/`severity`/
+    `perimeter`."""
+    cleaned = validate_agentbot({**_OBJECTIVE_BASE, "reasoning": None})
+    assert cleaned is not None
+    assert cleaned["reasoning"]["enabled"] is True
+
+    cleaned2 = validate_agentbot({**_OBJECTIVE_BASE, "reasoning": {"enabled": None}})
+    assert cleaned2 is not None
+    assert cleaned2["reasoning"]["enabled"] is True
+
+
+def test_objective_mode_rejects_declared_reasoning_disabled():
+    """Contraddizione DICHIARATA, stessa famiglia di `action` in objective /
+    `objective` in rule / `perimeter` in rule: rigetto dell'intero record,
+    non una coercizione silenziosa di un `false` scritto dall'utente."""
+    assert validate_agentbot({**_OBJECTIVE_BASE, "reasoning": {"enabled": False}}) is None
+
+
+def test_objective_mode_rejects_non_bool_reasoning_enabled():
+    """In objective l'unico valore DICHIARABILE e' `true`: una stringa
+    "false"/"yes" o uno 0 non devono essere appiattiti su true (sarebbe la
+    coercizione che il gate di `enabled` top-level vieta esplicitamente)."""
+    for bad in ("false", "yes", 0, 1):
+        assert validate_agentbot(
+            {**_OBJECTIVE_BASE, "reasoning": {"enabled": bad}}) is None, bad
+
+
+def test_objective_mode_rejects_a_non_dict_reasoning_block():
+    """Fix-wave MINOR 3: la contraddizione dichiarata va rigettata anche quando
+    e' l'INTERO blocco a non essere un dict. `{"reasoning": false}` dice
+    "questo agente-obiettivo non ragiona" tanto quanto
+    `{"reasoning": {"enabled": false}}`; leggere `enabled` solo dentro un dict
+    lasciava passare il primo caso e lo appiattiva in silenzio su `true` --
+    esattamente la coercizione che questo gate esiste per vietare."""
+    for bad in (False, True, "off", "false", "enabled", 0, 1, [], ["enabled"], 3.5):
+        assert validate_agentbot(
+            {**_OBJECTIVE_BASE, "reasoning": bad}) is None, repr(bad)
+
+
+def test_rule_mode_non_dict_reasoning_stays_lenient():
+    """NON-REGRESSIONE del gemello: in rule `_validate_reasoning` resta la sola
+    autorita' e un `reasoning` non-dict continua a degradare al default sicuro
+    (spento), senza perdere l'intero record. MINOR 3 tocca solo objective."""
+    for bad in (False, "off", 0, []):
+        cleaned = validate_agentbot({**VALID_EVENT_LENS, "reasoning": bad})
+        assert cleaned is not None, repr(bad)
+        assert cleaned["reasoning"] == {"enabled": False, "model": "auto"}
+
+
+def test_objective_mode_accepts_explicit_reasoning_enabled_true():
+    cleaned = validate_agentbot(
+        {**_OBJECTIVE_BASE, "reasoning": {"enabled": True, "prompt": "affina"}})
+    assert cleaned is not None
+    assert cleaned["reasoning"]["enabled"] is True
+    assert cleaned["reasoning"]["prompt"] == "affina"
+
+
+def test_rule_mode_reasoning_defaults_and_disabled_are_unchanged():
+    """NON-REGRESSIONE: una REGOLA non ha obiettivo, e il suo ragionamento
+    resta esattamente quello di prima -- assente = spento, `false` esplicito
+    accettato, non-bool degradato al default sicuro."""
+    cleaned = validate_agentbot(VALID_EVENT_LENS)
+    assert cleaned is not None
+    assert cleaned["reasoning"] == {"enabled": False, "model": "auto"}
+
+    off = validate_agentbot({**VALID_EVENT_LENS, "reasoning": {"enabled": False}})
+    assert off is not None and off["reasoning"]["enabled"] is False
+
+    junk = validate_agentbot({**VALID_EVENT_LENS, "reasoning": {"enabled": "false"}})
+    assert junk is not None and junk["reasoning"]["enabled"] is False

@@ -569,6 +569,57 @@ async def test_set_input_helper_number_denied_when_domain_not_green():
     d._ha.call_service.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_set_input_helper_allowed_none_permits_empty_list_denies():
+    """`None` vs `[]` sul percorso REALE di `set_input_helper` (review Task 3,
+    minor #C): e' l'unico tool fra quelli toccati dal fix is-not-None a non
+    avere un test proprio che pinni la nuova semantica, e set_input_helper e'
+    un tool che ATTUA. Stessa distinzione gia' inchiodata a livello di helper
+    da `test_check_entity_allowed_none_permits_empty_list_denies`
+    (tests/test_dispatcher_area_entities.py), qui sulla dispatch intera."""
+    d = _make_dispatcher(execute_policy={"tiers": {"input_boolean": "green"}})
+
+    permitted = await d.dispatch(
+        "set_input_helper",
+        {"entity_id": "input_boolean.guest_mode", "value": True},
+        chatbot_id="a",
+        allowed_entities=None,
+        allowed_services=None,
+    )
+    assert permitted == {
+        "entity_id": "input_boolean.guest_mode",
+        "service": "input_boolean.turn_on",
+        "ok": True,
+    }
+    d._ha.call_service.assert_awaited_once_with(
+        "input_boolean", "turn_on", {"entity_id": "input_boolean.guest_mode"}
+    )
+
+    d._ha.call_service.reset_mock()
+
+    denied_by_services = await d.dispatch(
+        "set_input_helper",
+        {"entity_id": "input_boolean.guest_mode", "value": True},
+        chatbot_id="a",
+        allowed_entities=None,
+        allowed_services=[],
+    )
+    assert (isinstance(denied_by_services, dict)
+            and "not permitted by allowed_services policy" in denied_by_services["error"])
+    d._ha.call_service.assert_not_called()
+
+    denied_by_entities = await d.dispatch(
+        "set_input_helper",
+        {"entity_id": "input_boolean.guest_mode", "value": True},
+        chatbot_id="a",
+        allowed_entities=[],
+        allowed_services=None,
+    )
+    assert (isinstance(denied_by_entities, dict)
+            and "not permitted by policy" in denied_by_entities["error"])
+    d._ha.call_service.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # SEC-022b — automation_id format validated (no path traversal / injection)
 # ---------------------------------------------------------------------------

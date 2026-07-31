@@ -57,6 +57,12 @@ from .brain.reasoner_memory import relevant_memory
 from .brain.briefing import build_briefing_bundle, compose_briefing
 from .brain.reminders import ReminderSeen, due_nudges
 from .watcher.policy import load_policy
+from .watcher.signals import Decision
+# Agenti v1.1 Fase 2 Task 5: STESSO predicato con cui `_validate_perimeter`
+# accetta `budget_tokens`/`deadline_min` (intero > 0, `bool` deliberatamente
+# escluso). Riusarlo invece di riscriverlo evita che il consumo del perimetro
+# finisca a ragionare con regole diverse da quelle con cui e' stato validato.
+from .watcher.agentbots import is_positive_int
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
@@ -434,6 +440,21 @@ async def request_confirmation_stepup(
     return {"id": entry["id"], "otp_sent": bool(otp_sent)}
 
 
+def _make_task_stepup(*, app, data_dir: str, owner: str | None):
+    """Fase 2.5 C2: chiusura di step-up per i Task autonomi. `owner` e'
+    l'identita' (chiave di notify_users) a cui recapitare tap/OTP. Falsy ->
+    None (TaskEngine fara' fail-closed allo skip). La guardia canale-privato
+    vive dentro request_confirmation_stepup (private_notify_service_for_user)."""
+    if not owner:
+        return None
+
+    async def _request_stepup(*, tool: str, inputs: dict, tier: str):
+        return await request_confirmation_stepup(
+            app, data_dir, tool=tool, inputs=inputs, tier=tier, user=owner)
+
+    return _request_stepup
+
+
 # ---------------------------------------------------------------------------
 # Slice 5b Task 5: SCHEDULED (cron/interval) user Agentbots (renamed from
 # "lens" in SP-4 Fase A Task 3) -- per-Agentbot jobs on `engine._scheduler`,
@@ -541,21 +562,21 @@ async def register_agentbot_schedules(app: web.Application) -> None:
 
     data_dir = app.get("data_dir")
     agentbots = _load_scheduled_agentbots(data_dir) if data_dir else []
-    # Fase 1 fix-wave IMPORTANT: `mode` gate added -- same "solo mode='rule'
-    # e' raggiungibile" constraint as `handlers_agentbots.get_event_agentbots`
-    # (see its docstring). Unlike event triggers, `validate_agentbot` DOES
-    # allow objective+schedule -- an objective Agentbot on a cadence is a
-    # valid, intended combination for Fase 3's own wiring -- but Fase 1
-    # itself must not let a schedule-triggered objective Agentbot actually
-    # fire yet (with reasoning off it would silently degenerate into a
-    # recurring bogus notify rule; the runtime path for objective Agentbots
-    # doesn't exist until a later phase). Gated here (the runtime scheduler
-    # registration), not in the HTTP handler, so Fase 3 only needs to drop
-    # this condition rather than rewire validation.
+    # Agenti v1.1 Fase 2 Task 4: the Fase 1 fix-wave `mode` gate that used to
+    # sit here (mirroring `handlers_agentbots.get_event_agentbots`'s own gate)
+    # is REMOVED for the planned path only, by design -- the plan's decision
+    # is "gli eventi restano dominio delle regole" (that gate stays on
+    # `get_event_agentbots`), but a schedule-triggered objective Agentbot is
+    # a valid, intended combination (`validate_agentbot` allows objective+
+    # schedule; only objective+event is forbidden) that must now actually
+    # fire on its cadence. No other change: same job registration, same
+    # `_run_scheduled_agentbot` callback, same `run_agentbot` call as any
+    # schedule-triggered rule -- the security posture (EVALUATION_ONLY_TOOLS,
+    # semaforo, force_notify_only) is entirely unrelated to this gate and is
+    # unchanged.
     scheduled = {
         a["id"]: a for a in agentbots
         if a.get("enabled") and (a.get("trigger") or {}).get("type") == "schedule"
-        and a.get("mode", "rule") == "rule"
     }
 
     # Remove orphaned jobs: an Agentbot that was deleted, disabled, or
@@ -611,6 +632,223 @@ async def register_agentbot_schedules(app: web.Application) -> None:
             # the rest.
             logger.warning("register_agentbot_schedules: failed to schedule agentbot %s, skipping", agentbot_id, exc_info=True)
             continue
+
+
+# ── Agenti v1.1 Fase 2 Task 5: bound PER ESECUZIONE ────────────────────────
+# `perimeter.budget_tokens` e `perimeter.deadline_min` (validati e
+# materializzati da `watcher.agentbots._validate_perimeter`, default 4096
+# token e 5 minuti) limitano UNA SINGOLA esecuzione di ragionamento di un
+# agente in modalita' obiettivo -- che dal Task 4 gira da sola, su
+# pianificazione, senza nessuno a guardarla. NON sono contatori cumulativi: il
+# cap giornaliero della sentinella (`wake.maybe_wake`) e i totali in
+# `usage.json` misurano un'altra cosa e restano invariati.
+#
+# Sforare non e' un errore: e' un ESITO. L'esecuzione si ferma PRIMA di
+# eseguire la Decision e lascia una riga dove questo percorso registra gia'
+# ogni suo esito (`_record_situation_event` -> `sentinel_store.record_event`
+# -> `/api/sentinel/timeline`, servita da `api/handlers_sentinel.
+# handle_sentinel_timeline`), con `outcome` che dice che e' stata interrotta e
+# `message` che dice perche' -- i due campi che la lista eventi dell'editor
+# agentbot mostra all'utente (`static/config/agentbot-editor.js`, che chiama
+# proprio quella rotta).
+AGENT_RUN_STOP_BUDGET = "interrotto:budget"
+AGENT_RUN_STOP_DEADLINE = "interrotto:scadenza"
+
+
+def _reasoning_runner(app: web.Application):
+    """L'oggetto a cui il percorso di ragionamento parla davvero: il router
+    LLM, o -- se non c'e' -- il ClaudeRunner dell'engine.
+
+    UNICA regola di risoluzione, condivisa da chi FA la chiamata
+    (`_llm_reason`) e da chi ne misura il costo (il bound per esecuzione):
+    due copie della stessa regola potrebbero finire a guardare due oggetti
+    diversi, e il budget misurerebbe i token di qualcun altro."""
+    runner = app.get("llm_router")
+    if runner is None:
+        eng = app.get("engine")
+        runner = getattr(eng, "_claude_runner", None) if eng is not None else None
+    return runner
+
+
+def agent_run_bound(perimeter: dict | None) -> tuple[int | None, float | None]:
+    """`(budget_tokens, deadline_sec)` per UNA esecuzione di ragionamento.
+
+    `perimeter is None` -- ogni Agentbot `mode="rule"` (il validatore gli
+    VIETA il blocco) e ogni chiamante built-in del percorso (guardiano,
+    situazioni, olistico, ronda) -- significa "nessun bound": stessa
+    esecuzione di prima di questo task, senza misure e senza scadenza.
+
+    I due valori sono gia' stati validati da `_validate_perimeter`;
+    ricontrollarli con lo STESSO `is_positive_int` non e' una seconda
+    validazione ma un fail-safe di lettura -- un perimetro che arrivasse da
+    altrove (un file scritto a mano, un test) con un valore non conforme vale
+    "non dichiarato" = nessun bound, non un bound assurdo. I minuti diventano
+    secondi qui, una volta sola."""
+    if not perimeter:
+        return (None, None)
+    budget_tokens = perimeter.get("budget_tokens")
+    deadline_min = perimeter.get("deadline_min")
+    return (
+        budget_tokens if is_positive_int(budget_tokens) else None,
+        deadline_min * 60.0 if is_positive_int(deadline_min) else None,
+    )
+
+
+def agent_run_deadline(deadline_sec: float | None):
+    """Il contesto `async with` che limita la DURATA di una esecuzione di
+    ragionamento; `None` -> contesto inerte (nessuna scadenza).
+
+    `asyncio.timeout` e non `asyncio.wait_for`: `wait_for` avvolge la
+    coroutine in un Task NUOVO, che riceve una COPIA del contesto, e le
+    ContextVar per-chiamata del runner (tool calls / thinking) diventerebbero
+    invisibili a chi chiama. Stesso motivo per cui il timeout per-run del
+    Chatbot usa `asyncio.timeout` (`chatbot_engine.py`, `_CHATBOT_RUN_TIMEOUT`)."""
+    if deadline_sec is None:
+        return contextlib.nullcontext()
+    return asyncio.timeout(deadline_sec)
+
+
+def agent_run_usage(runner, agent_id: str | None) -> tuple[int, int] | None:
+    """UNA lettura dei contatori per-agente: `(token, richieste)`, o `None`
+    quando non c'e' proprio nulla da leggere.
+
+    Non sono contatori nuovi: sono gli stessi per-agente che `ClaudeRunner.chat`
+    (`claude_runner.py`) e `OpenAICompatRunner` incrementano e che `LLMRouter`
+    aggrega sui backend (`llm_router.get_chatbot_usage`). Il consumo di una
+    singola esecuzione e' la differenza fra due letture attorno alla chiamata
+    -- la stessa tecnica con cui `chatbot_engine` misura il costo di un run.
+    Poiche' i contatori avanzano a ogni risposta, la misura copre l'intero
+    giro agentico (piu' turni di tool use), non solo l'ultimo.
+
+    Le RICHIESTE vengono lette insieme ai token perche' da sole dicono se una
+    chiamata e' stata davvero attribuita a questo agente: entrambi i runner le
+    incrementano all'INGRESSO della chiamata, prima di sapere cosa rispondera'
+    il modello (`claude_runner.chat`, `openai_compat_runner.chat` -- e quindi
+    anche `run_with_actions`, che passa da `chat`). I token invece dipendono
+    da cosa la risposta riporta. Vedi `agent_run_tokens_spent`.
+
+    L'attribuzione per-agente esiste perche' `_llm_reason` passa gia'
+    `chatbot_id=agent_id` al runner (Task 3). Senza identita' -- ogni
+    chiamante built-in, ogni regola -- non c'e' nulla da attribuire e questa
+    funzione restituisce `None` = "nessuna misura", che chi chiama tratta come
+    "nessun bound sul budget", MAI come "budget esaurito"."""
+    if runner is None or not agent_id:
+        return None
+    get_usage = getattr(runner, "get_chatbot_usage", None)
+    if get_usage is None:
+        return None
+    try:
+        usage = get_usage(agent_id) or {}
+        return (
+            int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0)),
+            int(usage.get("requests", 0)),
+        )
+    except Exception:
+        # La misura e' un limite, non una funzionalita': se il backend non sa
+        # rispondere si perde il bound sul budget (resta la scadenza), non
+        # l'esecuzione.
+        logger.debug("agent_run_usage(%s): misura non disponibile", agent_id, exc_info=True)
+        return None
+
+
+# Un tetto che non puo' misurare deve DIRLO -- ma una volta, non a ogni giro:
+# questo percorso gira su pianificazione, e un warning per esecuzione
+# diventerebbe rumore che nessuno legge piu'. Insieme per agente, perche' il
+# backend che misura puo' essere diverso da agente ad agente (`model` per
+# Agentbot -> backend diverso in `LLMRouter`) e il silenzio di uno non deve
+# nascondere il silenzio di un altro.
+_AGENT_UNMEASURED_WARNED: set[str] = set()
+
+
+def _warn_agent_unmeasured(agent_id: str | None, reason: str) -> None:
+    """Emette IL warning una-tantum per agente (vedi `_AGENT_UNMEASURED_WARNED`
+    sopra) con un `reason` leggibile che dice PERCHE' la misura e' fallita.
+
+    Estratto da `agent_run_tokens_spent` cosi' che i due rami che quella
+    funzione copriva -- "richieste ferme" (misura c'e' ma non attribuita) -- e
+    i due rami muti chiusi dal fix successivo -- "prima lettura assente" e
+    "seconda lettura assente" (la misura stessa non esiste) -- condividano lo
+    STESSO stato globale e la STESSA soglia una-per-agente, invece di avere
+    ciascuno il proprio silenzio o il proprio contatore duplicato."""
+    key = agent_id or "?"
+    if key in _AGENT_UNMEASURED_WARNED:
+        return
+    _AGENT_UNMEASURED_WARNED.add(key)
+    logger.warning(
+        "agentbot %s: %s -- il consumo non e' misurabile, quindi il budget "
+        "per esecuzione NON e' stato applicato e questa esecuzione ha girato "
+        "senza tetto sui token. Resta la scadenza (deadline_min). Avviso "
+        "emesso una sola volta per agente.", key, reason)
+
+
+def agent_run_tokens_spent(
+    before: tuple[int, int] | None, after: tuple[int, int] | None,
+    agent_id: str | None,
+) -> int | None:
+    """Token spesi DA questa esecuzione (differenza fra due `agent_run_usage`),
+    oppure `None` = "non misurabile" -> nessun bound sul budget.
+
+    Il caso che questa funzione esiste per distinguere: un delta di ZERO token
+    puo' voler dire due cose OPPOSTE. "Giro economico misurato" (legittimo: il
+    bound resta in piedi, nessun rumore) oppure "non abbiamo misurato niente"
+    -- e in quel secondo caso `0 > budget_tokens` non sara' mai vero e
+    l'agente girerebbe senza alcun tetto, senza che nulla lo dica. Il
+    contatore delle RICHIESTE separa i due: avanza all'ingresso di ogni
+    chiamata attribuita a questo agente, su entrambi i runner, prima e
+    indipendentemente da cosa la risposta riportera'. Richieste ferme
+    attraverso l'esecuzione = nessuna chiamata e' stata attribuita a questo
+    agente (identita' non propagata al runner, runner risolto diverso da
+    quello che ha davvero chiamato, backend senza contabilita' per-agente):
+    la lettura dei token e' un tetto solo apparente.
+
+    `before is None` (prima lettura fallita, il chiamante ora ci arriva
+    comunque -- vedi `_budget_tokens is not None` in `_run_decision`) o
+    `after is None` (`agent_run_usage` e' fallita la SECONDA volta, a
+    ragionamento gia' concluso) sono lo stesso caso di fondo: i contatori
+    stessi non si leggono, non solo "non sono avanzati". Anche qui fail-open
+    con lo stesso warning una-tantum, motivo diverso perche' chi legge il log
+    capisca che il problema e' la lettura, non l'attribuzione.
+
+    LIMITE NOTO, dichiarato invece che promesso (come `max_tier`): un backend
+    che RISPONDE senza oggetto `usage` fa avanzare le richieste ma non i token
+    (`OpenAICompatRunner._track_usage` esce subito, "token tracking skipped"),
+    e per questa funzione e' indistinguibile da un giro economico -- il tetto
+    sui token non scatta. Distinguerlo richiederebbe un contatore che i runner
+    incrementino DENTRO `_track_usage` (cioe' solo quando la misura c'e'
+    davvero): cambiare la forma di `per_agent` in `usage.json` non e' materia
+    di questo fix. Resta la scadenza, che non dipende da nessuna misura.
+
+    Resta il fail-open gia' scelto (non misurabile -> nessun bound, non
+    "budget esaurito"): un tetto che non sa contare non deve fermare un agente.
+    Ma diventa VISIBILE, con un `logger.warning`."""
+    if before is None or after is None:
+        _warn_agent_unmeasured(
+            agent_id,
+            "i contatori richieste/token per questo agente non sono "
+            "leggibili (lettura fallita prima o dopo l'esecuzione)")
+        return None
+    tokens = after[0] - before[0]
+    requests = after[1] - before[1]
+    if requests > 0:
+        # Misurato. Zero token qui e' un legittimo giro economico.
+        return tokens
+    _warn_agent_unmeasured(
+        agent_id,
+        "nessuna chiamata LLM risulta attribuita a questo agente (contatore "
+        "richieste fermo attraverso l'esecuzione)")
+    return None
+
+
+def agent_run_stopped(why: str, severity: str | None) -> Decision:
+    """L'esito di un'esecuzione FERMATA dal bound per esecuzione.
+
+    E' una `Decision` perche' e' cio' che `_record_situation_event` sa
+    registrare, ma non e' un giudizio del ragionatore: `verdict="interrotto"`
+    la distingue da "anomalia"/"falso_positivo", e `action=None` fa si' che --
+    anche se un domani un refactoring la facesse arrivare per sbaglio in
+    `executor.execute()` -- non possa attuare nulla."""
+    return Decision(verdict="interrotto", severity=severity or "info",
+                    message=f"Esecuzione interrotta: {why}", action=None)
 
 
 async def _reason_memory_context(
@@ -966,12 +1204,14 @@ async def _on_startup(app: web.Application) -> None:
     app["theme"] = os.environ.get("THEME", "auto")
 
     tasks_data_path = os.environ.get("TASKS_DATA_PATH", "/data/tasks.json")
+    _agent_owner = os.environ.get("AGENT_OWNER", "").strip()
     task_engine = TaskEngine(
         ha_client=ha_client,
         entity_cache=entity_cache,
         notify_config=notify_config,
         data_path=tasks_data_path,
         execute_policy=app["execute_policy"],
+        request_stepup=_make_task_stepup(app=app, data_dir=app["data_dir"], owner=_agent_owner),
     )
     await task_engine.start()
     app["task_engine"] = task_engine
@@ -1318,19 +1558,45 @@ async def _on_startup(app: web.Application) -> None:
             return {"friendly_name": friendly_name}
         return {"friendly_name": friendly_name, "memory": mem}
 
-    async def _llm_reason(system, user, *, model, max_tokens):
-        # allowed_tools=[] → this reasoning call performs NO home actions; the
-        # executor below is the only thing that acts, gated by the semaforo.
-        runner = app.get("llm_router")
-        if runner is None:
-            eng = app.get("engine")
-            runner = getattr(eng, "_claude_runner", None) if eng is not None else None
+    async def _llm_reason(system, user, *, model, max_tokens,
+                          agent_id=None, allowed_entities=None, allowed_services=None):
+        # allowed_tools=[] is falsy -> narrowing is SKIPPED (claude_runner.py:894-896):
+        # this reasoning call receives every EVALUATION_ONLY_TOOLS entry
+        # (claude_runner.py:210-222), create_task included -- NOT zero tools. The
+        # real invariant is that set excludes the tools that ACT (call_ha_service,
+        # send_notification, trigger_automation, toggle_automation, http_request).
+        # The executor below is the only thing that acts, gated by the semaforo.
+        #
+        # Agenti v1.1 Fase 2 Task 3: `agent_id` + `allowed_entities`/
+        # `allowed_services` are the reasoning agent's IDENTITY and PERIMETER.
+        # They are `None` for every built-in sentinel caller (guardian wakes,
+        # situations, holistic, briefing, coverage review) -- those keep the
+        # exact anonymous/unscoped call they always made. Only an Agentbot
+        # that HAS a perimeter block (i.e. mode="objective", see
+        # `watcher/agentbot_runner.py`) supplies them, via `_run_decision`.
+        # `chatbot_id` is the runner-side name of that identity: the tool
+        # dispatcher already renames it back to `agent_id` when it stamps a
+        # freshly created Task (`tools/dispatcher.py`, create_task branch),
+        # so passing it here is what makes an emitted Task belong to the
+        # agent that emitted it instead of to "hiris-default". The two
+        # allow-lists ride the SAME dispatcher parameters, ending up on the
+        # Task itself -- where `task_engine._run_action`'s ALREADY EXISTING
+        # check enforces them at execution time. Nothing new enforces
+        # anything here.
+        # Fase 2 Task 5: la risoluzione del runner e' passata nel
+        # module-level `_reasoning_runner(app)` perche' ora la usa anche il
+        # bound per esecuzione, che deve misurare i token PROPRIO
+        # sull'oggetto che ha servito questa chiamata. Comportamento
+        # identico a prima (llm_router, poi engine._claude_runner).
+        runner = _reasoning_runner(app)
         if runner is None or not hasattr(runner, "run_with_actions"):
             return ""
         try:
             out = await runner.run_with_actions(
                 user_message=user, system_prompt=system,
-                allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
+                allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent",
+                chatbot_id=agent_id,
+                allowed_entities=allowed_entities, allowed_services=allowed_services)
         except RunnerBackendError:
             # All backends failed (or a pinned-model call with no fallback,
             # review C/#13). Reasoning degrades to empty -> the reasoner treats
@@ -1546,14 +1812,133 @@ async def _on_startup(app: web.Application) -> None:
             "verdict": getattr(decision, "verdict", None), "severity": getattr(decision, "severity", None),
             "outcome": outcome, "message": getattr(decision, "message", "")})
 
-    async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
+    async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto",
+                            agent_id=None, perimeter=None):
         # Task 4B: `model` lets a per-Agentbot `reasoning.model` (threaded in
         # by `watcher/agentbot_runner.py`'s `_on_wake`) pick its OWN model for
         # this single reason() call. Callers that don't pass it (the
         # built-in situations path, `_on_situation`/holistic below -- Task
         # 4's brain path, UNCHANGED) keep the "auto" default, exactly as
         # before.
-        decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system, model=model)
+        #
+        # Agenti v1.1 Fase 2 Task 3: `agent_id` + `perimeter` arrive TOGETHER
+        # or not at all -- `watcher/agentbot_runner.py` only sends them for an
+        # Agentbot that HAS a perimeter block, which `validate_agentbot`
+        # materializes for mode="objective" and forbids for mode="rule". So
+        # every pre-existing caller (rule Agentbots, situations, holistic,
+        # the fallback sweep) lands here with both `None` and reasons exactly
+        # as before: anonymous, unscoped, same `reason()` call as ever.
+        #
+        # `reason()`'s contract with `llm_reason` (system, user, model,
+        # max_tokens) is deliberately left untouched: the identity/perimeter
+        # are BOUND onto the callable here instead of being threaded through
+        # `reason()`, which has no business knowing about agents.
+        llm_reason = _llm_reason
+        if perimeter is not None:
+            # The lists are passed through VERBATIM, `None` and empty
+            # included -- NO normalization in either direction. The whole
+            # chain (`tools/dispatcher.py` -> Task ->
+            # `task_engine._run_action`) agrees on one semantics:
+            # `None` = "no boundary on this axis", `[]` = "nothing granted".
+            # `validate_agentbot` already materializes the perimeter with
+            # `None` for an axis the user left undeclared, so an `or []`
+            # here would turn "no limits" into "deny everything" -- and a
+            # `or None` would do the exact opposite. Both are silent
+            # semantic changes; copying the list is all that's allowed.
+            _ae = perimeter.get("allowed_entities")
+            _as = perimeter.get("allowed_services")
+            _allowed_entities = list(_ae) if _ae is not None else None
+            _allowed_services = list(_as) if _as is not None else None
+
+            async def llm_reason(system, user, *, model, max_tokens):
+                # `system`/`user` deliberately shadow the enclosing
+                # `_run_decision` locals of the same name: this closure
+                # replaces `_llm_reason` in `reason()`'s eyes, so its
+                # signature must MATCH `_llm_reason`'s parameter names
+                # rather than diverge from them (review, minor #4 -- the
+                # old `_system`/`_user` only worked because every caller
+                # happened to pass positionally).
+                return await _llm_reason(
+                    system, user, model=model, max_tokens=max_tokens,
+                    agent_id=agent_id,
+                    allowed_entities=_allowed_entities,
+                    allowed_services=_allowed_services)
+
+        # Agenti v1.1 Fase 2 Task 5: bound PER ESECUZIONE (vedi
+        # `agent_run_bound` & co. a livello di modulo). Senza perimetro --
+        # regole e chiamanti built-in -- `agent_run_bound` restituisce
+        # `(None, None)`: nessuna misura dei token, contesto di scadenza
+        # inerte, stessa identica chiamata di prima.
+        _budget_tokens, _deadline_sec = agent_run_bound(perimeter)
+        # Lo STESSO oggetto runner per le due letture: risolverlo due volte
+        # rischierebbe di misurare la differenza fra i contatori di due
+        # backend diversi se il router venisse sostituito nel frattempo.
+        #
+        # ASSUNZIONE (review Task 5, minor #4): i contatori per-agente sono
+        # CUMULATIVI e condivisi, quindi la differenza fra due letture e' il
+        # consumo di questa esecuzione solo se non ce n'e' un'altra dello
+        # STESSO agente in volo nello stesso momento (si attribuirebbero i
+        # token a vicenda: la piu' lenta pagherebbe anche per la piu' veloce).
+        # Oggi non succede -- un agente in modalita' obiettivo non e'
+        # event-triggered (Task 4: solo pianificazione) e il suo callback
+        # `_run_scheduled_agentbot` e' awaited inline sotto `max_instances=1`
+        # di APScheduler, che non ne fa partire una seconda finche' la prima
+        # non e' finita. Se un domani gli obiettivi diventassero anche
+        # event-triggered, o il callback smettesse di essere serializzato,
+        # questa misura andrebbe resa per-esecuzione (un contatore passato
+        # dentro alla chiamata) invece che per differenza.
+        _runner = _reasoning_runner(app) if _budget_tokens is not None else None
+        _usage_before = agent_run_usage(_runner, agent_id)
+        _deadline = agent_run_deadline(_deadline_sec)
+        try:
+            async with _deadline:
+                decision = await reason(wake, gather_context=_gather_context, llm_reason=llm_reason, system=system, model=model)
+        except TimeoutError:
+            # Solo la NOSTRA scadenza si ferma qui. `expired()` distingue il
+            # nostro timeout da un TimeoutError nato piu' in basso (una
+            # richiesta HTTP verso l'LLM, per dire), che deve continuare a
+            # risalire esattamente come ha sempre fatto: senza questo
+            # controllo il bound assorbirebbe in silenzio errori altrui e li
+            # racconterebbe come "scadenza superata".
+            if _deadline_sec is None or not _deadline.expired():
+                raise
+            await _record_situation_event(
+                wake.signal_kind, wake.entity_id,
+                agent_run_stopped(
+                    f"superata la scadenza di {_deadline_sec / 60:g} min per questa esecuzione",
+                    wake.severity_hint),
+                AGENT_RUN_STOP_DEADLINE)
+            return
+        if _budget_tokens is not None:
+            # Cancello su `_budget_tokens`, NON su `_usage_before`: quando non
+            # c'e' bound (`_budget_tokens is None` -- mode="rule", o objective
+            # senza perimetro) questo blocco resta zitto esattamente come
+            # prima, nessun warning. Quando invece un bound e' stato
+            # richiesto, vogliamo arrivare ad `agent_run_tokens_spent` anche
+            # se la PRIMA lettura (`_usage_before`) e' gia' fallita -- prima
+            # di questo fix quel caso saltava il blocco intero (nessun
+            # warning, solo il `logger.debug` di `agent_run_usage`).
+            # `agent_run_tokens_spent` restituisce `None` quando la misura non
+            # e' avvenuta (prima o seconda lettura assente, oppure nessuna
+            # chiamata risulta attribuita a questo agente): fail-open, nessun
+            # bound -- ma con un warning, non in silenzio. Un delta di zero
+            # token MISURATO resta invece un giro economico e non ferma nulla.
+            _tokens_run = agent_run_tokens_spent(
+                _usage_before, agent_run_usage(_runner, agent_id), agent_id)
+            if _tokens_run is not None and _tokens_run > _budget_tokens:
+                # Il ragionamento ha gia' risposto, ma e' costato piu' del
+                # concesso: la sua Decision NON viene eseguita (niente
+                # notifica, niente attuazione, niente proposta) e al suo
+                # posto resta il motivo. La domanda all'80% del budget e il
+                # resoconto strutturato sono Fase 3, non qui.
+                await _record_situation_event(
+                    wake.signal_kind, wake.entity_id,
+                    agent_run_stopped(
+                        f"superato il budget di {_budget_tokens} token per questa "
+                        f"esecuzione ({_tokens_run} consumati)",
+                        wake.severity_hint),
+                    AGENT_RUN_STOP_BUDGET)
+                return
         if suggested and getattr(decision, "verdict", "") != "falso_positivo":
             decision.action = suggested  # target deterministico dalla config, non dall'LLM
         if force_notify_only:

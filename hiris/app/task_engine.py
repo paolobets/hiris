@@ -76,12 +76,19 @@ class TaskEngine:
         notify_config: dict,
         data_path: str = "/data/tasks.json",
         execute_policy: dict | None = None,
+        request_stepup: Any = None,
     ) -> None:
         self._ha = ha_client
         self._cache = entity_cache
         self._notify_config = notify_config
         self._data_path = data_path
         self._execute_policy = execute_policy if execute_policy is not None else {}
+        # Fase 2.5 C2: callable opzionale per lo step-up di un'azione autonoma
+        # oltre il verde. Iniettato (server.py) come chiusura su
+        # request_confirmation_stepup(user=agent_owner). None -> fail-closed
+        # allo skip (comportamento pre-fetta). task_engine NON importa lo store
+        # dei pending: la dipendenza viaggia solo per questo callable.
+        self._request_stepup = request_stepup
         self._tasks: dict[str, Task] = {}
         # Guards mutation of self._tasks. _cleanup() is a SYNC APScheduler job
         # (runs on APScheduler's worker thread pool), while add_task()/_load()
@@ -449,15 +456,10 @@ class TaskEngine:
                 logger.warning("Task %s: call_ha_service gated: area/device/label target present (%s.%s)",
                                task.label, domain, service)
                 return f"skipped: group_target ({domain}.{service})"
-            _v = gate_action(
-                domain=domain, service=service, entity_ids=normalized.entity_ids,
-                tiers=self._execute_policy.get("tiers") or {},
-                entity_tiers=self._execute_policy.get("entity_tiers") or {},
-            )
-            if _v.decision != "allow":
-                logger.warning("Task %s: call_ha_service gated (%s) %s.%s",
-                               task.label, _v.decision, domain, service)
-                return f"skipped: {_v.decision} ({domain}.{service})"
+            # Fix-wave review finale (CRITICAL): il perimetro precede il gate
+            # cosi' OGNI verdetto (allow/confirm/deny) rispetta il perimetro --
+            # altrimenti un'azione fuori-perimetro a tier>verde verrebbe
+            # escalata a step-up invece di essere saltata come al verde.
             if task.allowed_services is not None:
                 svc_key = f"{domain}.{service}"
                 if not any(fnmatch.fnmatch(svc_key, pat) for pat in task.allowed_services):
@@ -472,6 +474,35 @@ class TaskEngine:
                             "Task %s: entity %s blocked by policy", task.label, e
                         )
                         return f"skipped: entity {e!r} not permitted by policy"
+            _v = gate_action(
+                domain=domain, service=service, entity_ids=normalized.entity_ids,
+                tiers=self._execute_policy.get("tiers") or {},
+                entity_tiers=self._execute_policy.get("entity_tiers") or {},
+            )
+            if _v.decision == "confirm":
+                # Fase 2.5 C2: giallo/rosso non si salta piu' in silenzio -> si
+                # CHIEDE (tap/OTP all'owner). L'inputs congelato porta i
+                # normalized.data (entity_id gia' gated), mai il data grezzo.
+                # deny_dangerous/deny_off NON passano di qui: un dominio
+                # pericoloso o un tier off non e' confermabile (denylist
+                # assoluta) -> restano skip nel ramo sotto.
+                if self._request_stepup is not None:
+                    frozen = {"domain": domain, "service": service,
+                              "data": normalized.data}
+                    entry = await self._request_stepup(
+                        tool="call_ha_service", inputs=frozen, tier=_v.tier)
+                    if entry:
+                        logger.info("Task %s: call_ha_service in attesa di conferma (%s) %s.%s",
+                                    task.label, _v.tier, domain, service)
+                        return f"pending: confirmation ({domain}.{service})"
+                # fail-closed (callable assente o niente canale privato) -> skip
+                logger.warning("Task %s: call_ha_service gated (confirm, no step-up) %s.%s",
+                               task.label, domain, service)
+                return f"skipped: confirm ({domain}.{service})"
+            if _v.decision != "allow":
+                logger.warning("Task %s: call_ha_service gated (%s) %s.%s",
+                               task.label, _v.decision, domain, service)
+                return f"skipped: {_v.decision} ({domain}.{service})"
             return await self._ha.call_service(domain, service, normalized.data)
         if a_type == "send_notification":
             return await send_notification(

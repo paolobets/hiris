@@ -25,9 +25,22 @@ SECURITY (non-negotiable, see plan Global Constraints):
   can therefore NEVER actuate, reasoning-enabled or not — only its
   verdict/severity/message ever reach the user.
 - Reasoning always runs through `run_decision`, which (in production) is
-  server.py's `_run_decision` -> `reason()` -> `_llm_reason()`, and
-  `_llm_reason` calls the LLM with `allowed_tools=[]` -- this module does
-  not weaken or bypass that; it never talks to the LLM directly.
+  server.py's `_run_decision` -> `reason()` -> `_llm_reason()`. `_llm_reason`
+  calls the LLM with `allowed_tools=[]`, which is falsy and does NOT narrow
+  the tool set (`claude_runner.py:894-896`): the reasoner receives every
+  `EVALUATION_ONLY_TOOLS` entry (`claude_runner.py:210-222`), a set that
+  excludes only the tools that ACT (`call_ha_service`, `send_notification`,
+  `trigger_automation`, `toggle_automation`, `http_request`) -- it is not
+  "zero tools". This module does not weaken or bypass that; it never talks
+  to the LLM directly, and actuation only ever happens through
+  `executor.execute()`, gated by the semaforo, as described above.
+- Agenti v1.1 Fase 2 Task 3: since `create_task` IS one of those tools, an
+  Agentbot with a `perimeter` (mode="objective") also passes its id and its
+  allow-lists into `run_decision`, so a Task the reasoner emits is born
+  attributed to that agent and confined to its perimeter. The refusal
+  itself still happens where it always did -- `task_engine._run_action`'s
+  `allowed_entities`/`allowed_services` check, at execution time. Nothing
+  here enforces anything new; it only stops leaving those fields empty.
 - The zero-AI path calls `execute` directly with the exact same adapters
   (`notify`/`act`/`propose`) and `tiers`/`entity_tiers`/`allow_green_auto`
   shape as `_run_decision`'s own tail call, so the dangerous-domain
@@ -78,6 +91,92 @@ def agentbot_action(agentbot: dict) -> Optional[dict]:
     if off_after_min is not None:
         out["off_after_min"] = off_after_min
     return out
+
+
+# Agenti v1.1 Fase 2 Task 7. Fino a qui `objective` era un campo
+# DECORATIVO: nessun runtime lo leggeva (compariva solo dentro commenti in
+# `server.py`, qui e in `api/handlers_agentbots.py`), e il prompt di sistema
+# del ragionamento era `sentinel_system + "\n\n" + reasoning.prompt` e basta
+# -- cioe' un agente mode="objective" inseguiva il campo *Verdetto* invece
+# dell'Obiettivo che l'utente aveva scritto.
+#
+# Questi due preamboli sono l'unica cosa che quel campo aggiunge al prompt.
+# Sono etichette, non istruzioni di sicurezza: cio' che l'agente puo'
+# leggere e toccare resta deciso altrove (EVALUATION_ONLY_TOOLS lato
+# ragionatore, semaforo + perimetro lato attuazione) e NON e' negoziabile
+# da nulla di scritto qui dentro.
+OBJECTIVE_PREAMBLE = (
+    "Questo agente lavora per un OBIETTIVO: e' il criterio con cui valuti la "
+    "situazione e decidi. Obiettivo dell'agente:"
+)
+REFINEMENT_PREAMBLE = (
+    "Indicazioni aggiuntive per il verdetto (affinano l'obiettivo, non lo "
+    "sostituiscono):"
+)
+
+
+def agentbot_system(agentbot: dict, sentinel_system: str) -> str:
+    """Prompt di sistema del ragionamento per QUESTO Agentbot.
+
+    `sentinel_system` resta SEMPRE in testa, in entrambe le modalita': non e'
+    decorazione, e' il contratto di uscita (il blocco ```json``` con
+    verdict/severity/message/action che `reasoner.parse_decision` legge, piu'
+    il divieto di proporre azioni su serrature/allarmi/tapparelle/sirene).
+    Sostituirlo con un preambolo "da agente-obiettivo" avrebbe fatto sparire
+    quel contratto e ogni Decision sarebbe degradata al ramo di fallback di
+    `parse_decision` (testo grezzo come messaggio, severity dal solo hint).
+    Da qui la forma scelta: si AGGIUNGE, non si rimpiazza.
+
+    mode="rule" -> `sentinel_system + "\\n\\n" + reasoning.prompt`, byte per
+    byte com'era prima di Fase 2 Task 7 (una regola non ha obiettivo:
+    `validate_agentbot` lo VIETA in quella modalita').
+
+    mode="objective" -> in mezzo entra l'obiettivo dell'utente, PRIMA del
+    `reasoning.prompt`: l'obiettivo e' la sostanza, il *Verdetto* resta
+    valido e usato ma come affinamento. L'ordine e' la parte che conta --
+    l'ultima parola in un prompt di sistema pesa, e a pesare deve essere il
+    criterio, non la rifinitura.
+
+    Un `objective` vuoto/assente in objective mode non puo' arrivare qui
+    (`validate_agentbot` rigetta il record), ma se ci arrivasse si torna alla
+    forma della regola invece di emettere un'etichetta senza contenuto.
+
+    Fix-wave IMPORTANT 1: se `reasoning.prompt` e' lo STESSO testo
+    dell'obiettivo (a meno di spazi ai bordi) il blocco di affinamento viene
+    OMESSO. Non e' un'ottimizzazione: e' il percorso di DEFAULT del wizard di
+    creazione (`create-wizard.js` scrive `reasoning.prompt = missione` e
+    `objective = obiettivo || missione`, e l'editor avanzato ripropone
+    entrambi i campi precompilati dai valori salvati), quindi senza questo
+    filtro l'utente medio otteneva la stessa frase due volte, la seconda
+    sotto un'etichetta che annuncia indicazioni *aggiuntive* e poi ne
+    consegna una copia verbatim. Un'etichetta che mente al modello e' peggio
+    di un'etichetta assente. Il confronto e' su testo, non su identita' di
+    oggetto: due campi distinti con lo stesso contenuto sono lo stesso
+    contenuto.
+
+    Nessuna sanitizzazione: `objective` e `reasoning.prompt` hanno la stessa
+    provenienza (l'utente che configura o approva l'agente, non Home
+    Assistant -- `objective` puo' essere scritto da un LLM via proposta del
+    Brain, `handlers_proposals.py`, ma solo con approvazione esplicita) e lo
+    stesso trattamento che `reasoning.prompt` ha sempre avuto -- e' il
+    materiale che ARRIVA da HA a essere sanificato, in
+    `reasoner.build_user_message`. La lunghezza e' gia' limitata a monte
+    (2000 caratteri per entrambi, `watcher.agentbots`)."""
+    agentbot = agentbot or {}
+    prompt = (agentbot.get("reasoning") or {}).get("prompt") or ""
+    objective = agentbot.get("objective")
+    objective = objective.strip() if isinstance(objective, str) else ""
+    if (agentbot.get("mode") or "rule") != "objective" or not objective:
+        return sentinel_system + "\n\n" + prompt
+    blocks = [sentinel_system, f"{OBJECTIVE_PREAMBLE}\n{objective}"]
+    # `objective` e' gia' strippato qui sopra: il confronto e' strip-vs-strip.
+    # Il test `isinstance` non e' ridondante -- tiene un `prompt` non-str
+    # (che questa funzione tollerava prima) su esattamente il ramo che
+    # prendeva prima, senza trasformare un dato sporco in AttributeError.
+    same_text = isinstance(prompt, str) and prompt.strip() == objective
+    if prompt and not same_text:
+        blocks.append(f"{REFINEMENT_PREAMBLE}\n{prompt}")
+    return "\n\n".join(blocks)
 
 
 def agentbot_message(agentbot: dict, evidence: dict) -> str:
@@ -180,7 +279,13 @@ async def run_agentbot(
         reasoning = agentbot.get("reasoning") or {}
         suggested = agentbot_action(agentbot)  # deterministic, from config -- never from the LLM
         if reasoning.get("enabled"):
-            system = sentinel_system + "\n\n" + (reasoning.get("prompt") or "")
+            # Task 7: in mode="objective" l'obiettivo dell'utente entra nel
+            # prompt di sistema PRIMA del reasoning.prompt; in mode="rule"
+            # (nessun obiettivo) la forma resta byte per byte
+            # `sentinel_system + "\n\n" + reasoning.prompt`. Tutta la
+            # composizione vive in `agentbot_system` (testabile in
+            # isolamento).
+            system = agentbot_system(agentbot, sentinel_system)
             action_type = (agentbot.get("action") or {}).get("type")
             # Task 4B: this Agentbot's OWN model (validated by
             # `watcher.agentbots._validate_reasoning`, default "auto") --
@@ -214,9 +319,32 @@ async def run_agentbot(
             # `force_notify_only` path -- there is no third option. A new
             # mode that tries to thread its own action through some OTHER
             # channel would reopen exactly this gap.
+            #
+            # Agenti v1.1 Fase 2 Task 3: identity + perimeter travel TOGETHER
+            # and only exist together. `validate_agentbot` materializes
+            # `perimeter` for every mode="objective" Agentbot (with explicit
+            # defaults when the user declared none) and FORBIDS it for
+            # mode="rule" -- so `perimeter is None` is exactly "this is a
+            # rule", and a rule keeps the pre-Fase-2 call shape verbatim:
+            # no identity, no scope, byte-for-byte the reasoning call it
+            # always made. This matters beyond the Task it emits:
+            # `chatbot_id` also scopes the reasoner's `recall_memory` tool
+            # (`tools/dispatcher.py`), so handing a rule an identity it
+            # never had would silently move it to an empty memory bucket.
+            #
+            # Downstream, `run_decision` (server.py's `_run_decision`) binds
+            # both onto the `llm_reason` callable; the Task the reasoner
+            # emits is then stamped with this agent's id and confined to
+            # this perimeter, and `task_engine._run_action`'s ALREADY
+            # EXISTING allow-list check refuses anything outside it at
+            # execution time.
+            perimeter = agentbot.get("perimeter")
+            scope = {} if perimeter is None else {
+                "agent_id": agentbot_id, "perimeter": perimeter}
             await run_decision(
                 w, suggested=suggested, system=system,
-                force_notify_only=(action_type != "service"), model=model)
+                force_notify_only=(action_type != "service"), model=model,
+                **scope)
             return
         decision = Decision(
             verdict="anomalia",

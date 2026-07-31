@@ -256,28 +256,42 @@ async def test_register_ignores_event_trigger_lenses(tmp_path):
     assert scheduler.jobs == {}
 
 
+# Agenti v1.1 Fase 2 Task 7: in mode="objective" il ragionamento non e' piu'
+# opzionale -- `validate_agentbot` ora RIGETTA un `reasoning.enabled=false`
+# dichiarato (un agente-obiettivo che non ragiona e' inerte, vedi
+# `agentbot_runner._on_wake`). Questi test riguardano lo SCHEDULING, non il
+# flag di reasoning, quindi la fixture porta un reasoning acceso: resta un
+# obiettivo+schedule valido e l'intento del test e' preservato.
+OBJECTIVE_SCHEDULE_LENS = {
+    "id": "666666666666", "name": "Obiettivo schedulato", "enabled": True,
+    "mode": "objective", "objective": "valuta i consumi",
+    "trigger": {"type": "schedule", "interval_min": 15},
+    "reasoning": {"enabled": True, "prompt": "valuta e pianifica"},
+    "severity": "info",
+}
+
+
 @pytest.mark.asyncio
-async def test_register_ignores_objective_mode_schedule_lens(tmp_path):
-    """Fase 1 fix-wave IMPORTANT: the plan's constraint is "solo mode=rule e'
-    raggiungibile", but nothing filtered on `mode` here before this fix -- a
-    schedule-triggered objective Agentbot (a valid combination per
-    `validate_agentbot`, which only forbids objective+event) would be
-    registered and fire on its own cadence. RED before the fix: a job would
-    be created for it."""
-    objective_schedule_lens = {
-        "id": "666666666666", "name": "Obiettivo schedulato", "enabled": True,
-        "mode": "objective", "objective": "valuta i consumi",
-        "trigger": {"type": "schedule", "interval_min": 15},
-        "reasoning": {"enabled": False},
-        "severity": "info",
-    }
-    save_agentbots(str(tmp_path), [objective_schedule_lens])
+async def test_register_creates_job_for_objective_mode_schedule_lens(tmp_path):
+    """Agenti v1.1 Fase 2 Task 4: the Fase 1 fix-wave gate that excluded
+    EVERY non-rule Agentbot from scheduling (see the removed `mode` check
+    right above this comprehension in `register_agentbot_schedules`) blocked
+    mode="objective" reaching runtime at all -- by design the plan's own
+    decision, made here, in Fase 2 Task 4: "gli eventi restano dominio delle
+    regole" (unchanged, see `handlers_agentbots.get_event_agentbots`), but
+    the PLANNED path opens for objective Agentbots. `validate_agentbot` has
+    always allowed objective+schedule (only objective+event is forbidden),
+    so this is a valid, intended combination; nothing else about scheduling
+    changes for it -- same job registration as any schedule-triggered rule."""
+    save_agentbots(str(tmp_path), [OBJECTIVE_SCHEDULE_LENS])
     scheduler = FakeScheduler()
     app = _app(scheduler, tmp_path)
 
     await register_agentbot_schedules(app)
 
-    assert scheduler.jobs == {}
+    job = scheduler.jobs.get("hiris_agentbot_666666666666")
+    assert job is not None
+    assert job.kwargs.get("minutes") == 15
 
 
 @pytest.mark.asyncio
@@ -510,3 +524,28 @@ async def test_registered_job_callback_honors_condition_end_to_end(tmp_path):
 
     assert len(spy.calls) == 1
     assert spy.calls[0][1] == {"entity_id": "person.paolo"}
+
+
+@pytest.mark.asyncio
+async def test_registered_objective_mode_job_callback_runs_end_to_end(tmp_path):
+    """Agenti v1.1 Fase 2 Task 4, Step 1's first required test: a PLANNED
+    objective Agentbot must not just get a job registered (previous test)
+    but must actually fire through the exact same callback wiring
+    (`_run_scheduled_agentbot` -> `run_agentbot`) as a rule -- nothing
+    mode-specific in this dispatch path. RED before the fix: no job exists
+    at all (previous behavior), so `scheduler.jobs[...]` raises KeyError."""
+    save_agentbots(str(tmp_path), [OBJECTIVE_SCHEDULE_LENS])
+    scheduler = FakeScheduler()
+    spy = _RunLensSpy()
+    app = _app(scheduler, tmp_path, cache=None, run_agentbot=spy)
+
+    await register_agentbot_schedules(app)
+    job = scheduler.jobs["hiris_agentbot_666666666666"]
+    await job.func()
+
+    assert len(spy.calls) == 1
+    fired_agentbot, evidence, kwargs = spy.calls[0]
+    assert fired_agentbot["id"] == "666666666666"
+    assert fired_agentbot["mode"] == "objective"
+    assert evidence == {"entity_id": "-"}
+    assert kwargs == {"cooldown_sec": 0}

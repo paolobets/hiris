@@ -25,7 +25,7 @@ Tutto poggia su due invarianti. Se cadono, cade il design.
 1. **Un task è sempre una dichiarazione**, mai una chiamata composta al volo: *«questo servizio, su questa entità, con questi parametri»*. L'intelligenza dell'agente sta nel decidere **quali** task creare; l'esecuzione resta deterministica e passa dal semaforo. **L'LLM non causa mai direttamente un'azione: emette intenzioni.**
 2. **Il Brain non esegue mai.** Analizza, ragiona, crea/invoca/schedula agenti. L'output di un modello non può causare un'azione se non attraverso un'entità autorizzata.
 
-Il pilastro 1 generalizza il contratto che l'Agentbot ha già oggi (verdetto-JSON senza tool): invece di un verdetto, emette task.
+Il pilastro 1 generalizza il contratto che l'Agentbot ha già oggi (verdetto-JSON senza tool che attuano: legge liberamente, non attua mai direttamente): invece di un verdetto, emette task.
 
 ## Le entità
 
@@ -98,6 +98,8 @@ Un agente **legge tutto** (stati, storico, consumi, documenti, memoria); solo le
 Questo è sicuro **perché il gate esiste già**: `automatic_allows_sensitive` consente al contenuto marcato sensibile di raggiungere un modello **solo se l'intera catena disponibile è locale** (Ollama); con una catena cloud resta fuori, fail-closed. Nella pratica *«legge tutto»* significa *«legge tutto ciò che è già consentito mandare al modello in uso»*.
 
 Il costo reale non è la privacy ma la **spesa**: più contesto = più token.
+
+> **Rettifica (Fase 2, Task 3).** Come implementata, la Fase 2 **non** rispetta questo paragrafo: `perimeter.allowed_entities` è **una sola lista che governa sia la lettura sia l'azione**. `tools/dispatcher.py` la usa per filtrare `get_entity_states`, `get_history`, `get_home_status`, `get_entities_on`, `get_entities_by_domain` e `get_area_entities` *oltre* che per rifiutare le attuazioni. Un agente con `allowed_entities: ["light.cucina"]` **non vede** `sensor.consumo_cucina`. Vedi `Debito noto — Fase 2`, voce 1.
 
 ## Ciclo di vita e fine corsa
 
@@ -195,6 +197,29 @@ Così il pensiero costoso parte solo quando c'è davvero qualcosa da pensare —
 **5. Persistenza e revoca della fiducia — nella pagina dell'agente.** Ogni agente ha una sezione **«Cosa gli hai permesso»**: l'elenco delle coppie *verbo + entità* concesse, con la data, una revoca puntuale per ciascuna e un **«Revoca tutto»** che riporta l'agente allo stato di appena autorizzato.
 
 > La fiducia progressiva **accumula potere nel tempo**. Tenerla visibile dove l'agente vive — e non in una pagina che nessuno apre — è ciò che impedisce che dopo tre mesi tu non sappia più cosa possono fare i tuoi agenti.
+
+## Debito noto — Fase 2
+
+Scelte prese **consapevolmente** durante la Fase 2 e non ancora chiuse. Sono qui perché siano **tracciate**, non perché siano sviste: la regola di questa fase è che il vincolo di **non-regressione** vince sulla completezza, quindi tutto ciò che avrebbe richiesto di toccare il comportamento esistente è stato rimandato invece che forzato.
+
+**1. Una sola lista governa vista e tatto (Task 3).**
+`perimeter.allowed_entities` confina **sia ciò che l'agente può vedere sia ciò che può toccare**: un'entità non elencata non è soltanto non attuabile, non è nemmeno **leggibile**. Contraddice il paragrafo *Ambito di lettura* (rettificato sopra). Accettato per questa fase: separare i due assi vorrebbe dire introdurre un secondo campo (`readable_entities`) e un secondo punto di controllo, cioè esattamente le due cose che questa fase evita. **Conseguenza pratica da documentare all'utente:** se un agente deve *guardare* qualcosa per decidere, quel qualcosa va **elencato nel perimetro**, non solo ciò su cui deve agire.
+
+**2. Un Agentbot `mode="rule"` con `reasoning.enabled` ragiona ancora senza confini (Task 3).**
+La modalità regola **non ha** (e non può avere) un blocco `perimeter`: `validate_agentbot` lo vieta. Ma se ha `reasoning.enabled`, il suo ragionatore riceve comunque l'intero set `EVALUATION_ONLY_TOOLS`, **`create_task` incluso**, e i Task che ne nascono hanno `agent_id="hiris-default"` e `allowed_entities`/`allowed_services` a `None` — cioè **nessun confine oltre al semaforo**.
+
+È il comportamento che le regole hanno **sempre** avuto, e il vincolo di non-regressione di questa fase è esplicito: *un Agentbot `mode="rule"` esistente non deve cambiare di una virgola*. Dargli un perimetro adesso significherebbe restringere in silenzio configurazioni utente già funzionanti. **Resta quindi vero che la modalità regola + ragionamento è il percorso meno confinato del sistema**, e va chiuso quando ci sarà una migrazione esplicita (fase 3 o 4), non di soppiatto. Il confine che regge oggi su quel percorso è il **semaforo** (denylist + tier + conferma), non il perimetro.
+
+**3. Asimmetria di `create_task` (Task 3, review minor #7).**
+Il ramo `create_task` del dispatcher rifiuta alla **creazione** un *servizio* fuori perimetro, ma lascia passare un'*entità* fuori perimetro, che viene rifiutata solo all'**esecuzione** da `task_engine._run_action`. L'LLM può quindi ricevere «task creato» per un task che non farà nulla. Voluto: `allowed_entities` ha **un solo punto di enforcement**, e aggiungerne un secondo lo farebbe divergere nel tempo. Il costo è un messaggio d'errore peggiore, non un confine più debole.
+
+**4. `max_tier` è accettato e persistito, ma non onorato da nessun percorso di runtime (Task 2, review minor B).**
+`_validate_perimeter` valida `max_tier` e lo scrive nel blocco `perimeter`, ma nessun punto della catena che lo esegue — dispatcher, `task_engine._run_action`, `claude_runner` — lo legge mai: il campo esiste sulla carta e non fa nulla. Questo pesa esattamente sul default appena allargato in Task 3: un Agentbot senza perimetro dichiarato resta confinato **dal solo semaforo** (denylist + tier), non anche da `max_tier` come un commento precedente affermava per errore. Va onorato a runtime in una fase successiva, oppure rimosso dallo schema se resta permanentemente inerte — ma non va lasciato promettere una garanzia che nessuno applica.
+
+**5. Il budget per esecuzione si accorge di essere stato sforato solo a chiamata finita (Task 5).**
+`deadline_min` interrompe il ragionamento **mentre gira** (`asyncio.timeout` annulla la chiamata a metà). `budget_tokens` no: i token di un'esecuzione si misurano come differenza dei contatori per-agente **attorno** alla chiamata, quindi lo sforamento è visibile solo quando il ragionatore ha già risposto. Ciò che il bound ferma in quel caso è **tutto il lavoro successivo** — la Decision non viene eseguita (niente notifica, niente attuazione, niente proposta) e resta l'esito `interrotto:budget` col motivo. I token già spesi sono spesi. Fermare *dentro* il giro agentico vorrebbe dire portare il controllo dentro `claude_runner` — cioè un secondo punto di enforcement in un file che questa fase non tocca. **Conseguenza pratica:** `budget_tokens` è un tetto per *«non proseguire oltre»*, non un rubinetto che chiude a metà frase; per limitare la singola risposta esiste già `max_tokens`.
+
+**Il tetto stesso, quando si applica, non è uniforme fra backend.** Il contatore delle richieste avanza all'**ingresso** di ogni chiamata (`claude_runner.py:603-610`, `openai_compat_runner.py:467-474` e `:749-756` per `chat_stream`), prima e indipendentemente da cosa la risposta porterà; i token invece si scrivono più tardi (`claude_runner.py:717-724`, `openai_compat_runner.py:332-357`), e solo se la risposta porta un oggetto `usage` — `OpenAICompatRunner._track_usage` esce subito quando manca (`openai_compat_runner.py:337-340`). Su un backend OpenAI-compat che **risponde senza `usage`**, le richieste avanzano e i token no: il giro è indistinguibile da un legittimo giro economico, e il tetto sui token non scatta. È **pieno su Claude** (che popola `usage` sempre) e **condizionale sui backend OpenAI-compat** che non lo garantiscono (OpenRouter/Ollama, a seconda del modello e della configurazione). Un `logger.warning` una-tantum per agente (`_AGENT_UNMEASURED_WARNED`) lo rende **visibile**, non lo chiude: la chiusura vera richiederebbe un contatore incrementato **dentro** il blocco che scrive i token — non insieme alle richieste — cioè una terza forma di `per_agent` in `usage.json`, da cambiare in entrambi i runner. Non fatto in questa fase.
 
 ## Versione: 1.1, non 2.0
 
