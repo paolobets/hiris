@@ -66,14 +66,17 @@ async def test_ha_push_includes_title_and_uses_configured_service():
     await send_notification(
         ha, "ciao", "ha_push", {"ha_notify_service": "notify.mobile_app_test"}, title="Titolo",
     )
-    assert ha.calls == [("notify", "mobile_app_test", {"message": "ciao", "title": "Titolo"})]
+    assert ha.calls == [("notify", "mobile_app_test",
+                         {"message": "ciao", "title": "Titolo",
+                          "data": {"channel": "HIRIS"}})]
 
 
 @pytest.mark.asyncio
 async def test_ha_push_default_service_and_no_title():
     ha = _FakeHA()
     await send_notification(ha, "ciao", "ha_push", {})
-    assert ha.calls == [("notify", "notify", {"message": "ciao"})]
+    assert ha.calls == [("notify", "notify",
+                         {"message": "ciao", "data": {"channel": "HIRIS"}})]
 
 
 @pytest.mark.asyncio

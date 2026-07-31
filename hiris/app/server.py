@@ -261,6 +261,30 @@ async def _write_ingress_config(supervisor_token: str, slug: str = "hiris") -> N
         logger.error("Failed to write ingress config to %s: %s", dst, exc)
 
 
+async def _fetch_addon_slug(supervisor_token: str) -> str | None:
+    """Lo slug INSTALLATO dell'add-on (es. '<repohash>_hiris'), dal Supervisor.
+
+    Serve a costruire il deep-link ingress STABILE '/hassio/ingress/<slug>' per
+    il clickAction delle notifiche (aprire HIRIS al tap invece della Dashboard
+    home). Diverso dallo slug di config ('hiris') e dal token ingress che ruota.
+    Ritorna None se il Supervisor e' irraggiungibile -> il deep-link si omette."""
+    if not supervisor_token:
+        return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "http://supervisor/addons/self/info",
+                headers={"Authorization": f"Bearer {supervisor_token}"},
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+    except Exception as exc:
+        logger.warning("Cannot fetch add-on slug from Supervisor (%s)", exc)
+        return None
+    return (data.get("data") or {}).get("slug")
+
+
 async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
     """Register /local/{slug}/hiris-chat-card.js?v=VERSION as a Lovelace module resource.
 
@@ -1201,6 +1225,15 @@ async def _on_startup(app: web.Application) -> None:
         "apprise_urls": _apprise_urls,
         "retropanel_url": os.environ.get("RETROPANEL_URL", "http://retropanel:8098"),
     }
+    # Deep-link ingress per le notifiche (issue live-verify #1): il tap apre
+    # HIRIS invece della Dashboard home. Slug installato dal Supervisor -> path
+    # frontend stabile `/hassio/ingress/<slug>`; se irraggiungibile, None ->
+    # il deep-link viene omesso (nessuna regressione). Letto da notify_tools
+    # (ha_push) e da handlers_gateway_pending (pending step-up).
+    _slug = await _fetch_addon_slug(os.environ.get("SUPERVISOR_TOKEN", ""))
+    _ingress_click_path = f"/hassio/ingress/{_slug}" if _slug else None
+    notify_config["ingress_click_path"] = _ingress_click_path
+    app["ingress_click_path"] = _ingress_click_path
     app["theme"] = os.environ.get("THEME", "auto")
 
     tasks_data_path = os.environ.get("TASKS_DATA_PATH", "/data/tasks.json")

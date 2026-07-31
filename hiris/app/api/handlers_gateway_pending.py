@@ -185,12 +185,17 @@ def parse_action(action: str) -> tuple[str, str] | None:
     return None
 
 
-def build_actions(nonce: str) -> list[dict]:
-    return [
+def build_actions(nonce: str, click_path: str | None = None) -> list[dict]:
+    actions = [
         {"action": f"{_ACTION_PREFIX}:approve:{nonce}", "title": "Approva"},
         {"action": f"{_ACTION_PREFIX}:reject:{nonce}", "title": "Nega"},
-        {"action": "URI", "title": "Apri HIRIS", "uri": "/hassio_ingress"},
     ]
+    # Il pulsante "Apri HIRIS" solo se conosciamo il path ingress reale
+    # (`/hassio/ingress/<slug>`); senza slug niente pulsante rotto (prima era
+    # hard-coded a "/hassio_ingress", un path inesistente).
+    if click_path:
+        actions.append({"action": "URI", "title": "Apri HIRIS", "uri": click_path})
+    return actions
 
 
 async def notify(app: web.Application, *, message: str, actionable: bool, nonce: str,
@@ -219,9 +224,19 @@ async def notify(app: web.Application, *, message: str, actionable: bool, nonce:
         logger.error("invalid notify service %r", service)
         return False
     domain, svc = service.split(".", 1)
+    # deep-link sul tap del corpo alla UI ingress di HIRIS (apre HIRIS, non la
+    # Dashboard home). Presente anche sui pending NON actionable (rosso/OTP-only),
+    # che prima non portavano alcun `data`. `channel` dedicato come per ha_push.
+    click = app.get("ingress_click_path") or None
+    push: dict = {"channel": "HIRIS"}
+    if click:
+        push["clickAction"] = click
+        push["url"] = click
     data: dict = {"message": message, "title": "HIRIS · richiesta da Claude"}
     if actionable:
-        data["data"] = {"actions": build_actions(nonce), "tag": f"hiris-gw-{nonce}"}
+        push["actions"] = build_actions(nonce, click)
+        push["tag"] = f"hiris-gw-{nonce}"
+    data["data"] = push
     try:
         await ha.call_service(domain, svc, data)
         return True

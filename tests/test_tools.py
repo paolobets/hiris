@@ -123,7 +123,8 @@ async def test_send_notification_ha_push(mock_ha):
     result = await send_notification(mock_ha, "Test message", "ha_push", config)
     assert result is True
     mock_ha.call_service.assert_awaited_with(
-        "notify", "mobile_app", {"message": "Test message"}
+        "notify", "mobile_app",
+        {"message": "Test message", "data": {"channel": "HIRIS"}}
     )
 
 

@@ -11,6 +11,34 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Canale dedicato (Android) per raggruppare e rendere gestibili le notifiche
+# HIRIS; ignorato su iOS. Oltre questa soglia il testo va anche in `subject`,
+# che la Companion Android mostra come corpo lungo leggibile.
+_PUSH_CHANNEL = "HIRIS"
+_SUBJECT_MIN_CHARS = 160
+
+
+def build_push_data(config: dict, message: str) -> dict:
+    """Payload `data` extra per un push mobile (`ha_push`).
+
+    - deep-link sul TAP del corpo alla UI ingress di HIRIS
+      (`config["ingress_click_path"]` = `/hassio/ingress/<slug>`), cosi' la
+      notifica apre HIRIS e non la Dashboard home. `clickAction` per Android,
+      `url` per iOS (la Companion legge il campo della propria piattaforma).
+    - un canale dedicato "HIRIS" (Android) sempre presente.
+    - per il testo lungo, `subject` con il messaggio (Android, corpo leggibile).
+
+    Ritorna sempre almeno `{"channel": ...}`; senza click path il deep-link
+    viene semplicemente omesso (nessuna regressione)."""
+    d: dict = {"channel": _PUSH_CHANNEL}
+    click = (config or {}).get("ingress_click_path")
+    if click:
+        d["clickAction"] = click
+        d["url"] = click
+    if message and len(message) > _SUBJECT_MIN_CHARS:
+        d["subject"] = message
+    return d
+
 TOOL_DEF = {
     "name": "send_notification",
     "description": (
@@ -107,6 +135,7 @@ async def send_notification(
         data = {"message": message}
         if title:
             data["title"] = title
+        data["data"] = build_push_data(config, message)
         return await ha.call_service(domain, svc, data)
 
     if channel == "apprise":

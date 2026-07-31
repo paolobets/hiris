@@ -148,7 +148,12 @@ async def test_red_pending_is_not_actionable_no_buttons_but_otp_present(tmp_path
     assert res is not None and res.get("id")
     assert len(ha.calls) == 1
     sent_data = ha.calls[0][2]
-    assert "data" not in sent_data, "red pendings must NOT get one-tap buttons"
+    # red pendings must NOT get one-tap approve/reject BUTTONS (OTP-only). A
+    # navigation deep-link (clickAction) + a dedicated channel is allowed: it
+    # only opens HIRIS, it carries NO approval. So the real invariant is the
+    # absence of `actions`, not the absence of `data` altogether.
+    assert "actions" not in sent_data.get("data", {}), \
+        "red pendings must NOT get one-tap buttons"
     # The OTP is still included in the push message (Task 4 fix) — confirmation
     # for red pendings is possible only by typing this code in chat.
     assert re.search(r"\d{6}", sent_data["message"]) is not None
