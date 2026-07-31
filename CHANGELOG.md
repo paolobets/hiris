@@ -1,5 +1,13 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.3] — Build diagnostica (bug #2: overwrite automazioni) (2026-07-31)
+
+Solo **logging diagnostico** temporaneo sul giro di applicazione di una proposta
+`ha_automation` (cosa arriva a `create_automation`, se il config ha `id`/`trigger`/
+`action`, e lo stato della risposta HA). Serve a individuare perché l'approvazione
+non sovrascrive l'automazione esistente. Nessun cambiamento di comportamento; i
+`[DIAG …]` verranno rimossi nel commit di fix.
+
 ## [1.1.0-beta.2] — Notifiche: apri HIRIS al tap + leggibilità (2026-07-31)
 
 Dalla live-verify: le notifiche della Companion aprivano la Dashboard home ed

@@ -1,4 +1,9 @@
+import json
+import logging
+
 from aiohttp import web
+
+logger = logging.getLogger(__name__)
 
 _VALID_STATUSES = frozenset({"pending", "applied", "rejected", "archived"})
 _CONFIG_TYPES = frozenset({"ha_dashboard", "ha_script", "ha_scene"})
@@ -45,7 +50,23 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
         ha = request.app.get("ha_client")
         if ha is None:
             return web.json_response({"error": "HA client non disponibile"}, status=503)
-        result = await ha.create_automation(proposal.get("config") or {})
+        _cfg = proposal.get("config") or {}
+        # DIAG temporaneo (bug live-verify #2: overwrite automazioni): cattura
+        # cosa arriva davvero all'apply. WARNING per essere visibile a qualsiasi
+        # log-level. RIMUOVERE nel commit di fix.
+        logger.warning(
+            "[DIAG automation-apply] proposal=%s routing=%r has_id=%s id=%r "
+            "has_trigger=%s has_action=%s config=%s",
+            proposal_id, proposal.get("routing_reason"),
+            isinstance(_cfg, dict) and "id" in _cfg,
+            _cfg.get("id") if isinstance(_cfg, dict) else None,
+            isinstance(_cfg, dict) and "trigger" in _cfg,
+            isinstance(_cfg, dict) and "action" in _cfg,
+            (json.dumps(_cfg, ensure_ascii=False)[:1200] if isinstance(_cfg, dict)
+             else repr(_cfg)[:200]),
+        )
+        result = await ha.create_automation(_cfg)
+        logger.warning("[DIAG automation-apply] create_automation -> %r", result)
         if not isinstance(result, dict) or result.get("error"):
             msg = result.get("error") if isinstance(result, dict) else "errore sconosciuto"
             return web.json_response(

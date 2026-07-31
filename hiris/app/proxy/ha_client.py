@@ -100,8 +100,12 @@ class HAClient:
         if not (aid.isascii() and aid.isdigit()):
             return {"error": "automation_id non valido"}
         url = f"{self._base_url}/api/config/automation/config/{aid}"
+        # DIAG temporaneo (bug live-verify #2). RIMUOVERE nel commit di fix.
+        logger.warning("[DIAG automation-create] aid=%s has_trigger=%s has_action=%s keys=%s",
+                       aid, "trigger" in config, "action" in config, sorted(config.keys()))
         try:
             async with self._session.post(url, json=config) as resp:
+                logger.warning("[DIAG automation-create] HA POST status=%s", resp.status)
                 if resp.status not in (200, 201):
                     body = await resp.text()
                     return {"error": f"HA ha rifiutato la config ({resp.status}): {body[:200]}"}
