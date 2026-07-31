@@ -1,5 +1,22 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.5] — Fix bug #2: le proposte di modifica automazioni ora scrivono in HA (2026-07-31)
+
+Root cause (dai log diagnostici beta.3/4): il Chatbot proponeva l'automazione con
+`type='automation'` invece di `'ha_automation'`; l'apply non riconosceva l'alias e
+cadeva nel ramo "status-only" che marca la proposta applicata **senza scrivere in
+HA** — "sembrava applicata" ma l'automazione non cambiava (né errore né duplicato).
+
+- **Normalizzazione del tipo + fail-loud.** `automation`→`ha_automation` (e
+  `agent`→`hiris_agent`) alla creazione; un tipo davvero sconosciuto ora viene
+  **rifiutato con un errore** invece di essere salvato e perso nel no-op. Il ramo
+  status-only logga un warning permanente se mai un tipo non gestito lo raggiunge.
+- **Modifica che sovrascrive davvero.** L'`id` presente nel config (che l'LLM
+  copia leggendo l'automazione) viene **preservato**, così approvare una modifica
+  **sovrascrive** l'automazione esistente invece di duplicarla. Per creare una
+  automazione NUOVA l'LLM omette l'`id`. Descrizione del tool aggiornata.
+- Rimossi i log diagnostici temporanei `[DIAG]` di beta.3/beta.4.
+
 ## [1.1.0-beta.4] — Diagnostica bug #2, giro 2: tipo proposta (2026-07-31)
 
 La beta.3 loggava solo dentro il ramo `ha_automation`, ma l'apply osservato NON

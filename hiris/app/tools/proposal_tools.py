@@ -4,6 +4,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Tipi che handle_apply_proposal sa APPLICARE davvero. Un tipo fuori da questo
+# set cadrebbe nel ramo "status-only" (marca applied senza toccare HA) -> lo
+# rifiutiamo alla creazione invece di salvarlo e perderlo in silenzio (bug #2).
+_VALID_PROPOSAL_TYPES = frozenset(
+    {"ha_automation", "hiris_agent", "ha_dashboard", "ha_script", "ha_scene"})
+# Alias comuni che gli LLM usano al posto dei valori canonici (root cause bug #2:
+# il Chatbot ha proposto type='automation').
+_PROPOSAL_TYPE_ALIASES = {"automation": "ha_automation", "agent": "hiris_agent"}
+
 CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
     "name": "create_automation_proposal",
     "description": (
@@ -22,7 +31,13 @@ CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
             },
             "config": {
                 "type": "object",
-                "description": "HA automation YAML dict or HIRIS agent config dict",
+                "description": (
+                    "HA automation YAML dict (trigger/condition/action/mode/alias) "
+                    "or HIRIS agent config dict. To MODIFY an existing automation, "
+                    "INCLUDE its numeric 'id' (as returned by get_automation_config) "
+                    "in this config so approval OVERWRITES it. To create a NEW "
+                    "automation, OMIT 'id'."
+                ),
             },
             "routing_reason": {
                 "type": "string",
@@ -31,10 +46,9 @@ CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
             "automation_id": {
                 "type": "string",
                 "description": (
-                    "ONLY when MODIFYING an existing HA automation: its numeric "
-                    "unique id (from get_automation_config / get_ha_automations). "
-                    "When set, approving the proposal OVERWRITES that automation "
-                    "instead of creating a new one. Omit for a brand-new automation."
+                    "Optional. The numeric unique id of an existing HA automation "
+                    "to MODIFY. Alternative to putting 'id' inside config (this "
+                    "param wins if both are given). Omit for a brand-new automation."
                 ),
             },
         },
@@ -54,21 +68,27 @@ async def create_automation_proposal(
 ) -> dict:
     if proposal_store is None:
         return {"error": "ProposalStore not available"}
-    # Modify-in-place: carry the target automation's id INSIDE the config (which
-    # is persisted as-is), so create_automation reuses it at apply time and HA
-    # overwrites the existing automation instead of creating a duplicate.
-    #
-    # The config["id"] is load-bearing at apply time, so for HA automations it
-    # must originate ONLY from an explicit automation_id: when modifying, pin it;
-    # when creating (no automation_id) STRIP any stale "id" the model may have
-    # copied from a get_automation_config read, otherwise a "make a similar new
-    # automation" flow would silently overwrite the original it was copied from.
+    # Bug #2: normalizza gli alias di tipo e rifiuta i tipi sconosciuti. Il
+    # Chatbot aveva proposto type='automation' (non 'ha_automation') -> l'apply
+    # cadeva nel ramo status-only che NON scrive in HA (l'automazione "sembrava
+    # applicata" ma non cambiava). Meglio fallire forte alla creazione.
+    proposal_type = (proposal_type or "").strip()
+    proposal_type = _PROPOSAL_TYPE_ALIASES.get(proposal_type, proposal_type)
+    if proposal_type not in _VALID_PROPOSAL_TYPES:
+        return {"error": (f"Tipo proposta non valido: {proposal_type!r}. "
+                          f"Usa uno di: {', '.join(sorted(_VALID_PROPOSAL_TYPES))}")}
+    # Bug #2 (overwrite vs duplicato): l'id nel config e' load-bearing all'apply
+    # (create_automation vi sovrascrive l'automazione con quell'id). Precedenza:
+    # automation_id esplicito > id gia' presente nel config (che l'LLM copia
+    # leggendo l'automazione con get_automation_config). Se NESSUNO dei due c'e'
+    # -> automazione NUOVA (nessun id, apply ne conia uno). Contratto invertito
+    # rispetto a prima (che strippava l'id senza automation_id, rompendo il caso
+    # "modifica"): ORA per creare una NUOVA automazione l'LLM deve OMETTERE l'id.
     cfg = config
     if proposal_type == "ha_automation" and isinstance(cfg, dict):
-        if automation_id:
-            cfg = {**cfg, "id": str(automation_id)}
-        else:
-            cfg = {k: v for k, v in cfg.items() if k != "id"}
+        _id = automation_id or cfg.get("id")
+        if _id:
+            cfg = {**cfg, "id": str(_id)}
     try:
         pid = await proposal_store.save(
             {

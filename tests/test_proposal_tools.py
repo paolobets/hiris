@@ -44,14 +44,45 @@ async def test_create_proposal_without_automation_id_leaves_config(store):
 
 
 @pytest.mark.asyncio
-async def test_create_proposal_strips_stale_id_when_not_modifying(store):
-    """NEW-from-copy: the model copied a config that still carries a source
-    automation's 'id' but did NOT pass automation_id → the stale id must be
-    stripped, so apply mints a fresh one and does NOT overwrite the original."""
-    args = _sample_args(config={"id": "1699999999", "alias": "Copia", "trigger": [], "action": []})
+async def test_create_proposal_keeps_config_id_as_modify(store):
+    """MODIFY (bug #2 fix): l'LLM legge un'automazione con get_automation_config
+    e ne riporta il config INCLUSO l'id, ma spesso NON compila il param separato
+    automation_id. Prima l'id veniva strippato -> l'apply coniava un id nuovo ->
+    DUPLICATO invece di overwrite. Ora l'id presente nel config viene PRESERVATO
+    (= modifica). Per una NUOVA automazione l'LLM omette l'id."""
+    args = _sample_args(config={"id": "1699999999", "alias": "Modifica", "trigger": [], "action": []})
     res = await create_automation_proposal(store, **args)
     saved = await store.get(res["proposal_id"])
-    assert "id" not in saved["config"]
+    assert saved["config"]["id"] == "1699999999"
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_explicit_automation_id_beats_config_id(store):
+    """L'automation_id esplicito vince sull'id copiato nel config."""
+    args = _sample_args(config={"id": "111", "alias": "x", "trigger": [], "action": []},
+                        automation_id="999")
+    res = await create_automation_proposal(store, **args)
+    saved = await store.get(res["proposal_id"])
+    assert saved["config"]["id"] == "999"
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_normalizes_automation_type_alias(store):
+    """BUG #2 root cause: il Chatbot ha usato type='automation' (alias) invece di
+    'ha_automation' -> l'apply cadeva nel ramo status-only che non scrive in HA.
+    Ora l'alias e' normalizzato a 'ha_automation'."""
+    res = await create_automation_proposal(store, **_sample_args(proposal_type="automation"))
+    saved = await store.get(res["proposal_id"])
+    assert saved["type"] == "ha_automation"
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_rejects_unknown_type(store):
+    """Un tipo davvero sconosciuto non viene salvato in silenzio (che poi
+    sparirebbe nel ramo status-only): errore chiaro, niente save."""
+    res = await create_automation_proposal(store, **_sample_args(proposal_type="banana"))
+    assert "error" in res
+    assert "proposal_id" not in res
 
 
 @pytest.mark.asyncio
