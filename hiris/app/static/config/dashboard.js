@@ -29,6 +29,52 @@
      and touches DOM (#agent-list, dell'editor); non è sicuro chiamarlo prima
      che quel DOM esista, né lo script è detto sia già caricato in questa
      route. */
+  /* --- "Nuovo dall'ultima visita" (issue live-verify #1, increment 2) -------
+     Le notifiche portano su HIRIS (increment 1) ma HA non dice QUALE notifica
+     hai toccato. Invece di un mapping fragile notifica->item, evidenziamo tutto
+     cio' che nel feed e' piu' recente dell'ultima apertura: qualunque notifica
+     tu tocchi, apri HIRIS e vedi cosa e' nuovo. Stato per-dispositivo in
+     localStorage; nessuno store server. Timestamp ISO -> confronto stringa =
+     confronto cronologico. */
+  var _FEED_SEEN_KEY = 'hiris_feed_last_seen';
+  var _feedLastSeen = '';   // '' = prima visita -> NON evidenziare nulla
+
+  function feedReadLastSeen() {
+    try { return window.localStorage.getItem(_FEED_SEEN_KEY) || ''; }
+    catch (e) { return ''; }
+  }
+  function feedWriteLastSeen(ts) {
+    try { window.localStorage.setItem(_FEED_SEEN_KEY, ts); } catch (e) { /* no-op */ }
+  }
+  function feedMarkNew(scope) {
+    /* Aggiunge .feed-new agli item con data-ts piu' recente dell'ultima visita.
+       Prima visita (_feedLastSeen vuoto) non marca nulla, cosi' il primo
+       caricamento non lampeggia l'intero feed. */
+    if (!_feedLastSeen || !scope) return;
+    var els = scope.querySelectorAll('[data-ts]');
+    for (var i = 0; i < els.length; i++) {
+      var ts = els[i].getAttribute('data-ts') || '';
+      if (ts && ts > _feedLastSeen) els[i].classList.add('feed-new');
+    }
+  }
+  function feedFinalizeNew() {
+    /* Scrolla sul singolo item nuovo piu' recente (pulse via CSS), poi registra
+       questa visita cosi' nulla si ri-evidenzia la prossima volta. */
+    var news = document.querySelectorAll('.feed-new');
+    var newest = null, newestTs = '';
+    for (var i = 0; i < news.length; i++) {
+      var ts = news[i].getAttribute('data-ts') || '';
+      if (ts > newestTs) { newestTs = ts; newest = news[i]; }
+    }
+    if (newest && newest.scrollIntoView) {
+      try { newest.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      catch (e) { newest.scrollIntoView(); }
+    }
+    var now = new Date().toISOString();
+    // non arretrare mai il puntatore (item futuri gia' visti restano visti)
+    if (now > _feedLastSeen) feedWriteLastSeen(now);
+  }
+
   function fetchAgentsDirect() {
     /* Rejects on failure (does NOT coerce to []) so mount() can tell a real
        network/server error apart from a genuinely-empty first run -- otherwise
@@ -125,13 +171,13 @@
         '<div id="dash-proposals-body"><div style="padding:16px;color:var(--text-3)">Caricamento…</div></div>' +
       '</section>';
 
-    loadReasoning();
-    loadAdvisories();
-    loadProposalsPeek();
+    _feedLastSeen = feedReadLastSeen();
+    Promise.all([loadReasoning(), loadAdvisories(), loadProposalsPeek()])
+      .then(feedFinalizeNew, feedFinalizeNew);
   }
 
   function loadReasoning() {
-    fetch('api/brain/feed?type=reasoning,brain_action&limit=10').then(function(r) {
+    return fetch('api/brain/feed?type=reasoning,brain_action&limit=10').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function(d) {
@@ -143,11 +189,12 @@
         return;
       }
       body.innerHTML = items.map(function(it) {
-        return '<div class="dl-row">' +
+        return '<div class="dl-row" data-ts="' + escHtml(it.ts || '') + '">' +
           '<span class="dl-time">' + escHtml(it.ts || '') + '</span>' +
           '<span class="dl-text">' + escHtml(it.body || '') + '</span>' +
         '</div>';
       }).join('');
+      feedMarkNew(body);
     }).catch(function(err) {
       console.error('dashboard reasoning fetch failed', err);
       var body = document.getElementById('dash-reasoning-body');
@@ -156,7 +203,7 @@
   }
 
   function loadAdvisories() {
-    fetch('api/brain/advisories?status=open').then(function(r) {
+    return fetch('api/brain/advisories?status=open').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function(d) {
@@ -173,7 +220,8 @@
         var link = (a.fix_kind === 'hiris_config')
           ? '<a class="btn btn-sm" href="#/gateway">Apri Gateway</a>' : '';
         var severity = a.severity || 'info';
-        return '<div class="adv-card adv-' + escHtml(severity) + '" id="adv-' + escHtml(String(a.id)) + '">' +
+        return '<div class="adv-card adv-' + escHtml(severity) + '" id="adv-' + escHtml(String(a.id)) + '"' +
+          ' data-ts="' + escHtml(String(a.ts_updated || a.ts || '')) + '">' +
           '<div class="adv-sev">' + escHtml(severity.toUpperCase()) + '</div>' +
           '<div class="adv-title">' + escHtml(a.title || '') + '</div>' +
           '<div class="prop-desc">' + escHtml(a.suggested_fix || '') + '</div>' +
@@ -187,6 +235,7 @@
           advisoryAction(b.dataset.aid, b.dataset.advAct);
         });
       });
+      feedMarkNew(body);
     }).catch(function(err) {
       console.error('dashboard advisories fetch failed', err);
       var countEl = document.getElementById('dash-adv-count');
@@ -221,7 +270,7 @@
   };
 
   function loadProposalsPeek() {
-    fetch('api/proposals?status=pending').then(function(r) {
+    return fetch('api/proposals?status=pending').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function(d) {
@@ -236,7 +285,7 @@
       }
       body.innerHTML = props.map(function(p) {
         var typeLabel = PROPOSAL_LABELS[p.type] || ('→ ' + escHtml(p.type || ''));
-        return '<div class="prop-card">' +
+        return '<div class="prop-card" data-ts="' + escHtml(String(p.created_at || '')) + '">' +
           '<div class="prop-title">' +
             '<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;background:var(--accent-tint);color:var(--accent-ink);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);margin-right:6px;vertical-align:middle">' + escHtml(typeLabel) + '</span>' +
             escHtml(p.name) +
@@ -260,6 +309,7 @@
           if (typeof rejectProposal === 'function') rejectProposal(b.dataset.pid);
         });
       });
+      feedMarkNew(body);
     }).catch(function(err) {
       console.error('dashboard proposals fetch failed', err);
       var body = document.getElementById('dash-proposals-body');
@@ -291,5 +341,15 @@
     }
   }
 
-  window.HirisDashboard = { mount: mount };
+  window.HirisDashboard = {
+    mount: mount,
+    /* test seam (increment 2): la logica "nuovo dall'ultima visita" e' pura
+       DOM + localStorage e va pinnata senza montare l'intera dashboard. */
+    _feed: {
+      markNew: feedMarkNew,
+      finalize: feedFinalizeNew,
+      setLastSeen: function(v) { _feedLastSeen = v; },
+      readLastSeen: feedReadLastSeen
+    }
+  };
 })();

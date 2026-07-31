@@ -2213,3 +2213,19 @@
   font-size: var(--fs-13); color: var(--text-3);
   margin: 0;
 }
+
+/* "Nuovo dall'ultima visita" (issue live-verify #1, increment 2): un item del
+   feed (ragionamento/segnalazione/proposta) piu' recente dell'ultima apertura
+   riceve .feed-new -> un pulse di sfondo che sfuma. Solo background: nessuno
+   shift di layout. `border-radius` per non sbordare sulle card. */
+@keyframes hiris-feed-new {
+  0%   { background-color: var(--accent-tint); }
+  100% { background-color: transparent; }
+}
+.feed-new {
+  animation: hiris-feed-new 2.4s ease-out 1;
+  border-radius: var(--radius-2, 6px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .feed-new { animation: none; }
+}
