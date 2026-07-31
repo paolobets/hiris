@@ -80,6 +80,13 @@
         <span>Task pianificati</span>
         <span class="task-badge" id="task-badge" data-count="0"></span>
       </a>
+      <a href="#" id="nav-proposals" class="sb-nav-item">
+        <span class="ic">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.7 12.4a4.5 4.5 0 1 1 4.6 0c-.5.3-.8.9-.8 1.5v.1H7.5v-.1c0-.6-.3-1.2-.8-1.5z"/><path d="M7 16.2h4"/></svg>
+        </span>
+        <span>Proposte</span>
+        <span class="task-badge" id="proposals-badge" data-count="0"></span>
+      </a>
     </div>
     <div id="usage-widget">
       <div class="usage-title">Utilizzo</div>
@@ -115,6 +122,9 @@
       <div id="header-tools">
         <button id="mobile-task-btn" title="Task pianificati">
           Task<span id="mobile-task-badge" data-count="0"></span>
+        </button>
+        <button id="mobile-proposals-btn" title="Proposte">
+          Proposte<span id="mobile-proposals-badge" data-count="0"></span>
         </button>
         <button id="new-conv-btn" class="btn" title="Nuova conversazione">
           <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a7 7 0 0 1 12-5l2 2M16 4v3h-3M16 9a7 7 0 0 1-12 5l-2-2M2 14v-3h3"/></svg>
@@ -170,6 +180,15 @@
       <div class="task-section-title">Task recenti (24h)</div>
       <div id="task-recent-list"></div>
     </div>
+
+    <div id="proposals-panel">
+      <div id="proposals-panel-header">
+        <span>Proposte</span>
+        <button class="btn" type="button" id="proposals-panel-back-btn">&#8592; Chat</button>
+      </div>
+      <div class="task-section-title">In attesa</div>
+      <div id="chat-proposals-list"></div>
+    </div>
   </main>
 </div>
 
@@ -180,6 +199,8 @@
 <script src="static/chat/send.js"></script>
 <script src="static/chat/theme.js"></script>
 <script src="static/chat/tasks.js"></script>
+<script src="static/config/proposals-core.js"></script>
+<script src="static/chat/proposals.js"></script>
 <script src="static/chat/onboarding.js"></script>
 <script src="static/chat/sidebar.js"></script>
 <script src="static/chat/keyboard.js"></script>

@@ -1,5 +1,25 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.10] — Proposte nella chat + fix "Errore di rete" dalla Dashboard (2026-07-31)
+
+**Bug.** Attivare una proposta dalla **Dashboard** dava "Errore di rete", mentre
+dalla pagina Proposte funzionava. In realtà l'automazione **veniva attivata**:
+la Dashboard riusava `applyProposal()` di `proposals.js`, cablato sul DOM della
+pagina Proposte (`#pr-<id>`, `#proposals-list`). Dopo l'apply riuscito, sul DOM
+della dashboard quegli elementi non esistono → `checkEmptyList()` cadeva su
+`null.querySelector` → un falso `alert('Errore di rete')`. Risolto alla radice
+con un **core condiviso solo-fetch** (`proposals-core.js`): ogni vista aggiorna
+il proprio DOM, nessuna eredita quello di un'altra. Il peek della Dashboard ora
+usa il core e si ricarica; aggiunta anche una guardia difensiva su
+`checkEmptyList()`.
+
+**Feature.** Le **Proposte** sono ora accessibili dalla **pagina chat**, con una
+**voce di navigazione dedicata** accanto a "Task pianificati" (con badge del
+numero in attesa) e un pannello Attiva/Rifiuta. Le proposte sono un'inbox di
+azioni come i Task, e vivono dove operi ogni giorno. La pagina Proposte del
+config resta disponibile; tutte le viste (chat, Dashboard, config) passano ora
+dallo stesso core, quindi quella classe di bug non può ripresentarsi.
+
 ## [1.1.0-beta.9] — Chat: "in elaborazione" col logo HIRIS che pulsa + timer (2026-07-31)
 
 La risposta via abbonamento mostrava il testo statico "HIRIS sta pensando…

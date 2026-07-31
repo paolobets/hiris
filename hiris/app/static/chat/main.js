@@ -30,6 +30,7 @@
 
     window.HirisChatSidebar.init();
     window.HirisChatTasks.init();
+    window.HirisChatProposals.init();
     window.HirisChatOnboarding.init();
     window.HirisChatKeyboard.init();
     window.HirisChatSend.wireComposer();

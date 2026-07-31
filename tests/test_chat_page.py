@@ -16,7 +16,7 @@ CHAT = STATIC / "chat"
 
 EXPECTED_CHAT_FILES = (
     "state.js", "messages.js", "agents.js", "send.js", "theme.js",
-    "tasks.js", "onboarding.js", "sidebar.js", "keyboard.js", "main.js",
+    "tasks.js", "proposals.js", "onboarding.js", "sidebar.js", "keyboard.js", "main.js",
 )
 
 

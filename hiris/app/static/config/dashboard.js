@@ -269,6 +269,16 @@
     hiris_agent: '→ Agentbot'
   };
 
+  function peekAction(id, kind) {
+    var isReject = (kind === 'reject');
+    if (!window.confirm(isReject ? 'Rifiutare questa proposta?' : 'Attivare questa proposta?')) return;
+    var fn = isReject ? HirisProposalsCore.reject : HirisProposalsCore.apply;
+    fn(id).then(function(res) {
+      if (!res.ok) { window.alert(res.error || 'Errore'); return; }
+      loadProposalsPeek();   // ricarica il peek: la card sparisce, il conteggio si aggiorna
+    }, function() { window.alert('Errore di rete'); });
+  }
+
   function loadProposalsPeek() {
     return fetch('api/proposals?status=pending').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -298,16 +308,17 @@
         '</div>';
       }).join('');
 
-      /* Wire apply/reject buttons (delegate to existing logic in proposals.js if loaded) */
+      /* Apply/reject via il core condiviso + ricarica IL PROPRIO peek.
+         NON deleghiamo più a applyProposal()/rejectProposal() di proposals.js:
+         quelle sono cablate sul DOM della pagina Proposte (#pr-<id>,
+         #proposals-list) e qui, dopo un apply riuscito, cadevano su
+         checkEmptyList() -> null.querySelector -> falso "Errore di rete"
+         (mentre l'automazione ERA già stata attivata). Vedi proposals-core.js. */
       body.querySelectorAll('[data-act="apply"]').forEach(function(b) {
-        b.addEventListener('click', function() {
-          if (typeof applyProposal === 'function') applyProposal(b.dataset.pid);
-        });
+        b.addEventListener('click', function() { peekAction(b.dataset.pid, 'apply'); });
       });
       body.querySelectorAll('[data-act="reject"]').forEach(function(b) {
-        b.addEventListener('click', function() {
-          if (typeof rejectProposal === 'function') rejectProposal(b.dataset.pid);
-        });
+        b.addEventListener('click', function() { peekAction(b.dataset.pid, 'reject'); });
       });
       feedMarkNew(body);
     }).catch(function(err) {

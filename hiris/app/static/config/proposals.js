@@ -68,8 +68,8 @@ async function applyProposal(id) {
   if (!confirm('Attivare questa proposta?')) return;
   var row = document.getElementById('pr-' + id);
   try {
-    var r = await fetch('api/proposals/' + id + '/apply', {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}});
-    if (!r.ok) { var d = await r.json(); alert(d.error || 'Errore'); return; }
+    var res = await HirisProposalsCore.apply(id);
+    if (!res.ok) { alert(res.error || 'Errore'); return; }
     if (row) {
       row.style.opacity = '0.5';
       row.querySelector('.proposal-name').innerHTML = '<span style="color:var(--success)">✓ Proposta attivata</span>';
@@ -85,8 +85,8 @@ async function rejectProposal(id) {
   if (!confirm('Rifiutare questa proposta?')) return;
   var row = document.getElementById('pr-' + id);
   try {
-    var r = await fetch('api/proposals/' + id + '/reject', {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}});
-    if (!r.ok) { var d = await r.json(); alert(d.error || 'Errore'); return; }
+    var res = await HirisProposalsCore.reject(id);
+    if (!res.ok) { alert(res.error || 'Errore'); return; }
     if (row) {
       row.style.opacity = '0.5';
       row.querySelector('.proposal-name').innerHTML = '<span style="color:var(--text-muted)">Proposta rifiutata</span>';
@@ -100,6 +100,8 @@ async function rejectProposal(id) {
 
 function checkEmptyList() {
   var list = document.getElementById('proposals-list');
+  if (!list) return;   /* difesa: questa funzione vive sulla pagina Proposte; se
+                          invocata altrove (DOM senza #proposals-list) non deve lanciare */
   if (!list.querySelector('.proposal-row')) {
     var label = _currentProposalTab === 'archived' ? 'archiviata' : 'in attesa';
     list.innerHTML = '<div class="proposals-empty">Nessuna proposta ' + label + '.</div>';

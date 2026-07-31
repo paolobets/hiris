@@ -652,6 +652,51 @@
     }
     #mobile-task-badge:empty, #mobile-task-badge[data-count="0"] { display: none; }
 
+    /* Proposals panel (chat) — stesso linguaggio visivo di #task-panel */
+    #proposals-panel { display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 28px; min-height: 0; }
+    #proposals-panel-header { display: none; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    #proposals-panel-header span { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+    .pp-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 12px 16px; margin-bottom: 8px;
+    }
+    .pp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+    .pp-type {
+      font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+      font-family: var(--font-mono); color: var(--accent-ink);
+      background: var(--accent-tint); padding: 2px 8px; border-radius: 999px;
+    }
+    .pp-date { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
+    .pp-name { font-weight: 500; font-size: 13.5px; color: var(--text); margin-bottom: 3px; }
+    .pp-desc { font-size: 12.5px; color: var(--text-2); margin-bottom: 4px; line-height: 1.4; }
+    .pp-reason { font-size: 11.5px; color: var(--text-3); margin-bottom: 10px; }
+    .pp-actions { display: flex; gap: 8px; }
+    .pp-apply, .pp-reject {
+      border-radius: var(--r-sm); padding: 5px 14px; font-size: 12.5px; cursor: pointer;
+      border: 1px solid var(--border);
+    }
+    .pp-apply { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+    .pp-apply:hover { filter: brightness(1.05); }
+    .pp-reject { background: none; color: var(--text-2); }
+    .pp-reject:hover { background: var(--hover); color: var(--text); }
+    @media (pointer: coarse) {
+      .pp-apply, .pp-reject { min-height: 44px; padding: 8px 16px; }
+    }
+    #mobile-proposals-btn {
+      display: none; align-items: center; gap: 6px;
+      background: none; border: 1px solid var(--border); border-radius: var(--r-sm);
+      padding: 5px 10px; color: var(--text-2); font-size: 12px; cursor: pointer;
+    }
+    #mobile-proposals-btn:hover { background: var(--hover); color: var(--text); }
+    #mobile-proposals-btn.active { color: var(--accent); border-color: var(--accent); }
+    #mobile-proposals-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 16px; height: 16px; border-radius: 8px;
+      background: var(--accent); color: var(--on-accent);
+      font-size: 10px; font-weight: 700; padding: 0 4px; font-family: var(--font-mono);
+    }
+    #mobile-proposals-badge:empty, #mobile-proposals-badge[data-count="0"] { display: none; }
+
     /* Onboarding wizard */
     #onboarding {
       position: fixed; inset: 0; z-index: 1000;
@@ -753,7 +798,7 @@
          version, subtitle, agent pill, Task) move into the drawer / are hidden;
          only essentials stay: ☰ menu · HIRIS · nuova conversazione · tema. */
       #header { padding: 8px 12px calc(8px + env(safe-area-inset-top)); gap: 8px; }
-      #header-icon, #header-subtitle, #header-version, #agent-pill, #mobile-task-btn { display: none; }
+      #header-icon, #header-subtitle, #header-version, #agent-pill, #mobile-task-btn, #mobile-proposals-btn { display: none; }
       #header-title { font-size: 16px; }
       #header-tools { margin-left: auto; gap: 4px; }
       #new-conv-btn {
