@@ -1,5 +1,30 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.1] — Agenti v1.1 Fase 2 + 2.5 (2026-07-31, build di verifica)
+
+Build **dev/beta** per la live-verify sul campo — non è la release 1.1.0 (che
+arriva a fine Fase 4, con tag). Introduce la **modalità obiettivo** reale e il
+primo strato di conferma out-of-band per gli agenti autonomi.
+
+- **Modalità obiettivo (Agente v1.1).** Un agente può lavorare per un
+  **obiettivo** in linguaggio naturale: ragiona ed emette **Task dichiarativi**
+  (mai chiamate composte al volo), dentro un **perimetro** — entità e servizi
+  consentiti, tetto tier, budget token e scadenza per esecuzione. I Task emessi
+  ereditano identità e perimetro dell'agente; l'esecuzione li fa rispettare. La
+  modalità obiettivo gira su **pianificazione** (gli eventi restano alle regole).
+- **Step-up per i Task autonomi.** Un'azione emessa **oltre il verde** non viene
+  più saltata in silenzio: **chiede conferma** (tap/OTP) all'**owner**
+  configurato (opzione `agent_owner` + canale privato in `notify_users`), e viene
+  eseguita solo all'approvazione. Senza owner/canale privato fallisce-chiuso
+  (saltata, loggata). I domini pericolosi e i tier "off" non sono confermabili.
+- **Perimetro applicato a ogni verdetto.** Un'azione fuori dal perimetro viene
+  saltata a qualsiasi tier (non solo sul verde).
+- **`max_tier` onorato fino al verde** (nessuna fiducia progressiva in questa
+  fase: la fiducia progressiva è la Fase 3).
+- **Tetto token robusto.** Il budget per esecuzione morde anche sui backend che
+  non dichiarano `usage` (stima conservativa dai caratteri); `deadline_min` resta
+  il bound di durata.
+
 ## [1.0.0] — Prima versione definitiva (2026-07-29)
 
 Chiude l'arco SP-1→SP-4: HIRIS non è più uno stage sperimentale, è un
