@@ -44,6 +44,16 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
         return web.json_response(
             {"error": "Proposal not found or not in pending state"}, status=409
         )
+    # DIAG temporaneo (bug #2): logga il TIPO prima del branching. Il [DIAG]
+    # dentro il ramo ha_automation non scatta se la proposta ha un altro tipo
+    # (es. cade nel ramo status-only che non scrive nulla in HA). RIMUOVERE nel fix.
+    _cfg0 = proposal.get("config")
+    logger.warning(
+        "[DIAG apply] id=%s type=%r status=%r config_type=%s config_keys=%s",
+        proposal_id, proposal.get("type"), proposal.get("status"),
+        type(_cfg0).__name__,
+        sorted(_cfg0.keys()) if isinstance(_cfg0, dict) else repr(_cfg0)[:120],
+    )
     # For HA automations, materialize the config in Home Assistant first; only
     # mark applied if HA accepted it (so a rejected config stays pending/retryable).
     if proposal.get("type") == "ha_automation":
@@ -123,6 +133,11 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
         applied = await proposal_store.apply(proposal_id)
         return web.json_response({"ok": bool(applied), "agentbot": cleaned})
     # Other proposal types: status-only apply (unchanged behavior).
+    # DIAG temporaneo (bug #2): se arriviamo qui per una proposta che DOVREBBE
+    # modificare un'automazione, ecco il bug -- si marca applied senza scrivere
+    # nulla in HA. RIMUOVERE nel fix.
+    logger.warning("[DIAG apply] ramo STATUS-ONLY per type=%r -> NIENTE scritto in HA",
+                   proposal.get("type"))
     ok = await proposal_store.apply(proposal_id)
     if not ok:
         return web.json_response(

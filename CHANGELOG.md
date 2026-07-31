@@ -1,5 +1,12 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.4] — Diagnostica bug #2, giro 2: tipo proposta (2026-07-31)
+
+La beta.3 loggava solo dentro il ramo `ha_automation`, ma l'apply osservato NON
+lo attraversava (proposta di altro tipo → ramo "status-only" che non scrive in
+HA). Ora si logga il **tipo della proposta prima del branching** e il passaggio
+nel ramo status-only. Sempre solo `[DIAG]` temporanei, nessun cambio di comportamento.
+
 ## [1.1.0-beta.3] — Build diagnostica (bug #2: overwrite automazioni) (2026-07-31)
 
 Solo **logging diagnostico** temporaneo sul giro di applicazione di una proposta
