@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.8] — Build stamp: sapere QUALE build gira (diagnosi cache) (2026-07-31)
+
+Primo passo per chiudere i problemi di cache della live-verify: un **build stamp**
+(hash del contenuto del frontend) esposto in `/api/health` e mostrato nell'header
+della chat accanto alla versione (`v1.1.0-beta.8 · <stamp>`). Cambia a ogni
+modifica del frontend, quindi permette di verificare **con certezza** cosa gira:
+se lo stamp non cambia dopo un update → non è arrivato il codice nuovo (cache del
+browser/CDN o container non ricostruito), non un bug di logica. HIRIS già serve la
+shell `no-store` e gli asset fingerprintati; questo aggiunge l'osservabilità che
+mancava per puntare il fix giusto.
+
 ## [1.1.0-beta.7] — Modifica automazioni: overwrite anche senza id (per alias) (2026-07-31)
 
 La beta.5 fa scrivere le proposte in HA, ma se il config non riporta l'`id`

@@ -70,3 +70,25 @@ def test_fingerprint_changes_when_content_changes(tmp_path, monkeypatch):
 
     assert h1 != "fb" and h2 != "fb"
     assert h1 != h2
+
+
+def test_build_stamp_deterministic_and_changes_with_content(tmp_path):
+    """Build stamp: uguale a parita' di contenuto, DIVERSO se un file cambia.
+    Serve a verificare in UI/health quale build gira davvero (cache vs container
+    non ricostruito)."""
+    (tmp_path / "a.js").write_text("console.log(1)")
+    sub = tmp_path / "sub"; sub.mkdir()
+    (sub / "b.css").write_text("body{}")
+    s1 = server._compute_build_stamp(str(tmp_path))
+    s2 = server._compute_build_stamp(str(tmp_path))
+    assert s1 == s2 and len(s1) == 12
+    (tmp_path / "a.js").write_text("console.log(2)")   # contenuto cambia -> stamp cambia
+    assert server._compute_build_stamp(str(tmp_path)) != s1
+
+
+def test_build_stamp_reflects_rename(tmp_path):
+    """Anche un rename (path nell'hash) cambia lo stamp."""
+    (tmp_path / "a.js").write_text("x")
+    s1 = server._compute_build_stamp(str(tmp_path))
+    (tmp_path / "a.js").rename(tmp_path / "b.js")
+    assert server._compute_build_stamp(str(tmp_path)) != s1

@@ -2625,6 +2625,9 @@ def create_app() -> web.Application:
     app.on_cleanup.append(_on_cleanup)
 
     static_path = os.path.join(os.path.dirname(__file__), "static")
+    # Build stamp: hash del contenuto del frontend, per verificare in UI/health
+    # QUALE build gira davvero (diagnostica cache vs container non ricostruito).
+    app["build_stamp"] = _compute_build_stamp(static_path)
     app.router.add_static("/static", static_path, show_index=False)
 
     app.router.add_get("/", _serve_index)
@@ -2765,6 +2768,30 @@ def _asset_fingerprint(rel_path: str, fallback: str) -> str:
     return digest
 
 
+def _compute_build_stamp(static_dir: str) -> str:
+    """Hash breve del contenuto di TUTTI gli asset frontend: cambia se e solo se
+    un file del frontend cambia. Esposto in /api/health e mostrato in UI, cosi'
+    si verifica CON CERTEZZA quale build sta girando davvero -- distingue
+    "cache del browser/CDN" da "container addon non ricostruito" nel giro di
+    live-verify (prima non c'era modo di saperlo). Deterministico: root e file
+    in ordine, il path relativo entra nell'hash insieme al contenuto."""
+    h = hashlib.sha1()
+    try:
+        for root, _dirs, files in sorted(os.walk(static_dir)):
+            for name in sorted(files):
+                p = os.path.join(root, name)
+                rel = os.path.relpath(p, static_dir).replace(os.sep, "/")
+                try:
+                    with open(p, "rb") as f:
+                        h.update(rel.encode("utf-8"))
+                        h.update(hashlib.sha1(f.read()).digest())
+                except OSError:
+                    continue
+    except OSError:
+        return "unknown"
+    return h.hexdigest()[:12]
+
+
 def _inject_version(html: str, version: str) -> str:
     """Append a per-file content fingerprint (?v=HASH) to local static asset
     URLs so browsers bust cache whenever a file's content actually changes.
@@ -2802,4 +2829,5 @@ async def _serve_config(request: web.Request) -> web.Response:
 
 
 async def _handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "version": read_version()})
+    return web.json_response({"status": "ok", "version": read_version(),
+                              "build": request.app.get("build_stamp", "")})

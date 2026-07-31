@@ -13,7 +13,9 @@
 
     fetch('api/health').then(function(r) { return r.json(); }).then(function(d) {
       var el = document.getElementById('header-version');
-      if (el && d.version) el.textContent = 'v' + d.version;
+      /* Mostra anche il build stamp: cambia a ogni modifica del frontend, cosi'
+         verifichi CHE COSA gira davvero (cache vs container non ricostruito). */
+      if (el && d.version) el.textContent = 'v' + d.version + (d.build ? ' · ' + d.build : '');
     }).catch(function() {});
 
     window.HirisChatAgents.load();
