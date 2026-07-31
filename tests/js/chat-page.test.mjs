@@ -129,6 +129,79 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
 });
 
 // ---------------------------------------------------------------------------
+// Persistenza chat (bug live-verify #3): tornando alla chat da config (reload
+// pieno) la conversazione spariva perche' la history dell'agente attivo non
+// veniva MAI ricaricata al boot (setActive la carica solo al CAMBIO agente).
+// restore() la ricarica.
+// ---------------------------------------------------------------------------
+
+test('restore() ricarica la history salvata dell\'agente attivo', async () => {
+  const { window, document } = setupChat();
+  window.HirisChatState.activeAgentId = 'bot-restore';
+  const seen = [];
+  window.fetch = async (url) => {
+    seen.push(String(url));
+    if (String(url).includes('/chat-history')) {
+      return { ok: true, status: 200, json: async () => ({ messages: [
+        { role: 'user', content: 'ciao' },
+        { role: 'assistant', content: 'risposta salvata' },
+      ] }) };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+
+  await window.HirisChatAgents.restore();
+
+  assert.ok(seen.some((u) => /api\/chatbots\/bot-restore\/chat-history/.test(u)),
+    'restore deve fetchare la history dell\'agente attivo');
+  const bubbles = document.querySelectorAll('.msg-row .bubble');
+  assert.ok(bubbles.length >= 2, 'i messaggi salvati devono ricomparire');
+  assert.equal(document.getElementById('welcome').style.display, 'none',
+    'il welcome si nasconde quando c\'e\' history');
+  assert.equal(window.HirisChatState.agentTurnCounts['bot-restore'], 1,
+    'un turno utente contato dalla history ricaricata');
+});
+
+// ---------------------------------------------------------------------------
+// Mentre HIRIS elabora (richiesta utente): indicatore stile code + input
+// bloccato per TUTTA l'elaborazione, incluso il poll della risposta via
+// abbonamento (202) -- prima il finally di send() sbloccava troppo presto.
+// ---------------------------------------------------------------------------
+
+test('showTyping mostra l\'indicatore "stile code"', () => {
+  const { window, document } = setupChat();
+  window.HirisChatMessages.showTyping();
+  const el = document.querySelector('#typing-indicator .thinking-code');
+  assert.ok(el, 'l\'indicatore stile code deve comparire');
+  assert.ok(el.querySelector('.tk-stream i'), 'con le barrette animate del "codice"');
+});
+
+test('durante la risposta via abbonamento (202) l\'input resta bloccato e un secondo invio non parte', async () => {
+  const { window } = setupChat();
+  const state = window.HirisChatState;
+  state.activeAgentId = 'bot-lock';
+  window.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('api/chat')) return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'j1' }) };
+    if (u.includes('api/chat/reply/')) return { ok: true, status: 200, json: async () => ({ status: 'done', reply: 'fatto' }) };
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+
+  await window.HirisChatSend.send('ciao');
+  assert.equal(state.isLoading, true, 'lock attivo durante il poll');
+  assert.equal(state.els.input.disabled, true, 'textarea disabilitata mentre elabora');
+
+  const before = state.els.messages.querySelectorAll('.msg-row.user').length;
+  await window.HirisChatSend.send('secondo messaggio');
+  const after = state.els.messages.querySelectorAll('.msg-row.user').length;
+  assert.equal(after, before, 'un secondo messaggio non deve partire mentre HIRIS elabora');
+
+  await tick(3700); // il poll completa -> sblocco
+  assert.equal(state.isLoading, false, 'sbloccato a fine poll');
+  assert.equal(state.els.input.disabled, false, 'textarea riabilitata dopo la risposta');
+});
+
+// ---------------------------------------------------------------------------
 // Turn limit: blocca l'invio disabilitando textarea + bottone (il vero
 // meccanismo usato dalla pagina -- send() stesso non ha mai controllato il
 // limite, solo checkTurnLimit() decide se i controlli sono utilizzabili;

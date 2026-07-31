@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.6] — Chat: la conversazione resta + "sta elaborando" (2026-07-31)
+
+- **La chat non sparisce più.** Tornando alla pagina chat dalla configurazione
+  (reload pieno) la conversazione dell'agente attivo veniva persa: la history
+  era salvata lato server (per Chatbot) ma non veniva mai ricaricata al boot.
+  Ora l'agente attivo è ricordato (localStorage) e la sua history ricaricata.
+- **Mentre HIRIS elabora:** un indicatore **stile code** (prompt col caret +
+  barrette monospace animate) e l'**input bloccato** per tutta l'elaborazione —
+  incluso il poll della risposta via abbonamento (prima l'input si riapriva
+  troppo presto e si poteva inviare un secondo messaggio mentre HIRIS pensava).
+
 ## [1.1.0-beta.5] — Fix bug #2: le proposte di modifica automazioni ora scrivono in HA (2026-07-31)
 
 Root cause (dai log diagnostici beta.3/4): il Chatbot proponeva l'automazione con

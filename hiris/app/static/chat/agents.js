@@ -91,21 +91,11 @@
     }
   }
 
-  async function setActive(agentId, agentName) {
-    if (agentId === state.activeAgentId) return;
-    state.activeAgentId = agentId;
-    state.els.messages.innerHTML = '';
-    state.els.messages.appendChild(state.els.welcome);
-    state.els.welcome.style.display = '';
-    state.hasMessages = false;
-    var titleEl = document.getElementById('header-title');
-    if (titleEl && titleEl.firstChild) titleEl.firstChild.nodeValue = agentName + ' ';
-    updateAgentPill(agentName);
-    state.agentTurnCounts[agentId] = 0;
-    updateTurnCounter();
-    checkTurnLimit();
-    // Capture local id: if the user clicks another agent before history loads,
-    // a stale response would otherwise rewrite the new agent's empty chat.
+  /* Carica e mostra la history salvata di `agentId`. Il guard sul confronto con
+     l'agente attivo evita che una risposta stale (l'utente cambia agente prima
+     che la fetch torni) riscriva la chat del nuovo agente. Estratta da setActive
+     per essere riusata al boot (restore). */
+  async function applyHistory(agentId) {
     var localId = agentId;
     try {
       var r = await fetch('api/chatbots/' + agentId + '/chat-history');
@@ -122,7 +112,36 @@
         checkTurnLimit();
       }
     } catch (e) {}
+  }
+
+  async function setActive(agentId, agentName) {
+    if (agentId === state.activeAgentId) return;
+    state.activeAgentId = agentId;
+    /* Ricorda l'agente attivo: la pagina chat e' separata da config, quindi
+       tornarci = reload pieno; senza questo activeAgentId ripartiva sempre da
+       'hiris-default' e si perdeva la conversazione dell'agente in uso. */
+    try { window.localStorage.setItem('hiris_active_agent', agentId); } catch (e) {}
+    state.els.messages.innerHTML = '';
+    state.els.messages.appendChild(state.els.welcome);
+    state.els.welcome.style.display = '';
+    state.hasMessages = false;
+    var titleEl = document.getElementById('header-title');
+    if (titleEl && titleEl.firstChild) titleEl.firstChild.nodeValue = agentName + ' ';
+    updateAgentPill(agentName);
+    state.agentTurnCounts[agentId] = 0;
+    updateTurnCounter();
+    checkTurnLimit();
+    await applyHistory(agentId);
     load();
+  }
+
+  /* Boot: setActive carica la history SOLO al cambio agente (guard su id), quindi
+     al primo mount la conversazione dell'agente attivo non veniva mai ricaricata
+     -> tornando alla chat da config si vedeva una chat vuota pur essendo salvata
+     lato server (per chatbot_id). restore() ricarica la history dell'agente
+     attivo (ripristinato da localStorage in state.js), senza il guard di cambio. */
+  async function restore() {
+    await applyHistory(state.activeAgentId);
   }
 
   window.HirisChatAgents = {
@@ -133,5 +152,6 @@
     updateGreeting: updateGreeting,
     load: load,
     setActive: setActive,
+    restore: restore,
   };
 })();

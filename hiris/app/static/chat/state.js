@@ -33,7 +33,13 @@
     /* Mutable — read/written directly by the other chat/*.js modules
        (window.HirisChatState.activeAgentId = ...), same shared-state shape
        the single inline <script> used to have as bare `var`s. */
-    activeAgentId: 'hiris-default',
+    /* Ripristinato dall'ultima sessione (localStorage): la pagina chat e'
+       separata da config, quindi tornarci e' un reload pieno -- senza questo si
+       ripartiva sempre da 'hiris-default' perdendo l'agente in uso. */
+    activeAgentId: (function() {
+      try { return window.localStorage.getItem('hiris_active_agent') || 'hiris-default'; }
+      catch (e) { return 'hiris-default'; }
+    })(),
     hasMessages: false,
     agentMaxTurns: {},
     agentTurnCounts: {},

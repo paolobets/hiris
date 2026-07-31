@@ -79,13 +79,18 @@
   }
 
   function showTyping() {
+    /* Indicatore "sta elaborando" stile code/terminale (issue #3): un prompt col
+       caret lampeggiante + barrette monospace che scorrono come codice in
+       scrittura. Contenuto statico (nessun input utente) -> innerHTML sicuro. */
     var row = document.createElement('div');
     row.className = 'typing-row';
     row.id = 'typing-indicator';
     row.innerHTML =
       '<div class="avatar">' + state.HIRIS_AVATAR + '</div>' +
-      '<div class="typing-bubble">' +
-      '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>' +
+      '<div class="thinking-code" role="status" aria-label="HIRIS sta elaborando">' +
+        '<span class="tk-prompt">&rsaquo;</span>' +
+        '<span class="tk-stream"><i></i><i></i><i></i><i></i><i></i></span>' +
+        '<span class="tk-label">elaboro</span>' +
       '</div>';
     state.els.messages.appendChild(row);
     state.els.messages.scrollTop = state.els.messages.scrollHeight;

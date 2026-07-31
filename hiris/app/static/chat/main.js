@@ -17,6 +17,9 @@
     }).catch(function() {});
 
     window.HirisChatAgents.load();
+    /* Ricarica la history dell'agente attivo: senza questo, tornando alla chat
+       da config (reload pieno) si vedeva una chat vuota pur essendo salvata. */
+    window.HirisChatAgents.restore();
     loadUsage();
     window.HirisChatAgents.updateGreeting();
     setInterval(window.HirisChatAgents.load, 30000);
