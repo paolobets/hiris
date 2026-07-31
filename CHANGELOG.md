@@ -1,5 +1,21 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.2] — Notifiche: apri HIRIS al tap + leggibilità (2026-07-31)
+
+Dalla live-verify: le notifiche della Companion aprivano la Dashboard home ed
+erano poco leggibili. Ora:
+
+- **Il tap apre HIRIS.** Ogni push HIRIS porta un `clickAction`/`url` alla UI
+  ingress dell'add-on (`/hassio/ingress/<slug>`, ricavato dal Supervisor); il
+  pulsante "Apri HIRIS" del pending punta allo stesso path (prima era rotto).
+  Se lo slug non è disponibile, il deep-link viene omesso (nessuna regressione).
+  I pending rossi restano **solo-OTP**: il deep-link è navigazione, non approva.
+- **Più leggibili.** Canale dedicato "HIRIS" e, per il testo lungo, un `subject`.
+- **"Nuovo dall'ultima visita".** All'apertura, la Dashboard del Brain evidenzia
+  (e scrolla su) gli elementi del feed più recenti della tua ultima apertura —
+  così, qualunque notifica tu tocchi, vedi subito cosa è nuovo. Stato locale
+  per-dispositivo; rispetta `prefers-reduced-motion`.
+
 ## [1.1.0-beta.1] — Agenti v1.1 Fase 2 + 2.5 (2026-07-31, build di verifica)
 
 Build **dev/beta** per la live-verify sul campo — non è la release 1.1.0 (che
