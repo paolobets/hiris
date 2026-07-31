@@ -38,8 +38,13 @@
 
   function updateBubble(row, text) {
     if (!row) return;
+    /* Se era una bolla "in elaborazione" (showThinking) ferma il timer che scorre
+       e togli lo stile animato prima di scrivere la risposta reale. */
+    if (row._thinkingTimer) { clearInterval(row._thinkingTimer); row._thinkingTimer = null; }
     var bubble = row.querySelector('.bubble');
-    if (bubble) bubble.innerHTML = formatContent(text);
+    if (bubble) { bubble.classList.remove('thinking-live'); bubble.innerHTML = formatContent(text); }
+    var timeEl = row.querySelector('.msg-time');
+    if (timeEl && !timeEl.textContent) timeEl.textContent = nowHHMM();
   }
 
   function appendDebug(tools) {
@@ -97,10 +102,42 @@
     return row;
   }
 
+  function showThinking() {
+    /* Placeholder per la risposta via abbonamento (202): invece del vecchio testo
+       "HIRIS sta pensando…", il LOGO HIRIS che pulsa + label nei colori del logo +
+       un timer che scorre, cosi' si vede che NON e' bloccato. Contenuto statico
+       (nessun input utente) -> innerHTML sicuro. updateBubble() ferma il timer e
+       sostituisce col testo quando la risposta arriva. */
+    if (!state.hasMessages) { state.els.welcome.style.display = 'none'; state.hasMessages = true; }
+    var row = document.createElement('div');
+    row.className = 'msg-row assistant';
+    row.innerHTML =
+      '<div class="avatar thinking-logo">' + state.HIRIS_AVATAR + '</div>' +
+      '<div class="msg-col"><div class="bubble thinking-live">' +
+        '<div class="tl-top">' +
+          '<span class="tl-label">HIRIS sta elaborando</span>' +
+          '<span class="tl-dots"><i></i><i></i><i></i></span>' +
+        '</div>' +
+        '<div class="thinking-timer">0:00</div>' +
+      '</div><div class="msg-time"></div></div>';
+    state.els.messages.appendChild(row);
+    state.els.messages.scrollTop = state.els.messages.scrollHeight;
+    var start = Date.now();
+    var timerEl = row.querySelector('.thinking-timer');
+    row._thinkingTimer = setInterval(function() {
+      var s = Math.floor((Date.now() - start) / 1000);
+      var mm = Math.floor(s / 60);
+      var ss = s % 60;
+      if (timerEl) timerEl.textContent = mm + ':' + (ss < 10 ? '0' + ss : ss);
+    }, 1000);
+    return row;
+  }
+
   window.HirisChatMessages = {
     appendMsg: appendMsg,
     updateBubble: updateBubble,
     appendDebug: appendDebug,
     showTyping: showTyping,
+    showThinking: showThinking,
   };
 })();

@@ -113,10 +113,11 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
 
   await window.HirisChatSend.send('quanto consumo oggi?');
 
-  // Bolla placeholder inserita subito (prima del polling)
-  const bubbles = document.querySelectorAll('.msg-row.assistant .bubble');
-  assert.ok(bubbles.length >= 1, 'la bolla placeholder deve comparire subito');
-  assert.match(bubbles[bubbles.length - 1].textContent, /pensando/i);
+  // Bolla "in elaborazione" (logo pulsante + timer) inserita subito, prima del poll
+  const think = document.querySelector('.msg-row.assistant .bubble.thinking-live');
+  assert.ok(think, 'la bolla "in elaborazione" deve comparire subito');
+  assert.match(think.textContent, /elaborando/i);
+  assert.ok(think.querySelector('.thinking-timer'), 'con il timer che scorre');
 
   // Il polling usa un vero setTimeout(3.5s) (stesso pattern accettato in
   // chat-card.test.mjs per _pollChatReply) -- nessun mock dei timer, per
@@ -174,6 +175,21 @@ test('showTyping mostra l\'indicatore "stile code"', () => {
   const el = document.querySelector('#typing-indicator .thinking-code');
   assert.ok(el, 'l\'indicatore stile code deve comparire');
   assert.ok(el.querySelector('.tk-stream i'), 'con le barrette animate del "codice"');
+});
+
+test('showThinking: logo pulsante + timer; updateBubble ferma il timer e scrive la risposta', () => {
+  const { window, document } = setupChat();
+  const row = window.HirisChatMessages.showThinking();
+  assert.ok(row.querySelector('.avatar.thinking-logo'), 'il logo HIRIS che pulsa');
+  assert.ok(row.querySelector('.bubble.thinking-live .thinking-timer'), 'il timer che scorre');
+  assert.ok(row._thinkingTimer, 'il timer e\' attivo durante l\'attesa');
+
+  window.HirisChatMessages.updateBubble(row, 'Ecco la risposta');
+
+  assert.equal(row._thinkingTimer, null, 'updateBubble ferma il timer');
+  assert.match(row.querySelector('.bubble').textContent, /Ecco la risposta/);
+  assert.equal(row.querySelector('.bubble').classList.contains('thinking-live'), false,
+    'la bolla non e\' piu\' in stato "in elaborazione"');
 });
 
 test('durante la risposta via abbonamento (202) l\'input resta bloccato e un secondo invio non parte', async () => {

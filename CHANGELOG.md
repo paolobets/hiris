@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.9] — Chat: "in elaborazione" col logo HIRIS che pulsa + timer (2026-07-31)
+
+La risposta via abbonamento mostrava il testo statico "HIRIS sta pensando…
+(risposta in arrivo)". Ora al suo posto: il **logo HIRIS che pulsa**, la scritta
+"HIRIS sta elaborando" che scorre **nei colori del logo**, e sotto un **timer che
+conta i secondi** — così si vede a colpo d'occhio che sta lavorando e non è
+bloccato. Alla risposta il timer si ferma e la bolla mostra il testo. Rispetta
+`prefers-reduced-motion`.
+
 ## [1.1.0-beta.8] — Build stamp: sapere QUALE build gira (diagnosi cache) (2026-07-31)
 
 Primo passo per chiudere i problemi di cache della live-verify: un **build stamp**

@@ -100,7 +100,7 @@
       var data = await r.json();
       typing.remove();
       if (r.status === 202 && data.status === 'pending' && data.job_id) {
-        var placeholder = window.HirisChatMessages.appendMsg('assistant', 'HIRIS sta pensando… (risposta in arrivo)');
+        var placeholder = window.HirisChatMessages.showThinking();
         handedOff = true;
         pollChatReply(data.job_id, placeholder);
         return;
