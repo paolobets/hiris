@@ -89,22 +89,32 @@ class HAClient:
         # Update-in-place vs create: HA identifies a UI automation by the {id}
         # in the config URL. To MODIFY an existing automation we must reuse its
         # id — take it from the explicit param, else from the config's own "id"
-        # field (get_automation_config returns it), else mint a fresh one for a
-        # brand-new automation. Without this, every apply minted a new id and so
-        # created a duplicate instead of overwriting the original.
-        aid = str(
-            automation_id
-            or config.get("id")
-            or int(datetime.now(timezone.utc).timestamp() * 1_000_000)
-        )
+        # field (get_automation_config returns it). Se nessuno dei due c'e' ma il
+        # config ha un `alias` che corrisponde UNIVOCAMENTE a un'automazione
+        # esistente, modifichiamo quella: l'LLM spesso propone il fix di
+        # un'automazione SENZA riportarne l'id, e senza questo si creava un
+        # doppione invece di sovrascrivere l'originale (bug live-verify #2).
+        # Solo come ultima risorsa si conia un id nuovo (automazione davvero nuova).
+        aid = str(automation_id or config.get("id") or "")
+        if not aid:
+            alias = config.get("alias")
+            if isinstance(alias, str) and alias.strip():
+                resolved = await self.resolve_automation_id_by_alias(alias.strip())
+                if resolved:
+                    aid = resolved
+        if not aid:
+            aid = str(int(datetime.now(timezone.utc).timestamp() * 1_000_000))
         if not (aid.isascii() and aid.isdigit()):
             return {"error": "automation_id non valido"}
+        # id coerente anche nel body scritto (l'URL identifica l'automazione, ma
+        # teniamo il config allineato).
+        body = {**config, "id": aid}
         url = f"{self._base_url}/api/config/automation/config/{aid}"
         try:
-            async with self._session.post(url, json=config) as resp:
+            async with self._session.post(url, json=body) as resp:
                 if resp.status not in (200, 201):
-                    body = await resp.text()
-                    return {"error": f"HA ha rifiutato la config ({resp.status}): {body[:200]}"}
+                    err = await resp.text()
+                    return {"error": f"HA ha rifiutato la config ({resp.status}): {err[:200]}"}
         except Exception as exc:
             return {"error": f"scrittura automazione fallita: {exc}"}
         # Reload so the new automation becomes active immediately (idempotent).
@@ -114,6 +124,24 @@ class HAClient:
             logger.warning("automation.reload after create failed (automation %s persisted, "
                            "will load on next HA restart): %s", aid, exc)
         return {"ok": True, "id": aid}
+
+    async def resolve_automation_id_by_alias(self, alias: str) -> str | None:
+        """L'id numerico dell'automazione il cui `friendly_name` == alias, SOLO se
+        il match e' UNIVOCO (altrimenti None: ambiguo o assente). Usato per
+        modificare l'automazione giusta quando la proposta non riporta l'id.
+        Non solleva mai (fail-safe): in caso di errore -> None -> id nuovo."""
+        try:
+            autos = await self.get_automations()
+        except Exception:
+            return None
+        ids = []
+        for a in autos or []:
+            attrs = a.get("attributes") or {}
+            if attrs.get("friendly_name") == alias:
+                aid = str(attrs.get("id") or "")
+                if aid.isascii() and aid.isdigit():
+                    ids.append(aid)
+        return ids[0] if len(ids) == 1 else None
 
     @staticmethod
     def _is_slug(value: str) -> bool:

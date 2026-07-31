@@ -1,5 +1,14 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.7] — Modifica automazioni: overwrite anche senza id (per alias) (2026-07-31)
+
+La beta.5 fa scrivere le proposte in HA, ma se il config non riporta l'`id`
+(l'LLM spesso lo omette "modificando") si creava un **doppione** invece di
+sovrascrivere. Ora `create_automation`, quando manca l'id, **risolve per alias**:
+se esiste UNA sola automazione con quel `friendly_name`, modifica quella (riusa
+il suo id); solo se non c'è match (o è ambiguo) conia un id nuovo. Fail-safe: in
+caso di errore nel lookup, comportamento invariato (nuova).
+
 ## [1.1.0-beta.6] — Chat: la conversazione resta + "sta elaborando" (2026-07-31)
 
 - **La chat non sparisce più.** Tornando alla pagina chat dalla configurazione
