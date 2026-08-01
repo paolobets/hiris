@@ -72,6 +72,9 @@ var TOOLS = [
   { id: 'get_ha_automations',     label: 'get_ha_automations',     desc: 'Elenco automazioni HA' },
   { id: 'trigger_automation',     label: 'trigger_automation',     desc: 'Avvia un\'automazione HA' },
   { id: 'toggle_automation',      label: 'toggle_automation',      desc: 'Abilita/disabilita automazione HA' },
+  { id: 'list_dashboards',        label: 'list_dashboards',        desc: 'Elenca le plance (dashboard Lovelace) esistenti' },
+  { id: 'get_dashboard_config',   label: 'get_dashboard_config',   desc: 'Legge viste e card di una plancia esistente' },
+  { id: 'propose_dashboard',      label: 'propose_dashboard',      desc: 'Propone di creare o sostituire una plancia (approvazione dalle Proposte)' },
 ];
 
 var ACTIONS = [

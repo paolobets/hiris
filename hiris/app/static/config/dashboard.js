@@ -295,12 +295,21 @@
       }
       body.innerHTML = props.map(function(p) {
         var typeLabel = PROPOSAL_LABELS[p.type] || ('→ ' + escHtml(p.type || ''));
+        /* Anche da qui si può attivare una proposta: se è una plancia con
+           mode=replace, la sostituisce per intero. L'avviso deve stare dove
+           l'utente decide, non solo nelle altre due viste. (L'azione Annulla
+           resta invece solo nel pannello Proposte della chat.) */
+        var pcfg = p.config || {};
+        var warn = (p.type === 'ha_dashboard' && pcfg.mode === 'replace')
+          ? '<div class="pp-warn">Sostituisce interamente la plancia "' + escHtml(String(pcfg.slug || '')) + '".</div>'
+          : '';
         return '<div class="prop-card" data-ts="' + escHtml(String(p.created_at || '')) + '">' +
           '<div class="prop-title">' +
             '<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;background:var(--accent-tint);color:var(--accent-ink);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);margin-right:6px;vertical-align:middle">' + escHtml(typeLabel) + '</span>' +
             escHtml(p.name) +
           '</div>' +
           '<div class="prop-desc">' + escHtml(p.description || '') + '</div>' +
+          warn +
           '<div class="prop-actions">' +
             '<button class="btn btn-sm btn-primary" data-act="apply" data-pid="' + escHtml(p.id) + '">Attiva</button>' +
             '<button class="btn btn-sm" data-act="reject" data-pid="' + escHtml(p.id) + '">Rifiuta</button>' +

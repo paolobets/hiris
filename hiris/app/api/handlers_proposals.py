@@ -62,7 +62,9 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
         if ha is None:
             return web.json_response({"error": "HA client non disponibile"}, status=503)
         from ..tools.config_tools import apply_ha_config
-        result = await apply_ha_config(ha, proposal.get("config") or {})
+        result = await apply_ha_config(
+            ha, proposal.get("config") or {}, data_dir=request.app.get("data_dir")
+        )
         if not isinstance(result, dict) or result.get("error"):
             msg = result.get("error") if isinstance(result, dict) else "errore sconosciuto"
             return web.json_response(
@@ -106,7 +108,8 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
         applied = await proposal_store.apply(proposal_id)
         return web.json_response({"ok": bool(applied), "agentbot": cleaned})
     # Other proposal types: status-only apply. Con la validazione del tipo alla
-    # creazione (proposal_tools._VALID_PROPOSAL_TYPES) nessuna proposta nota
+    # creazione (proposal_tools._VALID_PROPOSAL_TYPES per automazioni/agent,
+    # dashboard_tools.propose_dashboard per le plance) nessuna proposta nota
     # dovrebbe arrivare qui; se succede e' un tipo non gestito -> NON ingoiare in
     # silenzio (era la causa del bug #2: type='automation' finiva qui senza mai
     # toccare HA, "sembrava applicata" ma non cambiava nulla).

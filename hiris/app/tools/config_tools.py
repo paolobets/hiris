@@ -1,8 +1,14 @@
 from __future__ import annotations
+import logging
 import re
 from typing import Any
 
+from ..proxy.dashboard_backups import save_backup
+
+logger = logging.getLogger(__name__)
+
 VALID_KINDS = frozenset({"dashboard", "script", "scene"})
+VALID_DASHBOARD_MODES = frozenset({"create", "replace"})
 
 _KIND_PROPOSAL_TYPE = {
     "dashboard": "ha_dashboard",
@@ -19,72 +25,25 @@ _MAX_CONFIG_BYTES = 256 * 1024  # cap difensivo sulla dimensione del config
 CREATE_HA_CONFIG_TOOL_DEF = {
     "name": "create_ha_config",
     "description": (
-        "Crea un artefatto di configurazione Home Assistant: una dashboard Lovelace "
-        "('plancia'), uno script o una scena. Dalla chat viene creato subito su HA. "
-        "Le dashboard sono additive (nuova voce in sidebar). Fornisci un config HA valido. "
-        "IMPORTANTE per dashboard grandi (molte stanze/viste): NON generare tutte le viste "
-        "in un colpo solo — supereresti il limite di token e la creazione fallirebbe. "
-        "Crea la dashboard con 1-2 viste iniziali (es. solo la Home), poi aggiungi le altre "
-        "UNA ALLA VOLTA con lo strumento add_dashboard_view."
+        "Crea uno script o una scena Home Assistant. Dalla chat viene creato "
+        "subito su HA. Fornisci un config HA valido. "
+        "Per le plance (dashboard Lovelace) NON usare questo strumento: usa "
+        "propose_dashboard, che passa dall'approvazione dell'utente."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "kind": {"type": "string", "enum": ["dashboard", "script", "scene"]},
+            "kind": {"type": "string", "enum": ["script", "scene"]},
             "name": {"type": "string", "description": "Titolo leggibile dell'artefatto"},
-            "slug": {
-                "type": "string",
-                "description": ("id tecnico. script/scene: a-z 0-9 _ . "
-                               "dashboard: url_path con almeno un trattino (es. 'casa-mia')."),
-            },
+            "slug": {"type": "string", "description": "id tecnico: a-z 0-9 _"},
             "config": {
                 "type": "object",
-                "description": ("Config HA. script: {sequence:[...]}. scene: {entities:{...}}. "
-                               "dashboard: {views:[...]} (config Lovelace)."),
+                "description": "Config HA. script: {sequence:[...]}. scene: {entities:{...}}.",
             },
-            "icon": {"type": "string", "description": "Solo dashboard: icona mdi (opzionale)"},
-            "show_in_sidebar": {"type": "boolean", "description": "Solo dashboard (default true)"},
         },
         "required": ["kind", "name", "slug", "config"],
     },
 }
-
-
-ADD_DASHBOARD_VIEW_TOOL_DEF = {
-    "name": "add_dashboard_view",
-    "description": (
-        "Aggiunge UNA vista (tab/pagina) a una dashboard Lovelace già esistente su HA. "
-        "Usa questo per costruire una dashboard grande in modo incrementale, una stanza/vista "
-        "per chiamata, evitando di superare il limite di token. La dashboard deve già esistere "
-        "(creala prima con create_ha_config)."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "url_path": {
-                "type": "string",
-                "description": "url_path della dashboard esistente (es. 'casa-mia').",
-            },
-            "view": {
-                "type": "object",
-                "description": "Una singola vista Lovelace, es. {title, path, icon, cards:[...]}.",
-            },
-        },
-        "required": ["url_path", "view"],
-    },
-}
-
-
-async def add_dashboard_view(ha_client: Any, url_path: str, view: dict) -> dict:
-    """Validate inputs and append one view to an existing dashboard. Returns
-    {"ok": True, ...} or {"error": ...}; never raises on bad input."""
-    if not isinstance(url_path, str) or not _URL_PATH_RE.match(url_path):
-        return {"error": "url_path non valido: serve un url_path dashboard con un trattino"}
-    if not isinstance(view, dict) or not view:
-        return {"error": "view vuota o non valida"}
-    if len(str(view).encode("utf-8", "ignore")) > _MAX_CONFIG_BYTES:
-        return {"error": "view troppo grande"}
-    return await ha_client.add_dashboard_view(url_path, view)
 
 
 def normalize_config_inputs(inputs: dict) -> dict:
@@ -127,14 +86,18 @@ def normalize_config_inputs(inputs: dict) -> dict:
     }
 
 
-async def apply_ha_config(ha_client: Any, normalized: dict) -> dict:
-    """Materialize a normalized config on HA. Shared by the chat dispatch path and
-    the pending-proposal apply path.
+async def apply_ha_config(ha_client: Any, normalized: dict,
+                          data_dir: str | None = None) -> dict:
+    """Materializza una config normalizzata su HA. Condivisa dal percorso chat e
+    dall'apply di una proposta pending.
 
-    Defensive: `normalized` may originate from a proposal built outside
-    `normalize_config_inputs` (e.g. `create_automation_proposal` via MCP), so required
-    keys are not guaranteed to be present. Never raise KeyError — always return an
-    {"error": ...} dict instead, so callers can turn it into a clean HTTP error."""
+    Difensivo: `normalized` puo' arrivare da una proposta costruita fuori da
+    `normalize_config_inputs` (es. dal gateway MCP), quindi le chiavi non sono
+    garantite. Mai sollevare KeyError: si ritorna sempre un dict {"error": ...}.
+
+    `mode` (solo dashboard): 'create' (default, retro-compatibile con le
+    proposte gia' salvate) crea una nuova plancia; 'replace' sovrascrive la
+    config di una plancia esistente, salvando prima uno snapshot in data_dir."""
     kind = normalized.get("kind")
     if kind not in VALID_KINDS:
         return {"error": "config non valida: kind mancante o non supportato"}
@@ -148,9 +111,39 @@ async def apply_ha_config(ha_client: Any, normalized: dict) -> dict:
         return await ha_client.create_scene(slug, ha_config)
     # kind == "dashboard"
     slug = normalized.get("slug")
-    name = normalized.get("name")
     ha_config = normalized.get("ha_config")
-    if not slug or not name or not isinstance(ha_config, dict):
+    mode = normalized.get("mode") or "create"
+    if mode not in VALID_DASHBOARD_MODES:
+        # Messaggio fisso: il valore arriva da una proposta e stampare il repr
+        # di un oggetto arbitrario non aggiunge nulla di utile al chiamante.
+        return {"error": "mode dashboard non valido: usa 'create' oppure 'replace'"}
+    if not slug or not isinstance(ha_config, dict):
+        return {"error": "config non valida: kind mancante o non supportato"}
+
+    if mode == "replace":
+        # Leggere PRIMA di scrivere: se la config attuale non e' leggibile
+        # (plancia inesistente o in modalita' YAML) si annulla tutto, cosi' non
+        # si sovrascrive mai senza aver messo al sicuro lo stato precedente.
+        current = await ha_client.get_lovelace_config(slug)
+        if not isinstance(current, dict) or current.get("error"):
+            msg = current.get("error") if isinstance(current, dict) else "errore sconosciuto"
+            return {"error": f"plancia non leggibile, sostituzione annullata: {msg}"}
+        if data_dir:
+            if not save_backup(data_dir, slug, current):
+                return {
+                    "error": (
+                        "non e' stato possibile salvare la copia di sicurezza della "
+                        "configurazione attuale della plancia: la sostituzione e' stata "
+                        "annullata e la plancia non e' stata modificata"
+                    )
+                }
+        else:
+            logger.warning(
+                "apply dashboard replace su %s senza data_dir: nessuno snapshot salvato", slug)
+        return await ha_client.save_dashboard_config(slug, ha_config)
+
+    name = normalized.get("name")
+    if not name:
         return {"error": "config non valida: kind mancante o non supportato"}
     return await ha_client.create_dashboard(
         slug, name, ha_config,

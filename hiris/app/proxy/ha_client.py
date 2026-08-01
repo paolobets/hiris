@@ -255,27 +255,47 @@ class HAClient:
             return {"error": "config dashboard vuota o in modalità YAML (non gestita da storage)"}
         return result
 
-    async def add_dashboard_view(self, url_path: str, view: dict) -> dict:
-        """Append a single view to an existing storage-mode dashboard, then save.
-        Read-modify-write so large dashboards can be built one view per call
-        (avoids emitting the whole Lovelace config in a single LLM response).
-        Human-gated upstream (chat-only)."""
-        if not isinstance(view, dict) or not view:
-            return {"error": "view vuota o non valida"}
-        config = await self.get_lovelace_config(url_path)
-        if config.get("error"):
-            return config
-        views = config.get("views")
-        if not isinstance(views, list):
-            views = []
-        views.append(view)
-        config["views"] = views
+    async def list_dashboards(self) -> list[dict] | dict:
+        """Elenca le dashboard Lovelace (storage mode) via WS.
+        Ritorna una lista di {url_path, title, mode} oppure {"error": ...}."""
+        got = await self._ws_command("lovelace/dashboards/list", {})
+        if not got or not got.get("success"):
+            return {"error": f"elenco dashboard non leggibile: {self._ws_error(got)}"}
+        result = got.get("result")
+        if not isinstance(result, list):
+            return {"error": "elenco dashboard vuoto o non valido"}
+        out = []
+        for d in result:
+            if isinstance(d, dict):
+                out.append({
+                    "url_path": d.get("url_path"),
+                    "title": d.get("title"),
+                    "mode": d.get("mode"),
+                })
+        return out
+
+    async def save_dashboard_config(self, url_path: str, config: dict) -> dict:
+        """Sovrascrive la config di una dashboard storage-mode esistente.
+        NON crea la dashboard: usare create_dashboard per quello.
+
+        Home Assistant ammette DUE forme di config Lovelace valide: quella a
+        viste ({"views": [...]}) e quella a strategia ({"strategy": {...}},
+        senza 'views') usata dalle dashboard generate da template. Qui le
+        accettiamo entrambe perche' il client HA deve accettare cio' che HA
+        accetta: altrimenti il ripristino di uno snapshot "strategy" (pulsante
+        Annulla dopo un replace) verrebbe rifiutato con 502 pur avendo lo
+        snapshot su disco. La validazione stretta che pretende 'views' resta
+        invece in tools/dashboard_tools.propose_dashboard, dove il contenuto e'
+        scritto da un LLM: il tool accetta solo cio' che il modello puo'
+        legittimamente proporre. La distinzione e' voluta."""
+        if not isinstance(config, dict) or not ("views" in config or "strategy" in config):
+            return {"error": "config dashboard non valida (serve 'views' o 'strategy')"}
         saved = await self._ws_command(
             "lovelace/config/save", {"url_path": url_path, "config": config}
         )
         if not saved or not saved.get("success"):
-            return {"error": f"salvataggio vista fallito: {self._ws_error(saved)}"}
-        return {"ok": True, "url_path": url_path, "views": len(views)}
+            return {"error": f"salvataggio config dashboard fallito: {self._ws_error(saved)}"}
+        return {"ok": True, "url_path": url_path}
 
     async def get_automation_config(self, automation_id: str) -> dict:
         """Return the config (YAML-equivalent dict) of a UI-managed automation.

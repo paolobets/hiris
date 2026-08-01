@@ -86,6 +86,28 @@ async def test_create_proposal_rejects_unknown_type(store):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("bad_type", ["ha_dashboard", "ha_script", "ha_scene"])
+async def test_create_proposal_rejects_config_types(store, bad_type):
+    """Scorciatoia chiusa: questi tipi qui salterebbero la validazione
+    fail-closed di propose_dashboard / create_ha_config (url_path, viste,
+    dimensione, titolo). Le plance si propongono solo con propose_dashboard."""
+    res = await create_automation_proposal(store, **_sample_args(proposal_type=bad_type))
+    assert "error" in res
+    assert "proposal_id" not in res
+    assert "propose_dashboard" in res["error"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("alias,expected", [("automation", "ha_automation"),
+                                            ("agent", "hiris_agent")])
+async def test_create_proposal_aliases_still_accepted(store, alias, expected):
+    """La restrizione dei tipi non deve rompere gli alias gia' gestiti."""
+    res = await create_automation_proposal(store, **_sample_args(proposal_type=alias))
+    saved = await store.get(res["proposal_id"])
+    assert saved["type"] == expected
+
+
+@pytest.mark.asyncio
 async def test_create_proposal_hiris_agent_config_untouched(store):
     """A hiris_agent proposal must not have its config['id'] touched (the id
     logic is scoped to ha_automation only)."""

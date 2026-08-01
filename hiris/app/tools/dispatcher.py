@@ -31,7 +31,8 @@ from .memory_tools import handle_recall_memory as _handle_recall_memory, handle_
 from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
 from .proposal_tools import create_automation_proposal
-from .config_tools import normalize_config_inputs, apply_ha_config, add_dashboard_view
+from .config_tools import normalize_config_inputs, apply_ha_config
+from .dashboard_tools import propose_dashboard
 from .knowledge_tools import (
     handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
 )
@@ -549,14 +550,36 @@ class ToolDispatcher:
                     automation_id=inputs.get("automation_id"),
                 )
             if name == "create_ha_config":
+                # Le plance non si creano piu' direttamente da qui: devono
+                # passare da propose_dashboard e dall'approvazione dell'utente.
+                # Il kind 'dashboard' e' sparito dall'input_schema, ma lo schema
+                # non e' una garanzia forte (il modello puo' comunque emettere
+                # un valore fuori enum): senza questo guard la rimozione
+                # sarebbe solo cosmetica e la scrittura diretta resterebbe
+                # raggiungibile. normalize_config_inputs/apply_ha_config
+                # continuano ad accettare 'dashboard' perche' servono all'apply
+                # della proposta (chat e MCP), che e' gia' dietro il gate umano.
+                if inputs.get("kind") == "dashboard":
+                    return {"error": ("Le plance non si creano con create_ha_config: "
+                                      "usa propose_dashboard, che passa "
+                                      "dall'approvazione dell'utente.")}
                 try:
                     normalized = normalize_config_inputs(inputs)
                 except ValueError as exc:
                     return {"error": str(exc)}
                 return await apply_ha_config(self._ha, normalized)
-            if name == "add_dashboard_view":
-                return await add_dashboard_view(
-                    self._ha, inputs.get("url_path", ""), inputs.get("view", {})
+            if name == "list_dashboards":
+                return await self._ha.list_dashboards()
+            if name == "get_dashboard_config":
+                return await self._ha.get_lovelace_config(inputs.get("url_path", ""))
+            if name == "propose_dashboard":
+                return await propose_dashboard(
+                    self._proposal_store,
+                    inputs.get("mode", ""),
+                    inputs.get("url_path", ""),
+                    inputs.get("config", {}),
+                    inputs.get("reason", ""),
+                    title=inputs.get("title"),
                 )
             if name == "save_knowledge" and self._knowledge_store:
                 return await handle_save_knowledge(

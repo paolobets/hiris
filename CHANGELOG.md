@@ -1,5 +1,24 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.11] — Le plance si creano e si modificano per proposta (2026-08-01)
+
+HIRIS puo' ora **creare una nuova plancia** (dashboard Lovelace) e **modificare
+quelle esistenti**, ma non le scrive piu' di sua iniziativa: propone, e tu
+approvi dalla sezione Proposte — esattamente come per le automazioni. Prima le
+dashboard erano l'unico caso in cui la chat scriveva su Home Assistant senza
+passare da una revisione.
+
+Nuovi strumenti: `list_dashboards` ed `get_dashboard_config` per leggere le
+plance esistenti, `propose_dashboard` per proporre una creazione o una
+sostituzione. Le proposte di sostituzione lo dicono a chiare lettere, e prima
+di sovrascrivere HIRIS salva uno **snapshot** della configurazione precedente:
+se il risultato non convince, "Annulla" la ripristina con un click (ultimi 3
+snapshot per plancia).
+
+Rimossi gli strumenti di scrittura diretta delle dashboard
+(`add_dashboard_view`, e il tipo `dashboard` da `create_ha_config`); script e
+scene restano invariati.
+
 ## [1.1.0-beta.10] — Proposte nella chat + fix "Errore di rete" dalla Dashboard (2026-07-31)
 
 **Bug.** Attivare una proposta dalla **Dashboard** dava "Errore di rete", mentre
