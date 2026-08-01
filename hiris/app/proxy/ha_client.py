@@ -23,6 +23,14 @@ _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 # dimensione va limitata alla fonte.
 # Il logbook di una settimana puo' contenere decine di migliaia di voci.
 MAX_LOGBOOK_ENTRIES = 200
+# Finestra massima interrogabile dal logbook. Il cap sulle voci limita la
+# risposta, non il costo della query: senza un tetto sulle ore HA scandisce
+# l'intero database del recorder. 168 ore = 7 giorni, quanto basta per "cosa e'
+# successo questa settimana?" e non di piu' (il recorder di default ne conserva
+# 10, quindi oltre non c'e' comunque granche' da leggere).
+MAX_LOGBOOK_HOURS = 168
+# Finestra usata quando `hours` non e' un numero interpretabile.
+DEFAULT_LOGBOOK_HOURS = 24
 # Template accettato in ingresso: oltre questa soglia non e' piu' una domanda
 # ma un payload.
 MAX_TEMPLATE_LEN = 2000
@@ -36,10 +44,16 @@ logger = logging.getLogger(__name__)
 
 
 def _truncate(text: str, cap: int) -> str:
-    """Tronca `text` a `cap` caratteri marcandolo, marcatore incluso nel cap."""
+    """Tronca `text` a `cap` caratteri marcandolo, marcatore incluso nel cap.
+
+    Il risultato non supera mai `cap`. Se `cap` e' cosi' piccolo da non poter
+    ospitare il marcatore si taglia e basta: meglio perdere il marcatore che
+    sforare il limite dichiarato."""
     if len(text) <= cap:
         return text
-    return text[:max(0, cap - len(_TRUNC_MARK))] + _TRUNC_MARK
+    if cap <= len(_TRUNC_MARK):
+        return text[:max(0, cap)]
+    return text[:cap - len(_TRUNC_MARK)] + _TRUNC_MARK
 
 
 class HAClient:
@@ -437,16 +451,35 @@ class HAClient:
         """Cronologia eventi via GET /api/logbook/<ISO start>.
 
         `entity_id` filtra su una singola entita' (None = tutta la casa),
-        `hours` e' la finestra all'indietro da adesso. Ritorna al piu'
-        MAX_LOGBOOK_ENTRIES voci {when, name, message, entity_id}, tenendo le
-        piu' recenti; [] se il dato non e' disponibile."""
+        `hours` e' la finestra all'indietro da adesso, normalizzata fra 1 e
+        MAX_LOGBOOK_HOURS (valori non numerici valgono DEFAULT_LOGBOOK_HOURS).
+        Ritorna al piu' MAX_LOGBOOK_ENTRIES voci {when, name, message,
+        entity_id}, tenendo le piu' recenti; [] se il dato non e' disponibile.
+        Non solleva mai: ogni fallimento vale come "dato non disponibile".
+
+        TRONCAMENTO — una lista lunga esattamente MAX_LOGBOOK_ENTRIES voci
+        significa quasi certamente che le voci PIU' VECCHIE della finestra sono
+        state scartate. Il tipo di ritorno non ospita un flag, quindi il
+        chiamante che confeziona la risposta per l'utente DEVE controllare
+        `len(voci) == MAX_LOGBOOK_ENTRIES` e dichiarare il troncamento:
+        altrimenti l'LLM conclude che "non e' successo altro". Vale lo stesso
+        per la finestra: se `hours` e' stato clampato a MAX_LOGBOOK_HOURS il
+        periodo coperto e' piu' corto di quello richiesto."""
         if entity_id is not None and not _ENTITY_ID_RE.match(str(entity_id)):
             logger.warning("get_logbook: entity_id non valido: %r", entity_id)
             return []
+        # `hours` arriva direttamente da una tool-call dell'LLM: puo' essere
+        # None, una stringa, NaN o un numero fuori scala. Si normalizza in
+        # spazio float e si clampa PRIMA di costruire il timedelta, perche'
+        # int(inf), int(10**12) come ore e timedelta(hours=18_000_000)
+        # sollevano OverflowError, che non deve mai raggiungere il chiamante.
         try:
-            window = max(1, int(hours))
-        except (TypeError, ValueError):
-            window = 24
+            numeric = float(hours)
+        except Exception:
+            numeric = float(DEFAULT_LOGBOOK_HOURS)
+        if numeric != numeric:  # NaN: non confrontabile, vale come assente
+            numeric = float(DEFAULT_LOGBOOK_HOURS)
+        window = int(min(float(MAX_LOGBOOK_HOURS), max(1.0, numeric)))
         now = datetime.now(timezone.utc)
         start = (now - timedelta(hours=window)).isoformat()
         # start sta nel path (come get_history); end_time ed entity stanno nella
@@ -468,7 +501,7 @@ class HAClient:
         if not isinstance(data, list):
             return []
         entries = []
-        for item in data[-MAX_LOGBOOK_ENTRIES:]:
+        for item in data:
             if not isinstance(item, dict):
                 continue
             entries.append({
@@ -477,7 +510,9 @@ class HAClient:
                 "message": item.get("message"),
                 "entity_id": item.get("entity_id"),
             })
-        return entries
+        # Cap DOPO il filtro: troncare prima farebbe restituire meno voci del
+        # massimo pur essendocene di valide piu' vecchie.
+        return entries[-MAX_LOGBOOK_ENTRIES:]
 
     async def render_template(self, template: str) -> dict:
         """Valuta un template Jinja di HA via POST /api/template.

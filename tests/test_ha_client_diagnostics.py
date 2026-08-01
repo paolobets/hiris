@@ -15,8 +15,10 @@ from unittest.mock import AsyncMock, MagicMock
 from hiris.app.proxy.ha_client import (
     HAClient,
     MAX_LOGBOOK_ENTRIES,
+    MAX_LOGBOOK_HOURS,
     MAX_TEMPLATE_LEN,
     MAX_TEMPLATE_RESPONSE_LEN,
+    _truncate,
 )
 
 
@@ -51,6 +53,13 @@ def _fake_session(client, method, resp=None, exc=None):
     client._session = MagicMock()
     setattr(client._session, method, MagicMock(side_effect=_call))
     return calls
+
+
+def _start_ore_indietro(url: str) -> float:
+    """Quante ore indietro rispetto ad adesso punta lo start ISO nel path."""
+    parsed = urlsplit(url)
+    start = datetime.fromisoformat(unquote(parsed.path.split("/api/logbook/")[1]))
+    return (datetime.now(timezone.utc) - start).total_seconds() / 3600
 
 
 # --------------------------------------------------------------------------
@@ -229,6 +238,81 @@ async def test_get_logbook_skips_non_dict_entries(client):
     out = await client.get_logbook(entity_id=None, hours=1)
     assert out == [{"when": "t", "name": "n", "message": "m",
                     "entity_id": "light.x"}]
+
+
+@pytest.mark.asyncio
+async def test_get_logbook_caps_after_filtering(client):
+    """Il cap si applica DOPO aver scartato le voci non valide: altrimenti si
+    restituiscono meno voci del massimo pur avendone di valide piu' vecchie."""
+    payload = [{"when": f"t{i}", "name": "n", "message": "m",
+                "entity_id": "light.cucina"}
+               for i in range(MAX_LOGBOOK_ENTRIES)]
+    payload += ["non un dict"] * 100
+    _fake_session(client, "get", _resp(200, json_data=payload))
+    out = await client.get_logbook(entity_id=None, hours=24)
+
+    assert len(out) == MAX_LOGBOOK_ENTRIES
+    assert out[0]["when"] == "t0"
+
+
+# --- normalizzazione di `hours` -------------------------------------------
+# `hours` arriva direttamente da una tool-call dell'LLM: puo' essere assurdo o
+# allucinato. Nessun valore deve mai sollevare verso il chiamante.
+
+_ORE_OSTILI = [-5, 0, None, "abc", float("nan"), float("inf"), 18_000_000, 10**12]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hours", _ORE_OSTILI)
+async def test_get_logbook_never_raises_on_hostile_hours(client, hours):
+    _fake_session(client, "get", _resp(200, json_data=[]))
+    assert await client.get_logbook(entity_id=None, hours=hours) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hours", [-5, 0, 0.4])
+async def test_get_logbook_clamps_hours_to_minimum(client, hours):
+    """Finestra non positiva: si clampa a un'ora, non si sbaglia il verso."""
+    calls = _fake_session(client, "get", _resp(200, json_data=[]))
+    await client.get_logbook(entity_id=None, hours=hours)
+
+    assert abs(_start_ore_indietro(calls[0][0]) - 1) < 0.02
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hours", [None, "abc", float("nan"), object()])
+async def test_get_logbook_falls_back_on_non_numeric_hours(client, hours):
+    """Valore non convertibile: finestra di default di 24 ore."""
+    calls = _fake_session(client, "get", _resp(200, json_data=[]))
+    await client.get_logbook(entity_id=None, hours=hours)
+
+    assert abs(_start_ore_indietro(calls[0][0]) - 24) < 0.02
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hours", [float("inf"), 18_000_000, 10**12,
+                                   MAX_LOGBOOK_HOURS + 1])
+async def test_get_logbook_clamps_hours_to_maximum(client, hours):
+    """Valori enormi: la finestra e' limitata a MAX_LOGBOOK_HOURS, cosi' HA non
+    deve scandire l'intero database del recorder."""
+    calls = _fake_session(client, "get", _resp(200, json_data=[]))
+    await client.get_logbook(entity_id=None, hours=hours)
+
+    assert abs(_start_ore_indietro(calls[0][0]) - MAX_LOGBOOK_HOURS) < 0.02
+
+
+# --------------------------------------------------------------------------
+# _truncate
+# --------------------------------------------------------------------------
+
+def test_truncate_never_exceeds_cap():
+    """Il contratto e' "marcatore incluso nel cap": con un cap troppo piccolo
+    per ospitarlo si taglia e basta, ma il cap non si sfora mai."""
+    assert _truncate("abc", 10) == "abc"
+    for cap in (0, 1, 5, 10, 11, 12, 50):
+        assert len(_truncate("x" * 5000, cap)) <= cap
+    lungo = _truncate("x" * 5000, 100)
+    assert len(lungo) == 100 and lungo.endswith("[troncato]")
 
 
 # --------------------------------------------------------------------------
