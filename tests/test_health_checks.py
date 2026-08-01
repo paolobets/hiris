@@ -144,3 +144,4 @@ def test_updates_available_input_vuoto_o_malformato():
     assert hc.check_updates_available(["x", None]) == []
     out = hc.check_updates_available(["x", {"name": "Core", "update_type": "core"}])
     assert len(out) == 1 and out[0]["evidence"]["count"] == 1
+    assert out[0]["title"] == "1 aggiornamento disponibile"

@@ -243,9 +243,12 @@ def check_updates_available(updates):
         nome = u.get("name") or u.get("update_type") or "sconosciuto"
         versione = u.get("version_latest")
         nomi.append(f"{nome} {versione}" if versione else str(nome))
+    quanti = len(voci)
+    titolo = ("1 aggiornamento disponibile" if quanti == 1
+              else f"{quanti} aggiornamenti disponibili")
     return [{
         "check_id": "updates_available", "severity": "info",
-        "title": f"{len(voci)} aggiornamenti disponibili",
+        "title": titolo,
         "evidence": {"count": len(voci), "items": nomi},
         "suggested_fix": "Rivedi e installa gli aggiornamenti dalle impostazioni di Home Assistant.",
         "fix_kind": "manual",
