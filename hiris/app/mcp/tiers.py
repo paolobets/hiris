@@ -33,6 +33,11 @@ TOOLS: list[ToolDef] = [
             "Read the full configuration (YAML-equivalent) of a Home Assistant "
             "automation created via the UI. Pass its entity_id, object_id or numeric "
             "id (use get_ha_automations to list them). READ-only."),
+    ToolDef("get_advisories", Tier.READ, "get_advisories",
+            "Segnalazioni di salute aperte rilevate dal Brain di HIRIS (batterie scariche, "
+            "entita' non disponibili, automazioni rotte, domini pericolosi abilitati). "
+            "Filtro opzionale per gravita' ('high'/'warn'/'info'). Sola lettura: non chiude "
+            "ne' modifica una segnalazione."),
     ToolDef("recall_knowledge", Tier.READ, "recall_knowledge",
             "Cerca nella knowledge base HIRIS e negli insight storici settimanali (non sensibili). "
             "Es: tendenze o variazioni recenti."),

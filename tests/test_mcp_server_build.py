@@ -4,11 +4,11 @@ from hiris.app.mcp.tiers import TOOLS, get_tool
 from hiris.app.mcp.server import build_mcp
 
 
-def test_catalog_has_13_tools_no_bridge():
+def test_catalog_has_14_tools_no_bridge():
     names = {t.name for t in TOOLS}
     assert "call_service" in names and get_tool("call_service").hiris_tool == "call_ha_service"
     assert "claim_reasoning_job" not in names and "submit_decision" not in names
-    assert len(TOOLS) == 13
+    assert len(TOOLS) == 14  # +get_advisories (READ)
 
 
 @pytest.mark.asyncio

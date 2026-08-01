@@ -75,6 +75,7 @@ var TOOLS = [
   { id: 'list_dashboards',        label: 'list_dashboards',        desc: 'Elenca le plance (dashboard Lovelace) esistenti' },
   { id: 'get_dashboard_config',   label: 'get_dashboard_config',   desc: 'Legge viste e card di una plancia esistente' },
   { id: 'propose_dashboard',      label: 'propose_dashboard',      desc: 'Propone di creare o sostituire una plancia (approvazione dalle Proposte)' },
+  { id: 'get_advisories',         label: 'get_advisories',         desc: 'Segnalazioni di salute aperte rilevate dal Brain' },
 ];
 
 var ACTIONS = [

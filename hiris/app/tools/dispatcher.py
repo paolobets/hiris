@@ -30,6 +30,7 @@ from .http_tools import http_request
 from .memory_tools import handle_recall_memory as _handle_recall_memory, handle_save_memory as _handle_save_memory
 from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
+from .advisory_tools import get_advisories
 from .proposal_tools import create_automation_proposal
 from .config_tools import normalize_config_inputs, apply_ha_config
 from .dashboard_tools import propose_dashboard
@@ -127,6 +128,7 @@ class ToolDispatcher:
         embedding_provider: Any = None,
         memory_retention_days: int | None = None,
         health_monitor: Any = None,
+        advisory_store: Any = None,
         proposal_store: Any = None,
         knowledge_store: Any = None,
         embedder: Any = None,
@@ -144,6 +146,7 @@ class ToolDispatcher:
         self._embedder = embedding_provider
         self._memory_retention_days = memory_retention_days
         self._health_monitor = health_monitor
+        self._advisory_store = advisory_store
         self._proposal_store = proposal_store
         self._knowledge_store = knowledge_store
         # Use dedicated embedder if provided, otherwise fall back to the memory embedder
@@ -528,6 +531,10 @@ class ToolDispatcher:
                 )
             if name == "get_ha_health":
                 return get_ha_health(self._health_monitor, inputs.get("sections") or ["all"])
+            if name == "get_advisories":
+                # `or None`: una severity vuota vale "nessun filtro", non un
+                # valore fuori enum da respingere.
+                return get_advisories(self._advisory_store, inputs.get("severity") or None)
             if name == "create_automation_proposal":
                 # Explicit up-front validation: the LLM's tool call does not
                 # hard-guarantee every "required" input_schema key is actually

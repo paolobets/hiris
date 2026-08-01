@@ -1523,6 +1523,14 @@ async def _on_startup(app: web.Application) -> None:
     from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
+
+    # Archivio delle segnalazioni del Brain. Creato QUI, prima del dispatcher,
+    # perche' il tool get_advisories lo riceve per iniezione: il resto del
+    # cervello proattivo (piu' sotto) usa lo stesso oggetto.
+    from .brain.advisory_store import AdvisoryStore
+    advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
+    app["advisory_store"] = advisory_store
+
     # Thin wrapper binding the module-level request_confirmation_stepup to
     # this app instance; see request_confirmation_stepup for the actual
     # no-identity guard and yellow/red actionable logic.
@@ -1545,6 +1553,7 @@ async def _on_startup(app: web.Application) -> None:
         embedding_provider=embedder,
         memory_retention_days=memory_retention_days,
         health_monitor=health_monitor,
+        advisory_store=advisory_store,
         proposal_store=proposal_store,
         knowledge_store=knowledge_store,
         embedder=embedder,
@@ -1581,11 +1590,8 @@ async def _on_startup(app: web.Application) -> None:
     app["suggestion_store"] = suggestion_store
 
     from .brain.reasoning_log import ReasoningLog
-    from .brain.advisory_store import AdvisoryStore
     reasoning_log = ReasoningLog(os.path.join(data_dir, "brain_reasoning.db"))
     app["reasoning_log"] = reasoning_log
-    advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
-    app["advisory_store"] = advisory_store
 
     async def _gather_context(wake) -> dict:
         # Best-effort friendly_name from the entity cache; falls back to the

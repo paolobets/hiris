@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 # Read tools are always available to the gateway (non-destructive).
 READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
-              "get_history", "recall_knowledge", "get_automation_config"]
+              "get_history", "recall_knowledge", "get_automation_config",
+              "get_advisories"]
 
 # Propose / schedule tools the gateway may always reach (non-destructive).
 # create_task is intentionally excluded: when confirm_actions=false the gateway
