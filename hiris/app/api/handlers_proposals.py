@@ -62,7 +62,9 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
         if ha is None:
             return web.json_response({"error": "HA client non disponibile"}, status=503)
         from ..tools.config_tools import apply_ha_config
-        result = await apply_ha_config(ha, proposal.get("config") or {})
+        result = await apply_ha_config(
+            ha, proposal.get("config") or {}, data_dir=request.app.get("data_dir")
+        )
         if not isinstance(result, dict) or result.get("error"):
             msg = result.get("error") if isinstance(result, dict) else "errore sconosciuto"
             return web.json_response(
