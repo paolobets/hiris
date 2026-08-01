@@ -150,6 +150,32 @@ async def test_restore_non_tocca_gli_snapshot_delle_altre_plance(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_restore_non_consuma_uno_snapshot_salvato_nel_frattempo(tmp_path):
+    """La scrittura verso HA e' un await: in quella finestra un apply 'replace'
+    concorrente (secondo tab, gateway MCP) puo' salvare un nuovo snapshot per
+    la stessa plancia. Il consumo e' per identita', quindi non deve toccare
+    quello nuovo: e' l'unica via di ritorno di quella sostituzione."""
+    riapplicata = {"views": [{"title": "RIAPPLICATA"}]}
+    save_backup(str(tmp_path), "casa-mia", riapplicata)
+
+    class HAConcorrente(FakeHA):
+        async def save_dashboard_config(self, url_path, config):
+            # Mentre HA scrive, un altro percorso salva il proprio snapshot.
+            save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "CONCORRENTE"}]})
+            return await super().save_dashboard_config(url_path, config)
+
+    ha = HAConcorrente()
+    resp = await handle_restore_dashboard(
+        FakeRequest({"ha_client": ha, "data_dir": str(tmp_path)}))
+    # Per l'utente il ripristino e' avvenuto davvero: 200, non un errore.
+    assert resp.status == 200
+    assert ha.saved == ("casa-mia", riapplicata)
+    # Lo snapshot della sostituzione concorrente e' ancora li'.
+    assert latest_backup(str(tmp_path), "casa-mia") == {"views": [{"title": "CONCORRENTE"}]}
+    assert [v["url_path"] for v in list_backups(str(tmp_path))] == ["casa-mia"]
+
+
+@pytest.mark.asyncio
 async def test_restore_resta_un_successo_se_il_consumo_fallisce(tmp_path, monkeypatch):
     """La plancia e' stata davvero ripristinata: un problema nel consumare lo
     snapshot non deve diventare un errore in faccia all'utente. Resta un 200,

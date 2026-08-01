@@ -129,15 +129,25 @@ def latest_backup(data_dir: str, url_path: str) -> dict | None:
     return cfg if isinstance(cfg, dict) else None
 
 
-def discard_latest_backup(data_dir: str, url_path: str) -> bool:
-    """Consuma lo snapshot piu' recente di una plancia: quello che
-    `latest_backup` restituirebbe.
+def discard_latest_backup(data_dir: str, url_path: str, config: dict) -> bool:
+    """Consuma lo snapshot piu' recente di una plancia, ma solo se e'
+    ancora quello che il chiamante ha appena riapplicato.
 
     Serve dopo un ripristino riuscito: quella config e' tornata a essere lo
     stato corrente della plancia, quindi continuare a offrirla come "annulla"
     sarebbe un'operazione a vuoto. Toglierla dal ring e' l'unico modo perche'
     l'elenco degli snapshot dica la verita' anche dopo un refresh del browser,
     senza chiedere all'interfaccia di ricordarsi cosa ha gia' ripristinato.
+
+    Il consumo e' per IDENTITA', non per posizione: fra il `latest_backup` che
+    ha letto la config e questa chiamata c'e' la scrittura verso Home Assistant,
+    che e' un `await`. In quella finestra un altro percorso (un apply 'replace'
+    da un secondo tab, o dal gateway MCP) puo' appendere un nuovo snapshot per
+    la stessa plancia: togliere "l'ultimo per posizione" cancellerebbe proprio
+    la rete di sicurezza appena creata da quella sostituzione concorrente,
+    lasciandola senza via di ritorno. Percio' `config` e' la config che ci si
+    aspetta di rimuovere: se l'ultima entry non coincide non si tocca nulla e
+    si ritorna False, tracciando il motivo lato server.
 
     Ne toglie UNO solo: le versioni ancora precedenti restano ripristinabili,
     e le altre plance non vengono toccate. Se la plancia resta senza snapshot
@@ -159,6 +169,20 @@ def discard_latest_backup(data_dir: str, url_path: str) -> bool:
     if not isinstance(entries, list) or not entries:
         # Niente da consumare: non si riscrive nulla, cosi' un restore su una
         # plancia senza snapshot non tocca il file degli altri.
+        return False
+    last = entries[-1]
+    if not isinstance(last, dict) or last.get("config") != config:
+        # Fail-closed sull'identita': l'ultima entry non e' quella riapplicata.
+        # Rimuoverla vorrebbe dire buttare via lo snapshot di qualcun altro;
+        # meglio lasciare una voce di troppo nell'elenco, che si consuma da se'
+        # al prossimo ripristino. Solo lato server: al chiamante torna False.
+        logger.warning(
+            "dashboard_backups: lo snapshot piu' recente di '%s' non e' quello appena "
+            "ripristinato (probabile salvataggio concorrente durante la scrittura verso "
+            "Home Assistant); non viene consumato nulla per non cancellare la via di "
+            "ritorno di quella sostituzione.",
+            url_path,
+        )
         return False
     restanti = entries[:-1]
     if restanti:
@@ -194,7 +218,14 @@ def list_backups(data_dir: str) -> list[dict]:
         saved_at = last.get("saved_at")
         if not isinstance(saved_at, str) or not saved_at:
             saved_at = None
-        count = sum(1 for e in entries if isinstance(e, dict))
+        # Stesso criterio di ripristinabilita' usato qui sopra, non "quante
+        # entry ci sono": un elenco che deve dire la verita' non puo' contare
+        # versioni che il ripristino scarterebbe. Il frontend usa questo numero
+        # per capire se, dopo un Annulla, resta qualcosa di ancora precedente.
+        count = sum(
+            1 for e in entries
+            if isinstance(e, dict) and isinstance(e.get("config"), dict)
+        )
         voci.append({"url_path": url_path, "saved_at": saved_at, "count": count})
     # Gli istanti sono ISO 8601 UTC ("+00:00" fisso): l'ordine lessicografico
     # coincide con quello cronologico. Le voci senza istante vanno in fondo:

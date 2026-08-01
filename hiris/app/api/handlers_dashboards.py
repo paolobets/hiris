@@ -48,7 +48,12 @@ async def handle_restore_dashboard(request: web.Request) -> web.Response:
     # plancia. Continuare a elencarlo come "annulla" sarebbe un no-op che
     # dopo un refresh riproporrebbe di annullare cio' che e' gia' annullato:
     # l'elenco del server deve restare l'unica fonte di verita'.
-    if not discard_latest_backup(data_dir, url_path):
+    # Si passa la config appena riapplicata, non "l'ultima per posizione":
+    # la scrittura verso HA qui sopra e' un await, e in quella finestra un
+    # apply concorrente puo' aver appeso un nuovo snapshot per la stessa
+    # plancia. Consumare quello cancellerebbe la via di ritorno di una
+    # sostituzione che l'utente non ha ancora nemmeno visto.
+    if not discard_latest_backup(data_dir, url_path, config):
         # La plancia e' stata ripristinata davvero: per l'utente e' un
         # successo. Resta una voce di troppo nell'elenco, non un errore.
         logger.warning(

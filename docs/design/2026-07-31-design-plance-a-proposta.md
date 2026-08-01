@@ -130,6 +130,25 @@ ricordarsi nulla (sopravvive quindi anche a un refresh). Le versioni più
 vecchie restano ripristinabili; se HA rifiuta la scrittura lo snapshot **non**
 viene consumato, perché il ripristino non è avvenuto e va poter riprovare.
 
+Il consumo è **per identità, non per posizione**: fra la lettura dello snapshot
+e la sua rimozione c'è la scrittura verso HA (un `await`), e in quella finestra
+un apply `replace` concorrente (secondo tab, gateway MCP) può appendere un nuovo
+snapshot per la stessa plancia. `discard_latest_backup` riceve la config
+riapplicata e rimuove l'ultima entry **solo se coincide**; altrimenti non tocca
+nulla e ritorna `False` — meglio una voce di troppo nell'elenco che cancellare
+la via di ritorno di quella sostituzione. Il restore resta comunque un 200: la
+plancia è stata ripristinata davvero.
+
+Il `count` esposto da `GET /api/dashboards/backups` conta solo le versioni
+**ripristinabili** (stesso criterio di `latest_backup`), e serve al frontend per
+dire la verità nella striscia: con più di uno snapshot la plancia non è
+«sostituita» — può essere appena stata ripristinata — e il pulsante porta a una
+versione ancora precedente. Dopo un restore riuscito la pagina toglie quella
+voce dalla propria cache prima di richiedere l'elenco: non è memoria locale di
+«cosa ho già annullato» (l'elenco del server resta l'unica verità), è recepire
+ciò che il server ha appena confermato, così un aggiornamento fallito non lascia
+a schermo un pulsante che al secondo click scenderebbe di un'altra versione.
+
 ### D. Gating e visibilità
 
 - **Chi può usarli:** solo il Chatbot (chat). Brain e Agentbot restano esclusi:
@@ -167,6 +186,9 @@ dell'implementazione.
   riportato.
 - Restore → ri-applica l'ultimo snapshot e, **solo se la scrittura riesce**, lo
   consuma: l'elenco non lo propone più; un restore fallito lo lascia dov'è.
+- Restore con salvataggio concorrente durante la scrittura verso HA → il
+  consumo per identità non tocca lo snapshot nuovo; esito 200 per l'utente.
+- `count` conta solo le versioni ripristinabili, non le entry malformate.
 - Lo store tiene al massimo 3 snapshot per `url_path`.
 - Una proposta `ha_dashboard` non finisce mai nel ramo status-only.
 
@@ -175,6 +197,12 @@ dell'implementazione.
   `replace`.
 - Dopo un `replace` applicato compare l'azione «Annulla», che chiama
   l'endpoint di restore.
+- Con più di una versione ripristinabile la striscia non dichiara la plancia
+  «sostituita» e offre esplicitamente la versione ancora precedente.
+- Restore riuscito seguito da un aggiornamento dell'elenco fallito → la voce
+  non ricompare (e non si può partire un secondo restore).
+- Se invece il server continua a elencare quella voce, l'affordance torna:
+  la verità resta la sua, la pagina non se lo ricorda per conto proprio.
 
 ## Rischi
 

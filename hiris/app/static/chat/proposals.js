@@ -15,8 +15,9 @@
    stesso peso di "ho appena sbagliato": vedi RECENT_MS.
 
    Un ripristino riuscito consuma lo snapshot lato server (è tornato a essere
-   lo stato corrente della plancia): qui non si tiene traccia di nulla, basta
-   ricaricare l'elenco. */
+   lo stato corrente della plancia): qui non si tiene traccia di nulla per
+   conto proprio, si toglie dalla cache la voce che il server ha appena
+   dichiarato consumata e si ricarica l'elenco. */
 (function() {
   var TYPE_LABELS = {
     ha_automation: '→ automazione HA',
@@ -99,12 +100,24 @@
   }
 
   /* Undo recente: la sostituzione è di poche ore fa, quasi certamente un
-     errore che si vuole annullare. Prominente, com'era. */
+     errore che si vuole annullare. Prominente, com'era.
+
+     Il testo segue `count`, cioè quante versioni ripristinabili restano per
+     quella plancia. Con una sola, il click annulla l'ultima sostituzione e la
+     striscia lo dice. Con più di una non si può affermare che la plancia sia
+     "sostituita": può essere appena stata ripristinata, e il pulsante porta a
+     una versione ancora più vecchia. Dirlo com'è evita che chi crede di
+     annullare scenda invece di un'altra versione. */
   function recentBar(b) {
     var safe = esc(b.url_path);
+    var altreVersioni = (Number(b.count) || 0) > 1;
+    var testo = altreVersioni
+      ? 'Plancia "' + safe + '": è disponibile una versione ancora precedente.'
+      : 'Plancia "' + safe + '" sostituita. Puoi ripristinare la versione precedente.';
+    var azione = altreVersioni ? 'Ripristina' : 'Annulla';
     return '<div class="pp-undo-bar">'
-      + '<span>Plancia "' + safe + '" sostituita. Puoi ripristinare la versione precedente.</span>'
-      + '<button class="btn pp-undo" type="button" data-pp-undo="' + safe + '">Annulla</button>'
+      + '<span>' + testo + '</span>'
+      + '<button class="btn pp-undo" type="button" data-pp-undo="' + safe + '">' + azione + '</button>'
       + '</div>';
   }
 
@@ -218,10 +231,19 @@
     if (!window.confirm(msg)) return;
     HirisProposalsCore.restoreDashboard(urlPath).then(function(res) {
       if (!res.ok) { window.alert(res.error || 'Errore'); return; }
-      /* Il ripristino consuma lo snapshot sul server: basta ricaricare lo
-         stato e la voce sparisce da sé. Niente memoria locale di ciò che è
-         già stato ripristinato: sarebbe una seconda fonte di verità sullo
-         stesso fatto, e sopravviverebbe solo fino al refresh. */
+      /* Il server ha appena confermato di aver consumato quello snapshot:
+         recepiamo la sua risposta nella cache PRIMA di richiedere l'elenco.
+         Non è il ritorno della memoria locale di "cosa ho già annullato" (la
+         seconda fonte di verità che questo lavoro ha eliminato, che teneva
+         nascosto lato pagina ciò che il server continuava a elencare): qui non
+         si ricorda nulla di proprio, si applica un fatto appena comunicato dal
+         server e subito dopo si richiede l'elenco, che resta l'unica verità.
+         Serve perché `loadBackups` tiene l'ultimo elenco noto quando la
+         richiesta fallisce: senza questa potatura, un aggiornamento andato
+         male dopo un ripristino riuscito lascerebbe la voce a schermo e un
+         secondo click ripristinerebbe una versione ancora più vecchia. */
+      backups = backups.filter(function(b) { return b && b.url_path !== urlPath; });
+      renderUndoBars();
       load();
     }, function() { window.alert('Errore di rete'); });
   }

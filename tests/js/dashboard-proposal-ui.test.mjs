@@ -61,7 +61,10 @@ function wireFetch(window, state) {
       if (state.onRestore) state.onRestore();
       return okJson({ ok: true });
     }
-    if (u.indexOf('dashboards/backups') !== -1) return okJson({ backups: state.backups || [] });
+    if (u.indexOf('dashboards/backups') !== -1) {
+      if (state.failBackups) throw new Error('rete giu');
+      return okJson({ backups: state.backups || [] });
+    }
     if (state.failProposals) throw new Error('rete giu');
     return okJson({ proposals: state.pending || [] });
   };
@@ -125,6 +128,32 @@ test('uno snapshot recente (< 24h) mostra l\'undo prominente, senza averlo appli
   assert.match(btn.textContent, /Annulla/);
   assert.equal(document.querySelector('.pp-undo-old'), null,
     'uno snapshot recente non e\' un ripristino storico');
+});
+
+test('con piu\' versioni la striscia non dichiara la plancia "sostituita"', async () => {
+  /* Dopo un primo Annulla la striscia riappare: ma quella plancia e' appena
+     stata RIPRISTINATA, non sostituita, e il pulsante porta a una versione
+     ancora piu' vecchia. `count > 1` e' il segnale che distingue i due casi:
+     il testo deve seguirlo, o promette un annullamento che non e' tale. */
+  const { window, document } = loadScripts(
+    ['config/api.js', 'config/proposals-core.js', 'chat/proposals.js'],
+    { html: fixtureHtml() },
+  );
+  wireFetch(window, {
+    pending: [],
+    backups: [{ url_path: 'casa-mia', saved_at: isoAgo(5 * 60 * 1000), count: 2 }],
+  });
+
+  await window.HirisChatProposals.load();
+
+  const bar = document.querySelector('#chat-proposals-list .pp-undo-bar');
+  assert.ok(bar, 'l\'azione resta disponibile e prominente');
+  assert.match(bar.textContent, /casa-mia/);
+  assert.ok(!/sostituit/i.test(bar.textContent),
+    'con piu\' di uno snapshot non si puo\' affermare che la plancia sia stata sostituita');
+  assert.match(bar.textContent, /ancora precedente/,
+    'va detto che si torna a una versione ancora anteriore');
+  assert.ok(bar.querySelector('[data-pp-undo]'), 'il ripristino resta un click');
 });
 
 test('uno snapshot piu\' vecchio di 24h e\' storico, discreto e con la data leggibile', async () => {
@@ -213,10 +242,14 @@ test('il ripristino chiama l\'endpoint giusto e fa sparire la voce', async () =>
 
 test('la voce sparisce perche\' il server non la elenca piu\', non perche\' la pagina se lo ricorda', async () => {
   /* Nessuna memoria di sessione lato pagina: se lo snapshot restasse elencato
-     dal server, l'affordance dovrebbe restare visibile. E' il contrario del
-     vecchio comportamento (voce nascosta in locale), che dopo un refresh
-     riproponeva di annullare cio' che era gia' stato annullato: una sola
-     fonte di verita', quella del server. */
+     dal server, l'affordance dovrebbe tornare visibile appena l'elenco viene
+     riletto. E' il contrario del vecchio comportamento (voce nascosta in
+     locale e ricordata per sempre), che dopo un refresh riproponeva di
+     annullare cio' che era gia' stato annullato: una sola fonte di verita',
+     quella del server.
+     La cache locale viene sfoltita subito dopo un ripristino riuscito, ma solo
+     per recepire cio' che il server ha appena confermato: se poi il server
+     smentisce continuando a elencare la voce, vince il server. */
   const { window, document } = loadScripts(
     ['config/api.js', 'config/proposals-core.js', 'chat/proposals.js'],
     { html: fixtureHtml() },
@@ -238,6 +271,53 @@ test('la voce sparisce perche\' il server non la elenca piu\', non perche\' la p
 
   assert.ok(document.querySelector('[data-pp-undo]'),
     'la pagina non deve nascondere per conto suo cio\' che il server continua a elencare');
+
+  // E non se lo ricorda nemmeno piu' avanti: nessuna lista di "gia' annullati"
+  // che sopravviva ai ricaricamenti successivi.
+  await window.HirisChatProposals.load();
+  assert.ok(document.querySelector('[data-pp-undo]'),
+    'a ogni ricaricamento l\'affordance va riderivata dall\'elenco del server');
+});
+
+test('dopo un ripristino riuscito la voce non ricompare se l\'aggiornamento fallisce', async () => {
+  /* Il server ha consumato lo snapshot: e' un fatto acquisito. Se la richiesta
+     di aggiornamento dell'elenco fallisce, `loadBackups` tiene l'ultimo elenco
+     noto (giusto: un'azione ancora possibile non deve sparire per un errore di
+     rete) - ma quella voce non e' piu' possibile. Lasciarla a schermo farebbe
+     credere che il click non abbia funzionato: si riclicca e, se esiste uno
+     snapshot piu' vecchio, si scende di un'altra versione senza volerlo. */
+  const { window, document } = loadScripts(
+    ['config/api.js', 'config/proposals-core.js', 'chat/proposals.js'],
+    { html: fixtureHtml() },
+  );
+  const state = {
+    pending: [],
+    backups: [{ url_path: 'casa-mia', saved_at: isoAgo(60 * 1000), count: 2 }],
+  };
+  // Il ripristino riesce, ma da li' in poi l'elenco non si carica piu'.
+  state.onRestore = () => { state.failBackups = true; };
+  const calls = wireFetch(window, state);
+  window.confirm = () => true;
+  window.alert = () => {};
+
+  initNoPolling(window);
+  await tick(20);
+  assert.ok(document.querySelector('.pp-undo-bar [data-pp-undo]'), 'la striscia deve esserci');
+
+  document.querySelector('.pp-undo-bar [data-pp-undo]').dispatchEvent(
+    new window.Event('click', { bubbles: true }));
+  await tick(20);
+
+  assert.equal(document.querySelector('[data-pp-undo]'), null,
+    'la voce appena consumata dal server non deve restare cliccabile');
+
+  // Anche insistendo con i ricaricamenti: finche' l'elenco non torna, quella
+  // voce resta fuori. E nessun secondo /restore puo' essere partito.
+  await window.HirisChatProposals.load();
+  assert.equal(document.querySelector('[data-pp-undo]'), null,
+    'nemmeno un ricaricamento fallito la deve far ricomparire');
+  assert.equal(calls.filter((c) => c.url.indexOf('/restore') !== -1).length, 1,
+    'un solo ripristino: non si deve poter scendere di un\'altra versione');
 });
 
 test('il rendering delle strisce e\' idempotente: due load non duplicano nulla', async () => {
