@@ -162,3 +162,49 @@ async def test_dispatch_render_template_senza_template_non_tocca_ha():
     out = await d.dispatch("render_template", {})
     assert "error" in out
     assert ha.chiamate_template == []
+
+
+class _FakeAdvisoryStore:
+    """Store finto: restituisce le righe attive gia' pronte."""
+
+    def __init__(self, righe):
+        self.righe = righe
+
+    def list(self, *, status=None):
+        return [r for r in self.righe if status is None or r["status"] == status]
+
+
+def _advisory(ref, entity_id=None, **extra):
+    evidenza = {"entity_id": entity_id} if entity_id else {}
+    evidenza.update(extra)
+    return {"id": 1, "check_id": "low_battery", "severity": "warn",
+            "title": "t", "evidence": evidenza, "suggested_fix": "fix",
+            "fix_kind": "manual", "status": "open", "source_ref": ref,
+            "ts_created": "2026-07-30T08:00:00Z",
+            "ts_updated": "2026-07-31T08:00:00Z", "resolved_auto": 0}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_advisories_applica_il_perimetro():
+    # Stesso vincolo di get_logbook: l'evidenza di una segnalazione nomina
+    # entita' di tutta la casa, e il dispatcher deve passarle il perimetro del
+    # chiamante invece di lasciarlo cadere.
+    store = _FakeAdvisoryStore([
+        _advisory("low_battery:light.a", entity_id="light.a"),
+        _advisory("low_battery:lock.front", entity_id="lock.front"),
+    ])
+    d = ToolDispatcher(_FakeHA(), notify_config={}, advisory_store=store)
+    out = await d.dispatch("get_advisories", {}, allowed_entities=["light.*"])
+    assert out["count"] == 1
+    assert out["advisories"][0]["evidence"]["entity_id"] == "light.a"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_advisories_senza_perimetro_vede_tutto():
+    store = _FakeAdvisoryStore([
+        _advisory("low_battery:light.a", entity_id="light.a"),
+        _advisory("low_battery:lock.front", entity_id="lock.front"),
+    ])
+    d = ToolDispatcher(_FakeHA(), notify_config={}, advisory_store=store)
+    out = await d.dispatch("get_advisories", {}, allowed_entities=None)
+    assert out["count"] == 2

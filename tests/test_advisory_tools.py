@@ -224,6 +224,104 @@ def test_il_totale_dichiarato_rispetta_il_filtro_severita():
     assert "truncated" not in res
 
 
+# --- perimetro delle entita' ------------------------------------------------
+# Gemello del filtro di get_logbook (tools/diagnostics_tools.py): l'evidenza di
+# una segnalazione porta identificativi e nomi amichevoli di tutta la casa --
+# la batteria della serratura, l'automazione dell'allarme -- e senza perimetro
+# un bot ristretto alle luci (o un agente reattivo, che ha get_advisories fra i
+# suoi tool) se li legge tutti.
+
+def test_senza_perimetro_vede_tutte_le_segnalazioni():
+    righe = [
+        _riga(id=1, evidence={"entity_id": "light.salotto"}),
+        _riga(id=2, evidence={"entity_id": "lock.portone"}),
+    ]
+    res = get_advisories(_FakeStore(righe), severity=None, allowed_entities=None)
+    assert res["count"] == 2
+    assert "filtered" not in res
+
+
+def test_scarta_le_segnalazioni_di_entita_fuori_perimetro():
+    righe = [
+        _riga(id=1, evidence={"entity_id": "light.salotto"}),
+        _riga(id=2, evidence={"entity_id": "lock.portone", "name": "Portone"}),
+    ]
+    res = get_advisories(_FakeStore(righe), severity=None,
+                         allowed_entities=["light.*"])
+    assert res["count"] == 1
+    assert res["advisories"][0]["evidence"]["entity_id"] == "light.salotto"
+    # Nessuna traccia dell'entita' fuori perimetro, nemmeno il nome amichevole.
+    assert "portone" not in repr(res).lower()
+
+
+def test_dichiara_il_filtro_di_perimetro():
+    # Come fa get_logbook con `filtered`: il modello deve poter dire che sta
+    # vedendo una parte, invece di concludere "non c'e' altro".
+    righe = [
+        _riga(id=1, evidence={"entity_id": "light.salotto"}),
+        _riga(id=2, evidence={"entity_id": "lock.portone"}),
+    ]
+    res = get_advisories(_FakeStore(righe), severity=None,
+                         allowed_entities=["light.*"])
+    assert res["filtered"] == {"shown": 1, "total": 2}
+
+
+def test_perimetro_conserva_le_segnalazioni_di_sistema():
+    # Spazio disco, add-on e aggiornamenti non riguardano un'entita': sono
+    # informazioni di sistema, non di una stanza. Scartarle renderebbe cieco
+    # sulla salute della casa proprio il bot che deve sorvegliarla.
+    righe = [
+        _riga(id=1, check_id="disk_space", evidence={"free_pct": 7, "free_gb": 3.1}),
+        _riga(id=2, check_id="addon_unhealthy", evidence={"slug": "core_samba",
+                                                          "state": "stopped"}),
+        _riga(id=3, check_id="updates_available", evidence={"count": 4,
+                                                            "items": ["Core 2026.7"]}),
+    ]
+    res = get_advisories(_FakeStore(righe), severity=None,
+                         allowed_entities=["light.*"])
+    assert res["count"] == 3
+    assert "filtered" not in res
+
+
+def test_perimetro_vuoto_non_lascia_passare_alcuna_entita():
+    # `[]` e' una decisione, non un'omissione (stessa semantica del dispatcher).
+    righe = [_riga(id=1, evidence={"entity_id": "light.salotto"})]
+    res = get_advisories(_FakeStore(righe), severity=None, allowed_entities=[])
+    assert res["count"] == 0
+    assert res["filtered"] == {"shown": 0, "total": 1}
+
+
+def test_perimetro_restringe_il_campione_di_entita_nell_evidenza():
+    # `entity_no_area` non ha un `entity_id`: e' una voce di sistema e resta.
+    # Ma la sua evidenza porta un CAMPIONE di identificativi di tutta la casa,
+    # che e' la stessa fuga per un'altra strada. `count` resta il totale reale
+    # (lo era gia': i controlli troncano il campione a 50).
+    righe = [_riga(id=1, check_id="entity_no_area", evidence={
+        "count": 3, "entities": ["light.salotto", "lock.portone", "alarm.casa"]})]
+    res = get_advisories(_FakeStore(righe), severity=None,
+                         allowed_entities=["light.*"])
+    voce = res["advisories"][0]
+    assert voce["evidence"]["entities"] == ["light.salotto"]
+    assert voce["evidence"]["count"] == 3
+
+
+def test_troncamento_conta_solo_cio_che_e_dentro_al_perimetro():
+    # `truncated.total` deve descrivere l'elenco che il chiamante puo' vedere:
+    # contarci dentro le voci gia' scartate dal perimetro farebbe riferire
+    # all'utente problemi che non sono nemmeno suoi.
+    righe = [_riga(id=i, evidence={"entity_id": f"lock.p{i}"})
+             for i in range(MAX_ADVISORIES + 5)]
+    righe.append(_riga(id=999, evidence={"entity_id": "light.salotto"}))
+    res = get_advisories(_FakeStore(righe), severity=None,
+                         allowed_entities=["light.*"])
+    assert res["count"] == 1
+    assert "truncated" not in res
+
+
+def test_tool_def_dichiara_il_filtro_di_perimetro():
+    assert "filtered" in GET_ADVISORIES_TOOL_DEF["description"]
+
+
 # --- cap sull'evidenza ------------------------------------------------------
 
 def test_evidence_intatta_non_dichiara_alcun_taglio(store):
@@ -253,6 +351,20 @@ def test_evidence_limitata_nella_dimensione_serializzata():
     assert len(_json.dumps(voce["evidence"], ensure_ascii=False)) <= MAX_EVIDENCE_CHARS
     # La chiave sintetica sopravvive, quella smisurata no, e il taglio e'
     # dichiarato: il modello puo' dire all'utente che sta vedendo una parte.
+    assert voce["evidence"] == {"count": 3}
+    assert voce["evidence_truncated"] == {"shown": 1, "total": 2}
+
+
+def test_evidence_la_chiave_sintetica_sopravvive_a_quella_enorme_che_la_precede():
+    # Gemello del test qui sopra con l'ORDINE INVERTITO. Li' la chiave piccola
+    # viene prima e il caso resta verde anche fermandosi alla prima chiave
+    # smisurata: non pinna nulla. Qui la smisurata viene PRIMA, quindi solo il
+    # "salta e prosegui" (`continue`, non `break`) fa arrivare `count` al
+    # modello -- ed e' proprio `count` che gli permette di riferire il numero
+    # reale invece di dedurlo dai pochi elementi mostrati.
+    grande = {"addons": ["addon-molto-lungo-" + "x" * 80] * 40, "count": 3}
+    res = get_advisories(_FakeStore([_riga(evidence=grande)]), severity=None)
+    voce = res["advisories"][0]
     assert voce["evidence"] == {"count": 3}
     assert voce["evidence_truncated"] == {"shown": 1, "total": 2}
 

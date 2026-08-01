@@ -181,6 +181,10 @@ class AdvisoryStore:
         lessicale di SQLite coincide con quello cronologico. La chiave e' il
         riferimento di deduplica: il silenzio su un problema non copre mai un
         problema diverso.
+
+        La finestra e' chiusa da entrambi i lati. Con il solo estremo inferiore
+        una riga scritta con l'orologio sbagliato in avanti resterebbe "gia'
+        notificata" per sempre, e quel problema non verrebbe mai piu' segnalato.
         """
         elenco = [r for r in (refs or []) if r]
         if not elenco:
@@ -189,8 +193,9 @@ class AdvisoryStore:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT source_ref FROM advisory_notifications "
-                f"WHERE ts_notified >= ? AND source_ref IN ({segnaposto})",
-                [ts_min, *elenco],
+                f"WHERE ts_notified >= ? AND ts_notified <= ? "
+                f"AND source_ref IN ({segnaposto})",
+                [ts_min, _now_iso(), *elenco],
             ).fetchall()
         return {r["source_ref"] for r in rows}
 

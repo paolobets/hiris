@@ -680,6 +680,17 @@ class ClaudeRunner:
             system_blocks.append({"type": "text", "text": context_str})
         effective_model = resolve_model(model, agent_type, self._default_model)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+        # render_template valuta un template Jinja: non ha un entity_id da
+        # filtrare, quindi legge TUTTA la casa per costruzione. Concederlo resta
+        # possibile, ma solo esplicitamente -- e' la casella del Designer, che
+        # avvisa chi la spunta. Senza whitelist esplicita di tool il bot
+        # riceverebbe l'intero catalogo, e un bot con perimetro di entita' si
+        # ritroverebbe in mano proprio lo strumento che quel perimetro lo
+        # scavalca ({{ states('lock.portone') }}) senza che nessuno gliel'abbia
+        # concesso -- ed e' la configurazione piu' comune. Chi NON ha perimetro
+        # vede gia' tutto: togliergli il tool sarebbe una regressione inutile.
+        if not allowed_tools and allowed_entities is not None:
+            tools = [t for t in tools if t["name"] != "render_template"]
         if allowed_endpoints is None:
             tools = [t for t in tools if t["name"] != "http_request"]
         if not self._dispatcher.has_memory:

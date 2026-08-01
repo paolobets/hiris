@@ -584,7 +584,13 @@ class ToolDispatcher:
             if name == "get_advisories":
                 # `or None`: una severity vuota vale "nessun filtro", non un
                 # valore fuori enum da respingere.
-                return get_advisories(self._advisory_store, inputs.get("severity") or None)
+                # Il perimetro va passato: l'evidenza delle segnalazioni nomina
+                # entita' di tutta la casa, e un bot ristretto alle luci (o un
+                # agente reattivo, che ha questo tool fra i suoi) le leggerebbe
+                # tutte. Filtrato dentro get_advisories, come per get_logbook.
+                return get_advisories(self._advisory_store,
+                                      inputs.get("severity") or None,
+                                      allowed_entities=allowed_entities)
             if name == "create_automation_proposal":
                 # Explicit up-front validation: the LLM's tool call does not
                 # hard-guarantee every "required" input_schema key is actually

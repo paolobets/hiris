@@ -196,6 +196,17 @@ def test_memoria_notifiche_riscrive_l_ultima_data(tmp_path):
     s.close()
 
 
+def test_memoria_notifiche_ignora_una_data_nel_futuro(tmp_path):
+    """Un orologio che salta in avanti non deve spegnere le notifiche per
+    sempre. Senza limite superiore, una riga scritta con una data futura
+    resterebbe "notificata di recente" a ogni giro: quel problema non
+    verrebbe mai piu' segnalato all'utente."""
+    s = AdvisoryStore(str(tmp_path / "a.db"))
+    s.registra_notifica("disk_space:host", now="2099-01-01T00:00:00Z")
+    assert s.notificati_dopo(["disk_space:host"], "2026-07-28T00:00:00Z") == set()
+    s.close()
+
+
 def test_memoria_notifiche_si_aggiunge_a_un_archivio_esistente(tmp_path):
     """L'archivio esiste gia' su ogni installazione: aprirlo con lo schema
     nuovo deve aggiungere la memoria senza perdere le segnalazioni."""

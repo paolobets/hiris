@@ -1136,3 +1136,55 @@ def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):
     with open(runner._usage_path, encoding="utf-8") as f:
         data = _json.load(f)  # corrupt file would raise here
     assert data["total_requests"] >= 25
+
+
+# --- render_template e il perimetro delle entita' ---------------------------
+# render_template non ha un entity_id da filtrare: valuta un template Jinja e
+# legge tutta la casa per costruzione. E' concedibile esplicitamente (la
+# checkbox del Designer lo avvisa), ma NON deve arrivare per default a un bot
+# che ha un perimetro di entita': quel perimetro sarebbe carta straccia.
+# Stesso precedente di http_request, due righe piu' sotto nello stesso punto.
+
+async def _tools_di_chat(runner, **kw) -> set:
+    catturati: dict = {}
+
+    async def capture(**kwargs):
+        catturati.update(kwargs)
+        m = MagicMock()
+        m.stop_reason = "end_turn"
+        m.content = [MagicMock(type="text", text="ok")]
+        m.usage.input_tokens = 5
+        m.usage.output_tokens = 2
+        return m
+
+    runner._client.messages.create = capture
+    await runner.chat("Ciao", **kw)
+    return {t["name"] for t in catturati["tools"]}
+
+
+@pytest.mark.asyncio
+async def test_render_template_non_arriva_a_un_bot_con_perimetro(runner):
+    nomi = await _tools_di_chat(runner, allowed_entities=["light.*"])
+    assert "render_template" not in nomi
+    # Il resto del catalogo non deve sparire con lui.
+    assert "get_entity_states" in nomi
+
+
+@pytest.mark.asyncio
+async def test_render_template_resta_a_un_bot_senza_perimetro(runner):
+    # Chi vede gia' tutta la casa non guadagna nulla dallo scavalcamento:
+    # togliergli il tool sarebbe una regressione, non una difesa.
+    nomi = await _tools_di_chat(runner, allowed_entities=None)
+    assert "render_template" in nomi
+
+
+@pytest.mark.asyncio
+async def test_render_template_resta_se_concesso_esplicitamente(runner):
+    # La concessione esplicita e' una decisione dell'operatore, presa davanti
+    # all'avviso della checkbox: deve continuare a funzionare.
+    nomi = await _tools_di_chat(
+        runner,
+        allowed_tools=["render_template", "get_entity_states"],
+        allowed_entities=["light.*"],
+    )
+    assert "render_template" in nomi

@@ -7,6 +7,7 @@ nella dashboard di configurazione: in chat HIRIS non le vede, e alla domanda
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 from typing import Any
@@ -74,7 +75,10 @@ GET_ADVISORIES_TOOL_DEF = {
         "sono. Anche l'evidenza di una singola voce e' limitata: se la voce "
         "contiene 'evidence_truncated', l'evidenza mostrata e' parziale ("
         "'shown' chiavi su 'total') e va riferita come tale, senza dedurne che "
-        "i dettagli mancanti non esistano. Sola lettura: questo tool non puo' "
+        "i dettagli mancanti non esistano. Se la risposta contiene 'filtered', "
+        "alcune segnalazioni riguardano entita' fuori dal tuo perimetro e non "
+        "ti vengono mostrate ('shown' su 'total'): dillo all'utente invece di "
+        "concludere che non ci sia altro. Sola lettura: questo tool non puo' "
         "chiudere, archiviare o modificare una segnalazione."
     ),
     "input_schema": {
@@ -138,17 +142,75 @@ def _evidenza_limitata(grezza: Any) -> tuple[dict, dict | None]:
     return tenute, {"shown": len(tenute), "total": totale}
 
 
-def _voce(riga: dict) -> dict:
+def _nel_perimetro(entity_id: Any, allowed_entities: list[str] | None) -> bool:
+    """Vero se questo identificativo e' fra le entita' concesse al chiamante.
+
+    `None` -> nessuna restrizione; `[]` -> nulla passa (stessa semantica di
+    tutto il dispatcher: una whitelist vuota e' una decisione, non
+    un'omissione). Stessa funzione di tools/diagnostics_tools.py, tenuta qui e
+    non importata perche' li' e' privata al filtro della cronologia.
+    """
+    if allowed_entities is None:
+        return True
+    if not isinstance(entity_id, str):
+        return False
+    return any(fnmatch.fnmatch(entity_id, pat) for pat in allowed_entities)
+
+
+def _voce_nel_perimetro(riga: dict, allowed_entities: list[str] | None) -> bool:
+    """Vero se la segnalazione puo' essere mostrata a questo chiamante.
+
+    Il criterio e' l'entita' che l'evidenza dichiara in `entity_id`: batteria
+    scarica, entita' non disponibile, automazione rotta, dominio pericoloso su
+    una singola entita'. Una segnalazione SENZA `entity_id` -- spazio disco,
+    add-on fermo, aggiornamenti disponibili -- non riguarda una stanza: e'
+    informazione di sistema e resta visibile, altrimenti si renderebbe cieco
+    sulla salute della casa proprio il bot che deve sorvegliarla. Qui la scelta
+    e' quindi opposta a quella del logbook (fail-closed sulle voci senza
+    entita'): li' una voce senza entity_id e' comunque un evento della casa,
+    qui e' un fatto dell'installazione.
+    """
+    if allowed_entities is None:
+        return True
+    evidenza = riga.get("evidence")
+    if not isinstance(evidenza, dict) or "entity_id" not in evidenza:
+        return True
+    return _nel_perimetro(evidenza.get("entity_id"), allowed_entities)
+
+
+def _voce(riga: dict, allowed_entities: list[str] | None = None) -> dict:
     """Proietta una riga dello store sui soli campi destinati al modello."""
     voce = {c: riga.get(c) for c in _CAMPI_ESPOSTI}
-    voce["evidence"], taglio = _evidenza_limitata(riga.get("evidence"))
+    grezza = riga.get("evidence")
+    if (allowed_entities is not None and isinstance(grezza, dict)
+            and isinstance(grezza.get("entities"), list)):
+        # `entity_no_area` non ha un `entity_id` -- e' una voce di sistema e
+        # sopravvive al filtro qui sopra -- ma la sua evidenza porta un
+        # CAMPIONE di identificativi di tutta la casa: la stessa fuga per
+        # un'altra strada. Restringerlo al perimetro non ne cambia il
+        # contratto, perche' e' gia' un estratto (il controllo lo tronca a 50)
+        # e il totale reale sta in `count`.
+        grezza = {**grezza, "entities": [
+            e for e in grezza["entities"] if _nel_perimetro(e, allowed_entities)
+        ]}
+    voce["evidence"], taglio = _evidenza_limitata(grezza)
     if taglio is not None:
         voce["evidence_truncated"] = taglio
     return voce
 
 
-def get_advisories(advisory_store: Any, severity: str | None = None) -> dict:
-    """Segnalazioni attive del Brain, filtrate e limitate per il prompt."""
+def get_advisories(
+    advisory_store: Any,
+    severity: str | None = None,
+    allowed_entities: list[str] | None = None,
+) -> dict:
+    """Segnalazioni attive del Brain, filtrate e limitate per il prompt.
+
+    `allowed_entities` e' il perimetro del chiamante e arriva dal dispatcher:
+    l'evidenza di una segnalazione nomina entita' di tutta la casa (la batteria
+    della serratura, l'automazione dell'allarme), quindi va applicato QUI, alle
+    voci restituite, come gia' fa get_logbook con la cronologia.
+    """
     if advisory_store is None:
         return {"error": "AdvisoryStore non disponibile — controlla i log di avvio"}
     if severity is not None and severity not in SEVERITA:
@@ -182,6 +244,12 @@ def get_advisories(advisory_store: Any, severity: str | None = None) -> dict:
         if r.get("status") in STATI_ATTIVI
         and (severity is None or r.get("severity") == severity)
     ]
+    lette = len(attive)
+    if allowed_entities is not None:
+        attive = [r for r in attive if _voce_nel_perimetro(r, allowed_entities)]
+    # Il perimetro taglia PRIMA del tetto: `truncated` deve descrivere l'elenco
+    # che il chiamante puo' davvero vedere, altrimenti riferirebbe all'utente
+    # dei problemi che non sono nemmeno suoi.
     totale = len(attive)
 
     # Lo store ordina per data di aggiornamento decrescente. Tagliare in
@@ -190,7 +258,7 @@ def get_advisories(advisory_store: Any, severity: str | None = None) -> dict:
     # parita', il sort stabile conserva la recenza dello store.
     attive.sort(key=_rango)
 
-    mostrate = [_voce(r) for r in attive[:MAX_ADVISORIES]]
+    mostrate = [_voce(r, allowed_entities) for r in attive[:MAX_ADVISORIES]]
     risultato: dict = {"advisories": mostrate, "count": len(mostrate)}
     if totale > MAX_ADVISORIES:
         risultato["truncated"] = {
@@ -199,4 +267,9 @@ def get_advisories(advisory_store: Any, severity: str | None = None) -> dict:
             # Senza questo il modello sa quante ne mancano ma non QUALI vede.
             "order": "severity_first",
         }
+    if allowed_entities is not None and totale != lette:
+        # Secondo taglio, di natura diversa dal tetto: qui il totale prima del
+        # filtro lo conosciamo, quindi si dichiara {shown, total} come fa
+        # get_logbook. Senza dichiararlo il modello conclude "non c'e' altro".
+        risultato["filtered"] = {"shown": totale, "total": lette}
     return risultato
