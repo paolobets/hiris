@@ -127,9 +127,16 @@
     }, function() { window.alert('Errore di rete'); });
   }
 
-  /* Annulla: ripristina l'ultimo snapshot della plancia sostituita. */
+  /* Annulla: ripristina l'ultimo snapshot della plancia sostituita.
+     Lo snapshot è quello preso PRIMA dell'ultima sostituzione: se nel
+     frattempo la plancia è stata modificata (a mano in HA, o da un altro
+     apply fatto altrove), il ripristino riporta indietro anche quelle
+     modifiche. Non c'è invalidazione automatica: il rischio va detto qui,
+     dove l'utente decide. */
   function undo(urlPath) {
-    if (!window.confirm('Ripristinare la versione precedente della plancia "' + urlPath + '"?')) return;
+    var msg = 'Ripristinare la plancia "' + urlPath + '" alla versione precedente all\'ultima sostituzione?\n\n'
+      + 'Le modifiche fatte alla plancia dopo quella sostituzione andranno perse.';
+    if (!window.confirm(msg)) return;
     HirisProposalsCore.restoreDashboard(urlPath).then(function(res) {
       if (!res.ok) { window.alert(res.error || 'Errore'); return; }
       delete undoableReplaces[urlPath];

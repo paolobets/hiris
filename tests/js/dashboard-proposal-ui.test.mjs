@@ -88,6 +88,49 @@ test('dopo un replace applicato compare Annulla, che chiama il restore', async (
   assert.equal(restore.opts.method, 'POST');
 });
 
+test('una proposta NON di plancia con mode=replace non diventa annullabile', async () => {
+  /* Cancello di isolamento: solo type=ha_dashboard + mode=replace + slug può
+     finire su /api/dashboards/.../restore. Un altro tipo di proposta con un
+     config omonimo (stesse chiavi, altro significato) non deve essere marcato
+     né offrire l'Annulla: allargare la condizione riaprirebbe la strada a un
+     restore su una plancia che quella proposta non ha mai toccato. */
+  const { window, document } = loadScripts(
+    ['config/api.js', 'config/proposals-core.js', 'chat/proposals.js'],
+    { html: fixtureHtml() },
+  );
+  const impostor = {
+    id: 'p2', type: 'ha_automation', name: 'Luci sera', description: 'x',
+    config: { kind: 'automation', mode: 'replace', slug: 'casa-mia' },
+  };
+  const calls = [];
+  window.fetch = async (url, opts) => {
+    calls.push({ url: String(url), opts: opts || {} });
+    if (String(url).indexOf('/apply') !== -1) return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    if (String(url).indexOf('/restore') !== -1) return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    return { ok: true, status: 200, json: async () => ({ proposals: [impostor] }) };
+  };
+  window.confirm = () => true;
+  window.alert = () => {};
+
+  const realSI = globalThis.setInterval;
+  globalThis.setInterval = () => 0;
+  window.HirisChatProposals.init();
+  globalThis.setInterval = realSI;
+  await tick(10);
+
+  const card = document.querySelector('.pp-card');
+  assert.ok(card, 'la proposta deve comunque essere renderizzata');
+  assert.equal(card.getAttribute('data-pp-mode'), null, 'niente data-pp-mode fuori da ha_dashboard');
+  assert.equal(card.getAttribute('data-pp-slug'), null, 'niente data-pp-slug fuori da ha_dashboard');
+  assert.equal(document.querySelector('.pp-warn'), null, 'niente avviso di sostituzione plancia');
+
+  document.querySelector('.pp-apply').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+
+  assert.equal(document.querySelector('.pp-undo'), null, 'nessun Annulla per un tipo diverso da ha_dashboard');
+  assert.equal(calls.find((c) => c.url.indexOf('/restore') !== -1), undefined, 'nessuna chiamata a /restore');
+});
+
 test('Annulla sopravvive al ricaricamento della lista e sparisce dopo il ripristino', async () => {
   const { window, document } = loadScripts(
     ['config/api.js', 'config/proposals-core.js', 'chat/proposals.js'],
