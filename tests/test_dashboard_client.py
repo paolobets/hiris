@@ -46,8 +46,29 @@ async def test_save_dashboard_config_sends_url_path_and_config():
 
 
 @pytest.mark.asyncio
-async def test_save_dashboard_config_rejects_config_without_views():
+async def test_save_dashboard_config_accepts_strategy_config():
+    """HA ammette anche le config a strategia ({"strategy": {...}}, senza
+    'views'): sono le plance generate da template. Il client deve accettarle,
+    altrimenti il ripristino di uno snapshot di quel tipo (pulsante Annulla)
+    fallirebbe con 502 pur avendo lo snapshot su disco."""
+    ws = FakeWS({"lovelace/config/save": {"success": True}})
+    cfg = {"strategy": {"type": "areas"}}
+    out = await _client(ws).save_dashboard_config("casa-mia", cfg)
+    assert out == {"ok": True, "url_path": "casa-mia"}
+    assert ws.calls[0] == ("lovelace/config/save", {"url_path": "casa-mia", "config": cfg})
+
+
+@pytest.mark.asyncio
+async def test_save_dashboard_config_rejects_config_without_views_or_strategy():
     ws = FakeWS({})
     out = await _client(ws).save_dashboard_config("casa-mia", {"nope": 1})
+    assert "error" in out
+    assert ws.calls == [], "config invalida: non deve partire alcun comando WS"
+
+
+@pytest.mark.asyncio
+async def test_save_dashboard_config_rejects_non_dict():
+    ws = FakeWS({})
+    out = await _client(ws).save_dashboard_config("casa-mia", ["views"])
     assert "error" in out
     assert ws.calls == [], "config invalida: non deve partire alcun comando WS"

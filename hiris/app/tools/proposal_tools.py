@@ -4,11 +4,17 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Tipi che handle_apply_proposal sa APPLICARE davvero. Un tipo fuori da questo
-# set cadrebbe nel ramo "status-only" (marca applied senza toccare HA) -> lo
-# rifiutiamo alla creazione invece di salvarlo e perderlo in silenzio (bug #2).
-_VALID_PROPOSAL_TYPES = frozenset(
-    {"ha_automation", "hiris_agent", "ha_dashboard", "ha_script", "ha_scene"})
+# Tipi che QUESTO tool puo' creare. Un tipo fuori da questo set e' rifiutato
+# alla creazione invece di essere salvato e perso in silenzio nel ramo
+# "status-only" dell'apply (marca applied senza toccare HA, bug #2).
+# Volutamente PIU' STRETTO dei tipi che handle_apply_proposal sa applicare
+# (che include anche ha_dashboard/ha_script/ha_scene, per le proposte gia'
+# salvate): create_automation_proposal non valida nulla di specifico per le
+# plance, quindi accettare qui 'ha_dashboard' sarebbe una scorciatoia per
+# saltare la validazione fail-closed di propose_dashboard (formato url_path,
+# presenza delle viste, limite di dimensione, titolo obbligatorio). Le plance
+# si propongono SOLO con propose_dashboard.
+_VALID_PROPOSAL_TYPES = frozenset({"ha_automation", "hiris_agent"})
 # Alias comuni che gli LLM usano al posto dei valori canonici (root cause bug #2:
 # il Chatbot ha proposto type='automation').
 _PROPOSAL_TYPE_ALIASES = {"automation": "ha_automation", "agent": "hiris_agent"}
@@ -76,7 +82,9 @@ async def create_automation_proposal(
     proposal_type = _PROPOSAL_TYPE_ALIASES.get(proposal_type, proposal_type)
     if proposal_type not in _VALID_PROPOSAL_TYPES:
         return {"error": (f"Tipo proposta non valido: {proposal_type!r}. "
-                          f"Usa uno di: {', '.join(sorted(_VALID_PROPOSAL_TYPES))}")}
+                          f"Usa uno di: {', '.join(sorted(_VALID_PROPOSAL_TYPES))}. "
+                          "Per proporre una plancia Lovelace usa il tool "
+                          "propose_dashboard.")}
     # Bug #2 (overwrite vs duplicato): l'id nel config e' load-bearing all'apply
     # (create_automation vi sovrascrive l'automazione con quell'id). Precedenza:
     # automation_id esplicito > id gia' presente nel config (che l'LLM copia

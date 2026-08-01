@@ -276,9 +276,20 @@ class HAClient:
 
     async def save_dashboard_config(self, url_path: str, config: dict) -> dict:
         """Sovrascrive la config di una dashboard storage-mode esistente.
-        NON crea la dashboard: usare create_dashboard per quello."""
-        if not isinstance(config, dict) or "views" not in config:
-            return {"error": "config dashboard non valida (manca 'views')"}
+        NON crea la dashboard: usare create_dashboard per quello.
+
+        Home Assistant ammette DUE forme di config Lovelace valide: quella a
+        viste ({"views": [...]}) e quella a strategia ({"strategy": {...}},
+        senza 'views') usata dalle dashboard generate da template. Qui le
+        accettiamo entrambe perche' il client HA deve accettare cio' che HA
+        accetta: altrimenti il ripristino di uno snapshot "strategy" (pulsante
+        Annulla dopo un replace) verrebbe rifiutato con 502 pur avendo lo
+        snapshot su disco. La validazione stretta che pretende 'views' resta
+        invece in tools/dashboard_tools.propose_dashboard, dove il contenuto e'
+        scritto da un LLM: il tool accetta solo cio' che il modello puo'
+        legittimamente proporre. La distinzione e' voluta."""
+        if not isinstance(config, dict) or not ("views" in config or "strategy" in config):
+            return {"error": "config dashboard non valida (serve 'views' o 'strategy')"}
         saved = await self._ws_command(
             "lovelace/config/save", {"url_path": url_path, "config": config}
         )

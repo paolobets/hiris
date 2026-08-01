@@ -87,6 +87,13 @@ async def propose_dashboard(proposal_store: Any, mode: str, url_path: str,
         return {"error": f"mode non valido: {mode!r} (usa create|replace)"}
     if not isinstance(url_path, str) or not _URL_PATH_RE.match(url_path):
         return {"error": "url_path non valido: serve un url_path con almeno un trattino (es. 'casa-mia')"}
+    # Volutamente PIU' STRETTO di HAClient.save_dashboard_config, che accetta
+    # anche la forma a strategia ({"strategy": {...}}, senza 'views') perche'
+    # HA la accetta e il ripristino di uno snapshot deve poterla riscrivere.
+    # Qui il contenuto lo scrive un LLM: il tool accetta solo cio' che il
+    # modello puo' legittimamente proporre, cioe' viste esplicite. Una
+    # "strategia" proposta dal modello non sarebbe una plancia che ha davvero
+    # composto, quindi resta fuori.
     if not isinstance(config, dict) or not isinstance(config.get("views"), list):
         return {"error": "config non valida: serve un dict Lovelace con la lista 'views'"}
     if len(str(config).encode("utf-8", "ignore")) > _MAX_CONFIG_BYTES:
