@@ -31,6 +31,11 @@ from .memory_tools import handle_recall_memory as _handle_recall_memory, handle_
 from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
 from .advisory_tools import get_advisories
+from .diagnostics_tools import (
+    DEFAULT_LOGBOOK_HOURS,
+    get_logbook as _get_logbook,
+    render_template as _render_template,
+)
 from .proposal_tools import create_automation_proposal
 from .config_tools import normalize_config_inputs, apply_ha_config
 from .dashboard_tools import propose_dashboard
@@ -258,6 +263,41 @@ class ToolDispatcher:
                     resolution=inputs.get("resolution", "auto"),
                     store=self._history_store,
                 )
+            if name == "get_logbook":
+                # Un entity_id vuoto vale come assente: per il modello "" e
+                # nessun valore significano la stessa cosa (tutta la casa).
+                entity_id = inputs.get("entity_id") or None
+                if entity_id is not None:
+                    # ASIMMETRIA VOLUTA rispetto a get_entity_states/get_history:
+                    # li' l'entita' fuori perimetro si SCARTA dalla lista, qui si
+                    # RIFIUTA la chiamata. L'entita' e' una sola e facoltativa:
+                    # scartarla equivarrebbe a chiedere il logbook dell'INTERA
+                    # casa, cioe' ad allargare il perimetro invece di stringerlo.
+                    if visible_entity_ids and entity_id not in visible_entity_ids:
+                        logger.warning("get_logbook: %r fuori dal contesto visibile", entity_id)
+                        return {"error": f"Entity {entity_id!r} non è fra quelle visibili in questo contesto"}
+                    err = _check_entity_allowed(entity_id, allowed_entities)
+                    if err is not None:
+                        return err
+                # allowed_entities prosegue fino al tool: senza entity_id il
+                # filtro deve valere sulle VOCI restituite, altrimenti bastava
+                # omettere l'entita' per leggere tutta la casa. visible_entity_ids
+                # no: non e' un perimetro di sicurezza ma l'insieme delle entita'
+                # rilevanti per la domanda corrente (SemanticContextMap), quasi
+                # sempre non vuoto — filtrarci le voci renderebbe inutile proprio
+                # la domanda "cosa e' successo ieri sera?".
+                return await _get_logbook(
+                    self._ha,
+                    entity_id=entity_id,
+                    hours=inputs.get("hours", DEFAULT_LOGBOOK_HOURS),
+                    allowed_entities=allowed_entities,
+                )
+            if name == "render_template":
+                # Nessun perimetro di entita' applicabile: un template le legge
+                # tutte per costruzione. E' la ragione per cui questo tool resta
+                # fuori da EVALUATION_ONLY_TOOLS (vedi claude_runner.py) ed e'
+                # concedibile solo esplicitamente a un agente di chat.
+                return await _render_template(self._ha, inputs.get("template"))
             if name == "get_home_status":
                 result = get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
                 return _filter_entities(result, allowed_entities)

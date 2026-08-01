@@ -38,6 +38,16 @@ TOOLS: list[ToolDef] = [
             "entita' non disponibili, automazioni rotte, domini pericolosi abilitati). "
             "Filtro opzionale per gravita' ('high'/'warn'/'info'). Sola lettura: non chiude "
             "ne' modifica una segnalazione."),
+    ToolDef("get_logbook", Tier.READ, "get_logbook",
+            "Cronologia degli eventi di Home Assistant: chi ha acceso cosa, quando e' cambiato "
+            "uno stato. Filtro opzionale per entita' ('entity_id') e finestra in ore ('hours', "
+            "1-168, default 24). Sola lettura. Es: cosa e' successo ieri sera in salotto."),
+    # render_template NON e' esposto al gateway: un template legge qualunque
+    # stato e nessun perimetro di entita' puo' filtrarlo (non ha entity_id da
+    # controllare). Il gateway e' una superficie remota che concede i READ_TOOLS
+    # senza whitelist di entita' (handlers_execute: reads see the whole home):
+    # aggiungerlo li' significherebbe aprire un canale di lettura arbitraria
+    # dall'esterno. Resta chat-only, come deciso in claude_runner.py.
     ToolDef("recall_knowledge", Tier.READ, "recall_knowledge",
             "Cerca nella knowledge base HIRIS e negli insight storici settimanali (non sensibili). "
             "Es: tendenze o variazioni recenti."),

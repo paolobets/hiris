@@ -44,6 +44,10 @@ from .tools.knowledge_tools import (
 )
 from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
 from .tools.advisory_tools import GET_ADVISORIES_TOOL_DEF
+from .tools.diagnostics_tools import (
+    GET_LOGBOOK_TOOL_DEF,
+    RENDER_TEMPLATE_TOOL_DEF,
+)
 from .tools.proposal_tools import CREATE_AUTOMATION_PROPOSAL_TOOL_DEF
 from .tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF
 from .tools.dashboard_tools import (
@@ -200,6 +204,8 @@ ALL_TOOL_DEFS = [
     SAVE_MEMORY_TOOL_DEF,
     GET_HA_HEALTH_TOOL_DEF,
     GET_ADVISORIES_TOOL_DEF,
+    GET_LOGBOOK_TOOL_DEF,
+    RENDER_TEMPLATE_TOOL_DEF,
     CREATE_AUTOMATION_PROPOSAL_TOOL_DEF,
     CREATE_HA_CONFIG_TOOL_DEF,
     LIST_DASHBOARDS_TOOL_DEF,
@@ -226,6 +232,19 @@ EVALUATION_ONLY_TOOLS = frozenset({
     "get_ha_health",  # read-only cached data — safe for proactive monitors
     "get_advisories",  # sola lettura sulle segnalazioni gia' note del Brain:
                        # un agente che sorveglia la casa deve poterle vedere
+    "get_logbook",     # sola lettura sulla cronologia degli eventi: sapere cosa
+                       # e' successo e' esattamente il mestiere di un sorvegliante
+    # render_template excluded ON PURPOSE, and NOT because it writes -- non
+    # scrive nulla, HA si limita a renderizzare. Il motivo e' un altro: un
+    # template Jinja puo' leggere QUALUNQUE stato di Home Assistant, e un agente
+    # non-chat gira proprio SULLO STATO di HA. Il nome o l'attributo di
+    # un'entita' sono testo che un dispositivo (o chi lo controlla) puo'
+    # scegliere: un'entita' battezzata in modo ostile diventa un'istruzione nel
+    # contesto dell'agente, che potrebbe valutare un template arbitrario e
+    # rastrellare l'intera casa senza che nessun perimetro di entita' possa
+    # fermarlo (un template non ha entity_id da filtrare). In chat la stessa
+    # richiesta la fa un umano che sta guardando la risposta: e' un rischio
+    # accettato li' e non altrove. Chat-only.
     # save_memory excluded: write risk in reactive agents (prompt injection via HA state)
     # create_automation_proposal excluded: writes to store — chat-only
     # create_ha_config excluded: writes to HA (script/scene) — chat-only

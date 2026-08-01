@@ -25,3 +25,22 @@ test('il catalogo TOOLS espone get_advisories con etichetta e descrizione', () =
   const ids = voci.map((t) => t.id);
   assert.equal(new Set(ids).size, ids.length);
 });
+
+test('il catalogo TOOLS espone i due tool di diagnosi', () => {
+  loadScripts(['config/templates.js']);
+
+  const voci = globalThis.TOOLS;
+  for (const id of ['get_logbook', 'render_template']) {
+    const voce = voci.find((t) => t.id === id);
+    assert.ok(voce, `${id} manca dal catalogo TOOLS della UI`);
+    assert.equal(voce.label, id);
+    assert.ok(voce.desc && voce.desc.length > 0, 'la checkbox va etichettata per l\'utente');
+  }
+
+  // render_template e' concedibile SOLO da qui, esplicitamente, a un bot di
+  // chat: non e' fra i tool degli agenti autonomi (EVALUATION_ONLY_TOOLS) ne'
+  // fra quelli del gateway MCP. Se sparisse da questo catalogo diventerebbe
+  // irraggiungibile del tutto.
+  const tpl = voci.find((t) => t.id === 'render_template');
+  assert.ok(/chat/i.test(tpl.desc), 'la descrizione deve dire che è per i bot di chat');
+});

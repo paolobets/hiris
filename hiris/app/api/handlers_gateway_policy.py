@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 # Read tools are always available to the gateway (non-destructive).
 READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
               "get_history", "recall_knowledge", "get_automation_config",
-              "get_advisories"]
+              "get_advisories", "get_logbook"]
+# render_template resta FUORI: i READ_TOOLS il gateway li esegue senza whitelist
+# di entita' (handlers_execute: "reads see the whole home"), e un template legge
+# qualunque stato senza offrire un entity_id da filtrare. Sarebbe una lettura
+# arbitraria concessa a una superficie remota. Chat-only, come in claude_runner.
 
 # Propose / schedule tools the gateway may always reach (non-destructive).
 # create_task is intentionally excluded: when confirm_actions=false the gateway
