@@ -1,8 +1,14 @@
 from __future__ import annotations
+import logging
 import re
 from typing import Any
 
+from ..proxy.dashboard_backups import save_backup
+
+logger = logging.getLogger(__name__)
+
 VALID_KINDS = frozenset({"dashboard", "script", "scene"})
+VALID_DASHBOARD_MODES = frozenset({"create", "replace"})
 
 _KIND_PROPOSAL_TYPE = {
     "dashboard": "ha_dashboard",
@@ -127,14 +133,18 @@ def normalize_config_inputs(inputs: dict) -> dict:
     }
 
 
-async def apply_ha_config(ha_client: Any, normalized: dict) -> dict:
-    """Materialize a normalized config on HA. Shared by the chat dispatch path and
-    the pending-proposal apply path.
+async def apply_ha_config(ha_client: Any, normalized: dict,
+                          data_dir: str | None = None) -> dict:
+    """Materializza una config normalizzata su HA. Condivisa dal percorso chat e
+    dall'apply di una proposta pending.
 
-    Defensive: `normalized` may originate from a proposal built outside
-    `normalize_config_inputs` (e.g. `create_automation_proposal` via MCP), so required
-    keys are not guaranteed to be present. Never raise KeyError — always return an
-    {"error": ...} dict instead, so callers can turn it into a clean HTTP error."""
+    Difensivo: `normalized` puo' arrivare da una proposta costruita fuori da
+    `normalize_config_inputs` (es. dal gateway MCP), quindi le chiavi non sono
+    garantite. Mai sollevare KeyError: si ritorna sempre un dict {"error": ...}.
+
+    `mode` (solo dashboard): 'create' (default, retro-compatibile con le
+    proposte gia' salvate) crea una nuova plancia; 'replace' sovrascrive la
+    config di una plancia esistente, salvando prima uno snapshot in data_dir."""
     kind = normalized.get("kind")
     if kind not in VALID_KINDS:
         return {"error": "config non valida: kind mancante o non supportato"}
@@ -148,9 +158,30 @@ async def apply_ha_config(ha_client: Any, normalized: dict) -> dict:
         return await ha_client.create_scene(slug, ha_config)
     # kind == "dashboard"
     slug = normalized.get("slug")
-    name = normalized.get("name")
     ha_config = normalized.get("ha_config")
-    if not slug or not name or not isinstance(ha_config, dict):
+    mode = normalized.get("mode") or "create"
+    if mode not in VALID_DASHBOARD_MODES:
+        return {"error": f"mode dashboard non valido: {mode!r} (usa create|replace)"}
+    if not slug or not isinstance(ha_config, dict):
+        return {"error": "config non valida: kind mancante o non supportato"}
+
+    if mode == "replace":
+        # Leggere PRIMA di scrivere: se la config attuale non e' leggibile
+        # (plancia inesistente o in modalita' YAML) si annulla tutto, cosi' non
+        # si sovrascrive mai senza aver messo al sicuro lo stato precedente.
+        current = await ha_client.get_lovelace_config(slug)
+        if not isinstance(current, dict) or current.get("error"):
+            msg = current.get("error") if isinstance(current, dict) else "errore sconosciuto"
+            return {"error": f"plancia non leggibile, sostituzione annullata: {msg}"}
+        if data_dir:
+            save_backup(data_dir, slug, current)
+        else:
+            logger.warning(
+                "apply dashboard replace su %s senza data_dir: nessuno snapshot salvato", slug)
+        return await ha_client.save_dashboard_config(slug, ha_config)
+
+    name = normalized.get("name")
+    if not name:
         return {"error": "config non valida: kind mancante o non supportato"}
     return await ha_client.create_dashboard(
         slug, name, ha_config,
