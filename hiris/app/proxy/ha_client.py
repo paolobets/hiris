@@ -14,7 +14,32 @@ _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 # path-injection/SSRF via a hostile automation_id (review A/#4).
 _AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
+# entity_id canonico (dominio.oggetto): stessa forma usata da
+# get_calendar_events_range. Serve a rifiutare un entity_id ostile PRIMA di
+# comporlo in un URL.
+_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
+
+# Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
+# dimensione va limitata alla fonte.
+# Il logbook di una settimana puo' contenere decine di migliaia di voci.
+MAX_LOGBOOK_ENTRIES = 200
+# Template accettato in ingresso: oltre questa soglia non e' piu' una domanda
+# ma un payload.
+MAX_TEMPLATE_LEN = 2000
+# Risposta del template (sia il risultato sia il messaggio d'errore di HA, che
+# puo' includere un traceback intero).
+MAX_TEMPLATE_RESPONSE_LEN = 2000
+
+_TRUNC_MARK = " [troncato]"
+
 logger = logging.getLogger(__name__)
+
+
+def _truncate(text: str, cap: int) -> str:
+    """Tronca `text` a `cap` caratteri marcandolo, marcatore incluso nel cap."""
+    if len(text) <= cap:
+        return text
+    return text[:max(0, cap - len(_TRUNC_MARK))] + _TRUNC_MARK
 
 
 class HAClient:
@@ -354,6 +379,131 @@ class HAClient:
             elif " WARNING " in line:
                 warnings += 1
         return {"errors": errors, "warnings": warnings, "top_errors": top_errors}
+
+    @staticmethod
+    def _health_value(value: Any) -> Any:
+        """Appiattisce un valore di system_health in uno scalare presentabile.
+
+        HA restituisce sia scalari sia valori "tipizzati" come
+        {"type": "date", "value": ...}, {"type": "pending"} oppure
+        {"type": "failed", "error": "..."}. Il formato non e' documentato: si
+        riconosce quello che si capisce e si scarta il resto (None = ignora)."""
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        if isinstance(value, dict):
+            if value.get("error"):
+                return _truncate(str(value["error"]), 200)
+            if "value" in value:
+                inner = value["value"]
+                if isinstance(inner, (str, int, float, bool)) or inner is None:
+                    return inner
+                return None
+            if value.get("type"):
+                return str(value["type"])
+        return None
+
+    async def get_system_health(self) -> dict:
+        """Salute nativa delle integrazioni via WS `system_health/info`.
+
+        Ritorna una mappa dominio -> {chiave: valore} con le sole informazioni
+        riconosciute; {} se il dato non e' disponibile. Sola lettura, non
+        solleva mai: ogni fallimento vale come "dato non disponibile"."""
+        try:
+            result = await self._ws_request("system_health/info")
+        except Exception as exc:
+            logger.debug("get_system_health: WS non disponibile (%s)", exc)
+            return {}
+        if not isinstance(result, dict):
+            return {}
+        health: dict = {}
+        for domain, payload in result.items():
+            if not isinstance(payload, dict):
+                continue
+            # HA annida le informazioni sotto "info", ma non e' garantito:
+            # se manca si legge il payload stesso.
+            info = payload.get("info")
+            if not isinstance(info, dict):
+                info = payload
+            entries = {}
+            for key, raw in info.items():
+                value = self._health_value(raw)
+                if value is not None or raw is None:
+                    entries[str(key)] = value
+            if entries:
+                health[str(domain)] = entries
+        return health
+
+    async def get_logbook(self, entity_id: str | None, hours: int) -> list[dict]:
+        """Cronologia eventi via GET /api/logbook/<ISO start>.
+
+        `entity_id` filtra su una singola entita' (None = tutta la casa),
+        `hours` e' la finestra all'indietro da adesso. Ritorna al piu'
+        MAX_LOGBOOK_ENTRIES voci {when, name, message, entity_id}, tenendo le
+        piu' recenti; [] se il dato non e' disponibile."""
+        if entity_id is not None and not _ENTITY_ID_RE.match(str(entity_id)):
+            logger.warning("get_logbook: entity_id non valido: %r", entity_id)
+            return []
+        try:
+            window = max(1, int(hours))
+        except (TypeError, ValueError):
+            window = 24
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(hours=window)).isoformat()
+        # start sta nel path (come get_history); end_time ed entity stanno nella
+        # query, dove il "+" del fuso orario va percent-encoded o verrebbe letto
+        # come spazio.
+        url = (f"{self._base_url}/api/logbook/{start}"
+               f"?end_time={quote(now.isoformat(), safe='')}")
+        if entity_id is not None:
+            url += f"&entity={quote(entity_id, safe='')}"
+        try:
+            async with self._session.get(url) as resp:
+                if resp.status != 200:
+                    logger.debug("get_logbook: HTTP %s — nessun dato", resp.status)
+                    return []
+                data = await resp.json()
+        except Exception as exc:
+            logger.debug("get_logbook: non disponibile (%s)", exc)
+            return []
+        if not isinstance(data, list):
+            return []
+        entries = []
+        for item in data[-MAX_LOGBOOK_ENTRIES:]:
+            if not isinstance(item, dict):
+                continue
+            entries.append({
+                "when": item.get("when"),
+                "name": item.get("name"),
+                "message": item.get("message"),
+                "entity_id": item.get("entity_id"),
+            })
+        return entries
+
+    async def render_template(self, template: str) -> dict:
+        """Valuta un template Jinja di HA via POST /api/template.
+
+        E' una POST ma resta una LETTURA: HA renderizza e basta, nessun effetto
+        collaterale. Ritorna {"result": "<testo>"} oppure {"error": "..."}.
+        L'endpoint risponde testo semplice, non JSON. In caso di template
+        sbagliato HA restituisce il proprio messaggio d'errore (utile all'LLM
+        per correggersi): lo si inoltra ma troncato, perche' puo' contenere un
+        traceback intero."""
+        if not isinstance(template, str) or not template.strip():
+            return {"error": "template vuoto o non valido"}
+        if len(template) > MAX_TEMPLATE_LEN:
+            return {"error": f"template troppo lungo (max {MAX_TEMPLATE_LEN} caratteri)"}
+        url = f"{self._base_url}/api/template"
+        try:
+            async with self._session.post(url, json={"template": template}) as resp:
+                body = await resp.text()
+                if resp.status != 200:
+                    message = body.strip() or f"HA ha risposto {resp.status}"
+                    return {"error": _truncate(message, MAX_TEMPLATE_RESPONSE_LEN)}
+                return {"result": _truncate(body, MAX_TEMPLATE_RESPONSE_LEN)}
+        except Exception as exc:
+            # Mai fare eco di str(exc) al chiamante: resta nel log.
+            logger.debug("render_template: valutazione fallita (%s)", exc)
+            return {"error": "valutazione del template non riuscita"}
 
     async def get_config_entries(self) -> list[dict]:
         """Return HA config entries with error state via WebSocket."""
