@@ -157,9 +157,10 @@ class ToolDispatcher:
         self._knowledge_embedder = embedder if embedder is not None else embedding_provider
         self._pseudonymizer = pseudonymizer
         self._history_store = history_store
-        # Used only by daily_briefing (Slice 7 Task 5) to load the saved
-        # detectors.battery.min_pct threshold via watcher.policy.load_policy;
-        # optional/backward-compatible, defaults to None (policy={} fallback).
+        # Serviva a daily_briefing per caricare la soglia
+        # detectors.battery.min_pct: ora le batterie arrivano dalle segnalazioni
+        # del Brain e nessun tool lo legge piu'. Il parametro resta accettato
+        # per non rompere il cablaggio esistente (server.py e i test lo passano).
         self._data_dir = data_dir
         # Riferimento VIVO al dict app["execute_policy"] (mutato in place da
         # apply_saved_policy): il semaforo si legge a ogni dispatch. {} = fail-closed.
@@ -667,33 +668,27 @@ class ToolDispatcher:
                 # cloud), same as recall_knowledge. Hidden items are still counted in
                 # bundle["counts"]["hidden_sensitive"] regardless.
                 #
-                # policy: loaded from data_dir (watcher.policy.load_policy) when the
-                # dispatcher was constructed with one, so the saved
-                # detectors.battery.min_pct threshold is honored here too, same as the
-                # scheduled run_daily_briefing. Falls back to {} (→ battery_default_pct)
-                # if data_dir is unset or the load fails for any reason.
+                # Le batterie scariche arrivano dalle segnalazioni gia' prodotte dai
+                # controlli di salute del Brain (advisory_store), non da un calcolo
+                # fatto qui: unica fonte di verita', unica soglia. Senza store la
+                # sezione resta vuota. Di conseguenza la policy dei rilevatori non
+                # viene piu' letta in questo punto.
                 #
                 # Returns the DETERMINISTIC render_briefing_template(bundle) string,
                 # not compose_briefing (which needs an llm_reason this dispatcher
                 # lacks) — the chat model, already mid-reply, narrates it itself.
                 if self._knowledge_store is None:
                     return "Il maggiordomo non ha accesso alla memoria in questo momento: riprova più tardi."
-                policy: dict = {}
-                if self._data_dir:
-                    try:
-                        from ..watcher.policy import load_policy
-                        policy = load_policy(self._data_dir)
-                    except Exception:
-                        policy = {}
                 try:
                     allow_sensitive = bool(knowledge_allow_sensitive) and not bool(cloud)
                     # On-demand tool: scope to the caller so they see their OWN
                     # private obligations + home ones (review C/#2 follow-up),
                     # unlike the scheduled home-wide broadcast (owner="home").
                     bundle = build_briefing_bundle(
-                        self._knowledge_store, self._cache, policy,
+                        self._knowledge_store, self._cache,
                         today=date.today(), allow_sensitive=allow_sensitive,
                         owner=user_id or "home",
+                        advisory_store=self._advisory_store,
                     )
                     return render_briefing_template(bundle)
                 except Exception as exc:

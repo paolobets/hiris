@@ -26,6 +26,14 @@ CREATE INDEX IF NOT EXISTS idx_adv_status ON advisories(status, ts_updated DESC)
 
 _SETTABLE = frozenset({"acknowledged", "dismissed"})
 
+# Stati di una segnalazione ancora viva: `open` (nessuno l'ha guardata) e
+# `acknowledged` (l'utente ne ha preso atto ma il problema non e' rientrato).
+# `resolved` e' rientrata da sola, `dismissed` e' stata messa a tacere
+# dall'utente e non deve riemergere da nessuna parte. Definita qui, dove vive
+# la colonna `status`, cosi' che chi legge le segnalazioni (tool della chat,
+# feed, briefing quotidiano) usi tutto la stessa nozione di "attiva".
+STATI_ATTIVI = ("open", "acknowledged")
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -84,7 +92,7 @@ class AdvisoryStore:
                              c["suggested_fix"], c["fix_kind"], ref),
                         )
                         res["inserted"] += 1
-                    elif row["status"] in ("open", "acknowledged"):
+                    elif row["status"] in STATI_ATTIVI:
                         self._conn.execute(
                             "UPDATE advisories SET ts_updated=?, severity=?, title=?, "
                             "evidence=?, suggested_fix=? WHERE id=?",
@@ -101,7 +109,7 @@ class AdvisoryStore:
                         res["reopened"] += 1
                     # status == 'dismissed' -> suppressed, skip
                 for ref, row in existing.items():
-                    if (row["status"] in ("open", "acknowledged")
+                    if (row["status"] in STATI_ATTIVI
                             and row["check_id"] in check_ids
                             and ref not in cand_refs):
                         self._conn.execute(

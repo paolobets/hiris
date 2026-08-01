@@ -9,9 +9,12 @@ are surfaced only when the agent config allows it AND the backend is local
 (not cloud) -- fail-closed whenever either signal says otherwise (still
 counted in bundle["counts"]["hidden_sensitive"] regardless of visibility).
 
-The battery threshold uses the saved `detectors.battery.min_pct` policy when
-the dispatcher was constructed with a `data_dir` (via watcher.policy.load_policy),
-falling back to build_briefing_bundle's default when there is none.
+Le batterie scariche NON sono piu' ricalcolate dal briefing: arrivano dalle
+segnalazioni gia' prodotte dai controlli di salute del Brain (`check_low_battery`
+-> `AdvisoryStore`), unica fonte di verita' sul fatto "questa batteria e'
+scarica". Di conseguenza `detectors.battery.min_pct` non ha piu' effetto sul
+briefing e senza AdvisoryStore il briefing non segnala batterie invece di
+ricalcolarle. Le aperture (porte/finestre) continuano a venire dalla EntityCache.
 
 It also returns the deterministic `render_briefing_template(bundle)` string
 directly (no `compose_briefing`/LLM call): the chat model, already mid-reply,
@@ -21,6 +24,8 @@ from datetime import date, timedelta
 
 import pytest
 
+from hiris.app.brain.advisory_store import AdvisoryStore
+from hiris.app.brain.health_checks import check_low_battery
 from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.tools.dispatcher import ToolDispatcher
 from hiris.app.watcher.policy import save_policy
@@ -28,6 +33,23 @@ from hiris.app.watcher.policy import save_policy
 
 class _FakeHA:
     pass
+
+
+def _stato_batteria(eid: str, pct: str, nome: str) -> dict:
+    """Voce di EntityCache.all_states() per un sensore di batteria."""
+    return {"id": eid, "state": pct, "name": nome, "unit": "%",
+            "domain": "sensor", "device_class": "battery"}
+
+
+def _advisory_store_con_batteria(tmp_path, *, pct: str, nome: str) -> AdvisoryStore:
+    """AdvisoryStore popolato dal controllo di salute vero, non a mano: le voci
+    hanno la stessa forma che il Brain produce in esercizio."""
+    store = AdvisoryStore(str(tmp_path / "advisory.db"))
+    store.reconcile(
+        check_low_battery([_stato_batteria("sensor.batteria_reale", pct, nome)]),
+        {"low_battery"},
+    )
+    return store
 
 
 class _FakeEntityCache:
@@ -162,46 +184,107 @@ async def test_daily_briefing_hides_sensitive_when_not_allowed_even_if_local(tmp
 
 
 @pytest.mark.asyncio
-async def test_daily_briefing_honors_saved_battery_threshold(tmp_path):
-    """Fix B: when the dispatcher has a data_dir, the saved
-    detectors.battery.min_pct policy is loaded and used instead of the
-    default threshold — a battery at 40% is only flagged once the saved
-    threshold (50) is honored."""
-    data_dir = str(tmp_path / "data")
-    save_policy(data_dir, {"detectors": {"battery": {"min_pct": 50}}})
+async def test_daily_briefing_riporta_le_batterie_dalle_segnalazioni(tmp_path):
+    """Le batterie citate nel resoconto vengono dalle segnalazioni del Brain:
+    con una segnalazione attiva il briefing la cita, pur avendo una cache
+    entita' vuota (nessun ricalcolo possibile)."""
     store = KnowledgeStore(str(tmp_path / "brain.db"))
-    cache = _FakeEntityCache([
-        {"id": "sensor.batteria_z", "state": "40", "name": "z", "unit": "%",
-         "domain": "sensor", "device_class": "battery"},
-    ])
+    advisory = _advisory_store_con_batteria(tmp_path, pct="7", nome="Termostato salotto")
     dispatcher = ToolDispatcher(_FakeHA(), notify_config={},
-                                 knowledge_store=store, entity_cache=cache,
-                                 data_dir=data_dir)
+                                 knowledge_store=store, entity_cache=_FakeEntityCache(),
+                                 advisory_store=advisory)
 
     out = await dispatcher.dispatch("daily_briefing", {})
 
-    assert "z" in out
-    assert "40" in out
+    assert "Termostato salotto" in out
+    assert "7" in out
+    advisory.close()
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_daily_briefing_without_data_dir_falls_back_to_default_threshold(tmp_path):
-    """Fix B: with no data_dir configured, a battery at 40% must NOT be
-    flagged against the default threshold (20) — same entity/state as the
-    saved-threshold test above, opposite outcome, proving the policy is
-    actually being loaded rather than always applied."""
+async def test_daily_briefing_non_ricalcola_le_batterie_dalla_cache(tmp_path):
+    """Nessuna segnalazione attiva significa nessuna batteria nel resoconto,
+    anche se la cache contiene un sensore scarico che il vecchio calcolo
+    avrebbe segnalato. Le aperture, che restano di competenza della cache,
+    continuano a comparire."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    advisory = AdvisoryStore(str(tmp_path / "advisory.db"))
+    cache = _FakeEntityCache([
+        _stato_batteria("sensor.batteria_fantasma", "3", "Batteria fantasma"),
+        {"id": "binary_sensor.ingresso", "state": "on", "name": "Ingresso",
+         "unit": "", "domain": "binary_sensor", "device_class": "door"},
+    ])
+    dispatcher = ToolDispatcher(_FakeHA(), notify_config={},
+                                 knowledge_store=store, entity_cache=cache,
+                                 advisory_store=advisory)
+
+    out = await dispatcher.dispatch("daily_briefing", {})
+
+    assert "Batteria fantasma" not in out
+    assert "Ingresso" in out
+    advisory.close()
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_daily_briefing_senza_advisory_store_non_ricalcola(tmp_path):
+    """Fonte unica anche quando manca: senza AdvisoryStore il briefing non
+    segnala batterie invece di tornare a calcolarle dalla cache."""
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     cache = _FakeEntityCache([
-        {"id": "sensor.batteria_z", "state": "40", "name": "z", "unit": "%",
-         "domain": "sensor", "device_class": "battery"},
+        _stato_batteria("sensor.batteria_fantasma", "3", "Batteria fantasma"),
     ])
     dispatcher = ToolDispatcher(_FakeHA(), notify_config={},
                                  knowledge_store=store, entity_cache=cache)
 
     out = await dispatcher.dispatch("daily_briefing", {})
 
-    assert "40" not in out
+    assert isinstance(out, str)
+    assert out.strip() != ""
+    assert "Batteria fantasma" not in out
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_daily_briefing_ignora_le_segnalazioni_messe_a_tacere(tmp_path):
+    """Una segnalazione `dismissed` e' stata messa a tacere dall'utente: il
+    briefing non deve farla riemergere."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    advisory = _advisory_store_con_batteria(tmp_path, pct="7", nome="Termostato salotto")
+    riga = advisory.list(status="open")[0]
+    advisory.set_status(riga["id"], "dismissed")
+    dispatcher = ToolDispatcher(_FakeHA(), notify_config={},
+                                 knowledge_store=store, entity_cache=_FakeEntityCache(),
+                                 advisory_store=advisory)
+
+    out = await dispatcher.dispatch("daily_briefing", {})
+
+    assert "Termostato salotto" not in out
+    advisory.close()
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_daily_briefing_ignora_la_soglia_salvata_nella_policy(tmp_path):
+    """Cambiamento visibile dichiarato: `detectors.battery.min_pct` non governa
+    piu' il briefing. Con soglia salvata a 50 e una batteria al 40% in cache,
+    ma nessuna segnalazione attiva, il resoconto non cita nulla."""
+    data_dir = str(tmp_path / "data")
+    save_policy(data_dir, {"detectors": {"battery": {"min_pct": 50}}})
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    advisory = AdvisoryStore(str(tmp_path / "advisory.db"))
+    cache = _FakeEntityCache([
+        _stato_batteria("sensor.batteria_z", "40", "Batteria z"),
+    ])
+    dispatcher = ToolDispatcher(_FakeHA(), notify_config={},
+                                 knowledge_store=store, entity_cache=cache,
+                                 advisory_store=advisory, data_dir=data_dir)
+
+    out = await dispatcher.dispatch("daily_briefing", {})
+
+    assert "Batteria z" not in out
+    advisory.close()
     store.close()
 
 

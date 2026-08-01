@@ -11,6 +11,18 @@ import json
 import logging
 from typing import Any
 
+# Stati di una segnalazione ancora attiva, definiti accanto alla colonna
+# `status` che li esprime (brain/advisory_store.py):
+# - `open`         il problema c'e' e nessuno l'ha ancora guardato;
+# - `acknowledged` l'utente ne ha preso atto ma il problema non e' rientrato
+#                  (`reconcile` continua ad aggiornarla come una aperta);
+# - `resolved`     rientrata da sola, non c'e' piu' nulla da dire;
+# - `dismissed`    messa a tacere DALL'UTENTE per sempre: riproporla in chat
+#                  vanificherebbe la sua scelta.
+# Stessa coppia usata dal feed del Brain (brain/feed.py) e dal briefing
+# quotidiano: una sola nozione di "segnalazione attiva" in tutto il prodotto.
+from ..brain.advisory_store import STATI_ATTIVI  # noqa: F401  (ri-esportata)
+
 logger = logging.getLogger(__name__)
 
 # Cap sulle voci restituite. Protegge il PROMPT dell'LLM: in una casa messa
@@ -33,17 +45,6 @@ MAX_EVIDENCE_KEYS = 8
 # ~1200 caratteri per voce: sopra il costo di ogni evidenza emessa oggi dai
 # controlli, e con un tetto complessivo (20 x 1200) che resta leggibile.
 MAX_EVIDENCE_CHARS = 1200
-
-# Solo le segnalazioni ancora attive arrivano al modello:
-# - `open`         il problema c'e' e nessuno l'ha ancora guardato;
-# - `acknowledged` l'utente ne ha preso atto ma il problema non e' rientrato
-#                  (`reconcile` continua ad aggiornarla come una aperta);
-# - `resolved`     rientrata da sola, non c'e' piu' nulla da dire;
-# - `dismissed`    messa a tacere DALL'UTENTE per sempre: riproporla in chat
-#                  vanificherebbe la sua scelta.
-# Stessa coppia usata dal feed del Brain (brain/feed.py): una sola nozione di
-# "segnalazione attiva" in tutto il prodotto.
-STATI_ATTIVI = ("open", "acknowledged")
 
 # Severita' emesse dai controlli (brain/health_checks.py), dalla piu' grave.
 SEVERITA = ("high", "warn", "info")

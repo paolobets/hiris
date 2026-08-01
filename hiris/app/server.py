@@ -925,7 +925,11 @@ async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
     Module-level (not inlined in `_on_startup`) so it's unit-testable with a
     plain dict standing in for `app` -- same convention as
     `_reason_memory_context` above; `app` only needs `.get("knowledge_store")`,
-    `.get("entity_cache")`, `.get("llm_router")` and `.get("data_dir")`.
+    `.get("entity_cache")`, `.get("llm_router")` and `.get("advisory_store")`.
+
+    Le batterie scariche arrivano da `advisory_store`, dove i controlli di
+    salute del Brain hanno gia' scritto le loro segnalazioni: il briefing non
+    le ricalcola piu' e la policy dei rilevatori non entra piu' qui.
 
     Egress gate: `allow_sensitive` is True only when
     `LLMRouter.automatic_allows_sensitive()` reports the automatic backend
@@ -947,8 +951,8 @@ async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
         allow_sensitive = router.automatic_allows_sensitive() if router is not None else False
         bundle = build_briefing_bundle(
             app.get("knowledge_store"), app.get("entity_cache"),
-            load_policy(app.get("data_dir")),
             today=today, allow_sensitive=allow_sensitive,
+            advisory_store=app.get("advisory_store"),
         )
         text = await compose_briefing(bundle, llm_reason)
         await notify(text)

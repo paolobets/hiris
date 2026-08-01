@@ -10,6 +10,14 @@ CHECK_IDS = {
     "addon_down", "disk_space", "updates_available",
 }
 
+# Identificativo e formato del titolo delle segnalazioni di batteria scarica.
+# Vivono qui, accanto al controllo che le emette, perche' il briefing
+# quotidiano (brain/briefing.py) le rilegge dallo store invece di ricalcolare
+# le batterie per conto suo: senza costanti condivise il formato del titolo
+# sarebbe di nuovo scritto in due posti.
+CHECK_BATTERIA = "low_battery"
+BATTERIA_TITOLO_PREFISSO = "Batteria scarica: "
+
 # Soglie di spazio libero sul disco dell'host, in percentuale. "Sotto" e'
 # stretto: esattamente al 10% si resta in avviso, esattamente al 20% non si
 # segnala nulla.
@@ -77,12 +85,12 @@ def check_low_battery(states, *, threshold: int = 15):
             continue
         if pct < threshold:
             out.append({
-                "check_id": "low_battery", "severity": "warn",
-                "title": f"Batteria scarica: {name or eid}",
+                "check_id": CHECK_BATTERIA, "severity": "warn",
+                "title": f"{BATTERIA_TITOLO_PREFISSO}{name or eid}",
                 "evidence": {"entity_id": eid, "pct": pct},
                 "suggested_fix": "Sostituisci le pile.",
                 "fix_kind": "manual",
-                "source_ref": f"low_battery:{eid}",
+                "source_ref": f"{CHECK_BATTERIA}:{eid}",
             })
     return out
 
