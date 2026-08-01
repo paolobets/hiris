@@ -39,6 +39,13 @@ function renderProposals(proposals, status) {
           + '</pre>';
       } catch(e) { configPreview = ''; }
     }
+    /* Una proposta di plancia con mode=replace non aggiunge: sovrascrive.
+       L'avviso lo dice prima dell'Attiva. (L'azione Annulla vive solo nel
+       pannello Proposte della chat: è la superficie d'azione scelta.) */
+    var pcfg = p.config || {};
+    var warn = (p.type === 'ha_dashboard' && pcfg.mode === 'replace')
+      ? '<div class="pp-warn">Sostituisce interamente la plancia "' + escHtml(String(pcfg.slug || '')) + '".</div>'
+      : '';
     var date = p.created_at ? p.created_at.substring(0, 10) : '';
     var safeId = escHtml(p.id);
     var actions = status === 'pending'
@@ -50,6 +57,7 @@ function renderProposals(proposals, status) {
       + '<div class="proposal-name"><span class="type-badge" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;background:var(--accent-tint);color:var(--accent-ink);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);margin-right:6px;vertical-align:middle">' + escHtml(typeLabel) + '</span>' + escHtml(p.name) + '</div>'
       + '<div class="proposal-meta">' + date + '</div>'
       + '<div class="proposal-desc">' + escHtml(p.description || '') + '</div>'
+      + warn
       + '<div class="proposal-reason"><strong>Motivo:</strong> ' + escHtml(p.routing_reason || '') + '</div>'
       + configPreview
       + '</div>'

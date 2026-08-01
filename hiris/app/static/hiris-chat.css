@@ -670,7 +670,29 @@
     .pp-name { font-weight: 500; font-size: 13.5px; color: var(--text); margin-bottom: 3px; }
     .pp-desc { font-size: 12.5px; color: var(--text-2); margin-bottom: 4px; line-height: 1.4; }
     .pp-reason { font-size: 11.5px; color: var(--text-3); margin-bottom: 10px; }
+    /* Avviso di sostituzione: una proposta di plancia con mode=replace
+       sovrascrive tutto, deve saltare all'occhio prima dell'Attiva. */
+    .pp-warn {
+      font-size: 12px; color: var(--err, #c0392b);
+      background: var(--err-tint, rgba(192,57,43,.08));
+      border-radius: var(--r-sm); padding: 6px 10px; margin-bottom: 8px;
+    }
     .pp-actions { display: flex; gap: 8px; }
+    /* Striscia Annulla: compare dopo una sostituzione applicata, in cima alla
+       lista delle proposte, e ripristina l'ultimo snapshot della plancia. */
+    .pp-undo-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 10px 16px; margin-bottom: 8px;
+      font-size: 12.5px; color: var(--text-2);
+    }
+    .pp-undo {
+      flex: none;
+      border: 1px solid var(--border); border-radius: var(--r-sm);
+      background: none; color: var(--text-2);
+      padding: 5px 14px; font-size: 12.5px; cursor: pointer;
+    }
+    .pp-undo:hover { background: var(--hover); color: var(--text); }
     .pp-apply, .pp-reject {
       border-radius: var(--r-sm); padding: 5px 14px; font-size: 12.5px; cursor: pointer;
       border: 1px solid var(--border);
@@ -680,7 +702,7 @@
     .pp-reject { background: none; color: var(--text-2); }
     .pp-reject:hover { background: var(--hover); color: var(--text); }
     @media (pointer: coarse) {
-      .pp-apply, .pp-reject { min-height: 44px; padding: 8px 16px; }
+      .pp-apply, .pp-reject, .pp-undo { min-height: 44px; padding: 8px 16px; }
     }
     #mobile-proposals-btn {
       display: none; align-items: center; gap: 6px;

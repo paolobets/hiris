@@ -994,6 +994,13 @@
     .proposal-meta { color: var(--text-3) !important; }
     .proposal-desc { color: var(--text-2) !important; font-size: 13px !important; }
     .proposal-reason { color: var(--text-3) !important; font-style: italic; }
+    /* Avviso di sostituzione integrale di una plancia (mode=replace):
+       stesse parole e stesso peso visivo del pannello Proposte della chat. */
+    .pp-warn {
+      font-size: 12px; color: var(--err, #c0392b);
+      background: var(--err-tint, rgba(192,57,43,.08));
+      border-radius: var(--r-sm); padding: 6px 10px; margin: 6px 0 0;
+    }
     .btn-apply {
       background: var(--ok) !important; color: white !important;
       border-color: var(--ok) !important;

@@ -16,17 +16,39 @@
     hiris_agent: '→ Agentbot'
   };
 
+  /* Plance sostituite da questa pagina e ancora annullabili: slug -> true.
+     Sta QUI, in memoria, e non nel DOM della card: la card è il rendering di
+     una proposta *in attesa*, e dopo l'apply quella proposta non è più
+     pending, quindi sparisce al primo load(). L'annullabilità appartiene alla
+     plancia, non alla proposta. Tenendola come stato del modulo, ogni load()
+     (periodico, o al rientro nel pannello) ridisegna la striscia Annulla
+     identica: nessuno stato incoerente e nessun bisogno di sopprimere il
+     ricaricamento della lista. */
+  var undoableReplaces = Object.create(null);
+
   function renderProposal(p) {
     var typeLabel = TYPE_LABELS[p.type] || ('→ ' + esc(p.type || 'config'));
     var date = p.created_at ? String(p.created_at).substring(0, 10) : '';
     var safeId = esc(p.id);
-    return '<div class="pp-card" id="pp-' + safeId + '">'
+    var cfg = p.config || {};
+    var isDashReplace = (p.type === 'ha_dashboard' && cfg.mode === 'replace' && !!cfg.slug);
+    var warn = isDashReplace
+      ? '<div class="pp-warn">Sostituisce interamente la plancia "' + esc(cfg.slug) + '".</div>'
+      : '';
+    /* Marcati SOLO i replace di plancia: act() legge questi attributi per
+       decidere se offrire l'Annulla, e un altro tipo di proposta con un
+       config omonimo non deve poter finire su /api/dashboards/.../restore. */
+    var dashAttrs = isDashReplace
+      ? ' data-pp-mode="replace" data-pp-slug="' + esc(cfg.slug) + '"'
+      : '';
+    return '<div class="pp-card" id="pp-' + safeId + '"' + dashAttrs + '>'
       + '<div class="pp-head">'
       + '<span class="pp-type">' + esc(typeLabel) + '</span>'
       + (date ? '<span class="pp-date">' + esc(date) + '</span>' : '')
       + '</div>'
       + '<div class="pp-name">' + esc(p.name || '') + '</div>'
       + (p.description ? '<div class="pp-desc">' + esc(p.description) + '</div>' : '')
+      + warn
       + (p.routing_reason ? '<div class="pp-reason"><strong>Motivo:</strong> ' + esc(p.routing_reason) + '</div>' : '')
       + '<div class="pp-actions">'
       + '<button class="btn pp-apply" type="button" data-pp-act="apply" data-pid="' + safeId + '">Attiva</button>'
@@ -42,6 +64,24 @@
     if (mb) { mb.textContent = n || ''; mb.dataset.count = n; }
   }
 
+  /* Striscia "Annulla" in cima alla lista, una per plancia sostituita e ancora
+     ripristinabile. Ricostruita da `undoableReplaces` a ogni render, così è
+     idempotente: chiamarla due volte non duplica nulla. */
+  function renderUndoBars() {
+    var list = document.getElementById('chat-proposals-list');
+    if (!list) return;
+    var old = list.querySelectorAll('.pp-undo-bar');
+    for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+    var html = Object.keys(undoableReplaces).map(function(slug) {
+      var safeSlug = esc(slug);
+      return '<div class="pp-undo-bar">'
+        + '<span>Plancia "' + safeSlug + '" sostituita. Puoi ripristinare la versione precedente.</span>'
+        + '<button class="btn pp-undo" type="button" data-pp-undo="' + safeSlug + '">Annulla</button>'
+        + '</div>';
+    }).join('');
+    if (html) list.insertAdjacentHTML('afterbegin', html);
+  }
+
   function load() {
     return HirisProposalsCore.list('pending').then(function(props) {
       var list = document.getElementById('chat-proposals-list');
@@ -50,10 +90,14 @@
       list.innerHTML = props.length
         ? props.map(renderProposal).join('')
         : '<div class="task-empty">Nessuna proposta in attesa</div>';
+      renderUndoBars();
     }).catch(function(e) {
       console.error('loadProposals failed', e);
       var list = document.getElementById('chat-proposals-list');
       if (list) list.innerHTML = '<div class="task-empty">Errore nel caricamento delle proposte.</div>';
+      /* Un errore nel caricare le proposte non deve togliere l'Annulla di una
+         sostituzione appena applicata: è un'azione ancora possibile. */
+      renderUndoBars();
     });
   }
 
@@ -72,8 +116,24 @@
           : '<span style="color:var(--success,#3ba55d)">✓ Proposta attivata</span>';
         var actsEl = card.querySelector('.pp-actions');
         if (actsEl) actsEl.remove();
+        /* Una sostituzione appena applicata diventa annullabile: registra la
+           plancia e mostra subito la striscia, senza aspettare il reload. */
+        if (!isReject && card.dataset.ppMode === 'replace' && card.dataset.ppSlug) {
+          undoableReplaces[card.dataset.ppSlug] = true;
+          renderUndoBars();
+        }
       }
       setTimeout(load, 1000);
+    }, function() { window.alert('Errore di rete'); });
+  }
+
+  /* Annulla: ripristina l'ultimo snapshot della plancia sostituita. */
+  function undo(urlPath) {
+    if (!window.confirm('Ripristinare la versione precedente della plancia "' + urlPath + '"?')) return;
+    HirisProposalsCore.restoreDashboard(urlPath).then(function(res) {
+      if (!res.ok) { window.alert(res.error || 'Errore'); return; }
+      delete undoableReplaces[urlPath];
+      load();
     }, function() { window.alert('Errore di rete'); });
   }
 
@@ -113,6 +173,8 @@
 
     var panel = document.getElementById('proposals-panel');
     if (panel) panel.addEventListener('click', function(e) {
+      var undoBtn = e.target.closest && e.target.closest('[data-pp-undo]');
+      if (undoBtn) { undo(undoBtn.getAttribute('data-pp-undo')); return; }
       var btn = e.target.closest && e.target.closest('[data-pp-act]');
       if (btn) act(btn.dataset.pid, btn.dataset.ppAct);
     });
@@ -121,5 +183,7 @@
     load();   /* popola il badge anche senza aprire il pannello */
   }
 
-  window.HirisChatProposals = { showPanel: showPanel, load: load, act: act, init: init };
+  window.HirisChatProposals = {
+    showPanel: showPanel, load: load, act: act, undo: undo, init: init
+  };
 })();

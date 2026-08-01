@@ -48,5 +48,16 @@
     }).then(_result);
   }
 
-  window.HirisProposalsCore = { list: list, apply: apply, reject: reject };
+  /* Ripristina l'ultimo snapshot di una plancia (url_path), cioè annulla una
+     proposta `mode: replace` appena applicata. Come apply/reject: nessun DOM,
+     solo la chiamata e l'esito normalizzato. */
+  function restoreDashboard(urlPath) {
+    return fetch('api/dashboards/' + encodeURIComponent(urlPath) + '/restore', {
+      method: 'POST', headers: { 'X-Requested-With': 'fetch' }
+    }).then(_result);
+  }
+
+  window.HirisProposalsCore = {
+    list: list, apply: apply, reject: reject, restoreDashboard: restoreDashboard
+  };
 })();
