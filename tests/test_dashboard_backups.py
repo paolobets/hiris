@@ -44,3 +44,22 @@ def test_corrupt_file_does_not_raise(tmp_path):
     assert latest_backup(str(tmp_path), "casa-mia") is None
     save_backup(str(tmp_path), "casa-mia", {"views": []})   # non deve sollevare
     assert latest_backup(str(tmp_path), "casa-mia") == {"views": []}
+
+
+def test_save_is_atomic_no_tmp_file_left_behind(tmp_path):
+    """La scrittura passa da file temporaneo + os.replace: dopo un save
+    non deve restare alcun residuo .tmp, solo il file finale."""
+    import os
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "A"}]})
+    names = os.listdir(str(tmp_path))
+    assert names == ["dashboard_backups.json"]
+
+
+def test_save_creates_missing_data_dir(tmp_path):
+    """Se data_dir non esiste ancora, save_backup lo crea invece di
+    fallire in silenzio senza lasciare traccia."""
+    import os
+    missing_dir = os.path.join(str(tmp_path), "nested", "data")
+    assert not os.path.isdir(missing_dir)
+    save_backup(missing_dir, "casa-mia", {"views": [{"title": "A"}]})
+    assert latest_backup(missing_dir, "casa-mia") == {"views": [{"title": "A"}]}

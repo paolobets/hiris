@@ -32,12 +32,17 @@ def _load(data_dir: str) -> dict:
             data = json.load(fh)
         return data if isinstance(data, dict) else {}
     except Exception:
-        logger.warning("dashboard_backups: file illeggibile o corrotto, ignorato")
+        logger.warning("dashboard_backups: file illeggibile o corrotto, ignorato", exc_info=True)
         return {}
 
 
 def save_backup(data_dir: str, url_path: str, config: dict) -> None:
-    """Accoda uno snapshot, scartando i piu' vecchi oltre il limite."""
+    """Accoda uno snapshot, scartando i piu' vecchi oltre il limite.
+
+    Scrittura atomica (file temporaneo + os.replace): il file e' condiviso
+    fra tutte le plance, una scrittura interrotta a meta' non deve troncare
+    i backup delle altre. Tutto avvolto nel try/except: questa e' una rete
+    di sicurezza, non deve mai sollevare verso il chiamante."""
     data = _load(data_dir)
     entries = data.get(url_path)
     if not isinstance(entries, list):
@@ -45,8 +50,11 @@ def save_backup(data_dir: str, url_path: str, config: dict) -> None:
     entries.append({"config": config})
     data[url_path] = entries[-MAX_BACKUPS_PER_DASHBOARD:]
     try:
-        with open(_file(data_dir), "w", encoding="utf-8") as fh:
+        os.makedirs(data_dir, exist_ok=True)
+        tmp = _file(data_dir) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, _file(data_dir))
     except Exception:
         logger.exception("dashboard_backups: salvataggio snapshot fallito")
 
