@@ -78,7 +78,11 @@ async def propose_dashboard(proposal_store: Any, mode: str, url_path: str,
     canoniche venivano marcate applied senza alcun effetto."""
     if proposal_store is None:
         return {"error": "ProposalStore non disponibile"}
-    mode = (mode or "").strip()
+    # isinstance esplicito: gli input arrivano da una tool call del modello e
+    # non sono garantiti stringhe. `(mode or "").strip()` solleverebbe
+    # AttributeError su un non-stringa (es. un numero), finendo nella except
+    # generica del dispatcher invece di essere rifiutato qui: fail-closed.
+    mode = mode.strip() if isinstance(mode, str) else ""
     if mode not in VALID_MODES:
         return {"error": f"mode non valido: {mode!r} (usa create|replace)"}
     if not isinstance(url_path, str) or not _URL_PATH_RE.match(url_path):

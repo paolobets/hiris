@@ -58,6 +58,16 @@ async def test_invalid_mode_is_rejected():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("bad_mode", [None, 5, {"mode": "create"}])
+async def test_non_string_mode_is_rejected_not_raised(bad_mode):
+    """Gli input di una tool call non sono garantiti stringhe: fail-closed,
+    non AttributeError inghiottito dalla except generica del dispatcher."""
+    store = FakeStore()
+    out = await propose_dashboard(store, bad_mode, "casa-mia", CFG, "motivo", title="X")
+    assert "error" in out and store.saved is None
+
+
+@pytest.mark.asyncio
 async def test_config_without_views_is_rejected():
     store = FakeStore()
     out = await propose_dashboard(store, "replace", "casa-mia", {"nope": 1}, "motivo")
