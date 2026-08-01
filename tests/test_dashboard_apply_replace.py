@@ -37,6 +37,8 @@ async def test_mode_create_still_calls_create_dashboard(tmp_path):
     )
     assert out.get("ok") is True
     assert ha.created is not None and ha.saved is None
+    # il ramo create non sovrascrive nulla: nessuno snapshot da salvare
+    assert latest_backup(str(tmp_path), "casa-mia") is None
 
 
 @pytest.mark.asyncio
@@ -82,14 +84,21 @@ async def test_replace_rejects_unknown_mode(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_replace_without_data_dir_still_writes_but_warns(tmp_path):
-    """data_dir assente (chiamanti legacy): si applica comunque, senza snapshot."""
+async def test_replace_without_data_dir_still_writes_but_warns(caplog):
+    """data_dir assente (chiamanti legacy): si applica comunque, senza snapshot,
+    ma l'assenza di rete di sicurezza deve lasciare traccia nei log."""
+    import logging
+
     ha = FakeHA()
-    out = await apply_ha_config(
-        ha, {"kind": "dashboard", "mode": "replace", "slug": "casa-mia", "ha_config": NEW},
-    )
+    with caplog.at_level(logging.WARNING, logger="hiris.app.tools.config_tools"):
+        out = await apply_ha_config(
+            ha, {"kind": "dashboard", "mode": "replace", "slug": "casa-mia", "ha_config": NEW},
+        )
     assert out.get("ok") is True
     assert ha.saved == ("casa-mia", NEW)
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("data_dir" in r.getMessage() for r in warnings), \
+        "senza data_dir la sostituzione avviene senza snapshot: deve emettere un warning"
 
 
 @pytest.mark.asyncio

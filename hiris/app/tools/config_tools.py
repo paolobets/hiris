@@ -161,7 +161,9 @@ async def apply_ha_config(ha_client: Any, normalized: dict,
     ha_config = normalized.get("ha_config")
     mode = normalized.get("mode") or "create"
     if mode not in VALID_DASHBOARD_MODES:
-        return {"error": f"mode dashboard non valido: {mode!r} (usa create|replace)"}
+        # Messaggio fisso: il valore arriva da una proposta e stampare il repr
+        # di un oggetto arbitrario non aggiunge nulla di utile al chiamante.
+        return {"error": "mode dashboard non valido: usa 'create' oppure 'replace'"}
     if not slug or not isinstance(ha_config, dict):
         return {"error": "config non valida: kind mancante o non supportato"}
 
