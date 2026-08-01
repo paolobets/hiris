@@ -2291,7 +2291,13 @@ async def _on_startup(app: web.Application) -> None:
                 store=advisory_store, now=datetime.now(timezone.utc),
                 # Senza SUPERVISOR_TOKEN lo slot non esiste affatto: `.get`
                 # restituisce None e i controlli di sistema restano muti.
-                supervisor_client=app.get("supervisor_client"))
+                supervisor_client=app.get("supervisor_client"),
+                # Notifica push per le sole segnalazioni gravi nuove o
+                # riaperte: stesso `notify_config` (e stesso deep-link) del
+                # briefing e dei solleciti. Disattivabile con l'opzione
+                # `brain_notify_high`, attiva per impostazione predefinita.
+                notify_config=notify_config,
+                notify_enabled=env_bool("BRAIN_NOTIFY_HIGH", True))
         except Exception:
             logger.exception("health scan failed")
 

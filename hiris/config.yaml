@@ -101,6 +101,13 @@ options:
   sentinel_ronda_min: 15
   agent_owner: ""
 
+  # ── Brain (salute del sistema) ───────────────────────────────────────────
+  # Notifica push quando la scansione di salute apre (o riapre) una
+  # segnalazione grave. Solo apertura/riapertura e solo severita' alta: la
+  # scansione gira ogni 30 minuti e ri-notificare sarebbe rumore. Metti a
+  # false per non riceverle: le segnalazioni restano comunque visibili.
+  brain_notify_high: true
+
   # ── Ponte push (knobs) ────────────────────────────────────────────────────
   bridge_enabled: false
   bridge_deadline_min: 5
@@ -178,6 +185,9 @@ schema:
   sentinel_allow_green_auto: bool
   sentinel_ronda_min: int(1,240)
   agent_owner: str?
+
+  # ── Brain (salute del sistema) ───────────────────────────────────────────
+  brain_notify_high: bool
 
   # ── Ponte push (knobs) ────────────────────────────────────────────────────
   bridge_enabled: bool

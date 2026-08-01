@@ -40,6 +40,10 @@ export SENTINEL_COOLDOWN_SEC=$(( $(bashio::config 'sentinel_cooldown_min' '30') 
 export SENTINEL_ALLOW_GREEN_AUTO=$(bashio::config 'sentinel_allow_green_auto' 'false')
 export SENTINEL_RONDA_MINUTES=$(bashio::config 'sentinel_ronda_min' '15')
 
+# Notifica push per le segnalazioni gravi nuove o riaperte della scansione di
+# salute (Brain). Attiva per impostazione predefinita.
+export BRAIN_NOTIFY_HIGH=$(bashio::config 'brain_notify_high' 'true')
+
 export BRIDGE_ENABLED=$(bashio::config 'bridge_enabled' 'false')
 export BRIDGE_DEADLINE_MIN=$(bashio::config 'bridge_deadline_min' '5')
 export BRIDGE_FALLBACK=$(bashio::config 'bridge_fallback' 'true')

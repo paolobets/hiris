@@ -34,6 +34,11 @@ _SETTABLE = frozenset({"acknowledged", "dismissed"})
 # feed, briefing quotidiano) usi tutto la stessa nozione di "attiva".
 STATI_ATTIVI = ("open", "acknowledged")
 
+# Severita' che qualifica una segnalazione come grave. Definita qui, accanto
+# alla colonna `severity`, cosi' che chi decide cosa e' degno di una notifica
+# non se la ricopi come stringa sparsa nel codice.
+SEVERITA_GRAVE = "high"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -60,8 +65,30 @@ class AdvisoryStore:
 
     def reconcile(self, candidates: list[dict], check_ids: set,
                   *, now: str | None = None) -> dict:
+        """Allinea le segnalazioni sul disco ai candidati di questa scansione.
+
+        Oltre ai contatori storici (`inserted`, `updated`, `reopened`,
+        `resolved`, invariati) riporta *quali* segnalazioni sono cambiate in
+        modo notificabile, perche' il chiamante da soli i numeri non puo'
+        sapere di cosa parlare:
+
+        - `inserted_items`: candidati mai visti prima;
+        - `reopened_items`: candidati rientrati e che si ripresentano;
+        - `escalated_items`: candidati gia' aperti la cui severita' sale a
+          `high` (contati anche in `updated`, per non alterare i contatori).
+          Senza questo elenco un add-on che l'utente aveva spento (avviso) e
+          che poi si guasta davvero (grave) resterebbe muto: il riferimento
+          di deduplica non cambia, quindi e' un semplice aggiornamento.
+
+        Le voci sono i dizionari candidato passati in ingresso, da leggere e
+        non modificare. Un aggiornamento che NON alza la severita' non compare
+        da nessuna parte: il titolo del disco pieno cambia a ogni scansione, e
+        notificarlo significherebbe una notifica ogni 30 minuti.
+        """
         now = now or _now_iso()
-        res = {"inserted": 0, "updated": 0, "reopened": 0, "resolved": 0}
+        res: dict = {"inserted": 0, "updated": 0, "reopened": 0, "resolved": 0,
+                     "escalated": 0,
+                     "inserted_items": [], "reopened_items": [], "escalated_items": []}
 
         # Dedupe candidates by source_ref (last-wins)
         _seen = {}
@@ -74,7 +101,7 @@ class AdvisoryStore:
                 existing = {
                     r["source_ref"]: r
                     for r in self._conn.execute(
-                        "SELECT id, source_ref, status, check_id FROM advisories"
+                        "SELECT id, source_ref, status, check_id, severity FROM advisories"
                     ).fetchall()
                 }
                 cand_refs = set()
@@ -92,6 +119,7 @@ class AdvisoryStore:
                              c["suggested_fix"], c["fix_kind"], ref),
                         )
                         res["inserted"] += 1
+                        res["inserted_items"].append(c)
                     elif row["status"] in STATI_ATTIVI:
                         self._conn.execute(
                             "UPDATE advisories SET ts_updated=?, severity=?, title=?, "
@@ -99,6 +127,9 @@ class AdvisoryStore:
                             (now, c["severity"], c["title"], ev, c["suggested_fix"], row["id"]),
                         )
                         res["updated"] += 1
+                        if c["severity"] == SEVERITA_GRAVE and row["severity"] != SEVERITA_GRAVE:
+                            res["escalated"] += 1
+                            res["escalated_items"].append(c)
                     elif row["status"] == "resolved":
                         self._conn.execute(
                             "UPDATE advisories SET status='open', resolved_auto=0, "
@@ -107,6 +138,7 @@ class AdvisoryStore:
                             (now, c["severity"], c["title"], ev, c["suggested_fix"], row["id"]),
                         )
                         res["reopened"] += 1
+                        res["reopened_items"].append(c)
                     # status == 'dismissed' -> suppressed, skip
                 for ref, row in existing.items():
                     if (row["status"] in STATI_ATTIVI
