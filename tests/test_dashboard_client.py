@@ -1,0 +1,53 @@
+import pytest
+from hiris.app.proxy.ha_client import HAClient
+
+
+class FakeWS:
+    """Registra i comandi WS e risponde con code preimpostate."""
+    def __init__(self, responses):
+        self.responses = responses
+        self.calls = []
+
+    async def command(self, cmd, payload=None):
+        self.calls.append((cmd, payload or {}))
+        return self.responses.get(cmd, {"success": True, "result": None})
+
+
+def _client(ws):
+    c = HAClient.__new__(HAClient)          # niente __init__: serve solo il WS
+    c._ws_command = ws.command
+    return c
+
+
+@pytest.mark.asyncio
+async def test_list_dashboards_returns_url_path_and_title():
+    ws = FakeWS({"lovelace/dashboards/list": {"success": True, "result": [
+        {"id": "1", "url_path": "casa-mia", "title": "Casa Mia", "mode": "storage"},
+    ]}})
+    out = await _client(ws).list_dashboards()
+    assert out == [{"url_path": "casa-mia", "title": "Casa Mia", "mode": "storage"}]
+    assert ws.calls[0][0] == "lovelace/dashboards/list"
+
+
+@pytest.mark.asyncio
+async def test_list_dashboards_error_is_returned_not_raised():
+    ws = FakeWS({"lovelace/dashboards/list": {"success": False, "error": {"message": "boom"}}})
+    out = await _client(ws).list_dashboards()
+    assert isinstance(out, dict) and "error" in out
+
+
+@pytest.mark.asyncio
+async def test_save_dashboard_config_sends_url_path_and_config():
+    ws = FakeWS({"lovelace/config/save": {"success": True}})
+    cfg = {"views": [{"title": "Home", "cards": []}]}
+    out = await _client(ws).save_dashboard_config("casa-mia", cfg)
+    assert out == {"ok": True, "url_path": "casa-mia"}
+    assert ws.calls[0] == ("lovelace/config/save", {"url_path": "casa-mia", "config": cfg})
+
+
+@pytest.mark.asyncio
+async def test_save_dashboard_config_rejects_config_without_views():
+    ws = FakeWS({})
+    out = await _client(ws).save_dashboard_config("casa-mia", {"nope": 1})
+    assert "error" in out
+    assert ws.calls == [], "config invalida: non deve partire alcun comando WS"

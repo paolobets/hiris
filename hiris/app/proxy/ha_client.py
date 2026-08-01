@@ -255,6 +255,37 @@ class HAClient:
             return {"error": "config dashboard vuota o in modalità YAML (non gestita da storage)"}
         return result
 
+    async def list_dashboards(self) -> list[dict] | dict:
+        """Elenca le dashboard Lovelace (storage mode) via WS.
+        Ritorna una lista di {url_path, title, mode} oppure {"error": ...}."""
+        got = await self._ws_command("lovelace/dashboards/list", {})
+        if not got or not got.get("success"):
+            return {"error": f"elenco dashboard non leggibile: {self._ws_error(got)}"}
+        result = got.get("result")
+        if not isinstance(result, list):
+            return {"error": "elenco dashboard vuoto o non valido"}
+        out = []
+        for d in result:
+            if isinstance(d, dict):
+                out.append({
+                    "url_path": d.get("url_path"),
+                    "title": d.get("title"),
+                    "mode": d.get("mode"),
+                })
+        return out
+
+    async def save_dashboard_config(self, url_path: str, config: dict) -> dict:
+        """Sovrascrive la config di una dashboard storage-mode esistente.
+        NON crea la dashboard: usare create_dashboard per quello."""
+        if not isinstance(config, dict) or "views" not in config:
+            return {"error": "config dashboard non valida (manca 'views')"}
+        saved = await self._ws_command(
+            "lovelace/config/save", {"url_path": url_path, "config": config}
+        )
+        if not saved or not saved.get("success"):
+            return {"error": f"salvataggio config dashboard fallito: {self._ws_error(saved)}"}
+        return {"ok": True, "url_path": url_path}
+
     async def add_dashboard_view(self, url_path: str, view: dict) -> dict:
         """Append a single view to an existing storage-mode dashboard, then save.
         Read-modify-write so large dashboards can be built one view per call
