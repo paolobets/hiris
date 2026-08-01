@@ -246,6 +246,17 @@ def test_list_backups_mette_in_fondo_le_voci_senza_istante(tmp_path):
     assert elenco[1]["saved_at"] is None
 
 
+def test_list_backups_non_promette_undo_che_il_restore_negherebbe(tmp_path):
+    """L'elenco alimenta il pulsante Annulla: se la voce piu' recente non e'
+    ripristinabile (`latest_backup` -> None) la plancia non deve comparire,
+    altrimenti l'utente clicca e si prende un 404."""
+    _scrivi_store(tmp_path, {"rotta": [{"config": {"views": []}}, "non uno snapshot"],
+                             "senza-config": [{"saved_at": "2026-07-01T00:00:00+00:00"}]})
+    assert latest_backup(str(tmp_path), "rotta") is None
+    assert latest_backup(str(tmp_path), "senza-config") is None
+    assert list_backups(str(tmp_path)) == []
+
+
 def test_list_backups_salta_plance_senza_snapshot(tmp_path):
     _scrivi_store(tmp_path, {"vuota": [], "rotta": "non una lista",
                              "buona": [{"config": {}, "saved_at": "2026-07-01T00:00:00+00:00"}]})

@@ -122,9 +122,9 @@ def latest_backup(data_dir: str, url_path: str) -> dict | None:
 def list_backups(data_dir: str) -> list[dict]:
     """Metadati degli snapshot esistenti, dal piu' recente al piu' vecchio.
 
-    Una voce per plancia che ha almeno uno snapshot: url_path, istante dello
-    snapshot piu' recente ("saved_at", None se quella voce e' anteriore
-    all'introduzione del campo) e quanti snapshot ci sono ("count").
+    Una voce per plancia che ha almeno uno snapshot ripristinabile: url_path,
+    istante dello snapshot piu' recente ("saved_at", None se quella voce e'
+    anteriore all'introduzione del campo) e quanti snapshot ci sono ("count").
 
     Solo metadati: le config restano dentro lo store, non escono di qui.
     L'interfaccia le usa per decidere se mostrare l'undo in modo prominente o
@@ -135,15 +135,18 @@ def list_backups(data_dir: str) -> list[dict]:
     'nessun backup', mai un'eccezione verso il chiamante."""
     voci = []
     for url_path, entries in _load(data_dir).items():
-        if not isinstance(entries, list):
+        if not isinstance(entries, list) or not entries:
             continue
-        snapshots = [e for e in entries if isinstance(e, dict)]
-        if not snapshots:
+        last = entries[-1]
+        # Stesso criterio di `latest_backup`, di proposito: questo elenco alimenta
+        # il pulsante Annulla e non deve promettere un undo che il restore poi nega.
+        if not isinstance(last, dict) or not isinstance(last.get("config"), dict):
             continue
-        saved_at = snapshots[-1].get("saved_at")
+        saved_at = last.get("saved_at")
         if not isinstance(saved_at, str) or not saved_at:
             saved_at = None
-        voci.append({"url_path": url_path, "saved_at": saved_at, "count": len(snapshots)})
+        count = sum(1 for e in entries if isinstance(e, dict))
+        voci.append({"url_path": url_path, "saved_at": saved_at, "count": count})
     # Gli istanti sono ISO 8601 UTC ("+00:00" fisso): l'ordine lessicografico
     # coincide con quello cronologico. Le voci senza istante vanno in fondo:
     # precedono l'introduzione del campo, quindi sono le piu' vecchie che ci sono.
