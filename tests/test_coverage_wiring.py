@@ -124,6 +124,24 @@ def test_holistic_reason_refreshes_guardian_policy_after_auto_tune():
     assert tune_pos < refresh_pos
 
 
+def test_health_scan_job_receives_supervisor_client_from_app_source():
+    """Fix wave 1 (FIX 1): il job periodico della scansione di salute (Task 6)
+    passa a run_health_scan() il SupervisorClient tramite `app.get(...)` -- un
+    accesso tollerante all'assenza perche' su installazioni senza Supervisor
+    lo slot non esiste affatto. Nessun test di questo file lo pinnava:
+    cancellare quell'argomento non farebbe fallire nulla (tutti i test di
+    run_health_scan passano il client direttamente), e i tre controlli di
+    sistema (addon_down, disk_space, updates_available) diventerebbero
+    silenziosamente muti in produzione mentre la suite resta verde. Controllo
+    sul sorgente, stessa convenzione inspect.getsource degli altri wiring
+    test di questo file."""
+    import inspect
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    assert 'supervisor_client=app.get("supervisor_client")' in src
+
+
 def test_coverage_review_runs_before_bridge_enabled_branch():
     """The coverage-review block must sit BEFORE the BRIDGE_ENABLED early
     return in _holistic_reason, so it runs on every holistic pass regardless

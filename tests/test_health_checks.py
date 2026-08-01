@@ -112,6 +112,20 @@ def test_disk_space_soglie():
     assert hc.check_disk_space({"disk_total": 100, "disk_used": 40, "disk_free": 60}) == []
 
 
+def test_disk_space_soglia_su_valore_grezzo_non_arrotondato():
+    """Fix wave 1 (FIX 2): la soglia va confrontata sul rapporto grezzo, non su
+    quello gia' arrotondato a un decimale per la UI. Con 9.96% libero il vecchio
+    codice arrotondava a 10.0 PRIMA del confronto e degradava un caso grave
+    (sotto il 10%) ad avviso: proprio il caso peggiore, perche' una segnalazione
+    che dovrebbe essere notificabile smette di esserlo."""
+    out = hc.check_disk_space({"disk_total": 10000, "disk_free": 996})
+    assert len(out) == 1
+    assert out[0]["severity"] == "high"
+    # L'arrotondamento resta per titolo ed evidenza mostrati all'utente.
+    assert out[0]["evidence"]["free_pct"] == 10.0
+    assert "10.0%" in out[0]["title"]
+
+
 def test_disk_space_input_malformato():
     assert hc.check_disk_space(None) == []
     assert hc.check_disk_space({}) == []
@@ -136,6 +150,12 @@ def test_updates_available_voce_unica_aggregata():
     assert voce["evidence"]["count"] == 12
     assert len(voce["evidence"]["items"]) == hc.MAX_UPDATES_EVIDENZA
     assert hc.MAX_UPDATES_EVIDENZA < 12
+    # Fix wave 1 (FIX 4a): il source_ref e' fisso ("updates_available:all"),
+    # non deve dipendere dal conteggio -- altrimenti ogni variazione nel
+    # numero di aggiornamenti disponibili aprirebbe una nuova segnalazione
+    # invece di riconciliare quella esistente. E' la stessa proprieta' gia'
+    # pinnata per disk_space al variare della percentuale.
+    assert voce["source_ref"] == "updates_available:all"
 
 
 def test_updates_available_input_vuoto_o_malformato():
@@ -145,3 +165,6 @@ def test_updates_available_input_vuoto_o_malformato():
     out = hc.check_updates_available(["x", {"name": "Core", "update_type": "core"}])
     assert len(out) == 1 and out[0]["evidence"]["count"] == 1
     assert out[0]["title"] == "1 aggiornamento disponibile"
+    # Stesso source_ref con 1 solo aggiornamento e con 12 (vedi test sopra):
+    # la deduplica e' stabile al variare del conteggio.
+    assert out[0]["source_ref"] == "updates_available:all"

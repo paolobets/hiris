@@ -134,6 +134,17 @@ cinque esistenti (funzioni pure, nessun I/O, `source_ref` per la deduplica):
 
 Le soglie sono costanti dichiarate, non numeri sparsi nel codice.
 
+Nota sulla riga "add-on non in esecuzione": l'implementazione distingue
+`error` (severita' alta, invariata) da `stopped` (severita' avviso). Questa
+tabella dice "installato **e abilitato**" perche' l'endpoint del Supervisor
+che elenca gli add-on (`/addons`) non espone se l'avvio automatico e'
+abilitato — quel campo (`boot`) si legge solo con una chiamata per singolo
+add-on (`/addons/{slug}/info`), I/O aggiuntivo e ricorrente per una scansione
+che gira ogni 30 minuti, cioe' 48 volte al giorno. Trattare ogni add-on fermo
+come grave sarebbe quindi una condizione **piu' larga** di quella qui
+specificata: notificherebbe anche l'add-on che l'utente ha spento di
+proposito. Dettaglio completo in `.superpowers/sdd/task-6-report.md`.
+
 Nota: gli aggiornamenti restano **informativi** e non generano notifica push —
 sono una condizione permanente, non un evento; notificarli produrrebbe rumore
 quotidiano.

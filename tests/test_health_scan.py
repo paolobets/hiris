@@ -169,3 +169,43 @@ async def test_run_health_scan_idempotente_su_due_giri(tmp_path):
     assert secondo["inserted"] == 0
     assert len(store.list()) == 3
     store.close()
+
+
+@pytest.mark.asyncio
+async def test_run_health_scan_controlli_di_sistema_si_auto_risolvono(tmp_path):
+    """Fix wave 1 (FIX 4b): il percorso "il problema sparisce -> la
+    segnalazione si chiude da sola" era verificato solo indirettamente,
+    controllando che i check_id dei controlli di sistema appartenessero a
+    CHECK_IDS (il requisito per cui reconcile() PUO' chiuderli), ma la
+    chiusura effettiva non era mai esercitata per addon_down, disk_space e
+    updates_available. Qui il Supervisor smette di riportare problemi al
+    secondo giro e le tre segnalazioni devono risultare risolte."""
+    now = datetime(2026, 7, 28, tzinfo=timezone.utc)
+    supervisor_con_problemi = _FakeSupervisor(
+        addons=[{"slug": "core_samba", "name": "Samba", "state": "error"}],
+        host_info={"disk_total": 100, "disk_used": 95, "disk_free": 5},
+        updates=[{"name": "Core", "update_type": "core", "version_latest": "2026.8"}],
+    )
+    store = AdvisoryStore(str(tmp_path / "a.db"))
+    primo = await run_health_scan(
+        ha_client=_FakeHA(states=[], automations=[]),
+        entity_cache=_FakeCache(minimal=[], area_map={}),
+        tiers={}, entity_tiers={}, store=store, now=now,
+        supervisor_client=supervisor_con_problemi,
+    )
+    assert primo["inserted"] == 3
+
+    supervisor_sanato = _FakeSupervisor(addons=[], host_info={}, updates=[])
+    secondo = await run_health_scan(
+        ha_client=_FakeHA(states=[], automations=[]),
+        entity_cache=_FakeCache(minimal=[], area_map={}),
+        tiers={}, entity_tiers={}, store=store, now=now,
+        supervisor_client=supervisor_sanato,
+    )
+    assert secondo["resolved"] == 3
+    assert secondo["inserted"] == 0
+    risolte = store.list(status="resolved")
+    assert len(risolte) == 3
+    assert {a["check_id"] for a in risolte} == {"addon_down", "disk_space", "updates_available"}
+    assert store.list(status="open") == []
+    store.close()

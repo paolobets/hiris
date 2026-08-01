@@ -218,13 +218,19 @@ def check_disk_space(host_info):
     if totale is None or libero is None or totale <= 0 or libero < 0:
         return []
 
-    pct = round(libero / totale * 100, 1)
-    if pct < DISCO_LIBERO_PCT_ALTO:
+    # Confronto sul rapporto grezzo: arrotondare prima del confronto puo'
+    # spostare un valore appena sotto una soglia (es. 9.96%) dalla parte
+    # sbagliata (9.96 -> 10.0 arrotondato degraderebbe "grave" ad "avviso").
+    # L'arrotondamento resta solo per il titolo e l'evidenza mostrati
+    # all'utente.
+    pct_grezza = libero / totale * 100
+    if pct_grezza < DISCO_LIBERO_PCT_ALTO:
         severita = "high"
-    elif pct < DISCO_LIBERO_PCT_AVVISO:
+    elif pct_grezza < DISCO_LIBERO_PCT_AVVISO:
         severita = "warn"
     else:
         return []
+    pct = round(pct_grezza, 1)
     return [{
         "check_id": "disk_space", "severity": severita,
         "title": f"Spazio su disco quasi esaurito: {pct}% libero",
