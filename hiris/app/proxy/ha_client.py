@@ -286,28 +286,6 @@ class HAClient:
             return {"error": f"salvataggio config dashboard fallito: {self._ws_error(saved)}"}
         return {"ok": True, "url_path": url_path}
 
-    async def add_dashboard_view(self, url_path: str, view: dict) -> dict:
-        """Append a single view to an existing storage-mode dashboard, then save.
-        Read-modify-write so large dashboards can be built one view per call
-        (avoids emitting the whole Lovelace config in a single LLM response).
-        Human-gated upstream (chat-only)."""
-        if not isinstance(view, dict) or not view:
-            return {"error": "view vuota o non valida"}
-        config = await self.get_lovelace_config(url_path)
-        if config.get("error"):
-            return config
-        views = config.get("views")
-        if not isinstance(views, list):
-            views = []
-        views.append(view)
-        config["views"] = views
-        saved = await self._ws_command(
-            "lovelace/config/save", {"url_path": url_path, "config": config}
-        )
-        if not saved or not saved.get("success"):
-            return {"error": f"salvataggio vista fallito: {self._ws_error(saved)}"}
-        return {"ok": True, "url_path": url_path, "views": len(views)}
-
     async def get_automation_config(self, automation_id: str) -> dict:
         """Return the config (YAML-equivalent dict) of a UI-managed automation.
 
