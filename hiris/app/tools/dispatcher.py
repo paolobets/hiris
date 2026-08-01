@@ -32,7 +32,6 @@ from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
 from .advisory_tools import get_advisories
 from .diagnostics_tools import (
-    DEFAULT_LOGBOOK_HOURS,
     get_logbook as _get_logbook,
     render_template as _render_template,
 )
@@ -279,22 +278,27 @@ class ToolDispatcher:
                     err = _check_entity_allowed(entity_id, allowed_entities)
                     if err is not None:
                         return err
-                # allowed_entities prosegue fino al tool: senza entity_id il
-                # filtro deve valere sulle VOCI restituite, altrimenti bastava
-                # omettere l'entita' per leggere tutta la casa. visible_entity_ids
-                # no: non e' un perimetro di sicurezza ma l'insieme delle entita'
-                # rilevanti per la domanda corrente (SemanticContextMap), quasi
-                # sempre non vuoto — filtrarci le voci renderebbe inutile proprio
-                # la domanda "cosa e' successo ieri sera?".
-                # `hours` assente e `hours: null` sono la stessa intenzione (non
-                # l'ho specificato) e valgono il default; NON si usa `or`, che
-                # tradurrebbe uno 0 esplicito in 24 nascondendo un input
-                # sbagliato invece di respingerlo.
-                hours = inputs.get("hours")
+                # I due rifiuti qui sopra si somigliano ma NON sono la stessa
+                # cosa, e trattarli come equivalenti sarebbe un errore:
+                #   - allowed_entities e' il perimetro di sicurezza e prosegue
+                #     fino al tool, dove filtra anche le VOCI restituite. Deve:
+                #     senza entity_id basterebbe ometterlo per leggere tutta la
+                #     casa, e il rifiuto qui sopra non varrebbe nulla.
+                #   - visible_entity_ids si ferma qui, e quindi il suo rifiuto e'
+                #     aggirabile semplicemente non passando entity_id. E' voluto,
+                #     perche' non e' un contenimento: e' l'insieme delle entita'
+                #     rilevanti per la domanda corrente (SemanticContextMap),
+                #     quasi sempre non vuoto e di natura semantica. Filtrarci le
+                #     voci svuoterebbe proprio la domanda "cosa e' successo ieri
+                #     sera?", che per definizione non conosce le entita' in
+                #     anticipo. Non usarlo come se fosse una whitelist.
+                # `hours` non si normalizza qui: assente o `null` valgono il
+                # default DENTRO il tool, cosi' il contratto e' uno solo per
+                # qualunque chiamante (vedi diagnostics_tools.get_logbook).
                 return await _get_logbook(
                     self._ha,
                     entity_id=entity_id,
-                    hours=DEFAULT_LOGBOOK_HOURS if hours is None else hours,
+                    hours=inputs.get("hours"),
                     allowed_entities=allowed_entities,
                 )
             if name == "render_template":

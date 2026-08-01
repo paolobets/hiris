@@ -77,7 +77,7 @@ var TOOLS = [
   { id: 'propose_dashboard',      label: 'propose_dashboard',      desc: 'Propone di creare o sostituire una plancia (approvazione dalle Proposte)' },
   { id: 'get_advisories',         label: 'get_advisories',         desc: 'Segnalazioni di salute aperte rilevate dal Brain' },
   { id: 'get_logbook',            label: 'get_logbook',            desc: 'Cronologia eventi: cosa è successo e chi ha fatto cosa' },
-  { id: 'render_template',        label: 'render_template',        desc: 'Valuta un template Jinja di HA (diagnosi; solo bot di chat)' },
+  { id: 'render_template',        label: 'render_template',        desc: 'Valuta un template Jinja di HA (diagnosi). Legge tutta la casa: la lista di entità concesse al bot non si applica. Solo bot di chat' },
 ];
 
 var ACTIONS = [

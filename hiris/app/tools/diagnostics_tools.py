@@ -56,12 +56,15 @@ GET_LOGBOOK_TOOL_DEF = {
         f"'entity_id' e' facoltativo: omesso significa tutta la casa. 'hours' e' "
         f"la finestra all'indietro da adesso, da 1 a {MAX_LOGBOOK_HOURS} "
         f"(default {DEFAULT_LOGBOOK_HOURS}). Sola lettura: non modifica nulla. "
-        "Se la risposta contiene 'truncated' stai vedendo SOLO le voci piu' "
-        "recenti della finestra ('shown' voci nelle ultime 'window_hours' ore): "
-        "dillo all'utente e non concludere che prima non sia successo altro; "
-        "per vedere piu' indietro restringi la finestra o filtra per entita'. "
-        "Se contiene 'filtered' stai vedendo solo le voci delle entita' che ti "
-        "sono concesse ('shown' su 'total' lette): riferiscilo come parziale."
+        "Se la risposta contiene 'truncated' della finestra sono state lette "
+        "SOLO le voci piu' recenti ('shown' voci lette nelle ultime "
+        "'window_hours' ore): dillo all'utente e non concludere che prima non "
+        "sia successo altro; per vedere piu' indietro restringi la finestra o "
+        "filtra per entita'. Se contiene 'filtered' di quelle voci ti sono "
+        "mostrate solo quelle delle entita' che ti sono concesse ('shown' su "
+        "'total' lette): riferiscilo come parziale. I due numeri 'shown' "
+        "contano cose diverse e possono comparire insieme: 'count' e' sempre "
+        "quante voci stai effettivamente vedendo."
     ),
     "input_schema": {
         "type": "object",
@@ -118,6 +121,11 @@ def validate_logbook_inputs(entity_id: Any, hours: Any) -> str | None:
 
     Separata e sincrona apposta: e' la parte che decide se HA viene chiamato o
     no, quindi deve essere verificabile senza un client finto.
+
+    Volutamente severa: qui `hours=None` e' un errore. La traduzione di "non
+    l'ho specificato" nel default e' un fatto del CONTRATTO del tool e vive in
+    `get_logbook`, prima della validazione; questa funzione giudica un valore
+    gia' deciso.
     """
     if entity_id is not None and not (
         isinstance(entity_id, str) and _ENTITY_ID_RE.match(entity_id)
@@ -167,7 +175,7 @@ def _nel_perimetro(entity_id: Any, allowed_entities: list[str] | None) -> bool:
 async def get_logbook(
     ha: Any,
     entity_id: str | None = None,
-    hours: int = DEFAULT_LOGBOOK_HOURS,
+    hours: int | None = None,
     allowed_entities: list[str] | None = None,
 ) -> dict:
     """Eventi recenti di Home Assistant, filtrati sul perimetro del chiamante.
@@ -176,9 +184,17 @@ async def get_logbook(
     restituite, non solo all'entita' richiesta: `entity_id` e' facoltativo, e
     un perimetro che valesse soltanto quando l'LLM specifica un'entita' si
     aggirerebbe semplicemente omettendola.
+
+    `hours` assente o `None` vale il default: e' l'intera intenzione "non l'ho
+    specificato", ed e' parte del contratto del TOOL, non del suo instradamento.
+    Tenerla qui significa che un secondo chiamante non deve ricordarsi di
+    replicarla. `0` invece resta un errore: e' un input sbagliato, e tradurlo
+    nel default lo nasconderebbe al modello invece di respingerlo.
     """
     if ha is None:
         return {"error": "Home Assistant non raggiungibile — controlla i log di avvio"}
+    if hours is None:
+        hours = DEFAULT_LOGBOOK_HOURS
     err = validate_logbook_inputs(entity_id, hours)
     if err:
         return {"error": err}
@@ -206,7 +222,13 @@ async def get_logbook(
     }
     if troncato:
         risultato["truncated"] = {
-            "shown": len(voci),
+            # Voci LETTE dalla finestra, non voci mostrate: le due dichiarazioni
+            # descrivono tagli diversi e devono restare indipendenti. Contare
+            # qui le voci sopravvissute al perimetro farebbe coincidere questo
+            # numero con 'filtered.shown' quando compaiono insieme, e 'shown'
+            # smetterebbe di significare "N delle voci massime lette". Quante
+            # voci si stanno effettivamente vedendo lo dice 'count'.
+            "shown": lette,
             "window_hours": hours,
             # Quali voci mancano, non solo quante: ha_client tiene le piu'
             # recenti, quindi il buco sta all'inizio della finestra.

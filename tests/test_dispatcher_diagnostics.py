@@ -77,13 +77,29 @@ async def test_dispatch_get_logbook_rifiuta_entita_fuori_perimetro():
 
 
 @pytest.mark.asyncio
-async def test_dispatch_get_logbook_filtra_per_visible_entity_ids():
+async def test_dispatch_get_logbook_rifiuta_entita_fuori_dal_contesto_visibile():
     ha = _FakeHA()
     d = ToolDispatcher(ha, notify_config={})
     out = await d.dispatch("get_logbook", {"entity_id": "lock.front"},
                            visible_entity_ids=frozenset({"light.a"}))
     assert "error" in out
     assert ha.chiamate_logbook == []
+
+
+@pytest.mark.asyncio
+async def test_visible_entity_ids_non_filtra_le_voci_e_non_e_un_contenimento():
+    # Asimmetria deliberata rispetto ad allowed_entities: visible_entity_ids
+    # ferma l'entita' esplicita ma NON filtra le voci restituite, quindi si
+    # aggira omettendo il parametro. E' voluto — e' un insieme semantico di
+    # rilevanza (SemanticContextMap), non una whitelist di sicurezza: filtrarci
+    # le voci svuoterebbe la domanda "cosa e' successo ieri sera?". Questo test
+    # pinna il comportamento perche' nessuno lo scambi per una falla.
+    ha = _FakeHA()
+    d = ToolDispatcher(ha, notify_config={})
+    out = await d.dispatch("get_logbook", {},
+                           visible_entity_ids=frozenset({"light.a"}))
+    assert [v["entity_id"] for v in out["entries"]] == ["light.a", "lock.front"]
+    assert "filtered" not in out
 
 
 @pytest.mark.asyncio
@@ -100,7 +116,9 @@ async def test_dispatch_get_logbook_entita_visibile_passa():
 @pytest.mark.parametrize("inputs", [{}, {"hours": None}])
 async def test_dispatch_get_logbook_ore_assenti_valgono_il_default(inputs):
     # Un modello che emette esplicitamente `null` per un parametro facoltativo
-    # sta dicendo "non l'ho specificato", non "finestra non valida".
+    # sta dicendo "non l'ho specificato", non "finestra non valida". La
+    # normalizzazione vive nel tool (diagnostics_tools), non qui: questo test
+    # verifica che passando per il dispatcher il contratto valga comunque.
     ha = _FakeHA()
     d = ToolDispatcher(ha, notify_config={})
     await d.dispatch("get_logbook", dict(inputs))

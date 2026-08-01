@@ -43,4 +43,13 @@ test('il catalogo TOOLS espone i due tool di diagnosi', () => {
   // irraggiungibile del tutto.
   const tpl = voci.find((t) => t.id === 'render_template');
   assert.ok(/chat/i.test(tpl.desc), 'la descrizione deve dire che è per i bot di chat');
+
+  // Chi spunta questa casella su un bot con perimetro ristretto (es. solo le
+  // luci) gli sta di fatto concedendo la lettura dell'intera casa: un template
+  // Jinja non ha un entity_id da filtrare e nessuna whitelist puo' applicarsi.
+  // L'etichetta deve dirlo, o l'operatore concede piu' di quanto crede.
+  assert.ok(/tutta la casa/i.test(tpl.desc),
+    'la descrizione deve avvisare che il tool legge tutta la casa');
+  assert.ok(/entit/i.test(tpl.desc),
+    'la descrizione deve dire che la whitelist di entità non si applica');
 });

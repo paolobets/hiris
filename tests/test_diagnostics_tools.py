@@ -78,12 +78,36 @@ async def test_ore_fuori_intervallo_non_raggiungono_ha(ore):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("ore", ["24", None, 2.5, True])
+@pytest.mark.parametrize("ore", ["24", 2.5, True])
 async def test_ore_non_intere_non_raggiungono_ha(ore):
     # `True` e' un int per Python ma non e' una finestra temporale: una
     # tool-call dell'LLM puo' portare qualunque tipo.
     ha = _FakeHA()
     out = await get_logbook(ha, hours=ore)
+    assert "error" in out
+    assert ha.chiamate_logbook == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kwargs", [{}, {"hours": None}])
+async def test_ore_assenti_o_nulle_valgono_il_default(kwargs):
+    # La normalizzazione vive QUI, non nel dispatcher: il contratto del tool
+    # deve valere anche per un chiamante diverso, che altrimenti dovrebbe
+    # ricordarsi di replicarla. "Non l'ho specificato" (assente o `null`) e'
+    # un'intenzione, non una finestra non valida.
+    ha = _FakeHA()
+    out = await get_logbook(ha, **kwargs)
+    assert "error" not in out
+    assert ha.chiamate_logbook == [(None, DEFAULT_LOGBOOK_HOURS)]
+    assert out["hours"] == DEFAULT_LOGBOOK_HOURS
+
+
+@pytest.mark.asyncio
+async def test_ore_zero_resta_un_errore_anche_nel_tool():
+    # `0` non e' un'omissione: e' un input sbagliato, e tradurlo nel default
+    # nasconderebbe l'errore al modello invece di respingerlo.
+    ha = _FakeHA()
+    out = await get_logbook(ha, hours=0)
     assert "error" in out
     assert ha.chiamate_logbook == []
 
@@ -146,6 +170,25 @@ async def test_sotto_il_massimo_non_si_dichiara_alcun_taglio():
     ha = _FakeHA(voci=[_voce() for _ in range(MAX_LOGBOOK_ENTRIES - 1)])
     out = await get_logbook(ha, hours=48)
     assert "truncated" not in out
+
+
+@pytest.mark.asyncio
+async def test_troncamento_e_perimetro_sono_dichiarazioni_indipendenti():
+    # I due tagli misurano cose diverse e vanno letti separatamente:
+    # `truncated.shown` e' quante voci sono state LETTE dalla finestra (il cap
+    # di ha_client), `filtered.shown` quante ne sono sopravvissute al perimetro.
+    # Calcolare `truncated.shown` dopo il filtro lo farebbe coincidere con
+    # l'altro numero: smetterebbe di dire "N delle voci massime lette" e il
+    # modello concluderebbe che il taglio della finestra e' meno severo di
+    # quanto sia.
+    voci = ([_voce("light.salotto") for _ in range(10)]
+            + [_voce("lock.ingresso") for _ in range(MAX_LOGBOOK_ENTRIES - 10)])
+    ha = _FakeHA(voci=voci)
+    out = await get_logbook(ha, hours=48, allowed_entities=["light.*"])
+    assert out["truncated"] == {"shown": MAX_LOGBOOK_ENTRIES,
+                                "window_hours": 48, "oldest_dropped": True}
+    assert out["filtered"] == {"shown": 10, "total": MAX_LOGBOOK_ENTRIES}
+    assert out["count"] == 10
 
 
 # --- perimetro delle entita' ------------------------------------------------
@@ -245,9 +288,11 @@ async def test_errore_di_ha_inoltrato_al_modello():
     assert out["error"].startswith("UndefinedError")
 
 
-# --- registrazione: un tool esiste solo se e' dichiarato ovunque -------------
-# Il catalogo della UI (static/config/templates.js) e' JS e vive in
-# tests/js/tool-catalog.test.mjs.
+# --- registrazione: dove i due tool sono raggiungibili, e dove no ------------
+# Entrambi vivono in chat (ALL_TOOL_DEFS + catalogo della UI); il solo logbook
+# e' concesso anche agli agenti locali (EVALUATION_ONLY_TOOLS); nessuno dei due
+# e' esposto al gateway MCP. Il catalogo della UI (static/config/templates.js)
+# e' JS e vive in tests/js/tool-catalog.test.mjs.
 
 def test_registrati_nel_runner_con_il_gating_giusto():
     from hiris.app.claude_runner import ALL_TOOL_DEFS, EVALUATION_ONLY_TOOLS
@@ -261,15 +306,21 @@ def test_registrati_nel_runner_con_il_gating_giusto():
     assert "render_template" not in EVALUATION_ONLY_TOOLS
 
 
-def test_solo_il_logbook_nel_registro_mcp():
-    from hiris.app.mcp.tiers import TOOLS, Tier
-    voci = {t.name: t for t in TOOLS}
-    assert voci["get_logbook"].hiris_tool == "get_logbook"
-    assert voci["get_logbook"].tier is Tier.READ
+def test_nessuno_dei_due_nel_registro_mcp_perche_il_gateway_e_remoto():
+    # Contenimento della superficie remota, non limite tecnico. Il gateway
+    # esegue i tool di lettura senza whitelist di entita': esporre il logbook
+    # renderebbe enumerabile in blocco, dall'esterno, la cronologia dell'intera
+    # casa (serrature, allarme, presenze, chi-ha-fatto-cosa). Diverso da
+    # get_history, che e' un'interrogazione mirata su entita' gia' note.
+    from hiris.app.mcp.tiers import TOOLS
+    voci = {t.name for t in TOOLS}
+    assert "get_logbook" not in voci
     assert "render_template" not in voci
 
 
-def test_solo_il_logbook_fra_i_read_tools_del_gateway():
+def test_nessuno_dei_due_fra_i_read_tools_del_gateway():
+    # Stessa ragione: derive_execute_policy concede SEMPRE i READ_TOOLS, senza
+    # opt-in per singolo tool, e le letture partono con allowed_entities=None.
     from hiris.app.api.handlers_gateway_policy import READ_TOOLS
-    assert "get_logbook" in READ_TOOLS
+    assert "get_logbook" not in READ_TOOLS
     assert "render_template" not in READ_TOOLS

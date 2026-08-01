@@ -4,15 +4,17 @@ from hiris.app.mcp.tiers import TOOLS, get_tool
 from hiris.app.mcp.server import build_mcp
 
 
-def test_catalog_has_15_tools_no_bridge():
+def test_catalog_has_14_tools_no_bridge():
     names = {t.name for t in TOOLS}
     assert "call_service" in names and get_tool("call_service").hiris_tool == "call_ha_service"
     assert "claim_reasoning_job" not in names and "submit_decision" not in names
-    # render_template NON entra nel catalogo del gateway (superficie remota,
-    # lettura arbitraria non filtrabile per entita'): il conteggio cresce di uno
-    # solo, ed e' pinnato anche per NOME in tests/test_diagnostics_tools.py.
+    # Nessuno dei due tool di diagnosi entra nel catalogo del gateway: il
+    # conteggio NON cresce. Le ragioni (superficie remota, letture senza
+    # whitelist di entita') stanno in hiris/app/mcp/tiers.py, e l'assenza e'
+    # pinnata anche per NOME in tests/test_diagnostics_tools.py.
     assert "render_template" not in names
-    assert len(TOOLS) == 15  # +get_advisories, +get_logbook (READ)
+    assert "get_logbook" not in names
+    assert len(TOOLS) == 14  # +get_advisories (READ)
 
 
 @pytest.mark.asyncio

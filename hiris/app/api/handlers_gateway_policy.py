@@ -22,11 +22,19 @@ logger = logging.getLogger(__name__)
 # Read tools are always available to the gateway (non-destructive).
 READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
               "get_history", "recall_knowledge", "get_automation_config",
-              "get_advisories", "get_logbook"]
-# render_template resta FUORI: i READ_TOOLS il gateway li esegue senza whitelist
-# di entita' (handlers_execute: "reads see the whole home"), e un template legge
-# qualunque stato senza offrire un entity_id da filtrare. Sarebbe una lettura
-# arbitraria concessa a una superficie remota. Chat-only, come in claude_runner.
+              "get_advisories"]
+# I due tool di diagnosi restano FUORI da questa lista. Questa lista non e' un
+# menu: derive_execute_policy la concede SEMPRE e per intero, senza opt-in per
+# singolo tool, e le letture partono con allowed_entities=None (handlers_execute:
+# "reads see the whole home"). Su una superficie remota:
+#   - render_template sarebbe una lettura arbitraria — un template legge
+#     qualunque stato e non offre un entity_id da filtrare;
+#   - get_logbook renderebbe enumerabile in blocco la cronologia dell'intera
+#     casa (serrature, allarme, presenze), che e' cosa diversa dall'interrogazione
+#     mirata di get_history.
+# Contenimento della superficie remota, non limite tecnico: entrambi girano gia'
+# nel dispatcher, riabilitarli e' una riga qui (e una in mcp/tiers.py). In chat e
+# agli agenti locali sono pienamente disponibili — vedi claude_runner.py.
 
 # Propose / schedule tools the gateway may always reach (non-destructive).
 # create_task is intentionally excluded: when confirm_actions=false the gateway
