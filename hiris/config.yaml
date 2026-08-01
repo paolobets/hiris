@@ -80,6 +80,13 @@ options:
   execute_api_tools: ""
   execute_api_entities: ""
   execute_api_services: ""
+  # Denylist di LETTURA del gateway: glob CSV su entity_id che non escono mai
+  # da /api/execute, comunque li si chieda (richiesta rifiutata in ingresso,
+  # risposta potata in uscita). Non e' l'elenco dei domini pericolosi del
+  # semaforo, che riguarda l'azione: una tapparella e' pericolosa da muovere ma
+  # innocua da leggere, una telecamera e' l'opposto. Svuotala per tornare al
+  # comportamento precedente (ogni lettura vede tutta la casa).
+  execute_api_read_denylist: "lock.*, alarm_control_panel.*, camera.*, person.*, device_tracker.*"
   # Server MCP interno (loopback-only, non esposto in rete): porta locale su
   # cui HIRIS espone i tool MCP per client MCP-aware. Mai raggiungibile fuori
   # da 127.0.0.1 dentro il container.
@@ -172,6 +179,7 @@ schema:
   execute_api_tools: "str?"
   execute_api_entities: "str?"
   execute_api_services: "str?"
+  execute_api_read_denylist: "str?"
   internal_mcp_port: port?
   supervisor_ingress_cidr: "str?"
   log_level: "list(debug|info|warning|error)"

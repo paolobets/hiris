@@ -89,6 +89,9 @@ configuration:
   execute_api_services:
     name: "Execute-API: whitelist servizi"
     description: "CSV di glob dominio.servizio (es. light.*) che l'execute-API può chiamare. Vuoto = nessun filtro servizio aggiuntivo."
+  execute_api_read_denylist:
+    name: "Execute-API: denylist di lettura"
+    description: "CSV di glob entity_id (es. lock.*) che il gateway MCP non può mai leggere: la richiesta che li nomina viene rifiutata e le risposte vengono potate. Predefinito: serrature, allarme, telecamere e presenze. Svuota per tornare al comportamento precedente (ogni lettura vede tutta la casa). Non riguarda le letture in chat."
   supervisor_ingress_cidr:
     name: "CIDR ingress Supervisor fidata"
     description: "Range IP sorgente trattati come vero ingress del Supervisor HA per il bypass X-Ingress-Path (CR-1). Tutto il resto richiede il token interno. Default 172.30.32.0/23; restringi (es. 172.30.32.2/32) se esponi la API a un tunnel."

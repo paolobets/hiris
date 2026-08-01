@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import time
 from datetime import date, datetime, timezone
@@ -1060,7 +1061,8 @@ class _EmbeddedMCPServer(uvicorn.Server):
         return
 
 
-def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
+def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099",
+                              local_token: str = ""):
     """Costruisce (client, uvicorn.Config, guard) per il server MCP interno su
     loopback. Isolato dall'avvio dell'app cosi' e' testabile senza bootare
     tutto.
@@ -1077,7 +1079,10 @@ def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
     from .mcp.server import build_mcp, make_asgi_app
     port = int(os.environ.get("INTERNAL_MCP_PORT", "8199"))
     token = os.environ.get("INTERNAL_TOKEN", "")
-    client = LocalExecuteClient(hiris_base_url, token)
+    # `local_token` marca queste letture come chat in-addon, esentandole dalla
+    # denylist di lettura del gateway (superficie remota). Vuoto = nessun
+    # marcatore = trattate come remote: fail-closed.
+    client = LocalExecuteClient(hiris_base_url, token, local_token=local_token)
     guard = McpGuard()
     asgi = make_asgi_app(build_mcp(client, guard))
     config = uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="warning")
@@ -1127,6 +1132,22 @@ async def _on_startup(app: web.Application) -> None:
         entities=os.environ.get("EXECUTE_API_ENTITIES", ""),
         services=os.environ.get("EXECUTE_API_SERVICES", ""),
     )
+    # Denylist di lettura del gateway: entita'/domini che non escono mai da
+    # /api/execute. Volutamente NON dentro execute_policy: quel dict viene
+    # sostituito in blocco da apply_saved_policy quando l'utente salva il
+    # semaforo dalla UI, e la denylist ci sparirebbe dentro. `get` senza
+    # default: variabile assente = anello mancante = default protettivo
+    # (parse_read_denylist); stringa vuota = opzione svuotata dall'utente.
+    from .api.read_denylist import parse_read_denylist
+    app["read_denylist"] = parse_read_denylist(
+        os.environ.get("EXECUTE_API_READ_DENYLIST"))
+    # Marcatore delle letture della chat in-addon, che rientra in /api/execute
+    # dall'MCP interno su loopback: la denylist e' pensata per la superficie
+    # REMOTA, non per la chat, dove vale il perimetro del Chatbot. Segreto di
+    # processo (mai su disco, mai in configurazione) proprio perche' il campo
+    # `origin` del corpo, essendo fornito dal chiamante, sarebbe falsificabile
+    # da chiunque tenga l'internal token.
+    app["local_execute_token"] = secrets.token_urlsafe(32)
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
         logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
@@ -2529,7 +2550,8 @@ async def _on_startup(app: web.Application) -> None:
     # 127.0.0.1 only -- never reachable off-box. Runs as a background asyncio
     # task on the SAME event loop as the rest of the app; cancelled + the
     # client's aiohttp session closed in _on_cleanup below.
-    _mcp_client, _mcp_config, _mcp_guard = build_internal_mcp_server()
+    _mcp_client, _mcp_config, _mcp_guard = build_internal_mcp_server(
+        local_token=app.get("local_execute_token") or "")
     await _mcp_client.start()
     _mcp_server = _EmbeddedMCPServer(_mcp_config)
     app["internal_mcp_client"] = _mcp_client

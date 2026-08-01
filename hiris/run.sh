@@ -24,6 +24,16 @@ export AGENT_OWNER=$(bashio::config 'agent_owner' '')
 export EXECUTE_API_TOOLS=$(bashio::config 'execute_api_tools' '')
 export EXECUTE_API_ENTITIES=$(bashio::config 'execute_api_entities' '')
 export EXECUTE_API_SERVICES=$(bashio::config 'execute_api_services' '')
+# Denylist di lettura del gateway. Qui serve distinguere due casi che
+# bashio::config confonde (restituisce '' per entrambi):
+#   - opzione ASSENTE  -> la variabile resta non esportata e l'app applica il
+#                         default protettivo (lock/allarme/telecamere/presenze);
+#   - opzione SVUOTATA -> si esporta '' e la denylist e' vuota, cioe' il
+#                         comportamento precedente, che deve restare esprimibile.
+# Stesso accesso diretto a options.json gia' usato qui sotto per apprise_urls.
+if jq -e 'has("execute_api_read_denylist")' /data/options.json >/dev/null 2>&1; then
+  export EXECUTE_API_READ_DENYLIST=$(bashio::config 'execute_api_read_denylist' '')
+fi
 export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
 export INTERNAL_MCP_PORT=$(bashio::config 'internal_mcp_port' '8199')
 # Guard the jq parse (review medium): a malformed options.json used to silently
