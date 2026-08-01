@@ -1188,12 +1188,20 @@ async def _on_startup(app: web.Application) -> None:
     await engine.start()
     app["engine"] = engine
 
-    # Client Supervisor di sola lettura (add-on, disco, aggiornamenti). Su
-    # un'installazione standalone il Supervisor non risponde: ogni lettura
-    # degrada a vuoto e la sezione semplicemente non compare nello snapshot.
-    supervisor_client = SupervisorClient(token=os.environ.get("SUPERVISOR_TOKEN", ""))
-    await supervisor_client.start()
-    app["supervisor_client"] = supervisor_client
+    # Client Supervisor di sola lettura (add-on, disco, aggiornamenti). Senza
+    # SUPERVISOR_TOKEN siamo su un'installazione standalone (container senza
+    # Supervisor): non lo costruiamo affatto, cosi' evitiamo tre GET destinate
+    # al timeout a ogni refresh. Il monitor riceve None e la sezione non compare.
+    supervisor_token = os.environ.get("SUPERVISOR_TOKEN", "").strip()
+    supervisor_client = None
+    if supervisor_token:
+        supervisor_client = SupervisorClient(token=supervisor_token)
+        await supervisor_client.start()
+        app["supervisor_client"] = supervisor_client
+    else:
+        logger.info(
+            "SUPERVISOR_TOKEN assente: sezione supervisor dello stato di salute disattivata"
+        )
 
     health_monitor = HealthMonitor(
         ha_client=ha_client,

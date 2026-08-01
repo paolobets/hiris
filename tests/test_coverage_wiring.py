@@ -43,6 +43,42 @@ def test_suggestion_store_instantiated_in_server_source():
     assert 'app["suggestion_store"].close()' in src
 
 
+def test_supervisor_client_lifecycle_wired_in_server_source():
+    """Fix wave 1 (FIX 4): il ciclo di vita del SupervisorClient (costruzione
+    solo con SUPERVISOR_TOKEN, avvio, slot nell'app, passaggio all'HealthMonitor,
+    arresto nel cleanup) non era pinnato da nulla: cancellare la riga di stop
+    non faceva fallire alcun test e la sessione aiohttp restava aperta.
+    Controllo sul sorgente, stessa convenzione inspect.getsource degli altri
+    wiring test di questo file."""
+    import inspect
+    from hiris.app import server
+
+    startup = inspect.getsource(server._on_startup)
+    # Su installazione standalone (nessun token) il client non si costruisce
+    # affatto: eviterebbe tre GET a vuoto con timeout a ogni refresh.
+    assert 'os.environ.get("SUPERVISOR_TOKEN", "").strip()' in startup
+    assert "SupervisorClient(token=supervisor_token)" in startup
+    assert "await supervisor_client.start()" in startup
+    assert 'app["supervisor_client"] = supervisor_client' in startup
+    assert "supervisor_client=supervisor_client" in startup
+
+    cleanup = inspect.getsource(server._on_cleanup)
+    assert 'await app["supervisor_client"].stop()' in cleanup
+
+
+def test_health_monitor_lifecycle_wired_in_server_source():
+    """Fix wave 1 (FIX 4): l'HealthMonitor deve essere costruito sul data_dir,
+    avviato (registra il listener WS e il job a 30 minuti) e messo nello slot
+    dell'app da cui lo leggono i tool e gli handler."""
+    import inspect
+    from hiris.app import server
+
+    startup = inspect.getsource(server._on_startup)
+    assert 'os.path.join(data_dir, "ha_health.json")' in startup
+    assert "await health_monitor.start()" in startup
+    assert 'app["health_monitor"] = health_monitor' in startup
+
+
 def test_holistic_reason_wires_auto_tune_and_trace_coverage():
     """Slice 6 Task 4 wiring: _holistic_reason must call both
     trace_applied_coverage (write-back trace for auto-applied coverage

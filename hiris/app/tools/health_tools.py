@@ -16,7 +16,9 @@ GET_HA_HEALTH_TOOL_DEF = {
         "core/OS/Supervisor/add-ons; absent on installations without Supervisor). "
         "Use 'all' to include everything. Sections are capped: if the response "
         "contains 'truncated', that section was shortened -- always tell the user "
-        "the real total reported there ('shown' of 'total'). Read-only: this tool "
+        "the real total reported there ('shown' of 'total'), and note the 'order' "
+        "field when present ('unavailable' shows the most recently failed "
+        "entities first, so older failures may be omitted). Read-only: this tool "
         "cannot start, stop or update anything. After showing the report, suggest "
         "possible fixes for any issues found."
     ),

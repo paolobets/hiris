@@ -26,6 +26,31 @@ MAX_ADDONS = 30
 MAX_SUPERVISOR_UPDATES = 20
 
 
+def _ha_contenuto(sezione: Any) -> bool:
+    """True se la sezione ha almeno un valore non vuoto da mostrare.
+
+    Serve alle sezioni composte (supervisor): `SupervisorClient` non solleva
+    mai e degrada a `[]`/`{}`, quindi su un'installazione standalone la
+    sezione varrebbe `{"addons": [], "disk": {}, "updates": []}` -- un dict
+    truthy che farebbe comparire `addons: []` nello snapshot, da cui l'LLM
+    concluderebbe "non hai add-on installati". Falso: il Supervisor
+    semplicemente non c'e'. Se non c'e' nulla da dire la sezione non compare,
+    coerentemente con `system_health` (che degrada a `{}`, gia' falsy).
+    """
+    return isinstance(sezione, dict) and any(bool(v) for v in sezione.values())
+
+
+def _quando(voce: Any) -> str:
+    """Istante di caduta di una entita' non disponibile, per l'ordinamento.
+
+    Il formato `_TS_FMT` e' ordinabile lessicograficamente. Voci malformate
+    (senza `since`, o non dict) finiscono in fondo con stringa vuota.
+    """
+    if not isinstance(voce, dict):
+        return ""
+    return voce.get("since") or ""
+
+
 class HealthMonitor:
     """Mantiene uno snapshot aggregato dello stato di salute di HA.
 
@@ -42,8 +67,9 @@ class HealthMonitor:
         scheduler: Any,
         supervisor_client: Any = None,
     ) -> None:
-        # `supervisor_client` e' opzionale: sulle installazioni standalone
-        # (container senza Supervisor) resta None e la sezione non compare.
+        # `supervisor_client` e' opzionale: senza SUPERVISOR_TOKEN il server
+        # non lo costruisce affatto e resta None. Anche quando c'e', se il
+        # Supervisor risponde vuoto la sezione non compare (v. refresh).
         self._ha = ha_client
         self._data_path = data_path
         self._scheduler = scheduler
@@ -135,13 +161,23 @@ class HealthMonitor:
         # fonti. Senza Supervisor (installazione standalone) si salta.
         if self._supervisor is not None:
             try:
-                updated["supervisor"] = {
+                sezione = {
                     "addons": await self._supervisor.get_addons(),
                     "disk": await self._supervisor.get_host_info(),
                     "updates": await self._supervisor.get_available_updates(),
                 }
             except Exception as exc:
                 logger.debug("HealthMonitor: supervisor skipped (%s)", exc)
+            else:
+                # Il client degrada a vuoto invece di sollevare: senza
+                # Supervisor le tre letture tornano [], {}, []. Meglio non
+                # scrivere affatto la sezione che scriverla vuota (v. _ha_contenuto).
+                if _ha_contenuto(sezione):
+                    updated["supervisor"] = sezione
+                else:
+                    logger.debug(
+                        "HealthMonitor: supervisor senza dati, sezione omessa"
+                    )
 
         self._snapshot_data.update(updated)
         await self._save()
@@ -195,18 +231,44 @@ class HealthMonitor:
         truncated: dict = {}
 
         def _cap(nome: str, valori: Any, limite: int) -> Any:
-            """Taglia `valori` a `limite` e registra il totale reale."""
-            if not capped or not isinstance(valori, list) or len(valori) <= limite:
+            """Taglia `valori` a `limite` e registra il totale reale.
+
+            Unico punto di verita' per la regola di taglio: gestisce sia le
+            liste sia i dizionari (system_health e' indicizzato per dominio).
+            Lavora sempre su una copia, il dato interno non viene mutato.
+            """
+            if not capped:
                 return valori
-            truncated[nome] = {"shown": limite, "total": len(valori)}
-            return valori[:limite]
+            if isinstance(valori, list):
+                if len(valori) <= limite:
+                    return valori
+                truncated[nome] = {"shown": limite, "total": len(valori)}
+                return valori[:limite]
+            if isinstance(valori, dict):
+                if len(valori) <= limite:
+                    return valori
+                truncated[nome] = {"shown": limite, "total": len(valori)}
+                return dict(list(valori.items())[:limite])
+            return valori
 
         if want_all or "unavailable" in sections:
+            entita = self._snapshot_data["unavailable_entities"]
+            if capped and isinstance(entita, list):
+                # La lista e' mantenuta solo in append da on_state_changed e
+                # sopravvive ai riavvii: e' quindi ordinata dalla caduta piu'
+                # vecchia. Tagliando le prime N i dispositivi morti da mesi
+                # occuperebbero stabilmente la finestra e una rottura appena
+                # avvenuta non comparirebbe mai -- il verso sbagliato per un
+                # cap che serve proprio a mostrare cosa conta. Ordiniamo per
+                # `since` decrescente su una copia (sorted), cosi' le mostrate
+                # sono le piu' recenti.
+                entita = sorted(entita, key=_quando, reverse=True)
             result["unavailable"] = _cap(
-                "unavailable",
-                self._snapshot_data["unavailable_entities"],
-                MAX_UNAVAILABLE_ENTITIES,
+                "unavailable", entita, MAX_UNAVAILABLE_ENTITIES
             )
+            if "unavailable" in truncated:
+                # Senza questo l'LLM sa quante ne mancano ma non QUALI vede.
+                truncated["unavailable"]["order"] = "most_recent_first"
         if want_all or "integrations" in sections:
             result["integrations"] = _cap(
                 "integrations",
@@ -235,16 +297,16 @@ class HealthMonitor:
             # una versione precedente o modificato a mano.
             health = self._snapshot_data.get("system_health")
             if isinstance(health, dict) and health:
-                if capped and len(health) > MAX_SYSTEM_HEALTH_DOMAINS:
-                    truncated["system_health"] = {
-                        "shown": MAX_SYSTEM_HEALTH_DOMAINS,
-                        "total": len(health),
-                    }
-                    health = dict(list(health.items())[:MAX_SYSTEM_HEALTH_DOMAINS])
-                result["system_health"] = health
+                result["system_health"] = _cap(
+                    "system_health", health, MAX_SYSTEM_HEALTH_DOMAINS
+                )
         if want_all or "supervisor" in sections:
             supervisor = self._snapshot_data.get("supervisor")
-            if isinstance(supervisor, dict) and supervisor:
+            # Sezione composta: `{"addons": [], "disk": {}, "updates": []}` e'
+            # truthy ma non ha nulla da dire (v. _ha_contenuto). Vale anche in
+            # lettura, non solo in refresh: un file scritto da una versione
+            # precedente puo' contenere la sezione vuota.
+            if _ha_contenuto(supervisor):
                 supervisor = dict(supervisor)
                 supervisor["addons"] = _cap(
                     "supervisor.addons", supervisor.get("addons", []), MAX_ADDONS

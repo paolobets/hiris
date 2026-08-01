@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.proxy.health_monitor import (
     HealthMonitor,
     MAX_ADDONS,
+    MAX_INTEGRATION_ERRORS,
+    MAX_SUPERVISOR_UPDATES,
+    MAX_SYSTEM_HEALTH_DOMAINS,
+    MAX_TOP_ERRORS,
     MAX_UNAVAILABLE_ENTITIES,
+    MAX_UPDATES,
 )
 
 
@@ -200,6 +205,42 @@ async def test_senza_supervisor_client_nessuna_eccezione(monitor):
     }
 
 
+@pytest.mark.asyncio
+async def test_supervisor_che_risponde_vuoto_non_produce_la_sezione(mock_ha, tmp_path):
+    """Caso REALE su installazione standalone: il client c'e' (server.py lo
+    costruisce), ma il Supervisor non risponde. SupervisorClient non solleva
+    mai: degrada a [], {}, []. Il dict a tre chiavi vuote e' truthy e farebbe
+    comparire `supervisor: {addons: []}`, da cui l'LLM concluderebbe "non hai
+    add-on installati" -- falso. La sezione non deve comparire affatto."""
+    sup_vuoto = AsyncMock()
+    sup_vuoto.get_addons = AsyncMock(return_value=[])
+    sup_vuoto.get_host_info = AsyncMock(return_value={})
+    sup_vuoto.get_available_updates = AsyncMock(return_value=[])
+    m = HealthMonitor(
+        ha_client=mock_ha,
+        data_path=str(tmp_path / "ha_health.json"),
+        scheduler=MagicMock(),
+        supervisor_client=sup_vuoto,
+    )
+    await m.refresh()
+    snap = m.get_snapshot(["all"])
+    assert "supervisor" not in snap
+    # Le altre sezioni restano popolate.
+    assert snap["system"]["ha_version"] == "2025.1.0"
+    assert m.get_snapshot(["supervisor"]) == {"last_updated": snap["last_updated"]}
+
+
+def test_supervisor_vuoto_su_disco_non_produce_la_sezione(monitor):
+    """Difensiva: un file scritto da una versione precedente puo' contenere
+    la sezione a tre chiavi vuote. In lettura si comporta come assente,
+    coerentemente con system_health (che e' gia' {} falsy)."""
+    monitor._snapshot_data["supervisor"] = {"addons": [], "disk": {}, "updates": []}
+    monitor._snapshot_data["system_health"] = {}
+    snap = monitor.get_snapshot(["all"])
+    assert "supervisor" not in snap
+    assert "system_health" not in snap
+
+
 # --- Cap per sezione ---------------------------------------------------------
 
 
@@ -214,10 +255,47 @@ def test_unavailable_troncata_e_totale_dichiarato(monitor):
     monitor._snapshot_data["unavailable_entities"] = _entita(50)
     snap = monitor.get_snapshot(["unavailable"])
     assert len(snap["unavailable"]) == MAX_UNAVAILABLE_ENTITIES
-    assert snap["truncated"]["unavailable"] == {
-        "shown": MAX_UNAVAILABLE_ENTITIES,
-        "total": 50,
+    assert snap["truncated"]["unavailable"]["shown"] == MAX_UNAVAILABLE_ENTITIES
+    assert snap["truncated"]["unavailable"]["total"] == 50
+    # L'ordine va dichiarato: altrimenti l'LLM non sa QUALI 25 delle 50 vede.
+    assert snap["truncated"]["unavailable"]["order"] == "most_recent_first"
+
+
+def test_unavailable_mostra_le_cadute_piu_recenti(monitor):
+    """La lista e' mantenuta solo in append e sopravvive ai riavvii: e'
+    ordinata dalla caduta piu' vecchia. Tagliare le prime N mostrerebbe i
+    dispositivi morti da mesi e nasconderebbe per sempre una rottura appena
+    avvenuta -- esattamente lo scenario che il cap deve servire."""
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    vecchie = [
+        {
+            "entity_id": f"sensor.vecchia{i}",
+            "domain": "sensor",
+            "since": (base + timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        for i in range(MAX_UNAVAILABLE_ENTITIES + 10)
+    ]
+    appena_rotta = {
+        "entity_id": "sensor.appena_rotta",
+        "domain": "sensor",
+        "since": (base + timedelta(days=200)).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    # Ordine di arrivo: prima le vecchie, in coda quella appena caduta.
+    monitor._snapshot_data["unavailable_entities"] = vecchie + [appena_rotta]
+
+    snap = monitor.get_snapshot(["unavailable"])
+    mostrate = [e["entity_id"] for e in snap["unavailable"]]
+    assert len(mostrate) == MAX_UNAVAILABLE_ENTITIES
+    assert "sensor.appena_rotta" == mostrate[0]
+    # Le piu' vecchie sono quelle escluse, non quelle mostrate.
+    assert "sensor.vecchia0" not in mostrate
+    attese = [e["entity_id"] for e in
+              ([appena_rotta] + list(reversed(vecchie)))[:MAX_UNAVAILABLE_ENTITIES]]
+    assert mostrate == attese
+    # Nessuna mutazione del dato interno: resta l'ordine di arrivo, completo.
+    interno = monitor._snapshot_data["unavailable_entities"]
+    assert len(interno) == MAX_UNAVAILABLE_ENTITIES + 11
+    assert interno[0]["entity_id"] == "sensor.vecchia0"
 
 
 def test_nessun_troncamento_nessuna_dichiarazione(monitor):
@@ -239,8 +317,10 @@ def test_addons_troncati_e_totale_dichiarato(monitor_sup):
         "shown": MAX_ADDONS,
         "total": MAX_ADDONS + 7,
     }
-    # Il dato interno non viene mutato dal troncamento in lettura.
-    assert len(monitor_sup._snapshot_data["supervisor"]["addons"]) == MAX_ADDONS + 7
+    # Il dato interno non viene mutato dal troncamento in lettura: verificato
+    # dall'esterno, con una lettura non cappata che li deve vedere ancora tutti.
+    completo = monitor_sup.get_snapshot(["supervisor"], capped=False)
+    assert len(completo["supervisor"]["addons"]) == MAX_ADDONS + 7
 
 
 def test_dashboard_ottiene_lo_snapshot_completo(monitor):
@@ -252,8 +332,96 @@ def test_dashboard_ottiene_lo_snapshot_completo(monitor):
 
 
 def test_file_su_disco_resta_completo(monitor, tmp_path):
+    """Sequenza vera: leggo in forma troncata, POI salvo, POI rileggo il file.
+    Senza la lettura in mezzo l'asserzione sarebbe una tautologia su _save_sync
+    e passerebbe identica anche se get_snapshot mutasse il dato interno."""
     monitor._snapshot_data["unavailable_entities"] = _entita(50)
+
+    troncato = monitor.get_snapshot(["unavailable"])
+    assert len(troncato["unavailable"]) == MAX_UNAVAILABLE_ENTITIES
+
     monitor._save_sync()
     with open(str(tmp_path / "ha_health.json"), encoding="utf-8") as f:
         salvato = json.load(f)
     assert len(salvato["unavailable_entities"]) == 50
+
+    # Osservabile dall'esterno: una lettura non cappata li vede ancora tutti.
+    completo = monitor.get_snapshot(["unavailable"], capped=False)
+    assert len(completo["unavailable"]) == 50
+
+
+# --- Cap: copertura di tutte le sezioni --------------------------------------
+
+
+def _voci(n):
+    return [{"id": f"v{i}"} for i in range(n)]
+
+
+CASI_CAP = [
+    pytest.param(
+        {"integration_errors": _voci(MAX_INTEGRATION_ERRORS + 3)},
+        "integrations", "integrations", MAX_INTEGRATION_ERRORS,
+        MAX_INTEGRATION_ERRORS + 3, lambda snap: snap["integrations"],
+        id="integrations",
+    ),
+    pytest.param(
+        {"error_log_summary": {"errors": 9, "warnings": 4,
+                               "top_errors": _voci(MAX_TOP_ERRORS + 4)}},
+        "logs", "logs.top_errors", MAX_TOP_ERRORS,
+        MAX_TOP_ERRORS + 4, lambda snap: snap["logs"]["top_errors"],
+        id="logs.top_errors",
+    ),
+    pytest.param(
+        {"updates_available": _voci(MAX_UPDATES + 2)},
+        "updates", "updates", MAX_UPDATES,
+        MAX_UPDATES + 2, lambda snap: snap["updates"],
+        id="updates",
+    ),
+    pytest.param(
+        {"system_health": {f"dominio{i}": {"ok": True}
+                           for i in range(MAX_SYSTEM_HEALTH_DOMAINS + 5)}},
+        "system_health", "system_health", MAX_SYSTEM_HEALTH_DOMAINS,
+        MAX_SYSTEM_HEALTH_DOMAINS + 5, lambda snap: snap["system_health"],
+        id="system_health",
+    ),
+    pytest.param(
+        {"supervisor": {"addons": [], "disk": {"disk_free": 60},
+                        "updates": _voci(MAX_SUPERVISOR_UPDATES + 6)}},
+        "supervisor", "supervisor.updates", MAX_SUPERVISOR_UPDATES,
+        MAX_SUPERVISOR_UPDATES + 6, lambda snap: snap["supervisor"]["updates"],
+        id="supervisor.updates",
+    ),
+]
+
+
+@pytest.mark.parametrize("dati,sezione,chiave,limite,totale,estrai", CASI_CAP)
+def test_ogni_sezione_e_troncata_e_lo_dichiara(
+    monitor, dati, sezione, chiave, limite, totale, estrai
+):
+    """Il design chiedeva che i cap troncassero E lo dichiarassero, al plurale:
+    ogni sezione cappata deve comportarsi allo stesso modo."""
+    monitor._snapshot_data.update(dati)
+
+    snap = monitor.get_snapshot([sezione])
+    assert len(estrai(snap)) == limite
+    assert snap["truncated"][chiave]["shown"] == limite
+    assert snap["truncated"][chiave]["total"] == totale
+
+    # La dashboard (capped=False) vede tutto e nulla viene dichiarato troncato.
+    completo = monitor.get_snapshot([sezione], capped=False)
+    assert len(estrai(completo)) == totale
+    assert "truncated" not in completo
+    # Il troncamento in lettura non muta mai il dato interno.
+    assert len(estrai(monitor.get_snapshot([sezione], capped=False))) == totale
+
+
+def test_logs_conserva_i_conteggi_reali_quando_tronca(monitor):
+    """Il cap taglia solo l'elenco dei top errori: errors/warnings restano i
+    conteggi veri, altrimenti l'LLM riferirebbe meno problemi di quanti sono."""
+    monitor._snapshot_data["error_log_summary"] = {
+        "errors": 137, "warnings": 41, "top_errors": _voci(MAX_TOP_ERRORS + 5),
+    }
+    snap = monitor.get_snapshot(["logs"])
+    assert snap["logs"]["errors"] == 137
+    assert snap["logs"]["warnings"] == 41
+    assert len(snap["logs"]["top_errors"]) == MAX_TOP_ERRORS
