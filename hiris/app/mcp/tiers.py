@@ -38,23 +38,26 @@ TOOLS: list[ToolDef] = [
             "entita' non disponibili, automazioni rotte, domini pericolosi abilitati). "
             "Filtro opzionale per gravita' ('high'/'warn'/'info'). Sola lettura: non chiude "
             "ne' modifica una segnalazione."),
-    # I due tool di diagnosi (get_logbook, render_template) NON sono esposti al
-    # gateway. Il gateway e' una superficie remota e concede i tool di lettura
-    # in blocco: derive_execute_policy include SEMPRE i READ_TOOLS, senza opt-in
-    # per singolo tool, e le letture partono senza whitelist di entita'
-    # (handlers_execute: "reads see the whole home").
-    #   - render_template leggerebbe qualunque stato: un template non ha un
-    #     entity_id da filtrare, quindi nessun perimetro potrebbe contenerlo.
-    #   - get_logbook renderebbe enumerabile in blocco, dall'esterno, la
-    #     cronologia dell'intera casa — serrature, allarme, presenze,
-    #     chi-ha-fatto-cosa. Non e' un dato nuovo rispetto a get_history, ma e'
-    #     enumerazione massiva invece che interrogazione mirata su entita' gia'
-    #     note: una differenza di natura, non di grado.
-    # E' una scelta di contenimento della superficie remota, non un limite
-    # tecnico: entrambi funzionano gia' qui, e riabilitarli richiede una riga
-    # (piu' il conteggio in tests/test_mcp_server_build.py e le asserzioni di
-    # assenza in tests/test_diagnostics_tools.py). In chat e agli agenti locali
-    # restano pienamente disponibili — vedi claude_runner.py.
+    ToolDef("get_logbook", Tier.READ, "get_logbook",
+            "Cronologia degli eventi di Home Assistant (chi ha fatto cosa e quando). "
+            "Senza entity_id elenca tutti gli eventi delle ultime ore; con entity_id "
+            "si restringe a una sola entita'. Sola lettura."),
+    # render_template NON e' esposto al gateway. Il gateway e' una superficie
+    # remota e concede i tool di lettura in blocco: derive_execute_policy include
+    # SEMPRE i READ_TOOLS, senza opt-in per singolo tool, e le letture partono
+    # senza whitelist di entita' (handlers_execute: "reads see the whole home").
+    # Il perimetro delle letture remote e' ora la denylist di lettura
+    # (api/read_denylist.py), che rifiuta le richieste che nominano un'entita'
+    # coperta e POTA le risposte -- copre quindi anche il parametro omesso.
+    # get_logbook e' rientrato proprio per questo: la sua enumerazione in blocco
+    # della cronologia (serrature, allarme, presenze) non e' piu' illimitata.
+    # render_template invece la denylist non lo coprirebbe: un template legge
+    # qualunque stato e non ha un entity_id da filtrare, quindi nessun perimetro
+    # potrebbe contenerlo. Contenimento della superficie remota, non limite
+    # tecnico: funziona gia' qui, e riabilitarlo richiederebbe una riga (piu' il
+    # conteggio in tests/test_mcp_server_build.py e le asserzioni di assenza in
+    # tests/test_diagnostics_tools.py). In chat e agli agenti locali resta
+    # pienamente disponibile — vedi claude_runner.py.
     ToolDef("recall_knowledge", Tier.READ, "recall_knowledge",
             "Cerca nella knowledge base HIRIS e negli insight storici settimanali (non sensibili). "
             "Es: tendenze o variazioni recenti."),

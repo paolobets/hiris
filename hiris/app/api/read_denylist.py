@@ -28,6 +28,10 @@ chat. Quindi:
    convenzione `filtered: {shown, total}` gia' usata da `get_logbook` e
    `get_advisories`, cosi' il modello remoto sa che sta vedendo una parte.
 
+La potatura non copre solo le letture: `list_tasks` e' di categoria "schedule"
+ma restituisce le DEFINIZIONI dei task, azioni ed entita' incluse, quindi e' un
+cammino d'uscita per gli stessi identificativi (vedi PRUNED_NON_READ_TOOLS).
+
 FAIL-CLOSED SULLE FORME NON RICONOSCIUTE
 ----------------------------------------
 La potatura deve conoscere la forma della risposta di ogni strumento, e
@@ -234,14 +238,48 @@ def _pota_logbook(result: Any, denylist: Sequence[str]) -> Any:
     return potato
 
 
+def _identificativi_annidati(nodo: Any, trovati: list[str]) -> None:
+    """Raccoglie ricorsivamente ogni stringa a forma di entity_id dentro `nodo`.
+
+    Serve dove la struttura da ispezionare e' LIBERA (la configurazione di
+    un'automazione, l'evidenza di una segnalazione): enumerare le chiavi note
+    resterebbe indietro alla prima forma nuova, e il buco sarebbe silenzioso.
+    """
+    if isinstance(nodo, dict):
+        for v in nodo.values():
+            _identificativi_annidati(v, trovati)
+    elif isinstance(nodo, list):
+        for v in nodo:
+            _identificativi_annidati(v, trovati)
+    elif isinstance(nodo, str) and _ENTITY_ID_RE.match(nodo):
+        trovati.append(nodo)
+
+
+def _nomina_entita_vietate(nodo: Any, denylist: Sequence[str]) -> bool:
+    """Vero se `nodo` nomina, a qualunque profondita', un'entita' vietata."""
+    trovati: list[str] = []
+    _identificativi_annidati(nodo, trovati)
+    return any(is_denied(e, denylist) for e in trovati)
+
+
 def _pota_advisories(result: Any, denylist: Sequence[str]) -> Any:
     """Segnalazioni del Brain (`get_advisories`).
 
-    Due strade da chiudere: la segnalazione il cui `evidence.entity_id` e'
-    un'entita' vietata (batteria della serratura), e la segnalazione di sistema
-    la cui evidenza porta un CAMPIONE di identificativi di tutta la casa
-    (`evidence.entities`). Restringere il campione non cambia il contratto: e'
-    gia' un estratto, e il totale reale sta in `evidence.count`.
+    L'evidenza di una segnalazione e' un dizionario di forma LIBERA, prodotto
+    dai controlli di salute: oggi l'identificativo sta in `evidence.entity_id`,
+    ma cercarlo li' e basta sarebbe fail-open al primo controllo che usa
+    un'altra chiave -- la voce passerebbe, e la forma complessiva resterebbe
+    riconoscibile, quindi nemmeno il fail-closed scatterebbe. Si scandaglia
+    percio' tutta l'evidenza: una voce che nomina un'entita' vietata OVUNQUE
+    viene scartata.
+
+    Unica eccezione, e voluta: il CAMPIONE di identificativi di tutta la casa
+    (`evidence.entities`) delle segnalazioni di sistema. Li' la voce di per se'
+    non riguarda un'entita' vietata, quindi si restringe il campione al
+    perimetro invece di far cadere la voce -- non cambia il contratto, e' gia'
+    un estratto e il totale reale sta in `evidence.count`. Il campione viene
+    ristretto PRIMA della scansione, cosi' cio' che e' gia' stato tolto non fa
+    cadere la voce che lo conteneva.
     """
     if not isinstance(result, dict) or not isinstance(result.get("advisories"), list):
         raise _FormaNonPotabile("atteso un oggetto con 'advisories'")
@@ -254,8 +292,6 @@ def _pota_advisories(result: Any, denylist: Sequence[str]) -> Any:
         if not isinstance(evidenza, dict):
             tenute.append(v)
             continue
-        if is_denied(evidenza.get("entity_id"), denylist):
-            continue
         elencate = evidenza.get("entities")
         if isinstance(elencate, list):
             ammesse = [e for e in elencate if not is_denied(e, denylist)]
@@ -265,9 +301,12 @@ def _pota_advisories(result: Any, denylist: Sequence[str]) -> Any:
                 # taglio di dimensione. Un solo `filtered` sulla risposta
                 # confonderebbe due tagli diversi (quante voci vedi / quanti
                 # identificativi vedi dentro una voce).
-                v = {**v, "evidence": {**evidenza, "entities": ammesse},
+                evidenza = {**evidenza, "entities": ammesse}
+                v = {**v, "evidence": evidenza,
                      "evidence_filtered": {"shown": len(ammesse),
                                            "total": len(elencate)}}
+        if _nomina_entita_vietate(evidenza, denylist):
+            continue
         tenute.append(v)
     if tenute == voci:
         return result
@@ -277,17 +316,6 @@ def _pota_advisories(result: Any, denylist: Sequence[str]) -> Any:
     if len(tenute) != len(voci):
         potato["filtered"] = {"shown": len(tenute), "total": len(voci)}
     return potato
-
-
-def _identificativi_annidati(nodo: Any, trovati: list[str]) -> None:
-    if isinstance(nodo, dict):
-        for v in nodo.values():
-            _identificativi_annidati(v, trovati)
-    elif isinstance(nodo, list):
-        for v in nodo:
-            _identificativi_annidati(v, trovati)
-    elif isinstance(nodo, str) and _ENTITY_ID_RE.match(nodo):
-        trovati.append(nodo)
 
 
 def _pota_config_automazione(result: Any, denylist: Sequence[str]) -> Any:
@@ -302,11 +330,35 @@ def _pota_config_automazione(result: Any, denylist: Sequence[str]) -> Any:
     """
     if not isinstance(result, dict):
         raise _FormaNonPotabile("attesa una configurazione")
-    trovati: list[str] = []
-    _identificativi_annidati(result, trovati)
-    if any(is_denied(e, denylist) for e in trovati):
+    if _nomina_entita_vietate(result, denylist):
         raise _FormaNonPotabile("la configurazione nomina un'entita' della denylist")
     return result
+
+
+def _pota_task(result: Any, denylist: Sequence[str]) -> Any:
+    """Task pianificati (`list_tasks`).
+
+    Non e' una lettura, ma e' un cammino d'uscita: la risposta porta le
+    DEFINIZIONI dei task, azioni ed entita' incluse, quindi un task creato dalla
+    chat locale su un'entita' coperta ("arma l'allarme alle 23") ne rivelerebbe
+    identita' e programmazione al client remoto.
+
+    Un task e' una struttura libera quanto un'automazione (trigger, condizione e
+    azioni sono dizionari aperti), quindi si scandaglia ricorsivamente e la voce
+    che nomina un'entita' vietata cade INTERA: potarne le azioni restituirebbe
+    un task diverso da quello vero, che il modello leggerebbe come autentico.
+    """
+    if not isinstance(result, list):
+        raise _FormaNonPotabile("atteso un elenco di task")
+    tenute = []
+    for t in result:
+        if not isinstance(t, dict):
+            raise _FormaNonPotabile("task non e' un oggetto")
+        if not _nomina_entita_vietate(t, denylist):
+            tenute.append(t)
+    if len(tenute) == len(result):
+        return result
+    return {"tasks": tenute, "filtered": {"shown": len(tenute), "total": len(result)}}
 
 
 def _pota_conoscenza(result: Any, denylist: Sequence[str]) -> Any:
@@ -335,7 +387,15 @@ _POTATORI = {
     "get_advisories": _pota_advisories,
     "get_automation_config": _pota_config_automazione,
     "recall_knowledge": _pota_conoscenza,
+    "list_tasks": _pota_task,
 }
+
+# Strumenti NON di lettura la cui risposta porta comunque identificativi verso
+# il client remoto, e che quindi passano dalla potatura pur non stando fra i
+# READ_TOOLS. `list_tasks` e' di categoria "schedule" ma restituisce le
+# definizioni dei task: senza questo, un task su un'entita' coperta uscirebbe
+# dal gateway e vanificherebbe il perimetro delle letture.
+PRUNED_NON_READ_TOOLS: frozenset[str] = frozenset({"list_tasks"})
 
 
 def prune_read_result(tool: str, result: Any, denylist: Sequence[str]) -> Any:

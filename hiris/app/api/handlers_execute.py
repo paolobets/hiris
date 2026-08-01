@@ -22,6 +22,7 @@ from .handlers_gateway_policy import READ_TOOLS as _RT, PROPOSE_TOOLS as _PT
 from .read_denylist import (
     DEFAULT_READ_DENYLIST,
     LOCAL_CHAT_HEADER,
+    PRUNED_NON_READ_TOOLS,
     denied_entities_in_inputs,
     prune_read_result,
 )
@@ -273,7 +274,11 @@ async def handle_execute(request: web.Request) -> web.Response:
     # Denylist di lettura: cio' che non esce mai dal gateway, comunque lo si
     # chieda. Vale sulla superficie remota, non sulla chat in-addon (che
     # rientra da qui via LocalExecuteClient e ha il perimetro del Chatbot).
-    denylist = _read_denylist(request) if (is_read and not _is_local_chat(request)) else []
+    # Oltre alle letture copre PRUNED_NON_READ_TOOLS: strumenti di altra
+    # categoria la cui RISPOSTA porta comunque identificativi fuori (list_tasks
+    # restituisce le definizioni dei task, azioni ed entita' incluse).
+    da_potare = is_read or tool in PRUNED_NON_READ_TOOLS
+    denylist = _read_denylist(request) if (da_potare and not _is_local_chat(request)) else []
     if denylist:
         # Lato INGRESSO: una richiesta che nomina esplicitamente un'entita'
         # coperta viene rifiutata qui, senza raggiungere Home Assistant.

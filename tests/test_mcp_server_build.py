@@ -4,17 +4,19 @@ from hiris.app.mcp.tiers import TOOLS, get_tool
 from hiris.app.mcp.server import build_mcp
 
 
-def test_catalog_has_14_tools_no_bridge():
+def test_catalog_has_15_tools_no_bridge():
     names = {t.name for t in TOOLS}
     assert "call_service" in names and get_tool("call_service").hiris_tool == "call_ha_service"
     assert "claim_reasoning_job" not in names and "submit_decision" not in names
-    # Nessuno dei due tool di diagnosi entra nel catalogo del gateway: il
-    # conteggio NON cresce. Le ragioni (superficie remota, letture senza
-    # whitelist di entita') stanno in hiris/app/mcp/tiers.py, e l'assenza e'
+    # get_logbook e' nel catalogo: la denylist di lettura pota la sua risposta,
+    # quindi l'enumerazione della cronologia non e' piu' illimitata.
+    # render_template resta fuori per una ragione diversa e ancora valida: un
+    # template non ha un entity_id da filtrare, quindi la denylist non lo
+    # coprirebbe. Le ragioni stanno in hiris/app/mcp/tiers.py, e l'assenza e'
     # pinnata anche per NOME in tests/test_diagnostics_tools.py.
+    assert "get_logbook" in names
     assert "render_template" not in names
-    assert "get_logbook" not in names
-    assert len(TOOLS) == 14  # +get_advisories (READ)
+    assert len(TOOLS) == 15  # +get_advisories, +get_logbook (READ)
 
 
 @pytest.mark.asyncio

@@ -193,6 +193,84 @@ def test_prune_advisories_keeps_system_entries_without_entity_id():
     assert prune_read_result("get_advisories", risposta, _DENY) == risposta
 
 
+def test_prune_advisories_drops_entry_naming_a_denied_entity_in_any_key():
+    # L'evidenza di una segnalazione e' un dizionario di forma LIBERA, prodotto
+    # dai controlli di salute. Cercare l'identificativo solo in `entity_id` e
+    # `entities` sarebbe fail-open al primo controllo che usa un'altra chiave:
+    # la forma complessiva resterebbe riconoscibile e la voce passerebbe.
+    risposta = {
+        "advisories": [
+            {"severity": "warn", "title": "Automazione rotta",
+             "evidence": {"broken_ref": "lock.porta", "automation": "automation.sera"}},
+        ],
+        "count": 1,
+    }
+    out = prune_read_result("get_advisories", risposta, _DENY)
+    assert out["advisories"] == []
+    assert out["count"] == 0
+    assert out["filtered"] == {"shown": 0, "total": 1}
+
+
+def test_prune_advisories_finds_denied_entity_nested_deep():
+    risposta = {"advisories": [
+        {"severity": "high", "title": "Trigger non disponibile",
+         "evidence": {"dettagli": [{"triggers": ["camera.ingresso"]}]}}], "count": 1}
+    out = prune_read_result("get_advisories", risposta, _DENY)
+    assert out["advisories"] == []
+
+
+def test_prune_advisories_sample_is_restricted_not_dropped():
+    # Il campione di identificativi resta un'eccezione voluta: e' gia' un
+    # estratto, quindi si restringe al perimetro invece di far cadere l'intera
+    # voce, che di per se' e' una segnalazione di sistema.
+    risposta = {"advisories": [
+        {"severity": "info", "title": "Entita' senza area",
+         "evidence": {"entities": ["light.salotto", "lock.garage"], "count": 2}}], "count": 1}
+    out = prune_read_result("get_advisories", risposta, _DENY)
+    assert len(out["advisories"]) == 1
+    assert out["advisories"][0]["evidence"]["entities"] == ["light.salotto"]
+    assert out["advisories"][0]["evidence_filtered"] == {"shown": 1, "total": 2}
+
+
+# ---------------------------------------------------------------------------
+# list_tasks: non e' una lettura, ma e' un cammino di uscita
+# ---------------------------------------------------------------------------
+
+def _task(tid, entita):
+    return {"id": tid, "label": "Arma di sera", "agent_id": "hiris-default",
+            "created_at": "2026-08-01T10:00:00Z",
+            "trigger": {"type": "time", "at": "23:00"},
+            "actions": [{"type": "call_ha_service", "domain": "alarm_control_panel",
+                         "service": "alarm_arm_away", "data": {"entity_id": entita}}],
+            "status": "pending"}
+
+
+def test_prune_list_tasks_drops_task_naming_a_denied_entity():
+    # Un task creato dalla chat locale ("arma l'allarme alle 23") rivelerebbe al
+    # client remoto identita' e programmazione di un'entita' coperta.
+    risposta = [_task("t1", "lock.porta"), _task("t2", "light.salotto")]
+    out = prune_read_result("list_tasks", risposta, _DENY)
+    assert [t["id"] for t in out["tasks"]] == ["t2"]
+    assert out["filtered"] == {"shown": 1, "total": 2}
+
+
+def test_prune_list_tasks_untouched_when_nothing_denied():
+    risposta = [_task("t1", "light.salotto")]
+    assert prune_read_result("list_tasks", risposta, _DENY) == risposta
+
+
+def test_prune_list_tasks_empty_list_passes():
+    assert prune_read_result("list_tasks", [], _DENY) == []
+
+
+def test_prune_list_tasks_unknown_shape_is_blocked():
+    # Fail-closed come per tutti gli altri: se la forma cambia, non passa.
+    out = prune_read_result("list_tasks", {"tasks": []}, _DENY)
+    assert set(out) == {"error"}
+    out = prune_read_result("list_tasks", ["t1"], _DENY)
+    assert set(out) == {"error"}
+
+
 def test_prune_automation_config_blocked_when_it_names_a_denied_entity():
     # Una config di automazione non e' un elenco potabile: o e' pulita o si
     # blocca. Potarne i campi la renderebbe una config diversa da quella vera.
@@ -270,9 +348,8 @@ def _make_app(tmp_path, *, denylist, result=None, local_token="LOCALE"):
     app = web.Application()
     app["internal_token"] = "secret"
     app["data_dir"] = str(tmp_path)
-    # get_logbook non e' (ancora) fra i READ_TOOLS esposti al gateway: la sua
-    # potatura si verifica sulla funzione, non sull'endpoint.
-    app["execute_policy"] = {"tools": ["get_home_status", "get_history"],
+    app["execute_policy"] = {"tools": ["get_home_status", "get_history",
+                                       "get_logbook", "list_tasks"],
                              "allowed_entities": None, "allowed_services": None}
     app["read_denylist"] = denylist
     app["local_execute_token"] = local_token
@@ -415,6 +492,59 @@ def test_translations_present():
 def test_local_client_sends_the_marker():
     py = (_BASE / "app" / "mcp" / "local_client.py").read_text(encoding="utf-8")
     assert "LOCAL_CHAT_HEADER" in py
+
+
+@pytest.mark.asyncio
+async def test_execute_prunes_logbook_from_the_gateway(aiohttp_client, tmp_path):
+    # get_logbook e' tornato fra gli strumenti di lettura del gateway perche'
+    # ora la potatura lo copre: invocato SENZA entity_id elencherebbe tutta la
+    # casa, ed e' esattamente il caso che la potatura in uscita intercetta.
+    app = _make_app(tmp_path, denylist=_DENY, result={
+        "entries": [{"when": "1", "entity_id": "lock.porta", "message": "sbloccata"},
+                    {"when": "2", "entity_id": "light.salotto", "message": "acceso"}],
+        "count": 2, "hours": 24, "entity_id": None})
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "get_logbook", "input": {"hours": 24}})
+    assert resp.status == 200
+    result = (await resp.json())["result"]
+    assert [v["entity_id"] for v in result["entries"]] == ["light.salotto"]
+    assert result["filtered"] == {"shown": 1, "total": 2}
+
+
+@pytest.mark.asyncio
+async def test_execute_logbook_named_entity_is_rejected(aiohttp_client, tmp_path):
+    app = _make_app(tmp_path, denylist=_DENY)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "get_logbook",
+                                "input": {"entity_id": "lock.porta", "hours": 24}})
+    assert resp.status == 403
+    assert "lock.porta" in (await resp.json())["error"]
+    assert app["tool_dispatcher"].calls == []
+
+
+@pytest.mark.asyncio
+async def test_execute_prunes_list_tasks(aiohttp_client, tmp_path):
+    # list_tasks non e' una lettura e non passa dai READ_TOOLS, ma restituisce
+    # le DEFINIZIONI dei task: senza potatura un task creato dalla chat locale
+    # su un'entita' coperta la rivelerebbe al client remoto.
+    app = _make_app(tmp_path, denylist=_DENY,
+                    result=[_task("t1", "lock.porta"), _task("t2", "light.salotto")])
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "list_tasks", "input": {}})
+    assert resp.status == 200
+    result = (await resp.json())["result"]
+    assert [t["id"] for t in result["tasks"]] == ["t2"]
+    assert result["filtered"] == {"shown": 1, "total": 2}
+
+
+@pytest.mark.asyncio
+async def test_execute_list_tasks_exempt_for_local_chat(aiohttp_client, tmp_path):
+    risposta = [_task("t1", "lock.porta")]
+    app = _make_app(tmp_path, denylist=_DENY, result=risposta)
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "list_tasks", "input": {}},
+                       headers={LOCAL_CHAT_HEADER: "LOCALE"})
+    assert (await resp.json())["result"] == risposta
 
 
 @pytest.mark.asyncio

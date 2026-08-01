@@ -290,9 +290,10 @@ async def test_errore_di_ha_inoltrato_al_modello():
 
 # --- registrazione: dove i due tool sono raggiungibili, e dove no ------------
 # Entrambi vivono in chat (ALL_TOOL_DEFS + catalogo della UI); il solo logbook
-# e' concesso anche agli agenti locali (EVALUATION_ONLY_TOOLS); nessuno dei due
-# e' esposto al gateway MCP. Il catalogo della UI (static/config/templates.js)
-# e' JS e vive in tests/js/tool-catalog.test.mjs.
+# e' concesso anche agli agenti locali (EVALUATION_ONLY_TOOLS) e al gateway MCP,
+# dove la denylist di lettura pota la sua risposta; render_template resta fuori
+# dal gateway. Il catalogo della UI (static/config/templates.js) e' JS e vive in
+# tests/js/tool-catalog.test.mjs.
 
 def test_registrati_nel_runner_con_il_gating_giusto():
     from hiris.app.claude_runner import ALL_TOOL_DEFS, EVALUATION_ONLY_TOOLS
@@ -306,21 +307,33 @@ def test_registrati_nel_runner_con_il_gating_giusto():
     assert "render_template" not in EVALUATION_ONLY_TOOLS
 
 
-def test_nessuno_dei_due_nel_registro_mcp_perche_il_gateway_e_remoto():
-    # Contenimento della superficie remota, non limite tecnico. Il gateway
-    # esegue i tool di lettura senza whitelist di entita': esporre il logbook
-    # renderebbe enumerabile in blocco, dall'esterno, la cronologia dell'intera
-    # casa (serrature, allarme, presenze, chi-ha-fatto-cosa). Diverso da
-    # get_history, che e' un'interrogazione mirata su entita' gia' note.
+def test_solo_il_logbook_nel_registro_mcp_del_gateway():
+    # Il gateway esegue i tool di lettura senza whitelist di entita': il
+    # perimetro remoto e' la denylist di lettura, che pota la risposta del
+    # logbook -- quindi la cronologia non e' piu' enumerabile in blocco e il
+    # tool e' rientrato. render_template no: un template legge qualunque stato e
+    # non ha un entity_id da filtrare, quindi la denylist non lo coprirebbe.
     from hiris.app.mcp.tiers import TOOLS
     voci = {t.name for t in TOOLS}
-    assert "get_logbook" not in voci
+    assert "get_logbook" in voci
     assert "render_template" not in voci
 
 
-def test_nessuno_dei_due_fra_i_read_tools_del_gateway():
+def test_solo_il_logbook_fra_i_read_tools_del_gateway():
     # Stessa ragione: derive_execute_policy concede SEMPRE i READ_TOOLS, senza
     # opt-in per singolo tool, e le letture partono con allowed_entities=None.
     from hiris.app.api.handlers_gateway_policy import READ_TOOLS
-    assert "get_logbook" not in READ_TOOLS
+    assert "get_logbook" in READ_TOOLS
     assert "render_template" not in READ_TOOLS
+
+
+def test_la_risposta_del_logbook_e_potata_dalla_denylist():
+    # La riabilitazione regge SOLO se la potatura c'e': senza questa, il tool
+    # tornerebbe a enumerare tutta la cronologia della casa.
+    from hiris.app.api.read_denylist import prune_read_result
+    risposta = {"entries": [{"when": "1", "entity_id": "lock.porta"},
+                            {"when": "2", "entity_id": "light.salotto"}],
+                "count": 2, "hours": 24, "entity_id": None}
+    out = prune_read_result("get_logbook", risposta, ["lock.*"])
+    assert [v["entity_id"] for v in out["entries"]] == ["light.salotto"]
+    assert out["filtered"] == {"shown": 1, "total": 2}
