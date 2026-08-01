@@ -35,7 +35,7 @@ from .api.handlers_proposals import (
     handle_list_proposals, handle_get_proposal,
     handle_apply_proposal, handle_reject_proposal,
 )
-from .api.handlers_dashboards import handle_restore_dashboard
+from .api.handlers_dashboards import handle_restore_dashboard, handle_list_dashboard_backups
 from .api.handlers_knowledge import (
     handle_list_pending, handle_approve, handle_reject, handle_manual_add,
 )
@@ -2666,6 +2666,9 @@ def create_app() -> web.Application:
     app.router.add_get("/api/proposals/{proposal_id}", handle_get_proposal)
     app.router.add_post("/api/proposals/{proposal_id}/apply", handle_apply_proposal)
     app.router.add_post("/api/proposals/{proposal_id}/reject", handle_reject_proposal)
+    # "backups" e' un segmento fisso a un livello diverso da {url_path}/restore:
+    # nessuna ambiguita' di routing fra le due rotte.
+    app.router.add_get("/api/dashboards/backups", handle_list_dashboard_backups)
     app.router.add_post("/api/dashboards/{url_path}/restore", handle_restore_dashboard)
     app.router.add_get("/api/knowledge/pending", handle_list_pending)
     app.router.add_post("/api/knowledge/{id}/approve", handle_approve)

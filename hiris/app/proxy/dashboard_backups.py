@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,10 @@ def _file(data_dir: str) -> str:
 def _read_store(data_dir: str) -> dict | None:
     """Legge il file dello store, distinguendo 'assente' da 'illeggibile'.
 
-    Ritorna una mappa url_path -> lista di {"config": {...}}, dalla piu'
-    vecchia alla piu' recente. Casi:
+    Ritorna una mappa url_path -> lista di {"config": {...}, "saved_at": "..."},
+    dalla piu' vecchia alla piu' recente. Il campo "saved_at" e' stato aggiunto
+    dopo: gli snapshot scritti prima ne sono privi e valgono come 'istante
+    sconosciuto', mai come errore. Casi:
       - file assente: {} (nessun backup ancora, situazione legittima);
       - file valido: il dict letto;
       - file presente ma corrotto/illeggibile: None.
@@ -87,7 +90,10 @@ def save_backup(data_dir: str, url_path: str, config: dict) -> bool:
         # apply falliti (config rifiutata, errore WS) rientrano qui e non
         # devono consumare il ring espellendo le versioni realmente precedenti.
         return True
-    entries.append({"config": config})
+    # L'istante serve all'interfaccia per distinguere un undo appena fatto da un
+    # ripristino storico. La deduplica qui sopra confronta solo il campo
+    # "config", quindi l'aggiunta non la disturba.
+    entries.append({"config": config, "saved_at": datetime.now(timezone.utc).isoformat()})
     data[url_path] = entries[-MAX_BACKUPS_PER_DASHBOARD:]
     try:
         os.makedirs(data_dir, exist_ok=True)
@@ -111,3 +117,38 @@ def latest_backup(data_dir: str, url_path: str) -> dict | None:
         return None
     cfg = last.get("config")
     return cfg if isinstance(cfg, dict) else None
+
+
+def list_backups(data_dir: str) -> list[dict]:
+    """Metadati degli snapshot esistenti, dal piu' recente al piu' vecchio.
+
+    Una voce per plancia che ha almeno uno snapshot: url_path, istante dello
+    snapshot piu' recente ("saved_at", None se quella voce e' anteriore
+    all'introduzione del campo) e quanti snapshot ci sono ("count").
+
+    Solo metadati: le config restano dentro lo store, non escono di qui.
+    L'interfaccia le usa per decidere se mostrare l'undo in modo prominente o
+    discreto; la soglia (recente vs storico) e' una scelta di presentazione e
+    resta al frontend, qui si espone solo il quando.
+
+    Permissiva come `latest_backup`: store assente o corrotto vale come
+    'nessun backup', mai un'eccezione verso il chiamante."""
+    voci = []
+    for url_path, entries in _load(data_dir).items():
+        if not isinstance(entries, list):
+            continue
+        snapshots = [e for e in entries if isinstance(e, dict)]
+        if not snapshots:
+            continue
+        saved_at = snapshots[-1].get("saved_at")
+        if not isinstance(saved_at, str) or not saved_at:
+            saved_at = None
+        voci.append({"url_path": url_path, "saved_at": saved_at, "count": len(snapshots)})
+    # Gli istanti sono ISO 8601 UTC ("+00:00" fisso): l'ordine lessicografico
+    # coincide con quello cronologico. Le voci senza istante vanno in fondo:
+    # precedono l'introduzione del campo, quindi sono le piu' vecchie che ci sono.
+    con_istante = [v for v in voci if v["saved_at"] is not None]
+    senza_istante = [v for v in voci if v["saved_at"] is None]
+    con_istante.sort(key=lambda v: v["saved_at"], reverse=True)
+    senza_istante.sort(key=lambda v: v["url_path"])
+    return con_istante + senza_istante
