@@ -57,6 +57,17 @@ Puoi collegare **Claude (claude.ai)** a HIRIS tramite un connettore MCP:
 Vedere anche la lettura della **configurazione di un'automazione** (`get_automation_config`):
 HIRIS/Claude può mostrare il YAML di un'automazione **creata da UI** in HA.
 
+Fra gli strumenti di sola lettura esposti al gateway c'è anche `get_advisories`:
+le **segnalazioni di salute** aperte dal Brain (batterie scariche, entità non
+disponibili da giorni, automazioni rotte, domini pericolosi lasciati abilitati).
+È in sola lettura: da Claude si leggono, non si chiudono né si archiviano.
+
+C'è anche `get_logbook` (la **cronologia degli eventi**: chi ha fatto cosa e
+quando). Tutte le letture del gateway hanno un **perimetro**: la *denylist di
+lettura* (opzione `execute_api_read_denylist`) esclude un elenco di entità o
+domini — di serie serrature, allarme, telecamere e presenza — sia rifiutando le
+richieste che le nominano, sia **potando le risposte**. Vedi `sicurezza.md`.
+
 ## 5. Proposte di automazione (proponi → attiva)
 
 L'AI **non crea** automazioni da sola: le **propone**. Flusso:

@@ -1,5 +1,111 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.14] — Le letture dal gateway remoto hanno un perimetro (2026-08-01)
+
+Quando colleghi Claude a HIRIS tramite il gateway MCP, le **azioni** erano già
+vincolate dal semaforo: Claude può comandare solo ciò che hai marcato verde. Le
+**letture** no. Chiedere lo stato o lo storico di casa non è distruttivo, quindi
+partivano senza alcun perimetro — e questo significava che ogni lettura vedeva
+tutta la casa, serrature e allarme compresi. Non era una novità introdotta di
+recente: era la condizione in cui il gateway ha sempre funzionato.
+
+Ora c'è una **denylist di lettura**: un elenco di entità o domini che non escono
+mai dal gateway. Di serie copre le cose che è ragionevole tenersi in casa —
+**serrature, pannello d'allarme, telecamere e presenza** (`person`,
+`device_tracker`, che rivelano quando la casa è vuota). Non è l'elenco dei domini
+pericolosi del semaforo, che riguarda l'azione: una tapparella è rischiosa da
+muovere ma innocua da leggere, una telecamera è l'opposto.
+
+Il perimetro vale per **tutte** le letture, non solo per quelle nuove. Non basta
+infatti controllare che cosa viene chiesto: parecchie letture non nominano
+affatto un'entità (lo stato dell'intera casa, la cronologia degli eventi, le
+segnalazioni di salute, l'elenco per stanza), quindi sarebbe bastato **omettere
+un parametro** per aggirare il controllo. HIRIS filtra perciò anche le
+**risposte**, dichiarando quando ha tolto qualcosa, così il modello sa che sta
+vedendo una parte e può dirtelo. Lo stesso filtro copre l'elenco dei **task
+pianificati**, che altrimenti avrebbe mostrato al gateway un promemoria come
+«arma l'allarme alle 23» con l'entità e l'orario.
+
+**Cambiamento di comportamento se già usi il gateway.** Se una lettura che prima
+funzionava ora non restituisce certe entità, o se una richiesta che le nomina
+viene rifiutata con un messaggio esplicito, è voluto. L'elenco è configurabile
+dall'opzione **`execute_api_read_denylist`** nella configurazione dell'add-on:
+puoi restringerlo, allargarlo, o **svuotarlo** del tutto per tornare al
+comportamento precedente. Nulla di tutto questo tocca la chat dentro l'add-on,
+che ha il suo perimetro e resta com'era.
+
+Chiuso il perimetro, la **cronologia degli eventi** (`get_logbook`) torna
+disponibile anche dal gateway: era rimasta fuori proprio perché avrebbe reso
+enumerabile in blocco tutto ciò che è successo in casa, e ora non può più.
+
+**Limite dichiarato.** La denylist filtra per entità. La **memoria testuale** di
+HIRIS contiene testo libero, non identificativi: se un appunto salvato a mano
+contiene un dato sensibile, nessuna denylist per entità può intercettarlo. Quel
+caso non è coperto, e non vogliamo dare l'impressione che lo sia.
+
+## [1.1.0-beta.13] — HIRIS vede lo stato di casa e del sistema, e te lo dice (2026-08-01)
+
+Finora HIRIS teneva d'occhio la salute della casa, ma il risultato viveva solo
+nella dashboard della configurazione: chiedere in chat «ci sono problemi?» non
+serviva a niente. Ora le **segnalazioni del Brain** — batterie scariche, entità
+non disponibili da giorni, automazioni rotte, domini pericolosi lasciati aperti,
+entità senza area — sono leggibili nella conversazione, con gravità, evidenza e
+rimedio suggerito.
+
+HIRIS vede anche lo **stato del sistema**: add-on fermi o in errore, spazio
+libero sul disco, salute delle singole integrazioni e **aggiornamenti
+disponibili** per core, sistema operativo, Supervisor e add-on. Su
+un'installazione senza Supervisor la parte relativa semplicemente non compare,
+senza errori.
+
+Sa inoltre raccontare **cosa è successo** — «cosa è successo ieri sera in
+salotto?», «chi ha acceso il riscaldamento?» — leggendo il registro eventi di
+Home Assistant, e sa **valutare una condizione al volo** con un template, utile
+quando serve verificare qualcosa che gli altri strumenti non espongono.
+
+**Tutto questo è in sola lettura, per scelta e non in attesa di un seguito.**
+HIRIS vede che ci sono aggiornamenti e te li segnala, ma non li applica: non può
+aggiornare, avviare, fermare o riavviare nulla, né direttamente né proponendotelo
+per approvazione. Aggiornare il sistema resta una cosa che fai tu, dove la fai
+oggi.
+
+**Notifica per i problemi gravi.** Quando la scansione di salute — che gira ogni
+30 minuti — rileva un problema **grave**, arriva una notifica push. Una sola:
+finché quel problema resta lì, non torna a suonare. Torna a suonare solo se il
+problema si era chiuso e si ripresenta, o se una segnalazione già aperta
+**peggiora** fino a diventare grave (l'add-on che avevi spento e che poi si
+guasta davvero). C'è un periodo di silenzio di 12 ore per assorbire i valori che
+oscillano attorno a una soglia, e se un guasto solo apre molte segnalazioni in
+un colpo arriva un unico messaggio di riepilogo invece di una raffica. Si
+disattiva dall'opzione **"Salute del sistema — notifica i problemi gravi"**
+(`brain_notify_high`) nella configurazione dell'add-on; le segnalazioni restano
+comunque visibili.
+
+**Azione richiesta se hai Chatbot con permessi personalizzati.** L'elenco degli
+strumenti mostrato nella configurazione dei Chatbot era rimasto indietro rispetto
+agli strumenti realmente disponibili: ne mostrava uno che non esiste più e ne
+ometteva parecchi reali. Ora è allineato. I Chatbot **già salvati con una lista
+esplicita di strumenti** però non ereditano le voci nuove: la loro lista è quella
+che hai scelto tu, e resta tale. Se hai Chatbot di questo tipo, **riaprili e
+risalvali** dalla pagina di configurazione, così raccolgono anche gli strumenti
+nuovi. Vale in particolare per lo strumento di conferma delle azioni a rischio
+(`confirm_pending`): su un Chatbot con **conferma richiesta** attiva e una lista
+esplicita che non lo comprende, digitare il codice OTP non completa l'azione,
+perché il modello non ha lo strumento per confermarla. Fallisce dalla parte
+sicura — l'azione resta bloccata e non viene eseguita — ma è comunque un
+malfunzionamento visibile. I Chatbot senza lista esplicita (tutti gli strumenti)
+non sono interessati.
+
+**Batterie: la soglia ora è unica al 15%.** Il resoconto giornaliero calcolava le
+batterie scariche per conto suo, con una soglia configurabile che valeva **20%**
+per impostazione predefinita, mentre la dashboard di salute usava **15%**: la
+stessa casa, due risposte diverse a seconda di dove guardavi. Ora c'è una sola
+fonte e una sola soglia, **15%**, uguale in chat, nella dashboard e nel resoconto.
+Conseguenza pratica: le batterie fra il 15% e il 20% non compaiono più nel
+resoconto giornaliero — non sono sparite, semplicemente non erano ancora da
+sostituire secondo il criterio che HIRIS usa ovunque. Le batterie riflettono
+l'ultima scansione del Brain, quindi con un ritardo massimo di 30 minuti.
+
 ## [1.1.0-beta.12] — Il ripristino di una plancia non dipende più dalla pagina aperta (2026-08-01)
 
 Il pulsante per tornare indietro dopo una sostituzione di plancia viveva nella

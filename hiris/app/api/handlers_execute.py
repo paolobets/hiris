@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 # of what the env CSV or the saved policy lists. Prevents a misconfigured
 # EXECUTE_API_TOOLS from exposing unconstrained tools (http_request, set_input_helper, …).
 from .handlers_gateway_policy import READ_TOOLS as _RT, PROPOSE_TOOLS as _PT
+from .read_denylist import (
+    DEFAULT_READ_DENYLIST,
+    LOCAL_CHAT_HEADER,
+    PRUNED_NON_READ_TOOLS,
+    denied_entities_in_inputs,
+    prune_read_result,
+)
 from ..security.semaphore import normalize_target
 _HARD_EXECUTE_ALLOWED = frozenset(_RT) | frozenset(_PT) | {"call_ha_service", "create_task", "send_notification"}
 
@@ -82,6 +89,41 @@ def parse_execute_policy(tools: str, entities: str, services: str) -> dict:
         "allowed_entities": ent or None,
         "allowed_services": svc or None,
     }
+
+
+def _read_denylist(request: web.Request) -> list[str]:
+    """Denylist di lettura in vigore per questa richiesta.
+
+    Chiave assente = anello del cablaggio mancante: vale il DEFAULT protettivo,
+    non "nessuna denylist". Un elenco vuoto invece e' una decisione dell'utente
+    (opzione svuotata) e ripristina il comportamento precedente.
+    """
+    denylist = request.app.get("read_denylist")
+    if denylist is None:
+        return list(DEFAULT_READ_DENYLIST)
+    return list(denylist)
+
+
+def _is_local_chat(request: web.Request) -> bool:
+    """Vero se la richiesta viene dalla chat in-addon (MCP interno su loopback).
+
+    La denylist di lettura vale per la superficie REMOTA. La chat in-addon
+    rientra dalla stessa API tramite LocalExecuteClient e li' il perimetro e'
+    quello del Chatbot, che e' un meccanismo diverso e gia' verificato: senza
+    questo discriminante la denylist accecherebbe anche la chat locale.
+
+    Il discriminante NON e' il campo `origin` del corpo, che il chiamante
+    fornisce e quindi puo' falsificare: e' un segreto di processo generato
+    all'avvio, che solo il client locale conosce. Confronto timing-safe, e
+    fail-closed su token/intestazione assenti (senza marcatore = remoto).
+    """
+    expected = request.app.get("local_execute_token") or ""
+    if not expected:
+        return False
+    presented = request.headers.get(LOCAL_CHAT_HEADER, "")
+    if not presented:
+        return False
+    return hmac.compare_digest(presented, expected)
 
 
 def _check_token(request: web.Request) -> bool:
@@ -228,6 +270,30 @@ async def handle_execute(request: web.Request) -> web.Response:
     # Only mutating tools carry the whitelist; reads see the whole home.
     from .handlers_gateway_policy import READ_TOOLS
     is_read = tool in READ_TOOLS
+
+    # Denylist di lettura: cio' che non esce mai dal gateway, comunque lo si
+    # chieda. Vale sulla superficie remota, non sulla chat in-addon (che
+    # rientra da qui via LocalExecuteClient e ha il perimetro del Chatbot).
+    # Oltre alle letture copre PRUNED_NON_READ_TOOLS: strumenti di altra
+    # categoria la cui RISPOSTA porta comunque identificativi fuori (list_tasks
+    # restituisce le definizioni dei task, azioni ed entita' incluse).
+    da_potare = is_read or tool in PRUNED_NON_READ_TOOLS
+    denylist = _read_denylist(request) if (da_potare and not _is_local_chat(request)) else []
+    if denylist:
+        # Lato INGRESSO: una richiesta che nomina esplicitamente un'entita'
+        # coperta viene rifiutata qui, senza raggiungere Home Assistant.
+        # Rifiutare e non ignorare in silenzio: un errore e' diagnosticabile,
+        # un risultato vuoto no. Da solo NON basta -- vedi la potatura in
+        # uscita piu' sotto, che copre il caso del parametro omesso.
+        vietate = denied_entities_in_inputs(inputs, denylist)
+        if vietate:
+            logger.warning("execute-API: lettura %r rifiutata, entita' nella denylist: %s",
+                           tool, ", ".join(vietate))
+            return web.json_response({"error": (
+                "Entità escluse dalla denylist di lettura di HIRIS: "
+                + ", ".join(vietate)
+                + ". Queste entità non sono leggibili da qui.")}, status=403)
+
     result = await dispatcher.dispatch(
         tool,
         inputs,
@@ -239,4 +305,12 @@ async def handle_execute(request: web.Request) -> web.Response:
         chatbot_id=_origin(body),
         cloud=True,
     )
+    if denylist:
+        # Lato USCITA, ed e' il lato che regge il perimetro: molte letture non
+        # prendono affatto un'entita' (get_home_status, get_logbook senza
+        # entity_id, get_advisories, get_area_entities), quindi il rifiuto in
+        # ingresso si aggirerebbe semplicemente OMETTENDO il parametro. Una
+        # forma di risposta non riconosciuta viene bloccata, non lasciata
+        # passare.
+        result = prune_read_result(tool, result, denylist)
     return web.json_response({"result": result})

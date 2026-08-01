@@ -21,7 +21,21 @@ logger = logging.getLogger(__name__)
 
 # Read tools are always available to the gateway (non-destructive).
 READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
-              "get_history", "recall_knowledge", "get_automation_config"]
+              "get_history", "recall_knowledge", "get_automation_config",
+              "get_advisories", "get_logbook"]
+# render_template resta FUORI da questa lista. Questa lista non e' un menu:
+# derive_execute_policy la concede SEMPRE e per intero, senza opt-in per singolo
+# tool, e le letture partono con allowed_entities=None (handlers_execute: "reads
+# see the whole home"). Il perimetro delle letture remote lo fornisce ora la
+# denylist di lettura (api/read_denylist.py), che rifiuta le richieste che nominano
+# un'entita' coperta e POTA le risposte -- quindi copre anche il caso del
+# parametro omesso. E' per questo che get_logbook e' rientrato: la sua
+# enumerazione in blocco della cronologia non e' piu' illimitata.
+# render_template no: un template non offre alcun entity_id da filtrare, quindi
+# la denylist non avrebbe presa e nessun perimetro potrebbe contenerlo.
+# Contenimento della superficie remota, non limite tecnico: gira gia' nel
+# dispatcher, riabilitarlo sarebbe una riga qui (e una in mcp/tiers.py). In chat
+# e agli agenti locali e' pienamente disponibile — vedi claude_runner.py.
 
 # Propose / schedule tools the gateway may always reach (non-destructive).
 # create_task is intentionally excluded: when confirm_actions=false the gateway

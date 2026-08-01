@@ -43,6 +43,11 @@ from .tools.knowledge_tools import (
     LINK_KNOWLEDGE_TOOL_DEF,
 )
 from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
+from .tools.advisory_tools import GET_ADVISORIES_TOOL_DEF
+from .tools.diagnostics_tools import (
+    GET_LOGBOOK_TOOL_DEF,
+    RENDER_TEMPLATE_TOOL_DEF,
+)
 from .tools.proposal_tools import CREATE_AUTOMATION_PROPOSAL_TOOL_DEF
 from .tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF
 from .tools.dashboard_tools import (
@@ -198,6 +203,9 @@ ALL_TOOL_DEFS = [
     RECALL_MEMORY_TOOL_DEF,
     SAVE_MEMORY_TOOL_DEF,
     GET_HA_HEALTH_TOOL_DEF,
+    GET_ADVISORIES_TOOL_DEF,
+    GET_LOGBOOK_TOOL_DEF,
+    RENDER_TEMPLATE_TOOL_DEF,
     CREATE_AUTOMATION_PROPOSAL_TOOL_DEF,
     CREATE_HA_CONFIG_TOOL_DEF,
     LIST_DASHBOARDS_TOOL_DEF,
@@ -222,6 +230,21 @@ EVALUATION_ONLY_TOOLS = frozenset({
     "create_task", "list_tasks", "cancel_task",
     "recall_memory",  # read-only — safe for non-chat agents
     "get_ha_health",  # read-only cached data — safe for proactive monitors
+    "get_advisories",  # sola lettura sulle segnalazioni gia' note del Brain:
+                       # un agente che sorveglia la casa deve poterle vedere
+    "get_logbook",     # sola lettura sulla cronologia degli eventi: sapere cosa
+                       # e' successo e' esattamente il mestiere di un sorvegliante
+    # render_template excluded ON PURPOSE, and NOT because it writes -- non
+    # scrive nulla, HA si limita a renderizzare. Il motivo e' un altro: un
+    # template Jinja puo' leggere QUALUNQUE stato di Home Assistant, e un agente
+    # non-chat gira proprio SULLO STATO di HA. Il nome o l'attributo di
+    # un'entita' sono testo che un dispositivo (o chi lo controlla) puo'
+    # scegliere: un'entita' battezzata in modo ostile diventa un'istruzione nel
+    # contesto dell'agente, che potrebbe valutare un template arbitrario e
+    # rastrellare l'intera casa senza che nessun perimetro di entita' possa
+    # fermarlo (un template non ha entity_id da filtrare). In chat la stessa
+    # richiesta la fa un umano che sta guardando la risposta: e' un rischio
+    # accettato li' e non altrove. Chat-only.
     # save_memory excluded: write risk in reactive agents (prompt injection via HA state)
     # create_automation_proposal excluded: writes to store — chat-only
     # create_ha_config excluded: writes to HA (script/scene) — chat-only
@@ -657,6 +680,17 @@ class ClaudeRunner:
             system_blocks.append({"type": "text", "text": context_str})
         effective_model = resolve_model(model, agent_type, self._default_model)
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+        # render_template valuta un template Jinja: non ha un entity_id da
+        # filtrare, quindi legge TUTTA la casa per costruzione. Concederlo resta
+        # possibile, ma solo esplicitamente -- e' la casella del Designer, che
+        # avvisa chi la spunta. Senza whitelist esplicita di tool il bot
+        # riceverebbe l'intero catalogo, e un bot con perimetro di entita' si
+        # ritroverebbe in mano proprio lo strumento che quel perimetro lo
+        # scavalca ({{ states('lock.portone') }}) senza che nessuno gliel'abbia
+        # concesso -- ed e' la configurazione piu' comune. Chi NON ha perimetro
+        # vede gia' tutto: togliergli il tool sarebbe una regressione inutile.
+        if not allowed_tools and allowed_entities is not None:
+            tools = [t for t in tools if t["name"] != "render_template"]
         if allowed_endpoints is None:
             tools = [t for t in tools if t["name"] != "http_request"]
         if not self._dispatcher.has_memory:

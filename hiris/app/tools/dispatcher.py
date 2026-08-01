@@ -30,6 +30,11 @@ from .http_tools import http_request
 from .memory_tools import handle_recall_memory as _handle_recall_memory, handle_save_memory as _handle_save_memory
 from .history_tools import get_history as _get_history
 from .health_tools import get_ha_health
+from .advisory_tools import get_advisories
+from .diagnostics_tools import (
+    get_logbook as _get_logbook,
+    render_template as _render_template,
+)
 from .proposal_tools import create_automation_proposal
 from .config_tools import normalize_config_inputs, apply_ha_config
 from .dashboard_tools import propose_dashboard
@@ -127,6 +132,7 @@ class ToolDispatcher:
         embedding_provider: Any = None,
         memory_retention_days: int | None = None,
         health_monitor: Any = None,
+        advisory_store: Any = None,
         proposal_store: Any = None,
         knowledge_store: Any = None,
         embedder: Any = None,
@@ -144,15 +150,17 @@ class ToolDispatcher:
         self._embedder = embedding_provider
         self._memory_retention_days = memory_retention_days
         self._health_monitor = health_monitor
+        self._advisory_store = advisory_store
         self._proposal_store = proposal_store
         self._knowledge_store = knowledge_store
         # Use dedicated embedder if provided, otherwise fall back to the memory embedder
         self._knowledge_embedder = embedder if embedder is not None else embedding_provider
         self._pseudonymizer = pseudonymizer
         self._history_store = history_store
-        # Used only by daily_briefing (Slice 7 Task 5) to load the saved
-        # detectors.battery.min_pct threshold via watcher.policy.load_policy;
-        # optional/backward-compatible, defaults to None (policy={} fallback).
+        # Serviva a daily_briefing per caricare la soglia
+        # detectors.battery.min_pct: ora le batterie arrivano dalle segnalazioni
+        # del Brain e nessun tool lo legge piu'. Il parametro resta accettato
+        # per non rompere il cablaggio esistente (server.py e i test lo passano).
         self._data_dir = data_dir
         # Riferimento VIVO al dict app["execute_policy"] (mutato in place da
         # apply_saved_policy): il semaforo si legge a ogni dispatch. {} = fail-closed.
@@ -255,6 +263,51 @@ class ToolDispatcher:
                     resolution=inputs.get("resolution", "auto"),
                     store=self._history_store,
                 )
+            if name == "get_logbook":
+                # Un entity_id vuoto vale come assente: per il modello "" e
+                # nessun valore significano la stessa cosa (tutta la casa).
+                entity_id = inputs.get("entity_id") or None
+                if entity_id is not None:
+                    # ASIMMETRIA VOLUTA rispetto a get_entity_states/get_history:
+                    # li' l'entita' fuori perimetro si SCARTA dalla lista, qui si
+                    # RIFIUTA la chiamata. L'entita' e' una sola e facoltativa:
+                    # scartarla equivarrebbe a chiedere il logbook dell'INTERA
+                    # casa, cioe' ad allargare il perimetro invece di stringerlo.
+                    if visible_entity_ids and entity_id not in visible_entity_ids:
+                        logger.warning("get_logbook: %r fuori dal contesto visibile", entity_id)
+                        return {"error": f"Entity {entity_id!r} non è fra quelle visibili in questo contesto"}
+                    err = _check_entity_allowed(entity_id, allowed_entities)
+                    if err is not None:
+                        return err
+                # I due rifiuti qui sopra si somigliano ma NON sono la stessa
+                # cosa, e trattarli come equivalenti sarebbe un errore:
+                #   - allowed_entities e' il perimetro di sicurezza e prosegue
+                #     fino al tool, dove filtra anche le VOCI restituite. Deve:
+                #     senza entity_id basterebbe ometterlo per leggere tutta la
+                #     casa, e il rifiuto qui sopra non varrebbe nulla.
+                #   - visible_entity_ids si ferma qui, e quindi il suo rifiuto e'
+                #     aggirabile semplicemente non passando entity_id. E' voluto,
+                #     perche' non e' un contenimento: e' l'insieme delle entita'
+                #     rilevanti per la domanda corrente (SemanticContextMap),
+                #     quasi sempre non vuoto e di natura semantica. Filtrarci le
+                #     voci svuoterebbe proprio la domanda "cosa e' successo ieri
+                #     sera?", che per definizione non conosce le entita' in
+                #     anticipo. Non usarlo come se fosse una whitelist.
+                # `hours` non si normalizza qui: assente o `null` valgono il
+                # default DENTRO il tool, cosi' il contratto e' uno solo per
+                # qualunque chiamante (vedi diagnostics_tools.get_logbook).
+                return await _get_logbook(
+                    self._ha,
+                    entity_id=entity_id,
+                    hours=inputs.get("hours"),
+                    allowed_entities=allowed_entities,
+                )
+            if name == "render_template":
+                # Nessun perimetro di entita' applicabile: un template le legge
+                # tutte per costruzione. E' la ragione per cui questo tool resta
+                # fuori da EVALUATION_ONLY_TOOLS (vedi claude_runner.py) ed e'
+                # concedibile solo esplicitamente a un agente di chat.
+                return await _render_template(self._ha, inputs.get("template"))
             if name == "get_home_status":
                 result = get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
                 return _filter_entities(result, allowed_entities)
@@ -528,6 +581,16 @@ class ToolDispatcher:
                 )
             if name == "get_ha_health":
                 return get_ha_health(self._health_monitor, inputs.get("sections") or ["all"])
+            if name == "get_advisories":
+                # `or None`: una severity vuota vale "nessun filtro", non un
+                # valore fuori enum da respingere.
+                # Il perimetro va passato: l'evidenza delle segnalazioni nomina
+                # entita' di tutta la casa, e un bot ristretto alle luci (o un
+                # agente reattivo, che ha questo tool fra i suoi) le leggerebbe
+                # tutte. Filtrato dentro get_advisories, come per get_logbook.
+                return get_advisories(self._advisory_store,
+                                      inputs.get("severity") or None,
+                                      allowed_entities=allowed_entities)
             if name == "create_automation_proposal":
                 # Explicit up-front validation: the LLM's tool call does not
                 # hard-guarantee every "required" input_schema key is actually
@@ -611,33 +674,27 @@ class ToolDispatcher:
                 # cloud), same as recall_knowledge. Hidden items are still counted in
                 # bundle["counts"]["hidden_sensitive"] regardless.
                 #
-                # policy: loaded from data_dir (watcher.policy.load_policy) when the
-                # dispatcher was constructed with one, so the saved
-                # detectors.battery.min_pct threshold is honored here too, same as the
-                # scheduled run_daily_briefing. Falls back to {} (→ battery_default_pct)
-                # if data_dir is unset or the load fails for any reason.
+                # Le batterie scariche arrivano dalle segnalazioni gia' prodotte dai
+                # controlli di salute del Brain (advisory_store), non da un calcolo
+                # fatto qui: unica fonte di verita', unica soglia. Senza store la
+                # sezione resta vuota. Di conseguenza la policy dei rilevatori non
+                # viene piu' letta in questo punto.
                 #
                 # Returns the DETERMINISTIC render_briefing_template(bundle) string,
                 # not compose_briefing (which needs an llm_reason this dispatcher
                 # lacks) — the chat model, already mid-reply, narrates it itself.
                 if self._knowledge_store is None:
                     return "Il maggiordomo non ha accesso alla memoria in questo momento: riprova più tardi."
-                policy: dict = {}
-                if self._data_dir:
-                    try:
-                        from ..watcher.policy import load_policy
-                        policy = load_policy(self._data_dir)
-                    except Exception:
-                        policy = {}
                 try:
                     allow_sensitive = bool(knowledge_allow_sensitive) and not bool(cloud)
                     # On-demand tool: scope to the caller so they see their OWN
                     # private obligations + home ones (review C/#2 follow-up),
                     # unlike the scheduled home-wide broadcast (owner="home").
                     bundle = build_briefing_bundle(
-                        self._knowledge_store, self._cache, policy,
+                        self._knowledge_store, self._cache,
                         today=date.today(), allow_sensitive=allow_sensitive,
                         owner=user_id or "home",
+                        advisory_store=self._advisory_store,
                     )
                     return render_briefing_template(bundle)
                 except Exception as exc:

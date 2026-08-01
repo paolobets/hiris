@@ -40,6 +40,41 @@ class FakeKnowledgeStore:
         return list(self._rows)
 
 
+class FakeAdvisoryStore:
+    """Stand-in per AdvisoryStore.list(status=...): restituisce righe gia'
+    deserializzate (evidence come dict), la stessa forma dello store vero."""
+
+    def __init__(self, rows: list[dict] | None = None, *, raises: bool = False) -> None:
+        self._rows = rows or []
+        self._raises = raises
+
+    def list(self, *, status: str | None = None) -> list[dict]:
+        if self._raises:
+            raise RuntimeError("boom")
+        if status is None:
+            return list(self._rows)
+        return [r for r in self._rows if r.get("status") == status]
+
+
+def _mk_advisory(eid, pct, *, name="", status="open", check_id="low_battery"):
+    """Riga di segnalazione come la produce check_low_battery + AdvisoryStore."""
+    return {
+        "id": 1, "check_id": check_id, "severity": "warn",
+        "title": f"Batteria scarica: {name or eid}",
+        "evidence": {"entity_id": eid, "name": name or eid, "pct": pct},
+        "suggested_fix": "Sostituisci le pile.", "fix_kind": "manual",
+        "status": status, "source_ref": f"{check_id}:{eid}",
+    }
+
+
+def _mk_advisory_legacy(eid, pct, *, name="", status="open"):
+    """Riga salvata PRIMA che l'evidenza portasse il nome: lo store e'
+    persistente, righe cosi' esistono davvero sui sistemi in esercizio."""
+    riga = _mk_advisory(eid, pct, name=name, status=status)
+    riga["evidence"] = {"entity_id": eid, "pct": pct}
+    return riga
+
+
 def _mk_state(eid, state, *, name="", device_class=None, unit=""):
     return {
         "id": eid,
@@ -61,7 +96,7 @@ def test_horizon_filters_and_days_left(tmp_path):
     cache = FakeEntityCache([])
 
     bundle = build_briefing_bundle(
-        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+        store, cache, today=today, allow_sensitive=True, horizon_days=7,
     )
 
     assert [d["content"] for d in bundle["deadlines"]] == ["Vicina"]
@@ -82,14 +117,14 @@ def test_owner_scoping_home_broadcast_vs_per_user(tmp_path):
                    owner="alice", due_date="2026-07-27", sensitivity="normal")
     cache = FakeEntityCache([])
 
-    home = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True)
+    home = build_briefing_bundle(store, cache, today=today, allow_sensitive=True)
     assert [d["content"] for d in home["deadlines"]] == ["Bolletta casa"]  # no private leak
 
-    alice = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True, owner="alice")
+    alice = build_briefing_bundle(store, cache, today=today, allow_sensitive=True, owner="alice")
     contents = {d["content"] for d in alice["deadlines"]}
     assert contents == {"Bolletta casa", "Privata di Alice"}  # own + home
 
-    bob = build_briefing_bundle(store, cache, {}, today=today, allow_sensitive=True, owner="bob")
+    bob = build_briefing_bundle(store, cache, today=today, allow_sensitive=True, owner="bob")
     assert [d["content"] for d in bob["deadlines"]] == ["Bolletta casa"]  # not alice's
     store.close()
 
@@ -102,20 +137,23 @@ def test_sensitive_excluded_unless_allowed(tmp_path):
     cache = FakeEntityCache([])
 
     hidden = build_briefing_bundle(
-        store, cache, {}, today=today, allow_sensitive=False, horizon_days=7,
+        store, cache, today=today, allow_sensitive=False, horizon_days=7,
     )
     assert hidden["deadlines"] == []
     assert hidden["counts"]["hidden_sensitive"] == 1
 
     shown = build_briefing_bundle(
-        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+        store, cache, today=today, allow_sensitive=True, horizon_days=7,
     )
     assert [d["content"] for d in shown["deadlines"]] == ["Segreto"]
     assert shown["counts"]["hidden_sensitive"] == 0
     store.close()
 
 
-def test_home_open_door_and_low_battery_detected(tmp_path):
+def test_home_open_door_from_cache_and_low_battery_from_advisories(tmp_path):
+    """Le aperture restano di competenza della EntityCache; le batterie
+    arrivano dalle segnalazioni del Brain e NON sono piu' ricalcolate qui:
+    il sensore scarico in cache non basta a farle comparire."""
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     today = date(2026, 7, 25)
     cache = FakeEntityCache([
@@ -124,23 +162,81 @@ def test_home_open_door_and_low_battery_detected(tmp_path):
         _mk_state("sensor.batteria_x", "5", name="x", device_class="battery", unit="%"),
         _mk_state("sensor.batteria_y", "80", name="y", device_class="battery", unit="%"),
     ])
-    policy = {"detectors": {"battery": {"min_pct": 10}}}
+    advisories = FakeAdvisoryStore([_mk_advisory("sensor.batteria_w", 4.0, name="w")])
 
     bundle = build_briefing_bundle(
-        store, cache, policy, today=today, allow_sensitive=True, horizon_days=7,
+        store, cache, today=today, allow_sensitive=True, horizon_days=7,
+        advisory_store=advisories,
     )
 
     assert [e["name"] for e in bundle["home"]["open_now"]] == ["porta"]
-    assert bundle["home"]["low_batteries"] == [{"name": "x", "pct": 5.0}]
+    assert bundle["home"]["low_batteries"] == [{"name": "w", "pct": 4.0}]
     assert bundle["counts"]["open_now"] == 1
     assert bundle["counts"]["low_batteries"] == 1
     store.close()
 
 
+def test_batteries_only_from_active_advisories():
+    """Solo `open` e `acknowledged` sono attive: una risolta e' rientrata, una
+    messa a tacere dall'utente non deve riemergere. Le segnalazioni di altri
+    controlli non finiscono fra le batterie."""
+    today = date(2026, 7, 25)
+    advisories = FakeAdvisoryStore([
+        _mk_advisory("sensor.b_open", 5.0, name="aperta", status="open"),
+        _mk_advisory("sensor.b_ack", 6.0, name="presa_atto", status="acknowledged"),
+        _mk_advisory("sensor.b_res", 7.0, name="rientrata", status="resolved"),
+        _mk_advisory("sensor.b_dis", 8.0, name="tacitata", status="dismissed"),
+        {"id": 9, "check_id": "disk_space", "severity": "high",
+         "title": "Spazio su disco quasi esaurito: 5% libero",
+         "evidence": {"free_pct": 5}, "suggested_fix": "Libera spazio.",
+         "fix_kind": "manual", "status": "open", "source_ref": "disk_space:host"},
+    ])
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), FakeEntityCache([]), today=today,
+        allow_sensitive=True, advisory_store=advisories,
+    )
+
+    assert [e["name"] for e in bundle["home"]["low_batteries"]] == ["aperta", "presa_atto"]
+    assert bundle["counts"]["low_batteries"] == 2
+
+
+def test_raising_advisory_store_degrades_to_no_batteries():
+    """Uno store che solleva non deve propagare ne' far ricadere il briefing
+    sul vecchio calcolo: le batterie degradano a nessuna voce."""
+    today = date(2026, 7, 25)
+    cache = FakeEntityCache([
+        _mk_state("sensor.batteria_x", "1", name="x", device_class="battery", unit="%"),
+    ])
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), cache, today=today, allow_sensitive=True,
+        advisory_store=FakeAdvisoryStore(raises=True),
+    )
+
+    assert bundle["home"]["low_batteries"] == []
+    assert bundle["counts"]["low_batteries"] == 0
+
+
+def test_missing_advisory_store_means_no_batteries():
+    """Fonte unica anche quando manca: senza store non si ricalcola nulla."""
+    today = date(2026, 7, 25)
+    cache = FakeEntityCache([
+        _mk_state("sensor.batteria_x", "1", name="x", device_class="battery", unit="%"),
+    ])
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), cache, today=today, allow_sensitive=True,
+    )
+
+    assert bundle["home"]["low_batteries"] == []
+    assert bundle["counts"]["low_batteries"] == 0
+
+
 def test_none_store_and_cache_never_crash():
     today = date(2026, 7, 25)
     bundle = build_briefing_bundle(
-        None, None, {}, today=today, allow_sensitive=True, horizon_days=7,
+        None, None, today=today, allow_sensitive=True, horizon_days=7,
     )
     assert bundle["deadlines"] == []
     assert bundle["home"] == {"open_now": [], "low_batteries": []}
@@ -159,7 +255,7 @@ def test_raising_store_and_cache_degrade_to_empty_without_crash():
     cache = RaisingEntityCache()
 
     bundle = build_briefing_bundle(
-        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+        store, cache, today=today, allow_sensitive=True, horizon_days=7,
     )
 
     assert bundle["deadlines"] == []
@@ -171,20 +267,21 @@ def test_raising_store_and_cache_degrade_to_empty_without_crash():
 
 def test_home_status_capped_at_20_each():
     """T1: more than 20 open entities and more than 20 low-battery entities
-    must each be capped at 20 in both the returned lists and the counts."""
+    must each be capped at 20 in both the returned lists and the counts.
+    Il cap sulle batterie vale ora sulle segnalazioni lette, non sulla cache."""
     today = date(2026, 7, 25)
     store = FakeKnowledgeStore([])
-    states = [
+    cache = FakeEntityCache([
         _mk_state(f"binary_sensor.porta_{i}", "on", name=f"porta{i}", device_class="door")
         for i in range(25)
-    ] + [
-        _mk_state(f"sensor.batteria_{i}", "5", name=f"batt{i}", device_class="battery", unit="%")
-        for i in range(25)
-    ]
-    cache = FakeEntityCache(states)
+    ])
+    advisories = FakeAdvisoryStore([
+        _mk_advisory(f"sensor.batteria_{i}", 5.0, name=f"batt{i}") for i in range(25)
+    ])
 
     bundle = build_briefing_bundle(
-        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+        store, cache, today=today, allow_sensitive=True, horizon_days=7,
+        advisory_store=advisories,
     )
 
     assert len(bundle["home"]["open_now"]) == 20
@@ -203,7 +300,7 @@ def test_invalid_due_date_degrades_days_left_without_crash():
     cache = FakeEntityCache([])
 
     bundle = build_briefing_bundle(
-        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+        store, cache, today=today, allow_sensitive=True, horizon_days=7,
     )
 
     assert len(bundle["deadlines"]) == 1
@@ -227,7 +324,7 @@ def test_private_obligation_excluded_from_home_wide_briefing(tmp_path):
     cache = FakeEntityCache([])
 
     bundle = build_briefing_bundle(
-        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+        store, cache, today=today, allow_sensitive=True, horizon_days=7,
     )
 
     contents = [d["content"] for d in bundle["deadlines"]]
@@ -237,19 +334,63 @@ def test_private_obligation_excluded_from_home_wide_briefing(tmp_path):
     store.close()
 
 
-def test_battery_default_threshold_used_when_policy_has_no_min_pct():
-    """T1: with policy={} (no detectors.battery.min_pct saved), the battery
-    threshold must fall back to build_briefing_bundle's battery_default_pct
-    (default 20) -- a battery at 15% is below that default and gets flagged."""
+def test_battery_evidence_without_pct_still_lists_the_device():
+    """Un'evidenza senza percentuale utilizzabile non fa sparire la voce: il
+    dispositivo resta citato, la carica residua semplicemente non si dichiara."""
     today = date(2026, 7, 25)
-    store = FakeKnowledgeStore([])
-    cache = FakeEntityCache([
-        _mk_state("sensor.batteria_z", "15", name="z", device_class="battery", unit="%"),
-    ])
+    riga = _mk_advisory("sensor.batteria_muta", None, name="muta")
 
     bundle = build_briefing_bundle(
-        store, cache, {}, today=today, allow_sensitive=True, horizon_days=7,
+        FakeKnowledgeStore([]), FakeEntityCache([]), today=today,
+        allow_sensitive=True, advisory_store=FakeAdvisoryStore([riga]),
     )
 
-    assert bundle["home"]["low_batteries"] == [{"name": "z", "pct": 15.0}]
-    assert bundle["counts"]["low_batteries"] == 1
+    assert bundle["home"]["low_batteries"] == [{"name": "muta", "pct": None}]
+
+
+def test_battery_name_comes_from_evidence_not_from_the_title():
+    """Il nome si legge dall'evidenza, che e' un dato. Un titolo riscritto o
+    tradotto non deve cambiare il nome citato nel resoconto."""
+    today = date(2026, 7, 25)
+    riga = _mk_advisory("sensor.batteria_t", 9.0, name="Termostato salotto")
+    riga["title"] = "Low battery / Batteria quasi esaurita >> Termostato salotto"
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), FakeEntityCache([]), today=today,
+        allow_sensitive=True, advisory_store=FakeAdvisoryStore([riga]),
+    )
+
+    assert bundle["home"]["low_batteries"] == [
+        {"name": "Termostato salotto", "pct": 9.0},
+    ]
+
+
+def test_battery_legacy_row_without_name_falls_back_to_the_title():
+    """Ripiego per le righe gia' salvate senza il campo `name`: il vecchio
+    comportamento (prefisso tolto dal titolo) resta in vigore per loro."""
+    today = date(2026, 7, 25)
+    riga = _mk_advisory_legacy("sensor.batteria_v", 4.0, name="Vecchia voce")
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), FakeEntityCache([]), today=today,
+        allow_sensitive=True, advisory_store=FakeAdvisoryStore([riga]),
+    )
+
+    assert bundle["home"]["low_batteries"] == [{"name": "Vecchia voce", "pct": 4.0}]
+
+
+def test_battery_legacy_row_with_unexpected_title_falls_back_to_entity_id():
+    """Riga vecchia E titolo fuori formato: resta l'identificativo, mai una
+    voce muta."""
+    today = date(2026, 7, 25)
+    riga = _mk_advisory_legacy("sensor.batteria_ignota", 2.0)
+    riga["title"] = "Titolo di un'altra epoca"
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), FakeEntityCache([]), today=today,
+        allow_sensitive=True, advisory_store=FakeAdvisoryStore([riga]),
+    )
+
+    assert bundle["home"]["low_batteries"] == [
+        {"name": "sensor.batteria_ignota", "pct": 2.0},
+    ]

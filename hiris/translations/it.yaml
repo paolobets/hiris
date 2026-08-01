@@ -89,6 +89,9 @@ configuration:
   execute_api_services:
     name: "Execute-API: whitelist servizi"
     description: "CSV di glob dominio.servizio (es. light.*) che l'execute-API può chiamare. Vuoto = nessun filtro servizio aggiuntivo."
+  execute_api_read_denylist:
+    name: "Execute-API: denylist di lettura"
+    description: "CSV di glob entity_id (es. lock.*) che il gateway MCP non può mai leggere: la richiesta che li nomina viene rifiutata e le risposte vengono potate. Predefinito: serrature, allarme, telecamere e presenze. Svuota per tornare al comportamento precedente (ogni lettura vede tutta la casa). Non riguarda le letture in chat."
   supervisor_ingress_cidr:
     name: "CIDR ingress Supervisor fidata"
     description: "Range IP sorgente trattati come vero ingress del Supervisor HA per il bypass X-Ingress-Path (CR-1). Tutto il resto richiede il token interno. Default 172.30.32.0/23; restringi (es. 172.30.32.2/32) se esponi la API a un tunnel."
@@ -119,6 +122,9 @@ configuration:
   agent_owner:
     name: "Owner degli agenti"
     description: "Identità (una chiave di *Utenti notifica*) a cui recapitare tap/OTP quando un agente autonomo chiede conferma. Senza, le azioni oltre il verde vengono saltate."
+  brain_notify_high:
+    name: "Salute del sistema — notifica i problemi gravi"
+    description: "Invia una notifica push quando la scansione di salute apre o riapre una segnalazione grave, o quando una già aperta si aggrava fino a diventare grave. Mai per un aggiornamento che non alza la gravità, e mai due volte per lo stesso problema entro 12 ore: la scansione gira ogni 30 minuti. Predefinito: attivo."
   bridge_enabled:
     name: "Ponte abbonamento — attiva"
     description: "Instrada la scansione olistica del cervello a un runner esterno su abbonamento (via coda di ragionamento) invece di ragionare in locale/a consumo. Spento = ragionamento inline come prima."

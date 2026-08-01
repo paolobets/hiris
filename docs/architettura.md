@@ -91,6 +91,9 @@ hiris/app/
 │   ├── memory_tools.py          recall_memory, save_memory
 │   ├── task_tools.py            create_task, list_tasks, cancel_task
 │   ├── health_tools.py          get_ha_health
+│   ├── advisory_tools.py        get_advisories (segnalazioni del Brain, sola lettura)
+│   ├── diagnostics_tools.py     get_logbook, render_template (sola lettura; `render_template`
+│   │                             è solo-chat, escluso dagli agenti autonomi)
 │   └── proposal_tools.py        create_automation_proposal
 │
 ├── proxy/
@@ -100,18 +103,24 @@ hiris/app/
 │   ├── semantic_context_map.py  Iniezione contesto con consapevolezza delle aree
 │   ├── knowledge_db.py          Classificazione entità (aree, dispositivi) — `home_map.db`
 │   ├── health_monitor.py        Snapshot salute HA: WebSocket + polling 30min + persist JSON
+│   ├── supervisor_client.py     Client Supervisor in SOLA LETTURA: stato add-on, spazio disco
+│   │                             host, aggiornamenti core/OS/Supervisor/add-on. Nessun metodo
+│   │                             di scrittura; degrada a vuoto senza Supervisor
 │   └── proposal_store.py        Store SQLite proposte automazione (gestione lifecycle)
 │
 ├── brain/                        21 moduli — "second brain" + livello proattivo cognitivo
 │   ├── knowledge_store.py       Second brain unificato (`knowledge.db`): conoscenza
 │   │                             personale/condivisa + memoria di lavoro per-Chatbot
 │   │                             (colonna `chatbot_id`), ricerca vettoriale
-│   ├── advisory_store.py        Store advisory (`advisory.db`): 5 segnalazioni di salute, stato
-│   │                             open/acknowledged/dismissed/resolved
+│   ├── advisory_store.py        Store advisory (`advisory.db`): 8 segnalazioni di salute, stato
+│   │                             open/acknowledged/dismissed/resolved + memoria delle notifiche
+│   │                             già inviate (tabella `advisory_notifications`)
 │   ├── reasoning_log.py         Log ragionamenti del Brain (`brain_reasoning.db`, tabella `brain_reasoning`)
-│   ├── health_scan.py           Esegue i 5 health check (`health_checks.py`) → righe advisory
-│   ├── health_checks.py         Le 5 funzioni di check: entità non disponibili, batterie scariche,
-│   │                             automazioni rotte, domini pericolosi, entità senza area
+│   ├── health_scan.py           Esegue gli 8 health check (`health_checks.py`) → righe advisory,
+│   │                             e notifica le sole gravi nuove/riaperte/aggravate
+│   ├── health_checks.py         Le 8 funzioni di check: entità non disponibili, batterie scariche,
+│   │                             automazioni rotte, domini pericolosi, entità senza area,
+│   │                             add-on fermi o in errore, spazio disco, aggiornamenti disponibili
 │   ├── feed.py                  Assembla lo stream della home del Brain (reasoning + advisory + proposal items)
 │   ├── cognitive_loop.py        Round del ciclo cognitivo: soglie auto-apprese + coverage review
 │   ├── briefing.py              Bundle briefing giornaliero (Maggiordomo) + composer in linguaggio naturale
@@ -384,7 +393,7 @@ Tutti i file JSON sono scritti atomicamente tramite file temporaneo + `os.replac
 
 ### SQLite — `/data/advisory.db`
 
-Segnalazioni di salute prodotte da `health_scan.py` (i 5 check di `health_checks.py`) e mostrate nella zona "Azioni e segnalazioni" della home del Brain (`#/`).
+Segnalazioni di salute prodotte da `health_scan.py` (gli 8 check di `health_checks.py`) e mostrate nella zona "Azioni e segnalazioni" della home del Brain (`#/`). Le stesse righe sono leggibili in chat con `get_advisories`, e alimentano il riepilogo batterie del briefing giornaliero (soglia unica al 15%).
 
 ```sql
 CREATE TABLE advisories (

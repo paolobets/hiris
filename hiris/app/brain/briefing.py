@@ -2,10 +2,20 @@
 butler composer that turns the bundle into natural-language text.
 
 Bundle building (Task 1) is pure/read-only: pulls upcoming obligations from
-the KnowledgeStore and notable home status (open doors/windows, low
-batteries) from the EntityCache, and folds them into a single dict. No LLM,
-no network, no writes. Never raises -- any failure on either input source
-degrades to an empty section rather than propagating.
+the KnowledgeStore, open doors/windows from the EntityCache and low batteries
+from the AdvisoryStore, and folds them into a single dict. No LLM, no network,
+no writes. Never raises -- any failure on either input source degrades to an
+empty section rather than propagating.
+
+Le batterie scariche NON si calcolano qui. Il fatto "questa batteria e'
+scarica" ha una sola fonte di verita': il controllo di salute del Brain
+(brain/health_checks.check_low_battery), i cui esiti finiscono in
+`AdvisoryStore`. Il briefing li rilegge. Prima erano due calcoli distinti, con
+due soglie diverse, e l'utente poteva sentirsi dire due cose diverse a seconda
+di dove guardava. Conseguenze accettate: le batterie riflettono l'ultima
+scansione del Brain (cadenza di mezz'ora) invece dell'istante della richiesta,
+e la soglia in vigore e' solo quella del controllo -- `detectors.battery.min_pct`
+non governa piu' il briefing.
 
 Composing (Task 2) turns that bundle into the actual butler briefing text via
 an injected LLM callable, GROUNDED (the prompt instructs the model to use
@@ -17,6 +27,9 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
+
+from .advisory_store import STATI_ATTIVI
+from .health_checks import BATTERIA_TITOLO_PREFISSO, CHECK_BATTERIA
 
 try:
     from ..proxy._sanitize import sanitize_ha_value as _san  # SEC-024 sanitizer
@@ -34,13 +47,6 @@ def _parse_iso_date(value: str | None) -> date | None:
         return date.fromisoformat(value)
     except (ValueError, TypeError):
         return None
-
-
-def _battery_threshold(policy: dict | None, default_pct: int) -> int:
-    try:
-        return int(policy["detectors"]["battery"]["min_pct"])  # type: ignore[index]
-    except Exception:
-        return default_pct
 
 
 def _collect_deadlines(
@@ -89,74 +95,134 @@ def _collect_deadlines(
     return deadlines, hidden_sensitive
 
 
-def _collect_home_status(
-    entity_cache, *, policy: dict | None, battery_default_pct: int,
-) -> tuple[list[dict], list[dict]]:
-    """Returns (open_now, low_batteries), each capped at 20 entries."""
+def _collect_open_now(entity_cache) -> list[dict]:
+    """Porte e finestre aperte adesso, dalla cache delle entita', al piu' 20.
+
+    Questa parte resta un calcolo istantaneo: l'apertura di una porta e' una
+    condizione che cambia da un minuto all'altro e nessun controllo del Brain
+    la sorveglia.
+    """
     if entity_cache is None:
-        return [], []
+        return []
     try:
         states = entity_cache.all_states()
     except Exception:
-        return [], []
+        return []
 
-    threshold = _battery_threshold(policy, battery_default_pct)
     open_now: list[dict] = []
-    low_batteries: list[dict] = []
-
     for entity in states or []:
         try:
             eid = entity.get("id") or entity.get("entity_id") or ""
-            if not eid:
+            if not eid or not eid.startswith("binary_sensor."):
                 continue
-
-            if eid.startswith("binary_sensor.") and len(open_now) < _CAP:
-                device_class = entity.get("device_class")
-                if device_class in _OPENING_DEVICE_CLASSES and entity.get("state") == "on":
-                    name = entity.get("name") or eid
-                    open_now.append({"name": name})
+            if entity.get("device_class") not in _OPENING_DEVICE_CLASSES:
                 continue
-
-            if eid.startswith("sensor.") and len(low_batteries) < _CAP:
-                device_class = entity.get("device_class")
-                unit = entity.get("unit") or ""
-                name = entity.get("name") or ""
-                is_battery = device_class == "battery" or (
-                    unit == "%" and "batter" in name.lower()
-                )
-                if not is_battery:
-                    continue
-                try:
-                    pct = float(entity.get("state"))
-                except (TypeError, ValueError):
-                    continue
-                if pct < threshold:
-                    low_batteries.append({"name": name or eid, "pct": pct})
+            if entity.get("state") != "on":
+                continue
+            open_now.append({"name": entity.get("name") or eid})
+            if len(open_now) >= _CAP:
+                break
         except Exception:
             continue
 
-    return open_now[:_CAP], low_batteries[:_CAP]
+    return open_now
+
+
+def _nome_batteria(riga: dict, evidenza: dict) -> str:
+    """Nome del dispositivo da citare, preso dall'evidenza della segnalazione.
+
+    `check_low_battery` scrive il nome amichevole in `evidence["name"]`: e' un
+    dato, non testo destinato all'utente, quindi non cambia il giorno in cui
+    qualcuno riscrive o traduce il titolo della segnalazione.
+
+    Ripiego per le righe salvate prima che quel campo esistesse -- lo store e'
+    persistente e quelle righe esistono davvero: si toglie dal titolo il
+    prefisso condiviso con il controllo, poi si prova l'identificativo, e in
+    ultima istanza resta il titolo cosi' com'e'.
+    """
+    nome_evidenza = evidenza.get("name")
+    if isinstance(nome_evidenza, str) and nome_evidenza.strip():
+        return nome_evidenza.strip()
+
+    titolo = str(riga.get("title") or "").strip()
+    if titolo.startswith(BATTERIA_TITOLO_PREFISSO):
+        nome = titolo[len(BATTERIA_TITOLO_PREFISSO):].strip()
+        if nome:
+            return nome
+    eid = evidenza.get("entity_id")
+    return str(eid).strip() if eid else titolo
+
+
+def _percentuale_batteria(evidenza: dict):
+    """Carica residua dall'evidenza, solo se e' davvero un numero."""
+    pct = evidenza.get("pct")
+    if isinstance(pct, bool) or not isinstance(pct, (int, float)):
+        return None
+    return float(pct)
+
+
+def _collect_low_batteries(advisory_store) -> list[dict]:
+    """Batterie scariche prese dalle segnalazioni del Brain, al piu' 20.
+
+    Si leggono solo le segnalazioni ancora attive: una rientrata non ha piu'
+    nulla da dire e una messa a tacere dall'utente non deve riemergere qui.
+
+    Store assente o in errore significa nessuna batteria da segnalare, mai un
+    ricalcolo dalla cache delle entita': un ripiego che ricalcola ricrea le due
+    fonti di verita' che questo passaggio elimina. Non solleva mai.
+    """
+    if advisory_store is None:
+        return []
+    try:
+        righe: list[dict] = []
+        for stato in STATI_ATTIVI:
+            righe.extend(advisory_store.list(status=stato) or [])
+    except Exception:
+        return []
+
+    low_batteries: list[dict] = []
+    for riga in righe:
+        try:
+            if not isinstance(riga, dict) or riga.get("check_id") != CHECK_BATTERIA:
+                continue
+            evidenza = riga.get("evidence")
+            if not isinstance(evidenza, dict):
+                evidenza = {}
+            nome = _nome_batteria(riga, evidenza)
+            if not nome:
+                continue
+            low_batteries.append({"name": nome, "pct": _percentuale_batteria(evidenza)})
+            if len(low_batteries) >= _CAP:
+                break
+        except Exception:
+            continue
+
+    return low_batteries
 
 
 def build_briefing_bundle(
     knowledge_store,
     entity_cache,
-    policy,
     *,
     today: date,
     allow_sensitive: bool,
     horizon_days: int = 7,
-    battery_default_pct: int = 20,
     owner: str = "home",
+    advisory_store=None,
 ) -> dict:
     """Deterministic butler briefing bundle: deadlines from ingested
-    documents (obligations) plus notable home status (open doors/windows,
-    low batteries). Egress-gated: sensitive deadlines are excluded from the
-    list when `allow_sensitive` is False, but still counted. Never raises.
+    documents (obligations) plus notable home status (open doors/windows from
+    the cache, low batteries from the Brain's advisories). Egress-gated:
+    sensitive deadlines are excluded from the list when `allow_sensitive` is
+    False, but still counted. Never raises.
 
     `owner` scopes the deadlines: default "home" (scheduled home-wide broadcast,
     shared obligations only); the on-demand chat tool passes the caller's
     user_id so the user also sees their own private obligations (review C/#2).
+
+    `advisory_store` e' l'unica fonte delle batterie scariche: senza store la
+    sezione resta vuota, non si ricalcola. La vecchia `policy` non serve piu'
+    perche' la soglia vive nel controllo che emette le segnalazioni.
     """
     try:
         deadlines, hidden_sensitive = _collect_deadlines(
@@ -167,11 +233,14 @@ def build_briefing_bundle(
         deadlines, hidden_sensitive = [], 0
 
     try:
-        open_now, low_batteries = _collect_home_status(
-            entity_cache, policy=policy, battery_default_pct=battery_default_pct,
-        )
+        open_now = _collect_open_now(entity_cache)
     except Exception:
-        open_now, low_batteries = [], []
+        open_now = []
+
+    try:
+        low_batteries = _collect_low_batteries(advisory_store)
+    except Exception:
+        low_batteries = []
 
     return {
         "deadlines": deadlines,

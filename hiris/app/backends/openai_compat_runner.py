@@ -545,6 +545,13 @@ class OpenAICompatRunner:
 
         # Build tool list
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+        # render_template legge tutta la casa (template Jinja, nessun entity_id
+        # da filtrare): senza whitelist esplicita di tool non deve arrivare a un
+        # bot che ha un perimetro di entita'. Vedi claude_runner.chat() per il
+        # ragionamento completo; qui va replicato perche' questo backend
+        # costruisce la lista dei tool per conto suo.
+        if not allowed_tools and allowed_entities is not None:
+            tools = [t for t in tools if t["name"] != "render_template"]
         if allowed_endpoints is None:
             tools = [t for t in tools if t["name"] != "http_request"]
         if not self._dispatcher.has_memory:
@@ -826,6 +833,11 @@ class OpenAICompatRunner:
         messages.append({"role": "user", "content": user_message})
 
         tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+        # Stesso vincolo di chat(): render_template scavalca il perimetro delle
+        # entita', quindi fuori dalla concessione esplicita non arriva a un bot
+        # che quel perimetro ce l'ha. Lo streaming non e' una porta di servizio.
+        if not allowed_tools and allowed_entities is not None:
+            tools = [t for t in tools if t["name"] != "render_template"]
         if allowed_endpoints is None:
             tools = [t for t in tools if t["name"] != "http_request"]
         if not self._dispatcher.has_memory:

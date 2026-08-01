@@ -145,7 +145,7 @@ async def test_handle_get_ha_health_returns_snapshot():
     request = make_mocked_request("GET", "/api/health/ha", app=app)
     resp = await handle_get_ha_health(request)
     assert resp.status == 200
-    monitor.get_snapshot.assert_called_once_with(["all"])
+    monitor.get_snapshot.assert_called_once_with(["all"], capped=False)
 
 
 @pytest.mark.asyncio
@@ -159,7 +159,7 @@ async def test_handle_get_ha_health_filters_sections_param():
         "GET", "/api/health/ha?sections=unavailable,integrations", app=app
     )
     await handle_get_ha_health(request)
-    monitor.get_snapshot.assert_called_once_with(["unavailable", "integrations"])
+    monitor.get_snapshot.assert_called_once_with(["unavailable", "integrations"], capped=False)
 
 
 @pytest.mark.asyncio

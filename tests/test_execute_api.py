@@ -41,6 +41,12 @@ def _make_app(policy, token="secret"):
     app = web.Application()
     app["internal_token"] = token
     app["execute_policy"] = policy
+    # Denylist di lettura esplicitamente VUOTA: questi test riguardano la
+    # allowlist d'azione e la routing dei tier, non il perimetro di lettura,
+    # e la chiave assente varrebbe il default protettivo (fail-closed, vedi
+    # handlers_execute._read_denylist). La denylist ha i suoi test in
+    # tests/test_read_denylist.py.
+    app["read_denylist"] = []
     app["tool_dispatcher"] = _FakeDispatcher()
     app.router.add_post("/api/execute", handle_execute)
     return app

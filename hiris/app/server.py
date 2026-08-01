@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import time
 from datetime import date, datetime, timezone
@@ -41,6 +42,7 @@ from .api.handlers_knowledge import (
 )
 from .api.handlers_gateway_pending import verify_otp, execute_pending, resolve_pending
 from .proxy.health_monitor import HealthMonitor
+from .proxy.supervisor_client import SupervisorClient
 from .proxy.proposal_store import ProposalStore
 from .chatbot_engine import ChatbotEngine
 from .task_engine import TaskEngine
@@ -924,7 +926,11 @@ async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
     Module-level (not inlined in `_on_startup`) so it's unit-testable with a
     plain dict standing in for `app` -- same convention as
     `_reason_memory_context` above; `app` only needs `.get("knowledge_store")`,
-    `.get("entity_cache")`, `.get("llm_router")` and `.get("data_dir")`.
+    `.get("entity_cache")`, `.get("llm_router")` and `.get("advisory_store")`.
+
+    Le batterie scariche arrivano da `advisory_store`, dove i controlli di
+    salute del Brain hanno gia' scritto le loro segnalazioni: il briefing non
+    le ricalcola piu' e la policy dei rilevatori non entra piu' qui.
 
     Egress gate: `allow_sensitive` is True only when
     `LLMRouter.automatic_allows_sensitive()` reports the automatic backend
@@ -946,8 +952,8 @@ async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
         allow_sensitive = router.automatic_allows_sensitive() if router is not None else False
         bundle = build_briefing_bundle(
             app.get("knowledge_store"), app.get("entity_cache"),
-            load_policy(app.get("data_dir")),
             today=today, allow_sensitive=allow_sensitive,
+            advisory_store=app.get("advisory_store"),
         )
         text = await compose_briefing(bundle, llm_reason)
         await notify(text)
@@ -1055,7 +1061,8 @@ class _EmbeddedMCPServer(uvicorn.Server):
         return
 
 
-def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
+def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099",
+                              local_token: str = ""):
     """Costruisce (client, uvicorn.Config, guard) per il server MCP interno su
     loopback. Isolato dall'avvio dell'app cosi' e' testabile senza bootare
     tutto.
@@ -1072,7 +1079,10 @@ def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099"):
     from .mcp.server import build_mcp, make_asgi_app
     port = int(os.environ.get("INTERNAL_MCP_PORT", "8199"))
     token = os.environ.get("INTERNAL_TOKEN", "")
-    client = LocalExecuteClient(hiris_base_url, token)
+    # `local_token` marca queste letture come chat in-addon, esentandole dalla
+    # denylist di lettura del gateway (superficie remota). Vuoto = nessun
+    # marcatore = trattate come remote: fail-closed.
+    client = LocalExecuteClient(hiris_base_url, token, local_token=local_token)
     guard = McpGuard()
     asgi = make_asgi_app(build_mcp(client, guard))
     config = uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="warning")
@@ -1122,6 +1132,22 @@ async def _on_startup(app: web.Application) -> None:
         entities=os.environ.get("EXECUTE_API_ENTITIES", ""),
         services=os.environ.get("EXECUTE_API_SERVICES", ""),
     )
+    # Denylist di lettura del gateway: entita'/domini che non escono mai da
+    # /api/execute. Volutamente NON dentro execute_policy: quel dict viene
+    # sostituito in blocco da apply_saved_policy quando l'utente salva il
+    # semaforo dalla UI, e la denylist ci sparirebbe dentro. `get` senza
+    # default: variabile assente = anello mancante = default protettivo
+    # (parse_read_denylist); stringa vuota = opzione svuotata dall'utente.
+    from .api.read_denylist import parse_read_denylist
+    app["read_denylist"] = parse_read_denylist(
+        os.environ.get("EXECUTE_API_READ_DENYLIST"))
+    # Marcatore delle letture della chat in-addon, che rientra in /api/execute
+    # dall'MCP interno su loopback: la denylist e' pensata per la superficie
+    # REMOTA, non per la chat, dove vale il perimetro del Chatbot. Segreto di
+    # processo (mai su disco, mai in configurazione) proprio perche' il campo
+    # `origin` del corpo, essendo fornito dal chiamante, sarebbe falsificabile
+    # da chiunque tenga l'internal token.
+    app["local_execute_token"] = secrets.token_urlsafe(32)
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
         logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
@@ -1187,10 +1213,26 @@ async def _on_startup(app: web.Application) -> None:
     await engine.start()
     app["engine"] = engine
 
+    # Client Supervisor di sola lettura (add-on, disco, aggiornamenti). Senza
+    # SUPERVISOR_TOKEN siamo su un'installazione standalone (container senza
+    # Supervisor): non lo costruiamo affatto, cosi' evitiamo tre GET destinate
+    # al timeout a ogni refresh. Il monitor riceve None e la sezione non compare.
+    supervisor_token = os.environ.get("SUPERVISOR_TOKEN", "").strip()
+    supervisor_client = None
+    if supervisor_token:
+        supervisor_client = SupervisorClient(token=supervisor_token)
+        await supervisor_client.start()
+        app["supervisor_client"] = supervisor_client
+    else:
+        logger.info(
+            "SUPERVISOR_TOKEN assente: sezione supervisor dello stato di salute disattivata"
+        )
+
     health_monitor = HealthMonitor(
         ha_client=ha_client,
         data_path=os.path.join(data_dir, "ha_health.json"),
         scheduler=engine._scheduler,
+        supervisor_client=supervisor_client,
     )
     await health_monitor.start()
     app["health_monitor"] = health_monitor
@@ -1506,6 +1548,14 @@ async def _on_startup(app: web.Application) -> None:
     from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
+
+    # Archivio delle segnalazioni del Brain. Creato QUI, prima del dispatcher,
+    # perche' il tool get_advisories lo riceve per iniezione: il resto del
+    # cervello proattivo (piu' sotto) usa lo stesso oggetto.
+    from .brain.advisory_store import AdvisoryStore
+    advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
+    app["advisory_store"] = advisory_store
+
     # Thin wrapper binding the module-level request_confirmation_stepup to
     # this app instance; see request_confirmation_stepup for the actual
     # no-identity guard and yellow/red actionable logic.
@@ -1528,6 +1578,7 @@ async def _on_startup(app: web.Application) -> None:
         embedding_provider=embedder,
         memory_retention_days=memory_retention_days,
         health_monitor=health_monitor,
+        advisory_store=advisory_store,
         proposal_store=proposal_store,
         knowledge_store=knowledge_store,
         embedder=embedder,
@@ -1564,11 +1615,8 @@ async def _on_startup(app: web.Application) -> None:
     app["suggestion_store"] = suggestion_store
 
     from .brain.reasoning_log import ReasoningLog
-    from .brain.advisory_store import AdvisoryStore
     reasoning_log = ReasoningLog(os.path.join(data_dir, "brain_reasoning.db"))
     app["reasoning_log"] = reasoning_log
-    advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
-    app["advisory_store"] = advisory_store
 
     async def _gather_context(wake) -> dict:
         # Best-effort friendly_name from the entity cache; falls back to the
@@ -2250,7 +2298,8 @@ async def _on_startup(app: web.Application) -> None:
         minutes=int(os.environ.get("SENTINEL_RONDA_MINUTES", "15")),
         id="hiris_sentinel_ronda", replace_existing=True, misfire_grace_time=300)
 
-    # SP-3 Task 8: periodic read-only health scan (5 checks) reconciled into
+    # SP-3 Task 8: periodic read-only health scan (8 checks: 5 sulla casa, 3
+    # sul sistema tramite il Supervisor) reconciled into
     # the AdvisoryStore, plus a nightly prune of the reasoning capture log.
     from .brain.health_scan import run_health_scan
 
@@ -2260,7 +2309,16 @@ async def _on_startup(app: web.Application) -> None:
             await run_health_scan(
                 ha_client=ha_client, entity_cache=app.get("entity_cache"),
                 tiers=pol.get("tiers") or {}, entity_tiers=pol.get("entity_tiers") or {},
-                store=advisory_store, now=datetime.now(timezone.utc))
+                store=advisory_store, now=datetime.now(timezone.utc),
+                # Senza SUPERVISOR_TOKEN lo slot non esiste affatto: `.get`
+                # restituisce None e i controlli di sistema restano muti.
+                supervisor_client=app.get("supervisor_client"),
+                # Notifica push per le sole segnalazioni gravi nuove o
+                # riaperte: stesso `notify_config` (e stesso deep-link) del
+                # briefing e dei solleciti. Disattivabile con l'opzione
+                # `brain_notify_high`, attiva per impostazione predefinita.
+                notify_config=notify_config,
+                notify_enabled=env_bool("BRAIN_NOTIFY_HIGH", True))
         except Exception:
             logger.exception("health scan failed")
 
@@ -2492,7 +2550,8 @@ async def _on_startup(app: web.Application) -> None:
     # 127.0.0.1 only -- never reachable off-box. Runs as a background asyncio
     # task on the SAME event loop as the rest of the app; cancelled + the
     # client's aiohttp session closed in _on_cleanup below.
-    _mcp_client, _mcp_config, _mcp_guard = build_internal_mcp_server()
+    _mcp_client, _mcp_config, _mcp_guard = build_internal_mcp_server(
+        local_token=app.get("local_execute_token") or "")
     await _mcp_client.start()
     _mcp_server = _EmbeddedMCPServer(_mcp_config)
     app["internal_mcp_client"] = _mcp_client
@@ -2590,6 +2649,8 @@ async def _on_cleanup(app: web.Application) -> None:
         await app["task_engine"].stop()
     await app["engine"].stop()
     await app["ha_client"].stop()
+    if app.get("supervisor_client") is not None:
+        await app["supervisor_client"].stop()
     close_all_stores()
 
 

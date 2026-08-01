@@ -89,6 +89,9 @@ configuration:
   execute_api_services:
     name: "Execute-API: service whitelist"
     description: "CSV of domain.service globs (e.g. light.*) the execute-API may call. Empty = no extra service filter."
+  execute_api_read_denylist:
+    name: "Execute-API: read denylist"
+    description: "CSV of entity_id globs (e.g. lock.*) the MCP gateway may never read: a request naming them is rejected and responses are pruned. Default: locks, alarm panels, cameras and presence. Empty it to restore the previous behaviour (every read sees the whole home). Does not affect chat reads."
   supervisor_ingress_cidr:
     name: "Trusted Supervisor ingress CIDR"
     description: "Source IP range(s) treated as genuine HA Supervisor ingress for the X-Ingress-Path bypass (CR-1). Everything else needs the internal token. Default 172.30.32.0/23; tighten (e.g. 172.30.32.2/32) if exposing the API to a tunnel."
@@ -119,6 +122,9 @@ configuration:
   agent_owner:
     name: "Agents owner"
     description: "Identity (a key of *Notify users*) that receives tap/OTP when an autonomous agent asks for confirmation. Without it, above-green actions are skipped."
+  brain_notify_high:
+    name: "System health — notify severe issues"
+    description: "Sends a push notification when the health scan opens or reopens a severe advisory, or when an already open one escalates to severe. Never for an update that does not raise the severity, and never twice for the same issue within 12 hours: the scan runs every 30 minutes. Default: enabled."
   bridge_enabled:
     name: "Subscription bridge — enable"
     description: "Routes the brain's holistic scan to an external subscription runner (via the reasoning queue) instead of reasoning locally/pay-per-use. Off = inline reasoning as before."
