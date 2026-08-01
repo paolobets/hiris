@@ -4,6 +4,9 @@ import pytest
 from hiris.app.tools.advisory_tools import (
     GET_ADVISORIES_TOOL_DEF,
     MAX_ADVISORIES,
+    MAX_EVIDENCE_CHARS,
+    MAX_EVIDENCE_KEYS,
+    STATI_ATTIVI,
     get_advisories,
 )
 
@@ -219,3 +222,68 @@ def test_il_totale_dichiarato_rispetta_il_filtro_severita():
     res = get_advisories(_FakeStore(righe), severity="high")
     assert res["count"] == 3
     assert "truncated" not in res
+
+
+# --- cap sull'evidenza ------------------------------------------------------
+
+def test_evidence_intatta_non_dichiara_alcun_taglio(store):
+    voce = get_advisories(store, severity=None)["advisories"][0]
+    assert "evidence_truncated" not in voce
+
+
+def test_evidence_limitata_nel_numero_di_chiavi():
+    # `evidence` e' un dict di forma libera prodotto dai controlli: senza cap
+    # un controllo che ne emette venti se le porterebbe tutte nel prompt.
+    grande = {f"k{i}": i for i in range(MAX_EVIDENCE_KEYS + 6)}
+    res = get_advisories(_FakeStore([_riga(evidence=grande)]), severity=None)
+    voce = res["advisories"][0]
+    assert len(voce["evidence"]) == MAX_EVIDENCE_KEYS
+    assert voce["evidence_truncated"] == {
+        "shown": MAX_EVIDENCE_KEYS, "total": len(grande),
+    }
+
+
+def test_evidence_limitata_nella_dimensione_serializzata():
+    # Poche chiavi ma enormi: il cap sul numero non basta, serve quello sui
+    # caratteri (il caso del Task 6, evidenza = lista di addon).
+    grande = {"count": 3, "addons": ["addon-molto-lungo-" + "x" * 80] * 40}
+    res = get_advisories(_FakeStore([_riga(evidence=grande)]), severity=None)
+    voce = res["advisories"][0]
+    import json as _json
+    assert len(_json.dumps(voce["evidence"], ensure_ascii=False)) <= MAX_EVIDENCE_CHARS
+    # La chiave sintetica sopravvive, quella smisurata no, e il taglio e'
+    # dichiarato: il modello puo' dire all'utente che sta vedendo una parte.
+    assert voce["evidence"] == {"count": 3}
+    assert voce["evidence_truncated"] == {"shown": 1, "total": 2}
+
+
+def test_evidence_non_dict_diventa_oggetto_vuoto():
+    # `_row` dello store deserializza sempre l'evidenza, ma una riga malformata
+    # la lascerebbe a None: il modello si aspetta comunque un oggetto.
+    res = get_advisories(_FakeStore([_riga(evidence=None)]), severity=None)
+    assert res["advisories"][0]["evidence"] == {}
+    assert "evidence_truncated" not in res["advisories"][0]
+
+
+def test_evidence_non_serializzabile_non_fa_fallire_la_lettura():
+    res = get_advisories(
+        _FakeStore([_riga(evidence={"ok": 1, "bah": object()})]), severity=None
+    )
+    voce = res["advisories"][0]
+    assert voce["evidence"] == {"ok": 1}
+    assert voce["evidence_truncated"] == {"shown": 1, "total": 2}
+
+
+def test_tool_def_dichiara_il_troncamento_dell_evidenza():
+    assert "evidence_truncated" in GET_ADVISORIES_TOOL_DEF["description"]
+
+
+# --- letture allo store -----------------------------------------------------
+
+def test_legge_solo_gli_stati_attivi(store):
+    # Una `list()` senza stato leggerebbe l'intera tabella -- comprese le righe
+    # risolte e messe a tacere, che nessuno pota mai -- e deserializzerebbe
+    # l'evidenza di ognuna, tutto in modo sincrono sull'event loop.
+    get_advisories(store, severity=None)
+    assert store.chiamate == list(STATI_ATTIVI)
+    assert None not in store.chiamate
