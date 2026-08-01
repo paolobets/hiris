@@ -97,6 +97,28 @@ async def test_dispatch_get_logbook_entita_visibile_passa():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("inputs", [{}, {"hours": None}])
+async def test_dispatch_get_logbook_ore_assenti_valgono_il_default(inputs):
+    # Un modello che emette esplicitamente `null` per un parametro facoltativo
+    # sta dicendo "non l'ho specificato", non "finestra non valida".
+    ha = _FakeHA()
+    d = ToolDispatcher(ha, notify_config={})
+    await d.dispatch("get_logbook", dict(inputs))
+    assert ha.chiamate_logbook == [(None, 24)]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_get_logbook_ore_zero_resta_un_errore():
+    # `0` e' un input sbagliato e va respinto: tradurlo nel default
+    # nasconderebbe l'errore al modello.
+    ha = _FakeHA()
+    d = ToolDispatcher(ha, notify_config={})
+    out = await d.dispatch("get_logbook", {"hours": 0})
+    assert "error" in out
+    assert ha.chiamate_logbook == []
+
+
+@pytest.mark.asyncio
 async def test_dispatch_get_logbook_ore_non_valide_non_toccano_ha():
     ha = _FakeHA()
     d = ToolDispatcher(ha, notify_config={})

@@ -286,10 +286,15 @@ class ToolDispatcher:
                 # rilevanti per la domanda corrente (SemanticContextMap), quasi
                 # sempre non vuoto — filtrarci le voci renderebbe inutile proprio
                 # la domanda "cosa e' successo ieri sera?".
+                # `hours` assente e `hours: null` sono la stessa intenzione (non
+                # l'ho specificato) e valgono il default; NON si usa `or`, che
+                # tradurrebbe uno 0 esplicito in 24 nascondendo un input
+                # sbagliato invece di respingerlo.
+                hours = inputs.get("hours")
                 return await _get_logbook(
                     self._ha,
                     entity_id=entity_id,
-                    hours=inputs.get("hours", DEFAULT_LOGBOOK_HOURS),
+                    hours=DEFAULT_LOGBOOK_HOURS if hours is None else hours,
                     allowed_entities=allowed_entities,
                 )
             if name == "render_template":
