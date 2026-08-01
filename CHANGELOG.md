@@ -1,5 +1,19 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.12] — Il ripristino di una plancia non dipende più dalla pagina aperta (2026-08-01)
+
+Il pulsante per tornare indietro dopo una sostituzione di plancia viveva nella
+memoria della pagina chat: se approvavi la proposta da un'altra schermata non
+compariva mai, e bastava un aggiornamento del browser per perderlo. Lo snapshot
+restava al sicuro sul disco, ma non avevi più un modo per raggiungerlo.
+
+Ora l'elenco delle versioni ripristinabili arriva dal server, quindi vale
+ovunque tu abbia approvato e sopravvive a qualsiasi ricaricamento. Le
+sostituzioni delle **ultime 24 ore** restano in evidenza come un annullamento
+immediato; quelle più vecchie compaiono in un elenco discreto con la data, da
+cui puoi comunque ripristinare. Una versione ripristinata sparisce dall'elenco:
+è tornata a essere la configurazione attuale della plancia.
+
 ## [1.1.0-beta.11] — Le plance si creano e si modificano per proposta (2026-08-01)
 
 HIRIS puo' ora **creare una nuova plancia** (dashboard Lovelace) e **modificare
