@@ -73,12 +73,21 @@ Il gateway permette a Claude (claude.ai) di pilotare HIRIS. Punti chiave di sicu
   allowlist server-side).
 - **Tetto hard**: l'execute-API di HIRIS può eseguire **solo** un insieme chiuso di
   tool; nessun tool fuori lista è raggiungibile, qualunque cosa sia configurata.
+- **Denylist di lettura**: un elenco di entità/domini che **non escono mai** dal
+  gateway, valido per **tutte** le letture. Il valore predefinito copre serrature,
+  allarme, telecamere e presenza (`person`, `device_tracker`). Non basta filtrare
+  ciò che viene chiesto: HIRIS **pota anche le risposte**, così omettere un
+  parametro (per esempio chiedere la cronologia senza indicare un'entità) non
+  aggira il perimetro. Si configura da *execute_api_read_denylist* nelle opzioni
+  dell'add-on e si può svuotare.
 - **Isolamento**: Claude non può leggere/scrivere segreti, cambiare la policy del
   semaforo, né disattivare kill-switch/breaker.
 
-> Nota: le **letture** (stati, storico, config automazioni) vanno comunque al modello
-> nel cloud. Non inserire segreti nelle automazioni; ricorda che lo storico di
-> presenza/sicurezza è leggibile (puoi escluderlo da *Storicizzazione*).
+> Nota: le **letture** non coperte dalla denylist (stati, storico, config
+> automazioni) vanno comunque al modello nel cloud. Non inserire segreti nelle
+> automazioni. La denylist filtra per **entità**: la memoria testuale
+> (`recall_knowledge`) contiene testo libero, quindi un appunto scritto a mano con
+> un dato sensibile **non** è intercettabile in quel modo.
 
 ---
 

@@ -1,5 +1,48 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.14] — Le letture dal gateway remoto hanno un perimetro (2026-08-01)
+
+Quando colleghi Claude a HIRIS tramite il gateway MCP, le **azioni** erano già
+vincolate dal semaforo: Claude può comandare solo ciò che hai marcato verde. Le
+**letture** no. Chiedere lo stato o lo storico di casa non è distruttivo, quindi
+partivano senza alcun perimetro — e questo significava che ogni lettura vedeva
+tutta la casa, serrature e allarme compresi. Non era una novità introdotta di
+recente: era la condizione in cui il gateway ha sempre funzionato.
+
+Ora c'è una **denylist di lettura**: un elenco di entità o domini che non escono
+mai dal gateway. Di serie copre le cose che è ragionevole tenersi in casa —
+**serrature, pannello d'allarme, telecamere e presenza** (`person`,
+`device_tracker`, che rivelano quando la casa è vuota). Non è l'elenco dei domini
+pericolosi del semaforo, che riguarda l'azione: una tapparella è rischiosa da
+muovere ma innocua da leggere, una telecamera è l'opposto.
+
+Il perimetro vale per **tutte** le letture, non solo per quelle nuove. Non basta
+infatti controllare che cosa viene chiesto: parecchie letture non nominano
+affatto un'entità (lo stato dell'intera casa, la cronologia degli eventi, le
+segnalazioni di salute, l'elenco per stanza), quindi sarebbe bastato **omettere
+un parametro** per aggirare il controllo. HIRIS filtra perciò anche le
+**risposte**, dichiarando quando ha tolto qualcosa, così il modello sa che sta
+vedendo una parte e può dirtelo. Lo stesso filtro copre l'elenco dei **task
+pianificati**, che altrimenti avrebbe mostrato al gateway un promemoria come
+«arma l'allarme alle 23» con l'entità e l'orario.
+
+**Cambiamento di comportamento se già usi il gateway.** Se una lettura che prima
+funzionava ora non restituisce certe entità, o se una richiesta che le nomina
+viene rifiutata con un messaggio esplicito, è voluto. L'elenco è configurabile
+dall'opzione **`execute_api_read_denylist`** nella configurazione dell'add-on:
+puoi restringerlo, allargarlo, o **svuotarlo** del tutto per tornare al
+comportamento precedente. Nulla di tutto questo tocca la chat dentro l'add-on,
+che ha il suo perimetro e resta com'era.
+
+Chiuso il perimetro, la **cronologia degli eventi** (`get_logbook`) torna
+disponibile anche dal gateway: era rimasta fuori proprio perché avrebbe reso
+enumerabile in blocco tutto ciò che è successo in casa, e ora non può più.
+
+**Limite dichiarato.** La denylist filtra per entità. La **memoria testuale** di
+HIRIS contiene testo libero, non identificativi: se un appunto salvato a mano
+contiene un dato sensibile, nessuna denylist per entità può intercettarlo. Quel
+caso non è coperto, e non vogliamo dare l'impressione che lo sia.
+
 ## [1.1.0-beta.13] — HIRIS vede lo stato di casa e del sistema, e te lo dice (2026-08-01)
 
 Finora HIRIS teneva d'occhio la salute della casa, ma il risultato viveva solo

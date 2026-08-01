@@ -70,12 +70,19 @@ lamp green) instead of making a whole heterogeneous domain green.
   (traffic-light + server-side allowlist).
 - **Hard ceiling**: the HIRIS execute-API can run **only** a closed set of tools; no
   tool outside the list is reachable, whatever is configured.
+- **Read denylist**: a list of entities/domains that **never leave** the gateway,
+  applied to **every** read. The default covers locks, alarm panel, cameras and
+  presence (`person`, `device_tracker`). Filtering what is asked for is not enough:
+  HIRIS also **prunes the responses**, so omitting a parameter (for instance asking
+  for the logbook without naming an entity) does not get around the perimeter. Set
+  it via *execute_api_read_denylist* in the add-on options; it can be emptied.
 - **Isolation**: Claude cannot read/write secrets, change the traffic-light policy,
   or disable the kill-switch / breaker.
 
-> Note: **reads** (states, history, automation configs) still go to the cloud model.
-> Don't put secrets in automations; remember presence/security history is readable
-> (you can exclude it from *Historization*).
+> Note: **reads** not covered by the denylist (states, history, automation configs)
+> still go to the cloud model. Don't put secrets in automations. The denylist
+> filters by **entity**: textual memory (`recall_knowledge`) holds free text, so a
+> hand-written note containing sensitive data **cannot** be caught that way.
 
 ---
 
