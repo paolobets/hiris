@@ -7,7 +7,23 @@ from ..security.semaphore import DANGEROUS_DOMAINS
 CHECK_IDS = {
     "entity_unavailable", "low_battery", "automation_broken",
     "dangerous_domain_green", "entity_no_area",
+    "addon_down", "disk_space", "updates_available",
 }
+
+# Soglie di spazio libero sul disco dell'host, in percentuale. "Sotto" e'
+# stretto: esattamente al 10% si resta in avviso, esattamente al 20% non si
+# segnala nulla.
+DISCO_LIBERO_PCT_ALTO = 10.0
+DISCO_LIBERO_PCT_AVVISO = 20.0
+
+# Quanti aggiornamenti elencare nell'evidenza. L'evidenza finisce nel prompt
+# dell'LLM: il conteggio totale e' sempre presente, l'elenco e' un campione.
+MAX_UPDATES_EVIDENZA = 10
+
+# Stati del Supervisor che indicano un add-on non in esecuzione, con la
+# severita' associata. `error` e' un guasto; `stopped` puo' essere una scelta
+# deliberata dell'utente, quindi vale un avviso e non un allarme.
+ADDON_STATI_FERMI = {"error": "high", "stopped": "warn"}
 
 
 def _parse_iso(v):
@@ -131,4 +147,107 @@ def check_entity_no_area(no_area_ids):
         "suggested_fix": "Assegna un'area alle entità in Home Assistant.",
         "fix_kind": "manual",
         "source_ref": "entity_no_area:all",
+    }]
+
+
+def _numero(v):
+    """Converte in float solo numeri veri: `None`, stringhe e bool restano fuori."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return float(v)
+
+
+def check_addon_down(addons):
+    """Add-on installati che non sono in esecuzione.
+
+    Il Supervisor non espone, nell'elenco degli add-on, se l'avvio automatico
+    e' abilitato: l'unico segnale disponibile e' lo stato. `error` significa
+    guasto ed e' severita' alta; `stopped` puo' essere un add-on che l'utente
+    ha spento di proposito, quindi resta un avviso per non trasformare una
+    scelta legittima in un allarme. Gli stati transitori (`startup`) e quelli
+    ignoti non producono nulla.
+    """
+    out = []
+    for addon in addons or []:
+        if not isinstance(addon, dict):
+            continue
+        stato = addon.get("state")
+        if not isinstance(stato, str):
+            continue
+        severita = ADDON_STATI_FERMI.get(stato)
+        if severita is None:
+            continue
+        slug = addon.get("slug")
+        if not slug:
+            continue
+        nome = addon.get("name") or slug
+        motivo = "in errore" if stato == "error" else "fermo"
+        out.append({
+            "check_id": "addon_down", "severity": severita,
+            "title": f"Add-on {motivo}: {nome}",
+            "evidence": {"slug": slug, "state": stato},
+            "suggested_fix": "Controlla l'add-on in Home Assistant: log, avvio e avvio automatico.",
+            "fix_kind": "manual",
+            "source_ref": f"addon_down:{slug}",
+        })
+    return out
+
+
+def check_disk_space(host_info):
+    """Spazio libero sul disco dell'host, dal Supervisor.
+
+    I valori arrivano in GB. Se `disk_free` manca si ricava da totale meno
+    usato. Dati assenti, non numerici o incoerenti non producono nulla.
+    """
+    if not isinstance(host_info, dict):
+        return []
+    totale = _numero(host_info.get("disk_total"))
+    libero = _numero(host_info.get("disk_free"))
+    if libero is None:
+        usato = _numero(host_info.get("disk_used"))
+        if totale is not None and usato is not None:
+            libero = totale - usato
+    if totale is None or libero is None or totale <= 0 or libero < 0:
+        return []
+
+    pct = round(libero / totale * 100, 1)
+    if pct < DISCO_LIBERO_PCT_ALTO:
+        severita = "high"
+    elif pct < DISCO_LIBERO_PCT_AVVISO:
+        severita = "warn"
+    else:
+        return []
+    return [{
+        "check_id": "disk_space", "severity": severita,
+        "title": f"Spazio su disco quasi esaurito: {pct}% libero",
+        "evidence": {"free_pct": pct, "free_gb": round(libero, 1),
+                     "total_gb": round(totale, 1)},
+        "suggested_fix": "Libera spazio: vecchi backup, snapshot e log sono i primi candidati.",
+        "fix_kind": "manual",
+        "source_ref": "disk_space:host",
+    }]
+
+
+def check_updates_available(updates):
+    """Aggiornamenti disponibili per core, OS, Supervisor e add-on.
+
+    Una sola voce aggregata di severita' informativa: sono una condizione
+    permanente, non un evento, e una voce per aggiornamento sarebbe rumore.
+    L'evidenza porta il totale e un campione limitato dei nomi.
+    """
+    voci = [u for u in (updates or []) if isinstance(u, dict)]
+    if not voci:
+        return []
+    nomi = []
+    for u in voci[:MAX_UPDATES_EVIDENZA]:
+        nome = u.get("name") or u.get("update_type") or "sconosciuto"
+        versione = u.get("version_latest")
+        nomi.append(f"{nome} {versione}" if versione else str(nome))
+    return [{
+        "check_id": "updates_available", "severity": "info",
+        "title": f"{len(voci)} aggiornamenti disponibili",
+        "evidence": {"count": len(voci), "items": nomi},
+        "suggested_fix": "Rivedi e installa gli aggiornamenti dalle impostazioni di Home Assistant.",
+        "fix_kind": "manual",
+        "source_ref": "updates_available:all",
     }]

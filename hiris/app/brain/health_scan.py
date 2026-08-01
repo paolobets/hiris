@@ -16,7 +16,12 @@ def _iso(now: datetime | None) -> str:
 
 async def run_health_scan(*, ha_client, entity_cache, tiers, entity_tiers, store,
                           now=None, unavailable_days: int = 2,
-                          battery_pct: int = 15) -> dict:
+                          battery_pct: int = 15, supervisor_client=None) -> dict:
+    """Scansione di sola lettura: raccoglie i dati e riconcilia le segnalazioni.
+
+    `supervisor_client` e' opzionale: su un'installazione senza Supervisor non
+    esiste affatto, e i tre controlli di sistema restano semplicemente muti.
+    """
     now = now or datetime.now(timezone.utc)
 
     raw_states = []
@@ -48,11 +53,35 @@ async def run_health_scan(*, ha_client, entity_cache, tiers, entity_tiers, store
     except Exception:
         logger.warning("health_scan: area map failed", exc_info=True)
 
+    addons = []
+    try:
+        if supervisor_client is not None:
+            addons = await supervisor_client.get_addons() or []
+    except Exception:
+        logger.warning("health_scan: get_addons failed", exc_info=True)
+
+    host_info = {}
+    try:
+        if supervisor_client is not None:
+            host_info = await supervisor_client.get_host_info() or {}
+    except Exception:
+        logger.warning("health_scan: get_host_info failed", exc_info=True)
+
+    updates = []
+    try:
+        if supervisor_client is not None:
+            updates = await supervisor_client.get_available_updates() or []
+    except Exception:
+        logger.warning("health_scan: get_available_updates failed", exc_info=True)
+
     candidates = []
     candidates += hc.check_entity_unavailable(raw_states, now=now, days=unavailable_days)
     candidates += hc.check_low_battery(minimal, threshold=battery_pct)
     candidates += hc.check_automation_broken(automations)
     candidates += hc.check_dangerous_domain_green(tiers or {}, entity_tiers or {})
     candidates += hc.check_entity_no_area(no_area)
+    candidates += hc.check_addon_down(addons)
+    candidates += hc.check_disk_space(host_info)
+    candidates += hc.check_updates_available(updates)
 
     return store.reconcile(candidates, CHECK_IDS, now=_iso(now))

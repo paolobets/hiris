@@ -2273,7 +2273,8 @@ async def _on_startup(app: web.Application) -> None:
         minutes=int(os.environ.get("SENTINEL_RONDA_MINUTES", "15")),
         id="hiris_sentinel_ronda", replace_existing=True, misfire_grace_time=300)
 
-    # SP-3 Task 8: periodic read-only health scan (5 checks) reconciled into
+    # SP-3 Task 8: periodic read-only health scan (8 checks: 5 sulla casa, 3
+    # sul sistema tramite il Supervisor) reconciled into
     # the AdvisoryStore, plus a nightly prune of the reasoning capture log.
     from .brain.health_scan import run_health_scan
 
@@ -2283,7 +2284,10 @@ async def _on_startup(app: web.Application) -> None:
             await run_health_scan(
                 ha_client=ha_client, entity_cache=app.get("entity_cache"),
                 tiers=pol.get("tiers") or {}, entity_tiers=pol.get("entity_tiers") or {},
-                store=advisory_store, now=datetime.now(timezone.utc))
+                store=advisory_store, now=datetime.now(timezone.utc),
+                # Senza SUPERVISOR_TOKEN lo slot non esiste affatto: `.get`
+                # restituisce None e i controlli di sistema restano muti.
+                supervisor_client=app.get("supervisor_client"))
         except Exception:
             logger.exception("health scan failed")
 
