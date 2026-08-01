@@ -693,6 +693,29 @@
       padding: 5px 14px; font-size: 12.5px; cursor: pointer;
     }
     .pp-undo:hover { background: var(--hover); color: var(--text); }
+    /* Ripristini storici: uno snapshot piu' vecchio di 24 ore (o di istante
+       ignoto) non e' un "ho appena sbagliato", e' un ritorno a una versione
+       vecchia. Stessa azione possibile, peso visivo molto minore e separazione
+       netta dall'undo recente: niente riquadro, testo piccolo e spento. */
+    .pp-undo-old-head {
+      margin: 12px 0 2px; padding-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.04em; font-family: var(--font-mono); color: var(--text-3);
+    }
+    .pp-undo-old {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 5px 2px; font-size: 11.5px; color: var(--text-3);
+    }
+    .pp-undo-old-btn {
+      flex: none; background: none; border: none; padding: 2px 4px;
+      color: var(--text-3); font-size: 11.5px; text-decoration: underline;
+      cursor: pointer;
+    }
+    .pp-undo-old-btn:hover { color: var(--text); }
+    /* Il contenitore e' inserito solo quando c'e' qualcosa da ripristinare:
+       il margine stacca il blocco dalla prima card della lista. */
+    .pp-undo-zone { margin-bottom: 8px; }
     .pp-apply, .pp-reject {
       border-radius: var(--r-sm); padding: 5px 14px; font-size: 12.5px; cursor: pointer;
       border: 1px solid var(--border);
@@ -703,6 +726,7 @@
     .pp-reject:hover { background: var(--hover); color: var(--text); }
     @media (pointer: coarse) {
       .pp-apply, .pp-reject, .pp-undo { min-height: 44px; padding: 8px 16px; }
+      .pp-undo-old-btn { min-height: 44px; padding: 8px 10px; }
     }
     #mobile-proposals-btn {
       display: none; align-items: center; gap: 6px;
