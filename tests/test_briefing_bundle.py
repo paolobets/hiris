@@ -61,10 +61,18 @@ def _mk_advisory(eid, pct, *, name="", status="open", check_id="low_battery"):
     return {
         "id": 1, "check_id": check_id, "severity": "warn",
         "title": f"Batteria scarica: {name or eid}",
-        "evidence": {"entity_id": eid, "pct": pct},
+        "evidence": {"entity_id": eid, "name": name or eid, "pct": pct},
         "suggested_fix": "Sostituisci le pile.", "fix_kind": "manual",
         "status": status, "source_ref": f"{check_id}:{eid}",
     }
+
+
+def _mk_advisory_legacy(eid, pct, *, name="", status="open"):
+    """Riga salvata PRIMA che l'evidenza portasse il nome: lo store e'
+    persistente, righe cosi' esistono davvero sui sistemi in esercizio."""
+    riga = _mk_advisory(eid, pct, name=name, status=status)
+    riga["evidence"] = {"entity_id": eid, "pct": pct}
+    return riga
 
 
 def _mk_state(eid, state, *, name="", device_class=None, unit=""):
@@ -338,3 +346,51 @@ def test_battery_evidence_without_pct_still_lists_the_device():
     )
 
     assert bundle["home"]["low_batteries"] == [{"name": "muta", "pct": None}]
+
+
+def test_battery_name_comes_from_evidence_not_from_the_title():
+    """Il nome si legge dall'evidenza, che e' un dato. Un titolo riscritto o
+    tradotto non deve cambiare il nome citato nel resoconto."""
+    today = date(2026, 7, 25)
+    riga = _mk_advisory("sensor.batteria_t", 9.0, name="Termostato salotto")
+    riga["title"] = "Low battery / Batteria quasi esaurita >> Termostato salotto"
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), FakeEntityCache([]), today=today,
+        allow_sensitive=True, advisory_store=FakeAdvisoryStore([riga]),
+    )
+
+    assert bundle["home"]["low_batteries"] == [
+        {"name": "Termostato salotto", "pct": 9.0},
+    ]
+
+
+def test_battery_legacy_row_without_name_falls_back_to_the_title():
+    """Ripiego per le righe gia' salvate senza il campo `name`: il vecchio
+    comportamento (prefisso tolto dal titolo) resta in vigore per loro."""
+    today = date(2026, 7, 25)
+    riga = _mk_advisory_legacy("sensor.batteria_v", 4.0, name="Vecchia voce")
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), FakeEntityCache([]), today=today,
+        allow_sensitive=True, advisory_store=FakeAdvisoryStore([riga]),
+    )
+
+    assert bundle["home"]["low_batteries"] == [{"name": "Vecchia voce", "pct": 4.0}]
+
+
+def test_battery_legacy_row_with_unexpected_title_falls_back_to_entity_id():
+    """Riga vecchia E titolo fuori formato: resta l'identificativo, mai una
+    voce muta."""
+    today = date(2026, 7, 25)
+    riga = _mk_advisory_legacy("sensor.batteria_ignota", 2.0)
+    riga["title"] = "Titolo di un'altra epoca"
+
+    bundle = build_briefing_bundle(
+        FakeKnowledgeStore([]), FakeEntityCache([]), today=today,
+        allow_sensitive=True, advisory_store=FakeAdvisoryStore([riga]),
+    )
+
+    assert bundle["home"]["low_batteries"] == [
+        {"name": "sensor.batteria_ignota", "pct": 2.0},
+    ]

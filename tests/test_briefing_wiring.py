@@ -15,6 +15,8 @@ from datetime import date
 
 import pytest
 
+from hiris.app.brain.advisory_store import AdvisoryStore
+from hiris.app.brain.health_checks import check_low_battery
 from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.server import (
     _format_nudge_message,
@@ -136,6 +138,95 @@ async def test_run_daily_briefing_notify_exception_does_not_propagate(tmp_path):
         app, today=date(2026, 7, 25), llm_reason=fake_llm_reason, notify=raising_notify,
     )
     assert text is None
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_run_daily_briefing_cita_le_batterie_delle_segnalazioni(tmp_path):
+    """Il briefing SCHEDULATO delle 08:00 -- quello che l'utente riceve
+    davvero, non quello chiesto in chat -- deve passare `advisory_store` al
+    bundle: e' l'unica fonte delle batterie scariche. Senza quel passaggio la
+    notifica perderebbe per sempre la sezione batterie.
+
+    L'LLM qui e' in errore di proposito: il testo notificato e' allora il
+    template deterministico, che cita solo cio' che il bundle contiene
+    davvero, quindi il nome puo' arrivare soltanto dalla segnalazione.
+    """
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    advisory = AdvisoryStore(str(tmp_path / "advisory.db"))
+    advisory.reconcile(
+        check_low_battery([
+            {"id": "sensor.batteria_ingresso", "state": "6",
+             "name": "Sensore ingresso", "unit": "%", "device_class": "battery"},
+        ]),
+        {"low_battery"},
+    )
+    app = {
+        "knowledge_store": store,
+        "entity_cache": _FakeEntityCache(),
+        "llm_router": _LocalRouter(),
+        "advisory_store": advisory,
+        "data_dir": str(tmp_path),
+    }
+
+    captured: list[str] = []
+
+    async def fake_notify(message: str) -> None:
+        captured.append(message)
+
+    async def raising_llm_reason(system, user, *, model, max_tokens):
+        raise RuntimeError("llm giu'")
+
+    text = await run_daily_briefing(
+        app, today=date(2026, 7, 25), llm_reason=raising_llm_reason, notify=fake_notify,
+    )
+
+    assert text is not None
+    assert "Sensore ingresso" in text
+    assert "6" in text
+    assert captured == [text]
+    advisory.close()
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_run_daily_briefing_senza_advisory_store_non_ricalcola(tmp_path):
+    """Contrappunto al test sopra: senza store nessuna batteria, mai un
+    ricalcolo dalla cache. L'ancora positiva e' la scadenza, che dimostra che
+    il resoconto e' stato prodotto davvero."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    store.add_item(kind="obligation", content="Bolletta", status="approved",
+                    due_date="2026-07-26", sensitivity="normal")
+
+    class _CacheConBatteriaScarica:
+        def all_states(self):
+            return [{"id": "sensor.batteria_fantasma", "state": "3",
+                     "name": "Batteria fantasma", "unit": "%",
+                     "domain": "sensor", "device_class": "battery"}]
+
+    app = {
+        "knowledge_store": store,
+        "entity_cache": _CacheConBatteriaScarica(),
+        "llm_router": _LocalRouter(),
+        "data_dir": str(tmp_path),
+    }
+
+    captured: list[str] = []
+
+    async def fake_notify(message: str) -> None:
+        captured.append(message)
+
+    async def raising_llm_reason(system, user, *, model, max_tokens):
+        raise RuntimeError("llm giu'")
+
+    text = await run_daily_briefing(
+        app, today=date(2026, 7, 25), llm_reason=raising_llm_reason, notify=fake_notify,
+    )
+
+    assert text is not None
+    assert "Bolletta" in text
+    assert "Batteria fantasma" not in text
+    assert captured == [text]
     store.close()
 
 
@@ -298,3 +389,13 @@ def test_on_startup_passes_llm_reason_and_shared_reminder_seen():
     assert "run_urgent_nudges(" in src
     # A SINGLE ReminderSeen instantiation, not one per tick.
     assert src.count("ReminderSeen(data_dir)") == 1
+
+
+def test_on_startup_popola_advisory_store_nell_app():
+    """Chiude l'anello del test comportamentale qui sopra: quello dimostra che
+    `run_daily_briefing` legge `app["advisory_store"]`, questo che in esercizio
+    quella chiave c'e' davvero."""
+    import hiris.app.server as server
+
+    src = inspect.getsource(server._on_startup)
+    assert 'app["advisory_store"] = advisory_store' in src

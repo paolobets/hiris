@@ -10,11 +10,12 @@ CHECK_IDS = {
     "addon_down", "disk_space", "updates_available",
 }
 
-# Identificativo e formato del titolo delle segnalazioni di batteria scarica.
-# Vivono qui, accanto al controllo che le emette, perche' il briefing
-# quotidiano (brain/briefing.py) le rilegge dallo store invece di ricalcolare
-# le batterie per conto suo: senza costanti condivise il formato del titolo
-# sarebbe di nuovo scritto in due posti.
+# Identificativo del controllo e prefisso del titolo delle segnalazioni di
+# batteria scarica. Il briefing quotidiano (brain/briefing.py) rilegge queste
+# segnalazioni dallo store invece di ricalcolare le batterie per conto suo, e
+# prende il nome del dispositivo dall'evidenza. Il prefisso resta condiviso
+# solo per il RIPIEGO sulle righe salvate prima che l'evidenza portasse il
+# campo `name`: lo store e' persistente, quelle righe esistono davvero.
 CHECK_BATTERIA = "low_battery"
 BATTERIA_TITOLO_PREFISSO = "Batteria scarica: "
 
@@ -87,7 +88,11 @@ def check_low_battery(states, *, threshold: int = 15):
             out.append({
                 "check_id": CHECK_BATTERIA, "severity": "warn",
                 "title": f"{BATTERIA_TITOLO_PREFISSO}{name or eid}",
-                "evidence": {"entity_id": eid, "pct": pct},
+                # Il nome amichevole sta nell'evidenza, accanto alla carica
+                # residua: e' un dato, e chi rilegge la segnalazione (il
+                # briefing quotidiano) lo prende da qui invece di spellare
+                # all'indietro il titolo, che e' testo per l'utente.
+                "evidence": {"entity_id": eid, "name": name or eid, "pct": pct},
                 "suggested_fix": "Sostituisci le pile.",
                 "fix_kind": "manual",
                 "source_ref": f"{CHECK_BATTERIA}:{eid}",

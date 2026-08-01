@@ -129,13 +129,21 @@ def _collect_open_now(entity_cache) -> list[dict]:
 
 
 def _nome_batteria(riga: dict, evidenza: dict) -> str:
-    """Nome del dispositivo da citare, ricavato dal titolo della segnalazione.
+    """Nome del dispositivo da citare, preso dall'evidenza della segnalazione.
 
-    Il titolo lo compone `check_low_battery` come prefisso piu' nome amichevole
-    (o identificativo, se il nome manca): qui si toglie il prefisso condiviso.
-    Se il titolo non ha la forma attesa si ripiega sull'identificativo, e in
-    ultima istanza sul titolo cosi' com'e'.
+    `check_low_battery` scrive il nome amichevole in `evidence["name"]`: e' un
+    dato, non testo destinato all'utente, quindi non cambia il giorno in cui
+    qualcuno riscrive o traduce il titolo della segnalazione.
+
+    Ripiego per le righe salvate prima che quel campo esistesse -- lo store e'
+    persistente e quelle righe esistono davvero: si toglie dal titolo il
+    prefisso condiviso con il controllo, poi si prova l'identificativo, e in
+    ultima istanza resta il titolo cosi' com'e'.
     """
+    nome_evidenza = evidenza.get("name")
+    if isinstance(nome_evidenza, str) and nome_evidenza.strip():
+        return nome_evidenza.strip()
+
     titolo = str(riga.get("title") or "").strip()
     if titolo.startswith(BATTERIA_TITOLO_PREFISSO):
         nome = titolo[len(BATTERIA_TITOLO_PREFISSO):].strip()

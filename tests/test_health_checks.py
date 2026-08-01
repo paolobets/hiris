@@ -28,6 +28,36 @@ def test_low_battery():
     assert {o["source_ref"] for o in out} == {"low_battery:sensor.door_bat"}
 
 
+def test_low_battery_evidenza_porta_nome_e_percentuale():
+    """L'evidenza contiene il nome amichevole e la carica residua come DATI.
+
+    Chi rilegge la segnalazione (il briefing quotidiano) non deve ricavare il
+    nome spellando all'indietro il titolo, che e' testo per l'utente e un
+    giorno puo' essere riscritto o tradotto.
+    """
+    out = hc.check_low_battery(
+        [{"id": "sensor.door_bat", "state": "8", "name": "Porta ingresso",
+          "unit": "%", "device_class": "battery"}],
+        threshold=15,
+    )
+    assert len(out) == 1
+    assert out[0]["evidence"] == {
+        "entity_id": "sensor.door_bat", "name": "Porta ingresso", "pct": 8.0,
+    }
+
+
+def test_low_battery_evidenza_ripiega_sull_identificativo_senza_nome():
+    """Senza nome amichevole l'evidenza porta l'identificativo, cosi' che chi
+    la rilegge abbia sempre qualcosa da citare."""
+    out = hc.check_low_battery(
+        [{"id": "sensor.senza_nome", "state": "3", "name": "", "unit": "%",
+          "device_class": "battery"}],
+        threshold=15,
+    )
+    assert len(out) == 1
+    assert out[0]["evidence"]["name"] == "sensor.senza_nome"
+
+
 def test_automation_broken_severity():
     autos = [
         {"entity_id": "automation.a", "state": "off", "attributes": {"friendly_name": "A"}},

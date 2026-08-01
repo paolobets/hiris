@@ -230,10 +230,17 @@ async def test_daily_briefing_non_ricalcola_le_batterie_dalla_cache(tmp_path):
 @pytest.mark.asyncio
 async def test_daily_briefing_senza_advisory_store_non_ricalcola(tmp_path):
     """Fonte unica anche quando manca: senza AdvisoryStore il briefing non
-    segnala batterie invece di tornare a calcolarle dalla cache."""
+    segnala batterie invece di tornare a calcolarle dalla cache.
+
+    L'apertura in cache e' l'ancora positiva: dimostra che il resoconto e'
+    stato prodotto davvero e non e' il messaggio del ramo d'errore, che
+    passerebbe la sola verifica di non-vuoto.
+    """
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     cache = _FakeEntityCache([
         _stato_batteria("sensor.batteria_fantasma", "3", "Batteria fantasma"),
+        {"id": "binary_sensor.ingresso", "state": "on", "name": "Ingresso",
+         "unit": "", "domain": "binary_sensor", "device_class": "door"},
     ])
     dispatcher = ToolDispatcher(_FakeHA(), notify_config={},
                                  knowledge_store=store, entity_cache=cache)
@@ -241,7 +248,7 @@ async def test_daily_briefing_senza_advisory_store_non_ricalcola(tmp_path):
     out = await dispatcher.dispatch("daily_briefing", {})
 
     assert isinstance(out, str)
-    assert out.strip() != ""
+    assert "Ingresso" in out
     assert "Batteria fantasma" not in out
     store.close()
 
@@ -249,17 +256,26 @@ async def test_daily_briefing_senza_advisory_store_non_ricalcola(tmp_path):
 @pytest.mark.asyncio
 async def test_daily_briefing_ignora_le_segnalazioni_messe_a_tacere(tmp_path):
     """Una segnalazione `dismissed` e' stata messa a tacere dall'utente: il
-    briefing non deve farla riemergere."""
+    briefing non deve farla riemergere.
+
+    L'apertura in cache e' l'ancora positiva: senza, il messaggio del ramo
+    d'errore soddisferebbe da solo la verifica negativa.
+    """
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     advisory = _advisory_store_con_batteria(tmp_path, pct="7", nome="Termostato salotto")
     riga = advisory.list(status="open")[0]
     advisory.set_status(riga["id"], "dismissed")
+    cache = _FakeEntityCache([
+        {"id": "binary_sensor.ingresso", "state": "on", "name": "Ingresso",
+         "unit": "", "domain": "binary_sensor", "device_class": "door"},
+    ])
     dispatcher = ToolDispatcher(_FakeHA(), notify_config={},
-                                 knowledge_store=store, entity_cache=_FakeEntityCache(),
+                                 knowledge_store=store, entity_cache=cache,
                                  advisory_store=advisory)
 
     out = await dispatcher.dispatch("daily_briefing", {})
 
+    assert "Ingresso" in out
     assert "Termostato salotto" not in out
     advisory.close()
     store.close()
@@ -269,13 +285,19 @@ async def test_daily_briefing_ignora_le_segnalazioni_messe_a_tacere(tmp_path):
 async def test_daily_briefing_ignora_la_soglia_salvata_nella_policy(tmp_path):
     """Cambiamento visibile dichiarato: `detectors.battery.min_pct` non governa
     piu' il briefing. Con soglia salvata a 50 e una batteria al 40% in cache,
-    ma nessuna segnalazione attiva, il resoconto non cita nulla."""
+    ma nessuna segnalazione attiva, il resoconto non cita nulla.
+
+    L'apertura in cache e' l'ancora positiva: prova che il resoconto e' stato
+    composto, non che il briefing e' esploso restituendo il testo di ripiego.
+    """
     data_dir = str(tmp_path / "data")
     save_policy(data_dir, {"detectors": {"battery": {"min_pct": 50}}})
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     advisory = AdvisoryStore(str(tmp_path / "advisory.db"))
     cache = _FakeEntityCache([
         _stato_batteria("sensor.batteria_z", "40", "Batteria z"),
+        {"id": "binary_sensor.ingresso", "state": "on", "name": "Ingresso",
+         "unit": "", "domain": "binary_sensor", "device_class": "door"},
     ])
     dispatcher = ToolDispatcher(_FakeHA(), notify_config={},
                                  knowledge_store=store, entity_cache=cache,
@@ -283,6 +305,7 @@ async def test_daily_briefing_ignora_la_soglia_salvata_nella_policy(tmp_path):
 
     out = await dispatcher.dispatch("daily_briefing", {})
 
+    assert "Ingresso" in out
     assert "Batteria z" not in out
     advisory.close()
     store.close()
