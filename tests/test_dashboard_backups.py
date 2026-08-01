@@ -1,5 +1,6 @@
 from hiris.app.proxy.dashboard_backups import (
-    save_backup, latest_backup, list_backups, MAX_BACKUPS_PER_DASHBOARD,
+    save_backup, latest_backup, list_backups, discard_latest_backup,
+    MAX_BACKUPS_PER_DASHBOARD,
 )
 
 
@@ -261,3 +262,92 @@ def test_list_backups_salta_plance_senza_snapshot(tmp_path):
     _scrivi_store(tmp_path, {"vuota": [], "rotta": "non una lista",
                              "buona": [{"config": {}, "saved_at": "2026-07-01T00:00:00+00:00"}]})
     assert [v["url_path"] for v in list_backups(str(tmp_path))] == ["buona"]
+
+
+# --- consumo dello snapshot ripristinato ------------------------------------
+
+def test_discard_toglie_solo_il_piu_recente(tmp_path):
+    """Un ripristino consuma UNO snapshot: quello riapplicato. Le versioni
+    ancora piu' vecchie restano ripristinabili, altrimenti un undo di troppo
+    butterebbe via tutta la storia della plancia."""
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "VECCHIA"}]})
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "ATTUALE"}]})
+    assert discard_latest_backup(str(tmp_path), "casa-mia") is True
+    assert latest_backup(str(tmp_path), "casa-mia") == {"views": [{"title": "VECCHIA"}]}
+    assert [b["config"]["views"][0]["title"]
+            for b in _leggi_store(tmp_path)["casa-mia"]] == ["VECCHIA"]
+
+
+def test_discard_non_tocca_le_altre_plance(tmp_path):
+    """Il file e' condiviso: consumare lo snapshot di una plancia non deve
+    intaccare quelli delle altre."""
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "A"}]})
+    save_backup(str(tmp_path), "altra-casa", {"views": [{"title": "B"}]})
+    assert discard_latest_backup(str(tmp_path), "casa-mia") is True
+    assert latest_backup(str(tmp_path), "altra-casa") == {"views": [{"title": "B"}]}
+    assert [v["url_path"] for v in list_backups(str(tmp_path))] == ["altra-casa"]
+
+
+def test_discard_fa_sparire_la_plancia_rimasta_senza_snapshot(tmp_path):
+    """Niente lista vuota appesa nello store: una plancia senza piu' snapshot
+    esce dalla mappa, cosi' l'elenco non la propone con zero versioni."""
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "A"}]})
+    assert discard_latest_backup(str(tmp_path), "casa-mia") is True
+    assert "casa-mia" not in _leggi_store(tmp_path)
+    assert list_backups(str(tmp_path)) == []
+    assert latest_backup(str(tmp_path), "casa-mia") is None
+
+
+def test_discard_senza_snapshot_e_false(tmp_path):
+    """Niente da consumare: esito False e nessuna riscrittura del file."""
+    import os
+    assert discard_latest_backup(str(tmp_path), "casa-mia") is False
+    assert not os.path.exists(os.path.join(str(tmp_path), "dashboard_backups.json"))
+
+
+def test_discard_su_plancia_ignota_non_tocca_lo_store(tmp_path):
+    import os
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "A"}]})
+    path = os.path.join(str(tmp_path), "dashboard_backups.json")
+    with open(path, encoding="utf-8") as fh:
+        prima = fh.read()
+    assert discard_latest_backup(str(tmp_path), "ignota") is False
+    with open(path, encoding="utf-8") as fh:
+        assert fh.read() == prima
+
+
+def test_discard_su_store_corrotto_non_riscrive_e_non_solleva(tmp_path):
+    """Stessa regola difensiva del salvataggio: su file illeggibile non si
+    riscrive nulla (si cancellerebbero gli snapshot delle altre plance) e non
+    si solleva mai verso il chiamante."""
+    import os
+    path = os.path.join(str(tmp_path), "dashboard_backups.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("{not json")
+    assert discard_latest_backup(str(tmp_path), "casa-mia") is False
+    with open(path, encoding="utf-8") as fh:
+        assert fh.read() == "{not json"
+
+
+def test_discard_su_voci_non_lista_e_false(tmp_path):
+    _scrivi_store(tmp_path, {"rotta": "non una lista"})
+    assert discard_latest_backup(str(tmp_path), "rotta") is False
+
+
+def test_discard_e_atomico_senza_residui_tmp(tmp_path):
+    import os
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "A"}]})
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "B"}]})
+    assert discard_latest_backup(str(tmp_path), "casa-mia") is True
+    assert os.listdir(str(tmp_path)) == ["dashboard_backups.json"]
+
+
+def test_discard_ritorna_false_su_errore_di_io_reale(tmp_path):
+    """I/O vero che fallisce: il percorso temporaneo e' occupato da una
+    cartella, quindi la scrittura solleva. Verso il chiamante torna solo
+    False, e lo snapshot resta sul disco perche' non e' stato consumato."""
+    import os
+    save_backup(str(tmp_path), "casa-mia", {"views": [{"title": "A"}]})
+    os.mkdir(os.path.join(str(tmp_path), "dashboard_backups.json.tmp"))
+    assert discard_latest_backup(str(tmp_path), "casa-mia") is False
+    assert latest_backup(str(tmp_path), "casa-mia") == {"views": [{"title": "A"}]}

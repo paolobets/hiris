@@ -58,6 +58,25 @@ def _load(data_dir: str) -> dict:
     return data if data is not None else {}
 
 
+def _write_store(data_dir: str, data: dict) -> bool:
+    """Riscrive l'intero store in modo atomico (file temporaneo + os.replace).
+
+    Il file e' condiviso fra tutte le plance: una scrittura interrotta a meta'
+    non deve troncare i backup delle altre. Non solleva mai verso il chiamante,
+    riporta solo True/False: questa e' una rete di sicurezza, se cede deve
+    cedere in silenzio lasciando traccia nei log."""
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        tmp = _file(data_dir) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, _file(data_dir))
+        return True
+    except Exception:
+        logger.exception("dashboard_backups: scrittura dello store fallita")
+        return False
+
+
 def save_backup(data_dir: str, url_path: str, config: dict) -> bool:
     """Accoda uno snapshot, scartando i piu' vecchi oltre il limite.
 
@@ -95,16 +114,7 @@ def save_backup(data_dir: str, url_path: str, config: dict) -> bool:
     # "config", quindi l'aggiunta non la disturba.
     entries.append({"config": config, "saved_at": datetime.now(timezone.utc).isoformat()})
     data[url_path] = entries[-MAX_BACKUPS_PER_DASHBOARD:]
-    try:
-        os.makedirs(data_dir, exist_ok=True)
-        tmp = _file(data_dir) + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, _file(data_dir))
-        return True
-    except Exception:
-        logger.exception("dashboard_backups: salvataggio snapshot fallito")
-        return False
+    return _write_store(data_dir, data)
 
 
 def latest_backup(data_dir: str, url_path: str) -> dict | None:
@@ -117,6 +127,45 @@ def latest_backup(data_dir: str, url_path: str) -> dict | None:
         return None
     cfg = last.get("config")
     return cfg if isinstance(cfg, dict) else None
+
+
+def discard_latest_backup(data_dir: str, url_path: str) -> bool:
+    """Consuma lo snapshot piu' recente di una plancia: quello che
+    `latest_backup` restituirebbe.
+
+    Serve dopo un ripristino riuscito: quella config e' tornata a essere lo
+    stato corrente della plancia, quindi continuare a offrirla come "annulla"
+    sarebbe un'operazione a vuoto. Toglierla dal ring e' l'unico modo perche'
+    l'elenco degli snapshot dica la verita' anche dopo un refresh del browser,
+    senza chiedere all'interfaccia di ricordarsi cosa ha gia' ripristinato.
+
+    Ne toglie UNO solo: le versioni ancora precedenti restano ripristinabili,
+    e le altre plance non vengono toccate. Se la plancia resta senza snapshot
+    la sua voce esce dalla mappa, altrimenti `list_backups` potrebbe elencarla
+    con zero versioni. Come il resto del modulo: scrittura atomica, mai
+    un'eccezione verso il chiamante, esito booleano perche' chi chiama possa
+    distinguere "rimosso" da "non e' stato possibile"."""
+    data = _read_store(data_dir)
+    if data is None:
+        # Stesso fail-closed di save_backup: riscrivere un file che non
+        # sappiamo leggere cancellerebbe gli snapshot delle altre plance.
+        logger.error(
+            "dashboard_backups: il file degli snapshot (%s) non e' leggibile o e' corrotto; "
+            "lo snapshot ripristinato non e' stato consumato e restera' elencato.",
+            _file(data_dir),
+        )
+        return False
+    entries = data.get(url_path)
+    if not isinstance(entries, list) or not entries:
+        # Niente da consumare: non si riscrive nulla, cosi' un restore su una
+        # plancia senza snapshot non tocca il file degli altri.
+        return False
+    restanti = entries[:-1]
+    if restanti:
+        data[url_path] = restanti
+    else:
+        data.pop(url_path, None)
+    return _write_store(data_dir, data)
 
 
 def list_backups(data_dir: str) -> list[dict]:

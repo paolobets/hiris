@@ -123,6 +123,13 @@ sovrascrive mai senza aver prima messo al sicuro lo stato precedente.
 lo stesso `save_dashboard_config`. Un overwrite sbagliato si annulla con un
 click.
 
+Un restore **riuscito consuma** lo snapshot riapplicato: da quel momento è lo
+stato corrente della plancia, quindi `GET /api/dashboards/backups` non lo
+elenca più e l'affordance di ripristino sparisce senza che l'interfaccia debba
+ricordarsi nulla (sopravvive quindi anche a un refresh). Le versioni più
+vecchie restano ripristinabili; se HA rifiuta la scrittura lo snapshot **non**
+viene consumato, perché il ripristino non è avvenuto e va poter riprovare.
+
 ### D. Gating e visibilità
 
 - **Chi può usarli:** solo il Chatbot (chat). Brain e Agentbot restano esclusi:
@@ -158,7 +165,8 @@ dell'implementazione.
   (ordine verificato, non solo presenza).
 - Apply `replace` con lettura config fallita → nessuna scrittura, errore
   riportato.
-- Restore → ri-applica l'ultimo snapshot.
+- Restore → ri-applica l'ultimo snapshot e, **solo se la scrittura riesce**, lo
+  consuma: l'elenco non lo propone più; un restore fallito lo lascia dov'è.
 - Lo store tiene al massimo 3 snapshot per `url_path`.
 - Una proposta `ha_dashboard` non finisce mai nel ramo status-only.
 

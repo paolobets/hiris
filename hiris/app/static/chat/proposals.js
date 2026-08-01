@@ -12,7 +12,11 @@
    (GET /api/dashboards/backups), non da quello che è stato applicato qui:
    l'affordance vale ovunque sia stata approvata la sostituzione e sopravvive
    al refresh. Due livelli, per non dare a "torno a una versione vecchia" lo
-   stesso peso di "ho appena sbagliato": vedi RECENT_MS. */
+   stesso peso di "ho appena sbagliato": vedi RECENT_MS.
+
+   Un ripristino riuscito consuma lo snapshot lato server (è tornato a essere
+   lo stato corrente della plancia): qui non si tiene traccia di nulla, basta
+   ricaricare l'elenco. */
 (function() {
   var TYPE_LABELS = {
     ha_automation: '→ automazione HA',
@@ -34,13 +38,6 @@
      perderebbe, mentre lo snapshot resta sul disco irraggiungibile.
      È solo una cache di rendering: la verità è del server. */
   var backups = [];
-
-  /* Snapshot già ripristinati in questa sessione: chiave "url_path|saved_at".
-     Serve perché il restore NON consuma lo snapshot (il server continua a
-     elencarlo): senza questo, la voce riapparirebbe al primo ricaricamento pur
-     essendo già stata riapplicata. La chiave include l'istante, così una NUOVA
-     sostituzione della stessa plancia (nuovo saved_at) torna annullabile. */
-  var restoredKeys = Object.create(null);
 
   function renderProposal(p) {
     var typeLabel = TYPE_LABELS[p.type] || ('→ ' + esc(p.type || 'config'));
@@ -75,10 +72,6 @@
     if (b) { b.textContent = n || ''; b.dataset.count = n; }
     var mb = document.getElementById('mobile-proposals-badge');
     if (mb) { mb.textContent = n || ''; mb.dataset.count = n; }
-  }
-
-  function backupKey(b) {
-    return b.url_path + '|' + (b.saved_at || '');
   }
 
   /* Uno snapshot senza istante è anteriore all'introduzione del campo: vale
@@ -140,7 +133,6 @@
     for (var j = 0; j < backups.length; j++) {
       var b = backups[j];
       if (!b || !b.url_path) continue;
-      if (restoredKeys[backupKey(b)]) continue;
       (isRecent(b.saved_at) ? recenti : storici).push(b);
     }
     if (!recenti.length && !storici.length) return;
@@ -226,13 +218,10 @@
     if (!window.confirm(msg)) return;
     HirisProposalsCore.restoreDashboard(urlPath).then(function(res) {
       if (!res.ok) { window.alert(res.error || 'Errore'); return; }
-      /* Lo snapshot resta sul server anche dopo il ripristino (riapplicarlo
-         sarebbe un'operazione a vuoto): segnalo come già usato, altrimenti la
-         voce tornerebbe al primo ricaricamento. */
-      for (var i = 0; i < backups.length; i++) {
-        if (backups[i] && backups[i].url_path === urlPath) restoredKeys[backupKey(backups[i])] = true;
-      }
-      renderUndoBars();
+      /* Il ripristino consuma lo snapshot sul server: basta ricaricare lo
+         stato e la voce sparisce da sé. Niente memoria locale di ciò che è
+         già stato ripristinato: sarebbe una seconda fonte di verità sullo
+         stesso fatto, e sopravviverebbe solo fino al refresh. */
       load();
     }, function() { window.alert('Errore di rete'); });
   }

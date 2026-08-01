@@ -3,7 +3,9 @@ import logging
 
 from aiohttp import web
 
-from ..proxy.dashboard_backups import latest_backup, list_backups
+from ..proxy.dashboard_backups import (
+    discard_latest_backup, latest_backup, list_backups,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,19 @@ async def handle_restore_dashboard(request: web.Request) -> web.Response:
     result = await ha.save_dashboard_config(url_path, config)
     if not isinstance(result, dict) or result.get("error"):
         msg = result.get("error") if isinstance(result, dict) else "errore sconosciuto"
+        # Scrittura rifiutata da HA: il ripristino non e' avvenuto, quindi lo
+        # snapshot resta dov'e'. Consumarlo qui brucerebbe l'unica via di
+        # ritorno proprio quando l'utente deve poter riprovare.
         return web.json_response(
             {"error": f"Ripristino non riuscito: {msg}"}, status=502)
+    # Scrittura riuscita: quello snapshot E' ora lo stato corrente della
+    # plancia. Continuare a elencarlo come "annulla" sarebbe un no-op che
+    # dopo un refresh riproporrebbe di annullare cio' che e' gia' annullato:
+    # l'elenco del server deve restare l'unica fonte di verita'.
+    if not discard_latest_backup(data_dir, url_path):
+        # La plancia e' stata ripristinata davvero: per l'utente e' un
+        # successo. Resta una voce di troppo nell'elenco, non un errore.
+        logger.warning(
+            "Ripristino di '%s' riuscito ma lo snapshot non e' stato consumato: "
+            "restera' elencato come ripristinabile.", url_path)
     return web.json_response({"ok": True, "url_path": url_path})

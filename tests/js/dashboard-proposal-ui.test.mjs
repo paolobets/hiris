@@ -57,7 +57,10 @@ function wireFetch(window, state) {
       if (state.onApply) state.onApply();
       return okJson({ ok: true });
     }
-    if (u.indexOf('/restore') !== -1) return okJson({ ok: true });
+    if (u.indexOf('/restore') !== -1) {
+      if (state.onRestore) state.onRestore();
+      return okJson({ ok: true });
+    }
     if (u.indexOf('dashboards/backups') !== -1) return okJson({ backups: state.backups || [] });
     if (state.failProposals) throw new Error('rete giu');
     return okJson({ proposals: state.pending || [] });
@@ -179,9 +182,11 @@ test('il ripristino chiama l\'endpoint giusto e fa sparire la voce', async () =>
   );
   const state = {
     pending: [],
-    // Il restore NON consuma lo snapshot: il server continua a elencarlo.
     backups: [{ url_path: 'casa-mia', saved_at: isoAgo(60 * 1000), count: 1 }],
   };
+  // Come il server reale: un ripristino riuscito consuma lo snapshot, che da
+  // quel momento e' lo stato corrente della plancia e non e' piu' elencato.
+  state.onRestore = () => { state.backups = []; };
   const calls = wireFetch(window, state);
   window.confirm = () => true;
   window.alert = () => {};
@@ -203,7 +208,36 @@ test('il ripristino chiama l\'endpoint giusto e fa sparire la voce', async () =>
     'dopo il ripristino la voce sparisce');
   await window.HirisChatProposals.load();
   assert.equal(document.querySelector('[data-pp-undo]'), null,
-    'e non torna al ricaricamento, benche\' il server elenchi ancora quello snapshot');
+    'e non torna al ricaricamento: il server non elenca piu\' quello snapshot');
+});
+
+test('la voce sparisce perche\' il server non la elenca piu\', non perche\' la pagina se lo ricorda', async () => {
+  /* Nessuna memoria di sessione lato pagina: se lo snapshot restasse elencato
+     dal server, l'affordance dovrebbe restare visibile. E' il contrario del
+     vecchio comportamento (voce nascosta in locale), che dopo un refresh
+     riproponeva di annullare cio' che era gia' stato annullato: una sola
+     fonte di verita', quella del server. */
+  const { window, document } = loadScripts(
+    ['config/api.js', 'config/proposals-core.js', 'chat/proposals.js'],
+    { html: fixtureHtml() },
+  );
+  // Server che NON consuma (caso degenere): l'elenco resta popolato.
+  wireFetch(window, {
+    pending: [],
+    backups: [{ url_path: 'casa-mia', saved_at: isoAgo(60 * 1000), count: 1 }],
+  });
+  window.confirm = () => true;
+  window.alert = () => {};
+
+  initNoPolling(window);
+  await tick(20);
+
+  document.querySelector('.pp-undo-bar [data-pp-undo]').dispatchEvent(
+    new window.Event('click', { bubbles: true }));
+  await tick(20);
+
+  assert.ok(document.querySelector('[data-pp-undo]'),
+    'la pagina non deve nascondere per conto suo cio\' che il server continua a elencare');
 });
 
 test('il rendering delle strisce e\' idempotente: due load non duplicano nulla', async () => {
@@ -294,6 +328,8 @@ test('l\'undo sopravvive al ricaricamento della lista e sparisce dopo il riprist
     state.pending = [];
     state.backups = [{ url_path: 'casa-mia', saved_at: isoAgo(0), count: 1 }];
   };
+  // ...e un ripristino riuscito lo consuma: torna a essere lo stato corrente.
+  state.onRestore = () => { state.backups = []; };
   wireFetch(window, state);
   window.confirm = () => true;
   window.alert = () => {};
