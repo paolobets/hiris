@@ -121,7 +121,7 @@ configuration:
     description: "Identity (a key of *Notify users*) that receives tap/OTP when an autonomous agent asks for confirmation. Without it, above-green actions are skipped."
   brain_notify_high:
     name: "System health — notify severe issues"
-    description: "Sends a push notification when the health scan opens or reopens a severe advisory. Only on open and reopen, never on an update: the scan runs every 30 minutes. Default: enabled."
+    description: "Sends a push notification when the health scan opens or reopens a severe advisory, or when an already open one escalates to severe. Never for an update that does not raise the severity, and never twice for the same issue within 12 hours: the scan runs every 30 minutes. Default: enabled."
   bridge_enabled:
     name: "Subscription bridge — enable"
     description: "Routes the brain's holistic scan to an external subscription runner (via the reasoning queue) instead of reasoning locally/pay-per-use. Off = inline reasoning as before."

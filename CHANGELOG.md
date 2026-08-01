@@ -1,5 +1,68 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.13] — HIRIS vede lo stato di casa e del sistema, e te lo dice (2026-08-01)
+
+Finora HIRIS teneva d'occhio la salute della casa, ma il risultato viveva solo
+nella dashboard della configurazione: chiedere in chat «ci sono problemi?» non
+serviva a niente. Ora le **segnalazioni del Brain** — batterie scariche, entità
+non disponibili da giorni, automazioni rotte, domini pericolosi lasciati aperti,
+entità senza area — sono leggibili nella conversazione, con gravità, evidenza e
+rimedio suggerito.
+
+HIRIS vede anche lo **stato del sistema**: add-on fermi o in errore, spazio
+libero sul disco, salute delle singole integrazioni e **aggiornamenti
+disponibili** per core, sistema operativo, Supervisor e add-on. Su
+un'installazione senza Supervisor la parte relativa semplicemente non compare,
+senza errori.
+
+Sa inoltre raccontare **cosa è successo** — «cosa è successo ieri sera in
+salotto?», «chi ha acceso il riscaldamento?» — leggendo il registro eventi di
+Home Assistant, e sa **valutare una condizione al volo** con un template, utile
+quando serve verificare qualcosa che gli altri strumenti non espongono.
+
+**Tutto questo è in sola lettura, per scelta e non in attesa di un seguito.**
+HIRIS vede che ci sono aggiornamenti e te li segnala, ma non li applica: non può
+aggiornare, avviare, fermare o riavviare nulla, né direttamente né proponendotelo
+per approvazione. Aggiornare il sistema resta una cosa che fai tu, dove la fai
+oggi.
+
+**Notifica per i problemi gravi.** Quando la scansione di salute — che gira ogni
+30 minuti — rileva un problema **grave**, arriva una notifica push. Una sola:
+finché quel problema resta lì, non torna a suonare. Torna a suonare solo se il
+problema si era chiuso e si ripresenta, o se una segnalazione già aperta
+**peggiora** fino a diventare grave (l'add-on che avevi spento e che poi si
+guasta davvero). C'è un periodo di silenzio di 12 ore per assorbire i valori che
+oscillano attorno a una soglia, e se un guasto solo apre molte segnalazioni in
+un colpo arriva un unico messaggio di riepilogo invece di una raffica. Si
+disattiva dall'opzione **"Salute del sistema — notifica i problemi gravi"**
+(`brain_notify_high`) nella configurazione dell'add-on; le segnalazioni restano
+comunque visibili.
+
+**Azione richiesta se hai Chatbot con permessi personalizzati.** L'elenco degli
+strumenti mostrato nella configurazione dei Chatbot era rimasto indietro rispetto
+agli strumenti realmente disponibili: ne mostrava uno che non esiste più e ne
+ometteva parecchi reali. Ora è allineato. I Chatbot **già salvati con una lista
+esplicita di strumenti** però non ereditano le voci nuove: la loro lista è quella
+che hai scelto tu, e resta tale. Se hai Chatbot di questo tipo, **riaprili e
+risalvali** dalla pagina di configurazione, così raccolgono anche gli strumenti
+nuovi. Vale in particolare per lo strumento di conferma delle azioni a rischio
+(`confirm_pending`): su un Chatbot con **conferma richiesta** attiva e una lista
+esplicita che non lo comprende, digitare il codice OTP non completa l'azione,
+perché il modello non ha lo strumento per confermarla. Fallisce dalla parte
+sicura — l'azione resta bloccata e non viene eseguita — ma è comunque un
+malfunzionamento visibile. I Chatbot senza lista esplicita (tutti gli strumenti)
+non sono interessati.
+
+**Batterie: la soglia ora è unica al 15%.** Il resoconto giornaliero calcolava le
+batterie scariche per conto suo, con una soglia configurabile che valeva **20%**
+per impostazione predefinita, mentre la dashboard di salute usava **15%**: la
+stessa casa, due risposte diverse a seconda di dove guardavi. Ora c'è una sola
+fonte e una sola soglia, **15%**, uguale in chat, nella dashboard e nel resoconto.
+Conseguenza pratica: le batterie fra il 15% e il 20% non compaiono più nel
+resoconto giornaliero — non sono sparite, semplicemente non erano ancora da
+sostituire secondo il criterio che HIRIS usa ovunque. Le batterie riflettono
+l'ultima scansione del Brain, quindi con un ritardo massimo di 30 minuti.
+
 ## [1.1.0-beta.12] — Il ripristino di una plancia non dipende più dalla pagina aperta (2026-08-01)
 
 Il pulsante per tornare indietro dopo una sostituzione di plancia viveva nella

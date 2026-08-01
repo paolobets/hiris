@@ -135,7 +135,10 @@ The loop repeats up to **10 iterations** (infinite loop protection). Claude deci
 | `recall_memory(query, k, tags)` | Search past memories (vector similarity) |
 | `save_memory(content, tags)` | Store a new memory (Chatbot only) |
 | `http_request(url, method, headers, body)` | HTTP call to whitelisted external endpoints |
-| `get_ha_health(sections)` | HA health snapshot: unavailable entities, integration errors, pending updates, system info |
+| `get_ha_health(sections)` | HA health snapshot: unavailable entities, integration errors, logs, native per-integration health, add-on states and host disk space from the Supervisor, available updates for core/OS/Supervisor/add-ons. **Read-only**: it cannot start, stop or update anything |
+| `get_advisories(severity)` | Open health advisories raised by the HIRIS Brain: low batteries, entities unavailable for days, broken automations, dangerous domains left enabled, entities with no area. Read-only: it cannot close or dismiss an advisory |
+| `get_logbook(entity_id, hours)` | HA event history: who turned what on, when a state changed. For numeric trends use `get_history` instead |
+| `render_template(template)` | Render an HA Jinja template to check a condition on the spot. Read-only, and **Chatbot only** — excluded from autonomous agents |
 | `create_automation_proposal(type, name, description, config, routing_reason)` | Queue a new automation proposal for human review (Chatbot only) |
 
 ---

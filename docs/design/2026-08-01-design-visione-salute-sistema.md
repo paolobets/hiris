@@ -152,16 +152,42 @@ quotidiano.
 ### E. Notifica per le sole segnalazioni gravi e nuove
 
 Aggancio in `brain/health_scan.py`, sull'esito di `reconcile`: quando una
-segnalazione di severità alta viene **aperta o riaperta** — mai su un
-aggiornamento di una già aperta — parte una notifica push agli utenti
-configurati, riusando `send_notification` e `build_push_data` già esistenti,
-con il deep-link a HIRIS già in uso per le altre notifiche.
+segnalazione di severità alta viene **aperta**, **riaperta**, oppure quando la
+severità di una già aperta **sale** ad alta, parte una notifica push agli
+utenti configurati, riusando `send_notification` e `build_push_data` già
+esistenti, con il deep-link a HIRIS già in uso per le altre notifiche.
+
+> **Rettifica (Task 5, implementazione).** Una stesura precedente di questo
+> paragrafo diceva «mai su un aggiornamento di una già aperta». È una regola
+> troppo stretta: la severità fa parte del contenuto di una segnalazione, non
+> solo della sua esistenza. Un add-on che l'utente aveva spento di proposito
+> apre una segnalazione di **avviso**; se poi si guasta davvero la stessa
+> segnalazione diventa **grave**, ma il riferimento di deduplica
+> (`source_ref`) non cambia, quindi per `reconcile` è un semplice
+> aggiornamento — e con la regola originaria resterebbe muta per sempre.
+> `reconcile` espone perciò un terzo elenco, `escalated_items`: i candidati
+> già aperti la cui severità sale ad alta. Un aggiornamento che **non** alza
+> la severità continua a non notificare nulla (il titolo del disco pieno
+> cambia a ogni scansione: notificarlo significherebbe un push ogni 30
+> minuti). Vedi `advisory_store.reconcile` e `test_health_scan_notify.py`.
 
 Il vincolo di non ri-notificare non è una gentilezza: senza, ogni scansione
 (48 al giorno) rimanderebbe la stessa notifica, e l'utente disattiverebbe le
 notifiche perdendo anche quelle utili.
 
-Deve essere disattivabile da un'opzione dell'add-on, per chi non le vuole.
+Alla sola regola "nuova, riaperta o aggravata" si affiancano due protezioni
+emerse in implementazione, entrambe per lo stesso motivo (una raffica di push
+produce esattamente il rifiuto che il meccanismo esiste per evitare):
+
+- un **periodo di silenzio di 12 ore** per singolo problema, memorizzato
+  nell'`AdvisoryStore`: assorbe i valori che sfarfallano attorno a una soglia,
+  che altrimenti tornerebbero "nuovi" a ogni giro;
+- un **tetto di 5 notifiche per scansione**, oltre il quale parte un unico
+  messaggio di riepilogo; le segnalazioni restano comunque tutte registrate e
+  leggibili in HIRIS.
+
+Deve essere disattivabile da un'opzione dell'add-on, per chi non le vuole
+(`brain_notify_high`, attiva per impostazione predefinita).
 
 ### F. Il catalogo degli strumenti della UI
 
@@ -181,8 +207,9 @@ da un test che fallisce se qualcuno aggiunge un tool senza registrarlo lì.
   una fonte non azzera le altre; i cap troncano e lo dichiarano.
 - Controlli nuovi del Brain: tabelle di stati in ingresso, come i cinque
   esistenti.
-- Notifica: parte per una segnalazione grave **nuova**; **non** parte per una
-  già aperta a una scansione successiva; non parte se disattivata.
+- Notifica: parte per una segnalazione grave **nuova**, riaperta o **aggravata**;
+  **non** parte per una già aperta e invariata a una scansione successiva; non
+  parte entro il periodo di silenzio; non parte se disattivata.
 - Briefing: usa le segnalazioni del Brain e non ricalcola le batterie.
 - Catalogo UI allineato a `ALL_TOOL_DEFS`.
 
@@ -191,7 +218,7 @@ da un test che fallisce se qualcuno aggiunge un tool senza registrarlo lì.
 | Rischio | Mitigazione |
 |---|---|
 | Costo in token dello snapshot che cresce | cap per sezione, dichiarati e testati |
-| Notifiche ripetute che portano l'utente a disattivarle | notifica solo su apertura/riapertura, e solo severità alta |
+| Notifiche ripetute che portano l'utente a disattivarle | notifica solo su apertura/riapertura/aggravamento e solo severità alta, più silenzio di 12 ore e tetto per scansione |
 | Installazioni senza Supervisor | ogni chiamata degrada a vuoto; la sezione semplicemente non compare |
 | Formato di `system_health/info` non documentato in dettaglio | lettura difensiva: si espone ciò che si riconosce, il resto viene ignorato |
 | Template come vettore di prompt injection | `render_template` è chat-only, escluso dagli agenti autonomi |
@@ -203,3 +230,24 @@ da un test che fallisce se qualcuno aggiunge un tool senza registrarlo lì.
 - Script e scene restano ad azione diretta dalla chat (asimmetria ereditata dal
   Filone 1, da chiudere separatamente).
 - Nessuna modifica al semaforo o ai tier.
+
+## Follow-up (non in questo lavoro)
+
+- **I modelli di Chatbot preconfigurati citano uno strumento inesistente.**
+  Il punto F ha allineato il *catalogo* di `static/config/templates.js` ad
+  `ALL_TOOL_DEFS`, ma non i **testi** dei cinque modelli nello stesso file
+  (`energy-solar`, `security`, `family-presence`, `climate`, `irrigation`):
+  tutti e cinque, nel loro contesto strategico, istruiscono il modello a
+  chiamare `search_entities("...")`, uno strumento **rimosso da tempo**. Ogni
+  bot creato da quei modelli spreca almeno un tentativo su uno strumento
+  fantasma prima di ripiegare su `get_entities_by_domain`/`get_area_entities`.
+  Non è un difetto di sicurezza e non blocca nulla — costa token e latenza al
+  primo turno utile. Il test `tests/js/tool-catalog.test.mjs` copre il
+  catalogo, non la prosa dei modelli: chiudendo il punto servirà estenderlo
+  perché il testo dei modelli non possa citare tool fuori da `ALL_TOOL_DEFS`.
+- **Chatbot con whitelist esplicita non ereditano i tool nuovi.** Conseguenza
+  strutturale del punto F, non risolvibile nel catalogo: i permessi salvati
+  sono una lista chiusa in configurazione. Vedi la voce di changelog di
+  `1.1.0-beta.13` per l'azione richiesta all'amministratore. Da valutare a
+  parte se serva una migrazione una-tantum o un'ereditarietà per famiglia di
+  tool, invece di chiedere un risalvataggio manuale a ogni tool nuovo.

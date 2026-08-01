@@ -102,9 +102,13 @@ HIRIS stores and retrieves memories across conversations. Before every Claude ca
 
 Send alerts via Home Assistant push, Telegram, WhatsApp, ntfy, Gotify, Pushover, Slack, and 80+ other channels — all configured through a single `apprise_urls` option.
 
-### HA health monitoring
+### HA and system health monitoring
 
-A live health snapshot of your Home Assistant installation — unavailable entities, integration errors, pending updates, and system info — updated in real time via WebSocket and refreshed every 30 minutes. Accessible to any Chatbot (within its tool allowlist) via the `get_ha_health` tool, via `GET /api/health/ha`, and feeds the Brain's own read-only health scan.
+A live health snapshot of your Home Assistant installation — unavailable entities, integration errors, per-integration native health, add-on states and host disk space from the Supervisor, and available updates for core, OS, Supervisor and add-ons — updated in real time via WebSocket and refreshed every 30 minutes. Accessible to any Chatbot (within its tool allowlist) via the `get_ha_health` tool, via `GET /api/health/ha`, and feeds the Brain's own health scan.
+
+The Brain's own advisories (low batteries, entities unavailable for days, broken automations, dangerous domains left enabled) are readable from chat via `get_advisories`, and a push notification goes out for **severe** ones — once when the issue appears, again only if it reopens or escalates, with a 12-hour quiet period (toggle: `brain_notify_high`). `get_logbook` answers "what happened last night?" and `render_template` evaluates an HA Jinja template on the spot.
+
+**All of it is read-only, by design.** HIRIS reports available updates but never applies them, and cannot start, stop, restart or update anything — neither directly nor by raising a proposal.
 
 ### Proposal workflow
 

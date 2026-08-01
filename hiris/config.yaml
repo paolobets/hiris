@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "1.1.0-beta.12"
+version: "1.1.0-beta.13"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -102,10 +102,11 @@ options:
   agent_owner: ""
 
   # ── Brain (salute del sistema) ───────────────────────────────────────────
-  # Notifica push quando la scansione di salute apre (o riapre) una
-  # segnalazione grave. Solo apertura/riapertura e solo severita' alta: la
-  # scansione gira ogni 30 minuti e ri-notificare sarebbe rumore. Metti a
-  # false per non riceverle: le segnalazioni restano comunque visibili.
+  # Notifica push quando la scansione di salute apre, riapre o aggrava fino a
+  # grave una segnalazione. Solo severita' alta, e mai due volte per lo stesso
+  # problema entro 12 ore: la scansione gira ogni 30 minuti e ri-notificare
+  # sarebbe rumore. Metti a false per non riceverle: le segnalazioni restano
+  # comunque visibili.
   brain_notify_high: true
 
   # ── Ponte push (knobs) ────────────────────────────────────────────────────

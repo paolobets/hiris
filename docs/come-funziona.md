@@ -135,7 +135,10 @@ Il loop si ripete fino a **10 iterazioni** (protezione da loop infiniti). Claude
 | `recall_memory(query, k, tags)` | Ricerca memorie passate (similarità vettoriale) |
 | `save_memory(content, tags)` | Salva una nuova memoria (solo Chatbot) |
 | `http_request(url, method, headers, body)` | Chiamata HTTP verso endpoint approvati |
-| `get_ha_health(sections)` | Snapshot salute HA: entità non disponibili, errori integrazioni, aggiornamenti, info sistema |
+| `get_ha_health(sections)` | Snapshot salute HA: entità non disponibili, errori integrazioni, log, salute nativa per integrazione, stato add-on e spazio disco dal Supervisor, aggiornamenti disponibili per core/OS/Supervisor/add-on. **Sola lettura**: non avvia, non ferma e non aggiorna nulla |
+| `get_advisories(severity)` | Segnalazioni di salute aperte rilevate dal Brain: batterie scariche, entità non disponibili da giorni, automazioni rotte, domini pericolosi lasciati abilitati, entità senza area. Sola lettura: non chiude né archivia una segnalazione |
+| `get_logbook(entity_id, hours)` | Cronologia eventi HA: chi ha acceso cosa e quando è cambiato uno stato. Per gli andamenti numerici si usa invece `get_history` |
+| `render_template(template)` | Valuta un template Jinja di HA per verificare una condizione al volo. Sola lettura; **solo Chatbot**, escluso dagli agenti autonomi |
 | `create_automation_proposal(type, name, description, config, routing_reason)` | Propone una nuova automazione per revisione umana (solo Chatbot) |
 
 ---
