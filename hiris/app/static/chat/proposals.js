@@ -6,7 +6,13 @@
    Azione (Attiva/Rifiuta) via il core condiviso HirisProposalsCore: la vista
    aggiorna SOLO il proprio DOM, senza ereditare quello della pagina Proposte
    del config (vedi config/proposals-core.js). `esc()` è il globale di
-   config/api.js, già caricato in questa pagina. */
+   config/api.js, già caricato in questa pagina.
+
+   Il ripristino di una plancia sostituita è derivato dallo stato del server
+   (GET /api/dashboards/backups), non da quello che è stato applicato qui:
+   l'affordance vale ovunque sia stata approvata la sostituzione e sopravvive
+   al refresh. Due livelli, per non dare a "torno a una versione vecchia" lo
+   stesso peso di "ho appena sbagliato": vedi RECENT_MS. */
 (function() {
   var TYPE_LABELS = {
     ha_automation: '→ automazione HA',
@@ -16,15 +22,25 @@
     hiris_agent: '→ Agentbot'
   };
 
-  /* Plance sostituite da questa pagina e ancora annullabili: slug -> true.
-     Sta QUI, in memoria, e non nel DOM della card: la card è il rendering di
-     una proposta *in attesa*, e dopo l'apply quella proposta non è più
-     pending, quindi sparisce al primo load(). L'annullabilità appartiene alla
-     plancia, non alla proposta. Tenendola come stato del modulo, ogni load()
-     (periodico, o al rientro nel pannello) ridisegna la striscia Annulla
-     identica: nessuno stato incoerente e nessun bisogno di sopprimere il
-     ricaricamento della lista. */
-  var undoableReplaces = Object.create(null);
+  /* Soglia fra "ho appena sbagliato, torno indietro" e "voglio tornare a una
+     versione vecchia": entro 24 ore lo snapshot è un undo, oltre è storia. */
+  var RECENT_MS = 24 * 60 * 60 * 1000;
+
+  /* Ultimo elenco di snapshot noto dal server (GET /api/dashboards/backups):
+     [{url_path, saved_at, count}, ...]. L'affordance di ripristino è DERIVATA
+     da qui e non da ciò che è stato applicato in questa pagina: altrimenti un
+     replace approvato dalla pagina Proposte del config o dal peek della
+     Dashboard non mostrerebbe mai il pulsante, e un refresh del browser lo
+     perderebbe, mentre lo snapshot resta sul disco irraggiungibile.
+     È solo una cache di rendering: la verità è del server. */
+  var backups = [];
+
+  /* Snapshot già ripristinati in questa sessione: chiave "url_path|saved_at".
+     Serve perché il restore NON consuma lo snapshot (il server continua a
+     elencarlo): senza questo, la voce riapparirebbe al primo ricaricamento pur
+     essendo già stata riapplicata. La chiave include l'istante, così una NUOVA
+     sostituzione della stessa plancia (nuovo saved_at) torna annullabile. */
+  var restoredKeys = Object.create(null);
 
   function renderProposal(p) {
     var typeLabel = TYPE_LABELS[p.type] || ('→ ' + esc(p.type || 'config'));
@@ -32,16 +48,13 @@
     var safeId = esc(p.id);
     var cfg = p.config || {};
     var isDashReplace = (p.type === 'ha_dashboard' && cfg.mode === 'replace' && !!cfg.slug);
+    /* Solo un replace di plancia vero e proprio: un'altra proposta con un
+       config omonimo (stesse chiavi, altro significato) non deve essere
+       presentata come sostituzione di plancia. */
     var warn = isDashReplace
       ? '<div class="pp-warn">Sostituisce interamente la plancia "' + esc(cfg.slug) + '".</div>'
       : '';
-    /* Marcati SOLO i replace di plancia: act() legge questi attributi per
-       decidere se offrire l'Annulla, e un altro tipo di proposta con un
-       config omonimo non deve poter finire su /api/dashboards/.../restore. */
-    var dashAttrs = isDashReplace
-      ? ' data-pp-mode="replace" data-pp-slug="' + esc(cfg.slug) + '"'
-      : '';
-    return '<div class="pp-card" id="pp-' + safeId + '"' + dashAttrs + '>'
+    return '<div class="pp-card" id="pp-' + safeId + '">'
       + '<div class="pp-head">'
       + '<span class="pp-type">' + esc(typeLabel) + '</span>'
       + (date ? '<span class="pp-date">' + esc(date) + '</span>' : '')
@@ -64,26 +77,97 @@
     if (mb) { mb.textContent = n || ''; mb.dataset.count = n; }
   }
 
-  /* Striscia "Annulla" in cima alla lista, una per plancia sostituita e ancora
-     ripristinabile. Ricostruita da `undoableReplaces` a ogni render, così è
-     idempotente: chiamarla due volte non duplica nulla. */
+  function backupKey(b) {
+    return b.url_path + '|' + (b.saved_at || '');
+  }
+
+  /* Uno snapshot senza istante è anteriore all'introduzione del campo: vale
+     come il più vecchio che c'è, quindi mai "recente". */
+  function isRecent(savedAt) {
+    var t = savedAt ? Date.parse(savedAt) : NaN;
+    if (isNaN(t)) return false;
+    return (Date.now() - t) < RECENT_MS;
+  }
+
+  /* L'istante arriva in ISO 8601 UTC: all'utente va mostrata l'ora locale in
+     forma leggibile. Ritorna null se non c'è o non è interpretabile: chi
+     chiama deve dichiarare "data non disponibile", non inventarne una. */
+  function fmtWhen(savedAt) {
+    var t = savedAt ? Date.parse(savedAt) : NaN;
+    if (isNaN(t)) return null;
+    try {
+      return new Date(t).toLocaleString('it-IT', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch (e) {
+      return new Date(t).toLocaleString();
+    }
+  }
+
+  /* Undo recente: la sostituzione è di poche ore fa, quasi certamente un
+     errore che si vuole annullare. Prominente, com'era. */
+  function recentBar(b) {
+    var safe = esc(b.url_path);
+    return '<div class="pp-undo-bar">'
+      + '<span>Plancia "' + safe + '" sostituita. Puoi ripristinare la versione precedente.</span>'
+      + '<button class="btn pp-undo" type="button" data-pp-undo="' + safe + '">Annulla</button>'
+      + '</div>';
+  }
+
+  /* Ripristino storico: tornare a una versione vecchia è un'azione più
+     impegnativa, non deve avere il peso visivo dell'undo appena sopra. Dice
+     sempre QUANDO, e se l'istante manca lo dichiara. */
+  function historyRow(b) {
+    var when = fmtWhen(b.saved_at);
+    var quando = when ? 'versione salvata il ' + esc(when) : 'versione salvata in data non disponibile';
+    var safe = esc(b.url_path);
+    return '<div class="pp-undo-old">'
+      + '<span>Plancia "' + safe + '" — ' + quando + '</span>'
+      + '<button class="pp-undo-old-btn" type="button" data-pp-undo="' + safe + '">Ripristina</button>'
+      + '</div>';
+  }
+
+  /* Strisce di ripristino in cima alla lista, ricostruite da `backups` a ogni
+     render: idempotente, chiamarla due volte non duplica nulla (tutto vive in
+     un unico contenitore .pp-undo-zone, rimosso e riscritto per intero). */
   function renderUndoBars() {
     var list = document.getElementById('chat-proposals-list');
     if (!list) return;
-    var old = list.querySelectorAll('.pp-undo-bar');
+    var old = list.querySelectorAll('.pp-undo-zone');
     for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
-    var html = Object.keys(undoableReplaces).map(function(slug) {
-      var safeSlug = esc(slug);
-      return '<div class="pp-undo-bar">'
-        + '<span>Plancia "' + safeSlug + '" sostituita. Puoi ripristinare la versione precedente.</span>'
-        + '<button class="btn pp-undo" type="button" data-pp-undo="' + safeSlug + '">Annulla</button>'
-        + '</div>';
-    }).join('');
-    if (html) list.insertAdjacentHTML('afterbegin', html);
+    var recenti = [], storici = [];
+    for (var j = 0; j < backups.length; j++) {
+      var b = backups[j];
+      if (!b || !b.url_path) continue;
+      if (restoredKeys[backupKey(b)]) continue;
+      (isRecent(b.saved_at) ? recenti : storici).push(b);
+    }
+    if (!recenti.length && !storici.length) return;
+    var html = recenti.map(recentBar).join('');
+    if (storici.length) {
+      html += '<div class="pp-undo-old-head">Versioni precedenti</div>'
+        + storici.map(historyRow).join('');
+    }
+    list.insertAdjacentHTML('afterbegin', '<div class="pp-undo-zone">' + html + '</div>');
+  }
+
+  /* Aggiorna l'elenco degli snapshot dal server e ridisegna le strisce.
+     Se la chiamata fallisce si tiene l'ultimo elenco noto: un ripristino
+     ancora possibile non deve sparire per un errore di rete. */
+  function loadBackups() {
+    return HirisProposalsCore.listDashboardBackups().then(function(items) {
+      backups = items || [];
+      renderUndoBars();
+    }, function(e) {
+      console.error('loadDashboardBackups failed', e);
+      renderUndoBars();
+    });
   }
 
   function load() {
-    return HirisProposalsCore.list('pending').then(function(props) {
+    var bars = loadBackups();
+    var proposte = HirisProposalsCore.list('pending').then(function(props) {
       var list = document.getElementById('chat-proposals-list');
       setBadges(props.length);
       if (!list) return;
@@ -95,10 +179,14 @@
       console.error('loadProposals failed', e);
       var list = document.getElementById('chat-proposals-list');
       if (list) list.innerHTML = '<div class="task-empty">Errore nel caricamento delle proposte.</div>';
-      /* Un errore nel caricare le proposte non deve togliere l'Annulla di una
-         sostituzione appena applicata: è un'azione ancora possibile. */
+      /* Un errore nel caricare le proposte non deve togliere il ripristino di
+         una sostituzione: è un'azione ancora possibile. */
       renderUndoBars();
     });
+    /* Le due richieste corrono in parallelo e ognuna riscrive un pezzo della
+       lista: un render finale, quando entrambe sono finite, rende l'esito
+       indipendente dall'ordine di arrivo delle risposte. */
+    return Promise.all([proposte, bars]).then(function() { renderUndoBars(); });
   }
 
   function act(id, kind) {
@@ -116,13 +204,12 @@
           : '<span style="color:var(--success,#3ba55d)">✓ Proposta attivata</span>';
         var actsEl = card.querySelector('.pp-actions');
         if (actsEl) actsEl.remove();
-        /* Una sostituzione appena applicata diventa annullabile: registra la
-           plancia e mostra subito la striscia, senza aspettare il reload. */
-        if (!isReject && card.dataset.ppMode === 'replace' && card.dataset.ppSlug) {
-          undoableReplaces[card.dataset.ppSlug] = true;
-          renderUndoBars();
-        }
       }
+      /* Un apply può aver creato uno snapshot: richiedi subito l'elenco al
+         server, così l'undo compare senza aspettare il reload differito.
+         Chi decide se c'è qualcosa da ripristinare è il server, non questa
+         card: una proposta che non ha toccato una plancia non produce voci. */
+      if (!isReject) loadBackups();
       setTimeout(load, 1000);
     }, function() { window.alert('Errore di rete'); });
   }
@@ -139,7 +226,13 @@
     if (!window.confirm(msg)) return;
     HirisProposalsCore.restoreDashboard(urlPath).then(function(res) {
       if (!res.ok) { window.alert(res.error || 'Errore'); return; }
-      delete undoableReplaces[urlPath];
+      /* Lo snapshot resta sul server anche dopo il ripristino (riapplicarlo
+         sarebbe un'operazione a vuoto): segnalo come già usato, altrimenti la
+         voce tornerebbe al primo ricaricamento. */
+      for (var i = 0; i < backups.length; i++) {
+        if (backups[i] && backups[i].url_path === urlPath) restoredKeys[backupKey(backups[i])] = true;
+      }
+      renderUndoBars();
       load();
     }, function() { window.alert('Errore di rete'); });
   }

@@ -48,6 +48,19 @@
     }).then(_result);
   }
 
+  /* Quali plance hanno uno snapshot ripristinabile, e da quando: metadati
+     {url_path, saved_at, count}, dal più recente al più vecchio. È da QUI che
+     ogni vista deriva l'affordance di ripristino, non dalla propria memoria:
+     una sostituzione approvata in un'altra schermata deve restare annullabile,
+     e un refresh del browser non deve farla sparire. Come `list`: la vista
+     riceve dati grezzi e decide da sé cosa mostrarne. */
+  function listDashboardBackups() {
+    return fetch('api/dashboards/backups').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(d) { return (d && d.backups) || []; });
+  }
+
   /* Ripristina l'ultimo snapshot di una plancia (url_path), cioè annulla una
      proposta `mode: replace` appena applicata. Come apply/reject: nessun DOM,
      solo la chiamata e l'esito normalizzato. */
@@ -58,6 +71,7 @@
   }
 
   window.HirisProposalsCore = {
-    list: list, apply: apply, reject: reject, restoreDashboard: restoreDashboard
+    list: list, apply: apply, reject: reject,
+    listDashboardBackups: listDashboardBackups, restoreDashboard: restoreDashboard
   };
 })();
