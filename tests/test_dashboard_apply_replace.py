@@ -90,3 +90,36 @@ async def test_replace_without_data_dir_still_writes_but_warns(tmp_path):
     )
     assert out.get("ok") is True
     assert ha.saved == ("casa-mia", NEW)
+
+
+@pytest.mark.asyncio
+async def test_replace_aborts_when_backup_write_fails(tmp_path, monkeypatch):
+    """Se save_backup non riesce a scrivere lo snapshot, la sostituzione si
+    ferma: non si sovrascrive mai senza aver prima messo al sicuro lo stato
+    precedente."""
+    import hiris.app.tools.config_tools as config_tools
+
+    monkeypatch.setattr(config_tools, "save_backup", lambda data_dir, url_path, config: False)
+    ha = FakeHA(current={"views": [{"title": "VECCHIA"}]})
+    out = await apply_ha_config(
+        ha,
+        {"kind": "dashboard", "mode": "replace", "slug": "casa-mia", "ha_config": NEW},
+        data_dir=str(tmp_path),
+    )
+    assert "error" in out
+    assert ha.saved is None, "mai sovrascrivere se lo snapshot non e' stato scritto"
+    assert ha.order == ["read"], "save_dashboard_config non deve essere chiamata"
+
+
+@pytest.mark.asyncio
+async def test_replace_proceeds_when_backup_write_succeeds(tmp_path):
+    """Caso felice: lo snapshot viene scritto su disco e la sostituzione procede."""
+    ha = FakeHA(current={"views": [{"title": "VECCHIA"}]})
+    out = await apply_ha_config(
+        ha,
+        {"kind": "dashboard", "mode": "replace", "slug": "casa-mia", "ha_config": NEW},
+        data_dir=str(tmp_path),
+    )
+    assert out.get("ok") is True
+    assert ha.saved == ("casa-mia", NEW)
+    assert latest_backup(str(tmp_path), "casa-mia") == {"views": [{"title": "VECCHIA"}]}

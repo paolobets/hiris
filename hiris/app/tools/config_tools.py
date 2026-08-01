@@ -174,7 +174,14 @@ async def apply_ha_config(ha_client: Any, normalized: dict,
             msg = current.get("error") if isinstance(current, dict) else "errore sconosciuto"
             return {"error": f"plancia non leggibile, sostituzione annullata: {msg}"}
         if data_dir:
-            save_backup(data_dir, slug, current)
+            if not save_backup(data_dir, slug, current):
+                return {
+                    "error": (
+                        "non e' stato possibile salvare la copia di sicurezza della "
+                        "configurazione attuale della plancia: la sostituzione e' stata "
+                        "annullata e la plancia non e' stata modificata"
+                    )
+                }
         else:
             logger.warning(
                 "apply dashboard replace su %s senza data_dir: nessuno snapshot salvato", slug)

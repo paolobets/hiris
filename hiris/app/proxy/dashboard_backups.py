@@ -36,13 +36,16 @@ def _load(data_dir: str) -> dict:
         return {}
 
 
-def save_backup(data_dir: str, url_path: str, config: dict) -> None:
+def save_backup(data_dir: str, url_path: str, config: dict) -> bool:
     """Accoda uno snapshot, scartando i piu' vecchi oltre il limite.
 
     Scrittura atomica (file temporaneo + os.replace): il file e' condiviso
     fra tutte le plance, una scrittura interrotta a meta' non deve troncare
     i backup delle altre. Tutto avvolto nel try/except: questa e' una rete
-    di sicurezza, non deve mai sollevare verso il chiamante."""
+    di sicurezza, non deve mai sollevare verso il chiamante. Ritorna True
+    se lo snapshot e' stato scritto su disco, False altrimenti: il chiamante
+    (l'apply in mode 'replace') usa questo esito per decidere se procedere
+    con la sovrascrittura o abortire."""
     data = _load(data_dir)
     entries = data.get(url_path)
     if not isinstance(entries, list):
@@ -55,8 +58,10 @@ def save_backup(data_dir: str, url_path: str, config: dict) -> None:
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
         os.replace(tmp, _file(data_dir))
+        return True
     except Exception:
         logger.exception("dashboard_backups: salvataggio snapshot fallito")
+        return False
 
 
 def latest_backup(data_dir: str, url_path: str) -> dict | None:
