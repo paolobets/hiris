@@ -70,10 +70,9 @@ async def _notifica_le_gravi(ha_client, esito: dict, notify_config: dict) -> Non
 
     restanti = len(da_inviare) - MAX_NOTIFICHE_PER_SCANSIONE
     if restanti > 0:
-        await _invia(
-            f"Altri {restanti} problemi gravi rilevati. Aprili in HIRIS per l'elenco completo.",
-            "riepilogo",
-        )
+        quanti = ("C'e' un altro problema grave" if restanti == 1
+                  else f"Ci sono altri {restanti} problemi gravi")
+        await _invia(f"{quanti}. Apri HIRIS per l'elenco completo.", "riepilogo")
 
 
 async def run_health_scan(*, ha_client, entity_cache, tiers, entity_tiers, store,

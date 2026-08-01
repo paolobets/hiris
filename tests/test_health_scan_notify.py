@@ -211,6 +211,22 @@ async def test_raffica_di_problemi_gravi_riassunta(tmp_path):
     store.close()
 
 
+@pytest.mark.asyncio
+async def test_riepilogo_al_singolare(tmp_path):
+    """Una sola segnalazione oltre il tetto: il riepilogo resta leggibile."""
+    ha = _FakeHA()
+    store = AdvisoryStore(str(tmp_path / "a.db"))
+    entita = {f"lock.porta_{i}": "green"
+              for i in range(MAX_NOTIFICHE_PER_SCANSIONE + 1)}
+    await run_health_scan(
+        ha_client=ha, entity_cache=_FakeCache(), tiers={}, entity_tiers=entita,
+        store=store, now=_ORA, supervisor_client=None,
+        notify_config=_NOTIFY_CONFIG)
+    assert len(ha.chiamate) == MAX_NOTIFICHE_PER_SCANSIONE + 1
+    assert "un altro problema grave" in ha.chiamate[-1][2]["message"].lower()
+    store.close()
+
+
 def test_opzione_di_disattivazione_cablata():
     """L'opzione deve esistere davvero nell'add-on, non solo nel codice."""
     cfg = yaml.safe_load((_ADDON / "config.yaml").read_text(encoding="utf-8"))
