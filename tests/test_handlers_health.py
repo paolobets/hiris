@@ -23,7 +23,8 @@ async def test_get_ha_health_returns_snapshot():
     assert resp.status == 200
     data = json.loads(resp.body)
     assert data == snapshot
-    monitor.get_snapshot.assert_called_once_with(["all"])
+    # La dashboard vede lo snapshot completo: i cap valgono solo per l'LLM.
+    monitor.get_snapshot.assert_called_once_with(["all"], capped=False)
 
 
 @pytest.mark.asyncio

@@ -30,6 +30,18 @@ def test_get_ha_health_defaults_to_all(mock_monitor):
     mock_monitor.get_snapshot.assert_called_once_with(["all"])
 
 
+def test_tool_def_enum_include_le_sezioni_nuove():
+    enum = GET_HA_HEALTH_TOOL_DEF["input_schema"]["properties"]["sections"]["items"]["enum"]
+    assert "system_health" in enum
+    assert "supervisor" in enum
+    descrizione = GET_HA_HEALTH_TOOL_DEF["description"]
+    assert "system_health" in descrizione
+    assert "supervisor" in descrizione
+    # Il troncamento va dichiarato all'LLM, altrimenti conclude che i problemi
+    # siano meno di quanti sono.
+    assert "truncated" in descrizione
+
+
 def test_get_ha_health_no_monitor_returns_error():
     result = get_ha_health(None, sections=["all"])
     assert "error" in result

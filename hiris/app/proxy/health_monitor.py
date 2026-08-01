@@ -11,6 +11,20 @@ logger = logging.getLogger(__name__)
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
+# Cap per sezione. Servono a proteggere il PROMPT dell'LLM: con molti problemi
+# in casa una lista senza limite finirebbe intera nel contesto. Il taglio
+# avviene in lettura (get_snapshot), non in scrittura: il file su disco e la
+# dashboard di configurazione (get_snapshot(capped=False)) restano completi.
+# Ogni sezione tagliata viene dichiarata in `truncated`, cosi' il modello puo'
+# dire all'utente quanti problemi ci sono davvero.
+MAX_UNAVAILABLE_ENTITIES = 25
+MAX_INTEGRATION_ERRORS = 20
+MAX_TOP_ERRORS = 10
+MAX_UPDATES = 20
+MAX_SYSTEM_HEALTH_DOMAINS = 20
+MAX_ADDONS = 30
+MAX_SUPERVISOR_UPDATES = 20
+
 
 class HealthMonitor:
     """Mantiene uno snapshot aggregato dello stato di salute di HA.
@@ -21,10 +35,19 @@ class HealthMonitor:
     - Persistenza JSON su disco → sopravvive ai restart
     """
 
-    def __init__(self, ha_client: Any, data_path: str, scheduler: Any) -> None:
+    def __init__(
+        self,
+        ha_client: Any,
+        data_path: str,
+        scheduler: Any,
+        supervisor_client: Any = None,
+    ) -> None:
+        # `supervisor_client` e' opzionale: sulle installazioni standalone
+        # (container senza Supervisor) resta None e la sezione non compare.
         self._ha = ha_client
         self._data_path = data_path
         self._scheduler = scheduler
+        self._supervisor = supervisor_client
         self._snapshot_data: dict = {
             "last_updated": None,
             "unavailable_entities": [],
@@ -32,6 +55,8 @@ class HealthMonitor:
             "error_log_summary": {"errors": 0, "warnings": 0, "top_errors": []},
             "updates_available": [],
             "system_info": {},
+            "system_health": {},
+            "supervisor": {},
         }
         # Serialize concurrent _save_sync() between scheduler refresh and WS callbacks.
         self._save_lock = threading.Lock()
@@ -100,6 +125,24 @@ class HealthMonitor:
         except Exception as exc:
             logger.debug("HealthMonitor: get_updates skipped (%s)", exc)
 
+        try:
+            updated["system_health"] = await self._ha.get_system_health()
+        except Exception as exc:
+            logger.debug("HealthMonitor: get_system_health skipped (%s)", exc)
+
+        # Supervisor: tre letture in un unico blocco. Se una fallisce la
+        # sezione intera mantiene il valore precedente, come per le altre
+        # fonti. Senza Supervisor (installazione standalone) si salta.
+        if self._supervisor is not None:
+            try:
+                updated["supervisor"] = {
+                    "addons": await self._supervisor.get_addons(),
+                    "disk": await self._supervisor.get_host_info(),
+                    "updates": await self._supervisor.get_available_updates(),
+                }
+            except Exception as exc:
+                logger.debug("HealthMonitor: supervisor skipped (%s)", exc)
+
         self._snapshot_data.update(updated)
         await self._save()
         logger.debug("HealthMonitor: snapshot refreshed")
@@ -134,19 +177,86 @@ class HealthMonitor:
         except RuntimeError:
             self._save_sync()
 
-    def get_snapshot(self, sections: list[str]) -> dict:
-        """Ritorna snapshot filtrato per sezioni richieste."""
+    def get_snapshot(self, sections: list[str], capped: bool = True) -> dict:
+        """Ritorna lo snapshot filtrato per sezioni richieste.
+
+        Con `capped=True` (default, percorso LLM) ogni sezione a lista viene
+        tagliata al proprio limite e il taglio viene dichiarato nella chiave
+        `truncated`: `{"<sezione>": {"shown": N, "total": M}}`. Senza quella
+        dichiarazione il modello concluderebbe che i problemi sono meno di
+        quanti sono davvero.
+
+        Con `capped=False` (dashboard di configurazione) non si taglia nulla:
+        li' mostrare tutto ha senso e non costa token. Il dato interno non
+        viene mai mutato dal troncamento: il file su disco resta completo.
+        """
         want_all = "all" in sections
         result: dict = {}
+        truncated: dict = {}
+
+        def _cap(nome: str, valori: Any, limite: int) -> Any:
+            """Taglia `valori` a `limite` e registra il totale reale."""
+            if not capped or not isinstance(valori, list) or len(valori) <= limite:
+                return valori
+            truncated[nome] = {"shown": limite, "total": len(valori)}
+            return valori[:limite]
+
         if want_all or "unavailable" in sections:
-            result["unavailable"] = self._snapshot_data["unavailable_entities"]
+            result["unavailable"] = _cap(
+                "unavailable",
+                self._snapshot_data["unavailable_entities"],
+                MAX_UNAVAILABLE_ENTITIES,
+            )
         if want_all or "integrations" in sections:
-            result["integrations"] = self._snapshot_data["integration_errors"]
+            result["integrations"] = _cap(
+                "integrations",
+                self._snapshot_data["integration_errors"],
+                MAX_INTEGRATION_ERRORS,
+            )
         if want_all or "logs" in sections:
-            result["logs"] = self._snapshot_data["error_log_summary"]
+            logs = self._snapshot_data["error_log_summary"]
+            if capped and isinstance(logs, dict) and isinstance(logs.get("top_errors"), list):
+                # Copia superficiale: i conteggi errors/warnings restano quelli
+                # reali, si taglia solo l'elenco dei top errori.
+                logs = dict(logs)
+                logs["top_errors"] = _cap(
+                    "logs.top_errors", logs["top_errors"], MAX_TOP_ERRORS
+                )
+            result["logs"] = logs
         if want_all or "updates" in sections:
-            result["updates"] = self._snapshot_data["updates_available"]
+            result["updates"] = _cap(
+                "updates", self._snapshot_data["updates_available"], MAX_UPDATES
+            )
         if want_all or "system" in sections:
+            # Dizionario a chiavi fisse (versione, stato): non cresce, non si taglia.
             result["system"] = self._snapshot_data["system_info"]
+        if want_all or "system_health" in sections:
+            # Lettura difensiva: il file su disco puo' essere stato scritto da
+            # una versione precedente o modificato a mano.
+            health = self._snapshot_data.get("system_health")
+            if isinstance(health, dict) and health:
+                if capped and len(health) > MAX_SYSTEM_HEALTH_DOMAINS:
+                    truncated["system_health"] = {
+                        "shown": MAX_SYSTEM_HEALTH_DOMAINS,
+                        "total": len(health),
+                    }
+                    health = dict(list(health.items())[:MAX_SYSTEM_HEALTH_DOMAINS])
+                result["system_health"] = health
+        if want_all or "supervisor" in sections:
+            supervisor = self._snapshot_data.get("supervisor")
+            if isinstance(supervisor, dict) and supervisor:
+                supervisor = dict(supervisor)
+                supervisor["addons"] = _cap(
+                    "supervisor.addons", supervisor.get("addons", []), MAX_ADDONS
+                )
+                supervisor["updates"] = _cap(
+                    "supervisor.updates",
+                    supervisor.get("updates", []),
+                    MAX_SUPERVISOR_UPDATES,
+                )
+                result["supervisor"] = supervisor
+
+        if truncated:
+            result["truncated"] = truncated
         result["last_updated"] = self._snapshot_data.get("last_updated")
         return result

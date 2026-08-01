@@ -41,6 +41,7 @@ from .api.handlers_knowledge import (
 )
 from .api.handlers_gateway_pending import verify_otp, execute_pending, resolve_pending
 from .proxy.health_monitor import HealthMonitor
+from .proxy.supervisor_client import SupervisorClient
 from .proxy.proposal_store import ProposalStore
 from .chatbot_engine import ChatbotEngine
 from .task_engine import TaskEngine
@@ -1187,10 +1188,18 @@ async def _on_startup(app: web.Application) -> None:
     await engine.start()
     app["engine"] = engine
 
+    # Client Supervisor di sola lettura (add-on, disco, aggiornamenti). Su
+    # un'installazione standalone il Supervisor non risponde: ogni lettura
+    # degrada a vuoto e la sezione semplicemente non compare nello snapshot.
+    supervisor_client = SupervisorClient(token=os.environ.get("SUPERVISOR_TOKEN", ""))
+    await supervisor_client.start()
+    app["supervisor_client"] = supervisor_client
+
     health_monitor = HealthMonitor(
         ha_client=ha_client,
         data_path=os.path.join(data_dir, "ha_health.json"),
         scheduler=engine._scheduler,
+        supervisor_client=supervisor_client,
     )
     await health_monitor.start()
     app["health_monitor"] = health_monitor
@@ -2590,6 +2599,8 @@ async def _on_cleanup(app: web.Application) -> None:
         await app["task_engine"].stop()
     await app["engine"].stop()
     await app["ha_client"].stop()
+    if app.get("supervisor_client") is not None:
+        await app["supervisor_client"].stop()
     close_all_stores()
 
 

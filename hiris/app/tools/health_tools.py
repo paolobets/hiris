@@ -10,8 +10,14 @@ GET_HA_HEALTH_TOOL_DEF = {
         "'integrations' (config entries with errors), "
         "'logs' (error log summary with top errors), "
         "'updates' (available updates for HA core and integrations), "
-        "'system' (HA version, config state). "
-        "Use 'all' to include everything. After showing the report, suggest "
+        "'system' (HA version, config state), "
+        "'system_health' (native per-integration health: database, cloud, ...), "
+        "'supervisor' (add-on states, host disk space, available updates for "
+        "core/OS/Supervisor/add-ons; absent on installations without Supervisor). "
+        "Use 'all' to include everything. Sections are capped: if the response "
+        "contains 'truncated', that section was shortened -- always tell the user "
+        "the real total reported there ('shown' of 'total'). Read-only: this tool "
+        "cannot start, stop or update anything. After showing the report, suggest "
         "possible fixes for any issues found."
     ),
     "input_schema": {
@@ -21,7 +27,10 @@ GET_HA_HEALTH_TOOL_DEF = {
                 "type": "array",
                 "items": {
                     "type": "string",
-                    "enum": ["unavailable", "integrations", "logs", "updates", "system", "all"],
+                    "enum": [
+                        "unavailable", "integrations", "logs", "updates", "system",
+                        "system_health", "supervisor", "all",
+                    ],
                 },
                 "default": ["all"],
                 "description": "Sections to include. Use ['all'] for the full report.",
