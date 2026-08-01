@@ -142,6 +142,26 @@ def test_health_scan_job_receives_supervisor_client_from_app_source():
     assert 'supervisor_client=app.get("supervisor_client")' in src
 
 
+def test_health_scan_job_reads_notify_option_and_config_from_server_source():
+    """Fix wave 1 (FIX 5b): il job periodico deve passare a run_health_scan()
+    sia `notify_config` (il canale su cui inviare) sia `notify_enabled` letto
+    dall'opzione dell'add-on `brain_notify_high`. Nessun test lo pinnava:
+    cancellando quelle due righe la suite resterebbe verde (tutti i test di
+    run_health_scan passano la configurazione direttamente) e la notifica
+    tornerebbe codice morto in produzione, senza che nulla se ne accorga.
+    Controllo sul sorgente, stessa convenzione inspect.getsource degli altri
+    wiring test di questo file; ristretto al blocco della chiamata perche'
+    `notify_config=notify_config` compare anche altrove in _on_startup."""
+    import inspect
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    inizio = src.index("await run_health_scan(")
+    blocco = src[inizio:inizio + 1500]
+    assert "notify_config=notify_config" in blocco
+    assert 'notify_enabled=env_bool("BRAIN_NOTIFY_HIGH", True)' in blocco
+
+
 def test_coverage_review_runs_before_bridge_enabled_branch():
     """The coverage-review block must sit BEFORE the BRIDGE_ENABLED early
     return in _holistic_reason, so it runs on every holistic pass regardless

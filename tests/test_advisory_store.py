@@ -1,3 +1,5 @@
+import sqlite3
+
 from hiris.app.brain.advisory_store import AdvisoryStore
 
 CHECK_IDS = {"low_battery", "entity_unavailable"}
@@ -137,6 +139,91 @@ def test_reconcile_grave_che_resta_grave_non_e_un_innalzamento(tmp_path):
                     now="2026-07-28T09:00:00Z")
     assert r["updated"] == 1
     assert r["escalated_items"] == []
+    s.close()
+
+
+def test_memoria_notifiche_registra_e_rilegge(tmp_path):
+    """Fix wave 1 (FIX 1): serve una memoria di "per questo problema ho gia'
+    avvisato", altrimenti un valore che sfarfalla attorno a una soglia produce
+    notifiche a ripetizione."""
+    s = AdvisoryStore(str(tmp_path / "a.db"))
+    assert s.notificati_dopo(["disk_space:host"], "2026-07-28T00:00:00Z") == set()
+    s.registra_notifica("disk_space:host", now="2026-07-28T08:00:00Z")
+    assert s.notificati_dopo(["disk_space:host"], "2026-07-28T00:00:00Z") == {
+        "disk_space:host"}
+    s.close()
+
+
+def test_memoria_notifiche_dimentica_le_vecchie(tmp_path):
+    """Il silenzio deve scadere: un problema che si ripresenta giorni dopo e'
+    una notizia nuova, non una ripetizione."""
+    s = AdvisoryStore(str(tmp_path / "a.db"))
+    s.registra_notifica("disk_space:host", now="2026-07-28T08:00:00Z")
+    assert s.notificati_dopo(["disk_space:host"], "2026-07-29T08:00:00Z") == set()
+    s.close()
+
+
+def test_memoria_notifiche_isola_i_riferimenti(tmp_path):
+    """Il silenzio su un problema non deve mai coprirne un altro."""
+    s = AdvisoryStore(str(tmp_path / "a.db"))
+    s.registra_notifica("disk_space:host", now="2026-07-28T08:00:00Z")
+    assert s.notificati_dopo(["disk_space:host", "addon_down:samba"],
+                             "2026-07-28T00:00:00Z") == {"disk_space:host"}
+    assert s.notificati_dopo([], "2026-07-28T00:00:00Z") == set()
+    s.close()
+
+
+def test_memoria_notifiche_sopravvive_alla_riapertura(tmp_path):
+    """Deve stare su disco come il resto dell'archivio: un riavvio dell'add-on
+    non deve far ripartire le notifiche gia' date."""
+    percorso = str(tmp_path / "a.db")
+    s = AdvisoryStore(percorso)
+    s.registra_notifica("addon_down:samba", now="2026-07-28T08:00:00Z")
+    s.close()
+    s2 = AdvisoryStore(percorso)
+    assert s2.notificati_dopo(["addon_down:samba"], "2026-07-28T00:00:00Z") == {
+        "addon_down:samba"}
+    s2.close()
+
+
+def test_memoria_notifiche_riscrive_l_ultima_data(tmp_path):
+    """Notificare di nuovo dopo la scadenza fa ripartire il silenzio da capo."""
+    s = AdvisoryStore(str(tmp_path / "a.db"))
+    s.registra_notifica("addon_down:samba", now="2026-07-28T08:00:00Z")
+    s.registra_notifica("addon_down:samba", now="2026-07-30T08:00:00Z")
+    assert s.notificati_dopo(["addon_down:samba"], "2026-07-29T00:00:00Z") == {
+        "addon_down:samba"}
+    s.close()
+
+
+def test_memoria_notifiche_si_aggiunge_a_un_archivio_esistente(tmp_path):
+    """L'archivio esiste gia' su ogni installazione: aprirlo con lo schema
+    nuovo deve aggiungere la memoria senza perdere le segnalazioni."""
+    percorso = str(tmp_path / "a.db")
+    conn = sqlite3.connect(percorso)
+    conn.executescript("""
+        CREATE TABLE advisories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, check_id TEXT NOT NULL,
+            ts_created TEXT NOT NULL, ts_updated TEXT NOT NULL,
+            severity TEXT NOT NULL, title TEXT NOT NULL, evidence TEXT NOT NULL,
+            suggested_fix TEXT NOT NULL, fix_kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open', source_ref TEXT NOT NULL UNIQUE,
+            resolved_auto INTEGER NOT NULL DEFAULT 0);
+    """)
+    conn.execute(
+        "INSERT INTO advisories(check_id, ts_created, ts_updated, severity, title, "
+        "evidence, suggested_fix, fix_kind, status, source_ref, resolved_auto) "
+        "VALUES('low_battery','2026-07-01T00:00:00Z','2026-07-01T00:00:00Z','warn',"
+        "'t','{}','fix','manual','open','low_battery:sensor.a',0)")
+    conn.execute("PRAGMA user_version = 1")
+    conn.commit()
+    conn.close()
+
+    s = AdvisoryStore(percorso)
+    assert [r["source_ref"] for r in s.list()] == ["low_battery:sensor.a"]
+    s.registra_notifica("low_battery:sensor.a", now="2026-07-28T08:00:00Z")
+    assert s.notificati_dopo(["low_battery:sensor.a"], "2026-07-28T00:00:00Z") == {
+        "low_battery:sensor.a"}
     s.close()
 
 

@@ -22,7 +22,17 @@ CREATE TABLE IF NOT EXISTS advisories (
     resolved_auto INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_adv_status ON advisories(status, ts_updated DESC);
+CREATE TABLE IF NOT EXISTS advisory_notifications (
+    source_ref  TEXT PRIMARY KEY,
+    ts_notified TEXT NOT NULL
+);
 """
+
+# Versione dello schema. La 2 aggiunge `advisory_notifications`, la memoria di
+# "per questo problema ho gia' avvisato": pura aggiunta, nessuna trasformazione
+# di dati, quindi il `CREATE TABLE IF NOT EXISTS` qui sopra basta sia per un
+# archivio nuovo sia per uno gia' esistente e non serve alcuna migrazione.
+_VERSIONE_SCHEMA = 2
 
 _SETTABLE = frozenset({"acknowledged", "dismissed"})
 
@@ -57,7 +67,7 @@ class AdvisoryStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=_VERSIONE_SCHEMA)
 
     def close(self) -> None:
         with self._lock:
@@ -155,6 +165,50 @@ class AdvisoryStore:
                 self._conn.rollback()
                 raise
         return res
+
+    # ── Memoria delle notifiche gia' inviate ─────────────────────────────
+    # `reconcile` sa dire cosa e' cambiato rispetto alla scansione precedente,
+    # ma non se per quel problema l'utente e' gia' stato avvisato. Senza questa
+    # memoria un valore che oscilla attorno a una soglia (il disco al 10%
+    # libero, un add-on in ciclo di riavvio) torna "nuovo o riaperto" a ogni
+    # giro e produce notifiche a ripetizione. Sta qui, nello stesso archivio
+    # delle segnalazioni, perche' deve sopravvivere ai riavvii come loro.
+
+    def notificati_dopo(self, refs, ts_min: str) -> set:
+        """Quali fra `refs` hanno gia' prodotto una notifica da `ts_min` in poi.
+
+        I timestamp sono ISO UTC a lunghezza fissa, quindi il confronto
+        lessicale di SQLite coincide con quello cronologico. La chiave e' il
+        riferimento di deduplica: il silenzio su un problema non copre mai un
+        problema diverso.
+        """
+        elenco = [r for r in (refs or []) if r]
+        if not elenco:
+            return set()
+        segnaposto = ",".join("?" * len(elenco))
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT source_ref FROM advisory_notifications "
+                f"WHERE ts_notified >= ? AND source_ref IN ({segnaposto})",
+                [ts_min, *elenco],
+            ).fetchall()
+        return {r["source_ref"] for r in rows}
+
+    def registra_notifica(self, source_ref: str, *, now: str | None = None) -> None:
+        """Annota che per questo riferimento e' partita una notifica.
+
+        Una riga per riferimento, riscritta a ogni nuova notifica: il periodo
+        di silenzio riparte dall'ultima volta che l'utente e' stato avvisato.
+        """
+        if not source_ref:
+            return
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO advisory_notifications(source_ref, ts_notified) "
+                "VALUES(?,?)",
+                (source_ref, now or _now_iso()),
+            )
+            self._conn.commit()
 
     def list(self, *, status: str | None = None) -> list[dict]:
         with self._lock:
