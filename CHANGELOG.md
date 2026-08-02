@@ -17,7 +17,11 @@ coperto finché non sei tu a chiedere di vederlo.
 
 **Se hai usato «ricordati che…» in passato, quei dati sono ancora lì.** Non sono
 andati persi: erano solo in attesa di un'approvazione che non potevi dare. Apri
-la Memoria e li trovi ad aspettarti.
+la Memoria e li trovi ad aspettarti. Alcuni di quei ricordi erano stati salvati
+senza l'indice che serve a ritrovarli: approvarli ora lo calcola, così
+«approvato» significa davvero «richiamabile». Se in quel momento l'indice non si
+può calcolare, l'approvazione **te lo dice e non avviene**, invece di lasciarti
+un elemento approvato e muto: riprova quando il servizio è di nuovo disponibile.
 
 Un caso restava scoperto anche con la coda: se HIRIS non ha un modo per indicizzare
 il testo (nessun servizio di embedding configurato, o momentaneamente fuori uso),
@@ -51,11 +55,16 @@ quello da cui HIRIS se n'è accorto.
 **I modelli preconfigurati** dei Chatbot (Energia, Sicurezza, Presenza, Clima,
 Irrigazione) istruivano il modello a usare uno strumento che non esiste più: ogni
 bot creato da un modello sprecava un tentativo a vuoto. Ora citano solo strumenti
-reali.
+reali, e reali su **entrambi** i modi di chattare — con la tua chiave e con
+l'abbonamento — che non hanno gli stessi strumenti a disposizione. Dove uno
+strumento esiste solo da una parte (le previsioni meteo), il testo dice cosa fare
+quando non c'è.
 
 Sotto il cofano, infine, la **Sentinella non si interrompe più** su una risposta
 del modello di forma inattesa: ricade sul comportamento prudente previsto invece
-di fermare il giro di sorveglianza.
+di fermare il giro di sorveglianza, e nemmeno quando il modello scrive come testo
+il numero di minuti dopo cui rispegnere un dispositivo — prima quel dettaglio
+costava la proposta e la notifica insieme.
 
 ## [1.1.0-beta.14] — Le letture dal gateway remoto hanno un perimetro (2026-08-01)
 

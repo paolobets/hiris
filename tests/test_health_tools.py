@@ -42,6 +42,22 @@ def test_tool_def_enum_include_le_sezioni_nuove():
     assert "truncated" in descrizione
 
 
+def test_la_descrizione_non_promette_il_sottoinsieme_come_invariante():
+    # Le segnalazioni del Brain e la sezione 'unavailable' derivano dallo stesso
+    # fatto, ma sono lette in momenti diversi e le segnalazioni sono persistite:
+    # un'entita' rientrata esce subito dall'elenco in tempo reale e resta
+    # segnalata fino alla scansione successiva. In quella finestra il
+    # sottoinsieme non vale, e un "always" scritto da noi fa riferire al modello
+    # una cosa falsa con sicurezza. La relazione va descritta, non promessa.
+    descrizione = GET_HA_HEALTH_TOOL_DEF["description"]
+    assert "always a subset" not in descrizione
+    # ...ma la relazione resta detta, altrimenti si e' solo tolta informazione.
+    assert "subset" in descrizione
+    # ...e la finestra in cui non vale e' dichiarata, con il rimedio: guardare
+    # la sezione in tempo reale prima di dire all'utente che e' ancora giu'.
+    assert "next scan" in descrizione
+
+
 def test_get_ha_health_no_monitor_returns_error():
     result = get_ha_health(None, sections=["all"])
     assert "error" in result

@@ -117,14 +117,24 @@ class KnowledgeStore:
             self._conn.commit()
             return cur.lastrowid or 0
 
-    def get_item(self, item_id: int) -> dict | None:
+    def get_item(self, item_id: int, owner: str | None = None) -> dict | None:
+        """L'elemento, o None se non esiste (o, con `owner`, se appartiene a un
+        altro owner: stesso contratto di scoping di `approve()`).
+
+        Il vettore non esce mai da qui -- e' un blob, non un dato da mostrare --
+        ma la sua PRESENZA si', come `has_embedding`: la ricerca filtra anche su
+        `embedding IS NOT NULL`, quindi "approvato" e "richiamabile" non
+        coincidono e chi approva deve poterlo sapere."""
         with self._mu:
+            if owner is not None and not self._owner_allowed(item_id, owner):
+                return None
             row = self._conn.execute(
                 "SELECT * FROM knowledge_items WHERE id=?", (item_id,)
             ).fetchone()
         if row is None:
             return None
         d = dict(row)
+        d["has_embedding"] = d.get("embedding") is not None
         d.pop("embedding", None)
         try:
             d["data"] = json.loads(d["data"])
@@ -163,20 +173,35 @@ class KnowledgeStore:
             out.append(d)
         return out
 
-    def approve(self, item_id: int, owner: str | None = None) -> bool:
+    def approve(self, item_id: int, owner: str | None = None,
+                embedding: list[float] | None = None) -> bool:
         """Approve a pending item. If `owner` is given, the item is only
         approved when its own owner matches `owner` or is 'home' (shared) --
         a cross-owner id is rejected (returns False, no mutation). `owner`
         omitted (None) preserves the pre-fix unscoped behavior for internal
         callers (brain_trace, history_digest) that manage their own rows and
-        don't carry a caller identity."""
+        don't carry a caller identity.
+
+        `embedding` scrive il vettore INSIEME allo stato, in un solo UPDATE: e'
+        il caso degli elementi salvati da una versione precedente, che finivano
+        in coda senza vettore. Approvarli cambiando il solo stato li lasciava
+        irraggiungibili (la ricerca filtra anche su `embedding IS NOT NULL`),
+        cioe' approvati e muti. Un solo statement perche' non esista uno stato
+        intermedio "approvato ma non indicizzato"."""
         with self._mu:
             if owner is not None and not self._owner_allowed(item_id, owner):
                 return False
-            self._conn.execute(
-                "UPDATE knowledge_items SET status='approved', updated_at=? WHERE id=?",
-                (self._now(), item_id),
-            )
+            if embedding:
+                self._conn.execute(
+                    "UPDATE knowledge_items SET status='approved', embedding=?,"
+                    " updated_at=? WHERE id=?",
+                    (vec_to_blob(embedding), self._now(), item_id),
+                )
+            else:
+                self._conn.execute(
+                    "UPDATE knowledge_items SET status='approved', updated_at=? WHERE id=?",
+                    (self._now(), item_id),
+                )
             self._conn.commit()
             return True
 
