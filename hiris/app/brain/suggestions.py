@@ -14,6 +14,7 @@ import math
 import threading
 from typing import Callable, Optional
 
+from ..proxy.ha_client import is_automation_config
 from ..storage import connect, init_schema
 from ..watcher.detectors import DETECTORS
 from ..watcher.policy import (
@@ -193,7 +194,18 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
             if row is not None:
                 applied.append(row)
         elif kind == "management":
-            create_proposal(config)
+            # Consolidamento 1.2: l'unica proposta con cui un suggerimento di
+            # gestione puo' essere applicato e' un'automazione HA, e il suo
+            # apply scrive il config in Home Assistant. Quindi si inoltra a
+            # create_proposal SOLO cio' che e' davvero una configurazione di
+            # automazione (stessa forma minima che pretende create_automation):
+            # altrimenti si consegnerebbe all'utente un pulsante "attiva" che
+            # scrive in HA un'automazione senza trigger ne' azioni.
+            # Il suggerimento scartato non va perso: viene registrato lo stesso
+            # e resta visibile fra i "Suggerimenti del Brain", che sono la sua
+            # superficie propria.
+            if is_automation_config(config):
+                create_proposal(config)
             store.record(kind, title, rationale, config, "proposed", None)
         # unknown kind -> skip silently
     return applied

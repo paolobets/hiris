@@ -1602,6 +1602,7 @@ async def _on_startup(app: web.Application) -> None:
     from .watcher.executor import execute
     from .watcher.off_task import build_off_task
     from .watcher.signals import WakeEvent
+    from .watcher.sentinel_proposal import build_sentinel_script_proposal
     from .tools.notify_tools import send_notification
     from .tools.proposal_tools import create_automation_proposal
     import time as _time
@@ -1798,12 +1799,30 @@ async def _on_startup(app: web.Application) -> None:
                 )
 
     async def _propose(decision, wake):
-        await create_automation_proposal(
-            proposal_store, proposal_type="ha_automation",
-            name=f"Sentinella: {wake.signal_kind} {wake.entity_id}",
-            description=decision.message,
-            config={"suggested_action": decision.action},
+        # Consolidamento 1.2: cio' che la Sentinella propone e' UNA chiamata di
+        # servizio (rimedio una-tantum), non una regola permanente. Prima
+        # veniva salvata come proposta 'ha_automation' con dentro
+        # {"suggested_action": ...}: all'approvazione finiva in HA come
+        # automazione senza trigger ne' azioni. Ora la proposta e' di tipo
+        # ha_script e contiene una vera config di script — vedi
+        # watcher/sentinel_proposal.py per il perche' non un'automazione.
+        record = build_sentinel_script_proposal(
+            decision.action,
+            signal_kind=wake.signal_kind, entity_id=wake.entity_id,
+            message=decision.message,
             routing_reason="Proposta dalla Sentinella (autonomia graduata)")
+        if record is None:
+            # Azione non confezionabile: meglio la sola allerta che una
+            # proposta che promette un'applicazione impossibile.
+            logger.warning("sentinel propose: azione non confezionabile come script "
+                           "(%s su %s) -> ripiego sulla notifica",
+                           wake.signal_kind, wake.entity_id)
+            await _notify(decision.message, title="HIRIS Sentinella")
+            return
+        try:
+            await proposal_store.save(record)
+        except Exception:
+            logger.exception("sentinel propose: salvataggio della proposta fallito")
 
     async def _on_wake(wake):
         decision = None
@@ -2230,9 +2249,15 @@ async def _on_startup(app: web.Application) -> None:
                     logger.warning("reasoning capture failed", exc_info=True)
 
                 def _mk_proposal(c):
+                    # Consolidamento 1.2: apply_suggestions inoltra qui SOLO i
+                    # suggerimenti 'management' che sono davvero una config di
+                    # automazione HA (is_automation_config), quindi il tipo
+                    # dichiarato e il contenuto coincidono e l'apply scrive in
+                    # HA qualcosa che funziona. Il nome leggibile di
+                    # un'automazione e' `alias`, non `name`.
                     return _spawn(create_automation_proposal(
                         proposal_store, proposal_type="ha_automation",
-                        name=str(c.get("name") or "Brain coverage-review"),
+                        name=str(c.get("alias") or c.get("name") or "Brain coverage-review"),
                         description=str(c.get("description") or ""),
                         config=c, routing_reason="brain coverage-review"),
                         name="create_automation_proposal")

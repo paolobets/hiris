@@ -19,6 +19,14 @@ _AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 # comporlo in un URL.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
+# Chiavi che identificano la forma minima di un'automazione Home Assistant.
+# Fino a HA 2024.10 i nomi erano al singolare (trigger/condition/action); da li'
+# in poi i nomi canonici sono al plurale, ma i singolari restano accettati per
+# retrocompatibilita' — quindi vanno riconosciuti entrambi, o si rifiuterebbero
+# automazioni legittime scritte nell'una o nell'altra forma.
+_TRIGGER_KEYS = ("triggers", "trigger")
+_ACTION_KEYS = ("actions", "action")
+
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
 # Il logbook di una settimana puo' contenere decine di migliaia di voci.
@@ -54,6 +62,35 @@ def _truncate(text: str, cap: int) -> str:
     if cap <= len(_TRUNC_MARK):
         return text[:max(0, cap)]
     return text[:cap - len(_TRUNC_MARK)] + _TRUNC_MARK
+
+
+def is_automation_config(config: object) -> bool:
+    """True se `config` ha la forma minima di un'automazione Home Assistant.
+
+    Home Assistant richiede due sole cose perche' un'automazione sia
+    un'automazione: i trigger e le azioni. Tutto il resto (alias, description,
+    mode, id, conditions) e' facoltativo. Fa eccezione l'automazione costruita
+    su un blueprint, che non ha trigger ne' azioni proprie — li eredita dal
+    blueprint — e porta solo `use_blueprint` (path + input): e' una terza forma
+    legittima e va accettata.
+
+    Il controllo e' volutamente sulla STRUTTURA e non sul CONTENUTO: HA accetta
+    la stessa cosa scritta in piu' modi (singolare o plurale, un mapping singolo
+    al posto di una lista, liste vuote) e imitare la sua validazione qui
+    significherebbe rifiutare automazioni valide. Basta distinguere una
+    configurazione di automazione da un dizionario qualsiasi: senza queste
+    chiavi non c'e' nulla che possa scattare ne' nulla che possa succedere, e
+    scriverla in HA produrrebbe un'automazione inerte (o un errore) dopo che
+    l'utente ha premuto "attiva".
+    """
+    if not isinstance(config, dict) or not config:
+        return False
+    blueprint = config.get("use_blueprint")
+    if isinstance(blueprint, dict) and blueprint:
+        return True
+    has_trigger = any(config.get(k) is not None for k in _TRIGGER_KEYS)
+    has_action = any(config.get(k) is not None for k in _ACTION_KEYS)
+    return has_trigger and has_action
 
 
 class HAClient:
@@ -123,8 +160,14 @@ class HAClient:
                                 automation_id: str | None = None) -> dict:
         """Create/replace a UI-managed automation via HA's config API, then reload.
         Returns {"ok": True, "id": <id>} or {"error": ...}. Human-gated upstream."""
-        if not isinstance(config, dict) or not config:
-            return {"error": "config automazione vuota o non valida"}
+        # Consolidamento 1.2: non basta "un dizionario non vuoto". Un config
+        # senza trigger ne' azioni diventava in HA un'automazione inerte dopo
+        # che l'utente aveva approvato la proposta — la stessa promessa non
+        # mantenuta del bug di luglio, con il tipo giusto e il contenuto
+        # sbagliato. Si rifiuta qui, prima di coniare l'id e di scrivere.
+        if not is_automation_config(config):
+            return {"error": ("config automazione non valida: servono i trigger e le "
+                              "azioni (oppure use_blueprint)")}
         # Update-in-place vs create: HA identifies a UI automation by the {id}
         # in the config URL. To MODIFY an existing automation we must reuse its
         # id — take it from the explicit param, else from the config's own "id"

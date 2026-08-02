@@ -108,12 +108,35 @@ def test_valid_threshold_still_applies_unchanged(tmp_path, store):
     assert pol["detectors"]["power"]["max_watt"] == 2500
 
 
+_MANAGEMENT_AUTOMATION = {"alias": "Auto-off bagno",
+                          "trigger": [{"platform": "state", "entity_id": "light.bagno"}],
+                          "action": [{"service": "light.turn_off",
+                                      "target": {"entity_id": "light.bagno"}}]}
+
+
 def test_cap_and_management(tmp_path, store):
+    """Un suggerimento 'management' che porta davvero una config di automazione
+    viene inoltrato a create_proposal (la proposta ha_automation e' applicabile)."""
     proposed = []
-    suggs = [{"kind":"management","title":"Auto-off bagno","rationale":"r","config":{"x":1}}]
+    suggs = [{"kind": "management", "title": "Auto-off bagno", "rationale": "r",
+              "config": _MANAGEMENT_AUTOMATION}]
     apply_suggestions(suggs, data_dir=str(tmp_path), store=store, inventory_ids=set(),
-                      current_config=load_policy(str(tmp_path)), create_proposal=lambda c: proposed.append(c), cap=5)
-    assert proposed == [{"x": 1}] and store.list()[0]["status"] == "proposed"
+                      current_config=load_policy(str(tmp_path)),
+                      create_proposal=lambda c: proposed.append(c), cap=5)
+    assert proposed == [_MANAGEMENT_AUTOMATION] and store.list()[0]["status"] == "proposed"
+
+
+def test_management_without_automation_config_is_recorded_but_not_proposed(tmp_path, store):
+    """Consolidamento 1.2: un config che non e' un'automazione non puo' diventare
+    una proposta ha_automation (l'apply la scriverebbe in HA senza trigger ne'
+    azioni). Resta registrato fra i suggerimenti, che sono la sua superficie."""
+    proposed = []
+    suggs = [{"kind": "management", "title": "Idea", "rationale": "r", "config": {"x": 1}}]
+    apply_suggestions(suggs, data_dir=str(tmp_path), store=store, inventory_ids=set(),
+                      current_config=load_policy(str(tmp_path)),
+                      create_proposal=lambda c: proposed.append(c), cap=5)
+    assert proposed == []
+    assert store.list()[0]["config"] == {"x": 1}
 
 def test_undo_routes_brain_tune_source_ref_to_value_restore(tmp_path, store):
     """Slice 6 Task 5B: a suggestion row whose delta.source_ref starts with
