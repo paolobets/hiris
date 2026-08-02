@@ -190,9 +190,15 @@ nel Task 2 della SP-4 Fase B insieme ai puntelli `ensureLegacy`/
 
 `hiris/app/static/chat/` — pagina chat standalone (`index.html`), JS
 inline estratto in moduli (Task 8): `state.js`, `messages.js`, `agents.js`,
-`send.js`, `theme.js`, `tasks.js`, `onboarding.js`, `sidebar.js`,
-`keyboard.js`, `main.js` (più `static/config/api.js`, condiviso con il
-Designer). `pollChatReply` resta duplicato fra questa pagina e
+`send.js`, `theme.js`, `tasks.js`, `proposals.js`, `knowledge.js`,
+`knowledge-core.js`, `onboarding.js`, `sidebar.js`, `keyboard.js`,
+`main.js` (più `static/config/api.js`, condiviso con il Designer). Le tre
+inbox della chat — **Proposte**, **Task** e **Memoria** — sono pannelli
+mutuamente esclusivi; `knowledge.js` (vista) è separato da
+`knowledge-core.js` (rete, senza DOM) per la stessa ragione di
+`config/proposals-core.js`: una vista che eredita il DOM di un'altra
+trasforma un'operazione riuscita in un falso "Errore di rete".
+`pollChatReply` resta duplicato fra questa pagina e
 `hiris-chat-card.js` (la card si deploya via `/local/hiris/`, non può
 condividere uno `<script src>` con l'add-on).
 

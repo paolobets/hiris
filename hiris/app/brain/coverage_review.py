@@ -12,7 +12,11 @@ COVERAGE_REVIEW_SYSTEM = (
     "di gestione. Proponi SOLO entita' presenti nell'inventario e SOLO cio' che NON e' "
     "gia' configurato. Concludi SEMPRE con un blocco ```json``` con "
     "{suggestions:[{kind:'coverage'|'management', title, rationale, config}]}. "
-    "Per coverage, config e' una voce pronta, es. {detector:'fridge_temp', entity:'sensor.x', max_temp_c:8}."
+    "Per coverage, config e' una voce pronta, es. {detector:'fridge_temp', entity:'sensor.x', max_temp_c:8}. "
+    "Per management, config DEVE essere una configurazione di automazione Home Assistant "
+    "completa e applicabile (alias, trigger/triggers, action/actions): e' cio' che verra' "
+    "scritto in Home Assistant se l'utente approva. Se non hai un'automazione completa da "
+    "proporre, usa kind 'coverage' oppure ometti il suggerimento."
 )
 _JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 

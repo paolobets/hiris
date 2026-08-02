@@ -213,8 +213,9 @@ async def _notifica_le_gravi(ha_client, esito: dict, notify_config: dict, *,
 
 
 async def run_health_scan(*, ha_client, entity_cache, tiers, entity_tiers, store,
-                          now=None, unavailable_days: int = 2,
-                          battery_pct: int = 15, supervisor_client=None,
+                          now=None, unavailable_days: int = hc.GIORNI_NON_DISPONIBILE,
+                          battery_pct: int = hc.SOGLIA_BATTERIA_PCT,
+                          supervisor_client=None,
                           notify_config: dict | None = None,
                           notify_enabled: bool = True) -> dict:
     """Scansione di sola lettura: raccoglie i dati e riconcilia le segnalazioni.

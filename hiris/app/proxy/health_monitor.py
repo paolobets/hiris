@@ -7,6 +7,14 @@ import threading
 from datetime import datetime, timezone
 from typing import Any
 
+# Il fatto "questa entita' non risponde" ha una sola derivazione, e vive
+# accanto al controllo del Brain che ne fa una segnalazione
+# (brain/health_checks.entita_non_disponibili). Qui la si usa per lo snapshot
+# istantaneo: stessa regola, stessa forma delle voci, stesso `since`. Prima le
+# due liste nascevano da due calcoli distinti e potevano contraddirsi sulla
+# stessa entita' -- vedi il docstring di `check_entity_unavailable`.
+from ..brain.health_checks import entita_non_disponibili
+
 logger = logging.getLogger(__name__)
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
@@ -58,6 +66,13 @@ class HealthMonitor:
     - WebSocket state_changed → unavailable entities in real-time
     - APScheduler ogni 30 min → full refresh di tutte le sezioni
     - Persistenza JSON su disco → sopravvive ai restart
+
+    La sezione `unavailable` risponde a «cosa non risponde ADESSO». Non e' la
+    stessa domanda a cui rispondono le segnalazioni del Brain
+    (`brain/health_checks.check_entity_unavailable`), che tengono solo le
+    assenze che durano da giorni -- ma il fatto sotto le due letture e' uno
+    solo: entrambe passano da `entita_non_disponibili`, e le segnalazioni sono
+    sempre un sottoinsieme di questa sezione.
     """
 
     def __init__(
@@ -131,6 +146,21 @@ class HealthMonitor:
         """Full refresh di tutte le sezioni dalla HA API."""
         updated: dict = {"last_updated": datetime.now(timezone.utc).strftime(_TS_FMT)}
 
+        # Risemina della lista di chi non risponde adesso, dagli stati veri.
+        # Serve in due direzioni che il solo ascolto degli eventi non copre:
+        # una entita' gia' caduta prima che HIRIS partisse non ha mai generato
+        # un evento (e mancava dalla lista mentre il Brain la segnalava), e una
+        # rientrata mentre HIRIS era fermo puo' non cambiare piu' stato (e
+        # restava nella lista per sempre). L'assegnazione e' immediata, non
+        # rimandata a `updated`, cosi' un evento WebSocket che arrivasse
+        # durante gli await successivi non verrebbe sovrascritto.
+        try:
+            stati = await self._ha.get_states([])
+            self._snapshot_data["unavailable_entities"] = entita_non_disponibili(stati)
+        except Exception as exc:
+            # Una lettura fallita non cancella cio' che si sa gia'.
+            logger.debug("HealthMonitor: get_states skipped (%s)", exc)
+
         try:
             updated["error_log_summary"] = await self._ha.get_error_log()
         except Exception as exc:
@@ -184,24 +214,46 @@ class HealthMonitor:
         logger.debug("HealthMonitor: snapshot refreshed")
 
     def on_state_changed(self, event_data: dict) -> None:
-        """Callback chiamato da ha_client._ws_loop per ogni state_changed."""
+        """Callback chiamato da ha_client._ws_loop per ogni state_changed.
+
+        Tiene aggiornata fra un refresh e l'altro la lista di chi non risponde
+        adesso. La voce la costruisce `entita_non_disponibili`, la stessa
+        derivazione usata dal refresh e dal controllo del Brain: cosi' `since`
+        e' sempre l'istante di Home Assistant e non quello in cui HIRIS ha
+        visto l'evento (che dopo un riavvio farebbe sembrare appena avvenuta
+        una caduta vecchia di giorni).
+        """
         entity_id = event_data.get("entity_id", "")
-        new_state = (event_data.get("new_state") or {}).get("state", "")
+        if not entity_id:
+            return
+        stato = event_data.get("new_state")
+        # `new_state` assente significa entita' rimossa: nessuna voce, quindi
+        # esce dalla lista come una rientrata.
+        voci = entita_non_disponibili(
+            [{**stato, "entity_id": entity_id}] if isinstance(stato, dict) else []
+        )
         unavailable = self._snapshot_data["unavailable_entities"]
 
-        if new_state in ("unavailable", "unknown"):
-            if not any(e["entity_id"] == entity_id for e in unavailable):
-                domain = entity_id.split(".")[0] if "." in entity_id else ""
-                unavailable.append({
-                    "entity_id": entity_id,
-                    "domain": domain,
-                    "since": datetime.now(timezone.utc).strftime(_TS_FMT),
-                })
+        if voci:
+            voce = voci[0]
+            esistente = next(
+                (e for e in unavailable
+                 if isinstance(e, dict) and e.get("entity_id") == entity_id),
+                None,
+            )
+            if esistente is None:
+                unavailable.append(voce)
                 logger.debug("HealthMonitor: %s → unavailable", entity_id)
+            elif voce["since"] and voce["since"] != esistente.get("since"):
+                # L'entita' e' ricaduta senza che si sia visto il rientro (o la
+                # voce arrivava da una versione precedente, senza `since`
+                # attendibile): si aggiorna, non si duplica.
+                esistente.update(voce)
         else:
             before = len(unavailable)
             self._snapshot_data["unavailable_entities"] = [
-                e for e in unavailable if e["entity_id"] != entity_id
+                e for e in unavailable
+                if not isinstance(e, dict) or e.get("entity_id") != entity_id
             ]
             if len(self._snapshot_data["unavailable_entities"]) < before:
                 logger.debug("HealthMonitor: %s → recovered", entity_id)

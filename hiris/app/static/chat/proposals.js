@@ -256,18 +256,21 @@
     if (inputArea) inputArea.style.display = isProp ? 'none' : '';
     var tc = document.getElementById('turn-counter'); if (tc) tc.style.display = isProp ? 'none' : '';
     var se = document.getElementById('session-ended-msg'); if (se) se.style.display = isProp ? 'none' : '';
-    /* mutua esclusione col pannello Task */
+    /* mutua esclusione coi pannelli Task e Memoria */
     var taskPanel = document.getElementById('task-panel'); if (taskPanel) taskPanel.style.display = 'none';
+    var kbPanel = document.getElementById('knowledge-panel'); if (kbPanel) kbPanel.style.display = 'none';
     var panel = document.getElementById('proposals-panel');
     if (panel) panel.style.display = isProp ? 'flex' : 'none';
     var nav = document.getElementById('nav-proposals');
     if (nav) nav.classList.toggle('active', isProp);
     var mobileBtn = document.getElementById('mobile-proposals-btn');
     if (mobileBtn) mobileBtn.classList.toggle('active', isProp);
-    /* disattiva l'evidenza nav dei Task quando si apre Proposte */
+    /* disattiva l'evidenza nav di Task e Memoria quando si apre Proposte */
     if (isProp) {
       var navTasks = document.getElementById('nav-tasks'); if (navTasks) navTasks.classList.remove('active');
       var mobileTask = document.getElementById('mobile-task-btn'); if (mobileTask) mobileTask.classList.remove('active');
+      var navKb = document.getElementById('nav-knowledge'); if (navKb) navKb.classList.remove('active');
+      var mobileKb = document.getElementById('mobile-knowledge-btn'); if (mobileKb) mobileKb.classList.remove('active');
     }
     var header = document.getElementById('proposals-panel-header');
     if (header) header.style.display = (isProp && window.innerWidth <= 720) ? 'flex' : 'none';

@@ -60,11 +60,14 @@
     document.getElementById('input-area').style.display = isTask ? 'none' : '';
     var tc = document.getElementById('turn-counter'); if (tc) tc.style.display = isTask ? 'none' : '';
     var se = document.getElementById('session-ended-msg'); if (se) se.style.display = isTask ? 'none' : '';
-    /* mutua esclusione col pannello Proposte (stessa area overlay) */
+    /* mutua esclusione coi pannelli Proposte e Memoria (stessa area overlay) */
     var propPanel = document.getElementById('proposals-panel'); if (propPanel) propPanel.style.display = 'none';
+    var kbPanel = document.getElementById('knowledge-panel'); if (kbPanel) kbPanel.style.display = 'none';
     if (isTask) {
       var navProp = document.getElementById('nav-proposals'); if (navProp) navProp.classList.remove('active');
       var mobileProp = document.getElementById('mobile-proposals-btn'); if (mobileProp) mobileProp.classList.remove('active');
+      var navKb = document.getElementById('nav-knowledge'); if (navKb) navKb.classList.remove('active');
+      var mobileKb = document.getElementById('mobile-knowledge-btn'); if (mobileKb) mobileKb.classList.remove('active');
     }
     document.getElementById('task-panel').style.display = isTask ? 'flex' : 'none';
     var navTasks = document.getElementById('nav-tasks');

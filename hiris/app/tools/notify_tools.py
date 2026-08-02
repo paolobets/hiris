@@ -17,24 +17,61 @@ logger = logging.getLogger(__name__)
 _PUSH_CHANNEL = "HIRIS"
 _SUBJECT_MIN_CHARS = 160
 
+# Collegamento proprio della Companion (documentato in
+# companion.home-assistant.io/docs/integrations/url-handler/): apre l'app e
+# naviga al percorso della web app di Home Assistant. `?server=default` usa il
+# primo server disponibile, cosi' chi ne ha piu' di uno non si vede chiedere
+# quale a ogni notifica.
+_DEEPLINK_PREFIX = "homeassistant://navigate"
+_DEEPLINK_SERVER = "server=default"
+
+
+def build_app_deeplink(click_path: str | None) -> str | None:
+    """Trasforma un percorso del frontend nel collegamento della Companion.
+
+    `/hassio/ingress/<slug>` diventa
+    `homeassistant://navigate/hassio/ingress/<slug>?server=default`.
+
+    Serve perche' nei campi `url` (iOS) e `clickAction` (Android) i soli
+    percorsi relativi accettati sono quelli delle dashboard Lovelace: la
+    Companion iOS non sa navigare `/hassio/ingress/<slug>`, lo passa al sistema
+    operativo e ne esce il selettore "salva il sito" con pagina vuota. Il
+    collegamento invece apre l'app e naviga dentro il frontend, senza dipendere
+    dall'indirizzo esterno di Home Assistant.
+
+    Ritorna None se il percorso non e' ricavabile (Supervisor irraggiungibile,
+    slug assente), cosi' il chiamante omette del tutto il collegamento."""
+    path = (click_path or "").strip()
+    if not path:
+        return None
+    if not path.startswith("/"):
+        path = "/" + path
+    separatore = "&" if "?" in path else "?"
+    return f"{_DEEPLINK_PREFIX}{path}{separatore}{_DEEPLINK_SERVER}"
+
 
 def build_push_data(config: dict, message: str) -> dict:
     """Payload `data` extra per un push mobile (`ha_push`).
 
-    - deep-link sul TAP del corpo alla UI ingress di HIRIS
+    - collegamento sul TAP del corpo alla UI ingress di HIRIS
       (`config["ingress_click_path"]` = `/hassio/ingress/<slug>`), cosi' la
-      notifica apre HIRIS e non la Dashboard home. `clickAction` per Android,
-      `url` per iOS (la Companion legge il campo della propria piattaforma).
+      notifica apre HIRIS e non la Dashboard home. La Companion legge il campo
+      della propria piattaforma e i due campi portano forme diverse:
+      `clickAction` (Android) il percorso relativo, che la Companion Android
+      risolve nativamente nel frontend; `url` (iOS) il collegamento
+      `homeassistant://navigate/...`, l'unica forma che la Companion iOS sa
+      aprire per un percorso che non e' una dashboard Lovelace.
     - un canale dedicato "HIRIS" (Android) sempre presente.
     - per il testo lungo, `subject` con il messaggio (Android, corpo leggibile).
 
-    Ritorna sempre almeno `{"channel": ...}`; senza click path il deep-link
+    Ritorna sempre almeno `{"channel": ...}`; senza click path il collegamento
     viene semplicemente omesso (nessuna regressione)."""
     d: dict = {"channel": _PUSH_CHANNEL}
     click = (config or {}).get("ingress_click_path")
-    if click:
+    deeplink = build_app_deeplink(click)
+    if click and deeplink:
         d["clickAction"] = click
-        d["url"] = click
+        d["url"] = deeplink
     if message and len(message) > _SUBJECT_MIN_CHARS:
         d["subject"] = message
     return d

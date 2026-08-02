@@ -152,16 +152,25 @@ async def apply_ha_config(ha_client: Any, normalized: dict,
     )
 
 
-def build_config_proposal(normalized: dict) -> dict:
-    """Build the ProposalStore record for an MCP-originated creation (pending)."""
+def build_config_proposal(normalized: dict, *, description: str | None = None,
+                          routing_reason: str | None = None) -> dict:
+    """Build the ProposalStore record for a pending HA-config creation.
+
+    I default descrivono l'origine MCP (il primo chiamante). `description` e
+    `routing_reason` permettono a un altro percorso autonomo — oggi la
+    Sentinella, che propone il proprio rimedio come script — di riusare la
+    stessa costruzione del record senza dichiarare un'origine che non e' la sua.
+    """
     kind = normalized["kind"]
     label = _KIND_LABEL[kind]
     return {
         "type": _KIND_PROPOSAL_TYPE[kind],
         "name": normalized["name"],
-        "description": f"{label} '{normalized['name']}' generata via MCP — in attesa di approvazione.",
+        "description": description if description else (
+            f"{label} '{normalized['name']}' generata via MCP — in attesa di approvazione."
+        ),
         "config": normalized,
-        "routing_reason": (
+        "routing_reason": routing_reason if routing_reason else (
             "Richiesta via gateway MCP: la creazione di config HA richiede "
             "l'approvazione dell'operatore nella pagina Proposte di HIRIS."
         ),

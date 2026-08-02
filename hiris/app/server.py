@@ -1602,6 +1602,7 @@ async def _on_startup(app: web.Application) -> None:
     from .watcher.executor import execute
     from .watcher.off_task import build_off_task
     from .watcher.signals import WakeEvent
+    from .watcher.sentinel_proposal import propose_sentinel_script
     from .tools.notify_tools import send_notification
     from .tools.proposal_tools import create_automation_proposal
     import time as _time
@@ -1798,11 +1799,21 @@ async def _on_startup(app: web.Application) -> None:
                 )
 
     async def _propose(decision, wake):
-        await create_automation_proposal(
-            proposal_store, proposal_type="ha_automation",
-            name=f"Sentinella: {wake.signal_kind} {wake.entity_id}",
-            description=decision.message,
-            config={"suggested_action": decision.action},
+        # Consolidamento 1.2: cio' che la Sentinella propone e' UNA chiamata di
+        # servizio (rimedio una-tantum), non una regola permanente. Prima
+        # veniva salvata come proposta 'ha_automation' con dentro
+        # {"suggested_action": ...}: all'approvazione finiva in HA come
+        # automazione senza trigger ne' azioni. Ora la proposta e' di tipo
+        # ha_script e contiene una vera config di script — vedi
+        # watcher/sentinel_proposal.py per il perche' non un'automazione.
+        #
+        # L'esito ritornato e' quello che finisce nella timeline: "propose" solo
+        # se una proposta esiste davvero, "alert" quando si e' ripiegato sulla
+        # notifica (azione non confezionabile o salvataggio fallito).
+        return await propose_sentinel_script(
+            decision, wake,
+            save=proposal_store.save, notify=_notify,
+            notify_title="HIRIS Sentinella",
             routing_reason="Proposta dalla Sentinella (autonomia graduata)")
 
     async def _on_wake(wake):
@@ -2230,9 +2241,15 @@ async def _on_startup(app: web.Application) -> None:
                     logger.warning("reasoning capture failed", exc_info=True)
 
                 def _mk_proposal(c):
+                    # Consolidamento 1.2: apply_suggestions inoltra qui SOLO i
+                    # suggerimenti 'management' che sono davvero una config di
+                    # automazione HA (is_automation_config), quindi il tipo
+                    # dichiarato e il contenuto coincidono e l'apply scrive in
+                    # HA qualcosa che funziona. Il nome leggibile di
+                    # un'automazione e' `alias`, non `name`.
                     return _spawn(create_automation_proposal(
                         proposal_store, proposal_type="ha_automation",
-                        name=str(c.get("name") or "Brain coverage-review"),
+                        name=str(c.get("alias") or c.get("name") or "Brain coverage-review"),
                         description=str(c.get("description") or ""),
                         config=c, routing_reason="brain coverage-review"),
                         name="create_automation_proposal")

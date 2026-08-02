@@ -61,21 +61,77 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
         "Valuta e rispondi con il blocco json richiesto."
     )
 
-def parse_decision(text: str, default_severity: str = "warn") -> Decision:
+VERDICT_ANOMALY = "anomalia"
+VERDICT_FALSE_POSITIVE = "falso_positivo"
+VERDICTS = (VERDICT_ANOMALY, VERDICT_FALSE_POSITIVE)
+
+# Consolidamento 1.4: soglia UNICA per il testo grezzo riportato come
+# messaggio quando non c'e' nulla da interpretare. Prima erano due (400 nel
+# runner, 500 qui) senza alcuna ragione dichiarata. Si tiene la piu' ampia:
+# quel testo e' l'unica traccia che l'utente vede di una risposta che il
+# modello ha sbagliato a formattare, quindi troncare di meno aiuta a capire
+# cosa e' successo. Non e' un parametro perche' nessun chiamante ha bisogno
+# di una soglia propria; il costo di un messaggio piu' lungo e' solo estetico
+# (chi lo consegna a Home Assistant sanifica e ritronca per conto suo).
+FALLBACK_MESSAGE_MAX = 500
+
+
+def parse_decision(text: str, default_severity: str = "warn",
+                   default_verdict: str = VERDICT_ANOMALY) -> Decision:
+    """Legge l'ultimo blocco ```json``` della risposta del modello e ne ricava
+    una Decision. Non solleva mai.
+
+    UNICA implementazione (consolidamento 1.4). Prima ne esisteva una copia in
+    `agent/runner.py` con lo stesso ingresso e la stessa espressione regolare
+    ma la decisione OPPOSTA di fronte al dubbio: una divergenza silenziosa fra
+    due file, non una scelta dichiarata. Ora la scelta e' `default_verdict`, e
+    chi chiama la dichiara.
+
+    `default_verdict` e' il verdetto usato quando la risposta non e'
+    interpretabile: nessun blocco json, json non valido, json che non e' un
+    oggetto, oppure oggetto senza il campo `verdict`. Sono tutti lo stesso
+    caso -- il modello non ha detto cosa pensa -- e vanno trattati uguale.
+    I due percorsi che chiamano questa funzione vogliono l'opposto, ed
+    entrambi hanno ragione:
+
+    - Sentinella in-process (`reason` qui sotto, e gli Agentbot che ci passano
+      sopra): default "anomalia". Sorveglia la casa; un modello che risponde
+      male non deve tradursi in silenzio. Il testo grezzo diventa il messaggio
+      e l'utente viene avvisato. Il costo del dubbio resta una notifica e non
+      un comando, perche' senza `action` l'esecutore (`executor.execute`) puo'
+      solo notificare.
+    - Runner remoto (`agent/runner.py`): default "falso_positivo". Li' la
+      Decisione arriva a HIRIS attraverso la rete e viene applicata da
+      `_execute_decision` (server.py), che e' gia' fail-closed sul verdetto
+      (un verdetto assente o sconosciuto degrada a "falso_positivo" = no-op).
+      Il runner si allinea a monte: se non capisce, non chiede di agire.
+
+    Un `default_verdict` fuori da VERDICTS ricade sul piu' prudente
+    ("falso_positivo"): un valore inatteso non deve poter aprire la strada
+    all'attuazione."""
+    if default_verdict not in VERDICTS:
+        default_verdict = VERDICT_FALSE_POSITIVE
     m = list(_JSON_RE.finditer(text or ""))
     if m:
         try:
             obj = json.loads(m[-1].group(1))
-            return Decision(
-                verdict=str(obj.get("verdict", "anomalia")),
-                severity=str(obj.get("severity", default_severity)),
-                message=str(obj.get("message", "")).strip() or "(nessun messaggio)",
-                action=obj.get("action") if isinstance(obj.get("action"), dict) else None,
-            )
         except (ValueError, TypeError):
-            pass
-    return Decision(verdict="anomalia", severity=default_severity,
-                    message=(text or "").strip()[:500] or "(vuoto)", action=None)
+            obj = None
+        # Il blocco puo' contenere una lista o uno scalare: senza questa
+        # guardia `obj.get` sollevava AttributeError, che non e' fra le
+        # eccezioni catturate -- il ragionatore crashava invece di ricadere
+        # sul fallback.
+        if isinstance(obj, dict):
+            action = obj.get("action")
+            return Decision(
+                verdict=str(obj.get("verdict") or default_verdict),
+                severity=str(obj.get("severity") or default_severity),
+                message=str(obj.get("message", "")).strip() or "(nessun messaggio)",
+                action=action if isinstance(action, dict) else None,
+            )
+    return Decision(verdict=default_verdict, severity=default_severity,
+                    message=(text or "").strip()[:FALLBACK_MESSAGE_MAX] or "(vuoto)",
+                    action=None)
 
 async def reason(wake: WakeEvent, *,
                  gather_context: Callable[[WakeEvent], dict],

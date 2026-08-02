@@ -644,7 +644,18 @@ class ToolDispatcher:
                     inputs.get("reason", ""),
                     title=inputs.get("title"),
                 )
-            if name == "save_knowledge" and self._knowledge_store:
+            if name == "save_knowledge":
+                # Stessa condizione di save_memory/recall_memory: senza store
+                # o senza embedder l'elemento non potrebbe MAI essere
+                # richiamato (knowledge_store.search filtra su
+                # `embedding IS NOT NULL`), quindi salvarlo sarebbe un
+                # successo apparente. Qui bastava lo store, e su
+                # un'installazione senza provider di embedding il modello
+                # rispondeva "salvato" su un ricordo perduto in partenza.
+                if self._knowledge_store is None or self._knowledge_embedder is None:
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "salvare questo ricordo perché non "
+                                      "potrei più ritrovarlo.")}
                 return await handle_save_knowledge(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",

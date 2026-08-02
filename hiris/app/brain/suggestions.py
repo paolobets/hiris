@@ -10,10 +10,12 @@ and undoing coverage NEVER touches an entity the user configured themselves
 from __future__ import annotations
 
 import json
+import logging
 import math
 import threading
 from typing import Callable, Optional
 
+from ..proxy.ha_client import is_automation_config
 from ..storage import connect, init_schema
 from ..watcher.detectors import DETECTORS
 from ..watcher.policy import (
@@ -22,6 +24,8 @@ from ..watcher.policy import (
     remove_brain_detector,
     remove_brain_tuning,
 )
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS suggestions (
@@ -153,8 +157,11 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
                        inventory_ids: set, current_config: dict,
                        create_proposal: Callable[[dict], None], cap: int) -> list[dict]:
     """Apply validated coverage suggestions (up to `cap` auto-applies) and
-    forward management suggestions to create_proposal. Returns the list of
-    suggestions that were actually auto-applied (as stored rows)."""
+    forward to create_proposal ONLY those management suggestions whose config is
+    a real HA automation config (is_automation_config): the others are recorded
+    with status "recorded" -- visible among the brain suggestions, but never
+    promising a proposal that does not exist. Returns the list of suggestions
+    that were actually auto-applied (as stored rows)."""
     applied: list[dict] = []
     applied_count = 0
     for sugg in suggs:
@@ -193,8 +200,29 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
             if row is not None:
                 applied.append(row)
         elif kind == "management":
-            create_proposal(config)
-            store.record(kind, title, rationale, config, "proposed", None)
+            # Consolidamento 1.2: l'unica proposta con cui un suggerimento di
+            # gestione puo' essere applicato e' un'automazione HA, e il suo
+            # apply scrive il config in Home Assistant. Quindi si inoltra a
+            # create_proposal SOLO cio' che e' davvero una configurazione di
+            # automazione (stessa forma minima che pretende create_automation):
+            # altrimenti si consegnerebbe all'utente un pulsante "attiva" che
+            # scrive in HA un'automazione senza trigger ne' azioni.
+            # Il suggerimento scartato non va perso: viene registrato lo stesso
+            # e resta visibile fra i "Suggerimenti del Brain", che sono la sua
+            # superficie propria — ma con uno stato che dice il vero. La
+            # sezione mostra lo stato cosi' com'e' (agentbot-route.js), quindi
+            # "proposed" su una riga senza proposta manderebbe l'utente a
+            # cercare nella pagina Proposte una cosa che non c'e'.
+            if is_automation_config(config):
+                create_proposal(config)
+                status = "proposed"
+            else:
+                logger.warning(
+                    "brain suggestion: il suggerimento management %r non porta una "
+                    "configurazione di automazione HA -> nessuna proposta creata, "
+                    "riga registrata come 'recorded'", title)
+                status = "recorded"
+            store.record(kind, title, rationale, config, status, None)
         # unknown kind -> skip silently
     return applied
 

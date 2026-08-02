@@ -79,3 +79,347 @@ def test_le_eccezioni_note_corrispondono_a_tool_reali_del_backend():
     nomi_backend = {t["name"] for t in ALL_TOOL_DEFS}
     orfane = KNOWN_BACKEND_ONLY_EXCEPTIONS - nomi_backend
     assert not orfane, f"eccezioni che non corrispondono piu' a nessun tool del backend: {sorted(orfane)}"
+
+
+# ── I TESTI dei modelli (TEMPLATES[].strategic e [].prompt), non il catalogo ─
+#
+# Il catalogo TOOLS sopra e' sincronizzato con ALL_TOOL_DEFS dai tre test
+# precedenti, ma i cinque modelli preconfigurati in `var TEMPLATES` hanno DUE
+# stringhe a parte -- `strategic` e `prompt`, entrambe prosa in italiano data
+# in pasto al modello come istruzione, entrambe finiscono nel system prompt del
+# bot allo stesso modo -- che possono citare uno strumento per nome senza che
+# nessuno dei test sopra se ne accorga. E' successo davvero: undici citazioni
+# di `search_entities(...)`, uno strumento rimosso da tempo, sono rimaste nei
+# testi per mesi (vedi docs/design/2026-08-02-design-consolidamento.md,
+# sezione 1.3) mentre il catalogo era gia' pulito.
+#
+# ── IL CRITERIO ──────────────────────────────────────────────────────────────
+#
+# Cosa si cerca: il NOME DI UNO STRUMENTO citato in un testo destinato al
+# modello. Il nome dello strumento non lo si puo' cercare per elenco (l'elenco
+# dei nomi leciti e' proprio ALL_TOOL_DEFS: cercare solo quelli non troverebbe
+# MAI un nome inesistente, che e' l'unica cosa che questo test deve scoprire).
+# Quindi il criterio riconosce la FORMA "identificatore di strumento" senza
+# sapere in anticipo quali esistano, e poi confronta il raccolto con
+# ALL_TOOL_DEFS.
+#
+# Un riferimento a strumento e' un identificatore snake_case tutto minuscolo
+# (almeno un underscore: l'italiano non ne usa, quindi la prosa non entra),
+# preso in QUALUNQUE posizione -- con la parentesi di chiamata
+# `get_home_status()` o nudo in prosa `controlla con get_entity_states sui
+# sensori`. Entrambe le forme sono presenti oggi nel file: la prima in
+# `strategic`, la seconda in `prompt`. Il criterio precedente vedeva solo la
+# prima ed era per questo cieco proprio dove il buco si era aperto.
+#
+# Non sono riferimenti a strumento -- ed e' qui che si separa il vocabolario di
+# Home Assistant, che ha la stessa forma e nel testo compare a pieno diritto:
+#
+#   1. cio' che sta fra virgolette: e' un VALORE (dominio, stato, nome di zona)
+#      passato come argomento, mai il nome dello strumento che lo riceve.
+#      `get_entities_by_domain("binary_sensor")` cita UN solo strumento.
+#   2. cio' che e' qualificato da un punto, da un lato o dall'altro: e' un
+#      servizio o un'entita' di HA. `switch.turn_on(entity_id=...)` non e' una
+#      citazione di `turn_on`, e `binary_sensor.porta_ingresso` non e' una
+#      citazione di `binary_sensor`. Questo e' il difetto strutturale che il
+#      criterio precedente aveva: il confine di parola matcha anche dopo il
+#      punto, quindi decapitava i servizi HA del loro dominio e li denunciava.
+#   3. cio' che tocca un `=`, da un lato o dall'altro: e' un parametro, nome
+#      (`entity_id=light.cucina`) o valore (`service=open_valve`). Il nome di
+#      uno strumento non e' mai un operando di assegnamento: e' seguito da `(`
+#      o da prosa.
+#
+# Cosa il criterio NON puo' distinguere, e come si chiude: un nome di servizio
+# HA scritto NUDO, senza dominio (`poi close_valve`, `poi turn_off`), e' per
+# forma indistinguibile da una citazione di strumento. Non esiste regola
+# sintattica che li separi: la differenza sta nel significato. Per questi c'e'
+# l'elenco esplicito qui sotto. La scelta e' deliberata ed e' "fail-closed":
+# qualunque identificatore snake_case nuovo che compaia nei testi e non sia ne'
+# uno strumento reale ne' una voce dichiarata fa FALLIRE il test, e chi lo ha
+# scritto deve classificarlo. Il criterio precedente sbagliava dal lato
+# opposto: taceva su tutto cio' che non riconosceva.
+
+# Parole del vocabolario di Home Assistant che nei testi dei modelli compaiono
+# NUDE (senza dominio davanti) e che non sono e non saranno mai strumenti
+# HIRIS. Ogni voce DEVE portare un commento: se non si sa dire perche' non e'
+# uno strumento, allora e' un refuso da correggere nel testo, non una voce da
+# aggiungere qui.
+HA_VOCABULARY_NOT_TOOLS = {
+    # Servizi di Home Assistant citati dal modello Irrigazione per spiegare la
+    # coppia apri/chiudi da passare a call_ha_service: "valve: service=
+    # open_valve poi close_valve; switch: service=turn_on poi turn_off". Sono
+    # nomi di servizi HA (dominio valve.* e switch.*, vedi ACTIONS in
+    # templates.js), non strumenti del catalogo TOOLS.
+    "open_valve",
+    "close_valve",
+    "turn_on",
+    "turn_off",
+    # Attributo delle entita' di Home Assistant, non uno strumento: il modello
+    # Sicurezza dice di riconoscere i sensori "dal nome o dal device_class
+    # (door, window, motion)".
+    "device_class",
+}
+
+# Le virgolette delimitano argomenti/valori, mai nomi di strumento (punto 1 del
+# criterio): il contenuto viene tolto prima di cercare gli identificatori.
+_STRING_VALUE_RE = re.compile(r'"[^"]*"')
+
+_TOOL_REFERENCE_RE = re.compile(
+    r"(?<![\w.=])"                       # 2/3: non preceduto da punto (servizio o
+                                         #      entita' HA qualificata) ne' da '='
+                                         #      (valore di parametro), ne' spezzato
+                                         #      a meta' di una parola piu' lunga
+    r"([a-z][a-z0-9]*(?:_[a-z0-9]+)+)"   # identificatore snake_case minuscolo
+    r"(?!\w)"                            # non prosegue in una parola piu' lunga
+    r"(?!\.[a-z0-9_])"                   # 2: non e' il dominio di `dominio.entita`
+                                         #    (ma il punto di fine frase va bene:
+                                         #    "controlla con get_home_status.")
+    r"(?!=)"                             # 3: non e' il nome di un parametro,
+                                         #    `entity_id=...`
+)
+
+
+def _extract_templates_block(js_source: str) -> str:
+    """Isola il testo del solo array `var TEMPLATES = [...]`, cosi' non si
+    raccolgono per sbaglio identificatori snake_case che comparissero altrove
+    nel file (es. gli `id:` del catalogo TOOLS, che sono per costruzione tutti
+    leciti e renderebbero il test cieco proprio sui testi -- isolamento per lo
+    stesso principio di _extract_tools_block sopra)."""
+    start = js_source.index("var TEMPLATES = [")
+    end = js_source.index("\n];", start)
+    return js_source[start:end]
+
+
+def _model_texts(js_source: str) -> list[tuple[str, str]]:
+    """Tutti i testi dei modelli destinati al modello, come (campo, testo).
+
+    Entrambi i campi, non solo `strategic`: `prompt` alimenta il system prompt
+    del bot esattamente allo stesso modo e oggi cita tre strumenti."""
+    block = _extract_templates_block(js_source)
+    testi: list[tuple[str, str]] = []
+    for campo in ("strategic", "prompt"):
+        for testo in re.findall(rf"{campo}:\s*'((?:[^'\\]|\\.)*)'", block):
+            testi.append((campo, testo))
+    return testi
+
+
+def _tool_references(testo: str) -> set[str]:
+    """Gli identificatori che nel testo sono riferimenti a uno strumento,
+    secondo il criterio documentato sopra."""
+    senza_valori = _STRING_VALUE_RE.sub(" ", testo)
+    return {
+        nome
+        for nome in _TOOL_REFERENCE_RE.findall(senza_valori)
+        if nome not in HA_VOCABULARY_NOT_TOOLS
+    }
+
+
+def test_i_testi_dei_modelli_non_citano_tool_inesistenti():
+    from hiris.app.claude_runner import ALL_TOOL_DEFS
+    nomi_backend = {t["name"] for t in ALL_TOOL_DEFS}
+    testi = _model_texts(TEMPLATES_JS.read_text(encoding="utf-8"))
+    assert len(testi) == 10, (
+        "attesi 5 modelli preconfigurati (Energia, Sicurezza, Presenza, Clima, "
+        f"Irrigazione) x 2 campi (strategic, prompt) in TEMPLATES, trovati "
+        f"{len(testi)} testi -- il regex/marcatore di estrazione e' rotto"
+    )
+    fantasmi: dict[str, set[str]] = {}
+    citati: set[str] = set()
+    for campo, testo in testi:
+        riferimenti = _tool_references(testo)
+        citati |= riferimenti
+        if riferimenti - nomi_backend:
+            fantasmi.setdefault(campo, set()).update(riferimenti - nomi_backend)
+    assert citati, (
+        "nessun riferimento a strumento trovato nei testi dei modelli -- il "
+        "criterio di riconoscimento e' probabilmente rotto"
+    )
+    assert not fantasmi, (
+        "i testi dei modelli preconfigurati citano strumenti che non esistono "
+        f"in ALL_TOOL_DEFS: { {k: sorted(v) for k, v in fantasmi.items()} }"
+    )
+
+
+# ── I DUE percorsi, non uno solo ─────────────────────────────────────────────
+#
+# Lo stesso bot creato da un modello preconfigurato puo' girare su due percorsi
+# con due cataloghi di strumenti diversi:
+#
+#   1. la chat locale (claude_runner.ALL_TOOL_DEFS), l'elenco lungo;
+#   2. la chat via abbonamento, che parla con l'MCP interno: il modello vede
+#      SOLO i tool elencati in agent/runner._DEFAULT_CHAT_TOOLS, con i nomi MCP
+#      del catalogo mcp/tiers.py.
+#
+# I due elenchi non coincidono ne' per contenuto ne' sempre per nome (l'azione
+# su Home Assistant si chiama `call_ha_service` sul primo e `call_service` sul
+# secondo). Un testo che cita uno strumento assente dal percorso in uso fa
+# sprecare al bot un tentativo su uno strumento fantasma -- la stessa classe di
+# difetto del catalogo, viva su uno solo dei due percorsi e quindi invisibile a
+# un test che ne guarda uno. Da qui in poi si guardano entrambi.
+
+# Citazioni che valgono per il SOLO percorso locale. Ogni voce DEVE dire
+# perche' non e' sostituibile con uno strumento presente su entrambi:
+# altrimenti la si sostituisce nel testo, non la si dichiara qui.
+CITAZIONI_SOLO_PERCORSO_LOCALE = {
+    # Le previsioni meteo non hanno equivalente nel catalogo MCP: nessun tool
+    # di tiers.py legge un servizio meteo, e i modelli Clima e Irrigazione
+    # decidono proprio sulla previsione. Sostituirlo con uno strumento comune
+    # significherebbe togliere la previsione dai testi, non spostarla. I due
+    # testi che lo citano dicono percio' cosa fare quando non c'e' (i sensori
+    # meteo di Home Assistant), cosi' il bot in abbonamento non resta fermo
+    # davanti a uno strumento che non trova.
+    "get_weather_forecast",
+}
+
+
+def _gateway_chat_tool_names() -> set[str]:
+    """I nomi degli strumenti che il modello vede nella chat via abbonamento.
+
+    Sono i tool MCP elencati in `_DEFAULT_CHAT_TOOLS` (prefisso `mcp__hiris__`),
+    cioe' un sottoinsieme del catalogo di mcp/tiers.py: quello e' il perimetro
+    reale di quel percorso, non ALL_TOOL_DEFS."""
+    from hiris.app.agent.runner import _DEFAULT_CHAT_TOOLS
+
+    nomi = set()
+    for voce in _DEFAULT_CHAT_TOOLS.split(","):
+        voce = voce.strip()
+        if not voce:
+            continue
+        assert voce.startswith("mcp__hiris__"), (
+            f"voce di _DEFAULT_CHAT_TOOLS senza il prefisso MCP atteso: {voce!r}"
+        )
+        nomi.add(voce[len("mcp__hiris__"):])
+    return nomi
+
+
+def test_i_tool_della_chat_ad_abbonamento_esistono_nel_catalogo_mcp():
+    # Se _DEFAULT_CHAT_TOOLS nominasse un tool che l'MCP non espone, il modello
+    # in abbonamento avrebbe gia' oggi uno strumento fantasma nel permesso --
+    # prima ancora dei testi dei modelli.
+    from hiris.app.mcp.tiers import TOOLS
+
+    esposti = {t.name for t in TOOLS}
+    chat = _gateway_chat_tool_names()
+    assert chat, "l'elenco dei tool della chat ad abbonamento non deve essere vuoto"
+    fantasmi = chat - esposti
+    assert not fantasmi, (
+        "_DEFAULT_CHAT_TOOLS abilita nomi che il catalogo MCP (mcp/tiers.py) "
+        f"non espone: {sorted(fantasmi)}"
+    )
+
+
+def test_i_testi_dei_modelli_non_citano_tool_assenti_dalla_chat_ad_abbonamento():
+    chat = _gateway_chat_tool_names()
+    testi = _model_texts(TEMPLATES_JS.read_text(encoding="utf-8"))
+    fuori: dict[str, set[str]] = {}
+    for campo, testo in testi:
+        mancanti = _tool_references(testo) - chat - CITAZIONI_SOLO_PERCORSO_LOCALE
+        if mancanti:
+            fuori.setdefault(campo, set()).update(mancanti)
+    assert not fuori, (
+        "i testi dei modelli preconfigurati citano strumenti che nella chat via "
+        "abbonamento non esistono (o hanno un altro nome), e non sono dichiarati "
+        "in CITAZIONI_SOLO_PERCORSO_LOCALE: "
+        f"{ {k: sorted(v) for k, v in fuori.items()} }"
+    )
+
+
+def test_le_citazioni_solo_locali_sono_strumenti_reali_e_davvero_solo_locali():
+    # Un'eccezione che non e' un tool locale e' un refuso mascherato; una che e'
+    # anche nel catalogo dell'abbonamento e' rumore che nasconderebbe un vero
+    # disallineamento futuro con lo stesso nome.
+    from hiris.app.claude_runner import ALL_TOOL_DEFS
+
+    locali = {t["name"] for t in ALL_TOOL_DEFS}
+    chat = _gateway_chat_tool_names()
+    inesistenti = CITAZIONI_SOLO_PERCORSO_LOCALE - locali
+    assert not inesistenti, (
+        "voci di CITAZIONI_SOLO_PERCORSO_LOCALE che non sono strumenti del "
+        f"percorso locale: {sorted(inesistenti)}"
+    )
+    non_piu_solo_locali = CITAZIONI_SOLO_PERCORSO_LOCALE & chat
+    assert not non_piu_solo_locali, (
+        "voci di CITAZIONI_SOLO_PERCORSO_LOCALE ora presenti anche nella chat "
+        f"ad abbonamento: vanno tolte da qui: {sorted(non_piu_solo_locali)}"
+    )
+
+
+def test_il_vocabolario_ha_non_maschera_strumenti_reali():
+    # Una voce di HA_VOCABULARY_NOT_TOOLS che sia ANCHE un nome di strumento
+    # reale renderebbe invisibile al test proprio quello strumento: e' rumore
+    # contraddittorio, va tolta di qui.
+    from hiris.app.claude_runner import ALL_TOOL_DEFS
+    nomi_backend = {t["name"] for t in ALL_TOOL_DEFS}
+    collisioni = HA_VOCABULARY_NOT_TOOLS & nomi_backend
+    assert not collisioni, (
+        "voci di HA_VOCABULARY_NOT_TOOLS che sono strumenti reali del backend, "
+        f"quindi mascherate al controllo: {sorted(collisioni)}"
+    )
+
+
+# ── Il criterio contro i casi che la review ha elencato ──────────────────────
+
+def test_il_criterio_riconosce_le_citazioni_senza_parentesi():
+    # Il buco vero: forma nuda in prosa. Il criterio precedente restava verde.
+    assert _tool_references("Usa search_entities per trovare il sensore") == {"search_entities"}
+    assert _tool_references(
+        "controlla le precipitazioni con get_entity_states sui sensori pioggia"
+    ) == {"get_entity_states"}
+    # anche a fine frase, dove il punto e' punteggiatura e non qualificazione
+    assert _tool_references("chiedi a get_home_status.") == {"get_home_status"}
+    # e fra backtick o virgolette basse, come si citano gli identificatori
+    assert _tool_references("Usa `search_entities` per trovare il sensore") == {"search_entities"}
+
+
+def test_il_criterio_riconosce_le_citazioni_con_la_parentesi():
+    assert _tool_references('get_entities_by_domain("binary_sensor")') == {"get_entities_by_domain"}
+    assert _tool_references("get_weather_forecast(hours=48)") == {"get_weather_forecast"}
+    assert _tool_references("get_home_status()") == {"get_home_status"}
+
+
+def test_il_criterio_non_accusa_i_servizi_di_home_assistant():
+    # Il falso positivo strutturale del criterio precedente: il confine di
+    # parola matcha anche dopo il punto, quindi `turn_on` veniva denunciato.
+    assert _tool_references("chiama light.turn_on(entity_id=light.cucina)") == set()
+    assert _tool_references("scrivi switch.turn_on(...) sulla presa") == set()
+    assert _tool_references("valve: service=open_valve poi close_valve") == set()
+    assert _tool_references("switch: service=turn_on poi turn_off") == set()
+
+
+def test_il_criterio_non_accusa_le_entita_di_home_assistant():
+    assert _tool_references('"Prato nord" valve.irrigazione_prato_nord') == set()
+    assert _tool_references("il sensore binary_sensor.porta_ingresso") == set()
+    assert _tool_references('usa valve.* se disponibile, altrimenti switch.*') == set()
+    assert _tool_references('person.* (state="home" = presente)') == set()
+
+
+def test_il_criterio_non_accusa_la_prosa_ne_i_valori_fra_virgolette():
+    # Parentesi esplicative della prosa: nessun identificatore, nessun allarme.
+    assert _tool_references("disponibile (HA 2023.9+)") == set()
+    assert _tool_references("irrigazione completa (20-30 min per zona)") == set()
+    assert _tool_references("Batteria < 15%: livello critico -- avvisa") == set()
+    # Vocabolario HA nudo, dichiarato in HA_VOCABULARY_NOT_TOOLS.
+    assert _tool_references("individua dal nome o dal device_class (door, window, motion)") == set()
+    # Un valore fra virgolette non e' mai il nome di uno strumento.
+    assert _tool_references('il dominio "binary_sensor" e il dominio "input_boolean"') == set()
+
+
+def test_il_criterio_e_fail_closed_su_un_campo_prompt_nuovo(tmp_path):
+    # Un modello che cita uno strumento inesistente nel campo `prompt` -- lo
+    # scope che il criterio precedente non guardava affatto -- viene visto.
+    finto = tmp_path / "templates.js"
+    finto.write_text(
+        "var TEMPLATES = [\n"
+        "  {\n"
+        "    id: 'x',\n"
+        "    strategic: 'Usa get_home_status() per la panoramica.',\n"
+        "    prompt: 'poi affina con search_entities sui sensori',\n"
+        "  },\n"
+        "];\n",
+        encoding="utf-8",
+    )
+    testi = _model_texts(finto.read_text(encoding="utf-8"))
+    assert dict(testi).keys() == {"strategic", "prompt"}
+    riferimenti: set[str] = set()
+    for _campo, testo in testi:
+        riferimenti |= _tool_references(testo)
+    assert riferimenti == {"get_home_status", "search_entities"}

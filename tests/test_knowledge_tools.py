@@ -102,6 +102,85 @@ async def test_save_knowledge_creates_pending(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_save_knowledge_senza_embedding_non_finge_di_aver_salvato(tmp_path):
+    """Un elemento senza embedding non e' richiamabile: knowledge_store.search
+    filtra su `status='approved' AND embedding IS NOT NULL`. Se il calcolo
+    dell'embedding fallisce, salvare comunque riaprirebbe lo stesso fallimento
+    silenzioso che la coda di approvazione ha appena chiuso, spostato di un
+    passo: il modello dice "salvato", l'elemento compare nella coda, l'utente
+    lo approva e resta comunque irraggiungibile. Deve fallire apertamente e
+    non scrivere nulla."""
+    from hiris.app.tools.knowledge_tools import handle_save_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "no_emb.db"))
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(side_effect=RuntimeError("provider giu'"))
+
+    res = await handle_save_knowledge(
+        store, embedder,
+        {"kind": "preference", "content": "Paolo ama la pizza"},
+        owner="home",
+    )
+
+    assert res.get("error"), "senza embedding il salvataggio deve dichiarare l'errore"
+    assert "status" not in res, "nessun successo apparente"
+    # Nessuna riga scritta: ne' pending ne' approved.
+    assert store.list_items() == []
+    # L'errore non deve riportare il testo dell'eccezione al chiamante.
+    assert "provider giu'" not in res["error"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_save_knowledge_embedding_vuoto_non_finge_di_aver_salvato(tmp_path):
+    """Stesso esito quando il provider risponde ma senza vettore (lista vuota):
+    e' il caso del provider non configurato, che non solleva."""
+    from hiris.app.tools.knowledge_tools import handle_save_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "empty_emb.db"))
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[])
+
+    res = await handle_save_knowledge(
+        store, embedder,
+        {"kind": "fact", "content": "La caldaia va revisionata a ottobre"},
+        owner="home",
+    )
+
+    assert res.get("error")
+    assert store.list_items() == []
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_save_knowledge_senza_embedder_fallisce(tmp_path):
+    """Il dispatcher instradava `save_knowledge` guardando solo la presenza
+    dello store, mentre i runner tolgono dai tool recall_memory/save_memory
+    quando manca l'embedder. Senza embedder configurato l'elemento non potra'
+    mai essere richiamato: qui il salvataggio deve fallire, come gia' fa
+    save_memory, invece di riuscire a vuoto."""
+    from hiris.app.tools.dispatcher import ToolDispatcher
+
+    store = KnowledgeStore(str(tmp_path / "dispatch_no_emb.db"))
+    dispatcher = ToolDispatcher(
+        ha_client=MagicMock(),
+        notify_config={},
+        knowledge_store=store,
+        embedder=None,
+    )
+
+    res = await dispatcher.dispatch(
+        "save_knowledge",
+        {"kind": "preference", "content": "Paolo ama la pizza"},
+    )
+
+    assert isinstance(res, dict) and res.get("error")
+    assert res.get("status") != "pending"
+    assert store.list_items() == []
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_recall_includes_document_chunks(tmp_path):
     """A normal-sensitivity document chunk is returned by recall_knowledge."""
     from hiris.app.tools.knowledge_tools import handle_recall_knowledge
