@@ -16,28 +16,55 @@ una sequenza di chiamate di servizio con un nome — e il ramo `ha_script`
 dell'apply lo crea davvero in Home Assistant (`apply_ha_config` ->
 `HAClient.create_script`), quindi l'approvazione produce un effetto reale e
 verificabile invece di marcare "applicata" una proposta inerte.
+
+`propose_sentinel_script` e' l'adattatore che il chiamante (server.py) passa a
+`executor.execute`: salva la proposta e ritorna l'esito da registrare nella
+timeline, ripiegando sulla notifica — e dicendolo — quando una proposta non
+esiste.
 """
 from __future__ import annotations
 
+import logging
 import re
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
+# Stesse regole di forma accettate da HAClient (dominio/servizio, entity_id
+# canonico): se l'azione non le rispetta non e' eseguibile, quindi non e'
+# nemmeno confezionabile. Importate e non riscritte — erano gia' la terza e la
+# quarta copia della stessa espressione nel repo.
+from ..proxy.ha_client import _ENTITY_ID_RE, _IDENTIFIER_RE
 from ..tools.config_tools import build_config_proposal, normalize_config_inputs
 from .off_task import build_off_task
 
-# Stesso identificatore accettato da HAClient.call_service: se dominio o
-# servizio non lo rispettano l'azione non e' eseguibile, quindi non e' nemmeno
-# confezionabile.
-_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
+logger = logging.getLogger(__name__)
+
 _SLUG_UNSAFE_RE = re.compile(r"[^a-z0-9_]+")
 
 # Lo slug e' l'object_id dello script in HA: tenerlo corto e leggibile.
 _MAX_SLUG_LEN = 60
 
+# Il pannello Proposte mostra nome, descrizione, l'etichetta del tipo e un
+# bottone "Attiva", senza anteprima del contenuto: se la descrizione promette il
+# rimedio, l'utente preme "Attiva" e ottiene uno script creato, non la stufa
+# spenta. La descrizione deve quindi dire cosa si ottiene approvando, oltre a
+# cosa e' stato rilevato (che e' il motivo per cui la proposta esiste).
+_APPROVAL_NOTE = ("Approvando crei in Home Assistant uno script pronto all'uso: "
+                  "il rimedio non viene eseguito ora, lo esegui tu quando vuoi.")
+
+_END_PUNCT = ".!?:;"
+
 
 def _slug_part(text: object) -> str:
     return _SLUG_UNSAFE_RE.sub("_", str(text or "").strip().lower()).strip("_")
+
+
+def _describe(detected: str) -> str:
+    """La descrizione mostrata nel pannello Proposte: cosa e' stato rilevato,
+    poi cosa si ottiene approvando."""
+    text = detected.strip()
+    if text and text[-1] not in _END_PUNCT:
+        text += "."
+    return f"{text} {_APPROVAL_NOTE}".strip()
 
 
 def build_sentinel_script_proposal(
@@ -100,5 +127,42 @@ def build_sentinel_script_proposal(
     # sulla sua descrizione di default, che dichiara un'origine MCP: sarebbe una
     # riga falsa nella pagina Proposte.
     return build_config_proposal(
-        normalized, description=str(message or "").strip() or name,
+        normalized, description=_describe(str(message or "").strip() or name),
         routing_reason=routing_reason)
+
+
+async def propose_sentinel_script(
+    decision, wake, *, save: Callable[[dict], Awaitable],
+    notify: Callable[..., Awaitable], notify_title: str, routing_reason: str,
+) -> str:
+    """Salva la proposta della Sentinella e ritorna l'esito da registrare nella
+    timeline.
+
+    Ritorna "propose" SOLO quando una proposta esiste davvero. Negli altri due
+    casi — azione non confezionabile, salvataggio fallito — si ripiega sulla
+    notifica (la Sentinella aveva comunque rilevato qualcosa che vale la pena
+    dire) e si ritorna "alert": la cronologia dell'agente non deve dire
+    "propose" per un evento in cui nessuna proposta e' stata creata.
+    """
+    record = build_sentinel_script_proposal(
+        decision.action, signal_kind=wake.signal_kind, entity_id=wake.entity_id,
+        message=decision.message, routing_reason=routing_reason)
+    if record is None:
+        # Azione non confezionabile: meglio la sola allerta che una proposta che
+        # promette un'applicazione impossibile.
+        logger.warning("sentinel propose: azione non confezionabile come script "
+                       "(%s su %s) -> ripiego sulla notifica",
+                       wake.signal_kind, wake.entity_id)
+        await notify(decision.message, title=notify_title)
+        return "alert"
+    try:
+        await save(record)
+    except Exception:
+        # Stesso trattamento del ramo sopra: senza questo ripiego un
+        # salvataggio fallito lascerebbe l'utente senza proposta E senza avviso.
+        logger.exception("sentinel propose: salvataggio della proposta fallito "
+                         "(%s su %s) -> ripiego sulla notifica",
+                         wake.signal_kind, wake.entity_id)
+        await notify(decision.message, title=notify_title)
+        return "alert"
+    return "propose"

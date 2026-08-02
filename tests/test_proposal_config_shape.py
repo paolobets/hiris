@@ -115,6 +115,7 @@ def test_is_automation_config_predicate():
 from hiris.app.tools.config_tools import apply_ha_config              # noqa: E402
 from hiris.app.watcher.sentinel_proposal import (                     # noqa: E402
     build_sentinel_script_proposal,
+    propose_sentinel_script,
 )
 
 _ACTION = {"domain": "switch", "service": "turn_off",
@@ -143,7 +144,20 @@ def test_sentinel_proposal_declares_a_script_and_contains_a_script():
     assert seq == [{"service": "switch.turn_off",
                     "target": {"entity_id": "switch.stufa"},
                     "data": {}}]
-    assert rec["description"] == "Consumo anomalo: propongo di spegnere la stufa"
+
+
+_NOTA_APPROVAZIONE = ("Approvando crei in Home Assistant uno script pronto all'uso: "
+                      "il rimedio non viene eseguito ora, lo esegui tu quando vuoi.")
+
+
+def test_sentinel_proposal_description_says_what_approving_produces():
+    """Il pannello Proposte mostra nome, descrizione, tipo e un bottone "Attiva",
+    senza anteprima del contenuto: se la descrizione promette il rimedio, l'utente
+    preme "Attiva" e ottiene uno script creato, non la stufa spenta. La descrizione
+    deve dire cosa si ottiene approvando, conservando cio' che e' stato rilevato."""
+    rec = _record()
+    assert rec["description"] == (
+        "Consumo anomalo: propongo di spegnere la stufa. " + _NOTA_APPROVAZIONE)
 
 
 def test_sentinel_proposal_never_claims_an_mcp_origin():
@@ -151,7 +165,18 @@ def test_sentinel_proposal_never_claims_an_mcp_origin():
     build_config_proposal, che dichiara un'origine ("via MCP") che non e' la sua."""
     rec = _record(message="")
     assert "MCP" not in rec["description"]
-    assert rec["description"] == "Sentinella: power su switch.stufa"
+    assert rec["description"] == (
+        "Sentinella: power su switch.stufa. " + _NOTA_APPROVAZIONE)
+
+
+def test_sentinel_proposal_reuses_the_shared_identifier_rules():
+    """Le regole di forma di dominio/servizio/entity_id sono quelle di HAClient,
+    non una quarta copia scritta a mano qui."""
+    import hiris.app.proxy.ha_client as ha_client_mod
+    import hiris.app.watcher.sentinel_proposal as sp_mod
+
+    assert sp_mod._IDENTIFIER_RE is ha_client_mod._IDENTIFIER_RE
+    assert sp_mod._ENTITY_ID_RE is ha_client_mod._ENTITY_ID_RE
 
 
 def test_sentinel_proposal_is_not_an_automation_config():
@@ -201,6 +226,108 @@ async def test_sentinel_proposal_actually_creates_the_script_on_apply():
 
 
 # ---------------------------------------------------------------------------
+# Chi propone (1b) — l'esito registrato dice cio' che e' davvero accaduto
+# ---------------------------------------------------------------------------
+
+from hiris.app.watcher.executor import execute                        # noqa: E402
+from hiris.app.watcher.signals import Decision, WakeEvent             # noqa: E402
+
+
+def _decision(action=_ACTION):
+    return Decision("anomalia", "warn", "Consumo anomalo: propongo di spegnere la stufa",
+                    action)
+
+
+def _wake():
+    return WakeEvent("power", "switch.stufa", "warn", {"watt": 3500}, 1.0)
+
+
+class _Notifier:
+    def __init__(self):
+        self.notified = []
+
+    async def notify(self, message, *, title):
+        self.notified.append((title, message))
+
+
+async def _propose(decision, *, save, notifier):
+    return await propose_sentinel_script(
+        decision, _wake(), save=save, notify=notifier.notify,
+        notify_title="HIRIS Sentinella",
+        routing_reason="Proposta dalla Sentinella (autonomia graduata)")
+
+
+@pytest.mark.asyncio
+async def test_propose_saves_and_reports_propose():
+    saved = []
+
+    async def _save(record):
+        saved.append(record)
+
+    n = _Notifier()
+    outcome = await _propose(_decision(), save=_save, notifier=n)
+    assert outcome == "propose"
+    assert len(saved) == 1 and saved[0]["type"] == "ha_script"
+    assert n.notified == []
+
+
+@pytest.mark.asyncio
+async def test_propose_falls_back_to_the_notification_when_saving_fails():
+    """Se il salvataggio solleva non resta nulla: ne' proposta ne' avviso. Ma la
+    Sentinella aveva rilevato qualcosa che valeva la pena dire — stesso
+    trattamento del ramo "azione non confezionabile"."""
+    async def _save(record):
+        raise RuntimeError("disco pieno")
+
+    n = _Notifier()
+    outcome = await _propose(_decision(), save=_save, notifier=n)
+    assert n.notified == [("HIRIS Sentinella",
+                           "Consumo anomalo: propongo di spegnere la stufa")]
+    assert outcome != "propose", "nessuna proposta esiste: la timeline non deve dire 'propose'"
+    assert outcome == "alert"
+
+
+@pytest.mark.asyncio
+async def test_propose_reports_alert_when_the_action_is_not_packageable():
+    saved = []
+
+    async def _save(record):
+        saved.append(record)
+
+    n = _Notifier()
+    outcome = await _propose(_decision({"entity_id": "switch.stufa"}),
+                             save=_save, notifier=n)
+    assert saved == [] and len(n.notified) == 1
+    assert outcome == "alert"
+
+
+@pytest.mark.asyncio
+async def test_executor_records_the_outcome_the_propose_adapter_reports():
+    """execute() registrava "propose" comunque: l'esito vero lo conosce solo chi
+    ha provato a proporre."""
+    n = _Notifier()
+
+    async def _act(action):
+        raise AssertionError("giallo: non deve agire")
+
+    async def _propose_alert(decision, wake):
+        return "alert"
+
+    out = await execute(_decision(), _wake(), tiers={"switch": "yellow"},
+                        entity_tiers={}, notify=n.notify, act=_act,
+                        propose=_propose_alert, allow_green_auto=False)
+    assert out == "alert"
+
+    async def _propose_legacy(decision, wake):
+        return None
+
+    out = await execute(_decision(), _wake(), tiers={"switch": "yellow"},
+                        entity_tiers={}, notify=n.notify, act=_act,
+                        propose=_propose_legacy, allow_green_auto=False)
+    assert out == "propose"
+
+
+# ---------------------------------------------------------------------------
 # Chi propone (2) — la coverage-review propone solo cio' che e' applicabile
 # ---------------------------------------------------------------------------
 
@@ -240,6 +367,27 @@ def test_management_suggestion_without_automation_creates_no_proposal(tmp_path):
     proposed, rows = _run_management(raw, tmp_path)
     assert proposed == []
     assert len(rows) == 1 and rows[0]["config"] == raw
+
+
+def test_management_suggestion_without_automation_is_not_marked_proposed(tmp_path):
+    """Due esiti opposti non possono portare la stessa etichetta: la sezione
+    "Suggerimenti del Brain" mostra lo stato cosi' com'e', quindi "proposed" su
+    una riga che non ha generato nessuna proposta manda l'utente a cercare nella
+    pagina Proposte una cosa che non c'e'."""
+    raw = {"idea": "raggruppa le luci del piano terra"}
+    _, rows = _run_management(raw, tmp_path)
+    assert rows[0]["status"] != "proposed"
+    assert rows[0]["status"] == "recorded"
+
+
+def test_management_suggestion_without_automation_is_logged(tmp_path, caplog):
+    """Lo scarto non puo' essere muto: nei log deve restare traccia del perche'
+    un suggerimento non e' diventato una proposta, come gia' fa la Sentinella."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger="hiris.app.brain.suggestions"):
+        _run_management({"idea": "niente trigger"}, tmp_path)
+    assert any("management" in r.getMessage().lower() or "gestione" in r.getMessage().lower()
+               for r in caplog.records), caplog.text
 
 
 def test_coverage_review_prompt_declares_the_management_contract():

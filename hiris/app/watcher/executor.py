@@ -25,8 +25,12 @@ async def execute(decision: Decision, wake, *, tiers: dict, entity_tiers: dict,
         await notify(f"{decision.message} (fatto)", title=title)
         return "act"
     if tier in ("green", "yellow"):
-        await propose(decision, wake)
-        return "propose"
+        # L'esito vero lo conosce solo chi ha provato a proporre: se la proposta
+        # non e' stata creata (azione non confezionabile, salvataggio fallito)
+        # l'adattatore ripiega sulla notifica e lo dice qui, cosi' la timeline
+        # non registra "propose" per un evento senza nessuna proposta. Un
+        # adattatore che non ritorna nulla mantiene il comportamento storico.
+        return await propose(decision, wake) or "propose"
     # red / off → solo allerta
     await notify(decision.message, title=title)
     return "alert"

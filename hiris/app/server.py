@@ -1602,7 +1602,7 @@ async def _on_startup(app: web.Application) -> None:
     from .watcher.executor import execute
     from .watcher.off_task import build_off_task
     from .watcher.signals import WakeEvent
-    from .watcher.sentinel_proposal import build_sentinel_script_proposal
+    from .watcher.sentinel_proposal import propose_sentinel_script
     from .tools.notify_tools import send_notification
     from .tools.proposal_tools import create_automation_proposal
     import time as _time
@@ -1806,23 +1806,15 @@ async def _on_startup(app: web.Application) -> None:
         # automazione senza trigger ne' azioni. Ora la proposta e' di tipo
         # ha_script e contiene una vera config di script — vedi
         # watcher/sentinel_proposal.py per il perche' non un'automazione.
-        record = build_sentinel_script_proposal(
-            decision.action,
-            signal_kind=wake.signal_kind, entity_id=wake.entity_id,
-            message=decision.message,
+        #
+        # L'esito ritornato e' quello che finisce nella timeline: "propose" solo
+        # se una proposta esiste davvero, "alert" quando si e' ripiegato sulla
+        # notifica (azione non confezionabile o salvataggio fallito).
+        return await propose_sentinel_script(
+            decision, wake,
+            save=proposal_store.save, notify=_notify,
+            notify_title="HIRIS Sentinella",
             routing_reason="Proposta dalla Sentinella (autonomia graduata)")
-        if record is None:
-            # Azione non confezionabile: meglio la sola allerta che una
-            # proposta che promette un'applicazione impossibile.
-            logger.warning("sentinel propose: azione non confezionabile come script "
-                           "(%s su %s) -> ripiego sulla notifica",
-                           wake.signal_kind, wake.entity_id)
-            await _notify(decision.message, title="HIRIS Sentinella")
-            return
-        try:
-            await proposal_store.save(record)
-        except Exception:
-            logger.exception("sentinel propose: salvataggio della proposta fallito")
 
     async def _on_wake(wake):
         decision = None
