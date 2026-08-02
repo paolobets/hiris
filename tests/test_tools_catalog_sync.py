@@ -79,3 +79,78 @@ def test_le_eccezioni_note_corrispondono_a_tool_reali_del_backend():
     nomi_backend = {t["name"] for t in ALL_TOOL_DEFS}
     orfane = KNOWN_BACKEND_ONLY_EXCEPTIONS - nomi_backend
     assert not orfane, f"eccezioni che non corrispondono piu' a nessun tool del backend: {sorted(orfane)}"
+
+
+# ── I TESTI dei modelli (TEMPLATES[].strategic), non solo il catalogo ──────
+#
+# Il catalogo TOOLS sopra e' sincronizzato con ALL_TOOL_DEFS dai tre test
+# precedenti, ma i cinque modelli preconfigurati in `var TEMPLATES` hanno una
+# stringa `strategic` a parte -- prosa in italiano data in pasto al modello
+# come istruzione -- che puo' citare uno strumento per nome senza che nessuno
+# dei test sopra se ne accorga. E' successo davvero: undici citazioni di
+# `search_entities(...)`, uno strumento rimosso da tempo, sono rimaste nei
+# testi per mesi (vedi docs/design/2026-08-02-design-consolidamento.md,
+# sezione 1.3) mentre il catalogo era gia' pulito.
+
+_TOOL_CITATION_RE = re.compile(r"\b([a-z][a-z0-9]*_[a-z0-9_]*)\(")
+# Criterio per riconoscere "una citazione di strumento" dentro prosa italiana:
+# un identificativo minuscolo snake_case (quindi con ALMENO un underscore)
+# incollato SENZA spazio a una parentesi aperta -- esattamente come vengono
+# scritte le chiamate a tool in questi testi: get_entities_by_domain("sensor"),
+# get_weather_forecast(hours=24), get_home_status(). Le due condizioni servono
+# insieme a escludere la prosa normale:
+#   - richiedere l'underscore esclude qualunque parola italiana (l'italiano
+#     non usa underscore: "risultati", "device_class" e' gia' un caso limite
+#     ma non un problema, vedi sotto);
+#   - richiedere l'assenza di spazio prima della parentesi esclude le
+#     parentesi esplicative del prosa, es. "disponibile (HA 2023.9+)" o
+#     "irrigazione completa (20-30 min per zona)": qui c'e' sempre uno spazio
+#     prima di "(" perche' e' punteggiatura, non sintassi di chiamata.
+# Un identificatore con underscore seguito DIRETTAMENTE da "(" nella prosa che
+# non sia una chiamata reale (es. "device_class(" senza spazio) sarebbe un
+# falso positivo genuino con questo criterio -- ma va scritto con lo spazio
+# ("dal device_class (door, window, motion)") proprio per non assomigliare a
+# una chiamata: e' la stessa disciplina che il criterio impone al testo.
+
+
+def _extract_templates_block(js_source: str) -> str:
+    """Isola il testo del solo array `var TEMPLATES = [...]`, cosi' non si
+    raccolgono per sbaglio identificatori con underscore+parentesi che
+    comparissero altrove nel file (es. in codice JS come
+    `document.getElementById(...)`, che pero' non ha underscore quindi non
+    servirebbe comunque -- isolamento per lo stesso principio di
+    _extract_tools_block sopra)."""
+    start = js_source.index("var TEMPLATES = [")
+    end = js_source.index("\n];", start)
+    return js_source[start:end]
+
+
+def _strategic_texts() -> list[str]:
+    js_source = TEMPLATES_JS.read_text(encoding="utf-8")
+    block = _extract_templates_block(js_source)
+    return re.findall(r"strategic:\s*'((?:[^'\\]|\\.)*)'", block)
+
+
+def _cited_tool_identifiers() -> set[str]:
+    identificatori: set[str] = set()
+    for testo in _strategic_texts():
+        identificatori.update(_TOOL_CITATION_RE.findall(testo))
+    return identificatori
+
+
+def test_i_testi_strategici_dei_modelli_non_citano_tool_inesistenti():
+    from hiris.app.claude_runner import ALL_TOOL_DEFS
+    nomi_backend = {t["name"] for t in ALL_TOOL_DEFS}
+    testi = _strategic_texts()
+    assert len(testi) == 5, (
+        f"attesi 5 modelli preconfigurati (Energia, Sicurezza, Presenza, Clima, "
+        f"Irrigazione) in TEMPLATES, trovati {len(testi)} -- il regex/marcatore "
+        "di estrazione e' rotto"
+    )
+    citati = _cited_tool_identifiers()
+    assert citati, "nessuna citazione di tool trovata nei testi -- il regex e' probabilmente rotto"
+    fantasmi = citati - nomi_backend
+    assert not fantasmi, (
+        "i testi strategici dei modelli preconfigurati citano strumenti che non "
+        f"esistono in ALL_TOOL_DEFS: {sorted(fantasmi)}"
+    )
