@@ -66,21 +66,40 @@ TOOLS: list[ToolDef] = [
     # handlers_execute.py dispaccia create_task direttamente. Il limite reale e'
     # un altro e vale gia' alla creazione -- ogni azione call_ha_service deve
     # avere entity_id espliciti (niente area/dispositivo/label) e tier VERDE
-    # per-entita', altrimenti il task viene rifiutato subito. Un gate di
-    # conferma sopra a quel filtro sarebbe ridondante: cio' che passa e' solo
-    # cio' che il semaforo lascia gia' passare senza chiedere nulla. Percio' e'
-    # la PROMESSA a essere sbagliata, non il codice a essere incompleto -- e
-    # una rete dichiarata e assente e' peggio di nessuna rete, perche' il
-    # modello agisce con meno cautela. Vedi tests/test_coerenza_conferma.py e
+    # per-entita', altrimenti il task viene rifiutato subito.
+    #
+    # Fix wave 1 -- quel filtro pero' vale sulle azioni di PRIMO LIVELLO. Un
+    # task puo' contenere a sua volta un create_task (tools/dispatcher.py::
+    # _ALLOWED_TASK_ACTIONS, attuato da task_engine 513-521) e le azioni del
+    # figlio non sono ispezionate da handlers_execute. Fra due strade --
+    # estendere il filtro all'annidamento o correggere la descrizione -- si e'
+    # scelta la seconda, per tre ragioni:
+    #   1. l'annidamento non ha un fondo: create_task e' un'azione ammessa
+    #      dentro un task e nessun contatore di profondita' esiste, quindi
+    #      estendere il filtro vorrebbe dire una visita ricorsiva con un tetto
+    #      di profondita' inventato qui, sul percorso remoto;
+    #   2. sarebbe un SECONDO punto di enforcement dello stesso confine, il
+    #      duplicato che tools/dispatcher.py (465-482) ha gia' rifiutato per
+    #      allowed_entities proprio perche' i due punti divergono;
+    #   3. non e' un varco sul semaforo: allo scatto task_engine 477-505 valuta
+    #      OGNI azione, e cio' che non e' verde diventa step-up all'owner o
+    #      viene saltato. Il costo residuo e' un messaggio d'errore peggiore
+    #      (il task nasce e non attua), non un confine piu' debole.
+    # Percio' e' la PROMESSA a essere sbagliata, non il codice a essere
+    # incompleto -- e una rete dichiarata e assente e' peggio di nessuna rete,
+    # perche' il modello agisce con meno cautela. Vedi
+    # tests/test_coerenza_conferma.py (perimetro del filtro pinnato) e
     # tests/test_execute_api.py (rifiuti off/giallo/rosso).
     ToolDef("create_task", Tier.SCHEDULE, "create_task",
             "Pianifica un task HIRIS (trigger + azioni). Le azioni possono includere "
             "send_notification (anche notifiche persistenti nel dashboard HA, channel "
-            "'ha_persistent') e call_ha_service. Un'azione call_ha_service e' accettata "
-            "solo con entity_id espliciti e su entita' verdi nel semaforo: target per "
-            "area/dispositivo/label o entita' non verdi fanno rifiutare il task alla "
-            "creazione. Nessun passaggio umano fra la creazione e lo scatto: e' il "
-            "semaforo il limite, non un'approvazione."),
+            "'ha_persistent') e call_ha_service. Il filtro alla creazione vale sulle "
+            "azioni di primo livello: li' una call_ha_service e' accettata solo con "
+            "entity_id espliciti e su entita' verdi nel semaforo, altrimenti il task "
+            "viene rifiutato subito. Le azioni di un task annidato non passano da quel "
+            "filtro, ma allo scatto ogni azione ripassa dal semaforo: cio' che e' verde "
+            "parte da solo, il resto viene fermato o messo in attesa di una conferma "
+            "umana. Un task non allarga il semaforo e non lo scavalca."),
     ToolDef("list_tasks", Tier.SCHEDULE, "list_tasks",
             "Elenca i task HIRIS pianificati."),
     # Anche qui nessun gate, e qui nemmeno serviva: annullare TOGLIE un'azione

@@ -217,10 +217,22 @@ async def handle_execute(request: web.Request) -> web.Response:
                                else " manuale in HIRIS.")),
             }})
 
-    # create_task is dispatched without per-fire approval, so any call_ha_service
-    # action it schedules must target ONLY green-effective entities. off/yellow/red
-    # (or a broadcast with no entity target) are rejected here — otherwise a task
-    # would let the gateway bypass the per-entity semaforo at fire time.
+    # create_task is dispatched without per-fire approval, so a TOP-LEVEL
+    # call_ha_service action it schedules must target ONLY green-effective
+    # entities. off/yellow/red (or a broadcast with no entity target) are
+    # rejected here, so the common case fails loudly at creation instead of
+    # silently at fire time.
+    #
+    # Scope, stated because the MCP description states it too (mcp/tiers.py):
+    # this loop reads `inputs["actions"]`, i.e. the FIRST LEVEL only. A nested
+    # task (`{"type": "create_task", "task": {...}}`) carries its own actions
+    # and they are NOT inspected here. That is not a hole in the semaforo:
+    # task_engine gates every call_ha_service again at fire time and turns a
+    # non-green one into an owner step-up (or a skip). Deliberately not made
+    # recursive — nesting has no depth ceiling, and a second enforcement point
+    # for the same boundary is exactly what tools/dispatcher.py refused for
+    # allowed_entities. Pinned by tests/test_coerenza_conferma.py::
+    # test_create_task_filtra_solo_le_azioni_di_primo_livello.
     if tool == "create_task":
         from .handlers_gateway_policy import effective_tier
         tiers = policy.get("tiers") or {}

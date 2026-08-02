@@ -314,7 +314,10 @@ schedule in `strategic_context`. Claude uses this to calibrate its replies.
 **Use `require_confirmation` for irreversible actions:** any Chatbot that
 controls heating, appliances, or security should have this enabled. It is an
 instruction to the model, not a hard block: it does not replace the semaphore,
-which is the safeguard that holds on its own. Set both.
+which is the safeguard that holds on its own for `call_ha_service`,
+`trigger_automation`, `toggle_automation` and `set_input_helper`. One
+exception, `create_ha_config`: the semaphore does not cover it, so there this
+confirmation is the only step before the effect. Set both.
 
 **Keep scope tight:** `allowed_tools`/`allowed_entities`/`allowed_services` as
 narrow as possible for each Chatbot — especially for assistants shared with
