@@ -96,5 +96,9 @@ def build_sentinel_script_proposal(
         })
     except ValueError:
         return None
+    # Mai lasciare che un messaggio vuoto faccia ricadere build_config_proposal
+    # sulla sua descrizione di default, che dichiara un'origine MCP: sarebbe una
+    # riga falsa nella pagina Proposte.
     return build_config_proposal(
-        normalized, description=message, routing_reason=routing_reason)
+        normalized, description=str(message or "").strip() or name,
+        routing_reason=routing_reason)

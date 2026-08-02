@@ -146,6 +146,14 @@ def test_sentinel_proposal_declares_a_script_and_contains_a_script():
     assert rec["description"] == "Consumo anomalo: propongo di spegnere la stufa"
 
 
+def test_sentinel_proposal_never_claims_an_mcp_origin():
+    """Con un messaggio vuoto la descrizione non deve ricadere sul default di
+    build_config_proposal, che dichiara un'origine ("via MCP") che non e' la sua."""
+    rec = _record(message="")
+    assert "MCP" not in rec["description"]
+    assert rec["description"] == "Sentinella: power su switch.stufa"
+
+
 def test_sentinel_proposal_is_not_an_automation_config():
     """Il vecchio contenuto ({"suggested_action": ...}) sarebbe stato scritto in
     HA come automazione senza trigger ne' azione: il nuovo non finisce mai la'."""
