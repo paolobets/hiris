@@ -57,14 +57,40 @@ LINK_KNOWLEDGE_TOOL_DEF = {
 }
 
 
+# Messaggio unico per il fallimento "senza embedding": lo legge il modello e
+# arriva all'utente, quindi dice cosa NON e' successo (non e' stato salvato) e
+# perche' contava (non sarebbe stato ritrovabile). Nessun dettaglio tecnico:
+# l'eccezione resta nel log del server.
+_ERRORE_SENZA_EMBEDDING = (
+    "Non sono riuscito a salvare questo ricordo: la memoria semantica non è "
+    "disponibile e l'elemento non sarebbe più richiamabile. Riprova più tardi."
+)
+
+
 async def handle_save_knowledge(
     store: Any, embedder: Any, tool_input: dict, *, owner: str
 ) -> dict:
+    """Propone un elemento di conoscenza (stato `pending`, approvato dall'utente).
+
+    Senza embedding l'elemento NON e' richiamabile: knowledge_store.search
+    filtra su `status='approved' AND embedding IS NOT NULL`. Salvarlo comunque
+    riaprirebbe -- spostato di un passo -- lo stesso fallimento silenzioso che
+    la coda di approvazione ha chiuso: il modello dice "salvato", l'elemento
+    compare nella coda, l'utente lo approva, e resta irraggiungibile. Quindi
+    qui, se l'embedding non c'e', si fallisce apertamente e non si scrive
+    nulla. Il presupposto e' verificato in questo punto solo, non nella lista
+    dei tool esposti, perche' e' l'unico attraversato da TUTTI i percorsi
+    (chat, agenti, gateway MCP) e perche' un embedder configurato puo'
+    comunque fallire sulla singola chiamata."""
     content = tool_input["content"]
     try:
-        emb = await embedder.embed(content)
+        emb = await embedder.embed(content) if embedder is not None else None
     except Exception:
-        emb = []
+        logger.exception("save_knowledge: embedding non calcolato, nulla da salvare")
+        emb = None
+    if not emb:
+        logger.warning("save_knowledge rifiutato: nessun embedding disponibile")
+        return {"error": _ERRORE_SENZA_EMBEDDING}
     loop = asyncio.get_running_loop()
     item_id = await loop.run_in_executor(
         None,
@@ -76,7 +102,7 @@ async def handle_save_knowledge(
             amount=tool_input.get("amount"),
             due_date=tool_input.get("due_date"),
             category=tool_input.get("category"),
-            embedding=emb or None,
+            embedding=emb,
             sensitivity=tool_input.get("sensitivity", "normal"),
             source="chat",
             status="pending",

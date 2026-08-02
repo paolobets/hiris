@@ -250,3 +250,54 @@ async def test_no_store_write_returns_503(aiohttp_client):
 
     r3 = await client.post("/api/knowledge", json={"kind": "note", "content": "x"})
     assert r3.status == 503
+
+
+@pytest.mark.asyncio
+async def test_approvazione_rende_richiamabile(aiohttp_client, tmp_path):
+    """Il ciclo che questo lavoro promette, verificato dal comportamento e non
+    dalla colonna: salvato -> coda -> approvato -> richiamabile.
+
+    Gli altri test si fermano a `status == 'approved'`, che e' struttura
+    interna: se domani la ricerca aggiungesse un filtro (come gia' fa con
+    `embedding IS NOT NULL`) resterebbero verdi mentre il ricordo tornerebbe
+    irraggiungibile. Qui l'elemento viene CERCATO davvero, prima e dopo
+    l'approvazione, passando dallo stesso endpoint che tocca il bottone
+    "Approva" della coda."""
+    from unittest.mock import AsyncMock
+    from aiohttp import web
+    from hiris.app.api.handlers_knowledge import handle_approve
+    from hiris.app.tools.knowledge_tools import (
+        handle_save_knowledge, handle_recall_knowledge,
+    )
+
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[1.0, 0.0])
+
+    saved = await handle_save_knowledge(
+        store, embedder,
+        {"kind": "obligation", "content": "La caldaia va revisionata a ottobre"},
+        owner="home",
+    )
+    assert saved["status"] == "pending"
+
+    async def cerca():
+        res = await handle_recall_knowledge(
+            store, embedder, {"query": "caldaia"}, owner="home")
+        return [r["content"] for r in res["results"]]
+
+    # Prima dell'approvazione: in coda, quindi NON richiamabile.
+    assert "La caldaia va revisionata a ottobre" not in await cerca()
+
+    app = web.Application()
+    app["knowledge_store"] = store
+    app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
+    client = await aiohttp_client(app)
+    r = await client.post(f"/api/knowledge/{saved['id']}/approve")
+    assert r.status == 200
+
+    # Dopo l'approvazione: la ricerca lo trova. E' questo che l'utente ha
+    # comprato approvando, non il valore della colonna.
+    assert "La caldaia va revisionata a ottobre" in await cerca()
+
+    store.close()

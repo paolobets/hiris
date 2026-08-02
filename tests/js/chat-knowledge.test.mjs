@@ -78,8 +78,14 @@ test('il contenuto scritto dal modello e sempre escapato', async () => {
 
 test('un elemento sensibile non e mostrato in chiaro finche non lo si chiede', async () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  /* Il contenuto porta dentro un tag riconoscibile: e l unico punto del file
+     che salta esc() di proposito, ed e sicuro solo perche reveal() scrive con
+     textContent. Se qualcuno lo riscrivesse con innerHTML il testo comparirebbe
+     lo stesso -- e il test passerebbe identico -- ma nel DOM comparirebbe anche
+     #kb-xss-probe. E quello che qui si verifica non esista. */
   window.fetch = async () => jsonResponse({ items: [
-    { id: 9, kind: 'fact', content: 'IBAN IT60X0542811101000000123456',
+    { id: 9, kind: 'fact',
+      content: 'IBAN IT60X0542811101000000123456 <b id="kb-xss-probe">x</b>',
       source: 'chat', created_at: '2026-08-02T09:00:00Z', sensitivity: 'sensitive' },
   ] });
 
@@ -103,6 +109,10 @@ test('un elemento sensibile non e mostrato in chiaro finche non lo si chiede', a
 
   assert.match(list.textContent, /IT60X0542811101000000123456/,
     'dopo il click il contenuto e visibile');
+  assert.equal(list.querySelector('#kb-xss-probe'), null,
+    'la rivelazione deve inserire testo, non HTML: nessun elemento costruito dal contenuto');
+  assert.match(list.textContent, /<b id="kb-xss-probe">x<\/b>/,
+    'il markup si legge come testo, esattamente com e stato salvato');
 });
 
 test('Approva chiama POST approve e non mostra un falso errore di rete', async () => {
