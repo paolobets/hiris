@@ -23,6 +23,8 @@ import time
 
 from aiohttp import web
 
+from ..tools.notify_tools import build_app_deeplink
+
 logger = logging.getLogger(__name__)
 
 PENDING_TTL_S = 300                    # a pending command expires after 5 minutes
@@ -185,16 +187,19 @@ def parse_action(action: str) -> tuple[str, str] | None:
     return None
 
 
-def build_actions(nonce: str, click_path: str | None = None) -> list[dict]:
+def build_actions(nonce: str, open_uri: str | None = None) -> list[dict]:
     actions = [
         {"action": f"{_ACTION_PREFIX}:approve:{nonce}", "title": "Approva"},
         {"action": f"{_ACTION_PREFIX}:reject:{nonce}", "title": "Nega"},
     ]
-    # Il pulsante "Apri HIRIS" solo se conosciamo il path ingress reale
-    # (`/hassio/ingress/<slug>`); senza slug niente pulsante rotto (prima era
-    # hard-coded a "/hassio_ingress", un path inesistente).
-    if click_path:
-        actions.append({"action": "URI", "title": "Apri HIRIS", "uri": click_path})
+    # Il pulsante "Apri HIRIS" solo se conosciamo davvero dove aprire; senza
+    # slug niente pulsante rotto (prima era hard-coded a "/hassio_ingress", un
+    # path inesistente). `uri` e' un campo solo per entrambe le piattaforme,
+    # quindi porta il collegamento `homeassistant://navigate/...`: la Companion
+    # iOS lo apre come collegamento, quella Android ne toglie il prefisso e
+    # naviga al percorso: e' l'unica forma che vale su tutt'e due.
+    if open_uri:
+        actions.append({"action": "URI", "title": "Apri HIRIS", "uri": open_uri})
     return actions
 
 
@@ -224,17 +229,21 @@ async def notify(app: web.Application, *, message: str, actionable: bool, nonce:
         logger.error("invalid notify service %r", service)
         return False
     domain, svc = service.split(".", 1)
-    # deep-link sul tap del corpo alla UI ingress di HIRIS (apre HIRIS, non la
-    # Dashboard home). Presente anche sui pending NON actionable (rosso/OTP-only),
-    # che prima non portavano alcun `data`. `channel` dedicato come per ha_push.
+    # collegamento sul tap del corpo alla UI ingress di HIRIS (apre HIRIS, non
+    # la Dashboard home). Presente anche sui pending NON actionable
+    # (rosso/OTP-only), che prima non portavano alcun `data`. `channel`
+    # dedicato come per ha_push. Forme diverse per i due campi: percorso
+    # relativo su Android, collegamento della Companion su iOS (vedi
+    # `build_app_deeplink`). Senza percorso il collegamento e' omesso.
     click = app.get("ingress_click_path") or None
+    deeplink = build_app_deeplink(click)
     push: dict = {"channel": "HIRIS"}
-    if click:
+    if click and deeplink:
         push["clickAction"] = click
-        push["url"] = click
+        push["url"] = deeplink
     data: dict = {"message": message, "title": "HIRIS · richiesta da Claude"}
     if actionable:
-        push["actions"] = build_actions(nonce, click)
+        push["actions"] = build_actions(nonce, deeplink)
         push["tag"] = f"hiris-gw-{nonce}"
     data["data"] = push
     try:

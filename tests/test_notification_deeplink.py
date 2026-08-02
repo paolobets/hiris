@@ -1,11 +1,45 @@
 """Fase 2.5 live-verify issue #1: le notifiche Companion aprivano la Dashboard
 home (nessun clickAction) ed erano poco leggibili. Ora ogni push HIRIS porta un
 deep-link alla UI ingress dell'add-on (`/hassio/ingress/<slug>`) sul tap del
-corpo, un canale dedicato e, per il testo lungo, un `subject` leggibile."""
+corpo, un canale dedicato e, per il testo lungo, un `subject` leggibile.
+
+Bug in produzione (iPhone): la Companion iOS accetta nel campo `url` solo path
+relativi di dashboard Lovelace o URL assoluti, quindi `/hassio/ingress/<slug>`
+finiva al sistema operativo (selettore "salva il sito" + pagina nera). Il campo
+iOS porta ora il collegamento proprio della Companion
+`homeassistant://navigate/<path>?server=default`, che apre l'app e naviga nel
+frontend; il campo Android `clickAction` resta il path relativo, che la
+Companion Android risolve nativamente."""
 import pytest
 
-from hiris.app.tools.notify_tools import build_push_data, send_notification
+from hiris.app.tools.notify_tools import (
+    build_app_deeplink, build_push_data, send_notification)
 from hiris.app.api import handlers_gateway_pending as gp
+
+_PATH = "/hassio/ingress/abc_hiris"
+_DEEPLINK = "homeassistant://navigate/hassio/ingress/abc_hiris?server=default"
+
+
+# --- build_app_deeplink (pura) ----------------------------------------------
+
+def test_build_app_deeplink_wraps_frontend_path():
+    assert build_app_deeplink(_PATH) == _DEEPLINK
+
+
+def test_build_app_deeplink_normalizes_missing_leading_slash():
+    assert build_app_deeplink("hassio/ingress/abc_hiris") == _DEEPLINK
+
+
+def test_build_app_deeplink_keeps_an_existing_query():
+    assert build_app_deeplink("/hassio/ingress/x?a=1") == (
+        "homeassistant://navigate/hassio/ingress/x?a=1&server=default")
+
+
+@pytest.mark.parametrize("assente", [None, "", "   "])
+def test_build_app_deeplink_without_path_returns_none(assente):
+    """Senza path (Supervisor irraggiungibile, slug assente) il collegamento
+    va omesso: meglio la Dashboard home che una pagina rotta."""
+    assert build_app_deeplink(assente) is None
 
 
 class _FakeHA:
@@ -20,9 +54,9 @@ class _FakeHA:
 # --- build_push_data (pura) -------------------------------------------------
 
 def test_build_push_data_deeplinks_when_click_path_present():
-    d = build_push_data({"ingress_click_path": "/hassio/ingress/abc_hiris"}, "ciao")
-    assert d["clickAction"] == "/hassio/ingress/abc_hiris"   # Android
-    assert d["url"] == "/hassio/ingress/abc_hiris"           # iOS
+    d = build_push_data({"ingress_click_path": _PATH}, "ciao")
+    assert d["clickAction"] == _PATH        # Android: path frontend relativo
+    assert d["url"] == _DEEPLINK            # iOS: collegamento della Companion
     assert d["channel"] == "HIRIS"
     assert "subject" not in d  # messaggio corto
 
@@ -47,15 +81,15 @@ async def test_ha_push_attaches_deeplink_data():
     ok = await send_notification(
         ha, "messaggio", "ha_push",
         {"ha_notify_service": "notify.mobile_app_bet",
-         "ingress_click_path": "/hassio/ingress/abc_hiris"},
+         "ingress_click_path": _PATH},
         title="HIRIS")
     assert ok
     domain, service, data = ha.calls[0]
     assert (domain, service) == ("notify", "mobile_app_bet")
     assert data["message"] == "messaggio"
     assert data["title"] == "HIRIS"
-    assert data["data"]["clickAction"] == "/hassio/ingress/abc_hiris"
-    assert data["data"]["url"] == "/hassio/ingress/abc_hiris"
+    assert data["data"]["clickAction"] == _PATH
+    assert data["data"]["url"] == _DEEPLINK
     assert data["data"]["channel"] == "HIRIS"
 
 
@@ -78,14 +112,16 @@ async def test_pending_notify_deeplinks_body_and_uri_action():
     ha = _FakeHA()
     app = {"ha_client": ha,
            "gateway_settings": {"notify_service": "notify.mobile_app_bet"},
-           "ingress_click_path": "/hassio/ingress/abc_hiris"}
+           "ingress_click_path": _PATH}
     ok = await gp.notify(app, message="serve conferma", actionable=True, nonce="n1")
     assert ok
     _, _, data = ha.calls[0]
-    assert data["data"]["clickAction"] == "/hassio/ingress/abc_hiris"
-    assert data["data"]["url"] == "/hassio/ingress/abc_hiris"
+    assert data["data"]["clickAction"] == _PATH        # Android
+    assert data["data"]["url"] == _DEEPLINK            # iOS
+    # `uri` e' un campo solo: porta il collegamento, l'unica forma che entrambe
+    # le Companion sanno aprire (Android toglie il prefisso `.../navigate/`).
     uri = [a for a in data["data"]["actions"] if a.get("action") == "URI"]
-    assert uri and uri[0]["uri"] == "/hassio/ingress/abc_hiris"
+    assert uri and uri[0]["uri"] == _DEEPLINK
     # le azioni di approvazione restano
     assert any(a["action"].endswith("approve:n1") for a in data["data"]["actions"])
 
@@ -97,11 +133,12 @@ async def test_pending_notify_non_actionable_still_deeplinks():
     ha = _FakeHA()
     app = {"ha_client": ha,
            "gateway_settings": {"notify_service": "notify.mobile_app_bet"},
-           "ingress_click_path": "/hassio/ingress/abc_hiris"}
+           "ingress_click_path": _PATH}
     ok = await gp.notify(app, message="serve OTP", actionable=False, nonce="n2")
     assert ok
     _, _, data = ha.calls[0]
-    assert data["data"]["clickAction"] == "/hassio/ingress/abc_hiris"
+    assert data["data"]["clickAction"] == _PATH
+    assert data["data"]["url"] == _DEEPLINK
     assert data["data"]["channel"] == "HIRIS"
     assert "actions" not in data["data"]
 
