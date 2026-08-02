@@ -254,7 +254,7 @@ test('turn-limit raggiunto disabilita input e send-btn (blocca l\'invio)', () =>
 
 test('il pannello task carica le card e puo\' cancellare una task pending', async () => {
   const { window, document } = loadScripts(
-    ['config/api.js', 'chat/state.js', 'chat/tasks.js'],
+    ['config/api.js', 'config/labels.js', 'chat/state.js', 'chat/tasks.js'],
     { html: fixtureHtml() },
   );
   const calls = [];

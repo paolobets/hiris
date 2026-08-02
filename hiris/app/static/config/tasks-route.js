@@ -14,27 +14,14 @@
   }
 
   function describeTrigger(t) {
-    if (!t || typeof t !== 'object') return '—';
-    if (t.type === 'delay') return 'tra ' + (t.minutes || 0) + ' min';
-    if (t.type === 'cron') return 'cron: ' + (t.cron || '');
-    if (t.type === 'state_changed') return 'state: ' + (t.entity_id || '');
-    if (t.type === 'absolute_time') return 'alle ' + (t.iso || '');
-    return t.type || JSON.stringify(t);
+    /* Delegata al dizionario condiviso (labels.js): stessa logica usata dal
+       pannello task della chat, un solo posto dove i cinque tipi reali sono
+       elencati. '—' qui e' un placeholder di visualizzazione locale (questa
+       vista mostra sempre un valore in una colonna), non un default del
+       dizionario -- HirisLabels.triggerDescription ritorna '' se manca il
+       trigger. */
+    return HirisLabels.triggerDescription(t) || '—';
   }
-
-  var STATUS_LABELS = {
-    pending: 'In attesa',
-    executed: 'Eseguito',
-    cancelled: 'Cancellato',
-    failed: 'Fallito',
-  };
-
-  var STATUS_CLS = {
-    pending: 'warn',
-    executed: 'ok',
-    cancelled: '',
-    failed: 'err',
-  };
 
   function fetchTasks(filterStatus) {
     var url = 'api/tasks';
@@ -54,8 +41,8 @@
     // sulla deprecata se un backend non ancora aggiornato la emette da sola.
     var agentId = t.agent_id || t.chatbot_id;
     var agentName = agentNamesById[agentId] || agentId || '—';
-    var statusCls = STATUS_CLS[t.status] || '';
-    var statusLabel = STATUS_LABELS[t.status] || t.status || '—';
+    var statusCls = HirisLabels.taskStatusCls(t.status);
+    var statusLabel = HirisLabels.taskStatusLabel(t.status);
     var actionsCount = (t.actions && t.actions.length) || 0;
     var actionsLabel = actionsCount + ' azion' + (actionsCount === 1 ? 'e' : 'i');
     var triggerDesc = describeTrigger(t.trigger);
@@ -109,13 +96,20 @@
       var byId = {};
       agents.forEach(function(a) { byId[a.id] = a.name; });
 
-      /* Update tab counters via separate fetch (always all statuses) */
+      /* Update tab counters via separate fetch (always all statuses).
+         Le chiavi vengono dal dizionario condiviso (i sette stati reali),
+         non da una lista ricopiata qui -- prima il chip "eseguiti" cercava
+         'executed' (mai scritto dal motore, sempre zero) e running/skipped/
+         expired non avevano contatore ne' chip: un task in quegli stati non
+         compariva sotto nessun filtro tranne "tutti", e la somma dei chip
+         non tornava mai col totale. */
       fetchTasks('all').then(function(allTasks) {
-        var counts = { all: allTasks.length, pending: 0, executed: 0, cancelled: 0, failed: 0 };
+        var counts = { all: allTasks.length };
+        Object.keys(HirisLabels.TASK_STATUS_LABELS).forEach(function(k) { counts[k] = 0; });
         allTasks.forEach(function(t) {
           if (counts[t.status] !== undefined) counts[t.status]++;
         });
-        ['all', 'pending', 'executed', 'cancelled', 'failed'].forEach(function(k) {
+        ['all'].concat(Object.keys(HirisLabels.TASK_STATUS_LABELS)).forEach(function(k) {
           var el = document.getElementById('tasks-count-' + k);
           if (el) el.textContent = counts[k];
         });
@@ -128,7 +122,7 @@
       });
 
       if (!tasks.length) {
-        listBody.innerHTML = '<div style="padding:24px;color:var(--text-3);text-align:center"><div style="font-size:32px;opacity:0.3;margin-bottom:8px">∅</div>Nessun task ' + (filterStatus !== 'all' ? STATUS_LABELS[filterStatus] || filterStatus : '') + '.</div>';
+        listBody.innerHTML = '<div style="padding:24px;color:var(--text-3);text-align:center"><div style="font-size:32px;opacity:0.3;margin-bottom:8px">∅</div>Nessun task ' + (filterStatus !== 'all' ? HirisLabels.taskStatusLabel(filterStatus) : '') + '.</div>';
         return;
       }
 
@@ -152,10 +146,18 @@
     outlet.innerHTML =
       '<div class="page-title">Task pianificati</div>' +
       '<p class="page-subtitle">Task asincrone schedulate dai Chatbot (es. <code class="code-inline">create_task()</code> in irrigazione, scenari rientro, ecc).</p>' +
+      /* Un chip per ognuno dei sette stati reali (task_engine.py): prima
+         'running'/'skipped'/'expired' non ne avevano uno e un task in
+         quegli stati era invisibile sotto ogni filtro tranne "tutti".
+         Nessuna emoji sui tre chip nuovi (running/skipped/expired) --
+         quelle sui chip esistenti restano dove sono. */
       '<div class="log-toolbar">' +
         '<button type="button" class="filter-chip active" data-filter="all" aria-pressed="true">tutti<span class="fc-count" id="tasks-count-all">—</span></button>' +
         '<button type="button" class="filter-chip" data-filter="pending" aria-pressed="false">⏱ in attesa<span class="fc-count" id="tasks-count-pending">—</span></button>' +
-        '<button type="button" class="filter-chip" data-filter="executed" aria-pressed="false">✓ eseguiti<span class="fc-count" id="tasks-count-executed">—</span></button>' +
+        '<button type="button" class="filter-chip" data-filter="running" aria-pressed="false">in corso<span class="fc-count" id="tasks-count-running">—</span></button>' +
+        '<button type="button" class="filter-chip" data-filter="done" aria-pressed="false">✓ eseguiti<span class="fc-count" id="tasks-count-done">—</span></button>' +
+        '<button type="button" class="filter-chip" data-filter="skipped" aria-pressed="false">saltati<span class="fc-count" id="tasks-count-skipped">—</span></button>' +
+        '<button type="button" class="filter-chip" data-filter="expired" aria-pressed="false">scaduti<span class="fc-count" id="tasks-count-expired">—</span></button>' +
         '<button type="button" class="filter-chip" data-filter="failed" aria-pressed="false">✗ falliti<span class="fc-count" id="tasks-count-failed">—</span></button>' +
         '<button type="button" class="filter-chip" data-filter="cancelled" aria-pressed="false">⊘ cancellati<span class="fc-count" id="tasks-count-cancelled">—</span></button>' +
         '<span class="lt-spacer"></span>' +

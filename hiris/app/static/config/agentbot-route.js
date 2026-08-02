@@ -439,8 +439,10 @@ window.HirisAgentbotRoute = (function () {
           badge.style.cssText = 'font-size:11px;padding:2px 6px;border-radius:6px;background:var(--accent,#3a6);color:#fff;margin-right:8px';
           row.appendChild(badge);
 
+          /* Etichetta dal dizionario condiviso (labels.js): prima qui
+             finiva lo stato grezzo del DB (es. 'recorded'), mai tradotto. */
           var statusText = el('span', null,
-            (s.title || '') + ' · ' + (s.rationale || '') + ' · ' + (s.status || ''));
+            (s.title || '') + ' · ' + (s.rationale || '') + ' · ' + HirisLabels.suggestionStatusLabel(s.status));
           row.appendChild(statusText);
 
           if (s.kind === 'coverage' && s.status === 'applied') {
@@ -460,7 +462,7 @@ window.HirisAgentbotRoute = (function () {
                   if (res && res.ok) {
                     s.status = 'dismissed';
                     statusText.textContent =
-                      (s.title || '') + ' · ' + (s.rationale || '') + ' · ' + (s.status || '');
+                      (s.title || '') + ' · ' + (s.rationale || '') + ' · ' + HirisLabels.suggestionStatusLabel(s.status);
                     undoBtn.style.display = 'none';
                   } else {
                     errText.textContent = 'Annullamento non riuscito.';

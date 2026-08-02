@@ -202,7 +202,7 @@ test('coda vuota e coda illeggibile dicono due cose diverse', async () => {
 
 test('aprire la Memoria chiude Proposte e Task', async () => {
   const { window, document } = loadScripts(
-    ['config/api.js', 'config/proposals-core.js', 'chat/proposals.js',
+    ['config/api.js', 'config/labels.js', 'config/proposals-core.js', 'chat/proposals.js',
       'chat/tasks.js', 'chat/knowledge-core.js', 'chat/knowledge.js'],
     { html: fixtureHtml() },
   );
