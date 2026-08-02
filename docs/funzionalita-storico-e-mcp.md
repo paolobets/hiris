@@ -87,3 +87,24 @@ Via Claude/MCP, i task possono contenere **solo azioni verdi** (vincolati ai dom
 entità verdi del semaforo). L'annullamento di un task (`cancel_task`) richiede
 **sempre** la tua conferma. Nella chat HIRIS (assistente fidato) i task non hanno
 questa restrizione.
+
+## 7. Memoria — cosa HIRIS ha imparato (impara → approva)
+
+Quando dici *"ricordati che…"*, HIRIS non salva direttamente nel second brain:
+mette l'informazione **in attesa**, come fa con le proposte. La trovi nella chat
+sotto **Memoria**, la terza inbox accanto a *Proposte* e *Task*, con il numero di
+elementi che aspettano.
+
+Per ciascuno vedi il contenuto, quando è stato imparato e da quale conversazione o
+strumento arriva, e scegli se **approvarlo** o **scartarlo**. Solo ciò che approvi
+diventa richiamabile da `recall_knowledge`, dal briefing e dalla ricerca.
+
+- Gli elementi marcati **sensibili** restano coperti: il contenuto si mostra solo
+  se lo chiedi esplicitamente, così puoi decidere senza esporlo per sbaglio.
+- Il salvataggio **fallisce dichiaratamente** se HIRIS non ha modo di indicizzare
+  il testo (nessun servizio di embedding raggiungibile): meglio un errore che un
+  elemento salvato e mai richiamabile.
+
+> Gli altri scrittori della knowledge base (documenti, insight storici, memorie,
+> tracce del Brain) salvano già come approvati: la coda riguarda ciò che l'AI
+> impara **da te**, in conversazione.

@@ -189,9 +189,15 @@ of SP-4 Fase B, together with the `ensureLegacy`/`rewireLegacyAfterMount`/
 
 `hiris/app/static/chat/` — standalone chat page (`index.html`), inline JS
 extracted into modules (Task 8): `state.js`, `messages.js`, `agents.js`,
-`send.js`, `theme.js`, `tasks.js`, `onboarding.js`, `sidebar.js`,
-`keyboard.js`, `main.js` (plus `static/config/api.js`, shared with the
-Designer). `pollChatReply` remains duplicated between this page and
+`send.js`, `theme.js`, `tasks.js`, `proposals.js`, `knowledge.js`,
+`knowledge-core.js`, `onboarding.js`, `sidebar.js`, `keyboard.js`,
+`main.js` (plus `static/config/api.js`, shared with the Designer). The
+chat's three inboxes — **Proposals**, **Tasks** and **Memory** — are
+mutually exclusive panels; `knowledge.js` (view) is split from
+`knowledge-core.js` (network, no DOM) for the same reason as
+`config/proposals-core.js`: a view inheriting another view's DOM turns a
+successful operation into a bogus "network error".
+`pollChatReply` remains duplicated between this page and
 `hiris-chat-card.js` (the card deploys via `/local/hiris/` and can't share
 a `<script src>` with the add-on).
 
