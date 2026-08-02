@@ -346,7 +346,7 @@ Ogni Chatbot può essere limitato tramite:
 | `allowed_services` | Glob sui servizi chiamabili | `["light.*", "switch.turn_*"]` |
 | `allowed_endpoints` | URL approvati per `http_request` | `[{"url": "https://api.example.com", ...}]` |
 | `restrict_to_home` | Rifiuta domande off-topic | `true` |
-| `require_confirmation` | Claude chiede conferma prima di agire | `true` |
+| `require_confirmation` | Claude chiede "sì/ok" prima di ogni azione reale (`call_ha_service`, `trigger_automation`, `toggle_automation`, `set_input_helper`, `create_ha_config`). È un'istruzione al modello, non un blocco: il blocco è il semaforo | `true` |
 | `knowledge_access` | Scope memoria (dati sensibili, quali kind) | `{"allow_sensitive": false, "kinds": "all"}` |
 | `max_chat_turns` | Limita lunghezza conversazione | `20` |
 

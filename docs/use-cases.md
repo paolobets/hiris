@@ -312,7 +312,9 @@ wrong", write "tell me if consumption exceeds 3kW".
 schedule in `strategic_context`. Claude uses this to calibrate its replies.
 
 **Use `require_confirmation` for irreversible actions:** any Chatbot that
-controls heating, appliances, or security should have this enabled.
+controls heating, appliances, or security should have this enabled. It is an
+instruction to the model, not a hard block: it does not replace the semaphore,
+which is the safeguard that holds on its own. Set both.
 
 **Keep scope tight:** `allowed_tools`/`allowed_entities`/`allowed_services` as
 narrow as possible for each Chatbot — especially for assistants shared with

@@ -62,15 +62,36 @@ TOOLS: list[ToolDef] = [
             "Cerca nella knowledge base HIRIS e negli insight storici settimanali (non sensibili). "
             "Es: tendenze o variazioni recenti."),
     # --- SCHEDULE / PROPOSE ---
+    # Il gate di conferma qui NON esiste e non e' un'omissione: api/
+    # handlers_execute.py dispaccia create_task direttamente. Il limite reale e'
+    # un altro e vale gia' alla creazione -- ogni azione call_ha_service deve
+    # avere entity_id espliciti (niente area/dispositivo/label) e tier VERDE
+    # per-entita', altrimenti il task viene rifiutato subito. Un gate di
+    # conferma sopra a quel filtro sarebbe ridondante: cio' che passa e' solo
+    # cio' che il semaforo lascia gia' passare senza chiedere nulla. Percio' e'
+    # la PROMESSA a essere sbagliata, non il codice a essere incompleto -- e
+    # una rete dichiarata e assente e' peggio di nessuna rete, perche' il
+    # modello agisce con meno cautela. Vedi tests/test_coerenza_conferma.py e
+    # tests/test_execute_api.py (rifiuti off/giallo/rosso).
     ToolDef("create_task", Tier.SCHEDULE, "create_task",
             "Pianifica un task HIRIS (trigger + azioni). Le azioni possono includere "
             "send_notification (anche notifiche persistenti nel dashboard HA, channel "
-            "'ha_persistent') e call_ha_service (solo su entita' verdi nel semaforo). "
-            "Richiede conferma (gate di sicurezza)."),
+            "'ha_persistent') e call_ha_service. Un'azione call_ha_service e' accettata "
+            "solo con entity_id espliciti e su entita' verdi nel semaforo: target per "
+            "area/dispositivo/label o entita' non verdi fanno rifiutare il task alla "
+            "creazione. Nessun passaggio umano fra la creazione e lo scatto: e' il "
+            "semaforo il limite, non un'approvazione."),
     ToolDef("list_tasks", Tier.SCHEDULE, "list_tasks",
             "Elenca i task HIRIS pianificati."),
+    # Anche qui nessun gate, e qui nemmeno serviva: annullare TOGLIE un'azione
+    # futura, non ne esegue una. Resta un residuo noto e volutamente non
+    # chiuso in questo giro: cancel_task non filtra per agent_id, quindi da
+    # qui si annulla anche un task creato dall'utente in HIRIS -- un
+    # impedimento, non un'attuazione.
     ToolDef("cancel_task", Tier.SCHEDULE, "cancel_task",
-            "Annulla un task HIRIS pianificato. Richiede sempre conferma."),
+            "Annulla un task HIRIS pianificato: rimuove un'azione futura, non ne "
+            "esegue una. Immediato e non reversibile -- il task va ricreato. "
+            "Usa prima list_tasks per prendere l'id giusto."),
     ToolDef("create_automation_proposal", Tier.SCHEDULE, "create_automation_proposal",
             "Propone un'automazione HA per revisione umana (NON applicata automaticamente)."),
     ToolDef("send_notification", Tier.SCHEDULE, "send_notification",

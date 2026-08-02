@@ -343,12 +343,42 @@ RESTRICT_PROMPT = (
     "Per qualsiasi altro argomento, rispondi educatamente che non puoi aiutare su quel tema."
 )
 
+# Strumenti che ATTUANO davvero: ognuno produce un effetto reale, subito.
+# L'opzione "richiedi conferma" di un Chatbot li nomina TUTTI -- nominarne uno
+# solo (com'era: il solo call_ha_service) significa promettere all'utente una
+# rete che copre un quinto della superficie.
+#
+# Quattro di questi passano anche dal semaforo (tools/dispatcher.py::_gate),
+# che e' un controllo nel codice e vale sempre, indipendentemente da questa
+# opzione. create_ha_config no: scrive script e scene su Home Assistant
+# immediatamente (dispatcher -> apply_ha_config), quindi qui la conferma
+# dell'utente e' l'unico passaggio prima dell'effetto.
+#
+# ATTENZIONE, e' il punto che va detto per intero: questo elenco vive in
+# un'ISTRUZIONE nel system prompt, non in un controllo. Un modello che la ignora
+# attua comunque -- l'unico argine che regge da solo e' il semaforo. Per
+# questo la descrizione nell'editor dei Chatbot dichiara esattamente questo,
+# invece di lasciar credere a un blocco tecnico.
+# Guardie: tests/test_coerenza_conferma.py.
+CONFIRMATION_COVERED_TOOLS = (
+    "call_ha_service",
+    "trigger_automation",
+    "toggle_automation",
+    "set_input_helper",
+    "create_ha_config",
+)
+
 REQUIRE_CONFIRMATION_PROMPT = (
-    "Prima di chiamare call_ha_service per eseguire un'azione reale, "
-    "descrivi l'azione che intendi eseguire e chiedi conferma con il formato: "
-    "'Proposta: [descrizione azione]. Confermi? (sì/no)'. "
-    "Esegui call_ha_service SOLO se il messaggio più recente dell'utente "
-    "contiene 'sì', 'si', 'ok', 'conferma' o 'yes' (case insensitive)."
+    "Prima di eseguire un'azione reale devi chiedere conferma all'utente. "
+    "Vale per tutti questi strumenti: "
+    + ", ".join(CONFIRMATION_COVERED_TOOLS)
+    + ". Per ognuno: descrivi prima l'azione che intendi eseguire e chiedi "
+    "conferma con il formato 'Proposta: [descrizione azione]. Confermi? "
+    "(sì/no)'. Chiama lo strumento SOLO se il messaggio più recente "
+    "dell'utente contiene 'sì', 'si', 'ok', 'conferma' o 'yes' (case "
+    "insensitive). Attenzione a create_ha_config: crea script e scene su "
+    "Home Assistant subito, senza passare da una proposta da approvare, "
+    "quindi la conferma dell'utente è l'unico passaggio prima dell'effetto."
 )
 
 
