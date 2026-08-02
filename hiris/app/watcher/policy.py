@@ -12,7 +12,15 @@ DEFAULT_POLICY: dict = {
         "opening":    {"enabled": False, "entities": [], "open_minutes": 10},
         "fridge_temp":{"enabled": False, "entities": [], "max_temp_c": 8, "duration_min": 30},
         "power":      {"enabled": False, "entities": [], "max_watt": 3000},
-        "battery":    {"enabled": False, "entities": [], "min_pct": 10},
+        # `min_pct` parte dallo stesso numero del controllo di salute del
+        # Brain (brain/health_checks.SOGLIA_BATTERIA_PCT). Tenuto qui come
+        # letterale, non importato, per non invertire la dipendenza
+        # watcher->brain (stessa scelta gia' fatta per i bound di max_watt,
+        # v. PARAM_BOUNDS); un test in tests/test_health_checks.py verifica
+        # che i due numeri restino uguali. Resta modificabile dall'utente: la
+        # Sentinella sorveglia poche entita' scelte e li' una soglia piu'
+        # stretta ha senso.
+        "battery":    {"enabled": False, "entities": [], "min_pct": 15},
     },
     "situations": {
         "ronda_minutes": 15,

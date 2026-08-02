@@ -46,12 +46,24 @@ def detect_power_anomaly(entity_id, old, new, cfg, now) -> Optional[Signal]:
     return Signal(kind="power", entity_id=entity_id, severity="warn",
                   evidence={"watt": watt, "max_watt": cfg.get("max_watt", 3000)}, ts=now)
 
+# Ripiego quando `cfg` non porta `min_pct` (policy scritta a mano, override
+# parziale passato a Guardian.set_policy): stesso numero di
+# DEFAULT_POLICY["detectors"]["battery"]["min_pct"] e di
+# brain/health_checks.SOGLIA_BATTERIA_PCT. Letterale e non importato per non
+# invertire la dipendenza watcher->brain; un test verifica che i tre valori
+# coincidano. Il rilevatore resta un meccanismo distinto dal controllo del
+# Brain -- opt-in su entita' scelte, in tempo reale, contro un'igiene sempre
+# attiva su tutta la casa -- ma i due non devono partire da numeri diversi.
+_MIN_PCT_PREDEFINITA = 15
+
+
 def detect_low_battery(entity_id, old, new, cfg, now) -> Optional[Signal]:
+    soglia = (cfg or {}).get("min_pct", _MIN_PCT_PREDEFINITA)
     pct = _num(new)
-    if pct is None or pct >= cfg.get("min_pct", 10):
+    if pct is None or pct >= soglia:
         return None
     return Signal(kind="battery", entity_id=entity_id, severity="info",
-                  evidence={"pct": pct, "min_pct": cfg.get("min_pct", 10)}, ts=now)
+                  evidence={"pct": pct, "min_pct": soglia}, ts=now)
 
 DETECTORS: dict[str, Callable] = {
     "opening": detect_open,

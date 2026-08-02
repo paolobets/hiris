@@ -19,6 +19,38 @@ CHECK_IDS = {
 CHECK_BATTERIA = "low_battery"
 BATTERIA_TITOLO_PREFISSO = "Batteria scarica: "
 
+# Soglia predefinita di carica residua sotto la quale una batteria e' scarica.
+# UNICA in tutto il prodotto: la Sentinella parte dallo stesso numero
+# (watcher/policy.py DEFAULT_POLICY, watcher/detectors.detect_low_battery), e
+# un test lo verifica. I due meccanismi restano pero' distinti e questo e'
+# voluto, non un residuo:
+#   - questo controllo gira a ogni scansione del Brain su TUTTE le batterie
+#     della casa e produce una segnalazione persistente: e' igiene, sempre
+#     attiva, e la sua soglia non e' configurabile perche' non e' una
+#     preferenza ma un valore di buon senso;
+#   - `detectors.battery` e' un rilevatore in tempo reale che l'utente
+#     abilita su entita' SCELTE, con la propria `min_pct` regolabile: chi lo
+#     accende sta chiedendo una sorveglianza piu' stretta su quelle poche
+#     entita', e abbassare o alzare quel numero deve restare possibile senza
+#     spostare l'igiene di tutta la casa.
+# Cio' che NON deve accadere e' che i due partano da numeri diversi: a meta'
+# strada fra 10 e 15 l'utente si sentirebbe dire "scarica" da un meccanismo e
+# nulla dall'altro sulla stessa entita'. Da qui il valore condiviso.
+SOGLIA_BATTERIA_PCT = 15
+
+# Da quanti giorni una entita' deve essere assente perche' il Brain ne faccia
+# una segnalazione. Vedi `check_entity_unavailable` per il rapporto con lo
+# snapshot istantaneo di proxy/health_monitor.py.
+GIORNI_NON_DISPONIBILE = 2
+
+# Stati con cui Home Assistant dice "non ho un valore per questa entita'".
+STATI_NON_DISPONIBILI = ("unavailable", "unknown")
+
+# Formato degli istanti scritti nelle voci: UTC al secondo, ordinabile come
+# stringa. Lo stesso di proxy/health_monitor._TS_FMT, cosi' snapshot e
+# segnalazioni citano la stessa caduta con la stessa scrittura.
+_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
 # Soglie di spazio libero sul disco dell'host, in percentuale. "Sotto" e'
 # stretto: esattamente al 10% si resta in avviso, esattamente al 20% non si
 # segnala nulla.
@@ -45,22 +77,82 @@ def _parse_iso(v):
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def check_entity_unavailable(states, *, now: datetime, days: int = 2):
-    cutoff = now - timedelta(days=days)
+def entita_non_disponibili(states):
+    """Entita' che NON rispondono adesso, dalla lista completa degli stati.
+
+    Unica derivazione del fatto "questa entita' non risponde" in tutto il
+    prodotto. La usano entrambi i luoghi che di quel fatto parlano:
+
+    - `proxy/health_monitor.HealthMonitor`, che tiene lo snapshot di chi non
+      risponde ADESSO (rigenerato a ogni refresh da questa funzione e
+      mantenuto fra un refresh e l'altro dagli eventi WebSocket, sempre
+      passando da qui);
+    - `check_entity_unavailable` qui sotto, che di quella stessa lista tiene
+      solo le assenze che durano da giorni.
+
+    `since` viene da `last_changed` (o `last_updated`) normalizzato a UTC:
+    la durata dell'assenza e' quella di Home Assistant, non l'istante in cui
+    HIRIS se n'e' accorto. Vale None quando HA non porta un istante
+    leggibile -- l'entita' non risponde lo stesso, ma da quanto non si sa.
+
+    Funzione pura: nessun I/O, nessuna scrittura, mai solleva su voci
+    malformate.
+    """
     out = []
     for s in states or []:
-        if s.get("state") not in ("unavailable", "unknown"):
+        if not isinstance(s, dict):
+            continue
+        if s.get("state") not in STATI_NON_DISPONIBILI:
+            continue
+        eid = s.get("entity_id") or ""
+        if not eid:
             continue
         ts = _parse_iso(s.get("last_changed") or s.get("last_updated"))
+        attributi = s.get("attributes")
+        nome = (attributi or {}).get("friendly_name") if isinstance(attributi, dict) else None
+        out.append({
+            "entity_id": eid,
+            "domain": eid.split(".", 1)[0] if "." in eid else "",
+            "since": ts.astimezone(timezone.utc).strftime(_TS_FMT) if ts else None,
+            "state": s.get("state"),
+            "name": nome or eid,
+        })
+    return out
+
+
+def check_entity_unavailable(states, *, now: datetime,
+                             days: int = GIORNI_NON_DISPONIBILE):
+    """Segnalazioni per le entita' assenti da almeno `days` giorni.
+
+    NON e' un secondo calcolo di chi non risponde: e' un FILTRO PER DURATA
+    sopra `entita_non_disponibili`, l'unica derivazione del fatto. Le due
+    letture che l'utente incontra rispondono percio' a due domande diverse
+    sopra lo stesso fatto, e non possono contraddirsi:
+
+    - «cosa non risponde adesso?» -> lo snapshot di `proxy/health_monitor.py`,
+      sezione `unavailable`, che il Chatbot legge con `get_ha_health`;
+    - «cosa e' rotto per davvero?» -> queste segnalazioni, che ignorano le
+      assenze brevi (riavvio di HA, wifi che salta) perche' segnalarle
+      sarebbe rumore.
+
+    L'insieme segnalato qui e' sempre un sottoinsieme di quello: il titolo
+    dichiara la durata, cosi' chi vede le due liste di lunghezza diversa
+    capisce perche'. Un'entita' senza istante leggibile resta nello snapshot
+    ma non viene segnalata: non si puo' affermare che manchi da giorni.
+    """
+    cutoff = now - timedelta(days=days)
+    durata = "un giorno" if days == 1 else f"{days} giorni"
+    out = []
+    for voce in entita_non_disponibili(states):
+        ts = _parse_iso(voce["since"])
         if ts is None or ts > cutoff:
             continue
-        eid = s.get("entity_id", "")
-        name = (s.get("attributes") or {}).get("friendly_name") or eid
+        eid = voce["entity_id"]
         out.append({
             "check_id": "entity_unavailable", "severity": "warn",
-            "title": f"{name} non disponibile da giorni",
-            "evidence": {"entity_id": eid, "since": s.get("last_changed"),
-                         "state": s.get("state")},
+            "title": f"{voce['name']} non disponibile da più di {durata}",
+            "evidence": {"entity_id": eid, "since": voce["since"],
+                         "state": voce["state"]},
             "suggested_fix": "Controlla il dispositivo o l'integrazione.",
             "fix_kind": "manual",
             "source_ref": f"entity_unavailable:{eid}",
@@ -68,7 +160,7 @@ def check_entity_unavailable(states, *, now: datetime, days: int = 2):
     return out
 
 
-def check_low_battery(states, *, threshold: int = 15):
+def check_low_battery(states, *, threshold: int = SOGLIA_BATTERIA_PCT):
     out = []
     for e in states or []:
         eid = e.get("id", "")

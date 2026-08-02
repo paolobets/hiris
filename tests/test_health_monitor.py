@@ -22,6 +22,7 @@ def mock_ha():
     ha.get_system_info = AsyncMock(return_value={"ha_version": "2025.1.0", "state": "RUNNING"})
     ha.get_updates = AsyncMock(return_value=[])
     ha.get_system_health = AsyncMock(return_value={"recorder": {"oldest_recorder_run": "2026-01-01"}})
+    ha.get_states = AsyncMock(return_value=[])
     ha.add_state_listener = MagicMock()
     return ha
 
@@ -99,6 +100,92 @@ def test_on_state_changed_removes_recovered_entity(monitor):
     })
     unavailable = monitor._snapshot_data["unavailable_entities"]
     assert not any(e["entity_id"] == "sensor.temp" for e in unavailable)
+
+
+@pytest.mark.asyncio
+async def test_refresh_semina_le_non_disponibili_dagli_stati_veri(monitor, mock_ha):
+    """Chi era gia' caduto prima che HIRIS guardasse deve comunque comparire.
+
+    Senza questa semina la lista conteneva solo le cadute osservate dal vivo:
+    un dispositivo morto da settimane, con HIRIS installato ieri, non c'era --
+    mentre il Brain lo segnalava. Sulla stessa entita' l'utente riceveva due
+    risposte opposte a seconda di dove guardava.
+    """
+    mock_ha.get_states = AsyncMock(return_value=[
+        {"entity_id": "sensor.morto", "state": "unavailable",
+         "last_changed": "2026-01-01T00:00:00+00:00",
+         "attributes": {"friendly_name": "Morto"}},
+        {"entity_id": "sensor.vivo", "state": "21.5",
+         "last_changed": "2026-01-01T00:00:00+00:00", "attributes": {}},
+    ])
+    await monitor.refresh()
+    snap = monitor.get_snapshot(["unavailable"])
+    assert [e["entity_id"] for e in snap["unavailable"]] == ["sensor.morto"]
+    assert snap["unavailable"][0]["since"] == "2026-01-01T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_refresh_toglie_la_voce_rientrata_mentre_hiris_era_spento(monitor, mock_ha):
+    """La lista sopravvive ai riavvii: senza una risemina su stati veri una
+    voce rientrata mentre HIRIS era fermo resterebbe li' per sempre, perche'
+    l'entita' potrebbe non cambiare piu' stato."""
+    monitor._snapshot_data["unavailable_entities"] = [
+        {"entity_id": "sensor.rientrata", "domain": "sensor",
+         "since": "2026-01-01T00:00:00Z"},
+    ]
+    mock_ha.get_states = AsyncMock(return_value=[
+        {"entity_id": "sensor.rientrata", "state": "21.5",
+         "last_changed": "2026-02-01T00:00:00+00:00", "attributes": {}},
+    ])
+    await monitor.refresh()
+    assert monitor.get_snapshot(["unavailable"])["unavailable"] == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_senza_stati_conserva_la_lista_precedente(monitor, mock_ha):
+    """Una lettura fallita non deve cancellare cio' che si sa gia'."""
+    monitor._snapshot_data["unavailable_entities"] = [
+        {"entity_id": "sensor.giu", "domain": "sensor",
+         "since": "2026-01-01T00:00:00Z"},
+    ]
+    mock_ha.get_states = AsyncMock(side_effect=RuntimeError("boom"))
+    await monitor.refresh()
+    voci = monitor.get_snapshot(["unavailable"])["unavailable"]
+    assert [e["entity_id"] for e in voci] == ["sensor.giu"]
+
+
+def test_on_state_changed_usa_l_istante_di_home_assistant(monitor):
+    """`since` viene da `last_changed`, non dall'istante in cui HIRIS ha visto
+    l'evento: altrimenti dopo un riavvio la stessa caduta risulterebbe appena
+    avvenuta allo snapshot e vecchia di giorni al Brain."""
+    monitor._snapshot_data["unavailable_entities"] = []
+    monitor.on_state_changed({
+        "entity_id": "sensor.temp",
+        "new_state": {"state": "unavailable", "entity_id": "sensor.temp",
+                      "last_changed": "2026-03-05T10:00:00+00:00",
+                      "attributes": {"friendly_name": "Termometro"}},
+    })
+    voce = monitor._snapshot_data["unavailable_entities"][0]
+    assert voce["since"] == "2026-03-05T10:00:00Z"
+    assert voce["name"] == "Termometro"
+    assert voce["state"] == "unavailable"
+
+
+def test_on_state_changed_non_duplica_ne_ringiovanisce_una_caduta(monitor):
+    """Un secondo evento sulla stessa entita' ancora giu' non deve creare una
+    seconda voce ne' spostare in avanti l'inizio dell'assenza."""
+    monitor._snapshot_data["unavailable_entities"] = []
+    evento = {
+        "entity_id": "sensor.temp",
+        "new_state": {"state": "unavailable", "entity_id": "sensor.temp",
+                      "last_changed": "2026-03-05T10:00:00+00:00",
+                      "attributes": {}},
+    }
+    monitor.on_state_changed(evento)
+    monitor.on_state_changed(evento)
+    voci = monitor._snapshot_data["unavailable_entities"]
+    assert len(voci) == 1
+    assert voci[0]["since"] == "2026-03-05T10:00:00Z"
 
 
 @pytest.mark.asyncio

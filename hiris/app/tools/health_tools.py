@@ -6,7 +6,11 @@ GET_HA_HEALTH_TOOL_DEF = {
     "description": (
         "Get a structured health report of the Home Assistant system. "
         "Returns cached data updated in real-time (WebSocket) and every 30 minutes. "
-        "Sections: 'unavailable' (entities in unavailable/unknown state), "
+        "Sections: 'unavailable' (entities NOT RESPONDING RIGHT NOW -- "
+        "unavailable/unknown state -- each with 'since', the moment Home "
+        "Assistant recorded the drop; a brief drop after an HA restart shows "
+        "up here too, while the Brain's advisories only cover entities missing "
+        "for more than two days and are always a subset of this list), "
         "'integrations' (config entries with errors), "
         "'logs' (error log summary with top errors), "
         "'updates' (available updates for HA core and integrations), "

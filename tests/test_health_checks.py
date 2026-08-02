@@ -18,6 +18,102 @@ def test_entity_unavailable_flags_old_only():
     assert out[0]["fix_kind"] == "manual" and out[0]["severity"] == "warn"
 
 
+def test_entita_non_disponibili_e_la_fonte_del_fatto():
+    """La lista di chi non risponde ADESSO nasce dagli stati veri di HA.
+
+    `since` viene da `last_changed`, non dall'istante in cui HIRIS se n'e'
+    accorto: la durata dell'assenza e' quella di Home Assistant, uguale per
+    chiunque la legga.
+    """
+    states = [
+        {"entity_id": "sensor.giu", "state": "unavailable",
+         "last_changed": "2026-07-20T00:00:00+00:00",
+         "attributes": {"friendly_name": "Giu"}},
+        {"entity_id": "light.ignota", "state": "unknown",
+         "last_updated": "2026-07-27T23:00:00+00:00", "attributes": {}},
+        {"entity_id": "sensor.ok", "state": "22.5",
+         "last_changed": "2026-07-01T00:00:00+00:00", "attributes": {}},
+    ]
+    voci = hc.entita_non_disponibili(states)
+    assert [v["entity_id"] for v in voci] == ["sensor.giu", "light.ignota"]
+    assert voci[0] == {
+        "entity_id": "sensor.giu", "domain": "sensor",
+        "since": "2026-07-20T00:00:00Z", "state": "unavailable", "name": "Giu",
+    }
+    # Senza nome amichevole si ripiega sull'identificativo.
+    assert voci[1]["name"] == "light.ignota"
+    assert voci[1]["domain"] == "light"
+
+
+def test_segnalazione_e_un_sottoinsieme_di_chi_non_risponde_adesso():
+    """Le due letture non possono contraddirsi sulla stessa entita'.
+
+    La segnalazione del Brain e' un FILTRO per durata sopra l'unica lista di
+    chi non risponde adesso, non un secondo calcolo: cio' che segnala e'
+    sempre anche nello snapshot istantaneo.
+    """
+    now = datetime(2026, 7, 28, tzinfo=timezone.utc)
+    states = [
+        {"entity_id": "sensor.old", "state": "unavailable",
+         "last_changed": "2026-07-20T00:00:00+00:00",
+         "attributes": {"friendly_name": "Vecchio"}},
+        {"entity_id": "sensor.recent", "state": "unavailable",
+         "last_changed": "2026-07-27T23:00:00+00:00", "attributes": {}},
+    ]
+    adesso = {v["entity_id"] for v in hc.entita_non_disponibili(states)}
+    segnalate = {o["evidence"]["entity_id"]
+                 for o in hc.check_entity_unavailable(states, now=now, days=2)}
+    assert segnalate <= adesso
+    assert segnalate == {"sensor.old"}
+    assert adesso == {"sensor.old", "sensor.recent"}
+
+
+def test_senza_istante_resta_nell_elenco_ma_non_si_segnala():
+    """HA puo' non portare un istante leggibile: l'entita' non risponde lo
+    stesso (resta nello snapshot), ma da quanto non si sa, quindi il Brain non
+    puo' affermare che manchi da giorni."""
+    states = [{"entity_id": "sensor.senza_ts", "state": "unavailable",
+               "attributes": {}}]
+    voci = hc.entita_non_disponibili(states)
+    assert len(voci) == 1 and voci[0]["since"] is None
+    assert hc.check_entity_unavailable(
+        states, now=datetime(2026, 7, 28, tzinfo=timezone.utc), days=2) == []
+
+
+def test_titolo_e_evidenza_dichiarano_la_soglia_e_l_istante_normalizzato():
+    """Il titolo dice da quanto, cosi' chi lo legge accanto allo snapshot
+    istantaneo capisce perche' le due liste hanno lunghezze diverse."""
+    now = datetime(2026, 7, 28, tzinfo=timezone.utc)
+    states = [{"entity_id": "sensor.old", "state": "unavailable",
+               "last_changed": "2026-07-20T00:00:00+00:00",
+               "attributes": {"friendly_name": "Vecchio"}}]
+    out = hc.check_entity_unavailable(states, now=now, days=2)
+    assert out[0]["title"] == "Vecchio non disponibile da più di 2 giorni"
+    assert out[0]["evidence"]["since"] == "2026-07-20T00:00:00Z"
+    uno = hc.check_entity_unavailable(states, now=now, days=1)
+    assert uno[0]["title"] == "Vecchio non disponibile da più di un giorno"
+
+
+def test_soglia_batteria_unica_fra_brain_e_sentinella():
+    """Una sola soglia predefinita di batteria scarica in tutto il prodotto.
+
+    Il controllo del Brain (sempre attivo, su tutte le batterie) e il
+    rilevatore della Sentinella (opt-in per entita') restano due meccanismi
+    distinti, ma non possono partire da due numeri diversi: a 12% l'utente si
+    sentirebbe dire "scarica" da uno e nulla dall'altro. Il valore in vigore
+    per la Sentinella resta modificabile dall'utente; qui si blocca solo il
+    punto di partenza.
+    """
+    from hiris.app.watcher.detectors import detect_low_battery
+    from hiris.app.watcher.policy import DEFAULT_POLICY
+
+    assert DEFAULT_POLICY["detectors"]["battery"]["min_pct"] == hc.SOGLIA_BATTERIA_PCT
+    sotto = str(hc.SOGLIA_BATTERIA_PCT - 1)
+    pari = str(hc.SOGLIA_BATTERIA_PCT)
+    assert detect_low_battery("sensor.b", None, {"state": sotto}, {}, 1.0) is not None
+    assert detect_low_battery("sensor.b", None, {"state": pari}, {}, 1.0) is None
+
+
 def test_low_battery():
     states = [
         {"id": "sensor.door_bat", "state": "8", "name": "Porta", "unit": "%", "device_class": "battery"},
