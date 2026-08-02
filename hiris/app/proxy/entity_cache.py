@@ -45,6 +45,24 @@ class EntityCache:
         self._states: dict[str, dict] = {}
         self._by_domain: dict[str, list[str]] = {}
         self._area_map: dict[str, list[str]] | None = None  # None = not loaded yet
+        # False finche' load() non ha completato almeno una volta. Serve a
+        # distinguere "inventario non ancora pronto" da "casa senza entita'":
+        # server.py logga e prosegue se il caricamento iniziale fallisce, e i
+        # tool che leggono da qui rispondevano con un elenco vuoto in entrambi
+        # i casi ("la casa e' vuota"). Vedi ToolDispatcher._cache_non_leggibile.
+        self._loaded = False
+
+    @property
+    def loaded(self) -> bool:
+        """True quando `load()` e' andata a buon fine almeno una volta.
+
+        Solo allora un inventario vuoto significa davvero "nessuna entita'".
+        `on_state_changed` NON alza questa bandiera di proposito: gli eventi
+        arrivati dopo un caricamento fallito descrivono le poche entita' che si
+        sono mosse, non la casa, e spacciarli per inventario completo
+        riaprirebbe -- in forma piu' subdola -- lo stesso "la casa e' vuota".
+        """
+        return self._loaded
 
     async def load(self, ha_client) -> None:
         raw_states = await ha_client.get_states([])
@@ -57,6 +75,9 @@ class EntityCache:
             self._states[eid] = _to_minimal(raw)
             dom = _domain(eid)
             self._by_domain.setdefault(dom, []).append(eid)
+        # Solo dopo che la lettura e' arrivata in fondo: se get_states solleva,
+        # la cache resta dichiaratamente non pronta.
+        self._loaded = True
 
     def on_state_changed(self, event_data: dict) -> None:
         new_state = event_data.get("new_state")

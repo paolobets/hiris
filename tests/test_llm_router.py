@@ -383,3 +383,28 @@ def test_all_inactive_fails_closed_for_sensitive_egress():
     r_legacy = LLMRouter(strategy="quality_first")
     assert r_legacy.automatic_allows_sensitive() is False
     assert r_legacy._ordered_backends("automatic") == []
+
+
+@pytest.mark.asyncio
+async def test_simple_chat_senza_runner_non_finge_una_risposta_vuota():
+    """A3: senza alcun provider configurato `simple_chat` restituiva "", che il
+    chiamante non puo' distinguere da una risposta vuota del modello. Deve
+    dirlo, come gia' fanno `chat` e `run_with_actions` nello stesso file."""
+    router = LLMRouter()
+
+    res = await router.simple_chat([{"role": "user", "content": "ciao"}])
+
+    assert res, "una stringa vuota e' indistinguibile da una risposta del modello"
+    assert "provider" in res.lower()
+
+
+@pytest.mark.asyncio
+async def test_simple_chat_con_runner_resta_trasparente():
+    """Il caso opposto: se un runner c'e', la risposta passa cosi' com'e' --
+    anche quando e' vuota, perche' li' e' davvero il modello ad aver taciuto."""
+    runner = MagicMock()
+    runner.simple_chat = AsyncMock(return_value="")
+    router = LLMRouter(ollama=runner)
+
+    assert await router.simple_chat([{"role": "user", "content": "ciao"}]) == ""
+    runner.simple_chat.assert_awaited_once()

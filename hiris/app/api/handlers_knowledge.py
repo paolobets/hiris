@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # modulo): il testo mostrato all'utente e' scritto in italiano nella coda in
 # chat (static/chat/knowledge.js, messaggioErrore) a partire dallo stato 503.
 _ERRORE_SENZA_EMBEDDING = "embedding unavailable: item not approved"
+_ERRORE_SENZA_EMBEDDING_CREAZIONE = "embedding unavailable: item not created"
 
 
 async def handle_list_pending(request: web.Request) -> web.Response:
@@ -108,6 +109,13 @@ async def handle_reject(request: web.Request) -> web.Response:
 
 
 async def handle_manual_add(request: web.Request) -> web.Response:
+    """Aggiunge a mano un elemento gia' approvato.
+
+    Stessa forma del difetto chiuso in save_knowledge, su un percorso solo-API:
+    scrivere `status='approved'` con il vettore assente crea un elemento che si
+    dichiara pronto e non e' raggiungibile -- la ricerca filtra su
+    `status='approved' AND embedding IS NOT NULL`. Quindi senza embedding non
+    si scrive nulla e si risponde 503, lo stesso stato di handle_approve."""
     store = request.app.get("knowledge_store")
     if store is None:
         return web.json_response({"error": "knowledge store not configured"}, status=503)
@@ -120,12 +128,17 @@ async def handle_manual_add(request: web.Request) -> web.Response:
         return web.json_response({"error": "content required"}, status=400)
 
     embedder = request.app.get("embedding_provider")
-    emb: list[float] = []
-    if embedder is not None:
-        try:
-            emb = await embedder.embed(content)
-        except Exception:
-            emb = []
+    emb: list[float] | None = None
+    try:
+        emb = await embedder.embed(content) if embedder is not None else None
+    except Exception:
+        # Il dettaglio resta nel log del server, non nella risposta.
+        logger.exception("manual_add: embedding non calcolato, nulla da scrivere")
+        emb = None
+    if not emb:
+        logger.warning("manual_add rifiutato: nessun embedding disponibile")
+        return web.json_response(
+            {"error": _ERRORE_SENZA_EMBEDDING_CREAZIONE}, status=503)
 
     owner = resolve_owner(request)
     loop = asyncio.get_running_loop()
@@ -139,7 +152,7 @@ async def handle_manual_add(request: web.Request) -> web.Response:
             amount=body.get("amount"),
             due_date=body.get("due_date"),
             category=body.get("category"),
-            embedding=emb or None,
+            embedding=emb,
             sensitivity=body.get("sensitivity", "normal"),
             source="manual",
             status="approved",

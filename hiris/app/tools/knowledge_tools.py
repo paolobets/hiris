@@ -66,6 +66,14 @@ _ERRORE_SENZA_EMBEDDING = (
     "disponibile e l'elemento non sarebbe più richiamabile. Riprova più tardi."
 )
 
+# Gemello in lettura: un guasto della ricerca non deve arrivare all'utente
+# travestito da "non c'e' nulla". Stesse regole di sopra sul dettaglio tecnico.
+_ERRORE_RICERCA_SENZA_EMBEDDING = (
+    "Non sono riuscito a cercare nella memoria di casa: la memoria semantica "
+    "non è disponibile in questo momento. Non posso dire che non ci sia nulla, "
+    "solo che non ho potuto controllare."
+)
+
 
 async def handle_save_knowledge(
     store: Any, embedder: Any, tool_input: dict, *, owner: str
@@ -124,12 +132,19 @@ async def handle_recall_knowledge(
     cloud: bool = True,
     pseudonym_map: dict[str, str] | None = None,
 ) -> dict:
+    # Senza vettore di ricerca non si e' guardato da nessuna parte. Rispondere
+    # `{"results": []}` fa dire al modello "non ho trovato nulla" quando la
+    # frase vera e' "non ho potuto controllare", e l'utente resta convinto che
+    # il ricordo non esista. Il guasto NON porta un elenco: solo l'errore, cosi'
+    # resta distinguibile da una ricerca riuscita e senza esiti.
     try:
-        qv = await embedder.embed(tool_input["query"])
+        qv = await embedder.embed(tool_input["query"]) if embedder is not None else None
     except Exception:
-        qv = []
+        logger.exception("recall_knowledge: vettore di ricerca non calcolato")
+        qv = None
     if not qv:
-        return {"results": []}
+        logger.warning("recall_knowledge non eseguita: nessun vettore di ricerca")
+        return {"error": _ERRORE_RICERCA_SENZA_EMBEDDING}
     k = int(tool_input.get("k", 5))
     loop = asyncio.get_running_loop()
 

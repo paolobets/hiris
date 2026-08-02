@@ -120,6 +120,23 @@ def _check_entity_allowed(
     return None
 
 
+# Messaggi per il modello quando l'inventario delle entita' non e' leggibile.
+# Un elenco vuoto direbbe "la casa e' vuota"; questi dicono "non ho potuto
+# guardare", che e' l'unica frase vera. I due casi restano distinti perche'
+# suggeriscono all'utente due cose diverse: uno e' configurazione mancante,
+# l'altro passa da solo.
+_ERRORE_INVENTARIO_ASSENTE = (
+    "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
+    "entità non è disponibile. Non posso dire che non ci sia nulla, solo che "
+    "non ho potuto controllare."
+)
+_ERRORE_INVENTARIO_NON_PRONTO = (
+    "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
+    "entità non è ancora pronto (la lettura iniziale da Home Assistant non è "
+    "andata a buon fine o è ancora in corso). Riprova fra poco."
+)
+
+
 class ToolDispatcher:
     """Executes HIRIS tools. Shared across LLM runners so HA integration stays in one place."""
 
@@ -212,6 +229,27 @@ class ToolDispatcher:
                                     "oppure dimmi il codice che ti ho inviato.")}
             return {"error": "Azione a rischio: richiede conferma."}
         return {"error": verdict.reason}
+
+    def _cache_non_leggibile(self) -> dict | None:
+        """None se l'inventario delle entita' e' utilizzabile, altrimenti
+        l'errore da restituire subito al chiamante.
+
+        Tre casi, due esiti. Cache assente (mai cablata) e cache presente ma
+        mai caricata sono entrambe un guasto: non abbiamo potuto guardare.
+        Cache caricata e vuota e' invece un risultato legittimo -- una casa
+        senza entita', o senza luci accese, esiste davvero -- e prosegue.
+
+        `getattr(..., True)`: una cache finta senza l'attributo `loaded` (i
+        doppi usati nei test e nel cablaggio esistente) e' considerata pronta,
+        cosi' questa distinzione non ne rompe nessuna.
+        """
+        if self._cache is None:
+            logger.warning("lettura entita' rifiutata: nessun inventario configurato")
+            return {"error": _ERRORE_INVENTARIO_ASSENTE}
+        if not getattr(self._cache, "loaded", True):
+            logger.warning("lettura entita' rifiutata: inventario non ancora caricato")
+            return {"error": _ERRORE_INVENTARIO_NON_PRONTO}
+        return None
 
     @property
     def has_memory(self) -> bool:
@@ -309,13 +347,22 @@ class ToolDispatcher:
                 # concedibile solo esplicitamente a un agente di chat.
                 return await _render_template(self._ha, inputs.get("template"))
             if name == "get_home_status":
-                result = get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
+                guasto = self._cache_non_leggibile()
+                if guasto is not None:
+                    return guasto
+                result = get_home_status(self._cache, semantic_map=self._semantic_map)
                 return _filter_entities(result, allowed_entities)
             if name == "get_entities_on":
-                result = get_entities_on(self._cache) if self._cache else []
+                guasto = self._cache_non_leggibile()
+                if guasto is not None:
+                    return guasto
+                result = get_entities_on(self._cache)
                 return _filter_entities(result, allowed_entities)
             if name == "get_entities_by_domain":
-                result = get_entities_by_domain(inputs["domain"], self._cache) if self._cache else []
+                guasto = self._cache_non_leggibile()
+                if guasto is not None:
+                    return guasto
+                result = get_entities_by_domain(inputs["domain"], self._cache)
                 return _filter_entities(result, allowed_entities)
             if name == "get_energy_history":
                 return await get_energy_history(self._ha, inputs["days"], semantic_map=self._semantic_map)
@@ -660,7 +707,19 @@ class ToolDispatcher:
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
                 )
-            if name == "recall_knowledge" and self._knowledge_store:
+            if name == "recall_knowledge":
+                # Il ramo era condizionato allo store: senza store l'esecuzione
+                # cadeva in fondo, dove la risposta e' «Tool 'recall_knowledge'
+                # non esiste. [...] Non inventare nomi di tool.» -- un rimprovero
+                # per aver chiamato uno strumento che il system prompt gli aveva
+                # elencato, dopo il quale il modello smette di usarlo per tutta
+                # la conversazione. La condizione va DENTRO il ramo, come in
+                # recall_memory/save_memory. Serve anche l'embedder: senza non
+                # c'e' ricerca semantica possibile.
+                if self._knowledge_store is None or self._knowledge_embedder is None:
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "cercare nei ricordi di casa in questo "
+                                      "momento.")}
                 return await handle_recall_knowledge(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
@@ -671,7 +730,12 @@ class ToolDispatcher:
                     cloud=cloud,
                     pseudonym_map=pseudonym_map,
                 )
-            if name == "link_knowledge" and self._knowledge_store:
+            if name == "link_knowledge":
+                # Stesso difetto di recall_knowledge qui sopra. Qui basta lo
+                # store: collegare due elementi non passa dall'embedder.
+                if self._knowledge_store is None:
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "collegare due ricordi in questo momento.")}
                 return await handle_link_knowledge(self._knowledge_store, inputs)
             if name == "daily_briefing":
                 # On-demand chat butler summary (Slice 7 Task 5). READ-ONLY: no HA

@@ -32,35 +32,89 @@ async def test_pending_and_approve(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_manual_add_no_embedder(aiohttp_client, tmp_path):
+async def test_manual_add_senza_embedder_non_dichiara_approvato(aiohttp_client, tmp_path):
+    """A1, stessa forma di save_knowledge su un percorso solo-API: scrivere
+    «approvato» con il vettore assente crea un elemento che si dichiara pronto
+    e non e' raggiungibile (la ricerca filtra su `embedding IS NOT NULL`).
+    Meglio fallire dichiaratamente e non scrivere nulla."""
+    from aiohttp import web
+    from hiris.app.api.handlers_knowledge import handle_manual_add
+
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    app = web.Application()
+    app["knowledge_store"] = store
+    # Nessun embedding_provider configurato.
+    app.router.add_post("/api/knowledge", handle_manual_add)
+    client = await aiohttp_client(app)
+
+    r = await client.post("/api/knowledge", json={"kind": "note", "content": "x"})
+
+    # 503: lo stesso stato che la coda in chat traduce gia' in "la memoria non
+    # e' raggiungibile in questo momento".
+    assert r.status == 503
+    data = await r.json()
+    assert data["error"]
+    assert data.get("status") != "approved"
+    # Nessuna riga scritta.
+    assert store.list_items() == []
+
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_add_con_embedder_rotto_non_scrive_e_non_espone_lerrore(
+    aiohttp_client, tmp_path,
+):
+    from aiohttp import web
+    from hiris.app.api.handlers_knowledge import handle_manual_add
+
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    app = web.Application()
+    app["knowledge_store"] = store
+    app["embedding_provider"] = _EmbedderFinto(esplode=True)
+    app.router.add_post("/api/knowledge", handle_manual_add)
+    client = await aiohttp_client(app)
+
+    r = await client.post("/api/knowledge", json={"kind": "note", "content": "x"})
+
+    assert r.status == 503
+    corpo = await r.json()
+    assert corpo["error"]
+    assert "embedder giu'" not in corpo["error"]
+    assert store.list_items() == []
+
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_manual_add_con_embedder_scrive_un_elemento_richiamabile(
+    aiohttp_client, tmp_path,
+):
+    """Il percorso buono, verificato dal comportamento: l'elemento aggiunto a
+    mano si trova davvero con la ricerca."""
     from aiohttp import web
     from hiris.app.api.handlers_knowledge import handle_manual_add, handle_list_pending
 
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     app = web.Application()
     app["knowledge_store"] = store
-    # No embedding_provider — must still work
+    app["embedding_provider"] = _EmbedderFinto()
     app.router.add_post("/api/knowledge", handle_manual_add)
     app.router.add_get("/api/knowledge/pending", handle_list_pending)
     client = await aiohttp_client(app)
 
-    r = await client.post(
-        "/api/knowledge",
-        json={"kind": "note", "content": "x"},
-    )
+    r = await client.post("/api/knowledge", json={"kind": "note", "content": "x"})
     assert r.status == 200
     data = await r.json()
     assert data["status"] == "approved"
     item_id = data["id"]
 
-    # Verify item is approved and visible via list_items
-    approved = store.list_items(status="approved")
-    assert any(i["id"] == item_id for i in approved)
-
-    # Verify item does NOT appear in pending list
+    # Non finisce in coda: e' gia' approvato.
     r2 = await client.get("/api/knowledge/pending")
     pending_data = await r2.json()
     assert all(i["id"] != item_id for i in pending_data["items"])
+    # E l'unico modo di richiamare un'informazione lo vede.
+    assert _trovato(store, "x")
 
     store.close()
 

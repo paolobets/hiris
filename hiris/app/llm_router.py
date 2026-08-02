@@ -276,9 +276,19 @@ class LLMRouter:
         return (last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."), {}
 
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
+        """Nessun provider configurato NON e' una risposta vuota del modello.
+
+        Prima si tornava "", che il chiamante non puo' distinguere da un
+        modello che ha davvero taciuto: il guasto veniva trattato come
+        risposta valida. Si risponde con lo stesso messaggio esplicito gia'
+        usato da `chat` e `run_with_actions` in questo file. Quando un runner
+        c'e', la sua risposta passa cosi' com'e' -- anche vuota, perche' li' e'
+        davvero il modello ad aver taciuto.
+        """
         runner = self._claude or self._openai or self._ollama
         if runner is None:
-            return ""
+            logger.warning("simple_chat: nessun provider AI configurato")
+            return "Nessun provider AI configurato."
         return await runner.simple_chat(messages, system=system)
 
     # ------------------------------------------------------------------
