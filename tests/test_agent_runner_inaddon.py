@@ -196,3 +196,41 @@ async def test_run_loop_does_not_block_event_loop(monkeypatch):
             pass
 
     assert ticks == 5  # all ticker iterations completed within the tight budget
+
+
+# ── Consolidamento 1.4: il runner non ha piu' una propria copia di
+# `parse_decision`; adatta l'unica implementazione (watcher.reasoner) alla
+# forma a dizionario che viaggia sulla reasoning API. ──────────────────────
+
+def test_parse_decision_is_fail_closed_and_returns_the_wire_dict():
+    d = runner.parse_decision("nessun blocco json qui")
+    assert isinstance(d, dict)
+    assert set(d) == {"verdict", "severity", "message", "action"}
+    assert d["verdict"] == "falso_positivo"
+    assert d["severity"] == "info"
+    assert d["action"] is None
+
+
+def test_parse_decision_missing_verdict_field_stays_fail_closed():
+    d = runner.parse_decision('```json\n{"severity":"critico","message":"x"}\n```')
+    assert d["verdict"] == "falso_positivo"
+
+
+def test_parse_decision_reads_the_last_json_block():
+    txt = ('```json\n{"verdict":"falso_positivo","severity":"info","message":"a"}\n```\n'
+           '```json\n{"verdict":"anomalia","severity":"warn","message":"b",'
+           '"action":{"domain":"light","service":"turn_off","entity_id":"light.x"}}\n```')
+    d = runner.parse_decision(txt)
+    assert d["verdict"] == "anomalia" and d["severity"] == "warn"
+    assert d["action"]["entity_id"] == "light.x"
+
+
+def test_parse_decision_delegates_to_the_single_reasoner_implementation():
+    # Nessuna seconda copia: il runner deve essere esattamente il ragionatore
+    # con default_verdict fail-closed e severity "info", solo in forma dict.
+    from dataclasses import asdict
+    from hiris.app.watcher import reasoner
+    for txt in ("nessun blocco json", "y" * 2000, '```json\n[1,2]\n```',
+                '```json\n{"verdict":"anomalia","message":"ok"}\n```'):
+        assert runner.parse_decision(txt) == asdict(reasoner.parse_decision(
+            txt, default_severity="info", default_verdict="falso_positivo"))

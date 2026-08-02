@@ -1,6 +1,45 @@
 import pytest
 from hiris.app.watcher.signals import WakeEvent, Decision
 from hiris.app.watcher.reasoner import parse_decision, build_user_message, reason, SITUATION_HOLISTIC_SYSTEM, SENTINEL_SYSTEM
+from hiris.app.watcher import reasoner as _reasoner
+
+
+# ── Consolidamento 1.4: `parse_decision` e' UNICA e il comportamento in caso
+# di dubbio e' un parametro dichiarato dal chiamante, non una divergenza fra
+# copie. ───────────────────────────────────────────────────────────────────
+
+def test_parse_decision_uncertainty_verdict_is_an_explicit_parameter():
+    # Nessun blocco json: chi chiama decide se il dubbio vale allarme o silenzio.
+    assert parse_decision("nessun json qui").verdict == "anomalia"
+    assert parse_decision(
+        "nessun json qui", default_verdict="falso_positivo").verdict == "falso_positivo"
+
+
+def test_parse_decision_missing_verdict_field_uses_the_declared_default():
+    # Json valido ma SENZA il campo verdict: e' dubbio quanto un json assente,
+    # quindi deve seguire lo stesso parametro e non un default cablato.
+    txt = '```json\n{"severity":"warn","message":"boh"}\n```'
+    assert parse_decision(txt).verdict == "anomalia"
+    assert parse_decision(
+        txt, default_verdict="falso_positivo").verdict == "falso_positivo"
+
+
+def test_parse_decision_rejects_json_that_is_not_an_object():
+    # Un blocco json che contiene una lista (o uno scalare) non ha campi da
+    # leggere: deve ricadere sul fallback, non sollevare AttributeError.
+    d = parse_decision('```json\n[1, 2, 3]\n```', default_severity="info")
+    assert isinstance(d, Decision)
+    assert d.verdict == "anomalia" and d.action is None
+
+
+def test_parse_decision_unknown_default_verdict_falls_back_to_the_prudent_one():
+    d = parse_decision("nessun json qui", default_verdict="qualcosa_altro")
+    assert d.verdict == "falso_positivo"
+
+
+def test_parse_decision_fallback_message_truncation_is_the_single_threshold():
+    d = parse_decision("x" * 2000)
+    assert len(d.message) == _reasoner.FALLBACK_MESSAGE_MAX == 500
 
 def test_parse_decision_reads_json_block():
     txt = 'Ragionamento...\n```json\n{"verdict":"anomalia","severity":"warn","message":"Frigo caldo","action":null}\n```'

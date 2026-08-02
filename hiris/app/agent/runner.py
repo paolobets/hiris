@@ -9,12 +9,15 @@ reasoning API (`/api/reasoning/claim` e `/api/reasoning/submit`) e, dentro
 2A, dal forward MCP->execute-API (LocalExecuteClient) — non dalla connessione
 claude->MCP.
 """
-import asyncio, json, logging, os, re, subprocess, time
+import asyncio, json, logging, os, subprocess, time
+from dataclasses import asdict
 import httpx
 from . import prompts
+# Consolidamento 1.4: l'interpretazione della risposta del modello vive in un
+# solo posto. Qui si importa, non si ricopia.
+from ..watcher import reasoner as _reasoner
 
 log = logging.getLogger("hiris.agent")
-_JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 
 # Tool del gateway abilitati nella chat (nomi MCP: mcp__hiris__<nome>). Esclude i
 # tool ponte-reasoning (claim_reasoning_job/submit_decision), che sono per il
@@ -75,19 +78,25 @@ def _chat_claude_args(system: str, user: str, model: str,
     return args
 
 def parse_decision(text: str) -> dict:
-    m = list(_JSON_RE.finditer(text or ""))
-    if m:
-        try:
-            obj = json.loads(m[-1].group(1))
-            if isinstance(obj, dict):
-                return {"verdict": str(obj.get("verdict", "falso_positivo")),
-                        "severity": str(obj.get("severity", "info")),
-                        "message": str(obj.get("message", "")).strip() or "(vuoto)",
-                        "action": obj.get("action") if isinstance(obj.get("action"), dict) else None}
-        except (ValueError, TypeError):
-            pass
-    return {"verdict": "falso_positivo", "severity": "info",
-            "message": (text or "").strip()[:400] or "(vuoto)", "action": None}
+    """Decisione del runner nella forma che viaggia sulla reasoning API.
+
+    Consolidamento 1.4: qui NON c'e' piu' un parser. C'e' l'unico parser
+    (`watcher.reasoner.parse_decision`) piu' un adattatore di forma: il
+    ragionatore ritorna una `Decision` (dataclass), la reasoning API vuole un
+    dizionario `{verdict, severity, message, action}` -- `asdict` e' l'intera
+    conversione, i campi coincidono uno a uno.
+
+    Il comportamento in caso di dubbio e' dichiarato qui, non ereditato:
+    `default_verdict="falso_positivo"` (fail-closed). Questa Decisione
+    attraversa la rete e viene applicata da `_execute_decision` (server.py),
+    che sul verdetto e' gia' fail-closed; il runner si allinea a monte, cosi'
+    una risposta che non si capisce non chiede mai di agire sulla casa.
+    `default_severity="info"` per lo stesso motivo: nel dubbio il livello piu'
+    basso. La Sentinella in-process dichiara l'opposto ("anomalia"), e sta
+    tutto scritto nella docstring del ragionatore."""
+    return asdict(_reasoner.parse_decision(
+        text, default_severity="info",
+        default_verdict=_reasoner.VERDICT_FALSE_POSITIVE))
 
 
 # M-1 (Plan 2B final review, fast-follow): CLAUDE_API_KEY is HIRIS's own
