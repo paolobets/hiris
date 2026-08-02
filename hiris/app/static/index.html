@@ -87,6 +87,13 @@
         <span>Proposte</span>
         <span class="task-badge" id="proposals-badge" data-count="0"></span>
       </a>
+      <a href="#" id="nav-knowledge" class="sb-nav-item">
+        <span class="ic">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5h9v13L9 12.3 4.5 15.5z"/><path d="M6.8 6.3h4.4"/></svg>
+        </span>
+        <span>Memoria</span>
+        <span class="task-badge" id="knowledge-badge" data-count="0"></span>
+      </a>
     </div>
     <div id="usage-widget">
       <div class="usage-title">Utilizzo</div>
@@ -125,6 +132,9 @@
         </button>
         <button id="mobile-proposals-btn" title="Proposte">
           Proposte<span id="mobile-proposals-badge" data-count="0"></span>
+        </button>
+        <button id="mobile-knowledge-btn" title="Memoria da confermare">
+          Memoria<span id="mobile-knowledge-badge" data-count="0"></span>
         </button>
         <button id="new-conv-btn" class="btn" title="Nuova conversazione">
           <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a7 7 0 0 1 12-5l2 2M16 4v3h-3M16 9a7 7 0 0 1-12 5l-2-2M2 14v-3h3"/></svg>
@@ -189,6 +199,17 @@
       <div class="task-section-title">In attesa</div>
       <div id="chat-proposals-list"></div>
     </div>
+
+    <!-- Coda della memoria: ciò che HIRIS ha imparato e non è ancora
+         richiamabile. Finché un elemento resta qui, la ricerca non lo trova. -->
+    <div id="knowledge-panel">
+      <div id="knowledge-panel-header">
+        <span>Memoria</span>
+        <button class="btn" type="button" id="knowledge-panel-back-btn">&#8592; Chat</button>
+      </div>
+      <div class="task-section-title">In attesa di conferma</div>
+      <div id="chat-knowledge-list"></div>
+    </div>
   </main>
 </div>
 
@@ -201,6 +222,8 @@
 <script src="static/chat/tasks.js"></script>
 <script src="static/config/proposals-core.js"></script>
 <script src="static/chat/proposals.js"></script>
+<script src="static/chat/knowledge-core.js"></script>
+<script src="static/chat/knowledge.js"></script>
 <script src="static/chat/onboarding.js"></script>
 <script src="static/chat/sidebar.js"></script>
 <script src="static/chat/keyboard.js"></script>

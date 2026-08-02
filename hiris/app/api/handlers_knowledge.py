@@ -9,7 +9,15 @@ from ..brain.identity import resolve_owner
 async def handle_list_pending(request: web.Request) -> web.Response:
     store = request.app.get("knowledge_store")
     if store is None:
-        return web.json_response({"items": []})
+        # Uno store assente NON e' una coda vuota. Rispondere 200 con una
+        # lista vuota rendeva "non ho potuto leggere" indistinguibile da "non
+        # c'e' niente da approvare": chi guarda la coda in chat concluderebbe
+        # che non ha nulla in sospeso mentre i ricordi restano pending e non
+        # richiamabili. Stesso 503 delle rotte di scrittura qui sotto; `items`
+        # resta presente e vuoto perche' la forma della risposta non cambi.
+        return web.json_response(
+            {"error": "knowledge store not configured", "items": []}, status=503
+        )
     # Owner-scope (review B/#16 IDOR fix): only the caller's own pending
     # items plus shared 'home' items -- never another user's private rows.
     # resolve_owner() fails closed to 'home' when identity is unknown.

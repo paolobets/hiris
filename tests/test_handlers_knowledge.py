@@ -207,7 +207,12 @@ async def test_unknown_identity_fails_closed_to_home_scope(aiohttp_client, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_no_store_list_returns_empty(aiohttp_client):
+async def test_no_store_list_signals_unavailable(aiohttp_client):
+    """Uno store assente NON e' una coda vuota: rispondere 200 {"items": []}
+    faceva apparire "non ho potuto leggere" come "non c'e' niente da
+    approvare", che e' esattamente il modo in cui un ricordo si perde in
+    silenzio. Stesso 503 delle rotte di scrittura, cosi' la coda in chat puo'
+    distinguere i due casi."""
     from aiohttp import web
     from hiris.app.api.handlers_knowledge import handle_list_pending
 
@@ -217,9 +222,10 @@ async def test_no_store_list_returns_empty(aiohttp_client):
     client = await aiohttp_client(app)
 
     r = await client.get("/api/knowledge/pending")
-    assert r.status == 200
+    assert r.status == 503
     data = await r.json()
-    assert data == {"items": []}
+    assert data["items"] == []
+    assert data["error"]
 
 
 @pytest.mark.asyncio
