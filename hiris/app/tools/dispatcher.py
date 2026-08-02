@@ -13,6 +13,7 @@ _AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 # Action types the TaskEngine can actually execute (deny-by-default at create_task).
 _ALLOWED_TASK_ACTIONS = frozenset({"call_ha_service", "send_notification", "create_task"})
 
+from ..proxy.entity_cache import inventario_non_leggibile as _inventario_non_leggibile
 from .ha_tools import (
     get_entity_states, get_area_entities, get_home_status,
     get_entities_on, get_entities_by_domain,
@@ -120,21 +121,10 @@ def _check_entity_allowed(
     return None
 
 
-# Messaggi per il modello quando l'inventario delle entita' non e' leggibile.
-# Un elenco vuoto direbbe "la casa e' vuota"; questi dicono "non ho potuto
-# guardare", che e' l'unica frase vera. I due casi restano distinti perche'
-# suggeriscono all'utente due cose diverse: uno e' configurazione mancante,
-# l'altro passa da solo.
-_ERRORE_INVENTARIO_ASSENTE = (
-    "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
-    "entità non è disponibile. Non posso dire che non ci sia nulla, solo che "
-    "non ho potuto controllare."
-)
-_ERRORE_INVENTARIO_NON_PRONTO = (
-    "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
-    "entità non è ancora pronto (la lettura iniziale da Home Assistant non è "
-    "andata a buon fine o è ancora in corso). Riprova fra poco."
-)
+# I messaggi e la regola dei tre casi vivono accanto alla bandiera che li
+# governa (proxy/entity_cache.py), perche' li condividono anche ha_tools,
+# brain/briefing e api/handlers_entities: il difetto era sopravvissuto nei
+# fratelli proprio perche' ognuno decideva per conto suo.
 
 
 class ToolDispatcher:
@@ -232,24 +222,9 @@ class ToolDispatcher:
 
     def _cache_non_leggibile(self) -> dict | None:
         """None se l'inventario delle entita' e' utilizzabile, altrimenti
-        l'errore da restituire subito al chiamante.
-
-        Tre casi, due esiti. Cache assente (mai cablata) e cache presente ma
-        mai caricata sono entrambe un guasto: non abbiamo potuto guardare.
-        Cache caricata e vuota e' invece un risultato legittimo -- una casa
-        senza entita', o senza luci accese, esiste davvero -- e prosegue.
-
-        `getattr(..., True)`: una cache finta senza l'attributo `loaded` (i
-        doppi usati nei test e nel cablaggio esistente) e' considerata pronta,
-        cosi' questa distinzione non ne rompe nessuna.
-        """
-        if self._cache is None:
-            logger.warning("lettura entita' rifiutata: nessun inventario configurato")
-            return {"error": _ERRORE_INVENTARIO_ASSENTE}
-        if not getattr(self._cache, "loaded", True):
-            logger.warning("lettura entita' rifiutata: inventario non ancora caricato")
-            return {"error": _ERRORE_INVENTARIO_NON_PRONTO}
-        return None
+        l'errore da restituire subito al chiamante (vedi
+        `proxy.entity_cache.inventario_non_leggibile`)."""
+        return _inventario_non_leggibile(self._cache)
 
     @property
     def has_memory(self) -> bool:

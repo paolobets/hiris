@@ -4,6 +4,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
+from .knowledge_tools import _ERRORE_SENZA_EMBEDDING
+
 if TYPE_CHECKING:
     from ..brain.knowledge_store import KnowledgeStore
     from ..backends.embeddings import EmbeddingProvider
@@ -13,15 +15,14 @@ logger = logging.getLogger(__name__)
 # Same timestamp format used by KnowledgeStore (see brain/knowledge_store.py).
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
-# I tre messaggi che il modello legge -- e che quindi arrivano all'utente.
-# Dicono cosa NON e' successo e perche' conta, mai il dettaglio tecnico:
-# l'eccezione resta nel log del server (regola del repo, mai echo di str(exc)).
-# Gemelli di _ERRORE_SENZA_EMBEDDING in tools/knowledge_tools.py: stesso
-# difetto, stessa risposta.
-_ERRORE_SALVATAGGIO_SENZA_EMBEDDING = (
-    "Non sono riuscito a salvare questo ricordo: la memoria semantica non è "
-    "disponibile e non sarebbe più richiamabile. Riprova più tardi."
-)
+# I messaggi che il modello legge -- e che quindi arrivano all'utente. Dicono
+# cosa NON e' successo e perche' conta, mai il dettaglio tecnico: l'eccezione
+# resta nel log del server (regola del repo, mai echo di str(exc)).
+#
+# Il messaggio del salvataggio senza embedding e' LO STESSO del tool gemello
+# `save_knowledge`, quindi si importa invece di riscriverlo: erano due copie
+# quasi identiche, divergenti di due parole, dichiarate identiche nel report.
+_ERRORE_SALVATAGGIO_SENZA_EMBEDDING = _ERRORE_SENZA_EMBEDDING
 _ERRORE_SALVATAGGIO = (
     "Non sono riuscito a salvare questo ricordo. Riprova più tardi."
 )
@@ -94,7 +95,10 @@ SAVE_MEMORY_TOOL_DEF = {
 
 async def handle_save_memory(
     store: "KnowledgeStore",
-    embedder: "EmbeddingProvider",
+    # `None` e' un valore previsto, non una svista: il dispatcher passa
+    # l'embedder cablato, che puo' non esserci (provider non configurato). Il
+    # codice qui sotto lo controlla gia'; l'annotazione lo dichiara.
+    embedder: "EmbeddingProvider | None",
     tool_input: dict,
     *,
     owner: str,
@@ -161,7 +165,7 @@ async def handle_save_memory(
 
 async def handle_recall_memory(
     store: "KnowledgeStore",
-    embedder: "EmbeddingProvider",
+    embedder: "EmbeddingProvider | None",   # None previsto: vedi handle_save_memory
     tool_input: dict,
     *,
     owner: str,

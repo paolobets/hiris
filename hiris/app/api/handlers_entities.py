@@ -1,6 +1,8 @@
 from __future__ import annotations
 from aiohttp import web
 
+from ..proxy.entity_cache import inventario_non_leggibile
+
 
 def _csv(v: str | None):
     return {x.strip() for x in v.split(",") if x.strip()} if v else None
@@ -43,9 +45,21 @@ def filter_entities(states: list[dict], domains: set | None, device_classes: set
 
 
 async def handle_list_entities(request: web.Request) -> web.Response:
+    """Inventario entità per la UI.
+
+    Un `{"entities": []}` con inventario non leggibile è la stessa bugia dei
+    tool di chat: dice «questa casa non ha entità» quando la frase vera è «non
+    ho potuto guardare». Qui diventa un 503 dichiarato, senza la chiave
+    `entities`, così un chiamante che la legga fallisce invece di mostrare un
+    elenco vuoto (i due consumatori in-repo -- entity-picker e agentbot-route
+    -- degradano già su risposta non-ok).
+    """
     cache = request.app.get("entity_cache")
-    if cache is None or not hasattr(cache, "all_states"):
-        return web.json_response({"entities": []})
+    if cache is not None and not hasattr(cache, "all_states"):
+        cache = None
+    guasto = inventario_non_leggibile(cache)
+    if guasto is not None:
+        return web.json_response(guasto, status=503)
     ents = filter_entities(cache.all_states(),
                            _csv(request.query.get("domain")),
                            _csv(request.query.get("device_class")),

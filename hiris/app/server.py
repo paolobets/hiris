@@ -1023,6 +1023,50 @@ async def run_urgent_nudges(store, *, today, seen, notify_item) -> int:
     return count
 
 
+async def ricarica_inventario_entita(cache, ha_client) -> bool:
+    """Ritenta il caricamento iniziale dell'inventario delle entita', e SOLO
+    quello. Ritorna True se questo giro l'ha rimesso in piedi.
+
+    `_on_startup` logga e prosegue quando `EntityCache.load` fallisce (Home
+    Assistant che parte dopo l'addon, riavvio del core, rete che balbetta):
+    da li' in poi la cache resta `loaded is False` e i quattro strumenti che
+    la leggono rispondono "non ancora pronto". Onesto, ma senza qualcuno che
+    riprovi resterebbe cosi' fino al riavvio dell'addon: piu' onesto di prima
+    e piu' scomodo. Questo e' quel qualcuno.
+
+    Non tocca una cache gia' viva: da quel momento la mantengono aggiornata gli
+    eventi di stato, e rileggere tutta la casa a ogni giro sarebbe traffico
+    inutile verso Home Assistant. Modulo-level (non chiuso dentro
+    `_on_startup`) per la stessa ragione di `run_daily_briefing`: si prova
+    senza avviare l'applicazione.
+
+    Non solleva mai: gira nello scheduler, e un Home Assistant ancora giu' e'
+    il caso previsto, non un errore da propagare -- il giro successivo
+    riprovera'.
+    """
+    if cache is None or ha_client is None:
+        return False
+    if getattr(cache, "loaded", True):
+        return False
+    try:
+        await cache.load(ha_client)
+    except Exception as exc:
+        logger.warning("Ricarica dell'inventario entita' non riuscita: %s", exc)
+        return False
+    logger.info(
+        "Inventario entita' ricaricato: %d entita' (la lettura iniziale era fallita)",
+        len(cache.get_all()) if hasattr(cache, "get_all") else -1,
+    )
+    # Stesso avvio, stesso guasto: se `load` era fallita per Home Assistant
+    # irraggiungibile, anche il registro delle aree lo era. Indipendente dal
+    # ritorno: cio' che sblocca i quattro strumenti e' l'inventario.
+    try:
+        await cache.load_area_registry(ha_client)
+    except Exception as exc:
+        logger.warning("Ricarica del registro aree non riuscita: %s", exc)
+    return True
+
+
 async def _run_internal_mcp(server) -> None:
     """Run the internal MCP server, containing a bind/startup failure to this
     optional feature instead of letting SystemExit kill the whole addon.
@@ -1439,6 +1483,28 @@ async def _on_startup(app: web.Application) -> None:
     pseudonymizer = Pseudonymizer(vault)
     app["vault"] = vault
     app["pseudonymizer"] = pseudonymizer
+
+    # Ricarica dell'inventario entita' dopo un avvio senza Home Assistant.
+    # `entity_cache.load` piu' sopra logga e prosegue se fallisce: senza questo
+    # lavoro la cache resterebbe "mai caricata" fino al riavvio dell'addon, e i
+    # quattro strumenti che la leggono continuerebbero a rispondere "non ancora
+    # pronto" per sempre.
+    #
+    # Due minuti: un'indisponibilita' passeggera (riavvio del core, rete che
+    # balbetta) rientra entro il giro successivo invece che alla prossima notte.
+    # Il costo con Home Assistant giu' per davvero e' una GET /api/states ogni
+    # due minuti -- meno della ronda della sentinella -- e appena la lettura
+    # riesce il lavoro torna a essere il controllo di una bandiera, senza
+    # toccare piu' Home Assistant.
+    async def _ricarica_inventario() -> None:
+        await ricarica_inventario_entita(app.get("entity_cache"), ha_client)
+
+    engine._scheduler.add_job(
+        _ricarica_inventario,
+        trigger="interval", minutes=2,
+        id="hiris_entity_cache_reload", replace_existing=True,
+        misfire_grace_time=120,
+    )
 
     # Daily retention job (chat messages + expired memories)
     from .chat_store import delete_old_messages as _delete_old_messages

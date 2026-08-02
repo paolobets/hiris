@@ -61,9 +61,13 @@ LINK_KNOWLEDGE_TOOL_DEF = {
 # arriva all'utente, quindi dice cosa NON e' successo (non e' stato salvato) e
 # perche' contava (non sarebbe stato ritrovabile). Nessun dettaglio tecnico:
 # l'eccezione resta nel log del server.
+#
+# Costante sola per i due tool gemelli: `save_memory` (tools/memory_tools.py) la
+# importa da qui invece di tenerne una copia quasi identica -- due copie a due
+# parole di distanza si erano gia' divaricate senza che nessuno se ne accorgesse.
 _ERRORE_SENZA_EMBEDDING = (
     "Non sono riuscito a salvare questo ricordo: la memoria semantica non è "
-    "disponibile e l'elemento non sarebbe più richiamabile. Riprova più tardi."
+    "disponibile e non sarebbe più richiamabile. Riprova più tardi."
 )
 
 # Gemello in lettura: un guasto della ricerca non deve arrivare all'utente

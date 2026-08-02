@@ -239,7 +239,11 @@ def test_none_store_and_cache_never_crash():
         None, None, today=today, allow_sensitive=True, horizon_days=7,
     )
     assert bundle["deadlines"] == []
-    assert bundle["home"] == {"open_now": [], "low_batteries": []}
+    # Fix 2: senza cache le aperture non sono "nessuna", sono "non controllate"
+    # -- la lacuna e' dichiarata, e il maggiordomo non afferma una casa chiusa.
+    assert bundle["home"] == {
+        "open_now": [], "low_batteries": [], "open_now_unavailable": True,
+    }
     assert bundle["counts"] == {
         "deadlines": 0, "hidden_sensitive": 0, "open_now": 0, "low_batteries": 0,
     }
@@ -249,7 +253,11 @@ def test_none_store_and_cache_never_crash():
 def test_raising_store_and_cache_degrade_to_empty_without_crash():
     """T1: a store whose upcoming_obligations() raises must not propagate --
     deadlines degrade to empty. Same for a cache whose all_states() raises --
-    home degrades to empty. Neither failure should affect the other section."""
+    home degrades to empty. Neither failure should affect the other section.
+
+    Fix 2: "empty" resta la degradazione, ma la lacuna viene DICHIARATA
+    (`open_now_unavailable`): un elenco vuoto da solo direbbe "nessuna
+    apertura", che di una lettura fallita non si puo' sapere."""
     today = date(2026, 7, 25)
     store = FakeKnowledgeStore(raises=True)
     cache = RaisingEntityCache()
@@ -259,7 +267,9 @@ def test_raising_store_and_cache_degrade_to_empty_without_crash():
     )
 
     assert bundle["deadlines"] == []
-    assert bundle["home"] == {"open_now": [], "low_batteries": []}
+    assert bundle["home"] == {
+        "open_now": [], "low_batteries": [], "open_now_unavailable": True,
+    }
     assert bundle["counts"] == {
         "deadlines": 0, "hidden_sensitive": 0, "open_now": 0, "low_batteries": 0,
     }

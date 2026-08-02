@@ -145,6 +145,26 @@ async def test_recall_memory_con_vettore_vuoto_dichiara_il_guasto(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_il_guasto_di_recall_memory_non_porta_la_chiave_memories(tmp_path):
+    """Fix 3 — la forma del guasto e' una scelta, e va pinnata.
+
+    In caso di guasto la risposta NON porta `memories`/`count`: un chiamante
+    che facesse `res["memories"]` deve fallire rumorosamente invece di leggere
+    un vuoto silenzioso. Gli altri test qui sopra si accontentano di «elenco
+    vuoto o assente, indifferentemente», quindi da soli lascerebbero
+    riaggiungere l'elenco vuoto senza che nulla diventi rosso.
+    """
+    store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    res = await handle_recall_memory(
+        store, _Embedder(esplode=True), {"query": "temperatura"},
+        owner="paolo", chatbot_id="agentA",
+    )
+
+    assert set(res) == {"error"}, "il guasto porta solo l'errore, nessun elenco"
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_recall_memory_vuoto_legittimo_non_e_un_errore(tmp_path):
     """Il caso opposto, che deve restare distinguibile: la ricerca funziona e
     non trova nulla."""

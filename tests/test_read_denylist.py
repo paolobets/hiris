@@ -302,6 +302,46 @@ def test_prune_error_dict_passes_through():
 
 
 # ---------------------------------------------------------------------------
+# Fix 3 — l'appoggio fragile fra la forma del guasto e questa potatura
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_il_guasto_di_recall_knowledge_arriva_intero_al_modello(tmp_path):
+    """`handle_recall_knowledge` in caso di guasto NON porta la chiave
+    `results` (scelta deliberata: chi vi accede direttamente deve fallire
+    rumorosamente). `_pota_conoscenza` pretende invece un elenco `results` e
+    solleva altrimenti: se la spiegazione non passasse di qui, il modello
+    riceverebbe un blocco generico al posto del motivo vero."""
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+
+    class _EmbedderGiu:
+        async def embed(self, testo):
+            raise RuntimeError("provider giu'")
+
+    store = KnowledgeStore(str(tmp_path / "guasto.db"))
+    guasto = await handle_recall_knowledge(
+        store, _EmbedderGiu(), {"query": "caldaia"}, owner="home")
+    store.close()
+
+    assert "results" not in guasto
+    assert prune_read_result("recall_knowledge", guasto, _DENY) == guasto
+
+
+def test_un_guasto_con_un_secondo_campo_non_viene_inghiottito():
+    """La scorciatoia di `prune_read_result` lascia passare un risultato se e
+    solo se ha esattamente una chiave, quella dell'errore. Basterebbe
+    aggiungere un secondo campo al messaggio di guasto -- un conteggio, un
+    tempo di riprova -- perche' la risposta finisse nel potatore, che senza
+    `results` la bloccherebbe: il modello leggerebbe «risposta bloccata»
+    invece della spiegazione."""
+    guasto = {"error": "Non sono riuscito a cercare nella memoria di casa.",
+              "retry_after_sec": 30}
+
+    assert prune_read_result("recall_knowledge", guasto, _DENY) == guasto
+
+
+# ---------------------------------------------------------------------------
 # Fail-closed sulle forme non riconosciute
 # ---------------------------------------------------------------------------
 

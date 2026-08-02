@@ -203,6 +203,29 @@ async def test_recall_knowledge_senza_vettore_dichiara_il_guasto(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_il_guasto_di_recall_knowledge_non_porta_la_chiave_results(tmp_path):
+    """Fix 3 — la forma del guasto e' una scelta, e va pinnata.
+
+    In caso di guasto la risposta NON porta `results`: un chiamante che facesse
+    `res["results"]` deve fallire rumorosamente invece di leggere un vuoto
+    silenzioso. Il test qui sopra si accontenta di «elenco vuoto o assente,
+    indifferentemente», quindi da solo lascerebbe riaggiungere l'elenco vuoto
+    senza che nulla diventi rosso.
+    """
+    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "forma.db"))
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(side_effect=RuntimeError("provider giu'"))
+
+    res = await handle_recall_knowledge(
+        store, embedder, {"query": "caldaia"}, owner="home")
+
+    assert set(res) == {"error"}, "il guasto porta solo l'errore, nessun elenco"
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_recall_knowledge_vuoto_legittimo_non_e_un_errore(tmp_path):
     """Il caso opposto, che deve restare distinguibile: la ricerca funziona e
     non trova nulla."""

@@ -1,7 +1,61 @@
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 NOISE_DOMAINS = {"button", "update", "number", "select", "tag",
                  "event", "ai_task", "todo", "conversation"}
+
+# Messaggi per chi legge l'inventario quando l'inventario non e' leggibile.
+# Un elenco vuoto direbbe "la casa e' vuota"; questi dicono "non ho potuto
+# guardare", che e' l'unica frase vera. I due casi restano distinti perche'
+# suggeriscono all'utente due cose diverse: uno e' configurazione mancante,
+# l'altro passa da solo (il lavoro periodico di ricarica ritenta).
+#
+# Vivono qui, accanto alla bandiera `loaded` che li governa, perche' li usano
+# quattro moduli diversi (dispatcher, ha_tools, briefing, api/handlers_entities)
+# e duplicarne il testo era esattamente il modo in cui il difetto e'
+# sopravvissuto nei fratelli.
+ERRORE_INVENTARIO_ASSENTE = (
+    "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
+    "entità non è disponibile. Non posso dire che non ci sia nulla, solo che "
+    "non ho potuto controllare."
+)
+ERRORE_INVENTARIO_NON_PRONTO = (
+    "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
+    "entità non è ancora pronto (la lettura iniziale da Home Assistant non è "
+    "andata a buon fine o è ancora in corso). Riprova fra poco."
+)
+
+
+def inventario_leggibile(cache) -> bool:
+    """True quando dalla cache si puo' leggere un inventario che vale come
+    fotografia della casa.
+
+    `getattr(..., True)`: una cache finta senza l'attributo `loaded` (i doppi
+    usati nei test e nel cablaggio esistente) e' considerata pronta, cosi'
+    questa distinzione non ne rompe nessuna.
+    """
+    return cache is not None and bool(getattr(cache, "loaded", True))
+
+
+def inventario_non_leggibile(cache) -> dict | None:
+    """None se l'inventario e' utilizzabile, altrimenti l'errore da restituire
+    subito al chiamante.
+
+    Tre casi, due esiti. Cache assente (mai cablata) e cache presente ma mai
+    caricata sono entrambe un guasto: non abbiamo potuto guardare. Cache
+    caricata e vuota e' invece un risultato legittimo -- una casa senza
+    entita', o senza luci accese, esiste davvero -- e prosegue.
+    """
+    if cache is None:
+        logger.warning("lettura entita' rifiutata: nessun inventario configurato")
+        return {"error": ERRORE_INVENTARIO_ASSENTE}
+    if not inventario_leggibile(cache):
+        logger.warning("lettura entita' rifiutata: inventario non ancora caricato")
+        return {"error": ERRORE_INVENTARIO_NON_PRONTO}
+    return None
 
 
 def _domain(entity_id: str) -> str:
