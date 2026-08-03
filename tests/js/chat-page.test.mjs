@@ -249,6 +249,67 @@ test('turn-limit raggiunto disabilita input e send-btn (blocca l\'invio)', () =>
 });
 
 // ---------------------------------------------------------------------------
+// Sprint coerenza, lotto A, task 5 (A7): cancellare la cronologia era
+// irreversibile e senza conferma -- la card Lovelace (hiris-chat-card.js)
+// chiede conferma per la STESSA azione con lo stesso testo, qui mancava.
+// Fratello nello stesso file: il fetch DELETE aveva un catch(e) {} vuoto --
+// se il server falliva, la UI cancellava comunque i messaggi mostrati,
+// dicendo "fatto" quando non lo era.
+// ---------------------------------------------------------------------------
+
+test('clearConversation chiede conferma prima di cancellare (come la card Lovelace)', async () => {
+  const { window, document } = setupChat();
+  window.HirisChatState.activeAgentId = 'bot-clear';
+  window.HirisChatMessages.appendMsg('user', 'ciao');
+  document.getElementById('welcome').style.display = 'none';
+
+  let confirmMsg = null;
+  window.confirm = (msg) => { confirmMsg = msg; return false; };
+  const calls = [];
+  window.fetch = async (url, opts) => { calls.push({ url: String(url), opts }); return { ok: true, status: 200, json: async () => ({}) }; };
+
+  await window.HirisChatAgents.clearConversation();
+
+  assert.equal(confirmMsg, 'Cancellare la cronologia di questa conversazione?',
+    'stesso testo della card Lovelace (hiris-chat-card.js:1222)');
+  assert.equal(calls.length, 0, 'con la conferma negata nessuna DELETE deve partire');
+  assert.ok(document.querySelector('.msg-row.user'), 'i messaggi non devono sparire se non confermato');
+});
+
+test('clearConversation confermata: DELETE parte e i messaggi si svuotano', async () => {
+  const { window, document } = setupChat();
+  window.HirisChatState.activeAgentId = 'bot-clear-2';
+  window.HirisChatMessages.appendMsg('user', 'ciao');
+  window.confirm = () => true;
+  const calls = [];
+  window.fetch = async (url, opts) => { calls.push({ url: String(url), opts }); return { ok: true, status: 200, json: async () => ({}) }; };
+
+  await window.HirisChatAgents.clearConversation();
+
+  const del = calls.find((c) => c.opts && c.opts.method === 'DELETE');
+  assert.ok(del, 'la DELETE deve partire dopo conferma');
+  assert.match(del.url, /api\/chatbots\/bot-clear-2\/chat-history$/);
+  assert.equal(document.querySelectorAll('.msg-row.user').length, 0, 'i messaggi devono svuotarsi');
+});
+
+test('clearConversation: se la DELETE fallisce lato server, i messaggi NON spariscono e viene avvisato', async () => {
+  const { window, document } = setupChat();
+  window.HirisChatState.activeAgentId = 'bot-clear-3';
+  window.HirisChatMessages.appendMsg('user', 'messaggio importante');
+  window.confirm = () => true;
+  window.fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
+  const alerts = [];
+  window.alert = (m) => alerts.push(m);
+
+  await window.HirisChatAgents.clearConversation();
+
+  assert.equal(alerts.length, 1, 'un fallimento non deve restare invisibile');
+  assert.match(alerts[0], /[Nn]on è stato possibile cancellare/);
+  assert.ok(document.querySelector('.msg-row.user'),
+    'la UI non deve fingere di aver cancellato se il server non lo ha fatto');
+});
+
+// ---------------------------------------------------------------------------
 // Pannello task: carica le card e permette di cancellare una task.
 // ---------------------------------------------------------------------------
 

@@ -50,18 +50,31 @@ async function applyTheme() {
    per riga invece di condividerla. Vedi editor-kit.js per la cache
    condivisa. */
 
+/* Scrive il testo in `id` solo se l'elemento esiste in questa pagina: prima
+   un singolo id assente (usage-last-reset, mai aggiunto a index.html) faceva
+   sollevare l'assegnamento e il catch(e) vuoto sotto inghiottiva l'eccezione
+   -- da quel momento NESSUNO dei quattro assegnamenti successivi girava piu',
+   ogni 30 secondi, senza che nulla lo segnalasse. Un solo elemento mancante
+   non deve piu' poter bloccare gli altri. */
+function _setUsageText(id, text) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
 async function loadUsage() {
   try {
     var r = await fetch('api/usage');
-    if (!r.ok) return;
+    if (!r.ok) { console.error('loadUsage failed', r.status); return; }
     var d = await r.json();
-    document.getElementById('u-requests').textContent = d.total_requests != null ? d.total_requests : '—';
-    document.getElementById('u-input').textContent = fmtNum(d.input_tokens);
-    document.getElementById('u-output').textContent = fmtNum(d.output_tokens);
-    document.getElementById('u-cost').textContent = d.cost_eur != null ? '€' + d.cost_eur.toFixed(4) : '—';
+    _setUsageText('u-requests', d.total_requests != null ? d.total_requests : '—');
+    _setUsageText('u-input', fmtNum(d.input_tokens));
+    _setUsageText('u-output', fmtNum(d.output_tokens));
+    _setUsageText('u-cost', d.cost_eur != null ? '€' + d.cost_eur.toFixed(4) : '—');
     if (d.last_reset) {
       var dt = new Date(d.last_reset);
-      document.getElementById('usage-last-reset').textContent = 'Azzerato il ' + dt.toLocaleString('it-IT');
+      _setUsageText('usage-last-reset', 'Azzerato il ' + dt.toLocaleString('it-IT'));
     }
-  } catch(e) {}
+  } catch(e) {
+    console.error('loadUsage failed', e);
+  }
 }

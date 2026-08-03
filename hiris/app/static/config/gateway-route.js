@@ -21,6 +21,14 @@ window.HirisGatewayRoute = (function () {
   ];
   var VALID = { off: 1, green: 1, yellow: 1, red: 1 };
 
+  /* Stessa denylist di security/semaphore.py::DANGEROUS_DOMAINS, copiata qui
+     solo per l'avviso a schermo (display-only, come il commento gemello in
+     chatbot-editor.js): il backend nega SEMPRE queste azioni prima di
+     leggere il tier, qualunque livello sia salvato per il dominio. */
+  var DANGEROUS_DOMAINS = {
+    lock: 1, alarm_control_panel: 1, cover: 1, siren: 1, garage_door: 1
+  };
+
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -54,9 +62,33 @@ window.HirisGatewayRoute = (function () {
     }).join('\n');
   }
 
+  /* Coda vuota e coda illeggibile sono due fatti diversi e vanno detti in
+     modo diverso -- stessa regola del pannello Memoria della chat
+     (chat/knowledge.js::renderError/load): "nessun comando in attesa" non e'
+     la stessa cosa di "non sono riuscito a leggere la coda", e prima di
+     questa correzione la seconda si presentava come la prima (la sezione
+     spariva senza dire nulla). */
+  function renderPendingError(host) {
+    host.innerHTML = '';
+    var card = el('section', 'section-card');
+    var b = el('div', 'sc-body');
+    var msg = el('p', 'sc-desc', 'Non è stato possibile leggere la coda delle approvazioni. Riprova più tardi.');
+    msg.style.color = 'var(--err, #c0392b)';
+    b.appendChild(msg);
+    card.appendChild(b);
+    host.appendChild(card);
+  }
+
   function renderPending(host, list) {
     host.innerHTML = '';
-    if (!list || !list.length) return;
+    if (!list || !list.length) {
+      var empty = el('section', 'section-card');
+      var eb = el('div', 'sc-body');
+      eb.appendChild(el('p', 'sc-desc', 'Nessun comando in attesa di approvazione.'));
+      empty.appendChild(eb);
+      host.appendChild(empty);
+      return;
+    }
     var card = el('section', 'section-card');
     var b = el('div', 'sc-body');
     b.appendChild(el('h2', 'sc-title', 'Da approvare (inbox) (' + list.length + ')'));
@@ -85,18 +117,47 @@ window.HirisGatewayRoute = (function () {
     host.appendChild(card);
   }
 
+  /* Approvare o rifiutare e' un comando su casa propria arrivato in coda
+     perche' il semaforo l'ha giudicato giallo o rosso: chiede conferma come
+     ogni altra azione irreversibile del progetto (window.confirm, gia'
+     usato ovunque). Sull'esito segue la stessa regola di chat/knowledge.js
+     ::act(): un fallimento va detto (mai in silenzio, mai con la stringa
+     tecnica del backend), e la coda si ricarica comunque per riflettere lo
+     stato vero. */
   function resolve(id, verb) {
+    var isReject = (verb === 'reject');
+    var confirmMsg = isReject
+      ? 'Rifiutare questo comando? Non verrà eseguito.'
+      : 'Approvare questo comando? Verrà eseguito su Home Assistant.';
+    if (!window.confirm(confirmMsg)) return;
     api('/pending/' + encodeURIComponent(id) + '/' + verb, { method: 'POST' })
-      .then(function () { loadPending(); });
+      .then(function (r) {
+        return r.json().then(function (d) { return { httpOk: r.ok, data: d || {} }; },
+          function () { return { httpOk: r.ok, data: {} }; });
+      })
+      .then(function (res) {
+        var fallito = !res.httpOk || res.data.ok === false
+          || (res.data.result && res.data.result.error);
+        if (fallito) {
+          console.error('gateway pending ' + verb + ' failed', res.data);
+          window.alert(isReject
+            ? 'Non è stato possibile rifiutare questo comando: potrebbe essere scaduto o già gestito.'
+            : 'Non è stato possibile approvare questo comando: potrebbe essere scaduto o già gestito.');
+        }
+      }, function (e) {
+        console.error('gateway pending ' + verb + ' failed', e);
+        window.alert('Errore di rete: riprova.');
+      })
+      .then(loadPending);
   }
 
   var _pendingHost = null;
   function loadPending() {
     if (!_pendingHost) return;
     api('/pending', { method: 'GET' })
-      .then(function (r) { return r.ok ? r.json() : { pending: [] }; })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (d) { renderPending(_pendingHost, d.pending || []); })
-      .catch(function () {});
+      .catch(function () { renderPendingError(_pendingHost); });
   }
 
   function render(outlet, data) {
@@ -150,6 +211,14 @@ window.HirisGatewayRoute = (function () {
       sel.value = VALID[cur] ? cur : 'off';
       selects[cat.id] = sel;
       row.appendChild(sel);
+      if (DANGEROUS_DOMAINS[cat.id]) {
+        /* Stesso concetto e stessa formulazione dell'avviso nell'editor dei
+           Chatbot (chatbot-editor.js ~383-395): il verde salvato qui non ha
+           mai effetto su un dominio pericoloso, il backend nega comunque. */
+        var warn = el('span', null, '🔒 sempre bloccato (dominio pericoloso)');
+        warn.style.cssText = 'flex-basis:100%;font-size:12px;color:var(--text-4,#888)';
+        row.appendChild(warn);
+      }
       body.appendChild(row);
     });
 
@@ -174,6 +243,10 @@ window.HirisGatewayRoute = (function () {
     body.appendChild(el('p', 'sc-desc',
       'Verde = esegui subito · Giallo = notifica sul telefono e approvi (anche qui sopra) · ' +
       'Rosso = conferma solo qui in HIRIS. Le categorie senza dispositivi sono attenuate.'));
+    body.appendChild(el('p', 'sc-desc',
+      '🔒 Serrature, allarme, tapparelle/serrande, sirene e porta del garage sono sempre bloccati ' +
+      '(dominio pericoloso): il verde qui non avrà mai effetto. Un’approvazione esplicita in ' +
+      'HIRIS (giallo o rosso, qui sopra) può comunque scavalcare il blocco.'));
 
     var bar = el('div');
     bar.style.cssText = 'margin-top:16px;display:flex;gap:10px;align-items:center';

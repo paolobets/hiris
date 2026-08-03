@@ -30,9 +30,24 @@
 
   async function clearConversation() {
     if (!state.activeAgentId) return;
+    /* Irreversibile: la card Lovelace (hiris-chat-card.js) chiede conferma
+       per la stessa identica azione con lo stesso testo -- qui mancava. */
+    if (!window.confirm('Cancellare la cronologia di questa conversazione?')) return;
     try {
-      await fetch('api/chatbots/' + state.activeAgentId + '/chat-history', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
-    } catch (e) {}
+      var r = await fetch('api/chatbots/' + state.activeAgentId + '/chat-history', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
+      if (!r.ok) {
+        /* Se il server non ha cancellato, la UI non deve fingere che l'abbia
+           fatto: altrove in questo file un catch vuoto ha nascosto per mesi
+           un guasto identico (vedi A9/api.js). */
+        console.error('clearConversation failed', r.status);
+        window.alert('Non è stato possibile cancellare la cronologia. Riprova più tardi.');
+        return;
+      }
+    } catch (e) {
+      console.error('clearConversation failed', e);
+      window.alert('Non è stato possibile cancellare la cronologia. Riprova più tardi.');
+      return;
+    }
     state.els.messages.innerHTML = '';
     state.els.messages.appendChild(state.els.welcome);
     state.els.welcome.style.display = '';
@@ -100,18 +115,25 @@
     try {
       var r = await fetch('api/chatbots/' + agentId + '/chat-history');
       if (localId !== state.activeAgentId) return;
-      if (r.ok) {
-        var data = await r.json();
-        if (localId !== state.activeAgentId) return;
-        var msgs = data.messages || [];
-        msgs.forEach(function(m) {
-          window.HirisChatMessages.appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
-        });
-        state.agentTurnCounts[agentId] = msgs.filter(function(m) { return m.role === 'user'; }).length;
-        updateTurnCounter();
-        checkTurnLimit();
+      if (!r.ok) {
+        /* Fratello dello stesso difetto: prima ne' il ramo r.ok=false ne' il
+           catch sotto lasciavano traccia -- la cronologia restava vuota senza
+           che nulla lo dicesse nemmeno in console. */
+        console.error('applyHistory failed', r.status);
+        return;
       }
-    } catch (e) {}
+      var data = await r.json();
+      if (localId !== state.activeAgentId) return;
+      var msgs = data.messages || [];
+      msgs.forEach(function(m) {
+        window.HirisChatMessages.appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
+      });
+      state.agentTurnCounts[agentId] = msgs.filter(function(m) { return m.role === 'user'; }).length;
+      updateTurnCounter();
+      checkTurnLimit();
+    } catch (e) {
+      console.error('applyHistory failed', e);
+    }
   }
 
   async function setActive(agentId, agentName) {
