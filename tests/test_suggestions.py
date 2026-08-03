@@ -1,7 +1,8 @@
 import math
 
 import pytest
-from hiris.app.brain.suggestions import SuggestionStore, validate_coverage, apply_suggestions, undo
+from hiris.app.brain.suggestions import (SuggestionStore, validate_coverage, apply_suggestions,
+                                         undo, reconcile_proposal_outcome)
 from hiris.app.watcher.policy import load_policy
 
 @pytest.fixture
@@ -19,7 +20,7 @@ def test_apply_and_undo_coverage(tmp_path, store):
     dd = str(tmp_path)
     suggs = [{"kind":"coverage","title":"Freezer","rationale":"r","config":{"detector":"fridge_temp","entity":"sensor.freezer","max_temp_c":8}}]
     applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.freezer"},
-                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+                                current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5)
     assert len(applied) == 1
     pol = load_policy(dd)
     assert "sensor.freezer" in pol["detectors"]["fridge_temp"]["entities"]
@@ -43,7 +44,7 @@ def test_hostile_config_cannot_wipe_entities_or_disable(tmp_path, store):
               "config": {"detector": "fridge_temp", "entity": "sensor.brain_freezer",
                          "entities": [], "enabled": False}}]
     applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.brain_freezer"},
-                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+                                current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5)
     assert len(applied) == 1
     pol = load_policy(dd)
     det = pol["detectors"]["fridge_temp"]
@@ -59,7 +60,7 @@ def test_non_numeric_threshold_rejects_whole_suggestion(tmp_path, store):
     suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
               "config": {"detector": "power", "entity": "sensor.plug", "max_watt": "abc"}}]
     applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
-                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+                                current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5)
     assert applied == []
     pol = load_policy(dd)
     assert pol["detectors"]["power"]["enabled"] is False
@@ -74,7 +75,7 @@ def test_nan_threshold_rejects_whole_suggestion(tmp_path, store):
     suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
               "config": {"detector": "power", "entity": "sensor.plug", "max_watt": math.nan}}]
     applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
-                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+                                current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5)
     assert applied == []
     assert load_policy(dd)["detectors"]["power"]["enabled"] is False
 
@@ -88,7 +89,7 @@ def test_out_of_range_threshold_is_clamped_and_applied(tmp_path, store):
     suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
               "config": {"detector": "power", "entity": "sensor.plug", "max_watt": 999999999}}]
     applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
-                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+                                current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5)
     assert len(applied) == 1
     pol = load_policy(dd)
     assert pol["detectors"]["power"]["enabled"] is True
@@ -102,7 +103,7 @@ def test_valid_threshold_still_applies_unchanged(tmp_path, store):
     suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
               "config": {"detector": "power", "entity": "sensor.plug", "max_watt": 2500}}]
     applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
-                                current_config=load_policy(dd), create_proposal=lambda c: None, cap=5)
+                                current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5)
     assert len(applied) == 1
     pol = load_policy(dd)
     assert pol["detectors"]["power"]["max_watt"] == 2500
@@ -122,7 +123,7 @@ def test_cap_and_management(tmp_path, store):
               "config": _MANAGEMENT_AUTOMATION}]
     apply_suggestions(suggs, data_dir=str(tmp_path), store=store, inventory_ids=set(),
                       current_config=load_policy(str(tmp_path)),
-                      create_proposal=lambda c: proposed.append(c), cap=5)
+                      create_proposal=lambda c, _sid: proposed.append(c), cap=5)
     assert proposed == [_MANAGEMENT_AUTOMATION] and store.list()[0]["status"] == "proposed"
 
 
@@ -134,9 +135,58 @@ def test_management_without_automation_config_is_recorded_but_not_proposed(tmp_p
     suggs = [{"kind": "management", "title": "Idea", "rationale": "r", "config": {"x": 1}}]
     apply_suggestions(suggs, data_dir=str(tmp_path), store=store, inventory_ids=set(),
                       current_config=load_policy(str(tmp_path)),
-                      create_proposal=lambda c: proposed.append(c), cap=5)
+                      create_proposal=lambda c, _sid: proposed.append(c), cap=5)
     assert proposed == []
     assert store.list()[0]["config"] == {"x": 1}
+
+
+def test_management_proposal_callback_receives_the_row_id(tmp_path, store):
+    """I-1 (TDD, rosso prima di questa fix): create_proposal e' fire-and-
+    forget lato chiamante reale (server.py._mk_proposal lancia un task e non
+    puo' attenderlo da apply_suggestions, che e' sincrona) -- l'unico modo
+    perche' il chiamante possa poi correggere lo stato della riga quando il
+    task finisce e' conoscerne l'id FIN DA SUBITO. Prima di questa fix
+    create_proposal riceveva solo il config."""
+    received = {}
+    suggs = [{"kind": "management", "title": "T", "rationale": "R", "config": _MANAGEMENT_AUTOMATION}]
+    apply_suggestions(suggs, data_dir=str(tmp_path), store=store, inventory_ids=set(),
+                      current_config=load_policy(str(tmp_path)),
+                      create_proposal=lambda c, sid: received.update(config=c, suggestion_id=sid),
+                      cap=5)
+    row = store.list()[0]
+    assert row["status"] == "proposed"
+    assert received["suggestion_id"] == row["id"]
+    assert received["config"] == _MANAGEMENT_AUTOMATION
+
+
+def test_reconcile_proposal_outcome_downgrades_status_on_failed_result(store):
+    """I-1 (TDD, rosso prima di questa fix -- riprodotto: riga 'proposed',
+    zero proposte salvate). create_automation_proposal segnala il fallimento
+    come VALORE DI RITORNO ({'error': ...}), non un'eccezione: se il task
+    fire-and-forget che la esegue completa con quell'esito, la riga
+    'management' -- scritta ottimisticamente 'proposed' da apply_suggestions
+    prima di conoscere il vero esito -- deve tornare a dire il vero."""
+    sid = store.record("management", "T", "R", _MANAGEMENT_AUTOMATION, "proposed", None)
+    reconcile_proposal_outcome(store, sid, {"error": "ProposalStore not available"})
+    assert store.get(sid)["status"] == "recorded"
+
+
+def test_reconcile_proposal_outcome_downgrades_status_on_exception_result(store):
+    """Stesso caso ma con il task fire-and-forget che ha sollevato (il
+    chiamante lo traduce in {'error': str(exc)} prima di richiamare questa
+    funzione, vedi server.py._mk_proposal)."""
+    sid = store.record("management", "T", "R", _MANAGEMENT_AUTOMATION, "proposed", None)
+    reconcile_proposal_outcome(store, sid, {"error": "boom"})
+    assert store.get(sid)["status"] == "recorded"
+
+
+def test_reconcile_proposal_outcome_leaves_status_when_proposal_id_present(store):
+    """Esito vero positivo: la proposta esiste davvero (proposal_id valorizzato)
+    -- 'proposed' era corretto e la riga non va toccata."""
+    sid = store.record("management", "T", "R", _MANAGEMENT_AUTOMATION, "proposed", None)
+    reconcile_proposal_outcome(store, sid, {"proposal_id": "abc123", "status": "pending"})
+    assert store.get(sid)["status"] == "proposed"
+
 
 def test_undo_routes_brain_tune_source_ref_to_value_restore(tmp_path, store):
     """Slice 6 Task 5B: a suggestion row whose delta.source_ref starts with
@@ -182,7 +232,7 @@ def test_undo_coverage_restores_shared_param_it_overwrote(tmp_path, store):
     suggs = [{"kind": "coverage", "title": "Plug", "rationale": "r",
               "config": {"detector": "power", "entity": "sensor.plug", "max_watt": 5000}}]
     applied = apply_suggestions(suggs, data_dir=dd, store=store, inventory_ids={"sensor.plug"},
-                                current_config=_load_policy(dd), create_proposal=lambda c: None, cap=5)
+                                current_config=_load_policy(dd), create_proposal=lambda c, _sid: None, cap=5)
     assert len(applied) == 1
     pol = _load_policy(dd)
     assert pol["detectors"]["power"]["max_watt"] == 5000

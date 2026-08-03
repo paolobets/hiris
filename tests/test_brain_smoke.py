@@ -54,7 +54,7 @@ def test_brain_pipeline_e2e_inventory_to_undo(tmp_path):
         inventory_ids = {e["entity_id"] for e in inventory}
         applied = apply_suggestions(
             suggs, data_dir=dd, store=store, inventory_ids=inventory_ids,
-            current_config=load_policy(dd), create_proposal=lambda c: None, cap=5,
+            current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5,
         )
         assert len(applied) == 1
 

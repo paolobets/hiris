@@ -155,13 +155,22 @@ def _validate_and_clamp_params(params: dict) -> Optional[dict]:
 
 def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStore,
                        inventory_ids: set, current_config: dict,
-                       create_proposal: Callable[[dict], None], cap: int) -> list[dict]:
+                       create_proposal: Callable[[dict, int], None], cap: int) -> list[dict]:
     """Apply validated coverage suggestions (up to `cap` auto-applies) and
     forward to create_proposal ONLY those management suggestions whose config is
     a real HA automation config (is_automation_config): the others are recorded
     with status "recorded" -- visible among the brain suggestions, but never
     promising a proposal that does not exist. Returns the list of suggestions
-    that were actually auto-applied (as stored rows)."""
+    that were actually auto-applied (as stored rows).
+
+    `create_proposal(config, suggestion_id)` is called AFTER the row is
+    already persisted (I-1), so it receives the row's own id: the real caller
+    (server.py._holistic_reason._mk_proposal) creates the proposal via a
+    fire-and-forget task (apply_suggestions is sync and cannot await it), so
+    the "proposed" status written below is optimistic -- the id lets the
+    caller reconcile the row (see reconcile_proposal_outcome) once the task's
+    real outcome is known. Before this, create_proposal received only the
+    config, with no way back to the row it was supposed to make true."""
     applied: list[dict] = []
     applied_count = 0
     for sugg in suggs:
@@ -214,7 +223,6 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
             # "proposed" su una riga senza proposta manderebbe l'utente a
             # cercare nella pagina Proposte una cosa che non c'e'.
             if is_automation_config(config):
-                create_proposal(config)
                 status = "proposed"
             else:
                 logger.warning(
@@ -222,9 +230,47 @@ def apply_suggestions(suggs: list[dict], *, data_dir: str, store: SuggestionStor
                     "configurazione di automazione HA -> nessuna proposta creata, "
                     "riga registrata come 'recorded'", title)
                 status = "recorded"
-            store.record(kind, title, rationale, config, status, None)
+            # I-1: la riga va scritta PRIMA di chiamare create_proposal, non
+            # dopo. create_proposal e' fire-and-forget (il vero esito arriva
+            # dopo, su un task separato: vedi la docstring sopra) -- se la
+            # riga si scrivesse dopo la chiamata, create_proposal non
+            # potrebbe MAI conoscere l'id della riga che dovra' correggere
+            # quando il task finisce.
+            suggestion_id = store.record(kind, title, rationale, config, status, None)
+            if status == "proposed":
+                create_proposal(config, suggestion_id)
         # unknown kind -> skip silently
     return applied
+
+
+def reconcile_proposal_outcome(store: SuggestionStore, suggestion_id: int, result: object) -> None:
+    """Corregge una riga 'management' scritta ottimisticamente come
+    'proposed' da apply_suggestions, quando l'esito REALE della creazione
+    (arrivato dopo, dal task fire-and-forget di create_proposal) dice che
+    nessuna proposta e' stata salvata.
+
+    I-1: apply_suggestions e' sincrona e non puo' attendere
+    create_automation_proposal (una chiamata HTTP/DB asincrona), quindi
+    scrive 'proposed' PRIMA di sapere come e' andata a finire, e
+    create_proposal (server.py._mk_proposal) la lancia come task
+    fire-and-forget via `_spawn`. Se il task solleva, o se
+    create_automation_proposal segnala l'errore come VALORE DI RITORNO (non
+    un'eccezione: per disegno non solleva mai), prima di questa funzione
+    nessuno se ne accorgeva -- il task fire-and-forget non veniva ispezionato
+    e la riga restava marcata 'proposed' pur non esistendo alcuna proposta
+    (riprodotto: riga 'proposed', zero proposte salvate). Il chiamante deve
+    richiamare questa funzione dal done-callback del task. Non solleva mai."""
+    if isinstance(result, dict) and result.get("proposal_id"):
+        return  # esito vero: la proposta esiste davvero, "proposed" era corretto
+    logger.warning(
+        "brain coverage-review: proposta non salvata per il suggerimento %s "
+        "(esito: %r) -> stato corretto a 'recorded'", suggestion_id, result)
+    try:
+        store.set_status(suggestion_id, "recorded")
+    except Exception:
+        logger.exception(
+            "brain coverage-review: impossibile correggere lo stato del "
+            "suggerimento %s", suggestion_id)
 
 
 def undo(store: SuggestionStore, data_dir: str, suggestion_id: int) -> bool:

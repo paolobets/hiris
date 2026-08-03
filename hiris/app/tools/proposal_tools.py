@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..proxy.ha_client import is_automation_config, is_automation_entity_id
+from ..proxy.ha_client import is_automation_config, is_automation_id_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,20 @@ CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
                     "HA automation YAML dict (trigger/condition/action/mode/alias) "
                     "or HIRIS agent config dict. To MODIFY an existing automation, "
                     "INCLUDE its numeric 'id' (as returned by get_automation_config) "
-                    "— or its entity_id (e.g. 'automation.foo') if you only have "
-                    "that — in this config so approval OVERWRITES it. To create a "
-                    "NEW automation, OMIT 'id'."
+                    "in this config. Its entity_id (e.g. 'automation.foo') or bare "
+                    "object_id (e.g. 'foo') are ALSO accepted here, but are NOT "
+                    "the same guarantee as the numeric id: they are looked up "
+                    "against Home Assistant only when the user APPROVES the "
+                    "proposal, not now. If at that point none of them resolves to "
+                    "an existing automation, approval FAILS outright — nothing is "
+                    "created or overwritten. To create a NEW automation, OMIT "
+                    "'id' entirely. Caveat: if you omit 'id' but 'config' has an "
+                    "'alias' matching the friendly_name of an automation that "
+                    "already exists, approval overwrites THAT one instead of "
+                    "creating a duplicate — this is deliberate (avoids duplicates "
+                    "when re-proposing an edit without the id), but means the "
+                    "alias alone decides the target: reuse the exact existing "
+                    "name only when you mean to overwrite it."
                 ),
             },
             "routing_reason": {
@@ -56,10 +67,12 @@ CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
                 "type": "string",
                 "description": (
                     "Optional. The numeric unique id of an existing HA automation "
-                    "to MODIFY — or its entity_id (e.g. 'automation.foo') if you "
-                    "only have that. Alternative to putting 'id' inside config "
-                    "(this param wins if both are given). Omit for a brand-new "
-                    "automation."
+                    "to MODIFY — or its entity_id (e.g. 'automation.foo') or bare "
+                    "object_id (e.g. 'foo') if you only have that (looked up at "
+                    "approval time; approval fails if none resolves — see "
+                    "'config' above for what that means). Alternative to putting "
+                    "'id' inside config (this param wins if both are given). Omit "
+                    "for a brand-new automation."
                 ),
             },
         },
@@ -104,8 +117,11 @@ async def create_automation_proposal(
         # risolvibile) veniva salvata cosi' com'e' e falliva solo all'apply,
         # con un 502 verso l'utente al posto di un errore azionabile per il
         # modello che l'ha scritta. Questo percorso (dalla chat) era anche
-        # l'unico dei tre a non avere is_automation_config: la Sentinella e la
-        # coverage-review passano gia' da li' (test_proposal_config_shape.py).
+        # l'unico dei tre a non avere is_automation_config. M-3: la
+        # coverage-review passa gia' da qui (Brain, server.py._mk_proposal);
+        # la Sentinella NO -- propone uno SCRIPT (sentinel_proposal), non
+        # un'automazione, e non passa mai da is_automation_config: e' fuori
+        # perimetro per costruzione, non "gia' coperta".
         if not isinstance(cfg, dict) or not is_automation_config(cfg):
             return {"error": (
                 "config automazione non valida: servono i trigger e le azioni "
@@ -115,22 +131,33 @@ async def create_automation_proposal(
         _id = automation_id or cfg.get("id")
         if _id:
             _id = str(_id)
-            # Un id non numerico e non a forma di entity_id non e' un
-            # indizio utilizzabile: create_automation (Correzione 1) prova a
-            # risolverlo come entity_id o come alias, ma solo per QUESTE due
-            # forme -- qualunque altra stringa arriverebbe fino all'apply
-            # solo per fallire li' con un 502. Meglio dirlo subito, al
-            # modello, con un errore che gli spieghi cosa fare. Non si
-            # duplica qui la risoluzione (che serve get_automations, quindi
-            # l'accesso a HA): si valida solo la FORMA, con lo stesso
+            # C-2: il gate qui deve rifiutare SOLO cio' che l'apply
+            # (create_automation) rifiuterebbe di sicuro. create_automation
+            # accetta tre forme per un id fornito (numerico, entity_id,
+            # object_id nudo -- lo stesso contratto di get_automation_config,
+            # che il messaggio d'errore sotto cita come fonte del valore
+            # giusto): prima di is_automation_id_candidate questo gate ne
+            # riconosceva solo due, rifiutando proposte che l'apply avrebbe
+            # applicato. Non si duplica qui la RISOLUZIONE (che serve
+            # get_automations, quindi l'accesso a HA, e resta in
+            # create_automation): si valida solo la FORMA, con lo stesso
             # predicato che usa create_automation.
-            if not ((_id.isascii() and _id.isdigit()) or is_automation_entity_id(_id)):
+            if not is_automation_id_candidate(_id):
                 return {"error": (
                     f"id automazione non valido: {_id!r}. Per una automazione "
                     "nuova ometti 'id'; per modificarne una esistente usa "
                     "l'id numerico che torna da get_automation_config, oppure "
-                    "l'entity_id (es. 'automation.nome_automazione').")}
+                    "l'entity_id (es. 'automation.nome_automazione') o "
+                    "l'object_id nudo (es. 'nome_automazione').")}
             cfg = {**cfg, "id": _id}
+        elif "id" in cfg:
+            # M-1: un id FALSY (es. {"id": 0}) salta il ramo "if _id" sopra e
+            # verrebbe persistito cosi' com'e' -- la proposta salvata
+            # mostrerebbe un id che pero' all'apply si comporta come assente
+            # (create_automation fa `automation_id or config.get("id") or ""`:
+            # 0 e' falsy, quindi aid diventa ""). Si normalizza qui: la chiave
+            # sparisce invece di restare a mentire nella proposta salvata.
+            cfg = {k: v for k, v in cfg.items() if k != "id"}
     try:
         pid = await proposal_store.save(
             {

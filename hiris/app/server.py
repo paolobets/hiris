@@ -2267,7 +2267,7 @@ async def _on_startup(app: web.Application) -> None:
                 from .brain.coverage_review import (
                     COVERAGE_REVIEW_SYSTEM, build_review_context,
                     build_review_message, parse_suggestions)
-                from .brain.suggestions import apply_suggestions
+                from .brain.suggestions import apply_suggestions, reconcile_proposal_outcome
                 from .brain.cognitive_loop import auto_tune_detectors, trace_applied_coverage
                 from .api.handlers_entities import filter_entities
                 _inventory = filter_entities(_cache.all_states(), None, None)
@@ -2306,19 +2306,35 @@ async def _on_startup(app: web.Application) -> None:
                 except Exception:
                     logger.warning("reasoning capture failed", exc_info=True)
 
-                def _mk_proposal(c):
+                def _mk_proposal(c, suggestion_id):
                     # Consolidamento 1.2: apply_suggestions inoltra qui SOLO i
                     # suggerimenti 'management' che sono davvero una config di
                     # automazione HA (is_automation_config), quindi il tipo
                     # dichiarato e il contenuto coincidono e l'apply scrive in
                     # HA qualcosa che funziona. Il nome leggibile di
                     # un'automazione e' `alias`, non `name`.
-                    return _spawn(create_automation_proposal(
+                    task = _spawn(create_automation_proposal(
                         proposal_store, proposal_type="ha_automation",
                         name=str(c.get("alias") or c.get("name") or "Brain coverage-review"),
                         description=str(c.get("description") or ""),
                         config=c, routing_reason="brain coverage-review"),
                         name="create_automation_proposal")
+                    # I-1: create_automation_proposal segnala il fallimento
+                    # come valore di ritorno, non un'eccezione, e questo task
+                    # e' fire-and-forget -- prima di questo callback nessuno
+                    # lo ispezionava e la riga 'management' restava marcata
+                    # 'proposed' (scritta sopra, in apply_suggestions, prima
+                    # che questo task finisse) anche quando la proposta non
+                    # era stata salvata. Riconcilia lo stato quando l'esito
+                    # vero e' disponibile.
+                    def _on_proposal_done(t, _sid=suggestion_id):
+                        try:
+                            result = t.result()
+                        except Exception as exc:
+                            result = {"error": str(exc)}
+                        reconcile_proposal_outcome(_store, _sid, result)
+                    task.add_done_callback(_on_proposal_done)
+                    return task
 
                 _applied_coverage = apply_suggestions(
                     _suggs, data_dir=data_dir, store=_store,

@@ -186,6 +186,40 @@ async def test_create_proposal_rejects_unresolvable_id_shape(store):
 
 
 @pytest.mark.asyncio
+async def test_create_proposal_accepts_bare_object_id_as_modify_target(store):
+    """C-2 (TDD, rosso prima di questa fix): create_automation (l'apply)
+    accetta da sempre l'object_id nudo (senza prefisso 'automation.') come
+    terza forma valida per identificare un'automazione esistente -- lo stesso
+    contratto di get_automation_config. Prima di is_automation_id_candidate
+    questo gate ne riconosceva solo due (numerico, entity_id) e avrebbe
+    rifiutato qui una proposta che l'apply avrebbe applicato senza problemi."""
+    args = _sample_args(config={
+        "id": "avviso_luci_accese_all_uscita_di_casa",  # object_id nudo
+        "alias": "Avviso: luci accese all'uscita di casa",
+        "trigger": [], "action": [],
+    })
+    res = await create_automation_proposal(store, **args)
+    assert "error" not in res, res
+    saved = await store.get(res["proposal_id"])
+    assert saved["config"]["id"] == "avviso_luci_accese_all_uscita_di_casa"
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_falsy_id_is_stripped_not_persisted(store):
+    """M-1 (TDD, rosso prima di questa fix): un id FALSY (es. 0) saltava la
+    validazione (`if _id:` e' False) e veniva persistito cosi' com'e' nel
+    config -- la proposta salvata mostrava un id che pero' all'apply si
+    comporta come assente (create_automation: `automation_id or
+    config.get('id') or ''`, e 0 e' falsy). La chiave deve sparire, non
+    restare a mentire nella proposta salvata."""
+    args = _sample_args(config={"id": 0, "alias": "X", "trigger": [], "action": []})
+    res = await create_automation_proposal(store, **args)
+    assert "error" not in res, res
+    saved = await store.get(res["proposal_id"])
+    assert "id" not in saved["config"]
+
+
+@pytest.mark.asyncio
 async def test_create_proposal_id_error_message_is_actionable(store):
     """L'errore parla al modello: deve dirgli l'id che ha scritto, che serve
     quello numerico, e che per una automazione nuova va omesso."""
