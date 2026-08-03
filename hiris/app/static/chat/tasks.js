@@ -42,12 +42,23 @@
     } catch (e) { console.error('loadTasks failed', e); }
   }
 
+  /* M-6 (review indipendente su bee3ab1, fratello di A7 nella stessa pagina):
+     una DELETE fallita non produceva NIENTE -- ne' un log ne' un avviso, la
+     task restava li' senza che l'utente sapesse perche' "Annulla" non ha
+     avuto effetto. A7 (agents.js::clearConversation) e resolve() di
+     gateway-route.js seguono gia' la stessa regola: un fallimento va detto,
+     mai in silenzio. */
   async function cancel(taskId) {
     if (!confirm('Annullare questa task?')) return;
     try {
       var resp = await fetch('api/tasks/' + taskId, { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
-      if (resp.ok || resp.status === 204) load();
-    } catch (e) { console.error('cancelTask failed', e); }
+      if (resp.ok || resp.status === 204) { load(); return; }
+      console.error('cancelTask failed', resp.status);
+      alert('Non è stato possibile annullare questa task. Riprova più tardi.');
+    } catch (e) {
+      console.error('cancelTask failed', e);
+      alert('Errore di rete: riprova.');
+    }
   }
 
   function showPanel(name) {

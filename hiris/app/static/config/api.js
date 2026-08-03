@@ -50,12 +50,17 @@ async function applyTheme() {
    per riga invece di condividerla. Vedi editor-kit.js per la cache
    condivisa. */
 
-/* Scrive il testo in `id` solo se l'elemento esiste in questa pagina: prima
-   un singolo id assente (usage-last-reset, mai aggiunto a index.html) faceva
-   sollevare l'assegnamento e il catch(e) vuoto sotto inghiottiva l'eccezione
-   -- da quel momento NESSUNO dei quattro assegnamenti successivi girava piu',
-   ogni 30 secondi, senza che nulla lo segnalasse. Un solo elemento mancante
-   non deve piu' poter bloccare gli altri. */
+/* Scrive il testo in `id` solo se l'elemento esiste in questa pagina.
+   Correzione (I-3, review indipendente): il commento precedente diceva che
+   l'id mancante (usage-last-reset, mai aggiunto a index.html) impediva ai
+   QUATTRO contatori di popolarsi -- falso, verificato sul codice prima di
+   questa correzione: usage-last-reset era l'ULTIMO dei cinque assegnamenti
+   in loadUsage(), quindi i quattro contatori (u-requests/u-input/u-output/
+   u-cost) giravano gia' regolarmente; solo il quinto (la data di azzeramento)
+   sollevava, e il catch(e) vuoto lo inghiottiva in silenzio, senza mai
+   loggare. _setUsageText() resta comunque un irrobustimento genuino: rende
+   ogni assegnamento indipendente dagli altri (non solo dall'ultimo) per
+   qualunque futuro id mancante, e il catch finale ora logga (vedi sotto). */
 function _setUsageText(id, text) {
   var el = document.getElementById(id);
   if (el) el.textContent = text;

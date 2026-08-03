@@ -180,6 +180,7 @@ async def handle_execute(request: web.Request) -> web.Response:
     # the domain level (off entity inside green domain is BLOCKED, never dispatched).
     if tool == "call_ha_service":
         from .handlers_gateway_policy import effective_tier
+        from ..security.semaphore import DANGEROUS_DOMAINS
         domain = inputs.get("domain")
         tiers = policy.get("tiers") or {}
         entity_tiers = policy.get("entity_tiers") or {}
@@ -198,6 +199,40 @@ async def handle_execute(request: web.Request) -> web.Response:
         else:
             dom_tier = tiers.get(domain, "off")
             tier = dom_tier if dom_tier in ("yellow", "red") else None
+        # S-1 (falla di sicurezza, confermata da review indipendente leggendo
+        # il codice): questo prescreening decideva giallo/rosso leggendo SOLO
+        # effective_tier, senza mai consultare DANGEROUS_DOMAINS -- la
+        # denylist vive solo in security/semaphore.py::gate_action, che qui
+        # non viene mai interrogata. Un dominio pericoloso (o un'entita'
+        # target di dominio pericoloso) configurato giallo produceva percio'
+        # un pending giallo -> notifica ACTIONABLE (notify() sotto,
+        # actionable=(tier=="yellow")) -> un tocco sul pulsante la esegue,
+        # senza authenticationRequired (valido anche a telefono bloccato) e
+        # senza passare da _require_human_auth. All'approvazione,
+        # execute_pending chiama dispatcher.dispatch(tier_confirmed=True),
+        # che salta l'INTERO _gate() -- denylist compresa (e' voluto per il
+        # rosso: dispatcher.py:423-426, "la conferma umana autorizza
+        # esattamente questo comando, denylist inclusa" -- killer-feature
+        # step-up, vedi test_gateway_approval_execution.py). Il rosso e'
+        # sicuro perche' non e' mai actionable (riga sotto) e la sua unica
+        # approvazione passa dall'inbox in HIRIS, dietro _require_human_auth.
+        # Il giallo non ha quella barriera. Quindi: un dominio pericoloso non
+        # deve MAI nascere giallo qui -- si forza rosso PRIMA di creare il
+        # pending, cosi' l'"alta frizione" che la docstring di
+        # handlers_gateway_pending.py (righe 6-9) dichiara per allarme/
+        # serrature torna vera per costruzione, non per convenzione.
+        # Il caso "off" resta bloccato sopra (fail-closed, invariato). Il
+        # caso verde/dominio non configurato (tier resta None qui) non viene
+        # toccato: cade nel dispatch normale sotto, che chiama gate_action
+        # con tier_confirmed=False e nega gia' da solo (deny_dangerous) --
+        # aprire qui un pending per quel caso aggiungerebbe un varco nuovo,
+        # non ne chiuderebbe uno.
+        if tier == "yellow" and (
+            domain in DANGEROUS_DOMAINS
+            or any((e.split(".", 1)[0] if "." in e else "") in DANGEROUS_DOMAINS
+                   for e in targets)
+        ):
+            tier = "red"
         if tier in ("yellow", "red"):
             from .handlers_gateway_pending import create_pending, notify
             label = f"{domain}.{inputs.get('service', '')}"

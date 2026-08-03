@@ -2236,3 +2236,11 @@
 @media (prefers-reduced-motion: reduce) {
   .feed-new { animation: none; }
 }
+
+/* Pagina Accessi Gateway (config/gateway-route.js): coda illeggibile, stessa
+   convenzione di .proposals-error/.log-error, ma classe distinta invece
+   dello stile inline (era msg.style.color=... in JS). */
+.gw-error { color: var(--err, #c0392b); }
+/* Avviso "dominio pericoloso" sotto ogni riga della categoria: legato al
+   livello selezionato, aggiornato al `change` -- non piu' un testo fisso. */
+.gw-danger-hint { flex-basis: 100%; font-size: 12px; color: var(--text-4, #888); }

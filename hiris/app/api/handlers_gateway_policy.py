@@ -290,8 +290,20 @@ async def handle_get_gateway_policy(request: web.Request) -> web.Response:
             counts = cache.domain_counts()
         except Exception:
             counts = {}
+    # Lazy import: security.semaphore imports effective_tier FROM this module
+    # at load time (see handle_autonomy_summary above) -- importing at module
+    # scope here would create an import cycle.
+    #
+    # "dangerous" e' calcolato qui, non ricopiato lato frontend (era duplicato
+    # a mano in gateway-route.js, con "garage_door" che non e' nemmeno una
+    # categoria valida -- vedi GATEWAY_CATEGORIES sopra): un'unica fonte,
+    # cosi' un domani DANGEROUS_DOMAINS cambia senza che l'avviso a schermo
+    # possa disallinearsi (stesso principio di summarize_autonomy).
+    from ..security.semaphore import DANGEROUS_DOMAINS
     categories = [
-        dict(c, count=int(counts.get(c["domain"], 0))) for c in GATEWAY_CATEGORIES
+        dict(c, count=int(counts.get(c["domain"], 0)),
+             dangerous=c["domain"] in DANGEROUS_DOMAINS)
+        for c in GATEWAY_CATEGORIES
     ]
     return web.json_response({
         "categories": categories,

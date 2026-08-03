@@ -77,7 +77,13 @@ async function applyProposal(id) {
   var row = document.getElementById('pr-' + id);
   try {
     var res = await HirisProposalsCore.apply(id);
-    if (!res.ok) { alert(res.error || 'Errore'); return; }
+    // I-5 (fratello): mai la stringa tecnica del backend, messaggio derivato
+    // dallo stato -- stesso HirisProposalsCore.errorMessage di chat/proposals.js.
+    if (!res.ok) {
+      console.error('applyProposal failed', res.status, res.error);
+      alert(HirisProposalsCore.errorMessage(res));
+      return;
+    }
     if (row) {
       row.style.opacity = '0.5';
       row.querySelector('.proposal-name').innerHTML = '<span style="color:var(--success)">✓ Proposta attivata</span>';
@@ -94,7 +100,12 @@ async function rejectProposal(id) {
   var row = document.getElementById('pr-' + id);
   try {
     var res = await HirisProposalsCore.reject(id);
-    if (!res.ok) { alert(res.error || 'Errore'); return; }
+    // I-5 (fratello): idem sopra in applyProposal().
+    if (!res.ok) {
+      console.error('rejectProposal failed', res.status, res.error);
+      alert(HirisProposalsCore.errorMessage(res));
+      return;
+    }
     if (row) {
       row.style.opacity = '0.5';
       row.querySelector('.proposal-name').innerHTML = '<span style="color:var(--text-muted)">Proposta rifiutata</span>';

@@ -239,6 +239,84 @@ async def test_execute_green_action_dispatches_directly(aiohttp_client, tmp_path
     assert app["ha_client"].calls == []                      # no notification
 
 
+# ---------------------------------------------------------------------------
+# S-1 (falla di sicurezza, review indipendente su bee3ab1): questo
+# prescreening decideva giallo/rosso leggendo SOLO effective_tier, senza mai
+# consultare DANGEROUS_DOMAINS -- un dominio pericoloso configurato giallo
+# produceva un pending giallo, quindi una notifica ACTIONABLE (bottoni
+# Approva/Nega, nessun authenticationRequired -- valida anche a telefono
+# bloccato) invece di passare da _require_human_auth. All'approvazione
+# execute_pending salta l'intero _gate() (killer-feature step-up, per
+# design), quindi il giallo bastava per aprire una serratura con un tocco.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_execute_dangerous_domain_yellow_forces_red(aiohttp_client, tmp_path):
+    """Un dominio pericoloso (lock) configurato GIALLO deve nascere ROSSO:
+    stesso dominio in inputs['domain'] e nell'entita' target."""
+    app = _make_tier_app({"lock": "yellow"}, tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post(
+        "/api/execute",
+        json={"tool": "call_ha_service", "input": {
+            "domain": "lock", "service": "unlock", "data": {"entity_id": "lock.front"}}},
+        headers={"X-HIRIS-Internal-Token": "secret"},
+    )
+    assert resp.status == 200
+    res = (await resp.json())["result"]
+    assert res["status"] == "pending_approval" and res["tier"] == "red", (
+        "un dominio pericoloso a giallo deve nascere pending ROSSO, non giallo")
+    assert app["tool_dispatcher"].calls == []                # held, not executed
+    assert len(app["ha_client"].calls) == 1
+    push = app["ha_client"].calls[0][2]["data"]
+    assert "actions" not in push, (
+        "il pending forzato a rosso non deve avere pulsanti Approva/Nega sulla notifica")
+
+
+@pytest.mark.asyncio
+async def test_execute_dangerous_target_entity_yellow_forces_red_even_if_service_domain_safe(
+    aiohttp_client, tmp_path
+):
+    """Stesso esito quando il dominio PERICOLOSO e' solo quello di
+    un'entita' target, non del servizio chiamato (es. homeassistant.turn_off
+    su lock.front): la denylist deve coprire anche questo caso, non solo
+    inputs['domain']."""
+    app = _make_tier_app({"lock": "yellow"}, tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post(
+        "/api/execute",
+        json={"tool": "call_ha_service", "input": {
+            "domain": "homeassistant", "service": "turn_off",
+            "data": {"entity_id": "lock.front"}}},
+        headers={"X-HIRIS-Internal-Token": "secret"},
+    )
+    assert resp.status == 200
+    res = (await resp.json())["result"]
+    assert res["status"] == "pending_approval" and res["tier"] == "red", (
+        "un'entita' target di dominio pericoloso deve forzare rosso anche se "
+        "il dominio del servizio non e' nella denylist")
+    push = app["ha_client"].calls[0][2]["data"]
+    assert "actions" not in push
+
+
+@pytest.mark.asyncio
+async def test_execute_non_dangerous_domain_yellow_stays_yellow_and_actionable(aiohttp_client, tmp_path):
+    """Controprova: la correzione S-1 non deve spegnere il percorso normale
+    -- un dominio non pericoloso a giallo resta giallo e la notifica resta
+    azionabile (bottoni Approva/Nega)."""
+    app = _make_tier_app({"climate": "yellow"}, tmp_path)
+    client = await aiohttp_client(app)
+    resp = await client.post(
+        "/api/execute",
+        json={"tool": "call_ha_service", "input": {"domain": "climate", "service": "set_temperature"}},
+        headers={"X-HIRIS-Internal-Token": "secret"},
+    )
+    res = (await resp.json())["result"]
+    assert res["status"] == "pending_approval" and res["tier"] == "yellow"
+    push = app["ha_client"].calls[0][2]["data"]
+    assert "actions" in push, "un dominio innocuo a giallo deve restare azionabile dalla notifica"
+
+
 @pytest.mark.asyncio
 async def test_execute_rejects_invalid_json(aiohttp_client):
     app = _make_app({"tools": ["get_home_status"], "allowed_entities": None, "allowed_services": None})

@@ -24,8 +24,8 @@ function jsonResponse(body, status) {
 const BASE_POLICY = {
   levels: {}, settings: {},
   categories: [
-    { id: 'light', label: 'Luci', count: 3 },
-    { id: 'lock', label: 'Serrature', count: 1 },
+    { id: 'light', label: 'Luci', count: 3, dangerous: false },
+    { id: 'lock', label: 'Serrature', count: 1, dangerous: true },
   ],
   entities: {},
 };
@@ -154,6 +154,76 @@ test('un fallimento di rete su approva/rifiuta produce un alert e ricarica comun
 });
 
 // ---------------------------------------------------------------------------
+// I-4 -- un solo messaggio ("potrebbe essere scaduto o gia' gestito") copriva
+// tre esiti diversi: un 403 di autorizzazione (_require_human_auth) e un
+// ok:true+result.error (nonce consumato, comando non arrivato a HA) devono
+// dire cose diverse, non la stessa frase.
+// ---------------------------------------------------------------------------
+
+test('un 403 (permessi, _require_human_auth) NON dice "scaduto o gia\' gestito" (I-4)', async () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  let pendingCallCount = 0;
+  window.fetch = async (url) => {
+    if (String(url).includes('/pending/p1/approve')) {
+      return jsonResponse({ error: 'forbidden: approval requires the HIRIS UI (ingress), not the service token' }, 403);
+    }
+    if (String(url).endsWith('/pending')) {
+      pendingCallCount += 1;
+      return jsonResponse({ pending: pendingCallCount === 1
+        ? [{ id: 'p1', tier: 'yellow', label: 'light.turn_on', origin: 'gateway' }] : [] });
+    }
+    return jsonResponse(BASE_POLICY);
+  };
+  window.confirm = () => true;
+  const alerts = [];
+  window.alert = (m) => alerts.push(m);
+
+  window.HirisGatewayRoute.mount();
+  await tick(20);
+  findButton(document, 'Approva').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+
+  assert.equal(alerts.length, 1);
+  assert.doesNotMatch(alerts[0], /scaduto|gestito/i,
+    'un 403 e\' un problema di permessi, non un nonce scaduto/gestito: riprovare non risolve nulla');
+  assert.doesNotMatch(alerts[0], /forbidden|service token/,
+    'niente stringa tecnica del backend');
+  assert.match(alerts[0], /permess|HIRIS/i, 'deve spiegare che serve aprire la pagina dentro HIRIS');
+});
+
+test('approvato ma non eseguito su HA (ok:true+result.error) NON dice "scaduto o gia\' gestito" (I-4)', async () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  let pendingCallCount = 0;
+  window.fetch = async (url) => {
+    if (String(url).includes('/pending/p1/approve')) {
+      return jsonResponse({ ok: true, result: { error: 'Entity \'lock.x\' not permitted by policy' } });
+    }
+    if (String(url).endsWith('/pending')) {
+      pendingCallCount += 1;
+      return jsonResponse({ pending: pendingCallCount === 1
+        ? [{ id: 'p1', tier: 'red', label: 'lock.unlock', origin: 'gateway' }] : [] });
+    }
+    return jsonResponse(BASE_POLICY);
+  };
+  window.confirm = () => true;
+  const alerts = [];
+  window.alert = (m) => alerts.push(m);
+
+  window.HirisGatewayRoute.mount();
+  await tick(20);
+  findButton(document, 'Approva').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+
+  assert.equal(alerts.length, 1);
+  assert.doesNotMatch(alerts[0], /scaduto|gestito/i,
+    'il nonce e\' consumato (approvato), non scaduto: il messaggio non deve confondere le due cose');
+  assert.doesNotMatch(alerts[0], /not permitted by policy/,
+    'niente stringa tecnica del backend');
+  assert.match(alerts[0], /non.*eseguit|non è più riprovabile/i,
+    'deve dire che il comando non e\' stato eseguito e non e\' piu\' riprovabile');
+});
+
+// ---------------------------------------------------------------------------
 // A8.3 -- coda vuota e coda illeggibile sono due stati distinti e visibili
 // ---------------------------------------------------------------------------
 
@@ -198,10 +268,67 @@ test('coda illeggibile: dice di non essere riuscita a leggerla, testo diverso da
 });
 
 // ---------------------------------------------------------------------------
-// A10 -- il verde su un dominio pericoloso e' segnalato come sempre bloccato
+// M-8 -- la coda vuota porta la stessa intestazione della coda piena, e un
+// bug di RENDERING (dati letti correttamente) non deve travestirsi da
+// guasto di lettura della coda.
 // ---------------------------------------------------------------------------
 
-test('un dominio pericoloso (lock) mostra l\'avviso "sempre bloccato"; uno normale no', async () => {
+test('coda vuota: stessa intestazione "Da approvare (inbox)" della coda piena (M-8)', async () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  window.fetch = async (url) => {
+    if (String(url).includes('/pending')) return jsonResponse({ pending: [] });
+    return jsonResponse(BASE_POLICY);
+  };
+  window.HirisGatewayRoute.mount();
+  await tick(20);
+
+  const outlet = document.getElementById('route-outlet');
+  assert.match(outlet.textContent, /Da approvare \(inbox\)/,
+    'la coda vuota deve mostrare la stessa intestazione della coda piena, non sparire');
+});
+
+test('un\'eccezione DENTRO al rendering della coda non dice "non è stato possibile leggere la coda" (M-8)', async () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  window.fetch = async (url) => {
+    // Entry malformata (null): i dati SONO stati letti dal server, ma il
+    // rendering di QUESTA entry lancia -- e' un bug diverso da un guasto di
+    // rete/HTTP, e prima di questa correzione loadPending().catch() li
+    // confondeva, mostrando lo stesso messaggio per entrambi.
+    if (String(url).includes('/pending')) return jsonResponse({ pending: [null] });
+    return jsonResponse(BASE_POLICY);
+  };
+  const realError = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args);
+  try {
+    window.HirisGatewayRoute.mount();
+    await tick(20);
+  } finally {
+    console.error = realError;
+  }
+
+  const outlet = document.getElementById('route-outlet');
+  assert.doesNotMatch(outlet.textContent, /[Nn]on è stato possibile leggere la coda/,
+    'un bug di rendering non e\' un guasto di lettura: non deve mostrare lo stesso messaggio');
+  assert.ok(logged.length > 0, 'l\'eccezione di rendering deve comunque finire in console, non sparire');
+});
+
+// ---------------------------------------------------------------------------
+// A10/S-1/I-2/M-7 -- il verde su un dominio pericoloso e' segnalato come
+// sempre bloccato; il giallo NO (finisce in coda), e dopo S-1
+// (handlers_execute.py forza sempre rosso un dominio pericoloso prima del
+// pending) l'avviso deve dirlo: mai piu' un tocco sulla notifica, qualunque
+// sia il livello scelto. Il flag "dangerous" arriva dal backend
+// (handle_get_gateway_policy), non e' piu' una lista copiata a mano nel
+// frontend -- garage_door (che non e' nemmeno una categoria valida) non
+// compare piu'.
+// ---------------------------------------------------------------------------
+
+function findSelectInRow(row) {
+  return row.querySelector('select');
+}
+
+test('un dominio pericoloso (lock) a Off mostra "sempre bloccato"; uno normale (light) no', async () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   window.fetch = async (url) => {
     if (String(url).includes('/pending')) return jsonResponse({ pending: [] });
@@ -216,11 +343,37 @@ test('un dominio pericoloso (lock) mostra l\'avviso "sempre bloccato"; uno norma
   assert.ok(lockRow, 'deve esserci la riga Serrature');
   assert.ok(lightRow, 'deve esserci la riga Luci');
   assert.match(lockRow.textContent, /sempre bloccato \(dominio pericoloso\)/,
-    'il dominio pericoloso deve avvisare che il verde non ha mai effetto');
-  assert.doesNotMatch(lightRow.textContent, /sempre bloccato/,
-    'un dominio normale non deve mostrare l\'avviso');
+    'a Off (default) il dominio pericoloso deve avvisare che resta sempre bloccato');
+  assert.doesNotMatch(lightRow.textContent, /dominio pericoloso/,
+    'un dominio normale non deve mostrare alcun avviso di pericolo');
 
   const outlet = document.getElementById('route-outlet');
   assert.match(outlet.textContent, /scavalcare il blocco/,
-    'la pagina deve spiegare che un\'approvazione esplicita puo\' scavalcare il blocco (verificato in dispatcher.py/handlers_gateway_pending.py)');
+    'la pagina deve spiegare che solo un\'approvazione manuale in HIRIS puo\' scavalcare il blocco');
+  assert.match(outlet.textContent, /mai un tocco sulla notifica/,
+    'I-1: deve essere esplicito che il tocco sulla notifica non basta (falso prima per il Giallo)');
+});
+
+test('un dominio pericoloso a Giallo NON dice piu\' "sempre bloccato" e si aggiorna al change (I-2, dopo S-1)', async () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  window.fetch = async (url) => {
+    if (String(url).includes('/pending')) return jsonResponse({ pending: [] });
+    return jsonResponse(BASE_POLICY);
+  };
+  window.HirisGatewayRoute.mount();
+  await tick(20);
+
+  const rows = Array.from(document.querySelectorAll('.gw-row'));
+  const lockRow = rows.find((r) => r.textContent.includes('Serrature'));
+  const sel = findSelectInRow(lockRow);
+  assert.ok(sel, 'la riga Serrature deve avere una select di livello');
+
+  sel.value = 'yellow';
+  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+  assert.doesNotMatch(lockRow.textContent, /sempre bloccato/,
+    'a Giallo il dominio pericoloso NON e\' sempre bloccato: dopo S-1 finisce comunque in coda');
+  assert.match(lockRow.textContent, /conferma manuale/,
+    'deve dire che serve comunque conferma manuale in HIRIS, mai un tocco sulla notifica');
+  assert.match(lockRow.textContent, /mai un tocco sulla notifica/);
 });

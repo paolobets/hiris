@@ -21,13 +21,34 @@ window.HirisGatewayRoute = (function () {
   ];
   var VALID = { off: 1, green: 1, yellow: 1, red: 1 };
 
-  /* Stessa denylist di security/semaphore.py::DANGEROUS_DOMAINS, copiata qui
-     solo per l'avviso a schermo (display-only, come il commento gemello in
-     chatbot-editor.js): il backend nega SEMPRE queste azioni prima di
-     leggere il tier, qualunque livello sia salvato per il dominio. */
-  var DANGEROUS_DOMAINS = {
-    lock: 1, alarm_control_panel: 1, cover: 1, siren: 1, garage_door: 1
-  };
+  /* M-7: la denylist DANGEROUS_DOMAINS non e' piu' ricopiata a mano qui
+     (era disallineata dal backend -- conteneva "garage_door", che non e'
+     nemmeno una categoria valida in GATEWAY_CATEGORIES, e usava una parola
+     diversa da quella mostrata all'utente per "cover"). Ogni categoria
+     arriva dal backend con il flag booleano `dangerous`
+     (handlers_gateway_policy.py::handle_get_gateway_policy, calcolato da
+     security/semaphore.py::DANGEROUS_DOMAINS -- una sola fonte, stesso
+     principio gia' in uso per l'Autonomia del Chatbot). */
+
+  /* Testo dell'avviso sotto ogni categoria pericolosa, legato al livello
+     selezionato (I-2) e verificato contro il comportamento reale DOPO S-1
+     (handlers_execute.py forza sempre rosso un dominio pericoloso prima di
+     creare il pending, qualunque livello sia salvato):
+     - off/green: l'esecuzione e' negata SEMPRE (off per configurazione,
+       verde perche' il dispatcher nega comunque via denylist -- vedi
+       security/semaphore.py::gate_action, chiamato con tier_confirmed=False
+       su questo percorso);
+     - giallo/rosso: finiscono comunque in coda, ma dopo S-1 richiedono
+       SEMPRE l'approvazione manuale qui in HIRIS -- mai un tocco sulla
+       notifica, perche' handlers_execute.py non lascia mai nascere un
+       pending giallo (quindi mai actionable) per questi domini. */
+  function dangerHintText(level) {
+    if (level === 'yellow' || level === 'red') {
+      return '🔒 dominio pericoloso: finisce comunque in coda, ma richiede sempre ' +
+        'conferma manuale qui in HIRIS — mai un tocco sulla notifica, qualunque sia il livello scelto.';
+    }
+    return '🔒 sempre bloccato (dominio pericoloso)';
+  }
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -67,31 +88,32 @@ window.HirisGatewayRoute = (function () {
      (chat/knowledge.js::renderError/load): "nessun comando in attesa" non e'
      la stessa cosa di "non sono riuscito a leggere la coda", e prima di
      questa correzione la seconda si presentava come la prima (la sezione
-     spariva senza dire nulla). */
+     spariva senza dire nulla).
+     M-8: classe distinta (.gw-error) invece di uno stile inline -- stessa
+     convenzione di .proposals-error/.kb-error. */
   function renderPendingError(host) {
     host.innerHTML = '';
     var card = el('section', 'section-card');
     var b = el('div', 'sc-body');
-    var msg = el('p', 'sc-desc', 'Non è stato possibile leggere la coda delle approvazioni. Riprova più tardi.');
-    msg.style.color = 'var(--err, #c0392b)';
-    b.appendChild(msg);
+    b.appendChild(el('p', 'sc-desc gw-error', 'Non è stato possibile leggere la coda delle approvazioni. Riprova più tardi.'));
     card.appendChild(b);
     host.appendChild(card);
   }
 
   function renderPending(host, list) {
     host.innerHTML = '';
-    if (!list || !list.length) {
-      var empty = el('section', 'section-card');
-      var eb = el('div', 'sc-body');
-      eb.appendChild(el('p', 'sc-desc', 'Nessun comando in attesa di approvazione.'));
-      empty.appendChild(eb);
-      host.appendChild(empty);
-      return;
-    }
+    list = list || [];
     var card = el('section', 'section-card');
     var b = el('div', 'sc-body');
+    // M-8: la coda vuota porta la STESSA intestazione della coda piena
+    // (prima spariva del tutto, senza dire nemmeno "Da approvare (inbox)").
     b.appendChild(el('h2', 'sc-title', 'Da approvare (inbox) (' + list.length + ')'));
+    if (!list.length) {
+      b.appendChild(el('p', 'sc-desc', 'Nessun comando in attesa di approvazione.'));
+      card.appendChild(b);
+      host.appendChild(card);
+      return;
+    }
     list.forEach(function (p) {
       var row = el('div');
       row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border,#2a2a2a)';
@@ -117,6 +139,41 @@ window.HirisGatewayRoute = (function () {
     host.appendChild(card);
   }
 
+  /* I-4 (review indipendente): un solo messaggio ("potrebbe essere scaduto o
+     gia' gestito") copriva TRE esiti diversi, e uno era descritto male --
+     l'endpoint di approvazione/rifiuto NON ritorna sempre 200: un 403 arriva
+     da _require_human_auth (handlers_gateway_pending.py:292-311) quando la
+     richiesta non viene dall'ingress HIRIS, e ripetere il tentativo su un
+     problema di permessi non risolve nulla. Il terzo esito e' ok:true con
+     result.error: il nonce E' stato consumato e l'entry marcata "approved"
+     (handlers_gateway_pending.py:257-266), ma il comando non e' arrivato a
+     Home Assistant -- quella approvazione non e' piu' riprovabile, e il
+     vecchio messaggio lo lasciava intendere. Il messaggio e' derivato dallo
+     stato della risposta, stesso principio di chat/knowledge.js
+     ::messaggioErrore -- mai la stringa tecnica del backend verso l'utente. */
+  function messaggioErrore(res, isReject) {
+    if (res.status === 403) {
+      return 'Non hai i permessi per farlo da qui: apri questa pagina dentro HIRIS ' +
+        '(il solo token del gateway non basta ad approvare o rifiutare).';
+    }
+    if (!res.httpOk) {
+      return 'Il server ha risposto con un errore (' + res.status + '). Riprova più tardi.';
+    }
+    if (res.data.ok === false) {
+      return isReject
+        ? 'Non è stato possibile rifiutare questo comando: potrebbe essere scaduto o già gestito.'
+        : 'Non è stato possibile approvare questo comando: potrebbe essere scaduto o già gestito.';
+    }
+    if (res.data.result && res.data.result.error) {
+      return 'Comando approvato ma NON eseguito su Home Assistant: questa approvazione è già ' +
+        'stata usata e non è più riprovabile. Verifica su Home Assistant e, se serve, ripeti ' +
+        'l’azione dall’inizio.';
+    }
+    return isReject
+      ? 'Non è stato possibile rifiutare questo comando.'
+      : 'Non è stato possibile approvare questo comando.';
+  }
+
   /* Approvare o rifiutare e' un comando su casa propria arrivato in coda
      perche' il semaforo l'ha giudicato giallo o rosso: chiede conferma come
      ogni altra azione irreversibile del progetto (window.confirm, gia'
@@ -132,17 +189,15 @@ window.HirisGatewayRoute = (function () {
     if (!window.confirm(confirmMsg)) return;
     api('/pending/' + encodeURIComponent(id) + '/' + verb, { method: 'POST' })
       .then(function (r) {
-        return r.json().then(function (d) { return { httpOk: r.ok, data: d || {} }; },
-          function () { return { httpOk: r.ok, data: {} }; });
+        return r.json().then(function (d) { return { httpOk: r.ok, status: r.status, data: d || {} }; },
+          function () { return { httpOk: r.ok, status: r.status, data: {} }; });
       })
       .then(function (res) {
         var fallito = !res.httpOk || res.data.ok === false
           || (res.data.result && res.data.result.error);
         if (fallito) {
-          console.error('gateway pending ' + verb + ' failed', res.data);
-          window.alert(isReject
-            ? 'Non è stato possibile rifiutare questo comando: potrebbe essere scaduto o già gestito.'
-            : 'Non è stato possibile approvare questo comando: potrebbe essere scaduto o già gestito.');
+          console.error('gateway pending ' + verb + ' failed', res.status, res.data);
+          window.alert(messaggioErrore(res, isReject));
         }
       }, function (e) {
         console.error('gateway pending ' + verb + ' failed', e);
@@ -156,7 +211,18 @@ window.HirisGatewayRoute = (function () {
     if (!_pendingHost) return;
     api('/pending', { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-      .then(function (d) { renderPending(_pendingHost, d.pending || []); })
+      .then(function (d) {
+        // M-8: un'eccezione DENTRO renderPending e' un bug di rendering (i
+        // dati sono stati letti correttamente), non un guasto di lettura
+        // della coda -- va isolata qui, altrimenti il .catch() sotto la
+        // confonderebbe con un fallimento di rete/HTTP e direbbe "non e'
+        // stato possibile leggere la coda" su un problema che non e' quello.
+        try {
+          renderPending(_pendingHost, d.pending || []);
+        } catch (e) {
+          console.error('renderPending failed (dati della coda letti correttamente)', e);
+        }
+      })
       .catch(function () { renderPendingError(_pendingHost); });
   }
 
@@ -211,13 +277,16 @@ window.HirisGatewayRoute = (function () {
       sel.value = VALID[cur] ? cur : 'off';
       selects[cat.id] = sel;
       row.appendChild(sel);
-      if (DANGEROUS_DOMAINS[cat.id]) {
-        /* Stesso concetto e stessa formulazione dell'avviso nell'editor dei
-           Chatbot (chatbot-editor.js ~383-395): il verde salvato qui non ha
-           mai effetto su un dominio pericoloso, il backend nega comunque. */
-        var warn = el('span', null, '🔒 sempre bloccato (dominio pericoloso)');
-        warn.style.cssText = 'flex-basis:100%;font-size:12px;color:var(--text-4,#888)';
+      if (cat.dangerous) {
+        // I-2: il testo e' legato al livello selezionato (dangerHintText),
+        // non piu' fisso -- "sempre bloccato" e' vero solo per Off/Verde,
+        // Giallo/Rosso finiscono comunque in coda (vedi commento sopra
+        // dangerHintText). Si aggiorna al `change` della select.
+        var warn = el('span', 'gw-danger-hint', dangerHintText(sel.value));
         row.appendChild(warn);
+        sel.addEventListener('change', function () {
+          warn.textContent = dangerHintText(sel.value);
+        });
       }
       body.appendChild(row);
     });
@@ -243,10 +312,27 @@ window.HirisGatewayRoute = (function () {
     body.appendChild(el('p', 'sc-desc',
       'Verde = esegui subito · Giallo = notifica sul telefono e approvi (anche qui sopra) · ' +
       'Rosso = conferma solo qui in HIRIS. Le categorie senza dispositivi sono attenuate.'));
-    body.appendChild(el('p', 'sc-desc',
-      '🔒 Serrature, allarme, tapparelle/serrande, sirene e porta del garage sono sempre bloccati ' +
-      '(dominio pericoloso): il verde qui non avrà mai effetto. Un’approvazione esplicita in ' +
-      'HIRIS (giallo o rosso, qui sopra) può comunque scavalcare il blocco.'));
+
+    // I-1/M-7: prima diceva "un'approvazione esplicita in HIRIS (giallo o
+    // rosso) puo' scavalcare il blocco" -- falso per il Giallo, che si
+    // approvava con un tocco sulla notifica, MAI passando da HIRIS. Dopo
+    // S-1 (handlers_execute.py forza sempre rosso un dominio pericoloso
+    // prima di creare il pending) il giallo su questi domini non produce
+    // piu' una notifica azionabile: l'unica approvazione possibile, a
+    // qualunque livello sia impostata la categoria, e' manuale qui in
+    // HIRIS. L'elenco delle categorie e' quello che il backend marca
+    // `dangerous` (stessa fonte del warn per riga sopra), non piu' una
+    // lista scritta a mano nel frontend.
+    var dangerousLabels = (data.categories || [])
+      .filter(function (c) { return c.dangerous; })
+      .map(function (c) { return c.label; });
+    if (dangerousLabels.length) {
+      body.appendChild(el('p', 'sc-desc',
+        '🔒 ' + dangerousLabels.join(', ') + ': dominio pericoloso, verde e giallo qui non hanno mai ' +
+        'effetto diretto (il verde resta sempre negato, il giallo finisce comunque in coda ma senza ' +
+        'notifica azionabile). Solo un’approvazione manuale qui in HIRIS può scavalcare il blocco — ' +
+        'mai un tocco sulla notifica, qualunque sia il livello scelto.'));
+    }
 
     var bar = el('div');
     bar.style.cssText = 'margin-top:16px;display:flex;gap:10px;align-items:center';

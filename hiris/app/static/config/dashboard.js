@@ -278,7 +278,14 @@
     if (!window.confirm(isReject ? 'Rifiutare questa proposta?' : 'Attivare questa proposta?')) return;
     var fn = isReject ? HirisProposalsCore.reject : HirisProposalsCore.apply;
     fn(id).then(function(res) {
-      if (!res.ok) { window.alert(res.error || 'Errore'); return; }
+      // I-5 (fratello di chat/proposals.js::act -- stesso HirisProposalsCore,
+      // stesso difetto): mai la stringa tecnica del backend, messaggio
+      // derivato dallo stato.
+      if (!res.ok) {
+        console.error('proposal ' + kind + ' failed', res.status, res.error);
+        window.alert(HirisProposalsCore.errorMessage(res));
+        return;
+      }
       loadProposalsPeek();   // ricarica il peek: la card sparisce, il conteggio si aggiorna
     }, function() { window.alert('Errore di rete'); });
   }

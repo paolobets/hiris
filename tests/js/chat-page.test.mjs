@@ -358,3 +358,33 @@ test('il pannello task carica le card e puo\' cancellare una task pending', asyn
   assert.match(deleteCall.url, /api\/tasks\/t1$/);
   assert.equal(deleteCall.opts.headers['X-Requested-With'], 'fetch');
 });
+
+// ---------------------------------------------------------------------------
+// M-6 (review indipendente su bee3ab1, fratello di A7 nella stessa pagina):
+// una DELETE fallita non produceva NIENTE -- ne' un alert ne' un log.
+// ---------------------------------------------------------------------------
+
+test('annullare una task: una DELETE fallita lo dice, non resta muta (M-6)', async () => {
+  const { window, document } = loadScripts(
+    ['config/api.js', 'config/labels.js', 'chat/state.js', 'chat/tasks.js'],
+    { html: fixtureHtml() },
+  );
+  window.fetch = async (url, opts) => {
+    if (opts && opts.method === 'DELETE') {
+      return { ok: false, status: 500, json: async () => ({}) };
+    }
+    return {
+      ok: true, status: 200,
+      json: async () => ([{ id: 't1', label: 'Irrigazione giardino', status: 'pending', trigger: { type: 'delay', minutes: 5 } }]),
+    };
+  };
+  window.confirm = () => true;
+  const alerts = [];
+  window.alert = (m) => alerts.push(m);
+
+  await window.HirisChatTasks.load();
+  await window.HirisChatTasks.cancel('t1');
+
+  assert.equal(alerts.length, 1, 'una DELETE fallita deve produrre un alert, non silenzio');
+  assert.match(alerts[0], /[Nn]on è stato possibile annullare/);
+});

@@ -1,16 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { loadScripts } from './helpers/dom.mjs';
 
 /* Sprint coerenza, lotto A, task 5 (A9): il widget "Utilizzo" della chat
    (static/index.html) mostra richieste/token/costo ma non diceva MAI da
    quando quei numeri contano -- l'elemento #usage-last-reset che
-   config/api.js::loadUsage() cerca non esisteva in nessun file. Quando la
-   risposta portava `last_reset`, l'assegnamento su un elemento assente
-   sollevava e il `catch(e) {}` vuoto la inghiottiva -- ogni 30 secondi
-   (chat/main.js chiama loadUsage() a intervalli), per sempre, senza che
-   nulla lo segnalasse in console. Qui si verifica sia l'elemento aggiunto
-   sia la resilienza: un nodo mancante non deve piu' bloccare gli altri. */
+   config/api.js::loadUsage() cerca non esisteva in nessun file. La risposta
+   con `last_reset` faceva sollevare quell'ultimo assegnamento (elemento
+   assente) e il `catch(e) {}` vuoto lo inghiottiva senza mai loggare, ogni
+   30 secondi (chat/main.js chiama loadUsage() a intervalli).
+
+   Correzione I-3 (review indipendente su bee3ab1): il commento originale di
+   questo commit sosteneva che l'elemento mancante impedisse anche ai QUATTRO
+   contatori (richieste/input/output/costo) di popolarsi. E' falso e verificato
+   qui sotto (worktree di bee3ab1~1): in loadUsage() quei quattro assegnamenti
+   vengono PRIMA di usage-last-reset, quindi giravano gia' regolarmente --
+   solo la data di azzeramento restava sempre vuota, in silenzio. Il test
+   "gli altri contatori si popolano comunque" passava gia' prima di questa
+   correzione: non e' una regressione di niente, resta come test di
+   caratterizzazione dell'invariante (ora garantita per costruzione da
+   _setUsageText, non per un ordine di codice che potrebbe cambiare). I test
+   che verificano davvero il fix sono: l'elemento aggiunto (sotto), il
+   logging del fallimento di rete (che PRIMA era silenzioso), e la presenza
+   del nodo in index.html (che prima di questa correzione nessun test
+   copriva -- si poteva cancellare il div e la suite restava verde). */
 
 const SCRIPTS = ['config/api.js'];
 
@@ -45,21 +61,40 @@ test('con tutti gli elementi presenti, loadUsage popola anche la data di azzeram
     'deve dire da quando i numeri contano');
 });
 
-test('senza #usage-last-reset in pagina, gli altri contatori si popolano comunque (fix del difetto A9)', async () => {
+test('senza #usage-last-reset in pagina, gli altri contatori si popolano comunque (caratterizzazione -- gia\' vera prima di bee3ab1, vedi commento in cima al file)', async () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml(false) });
   window.fetch = async () => jsonResponse({
     total_requests: 7, input_tokens: 500, output_tokens: 300,
     cost_eur: 0.02, last_reset: '2026-07-01T00:00:00Z',
   });
 
-  // Prima della correzione, l'assegnamento su #usage-last-reset (assente)
-  // sollevava e il catch vuoto impediva a QUESTI di girare -- restavano
-  // fermi a '—' per sempre, ogni 30 secondi, senza una riga in console.
+  // NON e' una regressione di bee3ab1 (i quattro assegnamenti precedono
+  // usage-last-reset in loadUsage(), quindi giravano gia'): resta come test
+  // dell'invariante "un elemento mancante non blocca gli altri", ora
+  // garantita per costruzione da _setUsageText() invece che da un ordine di
+  // codice che potrebbe cambiare senza preavviso.
   await assert.doesNotReject(() => globalThis.loadUsage());
   assert.equal(document.getElementById('u-requests').textContent, '7');
   assert.equal(document.getElementById('u-input').textContent, '500');
   assert.equal(document.getElementById('u-output').textContent, '300');
   assert.equal(document.getElementById('u-cost').textContent, '€0.0200');
+});
+
+// ---------------------------------------------------------------------------
+// I-3: il test che manca davvero. Oggi si puo' cancellare il div
+// #usage-last-reset da index.html e la suite resta verde (loadUsage() lo
+// cerca via _setUsageText, che non solleva se l'elemento non c'e' -- quindi
+// nessun test sopra si accorgerebbe della sua sparizione). Verifica diretta
+// sul markup spedito, non sul comportamento di loadUsage().
+// ---------------------------------------------------------------------------
+
+test('static/index.html contiene #usage-last-reset (senza, il div si puo\' cancellare senza che nulla se ne accorga)', () => {
+  const html = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'hiris', 'app', 'static', 'index.html'),
+    'utf8'
+  );
+  assert.match(html, /id=["']usage-last-reset["']/,
+    'index.html deve contenere il nodo che loadUsage() popola con la data di azzeramento');
 });
 
 test('un fallimento di rete non lascia il guasto invisibile: console.error registra qualcosa', async () => {
