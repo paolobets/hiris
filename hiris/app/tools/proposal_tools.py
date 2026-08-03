@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ..proxy.ha_client import is_automation_config, is_automation_entity_id
+
 logger = logging.getLogger(__name__)
 
 # Tipi che QUESTO tool puo' creare. Un tipo fuori da questo set e' rifiutato
@@ -41,8 +43,9 @@ CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
                     "HA automation YAML dict (trigger/condition/action/mode/alias) "
                     "or HIRIS agent config dict. To MODIFY an existing automation, "
                     "INCLUDE its numeric 'id' (as returned by get_automation_config) "
-                    "in this config so approval OVERWRITES it. To create a NEW "
-                    "automation, OMIT 'id'."
+                    "— or its entity_id (e.g. 'automation.foo') if you only have "
+                    "that — in this config so approval OVERWRITES it. To create a "
+                    "NEW automation, OMIT 'id'."
                 ),
             },
             "routing_reason": {
@@ -53,8 +56,10 @@ CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
                 "type": "string",
                 "description": (
                     "Optional. The numeric unique id of an existing HA automation "
-                    "to MODIFY. Alternative to putting 'id' inside config (this "
-                    "param wins if both are given). Omit for a brand-new automation."
+                    "to MODIFY — or its entity_id (e.g. 'automation.foo') if you "
+                    "only have that. Alternative to putting 'id' inside config "
+                    "(this param wins if both are given). Omit for a brand-new "
+                    "automation."
                 ),
             },
         },
@@ -93,10 +98,39 @@ async def create_automation_proposal(
     # rispetto a prima (che strippava l'id senza automation_id, rompendo il caso
     # "modifica"): ORA per creare una NUOVA automazione l'LLM deve OMETTERE l'id.
     cfg = config
-    if proposal_type == "ha_automation" and isinstance(cfg, dict):
+    if proposal_type == "ha_automation":
+        # Bug live-verify #3: prima di qui il tipo era validato ma la FORMA
+        # no -- una config senza trigger/azioni (o un id palesemente non
+        # risolvibile) veniva salvata cosi' com'e' e falliva solo all'apply,
+        # con un 502 verso l'utente al posto di un errore azionabile per il
+        # modello che l'ha scritta. Questo percorso (dalla chat) era anche
+        # l'unico dei tre a non avere is_automation_config: la Sentinella e la
+        # coverage-review passano gia' da li' (test_proposal_config_shape.py).
+        if not isinstance(cfg, dict) or not is_automation_config(cfg):
+            return {"error": (
+                "config automazione non valida: servono i trigger e le azioni "
+                "(oppure use_blueprint). Per modificare un'automazione "
+                "esistente leggi la sua config con get_automation_config e "
+                "modificala; per crearne una nuova scrivi trigger e azioni.")}
         _id = automation_id or cfg.get("id")
         if _id:
-            cfg = {**cfg, "id": str(_id)}
+            _id = str(_id)
+            # Un id non numerico e non a forma di entity_id non e' un
+            # indizio utilizzabile: create_automation (Correzione 1) prova a
+            # risolverlo come entity_id o come alias, ma solo per QUESTE due
+            # forme -- qualunque altra stringa arriverebbe fino all'apply
+            # solo per fallire li' con un 502. Meglio dirlo subito, al
+            # modello, con un errore che gli spieghi cosa fare. Non si
+            # duplica qui la risoluzione (che serve get_automations, quindi
+            # l'accesso a HA): si valida solo la FORMA, con lo stesso
+            # predicato che usa create_automation.
+            if not ((_id.isascii() and _id.isdigit()) or is_automation_entity_id(_id)):
+                return {"error": (
+                    f"id automazione non valido: {_id!r}. Per una automazione "
+                    "nuova ometti 'id'; per modificarne una esistente usa "
+                    "l'id numerico che torna da get_automation_config, oppure "
+                    "l'entity_id (es. 'automation.nome_automazione').")}
+            cfg = {**cfg, "id": _id}
     try:
         pid = await proposal_store.save(
             {

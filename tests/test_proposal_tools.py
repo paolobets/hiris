@@ -141,6 +141,63 @@ async def test_create_proposal_no_store_returns_error():
 
 
 @pytest.mark.asyncio
+async def test_create_proposal_rejects_non_automation_shape(store):
+    """Bug live-verify #3, lato creazione: prima di questa fix il controllo di
+    forma (is_automation_config) viveva solo nell'apply (ha_client.py) -- il
+    percorso della chat (questo tool) salvava senza verificare nulla, e
+    falliva solo dopo, all'apply, con un 502 all'utente al posto di un errore
+    al modello che ha scritto la proposta. Gli altri due percorsi autonomi
+    (Sentinella, coverage-review) erano gia' coperti."""
+    args = _sample_args(config={"alias": "Solo un nome, niente trigger ne' azioni"})
+    res = await create_automation_proposal(store, **args)
+    assert "error" in res
+    assert "proposal_id" not in res
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_accepts_entity_id_as_modify_target(store):
+    """L'entity_id e' una forma di id accettata quanto quella numerica: la
+    risoluzione vera (che richiede get_automations, quindi HA) resta a
+    create_automation all'apply (Correzione 1) -- qui si valida solo la forma,
+    senza duplicare quella logica."""
+    args = _sample_args(config={
+        "id": "automation.avviso_luci_accese_all_uscita_di_casa",
+        "alias": "Avviso: luci accese all'uscita di casa",
+        "trigger": [], "action": [],
+    })
+    res = await create_automation_proposal(store, **args)
+    saved = await store.get(res["proposal_id"])
+    assert saved["config"]["id"] == "automation.avviso_luci_accese_all_uscita_di_casa"
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_rejects_unresolvable_id_shape(store):
+    """Un id che non e' ne' numerico ne' un entity_id non arriva nemmeno a
+    essere salvato: fallirebbe comunque all'apply, meglio dirlo subito al
+    modello con un errore azionabile invece di lasciare che la proposta
+    resti pending e fallisca solo quando l'utente prova ad attivarla."""
+    args = _sample_args(config={
+        "id": "non e' ne' un numero ne' un entity_id",
+        "alias": "X", "trigger": [], "action": [],
+    })
+    res = await create_automation_proposal(store, **args)
+    assert "error" in res
+    assert "proposal_id" not in res
+
+
+@pytest.mark.asyncio
+async def test_create_proposal_id_error_message_is_actionable(store):
+    """L'errore parla al modello: deve dirgli l'id che ha scritto, che serve
+    quello numerico, e che per una automazione nuova va omesso."""
+    args = _sample_args(config={"id": "abc-non-valido", "alias": "X",
+                                "trigger": [], "action": []})
+    res = await create_automation_proposal(store, **args)
+    assert "abc-non-valido" in res["error"]
+    assert "get_automation_config" in res["error"]
+    assert "entity_id" in res["error"]
+
+
+@pytest.mark.asyncio
 async def test_create_proposal_exception_returns_error():
     """No-leak policy (mirrors dispatcher.py's catch-all): the raw exception
     text must never reach the caller, only a generic-but-useful message."""

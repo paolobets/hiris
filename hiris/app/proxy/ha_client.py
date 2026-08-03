@@ -93,6 +93,21 @@ def is_automation_config(config: object) -> bool:
     return has_trigger and has_action
 
 
+def is_automation_entity_id(value: object) -> bool:
+    """True se `value` ha la forma di un entity_id di automazione
+    (`automation.<slug>`) — la forma che l'LLM confonde spesso con l'id
+    numerico che HA usa nell'URL di configurazione (bug live-verify #3: la
+    proposta aveva 'automation.avviso_...' in config['id'] al posto dell'id
+    numerico). Solo forma, nessuna verifica che l'automazione esista davvero:
+    quella spetta a resolve_automation_id_by_entity_id.
+
+    Condivisa fra HAClient.create_automation (Correzione 1) e
+    create_automation_proposal (Correzione 2) cosi' le due validazioni non
+    divergono su cosa conta come 'sembra un entity_id'."""
+    return (isinstance(value, str) and value.startswith("automation.")
+            and bool(_AUTOMATION_ID_RE.match(value[len("automation."):])))
+
+
 class HAClient:
     def __init__(self, base_url: str, token: str) -> None:
         self._base_url = base_url.rstrip("/")
@@ -177,13 +192,42 @@ class HAClient:
         # un'automazione SENZA riportarne l'id, e senza questo si creava un
         # doppione invece di sovrascrivere l'originale (bug live-verify #2).
         # Solo come ultima risorsa si conia un id nuovo (automazione davvero nuova).
-        aid = str(automation_id or config.get("id") or "")
-        if not aid:
+        async def _by_alias() -> str | None:
             alias = config.get("alias")
             if isinstance(alias, str) and alias.strip():
-                resolved = await self.resolve_automation_id_by_alias(alias.strip())
-                if resolved:
-                    aid = resolved
+                return await self.resolve_automation_id_by_alias(alias.strip())
+            return None
+
+        aid = str(automation_id or config.get("id") or "")
+        # Un id FORNITO ma non numerico non e' "assente": e' un indizio del
+        # bersaglio, quasi sempre l'entity_id al posto dell'id numerico (bug
+        # live-verify #3). Prima di questo blocco un id sbagliato scavalcava
+        # silenziosamente la risoluzione per alias qui sotto (che scatta solo
+        # per "if not aid") e finiva dritto nel controllo isascii/isdigit ->
+        # 502 all'utente, anche quando il bersaglio giusto era risolvibile.
+        if aid and not (aid.isascii() and aid.isdigit()):
+            resolved = None
+            if is_automation_entity_id(aid):
+                resolved = await self.resolve_automation_id_by_entity_id(aid)
+            if not resolved:
+                resolved = await _by_alias()
+            if resolved:
+                aid = resolved
+            else:
+                # Deliberato: NON si conia un id nuovo qui. Chi ha scritto un
+                # id (anche sbagliato) ha indicato un bersaglio preciso e non
+                # voleva un doppione — coniare un id nuovo produrrebbe
+                # un'automazione indesiderata invece di segnalare l'errore.
+                return {"error": (
+                    f"id automazione non valido: {aid!r}. Serve l'id numerico "
+                    "che Home Assistant usa nell'URL di configurazione (lo "
+                    "restituisce get_automation_config), oppure un entity_id "
+                    "o un alias che corrispondano a un'automazione esistente. "
+                    "Per creare una automazione nuova, ometti 'id'.")}
+        if not aid:
+            resolved = await _by_alias()
+            if resolved:
+                aid = resolved
         if not aid:
             aid = str(int(datetime.now(timezone.utc).timestamp() * 1_000_000))
         if not (aid.isascii() and aid.isdigit()):
@@ -224,6 +268,29 @@ class HAClient:
                 if aid.isascii() and aid.isdigit():
                     ids.append(aid)
         return ids[0] if len(ids) == 1 else None
+
+    async def resolve_automation_id_by_entity_id(self, entity_id: str) -> str | None:
+        """L'id numerico dell'automazione il cui `entity_id` == entity_id, se
+        trovato ed e' un numero valido (altrimenti None). Gemello di
+        resolve_automation_id_by_alias: stessa fonte `get_automations()`,
+        stessa disciplina "non solleva mai" (fail-safe: errore -> None -> id
+        nuovo o errore, secondo il chiamante), stesso controllo
+        isascii()/isdigit() sull'id trovato.
+
+        A differenza dell'alias (un `friendly_name` puo' ripetersi su piu'
+        automazioni) l'entity_id e' univoco per costruzione in HA: non serve
+        alcun controllo di ambiguita'."""
+        try:
+            autos = await self.get_automations()
+        except Exception:
+            return None
+        for a in autos or []:
+            if a.get("entity_id") != entity_id:
+                continue
+            attrs = a.get("attributes") or {}
+            aid = str(attrs.get("id") or "")
+            return aid if aid.isascii() and aid.isdigit() else None
+        return None
 
     @staticmethod
     def _is_slug(value: str) -> bool:
