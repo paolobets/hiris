@@ -4,7 +4,7 @@ Il criterio che regge tutto: il notevole e' DISCRETO. Una porta e' aperta o
 chiusa; una temperatura cambia sempre. Se i sensori numerici entrassero nel
 notevole, il delta direbbe "tutto e' cambiato" a ogni giro -- cioe' niente.
 """
-from hiris.app.brain.portrait import notable_state
+from hiris.app.brain.portrait import notable_state, build_portrait
 
 
 def _s(eid, state, *, domain=None, device_class=None, name=None):
@@ -82,3 +82,66 @@ def test_malformed_rows_do_not_raise():
 def test_state_is_clamped_and_sanitized():
     out = notable_state([_s("light.a", "on" + "x" * 500)])
     assert len(out["light.a"]) <= 120
+
+
+def test_build_groups_open_and_on_by_area():
+    p = build_portrait(
+        area_map={
+            "Cucina": ["light.cucina", "binary_sensor.finestra_cucina"],
+            "Ingresso": ["lock.ingresso"],
+        },
+        states=[
+            _s("light.cucina", "on", name="Luce cucina"),
+            _s("binary_sensor.finestra_cucina", "on",
+               device_class="window", name="Finestra cucina"),
+            _s("lock.ingresso", "locked", name="Serratura"),
+        ],
+        baseline={},
+        changes=[],
+    )
+    assert p["aree"]["Cucina"]["acceso"] == ["Luce cucina"]
+    assert p["aree"]["Cucina"]["aperto"] == ["Finestra cucina"]
+    assert "Ingresso" not in p["aree"]
+    assert p["conteggi"] == {"entita": 3, "aree": 2}
+
+
+def test_build_reports_changes_with_friendly_names():
+    p = build_portrait(
+        area_map={"Cucina": ["light.cucina"]},
+        states=[_s("light.cucina", "off", name="Luce cucina")],
+        baseline={},
+        changes=[{"entity_id": "light.cucina", "was": "on",
+                  "now": "off", "since": "2026-08-04T09:00:00Z"}],
+    )
+    assert p["cambiato"] == [
+        {"nome": "Luce cucina", "entity_id": "light.cucina",
+         "was": "on", "now": "off", "since": "2026-08-04T09:00:00Z"}
+    ]
+
+
+def test_build_uses_since_from_baseline_for_open_things():
+    p = build_portrait(
+        area_map={"Cucina": ["binary_sensor.finestra"]},
+        states=[_s("binary_sensor.finestra", "on",
+                   device_class="window", name="Finestra")],
+        baseline={"binary_sensor.finestra":
+                  {"state": "on", "since": "2026-08-04T07:00:00Z"}},
+        changes=[],
+    )
+    assert p["aree"]["Cucina"]["aperto"] == ["Finestra (da 2026-08-04T07:00:00Z)"]
+
+
+def test_build_tolerates_missing_area_map():
+    p = build_portrait(
+        area_map=None,
+        states=[_s("light.a", "on", name="Luce")],
+        baseline={}, changes=[],
+    )
+    assert p["aree"] == {}
+    assert p["conteggi"]["aree"] == 0
+
+
+def test_build_never_raises_on_garbage():
+    p = build_portrait(area_map={"X": None}, states=None,
+                       baseline=None, changes=None)
+    assert p["aree"] == {} and p["cambiato"] == []

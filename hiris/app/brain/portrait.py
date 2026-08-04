@@ -58,3 +58,66 @@ def notable_state(states: list[dict]) -> dict[str, str]:
             continue
         out[str(eid)] = sanitize_ha_value(state)
     return out
+
+
+_ACCESO = frozenset({"on", "open", "heat", "cool", "heat_cool", "auto", "playing",
+                     "cleaning", "unlocked"})
+_APERTO_DOMINI = frozenset({"cover", "valve"})
+
+
+def _nomi(states: list[dict]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for raw in states or []:
+        if isinstance(raw, dict) and raw.get("id"):
+            out[str(raw["id"])] = sanitize_ha_value(
+                str(raw.get("name") or raw["id"])
+            )
+    return out
+
+
+def build_portrait(*, area_map, states, baseline, changes) -> dict:
+    """Compone il ritratto. Non solleva mai: ogni fonte assente degrada a vuoto."""
+    nomi = _nomi(states)
+    notable = notable_state(states or [])
+    base = baseline if isinstance(baseline, dict) else {}
+
+    aree: dict[str, dict] = {}
+    for area, eids in (area_map or {}).items():
+        if not isinstance(eids, (list, tuple)) or area == "__no_area__":
+            continue
+        acceso: list[str] = []
+        aperto: list[str] = []
+        for eid in eids:
+            stato = notable.get(str(eid))
+            if stato is None or stato.lower() not in _ACCESO:
+                continue
+            nome = nomi.get(str(eid), str(eid))
+            since = (base.get(str(eid)) or {}).get("since")
+            etichetta = f"{nome} (da {since})" if since else nome
+            dominio = str(eid).split(".")[0]
+            e_apertura = (
+                dominio in _APERTO_DOMINI
+                or (dominio == "binary_sensor" and stato.lower() == "on")
+            )
+            (aperto if e_apertura else acceso).append(etichetta)
+        if acceso or aperto:
+            aree[str(area)] = {"acceso": acceso, "aperto": aperto}
+
+    cambiato = []
+    for c in (changes or []):
+        if not isinstance(c, dict) or not c.get("entity_id"):
+            continue
+        eid = str(c["entity_id"])
+        cambiato.append({
+            "nome": nomi.get(eid, eid), "entity_id": eid,
+            "was": c.get("was"), "now": c.get("now"), "since": c.get("since"),
+        })
+
+    return {
+        "aree": aree,
+        "cambiato": cambiato,
+        "conteggi": {
+            "entita": len(nomi),
+            "aree": len([a for a in (area_map or {}) if a != "__no_area__"]),
+        },
+    }
