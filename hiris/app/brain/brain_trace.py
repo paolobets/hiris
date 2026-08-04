@@ -2,18 +2,17 @@
 cycle, e.g. auto-tuned detector thresholds) into the unified KnowledgeStore.
 
 Every action the brain takes on its own must leave a trace that is (a)
-recallable via `KnowledgeStore.search` -- which requires `status='approved'`
-AND `embedding IS NOT NULL` -- and (b) undoable (Slice 6 Task 5 wires
-`remove_brain_action` to an undo command). If no embedder is available we
-refuse to write a NULL-embedding row: such a row would never surface via
-search, making the "trace" irrecoverable in practice, which defeats the
-whole point of recording it.
+recallable when possible via `KnowledgeStore.search` -- which prefers
+`status='approved'` AND `embedding IS NOT NULL` but degrades to `recent()`
+when there is no query vector -- and (b) undoable (Slice 6 Task 5 wires
+`remove_brain_action` to an undo command). The undo-ability is what actually
+matters: the trace is what lets the "Annulla" button exist for a change the
+Brain made to itself, so it is always written, even with no embedder or an
+embedder that fails to produce a vector -- a NULL-embedding row still shows
+up via `recent()`/`list_items` and is still findable and removable by
+`remove_brain_action`.
 """
 from __future__ import annotations
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 # Upper bound for the supersede scan, mirroring history_digest's
 # _MAX_INSIGHT_SCAN: one row per source_ref, superseded on every write, so
@@ -23,30 +22,22 @@ _MAX_ACTION_SCAN = 100000
 
 async def record_brain_action(
     knowledge_store, embedder, *, text: str, source_ref: str, owner: str = "home",
-) -> str | None:
-    """Persist a brain-action trace, embedded and approved so it is
-    recallable via KnowledgeStore.search. Supersedes (delete-then-add) any
-    prior trace with the same source_ref, exactly like history_digest does
-    for insights. Returns the new item's id (as str), or None if no embedder
-    is available -- in that case NOTHING is written."""
-    if embedder is None:
-        logger.warning(
-            "record_brain_action: no embedder available, refusing to write "
-            "an unrecallable (NULL-embedding) trace for source_ref=%s",
-            source_ref,
-        )
-        return None
+) -> str:
+    """Persist a brain-action trace, approved and embedded when a vector is
+    available, so it is recallable via KnowledgeStore.search. Supersedes
+    (delete-then-add) any prior trace with the same source_ref, exactly like
+    history_digest does for insights. Returns the new item's id (as str).
 
-    emb = await embedder.embed(text)
-
-    if not emb:
-        logger.warning(
-            "record_brain_action: embedder returned an empty embedding, "
-            "refusing to write an unrecallable (NULL-embedding) trace for "
-            "source_ref=%s (prior trace, if any, is left untouched)",
-            source_ref,
-        )
-        return None
+    Always writes, even with no embedder (embedder=None) or one that returns
+    a falsy vector: the trace is what makes a brain action undoable, and
+    losing that safety net because no embedder happens to be configured
+    would be worse than a trace that only degrades to recent() instead of
+    vector search. `embedder.embed()` raising is NOT handled here on
+    purpose -- callers (e.g. cognitive_loop.auto_tune_detectors) already
+    wrap their call to this function in their own try/except so a raising
+    embedder is logged and skipped there without this function swallowing
+    it twice."""
+    emb: list[float] = await embedder.embed(text) if embedder is not None else []
 
     existing = knowledge_store.list_items(kind="brain-action", limit=_MAX_ACTION_SCAN)
     for old in existing:
@@ -63,7 +54,7 @@ async def record_brain_action(
         source="brain",
         source_ref=source_ref,
         status="approved",
-        embedding=emb,
+        embedding=emb or None,
         sensitivity="normal",
     )
     return str(item_id)
