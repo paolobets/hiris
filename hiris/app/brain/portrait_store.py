@@ -56,31 +56,46 @@ class PortraitStore:
                         "SELECT entity_id, state, since FROM notable"
                     ).fetchall()
                 }
-                changes: list[dict] = []
+                # Compute per-entity decision once: did state change, and what's the new "since"?
+                entity_analysis = {}
                 for eid, state in current.items():
                     old = prev.get(eid)
-                    if old is None:
-                        changes.append({"entity_id": eid, "was": None,
-                                        "now": state, "since": ts})
-                    elif old["state"] != state:
-                        changes.append({"entity_id": eid, "was": old["state"],
-                                        "now": state, "since": ts})
-                # La primissima osservazione non e' un cambiamento: e' l'inizio.
-                if not prev:
+                    # Single predicate: state changed if entity is new or state differs
+                    state_changed = old is None or old["state"] != state
+                    # Determine "since": reset to ts if changed, else preserve original
+                    new_since = ts if state_changed else (old["since"] if old else ts)
+                    entity_analysis[eid] = {
+                        "old_state": old["state"] if old else None,
+                        "state": state,
+                        "changed": state_changed,
+                        "since": new_since,
+                    }
+
+                # Build changes: La primissima osservazione non e' un cambiamento: e' l'inizio.
+                if prev:
+                    changes = [
+                        {
+                            "entity_id": eid,
+                            "was": data["old_state"],
+                            "now": data["state"],
+                            "since": data["since"],
+                        }
+                        for eid, data in entity_analysis.items()
+                        if data["changed"]
+                    ]
+                else:
                     changes = []
+
+                # Build notable insert data from the same analysis
+                notable_data = [
+                    (eid, data["state"], data["since"])
+                    for eid, data in entity_analysis.items()
+                ]
 
                 self._conn.execute("DELETE FROM notable")
                 self._conn.executemany(
                     "INSERT INTO notable (entity_id, state, since) VALUES (?,?,?)",
-                    [
-                        (
-                            eid,
-                            state,
-                            ts if (prev.get(eid) or {}).get("state") != state
-                            else prev[eid]["since"],
-                        )
-                        for eid, state in current.items()
-                    ],
+                    notable_data,
                 )
                 self._conn.execute("DELETE FROM last_delta")
                 self._conn.executemany(
