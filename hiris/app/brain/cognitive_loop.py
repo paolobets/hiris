@@ -270,8 +270,7 @@ async def trace_applied_coverage(knowledge_store, embedder, applied_coverage: li
                 knowledge_store, embedder, text=text,
                 source_ref=f"brain-coverage:{detector}:{entity}",
             )
-            if item_id is not None:
-                written.append(item_id)
+            written.append(item_id)
         except Exception:
             logger.exception(
                 "trace_applied_coverage: trace failed for detector=%s entity=%s",

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Same timestamp format used by KnowledgeStore (see brain/knowledge_store.py).
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
-# I messaggi che il modello legge -- e che quindi arrivano all'utente. Dicono
+# Il messaggio che il modello legge -- e che quindi arriva all'utente. Dice
 # cosa NON e' successo e perche' conta, mai il dettaglio tecnico: l'eccezione
 # resta nel log del server (regola del repo, mai echo di str(exc)).
 _ERRORE_SALVATAGGIO = (

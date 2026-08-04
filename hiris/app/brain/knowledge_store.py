@@ -393,19 +393,6 @@ class KnowledgeStore:
             out.append(d)
         return out
 
-    def expenses_by_category(self, *, owner: str | None = None) -> dict[str, float]:
-        clauses = ["kind='expense'", "status='approved'", "amount IS NOT NULL"]
-        params: list = []
-        if owner is not None:
-            clauses.append("(owner=? OR owner='home')"); params.append(owner)
-        with self._mu:
-            rows = self._conn.execute(
-                "SELECT COALESCE(category,'(nessuna)') AS cat, SUM(amount) AS tot"
-                " FROM knowledge_items WHERE " + " AND ".join(clauses)
-                + " GROUP BY cat", params,
-            ).fetchall()
-        return {r["cat"]: float(r["tot"]) for r in rows}
-
     def add_link(
         self, *, src_id: int, dst_id: int, relation: str,
         weight: float = 1.0, source: str = "manual",
@@ -418,23 +405,6 @@ class KnowledgeStore:
                 (src_id, dst_id, relation, weight, source, self._now()),
             )
             self._conn.commit()
-
-    def neighbors(self, item_id: int) -> list[dict]:
-        with self._mu:
-            rows = self._conn.execute(
-                "SELECT i.* FROM knowledge_items i"
-                " JOIN knowledge_links l ON l.dst_id = i.id"
-                " WHERE l.src_id = ? AND i.status='approved'", (item_id,),
-            ).fetchall()
-        out = []
-        for r in rows:
-            d = dict(r); d.pop("embedding", None)
-            try:
-                d["data"] = json.loads(d["data"])
-            except Exception:
-                d["data"] = {}
-            out.append(d)
-        return out
 
     def add_document_chunk(self, *, item_id: int, mayan_doc_id: str,
                            chunk_index: int, content: str,

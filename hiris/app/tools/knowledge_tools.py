@@ -37,7 +37,10 @@ RECALL_KNOWLEDGE_TOOL_DEF = {
         "vettore fallisce), il risultato porta `degraded: true` e restituisce gli "
         "elementi più recenti invece dei più pertinenti: in quel caso vanno presentati "
         "come 'i più recenti', non come 'i più pertinenti', perché il confronto dei "
-        "significati non è avvenuto."
+        "significati non è avvenuto. In quella modalità l'archivio documenti non viene "
+        "affatto consultato (nessuna ricerca sui documenti caricati): i risultati "
+        "riguardano solo fatti/preferenze/scadenze/spese, mai i documenti, e questo va "
+        "detto invece di lasciar intendere che l'archivio sia stato controllato."
     ),
     "input_schema": {
         "type": "object",

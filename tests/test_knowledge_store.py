@@ -146,14 +146,9 @@ def test_structured_queries(tmp_path):
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     store.add_item(kind="obligation", content="TARI", due_date="2026-07-01")
     store.add_item(kind="obligation", content="Bollo", due_date="2026-12-31")
-    store.add_item(kind="expense", content="Spesa", amount=42.0, category="cibo")
-    store.add_item(kind="expense", content="Cena", amount=8.0, category="cibo")
 
     due = store.upcoming_obligations(before="2026-08-01")
     assert [d["content"] for d in due] == ["TARI"]
-
-    agg = store.expenses_by_category()
-    assert agg["cibo"] == 50.0
     store.close()
 
 
@@ -173,16 +168,6 @@ def test_upcoming_obligations_returns_parsed_data(tmp_path):
     assert "data" in item, "upcoming_obligations deve restituire il campo 'data'"
     assert isinstance(item["data"], dict), "'data' deve essere un dict"
     assert item["data"] == {"note": "prima rata"}
-    store.close()
-
-
-def test_links_and_neighbors(tmp_path):
-    store = KnowledgeStore(str(tmp_path / "brain.db"))
-    a = store.add_item(kind="expense", content="Cena")
-    b = store.add_item(kind="preference", content="Pizza")
-    store.add_link(src_id=a, dst_id=b, relation="related")
-    nb = store.neighbors(a)
-    assert [n["content"] for n in nb] == ["Pizza"]
     store.close()
 
 
