@@ -205,12 +205,58 @@ def test_area_name_is_sanitized():
     assert "ignora tutto" not in txt
 
 
+def test_colliding_area_names_merge_not_overwrite():
+    """Quando due nomi area diversi si sanitizzano alla stessa chiave
+    (e.g. due nomi differing solo dopo il limite di 120 caratteri), le loro
+    liste di entita' si uniscono anziche' sovrascriversi. Senza questa
+    protezione, un'area "sparisce" silenziosamente dal ritratto."""
+    # Creare due nomi che collideranno dopo la sanitizzazione: stessi primi
+    # 120 caratteri, diversi dopo. sanitize_ha_value clamps a 120 char.
+    base_name = "A" * 120
+    area1 = base_name + "PRIMO_DA_SCARTARE"
+    area2 = base_name + "SECONDO_DA_SCARTARE"
+    # Dopo sanitizzazione entrambi diventano identici: "A" * 120
+    p = build_portrait(
+        area_map={
+            area1: ["light.cucina"],
+            area2: ["binary_sensor.finestra"],
+        },
+        states=[
+            _s("light.cucina", "on", name="Luce cucina"),
+            _s("binary_sensor.finestra", "on",
+               device_class="window", name="Finestra cucina"),
+        ],
+        baseline={}, changes=[],
+    )
+    # Entrambe le aree si sanitizzano alla stessa chiave.
+    area_keys = list(p["aree"].keys())
+    assert len(area_keys) == 1
+    # Le entita' di entrambe le aree sono presenti nella stessa chiave:
+    # la luce dal primo area, la finestra dal secondo.
+    aree_data = p["aree"][area_keys[0]]
+    assert "Luce cucina" in aree_data["acceso"]
+    assert "Finestra cucina" in aree_data["aperto"]
+
+
 def test_unlocked_lock_is_reported_as_open_not_on():
     """Una serratura sbloccata appartiene alle aperture, non alle
     accensioni: "acceso: Serratura ingresso" si legge come una lampada."""
     p = build_portrait(
         area_map={"Ingresso": ["lock.ingresso"]},
         states=[_s("lock.ingresso", "unlocked", name="Serratura ingresso")],
+        baseline={}, changes=[],
+    )
+    assert p["aree"]["Ingresso"]["aperto"] == ["Serratura ingresso"]
+    assert p["aree"]["Ingresso"]["acceso"] == []
+
+
+def test_open_lock_is_reported_as_open_not_on():
+    """Una serratura con otturatore aperto (stato "open") appartiene alle
+    aperture, non alle accensioni, per la stessa ragione della serratura
+    sbloccata."""
+    p = build_portrait(
+        area_map={"Ingresso": ["lock.ingresso"]},
+        states=[_s("lock.ingresso", "open", name="Serratura ingresso")],
         baseline={}, changes=[],
     )
     assert p["aree"]["Ingresso"]["aperto"] == ["Serratura ingresso"]

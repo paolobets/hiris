@@ -121,15 +121,24 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
                 # Una serratura aperta appartiene alle aperture, non alle
                 # accensioni: "acceso: Serratura ingresso" si legge come una
                 # lampada, ma una porta sbloccata e' semanticamente (e per
-                # importanza) un'apertura.
-                or (dominio == "lock" and stato.lower() == "unlocked")
+                # importanza) un'apertura. Lo stesso vale per una serratura
+                # con otturatore aperto.
+                or (dominio == "lock" and stato.lower() in ("unlocked", "open"))
             ):
                 aperto.append(etichetta)
             else:
                 acceso.append(etichetta)
         if acceso or aperto or allerta:
-            aree[area_nome] = {"acceso": acceso, "aperto": aperto,
-                               "allerta": allerta}
+            if area_nome in aree:
+                # Due nomi area diversi possono sanitizzarsi alla stessa chiave
+                # (e.g. due nomi differing solo in frasi filtrate, o oltre il
+                # limite dei 120 caratteri). Merge le liste anziche' sovrascrivere.
+                aree[area_nome]["acceso"].extend(acceso)
+                aree[area_nome]["aperto"].extend(aperto)
+                aree[area_nome]["allerta"].extend(allerta)
+            else:
+                aree[area_nome] = {"acceso": acceso, "aperto": aperto,
+                                   "allerta": allerta}
 
     cambiato = []
     for c in (changes or []):

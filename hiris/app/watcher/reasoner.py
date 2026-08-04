@@ -44,7 +44,8 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
     # tronca ogni valore a 120 caratteri: un ritratto da ~1800 arriverebbe al
     # prompt mozzato alla prima riga, in silenzio e con i test verdi. E' gia'
     # sanificato alla fonte, stringa per stringa (brain/portrait.py: sia
-    # notable_state sia _nomi passano da sanitize_ha_value).
+    # notable_state sia _meta passano da sanitize_ha_value, cosi' come i nomi
+    # area).
     _raw_ctx = dict(context or {})
     portrait = _raw_ctx.pop("portrait", None)
     ctx = _san(_raw_ctx)
