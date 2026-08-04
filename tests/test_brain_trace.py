@@ -17,6 +17,11 @@ class _FalsyEmbedder:
         return self._value
 
 
+class _RaisingEmbedder:
+    async def embed(self, text):
+        raise ConnectionError("embedder service down")
+
+
 @pytest.mark.asyncio
 async def test_record_brain_action_creates_recallable_item(tmp_path):
     store = KnowledgeStore(str(tmp_path / "brain.db"))
@@ -137,6 +142,35 @@ async def test_record_brain_action_falsy_embedding_still_writes_undoable_trace(
     assert item_id is not None
     got = store.get_item(int(item_id))
     assert got["source_ref"] == ref
+    assert got["has_embedding"] is False
+
+    removed = await remove_brain_action(store, ref)
+    assert removed == 1
+    assert store.get_item(int(item_id)) is None
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_record_brain_action_raising_embedder_still_writes_undoable_trace(tmp_path):
+    """A real embedder's embed() call can raise (network call, service down)
+    -- this is NOT swallowed twice by catching it here: catching it WRITES
+    the trace, it doesn't suppress an error the caller needed to see. The
+    caller's own try/except (cognitive_loop.auto_tune_detectors et al.)
+    still guards the rest of its own work either way. Same undoable-trace
+    contract as embedder=None and a falsy vector above."""
+    store = KnowledgeStore(str(tmp_path / "brain.db"))
+    ref = "brain-action:threshold:binary_sensor.porta"
+
+    item_id = await record_brain_action(
+        store, _RaisingEmbedder(),
+        text="Soglia auto-tuning per binary_sensor.porta alzata a 0.8",
+        source_ref=ref,
+    )
+
+    assert item_id is not None
+    got = store.get_item(int(item_id))
+    assert got["source_ref"] == ref
+    assert got["status"] == "approved"
     assert got["has_embedding"] is False
 
     removed = await remove_brain_action(store, ref)

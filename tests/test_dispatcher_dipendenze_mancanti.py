@@ -53,16 +53,22 @@ async def test_senza_store_non_accusa_il_modello_di_essersi_inventato_il_tool(to
 
 
 @pytest.mark.asyncio
-async def test_recall_knowledge_senza_embedder_lo_dichiara(tmp_path):
-    """Come `recall_memory`: lo store da solo non basta, senza embedder non c'e'
-    ricerca semantica possibile."""
+async def test_recall_knowledge_senza_embedder_degrada_invece_di_rifiutare(tmp_path):
+    """Non piu' un rifiuto (fetta 2a): senza embedder la ricerca non puo'
+    confrontare i significati, ma degrada ai piu' recenti (stesso
+    comportamento di `KnowledgeStore.search` -> `recent()`) invece di
+    fallire -- il default di fabbrica (NullEmbedder) non calcola mai un
+    vettore, e su un'installazione stock questo e' il percorso normale, non
+    un'eccezione."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    store.add_item(kind="fact", content="la caldaia e' in cantina", owner="home")
+
     res = await _disp(knowledge_store=store, embedder=None).dispatch(
         "recall_knowledge", {"query": "caldaia"})
 
-    testo = _messaggio(res)
-    assert testo
-    assert "non esiste" not in testo
+    assert "error" not in res
+    assert res["degraded"] is True
+    assert [r["content"] for r in res["results"]] == ["la caldaia e' in cantina"]
     store.close()
 
 

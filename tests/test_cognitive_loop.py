@@ -212,18 +212,22 @@ async def test_no_embedder_still_applies_tuning_and_writes_undoable_trace(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_raising_embedder_does_not_abort_tuning_or_unbind_count(tmp_path, kstore, caplog):
-    """Regression for the cap-fails-open bug: a REAL embedder makes a
-    network call, and a service outage means record_brain_action's call to
-    embed() can raise (this is not the same as embedder=None or an embedder
-    returning a falsy vector, both of which record_brain_action now handles
-    itself by writing an unembedded trace -- see
-    test_no_embedder_still_applies_tuning_and_writes_undoable_trace above;
-    a raise is different because record_brain_action does not catch it, so
-    it propagates to this caller's own try/except). apply_brain_tuning's
-    policy mutation is deterministic and already happened, so it must be
-    counted immediately; a raising trace write must not un-apply the tuning
-    nor leave the round unbound."""
+async def test_raising_embedder_does_not_abort_tuning_and_still_writes_undoable_trace(
+    tmp_path, kstore,
+):
+    """Regression for the cap-fails-open bug, updated for the final review
+    fix: a REAL embedder makes a network call, and a service outage means
+    record_brain_action's call to embed() can raise. record_brain_action now
+    catches that raise itself (same as embedder=None or a falsy vector) and
+    still writes the trace with a NULL embedding, because catching there
+    writes the trace rather than swallowing anything -- the caller's own
+    try/except around record_brain_action still protects the rest of this
+    function's work regardless. apply_brain_tuning's policy mutation is
+    deterministic and already happened, so it must be counted immediately;
+    and the trace must come out undoable via remove_brain_action, exactly
+    like the no-embedder case in
+    test_no_embedder_still_applies_tuning_and_writes_undoable_trace -- a
+    raising embedder must not cost the Brain its undo trace."""
     dd = str(tmp_path)
     _enable_power(dd, ["sensor.plug_power"])
     history = _FakeHistoryStore({
@@ -234,25 +238,26 @@ async def test_raising_embedder_does_not_abort_tuning_or_unbind_count(tmp_path, 
         async def embed(self, text):
             raise ConnectionError("embedder service down")
 
-    with caplog.at_level("ERROR"):
-        applied = await auto_tune_detectors(
-            data_dir=dd, policy=load_policy(dd), history_store=history,
-            knowledge_store=kstore, embedder=_RaisingEmbedder(), cap=BRAIN_TUNE_CAP,
-        )
+    applied = await auto_tune_detectors(
+        data_dir=dd, policy=load_policy(dd), history_store=history,
+        knowledge_store=kstore, embedder=_RaisingEmbedder(), cap=BRAIN_TUNE_CAP,
+    )
 
     # (a) the tuning still counts as applied.
     assert applied == [{"detector": "power", "params": {"max_watt": 1600}}]
     pol = load_policy(dd)
     assert pol["detectors"]["power"]["max_watt"] == 1600
 
-    # (b) no exception propagated out of auto_tune_detectors (already true
-    # since we're past the `await` above without a raise, asserted for clarity).
-    assert isinstance(applied, list)
+    # (b) the trace WAS written despite the raise, with no embedding.
+    rows = kstore.list_items(kind="brain-action")
+    assert len(rows) == 1
+    assert rows[0]["source_ref"] == "brain-tune:power"
+    assert kstore.get_item(rows[0]["id"])["has_embedding"] is False
 
-    # (c) the failed trace write was logged, but no brain-action trace exists
-    # (record_brain_action itself never got to write anything before raising).
+    # (c) and it is removable, i.e. undoable from the interface.
+    removed = await remove_brain_action(kstore, "brain-tune:power")
+    assert removed == 1
     assert kstore.list_items(kind="brain-action") == []
-    assert any("trace failed" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio

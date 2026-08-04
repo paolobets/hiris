@@ -4,9 +4,13 @@ Vive DENTRO lo store apposta: nessun chiamante deve crescere un ramo, e i
 filtri di riservatezza devono essere gli stessi identici su entrambi i
 percorsi -- un percorso che ne perde uno non e' una degradazione, e' una falla.
 """
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from hiris.app.brain.knowledge_store import KnowledgeStore
+
+_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def _store(tmp_path):
@@ -106,6 +110,23 @@ def test_search_with_a_query_vector_still_ranks_by_meaning(tmp_path):
     _add(s, "vicino", embedding=[1.0, 0.0])
     got = [r["content"] for r in s.search(query_vec=[1.0, 0.0], k=2)]
     assert got[0] == "vicino"
+    s.close()
+
+
+def test_recent_excludes_expired_valid_until(tmp_path):
+    """`valid_until` was folded into `_clausole_di_scope` by inference, not
+    because a task named it -- and recency (`recent()`) is now the
+    factory-default path (NullEmbedder -> search() degrades to recent()), so
+    an expired row leaking through here would leak a stale fact straight
+    into the default install."""
+    s = _store(tmp_path)
+    past = (datetime.now(timezone.utc) - timedelta(days=1)).strftime(_TS_FMT)
+    future = (datetime.now(timezone.utc) + timedelta(days=1)).strftime(_TS_FMT)
+    _add(s, "scaduto", valid_until=past)
+    _add(s, "valido con scadenza futura", valid_until=future)
+    _add(s, "valido senza scadenza")
+    got = set(r["content"] for r in s.recent(k=5))
+    assert got == {"valido con scadenza futura", "valido senza scadenza"}
     s.close()
 
 
