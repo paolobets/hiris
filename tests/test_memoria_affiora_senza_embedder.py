@@ -65,10 +65,17 @@ class _LocalRouter:
         return True
 
 
-async def _build_chat_client(aiohttp_client, tmp_path):
+async def _build_chat_client(aiohttp_client, tmp_path, *, store=None, embedder=None):
     """Same wiring as tests/test_api.py's `client` fixture, inlined here so
     this file is self-contained and can attach a fresh KnowledgeStore +
-    embedding_provider per test without cross-file fixture coupling."""
+    embedding_provider per test without cross-file fixture coupling.
+
+    `store`/`embedder` are wired into the `web.Application` BEFORE it is
+    handed to `aiohttp_client()` (not mutated on `client.app[...]`
+    afterwards) -- setting an app key after `aiohttp_client()` has started
+    the app trips aiohttp's "Changing state of started or joined
+    application" DeprecationWarning, and this suite's output is pristine by
+    design."""
     app = create_app()
 
     mock_ha = AsyncMock()
@@ -96,6 +103,10 @@ async def _build_chat_client(aiohttp_client, tmp_path):
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
+    if store is not None:
+        app["knowledge_store"] = store
+    if embedder is not None:
+        app["embedding_provider"] = embedder
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -120,8 +131,6 @@ async def test_chat_surfaces_saved_memory_without_embedder(aiohttp_client, tmp_p
     assertion reads context_str out of the mocked runner.chat() call, which
     is exactly what handle_chat hands to the LLM.
     """
-    client, mock_runner = await _build_chat_client(aiohttp_client, tmp_path)
-
     store = KnowledgeStore(str(tmp_path / "mem_chat.db"))
     store.add_item(
         kind="memory", content=MEMORY_TEXT, owner="home",
@@ -129,9 +138,10 @@ async def test_chat_surfaces_saved_memory_without_embedder(aiohttp_client, tmp_p
         # No `embedding=` -- this memory was saved the way a stock install
         # saves one: no vector to compare against.
     )
-    client.app["knowledge_store"] = store
     # The real factory default, not a fake -- this is the whole point.
-    client.app["embedding_provider"] = NullEmbedder()
+    client, mock_runner = await _build_chat_client(
+        aiohttp_client, tmp_path, store=store, embedder=NullEmbedder(),
+    )
 
     resp = await client.post(
         "/api/chat", json={"message": "che temperatura preferisco in salotto?"}
@@ -275,14 +285,14 @@ async def test_all_three_surfaces_use_relevant_heading_with_working_embedder(
     matching_vec = [1.0, 0.0, 0.0]
 
     # --- chat -----------------------------------------------------------
-    client, mock_runner = await _build_chat_client(aiohttp_client, tmp_path)
     store_chat = KnowledgeStore(str(tmp_path / "mem_chat_wk.db"))
     store_chat.add_item(
         kind="memory", content=MEMORY_TEXT, owner="home",
         chatbot_id=DEFAULT_CHATBOT_ID, status="approved", embedding=matching_vec,
     )
-    client.app["knowledge_store"] = store_chat
-    client.app["embedding_provider"] = embedder
+    client, mock_runner = await _build_chat_client(
+        aiohttp_client, tmp_path, store=store_chat, embedder=embedder,
+    )
 
     resp = await client.post(
         "/api/chat", json={"message": "che temperatura preferisco in salotto?"}

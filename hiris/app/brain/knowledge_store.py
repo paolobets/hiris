@@ -75,6 +75,23 @@ def _migrate_v4(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS knowledge_links")
 
 
+def confronta_significati(query_vec: list[float] | None) -> bool:
+    """Unica definizione di "abbiamo confrontato i significati, o siamo
+    degradati ai piu' recenti?" -- vera quando `query_vec` e' un vettore di
+    query utilizzabile (non None, non vuoto).
+
+    `search()` la usa per decidere se confrontare gli embedding o cadere su
+    `recent()`. Le tre superfici che etichettano un blocco di prompt in base
+    a quella stessa decisione -- l'iniezione RAG della chat
+    (api/handlers_chat.py), il richiamo di memoria del reasoner proattivo
+    (brain/reasoner_memory.py) -- importano questa funzione invece di
+    ricalcolare `bool(query_vec)` per conto proprio, cosi' che se `search`
+    guadagnasse un altro motivo di degradazione (es. un mismatch di
+    dimensione dell'embedding) le tre etichette resterebbero coerenti senza
+    dover essere toccate una per una."""
+    return bool(query_vec)
+
+
 class KnowledgeStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
@@ -295,7 +312,7 @@ class KnowledgeStore:
         allow_sensitive: bool = False,
         kinds: list[str] | str | None = None,
     ) -> list[dict]:
-        if not query_vec:
+        if not confronta_significati(query_vec):
             # Regola unica: la ricerca confronta i significati quando puo';
             # quando non puo' -- nessun embedder configurato, quindi nessun
             # vettore di query -- da' i piu' recenti. Il default di fabbrica

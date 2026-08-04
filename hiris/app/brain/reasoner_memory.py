@@ -32,6 +32,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from .knowledge_store import confronta_significati
+
 logger = logging.getLogger(__name__)
 
 _SNIPPET_MAX = 140
@@ -109,4 +111,4 @@ async def relevant_memory(
         snippets.append(snippet)
         total += len(snippet)
 
-    return MemoryRecall(snippets=snippets, by_meaning=bool(emb))
+    return MemoryRecall(snippets=snippets, by_meaning=confronta_significati(emb))

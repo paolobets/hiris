@@ -7,6 +7,7 @@ import time
 from aiohttp import web
 
 from ..brain.identity import resolve_owner
+from ..brain.knowledge_store import confronta_significati
 from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
@@ -278,7 +279,21 @@ async def handle_chat(request: web.Request) -> web.Response:
             rag_k = int(request.app.get("memory_rag_k", 5))
             query_vec: list[float] = []
             if embedder is not None:
-                query_vec = await embedder.embed(message) or []
+                try:
+                    query_vec = await embedder.embed(message) or []
+                except Exception:
+                    # An embedder that raises (e.g. Ollama configured but
+                    # down) must degrade exactly like an absent one -- not
+                    # abort the whole injection. This mirrors
+                    # reasoner_memory.relevant_memory's local try/except: if
+                    # this were left to the outer `except Exception` below,
+                    # the chat would surface NO block at all on a working
+                    # install with a flaky embedder, while the reasoner and
+                    # holistic review (which already catch locally) would
+                    # still degrade to "Ultimi ricordi" -- the exact
+                    # divergence this slice exists to close.
+                    logger.warning("chat RAG: embed() failed", exc_info=True)
+                    query_vec = []
             # fetta 2b Task 4: always call search, never skip it because
             # query_vec is empty. Stock HIRIS ships with no embedding
             # provider (factory default NullEmbedder -> embed() == []), so an
@@ -321,8 +336,11 @@ async def handle_chat(request: web.Request) -> web.Response:
                 # model repeat a false claim to the user -- same rule, same
                 # string (mod the `##` markdown prefix this file uses), as
                 # reasoner.py's build_user_message / coverage_review.py's
-                # build_review_message.
-                rag_by_meaning = bool(query_vec)
+                # build_review_message. `confronta_significati` is the one
+                # place that decides this (also used by `search` itself and
+                # by reasoner_memory.relevant_memory), so the three surfaces
+                # can never diverge on it.
+                rag_by_meaning = confronta_significati(query_vec)
         except Exception as exc:
             logger.warning("RAG memory injection failed: %s", exc)
 
