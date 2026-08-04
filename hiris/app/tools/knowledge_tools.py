@@ -31,7 +31,14 @@ SAVE_KNOWLEDGE_TOOL_DEF = {
 
 RECALL_KNOWLEDGE_TOOL_DEF = {
     "name": "recall_knowledge",
-    "description": "Cerca nel second brain di casa fatti/preferenze rilevanti.",
+    "description": (
+        "Cerca nel second brain di casa fatti/preferenze rilevanti. Se la memoria "
+        "semantica non è disponibile (nessun embedder configurato, o il calcolo del "
+        "vettore fallisce), il risultato porta `degraded: true` e restituisce gli "
+        "elementi più recenti invece dei più pertinenti: in quel caso vanno presentati "
+        "come 'i più recenti', non come 'i più pertinenti', perché il confronto dei "
+        "significati non è avvenuto."
+    ),
     "input_schema": {
         "type": "object",
         "properties": {
@@ -55,15 +62,6 @@ LINK_KNOWLEDGE_TOOL_DEF = {
         "required": ["src_id", "dst_id", "relation"],
     },
 }
-
-
-# Gemello in lettura: un guasto della ricerca non deve arrivare all'utente
-# travestito da "non c'e' nulla". Stesse regole di sopra sul dettaglio tecnico.
-_ERRORE_RICERCA_SENZA_EMBEDDING = (
-    "Non sono riuscito a cercare nella memoria di casa: la memoria semantica "
-    "non è disponibile in questo momento. Non posso dire che non ci sia nulla, "
-    "solo che non ho potuto controllare."
-)
 
 
 async def handle_save_knowledge(
@@ -120,25 +118,26 @@ async def handle_recall_knowledge(
     cloud: bool = True,
     pseudonym_map: dict[str, str] | None = None,
 ) -> dict:
-    # Senza vettore di ricerca non si e' guardato da nessuna parte. Rispondere
-    # `{"results": []}` fa dire al modello "non ho trovato nulla" quando la
-    # frase vera e' "non ho potuto controllare", e l'utente resta convinto che
-    # il ricordo non esista. Il guasto NON porta un elenco: solo l'errore, cosi'
-    # resta distinguibile da una ricerca riuscita e senza esiti.
+    # Senza vettore di ricerca non si e' potuto confrontare i significati.
+    # `KnowledgeStore.search` degrada da se' a `recent()` quando riceve un
+    # vettore vuoto (stessi filtri di riservatezza, ordine per recenza), quindi
+    # qui non serve piu' un ramo: si passa il vettore per quel che e' -- vuoto
+    # o pieno -- e il segnale di degradazione arriva nel ritorno.
+    # `search_chunks` invece non ha un percorso degradato equivalente (nessuna
+    # nozione di "chunk piu' recenti"): senza vettore i chunk vengono
+    # semplicemente saltati, invece di restituirli in un ordine arbitrario che
+    # sembrerebbe un confronto di significati senza esserlo.
     try:
         qv = await embedder.embed(tool_input["query"]) if embedder is not None else None
     except Exception:
         logger.exception("recall_knowledge: vettore di ricerca non calcolato")
         qv = None
-    if not qv:
-        logger.warning("recall_knowledge non eseguita: nessun vettore di ricerca")
-        return {"error": _ERRORE_RICERCA_SENZA_EMBEDDING}
     k = int(tool_input.get("k", 5))
     loop = asyncio.get_running_loop()
 
     def _search_and_merge() -> list[dict]:
         items = store.search(
-            query_vec=qv,
+            query_vec=qv or [],
             k=k,
             owner=owner,
             chatbot_id=chatbot_id,
@@ -150,7 +149,7 @@ async def handle_recall_knowledge(
             k=k,
             owner=owner,
             allow_sensitive=allow_sensitive,
-        )
+        ) if qv else []
         # Merge: items carry their own "kind"; chunks use kind="document_chunk"
         merged: list[tuple[float, int, str, str, str | None]] = []
         for r in items:
@@ -181,7 +180,7 @@ async def handle_recall_knowledge(
         return out
 
     out = await loop.run_in_executor(None, _search_and_merge)
-    return {"results": out}
+    return {"results": out, "degraded": not qv}
 
 
 async def handle_link_knowledge(store: Any, tool_input: dict) -> dict:

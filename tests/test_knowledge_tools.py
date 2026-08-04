@@ -216,10 +216,10 @@ async def test_dispatcher_save_knowledge_senza_embedder_fallisce(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_recall_knowledge_senza_vettore_dichiara_il_guasto(tmp_path):
-    """A3: se il vettore di ricerca non si calcola, la memoria semantica e' giu'
-    e non si e' guardato da nessuna parte. Rispondere con un elenco vuoto
-    convince il modello -- e quindi l'utente -- che il ricordo non esiste."""
+async def test_recall_knowledge_con_embedder_rotto_degrada_ai_piu_recenti(tmp_path):
+    """Task 6: l'embedder che solleva non blocca piu' il richiamo. La ricerca
+    degrada ai piu' recenti (KnowledgeStore.search -> recent()) invece di
+    rifiutare, e l'eccezione non deve propagare al chiamante."""
     from hiris.app.tools.knowledge_tools import handle_recall_knowledge
 
     store = KnowledgeStore(str(tmp_path / "guasto.db"))
@@ -231,32 +231,85 @@ async def test_recall_knowledge_senza_vettore_dichiara_il_guasto(tmp_path):
     res = await handle_recall_knowledge(
         store, embedder, {"query": "caldaia"}, owner="home")
 
-    assert res.get("error"), "il guasto va dichiarato, non travestito da 'niente trovato'"
-    assert not res.get("results"), "nessun elenco che sembri una risposta"
-    assert ":11434" not in res["error"]
+    assert "error" not in res
+    contents = [r["content"] for r in res["results"]]
+    assert "La caldaia e' del 2019" in contents
+    assert res.get("degraded") is True, (
+        "il richiamo degradato deve dichiararsi tale"
+    )
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_il_guasto_di_recall_knowledge_non_porta_la_chiave_results(tmp_path):
-    """Fix 3 — la forma del guasto e' una scelta, e va pinnata.
-
-    In caso di guasto la risposta NON porta `results`: un chiamante che facesse
-    `res["results"]` deve fallire rumorosamente invece di leggere un vuoto
-    silenzioso. Il test qui sopra si accontenta di «elenco vuoto o assente,
-    indifferentemente», quindi da solo lascerebbe riaggiungere l'elenco vuoto
-    senza che nulla diventi rosso.
-    """
+async def test_recall_knowledge_con_vettore_vuoto_degrada_ai_piu_recenti(tmp_path):
+    """Stesso esito quando il provider risponde ma senza vettore (caso del
+    NullEmbedder di fabbrica, che non solleva)."""
     from hiris.app.tools.knowledge_tools import handle_recall_knowledge
 
     store = KnowledgeStore(str(tmp_path / "forma.db"))
+    store.add_item(kind="fact", content="La caldaia e' del 2019",
+                   embedding=[1.0, 0.0], status="approved")
     embedder = AsyncMock()
-    embedder.embed = AsyncMock(side_effect=RuntimeError("provider giu'"))
+    embedder.embed = AsyncMock(return_value=[])
 
     res = await handle_recall_knowledge(
         store, embedder, {"query": "caldaia"}, owner="home")
 
-    assert set(res) == {"error"}, "il guasto porta solo l'errore, nessun elenco"
+    assert "error" not in res
+    contents = [r["content"] for r in res["results"]]
+    assert "La caldaia e' del 2019" in contents
+    assert res.get("degraded") is True
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_recall_knowledge_con_embedder_funzionante_non_degrada(tmp_path):
+    """Nessuna regressione: con un vettore vero il richiamo ordina per
+    somiglianza come prima e NON porta il segnale di degradazione."""
+    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "no_degrado.db"))
+    store.add_item(kind="fact", content="La caldaia e' del 2019",
+                   embedding=[1.0, 0.0], status="approved")
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[1.0, 0.0])
+
+    res = await handle_recall_knowledge(
+        store, embedder, {"query": "caldaia"}, owner="home")
+
+    assert "error" not in res
+    contents = [r["content"] for r in res["results"]]
+    assert "La caldaia e' del 2019" in contents
+    assert not res.get("degraded"), (
+        "una ricerca vettoriale vera non deve portare il segnale di degradazione"
+    )
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_recall_knowledge_degradato_applica_lo_stesso_filtro_di_riservatezza(tmp_path):
+    """Task 6 punto 4: il richiamo degradato non deve perdere il filtro di
+    riservatezza. Una riga sensibile non deve comparire a chi non puo'
+    vederla -- e' la stessa invariante pinnata dentro lo store (Task 1),
+    verificata qui dal lato del chiamante."""
+    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "riservato.db"))
+    store.add_item(kind="fact", content="dato pubblico", embedding=[1.0, 0.0],
+                   status="approved", sensitivity="normal")
+    store.add_item(kind="fact", content="dato sensibile", embedding=[1.0, 0.0],
+                   status="approved", sensitivity="sensitive")
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[])
+
+    res = await handle_recall_knowledge(
+        store, embedder, {"query": "qualunque cosa"}, owner="home",
+        allow_sensitive=False)
+
+    assert res.get("degraded") is True
+    contents = [r["content"] for r in res["results"]]
+    assert "dato sensibile" not in contents
+    assert "dato pubblico" in contents
     store.close()
 
 

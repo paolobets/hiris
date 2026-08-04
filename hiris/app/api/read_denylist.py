@@ -370,15 +370,15 @@ def _pota_conoscenza(result: Any, denylist: Sequence[str]) -> Any:
     scambi per copertura. La forma si controlla comunque: se un giorno questo
     tool restituisse anche identificativi, la forma cambierebbe e si bloccherebbe.
 
-    Il guasto di `recall_knowledge` NON porta la chiave `results` (scelta
-    deliberata: chi vi accede direttamente deve fallire rumorosamente invece di
-    leggere un vuoto silenzioso), quindi qui va riconosciuto per quello che e'.
-    Reggeva solo grazie alla scorciatoia di `prune_read_result`, che lascia
-    passare un risultato se e solo se ha ESATTAMENTE la chiave `error`: bastava
-    aggiungere al messaggio di guasto un secondo campo -- un conteggio, un tempo
-    di riprova -- perche' la spiegazione venisse sostituita da un blocco
-    generico. Un errore e' testo nostro, mai dato di Home Assistant: non c'e'
-    nulla da potare.
+    Dopo la fetta 2a (Task 6) `handle_recall_knowledge` non rifiuta piu' un
+    richiamo solo perche' manca il vettore di ricerca: degrada ai piu' recenti
+    e torna sempre `results` (lista) + `degraded`, mai un guasto a chiave
+    singola. La riga sotto che riconosce `{"error": ...}` senza `results`
+    resta comunque per la forma che il dispatcher produce a monte quando
+    store/embedder non sono proprio configurati (`ToolDispatcher.dispatch`) --
+    ma quella forma, avendo una sola chiave, viene gia' presa dalla scorciatoia
+    di `prune_read_result` prima ancora di arrivare qui; e' difensiva, non il
+    percorso normale.
     """
     if not isinstance(result, dict):
         raise _FormaNonPotabile("atteso un oggetto")

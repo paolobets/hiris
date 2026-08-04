@@ -19,17 +19,16 @@ _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 _ERRORE_SALVATAGGIO = (
     "Non sono riuscito a salvare questo ricordo. Riprova più tardi."
 )
-_ERRORE_RICERCA = (
-    "Non sono riuscito a cercare nella memoria: la memoria semantica non è "
-    "disponibile in questo momento. Non posso dire che non ci sia nulla, solo "
-    "che non ho potuto controllare."
-)
 
 RECALL_MEMORY_TOOL_DEF = {
     "name": "recall_memory",
     "description": (
         "Cerca nella memoria persistente dell'agente informazioni rilevanti da sessioni precedenti. "
-        "Usa questo strumento prima di rispondere a domande dove il contesto passato potrebbe aiutare."
+        "Usa questo strumento prima di rispondere a domande dove il contesto passato potrebbe aiutare. "
+        "Se la memoria semantica non è disponibile (nessun embedder configurato, o il calcolo del "
+        "vettore fallisce), il risultato porta `degraded: true` e restituisce i ricordi più recenti "
+        "invece dei più pertinenti: in quel caso vanno presentati come 'i più recenti', non come 'i più "
+        "pertinenti', perché il confronto dei significati non è avvenuto."
     ),
     "input_schema": {
         "type": "object",
@@ -170,19 +169,16 @@ async def handle_recall_memory(
     knowledge outside its configured kinds egress filter."""
     k = min(max(1, int(tool_input.get("k", 5))), 20)
     tags = tool_input.get("tags") or None
-    # Senza vettore di ricerca non si e' guardato da nessuna parte: rispondere
-    # `{"memories": [], "count": 0}` farebbe dire al modello "non ricordo
-    # nulla" quando la frase vera e' "non ho potuto controllare". I due casi
-    # devono restare distinguibili, quindi il guasto NON porta un elenco: solo
-    # l'errore.
+    # Senza vettore di ricerca non si e' potuto confrontare i significati.
+    # `KnowledgeStore.search` degrada da se' a `recent()` quando riceve un
+    # vettore vuoto (stessi filtri di riservatezza, ordine per recenza), quindi
+    # qui non serve piu' un ramo: si passa il vettore per quel che e' -- vuoto
+    # o pieno -- e il segnale di degradazione arriva nel ritorno.
     try:
         query_vec = await embedder.embed(tool_input["query"]) if embedder is not None else None
     except Exception:
         logger.exception("recall_memory: vettore di ricerca non calcolato")
         query_vec = None
-    if not query_vec:
-        logger.warning("recall_memory non eseguita: nessun vettore di ricerca")
-        return {"error": _ERRORE_RICERCA}
 
     loop = asyncio.get_running_loop()
 
@@ -191,7 +187,7 @@ async def handle_recall_memory(
         # starve the result set below k.
         search_k = k * 4 if tags else k
         rows = store.search(
-            query_vec=query_vec, k=search_k, owner=owner, chatbot_id=chatbot_id,
+            query_vec=query_vec or [], k=search_k, owner=owner, chatbot_id=chatbot_id,
             kinds=["memory"],
         )
         if tags:
@@ -212,4 +208,4 @@ async def handle_recall_memory(
         }
         for r in rows
     ]
-    return {"memories": memories, "count": len(memories)}
+    return {"memories": memories, "count": len(memories), "degraded": not query_vec}

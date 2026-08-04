@@ -306,12 +306,12 @@ def test_prune_error_dict_passes_through():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_il_guasto_di_recall_knowledge_arriva_intero_al_modello(tmp_path):
-    """`handle_recall_knowledge` in caso di guasto NON porta la chiave
-    `results` (scelta deliberata: chi vi accede direttamente deve fallire
-    rumorosamente). `_pota_conoscenza` pretende invece un elenco `results` e
-    solleva altrimenti: se la spiegazione non passasse di qui, il modello
-    riceverebbe un blocco generico al posto del motivo vero."""
+async def test_recall_knowledge_degradato_passa_dalla_potatura_come_risultato(tmp_path):
+    """Task 6 (fetta 2a): un embedder che solleva non produce piu' un guasto a
+    chiave singola per `recall_knowledge` -- la ricerca degrada ai piu' recenti
+    e torna sempre `results` (lista) + `degraded`. La potatura deve trattarlo
+    come un risultato normale (nessuna entita' da potare, testo libero), non
+    come un blocco."""
     from hiris.app.brain.knowledge_store import KnowledgeStore
     from hiris.app.tools.knowledge_tools import handle_recall_knowledge
 
@@ -320,11 +320,24 @@ async def test_il_guasto_di_recall_knowledge_arriva_intero_al_modello(tmp_path):
             raise RuntimeError("provider giu'")
 
     store = KnowledgeStore(str(tmp_path / "guasto.db"))
-    guasto = await handle_recall_knowledge(
+    store.add_item(kind="fact", content="la caldaia e' del 2019", owner="home",
+                   status="approved", embedding=[1.0, 0.0])
+    degradato = await handle_recall_knowledge(
         store, _EmbedderGiu(), {"query": "caldaia"}, owner="home")
     store.close()
 
-    assert "results" not in guasto
+    assert degradato["degraded"] is True
+    assert isinstance(degradato["results"], list) and degradato["results"]
+    assert prune_read_result("recall_knowledge", degradato, _DENY) == degradato
+
+
+def test_prune_errore_dispatcher_senza_embedder_passa_ancora():
+    """La forma a chiave singola resta riconosciuta: e' quella che
+    `ToolDispatcher.dispatch` produce ancora quando store/embedder non sono
+    proprio configurati (diverso dal caso «embedder presente ma vettore
+    vuoto», che ora degrada invece di rifiutare)."""
+    guasto = {"error": "La memoria non è disponibile: non posso cercare nei "
+                        "ricordi di casa in questo momento."}
     assert prune_read_result("recall_knowledge", guasto, _DENY) == guasto
 
 
