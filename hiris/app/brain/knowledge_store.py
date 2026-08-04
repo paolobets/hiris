@@ -233,14 +233,18 @@ class KnowledgeStore:
         ).fetchone()
         return row is not None and row["owner"] in (owner, "home")
 
-    def search(
-        self, *, query_vec: list[float], k: int = 5,
-        owner: str | None = None, chatbot_id: str | None = None,
-        allow_sensitive: bool = False,
-        kinds: list[str] | str | None = None,
-    ) -> list[dict]:
-        clauses = ["status='approved'", "embedding IS NOT NULL"]
-        bind: dict = {}
+    def _clausole_di_scope(
+        self, *, owner: str | None, chatbot_id: str | None,
+        allow_sensitive: bool, kinds: list[str] | str | None,
+    ) -> tuple[list[str], dict]:
+        """Filtri condivisi da search() e recent().
+
+        Stanno qui, e non duplicati nei due metodi, perche' governano la
+        riservatezza: due copie che divergono sono una falla, non un difetto
+        di stile. L'unica clausola che resta fuori e' `embedding IS NOT
+        NULL`, perche' e' l'unica specifica del percorso vettoriale."""
+        clauses: list[str] = ["status='approved'"]
+        params: dict = {}
         if owner is not None:
             # Unified scope (Slice 3): a row must always be scoped to this
             # owner (or shared as 'home') -- the owner check applies whether
@@ -257,8 +261,8 @@ class KnowledgeStore:
                 "(owner = :owner OR owner = 'home') AND"
                 " (chatbot_id = :chatbot_id OR chatbot_id IS NULL)"
             )
-            bind["chatbot_id"] = chatbot_id
-            bind["owner"] = owner
+            params["chatbot_id"] = chatbot_id
+            params["owner"] = owner
         elif chatbot_id is not None:
             # No owner passed but a chatbot_id was: don't fail open and
             # expose all chatbot memory across owners -- still scope by
@@ -266,7 +270,7 @@ class KnowledgeStore:
             # production callers always pass owner alongside chatbot_id;
             # this branch only guards future callers.
             clauses.append("(chatbot_id = :chatbot_id OR chatbot_id IS NULL)")
-            bind["chatbot_id"] = chatbot_id
+            params["chatbot_id"] = chatbot_id
         if not allow_sensitive:
             clauses.append("sensitivity='normal'")
         if isinstance(kinds, str):
@@ -287,10 +291,33 @@ class KnowledgeStore:
                 for i, kind_val in enumerate(kinds):
                     key = f"kind{i}"
                     placeholders.append(f":{key}")
-                    bind[key] = kind_val
+                    params[key] = kind_val
                 clauses.append("kind IN (%s)" % ",".join(placeholders))
         clauses.append("(valid_until IS NULL OR valid_until >= :valid_now)")
-        bind["valid_now"] = self._now()
+        params["valid_now"] = self._now()
+        return clauses, params
+
+    def search(
+        self, *, query_vec: list[float], k: int = 5,
+        owner: str | None = None, chatbot_id: str | None = None,
+        allow_sensitive: bool = False,
+        kinds: list[str] | str | None = None,
+    ) -> list[dict]:
+        if not query_vec:
+            # Regola unica: la ricerca confronta i significati quando puo';
+            # quando non puo' -- nessun embedder configurato, quindi nessun
+            # vettore di query -- da' i piu' recenti. Il default di fabbrica
+            # e' il NullEmbedder, che ritorna [], quindi questo e' il
+            # percorso NORMALE, non un caso limite.
+            return self.recent(
+                k=k, owner=owner, chatbot_id=chatbot_id,
+                allow_sensitive=allow_sensitive, kinds=kinds,
+            )
+        clauses, bind = self._clausole_di_scope(
+            owner=owner, chatbot_id=chatbot_id,
+            allow_sensitive=allow_sensitive, kinds=kinds,
+        )
+        clauses.append("embedding IS NOT NULL")
         sql = "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
         scored = []
         with self._mu:
@@ -307,6 +334,39 @@ class KnowledgeStore:
             except Exception:
                 d["data"] = {}
             d["score"] = sim
+            out.append(d)
+        return out
+
+    def recent(
+        self, *, k: int = 5, owner: str | None = None,
+        chatbot_id: str | None = None, allow_sensitive: bool = False,
+        kinds: list[str] | str | None = None,
+    ) -> list[dict]:
+        """Il percorso di degradazione di `search()` quando non c'e' un
+        vettore di query con cui confrontare i significati: gli stessi
+        filtri di riservatezza di `search()` (via `_clausole_di_scope`), ma
+        ordinati per recenza invece che per similarita'. A differenza di
+        `search()`, non richiede `embedding IS NOT NULL` -- e' proprio il
+        punto: include anche le righe senza vettore, che il percorso
+        vettoriale esclude per costruzione."""
+        clauses, params = self._clausole_di_scope(
+            owner=owner, chatbot_id=chatbot_id,
+            allow_sensitive=allow_sensitive, kinds=kinds,
+        )
+        params["k"] = k
+        sql = (
+            "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
+            + " ORDER BY created_at DESC, id DESC LIMIT :k"
+        )
+        with self._mu:
+            rows = self._conn.execute(sql, params).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r); d.pop("embedding", None)
+            try:
+                d["data"] = json.loads(d["data"])
+            except Exception:
+                d["data"] = {}
             out.append(d)
         return out
 
