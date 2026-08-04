@@ -208,6 +208,9 @@ def test_gather_context_is_async_and_wired_to_memory_helper():
     assert "async def _gather_context(wake)" in src
     assert "await _reason_memory_context(app, embedder, wake, friendly_name)" in src
     assert '"memory": mem' in src
+    # Task 6: the twin assertion -- the portrait is wired into the same
+    # return as memory, so both must survive together.
+    assert '"portrait": _portrait_context(app)' in src
 
 
 def test_gather_context_call_sites_await_reason():

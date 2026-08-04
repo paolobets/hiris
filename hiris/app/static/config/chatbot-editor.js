@@ -406,7 +406,12 @@
           '<a href="#/gateway">Accessi Gateway</a> — questa sezione lo riepiloga soltanto, non lo modifica.</p></div>' +
       '<div class="field-group"><div class="fg-label">Conferma</div>' +
         '<label class="checkbox-row"><input type="checkbox" id="f-require-confirmation"> Richiedi conferma prima delle azioni</label>' +
-        '<p class="field-hint">Attende "sì/ok" prima di chiamare call_ha_service, indipendentemente dal tier.</p></div>';
+        '<p class="field-hint">Attende un "sì/ok" prima di call_ha_service, trigger_automation, ' +
+          'toggle_automation, set_input_helper e create_ha_config, indipendentemente dal tier.</p>' +
+        '<p class="field-hint">È un\'istruzione al modello, non un blocco tecnico: il blocco è il ' +
+          'semaforo qui sopra, che vale sempre e da solo. Unica eccezione, create_ha_config: crea ' +
+          'script e scene su Home Assistant senza passare dal semaforo, quindi qui questa conferma ' +
+          'è l\'unico passaggio prima dell\'effetto.</p></div>';
     renderAutonomiaSummary();
   }
 

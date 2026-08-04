@@ -346,7 +346,7 @@ def _run_management(config, tmp_path):
         apply_suggestions(
             [{"kind": "management", "title": "T", "rationale": "R", "config": config}],
             data_dir=str(tmp_path), store=store, inventory_ids=set(),
-            current_config={}, create_proposal=proposed.append, cap=5)
+            current_config={}, create_proposal=lambda c, _sid: proposed.append(c), cap=5)
         rows = store.list()
     finally:
         store.close()

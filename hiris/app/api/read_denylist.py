@@ -369,8 +369,22 @@ def _pota_conoscenza(result: Any, denylist: Sequence[str]) -> Any:
     per entita'. Non e' una dimenticanza, ed e' esplicito qui perche' nessuno lo
     scambi per copertura. La forma si controlla comunque: se un giorno questo
     tool restituisse anche identificativi, la forma cambierebbe e si bloccherebbe.
+
+    Il guasto di `recall_knowledge` NON porta la chiave `results` (scelta
+    deliberata: chi vi accede direttamente deve fallire rumorosamente invece di
+    leggere un vuoto silenzioso), quindi qui va riconosciuto per quello che e'.
+    Reggeva solo grazie alla scorciatoia di `prune_read_result`, che lascia
+    passare un risultato se e solo se ha ESATTAMENTE la chiave `error`: bastava
+    aggiungere al messaggio di guasto un secondo campo -- un conteggio, un tempo
+    di riprova -- perche' la spiegazione venisse sostituita da un blocco
+    generico. Un errore e' testo nostro, mai dato di Home Assistant: non c'e'
+    nulla da potare.
     """
-    if not isinstance(result, dict) or not isinstance(result.get("results"), list):
+    if not isinstance(result, dict):
+        raise _FormaNonPotabile("atteso un oggetto")
+    if "results" not in result and isinstance(result.get("error"), str):
+        return result
+    if not isinstance(result.get("results"), list):
         raise _FormaNonPotabile("atteso un oggetto con 'results'")
     return result
 

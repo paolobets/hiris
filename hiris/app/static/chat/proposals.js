@@ -200,7 +200,14 @@
     var fn = isReject ? HirisProposalsCore.reject : HirisProposalsCore.apply;
     var card = document.getElementById('pp-' + id);
     fn(id).then(function(res) {
-      if (!res.ok) { window.alert(res.error || 'Errore'); return; }
+      // I-5: mai la stringa tecnica del backend (res.error) all'utente --
+      // finisce in console per chi diagnostica, il messaggio a schermo e'
+      // derivato dallo stato HTTP (HirisProposalsCore.errorMessage).
+      if (!res.ok) {
+        console.error('proposal ' + kind + ' failed', res.status, res.error);
+        window.alert(HirisProposalsCore.errorMessage(res));
+        return;
+      }
       if (card) {
         card.style.opacity = '0.5';
         var nameEl = card.querySelector('.pp-name');
@@ -230,7 +237,13 @@
       + 'Le modifiche fatte alla plancia dopo quella sostituzione andranno perse.';
     if (!window.confirm(msg)) return;
     HirisProposalsCore.restoreDashboard(urlPath).then(function(res) {
-      if (!res.ok) { window.alert(res.error || 'Errore'); return; }
+      // I-5: idem sopra in act() -- messaggio derivato dallo stato, mai la
+      // stringa tecnica del backend.
+      if (!res.ok) {
+        console.error('dashboard restore failed', urlPath, res.status, res.error);
+        window.alert(HirisProposalsCore.errorMessage(res));
+        return;
+      }
       /* Il server ha appena confermato di aver consumato quello snapshot:
          recepiamo la sua risposta nella cache PRIMA di richiedere l'elenco.
          Non è il ritorno della memoria locale di "cosa ho già annullato" (la

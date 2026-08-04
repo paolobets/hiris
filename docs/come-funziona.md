@@ -1,3 +1,15 @@
+> ## ⚠️ Documento superato — Refactor 2.0 (4 agosto 2026)
+>
+> Questo documento descrive HIRIS **prima** del Refactor 2.0. Parla di *Sentinella*, *Agentbot*,
+> *semaforo* a quattro colori e di un pannello di configurazione di entità AI: tutte cose che il
+> refactor ha mandato in pensione o riscritto.
+>
+> **Cosa HIRIS deve essere oggi:** [`docs/design/2026-08-04-scope-hiris.md`](design/2026-08-04-scope-hiris.md)
+> **Cosa fa oggi il codice:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md)
+>
+> Restano utili le parti puramente operative (installazione, chiavi, opzioni dell'add-on). Sarà
+> riscritto come atto finale del refactor, sul prodotto vero.
+
 # HIRIS — Come funziona
 
 > Versione: 1.0.0 · Aggiornato: 2026-07-29
@@ -346,7 +358,7 @@ Ogni Chatbot può essere limitato tramite:
 | `allowed_services` | Glob sui servizi chiamabili | `["light.*", "switch.turn_*"]` |
 | `allowed_endpoints` | URL approvati per `http_request` | `[{"url": "https://api.example.com", ...}]` |
 | `restrict_to_home` | Rifiuta domande off-topic | `true` |
-| `require_confirmation` | Claude chiede conferma prima di agire | `true` |
+| `require_confirmation` | Claude chiede "sì/ok" prima di ogni azione reale (`call_ha_service`, `trigger_automation`, `toggle_automation`, `set_input_helper`, `create_ha_config`). È un'istruzione al modello, non un blocco: il blocco è il semaforo — tranne che per `create_ha_config`, che il semaforo non copre (dalla chat crea script e scene su Home Assistant subito), e per cui quindi questa conferma è l'unico passaggio prima dell'effetto | `true` |
 | `knowledge_access` | Scope memoria (dati sensibili, quali kind) | `{"allow_sensitive": false, "kinds": "all"}` |
 | `max_chat_turns` | Limita lunghezza conversazione | `20` |
 

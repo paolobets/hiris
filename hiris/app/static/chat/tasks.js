@@ -4,25 +4,21 @@
    its own markup) -- this is the compact panel embedded in the chat page,
    not a duplicate to fold away. */
 (function() {
-  function formatTrigger(trigger) {
-    if (!trigger) return '';
-    if (trigger.type === 'delay') return 'tra ' + trigger.minutes + ' min';
-    if (trigger.type === 'at_time') return 'alle ' + trigger.time;
-    if (trigger.type === 'at_datetime') return trigger.datetime;
-    if (trigger.type === 'time_window') return 'finestra ' + trigger.from + '–' + trigger.to;
-    return trigger.type;
-  }
-
   function renderTask(task) {
     var isPending = task.status === 'pending';
     var safeId = esc(task.id);
     var cancelBtn = isPending ? '<button class="task-cancel-btn" data-task-id="' + safeId + '" type="button">Annulla</button>' : '';
-    var rawMeta = task.result || task.error || formatTrigger(task.trigger);
+    /* Descrizione del trigger dal dizionario condiviso (labels.js): prima
+       questo file replicava a mano gli stessi quattro rami di
+       config/tasks-route.js senza 'immediate' -- un solo posto ora elenca
+       i cinque tipi reali per entrambe le viste. */
+    var rawMeta = task.result || task.error || HirisLabels.triggerDescription(task.trigger);
     var meta = rawMeta ? esc(rawMeta) : '';
+    var statusLabel = HirisLabels.taskStatusLabel(task.status);
     return '<div class="task-card" id="task-' + safeId + '">'
       + '<div class="task-card-header">'
       + '<span class="task-label">' + esc(task.label) + '</span>'
-      + '<span class="task-status ' + esc(task.status) + '">' + esc(task.status) + '</span>'
+      + '<span class="task-status ' + esc(task.status) + '">' + esc(statusLabel) + '</span>'
       + cancelBtn
       + '</div>'
       + (meta ? '<div class="task-meta">' + meta + '</div>' : '')
@@ -46,12 +42,23 @@
     } catch (e) { console.error('loadTasks failed', e); }
   }
 
+  /* M-6 (review indipendente su bee3ab1, fratello di A7 nella stessa pagina):
+     una DELETE fallita non produceva NIENTE -- ne' un log ne' un avviso, la
+     task restava li' senza che l'utente sapesse perche' "Annulla" non ha
+     avuto effetto. A7 (agents.js::clearConversation) e resolve() di
+     gateway-route.js seguono gia' la stessa regola: un fallimento va detto,
+     mai in silenzio. */
   async function cancel(taskId) {
     if (!confirm('Annullare questa task?')) return;
     try {
       var resp = await fetch('api/tasks/' + taskId, { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
-      if (resp.ok || resp.status === 204) load();
-    } catch (e) { console.error('cancelTask failed', e); }
+      if (resp.ok || resp.status === 204) { load(); return; }
+      console.error('cancelTask failed', resp.status);
+      alert('Non è stato possibile annullare questa task. Riprova più tardi.');
+    } catch (e) {
+      console.error('cancelTask failed', e);
+      alert('Errore di rete: riprova.');
+    }
   }
 
   function showPanel(name) {

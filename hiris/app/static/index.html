@@ -113,6 +113,7 @@
         <span class="usage-label">Costo</span>
         <span class="usage-val" id="u-cost">—</span>
       </div>
+      <div class="usage-reset" id="usage-last-reset"></div>
     </div>
   </aside>
 
@@ -214,6 +215,10 @@
 </div>
 
 <script src="static/config/api.js"></script>
+<!-- Task 3 A4+B1: dizionario condiviso di etichette (stati task, stati
+     suggerimenti, severita' segnalazioni, tipi di trigger). Deve caricare
+     prima di chat/tasks.js, che lo consulta. -->
+<script src="static/config/labels.js"></script>
 <script src="static/chat/state.js"></script>
 <script src="static/chat/messages.js"></script>
 <script src="static/chat/agents.js"></script>

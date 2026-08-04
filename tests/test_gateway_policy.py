@@ -84,6 +84,31 @@ async def test_get_returns_categories(aiohttp_client, tmp_path):
     assert data["levels"] == {}
 
 
+# ---------------------------------------------------------------------------
+# S-1/M-7 (review indipendente su bee3ab1): il frontend duplicava a mano la
+# denylist DANGEROUS_DOMAINS (con "garage_door", che non e' nemmeno una
+# categoria valida qui sotto -- vedi GATEWAY_CATEGORIES) senza alcuna difesa
+# contro la deriva da security/semaphore.py. Il flag "dangerous" per
+# categoria e' ora calcolato qui, un'unica fonte, stesso principio gia' in
+# uso per handle_autonomy_summary.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_categories_flag_dangerous_domains(aiohttp_client, tmp_path):
+    client = await aiohttp_client(_app(tmp_path))
+    resp = await client.get("/api/gateway/policy")
+    data = await resp.json()
+    by_id = {c["id"]: c for c in data["categories"]}
+    assert by_id["lock"]["dangerous"] is True
+    assert by_id["alarm_control_panel"]["dangerous"] is True
+    assert by_id["cover"]["dangerous"] is True
+    assert by_id["siren"]["dangerous"] is True
+    assert by_id["light"]["dangerous"] is False
+    assert "garage_door" not in by_id, (
+        "garage_door non e' una categoria valida (GATEWAY_CATEGORIES) -- "
+        "un frontend che la nomina parla di qualcosa che l'utente non trova mai")
+
+
 @pytest.mark.asyncio
 async def test_post_saves_and_updates_execute_policy(aiohttp_client, tmp_path):
     app = _app(tmp_path)

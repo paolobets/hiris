@@ -81,3 +81,75 @@ test('Attiva chiama POST apply e NON mostra un falso "Errore di rete"', async ()
   assert.equal(applyCall.opts.method, 'POST');
   assert.deepEqual(alerts, [], 'nessun alert: niente falso "Errore di rete"');
 });
+
+// ---------------------------------------------------------------------------
+// I-5 (review indipendente su bee3ab1): act()/undo() mostravano
+// `res.error || 'Errore'` -- la stringa tecnica del backend
+// (handlers_proposals.py/handlers_dashboards.py) direttamente all'utente.
+// ---------------------------------------------------------------------------
+
+test('HirisProposalsCore.errorMessage: mai la stringa del backend, derivato dallo stato', () => {
+  const { window } = loadScripts(['config/api.js', 'config/proposals-core.js']);
+  const M = window.HirisProposalsCore.errorMessage;
+
+  const raw409 = M({ status: 409, error: 'Proposal not found or not in pending state' });
+  assert.doesNotMatch(raw409, /Proposal not found/);
+
+  const raw503 = M({ status: 503, error: 'ProposalStore not initialized' });
+  assert.doesNotMatch(raw503, /ProposalStore/);
+  assert.notEqual(raw503, raw409, '409 e 503 devono dire cose diverse');
+
+  const raw502 = M({ status: 502, error: 'Automazione non creata in HA: connection refused' });
+  assert.doesNotMatch(raw502, /connection refused/);
+  assert.notEqual(raw502, raw409);
+  assert.notEqual(raw502, raw503);
+
+  // I-5: quando lo stato non rientra in nessun caso noto, mostra almeno il
+  // codice HTTP -- "Errore 500" e "Errore 404" devono restare distinguibili,
+  // non un "Errore" generico e basta.
+  const unknown500 = M({ status: 500, error: null });
+  const unknown404 = M({ status: 404, error: null });
+  assert.match(unknown500, /500/);
+  assert.notEqual(unknown500, unknown404);
+});
+
+test('Attiva fallita: l\'alert NON mostra la stringa tecnica del backend, ma un testo derivato dallo stato (I-5)', async () => {
+  const { window, document } = loadScripts(
+    ['config/api.js', 'config/proposals-core.js', 'chat/proposals.js'],
+    { html: fixtureHtml() },
+  );
+  window.fetch = async (url) => {
+    if (String(url).indexOf('/apply') !== -1) {
+      return { ok: false, status: 503, json: async () => ({ error: 'ProposalStore not initialized' }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ proposals: [
+      { id: 'p1', type: 'ha_automation', name: 'X' },
+    ] }) };
+  };
+  window.confirm = () => true;
+  const alerts = [];
+  window.alert = (m) => alerts.push(m);
+  const realError = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args);
+
+  const realSI = globalThis.setInterval;
+  globalThis.setInterval = () => 0;
+  window.HirisChatProposals.init();
+  globalThis.setInterval = realSI;
+  await tick(10);
+
+  try {
+    document.querySelector('.pp-apply').dispatchEvent(new window.Event('click', { bubbles: true }));
+    await tick(20);
+  } finally {
+    console.error = realError;
+  }
+
+  assert.equal(alerts.length, 1, 'un fallimento applicativo deve produrre un alert');
+  assert.doesNotMatch(alerts[0], /ProposalStore/,
+    'niente stringa tecnica del backend nell\'alert');
+  assert.match(alerts[0], /servizio|disponibile/i,
+    'un 503 deve dire che il servizio non e\' disponibile, non "Errore" generico');
+  assert.ok(logged.length > 0, 'il dettaglio tecnico deve comunque finire in console, per diagnosticare');
+});

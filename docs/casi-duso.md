@@ -1,3 +1,15 @@
+> ## ⚠️ Documento superato — Refactor 2.0 (4 agosto 2026)
+>
+> Questo documento descrive HIRIS **prima** del Refactor 2.0. Parla di *Sentinella*, *Agentbot*,
+> *semaforo* a quattro colori e di un pannello di configurazione di entità AI: tutte cose che il
+> refactor ha mandato in pensione o riscritto.
+>
+> **Cosa HIRIS deve essere oggi:** [`docs/design/2026-08-04-scope-hiris.md`](design/2026-08-04-scope-hiris.md)
+> **Cosa fa oggi il codice:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md)
+>
+> Restano utili le parti puramente operative (installazione, chiavi, opzioni dell'add-on). Sarà
+> riscritto come atto finale del refactor, sul prodotto vero.
+
 # HIRIS — Casi d'uso ed esempi
 
 > Versione: 1.0.0 · Aggiornato: 2026-07-29
@@ -324,7 +336,11 @@ le risposte.
 
 **Usa `require_confirmation` per azioni irreversibili:** qualsiasi Chatbot
 che controlla riscaldamento, elettrodomestici o sicurezza dovrebbe averlo
-abilitato.
+abilitato. È un'istruzione al modello, non un blocco tecnico: non sostituisce
+il semaforo, che è l'argine che regge da solo su `call_ha_service`,
+`trigger_automation`, `toggle_automation` e `set_input_helper`. Unica
+eccezione, `create_ha_config`: il semaforo non lo copre, quindi lì questa
+conferma è l'unico passaggio prima dell'effetto. Impostalo insieme ai tier.
 
 **Restringi lo scope:** `allowed_tools`/`allowed_entities`/`allowed_services`
 più stretti possibile per ogni Chatbot — soprattutto per assistenti condivisi

@@ -1,3 +1,15 @@
+> ## ⚠️ Superseded document — Refactor 2.0 (4 August 2026)
+>
+> This document describes HIRIS **before** Refactor 2.0. It talks about *Sentinella*, *Agentbot*,
+> a four-colour *semaforo* and a configuration panel for AI entities — all of which the refactor
+> has retired or rewritten.
+>
+> **What HIRIS must be now:** [`docs/design/2026-08-04-scope-hiris.md`](design/2026-08-04-scope-hiris.md) (Italian)
+> **What the code does today:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md) (Italian)
+>
+> The purely operational parts (installation, keys, add-on options) are still useful. It will be
+> rewritten as the final act of the refactor, against the real product.
+
 # HIRIS — Security model & safe setup
 
 This document explains how HIRIS protects your home when you connect an AI (the

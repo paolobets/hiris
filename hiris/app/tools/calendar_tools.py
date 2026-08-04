@@ -10,7 +10,11 @@ GET_CALENDAR_EVENTS_TOOL_DEF = {
     "name": "get_calendar_events",
     "description": (
         "Get upcoming calendar events from Home Assistant calendar integrations. "
-        "Returns events across all calendars (or a specific one) within the next N hours."
+        "Returns events across all calendars (or a specific one) within the next N hours. "
+        "The reply is an object with 'events'. If it also carries 'error' (and "
+        "'unavailable_calendars'), one or more calendars could not be read: the list "
+        "is incomplete, so tell the user what could not be checked instead of saying "
+        "there is nothing scheduled."
     ),
     "input_schema": {
         "type": "object",
@@ -31,12 +35,26 @@ GET_CALENDAR_EVENTS_TOOL_DEF = {
 }
 
 
+_ERRORE_ELENCO_CALENDARI = (
+    "Non sono riuscito a leggere l'elenco dei calendari da Home Assistant: "
+    "non posso dire se ci sono impegni, solo che non ho potuto controllare."
+)
+
+
 async def get_calendar_events(
     ha: HAClient,
     hours: int = 24,
     calendar_entity: str | None = None,
-) -> list[dict]:
+) -> dict:
     """Fetch upcoming events from HA calendar integrations.
+
+    Un elenco vuoto e un guasto non sono la stessa cosa: prima questa funzione
+    restituiva `[]` sia quando i calendari erano davvero senza impegni, sia
+    quando l'elenco dei calendari non si era potuto leggere, e ogni singolo
+    calendario che falliva veniva saltato in silenzio -- cosi' un'agenda
+    parziale sembrava completa e il modello rispondeva "non hai impegni
+    domani". Ora il guasto viaggia insieme al risultato, in modo che il modello
+    possa dire all'utente cosa NON ha potuto vedere.
 
     Args:
         ha: HAClient instance for Home Assistant REST API calls.
@@ -44,7 +62,11 @@ async def get_calendar_events(
         calendar_entity: Specific calendar entity ID, or None to fetch all calendars.
 
     Returns:
-        List of event dicts, each augmented with a ``calendar`` key, sorted by start time.
+        ``{"events": [...]}`` con gli eventi (ognuno arricchito della chiave
+        ``calendar``) ordinati per orario di inizio. In caso di guasto la
+        risposta porta anche ``error`` (testo per il modello) e
+        ``unavailable_calendars`` (i calendari non letti), assenti quando e'
+        andato tutto bene.
     """
     hours = max(1, min(168, int(hours)))
     now = datetime.now(timezone.utc)
@@ -58,24 +80,39 @@ async def get_calendar_events(
         try:
             cals = await ha.get_calendars()
             entity_ids = [c["entity_id"] for c in cals if "entity_id" in c]
-        except Exception as exc:
-            logger.warning("get_calendars failed: %s", exc)
-            entity_ids = []
+        except Exception:
+            # Il dettaglio (host, porta, messaggio del client) resta nel log.
+            logger.exception("get_calendars: elenco dei calendari non letto")
+            # `unavailable_calendars` resta assente: qui non si e' potuto
+            # nemmeno sapere QUALI calendari esistono, e una lista vuota
+            # suggerirebbe che nessuno sia rimasto fuori.
+            return {"events": [], "error": _ERRORE_ELENCO_CALENDARI}
 
     events: list[dict] = []
+    non_letti: list[str] = []
     for eid in entity_ids:
         try:
             raw = await ha.get_calendar_events_range(eid, start_str, end_str)
-            for ev in raw:
-                ev["calendar"] = eid
-                events.append(ev)
         except Exception:
+            logger.exception("get_calendar_events: calendario %s non letto", eid)
+            non_letti.append(eid)
             continue
+        for ev in raw:
+            ev["calendar"] = eid
+            events.append(ev)
 
     events.sort(
         key=lambda e: (e.get("start") or {}).get("dateTime") or (e.get("start") or {}).get("date") or ""
     )
-    return events
+    risultato: dict = {"events": events}
+    if non_letti:
+        risultato["unavailable_calendars"] = non_letti
+        risultato["error"] = (
+            "Non sono riuscito a leggere questi calendari: "
+            f"{', '.join(non_letti)}. L'elenco degli impegni può essere "
+            "incompleto: non dire che non ce ne sono."
+        )
+    return risultato
 
 
 SET_INPUT_HELPER_TOOL_DEF = {

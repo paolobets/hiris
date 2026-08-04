@@ -249,7 +249,7 @@ async def test_applied_coverage_suggestion_writes_trace(tmp_path, kstore):
                   "config": {"detector": "fridge_temp", "entity": "sensor.freezer", "max_temp_c": 8}}]
         applied = apply_suggestions(
             suggs, data_dir=dd, store=store, inventory_ids={"sensor.freezer"},
-            current_config=load_policy(dd), create_proposal=lambda c: None, cap=5,
+            current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5,
         )
         assert len(applied) == 1
 
@@ -276,7 +276,7 @@ async def test_management_suggestion_writes_no_trace(tmp_path, kstore):
         suggs = [{"kind": "management", "title": "Auto-off bagno", "rationale": "r", "config": {"x": 1}}]
         applied = apply_suggestions(
             suggs, data_dir=dd, store=store, inventory_ids=set(),
-            current_config=load_policy(dd), create_proposal=lambda c: None, cap=5,
+            current_config=load_policy(dd), create_proposal=lambda c, _sid: None, cap=5,
         )
         assert applied == []
 

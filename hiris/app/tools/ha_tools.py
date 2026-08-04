@@ -1,6 +1,14 @@
 from __future__ import annotations
+import logging
+
 from ..proxy.ha_client import HAClient
-from ..proxy.entity_cache import EntityCache
+from ..proxy.entity_cache import (
+    ERRORE_INVENTARIO_NON_PRONTO,
+    EntityCache,
+    inventario_leggibile,
+)
+
+logger = logging.getLogger(__name__)
 
 TOOL_DEF = {
     "name": "get_entity_states",
@@ -62,8 +70,24 @@ async def get_entity_states(
     ha: HAClient,
     ids: list[str],
     entity_cache: EntityCache | None = None,
-) -> list[dict]:
+) -> list[dict] | dict:
+    """Stato delle entita' richieste, dalla cache se cablata.
+
+    Una cache presente ma mai caricata NON e' una casa senza quelle entita':
+    `get_minimal` risponderebbe un elenco vuoto e il modello leggerebbe
+    "quell'entita' non esiste". Stesso esito dichiarato dei tre strumenti che
+    leggono lo stesso inventario (`get_home_status`, `get_entities_on`,
+    `get_entities_by_domain`, vedi ToolDispatcher._cache_non_leggibile).
+
+    Cache assente resta invece un percorso legittimo: senza inventario cablato
+    questo strumento ha sempre letto dal vivo da Home Assistant, ed e' cio' che
+    continua a fare.
+    """
     if entity_cache is not None:
+        if not inventario_leggibile(entity_cache):
+            logger.warning(
+                "get_entity_states rifiutata: inventario delle entita' non ancora caricato")
+            return {"error": ERRORE_INVENTARIO_NON_PRONTO}
         return entity_cache.get_minimal(ids)
     states = await ha.get_states(ids)
     result = []

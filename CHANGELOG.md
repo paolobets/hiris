@@ -1,5 +1,51 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.16] — HIRIS guarda la casa, e si accorge di cosa è cambiato (2026-08-04)
+
+**Fino a ieri, quando HIRIS ragionava su qualcosa che era successo in casa, vedeva
+una cosa sola: l'entità che si era mossa.** Una porta, una batteria, un consumo —
+e nient'altro. Non sapeva quali stanze esistono, cosa c'è acceso altrove, se
+quella porta è aperta da dieci minuti o da tre ore. Soprattutto: non ricordava
+nulla di mezz'ora prima. Ogni volta ricominciava da capo.
+
+**Ora HIRIS tiene un ritratto della casa e se lo porta dietro quando ragiona.**
+Le stanze e cosa contengono, cosa è acceso e cosa è aperto in questo momento, e —
+la parte che conta di più — **cosa è cambiato dall'ultima volta che ha guardato**.
+Una casa che gli dice «sono queste sette cose a essere diverse da stamattina» è
+una casa su cui può accorgersi di qualcosa, non solo rispondere.
+
+**I rilevatori che scattano hanno una sezione tutta loro, ed è la prima.** Fumo,
+gas, allagamento, guasto, manomissione: non finiscono più mescolati alle finestre
+aperte. Un rilevatore che è scattato è la cosa più importante che una casa possa
+dire, e adesso viene detta per prima.
+
+Il ritratto si aggiorna da solo ogni quindici minuti e non chiama mai Home
+Assistant per essere letto, quindi non aggiunge attesa a niente. Registra solo
+stati che cambiano di rado — porte, luci, serrature, allarmi — e volutamente **non**
+temperature, consumi, umidità: sono numeri che si muovono in continuazione, e
+metterli lì dentro vorrebbe dire dire «è cambiato tutto» ogni volta, cioè niente.
+
+### E prima di tutto questo: HIRIS ha smesso di dire cose che non erano vere
+
+Un giro di correzioni su una sola cosa — **la distanza fra quello che HIRIS
+dichiarava e quello che faceva davvero.**
+
+- **Una serratura poteva essere aperta da una notifica.** Un dominio pericoloso
+  classificato «giallo» produceva una notifica con il pulsante di approvazione, e
+  quel tocco eseguiva l'azione **saltando il controllo di sicurezza** — a telefono
+  bloccato, senza autenticazione. Ora i domini pericolosi sono forzati al livello
+  che richiede sempre un codice.
+- **Salvataggi, strumenti e guasti restavano muti.** Cose che non erano andate a
+  buon fine venivano riferite come riuscite, o non venivano riferite affatto.
+- **Reti di sicurezza promesse e inesistenti.** Alcuni messaggi dichiaravano
+  protezioni che nessuna riga di codice applicava, sulla conferma e sul gateway.
+- **Un identificativo sbagliato scavalcava il controllo** che invece scattava
+  quando l'identificativo mancava del tutto.
+- **L'inventario delle entità non si ricaricava** dopo un avvio fallito, e schede
+  gemelle raccontavano la stessa cosa in modi diversi.
+- **Il chip «eseguiti» contava zero** perché due punti del codice usavano
+  vocabolari diversi per le stesse etichette di stato.
+
 ## [1.1.0-beta.15] — La memoria funziona davvero, e le notifiche si aprono (2026-08-02)
 
 **Quando chiedevi a HIRIS di ricordare qualcosa, non lo ricordava.** «Ricordati

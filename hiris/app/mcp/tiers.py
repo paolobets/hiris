@@ -62,15 +62,55 @@ TOOLS: list[ToolDef] = [
             "Cerca nella knowledge base HIRIS e negli insight storici settimanali (non sensibili). "
             "Es: tendenze o variazioni recenti."),
     # --- SCHEDULE / PROPOSE ---
+    # Il gate di conferma qui NON esiste e non e' un'omissione: api/
+    # handlers_execute.py dispaccia create_task direttamente. Il limite reale e'
+    # un altro e vale gia' alla creazione -- ogni azione call_ha_service deve
+    # avere entity_id espliciti (niente area/dispositivo/label) e tier VERDE
+    # per-entita', altrimenti il task viene rifiutato subito.
+    #
+    # Fix wave 1 -- quel filtro pero' vale sulle azioni di PRIMO LIVELLO. Un
+    # task puo' contenere a sua volta un create_task (tools/dispatcher.py::
+    # _ALLOWED_TASK_ACTIONS, attuato da task_engine 513-521) e le azioni del
+    # figlio non sono ispezionate da handlers_execute. Fra due strade --
+    # estendere il filtro all'annidamento o correggere la descrizione -- si e'
+    # scelta la seconda, per tre ragioni:
+    #   1. l'annidamento non ha un fondo: create_task e' un'azione ammessa
+    #      dentro un task e nessun contatore di profondita' esiste, quindi
+    #      estendere il filtro vorrebbe dire una visita ricorsiva con un tetto
+    #      di profondita' inventato qui, sul percorso remoto;
+    #   2. sarebbe un SECONDO punto di enforcement dello stesso confine, il
+    #      duplicato che tools/dispatcher.py (465-482) ha gia' rifiutato per
+    #      allowed_entities proprio perche' i due punti divergono;
+    #   3. non e' un varco sul semaforo: allo scatto task_engine 477-505 valuta
+    #      OGNI azione, e cio' che non e' verde diventa step-up all'owner o
+    #      viene saltato. Il costo residuo e' un messaggio d'errore peggiore
+    #      (il task nasce e non attua), non un confine piu' debole.
+    # Percio' e' la PROMESSA a essere sbagliata, non il codice a essere
+    # incompleto -- e una rete dichiarata e assente e' peggio di nessuna rete,
+    # perche' il modello agisce con meno cautela. Vedi
+    # tests/test_coerenza_conferma.py (perimetro del filtro pinnato) e
+    # tests/test_execute_api.py (rifiuti off/giallo/rosso).
     ToolDef("create_task", Tier.SCHEDULE, "create_task",
             "Pianifica un task HIRIS (trigger + azioni). Le azioni possono includere "
             "send_notification (anche notifiche persistenti nel dashboard HA, channel "
-            "'ha_persistent') e call_ha_service (solo su entita' verdi nel semaforo). "
-            "Richiede conferma (gate di sicurezza)."),
+            "'ha_persistent') e call_ha_service. Il filtro alla creazione vale sulle "
+            "azioni di primo livello: li' una call_ha_service e' accettata solo con "
+            "entity_id espliciti e su entita' verdi nel semaforo, altrimenti il task "
+            "viene rifiutato subito. Le azioni di un task annidato non passano da quel "
+            "filtro, ma allo scatto ogni azione ripassa dal semaforo: cio' che e' verde "
+            "parte da solo, il resto viene fermato o messo in attesa di una conferma "
+            "umana. Un task non allarga il semaforo e non lo scavalca."),
     ToolDef("list_tasks", Tier.SCHEDULE, "list_tasks",
             "Elenca i task HIRIS pianificati."),
+    # Anche qui nessun gate, e qui nemmeno serviva: annullare TOGLIE un'azione
+    # futura, non ne esegue una. Resta un residuo noto e volutamente non
+    # chiuso in questo giro: cancel_task non filtra per agent_id, quindi da
+    # qui si annulla anche un task creato dall'utente in HIRIS -- un
+    # impedimento, non un'attuazione.
     ToolDef("cancel_task", Tier.SCHEDULE, "cancel_task",
-            "Annulla un task HIRIS pianificato. Richiede sempre conferma."),
+            "Annulla un task HIRIS pianificato: rimuove un'azione futura, non ne "
+            "esegue una. Immediato e non reversibile -- il task va ricreato. "
+            "Usa prima list_tasks per prendere l'id giusto."),
     ToolDef("create_automation_proposal", Tier.SCHEDULE, "create_automation_proposal",
             "Propone un'automazione HA per revisione umana (NON applicata automaticamente)."),
     ToolDef("send_notification", Tier.SCHEDULE, "send_notification",

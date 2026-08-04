@@ -917,6 +917,62 @@ async def _reason_memory_context(
         return []
 
 
+async def _osserva_la_casa(app) -> int:
+    """Registra lo stato notevole della casa e ne calcola il cambiamento.
+
+    E' l'UNICO scrittore della linea di base del ritratto: i consumatori
+    leggono soltanto. Se aggiornasse la linea di base ogni consumatore,
+    ciascuno vedrebbe solo cio' che e' cambiato dopo il precedente, e il
+    delta smetterebbe di voler dire "dall'ultima volta che ho guardato".
+
+    Non solleva mai: un'osservazione saltata e' un delta piu' vecchio, non un
+    giro di scheduler perso.
+    """
+    try:
+        store = app.get("portrait_store") if app is not None else None
+        cache = app.get("entity_cache") if app is not None else None
+        if store is None or cache is None or not hasattr(cache, "all_states"):
+            return 0
+        from .proxy.entity_cache import inventario_leggibile
+        if not inventario_leggibile(cache):
+            # Riavvio host: il Supervisor puo' avviare HIRIS prima che il
+            # core HA sia pronto. Il primo `entity_cache.load()` fallisce (e
+            # viene inghiottito), la cache resta parziale/vuota e
+            # `cache.loaded` resta False. Un'osservazione su quello stato
+            # cancellerebbe o riempirebbe di falsi "riapparsi" la linea di
+            # base -- saltare il giro e' "un delta piu' vecchio", la
+            # degradazione che il docstring sopra promette, non un guasto.
+            return 0
+        from .brain.portrait import notable_state
+        changes = store.observe(notable_state(cache.all_states()))
+        return len(changes)
+    except Exception:
+        logger.warning("_osserva_la_casa: osservazione fallita", exc_info=True)
+        return 0
+
+
+def _portrait_context(app) -> str:
+    """Il ritratto reso, pronto per il prompt. "" se non disponibile.
+
+    Sincrona di proposito: legge solo la cache in memoria e lo store locale,
+    nessun I/O verso Home Assistant.
+    """
+    try:
+        store = app.get("portrait_store") if app is not None else None
+        cache = app.get("entity_cache") if app is not None else None
+        if store is None or cache is None or not hasattr(cache, "all_states"):
+            return ""
+        from .brain.portrait import build_portrait, render_portrait
+        area_map = cache.get_area_map() if hasattr(cache, "get_area_map") else None
+        return render_portrait(build_portrait(
+            area_map=area_map, states=cache.all_states(),
+            baseline=store.baseline(), changes=store.last_changes(),
+        ))
+    except Exception:
+        logger.warning("_portrait_context: ritratto non disponibile", exc_info=True)
+        return ""
+
+
 async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
     """Slice 7 (Maggiordomo) Task 4: the consolidated daily butler briefing
     job, replacing the old per-obligation spam (`hiris_due_reminders` /
@@ -1021,6 +1077,50 @@ async def run_urgent_nudges(store, *, today, seen, notify_item) -> int:
             logger.error("run_urgent_nudges: notify/mark failed for key=%r", n.get("key"), exc_info=True)
             continue
     return count
+
+
+async def ricarica_inventario_entita(cache, ha_client) -> bool:
+    """Ritenta il caricamento iniziale dell'inventario delle entita', e SOLO
+    quello. Ritorna True se questo giro l'ha rimesso in piedi.
+
+    `_on_startup` logga e prosegue quando `EntityCache.load` fallisce (Home
+    Assistant che parte dopo l'addon, riavvio del core, rete che balbetta):
+    da li' in poi la cache resta `loaded is False` e i quattro strumenti che
+    la leggono rispondono "non ancora pronto". Onesto, ma senza qualcuno che
+    riprovi resterebbe cosi' fino al riavvio dell'addon: piu' onesto di prima
+    e piu' scomodo. Questo e' quel qualcuno.
+
+    Non tocca una cache gia' viva: da quel momento la mantengono aggiornata gli
+    eventi di stato, e rileggere tutta la casa a ogni giro sarebbe traffico
+    inutile verso Home Assistant. Modulo-level (non chiuso dentro
+    `_on_startup`) per la stessa ragione di `run_daily_briefing`: si prova
+    senza avviare l'applicazione.
+
+    Non solleva mai: gira nello scheduler, e un Home Assistant ancora giu' e'
+    il caso previsto, non un errore da propagare -- il giro successivo
+    riprovera'.
+    """
+    if cache is None or ha_client is None:
+        return False
+    if getattr(cache, "loaded", True):
+        return False
+    try:
+        await cache.load(ha_client)
+    except Exception as exc:
+        logger.warning("Ricarica dell'inventario entita' non riuscita: %s", exc)
+        return False
+    logger.info(
+        "Inventario entita' ricaricato: %d entita' (la lettura iniziale era fallita)",
+        len(cache.get_all()) if hasattr(cache, "get_all") else -1,
+    )
+    # Stesso avvio, stesso guasto: se `load` era fallita per Home Assistant
+    # irraggiungibile, anche il registro delle aree lo era. Indipendente dal
+    # ritorno: cio' che sblocca i quattro strumenti e' l'inventario.
+    try:
+        await cache.load_area_registry(ha_client)
+    except Exception as exc:
+        logger.warning("Ricarica del registro aree non riuscita: %s", exc)
+    return True
 
 
 async def _run_internal_mcp(server) -> None:
@@ -1440,6 +1540,28 @@ async def _on_startup(app: web.Application) -> None:
     app["vault"] = vault
     app["pseudonymizer"] = pseudonymizer
 
+    # Ricarica dell'inventario entita' dopo un avvio senza Home Assistant.
+    # `entity_cache.load` piu' sopra logga e prosegue se fallisce: senza questo
+    # lavoro la cache resterebbe "mai caricata" fino al riavvio dell'addon, e i
+    # quattro strumenti che la leggono continuerebbero a rispondere "non ancora
+    # pronto" per sempre.
+    #
+    # Due minuti: un'indisponibilita' passeggera (riavvio del core, rete che
+    # balbetta) rientra entro il giro successivo invece che alla prossima notte.
+    # Il costo con Home Assistant giu' per davvero e' una GET /api/states ogni
+    # due minuti -- meno della ronda della sentinella -- e appena la lettura
+    # riesce il lavoro torna a essere il controllo di una bandiera, senza
+    # toccare piu' Home Assistant.
+    async def _ricarica_inventario() -> None:
+        await ricarica_inventario_entita(app.get("entity_cache"), ha_client)
+
+    engine._scheduler.add_job(
+        _ricarica_inventario,
+        trigger="interval", minutes=2,
+        id="hiris_entity_cache_reload", replace_existing=True,
+        misfire_grace_time=120,
+    )
+
     # Daily retention job (chat messages + expired memories)
     from .chat_store import delete_old_messages as _delete_old_messages
 
@@ -1556,6 +1678,25 @@ async def _on_startup(app: web.Application) -> None:
     advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
     app["advisory_store"] = advisory_store
 
+    from .brain.portrait_store import PortraitStore
+    try:
+        app["portrait_store"] = PortraitStore(os.path.join(data_dir, "portrait.db"))
+        logger.info("PortraitStore ready")
+    except Exception:
+        # Un portrait.db corrotto (perdita di corrente, disco guasto) fa
+        # sollevare sqlite3.DatabaseError da init_schema anche se connect()
+        # riesce: senza questo try/except l'eccezione uscirebbe da
+        # _on_startup e fermerebbe l'intero add-on (niente reasoner, niente
+        # scheduler, niente chat) per un file che e' una cache ricostruibile.
+        # I due consumatori del ritratto controllano gia' esplicitamente
+        # `app.get("portrait_store") is None` e degradano a ""/skip: non
+        # scriverla in app basta a innescare quella degradazione.
+        logger.warning(
+            "PortraitStore non disponibile (portrait.db corrotto o "
+            "illeggibile): il ritratto della casa resta disattivato per "
+            "questo avvio", exc_info=True,
+        )
+
     # Thin wrapper binding the module-level request_confirmation_stepup to
     # this app instance; see request_confirmation_stepup for the actual
     # no-identity guard and yellow/red actionable logic.
@@ -1629,7 +1770,7 @@ async def _on_startup(app: web.Application) -> None:
             fn = (state or {}).get("attributes", {}).get("friendly_name") if state else None
             friendly_name = fn or wake.entity_id
         except Exception:
-            return {"friendly_name": wake.entity_id}
+            return {"friendly_name": wake.entity_id, "portrait": _portrait_context(app)}
 
         # Slice 6b Task 4: bounded, egress-gated memory recall added on top.
         # _reason_memory_context is itself failure-safe (never raises), but
@@ -1638,8 +1779,9 @@ async def _on_startup(app: web.Application) -> None:
         try:
             mem = await _reason_memory_context(app, embedder, wake, friendly_name)
         except Exception:
-            return {"friendly_name": friendly_name}
-        return {"friendly_name": friendly_name, "memory": mem}
+            return {"friendly_name": friendly_name, "portrait": _portrait_context(app)}
+        return {"friendly_name": friendly_name, "memory": mem,
+                "portrait": _portrait_context(app)}
 
     async def _llm_reason(system, user, *, model, max_tokens,
                           agent_id=None, allowed_entities=None, allowed_services=None):
@@ -2201,7 +2343,7 @@ async def _on_startup(app: web.Application) -> None:
                 from .brain.coverage_review import (
                     COVERAGE_REVIEW_SYSTEM, build_review_context,
                     build_review_message, parse_suggestions)
-                from .brain.suggestions import apply_suggestions
+                from .brain.suggestions import apply_suggestions, reconcile_proposal_outcome
                 from .brain.cognitive_loop import auto_tune_detectors, trace_applied_coverage
                 from .api.handlers_entities import filter_entities
                 _inventory = filter_entities(_cache.all_states(), None, None)
@@ -2224,7 +2366,9 @@ async def _on_startup(app: web.Application) -> None:
                         limit=5)
                 except Exception:
                     logger.warning("holistic memory retrieval failed", exc_info=True)
-                _ctx = build_review_context(snapshot, _inventory, _current, memory=_mem)
+                _ctx = build_review_context(snapshot, _inventory, _current,
+                                            memory=_mem,
+                                            portrait=_portrait_context(app))
                 # SP-2 Task 4: il Brain (questo passaggio olistico) usa il
                 # modello scelto per il Brain, se esplicito; "auto" (default)
                 # -> catena, invariato.
@@ -2240,19 +2384,35 @@ async def _on_startup(app: web.Application) -> None:
                 except Exception:
                     logger.warning("reasoning capture failed", exc_info=True)
 
-                def _mk_proposal(c):
+                def _mk_proposal(c, suggestion_id):
                     # Consolidamento 1.2: apply_suggestions inoltra qui SOLO i
                     # suggerimenti 'management' che sono davvero una config di
                     # automazione HA (is_automation_config), quindi il tipo
                     # dichiarato e il contenuto coincidono e l'apply scrive in
                     # HA qualcosa che funziona. Il nome leggibile di
                     # un'automazione e' `alias`, non `name`.
-                    return _spawn(create_automation_proposal(
+                    task = _spawn(create_automation_proposal(
                         proposal_store, proposal_type="ha_automation",
                         name=str(c.get("alias") or c.get("name") or "Brain coverage-review"),
                         description=str(c.get("description") or ""),
                         config=c, routing_reason="brain coverage-review"),
                         name="create_automation_proposal")
+                    # I-1: create_automation_proposal segnala il fallimento
+                    # come valore di ritorno, non un'eccezione, e questo task
+                    # e' fire-and-forget -- prima di questo callback nessuno
+                    # lo ispezionava e la riga 'management' restava marcata
+                    # 'proposed' (scritta sopra, in apply_suggestions, prima
+                    # che questo task finisse) anche quando la proposta non
+                    # era stata salvata. Riconcilia lo stato quando l'esito
+                    # vero e' disponibile.
+                    def _on_proposal_done(t, _sid=suggestion_id):
+                        try:
+                            result = t.result()
+                        except Exception as exc:
+                            result = {"error": str(exc)}
+                        reconcile_proposal_outcome(_store, _sid, result)
+                    task.add_done_callback(_on_proposal_done)
+                    return task
 
                 _applied_coverage = apply_suggestions(
                     _suggs, data_dir=data_dir, store=_store,
@@ -2343,6 +2503,21 @@ async def _on_startup(app: web.Application) -> None:
         _run_health_scan, trigger="interval",
         minutes=int(os.environ.get("HIRIS_HEALTH_SCAN_MINUTES", "30")),
         id="hiris_health_scan", replace_existing=True, misfire_grace_time=300)
+
+    async def _portrait_observe_job():
+        try:
+            n = await _osserva_la_casa(app)
+            if n:
+                logger.info("ritratto: %d cambiamenti registrati", n)
+        except Exception:
+            logger.warning("portrait observe job failed", exc_info=True)
+
+    engine._scheduler.add_job(
+        _portrait_observe_job, "interval",
+        minutes=int(os.environ.get("HIRIS_PORTRAIT_OBSERVE_MINUTES", "15")),
+        id="hiris_portrait_observe", replace_existing=True,
+        misfire_grace_time=300,
+    )
 
     def _run_reasoning_prune():
         try:
@@ -2660,6 +2835,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["reasoning_log"].close()
     if "advisory_store" in app:
         app["advisory_store"].close()
+    if "portrait_store" in app:
+        app["portrait_store"].close()
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "task_engine" in app:

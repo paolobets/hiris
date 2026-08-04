@@ -1,3 +1,15 @@
+> ## ⚠️ Documento superato — Refactor 2.0 (4 agosto 2026)
+>
+> Questo documento descrive HIRIS **prima** del Refactor 2.0. Parla di *Sentinella*, *Agentbot*,
+> *semaforo* a quattro colori e di un pannello di configurazione di entità AI: tutte cose che il
+> refactor ha mandato in pensione o riscritto.
+>
+> **Cosa HIRIS deve essere oggi:** [`docs/design/2026-08-04-scope-hiris.md`](design/2026-08-04-scope-hiris.md)
+> **Cosa fa oggi il codice:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md)
+>
+> Restano utili le parti puramente operative (installazione, chiavi, opzioni dell'add-on). Sarà
+> riscritto come atto finale del refactor, sul prodotto vero.
+
 # HIRIS — Guida alla Configurazione
 
 > Versione: 0.22.1 · Aggiornato: 2026-07-17

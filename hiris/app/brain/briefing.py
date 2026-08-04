@@ -30,6 +30,7 @@ from datetime import date, timedelta
 
 from .advisory_store import STATI_ATTIVI
 from .health_checks import BATTERIA_TITOLO_PREFISSO, CHECK_BATTERIA
+from ..proxy.entity_cache import inventario_leggibile
 
 try:
     from ..proxy._sanitize import sanitize_ha_value as _san  # SEC-024 sanitizer
@@ -95,19 +96,26 @@ def _collect_deadlines(
     return deadlines, hidden_sensitive
 
 
-def _collect_open_now(entity_cache) -> list[dict]:
+def _collect_open_now(entity_cache) -> tuple[list[dict], bool]:
     """Porte e finestre aperte adesso, dalla cache delle entita', al piu' 20.
+
+    Ritorna `(aperture, lette)`. `lette` e' False quando non si e' potuto
+    guardare -- cache assente, mai caricata (vedi `EntityCache.loaded`) o che
+    solleva: un elenco vuoto in quei casi diventerebbe "nessuna apertura", cioe'
+    un'affermazione sulla casa che nessuno ha verificato. Il maggiordomo deve
+    poter dire "non ho potuto controllare", come gli strumenti di chat che
+    leggono lo stesso inventario.
 
     Questa parte resta un calcolo istantaneo: l'apertura di una porta e' una
     condizione che cambia da un minuto all'altro e nessun controllo del Brain
     la sorveglia.
     """
-    if entity_cache is None:
-        return []
+    if not inventario_leggibile(entity_cache):
+        return [], False
     try:
         states = entity_cache.all_states()
     except Exception:
-        return []
+        return [], False
 
     open_now: list[dict] = []
     for entity in states or []:
@@ -125,7 +133,7 @@ def _collect_open_now(entity_cache) -> list[dict]:
         except Exception:
             continue
 
-    return open_now
+    return open_now, True
 
 
 def _nome_batteria(riga: dict, evidenza: dict) -> str:
@@ -233,18 +241,25 @@ def build_briefing_bundle(
         deadlines, hidden_sensitive = [], 0
 
     try:
-        open_now = _collect_open_now(entity_cache)
+        open_now, aperture_lette = _collect_open_now(entity_cache)
     except Exception:
-        open_now = []
+        open_now, aperture_lette = [], False
 
     try:
         low_batteries = _collect_low_batteries(advisory_store)
     except Exception:
         low_batteries = []
 
+    home: dict = {"open_now": open_now, "low_batteries": low_batteries}
+    # La chiave compare SOLO quando c'e' una lacuna da dichiarare: il caso
+    # normale mantiene la forma di prima, e il cambio di forma e' esso stesso la
+    # spiegazione (stessa convenzione della potatura in api/read_denylist.py).
+    if not aperture_lette:
+        home["open_now_unavailable"] = True
+
     return {
         "deadlines": deadlines,
-        "home": {"open_now": open_now, "low_batteries": low_batteries},
+        "home": home,
         "counts": {
             "deadlines": len(deadlines),
             "hidden_sensitive": hidden_sensitive,
@@ -265,7 +280,9 @@ BRIEFING_SYSTEM = (
     "aperte e batterie scariche, e lo racconti con tono cortese, professionale e "
     "sintetico, in italiano. Usa SOLO i dati forniti nel riepilogo: non inventare, "
     "non dedurre e non aggiungere nulla che non sia presente nei dati ricevuti. Se "
-    "non c'e' nulla di rilevante da segnalare, dillo brevemente e basta. Sei "
+    "non c'e' nulla di rilevante da segnalare, dillo brevemente e basta. Se il "
+    "riepilogo contiene `open_now_unavailable`, porte e finestre NON sono state "
+    "controllate: dillo apertamente e non affermare che sia tutto chiuso. Sei "
     "puramente informativo: non proporre e non intraprendere alcuna azione, "
     "limitati a riferire quanto ricevuto."
 )
@@ -300,6 +317,7 @@ def render_briefing_template(bundle: dict) -> str:
     home = bundle.get("home") or {}
     open_now = home.get("open_now") or []
     low_batteries = home.get("low_batteries") or []
+    aperture_non_lette = bool(home.get("open_now_unavailable"))
 
     lines: list[str] = ["Ecco il resoconto di oggi."]
 
@@ -324,7 +342,14 @@ def render_briefing_template(bundle: dict) -> str:
             except Exception:
                 continue
 
-    if open_now:
+    if aperture_non_lette:
+        # Dirlo e' l'unica frase vera: "nessuna apertura" qui sarebbe
+        # un'affermazione sulla casa che nessuno ha verificato.
+        lines.append(
+            "Non ho potuto controllare porte e finestre: l'inventario delle "
+            "entità non è disponibile in questo momento."
+        )
+    elif open_now:
         try:
             names = [str(_san(e.get("name") or "")).strip() for e in open_now if isinstance(e, dict)]
             names = [n for n in names if n]
@@ -350,10 +375,18 @@ def render_briefing_template(bundle: dict) -> str:
             lines.append("Batterie scariche: " + ", ".join(parts) + ".")
 
     if not deadlines and not open_now and not low_batteries:
-        lines.append(
-            "Non c'e' nulla di urgente al momento: nessuna scadenza imminente, "
-            "nessuna apertura e nessuna batteria scarica da segnalare."
-        )
+        if aperture_non_lette:
+            # Senza le aperture il "nulla da segnalare" vale solo per cio' che
+            # si e' davvero potuto guardare.
+            lines.append(
+                "Per il resto non c'è nulla di urgente: nessuna scadenza "
+                "imminente e nessuna batteria scarica da segnalare."
+            )
+        else:
+            lines.append(
+                "Non c'e' nulla di urgente al momento: nessuna scadenza imminente, "
+                "nessuna apertura e nessuna batteria scarica da segnalare."
+            )
 
     try:
         hidden = (bundle.get("counts") or {}).get("hidden_sensitive")
@@ -405,10 +438,17 @@ def build_briefing_message(bundle: dict) -> str:
         for e in low_batteries if isinstance(e, dict)
     ]
 
+    san_home: dict = {"open_now": san_open_now, "low_batteries": san_low_batteries}
+    # Booleano nostro, non testo di terzi: se la lacuna non entrasse nel
+    # riepilogo, il modello comporrebbe comunque "e' tutto chiuso" leggendo un
+    # `open_now` vuoto. Il sistema (BRIEFING_SYSTEM) gli dice come leggerla.
+    if home.get("open_now_unavailable"):
+        san_home["open_now_unavailable"] = True
+
     payload = {
         "generated_for": generated_for,
         "deadlines": san_deadlines,
-        "home": {"open_now": san_open_now, "low_batteries": san_low_batteries},
+        "home": san_home,
         "counts": counts,
     }
     return (

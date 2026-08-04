@@ -220,9 +220,13 @@
         var link = (a.fix_kind === 'hiris_config')
           ? '<a class="btn btn-sm" href="#/gateway">Apri Gateway</a>' : '';
         var severity = a.severity || 'info';
+        /* Classe CSS sul valore grezzo (adv-info/adv-warn/adv-high, per lo
+           styling), etichetta visibile dal dizionario condiviso (labels.js)
+           -- prima qui finiva severity.toUpperCase() (INFO/WARN/HIGH, mai
+           tradotto). */
         return '<div class="adv-card adv-' + escHtml(severity) + '" id="adv-' + escHtml(String(a.id)) + '"' +
           ' data-ts="' + escHtml(String(a.ts_updated || a.ts || '')) + '">' +
-          '<div class="adv-sev">' + escHtml(severity.toUpperCase()) + '</div>' +
+          '<div class="adv-sev">' + escHtml(HirisLabels.advisorySeverityLabel(severity)) + '</div>' +
           '<div class="adv-title">' + escHtml(a.title || '') + '</div>' +
           '<div class="prop-desc">' + escHtml(a.suggested_fix || '') + '</div>' +
           '<div class="prop-actions">' + link +
@@ -274,7 +278,14 @@
     if (!window.confirm(isReject ? 'Rifiutare questa proposta?' : 'Attivare questa proposta?')) return;
     var fn = isReject ? HirisProposalsCore.reject : HirisProposalsCore.apply;
     fn(id).then(function(res) {
-      if (!res.ok) { window.alert(res.error || 'Errore'); return; }
+      // I-5 (fratello di chat/proposals.js::act -- stesso HirisProposalsCore,
+      // stesso difetto): mai la stringa tecnica del backend, messaggio
+      // derivato dallo stato.
+      if (!res.ok) {
+        console.error('proposal ' + kind + ' failed', res.status, res.error);
+        window.alert(HirisProposalsCore.errorMessage(res));
+        return;
+      }
       loadProposalsPeek();   // ricarica il peek: la card sparisce, il conteggio si aggiorna
     }, function() { window.alert('Errore di rete'); });
   }
@@ -290,7 +301,7 @@
       var body = document.getElementById('dash-proposals-body');
       if (!body) return;
       if (!props.length) {
-        body.innerHTML = '<div style="padding:16px;color:var(--text-3)">Nessuna proposta pending.</div>';
+        body.innerHTML = '<div style="padding:16px;color:var(--text-3)">Nessuna proposta in attesa.</div>';
         return;
       }
       body.innerHTML = props.map(function(p) {

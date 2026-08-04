@@ -13,6 +13,7 @@ _AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 # Action types the TaskEngine can actually execute (deny-by-default at create_task).
 _ALLOWED_TASK_ACTIONS = frozenset({"call_ha_service", "send_notification", "create_task"})
 
+from ..proxy.entity_cache import inventario_non_leggibile as _inventario_non_leggibile
 from .ha_tools import (
     get_entity_states, get_area_entities, get_home_status,
     get_entities_on, get_entities_by_domain,
@@ -120,6 +121,12 @@ def _check_entity_allowed(
     return None
 
 
+# I messaggi e la regola dei tre casi vivono accanto alla bandiera che li
+# governa (proxy/entity_cache.py), perche' li condividono anche ha_tools,
+# brain/briefing e api/handlers_entities: il difetto era sopravvissuto nei
+# fratelli proprio perche' ognuno decideva per conto suo.
+
+
 class ToolDispatcher:
     """Executes HIRIS tools. Shared across LLM runners so HA integration stays in one place."""
 
@@ -212,6 +219,12 @@ class ToolDispatcher:
                                     "oppure dimmi il codice che ti ho inviato.")}
             return {"error": "Azione a rischio: richiede conferma."}
         return {"error": verdict.reason}
+
+    def _cache_non_leggibile(self) -> dict | None:
+        """None se l'inventario delle entita' e' utilizzabile, altrimenti
+        l'errore da restituire subito al chiamante (vedi
+        `proxy.entity_cache.inventario_non_leggibile`)."""
+        return _inventario_non_leggibile(self._cache)
 
     @property
     def has_memory(self) -> bool:
@@ -309,13 +322,22 @@ class ToolDispatcher:
                 # concedibile solo esplicitamente a un agente di chat.
                 return await _render_template(self._ha, inputs.get("template"))
             if name == "get_home_status":
-                result = get_home_status(self._cache, semantic_map=self._semantic_map) if self._cache else []
+                guasto = self._cache_non_leggibile()
+                if guasto is not None:
+                    return guasto
+                result = get_home_status(self._cache, semantic_map=self._semantic_map)
                 return _filter_entities(result, allowed_entities)
             if name == "get_entities_on":
-                result = get_entities_on(self._cache) if self._cache else []
+                guasto = self._cache_non_leggibile()
+                if guasto is not None:
+                    return guasto
+                result = get_entities_on(self._cache)
                 return _filter_entities(result, allowed_entities)
             if name == "get_entities_by_domain":
-                result = get_entities_by_domain(inputs["domain"], self._cache) if self._cache else []
+                guasto = self._cache_non_leggibile()
+                if guasto is not None:
+                    return guasto
+                result = get_entities_by_domain(inputs["domain"], self._cache)
                 return _filter_entities(result, allowed_entities)
             if name == "get_energy_history":
                 return await get_energy_history(self._ha, inputs["days"], semantic_map=self._semantic_map)
@@ -660,7 +682,19 @@ class ToolDispatcher:
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
                 )
-            if name == "recall_knowledge" and self._knowledge_store:
+            if name == "recall_knowledge":
+                # Il ramo era condizionato allo store: senza store l'esecuzione
+                # cadeva in fondo, dove la risposta e' «Tool 'recall_knowledge'
+                # non esiste. [...] Non inventare nomi di tool.» -- un rimprovero
+                # per aver chiamato uno strumento che il system prompt gli aveva
+                # elencato, dopo il quale il modello smette di usarlo per tutta
+                # la conversazione. La condizione va DENTRO il ramo, come in
+                # recall_memory/save_memory. Serve anche l'embedder: senza non
+                # c'e' ricerca semantica possibile.
+                if self._knowledge_store is None or self._knowledge_embedder is None:
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "cercare nei ricordi di casa in questo "
+                                      "momento.")}
                 return await handle_recall_knowledge(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
@@ -671,7 +705,12 @@ class ToolDispatcher:
                     cloud=cloud,
                     pseudonym_map=pseudonym_map,
                 )
-            if name == "link_knowledge" and self._knowledge_store:
+            if name == "link_knowledge":
+                # Stesso difetto di recall_knowledge qui sopra. Qui basta lo
+                # store: collegare due elementi non passa dall'embedder.
+                if self._knowledge_store is None:
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "collegare due ricordi in questo momento.")}
                 return await handle_link_knowledge(self._knowledge_store, inputs)
             if name == "daily_briefing":
                 # On-demand chat butler summary (Slice 7 Task 5). READ-ONLY: no HA

@@ -1,3 +1,15 @@
+> ## ⚠️ Superseded document — Refactor 2.0 (4 August 2026)
+>
+> This document describes HIRIS **before** Refactor 2.0. It talks about *Sentinella*, *Agentbot*,
+> a four-colour *semaforo* and a configuration panel for AI entities — all of which the refactor
+> has retired or rewritten.
+>
+> **What HIRIS must be now:** [`docs/design/2026-08-04-scope-hiris.md`](design/2026-08-04-scope-hiris.md) (Italian)
+> **What the code does today:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md) (Italian)
+>
+> The purely operational parts (installation, keys, add-on options) are still useful. It will be
+> rewritten as the final act of the refactor, against the real product.
+
 # HIRIS — Use Cases & Examples
 
 > Version: 1.0.0 · Updated: 2026-07-29
@@ -312,7 +324,12 @@ wrong", write "tell me if consumption exceeds 3kW".
 schedule in `strategic_context`. Claude uses this to calibrate its replies.
 
 **Use `require_confirmation` for irreversible actions:** any Chatbot that
-controls heating, appliances, or security should have this enabled.
+controls heating, appliances, or security should have this enabled. It is an
+instruction to the model, not a hard block: it does not replace the semaphore,
+which is the safeguard that holds on its own for `call_ha_service`,
+`trigger_automation`, `toggle_automation` and `set_input_helper`. One
+exception, `create_ha_config`: the semaphore does not cover it, so there this
+confirmation is the only step before the effect. Set both.
 
 **Keep scope tight:** `allowed_tools`/`allowed_entities`/`allowed_services` as
 narrow as possible for each Chatbot — especially for assistants shared with

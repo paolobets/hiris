@@ -93,6 +93,52 @@ def is_automation_config(config: object) -> bool:
     return has_trigger and has_action
 
 
+def is_automation_entity_id(value: object) -> bool:
+    """True se `value` ha la forma di un entity_id di automazione
+    (`automation.<slug>`) — la forma che l'LLM confonde spesso con l'id
+    numerico che HA usa nell'URL di configurazione (bug live-verify #3: la
+    proposta aveva 'automation.avviso_...' in config['id'] al posto dell'id
+    numerico). Solo forma, nessuna verifica che l'automazione esista davvero:
+    quella spetta a resolve_automation_id_by_entity_id.
+
+    M-4: valida sull'intera stringa con _ENTITY_ID_RE (la stessa forma
+    canonica dominio.oggetto usata da get_calendar_events_range) invece di
+    applicare _AUTOMATION_ID_RE al solo suffisso -- terza convenzione che si
+    era infilata in questo stesso file per fare la stessa domanda.
+
+    Condivisa fra HAClient.create_automation (Correzione 1) e
+    create_automation_proposal (Correzione 2) cosi' le due validazioni non
+    divergono su cosa conta come 'sembra un entity_id'."""
+    return (isinstance(value, str) and value.startswith("automation.")
+            and bool(_ENTITY_ID_RE.match(value)))
+
+
+def is_automation_id_candidate(value: object) -> bool:
+    """True se `value` ha una delle TRE forme che HA accetta per identificare
+    un'automazione esistente: id numerico, entity_id (`automation.<slug>`) o
+    object_id nudo (`<slug>`) -- lo stesso contratto a tre forme che
+    get_automation_config accetta da sempre (righe piu' sotto) e che
+    trigger_automation/toggle_automation (automation_tools.py) e
+    create_automation (risoluzione dell'id fornito) usano per lo stesso oggetto.
+
+    Solo forma, nessuna verifica che l'automazione esista davvero (quella
+    spetta a resolve_automation_id_by_entity_id / get_automation_config).
+
+    C-2: prima di questa funzione la validazione alla CREAZIONE della
+    proposta (proposal_tools.py) riconosceva solo due forme (numerico,
+    entity_id) mentre l'APPLY (create_automation, sotto) ne accetta tre da
+    sempre -- il gate rifiutava una proposta che l'apply avrebbe applicato.
+    Principio: alla creazione si rifiuta SOLO cio' che l'apply rifiuterebbe
+    di sicuro, quindi le due validazioni condividono questo unico predicato."""
+    if not isinstance(value, str) or not value:
+        return False
+    if value.isascii() and value.isdigit():
+        return True
+    if is_automation_entity_id(value):
+        return True
+    return bool(_AUTOMATION_ID_RE.match(value))
+
+
 class HAClient:
     def __init__(self, base_url: str, token: str) -> None:
         self._base_url = base_url.rstrip("/")
@@ -177,13 +223,69 @@ class HAClient:
         # un'automazione SENZA riportarne l'id, e senza questo si creava un
         # doppione invece di sovrascrivere l'originale (bug live-verify #2).
         # Solo come ultima risorsa si conia un id nuovo (automazione davvero nuova).
-        aid = str(automation_id or config.get("id") or "")
-        if not aid:
+        async def _by_alias() -> str | None:
             alias = config.get("alias")
             if isinstance(alias, str) and alias.strip():
-                resolved = await self.resolve_automation_id_by_alias(alias.strip())
-                if resolved:
-                    aid = resolved
+                return await self.resolve_automation_id_by_alias(alias.strip())
+            return None
+
+        aid = str(automation_id or config.get("id") or "")
+        # Un id FORNITO ma non numerico non e' "assente": e' un bersaglio
+        # dichiarato, quasi sempre l'entity_id (o l'object_id nudo) al posto
+        # dell'id numerico (bug live-verify #3). Le forme provate qui sotto
+        # sono le stesse tre che get_automation_config accetta (C-2):
+        # numerico (gia' escluso dall'if), entity_id, object_id nudo.
+        #
+        # DECISIONE (review C-1, non negoziabile): se l'id fornito non
+        # risolve a NESSUNA di queste forme, si FALLISCE -- MAI un ripiego
+        # sull'alias. Chi ha nominato un bersaglio ha gia' espresso
+        # un'intenzione precisa: se quel bersaglio non esiste, indovinarne un
+        # altro dal `friendly_name` e sovrascriverlo sarebbe un danno
+        # irreversibile e silenzioso -- a differenza delle plance
+        # (config_tools.apply_ha_config, mode == "replace"), qui non esiste
+        # nessuno snapshot da cui tornare indietro. Il ripiego per alias
+        # resta SOLO nel ramo "if not aid" qui sotto, dove non c'e' un
+        # bersaglio dichiarato da tradire: e' il caso per cui era stato
+        # costruito (bug live-verify #2).
+        if aid and not (aid.isascii() and aid.isdigit()):
+            if not is_automation_id_candidate(aid):
+                return {"error": (
+                    f"id automazione non valido: {aid!r}. Serve l'id numerico "
+                    "che Home Assistant usa nell'URL di configurazione (lo "
+                    "restituisce get_automation_config), oppure l'entity_id "
+                    "(automation.<nome>) o l'object_id nudo (<nome>) di "
+                    "un'automazione esistente. Per creare una automazione "
+                    "nuova, ometti 'id'.")}
+            eid = aid if aid.startswith("automation.") else f"automation.{aid}"
+            resolved, lookup_failed = await self.resolve_automation_id_by_entity_id(eid)
+            if resolved:
+                aid = resolved
+            elif lookup_failed:
+                # I-3: un guasto di HA durante la verifica non e' "id
+                # sbagliato", e' "non ho potuto controllare" -- confondere i
+                # due casi spinge il modello a seguire il consiglio "ometti
+                # l'id" e a creare il doppione che il bug live-verify #2
+                # aveva chiuso. Nessuna scrittura in nessuno dei due casi.
+                return {"error": (
+                    f"non sono riuscito a verificare l'id fornito ({aid!r}): "
+                    "Home Assistant non ha risposto alla lettura delle "
+                    "automazioni esistenti. Riprova; l'automazione indicata "
+                    "potrebbe esistere davvero.")}
+            else:
+                # Deliberato: NON si conia un id nuovo qui. Chi ha scritto un
+                # id (anche sbagliato) ha indicato un bersaglio preciso e non
+                # voleva un doppione — coniare un id nuovo produrrebbe
+                # un'automazione indesiderata invece di segnalare l'errore.
+                return {"error": (
+                    f"id automazione non valido: {aid!r}. Nessuna automazione "
+                    "esistente corrisponde a questo id. Serve l'id numerico "
+                    "che Home Assistant usa nell'URL di configurazione (lo "
+                    "restituisce get_automation_config). Per creare una "
+                    "automazione nuova, ometti 'id'.")}
+        if not aid:
+            resolved = await _by_alias()
+            if resolved:
+                aid = resolved
         if not aid:
             aid = str(int(datetime.now(timezone.utc).timestamp() * 1_000_000))
         if not (aid.isascii() and aid.isdigit()):
@@ -198,7 +300,14 @@ class HAClient:
                     err = await resp.text()
                     return {"error": f"HA ha rifiutato la config ({resp.status}): {err[:200]}"}
         except Exception as exc:
-            return {"error": f"scrittura automazione fallita: {exc}"}
+            # M-5: mai fare eco di str(exc) al chiamante (puo' contenere host,
+            # path o dettagli di libreria) -- stessa regola gia' rispettata da
+            # render_template. Questa funzione e' quella che il commit
+            # riapre, quindi e' quella sanata qui; _post_config e
+            # get_automation_config hanno la stessa forma pre-esistente ma
+            # restano fuori dal perimetro di questa fix wave.
+            logger.warning("create_automation: scrittura fallita (id=%s): %s", aid, exc)
+            return {"error": "scrittura automazione fallita"}
         # Reload so the new automation becomes active immediately (idempotent).
         try:
             await self.call_service("automation", "reload", {})
@@ -224,6 +333,40 @@ class HAClient:
                 if aid.isascii() and aid.isdigit():
                     ids.append(aid)
         return ids[0] if len(ids) == 1 else None
+
+    async def resolve_automation_id_by_entity_id(self, entity_id: str) -> tuple[str | None, bool]:
+        """(id, lookup_fallito).
+
+        id: l'id numerico dell'automazione il cui `entity_id` == entity_id, se
+        trovato ed e' un numero valido (altrimenti None). Gemello di
+        resolve_automation_id_by_alias: stessa fonte `get_automations()`,
+        stesso controllo isascii()/isdigit() sull'id trovato. A differenza
+        dell'alias (un `friendly_name` puo' ripetersi su piu' automazioni)
+        l'entity_id e' univoco per costruzione in HA: non serve alcun
+        controllo di ambiguita'.
+
+        lookup_fallito: True quando `get_automations()` ha sollevato -- in tal
+        caso `id is None` NON significa "nessuna automazione con questo
+        entity_id", significa "non ho potuto controllare" (stessa classe A3
+        gia' chiusa in proxy.entity_cache.inventario_non_leggibile: un elenco
+        vuoto/None racconta due cose diverse e il chiamante deve poterle
+        distinguere). Prima di questa distinzione (I-3) un guasto transitorio
+        di HA durante `create_automation` veniva raccontato al modello come
+        "id automazione non valido", col consiglio di ometterlo -- che produce
+        il doppione gia' chiuso dal bug live-verify #2.
+
+        Non solleva mai (fail-safe)."""
+        try:
+            autos = await self.get_automations()
+        except Exception:
+            return None, True
+        for a in autos or []:
+            if a.get("entity_id") != entity_id:
+                continue
+            attrs = a.get("attributes") or {}
+            aid = str(attrs.get("id") or "")
+            return (aid if aid.isascii() and aid.isdigit() else None), False
+        return None, False
 
     @staticmethod
     def _is_slug(value: str) -> bool:

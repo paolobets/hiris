@@ -20,7 +20,8 @@ COVERAGE_REVIEW_SYSTEM = (
 )
 _JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 
-def build_review_context(snapshot, inventory, current_config, memory=None) -> dict:
+def build_review_context(snapshot, inventory, current_config, memory=None,
+                         portrait=None) -> dict:
     inv = [{"entity_id": e.get("entity_id"), "friendly_name": _san(e.get("friendly_name") or ""),
             "domain": e.get("domain"), "device_class": e.get("device_class")} for e in (inventory or [])]
     # Review C/#4: sanitize the HA-health/error-log snapshot through the SAME
@@ -37,6 +38,11 @@ def build_review_context(snapshot, inventory, current_config, memory=None) -> di
         # non-empty so absent/empty memory keeps the context (and therefore
         # build_review_message's output) identical to before this change.
         ctx["memory"] = list(memory)
+    if isinstance(portrait, str) and portrait.strip():
+        # Solo-se-non-vuoto, come per `memory`: mantiene byte-identico il
+        # messaggio quando il ritratto non e' disponibile (test di
+        # byte-identita' in tests/test_coverage_review_memory.py).
+        ctx["portrait"] = portrait.strip()
     return ctx
 
 def build_review_message(context) -> str:
@@ -56,8 +62,13 @@ def build_review_message(context) -> str:
         lines = "\n".join(f"- {s}" for s in flat if s)
         if lines:
             memory_block = f"Cosa so di rilevante:\n{lines}\n\n"
+    portrait = ctx.pop("portrait", None)
+    portrait_block = ""
+    if isinstance(portrait, str) and portrait.strip():
+        portrait_block = f"{portrait.strip()}\n\n"
     return ("Inventario + config attuale:\n" + json.dumps(ctx, ensure_ascii=False)
-            + "\n\n" + memory_block + "Proponi coperture/gestioni col blocco json richiesto.")
+            + "\n\n" + portrait_block + memory_block
+            + "Proponi coperture/gestioni col blocco json richiesto.")
 
 def parse_suggestions(text) -> list[dict]:
     m = list(_JSON_RE.finditer(text or ""))

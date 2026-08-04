@@ -1,5 +1,25 @@
 # Product
 
+> ## ⚠️ Documento parzialmente superato — 4 agosto 2026
+>
+> Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal
+> **Refactor 2.0**: `docs/design/2026-08-04-scope-hiris.md`.
+>
+> Descrivevano HIRIS come *«un pannello di configurazione delle entità AI»* — un workbench con
+> sandbox, eval e telemetria per-entità come criteri di successo. Quel prodotto non è mai stato
+> costruito: mesi di sprint sono andati tutti verso l'assistente e il cervello proattivo, nessuno
+> verso la sandbox. Il documento sbagliato era questo, non il codice.
+>
+> **HIRIS è l'intelligenza della casa**: sa tutto ciò che della casa si può sapere, impara, e
+> costruisce ciò che serve — oggetti standard di Home Assistant quando basta il determinismo,
+> **agenti** quando serve giudizio.
+>
+> **Restano pienamente validi** e non sono toccati dal refactor:
+> **Brand Personality** · **Anti-references** · **Accessibility & Inclusion**.
+>
+> Le sezioni superate sono conservate qui sotto perché il registro visivo che ne discende
+> (densità, tono, tipografia) resta corretto anche se la definizione di prodotto è cambiata.
+
 ## Register
 
 product
