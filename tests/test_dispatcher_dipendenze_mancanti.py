@@ -1,11 +1,11 @@
 """A2/A3 — quando una dipendenza manca, il dispatcher deve dirlo.
 
-A2: `recall_knowledge` e `link_knowledge` erano rami condizionati alla presenza
-dello store. Senza store l'esecuzione cadeva nel ramo finale, che risponde
-«Tool 'X' non esiste. [...] Non inventare nomi di tool.»: il modello viene
-rimproverato per aver chiamato uno strumento che gli era stato elencato, e la
-reazione tipica e' smettere di usarlo per il resto della conversazione. I
-gemelli `recall_memory`/`save_memory` gestiscono correttamente lo stesso caso.
+A2: `recall_knowledge` era un ramo condizionato alla presenza dello store.
+Senza store l'esecuzione cadeva nel ramo finale, che risponde «Tool 'X' non
+esiste. [...] Non inventare nomi di tool.»: il modello viene rimproverato per
+aver chiamato uno strumento che gli era stato elencato, e la reazione tipica
+e' smettere di usarlo per il resto della conversazione. I gemelli
+`recall_memory`/`save_memory` gestiscono correttamente lo stesso caso.
 
 A3: i tre strumenti che leggono dalla cache delle entita' rispondevano con un
 elenco vuoto quando la cache non c'era o non era ancora popolata -- «la casa e'
@@ -37,7 +37,6 @@ def _disp(**kwargs) -> ToolDispatcher:
     "tool, inputs",
     [
         ("recall_knowledge", {"query": "caldaia"}),
-        ("link_knowledge", {"src_id": 1, "dst_id": 2, "relation": "riguarda"}),
     ],
 )
 async def test_senza_store_non_accusa_il_modello_di_essersi_inventato_il_tool(tool, inputs):

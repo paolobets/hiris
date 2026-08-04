@@ -52,20 +52,6 @@ RECALL_KNOWLEDGE_TOOL_DEF = {
     },
 }
 
-LINK_KNOWLEDGE_TOOL_DEF = {
-    "name": "link_knowledge",
-    "description": "Collega due item del second brain (proposta).",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "src_id": {"type": "integer"},
-            "dst_id": {"type": "integer"},
-            "relation": {"type": "string"},
-        },
-        "required": ["src_id", "dst_id", "relation"],
-    },
-}
-
 
 async def handle_save_knowledge(
     store: Any, embedder: Any, tool_input: dict, *, owner: str
@@ -184,17 +170,3 @@ async def handle_recall_knowledge(
 
     out = await loop.run_in_executor(None, _search_and_merge)
     return {"results": out, "degraded": not qv}
-
-
-async def handle_link_knowledge(store: Any, tool_input: dict) -> dict:
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None,
-        lambda: store.add_link(
-            src_id=int(tool_input["src_id"]),
-            dst_id=int(tool_input["dst_id"]),
-            relation=tool_input["relation"],
-            source="inferred",
-        ),
-    )
-    return {"ok": True}

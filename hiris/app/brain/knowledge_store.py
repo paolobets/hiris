@@ -38,19 +38,6 @@ CREATE INDEX IF NOT EXISTS idx_ki_due      ON knowledge_items(due_date);
 CREATE INDEX IF NOT EXISTS idx_ki_status   ON knowledge_items(status);
 CREATE INDEX IF NOT EXISTS idx_ki_category ON knowledge_items(category);
 
-CREATE TABLE IF NOT EXISTS knowledge_links (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    src_id      INTEGER NOT NULL,
-    dst_id      INTEGER NOT NULL,
-    relation    TEXT NOT NULL,
-    weight      REAL NOT NULL DEFAULT 1.0,
-    source      TEXT NOT NULL DEFAULT 'manual',
-    created_at  TEXT NOT NULL,
-    UNIQUE(src_id, dst_id, relation)
-);
-CREATE INDEX IF NOT EXISTS idx_kl_src ON knowledge_links(src_id);
-CREATE INDEX IF NOT EXISTS idx_kl_dst ON knowledge_links(dst_id);
-
 CREATE TABLE IF NOT EXISTS document_chunks (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id       INTEGER NOT NULL,
@@ -79,13 +66,22 @@ def _migrate_v3(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE knowledge_items RENAME COLUMN lens TO chatbot_id")
 
 
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    """v3 -> v4: via `knowledge_links`. `neighbors` (il suo unico lettore) e'
+    stato tolto in precedenza; senza un lettore la scrittura (`add_link`,
+    dietro il tool `link_knowledge`) restava una funzione morta con una
+    superficie viva. Nessuna riscrittura: i collegamenti gia' salvati non
+    erano letti da nulla."""
+    conn.execute("DROP TABLE IF EXISTS knowledge_links")
+
+
 class KnowledgeStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._mu = threading.Lock()
         init_schema(
-            self._conn, _SCHEMA, version=3,
-            migrations={2: _migrate_v2, 3: _migrate_v3},
+            self._conn, _SCHEMA, version=4,
+            migrations={2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4},
         )
 
     def _now(self) -> str:
@@ -211,10 +207,6 @@ class KnowledgeStore:
             if owner is not None and not self._owner_allowed(item_id, owner):
                 return False
             self._conn.execute("DELETE FROM knowledge_items WHERE id=?", (item_id,))
-            self._conn.execute(
-                "DELETE FROM knowledge_links WHERE src_id=? OR dst_id=?",
-                (item_id, item_id),
-            )
             # Also drop any document chunks bound to this item, otherwise a
             # deleted document leaves orphan rows in document_chunks (they are
             # already excluded from search via the item JOIN, but should not
@@ -392,19 +384,6 @@ class KnowledgeStore:
                 d["data"] = {}
             out.append(d)
         return out
-
-    def add_link(
-        self, *, src_id: int, dst_id: int, relation: str,
-        weight: float = 1.0, source: str = "manual",
-    ) -> None:
-        with self._mu:
-            self._conn.execute(
-                "INSERT OR IGNORE INTO knowledge_links"
-                "(src_id, dst_id, relation, weight, source, created_at)"
-                " VALUES(?,?,?,?,?,?)",
-                (src_id, dst_id, relation, weight, source, self._now()),
-            )
-            self._conn.commit()
 
     def add_document_chunk(self, *, item_id: int, mayan_doc_id: str,
                            chunk_index: int, content: str,

@@ -40,7 +40,7 @@ from .proposal_tools import create_automation_proposal
 from .config_tools import normalize_config_inputs, apply_ha_config
 from .dashboard_tools import propose_dashboard
 from .knowledge_tools import (
-    handle_save_knowledge, handle_recall_knowledge, handle_link_knowledge,
+    handle_save_knowledge, handle_recall_knowledge,
 )
 from ..brain.briefing import build_briefing_bundle, render_briefing_template
 from ..security.semaphore import gate_action, normalize_target
@@ -705,13 +705,6 @@ class ToolDispatcher:
                     cloud=cloud,
                     pseudonym_map=pseudonym_map,
                 )
-            if name == "link_knowledge":
-                # Stesso difetto di recall_knowledge qui sopra. Qui basta lo
-                # store: collegare due elementi non passa dall'embedder.
-                if self._knowledge_store is None:
-                    return {"error": ("La memoria non è disponibile: non posso "
-                                      "collegare due ricordi in questo momento.")}
-                return await handle_link_knowledge(self._knowledge_store, inputs)
             if name == "daily_briefing":
                 # On-demand chat butler summary (Slice 7 Task 5). READ-ONLY: no HA
                 # service call, no semaforo — it only reads knowledge_store/entity_cache.

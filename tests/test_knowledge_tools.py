@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 from hiris.app.tools.knowledge_tools import (
     SAVE_KNOWLEDGE_TOOL_DEF,
     RECALL_KNOWLEDGE_TOOL_DEF,
-    LINK_KNOWLEDGE_TOOL_DEF,
 )
 from hiris.app.brain.knowledge_store import KnowledgeStore
 
@@ -79,7 +78,6 @@ async def test_recall_pseudonymizes_non_normal_non_sensitive_literal_sensitivity
 def test_tool_defs_have_names():
     assert SAVE_KNOWLEDGE_TOOL_DEF["name"] == "save_knowledge"
     assert RECALL_KNOWLEDGE_TOOL_DEF["name"] == "recall_knowledge"
-    assert LINK_KNOWLEDGE_TOOL_DEF["name"] == "link_knowledge"
 
 
 @pytest.mark.asyncio

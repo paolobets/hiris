@@ -3,13 +3,89 @@ from hiris.app.brain.knowledge_store import KnowledgeStore
 
 
 def test_init_creates_tables(tmp_path):
+    """Un database nuovo non deve MAI far nascere `knowledge_links`: e' stata
+    tolta dallo schema (Task 8, fetta 2a) insieme al tool `link_knowledge`
+    che era il suo unico scrittore -- una tabella che nessuno interrogava."""
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     conn = sqlite3.connect(str(tmp_path / "brain.db"))
     names = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}
     assert "knowledge_items" in names
-    assert "knowledge_links" in names
+    assert "knowledge_links" not in names
+    store.close()
+
+
+def test_db_nuovo_parte_gia_alla_versione_corrente_senza_migrazioni(tmp_path):
+    """Caso 1 (brief Task 8): un database nuovo non ha tabelle prima
+    dell'init, quindi `init_schema` deve stampare direttamente la versione
+    piu' recente (4) senza far girare `_migrate_v4` -- non c'e' nulla da
+    droppare perche' `knowledge_links` non e' mai nata."""
+    db_path = tmp_path / "fresh.db"
+    store = KnowledgeStore(str(db_path))
+    conn = sqlite3.connect(str(db_path))
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    assert version == 4
+    names = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "knowledge_links" not in names
+    store.close()
+
+
+def test_db_esistente_alla_v3_perde_knowledge_links_alla_riapertura(tmp_path):
+    """Caso 2 (brief Task 8): un database che era gia' alla versione 3 (con
+    `knowledge_links` popolata da un `link_knowledge` chiamato prima di
+    questa fetta) deve, alla prossima apertura, far girare la migrazione
+    v3->v4 e perdere la tabella -- non e' una perdita, perche' nulla la
+    leggeva (`neighbors` era l'unico lettore ed e' gia' stato tolto)."""
+    db_path = tmp_path / "old.db"
+
+    # Simula un database alla v3, con knowledge_links presente e popolata,
+    # cosi' come l'avrebbe lasciato una KnowledgeStore di prima di questa
+    # fetta -- senza passare da KnowledgeStore (che oggi non crea piu' la
+    # tabella), per riprodurre fedelmente lo stato di un'installazione reale.
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE knowledge_items ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,"
+        " owner TEXT NOT NULL DEFAULT 'home', title TEXT NOT NULL DEFAULT '',"
+        " content TEXT NOT NULL, data TEXT NOT NULL DEFAULT '{}',"
+        " amount REAL, due_date TEXT, category TEXT, embedding BLOB,"
+        " sensitivity TEXT NOT NULL DEFAULT 'normal',"
+        " source TEXT NOT NULL DEFAULT 'manual', source_ref TEXT,"
+        " confidence REAL NOT NULL DEFAULT 1.0,"
+        " status TEXT NOT NULL DEFAULT 'approved',"
+        " valid_from TEXT, valid_until TEXT,"
+        " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+        " chatbot_id TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE knowledge_links ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, src_id INTEGER NOT NULL,"
+        " dst_id INTEGER NOT NULL, relation TEXT NOT NULL,"
+        " weight REAL NOT NULL DEFAULT 1.0,"
+        " source TEXT NOT NULL DEFAULT 'manual', created_at TEXT NOT NULL,"
+        " UNIQUE(src_id, dst_id, relation))"
+    )
+    conn.execute(
+        "INSERT INTO knowledge_links"
+        "(src_id, dst_id, relation, weight, source, created_at)"
+        " VALUES(1, 2, 'riguarda', 1.0, 'inferred', '2026-01-01T00:00:00Z')"
+    )
+    conn.execute("PRAGMA user_version = 3")
+    conn.commit()
+    conn.close()
+
+    # Riapertura tramite la classe reale: e' qui che deve girare la migrazione.
+    store = KnowledgeStore(str(db_path))
+    conn = sqlite3.connect(str(db_path))
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    assert version == 4
+    names = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "knowledge_links" not in names
     store.close()
 
 
