@@ -40,8 +40,20 @@ def _san(v):
 
 def build_user_message(wake: WakeEvent, context: dict) -> str:
     ev = _san(dict(wake.evidence))
-    ctx = _san(dict(context or {}))
+    # ATTENZIONE: il ritratto va estratto PRIMA di _san. sanitize_ha_value
+    # tronca ogni valore a 120 caratteri: un ritratto da ~1800 arriverebbe al
+    # prompt mozzato alla prima riga, in silenzio e con i test verdi. E' gia'
+    # sanificato alla fonte, stringa per stringa (brain/portrait.py: sia
+    # notable_state sia _nomi passano da sanitize_ha_value).
+    _raw_ctx = dict(context or {})
+    portrait = _raw_ctx.pop("portrait", None)
+    ctx = _san(_raw_ctx)
     memory = ctx.pop("memory", None)
+    portrait_block = ""
+    if isinstance(portrait, str) and portrait.strip():
+        # "" significa "nessun blocco": e' il contratto che tiene il messaggio
+        # identico a prima quando il ritratto non c'e'.
+        portrait_block = f"{portrait.strip()}\n\n"
     memory_block = ""
     if isinstance(memory, list) and memory:
         # Snippets are rendered raw (not JSON-encoded like ev/ctx), so flatten
@@ -57,6 +69,7 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
         f"Segnale: {wake.signal_kind} su {wake.entity_id}\n"
         f"Evidenza: {json.dumps(ev, ensure_ascii=False)}\n"
         f"Contesto: {json.dumps(ctx, ensure_ascii=False)}\n\n"
+        f"{portrait_block}"
         f"{memory_block}"
         "Valuta e rispondi con il blocco json richiesto."
     )

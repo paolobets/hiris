@@ -941,6 +941,28 @@ async def _osserva_la_casa(app) -> int:
         return 0
 
 
+def _portrait_context(app) -> str:
+    """Il ritratto reso, pronto per il prompt. "" se non disponibile.
+
+    Sincrona di proposito: legge solo la cache in memoria e lo store locale,
+    nessun I/O verso Home Assistant.
+    """
+    try:
+        store = app.get("portrait_store") if app is not None else None
+        cache = app.get("entity_cache") if app is not None else None
+        if store is None or cache is None or not hasattr(cache, "all_states"):
+            return ""
+        from .brain.portrait import build_portrait, render_portrait
+        area_map = cache.get_area_map() if hasattr(cache, "get_area_map") else None
+        return render_portrait(build_portrait(
+            area_map=area_map, states=cache.all_states(),
+            baseline=store.baseline(), changes=store.last_changes(),
+        ))
+    except Exception:
+        logger.warning("_portrait_context: ritratto non disponibile", exc_info=True)
+        return ""
+
+
 async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
     """Slice 7 (Maggiordomo) Task 4: the consolidated daily butler briefing
     job, replacing the old per-obligation spam (`hiris_due_reminders` /
@@ -1723,7 +1745,7 @@ async def _on_startup(app: web.Application) -> None:
             fn = (state or {}).get("attributes", {}).get("friendly_name") if state else None
             friendly_name = fn or wake.entity_id
         except Exception:
-            return {"friendly_name": wake.entity_id}
+            return {"friendly_name": wake.entity_id, "portrait": _portrait_context(app)}
 
         # Slice 6b Task 4: bounded, egress-gated memory recall added on top.
         # _reason_memory_context is itself failure-safe (never raises), but
@@ -1732,8 +1754,9 @@ async def _on_startup(app: web.Application) -> None:
         try:
             mem = await _reason_memory_context(app, embedder, wake, friendly_name)
         except Exception:
-            return {"friendly_name": friendly_name}
-        return {"friendly_name": friendly_name, "memory": mem}
+            return {"friendly_name": friendly_name, "portrait": _portrait_context(app)}
+        return {"friendly_name": friendly_name, "memory": mem,
+                "portrait": _portrait_context(app)}
 
     async def _llm_reason(system, user, *, model, max_tokens,
                           agent_id=None, allowed_entities=None, allowed_services=None):
