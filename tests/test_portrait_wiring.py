@@ -119,3 +119,8 @@ def test_gather_context_is_wired_to_the_portrait():
     src = inspect.getsource(server._on_startup)
     assert "_portrait_context(app)" in src
     assert '"portrait"' in src
+
+
+def test_holistic_is_wired_to_the_portrait():
+    src = inspect.getsource(server._on_startup)
+    assert "portrait=_portrait_context(app)" in src

@@ -2341,7 +2341,9 @@ async def _on_startup(app: web.Application) -> None:
                         limit=5)
                 except Exception:
                     logger.warning("holistic memory retrieval failed", exc_info=True)
-                _ctx = build_review_context(snapshot, _inventory, _current, memory=_mem)
+                _ctx = build_review_context(snapshot, _inventory, _current,
+                                            memory=_mem,
+                                            portrait=_portrait_context(app))
                 # SP-2 Task 4: il Brain (questo passaggio olistico) usa il
                 # modello scelto per il Brain, se esplicito; "auto" (default)
                 # -> catena, invariato.

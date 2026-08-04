@@ -76,4 +76,24 @@ def test_holistic_reason_wires_memory_into_review_context():
     src = inspect.getsource(server._on_startup)
     assert "automatic_allows_sensitive()" in src
     assert "await relevant_memory(" in src
-    assert "build_review_context(snapshot, _inventory, _current, memory=_mem)" in src
+    assert "build_review_context(snapshot, _inventory, _current," in src
+    assert "memory=_mem," in src
+
+
+def test_portrait_absent_keeps_context_and_message_identical():
+    base_ctx = build_review_context({}, [], {})
+    assert build_review_context({}, [], {}, portrait="") == base_ctx
+    assert build_review_context({}, [], {}, portrait=None) == base_ctx
+    assert "portrait" not in base_ctx
+    assert build_review_message(base_ctx) == build_review_message(
+        build_review_context({}, [], {}, portrait="")
+    )
+
+
+def test_portrait_present_is_rendered_before_the_instruction():
+    ctx = build_review_context({}, [], {}, portrait="Com'e' la casa:\n- Cucina")
+    assert ctx["portrait"] == "Com'e' la casa:\n- Cucina"
+    msg = build_review_message(ctx)
+    assert "Com'e' la casa:" in msg
+    assert "portrait" not in msg
+    assert msg.index("Com'e' la casa:") < msg.index("Proponi coperture")
