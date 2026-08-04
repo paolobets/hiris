@@ -21,7 +21,7 @@ COVERAGE_REVIEW_SYSTEM = (
 _JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 
 def build_review_context(snapshot, inventory, current_config, memory=None,
-                         portrait=None) -> dict:
+                         memory_by_meaning=False, portrait=None) -> dict:
     inv = [{"entity_id": e.get("entity_id"), "friendly_name": _san(e.get("friendly_name") or ""),
             "domain": e.get("domain"), "device_class": e.get("device_class")} for e in (inventory or [])]
     # Review C/#4: sanitize the HA-health/error-log snapshot through the SAME
@@ -38,6 +38,15 @@ def build_review_context(snapshot, inventory, current_config, memory=None,
         # non-empty so absent/empty memory keeps the context (and therefore
         # build_review_message's output) identical to before this change.
         ctx["memory"] = list(memory)
+        # fetta 2b Task 3: `memory_by_meaning` rides alongside `memory`, same
+        # discipline (added only when there is a memory block to label) --
+        # mirrors reasoner.py's build_user_message / server.py's
+        # _gather_context for the per-event path. `relevant_memory()` returns
+        # a `MemoryRecall` dataclass, not a bare list; the caller is expected
+        # to pass `.snippets` as `memory` and `.by_meaning` here, so this
+        # context is built the same way regardless of whether the store
+        # compared meanings or degraded to the most recent rows.
+        ctx["memory_by_meaning"] = bool(memory_by_meaning)
     if isinstance(portrait, str) and portrait.strip():
         # Solo-se-non-vuoto, come per `memory`: mantiene byte-identico il
         # messaggio quando il ritratto non e' disponibile (test di
@@ -51,6 +60,11 @@ def build_review_message(context) -> str:
     # rest of the context), so pop it before json.dumps -- mirrors
     # reasoner.py's build_user_message (Slice 6b Task 3).
     memory = ctx.pop("memory", None)
+    # fetta 2b Task 3: pops alongside `memory`, same reason (must not leak
+    # into the JSON blob below). Missing (a context built without the flag)
+    # is treated as NOT by-meaning: absent provenance must not earn the
+    # "relevant" heading -- same default as reasoner.py's build_user_message.
+    by_meaning = ctx.pop("memory_by_meaning", None)
     memory_block = ""
     if isinstance(memory, list) and memory:
         # Sanitize each snippet through the SAME injection filter/clamp the
@@ -61,7 +75,17 @@ def build_review_message(context) -> str:
         flat = [" ".join(str(_san(s)).split()) for s in memory]
         lines = "\n".join(f"- {s}" for s in flat if s)
         if lines:
-            memory_block = f"Cosa so di rilevante:\n{lines}\n\n"
+            # The heading must tell the truth about how these snippets were
+            # picked: "Cosa so di rilevante" only when KnowledgeStore.search
+            # actually compared meanings (a working embedder). When it
+            # degraded to the most recent rows instead (no embedder -- the
+            # factory default -- or a failed one), labelling that block
+            # "relevant" would make the model repeat a false claim to the
+            # user; "Ultimi ricordi" says what it actually is. Same string,
+            # same rule, as reasoner.py's build_user_message -- so the two
+            # paths cannot drift apart in what they tell the model.
+            heading = "Cosa so di rilevante:" if by_meaning else "Ultimi ricordi:"
+            memory_block = f"{heading}\n{lines}\n\n"
     portrait = ctx.pop("portrait", None)
     portrait_block = ""
     if isinstance(portrait, str) and portrait.strip():

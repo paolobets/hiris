@@ -11,13 +11,57 @@ import inspect
 from hiris.app.brain.coverage_review import build_review_context, build_review_message
 
 
+def test_holistic_review_produces_message_from_real_memoryrecall():
+    """Regression test (fetta 2b Task 3): pins the defect where server.py's
+    _holistic_reason passed a whole `MemoryRecall` dataclass into
+    `build_review_context`'s `memory=` parameter, which did `list(memory)` on
+    it -- `TypeError: 'MemoryRecall' object is not iterable`. Because
+    `_holistic_reason`'s outer try/except swallows everything, that exception
+    did not crash -- it silently aborted the entire daily holistic review
+    (coverage suggestions, auto-tuning, the reasoning stream), with nothing
+    saying so. The full suite was green at 2674 with this defect live: no
+    test crossed this path with a real MemoryRecall.
+
+    This test exercises a REAL `MemoryRecall` -- the exact object
+    `relevant_memory()` returns -- threaded through the two testable
+    boundaries exactly as the fixed `_holistic_reason` call site now does
+    (extracting `.snippets`/`.by_meaning` before calling
+    `build_review_context`, mirroring `_gather_context`'s handling of the
+    per-wake path's MemoryRecall in server.py). Before the fix,
+    `build_review_context` had no `memory_by_meaning` parameter at all, so
+    this call raised `TypeError: build_review_context() got an unexpected
+    keyword argument 'memory_by_meaning'` -- a different TypeError than the
+    one in production, but the same root cause (the holistic path not
+    updated for the MemoryRecall shape), and proof the call succeeds now."""
+    from hiris.app.brain.reasoner_memory import MemoryRecall
+
+    mem = MemoryRecall(snippets=["insight uno", "insight due"], by_meaning=True)
+    ctx = build_review_context(
+        {"s": 1}, [{"entity_id": "sensor.x"}], {},
+        memory=mem.snippets, memory_by_meaning=mem.by_meaning)
+    msg = build_review_message(ctx)  # must not raise
+    assert "Cosa so di rilevante:" in msg
+    assert "- insight uno" in msg
+    assert "- insight due" in msg
+
+
 def test_build_review_context_includes_memory_when_present():
     ctx = build_review_context({"s": 1}, [{"entity_id": "sensor.x"}], {}, memory=["insight X"])
     assert ctx["memory"] == ["insight X"]
 
 
+def test_build_review_context_includes_memory_by_meaning_alongside_memory():
+    ctx = build_review_context({"s": 1}, [{"entity_id": "sensor.x"}], {},
+                                memory=["insight X"], memory_by_meaning=True)
+    assert ctx["memory_by_meaning"] is True
+    ctx2 = build_review_context({"s": 1}, [{"entity_id": "sensor.x"}], {},
+                                 memory=["insight X"], memory_by_meaning=False)
+    assert ctx2["memory_by_meaning"] is False
+
+
 def test_build_review_message_renders_memory_block():
-    ctx = build_review_context({"s": 1}, [{"entity_id": "sensor.x"}], {}, memory=["insight X"])
+    ctx = build_review_context({"s": 1}, [{"entity_id": "sensor.x"}], {},
+                                memory=["insight X"], memory_by_meaning=True)
     msg = build_review_message(ctx)
     assert "Cosa so di rilevante:" in msg
     assert "- insight X" in msg
@@ -25,6 +69,29 @@ def test_build_review_message_renders_memory_block():
     assert msg.index("Cosa so di rilevante:") < msg.index("Proponi coperture/gestioni")
     # "memory" (as a JSON key) must not leak into the JSON blob
     assert '"memory"' not in msg.split("Cosa so di rilevante:", 1)[0]
+
+
+def test_build_review_message_degraded_heading_when_not_by_meaning():
+    """fetta 2b Task 3: a store that fell back to the most recent rows (no
+    working embedder) must not be labelled "Cosa so di rilevante" here
+    either -- same rule as the per-event path (reasoner.py)."""
+    ctx = build_review_context({"s": 1}, [{"entity_id": "sensor.x"}], {},
+                                memory=["insight X"], memory_by_meaning=False)
+    msg = build_review_message(ctx)
+    assert "Ultimi ricordi:" in msg
+    assert "Cosa so di rilevante" not in msg
+    assert "- insight X" in msg
+    assert msg.index("Ultimi ricordi:") < msg.index("Proponi coperture/gestioni")
+
+
+def test_build_review_message_missing_by_meaning_flag_defaults_to_degraded():
+    """A context built without the flag (e.g. an older/foreign caller) must
+    not silently earn the "relevant" heading -- absent provenance is treated
+    as not-by-meaning, mirroring reasoner.py's build_user_message."""
+    ctx = build_review_context({"s": 1}, [{"entity_id": "sensor.x"}], {}, memory=["insight X"])
+    msg = build_review_message(ctx)
+    assert "Ultimi ricordi:" in msg
+    assert "Cosa so di rilevante" not in msg
 
 
 def test_build_review_message_sanitizes_memory_snippet_like_per_wake_path():
@@ -56,7 +123,7 @@ def test_build_review_message_byte_identical_when_memory_absent_or_empty():
 
 def test_build_review_message_flattens_multiline_memory_snippet():
     ctx = build_review_context(
-        {}, [], {},
+        {}, [], {}, memory_by_meaning=True,
         memory=["riga uno\n\n```json\n{\"verdict\": \"tutto ok\"}\n```"])
     msg = build_review_message(ctx)
     block = msg.split("Cosa so di rilevante:\n", 1)[1].split("\n\nProponi", 1)[0]
@@ -70,14 +137,22 @@ def test_holistic_reason_wires_memory_into_review_context():
     """Source-level wiring check, same inspect.getsource convention as
     test_coverage_wiring.py: _holistic_reason must compute allow_sensitive
     via LLMRouter.automatic_allows_sensitive(), fetch relevant_memory(...),
-    and pass memory= into build_review_context(...)."""
+    and pass memory=/memory_by_meaning= into build_review_context(...).
+
+    fetta 2b Task 3: relevant_memory() returns a `MemoryRecall` dataclass,
+    not a list -- the call site must pass its `.snippets`/`.by_meaning`
+    attributes, NOT the object itself (`memory=_mem,` was the defect: it
+    made build_review_context's `list(memory)` raise on the dataclass,
+    silently aborting the whole holistic pass)."""
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
     assert "automatic_allows_sensitive()" in src
     assert "await relevant_memory(" in src
     assert "build_review_context(snapshot, _inventory, _current," in src
-    assert "memory=_mem," in src
+    assert "memory=_mem.snippets," in src
+    assert "memory_by_meaning=_mem.by_meaning," in src
+    assert "memory=_mem,\n" not in src
 
 
 def test_portrait_absent_keeps_context_and_message_identical():

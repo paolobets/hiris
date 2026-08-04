@@ -2370,7 +2370,19 @@ async def _on_startup(app: web.Application) -> None:
                 # tune + guardian refresh below). relevant_memory() is already
                 # non-throwing for the real store, but wrap independently so a
                 # nonconforming store/embedder can't take the whole round down.
-                _mem = []
+                #
+                # fetta 2b Task 3: `_mem` is always a `MemoryRecall` (never a
+                # bare list) on every path -- including this except branch --
+                # so `.snippets`/`.by_meaning` can be read unconditionally
+                # below, exactly like `_reason_memory_context`'s per-wake
+                # counterpart. Passing `.snippets` (not the dataclass itself)
+                # as `memory=` was the fix: the dataclass previously reached
+                # build_review_context's `list(memory)`, raising TypeError and
+                # silently aborting the whole holistic pass (caught by this
+                # function's outer try/except). `.by_meaning` rides alongside
+                # so build_review_message can head the memory block honestly,
+                # same as the per-event path (reasoner.py).
+                _mem = MemoryRecall(snippets=[], by_meaning=False)
                 try:
                     _llm_router = app.get("llm_router")
                     _allow_sensitive = _llm_router.automatic_allows_sensitive() if _llm_router is not None else False
@@ -2381,7 +2393,8 @@ async def _on_startup(app: web.Application) -> None:
                 except Exception:
                     logger.warning("holistic memory retrieval failed", exc_info=True)
                 _ctx = build_review_context(snapshot, _inventory, _current,
-                                            memory=_mem,
+                                            memory=_mem.snippets,
+                                            memory_by_meaning=_mem.by_meaning,
                                             portrait=_portrait_context(app))
                 # SP-2 Task 4: il Brain (questo passaggio olistico) usa il
                 # modello scelto per il Brain, se esplicito; "auto" (default)
