@@ -4,6 +4,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
+from ..brain.knowledge_store import confronta_significati
+
 if TYPE_CHECKING:
     from ..brain.knowledge_store import KnowledgeStore
     from ..backends.embeddings import EmbeddingProvider
@@ -208,4 +210,4 @@ async def handle_recall_memory(
         }
         for r in rows
     ]
-    return {"memories": memories, "count": len(memories), "degraded": not query_vec}
+    return {"memories": memories, "count": len(memories), "degraded": not confronta_significati(query_vec)}

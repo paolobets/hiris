@@ -3,6 +3,8 @@ import asyncio
 import logging
 from typing import Any
 
+from ..brain.knowledge_store import confronta_significati
+
 logger = logging.getLogger(__name__)
 
 SAVE_KNOWLEDGE_TOOL_DEF = {
@@ -172,4 +174,4 @@ async def handle_recall_knowledge(
         return out
 
     out = await loop.run_in_executor(None, _search_and_merge)
-    return {"results": out, "degraded": not qv}
+    return {"results": out, "degraded": not confronta_significati(qv)}
