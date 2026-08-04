@@ -139,3 +139,72 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
             "aree": len([a for a in (area_map or {}) if a != "__no_area__"]),
         },
     }
+
+
+def render_portrait(portrait, *, max_chars: int = 1800) -> str:
+    """Blocco leggibile per il prompt. Stringa vuota se non c'e' niente da dire.
+
+    Il chiamante deve trattare "" come "nessun blocco": e' il contratto che
+    tiene i prompt identici a prima quando il ritratto non e' disponibile.
+    """
+    try:
+        p = portrait if isinstance(portrait, dict) else {}
+        aree = p.get("aree")
+        aree = aree if isinstance(aree, dict) else {}
+        cambiato = p.get("cambiato")
+        cambiato = cambiato if isinstance(cambiato, list) else []
+        if not aree and not cambiato:
+            return ""
+
+        righe: list[str] = []
+
+        # L'allerta viene PRIMA di tutto: un rilevatore che ha scattato e' la
+        # cosa piu' importante che la casa possa dire, e non deve finire in
+        # fondo a una riga fra le luci accese.
+        allerte = [
+            f"- {area}: " + ", ".join(str(x) for x in
+                                      ((aree.get(area) or {}).get("allerta") or []))
+            for area in sorted(aree)
+            if (aree.get(area) or {}).get("allerta")
+        ]
+        if allerte:
+            righe.append("ALLERTA:")
+            righe.extend(allerte)
+            righe.append("")
+
+        casa: list[str] = []
+        for area in sorted(aree):
+            dati = aree.get(area) or {}
+            parti: list[str] = []
+            acceso = dati.get("acceso") or []
+            aperto = dati.get("aperto") or []
+            if acceso:
+                parti.append("acceso: " + ", ".join(str(x) for x in acceso))
+            if aperto:
+                parti.append("aperto: " + ", ".join(str(x) for x in aperto))
+            if parti:
+                casa.append(f"- {area} — " + " · ".join(parti))
+        # L'intestazione solo se ha qualcosa sotto: una casa in cui l'unica cosa
+        # da dire e' un allarme non deve mostrare "Com'e' la casa:" a vuoto.
+        if casa:
+            righe.append("Com'e' la casa:")
+            righe.extend(casa)
+
+        if cambiato:
+            if righe:
+                righe.append("")
+            righe.append("Cos'e' cambiato dall'ultima volta:")
+            for c in cambiato:
+                if not isinstance(c, dict):
+                    continue
+                nome = c.get("nome") or c.get("entity_id") or "?"
+                was = c.get("was")
+                da = f"da {was} " if was is not None else ""
+                righe.append(f"- {nome}: {da}a {c.get('now')}")
+
+        testo = "\n".join(righe)
+        if len(testo) > max_chars:
+            testo = testo[: max(0, max_chars - 1)].rstrip() + "…"
+        return testo
+    except Exception:
+        return ""

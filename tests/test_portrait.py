@@ -193,3 +193,96 @@ def test_change_with_no_previous_state_keeps_none():
                   "now": "on", "since": "2026-08-04T09:00:00Z"}],
     )
     assert p["cambiato"][0]["was"] is None
+
+
+from hiris.app.brain.portrait import render_portrait
+
+
+def test_render_empty_portrait_is_empty_string():
+    assert render_portrait({"aree": {}, "cambiato": [],
+                            "conteggi": {"entita": 0, "aree": 0}}) == ""
+
+
+def test_render_has_both_sections():
+    txt = render_portrait({
+        "aree": {"Cucina": {"acceso": ["Luce cucina"], "aperto": ["Finestra"]}},
+        "cambiato": [{"nome": "Luce cucina", "entity_id": "light.cucina",
+                      "was": "off", "now": "on", "since": "2026-08-04T09:00:00Z"}],
+        "conteggi": {"entita": 42, "aree": 5},
+    })
+    assert "Com'e' la casa" in txt
+    assert "Cucina" in txt and "Luce cucina" in txt and "Finestra" in txt
+    assert "Cos'e' cambiato" in txt
+    assert "off" in txt and "on" in txt
+
+
+def test_render_omits_the_change_section_when_nothing_changed():
+    txt = render_portrait({
+        "aree": {"Cucina": {"acceso": ["Luce"], "aperto": []}},
+        "cambiato": [], "conteggi": {"entita": 1, "aree": 1},
+    })
+    assert "Com'e' la casa" in txt
+    assert "Cos'e' cambiato" not in txt
+
+
+def test_render_is_bounded():
+    aree = {f"Area{i}": {"acceso": [f"Luce {i}-{j}" for j in range(50)],
+                         "aperto": []} for i in range(30)}
+    txt = render_portrait({"aree": aree, "cambiato": [],
+                           "conteggi": {"entita": 1500, "aree": 30}},
+                          max_chars=500)
+    assert len(txt) <= 500
+
+
+def test_render_never_raises_on_garbage():
+    assert render_portrait(None) == ""
+    assert render_portrait({"aree": "non un dict"}) == ""
+
+
+def test_render_puts_alarms_first():
+    """Un rilevatore scattato e' la cosa piu' importante che la casa dica:
+    non deve finire in fondo a una riga fra le luci accese."""
+    txt = render_portrait({
+        "aree": {
+            "Cucina": {"acceso": ["Luce"], "aperto": ["Finestra"],
+                       "allerta": ["Fumo"]},
+            "Salotto": {"acceso": ["Lampada"], "aperto": [], "allerta": []},
+        },
+        "cambiato": [],
+        "conteggi": {"entita": 4, "aree": 2},
+    })
+    assert txt.startswith("ALLERTA:")
+    assert "- Cucina: Fumo" in txt
+    assert txt.index("ALLERTA:") < txt.index("Com'e' la casa:")
+    # l'allerta non viene ripetuta fra le aperture
+    assert "aperto: Finestra" in txt and "aperto: Finestra, Fumo" not in txt
+
+
+def test_render_omits_the_alarm_section_when_there_are_none():
+    txt = render_portrait({
+        "aree": {"Cucina": {"acceso": ["Luce"], "aperto": [], "allerta": []}},
+        "cambiato": [], "conteggi": {"entita": 1, "aree": 1},
+    })
+    assert "ALLERTA" not in txt
+    assert txt.startswith("Com'e' la casa:")
+
+
+def test_render_with_only_an_alarm_has_no_empty_house_header():
+    txt = render_portrait({
+        "aree": {"Sottotetto": {"acceso": [], "aperto": [],
+                                "allerta": ["Allagamento"]}},
+        "cambiato": [], "conteggi": {"entita": 1, "aree": 1},
+    })
+    assert "ALLERTA:" in txt and "Allagamento" in txt
+    assert "Com'e' la casa:" not in txt
+
+
+def test_render_starts_with_the_change_section_when_it_is_the_only_one():
+    txt = render_portrait({
+        "aree": {},
+        "cambiato": [{"nome": "Luce", "entity_id": "light.a",
+                      "was": "on", "now": "off",
+                      "since": "2026-08-04T09:00:00Z"}],
+        "conteggi": {"entita": 1, "aree": 0},
+    })
+    assert txt.startswith("Cos'e' cambiato dall'ultima volta:")
