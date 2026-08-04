@@ -618,6 +618,79 @@ git commit -m "refactor(memoria): via due letture che nessuno chiamava"
 
 ---
 
+## Task 8: via i collegamenti che nessuno legge — *(scoperta della Task 7)*
+
+**Perché.** Cancellare `neighbors` nella Task 7 ha reso visibile una cosa che prima era nascosta:
+**`neighbors` era l'unico lettore della tabella `knowledge_links`.** Tolto quello, resta in piedi una
+catena intera che non porta da nessuna parte:
+
+> il tool **`link_knowledge`** esposto al modello → `handle_link_knowledge` → `add_link` → una
+> tabella che **nessuno interroga**.
+
+Il modello può spendere token per collegare fra loro i ricordi, e nulla consumerà mai quei
+collegamenti. È una funzione morta con una superficie viva — la specie peggiore, perché sembra
+funzionante. **Decisione dell'utente: via tutto.**
+
+**Sui dati:** la tabella viene cancellata, e con lei gli eventuali collegamenti già creati. Non è una
+perdita: non erano letti da nulla. Git conserva il codice; se un giorno servirà una vista dei
+collegamenti si riscriverà contro il bisogno vero, non contro una firma indovinata mesi prima.
+
+**Files:**
+- Modify: `hiris/app/tools/knowledge_tools.py` (definizione del tool + `handle_link_knowledge`)
+- Modify: `hiris/app/tools/dispatcher.py` (import + il ramo `link_knowledge`)
+- Modify: `hiris/app/brain/knowledge_store.py` (`add_link`, lo schema, la pulizia in `delete_item`,
+  la versione di schema + migrazione)
+- Modify: i test che vi fanno riferimento
+
+- [ ] **Step 1: Trova ogni occorrenza — non fidarti di questo elenco**
+
+```bash
+grep -rn "link_knowledge\|add_link\|knowledge_links\|idx_kl_" hiris/ tests/ docs/ --include=*.py --include=*.js --include=*.md
+```
+
+Un tool esposto al modello può comparire in più posti di quanti ne nomini un piano: il catalogo dei
+tool del runner, la lista dei tool a sola valutazione, i livelli del gateway MCP, il catalogo mostrato
+nell'interfaccia, le tabelle nella documentazione. **Cercali tutti prima di toccare qualsiasi cosa**,
+e metti l'elenco completo nel rapporto.
+
+- [ ] **Step 2: La migrazione di schema**
+
+Questa è la parte da fare bene. Nel file dello store:
+
+- togli `CREATE TABLE knowledge_links` e i suoi due indici da `_SCHEMA`;
+- alza la **versione di schema** al numero successivo;
+- aggiungi la migrazione corrispondente al dizionario `migrations`, che esegue
+  `DROP TABLE IF EXISTS knowledge_links`.
+
+Verifica leggendo `hiris/app/storage.py::init_schema` che il meccanismo faccia quello che ti aspetti
+in **entrambi** i casi: database nuovo (la tabella non nasce e la versione viene stampata direttamente)
+e database esistente alla versione precedente (la migrazione gira e la tabella sparisce). Scrivi un
+test per ciascuno dei due casi — una migrazione non testata è una scommessa sul riavvio dell'utente.
+
+- [ ] **Step 3: Togli la catena**
+
+Rimuovi il tool, il gestore, il ramo del dispatcher, `add_link`, e la riga di pulizia
+`DELETE FROM knowledge_links` dentro `delete_item`. Nessun moncone, nessun commento-lapide.
+
+Aggiorna i test che citano la tabella (ce n'è almeno uno che asserisce la sua presenza nello schema:
+deve diventare un'asserzione di **assenza**) e quelli che esercitavano il tool.
+
+- [ ] **Step 4: Esegui tutto, in primo piano**
+
+```
+python -m pytest -q
+npm test
+```
+Il conteggio scende: dillo, con i numeri prima e dopo.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -m "refactor(memoria): via i collegamenti fra ricordi, che nessuno leggeva"
+```
+
+---
+
 ## Verifica live (obbligatoria prima di dire che funziona)
 
 La suite verde non è una prova.
