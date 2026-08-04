@@ -8,12 +8,6 @@ from ..brain.identity import resolve_owner
 
 logger = logging.getLogger(__name__)
 
-# Messaggio tecnico dell'API (inglese, come gli altri `error` di questo
-# modulo): il testo mostrato all'utente e' scritto in italiano nella coda in
-# chat (static/chat/knowledge.js, messaggioErrore) a partire dallo stato 503.
-_ERRORE_SENZA_EMBEDDING = "embedding unavailable: item not approved"
-_ERRORE_SENZA_EMBEDDING_CREAZIONE = "embedding unavailable: item not created"
-
 
 async def handle_list_pending(request: web.Request) -> web.Response:
     store = request.app.get("knowledge_store")
@@ -44,12 +38,13 @@ async def handle_approve(request: web.Request) -> web.Response:
     "Approvato" e "richiamabile" non sono la stessa cosa: la ricerca filtra su
     `status='approved' AND embedding IS NOT NULL`. La versione precedente di
     save_knowledge scriveva l'elemento anche quando l'embedding non si poteva
-    calcolare, quindi in coda ci sono righe senza vettore; cambiarne il solo
-    stato le avrebbe lasciate irraggiungibili dopo che l'utente le ha approvate
-    -- lo stesso silenzio che la coda esiste per chiudere, sui dati gia'
-    esistenti. Quindi qui l'embedding mancante si calcola, e se non si puo'
-    calcolare si risponde con un errore invece di dichiarare un successo che
-    non c'e' (la coda in chat ha gia' il ramo per il 503)."""
+    calcolare, quindi in coda ci sono righe senza vettore. Qui l'embedding
+    mancante si calcola quando e' possibile; quando non lo e' (nessun
+    provider configurato, o il provider fallisce) l'elemento viene approvato
+    comunque, senza vettore. Rifiutare l'approvazione lasciava l'utente a
+    guardare in chat la cosa che HIRIS ha imparato senza poterla tenere --
+    `KnowledgeStore.search` degrada a `recent()` quando manca un vettore di
+    query, quindi la riga resta comunque recuperabile anche senza embedding."""
     store = request.app.get("knowledge_store")
     if store is None:
         return web.json_response({"error": "knowledge store not configured"}, status=503)
@@ -78,11 +73,6 @@ async def handle_approve(request: web.Request) -> web.Response:
             logger.exception(
                 "approve: embedding non calcolato per l'elemento %s", item_id)
             embedding = None
-        if not embedding:
-            logger.warning(
-                "approve rifiutato: nessun embedding disponibile per l'elemento %s",
-                item_id)
-            return web.json_response({"error": _ERRORE_SENZA_EMBEDDING}, status=503)
 
     ok = await loop.run_in_executor(
         None, lambda: store.approve(item_id, owner=owner, embedding=embedding))
@@ -111,11 +101,12 @@ async def handle_reject(request: web.Request) -> web.Response:
 async def handle_manual_add(request: web.Request) -> web.Response:
     """Aggiunge a mano un elemento gia' approvato.
 
-    Stessa forma del difetto chiuso in save_knowledge, su un percorso solo-API:
-    scrivere `status='approved'` con il vettore assente crea un elemento che si
-    dichiara pronto e non e' raggiungibile -- la ricerca filtra su
-    `status='approved' AND embedding IS NOT NULL`. Quindi senza embedding non
-    si scrive nulla e si risponde 503, lo stesso stato di handle_approve."""
+    Stessa forma di handle_approve, su un percorso solo-API: senza un vettore
+    l'elemento resta `status='approved'` ma non raggiungibile dalla ricerca
+    (che filtra su `embedding IS NOT NULL`) finche' un embedding non arriva.
+    Scriverlo comunque -- invece di rifiutare la richiesta -- e' la scelta
+    fatta qui: l'utente non deve restare bloccato solo perche' non c'e' un
+    provider di embedding configurato."""
     store = request.app.get("knowledge_store")
     if store is None:
         return web.json_response({"error": "knowledge store not configured"}, status=503)
@@ -133,12 +124,8 @@ async def handle_manual_add(request: web.Request) -> web.Response:
         emb = await embedder.embed(content) if embedder is not None else None
     except Exception:
         # Il dettaglio resta nel log del server, non nella risposta.
-        logger.exception("manual_add: embedding non calcolato, nulla da scrivere")
+        logger.exception("manual_add: embedding non calcolato")
         emb = None
-    if not emb:
-        logger.warning("manual_add rifiutato: nessun embedding disponibile")
-        return web.json_response(
-            {"error": _ERRORE_SENZA_EMBEDDING_CREAZIONE}, status=503)
 
     owner = resolve_owner(request)
     loop = asyncio.get_running_loop()
