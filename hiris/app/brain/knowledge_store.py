@@ -81,16 +81,20 @@ def confronta_significati(query_vec: list[float] | None) -> bool:
     query utilizzabile (non None, non vuoto).
 
     `search()` la usa per decidere se confrontare gli embedding o cadere su
-    `recent()`. Le cinque superfici che etichettano un blocco di prompt in base
-    a quella stessa decisione -- l'iniezione RAG della chat
-    (api/handlers_chat.py), il richiamo di memoria del reasoner proattivo
-    (brain/reasoner_memory.py), il tool di richiamo conoscenza
-    (tools/knowledge_tools.handle_recall_knowledge) e il tool di salvataggio
-    (tools/knowledge_tools.handle_save_knowledge) -- importano questa funzione
-    invece di ricalcolare `bool(query_vec)` per conto proprio, cosi' che se
-    `search` guadagnasse un altro motivo di degradazione (es. un mismatch di
-    dimensione dell'embedding) le etichette resterebbero coerenti senza dover
-    essere toccate una per una."""
+    `recent()`. Chi la importa invece di ricalcolare `bool(query_vec)` per conto
+    proprio:
+
+    - `api/handlers_chat.py` -- intestazione del blocco RAG della chat
+    - `brain/reasoner_memory.py` -- `MemoryRecall.by_meaning`, da cui prendono
+      l'intestazione il reasoner per-evento e la revisione olistica
+    - `tools/knowledge_tools.handle_recall_knowledge` -- flag `degraded` verso il
+      modello, e il gate della ricerca sui chunk documentali
+    - `tools/memory_tools.handle_recall_memory` -- flag `degraded` verso il modello
+
+    Cosi' se `search` guadagnasse un altro motivo di degradazione (es. un
+    mismatch di dimensione dell'embedding) etichette e flag resterebbero coerenti
+    senza dover essere toccati uno per uno -- ed e' proprio la deriva fra copie
+    del criterio che questa funzione esiste per impedire."""
     return bool(query_vec)
 
 
