@@ -56,7 +56,7 @@ from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
 from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
-from .brain.reasoner_memory import relevant_memory
+from .brain.reasoner_memory import relevant_memory, MemoryRecall
 from .brain.briefing import build_briefing_bundle, compose_briefing
 from .brain.reminders import ReminderSeen, due_nudges
 from .watcher.policy import load_policy
@@ -880,7 +880,7 @@ def agent_run_stopped(why: str, severity: str | None) -> Decision:
 
 async def _reason_memory_context(
     app: web.Application, embedder, wake, friendly_name: str,
-) -> list[str]:
+) -> MemoryRecall:
     """Slice 6b Task 4: bounded, egress-gated memory snippets for the
     sentinel/situation reasoner's context.
 
@@ -900,8 +900,11 @@ async def _reason_memory_context(
 
     Failure-safe: relevant_memory() itself never raises (see
     reasoner_memory.py), but router.automatic_allows_sensitive() or a
-    malformed `wake` could -- so this is wrapped too, degrading to []
-    rather than ever bubbling an exception into `_gather_context`.
+    malformed `wake` could -- so this is wrapped too, degrading to
+    `MemoryRecall(snippets=[], by_meaning=False)` rather than ever bubbling
+    an exception into `_gather_context`. Returning a `MemoryRecall` on
+    every path (not sometimes a bare list) keeps `_gather_context` able to
+    read `.snippets`/`.by_meaning` unconditionally.
     """
     try:
         knowledge_store = app.get("knowledge_store") if app is not None else None
@@ -914,7 +917,7 @@ async def _reason_memory_context(
         )
     except Exception:
         logger.warning("_reason_memory_context: memory retrieval failed", exc_info=True)
-        return []
+        return MemoryRecall(snippets=[], by_meaning=False)
 
 
 async def _osserva_la_casa(app) -> int:
@@ -1776,11 +1779,22 @@ async def _on_startup(app: web.Application) -> None:
         # _reason_memory_context is itself failure-safe (never raises), but
         # this call is never allowed to prevent returning at least
         # {"friendly_name": ...} exactly like before Task 4.
+        #
+        # fetta 2b Task 2: `.snippets`/`.by_meaning` are read INSIDE this try
+        # too (not just the await), so a malformed MemoryRecall can't raise
+        # past this point either -- both fallback returns below stay reachable
+        # only through this one except, never a second point of failure.
+        # `memory_by_meaning` travels alongside `memory` in the context dict
+        # so build_user_message can render the honest heading; it is popped
+        # (like `memory`) before the context is JSON-dumped as "Contesto:".
         try:
             mem = await _reason_memory_context(app, embedder, wake, friendly_name)
+            memory_snippets = mem.snippets
+            memory_by_meaning = mem.by_meaning
         except Exception:
             return {"friendly_name": friendly_name, "portrait": _portrait_context(app)}
-        return {"friendly_name": friendly_name, "memory": mem,
+        return {"friendly_name": friendly_name, "memory": memory_snippets,
+                "memory_by_meaning": memory_by_meaning,
                 "portrait": _portrait_context(app)}
 
     async def _llm_reason(system, user, *, model, max_tokens,

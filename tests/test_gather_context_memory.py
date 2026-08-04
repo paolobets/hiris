@@ -68,7 +68,8 @@ async def test_local_router_includes_relevant_insight(tmp_path):
 
     mem = await _reason_memory_context(app, _FakeEmbedder(), _wake(), "Caldaia")
 
-    assert any("caldaia" in s for s in mem)
+    assert any("caldaia" in s for s in mem.snippets)
+    assert mem.by_meaning is True
     store.close()
 
 
@@ -94,8 +95,9 @@ async def test_cloud_router_excludes_sensitive_includes_normal(tmp_path):
 
     mem = await _reason_memory_context(app, _FakeEmbedder(), _wake(), "Casa")
 
-    assert not any("cancello" in s for s in mem)
-    assert any("caldaia" in s for s in mem)
+    assert not any("cancello" in s for s in mem.snippets)
+    assert any("caldaia" in s for s in mem.snippets)
+    assert mem.by_meaning is True
     store.close()
 
 
@@ -114,7 +116,8 @@ async def test_local_router_with_sensitive_item_includes_it(tmp_path):
 
     mem = await _reason_memory_context(app, _FakeEmbedder(), _wake(), "Casa")
 
-    assert any("cancello" in s for s in mem)
+    assert any("cancello" in s for s in mem.snippets)
+    assert mem.by_meaning is True
     store.close()
 
 
@@ -133,7 +136,7 @@ async def test_no_router_defaults_to_not_sensitive(tmp_path):
 
     mem = await _reason_memory_context(app, _FakeEmbedder(), _wake(), "Casa")
 
-    assert not any("cancello" in s for s in mem)
+    assert not any("cancello" in s for s in mem.snippets)
     store.close()
 
 
@@ -141,7 +144,8 @@ async def test_no_router_defaults_to_not_sensitive(tmp_path):
 async def test_no_knowledge_store_returns_empty_no_crash():
     app = {"knowledge_store": None, "llm_router": _LocalRouter()}
     mem = await _reason_memory_context(app, _FakeEmbedder(), _wake(), "Casa")
-    assert mem == []
+    assert mem.snippets == []
+    assert mem.by_meaning is False
 
 
 @pytest.mark.asyncio
@@ -149,7 +153,8 @@ async def test_search_raises_returns_empty_no_crash(tmp_path):
     store = _RaisingSearchStore(str(tmp_path / "mem.db"))
     app = {"knowledge_store": store, "llm_router": _LocalRouter()}
     mem = await _reason_memory_context(app, _FakeEmbedder(), _wake(), "Casa")
-    assert mem == []
+    assert mem.snippets == []
+    assert mem.by_meaning is False
     store.close()
 
 
@@ -158,7 +163,8 @@ async def test_no_embedder_returns_empty_no_crash(tmp_path):
     store = KnowledgeStore(str(tmp_path / "mem.db"))
     app = {"knowledge_store": store, "llm_router": _LocalRouter()}
     mem = await _reason_memory_context(app, None, _wake(), "Casa")
-    assert mem == []
+    assert mem.snippets == []
+    assert mem.by_meaning is False
     store.close()
 
 
@@ -167,7 +173,8 @@ async def test_embedder_raises_returns_empty_no_crash(tmp_path):
     store = KnowledgeStore(str(tmp_path / "mem.db"))
     app = {"knowledge_store": store, "llm_router": _LocalRouter()}
     mem = await _reason_memory_context(app, _RaisingEmbedder(), _wake(), "Casa")
-    assert mem == []
+    assert mem.snippets == []
+    assert mem.by_meaning is False
     store.close()
 
 
@@ -175,7 +182,9 @@ async def test_embedder_raises_returns_empty_no_crash(tmp_path):
 async def test_router_raises_returns_empty_no_crash(tmp_path):
     """Defense-in-depth: relevant_memory() itself never raises, but a
     misbehaving router.automatic_allows_sensitive() could -- _reason_memory_
-    context must degrade to [] rather than propagate."""
+    context must degrade to MemoryRecall(snippets=[], by_meaning=False)
+    rather than propagate (and never fall back to a bare list either, so
+    _gather_context can keep reading `.snippets`/`.by_meaning` unconditionally)."""
     store = KnowledgeStore(str(tmp_path / "mem.db"))
     store.add_item(
         kind="insight", content="qualcosa", owner="home", status="approved",
@@ -183,14 +192,16 @@ async def test_router_raises_returns_empty_no_crash(tmp_path):
     )
     app = {"knowledge_store": store, "llm_router": _RaisingRouter()}
     mem = await _reason_memory_context(app, _FakeEmbedder(), _wake(), "Casa")
-    assert mem == []
+    assert mem.snippets == []
+    assert mem.by_meaning is False
     store.close()
 
 
 @pytest.mark.asyncio
 async def test_app_none_returns_empty_no_crash():
     mem = await _reason_memory_context(None, _FakeEmbedder(), _wake(), "Casa")
-    assert mem == []
+    assert mem.snippets == []
+    assert mem.by_meaning is False
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +218,10 @@ def test_gather_context_is_async_and_wired_to_memory_helper():
     src = inspect.getsource(server._on_startup)
     assert "async def _gather_context(wake)" in src
     assert "await _reason_memory_context(app, embedder, wake, friendly_name)" in src
-    assert '"memory": mem' in src
+    assert '"memory": memory_snippets' in src
+    # fetta 2b Task 2: `by_meaning` must ride alongside the snippets in the
+    # SAME return -- a block can't claim/disclaim relevance without it.
+    assert '"memory_by_meaning": memory_by_meaning' in src
     # Task 6: the twin assertion -- the portrait is wired into the same
     # return as memory, so both must survive together.
     assert '"portrait": _portrait_context(app)' in src
