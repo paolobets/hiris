@@ -143,7 +143,7 @@ async def handle_recall_knowledge(
             k=k,
             owner=owner,
             allow_sensitive=allow_sensitive,
-        ) if qv else []
+        ) if confronta_significati(qv) else []
         # Merge: items carry their own "kind"; chunks use kind="document_chunk"
         merged: list[tuple[float, int, str, str, str | None]] = []
         for r in items:

@@ -81,14 +81,16 @@ def confronta_significati(query_vec: list[float] | None) -> bool:
     query utilizzabile (non None, non vuoto).
 
     `search()` la usa per decidere se confrontare gli embedding o cadere su
-    `recent()`. Le tre superfici che etichettano un blocco di prompt in base
+    `recent()`. Le cinque superfici che etichettano un blocco di prompt in base
     a quella stessa decisione -- l'iniezione RAG della chat
     (api/handlers_chat.py), il richiamo di memoria del reasoner proattivo
-    (brain/reasoner_memory.py) -- importano questa funzione invece di
-    ricalcolare `bool(query_vec)` per conto proprio, cosi' che se `search`
-    guadagnasse un altro motivo di degradazione (es. un mismatch di
-    dimensione dell'embedding) le tre etichette resterebbero coerenti senza
-    dover essere toccate una per una."""
+    (brain/reasoner_memory.py), il tool di richiamo conoscenza
+    (tools/knowledge_tools.handle_recall_knowledge) e il tool di salvataggio
+    (tools/knowledge_tools.handle_save_knowledge) -- importano questa funzione
+    invece di ricalcolare `bool(query_vec)` per conto proprio, cosi' che se
+    `search` guadagnasse un altro motivo di degradazione (es. un mismatch di
+    dimensione dell'embedding) le etichette resterebbero coerenti senza dover
+    essere toccate una per una."""
     return bool(query_vec)
 
 
