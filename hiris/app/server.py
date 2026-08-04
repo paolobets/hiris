@@ -917,6 +917,30 @@ async def _reason_memory_context(
         return []
 
 
+async def _osserva_la_casa(app) -> int:
+    """Registra lo stato notevole della casa e ne calcola il cambiamento.
+
+    E' l'UNICO scrittore della linea di base del ritratto: i consumatori
+    leggono soltanto. Se aggiornasse la linea di base ogni consumatore,
+    ciascuno vedrebbe solo cio' che e' cambiato dopo il precedente, e il
+    delta smetterebbe di voler dire "dall'ultima volta che ho guardato".
+
+    Non solleva mai: un'osservazione saltata e' un delta piu' vecchio, non un
+    giro di scheduler perso.
+    """
+    try:
+        store = app.get("portrait_store") if app is not None else None
+        cache = app.get("entity_cache") if app is not None else None
+        if store is None or cache is None or not hasattr(cache, "all_states"):
+            return 0
+        from .brain.portrait import notable_state
+        changes = store.observe(notable_state(cache.all_states()))
+        return len(changes)
+    except Exception:
+        logger.warning("_osserva_la_casa: osservazione fallita", exc_info=True)
+        return 0
+
+
 async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
     """Slice 7 (Maggiordomo) Task 4: the consolidated daily butler briefing
     job, replacing the old per-obligation spam (`hiris_due_reminders` /
@@ -1621,6 +1645,10 @@ async def _on_startup(app: web.Application) -> None:
     from .brain.advisory_store import AdvisoryStore
     advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
     app["advisory_store"] = advisory_store
+
+    from .brain.portrait_store import PortraitStore
+    app["portrait_store"] = PortraitStore(os.path.join(data_dir, "portrait.db"))
+    logger.info("PortraitStore ready")
 
     # Thin wrapper binding the module-level request_confirmation_stepup to
     # this app instance; see request_confirmation_stepup for the actual
@@ -2426,6 +2454,21 @@ async def _on_startup(app: web.Application) -> None:
         minutes=int(os.environ.get("HIRIS_HEALTH_SCAN_MINUTES", "30")),
         id="hiris_health_scan", replace_existing=True, misfire_grace_time=300)
 
+    async def _portrait_observe_job():
+        try:
+            n = await _osserva_la_casa(app)
+            if n:
+                logger.info("ritratto: %d cambiamenti registrati", n)
+        except Exception:
+            logger.warning("portrait observe job failed", exc_info=True)
+
+    engine._scheduler.add_job(
+        _portrait_observe_job, "interval",
+        minutes=int(os.environ.get("HIRIS_PORTRAIT_OBSERVE_MINUTES", "15")),
+        id="hiris_portrait_observe", replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     def _run_reasoning_prune():
         try:
             reasoning_log.prune(max_rows=500, max_age_days=30)
@@ -2742,6 +2785,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["reasoning_log"].close()
     if "advisory_store" in app:
         app["advisory_store"].close()
+    if "portrait_store" in app:
+        app["portrait_store"].close()
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "task_engine" in app:
