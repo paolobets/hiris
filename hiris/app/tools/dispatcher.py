@@ -230,7 +230,11 @@ class ToolDispatcher:
     def has_memory(self) -> bool:
         # save_memory/recall_memory route into the unified KnowledgeStore
         # (Slice 3) — gate tool exposure on that, not the legacy MemoryStore.
-        return self._knowledge_store is not None and self._knowledge_embedder is not None
+        # No embedder requirement: every memory/knowledge handler tolerates
+        # embedder=None (degrades to recent() instead of vector search), and
+        # the factory default has no embedder configured at all, so gating
+        # on it here would hide these tools on a stock install.
+        return self._knowledge_store is not None
 
     async def dispatch(
         self,
@@ -585,7 +589,7 @@ class ToolDispatcher:
                     allowed_endpoints=allowed_endpoints,
                 )
             if name == "recall_memory":
-                if self._knowledge_store is None or self._knowledge_embedder is None:
+                if self._knowledge_store is None:
                     return {"error": "Memory store not configured"}
                 return await _handle_recall_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
@@ -593,7 +597,7 @@ class ToolDispatcher:
                     chatbot_id=chatbot_id or "hiris-default",
                 )
             if name == "save_memory":
-                if self._knowledge_store is None or self._knowledge_embedder is None:
+                if self._knowledge_store is None:
                     return {"error": "Memory store not configured"}
                 return await _handle_save_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
@@ -667,14 +671,10 @@ class ToolDispatcher:
                     title=inputs.get("title"),
                 )
             if name == "save_knowledge":
-                # Stessa condizione di save_memory/recall_memory: senza store
-                # o senza embedder l'elemento non potrebbe MAI essere
-                # richiamato (knowledge_store.search filtra su
-                # `embedding IS NOT NULL`), quindi salvarlo sarebbe un
-                # successo apparente. Qui bastava lo store, e su
-                # un'installazione senza provider di embedding il modello
-                # rispondeva "salvato" su un ricordo perduto in partenza.
-                if self._knowledge_store is None or self._knowledge_embedder is None:
+                # Il ramo era condizionato allo store: senza store non c'e'
+                # dove scrivere. La condizione va DENTRO il ramo, come in
+                # recall_memory/save_memory.
+                if self._knowledge_store is None:
                     return {"error": ("La memoria non è disponibile: non posso "
                                       "salvare questo ricordo perché non "
                                       "potrei più ritrovarlo.")}
@@ -689,9 +689,8 @@ class ToolDispatcher:
                 # per aver chiamato uno strumento che il system prompt gli aveva
                 # elencato, dopo il quale il modello smette di usarlo per tutta
                 # la conversazione. La condizione va DENTRO il ramo, come in
-                # recall_memory/save_memory. Serve anche l'embedder: senza non
-                # c'e' ricerca semantica possibile.
-                if self._knowledge_store is None or self._knowledge_embedder is None:
+                # recall_memory/save_memory.
+                if self._knowledge_store is None:
                     return {"error": ("La memoria non è disponibile: non posso "
                                       "cercare nei ricordi di casa in questo "
                                       "momento.")}

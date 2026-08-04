@@ -121,7 +121,10 @@ async def handle_recall_knowledge(
     except Exception:
         logger.exception("recall_knowledge: vettore di ricerca non calcolato")
         qv = None
-    k = int(tool_input.get("k", 5))
+    # Same clamp as recall_memory (memory_tools.handle_recall_memory): on the
+    # degraded (no-vector) path this flows straight into a SQL LIMIT, and an
+    # unclamped k (e.g. k=-1) becomes `LIMIT -1`, i.e. every scoped row.
+    k = min(max(1, int(tool_input.get("k", 5))), 20)
     loop = asyncio.get_running_loop()
 
     def _search_and_merge() -> list[dict]:

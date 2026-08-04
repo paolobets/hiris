@@ -7,10 +7,10 @@ recallable when possible via `KnowledgeStore.search` -- which prefers
 when there is no query vector -- and (b) undoable (Slice 6 Task 5 wires
 `remove_brain_action` to an undo command). The undo-ability is what actually
 matters: the trace is what lets the "Annulla" button exist for a change the
-Brain made to itself, so it is always written, even with no embedder or an
-embedder that fails to produce a vector -- a NULL-embedding row still shows
-up via `recent()`/`list_items` and is still findable and removable by
-`remove_brain_action`.
+Brain made to itself, so it is always written, even with no embedder, an
+embedder that returns a falsy vector, or one whose `embed()` call raises --
+a NULL-embedding row still shows up via `recent()`/`list_items` and is
+still findable and removable by `remove_brain_action`.
 """
 from __future__ import annotations
 
@@ -28,16 +28,23 @@ async def record_brain_action(
     (delete-then-add) any prior trace with the same source_ref, exactly like
     history_digest does for insights. Returns the new item's id (as str).
 
-    Always writes, even with no embedder (embedder=None) or one that returns
-    a falsy vector: the trace is what makes a brain action undoable, and
-    losing that safety net because no embedder happens to be configured
-    would be worse than a trace that only degrades to recent() instead of
-    vector search. `embedder.embed()` raising is NOT handled here on
-    purpose -- callers (e.g. cognitive_loop.auto_tune_detectors) already
-    wrap their call to this function in their own try/except so a raising
-    embedder is logged and skipped there without this function swallowing
-    it twice."""
-    emb: list[float] = await embedder.embed(text) if embedder is not None else []
+    Always writes, even with no embedder (embedder=None), one that returns
+    a falsy vector, or one that raises: the trace is what makes a brain
+    action undoable, and losing that safety net because no embedder happens
+    to be configured -- or a configured one is briefly unreachable -- would
+    be worse than a trace that only degrades to recent() instead of vector
+    search. `embedder.embed()` raising IS caught here: doing so does not
+    swallow anything, because it still results in the trace being written
+    (the whole point of this function), and the caller's own try/except
+    (e.g. cognitive_loop.auto_tune_detectors) still guards the rest of its
+    own work regardless of whether this function raises or not. All four
+    sibling write paths (save_memory, recall_memory's degrade, save_knowledge,
+    recall_knowledge) already treat a raising embedder as "write without a
+    vector"; this is the same rule."""
+    try:
+        emb: list[float] = await embedder.embed(text) if embedder is not None else []
+    except Exception:
+        emb = []
 
     existing = knowledge_store.list_items(kind="brain-action", limit=_MAX_ACTION_SCAN)
     for old in existing:
