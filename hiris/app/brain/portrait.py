@@ -93,6 +93,14 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
     for area, eids in (area_map or {}).items():
         if not isinstance(eids, (list, tuple)) or area == "__no_area__":
             continue
+        # Il nome area e' testo libero del registro aree di HA (l'utente lo
+        # scrive a mano) e diventa qui la chiave con cui il ritratto finisce
+        # in ENTRAMBI i prompt (reasoner.py e coverage_review.py bypassano
+        # _san sul ritratto, fidandosi che sia "gia' sanificato alla fonte,
+        # stringa per stringa"): senza questa riga quella fiducia sarebbe
+        # falsa proprio per il nome area. Stesso trattamento gia' applicato
+        # ai nomi area in semantic_context_map.py.
+        area_nome = sanitize_ha_value(str(area))
         acceso: list[str] = []
         aperto: list[str] = []
         allerta: list[str] = []
@@ -107,12 +115,20 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
             dominio = str(eid).split(".")[0]
             if dominio == "binary_sensor" and info.get("dc") in _ALLERTA_CLASSES:
                 allerta.append(etichetta)
-            elif dominio in _APERTO_DOMINI or dominio == "binary_sensor":
+            elif (
+                dominio in _APERTO_DOMINI
+                or dominio == "binary_sensor"
+                # Una serratura aperta appartiene alle aperture, non alle
+                # accensioni: "acceso: Serratura ingresso" si legge come una
+                # lampada, ma una porta sbloccata e' semanticamente (e per
+                # importanza) un'apertura.
+                or (dominio == "lock" and stato.lower() == "unlocked")
+            ):
                 aperto.append(etichetta)
             else:
                 acceso.append(etichetta)
         if acceso or aperto or allerta:
-            aree[str(area)] = {"acceso": acceso, "aperto": aperto,
+            aree[area_nome] = {"acceso": acceso, "aperto": aperto,
                                "allerta": allerta}
 
     cambiato = []

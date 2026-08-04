@@ -933,6 +933,16 @@ async def _osserva_la_casa(app) -> int:
         cache = app.get("entity_cache") if app is not None else None
         if store is None or cache is None or not hasattr(cache, "all_states"):
             return 0
+        from .proxy.entity_cache import inventario_leggibile
+        if not inventario_leggibile(cache):
+            # Riavvio host: il Supervisor puo' avviare HIRIS prima che il
+            # core HA sia pronto. Il primo `entity_cache.load()` fallisce (e
+            # viene inghiottito), la cache resta parziale/vuota e
+            # `cache.loaded` resta False. Un'osservazione su quello stato
+            # cancellerebbe o riempirebbe di falsi "riapparsi" la linea di
+            # base -- saltare il giro e' "un delta piu' vecchio", la
+            # degradazione che il docstring sopra promette, non un guasto.
+            return 0
         from .brain.portrait import notable_state
         changes = store.observe(notable_state(cache.all_states()))
         return len(changes)
@@ -1669,8 +1679,23 @@ async def _on_startup(app: web.Application) -> None:
     app["advisory_store"] = advisory_store
 
     from .brain.portrait_store import PortraitStore
-    app["portrait_store"] = PortraitStore(os.path.join(data_dir, "portrait.db"))
-    logger.info("PortraitStore ready")
+    try:
+        app["portrait_store"] = PortraitStore(os.path.join(data_dir, "portrait.db"))
+        logger.info("PortraitStore ready")
+    except Exception:
+        # Un portrait.db corrotto (perdita di corrente, disco guasto) fa
+        # sollevare sqlite3.DatabaseError da init_schema anche se connect()
+        # riesce: senza questo try/except l'eccezione uscirebbe da
+        # _on_startup e fermerebbe l'intero add-on (niente reasoner, niente
+        # scheduler, niente chat) per un file che e' una cache ricostruibile.
+        # I due consumatori del ritratto controllano gia' esplicitamente
+        # `app.get("portrait_store") is None` e degradano a ""/skip: non
+        # scriverla in app basta a innescare quella degradazione.
+        logger.warning(
+            "PortraitStore non disponibile (portrait.db corrotto o "
+            "illeggibile): il ritratto della casa resta disattivato per "
+            "questo avvio", exc_info=True,
+        )
 
     # Thin wrapper binding the module-level request_confirmation_stepup to
     # this app instance; see request_confirmation_stepup for the actual

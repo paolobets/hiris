@@ -84,9 +84,16 @@ def test_portrait_absent_keeps_context_and_message_identical():
     base_ctx = build_review_context({}, [], {})
     assert build_review_context({}, [], {}, portrait="") == base_ctx
     assert build_review_context({}, [], {}, portrait=None) == base_ctx
+    # Solo whitespace: il guard usa .strip(), quindi deve degradare come
+    # portrait="" -- pinnato qui cosi' una modifica futura non lo faccia
+    # regredire in silenzio.
+    assert build_review_context({}, [], {}, portrait="   \n\t  ") == base_ctx
     assert "portrait" not in base_ctx
     assert build_review_message(base_ctx) == build_review_message(
         build_review_context({}, [], {}, portrait="")
+    )
+    assert build_review_message(base_ctx) == build_review_message(
+        build_review_context({}, [], {}, portrait="   \n\t  ")
     )
 
 

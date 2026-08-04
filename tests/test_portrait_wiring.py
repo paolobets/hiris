@@ -25,6 +25,13 @@ class _RaisingCache:
         raise RuntimeError("cache boom")
 
 
+class _NotLoadedCache(_FakeCache):
+    """Simula la cache subito dopo l'avvio quando HA core non e' ancora
+    pronto: `entity_cache.load()` e' fallito (inghiottito) e `loaded` resta
+    False, ma il listener sugli eventi puo' aver gia' popolato qualche stato."""
+    loaded = False
+
+
 @pytest.mark.asyncio
 async def test_observation_records_changes(tmp_path):
     store = PortraitStore(str(tmp_path / "p.db"))
@@ -53,11 +60,77 @@ async def test_observation_is_failure_safe(tmp_path):
     store.close()
 
 
+@pytest.mark.asyncio
+async def test_observation_skips_when_cache_not_loaded(tmp_path):
+    """Riavvio host: il Supervisor puo' avviare HIRIS prima che HA core sia
+    pronto. `entity_cache.loaded` resta False finche' il primo `load()` non
+    va a buon fine. Osservare comunque svuoterebbe/inquinerebbe la linea di
+    base -- il giro va saltato, non eseguito su dati parziali."""
+    store = PortraitStore(str(tmp_path / "p.db"))
+    n = await server._osserva_la_casa({
+        "portrait_store": store,
+        "entity_cache": _NotLoadedCache([
+            {"id": "light.a", "state": "on", "name": "A",
+             "domain": "light", "device_class": None, "unit": ""}
+        ]),
+    })
+    assert n == 0
+    assert store.baseline() == {}
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_observation_preserves_baseline_when_cache_not_loaded(tmp_path):
+    """La linea di base gia' scritta da un giro precedente (buono) deve
+    sopravvivere intatta a un giro successivo con cache non pronta: un
+    giro saltato e' "un delta piu' vecchio", mai una linea di base perduta
+    o inquinata da falsi "riapparsi" quando la cache si riprende."""
+    store = PortraitStore(str(tmp_path / "p.db"))
+    good_cache = _FakeCache([
+        {"id": "light.a", "state": "on", "name": "A",
+         "domain": "light", "device_class": None, "unit": ""}
+    ])
+    assert await server._osserva_la_casa(
+        {"portrait_store": store, "entity_cache": good_cache}) == 0
+    baseline_before = store.baseline()
+    assert baseline_before  # il giro buono ha scritto qualcosa
+
+    not_loaded = _NotLoadedCache([])  # cache tornata vuota durante il riavvio
+    n = await server._osserva_la_casa(
+        {"portrait_store": store, "entity_cache": not_loaded})
+    assert n == 0
+    assert store.baseline() == baseline_before
+    store.close()
+
+
 def test_observation_job_is_registered():
     src = inspect.getsource(server._on_startup)
     assert "hiris_portrait_observe" in src
     assert "_osserva_la_casa(app)" in src
     assert 'app["portrait_store"]' in src
+
+
+def test_portrait_store_construction_is_wrapped_in_try_except():
+    """Un portrait.db corrotto (perdita di corrente, disco guasto) fa
+    sollevare sqlite3.DatabaseError da init_schema anche se connect() apre il
+    file: senza un try/except attorno alla costruzione, l'eccezione uscirebbe
+    da _on_startup e fermerebbe l'intero add-on (niente reasoner, niente
+    scheduler, niente chat) per una cache ricostruibile. La costruzione vive
+    dentro la closure di _on_startup e non e' raggiungibile direttamente dai
+    test -- stessa convenzione delle altre verifiche di cablaggio in questo
+    file, che ispezionano il sorgente."""
+    src = inspect.getsource(server._on_startup)
+    idx = src.index("PortraitStore(os.path.join(data_dir")
+    before_construction = src[max(0, idx - 200):idx]
+    assert "try:" in before_construction, (
+        "la costruzione di PortraitStore deve essere dentro un try: un "
+        "file corrotto non deve poter fermare l'intero avvio"
+    )
+    after_construction = src[idx:idx + 500]
+    assert "except Exception" in after_construction, (
+        "la costruzione di PortraitStore deve essere seguita da un "
+        "except Exception che degrada a portrait_store non impostato"
+    )
 
 
 from hiris.app.watcher.reasoner import build_user_message
@@ -80,10 +153,21 @@ def test_portrait_context_returns_rendered_block(tmp_path):
     store.close()
 
 
-def test_portrait_context_is_failure_safe():
+def test_portrait_context_is_failure_safe(tmp_path):
     assert server._portrait_context({}) == ""
     assert server._portrait_context(None) == ""
+    # Nessuno store: la guardia iniziale esce presto, la cache che solleva
+    # non viene mai toccata -- questo caso da solo NON esercita il
+    # try/except che protegge entrambi i consumatori del prompt.
     assert server._portrait_context({"entity_cache": _RaisingCache()}) == ""
+    # Store reale + cache che solleva: qui la guardia iniziale passa e la
+    # chiamata a cache.all_states() dentro il blocco protetto solleva
+    # davvero -- e' il catch-all di _portrait_context, non la guardia, che
+    # deve riportare "".
+    store = PortraitStore(str(tmp_path / "p.db"))
+    assert server._portrait_context({"portrait_store": store,
+                                     "entity_cache": _RaisingCache()}) == ""
+    store.close()
 
 
 def test_user_message_renders_the_portrait_block():
