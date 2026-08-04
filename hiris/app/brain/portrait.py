@@ -64,20 +64,28 @@ _ACCESO = frozenset({"on", "open", "heat", "cool", "heat_cool", "auto", "playing
                      "cleaning", "unlocked"})
 _APERTO_DOMINI = frozenset({"cover", "valve"})
 
+# Un rilevatore di fumo che scatta NON e' un'apertura: e' un allarme, ed e' la
+# cosa piu' importante che una casa possa dire. Queste classi hanno un secchio
+# proprio, che nella resa viene per primo.
+_ALLERTA_CLASSES = frozenset({"smoke", "gas", "moisture", "problem", "safety",
+                              "tamper"})
 
-def _nomi(states: list[dict]) -> dict[str, str]:
-    out: dict[str, str] = {}
+
+def _meta(states: list[dict]) -> dict[str, dict]:
+    """entity_id -> {"nome": str sanificato, "dc": device_class}."""
+    out: dict[str, dict] = {}
     for raw in states or []:
         if isinstance(raw, dict) and raw.get("id"):
-            out[str(raw["id"])] = sanitize_ha_value(
-                str(raw.get("name") or raw["id"])
-            )
+            out[str(raw["id"])] = {
+                "nome": sanitize_ha_value(str(raw.get("name") or raw["id"])),
+                "dc": str(raw.get("device_class") or ""),
+            }
     return out
 
 
 def build_portrait(*, area_map, states, baseline, changes) -> dict:
     """Compone il ritratto. Non solleva mai: ogni fonte assente degrada a vuoto."""
-    nomi = _nomi(states)
+    meta = _meta(states)
     notable = notable_state(states or [])
     base = baseline if isinstance(baseline, dict) else {}
 
@@ -87,37 +95,47 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
             continue
         acceso: list[str] = []
         aperto: list[str] = []
+        allerta: list[str] = []
         for eid in eids:
             stato = notable.get(str(eid))
             if stato is None or stato.lower() not in _ACCESO:
                 continue
-            nome = nomi.get(str(eid), str(eid))
+            info = meta.get(str(eid)) or {}
+            nome = info.get("nome") or str(eid)
             since = (base.get(str(eid)) or {}).get("since")
             etichetta = f"{nome} (da {since})" if since else nome
             dominio = str(eid).split(".")[0]
-            e_apertura = (
-                dominio in _APERTO_DOMINI
-                or (dominio == "binary_sensor" and stato.lower() == "on")
-            )
-            (aperto if e_apertura else acceso).append(etichetta)
-        if acceso or aperto:
-            aree[str(area)] = {"acceso": acceso, "aperto": aperto}
+            if dominio == "binary_sensor" and info.get("dc") in _ALLERTA_CLASSES:
+                allerta.append(etichetta)
+            elif dominio in _APERTO_DOMINI or dominio == "binary_sensor":
+                aperto.append(etichetta)
+            else:
+                acceso.append(etichetta)
+        if acceso or aperto or allerta:
+            aree[str(area)] = {"acceso": acceso, "aperto": aperto,
+                               "allerta": allerta}
 
     cambiato = []
     for c in (changes or []):
         if not isinstance(c, dict) or not c.get("entity_id"):
             continue
         eid = str(c["entity_id"])
+        was = c.get("was")
+        now_ = c.get("now")
         cambiato.append({
-            "nome": nomi.get(eid, eid), "entity_id": eid,
-            "was": c.get("was"), "now": c.get("now"), "since": c.get("since"),
+            "nome": (meta.get(eid) or {}).get("nome") or eid, "entity_id": eid,
+            # `was` e `now` sono stati di entita' HA come tutti gli altri: il
+            # vincolo globale vale anche qui.
+            "was": sanitize_ha_value(str(was)) if was is not None else None,
+            "now": sanitize_ha_value(str(now_)) if now_ is not None else None,
+            "since": c.get("since"),
         })
 
     return {
         "aree": aree,
         "cambiato": cambiato,
         "conteggi": {
-            "entita": len(nomi),
+            "entita": len(meta),
             "aree": len([a for a in (area_map or {}) if a != "__no_area__"]),
         },
     }

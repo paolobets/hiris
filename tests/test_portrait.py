@@ -145,3 +145,51 @@ def test_build_never_raises_on_garbage():
     p = build_portrait(area_map={"X": None}, states=None,
                        baseline=None, changes=None)
     assert p["aree"] == {} and p["cambiato"] == []
+
+
+def test_alarm_sensors_go_to_their_own_bucket_not_to_open():
+    """Un rilevatore di fumo che scatta non e' una finestra socchiusa."""
+    p = build_portrait(
+        area_map={"Cucina": ["binary_sensor.fumo", "binary_sensor.finestra"]},
+        states=[
+            _s("binary_sensor.fumo", "on", device_class="smoke", name="Fumo"),
+            _s("binary_sensor.finestra", "on",
+               device_class="window", name="Finestra"),
+        ],
+        baseline={}, changes=[],
+    )
+    assert p["aree"]["Cucina"]["allerta"] == ["Fumo"]
+    assert p["aree"]["Cucina"]["aperto"] == ["Finestra"]
+    assert p["aree"]["Cucina"]["acceso"] == []
+
+
+def test_an_area_with_only_an_alarm_is_still_reported():
+    p = build_portrait(
+        area_map={"Sottotetto": ["binary_sensor.allagamento"]},
+        states=[_s("binary_sensor.allagamento", "on",
+                   device_class="moisture", name="Allagamento")],
+        baseline={}, changes=[],
+    )
+    assert p["aree"]["Sottotetto"]["allerta"] == ["Allagamento"]
+
+
+def test_change_states_are_sanitized():
+    """was/now sono stati di entita' HA: il vincolo globale vale anche qui."""
+    p = build_portrait(
+        area_map={}, states=[_s("light.a", "off", name="Luce")],
+        baseline={},
+        changes=[{"entity_id": "light.a", "was": "x" * 500,
+                  "now": "y" * 500, "since": "2026-08-04T09:00:00Z"}],
+    )
+    assert len(p["cambiato"][0]["was"]) <= 120
+    assert len(p["cambiato"][0]["now"]) <= 120
+
+
+def test_change_with_no_previous_state_keeps_none():
+    p = build_portrait(
+        area_map={}, states=[_s("light.a", "on", name="Luce")],
+        baseline={},
+        changes=[{"entity_id": "light.a", "was": None,
+                  "now": "on", "since": "2026-08-04T09:00:00Z"}],
+    )
+    assert p["cambiato"][0]["was"] is None
