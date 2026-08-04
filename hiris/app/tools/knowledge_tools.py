@@ -57,19 +57,6 @@ LINK_KNOWLEDGE_TOOL_DEF = {
 }
 
 
-# Messaggio unico per il fallimento "senza embedding": lo legge il modello e
-# arriva all'utente, quindi dice cosa NON e' successo (non e' stato salvato) e
-# perche' contava (non sarebbe stato ritrovabile). Nessun dettaglio tecnico:
-# l'eccezione resta nel log del server.
-#
-# Costante sola per i due tool gemelli: `save_memory` (tools/memory_tools.py) la
-# importa da qui invece di tenerne una copia quasi identica -- due copie a due
-# parole di distanza si erano gia' divaricate senza che nessuno se ne accorgesse.
-_ERRORE_SENZA_EMBEDDING = (
-    "Non sono riuscito a salvare questo ricordo: la memoria semantica non è "
-    "disponibile e non sarebbe più richiamabile. Riprova più tardi."
-)
-
 # Gemello in lettura: un guasto della ricerca non deve arrivare all'utente
 # travestito da "non c'e' nulla". Stesse regole di sopra sul dettaglio tecnico.
 _ERRORE_RICERCA_SENZA_EMBEDDING = (
@@ -84,25 +71,22 @@ async def handle_save_knowledge(
 ) -> dict:
     """Propone un elemento di conoscenza (stato `pending`, approvato dall'utente).
 
-    Senza embedding l'elemento NON e' richiamabile: knowledge_store.search
-    filtra su `status='approved' AND embedding IS NOT NULL`. Salvarlo comunque
-    riaprirebbe -- spostato di un passo -- lo stesso fallimento silenzioso che
-    la coda di approvazione ha chiuso: il modello dice "salvato", l'elemento
-    compare nella coda, l'utente lo approva, e resta irraggiungibile. Quindi
-    qui, se l'embedding non c'e', si fallisce apertamente e non si scrive
-    nulla. Il presupposto e' verificato in questo punto solo, non nella lista
-    dei tool esposti, perche' e' l'unico attraversato da TUTTI i percorsi
-    (chat, agenti, gateway MCP) e perche' un embedder configurato puo'
-    comunque fallire sulla singola chiamata."""
+    Senza embedding l'elemento resta comunque scritto: `KnowledgeStore.search`
+    degrada a `recent()` (piu' recenti prima, stessi filtri di riservatezza)
+    quando non c'e' un vettore di query, quindi un elemento senza embedding e'
+    comunque ritrovabile -- non e' piu' un successo apparente rifiutare qui
+    avrebbe solo spostato il difetto vero, che e' a monte: il default di
+    fabbrica (NullEmbedder) non calcola MAI un vettore, quindi rifiutare
+    significava non salvare nulla su un'installazione stock. Se un embedder
+    c'e' e funziona, il vettore si calcola e si salva esattamente come prima;
+    se l'embedder non c'e', non risponde, o solleva, si salva comunque senza
+    vettore invece di fingere che il ricordo non sia mai stato detto."""
     content = tool_input["content"]
     try:
         emb = await embedder.embed(content) if embedder is not None else None
     except Exception:
-        logger.exception("save_knowledge: embedding non calcolato, nulla da salvare")
+        logger.exception("save_knowledge: embedding non calcolato, salvo senza vettore")
         emb = None
-    if not emb:
-        logger.warning("save_knowledge rifiutato: nessun embedding disponibile")
-        return {"error": _ERRORE_SENZA_EMBEDDING}
     loop = asyncio.get_running_loop()
     item_id = await loop.run_in_executor(
         None,
@@ -114,7 +98,7 @@ async def handle_save_knowledge(
             amount=tool_input.get("amount"),
             due_date=tool_input.get("due_date"),
             category=tool_input.get("category"),
-            embedding=emb,
+            embedding=emb or None,
             sensitivity=tool_input.get("sensitivity", "normal"),
             source="chat",
             status="pending",

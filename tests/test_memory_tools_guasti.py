@@ -1,13 +1,16 @@
 """A1/A3 — save_memory e recall_memory non devono dire una cosa e farne un'altra.
 
-Un ricordo senza embedding non e' richiamabile: `knowledge_store.search` filtra
-su `status='approved' AND embedding IS NOT NULL`. Scriverlo comunque e
-rispondere `saved: True` e' il gemello, ancora vivo, del difetto chiuso per
-save_knowledge: il modello dice "me lo ricordo" e il ricordo non tornera' mai.
+save_memory non rifiuta piu' un ricordo solo perche' manca il vettore: dopo la
+fetta 2a `KnowledgeStore.search` degrada a `recent()` quando non c'e' un
+vettore di query, quindi un ricordo senza embedding resta comunque
+ritrovabile. Il salvataggio deve riuscire -- senza vettore, senza propagare
+l'eccezione dell'embedder -- e, quando l'embedder funziona, il vettore deve
+comunque essere calcolato e salvato esattamente come prima (nessuna
+regressione).
 
-Lo stesso vale in lettura: se il vettore di ricerca non si calcola, "nessun
-ricordo" e "non ho potuto guardare" sono due frasi diverse, e solo la seconda
-e' vera.
+In lettura vale ancora la distinzione precedente: se il vettore di ricerca non
+si calcola, "nessun ricordo" e "non ho potuto guardare" sono due frasi
+diverse, e solo la seconda e' vera.
 """
 from __future__ import annotations
 
@@ -41,36 +44,65 @@ class _Embedder:
 
 
 @pytest.mark.asyncio
-async def test_save_memory_con_embedder_rotto_non_dichiara_di_aver_salvato(tmp_path):
+async def test_save_memory_con_embedder_rotto_salva_comunque_senza_vettore(tmp_path):
+    """Un ricordo senza embedding resta comunque ritrovabile: dopo la fetta 2a
+    `KnowledgeStore.search` degrada a `recent()` quando non c'e' un vettore di
+    query. Un embedder che solleva non deve impedire di ricordare: il
+    salvataggio riesce, senza vettore, senza propagare l'eccezione."""
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
     res = await handle_save_memory(
         store, _Embedder(esplode=True), {"content": "preferisco 21 gradi"},
         owner="paolo", chatbot_id="agentA",
     )
 
-    assert res.get("error"), "senza embedding il salvataggio deve dichiarare l'errore"
-    assert res.get("saved") is not True, "nessun successo apparente"
-    assert "id" not in res
-    # Nessuna riga scritta: un ricordo irraggiungibile non deve nemmeno esistere.
-    assert store.list_items() == []
-    # Il dettaglio dell'eccezione resta nel log del server.
-    assert "embedder giu'" not in res["error"]
+    assert res.get("saved") is True
+    assert "error" not in res
+    # La riga e' davvero nel db, recuperabile via store.recent() -- save_memory
+    # scrive sempre status='approved', quindi (a differenza di save_knowledge)
+    # e' il percorso di lettura corretto.
+    trovati = store.recent(owner="paolo", chatbot_id="agentA", kinds=["memory"])
+    assert [m["content"] for m in trovati] == ["preferisco 21 gradi"]
+    assert trovati[0]["id"] == res["id"]
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is False
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_save_memory_con_vettore_vuoto_non_dichiara_di_aver_salvato(tmp_path):
+async def test_save_memory_con_vettore_vuoto_salva_comunque_senza_vettore(tmp_path):
     """Il provider risponde ma senza vettore (caso del provider non
-    configurato, che non solleva): stesso esito."""
+    configurato, che non solleva): stesso esito -- salvataggio riuscito."""
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
     res = await handle_save_memory(
         store, _Embedder(vettore=[]), {"content": "preferisco 21 gradi"},
         owner="paolo", chatbot_id="agentA",
     )
 
-    assert res.get("error")
-    assert res.get("saved") is not True
-    assert store.list_items() == []
+    assert res.get("saved") is True
+    assert "error" not in res
+    trovati = store.recent(owner="paolo", chatbot_id="agentA", kinds=["memory"])
+    assert [m["content"] for m in trovati] == ["preferisco 21 gradi"]
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is False
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_save_memory_con_embedder_funzionante_salva_ancora_il_vettore(tmp_path):
+    """Nessuna regressione: se l'embedder c'e' e funziona, il vettore si
+    calcola e si salva esattamente come prima -- pinnato via has_embedding,
+    non per assunzione."""
+    store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    embedder = _Embedder()
+    res = await handle_save_memory(
+        store, embedder, {"content": "preferisco 21 gradi"},
+        owner="paolo", chatbot_id="agentA",
+    )
+
+    assert res.get("saved") is True
+    assert embedder.chiamate == ["preferisco 21 gradi"]
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is True
     store.close()
 
 

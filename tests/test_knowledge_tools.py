@@ -102,14 +102,14 @@ async def test_save_knowledge_creates_pending(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_save_knowledge_senza_embedding_non_finge_di_aver_salvato(tmp_path):
-    """Un elemento senza embedding non e' richiamabile: knowledge_store.search
-    filtra su `status='approved' AND embedding IS NOT NULL`. Se il calcolo
-    dell'embedding fallisce, salvare comunque riaprirebbe lo stesso fallimento
-    silenzioso che la coda di approvazione ha appena chiuso, spostato di un
-    passo: il modello dice "salvato", l'elemento compare nella coda, l'utente
-    lo approva e resta comunque irraggiungibile. Deve fallire apertamente e
-    non scrivere nulla."""
+async def test_save_knowledge_embedder_che_solleva_salva_comunque_senza_vettore(tmp_path):
+    """Un elemento senza embedding resta comunque ritrovabile: dopo la fetta 2a
+    `KnowledgeStore.search` degrada a `recent()` (stessi filtri di
+    riservatezza) quando non c'e' un vettore di query. Rifiutare qui non
+    protegge piu' nulla -- sposta solo il difetto vero, che e' a monte (il
+    default di fabbrica NullEmbedder non calcola mai un vettore). Un embedder
+    che solleva non deve impedire di ricordare: il salvataggio deve riuscire,
+    senza propagare l'eccezione, e senza vettore."""
     from hiris.app.tools.knowledge_tools import handle_save_knowledge
 
     store = KnowledgeStore(str(tmp_path / "no_emb.db"))
@@ -122,19 +122,25 @@ async def test_save_knowledge_senza_embedding_non_finge_di_aver_salvato(tmp_path
         owner="home",
     )
 
-    assert res.get("error"), "senza embedding il salvataggio deve dichiarare l'errore"
-    assert "status" not in res, "nessun successo apparente"
-    # Nessuna riga scritta: ne' pending ne' approved.
-    assert store.list_items() == []
-    # L'errore non deve riportare il testo dell'eccezione al chiamante.
-    assert "provider giu'" not in res["error"]
+    assert "error" not in res, "l'embedder rotto non deve impedire di salvare"
+    assert res["status"] == "pending"
+    # La riga e' davvero nel db: recuperabile dal percorso canonico di lettura
+    # per gli elementi in coda (save_knowledge scrive sempre status='pending',
+    # quindi store.recent() -- che filtra su status='approved' -- non la
+    # vedrebbe; list_items(status='pending') e' l'equivalente corretto).
+    pending = store.list_items(status="pending")
+    assert [p["content"] for p in pending] == ["Paolo ama la pizza"]
+    assert pending[0]["id"] == res["id"]
+    # Nessun vettore salvato: has_embedding lo dice senza esporre il blob.
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is False
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_save_knowledge_embedding_vuoto_non_finge_di_aver_salvato(tmp_path):
+async def test_save_knowledge_embedding_vuoto_salva_comunque_senza_vettore(tmp_path):
     """Stesso esito quando il provider risponde ma senza vettore (lista vuota):
-    e' il caso del provider non configurato, che non solleva."""
+    e' il caso del provider non configurato (NullEmbedder), che non solleva."""
     from hiris.app.tools.knowledge_tools import handle_save_knowledge
 
     store = KnowledgeStore(str(tmp_path / "empty_emb.db"))
@@ -147,8 +153,37 @@ async def test_save_knowledge_embedding_vuoto_non_finge_di_aver_salvato(tmp_path
         owner="home",
     )
 
-    assert res.get("error")
-    assert store.list_items() == []
+    assert "error" not in res
+    assert res["status"] == "pending"
+    pending = store.list_items(status="pending")
+    assert [p["content"] for p in pending] == ["La caldaia va revisionata a ottobre"]
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is False
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_save_knowledge_con_embedder_funzionante_salva_ancora_il_vettore(tmp_path):
+    """Nessuna regressione: se l'embedder c'e' e funziona, il vettore si
+    calcola e si salva esattamente come prima -- pinnato via has_embedding,
+    non per assunzione."""
+    from hiris.app.tools.knowledge_tools import handle_save_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "with_emb.db"))
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[0.1, 0.2])
+
+    res = await handle_save_knowledge(
+        store, embedder,
+        {"kind": "preference", "content": "Paolo ama la pizza"},
+        owner="home",
+    )
+
+    assert "error" not in res
+    assert res["status"] == "pending"
+    embedder.embed.assert_awaited_once_with("Paolo ama la pizza")
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is True
     store.close()
 
 
