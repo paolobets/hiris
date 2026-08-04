@@ -1,310 +1,178 @@
-# HIRIS — Claude Code Context
+# HIRIS — contesto per Claude Code
 
-## What is HIRIS
+## ⚠️ Leggi prima questo
 
-**HIRIS** (Home Intelligent Reasoning & Integration System) is a standalone **Home Assistant Add-on** that provides an AI-powered agent platform for smart home management, built around three AI entities — **Chatbot**, **Agentbot**, **Brain** (see below) — all gated by a single security **semaforo**.
+HIRIS è in **Refactor 2.0** (dal 4 agosto 2026). Il prodotto è stato ri-scopato da zero e una parte
+del codice esistente è **deliberatamente condannata**. Prima di scrivere qualunque riga:
+
+| Domanda | Documento |
+|---|---|
+| Cosa **deve** fare HIRIS | `docs/design/2026-08-04-scope-hiris.md` — **il contratto** |
+| Cosa **fa oggi** il codice | `docs/design/2026-08-03-analisi-funzionale.md` — con riferimenti `file:riga` |
+| Che **stato tecnico** ha | `docs/design/2026-08-03-revisione-tecnica.md` |
+
+Tutto ciò che sta in `docs/archive/` e in `docs/superpowers/_archivio-pre-refactor-2.0/` è **storia,
+non specifica**: descrive il prodotto precedente. Non usarlo come fonte.
+
+---
+
+## Che cos'è HIRIS
+
+> **HIRIS è l'intelligenza della casa.**
+>
+> Sa tutto ciò che della casa si può sapere — Home Assistant, i documenti, le fonti che verranno —
+> impara da ciò che vede, e da quella conoscenza **costruisce le cose che servono a far funzionare
+> la casa**: automazioni, script, scene, plance quando basta il determinismo; **agenti** quando
+> serve giudizio.
+
+Add-on standalone di Home Assistant, aperto via Ingress.
+
+**HIRIS non è**: un cruscotto dello stato della casa (lo fa HA), un playground di LLM, un
+sostituto di HA. È il suo livello di giudizio.
+
+## Le tre leggi
+
+Sono **criteri di ammissione**, non linee guida. Una funzione che ne viola una non entra — o esce.
+
+1. **Sussidiarietà** — se Home Assistant lo sa fare, si crea un oggetto di Home Assistant.
+   L'agente esiste solo dove serve **giudizio**. Ogni funzione deve saper rispondere a
+   *«perché questo non è un'automazione HA?»*.
+2. **Autoconsistenza** — automazione e agente sono oggetti **distinti e completi**; nessuno dei due
+   dipende dall'altro. Corollario: **l'agente ha i propri sensi**.
+3. **Ogni agente ragiona** — se non ragiona non è un agente: è un'automazione, e nasce in HA.
+
+## L'impianto
+
+**① Conoscenza** (fondazione, multi-fonte) → **② Brain** (legge tutto, impara e aggiorna la propria
+memoria **da solo**, apre questioni e **propone**; non tocca la casa senza un sì) → **③ Agenti**
+(unici esecutori, autosufficienti, nascono da un comando testuale o da una proposta del Brain,
+attivi solo dopo un sì).
+
+**La porta è la Chat**: si interroga il Brain e si **costruisce** con lui.
+
+**Il perimetro** — ciò che si approva: **permessi** (cosa può toccare) + **freni** (frequenza,
+budget, scadenza) + **stato** (attivo/sospeso/revocato).
+
+## Cosa è condannato dal refactor
+
+Se stai per estendere una di queste cose, **fermati e chiedi**:
+
+| Condannato | Perché |
+|---|---|
+| **modalità regola** (agente senza ragionamento) | viola la Legge III |
+| **rilevatori integrati come esecutori** (`watcher/detectors.py`) | violano la Legge I: sono automazioni HA di sei righe |
+| **semaforo per-azione** (`security/semaphore.py`, 4 colori × N domini × 3 percorsi di conferma) | assorbito nei permessi del perimetro |
+| **vocabolario** «Sentinella», «Agentbot», «Persona», «Lente» | resta **agente** |
+| **il workbench come prodotto** (sandbox/eval/telemetria per-entità) | mai costruito; non è ciò che serve alla casa |
+
+`PRODUCT.md` è **superato** su scopo, utenti e criteri di successo. Restano validi solo i suoi
+capitoli su identità visiva e accessibilità.
 
 ---
 
 ## Stack
 
-| Component | Technology |
+| Componente | Tecnologia |
 |---|---|
 | Backend | Python 3.13 + aiohttp |
-| AI | Claude API (claude-sonnet-4-6), tool use / agentic loop |
-| Frontend | Modern JS (no iOS 12 constraint) |
-| HA integration | Supervisor Ingress, `SUPERVISOR_TOKEN` env var |
-| Config | HA add-on options (`config.yaml`) |
-| Port | 8099 (internal only, via Ingress) |
+| LLM | Claude API · OpenAI · OpenRouter · Ollama locale · abbonamento Claude via runner in-addon |
+| Frontend | JS moderno, **nessun build step** — `<script src>` con fingerprint per-file iniettato server-side |
+| Integrazione HA | Supervisor Ingress, `SUPERVISOR_TOKEN` |
+| Config | opzioni add-on (`hiris/config.yaml`) |
+| Porta | 8099, solo interna, via Ingress |
+| Persistenza | SQLite in `/data` + file JSON |
 
----
+## Struttura reale
 
-## Architecture (current — see `docs/architecture.md` for full detail)
-
-> The "Two-Layer Architecture" this section used to describe (Layer 2 =
-> Claude agentic loop, Layer 1 = a 100%-offline, no-AI Python flow engine)
-> is retired along with the rest of the Sprint A/B autonomous-agent
-> machinery (Slice 5, v0.33.0). The AI-free automation path still exists,
-> per-Agentbot: `reasoning.enabled` (default `false`, see
-> `hiris/app/watcher/agentbot_runner.py::_on_wake`) opts an individual
-> Agentbot INTO a single-shot LLM reasoner (verdict-JSON, gated by the
-> semaforo before any action executes) — with it left off, the action
-> declared in config runs deterministically, no LLM call at all. See "The
-> current model" below.
+Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un piano.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  PRESENTATION LAYER                                           │
-│  Static HTML/JS frontend (chat UI, Chatbot/Agentbot designer)│
-│  Lovelace custom card (hiris-chat-card)                      │
-└──────────────────────────────────────────────────────────────┘
-┌──────────────────────────────────────────────────────────────┐
-│  APPLICATION LAYER                                            │
-│  aiohttp REST API · Chatbot Engine · LLM Router               │
-│  Tool Dispatcher · Task Engine · Semantic Map                 │
-└──────────────────────────────────────────────────────────────┘
-┌──────────────────────────────────────────────────────────────┐
-│  INFRASTRUCTURE LAYER                                         │
-│  HA WebSocket client · SQLite · MQTT publisher                │
-│  Anthropic SDK · OpenAI SDK · Ollama HTTP client               │
-└──────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Claude Tools (Phase 1 baseline — non-exhaustive)
-
-Core tool set from Phase 1, still valid. Many more tools have shipped since (memory/RAG, knowledge, proposals, HTTP, health, automation-config, dashboard authoring — see `hiris/app/tools/*.py` for the authoritative, current list; `EVALUATION_ONLY_TOOLS` in `hiris/app/claude_runner.py` marks which are Agentbot-safe).
-
-| Tool | Description |
-|---|---|
-| `get_entity_states(ids)` | HA REST `/api/states` |
-| `get_area_entities()` | Area→entity mapping via WS registry |
-| `get_home_status()` | Compact summary of useful entities |
-| `get_entities_on()` | All entities currently in `on` state |
-| `get_entities_by_domain(domain)` | Entities filtered by domain |
-| `get_energy_history(days)` | HA History API |
-| `get_weather_forecast(hours)` | Open-Meteo (free, no key) |
-| `call_ha_service(domain, service, data)` | HA REST, whitelisted domains |
-| `send_notification(message, channel)` | HA push / Telegram / Apprise (80+ channels) |
-| `get_ha_automations()` | HA REST `/api/config/automation` |
-| `trigger_automation(id)` | HA `automation.trigger` |
-| `toggle_automation(id, enabled)` | HA `automation.turn_on/off` |
-| `get_calendar_events(hours, calendar_entity)` | HA calendar integration |
-| `set_input_helper(entity_id, value)` | input_boolean/number/text/select |
-| `create_task(...)` / `list_tasks()` / `cancel_task(id)` | Internal task management |
-
----
-
-## The current model — three AI entities
-
-*(supersedes the old "4 Agent Types" table — Proactive Monitor / Reactive Agent / Preventive Scheduler / Chat NL Agent — retired in Slice 5, v0.33.0; see the Roadmap history below for context, not as current fact)*
-
-| Entity | Role | Trigger | Reasoning | Action |
-|---|---|---|---|---|
-| **Chatbot** | Conversa: chiedi → risponde | User message (UI/Lovelace card) | Free-form prompt, tool use within its allowlist | Gated by the semaforo — **no autonomous trigger** |
-| **Agentbot** | Vigila: watches for a condition | Event / cron / interval (built-in Sentinella detectors **or** user-defined) | Single-shot LLM reasoner, **verdict-JSON contract, no free tool use** | Action **declared in config**, never chosen by the AI at runtime — gated by the semaforo |
-| **Brain** | Il fulcro: observes, reasons, proposes | Continuous (cognitive loop) | Cross-entity reasoning over knowledge/history | Surfaces proposals/advisories; home at `#/` |
-
-Storage: `chatbots.json`, `agentbots.json` (both under `/data`). DB: `knowledge.db` (per-Chatbot scoping via `chatbot_id` column), `advisory.db`, `chat_history.db`, `proposals.db`; the Brain's reasoning log lives in a `brain_reasoning` table.
-
-API surface: `/api/chatbots*`, `/api/agentbots*`, `/api/chat`, `/api/brain/*`, `/api/models*`, `/api/sentinel/*`, `/api/entities`, `/api/proposals*`.
-
-Frontend: no build step — `<script src>` tags with a per-file fingerprint appended server-side. Key modules: `hiris/app/static/config/entity-picker.js`, `editor-kit.js`, `chatbot-editor.js`, `agentbot-editor.js`, `create-wizard.js`; chat UI in `hiris/app/static/chat/*.js`.
-
-Security: the **semaforo** (`hiris/app/security/semaphore.py`) is the single gate for every action toward the house — tier (green/yellow/red/off) per domain/entity + denylist of dangerous domains + step-up — enforced from every surface (chat, agentbots, gateway, deferred tasks). Reads never go through it.
-
-Full narrative: `docs/how-it-works.md` ("Chatbot and Agentbot", "The Brain Home"), `docs/architecture.md`.
-
----
-
-## Project Structure
-
-> The two trees below are Phase 0/1 scaffold planning (pre-implementation) and
-> are stale as a file listing — `app/routes.py`, top-level `app/ha_client.py`,
-> `app/agent_engine.py`, `api/handlers_agents.py` and
-> `docs/2026-04-18-hiris-design.md` do **not** exist. Kept only for roadmap
-> history below; do not `cd`/`Read` these paths expecting them to exist.
-
-**Current structure** (verify with `ls hiris/app/` — this list drifts as the app grows):
-```
-hiris/                    # add-on root: config.yaml, Dockerfile, run.sh, requirements.txt
+hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
-    ├── main.py           # aiohttp app factory + web.run_app
-    ├── server.py         # route registration (app.router.add_*) — routes live HERE, not routes.py
-    ├── claude_runner.py  # Claude API agentic loop + tool orchestrator (MODEL default, AUTO_MODEL_MAP)
-    ├── chatbot_engine.py
-    ├── llm_router.py     # provider order (cost_first/quality_first)
-    ├── model_activation.py
-    ├── storage.py
-    ├── chat_store.py     # chat_history.db
-    ├── config.py / env_util.py / version.py / mqtt_publisher.py / task_engine.py
-    ├── agent/            # runner.py, prompts.py (Chatbot agentic-loop internals)
-    ├── watcher/           # Sentinella: detectors/situations, agentbots.py, evaluator.py, executor.py
-    ├── brain/             # cognitive_loop.py, advisory_store.py, knowledge_store.py, reasoning_log.py
-    ├── security/          # semaphore.py — the semaforo gate
-    ├── api/                # handlers_chatbots.py, handlers_agentbots.py, handlers_brain.py, handlers_models.py, ...
-    ├── tools/              # ha_tools.py, calendar_tools.py, memory_tools.py, dispatcher.py, ...
-    ├── proxy/              # ha_client.py (real HA REST/WS client — NOT app/ha_client.py)
-    ├── mcp/, history/, reasoning/
-    └── static/
-        ├── index.html / config.html
-        ├── chat/           # agents.js, main.js, messages.js, sidebar.js, ...
-        └── config/         # entity-picker.js, editor-kit.js, chatbot-editor.js, agentbot-editor.js, create-wizard.js, ...
+    ├── main.py           # factory aiohttp + run_app
+    ├── server.py         # ~3000 righe: registrazione rotte E gran parte del wiring
+    ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
+    ├── chatbot_engine.py · llm_router.py · task_engine.py · chat_store.py
+    ├── model_activation.py · storage.py · mqtt_publisher.py · env_util.py · version.py
+    ├── api/        (26 file) handlers_* — la superficie HTTP
+    ├── tools/      (19)      i tool esposti al modello + dispatcher.py
+    ├── brain/      (22)      health_scan, advisory_store, knowledge_store, coverage_review, briefing
+    ├── proxy/      (11)      ha_client.py (il VERO client HA: REST+WS), semantic_context_map
+    ├── watcher/    (17)      guardian, detectors, agentbots, evaluator, executor  ← area condannata
+    ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
+    ├── security/   (2)       semaphore.py                                        ← area condannata
+    ├── mcp/ · history/ · reasoning/ · agent/
+    └── static/     index.html · config.html · chat/*.js · config/*.js · hiris-chat-card.js
 ```
 
----
-
-## Roadmap
-
-### Phase 0 — Scaffold ✅ done
-- HA add-on structure (config.yaml, Docker, aiohttp server)
-- Basic routes: `/` placeholder, `/api/health`
-
-### Phase 1 — Beta Standalone ✅ done (v0.3.17)
-- HA client (REST + History + WebSocket)
-- Claude runner with 15+ tools + retry logic
-- Flow engine (scheduler + state_changed + cron trigger)
-- Step-based agent designer UI + onboarding wizard
-- Chat NL interface with persistent history
-- Notifications: HA push + Telegram
-- Security: API key vault, service whitelist, tool permissions per agent
-- Test runner per agent, budget auto-disable, per-agent usage tracking
-- SemanticContextMap + KnowledgeDB (area-aware context)
-- Task engine, LLM Router (local model support)
-
-### Phase 1.5 — Lovelace Dashboard Card ✅ done (v0.5.16)
-- `hiris-chat-card` custom element + card picker registration
-- Visual config editor (`hiris-chat-card-editor`)
-- Auto-deploy to `/local/hiris/` + Lovelace resource registration via WebSocket
-- Ingress URL discovery via `hiris-ingress.json` (fixes 503 on random ingress token)
-- Animated typing indicator (HIRIS icon + 3 dots)
-
-### Phase 2 — Sprint Plan (v0.6.x → v0.8.x)
-
-Development organized in 6 competency-based sprints. **Sprint 0 must ship before any feature sprint.**
-Full detail was in `docs/HIRIS_CLAUDE_CODE_PROMPT.md` — **that file no longer exists**; treat the Roadmap entries below as the record.
-
-#### Sprint 0 — Critical Bugfixes ✅ done (v0.6.0)
-- `handlers_agents.py` + `handlers_usage.py` — `get("llm_router") or get("claude_runner")` fix
-- `app/ha_client.py` — orphan stub removed; real impl is `proxy/ha_client.py`
-- `SemanticContextMap` — JSON persist/load so classifications survive restart
-- EUR exchange rate — centralized into `config.EUR_RATE` constant
-- MQTT: `update_agent()` now calls `publish_agent_state()` on `enabled` change
-- Non-blocking file I/O — `_save()` / `_save_usage()` / `SemanticContextMap.save()` use `run_in_executor`
-
-#### Sprint A — HA-Bridge ✅ done (v0.6.1)
-*Competenza: Python backend + HA WebSocket/MQTT*
-- MQTT 2-way: subscribe `hiris/agents/+/{enabled,run_now}/set`; `AgentEngine._handle_mqtt_command` callback — **retired in Slice 5 (v0.33.0)**: no autonomous scheduler/executor is left to enable or trigger remotely; the command subscribe loop and `_handle_mqtt_command` are gone, `enabled` is now a read-only `sensor`, and the `run_now` button was removed (see `docs/mqtt-integration.md`)
-- New MQTT entities: `last_result`, `budget_remaining_eur` ("unlimited" when no limit), `tokens_used_today` (daily lazy reset), `run_now` button — `run_now` button retired along with the item above; `budget_remaining_eur` is now *always* `"unlimited"` (no per-agent budget cap exists anymore, see Slice 5 note below)
-- Tool: `http_request(url, method?, headers?, body?)` — Option C security: structured `AllowedEndpoint`, DNS pinning (`_PinnedResolver`), correct RFC1918 DENY_NETS, `SOCK_STREAM` for Alpine/musl, redirects off by default, 4KB cap, internal header stripping
-- `Agent.allowed_endpoints: list[dict] | None` — tool hidden from Claude when `None`
-- *(§2A.2 REST bridge: deferred — Lovelace card already uses REST+SUPERVISOR\_TOKEN)*
-- *(§2A.5 HA Services formal registration: deferred to Phase 3)*
-
-#### Sprint B — Tool Expansion ✅ done (v0.6.x)
-*Competenza: External APIs + Python tool layer*
-- Tool: `create_calendar_event(calendar_entity, summary, event_type, ...)` — datetime + all-day events
-- Apprise unified notification layer — replaces dedicated Telegram/WhatsApp tools; 80+ channels via `apprise_urls` config
-- `EVALUATION_ONLY_TOOLS` frozenset: non-chat agents restricted to read-only + task-mgmt tools (no direct HA execution)
-- `Agent.trigger_on: list[str]` — eval statuses (OK/ATTENZIONE/ANOMALIA) that activate `agent.actions`
-- `AgentEngine._execute_agent_actions()` — dispatches notify/call_service/wait/verify via TaskEngine immediate/delay/time_window tasks
-- `on_fail: continue|stop` per action; `_check_budget_auto_disable` helper extracted
-- `TaskEngine`: `immediate` trigger type; per-action `on_fail` loop with `_stop` flag
-- config.html UI: trigger_on checkboxes, on_fail dropdown, wait/verify action types with child-action editor ("Poi esegui")
-
-> **Retired in Slice 5 — Lenti + Personas (v0.33.0):** the whole autonomous-agent
-> machinery from this sprint — `action_mode`/`rules`/`states`, `Agent.trigger_on`,
-> `AgentEngine._execute_agent_actions()` (and `_execute_action_chain`/
-> `_parse_azioni_lines` added later), `on_fail`, the `VALUTAZIONE`/`AZIONI`
-> structured-output convention, per-agent `budget_eur_limit` auto-disable, and the
-> corresponding config.html trigger/action-sequence UI — has been deleted, not
-> deprecated.
->
-> **Current model (superseded the Slice-5 "Personas" naming too):** chat is
-> configured via a **Chatbot** (prompt, tool/entity/service scope, memory
-> scope, chat policy — "Personas" was an interim name, no longer used). The
-> proactive layer is the **Sentinella** (`hiris/app/watcher/`): fixed, tunable
-> built-in detectors/situations ("lenti") **plus user-defined Agentbot**
-> (`/api/agentbots`, persisted in `agentbots.json`) — custom triggers/prompts
-> have shipped, this is not a future-version item. See `docs/how-it-works.md`
-> ("Chatbot and Agentbot") and `docs/architecture.md` ("Sentinella execution
-> lifecycle").
-
-#### Sprint C — Memory-RAG ✅ done (v0.7.x)
-*Competenza: SQLite + embeddings + AI context*
-- `HISTORY_RETENTION_DAYS` configurable via env (0=unlimited, default 90d) + `delete_old_messages()` DELETE job
-- `backends/embeddings.py`: `EmbeddingProvider` Protocol + `OpenAIEmbedder` (httpx) + `OllamaEmbedder` (aiohttp) + `NullEmbedder`
-- `proxy/memory_store.py`: `agent_memories` SQLite table, pure-Python cosine similarity (no sqlite-vec — Alpine compat), async save/search
-- Tools: `recall_memory(query, k, tags)` + `save_memory(content, tags)` — `recall_memory` in `EVALUATION_ONLY_TOOLS`; `save_memory` chat-only (security)
-- RAG pre-injection: top-k memories prepended to `context_str` in `handlers_chat.py` before every `runner.chat()`
-- Config: `openai_api_key`, `memory_embedding_provider` (openai|ollama|""), `memory_embedding_model`, `memory_rag_k`, `memory_retention_days`, `history_retention_days`
-- Daily APScheduler retention job at 03:00 UTC: purge old chat messages + expired memories
-
-#### Sprint D — Multi-provider LLM (v0.7.x)
-*Competenza: LLM abstraction layer — requires ADR-0002 first*
-- LiteLLM integration in `backends/` (or custom shim — ADR decides)
-- Advanced LLM Router: strategy `cost_first`/`quality_first`, fallback chain, `task_routing` per agent type
-- `pricing.yaml`: centralized EUR/1M token cost map per model
-
-> **What actually shipped (superseded the plan above):** no `task_routing`
-> concept exists. Model selection is `hiris/app/llm_router.py`
-> (`cost_first`/`quality_first` provider order) + a persisted `chain_order`
-> (`/api/models/config`, edited at `#/models`) used as the fallback chain
-> when a Chatbot or Agentbot has `model="auto"`. Each Chatbot/Agentbot picks
-> its own model directly in its editor (not "per type"). `pricing.yaml` did
-> not materialize as a file — costs live in `hiris/app/backends/pricing.py`
-> (`PRICING` dict).
-
-#### Sprint E — Lovelace + HACS (v0.8.x)
-*Competenza: Web Components + distribution*
-- `hiris-agent-card`: agent status, budget bar, run button, last output (reuses `hiris-chat-card` patterns)
-- HACS packaging (`hacs.json`, `repository.json`)
-- Blueprint YAML starter pack (morning briefing, energy anomaly, door reactive)
-
-### Phase 3 — Canvas (v0.9.x+)
-- Canvas drag-and-drop designer (n8n style)
-- HA Services formal registration (`hiris.run_agent`, `hiris.chat`, etc.)
-- Multi-user / role support
-
-### Phase 4 — Integrazioni esterne (futuro)
-- Tool: `send_email(to, subject, body)` via SMTP
-- Vision tool: `analyze_image(image_source)` — camera snapshot → Claude multimodal
-- Telegram bot full (long polling, `/agent`, `/status`, streaming edit)
+**Non esistono** (li citavano vecchi documenti): `app/routes.py`, `app/ha_client.py`,
+`app/agent_engine.py`, `api/handlers_agents.py`.
 
 ---
 
-## Security Notes
+## Come si lavora qui
 
-- `CLAUDE_API_KEY`: HA add-on option (encrypted by Supervisor), never exposed to browser
-- `SUPERVISOR_TOKEN`: env var injected by HA Supervisor
-- Every action toward HA is gated by the **semaforo** (`hiris/app/security/semaphore.py`) — tier per domain/entity + dangerous-domain denylist + step-up — not a flat per-agent whitelist. See "The current model" above.
-- Chat history persisted in SQLite (`/data/chat_history.db`), session-scoped with configurable retention
-
----
-
-## Release Procedure
-
-Follow these steps **in order** whenever asked for a release ("fai il release", "prepara la X.Y.Z", "rilascia", "nuova versione"):
-
-### Step 1 — Scope commits
+### Test
 ```bash
-git log $(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --oneline
+python -m pytest -q          # ~2070 test
+npm test                     # ~100 test frontend: node --test + jsdom
 ```
-Collect all commits since the last tag (or since repo start if no tags yet).
+Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
+`app/`, `config.yaml` e `run.sh`: `package.json` e `node_modules` **non** entrano nell'immagine.
 
-### Step 2 — Propose version
-Determine bump type:
-- Any `feat:` or `feat(...):` → minimum **minor** bump (0.5.x → 0.6.0)
-- Any `BREAKING CHANGE` or `!:` → **major** bump
-- Only `fix:`, `chore:`, `docs:`, `test:` → **patch** bump (0.5.0 → 0.5.1)
+### Regole non negoziabili
 
-Show proposed version to user. Wait for confirmation. User may override.
+- **Ogni push funzionale bumpa la versione**, altrimenti i client non si aggiornano.
+- **Prima di affermare che qualcosa funziona: verifica live.** I bug di questo progetto emergono
+  eseguendo, non leggendo. La suite verde non è una prova.
+- **Conferma esplicita dell'utente** prima di ogni commit, push o tag.
+- **Uno sprint è completo su tutta la codebase toccata**, non solo sul file d'ingresso.
+- Un nuovo kwarg di `ClaudeRunner` deve essere accettato **anche** da `OpenAICompatRunner`, o i
+  backend non-Claude si rompono in silenzio.
+- Impostazione tecnica nuova: **prima nella UI dell'add-on**, poi come variabile d'ambiente. Una
+  env var che `run.sh` non esporta è di fatto una costante.
+- Frontend: interpellare l'agente `ux-ui-specialist` prima di disegnare.
+- Mai `*/` dentro un commento a blocco JS: rompe il boot. Validare con `node --check`.
 
-### Step 3 — Draft CHANGELOG section
-Generate a Keep-a-Changelog section and show it to the user:
+### Trappole note
+
+- **Cache**: la shell HTML è `no-store`, gli asset sono fingerprintati per contenuto. Se un
+  comportamento non cambia dopo un aggiornamento, il sospetto n.1 è Cloudflare o un container non
+  ricostruito — non il codice. `/api/health` espone un `build` stamp per distinguere.
+- `save_policy` ricostruisce da `DEFAULT_POLICY` e **strippa ogni chiave top-level sconosciuta**:
+  lo stato del Brain vive in file sidecar, non nella policy.
+- Molte funzioni sono **inerti di fabbrica** (semaforo spento, embedding vuoto, storico opt-in,
+  documentale spento). Prima di dare la caccia a un bug, verifica che la funzione sia accesa.
+
+---
+
+## Procedura di rilascio
+
+Da seguire **in ordine** quando l'utente chiede un rilascio.
+
+**1. Raccogliere i commit**
+```bash
+git log $(git describe --tags --abbrev=0)..HEAD --oneline
 ```
-## [X.Y.Z] — YYYY-MM-DD
 
-### Added      ← feat: commits
-### Fixed      ← fix: commits
-### Changed    ← refactor:, perf: commits
-### Removed    ← commits that delete features
-```
-Wait for user approval. Incorporate any edits.
+**2. Proporre la versione** — `feat:` → minor · `BREAKING`/`!:` → major · solo `fix:`/`chore:`/
+`docs:`/`test:` → patch. Mostrare all'utente e **attendere conferma**.
 
-### Step 4 — Update files (after user approves)
-a. Insert the approved section into `CHANGELOG.md` immediately after the `# HIRIS — Changelog` heading line.
-b. Update `hiris/config.yaml` → `version: "X.Y.Z"`.
+**3. Bozza CHANGELOG** in formato Keep-a-Changelog (`Added` ← feat · `Fixed` ← fix ·
+`Changed` ← refactor/perf · `Removed`). **Attendere approvazione.**
 
-### Step 5 — Run release script (Bash only — never PowerShell)
+**4. Aggiornare i file** — sezione approvata in cima a `CHANGELOG.md` sotto l'intestazione;
+`hiris/config.yaml` → `version: "X.Y.Z"`.
+
+**5. Eseguire lo script** — **solo Bash, mai PowerShell**
 ```bash
 python scripts/release.py --version X.Y.Z
 ```
 
-### Step 6 — Report
-Show full script output to the user.
-- Exit 0 → announce "Release vX.Y.Z completato ✓ — HA rileverà l'aggiornamento al prossimo check."
-- Non-zero → show the failing step. **Do NOT retry automatically.** Wait for the user to fix the issue.
+**6. Riportare l'output completo.** Uscita 0 → annunciare il rilascio. Diversa da 0 → mostrare il
+passo fallito e **non ritentare automaticamente**.
 
-> **Recovery if the script fails after step 6 (commit/tag already created):** Do NOT re-run the script — it will fail at the commit step because the tag already exists. Instead diagnose the specific failure (e.g. push rejected → `git push origin master --tags` manually; gh CLI missing → create the GitHub Release at https://github.com/paolobets/hiris/releases/new).
+> **Se lo script fallisce dopo aver già creato commit e tag**: non rilanciarlo (fallirebbe perché il
+> tag esiste). Diagnosticare il passo specifico — push rifiutato →
+> `git push origin master --tags`; `gh` mancante → creare la Release a mano su
+> `https://github.com/paolobets/hiris/releases/new`.
