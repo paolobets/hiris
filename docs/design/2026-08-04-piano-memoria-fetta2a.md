@@ -41,6 +41,11 @@ recenti*. Sopra quella regola, i cinque punti che oggi rifiutano di scrivere sme
 - **Store SQLite**: `threading.Lock` attorno a ogni query, come tutto il resto del file.
 - **Test**: pytest puro, funzioni module-level, `@pytest.mark.asyncio` esplicito sugli async,
   `tmp_path` per i DB (mai in-memory), `store.close()` a fine test, nomi in inglese, output pristino.
+- **Questa fetta è anche pulizia.** Il Refactor 2.0 non aggiunge soltanto: il codice morto si
+  cancella, le funzioni doppie si unificano, le costanti e i commenti orfani se ne vanno insieme a
+  ciò che li giustificava. Vedi `CLAUDE.md`, sezione «Ogni fetta è anche pulizia». Se mentre lavori
+  trovi altro codice senza chiamanti nell'area che stai toccando, **segnalalo nel rapporto** — non
+  allargare la task di tua iniziativa.
 - **~190 test sono esposti** su 19 file. I più a rischio: `tests/test_knowledge_store.py`,
   `tests/test_knowledge_tools.py`, `tests/test_memory_tools_guasti.py`,
   `tests/test_handlers_knowledge.py`, `tests/test_brain_trace.py`. Diversi di essi **asseriscono
@@ -478,6 +483,128 @@ descriveva il difetto, non il contratto.
 ```bash
 git add tests/test_memoria_senza_embedder.py
 git commit -m "test(memoria): una scadenza salvata in chat arriva al resoconto, senza embedder"
+```
+
+---
+
+## Task 6: i richiami smettono di rifiutare — *(buco del piano, scoperto in Task 2)*
+
+**Files:**
+- Modify: `hiris/app/tools/memory_tools.py` (il rifiuto è a `:183-185`)
+- Modify: `hiris/app/tools/knowledge_tools.py` (il rifiuto è a `:135`)
+- Test: `tests/test_memory_tools_guasti.py`, `tests/test_knowledge_tools.py`
+
+**Perché questa task esiste.** La Task 1 ha messo la degradazione **dentro lo store** proprio perché
+nessun chiamante dovesse crescere un ramo. Il piano dava per scontato che bastasse. Non bastava:
+**due chiamanti su quattro si fermano prima di entrare nello store.** `handle_recall_memory` e
+`handle_recall_knowledge` calcolano il vettore di query e, se è vuoto, ritornano un errore senza mai
+chiamare `search`. Risultato: dopo le Task 2-4 HIRIS **scrive** ma non **richiama** — cioè
+esattamente lo stato «salvato ma non ritrovabile» che questo piano dichiara di voler evitare.
+
+**Il messaggio di errore di oggi era corretto, e ora non lo è più.** Dice: *«non posso dire che non
+ci sia nulla, solo che non ho potuto controllare»*. Era vero quando l'unico modo di controllare era
+il confronto dei significati. Ora un modo c'è.
+
+**Ma il risultato degradato deve dichiararsi degradato.** Se il richiamo restituisce i più recenti e
+li presenta come i più pertinenti, il modello dirà all'utente una cosa falsa. Il ritorno deve portare
+un segnale esplicito che il confronto dei significati non è avvenuto, e il modello deve poterlo
+riferire.
+
+- [ ] **Step 1: Scrivi i test che falliscono**
+
+Aggiungi a `tests/test_memory_tools_guasti.py` e `tests/test_knowledge_tools.py`, uno per file:
+
+1. **senza embedder utile, il richiamo riesce** e restituisce le righe più recenti invece di un
+   errore — e il risultato porta il segnale di degradazione;
+2. **con un embedder che funziona**, il richiamo si comporta esattamente come oggi: ordina per
+   somiglianza e **non** porta il segnale di degradazione;
+3. **l'embedder solleva** → il richiamo riesce lo stesso, degradato, senza propagare l'eccezione;
+4. un test che pinna che il richiamo degradato **applica gli stessi filtri** — una riga sensibile non
+   deve comparire a chi non può vederla. È la stessa invariante della Task 1, verificata qui dal lato
+   del chiamante.
+
+- [ ] **Step 2: Esegui e verifica che falliscano**
+
+Run: `python -m pytest tests/test_memory_tools_guasti.py tests/test_knowledge_tools.py -q`
+Expected: FAIL — i richiami ritornano ancora `error`.
+
+- [ ] **Step 3: Togli i due rifiuti e dichiara la degradazione**
+
+In entrambi i file: elimina il blocco `if not query_vec: return {"error": ...}` e passa
+`query_vec or []` a `store.search(...)`, che degrada da sé. Mantieni il `try/except` attorno a
+`embed()`.
+
+Aggiungi al dizionario di ritorno una chiave che dice che il confronto dei significati non è
+avvenuto — scegli un nome coerente con le altre chiavi già presenti in quel ritorno, e **documenta
+nella descrizione del tool** (l'`input_schema`/description che il modello legge) cosa significa, così
+il modello sa di dover dire «questi sono i più recenti, non ho potuto confrontare i significati».
+
+Rimuovi le costanti di errore rimaste senza chiamanti, e il commento che le spiegava.
+
+- [ ] **Step 4: Esegui i test e verifica che passino**
+
+Run: `python -m pytest tests/test_memory_tools_guasti.py tests/test_knowledge_tools.py tests/test_memory_alias_unified.py tests/test_kinds_egress.py -q`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add hiris/app/tools/memory_tools.py hiris/app/tools/knowledge_tools.py \
+        tests/test_memory_tools_guasti.py tests/test_knowledge_tools.py
+git commit -m "fix(memoria): richiamare non richiede piu' un vettore, e il degradato lo dichiara"
+```
+
+---
+
+## Task 7: pulizia — togliere ciò che non ha chiamanti
+
+**Files:**
+- Modify: `hiris/app/brain/knowledge_store.py`
+- Modify: `tests/test_knowledge_store.py`
+
+**Perché.** Il Refactor 2.0 è anche una fase di pulizia: HIRIS è cresciuto per accumulo e questa è
+l'occasione per invertire il verso nell'area che stiamo toccando. Il censimento dello store ha
+trovato due metodi **scritti, testati e mai chiamati in produzione**.
+
+**Cosa si cancella, in chiaro:**
+
+| Cosa | Dove | Prova |
+|---|---|---|
+| `KnowledgeStore.expenses_by_category` | `knowledge_store.py` (~:336) | unico riferimento: `tests/test_knowledge_store.py` |
+| `KnowledgeStore.neighbors` | `knowledge_store.py` (~:362) | unico riferimento: `tests/test_knowledge_store.py` |
+
+Git li conserva: se un giorno servirà una vista delle spese o dei collegamenti, si riscrive contro il
+bisogno reale invece di ereditare una firma indovinata mesi prima.
+
+**Attenzione:** `add_link` **resta** — ha un chiamante vivo (il tool `link_knowledge`). Si cancella
+solo `neighbors`, cioè la lettura che nessuno fa.
+
+- [ ] **Step 1: Verifica tu stesso che siano morti**
+
+Prima di cancellare, provalo — non fidarti di questo piano:
+
+```bash
+grep -rn "expenses_by_category\|neighbors" hiris/ tests/ --include=*.py
+```
+
+Ogni occorrenza deve essere nella definizione o nei test. **Se trovi un chiamante in produzione,
+fermati e riportalo**: il piano è sbagliato e la cancellazione non si fa.
+
+- [ ] **Step 2: Cancella i due metodi e i loro test**
+
+Togli le due definizioni e le funzioni di test che le coprivano. Un test che copre codice cancellato
+non è copertura persa: è copertura che non ha più un oggetto.
+
+- [ ] **Step 3: Esegui la suite**
+
+Run: `python -m pytest -q`
+Expected: PASS. Il conteggio scende di quanti test hai tolto — è atteso, dillo nel rapporto.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add hiris/app/brain/knowledge_store.py tests/test_knowledge_store.py
+git commit -m "refactor(memoria): via due letture che nessuno chiamava"
 ```
 
 ---

@@ -53,6 +53,24 @@ attivi solo dopo un sì).
 **Il perimetro** — ciò che si approva: **permessi** (cosa può toccare) + **freni** (frequenza,
 budget, scadenza) + **stato** (attivo/sospeso/revocato).
 
+## Ogni fetta è anche pulizia
+
+Il Refactor 2.0 non è solo lavoro a feature: **è una fase di pulizia e ottimizzazione della
+codebase.** HIRIS è cresciuto per accumulo — ogni sprint aggiungeva, nessuno toglieva. Il refactor
+esiste per invertire quel verso, e una fetta che aggiunge senza togliere lo tradisce.
+
+In ogni piano e in ogni task:
+
+- **Il codice morto si cancella, non si documenta.** Nessun chiamante in produzione → esce. Git lo
+  conserva.
+- **Le funzioni doppie si unificano.** Due copie della stessa logica sono un difetto anche quando
+  oggi coincidono; se governano riservatezza o sicurezza sono una falla, non uno stile.
+- **Costanti e commenti orfani se ne vanno** insieme al codice che li giustificava.
+- **Meglio togliere che aggiungere un ramo**: un comportamento solo, non due configurabili.
+
+Nomina in chiaro nel piano ciò che verrà cancellato, così la cancellazione è rivedibile invece che
+silenziosa.
+
 ## Cosa è condannato dal refactor
 
 Se stai per estendere una di queste cose, **fermati e chiedi**:
