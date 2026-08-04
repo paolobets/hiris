@@ -579,6 +579,15 @@ bisogno reale invece di ereditare una firma indovinata mesi prima.
 **Attenzione:** `add_link` **resta** — ha un chiamante vivo (il tool `link_knowledge`). Si cancella
 solo `neighbors`, cioè la lettura che nessuno fa.
 
+**E i residui raccolti dalle review delle altre task**, tutti nella stessa area:
+
+| Cosa | Dove | Perché |
+|---|---|---|
+| ramo morto `if item_id is not None` | `brain/cognitive_loop.py` (~:273) | `record_brain_action` non può più ritornare `None`: la condizione è sempre vera |
+| commento orfano che rimanda a un blocco cancellato | `tools/knowledge_tools.py` (~:60-61) | il «gemello sopra» a cui rimanda non esiste più |
+| commento al plurale su una costante sola | `tools/memory_tools.py` (~:16-18) | dice «i messaggi», ne è rimasto uno |
+| **la descrizione di `recall_knowledge` non dice che in modalità degradata i documenti non vengono consultati** | `tools/knowledge_tools.py`, campo `description` | `search_chunks` è solo vettoriale e viene **saltato**: il modello deve saperlo, o dirà «questi sono i più recenti» tacendo che l'archivio non è stato aperto. **Una frase.** Questa fetta esiste per smettere di dire cose non vere: vale anche qui |
+
 - [ ] **Step 1: Verifica tu stesso che siano morti**
 
 Prima di cancellare, provalo — non fidarti di questo piano:
