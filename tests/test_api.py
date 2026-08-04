@@ -455,8 +455,118 @@ async def test_chat_rag_injects_chatbot_memory_from_knowledge_store(client):
     await client.post("/api/chat", json={"message": "che temperatura preferisco?"})
 
     call_kwargs = runner.chat.call_args.kwargs
-    assert "Memoria rilevante" in call_kwargs["context_str"]
+    assert "## Memoria rilevante" in call_kwargs["context_str"]
+    assert "Ultimi ricordi" not in call_kwargs["context_str"]
     assert "21 gradi" in call_kwargs["context_str"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_no_embedder_still_injects_recent_memory(client):
+    """fetta 2b Task 4: stock HIRIS ships with no embedding provider (the
+    factory default, NullEmbedder, embeds to []). Before this task the
+    injection required a non-empty query_vec to even call the store, so a
+    stock install never resurfaced a saved memory in chat -- the model only
+    recalled one if it decided on its own to call a recall tool. Now
+    `KnowledgeStore.search` is always called with `query_vec or []` and
+    degrades to the most recent rows itself, so the block still appears,
+    headed honestly with the degraded heading (not "rilevante", which would
+    be a false claim about how these rows were picked)."""
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    engine = client.app["engine"]
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+
+    store = KnowledgeStore(":memory:")
+    store.add_item(
+        kind="memory", content="l'utente preferisce 21 gradi", owner="home",
+        chatbot_id=DEFAULT_CHATBOT_ID, status="approved",
+    )
+    client.app["knowledge_store"] = store
+    # Deliberately NOT setting client.app["embedding_provider"] -- this is
+    # the stock/no-embedder case (request.app.get(...) returns None), not
+    # merely a NullEmbedder instance returning [].
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "che temperatura preferisco?"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "## Ultimi ricordi" in call_kwargs["context_str"]
+    assert "Memoria rilevante" not in call_kwargs["context_str"]
+    assert "21 gradi" in call_kwargs["context_str"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_no_memories_no_block(client):
+    """No knowledge items at all -> no memory block, and context_str stays
+    byte-identical to a call with no knowledge_store wired at all (pins the
+    "no block, no stray blank line" contract)."""
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    engine = client.app["engine"]
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+
+    store = KnowledgeStore(":memory:")  # empty -- no items added
+    client.app["knowledge_store"] = store
+
+    class _Emb:
+        async def embed(self, text):
+            return []
+
+    client.app["embedding_provider"] = _Emb()
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "ciao"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert call_kwargs["context_str"] == ""
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_no_embedder_respects_chatbot_scope(client):
+    """The degraded (no-vector) path goes through the same
+    `KnowledgeStore.search` scoping as the vector path -- a memory saved
+    under a DIFFERENT chatbot_id must not leak into this chatbot's chat
+    prompt just because there was no embedder to compare meanings with."""
+    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    engine = client.app["engine"]
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+
+    store = KnowledgeStore(":memory:")
+    store.add_item(
+        kind="memory", content="segreto di un altro chatbot", owner="home",
+        chatbot_id="other-chatbot", status="approved",
+    )
+    client.app["knowledge_store"] = store
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "che ricordi hai?"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "segreto di un altro chatbot" not in call_kwargs["context_str"]
+    assert "## Ultimi ricordi" not in call_kwargs["context_str"]
+    assert "## Memoria rilevante" not in call_kwargs["context_str"]
     store.close()
 
 
