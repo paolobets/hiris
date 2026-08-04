@@ -153,8 +153,6 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
         aree = aree if isinstance(aree, dict) else {}
         cambiato = p.get("cambiato")
         cambiato = cambiato if isinstance(cambiato, list) else []
-        if not aree and not cambiato:
-            return ""
 
         righe: list[str] = []
 
@@ -170,7 +168,6 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
         if allerte:
             righe.append("ALLERTA:")
             righe.extend(allerte)
-            righe.append("")
 
         casa: list[str] = []
         for area in sorted(aree):
@@ -187,24 +184,34 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
         # L'intestazione solo se ha qualcosa sotto: una casa in cui l'unica cosa
         # da dire e' un allarme non deve mostrare "Com'e' la casa:" a vuoto.
         if casa:
+            if righe:
+                righe.append("")
             righe.append("Com'e' la casa:")
             righe.extend(casa)
 
-        if cambiato:
+        # Build changes items first, then add header only if there are actual items
+        cambiato_righe: list[str] = []
+        for c in (cambiato or []):
+            if not isinstance(c, dict):
+                continue
+            nome = c.get("nome") or c.get("entity_id") or "?"
+            was = c.get("was")
+            da = f"da {was} " if was is not None else ""
+            cambiato_righe.append(f"- {nome}: {da}a {c.get('now')}")
+
+        if cambiato_righe:
             if righe:
                 righe.append("")
             righe.append("Cos'e' cambiato dall'ultima volta:")
-            for c in cambiato:
-                if not isinstance(c, dict):
-                    continue
-                nome = c.get("nome") or c.get("entity_id") or "?"
-                was = c.get("was")
-                da = f"da {was} " if was is not None else ""
-                righe.append(f"- {nome}: {da}a {c.get('now')}")
+            righe.extend(cambiato_righe)
 
         testo = "\n".join(righe)
+        if not testo.strip():
+            return ""
         if len(testo) > max_chars:
-            testo = testo[: max(0, max_chars - 1)].rstrip() + "…"
+            if max_chars <= 0:
+                return ""
+            testo = testo[: max_chars - 1].rstrip() + "…"
         return testo
     except Exception:
         return ""

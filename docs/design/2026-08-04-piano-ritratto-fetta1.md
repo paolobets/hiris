@@ -848,6 +848,46 @@ def test_render_starts_with_the_change_section_when_it_is_the_only_one():
         "conteggi": {"entita": 1, "aree": 0},
     })
     assert txt.startswith("Cos'e' cambiato dall'ultima volta:")
+
+
+def test_render_empty_when_cambiato_has_only_non_dict_items():
+    """A header without content breaks the contract: the caller depends on ""
+    to mean 'do not add any block to the prompt'. A bare header leaks
+    implementation details (ritratto tried but found nothing to say) and
+    violates byte-identity when the portrait is unavailable."""
+    txt = render_portrait({"aree": {}, "cambiato": [1, 2, 3],
+                          "conteggi": {"entita": 0, "aree": 0}})
+    assert txt == ""
+
+
+def test_render_single_blank_line_between_alarms_and_changes_when_casa_empty():
+    """When there are alarms and changes but no lit/open entities, the house
+    section is omitted. The rendering must have exactly one blank line
+    between alarms and changes: no double newlines."""
+    txt = render_portrait({
+        "aree": {
+            "Sottotetto": {"acceso": [], "aperto": [],
+                          "allerta": ["Allagamento"]},
+        },
+        "cambiato": [{"nome": "Sensore", "entity_id": "sensor.a",
+                     "was": "ok", "now": "allarme", "since": "2026-08-04T09:00:00Z"}],
+        "conteggi": {"entita": 2, "aree": 1},
+    })
+    assert txt.startswith("ALLERTA:")
+    assert txt.index("ALLERTA:") < txt.index("Cos'e' cambiato")
+    assert "\n\n\n" not in txt
+
+
+def test_render_max_chars_zero_returns_empty_string():
+    """When max_chars is 0, the result must respect the bound: length <= 0,
+    which means empty string. Truncation never returns a single "…" for
+    max_chars=0."""
+    txt = render_portrait({
+        "aree": {"Cucina": {"acceso": ["Luce"], "aperto": []}},
+        "cambiato": [], "conteggi": {"entita": 1, "aree": 1},
+    }, max_chars=0)
+    assert txt == ""
+    assert len(txt) <= 0
 ```
 
 - [ ] **Step 2: Esegui il test e verifica che fallisca**
@@ -872,8 +912,6 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
         aree = aree if isinstance(aree, dict) else {}
         cambiato = p.get("cambiato")
         cambiato = cambiato if isinstance(cambiato, list) else []
-        if not aree and not cambiato:
-            return ""
 
         righe: list[str] = []
 
@@ -889,7 +927,6 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
         if allerte:
             righe.append("ALLERTA:")
             righe.extend(allerte)
-            righe.append("")
 
         casa: list[str] = []
         for area in sorted(aree):
@@ -906,24 +943,34 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
         # L'intestazione solo se ha qualcosa sotto: una casa in cui l'unica cosa
         # da dire e' un allarme non deve mostrare "Com'e' la casa:" a vuoto.
         if casa:
+            if righe:
+                righe.append("")
             righe.append("Com'e' la casa:")
             righe.extend(casa)
 
-        if cambiato:
+        # Build changes items first, then add header only if there are actual items
+        cambiato_righe: list[str] = []
+        for c in (cambiato or []):
+            if not isinstance(c, dict):
+                continue
+            nome = c.get("nome") or c.get("entity_id") or "?"
+            was = c.get("was")
+            da = f"da {was} " if was is not None else ""
+            cambiato_righe.append(f"- {nome}: {da}a {c.get('now')}")
+
+        if cambiato_righe:
             if righe:
                 righe.append("")
             righe.append("Cos'e' cambiato dall'ultima volta:")
-            for c in cambiato:
-                if not isinstance(c, dict):
-                    continue
-                nome = c.get("nome") or c.get("entity_id") or "?"
-                was = c.get("was")
-                da = f"da {was} " if was is not None else ""
-                righe.append(f"- {nome}: {da}a {c.get('now')}")
+            righe.extend(cambiato_righe)
 
         testo = "\n".join(righe)
+        if not testo.strip():
+            return ""
         if len(testo) > max_chars:
-            testo = testo[: max(0, max_chars - 1)].rstrip() + "…"
+            if max_chars <= 0:
+                return ""
+            testo = testo[: max_chars - 1].rstrip() + "…"
         return testo
     except Exception:
         return ""
@@ -932,7 +979,7 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
 - [ ] **Step 4: Esegui i test e verifica che passino**
 
 Run: `python -m pytest tests/test_portrait.py -q`
-Expected: PASS, 24 test
+Expected: PASS, 27 test
 
 - [ ] **Step 5: Commit**
 

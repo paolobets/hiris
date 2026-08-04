@@ -286,3 +286,43 @@ def test_render_starts_with_the_change_section_when_it_is_the_only_one():
         "conteggi": {"entita": 1, "aree": 0},
     })
     assert txt.startswith("Cos'e' cambiato dall'ultima volta:")
+
+
+def test_render_empty_when_cambiato_has_only_non_dict_items():
+    """A header without content breaks the contract: the caller depends on ""
+    to mean 'do not add any block to the prompt'. A bare header leaks
+    implementation details (ritratto tried but found nothing to say) and
+    violates byte-identity when the portrait is unavailable."""
+    txt = render_portrait({"aree": {}, "cambiato": [1, 2, 3],
+                          "conteggi": {"entita": 0, "aree": 0}})
+    assert txt == ""
+
+
+def test_render_single_blank_line_between_alarms_and_changes_when_casa_empty():
+    """When there are alarms and changes but no lit/open entities, the house
+    section is omitted. The rendering must have exactly one blank line
+    between alarms and changes: no double newlines."""
+    txt = render_portrait({
+        "aree": {
+            "Sottotetto": {"acceso": [], "aperto": [],
+                          "allerta": ["Allagamento"]},
+        },
+        "cambiato": [{"nome": "Sensore", "entity_id": "sensor.a",
+                     "was": "ok", "now": "allarme", "since": "2026-08-04T09:00:00Z"}],
+        "conteggi": {"entita": 2, "aree": 1},
+    })
+    assert txt.startswith("ALLERTA:")
+    assert txt.index("ALLERTA:") < txt.index("Cos'e' cambiato")
+    assert "\n\n\n" not in txt
+
+
+def test_render_max_chars_zero_returns_empty_string():
+    """When max_chars is 0, the result must respect the bound: length <= 0,
+    which means empty string. Truncation never returns a single "…" for
+    max_chars=0."""
+    txt = render_portrait({
+        "aree": {"Cucina": {"acceso": ["Luce"], "aperto": []}},
+        "cambiato": [], "conteggi": {"entita": 1, "aree": 1},
+    }, max_chars=0)
+    assert txt == ""
+    assert len(txt) <= 0
