@@ -511,8 +511,10 @@ git commit -m "feat(ritratto): il notevole e' discreto, non continuo"
   def build_portrait(*, area_map: dict | None, states: list[dict],
                      baseline: dict, changes: list[dict]) -> dict
   ```
-  Ritorna `{"aree": {area: {"acceso": [...], "aperto": [...]}}, "cambiato": [...],
-  "conteggi": {"entita": int, "aree": int}}`.
+  Ritorna `{"aree": {area: {"acceso": [...], "aperto": [...], "allerta": [...]}},
+  "cambiato": [...], "conteggi": {"entita": int, "aree": int}}`.
+  **`allerta`** raccoglie i `binary_sensor` con classe `smoke`/`gas`/`moisture`/`problem`/
+  `safety`/`tamper`: sono allarmi, non aperture, e nella resa vengono per primi.
 
 - [ ] **Step 1: Scrivi il test che fallisce**
 
@@ -583,6 +585,54 @@ def test_build_never_raises_on_garbage():
     p = build_portrait(area_map={"X": None}, states=None,
                        baseline=None, changes=None)
     assert p["aree"] == {} and p["cambiato"] == []
+
+
+def test_alarm_sensors_go_to_their_own_bucket_not_to_open():
+    """Un rilevatore di fumo che scatta non e' una finestra socchiusa."""
+    p = build_portrait(
+        area_map={"Cucina": ["binary_sensor.fumo", "binary_sensor.finestra"]},
+        states=[
+            _s("binary_sensor.fumo", "on", device_class="smoke", name="Fumo"),
+            _s("binary_sensor.finestra", "on",
+               device_class="window", name="Finestra"),
+        ],
+        baseline={}, changes=[],
+    )
+    assert p["aree"]["Cucina"]["allerta"] == ["Fumo"]
+    assert p["aree"]["Cucina"]["aperto"] == ["Finestra"]
+    assert p["aree"]["Cucina"]["acceso"] == []
+
+
+def test_an_area_with_only_an_alarm_is_still_reported():
+    p = build_portrait(
+        area_map={"Sottotetto": ["binary_sensor.allagamento"]},
+        states=[_s("binary_sensor.allagamento", "on",
+                   device_class="moisture", name="Allagamento")],
+        baseline={}, changes=[],
+    )
+    assert p["aree"]["Sottotetto"]["allerta"] == ["Allagamento"]
+
+
+def test_change_states_are_sanitized():
+    """was/now sono stati di entita' HA: il vincolo globale vale anche qui."""
+    p = build_portrait(
+        area_map={}, states=[_s("light.a", "off", name="Luce")],
+        baseline={},
+        changes=[{"entity_id": "light.a", "was": "x" * 500,
+                  "now": "y" * 500, "since": "2026-08-04T09:00:00Z"}],
+    )
+    assert len(p["cambiato"][0]["was"]) <= 120
+    assert len(p["cambiato"][0]["now"]) <= 120
+
+
+def test_change_with_no_previous_state_keeps_none():
+    p = build_portrait(
+        area_map={}, states=[_s("light.a", "on", name="Luce")],
+        baseline={},
+        changes=[{"entity_id": "light.a", "was": None,
+                  "now": "on", "since": "2026-08-04T09:00:00Z"}],
+    )
+    assert p["cambiato"][0]["was"] is None
 ```
 
 - [ ] **Step 2: Esegui il test e verifica che fallisca**
@@ -599,20 +649,28 @@ _ACCESO = frozenset({"on", "open", "heat", "cool", "heat_cool", "auto", "playing
                      "cleaning", "unlocked"})
 _APERTO_DOMINI = frozenset({"cover", "valve"})
 
+# Un rilevatore di fumo che scatta NON e' un'apertura: e' un allarme, ed e' la
+# cosa piu' importante che una casa possa dire. Queste classi hanno un secchio
+# proprio, che nella resa viene per primo.
+_ALLERTA_CLASSES = frozenset({"smoke", "gas", "moisture", "problem", "safety",
+                              "tamper"})
 
-def _nomi(states: list[dict]) -> dict[str, str]:
-    out: dict[str, str] = {}
+
+def _meta(states: list[dict]) -> dict[str, dict]:
+    """entity_id -> {"nome": str sanificato, "dc": device_class}."""
+    out: dict[str, dict] = {}
     for raw in states or []:
         if isinstance(raw, dict) and raw.get("id"):
-            out[str(raw["id"])] = sanitize_ha_value(
-                str(raw.get("name") or raw["id"])
-            )
+            out[str(raw["id"])] = {
+                "nome": sanitize_ha_value(str(raw.get("name") or raw["id"])),
+                "dc": str(raw.get("device_class") or ""),
+            }
     return out
 
 
 def build_portrait(*, area_map, states, baseline, changes) -> dict:
     """Compone il ritratto. Non solleva mai: ogni fonte assente degrada a vuoto."""
-    nomi = _nomi(states)
+    meta = _meta(states)
     notable = notable_state(states or [])
     base = baseline if isinstance(baseline, dict) else {}
 
@@ -622,37 +680,47 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
             continue
         acceso: list[str] = []
         aperto: list[str] = []
+        allerta: list[str] = []
         for eid in eids:
             stato = notable.get(str(eid))
             if stato is None or stato.lower() not in _ACCESO:
                 continue
-            nome = nomi.get(str(eid), str(eid))
+            info = meta.get(str(eid)) or {}
+            nome = info.get("nome") or str(eid)
             since = (base.get(str(eid)) or {}).get("since")
             etichetta = f"{nome} (da {since})" if since else nome
             dominio = str(eid).split(".")[0]
-            e_apertura = (
-                dominio in _APERTO_DOMINI
-                or (dominio == "binary_sensor" and stato.lower() == "on")
-            )
-            (aperto if e_apertura else acceso).append(etichetta)
-        if acceso or aperto:
-            aree[str(area)] = {"acceso": acceso, "aperto": aperto}
+            if dominio == "binary_sensor" and info.get("dc") in _ALLERTA_CLASSES:
+                allerta.append(etichetta)
+            elif dominio in _APERTO_DOMINI or dominio == "binary_sensor":
+                aperto.append(etichetta)
+            else:
+                acceso.append(etichetta)
+        if acceso or aperto or allerta:
+            aree[str(area)] = {"acceso": acceso, "aperto": aperto,
+                               "allerta": allerta}
 
     cambiato = []
     for c in (changes or []):
         if not isinstance(c, dict) or not c.get("entity_id"):
             continue
         eid = str(c["entity_id"])
+        was = c.get("was")
+        now_ = c.get("now")
         cambiato.append({
-            "nome": nomi.get(eid, eid), "entity_id": eid,
-            "was": c.get("was"), "now": c.get("now"), "since": c.get("since"),
+            "nome": (meta.get(eid) or {}).get("nome") or eid, "entity_id": eid,
+            # `was` e `now` sono stati di entita' HA come tutti gli altri: il
+            # vincolo globale vale anche qui.
+            "was": sanitize_ha_value(str(was)) if was is not None else None,
+            "now": sanitize_ha_value(str(now_)) if now_ is not None else None,
+            "since": c.get("since"),
         })
 
     return {
         "aree": aree,
         "cambiato": cambiato,
         "conteggi": {
-            "entita": len(nomi),
+            "entita": len(meta),
             "aree": len([a for a in (area_map or {}) if a != "__no_area__"]),
         },
     }
@@ -661,7 +729,7 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
 - [ ] **Step 4: Esegui i test e verifica che passino**
 
 Run: `python -m pytest tests/test_portrait.py -q`
-Expected: PASS, 11 test
+Expected: PASS, 15 test
 
 - [ ] **Step 5: Commit**
 
@@ -731,6 +799,55 @@ def test_render_is_bounded():
 def test_render_never_raises_on_garbage():
     assert render_portrait(None) == ""
     assert render_portrait({"aree": "non un dict"}) == ""
+
+
+def test_render_puts_alarms_first():
+    """Un rilevatore scattato e' la cosa piu' importante che la casa dica:
+    non deve finire in fondo a una riga fra le luci accese."""
+    txt = render_portrait({
+        "aree": {
+            "Cucina": {"acceso": ["Luce"], "aperto": ["Finestra"],
+                       "allerta": ["Fumo"]},
+            "Salotto": {"acceso": ["Lampada"], "aperto": [], "allerta": []},
+        },
+        "cambiato": [],
+        "conteggi": {"entita": 4, "aree": 2},
+    })
+    assert txt.startswith("ALLERTA:")
+    assert "- Cucina: Fumo" in txt
+    assert txt.index("ALLERTA:") < txt.index("Com'e' la casa:")
+    # l'allerta non viene ripetuta fra le aperture
+    assert "aperto: Finestra" in txt and "aperto: Finestra, Fumo" not in txt
+
+
+def test_render_omits_the_alarm_section_when_there_are_none():
+    txt = render_portrait({
+        "aree": {"Cucina": {"acceso": ["Luce"], "aperto": [], "allerta": []}},
+        "cambiato": [], "conteggi": {"entita": 1, "aree": 1},
+    })
+    assert "ALLERTA" not in txt
+    assert txt.startswith("Com'e' la casa:")
+
+
+def test_render_with_only_an_alarm_has_no_empty_house_header():
+    txt = render_portrait({
+        "aree": {"Sottotetto": {"acceso": [], "aperto": [],
+                                "allerta": ["Allagamento"]}},
+        "cambiato": [], "conteggi": {"entita": 1, "aree": 1},
+    })
+    assert "ALLERTA:" in txt and "Allagamento" in txt
+    assert "Com'e' la casa:" not in txt
+
+
+def test_render_starts_with_the_change_section_when_it_is_the_only_one():
+    txt = render_portrait({
+        "aree": {},
+        "cambiato": [{"nome": "Luce", "entity_id": "light.a",
+                      "was": "on", "now": "off",
+                      "since": "2026-08-04T09:00:00Z"}],
+        "conteggi": {"entita": 1, "aree": 0},
+    })
+    assert txt.startswith("Cos'e' cambiato dall'ultima volta:")
 ```
 
 - [ ] **Step 2: Esegui il test e verifica che fallisca**
@@ -758,7 +875,23 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
         if not aree and not cambiato:
             return ""
 
-        righe: list[str] = ["Com'e' la casa:"]
+        righe: list[str] = []
+
+        # L'allerta viene PRIMA di tutto: un rilevatore che ha scattato e' la
+        # cosa piu' importante che la casa possa dire, e non deve finire in
+        # fondo a una riga fra le luci accese.
+        allerte = [
+            f"- {area}: " + ", ".join(str(x) for x in
+                                      ((aree.get(area) or {}).get("allerta") or []))
+            for area in sorted(aree)
+            if (aree.get(area) or {}).get("allerta")
+        ]
+        if allerte:
+            righe.append("ALLERTA:")
+            righe.extend(allerte)
+            righe.append("")
+
+        casa: list[str] = []
         for area in sorted(aree):
             dati = aree.get(area) or {}
             parti: list[str] = []
@@ -769,10 +902,16 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
             if aperto:
                 parti.append("aperto: " + ", ".join(str(x) for x in aperto))
             if parti:
-                righe.append(f"- {area} — " + " · ".join(parti))
+                casa.append(f"- {area} — " + " · ".join(parti))
+        # L'intestazione solo se ha qualcosa sotto: una casa in cui l'unica cosa
+        # da dire e' un allarme non deve mostrare "Com'e' la casa:" a vuoto.
+        if casa:
+            righe.append("Com'e' la casa:")
+            righe.extend(casa)
 
         if cambiato:
-            righe.append("")
+            if righe:
+                righe.append("")
             righe.append("Cos'e' cambiato dall'ultima volta:")
             for c in cambiato:
                 if not isinstance(c, dict):
@@ -793,7 +932,7 @@ def render_portrait(portrait, *, max_chars: int = 1800) -> str:
 - [ ] **Step 4: Esegui i test e verifica che passino**
 
 Run: `python -m pytest tests/test_portrait.py -q`
-Expected: PASS, 16 test
+Expected: PASS, 24 test
 
 - [ ] **Step 5: Commit**
 
