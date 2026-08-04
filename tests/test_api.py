@@ -5,7 +5,7 @@ import pathlib
 from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import TestClient
 from hiris.app.server import create_app
-from hiris.app.chatbot_engine import ChatbotEngine
+from hiris.app.chatbot_engine import ChatbotEngine, DEFAULT_CHATBOT_ID, Chatbot
 from hiris.app.chat_store import close_all_stores
 
 
@@ -47,6 +47,56 @@ async def client(aiohttp_client, tmp_path):
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
+
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+
+    return await aiohttp_client(app)
+
+
+async def _build_rag_client(aiohttp_client, tmp_path, *, store=None, embedder=None):
+    """Same wiring as the `client` fixture above, but wires `knowledge_store`
+    / `embedding_provider` into the `web.Application` BEFORE handing it to
+    `aiohttp_client()`, instead of mutating `client.app[...]` afterwards.
+
+    Setting an app key after `aiohttp_client()` has started the app trips
+    aiohttp's "Changing state of started or joined application"
+    DeprecationWarning -- harmless but noisy, and this suite's output is
+    pristine by design. The chat-RAG tests below each need a fresh
+    knowledge_store/embedder per test, so they build their own app here
+    rather than share the module-level `client` fixture (which has no
+    per-test parameters and is used by many unrelated tests)."""
+    app = create_app()
+
+    mock_ha = AsyncMock()
+    mock_ha.get_states = AsyncMock(return_value=[])
+    mock_ha.start = AsyncMock()
+    mock_ha.stop = AsyncMock()
+    mock_ha.add_state_listener = MagicMock()
+    mock_ha.start_websocket = AsyncMock()
+
+    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
+    engine.start = AsyncMock()
+    engine.stop = AsyncMock()
+    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
+        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
+        allowed_tools=[], enabled=True, is_default=True,
+    )
+
+    mock_runner = AsyncMock()
+    mock_runner.chat = AsyncMock(return_value="ok")
+    mock_runner.last_tool_calls = []
+    engine.set_claude_runner(mock_runner)
+
+    app["ha_client"] = mock_ha
+    app["engine"] = engine
+    app["claude_runner"] = mock_runner
+    app["theme"] = "auto"
+    app["data_dir"] = str(tmp_path)
+    if store is not None:
+        app["knowledge_store"] = store
+    if embedder is not None:
+        app["embedding_provider"] = embedder
 
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -455,7 +505,133 @@ async def test_chat_rag_injects_chatbot_memory_from_knowledge_store(client):
     await client.post("/api/chat", json={"message": "che temperatura preferisco?"})
 
     call_kwargs = runner.chat.call_args.kwargs
-    assert "Memoria rilevante" in call_kwargs["context_str"]
+    assert "## Memoria rilevante" in call_kwargs["context_str"]
+    assert "Ultimi ricordi" not in call_kwargs["context_str"]
+    assert "21 gradi" in call_kwargs["context_str"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_no_embedder_still_injects_recent_memory(aiohttp_client, tmp_path):
+    """fetta 2b Task 4: stock HIRIS ships with no embedding provider (the
+    factory default, NullEmbedder, embeds to []). Before this task the
+    injection required a non-empty query_vec to even call the store, so a
+    stock install never resurfaced a saved memory in chat -- the model only
+    recalled one if it decided on its own to call a recall tool. Now
+    `KnowledgeStore.search` is always called with `query_vec or []` and
+    degrades to the most recent rows itself, so the block still appears,
+    headed honestly with the degraded heading (not "rilevante", which would
+    be a false claim about how these rows were picked)."""
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    store = KnowledgeStore(":memory:")
+    store.add_item(
+        kind="memory", content="l'utente preferisce 21 gradi", owner="home",
+        chatbot_id=DEFAULT_CHATBOT_ID, status="approved",
+    )
+    # Deliberately NOT passing an embedder -- this is the stock/no-embedder
+    # case (request.app.get("embedding_provider") returns None), not merely
+    # a NullEmbedder instance returning [].
+    client = await _build_rag_client(aiohttp_client, tmp_path, store=store)
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "che temperatura preferisco?"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "## Ultimi ricordi" in call_kwargs["context_str"]
+    assert "Memoria rilevante" not in call_kwargs["context_str"]
+    assert "21 gradi" in call_kwargs["context_str"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_no_memories_no_block(aiohttp_client, tmp_path):
+    """No knowledge items at all -> no memory block, and context_str stays
+    byte-identical to a call with no knowledge_store wired at all (pins the
+    "no block, no stray blank line" contract)."""
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    store = KnowledgeStore(":memory:")  # empty -- no items added
+
+    class _Emb:
+        async def embed(self, text):
+            return []
+
+    client = await _build_rag_client(aiohttp_client, tmp_path, store=store, embedder=_Emb())
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "ciao"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert call_kwargs["context_str"] == ""
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_no_embedder_respects_chatbot_scope(aiohttp_client, tmp_path):
+    """The degraded (no-vector) path goes through the same
+    `KnowledgeStore.search` scoping as the vector path -- a memory saved
+    under a DIFFERENT chatbot_id must not leak into this chatbot's chat
+    prompt just because there was no embedder to compare meanings with."""
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    store = KnowledgeStore(":memory:")
+    store.add_item(
+        kind="memory", content="segreto di un altro chatbot", owner="home",
+        chatbot_id="other-chatbot", status="approved",
+    )
+    client = await _build_rag_client(aiohttp_client, tmp_path, store=store)
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "che ricordi hai?"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "segreto di un altro chatbot" not in call_kwargs["context_str"]
+    assert "## Ultimi ricordi" not in call_kwargs["context_str"]
+    assert "## Memoria rilevante" not in call_kwargs["context_str"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_embedder_raises_still_injects_recent_memory(aiohttp_client, tmp_path):
+    """Final-review Fix 1: the three automatic consumers agreed when the
+    embedder was ABSENT, but diverged when it RAISED. `relevant_memory`
+    (reasoner/holistic path) already caught the exception locally and
+    degraded to `query_vec=[]`; chat's `await embedder.embed(message)` used
+    to escape to the outer `except Exception` a few lines down, which
+    aborted the WHOLE injection -- no block at all, not even the degraded
+    one. A user who configures Ollama embeddings and has Ollama down would
+    see the reasoner/holistic paths still remember while chat silently
+    forgot everything. This pins that the chat now degrades exactly like
+    the other two surfaces instead of losing the block."""
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    store = KnowledgeStore(":memory:")
+    store.add_item(
+        kind="memory", content="l'utente preferisce 21 gradi", owner="home",
+        chatbot_id=DEFAULT_CHATBOT_ID, status="approved",
+    )
+
+    class _RaisingEmb:
+        async def embed(self, text):
+            raise ConnectionError("ollama down")
+
+    client = await _build_rag_client(aiohttp_client, tmp_path, store=store, embedder=_RaisingEmb())
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "che temperatura preferisco?"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "## Ultimi ricordi" in call_kwargs["context_str"]
+    assert "Memoria rilevante" not in call_kwargs["context_str"]
     assert "21 gradi" in call_kwargs["context_str"]
     store.close()
 

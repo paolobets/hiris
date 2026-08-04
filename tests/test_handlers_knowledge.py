@@ -13,8 +13,8 @@ async def test_pending_and_approve(aiohttp_client, tmp_path):
     app = web.Application()
     app["knowledge_store"] = store
     # L'elemento e' senza embedding (come quelli scritti dalla versione
-    # precedente): approvarlo lo indicizza, e senza un provider fallirebbe
-    # dichiaratamente invece di renderlo approvato-e-muto.
+    # precedente): approvarlo lo indicizza, cosi' diventa richiamabile invece
+    # di restare approvato-e-muto.
     app["embedding_provider"] = _EmbedderFinto()
     app.router.add_get("/api/knowledge/pending", handle_list_pending)
     app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
@@ -32,11 +32,15 @@ async def test_pending_and_approve(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_manual_add_senza_embedder_non_dichiara_approvato(aiohttp_client, tmp_path):
-    """A1, stessa forma di save_knowledge su un percorso solo-API: scrivere
-    «approvato» con il vettore assente crea un elemento che si dichiara pronto
-    e non e' raggiungibile (la ricerca filtra su `embedding IS NOT NULL`).
-    Meglio fallire dichiaratamente e non scrivere nulla."""
+async def test_manual_add_senza_embedder_scrive_comunque_non_richiamabile(
+    aiohttp_client, tmp_path,
+):
+    """Stessa forma del difetto chiuso in save_knowledge, su un percorso
+    solo-API: senza un provider di embedding l'elemento non puo' avere un
+    vettore. Rifiutare la richiesta lasciava l'utente bloccato -- l'elemento
+    viene scritto e marcato approvato comunque, solo non richiamabile dalla
+    ricerca (che filtra su `embedding IS NOT NULL`) finche' un embedding non
+    arriva."""
     from aiohttp import web
     from hiris.app.api.handlers_knowledge import handle_manual_add
 
@@ -49,22 +53,26 @@ async def test_manual_add_senza_embedder_non_dichiara_approvato(aiohttp_client, 
 
     r = await client.post("/api/knowledge", json={"kind": "note", "content": "x"})
 
-    # 503: lo stesso stato che la coda in chat traduce gia' in "la memoria non
-    # e' raggiungibile in questo momento".
-    assert r.status == 503
+    assert r.status == 200
     data = await r.json()
-    assert data["error"]
-    assert data.get("status") != "approved"
-    # Nessuna riga scritta.
-    assert store.list_items() == []
+    assert data["status"] == "approved"
+    # La riga esiste davvero, approvata, senza vettore.
+    item = store.get_item(data["id"])
+    assert item is not None
+    assert item["status"] == "approved"
+    assert not item["has_embedding"]
+    assert not _trovato(store, "x")
 
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_manual_add_con_embedder_rotto_non_scrive_e_non_espone_lerrore(
+async def test_manual_add_con_embedder_rotto_scrive_comunque_senza_vettore(
     aiohttp_client, tmp_path,
 ):
+    """Un provider configurato che solleva un'eccezione non deve piu' bloccare
+    la scrittura: il dettaglio resta nel log del server, la riga viene scritta
+    senza vettore, come nel caso di provider assente."""
     from aiohttp import web
     from hiris.app.api.handlers_knowledge import handle_manual_add
 
@@ -77,11 +85,13 @@ async def test_manual_add_con_embedder_rotto_non_scrive_e_non_espone_lerrore(
 
     r = await client.post("/api/knowledge", json={"kind": "note", "content": "x"})
 
-    assert r.status == 503
+    assert r.status == 200
     corpo = await r.json()
-    assert corpo["error"]
-    assert "embedder giu'" not in corpo["error"]
-    assert store.list_items() == []
+    assert corpo["status"] == "approved"
+    item = store.get_item(corpo["id"])
+    assert item["status"] == "approved"
+    assert not item["has_embedding"]
+    assert not _trovato(store, "x")
 
     store.close()
 
@@ -370,12 +380,14 @@ async def test_approvazione_rende_richiamabile(aiohttp_client, tmp_path):
 # l'embedding non si poteva calcolare (provider assente o chiamata fallita),
 # lasciando la colonna a NULL. La ricerca filtra su
 # `status='approved' AND embedding IS NOT NULL`: approvare quelle righe
-# cambiava solo lo stato e le lasciava irraggiungibili per sempre -- lo stesso
-# silenzio che questo lavoro chiude, riaperto sui dati gia' esistenti, con la
-# promessa scritta nelle note di rilascio ("approvato significa richiamabile da
-# quel momento in poi"). L'approvazione deve quindi calcolare l'embedding
-# mancante, e quando non ci riesce deve fallire dichiaratamente: la coda in
-# chat ha gia' il ramo che mostra l'errore (503).
+# cambiava solo lo stato e le lasciava irraggiungibili per sempre. Rifiutare
+# l'approvazione finche' non c'era un vettore chiudeva quel silenzio dietro un
+# altro: la coda in chat mostrava all'utente la cosa che HIRIS aveva imparato
+# e rispondeva 503 al pulsante «Approva», lasciandolo bloccato. L'approvazione
+# calcola l'embedding mancante quando puo'; quando non puo' approva comunque,
+# senza vettore -- la riga resta un ricordo dell'utente, recuperabile da
+# `recent()` (il percorso di degradazione di `search()`), solo non ancora
+# trovabile da una ricerca per significato.
 
 
 class _EmbedderFinto:
@@ -435,30 +447,40 @@ async def test_approvare_un_elemento_senza_embedding_lo_rende_richiamabile(
 
 
 @pytest.mark.asyncio
-async def test_approvare_senza_embedder_fallisce_invece_di_dichiarare_successo(
+async def test_approvare_senza_embedder_riesce_comunque_e_approva(
     aiohttp_client, tmp_path,
 ):
+    """Il caso che oggi lascia l'utente bloccato: una riga senza vettore e
+    senza modo di calcolarne uno (nessun provider configurato). Prima di
+    questa modifica il pulsante «Approva» rispondeva 503 e la riga restava in
+    coda per sempre. Ora l'approvazione riesce davvero: lo stato in database
+    cambia, non solo la risposta HTTP."""
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     pid = store.add_item(kind="fact", content="senza indice",
                          status="pending", embedding=None)
 
     client = await aiohttp_client(_app_approve(store, embedder=None))
     r = await client.post(f"/api/knowledge/{pid}/approve")
-    # 503: lo stesso stato che la coda in chat traduce gia' in "la memoria non
-    # e' raggiungibile in questo momento".
-    assert r.status == 503
-    assert (await r.json())["error"]
-    # Nessuna mutazione: l'elemento resta in coda, riapprovabile domani.
-    assert store.get_item(pid)["status"] == "pending"
+    assert r.status == 200
+    assert (await r.json())["ok"] is True
+    # La mutazione e' reale: la riga e' approvata in database, non solo la
+    # risposta HTTP lo dice.
+    item = store.get_item(pid)
+    assert item["status"] == "approved"
+    assert not item["has_embedding"]
+    # Senza vettore non e' ancora trovabile da una ricerca per significato.
     assert not _trovato(store, "senza indice")
 
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_approvare_con_embedder_rotto_non_muta_nulla_e_non_espone_lerrore(
+async def test_approvare_con_embedder_rotto_approva_comunque_senza_esporre_lerrore(
     aiohttp_client, tmp_path,
 ):
+    """Un provider configurato che solleva un'eccezione non deve piu'
+    impedire l'approvazione: il dettaglio dell'eccezione resta nel log del
+    server, la riga viene comunque approvata, senza vettore."""
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     pid = store.add_item(kind="fact", content="indice non calcolabile",
                          status="pending", embedding=None)
@@ -466,12 +488,13 @@ async def test_approvare_con_embedder_rotto_non_muta_nulla_e_non_espone_lerrore(
     embedder = _EmbedderFinto(esplode=True)
     client = await aiohttp_client(_app_approve(store, embedder))
     r = await client.post(f"/api/knowledge/{pid}/approve")
-    assert r.status == 503
+    assert r.status == 200
     corpo = await r.json()
-    assert corpo["error"]
-    # Il dettaglio dell'eccezione resta nel log del server, non nella risposta.
-    assert "embedder giu'" not in corpo["error"]
-    assert store.get_item(pid)["status"] == "pending"
+    assert corpo["ok"] is True
+    item = store.get_item(pid)
+    assert item["status"] == "approved"
+    assert not item["has_embedding"]
+    assert not _trovato(store, "indice non calcolabile")
 
     store.close()
 

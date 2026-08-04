@@ -50,6 +50,14 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
     portrait = _raw_ctx.pop("portrait", None)
     ctx = _san(_raw_ctx)
     memory = ctx.pop("memory", None)
+    # fetta 2b Task 2: rides alongside "memory", popped the same way and for
+    # the same reason (it must not leak into the JSON "Contesto:" block). A
+    # bool survives `_san` untouched (not a str/list/dict), so -- unlike the
+    # portrait -- there is no 120-char-truncation trap to dodge here; it only
+    # needs to travel with `memory`, not be extracted before sanitizing.
+    # Missing/None (a context built without the flag) is treated as NOT
+    # by-meaning: absent provenance must not earn the "relevant" heading.
+    by_meaning = ctx.pop("memory_by_meaning", None)
     portrait_block = ""
     if isinstance(portrait, str) and portrait.strip():
         # "" significa "nessun blocco": e' il contratto che tiene il messaggio
@@ -65,7 +73,15 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
         flat = [" ".join(str(s).split()) for s in memory]
         lines = "\n".join(f"- {s}" for s in flat if s)
         if lines:
-            memory_block = f"Cosa so di rilevante:\n{lines}\n\n"
+            # The heading must tell the truth about how these snippets were
+            # picked: "Cosa so di rilevante" only when KnowledgeStore.search
+            # actually compared meanings (a working embedder). When it
+            # degraded to the most recent rows instead (no embedder -- the
+            # factory default -- or a failed one), labelling that block
+            # "relevant" would make the model repeat a false claim to the
+            # user; "Ultimi ricordi" says what it actually is.
+            heading = "Cosa so di rilevante:" if by_meaning else "Ultimi ricordi:"
+            memory_block = f"{heading}\n{lines}\n\n"
     return (
         f"Segnale: {wake.signal_kind} su {wake.entity_id}\n"
         f"Evidenza: {json.dumps(ev, ensure_ascii=False)}\n"

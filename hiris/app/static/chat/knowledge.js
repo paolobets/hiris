@@ -41,17 +41,16 @@
   /* Le chiavi sono i valori che gli scrittori della knowledge base mettono
      davvero in `source` (knowledge_tools "chat", handlers_knowledge "manual",
      mayan_ingest "mayan", history_digest "history-digest", brain_trace
-     "brain", memory_migration "migrated", link_knowledge "inferred"). In
-     pratica qui arriva solo "chat" — e' l'unico scrittore che salva in
-     attesa — ma un elenco che inventa nomi mai scritti inganna chi legge. */
+     "brain", memory_migration "migrated"). In pratica qui arriva solo "chat"
+     — e' l'unico scrittore che salva in attesa — ma un elenco che inventa
+     nomi mai scritti inganna chi legge. */
   var SOURCE_LABELS = {
     chat: 'conversazione',
     manual: 'inserimento manuale',
     mayan: 'documenti',
     'history-digest': 'storico',
     brain: 'Brain',
-    migrated: 'memoria migrata',
-    inferred: 'collegamento dedotto'
+    migrated: 'memoria migrata'
   };
 
   /* Ultimo elenco letto dal server. Serve al "Mostra" degli elementi

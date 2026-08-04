@@ -1,5 +1,59 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.17] — HIRIS ricorda, e si ricorda da solo (2026-08-04)
+
+**Se non hai mai configurato un fornitore di embedding — cioè, quasi certamente,
+se non sai cosa sia — fino a ieri HIRIS non ricordava assolutamente nulla.**
+Non «ricordava male»: rifiutava di scrivere. Ogni «ricordati che…» finiva contro
+un requisito tecnico invisibile, e non lo diceva a nessuno.
+
+Il caso peggiore era il resoconto delle 08:00. Le scadenze si leggono per data —
+una semplice interrogazione sul calendario — e infatti il codice che le legge
+**butta via** il dato tecnico che pretendeva in scrittura. Risultato: non si
+scrivevano mai, e quel resoconto era **vuoto per sempre** su ogni installazione
+appena fatta. E nella pagina **Memoria** si vedeva la cosa che HIRIS aveva
+imparato, con accanto un pulsante «Approva» che rispondeva con un errore: la
+vedevi, e non potevi tenerla.
+
+**Ora ricorda.** Salvi una scadenza parlando in chat, la approvi, e alle 08:00
+la ritrovi nel resoconto. Senza configurare niente.
+
+**E soprattutto: si ricorda da solo.** Prima, anche i ricordi salvati riaffioravano
+solo se HIRIS decideva di andarseli a cercare. Adesso ciò che gli hai detto in
+passato entra da sé nelle conversazioni nuove e nei suoi ragionamenti: gli dici
+una volta che preferisci 21 gradi in salotto, e non serve ripeterglielo.
+
+**Con una regola che vale la pena conoscere, perché riguarda la fiducia.** Quando
+HIRIS può confrontare i significati lo fa; quando non può, ti dà le cose più
+recenti — e **lo dichiara**. Non ti presenterà mai «gli ultimi cinque ricordi»
+spacciandoli per «i cinque più pertinenti». Se configuri un fornitore di embedding
+la ricerca per significato torna a funzionare esattamente come prima, e le
+etichette cambiano di conseguenza.
+
+### Meno cose, non solo più cose
+
+Questa versione **toglie** anche.
+
+- **I collegamenti fra ricordi non esistono più.** HIRIS poteva collegare fra loro
+  le cose che sapeva — e nessuna parte del programma leggeva più quei collegamenti.
+  Erano lavoro (e spesa) per un archivio che nessuno apriva. Via la funzione, via la
+  tabella.
+- Insieme se ne vanno due letture che nessuno chiamava, un ramo di codice diventato
+  irraggiungibile e alcuni commenti che spiegavano cose non più vere.
+
+### Corretto anche
+
+- **Un guasto dell'archivio non ti costa più l'annullamento.** Quando il Brain
+  regola qualcosa da solo, lascia una traccia che ti permette di annullare. Se il
+  servizio di embedding era configurato ma irraggiungibile, quella traccia non
+  veniva scritta: la modifica restava applicata e **non era più annullabile**, senza
+  che nulla lo dicesse.
+- **La revisione quotidiana della casa non si interrompe più in silenzio** per un
+  errore interno introdotto durante questi lavori.
+- **La chat non dimentica più tutto** quando il servizio di embedding è configurato
+  ma non risponde: prima, in quel caso, gli altri percorsi ricordavano e solo la
+  chat perdeva la memoria.
+
 ## [1.1.0-beta.16] — HIRIS guarda la casa, e si accorge di cosa è cambiato (2026-08-04)
 
 **Fino a ieri, quando HIRIS ragionava su qualcosa che era successo in casa, vedeva

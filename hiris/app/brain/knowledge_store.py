@@ -38,19 +38,6 @@ CREATE INDEX IF NOT EXISTS idx_ki_due      ON knowledge_items(due_date);
 CREATE INDEX IF NOT EXISTS idx_ki_status   ON knowledge_items(status);
 CREATE INDEX IF NOT EXISTS idx_ki_category ON knowledge_items(category);
 
-CREATE TABLE IF NOT EXISTS knowledge_links (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    src_id      INTEGER NOT NULL,
-    dst_id      INTEGER NOT NULL,
-    relation    TEXT NOT NULL,
-    weight      REAL NOT NULL DEFAULT 1.0,
-    source      TEXT NOT NULL DEFAULT 'manual',
-    created_at  TEXT NOT NULL,
-    UNIQUE(src_id, dst_id, relation)
-);
-CREATE INDEX IF NOT EXISTS idx_kl_src ON knowledge_links(src_id);
-CREATE INDEX IF NOT EXISTS idx_kl_dst ON knowledge_links(dst_id);
-
 CREATE TABLE IF NOT EXISTS document_chunks (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id       INTEGER NOT NULL,
@@ -79,13 +66,45 @@ def _migrate_v3(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE knowledge_items RENAME COLUMN lens TO chatbot_id")
 
 
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    """v3 -> v4: via `knowledge_links`. `neighbors` (il suo unico lettore) e'
+    stato tolto in precedenza; senza un lettore la scrittura (`add_link`,
+    dietro il tool `link_knowledge`) restava una funzione morta con una
+    superficie viva. Nessuna riscrittura: i collegamenti gia' salvati non
+    erano letti da nulla."""
+    conn.execute("DROP TABLE IF EXISTS knowledge_links")
+
+
+def confronta_significati(query_vec: list[float] | None) -> bool:
+    """Unica definizione di "abbiamo confrontato i significati, o siamo
+    degradati ai piu' recenti?" -- vera quando `query_vec` e' un vettore di
+    query utilizzabile (non None, non vuoto).
+
+    `search()` la usa per decidere se confrontare gli embedding o cadere su
+    `recent()`. Chi la importa invece di ricalcolare `bool(query_vec)` per conto
+    proprio:
+
+    - `api/handlers_chat.py` -- intestazione del blocco RAG della chat
+    - `brain/reasoner_memory.py` -- `MemoryRecall.by_meaning`, da cui prendono
+      l'intestazione il reasoner per-evento e la revisione olistica
+    - `tools/knowledge_tools.handle_recall_knowledge` -- flag `degraded` verso il
+      modello, e il gate della ricerca sui chunk documentali
+    - `tools/memory_tools.handle_recall_memory` -- flag `degraded` verso il modello
+
+    Cosi' se `search` guadagnasse un altro motivo di degradazione (es. un
+    mismatch di dimensione dell'embedding) etichette e flag resterebbero coerenti
+    senza dover essere toccati uno per uno -- ed e' proprio la deriva fra copie
+    del criterio che questa funzione esiste per impedire."""
+    return bool(query_vec)
+
+
 class KnowledgeStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._mu = threading.Lock()
         init_schema(
-            self._conn, _SCHEMA, version=3,
-            migrations={2: _migrate_v2, 3: _migrate_v3},
+            self._conn, _SCHEMA, version=4,
+            migrations={2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4},
         )
 
     def _now(self) -> str:
@@ -211,10 +230,6 @@ class KnowledgeStore:
             if owner is not None and not self._owner_allowed(item_id, owner):
                 return False
             self._conn.execute("DELETE FROM knowledge_items WHERE id=?", (item_id,))
-            self._conn.execute(
-                "DELETE FROM knowledge_links WHERE src_id=? OR dst_id=?",
-                (item_id, item_id),
-            )
             # Also drop any document chunks bound to this item, otherwise a
             # deleted document leaves orphan rows in document_chunks (they are
             # already excluded from search via the item JOIN, but should not
@@ -233,14 +248,18 @@ class KnowledgeStore:
         ).fetchone()
         return row is not None and row["owner"] in (owner, "home")
 
-    def search(
-        self, *, query_vec: list[float], k: int = 5,
-        owner: str | None = None, chatbot_id: str | None = None,
-        allow_sensitive: bool = False,
-        kinds: list[str] | str | None = None,
-    ) -> list[dict]:
-        clauses = ["status='approved'", "embedding IS NOT NULL"]
-        bind: dict = {}
+    def _clausole_di_scope(
+        self, *, owner: str | None, chatbot_id: str | None,
+        allow_sensitive: bool, kinds: list[str] | str | None,
+    ) -> tuple[list[str], dict]:
+        """Filtri condivisi da search() e recent().
+
+        Stanno qui, e non duplicati nei due metodi, perche' governano la
+        riservatezza: due copie che divergono sono una falla, non un difetto
+        di stile. L'unica clausola che resta fuori e' `embedding IS NOT
+        NULL`, perche' e' l'unica specifica del percorso vettoriale."""
+        clauses: list[str] = ["status='approved'"]
+        params: dict = {}
         if owner is not None:
             # Unified scope (Slice 3): a row must always be scoped to this
             # owner (or shared as 'home') -- the owner check applies whether
@@ -257,8 +276,8 @@ class KnowledgeStore:
                 "(owner = :owner OR owner = 'home') AND"
                 " (chatbot_id = :chatbot_id OR chatbot_id IS NULL)"
             )
-            bind["chatbot_id"] = chatbot_id
-            bind["owner"] = owner
+            params["chatbot_id"] = chatbot_id
+            params["owner"] = owner
         elif chatbot_id is not None:
             # No owner passed but a chatbot_id was: don't fail open and
             # expose all chatbot memory across owners -- still scope by
@@ -266,7 +285,7 @@ class KnowledgeStore:
             # production callers always pass owner alongside chatbot_id;
             # this branch only guards future callers.
             clauses.append("(chatbot_id = :chatbot_id OR chatbot_id IS NULL)")
-            bind["chatbot_id"] = chatbot_id
+            params["chatbot_id"] = chatbot_id
         if not allow_sensitive:
             clauses.append("sensitivity='normal'")
         if isinstance(kinds, str):
@@ -287,10 +306,33 @@ class KnowledgeStore:
                 for i, kind_val in enumerate(kinds):
                     key = f"kind{i}"
                     placeholders.append(f":{key}")
-                    bind[key] = kind_val
+                    params[key] = kind_val
                 clauses.append("kind IN (%s)" % ",".join(placeholders))
         clauses.append("(valid_until IS NULL OR valid_until >= :valid_now)")
-        bind["valid_now"] = self._now()
+        params["valid_now"] = self._now()
+        return clauses, params
+
+    def search(
+        self, *, query_vec: list[float], k: int = 5,
+        owner: str | None = None, chatbot_id: str | None = None,
+        allow_sensitive: bool = False,
+        kinds: list[str] | str | None = None,
+    ) -> list[dict]:
+        if not confronta_significati(query_vec):
+            # Regola unica: la ricerca confronta i significati quando puo';
+            # quando non puo' -- nessun embedder configurato, quindi nessun
+            # vettore di query -- da' i piu' recenti. Il default di fabbrica
+            # e' il NullEmbedder, che ritorna [], quindi questo e' il
+            # percorso NORMALE, non un caso limite.
+            return self.recent(
+                k=k, owner=owner, chatbot_id=chatbot_id,
+                allow_sensitive=allow_sensitive, kinds=kinds,
+            )
+        clauses, bind = self._clausole_di_scope(
+            owner=owner, chatbot_id=chatbot_id,
+            allow_sensitive=allow_sensitive, kinds=kinds,
+        )
+        clauses.append("embedding IS NOT NULL")
         sql = "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
         scored = []
         with self._mu:
@@ -310,6 +352,39 @@ class KnowledgeStore:
             out.append(d)
         return out
 
+    def recent(
+        self, *, k: int = 5, owner: str | None = None,
+        chatbot_id: str | None = None, allow_sensitive: bool = False,
+        kinds: list[str] | str | None = None,
+    ) -> list[dict]:
+        """Il percorso di degradazione di `search()` quando non c'e' un
+        vettore di query con cui confrontare i significati: gli stessi
+        filtri di riservatezza di `search()` (via `_clausole_di_scope`), ma
+        ordinati per recenza invece che per similarita'. A differenza di
+        `search()`, non richiede `embedding IS NOT NULL` -- e' proprio il
+        punto: include anche le righe senza vettore, che il percorso
+        vettoriale esclude per costruzione."""
+        clauses, params = self._clausole_di_scope(
+            owner=owner, chatbot_id=chatbot_id,
+            allow_sensitive=allow_sensitive, kinds=kinds,
+        )
+        params["k"] = k
+        sql = (
+            "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
+            + " ORDER BY created_at DESC, id DESC LIMIT :k"
+        )
+        with self._mu:
+            rows = self._conn.execute(sql, params).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r); d.pop("embedding", None)
+            try:
+                d["data"] = json.loads(d["data"])
+            except Exception:
+                d["data"] = {}
+            out.append(d)
+        return out
+
     def upcoming_obligations(
         self, *, before: str, owner: str | None = None,
     ) -> list[dict]:
@@ -322,49 +397,6 @@ class KnowledgeStore:
             rows = self._conn.execute(
                 "SELECT * FROM knowledge_items WHERE " + " AND ".join(clauses)
                 + " ORDER BY due_date ASC", params,
-            ).fetchall()
-        out = []
-        for r in rows:
-            d = dict(r); d.pop("embedding", None)
-            try:
-                d["data"] = json.loads(d["data"])
-            except Exception:
-                d["data"] = {}
-            out.append(d)
-        return out
-
-    def expenses_by_category(self, *, owner: str | None = None) -> dict[str, float]:
-        clauses = ["kind='expense'", "status='approved'", "amount IS NOT NULL"]
-        params: list = []
-        if owner is not None:
-            clauses.append("(owner=? OR owner='home')"); params.append(owner)
-        with self._mu:
-            rows = self._conn.execute(
-                "SELECT COALESCE(category,'(nessuna)') AS cat, SUM(amount) AS tot"
-                " FROM knowledge_items WHERE " + " AND ".join(clauses)
-                + " GROUP BY cat", params,
-            ).fetchall()
-        return {r["cat"]: float(r["tot"]) for r in rows}
-
-    def add_link(
-        self, *, src_id: int, dst_id: int, relation: str,
-        weight: float = 1.0, source: str = "manual",
-    ) -> None:
-        with self._mu:
-            self._conn.execute(
-                "INSERT OR IGNORE INTO knowledge_links"
-                "(src_id, dst_id, relation, weight, source, created_at)"
-                " VALUES(?,?,?,?,?,?)",
-                (src_id, dst_id, relation, weight, source, self._now()),
-            )
-            self._conn.commit()
-
-    def neighbors(self, item_id: int) -> list[dict]:
-        with self._mu:
-            rows = self._conn.execute(
-                "SELECT i.* FROM knowledge_items i"
-                " JOIN knowledge_links l ON l.dst_id = i.id"
-                " WHERE l.src_id = ? AND i.status='approved'", (item_id,),
             ).fetchall()
         out = []
         for r in rows:

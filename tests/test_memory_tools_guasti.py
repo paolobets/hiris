@@ -1,13 +1,20 @@
 """A1/A3 — save_memory e recall_memory non devono dire una cosa e farne un'altra.
 
-Un ricordo senza embedding non e' richiamabile: `knowledge_store.search` filtra
-su `status='approved' AND embedding IS NOT NULL`. Scriverlo comunque e
-rispondere `saved: True` e' il gemello, ancora vivo, del difetto chiuso per
-save_knowledge: il modello dice "me lo ricordo" e il ricordo non tornera' mai.
+save_memory non rifiuta piu' un ricordo solo perche' manca il vettore: dopo la
+fetta 2a `KnowledgeStore.search` degrada a `recent()` quando non c'e' un
+vettore di query, quindi un ricordo senza embedding resta comunque
+ritrovabile. Il salvataggio deve riuscire -- senza vettore, senza propagare
+l'eccezione dell'embedder -- e, quando l'embedder funziona, il vettore deve
+comunque essere calcolato e salvato esattamente come prima (nessuna
+regressione).
 
-Lo stesso vale in lettura: se il vettore di ricerca non si calcola, "nessun
-ricordo" e "non ho potuto guardare" sono due frasi diverse, e solo la seconda
-e' vera.
+Task 6 (fetta 2a): anche in lettura il rifiuto sparisce. Se il vettore di
+ricerca non si calcola, `recall_memory` non risponde piu' con un errore: passa
+a `KnowledgeStore.search` un vettore vuoto, che degrada da se' a `recent()`
+(piu' recenti prima, stessi filtri di riservatezza). Il richiamo riesce
+sempre; il risultato porta pero' `degraded: True` quando il confronto dei
+significati non e' avvenuto, cosi' il modello puo' dirlo all'utente invece di
+presentare i piu' recenti come i piu' pertinenti.
 """
 from __future__ import annotations
 
@@ -41,36 +48,65 @@ class _Embedder:
 
 
 @pytest.mark.asyncio
-async def test_save_memory_con_embedder_rotto_non_dichiara_di_aver_salvato(tmp_path):
+async def test_save_memory_con_embedder_rotto_salva_comunque_senza_vettore(tmp_path):
+    """Un ricordo senza embedding resta comunque ritrovabile: dopo la fetta 2a
+    `KnowledgeStore.search` degrada a `recent()` quando non c'e' un vettore di
+    query. Un embedder che solleva non deve impedire di ricordare: il
+    salvataggio riesce, senza vettore, senza propagare l'eccezione."""
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
     res = await handle_save_memory(
         store, _Embedder(esplode=True), {"content": "preferisco 21 gradi"},
         owner="paolo", chatbot_id="agentA",
     )
 
-    assert res.get("error"), "senza embedding il salvataggio deve dichiarare l'errore"
-    assert res.get("saved") is not True, "nessun successo apparente"
-    assert "id" not in res
-    # Nessuna riga scritta: un ricordo irraggiungibile non deve nemmeno esistere.
-    assert store.list_items() == []
-    # Il dettaglio dell'eccezione resta nel log del server.
-    assert "embedder giu'" not in res["error"]
+    assert res.get("saved") is True
+    assert "error" not in res
+    # La riga e' davvero nel db, recuperabile via store.recent() -- save_memory
+    # scrive sempre status='approved', quindi (a differenza di save_knowledge)
+    # e' il percorso di lettura corretto.
+    trovati = store.recent(owner="paolo", chatbot_id="agentA", kinds=["memory"])
+    assert [m["content"] for m in trovati] == ["preferisco 21 gradi"]
+    assert trovati[0]["id"] == res["id"]
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is False
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_save_memory_con_vettore_vuoto_non_dichiara_di_aver_salvato(tmp_path):
+async def test_save_memory_con_vettore_vuoto_salva_comunque_senza_vettore(tmp_path):
     """Il provider risponde ma senza vettore (caso del provider non
-    configurato, che non solleva): stesso esito."""
+    configurato, che non solleva): stesso esito -- salvataggio riuscito."""
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
     res = await handle_save_memory(
         store, _Embedder(vettore=[]), {"content": "preferisco 21 gradi"},
         owner="paolo", chatbot_id="agentA",
     )
 
-    assert res.get("error")
-    assert res.get("saved") is not True
-    assert store.list_items() == []
+    assert res.get("saved") is True
+    assert "error" not in res
+    trovati = store.recent(owner="paolo", chatbot_id="agentA", kinds=["memory"])
+    assert [m["content"] for m in trovati] == ["preferisco 21 gradi"]
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is False
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_save_memory_con_embedder_funzionante_salva_ancora_il_vettore(tmp_path):
+    """Nessuna regressione: se l'embedder c'e' e funziona, il vettore si
+    calcola e si salva esattamente come prima -- pinnato via has_embedding,
+    non per assunzione."""
+    store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    embedder = _Embedder()
+    res = await handle_save_memory(
+        store, embedder, {"content": "preferisco 21 gradi"},
+        owner="paolo", chatbot_id="agentA",
+    )
+
+    assert res.get("saved") is True
+    assert embedder.chiamate == ["preferisco 21 gradi"]
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is True
     store.close()
 
 
@@ -113,9 +149,10 @@ async def test_save_memory_errore_dello_store_non_riporta_leccezione(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_recall_memory_con_embedder_rotto_dichiara_il_guasto(tmp_path):
-    """"Non ricordo nulla" e "non ho potuto guardare" non sono la stessa cosa:
-    la seconda non deve mai arrivare all'utente travestita da prima."""
+async def test_recall_memory_con_embedder_rotto_degrada_ai_piu_recenti(tmp_path):
+    """Task 6: l'embedder che solleva non blocca piu' il richiamo. La ricerca
+    degrada ai ricordi piu' recenti (KnowledgeStore.search -> recent()) invece
+    di rifiutare, e l'eccezione non deve propagare al chiamante."""
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
     store.add_item(kind="memory", content="preferisco 21 gradi", owner="paolo",
                    chatbot_id="agentA", status="approved", embedding=[0.1, 0.2, 0.3])
@@ -125,42 +162,76 @@ async def test_recall_memory_con_embedder_rotto_dichiara_il_guasto(tmp_path):
         owner="paolo", chatbot_id="agentA",
     )
 
-    assert res.get("error"), "il guasto della memoria semantica va dichiarato"
-    assert not res.get("memories"), "nessun elenco che sembri una risposta"
-    assert res.get("count") != 0, "zero risultati sarebbe una bugia: non si e' cercato"
-    assert "embedder giu'" not in res["error"]
+    assert "error" not in res
+    assert [m["content"] for m in res["memories"]] == ["preferisco 21 gradi"]
+    assert res["count"] == 1
+    assert res.get("degraded") is True, (
+        "il richiamo degradato deve dichiararsi tale, non presentarsi come "
+        "un confronto di significati"
+    )
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_recall_memory_con_vettore_vuoto_dichiara_il_guasto(tmp_path):
+async def test_recall_memory_con_vettore_vuoto_degrada_ai_piu_recenti(tmp_path):
+    """Stesso esito quando il provider risponde ma senza vettore (caso del
+    NullEmbedder di fabbrica, che non solleva)."""
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    store.add_item(kind="memory", content="preferisco 21 gradi", owner="paolo",
+                   chatbot_id="agentA", status="approved", embedding=[0.1, 0.2, 0.3])
+
     res = await handle_recall_memory(
         store, _Embedder(vettore=[]), {"query": "temperatura"},
         owner="paolo", chatbot_id="agentA",
     )
-    assert res.get("error")
-    assert res.get("count") != 0
+    assert "error" not in res
+    assert [m["content"] for m in res["memories"]] == ["preferisco 21 gradi"]
+    assert res.get("degraded") is True
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_il_guasto_di_recall_memory_non_porta_la_chiave_memories(tmp_path):
-    """Fix 3 — la forma del guasto e' una scelta, e va pinnata.
-
-    In caso di guasto la risposta NON porta `memories`/`count`: un chiamante
-    che facesse `res["memories"]` deve fallire rumorosamente invece di leggere
-    un vuoto silenzioso. Gli altri test qui sopra si accontentano di «elenco
-    vuoto o assente, indifferentemente», quindi da soli lascerebbero
-    riaggiungere l'elenco vuoto senza che nulla diventi rosso.
-    """
+async def test_recall_memory_con_embedder_funzionante_non_degrada(tmp_path):
+    """Nessuna regressione: con un vettore vero il richiamo ordina per
+    somiglianza come prima e NON porta il segnale di degradazione."""
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    store.add_item(kind="memory", content="preferisco 21 gradi", owner="paolo",
+                   chatbot_id="agentA", status="approved", embedding=[0.1, 0.2, 0.3])
+
     res = await handle_recall_memory(
-        store, _Embedder(esplode=True), {"query": "temperatura"},
+        store, _Embedder(), {"query": "temperatura"},
         owner="paolo", chatbot_id="agentA",
     )
+    assert "error" not in res
+    assert [m["content"] for m in res["memories"]] == ["preferisco 21 gradi"]
+    assert not res.get("degraded"), (
+        "una ricerca vettoriale vera non deve portare il segnale di degradazione"
+    )
+    store.close()
 
-    assert set(res) == {"error"}, "il guasto porta solo l'errore, nessun elenco"
+
+@pytest.mark.asyncio
+async def test_recall_memory_degradato_applica_gli_stessi_filtri_di_riservatezza(tmp_path):
+    """Task 6 punto 4: il richiamo degradato non deve perdere il filtro di
+    riservatezza. Una riga sensibile non deve comparire a chi non puo'
+    vederla -- una degradazione che perde un filtro e' una falla, non una
+    degradazione. (recall_memory chiama sempre con allow_sensitive di default,
+    quindi qui verifichiamo lo scoping owner/chatbot_id, l'altro asse che
+    recall_memory applica.)"""
+    store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    store.add_item(kind="memory", content="segreto di agentB", owner="paolo",
+                   chatbot_id="agentB", status="approved", embedding=[0.1, 0.2, 0.3])
+    store.add_item(kind="memory", content="nota di agentA", owner="paolo",
+                   chatbot_id="agentA", status="approved", embedding=[0.1, 0.2, 0.3])
+
+    res = await handle_recall_memory(
+        store, _Embedder(vettore=[]), {"query": "qualunque cosa"},
+        owner="paolo", chatbot_id="agentA",
+    )
+    assert res.get("degraded") is True
+    contents = [m["content"] for m in res["memories"]]
+    assert "segreto di agentB" not in contents
+    assert contents == ["nota di agentA"]
     store.close()
 
 

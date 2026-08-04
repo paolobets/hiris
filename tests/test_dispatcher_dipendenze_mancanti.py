@@ -1,11 +1,11 @@
 """A2/A3 — quando una dipendenza manca, il dispatcher deve dirlo.
 
-A2: `recall_knowledge` e `link_knowledge` erano rami condizionati alla presenza
-dello store. Senza store l'esecuzione cadeva nel ramo finale, che risponde
-«Tool 'X' non esiste. [...] Non inventare nomi di tool.»: il modello viene
-rimproverato per aver chiamato uno strumento che gli era stato elencato, e la
-reazione tipica e' smettere di usarlo per il resto della conversazione. I
-gemelli `recall_memory`/`save_memory` gestiscono correttamente lo stesso caso.
+A2: `recall_knowledge` era un ramo condizionato alla presenza dello store.
+Senza store l'esecuzione cadeva nel ramo finale, che risponde «Tool 'X' non
+esiste. [...] Non inventare nomi di tool.»: il modello viene rimproverato per
+aver chiamato uno strumento che gli era stato elencato, e la reazione tipica
+e' smettere di usarlo per il resto della conversazione. I gemelli
+`recall_memory`/`save_memory` gestiscono correttamente lo stesso caso.
 
 A3: i tre strumenti che leggono dalla cache delle entita' rispondevano con un
 elenco vuoto quando la cache non c'era o non era ancora popolata -- «la casa e'
@@ -37,7 +37,6 @@ def _disp(**kwargs) -> ToolDispatcher:
     "tool, inputs",
     [
         ("recall_knowledge", {"query": "caldaia"}),
-        ("link_knowledge", {"src_id": 1, "dst_id": 2, "relation": "riguarda"}),
     ],
 )
 async def test_senza_store_non_accusa_il_modello_di_essersi_inventato_il_tool(tool, inputs):
@@ -54,16 +53,22 @@ async def test_senza_store_non_accusa_il_modello_di_essersi_inventato_il_tool(to
 
 
 @pytest.mark.asyncio
-async def test_recall_knowledge_senza_embedder_lo_dichiara(tmp_path):
-    """Come `recall_memory`: lo store da solo non basta, senza embedder non c'e'
-    ricerca semantica possibile."""
+async def test_recall_knowledge_senza_embedder_degrada_invece_di_rifiutare(tmp_path):
+    """Non piu' un rifiuto (fetta 2a): senza embedder la ricerca non puo'
+    confrontare i significati, ma degrada ai piu' recenti (stesso
+    comportamento di `KnowledgeStore.search` -> `recent()`) invece di
+    fallire -- il default di fabbrica (NullEmbedder) non calcola mai un
+    vettore, e su un'installazione stock questo e' il percorso normale, non
+    un'eccezione."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    store.add_item(kind="fact", content="la caldaia e' in cantina", owner="home")
+
     res = await _disp(knowledge_store=store, embedder=None).dispatch(
         "recall_knowledge", {"query": "caldaia"})
 
-    testo = _messaggio(res)
-    assert testo
-    assert "non esiste" not in testo
+    assert "error" not in res
+    assert res["degraded"] is True
+    assert [r["content"] for r in res["results"]] == ["la caldaia e' in cantina"]
     store.close()
 
 

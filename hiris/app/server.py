@@ -56,7 +56,7 @@ from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
 from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
-from .brain.reasoner_memory import relevant_memory
+from .brain.reasoner_memory import relevant_memory, MemoryRecall
 from .brain.briefing import build_briefing_bundle, compose_briefing
 from .brain.reminders import ReminderSeen, due_nudges
 from .watcher.policy import load_policy
@@ -880,7 +880,7 @@ def agent_run_stopped(why: str, severity: str | None) -> Decision:
 
 async def _reason_memory_context(
     app: web.Application, embedder, wake, friendly_name: str,
-) -> list[str]:
+) -> MemoryRecall:
     """Slice 6b Task 4: bounded, egress-gated memory snippets for the
     sentinel/situation reasoner's context.
 
@@ -900,8 +900,11 @@ async def _reason_memory_context(
 
     Failure-safe: relevant_memory() itself never raises (see
     reasoner_memory.py), but router.automatic_allows_sensitive() or a
-    malformed `wake` could -- so this is wrapped too, degrading to []
-    rather than ever bubbling an exception into `_gather_context`.
+    malformed `wake` could -- so this is wrapped too, degrading to
+    `MemoryRecall(snippets=[], by_meaning=False)` rather than ever bubbling
+    an exception into `_gather_context`. Returning a `MemoryRecall` on
+    every path (not sometimes a bare list) keeps `_gather_context` able to
+    read `.snippets`/`.by_meaning` unconditionally.
     """
     try:
         knowledge_store = app.get("knowledge_store") if app is not None else None
@@ -914,7 +917,7 @@ async def _reason_memory_context(
         )
     except Exception:
         logger.warning("_reason_memory_context: memory retrieval failed", exc_info=True)
-        return []
+        return MemoryRecall(snippets=[], by_meaning=False)
 
 
 async def _osserva_la_casa(app) -> int:
@@ -1776,11 +1779,22 @@ async def _on_startup(app: web.Application) -> None:
         # _reason_memory_context is itself failure-safe (never raises), but
         # this call is never allowed to prevent returning at least
         # {"friendly_name": ...} exactly like before Task 4.
+        #
+        # fetta 2b Task 2: `.snippets`/`.by_meaning` are read INSIDE this try
+        # too (not just the await), so a malformed MemoryRecall can't raise
+        # past this point either -- both fallback returns below stay reachable
+        # only through this one except, never a second point of failure.
+        # `memory_by_meaning` travels alongside `memory` in the context dict
+        # so build_user_message can render the honest heading; it is popped
+        # (like `memory`) before the context is JSON-dumped as "Contesto:".
         try:
             mem = await _reason_memory_context(app, embedder, wake, friendly_name)
+            memory_snippets = mem.snippets
+            memory_by_meaning = mem.by_meaning
         except Exception:
             return {"friendly_name": friendly_name, "portrait": _portrait_context(app)}
-        return {"friendly_name": friendly_name, "memory": mem,
+        return {"friendly_name": friendly_name, "memory": memory_snippets,
+                "memory_by_meaning": memory_by_meaning,
                 "portrait": _portrait_context(app)}
 
     async def _llm_reason(system, user, *, model, max_tokens,
@@ -2356,7 +2370,19 @@ async def _on_startup(app: web.Application) -> None:
                 # tune + guardian refresh below). relevant_memory() is already
                 # non-throwing for the real store, but wrap independently so a
                 # nonconforming store/embedder can't take the whole round down.
-                _mem = []
+                #
+                # fetta 2b Task 3: `_mem` is always a `MemoryRecall` (never a
+                # bare list) on every path -- including this except branch --
+                # so `.snippets`/`.by_meaning` can be read unconditionally
+                # below, exactly like `_reason_memory_context`'s per-wake
+                # counterpart. Passing `.snippets` (not the dataclass itself)
+                # as `memory=` was the fix: the dataclass previously reached
+                # build_review_context's `list(memory)`, raising TypeError and
+                # silently aborting the whole holistic pass (caught by this
+                # function's outer try/except). `.by_meaning` rides alongside
+                # so build_review_message can head the memory block honestly,
+                # same as the per-event path (reasoner.py).
+                _mem = MemoryRecall(snippets=[], by_meaning=False)
                 try:
                     _llm_router = app.get("llm_router")
                     _allow_sensitive = _llm_router.automatic_allows_sensitive() if _llm_router is not None else False
@@ -2367,7 +2393,8 @@ async def _on_startup(app: web.Application) -> None:
                 except Exception:
                     logger.warning("holistic memory retrieval failed", exc_info=True)
                 _ctx = build_review_context(snapshot, _inventory, _current,
-                                            memory=_mem,
+                                            memory=_mem.snippets,
+                                            memory_by_meaning=_mem.by_meaning,
                                             portrait=_portrait_context(app))
                 # SP-2 Task 4: il Brain (questo passaggio olistico) usa il
                 # modello scelto per il Brain, se esplicito; "auto" (default)

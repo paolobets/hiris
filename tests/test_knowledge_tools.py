@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 from hiris.app.tools.knowledge_tools import (
     SAVE_KNOWLEDGE_TOOL_DEF,
     RECALL_KNOWLEDGE_TOOL_DEF,
-    LINK_KNOWLEDGE_TOOL_DEF,
 )
 from hiris.app.brain.knowledge_store import KnowledgeStore
 
@@ -79,7 +78,6 @@ async def test_recall_pseudonymizes_non_normal_non_sensitive_literal_sensitivity
 def test_tool_defs_have_names():
     assert SAVE_KNOWLEDGE_TOOL_DEF["name"] == "save_knowledge"
     assert RECALL_KNOWLEDGE_TOOL_DEF["name"] == "recall_knowledge"
-    assert LINK_KNOWLEDGE_TOOL_DEF["name"] == "link_knowledge"
 
 
 @pytest.mark.asyncio
@@ -102,14 +100,35 @@ async def test_save_knowledge_creates_pending(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_save_knowledge_senza_embedding_non_finge_di_aver_salvato(tmp_path):
-    """Un elemento senza embedding non e' richiamabile: knowledge_store.search
-    filtra su `status='approved' AND embedding IS NOT NULL`. Se il calcolo
-    dell'embedding fallisce, salvare comunque riaprirebbe lo stesso fallimento
-    silenzioso che la coda di approvazione ha appena chiuso, spostato di un
-    passo: il modello dice "salvato", l'elemento compare nella coda, l'utente
-    lo approva e resta comunque irraggiungibile. Deve fallire apertamente e
-    non scrivere nulla."""
+async def test_recall_knowledge_k_negativo_non_diventa_limit_illimitato(tmp_path):
+    """`k` finisce in una `LIMIT` SQL sul percorso degradato (recent()): in
+    SQLite `LIMIT -1` significa 'nessun limite', quindi un k negativo
+    restituirebbe ogni riga nello scope invece di essere clampato. recall_memory
+    gia' clampa a [1, 20]; recall_knowledge deve fare lo stesso."""
+    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "k_negativo.db"))
+    for i in range(5):
+        store.add_item(kind="note", content=f"nota {i}", owner="home")
+
+    res = await handle_recall_knowledge(
+        store, None, {"query": "nota", "k": -1}, owner="home",
+    )
+
+    assert res["degraded"] is True
+    assert len(res["results"]) == 1, "k negativo deve clampare a 1, non diventare LIMIT -1"
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_save_knowledge_embedder_che_solleva_salva_comunque_senza_vettore(tmp_path):
+    """Un elemento senza embedding resta comunque ritrovabile: dopo la fetta 2a
+    `KnowledgeStore.search` degrada a `recent()` (stessi filtri di
+    riservatezza) quando non c'e' un vettore di query. Rifiutare qui non
+    protegge piu' nulla -- sposta solo il difetto vero, che e' a monte (il
+    default di fabbrica NullEmbedder non calcola mai un vettore). Un embedder
+    che solleva non deve impedire di ricordare: il salvataggio deve riuscire,
+    senza propagare l'eccezione, e senza vettore."""
     from hiris.app.tools.knowledge_tools import handle_save_knowledge
 
     store = KnowledgeStore(str(tmp_path / "no_emb.db"))
@@ -122,19 +141,25 @@ async def test_save_knowledge_senza_embedding_non_finge_di_aver_salvato(tmp_path
         owner="home",
     )
 
-    assert res.get("error"), "senza embedding il salvataggio deve dichiarare l'errore"
-    assert "status" not in res, "nessun successo apparente"
-    # Nessuna riga scritta: ne' pending ne' approved.
-    assert store.list_items() == []
-    # L'errore non deve riportare il testo dell'eccezione al chiamante.
-    assert "provider giu'" not in res["error"]
+    assert "error" not in res, "l'embedder rotto non deve impedire di salvare"
+    assert res["status"] == "pending"
+    # La riga e' davvero nel db: recuperabile dal percorso canonico di lettura
+    # per gli elementi in coda (save_knowledge scrive sempre status='pending',
+    # quindi store.recent() -- che filtra su status='approved' -- non la
+    # vedrebbe; list_items(status='pending') e' l'equivalente corretto).
+    pending = store.list_items(status="pending")
+    assert [p["content"] for p in pending] == ["Paolo ama la pizza"]
+    assert pending[0]["id"] == res["id"]
+    # Nessun vettore salvato: has_embedding lo dice senza esporre il blob.
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is False
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_save_knowledge_embedding_vuoto_non_finge_di_aver_salvato(tmp_path):
+async def test_save_knowledge_embedding_vuoto_salva_comunque_senza_vettore(tmp_path):
     """Stesso esito quando il provider risponde ma senza vettore (lista vuota):
-    e' il caso del provider non configurato, che non solleva."""
+    e' il caso del provider non configurato (NullEmbedder), che non solleva."""
     from hiris.app.tools.knowledge_tools import handle_save_knowledge
 
     store = KnowledgeStore(str(tmp_path / "empty_emb.db"))
@@ -147,18 +172,50 @@ async def test_save_knowledge_embedding_vuoto_non_finge_di_aver_salvato(tmp_path
         owner="home",
     )
 
-    assert res.get("error")
-    assert store.list_items() == []
+    assert "error" not in res
+    assert res["status"] == "pending"
+    pending = store.list_items(status="pending")
+    assert [p["content"] for p in pending] == ["La caldaia va revisionata a ottobre"]
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is False
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_dispatcher_save_knowledge_senza_embedder_fallisce(tmp_path):
-    """Il dispatcher instradava `save_knowledge` guardando solo la presenza
-    dello store, mentre i runner tolgono dai tool recall_memory/save_memory
-    quando manca l'embedder. Senza embedder configurato l'elemento non potra'
-    mai essere richiamato: qui il salvataggio deve fallire, come gia' fa
-    save_memory, invece di riuscire a vuoto."""
+async def test_save_knowledge_con_embedder_funzionante_salva_ancora_il_vettore(tmp_path):
+    """Nessuna regressione: se l'embedder c'e' e funziona, il vettore si
+    calcola e si salva esattamente come prima -- pinnato via has_embedding,
+    non per assunzione."""
+    from hiris.app.tools.knowledge_tools import handle_save_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "with_emb.db"))
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[0.1, 0.2])
+
+    res = await handle_save_knowledge(
+        store, embedder,
+        {"kind": "preference", "content": "Paolo ama la pizza"},
+        owner="home",
+    )
+
+    assert "error" not in res
+    assert res["status"] == "pending"
+    embedder.embed.assert_awaited_once_with("Paolo ama la pizza")
+    item = store.get_item(res["id"])
+    assert item["has_embedding"] is True
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_save_knowledge_senza_embedder_riesce_comunque(tmp_path):
+    """Un tempo il dispatcher rifiutava save_knowledge anche senza embedder,
+    perche' senza vettore l'elemento non sarebbe mai stato richiamabile. Dopo
+    la fetta 2a non e' piu' vero: `KnowledgeStore.search` degrada a
+    `recent()` quando non c'e' un vettore di query (stessi filtri di
+    riservatezza), quindi un elemento senza embedding resta comunque
+    ritrovabile. Il default di fabbrica (NullEmbedder) non calcola MAI un
+    vettore, quindi il rifiuto colpiva ogni installazione stock: qui deve
+    riuscire, esattamente come handle_save_knowledge fa gia' direttamente."""
     from hiris.app.tools.dispatcher import ToolDispatcher
 
     store = KnowledgeStore(str(tmp_path / "dispatch_no_emb.db"))
@@ -174,17 +231,41 @@ async def test_dispatcher_save_knowledge_senza_embedder_fallisce(tmp_path):
         {"kind": "preference", "content": "Paolo ama la pizza"},
     )
 
-    assert isinstance(res, dict) and res.get("error")
-    assert res.get("status") != "pending"
-    assert store.list_items() == []
+    assert "error" not in res, "l'assenza di embedder non deve impedire di salvare"
+    assert res["status"] == "pending"
+    rows = store.list_items(status="pending")
+    assert len(rows) == 1
+    assert rows[0]["content"] == "Paolo ama la pizza"
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_recall_knowledge_senza_vettore_dichiara_il_guasto(tmp_path):
-    """A3: se il vettore di ricerca non si calcola, la memoria semantica e' giu'
-    e non si e' guardato da nessuna parte. Rispondere con un elenco vuoto
-    convince il modello -- e quindi l'utente -- che il ricordo non esiste."""
+async def test_dispatcher_save_knowledge_senza_store_fallisce(tmp_path):
+    """Lo store, a differenza dell'embedder, resta un motivo reale di
+    rifiuto: senza store non c'e' dove scrivere l'elemento."""
+    from hiris.app.tools.dispatcher import ToolDispatcher
+
+    dispatcher = ToolDispatcher(
+        ha_client=MagicMock(),
+        notify_config={},
+        knowledge_store=None,
+        embedder=None,
+    )
+
+    res = await dispatcher.dispatch(
+        "save_knowledge",
+        {"kind": "preference", "content": "Paolo ama la pizza"},
+    )
+
+    assert isinstance(res, dict) and res.get("error")
+    assert res.get("status") != "pending"
+
+
+@pytest.mark.asyncio
+async def test_recall_knowledge_con_embedder_rotto_degrada_ai_piu_recenti(tmp_path):
+    """Task 6: l'embedder che solleva non blocca piu' il richiamo. La ricerca
+    degrada ai piu' recenti (KnowledgeStore.search -> recent()) invece di
+    rifiutare, e l'eccezione non deve propagare al chiamante."""
     from hiris.app.tools.knowledge_tools import handle_recall_knowledge
 
     store = KnowledgeStore(str(tmp_path / "guasto.db"))
@@ -196,32 +277,85 @@ async def test_recall_knowledge_senza_vettore_dichiara_il_guasto(tmp_path):
     res = await handle_recall_knowledge(
         store, embedder, {"query": "caldaia"}, owner="home")
 
-    assert res.get("error"), "il guasto va dichiarato, non travestito da 'niente trovato'"
-    assert not res.get("results"), "nessun elenco che sembri una risposta"
-    assert ":11434" not in res["error"]
+    assert "error" not in res
+    contents = [r["content"] for r in res["results"]]
+    assert "La caldaia e' del 2019" in contents
+    assert res.get("degraded") is True, (
+        "il richiamo degradato deve dichiararsi tale"
+    )
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_il_guasto_di_recall_knowledge_non_porta_la_chiave_results(tmp_path):
-    """Fix 3 — la forma del guasto e' una scelta, e va pinnata.
-
-    In caso di guasto la risposta NON porta `results`: un chiamante che facesse
-    `res["results"]` deve fallire rumorosamente invece di leggere un vuoto
-    silenzioso. Il test qui sopra si accontenta di «elenco vuoto o assente,
-    indifferentemente», quindi da solo lascerebbe riaggiungere l'elenco vuoto
-    senza che nulla diventi rosso.
-    """
+async def test_recall_knowledge_con_vettore_vuoto_degrada_ai_piu_recenti(tmp_path):
+    """Stesso esito quando il provider risponde ma senza vettore (caso del
+    NullEmbedder di fabbrica, che non solleva)."""
     from hiris.app.tools.knowledge_tools import handle_recall_knowledge
 
     store = KnowledgeStore(str(tmp_path / "forma.db"))
+    store.add_item(kind="fact", content="La caldaia e' del 2019",
+                   embedding=[1.0, 0.0], status="approved")
     embedder = AsyncMock()
-    embedder.embed = AsyncMock(side_effect=RuntimeError("provider giu'"))
+    embedder.embed = AsyncMock(return_value=[])
 
     res = await handle_recall_knowledge(
         store, embedder, {"query": "caldaia"}, owner="home")
 
-    assert set(res) == {"error"}, "il guasto porta solo l'errore, nessun elenco"
+    assert "error" not in res
+    contents = [r["content"] for r in res["results"]]
+    assert "La caldaia e' del 2019" in contents
+    assert res.get("degraded") is True
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_recall_knowledge_con_embedder_funzionante_non_degrada(tmp_path):
+    """Nessuna regressione: con un vettore vero il richiamo ordina per
+    somiglianza come prima e NON porta il segnale di degradazione."""
+    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "no_degrado.db"))
+    store.add_item(kind="fact", content="La caldaia e' del 2019",
+                   embedding=[1.0, 0.0], status="approved")
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[1.0, 0.0])
+
+    res = await handle_recall_knowledge(
+        store, embedder, {"query": "caldaia"}, owner="home")
+
+    assert "error" not in res
+    contents = [r["content"] for r in res["results"]]
+    assert "La caldaia e' del 2019" in contents
+    assert not res.get("degraded"), (
+        "una ricerca vettoriale vera non deve portare il segnale di degradazione"
+    )
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_recall_knowledge_degradato_applica_lo_stesso_filtro_di_riservatezza(tmp_path):
+    """Task 6 punto 4: il richiamo degradato non deve perdere il filtro di
+    riservatezza. Una riga sensibile non deve comparire a chi non puo'
+    vederla -- e' la stessa invariante pinnata dentro lo store (Task 1),
+    verificata qui dal lato del chiamante."""
+    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+
+    store = KnowledgeStore(str(tmp_path / "riservato.db"))
+    store.add_item(kind="fact", content="dato pubblico", embedding=[1.0, 0.0],
+                   status="approved", sensitivity="normal")
+    store.add_item(kind="fact", content="dato sensibile", embedding=[1.0, 0.0],
+                   status="approved", sensitivity="sensitive")
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[])
+
+    res = await handle_recall_knowledge(
+        store, embedder, {"query": "qualunque cosa"}, owner="home",
+        allow_sensitive=False)
+
+    assert res.get("degraded") is True
+    contents = [r["content"] for r in res["results"]]
+    assert "dato sensibile" not in contents
+    assert "dato pubblico" in contents
     store.close()
 
 

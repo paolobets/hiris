@@ -120,11 +120,30 @@ senza, la scrittura viene rifiutata.
 > Una scadenza è una data. Una spesa è un numero con una categoria. Un'abitudine è una soglia. Si
 > interrogano con una query, non con un coseno — e vivono **dentro il ritratto**, sempre presenti.
 >
-> Il motore vettoriale resta vivo in **un posto solo**: i documenti, dove è l'unico strumento che
-> funziona.
+> **Nessun dato strutturato paga un pedaggio vettoriale per essere scritto o letto.**
 
 Non è una preferenza architetturale: **tre mestieri su quattro non sono mai stati problemi da RAG**,
 e ci sono finiti perché l'archivio esisteva già.
+
+> ### ⚠️ Rettifica — 4 agosto 2026, dopo la fetta 2a
+>
+> Questo paragrafo diceva: *«il motore vettoriale resta vivo in un posto solo: i documenti»*, e da
+> quello discendeva che la ricerca per somiglianza sarebbe stata **rimossa** dagli item nella fetta
+> 2b. **Decisione dell'utente rovesciata prima di costruire la 2b: il vettore resta anche sugli
+> item.**
+>
+> Chi configura un fornitore di embedding continua ad avere il richiamo per significato sui ricordi;
+> chi non lo configura — cioè ogni installazione di fabbrica — ha i più recenti. La fetta 2a ha già
+> reso questa una **regola sola dentro lo store**, non due configurazioni: *la ricerca confronta i
+> significati quando può; quando non può, dà i più recenti*.
+>
+> **Il prezzo, dichiarato:** due comportamenti da mantenere e da testare, per sempre. È il costo che
+> la scelta precedente evitava. Resta invece pienamente valido tutto il resto del paragrafo — nessun
+> dato strutturato paga un pedaggio vettoriale, e le scadenze si leggono per data.
+>
+> Cosa questo cambia per le fette successive: la **2b** non è più la rimozione del vettore dagli
+> item, ma **far affiorare la memoria da sola** anche senza vettore (vedi
+> `2026-08-04-piano-memoria-fetta2b.md`).
 
 ### Conseguenze
 

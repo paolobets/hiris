@@ -20,7 +20,7 @@ def connect(db_path: str) -> sqlite3.Connection:
       while the capture/scheduler threads write.
     - busy_timeout: blocks briefly instead of raising 'database is locked'.
     - synchronous=NORMAL: good durability/perf balance under WAL.
-    - foreign_keys=ON: enforce referential integrity (e.g. knowledge_links).
+    - foreign_keys=ON: enforce referential integrity.
     row_factory = sqlite3.Row. Creates the parent directory.
     """
     os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)

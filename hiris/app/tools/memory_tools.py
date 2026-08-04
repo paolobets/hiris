@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
-from .knowledge_tools import _ERRORE_SENZA_EMBEDDING
+from ..brain.knowledge_store import confronta_significati
 
 if TYPE_CHECKING:
     from ..brain.knowledge_store import KnowledgeStore
@@ -15,28 +15,22 @@ logger = logging.getLogger(__name__)
 # Same timestamp format used by KnowledgeStore (see brain/knowledge_store.py).
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
-# I messaggi che il modello legge -- e che quindi arrivano all'utente. Dicono
+# Il messaggio che il modello legge -- e che quindi arriva all'utente. Dice
 # cosa NON e' successo e perche' conta, mai il dettaglio tecnico: l'eccezione
 # resta nel log del server (regola del repo, mai echo di str(exc)).
-#
-# Il messaggio del salvataggio senza embedding e' LO STESSO del tool gemello
-# `save_knowledge`, quindi si importa invece di riscriverlo: erano due copie
-# quasi identiche, divergenti di due parole, dichiarate identiche nel report.
-_ERRORE_SALVATAGGIO_SENZA_EMBEDDING = _ERRORE_SENZA_EMBEDDING
 _ERRORE_SALVATAGGIO = (
     "Non sono riuscito a salvare questo ricordo. Riprova più tardi."
-)
-_ERRORE_RICERCA = (
-    "Non sono riuscito a cercare nella memoria: la memoria semantica non è "
-    "disponibile in questo momento. Non posso dire che non ci sia nulla, solo "
-    "che non ho potuto controllare."
 )
 
 RECALL_MEMORY_TOOL_DEF = {
     "name": "recall_memory",
     "description": (
         "Cerca nella memoria persistente dell'agente informazioni rilevanti da sessioni precedenti. "
-        "Usa questo strumento prima di rispondere a domande dove il contesto passato potrebbe aiutare."
+        "Usa questo strumento prima di rispondere a domande dove il contesto passato potrebbe aiutare. "
+        "Se la memoria semantica non è disponibile (nessun embedder configurato, o il calcolo del "
+        "vettore fallisce), il risultato porta `degraded: true` e restituisce i ricordi più recenti "
+        "invece dei più pertinenti: in quel caso vanno presentati come 'i più recenti', non come 'i più "
+        "pertinenti', perché il confronto dei significati non è avvenuto."
     ),
     "input_schema": {
         "type": "object",
@@ -111,13 +105,14 @@ async def handle_save_memory(
     save_knowledge — this is the agent's own scratch memory), scoped by
     owner (who it belongs to) AND chatbot_id (which agent wrote it).
 
-    Senza embedding il ricordo NON e' richiamabile: `knowledge_store.search`
-    filtra su `status='approved' AND embedding IS NOT NULL`. Scriverlo comunque
-    e rispondere `saved: True` e' un successo dichiarato che non esiste --
-    l'utente dice "ricordati che..." e il ricordo non tornera' mai. Quindi qui,
-    se l'embedding non c'e', si fallisce apertamente e non si scrive nulla. E'
-    la stessa scelta gia' fatta per il tool gemello save_knowledge
-    (tools/knowledge_tools.py).
+    Senza embedding il ricordo resta comunque scritto: `KnowledgeStore.search`
+    degrada a `recent()` (piu' recenti prima, stessi filtri di riservatezza)
+    quando non c'e' un vettore di query, quindi resta comunque ritrovabile.
+    Rifiutare qui spostava il difetto vero a monte: il default di fabbrica
+    (NullEmbedder) non calcola MAI un vettore, quindi su un'installazione
+    stock "ricordati che..." non veniva mai salvato. Se un embedder c'e' e
+    funziona, il vettore si calcola e si salva esattamente come prima; se non
+    c'e', non risponde, o solleva, si salva comunque senza vettore.
     """
     content = tool_input["content"]
     if len(content) > 1000:
@@ -126,11 +121,8 @@ async def handle_save_memory(
     try:
         embedding = await embedder.embed(content) if embedder is not None else None
     except Exception:
-        logger.exception("save_memory: embedding non calcolato, nulla da salvare")
+        logger.exception("save_memory: embedding non calcolato, salvo senza vettore")
         embedding = None
-    if not embedding:
-        logger.warning("save_memory rifiutato: nessun embedding disponibile")
-        return {"error": _ERRORE_SALVATAGGIO_SENZA_EMBEDDING}
 
     valid_until: str | None = None
     if retention_days and retention_days > 0:
@@ -148,7 +140,7 @@ async def handle_save_memory(
                 owner=owner,
                 chatbot_id=chatbot_id,
                 data={"tags": tags},
-                embedding=embedding,
+                embedding=embedding or None,
                 sensitivity="normal",
                 source="chat",
                 status="approved",
@@ -179,19 +171,16 @@ async def handle_recall_memory(
     knowledge outside its configured kinds egress filter."""
     k = min(max(1, int(tool_input.get("k", 5))), 20)
     tags = tool_input.get("tags") or None
-    # Senza vettore di ricerca non si e' guardato da nessuna parte: rispondere
-    # `{"memories": [], "count": 0}` farebbe dire al modello "non ricordo
-    # nulla" quando la frase vera e' "non ho potuto controllare". I due casi
-    # devono restare distinguibili, quindi il guasto NON porta un elenco: solo
-    # l'errore.
+    # Senza vettore di ricerca non si e' potuto confrontare i significati.
+    # `KnowledgeStore.search` degrada da se' a `recent()` quando riceve un
+    # vettore vuoto (stessi filtri di riservatezza, ordine per recenza), quindi
+    # qui non serve piu' un ramo: si passa il vettore per quel che e' -- vuoto
+    # o pieno -- e il segnale di degradazione arriva nel ritorno.
     try:
         query_vec = await embedder.embed(tool_input["query"]) if embedder is not None else None
     except Exception:
         logger.exception("recall_memory: vettore di ricerca non calcolato")
         query_vec = None
-    if not query_vec:
-        logger.warning("recall_memory non eseguita: nessun vettore di ricerca")
-        return {"error": _ERRORE_RICERCA}
 
     loop = asyncio.get_running_loop()
 
@@ -200,7 +189,7 @@ async def handle_recall_memory(
         # starve the result set below k.
         search_k = k * 4 if tags else k
         rows = store.search(
-            query_vec=query_vec, k=search_k, owner=owner, chatbot_id=chatbot_id,
+            query_vec=query_vec or [], k=search_k, owner=owner, chatbot_id=chatbot_id,
             kinds=["memory"],
         )
         if tags:
@@ -221,4 +210,4 @@ async def handle_recall_memory(
         }
         for r in rows
     ]
-    return {"memories": memories, "count": len(memories)}
+    return {"memories": memories, "count": len(memories), "degraded": not confronta_significati(query_vec)}

@@ -40,7 +40,6 @@ from .tools.memory_tools import (
 from .tools.knowledge_tools import (
     SAVE_KNOWLEDGE_TOOL_DEF,
     RECALL_KNOWLEDGE_TOOL_DEF,
-    LINK_KNOWLEDGE_TOOL_DEF,
 )
 from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
 from .tools.advisory_tools import GET_ADVISORIES_TOOL_DEF
@@ -213,7 +212,6 @@ ALL_TOOL_DEFS = [
     PROPOSE_DASHBOARD_TOOL_DEF,
     SAVE_KNOWLEDGE_TOOL_DEF,
     RECALL_KNOWLEDGE_TOOL_DEF,
-    LINK_KNOWLEDGE_TOOL_DEF,
     DAILY_BRIEFING_TOOL_DEF,
     CONFIRM_PENDING_TOOL_DEF,
 ]

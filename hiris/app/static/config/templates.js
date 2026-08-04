@@ -92,7 +92,6 @@ var TOOLS = [
   { id: 'propose_dashboard',      label: 'propose_dashboard',      desc: 'Propone di creare o sostituire una plancia (approvazione dalle Proposte)' },
   { id: 'save_knowledge',         label: 'save_knowledge',         desc: 'Propone di salvare un fatto/preferenza/scadenza/spesa nel second brain (approvazione dell\'utente)' },
   { id: 'recall_knowledge',       label: 'recall_knowledge',       desc: 'Cerca nel second brain di casa fatti e preferenze rilevanti' },
-  { id: 'link_knowledge',         label: 'link_knowledge',         desc: 'Collega due voci del second brain fra loro' },
   { id: 'daily_briefing',         label: 'daily_briefing',         desc: 'Riepilogo del maggiordomo: scadenze imminenti e stato notevole della casa' },
   { id: 'confirm_pending',        label: 'confirm_pending',        desc: 'Conferma un\'azione a rischio in attesa con il codice OTP ricevuto sul telefono' },
 ];
