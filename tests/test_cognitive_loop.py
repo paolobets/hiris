@@ -382,7 +382,7 @@ async def test_recall_finds_tune_trace_then_real_undo_restores_value_and_keeps_e
          entities so we can also assert neither is touched by undo) with a
          SuggestionStore wired in.
       2. BEFORE undo: the REAL chat recall path (ToolDispatcher.dispatch(
-         "recall_knowledge", ...), not a raw store call) finds the
+         "recall_memory", ...), not a raw store call) finds the
          brain-action trace on a consumption-related query.
       3. Undo via the REAL API route (handle_undo_suggestion / POST
          /api/suggestions/{id}/undo) -- not a direct call to internal helpers.
@@ -411,12 +411,12 @@ async def test_recall_finds_tune_trace_then_real_undo_restores_value_and_keeps_e
         assert len(rows) == 1
         sid = rows[0]["id"]
 
-        # (2) Real chat recall path, BEFORE undo: recall_knowledge must surface
+        # (2) Real chat recall path, BEFORE undo: recall_memory must surface
         # the brain-action trace for a consumption query -- kind is NOT
         # restricted to exclude "brain-action" (knowledge_kinds=None default).
         dispatcher = ToolDispatcher(None, {}, knowledge_store=kstore, embedder=emb)
         before = await dispatcher.dispatch(
-            "recall_knowledge", {"query": "consumo energetico della presa"},
+            "recall_memory", {"query": "consumo energetico della presa"},
             user_id="home",
         )
         assert any(r["kind"] == "brain-action" for r in before["results"]), before
@@ -443,7 +443,7 @@ async def test_recall_finds_tune_trace_then_real_undo_restores_value_and_keeps_e
 
         # (4b) Trace gone: recall no longer finds it via the real chat path.
         after = await dispatcher.dispatch(
-            "recall_knowledge", {"query": "consumo energetico della presa"},
+            "recall_memory", {"query": "consumo energetico della presa"},
             user_id="home",
         )
         assert not any(r["kind"] == "brain-action" for r in after["results"]), after

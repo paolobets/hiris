@@ -79,8 +79,8 @@ var TOOLS = [
   { id: 'get_calendar_events',    label: 'get_calendar_events',    desc: 'Prossimi eventi dai calendari HA' },
   { id: 'create_calendar_event',  label: 'create_calendar_event',  desc: 'Crea un evento su un calendario HA' },
   { id: 'set_input_helper',       label: 'set_input_helper',       desc: 'Imposta un input helper HA (boolean, number, text, select)' },
-  { id: 'recall_memory',          label: 'recall_memory',          desc: 'Cerca nella memoria persistente del bot informazioni da conversazioni passate' },
-  { id: 'save_memory',            label: 'save_memory',            desc: 'Salva un\'informazione nella memoria persistente del bot' },
+  { id: 'recall_memory',          label: 'recall_memory',          desc: 'Cerca in cio\' che HIRIS ricorda: preferenze, fatti, scadenze, spese, appunti' },
+  { id: 'save_memory',            label: 'save_memory',            desc: 'Salva subito qualcosa da ricordare (preferenza, fatto, scadenza, spesa, appunto), senza approvazione' },
   { id: 'get_ha_health',          label: 'get_ha_health',          desc: 'Report di salute del sistema Home Assistant (entità non disponibili, integrazioni, log, aggiornamenti)' },
   { id: 'get_advisories',         label: 'get_advisories',         desc: 'Segnalazioni di salute aperte rilevate dal Brain' },
   { id: 'get_logbook',            label: 'get_logbook',            desc: 'Cronologia eventi: cosa è successo e chi ha fatto cosa' },
@@ -90,8 +90,6 @@ var TOOLS = [
   { id: 'list_dashboards',        label: 'list_dashboards',        desc: 'Elenca le plance (dashboard Lovelace) esistenti' },
   { id: 'get_dashboard_config',   label: 'get_dashboard_config',   desc: 'Legge viste e card di una plancia esistente' },
   { id: 'propose_dashboard',      label: 'propose_dashboard',      desc: 'Propone di creare o sostituire una plancia (approvazione dalle Proposte)' },
-  { id: 'save_knowledge',         label: 'save_knowledge',         desc: 'Propone di salvare un fatto/preferenza/scadenza/spesa nel second brain (approvazione dell\'utente)' },
-  { id: 'recall_knowledge',       label: 'recall_knowledge',       desc: 'Cerca nel second brain di casa fatti e preferenze rilevanti' },
   { id: 'daily_briefing',         label: 'daily_briefing',         desc: 'Riepilogo del maggiordomo: scadenze imminenti e stato notevole della casa' },
   { id: 'confirm_pending',        label: 'confirm_pending',        desc: 'Conferma un\'azione a rischio in attesa con il codice OTP ricevuto sul telefono' },
 ];
@@ -108,10 +106,12 @@ var ACTIONS = [
 ];
 
 /* KNOWLEDGE_KINDS feeds HirisEditorKit.checkGroup nella sezione Knowledge
-   (SP-4 Fase B Task 4, chatbot-editor.js populateKnowledge()). Stessi 5
-   `kind` che save_knowledge accetta (hiris/app/tools/knowledge_tools.py
-   SAVE_KNOWLEDGE_TOOL_DEF.input_schema.properties.kind.enum) -- il filtro
-   lato UI deve restare in sincrono con ciò che il second brain sa salvare. */
+   (SP-4 Fase B Task 4, chatbot-editor.js populateKnowledge()). Sono 5 dei 6
+   `kind` che save_memory accetta (hiris/app/tools/memory_tools.py
+   SAVE_MEMORY_TOOL_DEF.input_schema.properties.kind.enum -- il sesto e'
+   'memory', il ricordo generico dell'agente, che non e' un filtro di
+   ricerca sul second brain) -- il filtro lato UI deve restare in sincrono
+   con ciò che il second brain sa salvare. */
 var KNOWLEDGE_KINDS = [
   { id: 'fact',        label: 'Fatti',       desc: 'Informazioni stabili su casa/famiglia' },
   { id: 'preference',  label: 'Preferenze',  desc: 'Abitudini e preferenze personali' },

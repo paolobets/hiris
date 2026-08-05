@@ -49,7 +49,7 @@ più allowlist/exclude puntuali e la **retention** dei dati grezzi.
 
 Un job notturno distilla lo storico in **insight testuali** salvati nella knowledge
 base (es. *"negli ultimi 7 giorni il consumo medio è +12% rispetto alla settimana
-precedente"*). Sono **ricercabili** dall'AI (`recall_knowledge`), deterministici e a
+precedente"*). Sono **ricercabili** dall'AI (`recall_memory`), deterministici e a
 costo zero (regole, niente chiamate LLM). Un riepilogo per entità, aggiornato ogni
 notte (non si accumula).
 
@@ -100,23 +100,22 @@ entità verdi del semaforo). L'annullamento di un task (`cancel_task`) richiede
 **sempre** la tua conferma. Nella chat HIRIS (assistente fidato) i task non hanno
 questa restrizione.
 
-## 7. Memoria — cosa HIRIS ha imparato (impara → approva)
+## 7. Memoria — cosa HIRIS ha imparato
 
-Quando dici *"ricordati che…"*, HIRIS non salva direttamente nel second brain:
-mette l'informazione **in attesa**, come fa con le proposte. La trovi nella chat
-sotto **Memoria**, la terza inbox accanto a *Proposte* e *Task*, con il numero di
-elementi che aspettano.
-
-Per ciascuno vedi il contenuto, quando è stato imparato e da quale conversazione o
-strumento arriva, e scegli se **approvarlo** o **scartarlo**. Solo ciò che approvi
-diventa richiamabile da `recall_knowledge`, dal briefing e dalla ricerca.
+Quando dici *"ricordati che…"*, HIRIS salva **subito**: una preferenza, un fatto,
+una scadenza, una spesa o un appunto finiscono nel second brain nello stesso
+istante, senza passare da un'approvazione. Non appena salvato, è già richiamabile
+da `recall_memory`, dal briefing e dalla ricerca.
 
 - Gli elementi marcati **sensibili** restano coperti: il contenuto si mostra solo
-  se lo chiedi esplicitamente, così puoi decidere senza esporlo per sbaglio.
+  se lo chiedi esplicitamente, così puoi vederlo senza esporlo per sbaglio a chi
+  legge sopra le tue spalle.
 - Il salvataggio **fallisce dichiaratamente** se HIRIS non ha modo di indicizzare
   il testo (nessun servizio di embedding raggiungibile): meglio un errore che un
   elemento salvato e mai richiamabile.
 
-> Gli altri scrittori della knowledge base (documenti, insight storici, memorie,
-> tracce del Brain) salvano già come approvati: la coda riguarda ciò che l'AI
-> impara **da te**, in conversazione.
+> Nella chat trovi ancora una sezione **Memoria** accanto a *Proposte* e *Task*:
+> è una coda di approvazione, ma da quando il salvataggio è immediato non ci
+> arriva più nulla dalle tue conversazioni. Resta utile solo per righe
+> pre-esistenti o aggiunte a mano allo store — se la trovi vuota è la norma, non
+> un guasto.

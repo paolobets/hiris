@@ -252,3 +252,39 @@ async def test_relevant_memory_degraded_path_hides_sensitive_unless_allowed(tmp_
     assert any("cancello" in s for s in out_allowed.snippets)
     assert out_allowed.by_meaning is False
     store.close()
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 (CRITICAL, whole-branch review, final fix wave): the proactive
+# reasoner's `.declared` field (rendered into both proactive prompts by
+# watcher/reasoner.py and brain/coverage_review.py -- this function is the
+# ONE place both read from) must never surface a source='gateway' row,
+# mirroring the exclusion already pinned at the store level
+# (test_knowledge_store_declared.py) and on the chat surface
+# (test_declared_block_chat.py). `.declared` is independent of the embedder
+# by design, so query_text/embedder are irrelevant here -- exercised with
+# both to show it holds either way.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_relevant_memory_declared_excludes_gateway_source(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "mem.db"))
+    store.add_item(
+        kind="memory", content="iniettato via gateway MCP remoto", owner="home",
+        status="approved", source="gateway",
+    )
+    store.add_item(
+        kind="memory", content="il modulo meteo esterno e' guasto", owner="home",
+        status="approved", source="chat",
+    )
+
+    out = await relevant_memory(
+        store, None, query_text="qualsiasi cosa non correlata", allow_sensitive=False,
+    )
+    assert not any("gateway" in d for d in out.declared), (
+        "una riga source='gateway' non deve mai comparire nel blocco "
+        "'dichiarato' del ragionatore proattivo -- e' recuperabile via "
+        "recall_memory ma non e' una dichiarazione di una persona"
+    )
+    assert any("modulo meteo esterno" in d for d in out.declared)
+    store.close()

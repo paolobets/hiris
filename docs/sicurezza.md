@@ -98,7 +98,7 @@ Il gateway permette a Claude (claude.ai) di pilotare HIRIS. Punti chiave di sicu
 > Nota: le **letture** non coperte dalla denylist (stati, storico, config
 > automazioni) vanno comunque al modello nel cloud. Non inserire segreti nelle
 > automazioni. La denylist filtra per **entità**: la memoria testuale
-> (`recall_knowledge`) contiene testo libero, quindi un appunto scritto a mano con
+> (`recall_memory`) contiene testo libero, quindi un appunto scritto a mano con
 > un dato sensibile **non** è intercettabile in quel modo.
 
 ---

@@ -41,7 +41,7 @@ so filtrare questa risposta" di uno che fa uscire una serratura.
 
 LIMITE DICHIARATO
 -----------------
-`recall_knowledge` restituisce testo libero della memoria, non entita'. Se un
+`recall_memory` restituisce testo libero della memoria, non entita'. Se un
 appunto contiene un dato sensibile scritto a mano, nessuna denylist per entita'
 puo' intercettarlo: quel caso NON e' coperto qui e non deve sembrarlo.
 """
@@ -361,8 +361,8 @@ def _pota_task(result: Any, denylist: Sequence[str]) -> Any:
     return {"tasks": tenute, "filtered": {"shown": len(tenute), "total": len(result)}}
 
 
-def _pota_conoscenza(result: Any, denylist: Sequence[str]) -> Any:
-    """Memoria (`recall_knowledge`): testo libero, nessuna entita' da potare.
+def _pota_memoria(result: Any, denylist: Sequence[str]) -> Any:
+    """Memoria (`recall_memory`): testo libero, nessuna entita' da potare.
 
     Passa invariato, ed e' il LIMITE DICHIARATO del design: un appunto scritto a
     mano che contiene un dato sensibile non e' intercettabile da una denylist
@@ -370,15 +370,15 @@ def _pota_conoscenza(result: Any, denylist: Sequence[str]) -> Any:
     scambi per copertura. La forma si controlla comunque: se un giorno questo
     tool restituisse anche identificativi, la forma cambierebbe e si bloccherebbe.
 
-    Dopo la fetta 2a (Task 6) `handle_recall_knowledge` non rifiuta piu' un
-    richiamo solo perche' manca il vettore di ricerca: degrada ai piu' recenti
-    e torna sempre `results` (lista) + `degraded`, mai un guasto a chiave
-    singola. La riga sotto che riconosce `{"error": ...}` senza `results`
-    resta comunque per la forma che il dispatcher produce a monte quando
-    store/embedder non sono proprio configurati (`ToolDispatcher.dispatch`) --
-    ma quella forma, avendo una sola chiave, viene gia' presa dalla scorciatoia
-    di `prune_read_result` prima ancora di arrivare qui; e' difensiva, non il
-    percorso normale.
+    Dopo la fetta 2a (Task 6) `handle_recall_knowledge` (oggi `handle_recall_memory`,
+    fusa dalla fetta memoria-unica Task 2) non rifiuta piu' un richiamo solo
+    perche' manca il vettore di ricerca: degrada ai piu' recenti e torna sempre
+    `results` (lista) + `degraded`, mai un guasto a chiave singola. La riga
+    sotto che riconosce `{"error": ...}` senza `results` resta comunque per la
+    forma che il dispatcher produce a monte quando store/embedder non sono
+    proprio configurati (`ToolDispatcher.dispatch`) -- ma quella forma, avendo
+    una sola chiave, viene gia' presa dalla scorciatoia di `prune_read_result`
+    prima ancora di arrivare qui; e' difensiva, non il percorso normale.
     """
     if not isinstance(result, dict):
         raise _FormaNonPotabile("atteso un oggetto")
@@ -400,7 +400,7 @@ _POTATORI = {
     "get_logbook": _pota_logbook,
     "get_advisories": _pota_advisories,
     "get_automation_config": _pota_config_automazione,
-    "recall_knowledge": _pota_conoscenza,
+    "recall_memory": _pota_memoria,
     "list_tasks": _pota_task,
 }
 

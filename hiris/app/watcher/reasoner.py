@@ -8,6 +8,11 @@ try:
 except Exception:  # pragma: no cover - fallback difensivo
     def sanitize(s):  # type: ignore
         return re.sub(r"[<>]", "", str(s))
+try:
+    from ..brain.reasoner_memory import sanitize_declared_item
+except Exception:  # pragma: no cover - fallback difensivo
+    def sanitize_declared_item(s):  # type: ignore
+        return " ".join(sanitize(s).split())
 
 SENTINEL_SYSTEM = (
     "Sei la Sentinella di HIRIS: valuti un singolo segnale di anomalia domestica. "
@@ -48,6 +53,20 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
     # area).
     _raw_ctx = dict(context or {})
     portrait = _raw_ctx.pop("portrait", None)
+    # Fix 1 (review wave, task-4-fixes): i DICHIARATI, come il ritratto sopra,
+    # vanno estratti PRIMA di _san -- stessa trappola, stesso motivo. `_san`
+    # (sanitize_ha_value) tronca ogni stringa a 120 caratteri: una dichiarazione
+    # di due frasi ci arriverebbe mozzata a meta', in silenzio e coi test
+    # verdi (e' il difetto che questa fetta esiste per chiudere). Il contenuto
+    # e' gia' sanificato ALLA FONTE, elemento per elemento, da
+    # `reasoner_memory.sanitize_declared_item` (server.py's _gather_context ->
+    # _reason_memory_context -> MemoryRecall.declared -> _declared_snippets),
+    # con un cap scelto deliberatamente (DECLARED_ITEM_MAX=500) invece di
+    # ereditare i 120 caratteri per accidente. `sanitize_declared_item` viene
+    # richiamato ANCHE qui sotto, in difesa: un chiamante che passi `declared`
+    # grezzo (bypassando _declared_snippets, come alcuni test fanno
+    # direttamente) ottiene comunque lo stesso filtro/cap/marcatore.
+    declared = _raw_ctx.pop("declared", None)
     ctx = _san(_raw_ctx)
     memory = ctx.pop("memory", None)
     # fetta 2b Task 2: rides alongside "memory", popped the same way and for
@@ -63,6 +82,12 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
         # "" significa "nessun blocco": e' il contratto che tiene il messaggio
         # identico a prima quando il ritratto non c'e'.
         portrait_block = f"{portrait.strip()}\n\n"
+    declared_block = ""
+    if isinstance(declared, list) and declared:
+        flat_d = [sanitize_declared_item(s) for s in declared]
+        lines_d = "\n".join(f"- {s}" for s in flat_d if s)
+        if lines_d:
+            declared_block = f"Fatti dichiarati:\n{lines_d}\n\n"
     memory_block = ""
     if isinstance(memory, list) and memory:
         # Snippets are rendered raw (not JSON-encoded like ev/ctx), so flatten
@@ -87,6 +112,7 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
         f"Evidenza: {json.dumps(ev, ensure_ascii=False)}\n"
         f"Contesto: {json.dumps(ctx, ensure_ascii=False)}\n\n"
         f"{portrait_block}"
+        f"{declared_block}"
         f"{memory_block}"
         "Valuta e rispondi con il blocco json richiesto."
     )

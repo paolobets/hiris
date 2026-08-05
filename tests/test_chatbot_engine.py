@@ -294,6 +294,56 @@ def test_load_missing_file_is_noop(mock_ha, tmp_path):
     assert len(eng._chatbots) == 0
 
 
+def test_load_agent_with_legacy_tool_names_maps_to_current_names(mock_ha, tmp_path):
+    """Fix 4 (Important, whole-branch review): a Chatbot persisted BEFORE the
+    memoria-unica merge (Task 2) may still name the retired
+    recall_knowledge/save_knowledge tools in allowed_tools (they were two
+    separate checkboxes). claude_runner.py's allowed_tools filter matches by
+    exact name (ALL_TOOL_DEFS lookup) -- an unmapped legacy name silently
+    drops second-brain access from a bot whose base system prompt now orders
+    it to call save_memory unconditionally. Loading must rewrite the old
+    names to the current recall_memory/save_memory."""
+    path = tmp_path / "agents.json"
+    path.write_text(json.dumps({
+        "schema_version": 4,
+        "chatbots": [{
+            "id": "legacy-001",
+            "name": "Legacy Bot",
+            "system_prompt": "legacy",
+            "allowed_tools": ["get_home_status", "recall_knowledge", "save_knowledge"],
+            "enabled": True,
+            "is_default": False,
+        }]
+    }))
+    eng = ChatbotEngine(ha_client=mock_ha, data_path=str(path))
+    eng._load()
+    loaded = eng._chatbots["legacy-001"]
+    assert loaded.allowed_tools == ["get_home_status", "recall_memory", "save_memory"]
+
+
+def test_load_agent_with_both_legacy_and_current_names_dedupes(mock_ha, tmp_path):
+    """A config that (however it happened) carries BOTH the legacy and the
+    current name for the same tool must not end up with a duplicate --
+    normalize_tool_names is idempotent and de-duplicates on the mapped name,
+    preserving first-seen order."""
+    path = tmp_path / "agents.json"
+    path.write_text(json.dumps({
+        "schema_version": 4,
+        "chatbots": [{
+            "id": "legacy-002",
+            "name": "Legacy Bot 2",
+            "system_prompt": "legacy",
+            "allowed_tools": ["recall_knowledge", "recall_memory", "save_knowledge"],
+            "enabled": True,
+            "is_default": False,
+        }]
+    }))
+    eng = ChatbotEngine(ha_client=mock_ha, data_path=str(path))
+    eng._load()
+    loaded = eng._chatbots["legacy-002"]
+    assert loaded.allowed_tools == ["recall_memory", "save_memory"]
+
+
 def test_update_agent_persists_to_file(engine, tmp_path):
     agent = engine.create_chatbot({
         "name": "Update Me", "type": "monitor",

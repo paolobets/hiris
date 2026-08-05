@@ -289,11 +289,11 @@ def test_prune_automation_config_passes_when_clean():
     assert prune_read_result("get_automation_config", risposta, _DENY) == risposta
 
 
-def test_prune_recall_knowledge_passes_through():
+def test_prune_recall_memory_passes_through():
     # Limite dichiarato nel design: la memoria e' testo libero, nessuna
     # denylist per entita' puo' intercettare un appunto scritto a mano.
     risposta = {"results": [{"id": 1, "kind": "note", "content": "la porta e' rotta"}]}
-    assert prune_read_result("recall_knowledge", risposta, _DENY) == risposta
+    assert prune_read_result("recall_memory", risposta, _DENY) == risposta
 
 
 def test_prune_error_dict_passes_through():
@@ -306,14 +306,14 @@ def test_prune_error_dict_passes_through():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_recall_knowledge_degradato_passa_dalla_potatura_come_risultato(tmp_path):
+async def test_recall_memory_degradato_passa_dalla_potatura_come_risultato(tmp_path):
     """Task 6 (fetta 2a): un embedder che solleva non produce piu' un guasto a
     chiave singola per `recall_knowledge` -- la ricerca degrada ai piu' recenti
     e torna sempre `results` (lista) + `degraded`. La potatura deve trattarlo
     come un risultato normale (nessuna entita' da potare, testo libero), non
     come un blocco."""
     from hiris.app.brain.knowledge_store import KnowledgeStore
-    from hiris.app.tools.knowledge_tools import handle_recall_knowledge
+    from hiris.app.tools.memory_tools import handle_recall_memory
 
     class _EmbedderGiu:
         async def embed(self, testo):
@@ -322,13 +322,13 @@ async def test_recall_knowledge_degradato_passa_dalla_potatura_come_risultato(tm
     store = KnowledgeStore(str(tmp_path / "guasto.db"))
     store.add_item(kind="fact", content="la caldaia e' del 2019", owner="home",
                    status="approved", embedding=[1.0, 0.0])
-    degradato = await handle_recall_knowledge(
+    degradato = await handle_recall_memory(
         store, _EmbedderGiu(), {"query": "caldaia"}, owner="home")
     store.close()
 
     assert degradato["degraded"] is True
     assert isinstance(degradato["results"], list) and degradato["results"]
-    assert prune_read_result("recall_knowledge", degradato, _DENY) == degradato
+    assert prune_read_result("recall_memory", degradato, _DENY) == degradato
 
 
 def test_prune_errore_dispatcher_senza_embedder_passa_ancora():
@@ -338,7 +338,7 @@ def test_prune_errore_dispatcher_senza_embedder_passa_ancora():
     vuoto», che ora degrada invece di rifiutare)."""
     guasto = {"error": "La memoria non è disponibile: non posso cercare nei "
                         "ricordi di casa in questo momento."}
-    assert prune_read_result("recall_knowledge", guasto, _DENY) == guasto
+    assert prune_read_result("recall_memory", guasto, _DENY) == guasto
 
 
 def test_un_guasto_con_un_secondo_campo_non_viene_inghiottito():
@@ -351,7 +351,7 @@ def test_un_guasto_con_un_secondo_campo_non_viene_inghiottito():
     guasto = {"error": "Non sono riuscito a cercare nella memoria di casa.",
               "retry_after_sec": 30}
 
-    assert prune_read_result("recall_knowledge", guasto, _DENY) == guasto
+    assert prune_read_result("recall_memory", guasto, _DENY) == guasto
 
 
 # ---------------------------------------------------------------------------
@@ -389,21 +389,30 @@ def test_prune_empty_denylist_is_identity():
 class _FakeDispatcher:
     def __init__(self, result=None):
         self.calls = []
+        self.kwargs_calls = []
         self._result = result if result is not None else []
 
     async def dispatch(self, name, inputs, allowed_entities=None,
                        allowed_services=None, chatbot_id=None, cloud=True, **kw):
         self.calls.append((name, inputs))
+        # Fix 1 plumbing (whole-branch review, final fix wave): capture the
+        # full kwargs too, so a test can assert `from_remote_gateway` without
+        # widening the tuple every other test in this file already unpacks.
+        self.kwargs_calls.append({
+            "chatbot_id": chatbot_id, "cloud": cloud, **kw,
+        })
         return self._result
 
 
-def _make_app(tmp_path, *, denylist, result=None, local_token="LOCALE"):
+def _make_app(tmp_path, *, denylist, result=None, local_token="LOCALE", tools=None):
     app = web.Application()
     app["internal_token"] = "secret"
     app["data_dir"] = str(tmp_path)
-    app["execute_policy"] = {"tools": ["get_home_status", "get_history",
-                                       "get_logbook", "list_tasks"],
-                             "allowed_entities": None, "allowed_services": None}
+    app["execute_policy"] = {
+        "tools": tools if tools is not None else
+                 ["get_home_status", "get_history", "get_logbook", "list_tasks"],
+        "allowed_entities": None, "allowed_services": None,
+    }
     app["read_denylist"] = denylist
     app["local_execute_token"] = local_token
     app["tool_dispatcher"] = _FakeDispatcher(result)
@@ -498,6 +507,57 @@ async def test_execute_forged_local_marker_does_not_exempt(aiohttp_client, tmp_p
     resp = await _post(client, {"tool": "get_history", "input": {"entity_ids": ["lock.porta"]}},
                        headers={LOCAL_CHAT_HEADER: "indovinato"})
     assert resp.status == 403
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 (CRITICAL, whole-branch review, final fix wave): handle_execute must
+# tell the dispatcher whether THIS request is the real remote MCP gateway or
+# the chat-in-addon re-entering via LocalExecuteClient -- save_memory writes
+# a permanent, house-wide row that is auto-injected as "declared" on 'chat'
+# provenance. The discriminant is the SAME local-chat process secret the read
+# denylist already uses (LOCAL_CHAT_HEADER), never the client-supplied
+# `origin` field alone.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_execute_remote_call_marks_save_memory_as_gateway_origin(aiohttp_client, tmp_path):
+    app = _make_app(tmp_path, denylist=_DENY, tools=["save_memory"])
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "save_memory", "input": {"content": "detto dal gateway"}})
+    assert resp.status == 200
+    fake = app["tool_dispatcher"]
+    assert fake.kwargs_calls[-1]["from_remote_gateway"] is True
+
+
+@pytest.mark.asyncio
+async def test_execute_local_chat_call_does_not_mark_save_memory_as_gateway_origin(
+    aiohttp_client, tmp_path,
+):
+    app = _make_app(tmp_path, denylist=_DENY, tools=["save_memory"])
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "save_memory", "input": {"content": "detto in chat locale"}},
+                       headers={LOCAL_CHAT_HEADER: "LOCALE"})
+    assert resp.status == 200
+    fake = app["tool_dispatcher"]
+    assert fake.kwargs_calls[-1]["from_remote_gateway"] is False
+
+
+@pytest.mark.asyncio
+async def test_execute_forged_local_marker_still_marks_save_memory_as_gateway_origin(
+    aiohttp_client, tmp_path,
+):
+    """A caller that knows the internal_token but not the LOCAL_CHAT_HEADER
+    process secret (see test_execute_forged_local_marker_does_not_exempt
+    above, same guess) must still be tagged as gateway provenance -- the
+    marker is unguessable by construction, so a wrong guess is
+    indistinguishable from no marker at all."""
+    app = _make_app(tmp_path, denylist=_DENY, tools=["save_memory"])
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "save_memory", "input": {"content": "x"}},
+                       headers={LOCAL_CHAT_HEADER: "indovinato"})
+    assert resp.status == 200
+    fake = app["tool_dispatcher"]
+    assert fake.kwargs_calls[-1]["from_remote_gateway"] is True
 
 
 # ---------------------------------------------------------------------------

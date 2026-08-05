@@ -178,7 +178,13 @@ async def test_created_agent_has_all_dashboard_fields(dashboard_client):
 
 @pytest.mark.asyncio
 async def test_delete_agent_cleans_memory_and_chat_history():
-    """handle_delete_chatbot must call knowledge_store.delete_by_chatbot + clear_history."""
+    """handle_delete_chatbot must call knowledge_store.detach_chatbot_id +
+    clear_history. Task 3 (memoria unica): the chatbot's memory rows are
+    house knowledge now, not private working memory, so deletion only
+    dissociates the dangling chatbot_id reference (detach_chatbot_id) --
+    it does not delete rows anymore (that was the retired
+    delete_by_chatbot; see KnowledgeStore.detach_chatbot_id's docstring for
+    why deleting content on chatbot deletion became a data-loss risk)."""
     from hiris.app.api.handlers_chatbots import handle_delete_chatbot
 
     engine = MagicMock()
@@ -188,7 +194,7 @@ async def test_delete_agent_cleans_memory_and_chat_history():
     engine.delete_chatbot.return_value = True
 
     knowledge_store = MagicMock()
-    knowledge_store.delete_by_chatbot = MagicMock()
+    knowledge_store.detach_chatbot_id = MagicMock()
 
     app = MagicMock()
     app.get = MagicMock(side_effect=lambda k, default=None: {
@@ -215,7 +221,7 @@ async def test_delete_agent_cleans_memory_and_chat_history():
         resp = await handle_delete_chatbot(request)
 
     assert resp.status == 204
-    knowledge_store.delete_by_chatbot.assert_called_once_with(aid)
+    knowledge_store.detach_chatbot_id.assert_called_once_with(aid)
     assert called["clear"] == (aid, "/tmp/hiris_test_data")
 
 

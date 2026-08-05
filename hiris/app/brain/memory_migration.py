@@ -93,6 +93,15 @@ def migrate_agent_memories(data_dir: str, knowledge_store) -> int:
             )
             tags = []
 
+        # `row["expires_at"]` era la scadenza di CONSERVAZIONE del vecchio
+        # store per-agente (stessa semantica del `retention_days` che
+        # `handle_save_memory` calcolava, mai validita' di un fatto). Task 6
+        # ("la memoria non evapora") ha rimosso quel calcolo ovunque nel
+        # prodotto vivo; portarlo qui pari pari ricreerebbe esattamente il
+        # difetto appena chiuso -- una riga kind='memory' che evapora da
+        # sola -- per chiunque avesse ancora un `hiris_memory.db` legacy da
+        # migrare. Ignorato deliberatamente: ogni riga migrata nasce senza
+        # scadenza, come ogni riga scritta oggi da handle_save_memory.
         knowledge_store.add_item(
             kind="memory",
             content=row["content"],
@@ -101,7 +110,6 @@ def migrate_agent_memories(data_dir: str, knowledge_store) -> int:
             status="approved",
             sensitivity="normal",
             embedding=embedding,
-            valid_until=row["expires_at"],
             source="migrated",
             data={"tags": tags} if tags else None,
         )

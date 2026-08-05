@@ -27,6 +27,7 @@ from .read_denylist import (
     prune_read_result,
 )
 from ..security.semaphore import normalize_target
+from ..tools.memory_tools import normalize_tool_names
 _HARD_EXECUTE_ALLOWED = frozenset(_RT) | frozenset(_PT) | {"call_ha_service", "create_task", "send_notification"}
 
 # Tools always exposed regardless of the saved EXECUTE_API_TOOLS policy. Notifications
@@ -85,7 +86,12 @@ def parse_execute_policy(tools: str, entities: str, services: str) -> dict:
     ent = _csv(entities)
     svc = _csv(services)
     return {
-        "tools": _csv(tools),
+        # Fix 4 (whole-branch review, final fix wave): EXECUTE_API_TOOLS is a free-typed
+        # CSV add-on option -- a value saved before the memoria-unica merge
+        # can still name recall_knowledge/save_knowledge, which now match
+        # nothing in _HARD_EXECUTE_ALLOWED/policy["tools"]. Same alias map as
+        # chatbot_engine.py's allowed_tools load, so the two cannot drift.
+        "tools": normalize_tool_names(_csv(tools)),
         "allowed_entities": ent or None,
         "allowed_services": svc or None,
     }
@@ -151,6 +157,16 @@ async def handle_execute(request: web.Request) -> web.Response:
     dispatcher = request.app.get("tool_dispatcher")
     if dispatcher is None:
         return web.json_response({"error": "dispatcher unavailable"}, status=503)
+
+    # Fix 1 (whole-branch review, final fix wave): computed once, reused both for the
+    # read denylist below (existing use) and for `from_remote_gateway` on the
+    # dispatch call further down -- a save_memory reaching this endpoint from
+    # the chat-in-addon path (LocalExecuteClient, loopback) must NOT be
+    # tagged as gateway provenance, exactly like it is already exempt from
+    # the read denylist for the same reason (see `_is_local_chat`'s
+    # docstring: the marker is a process secret, not the client-supplied
+    # `origin` field, which is falsifiable).
+    local_chat = _is_local_chat(request)
 
     try:
         body = await request.json()
@@ -325,7 +341,7 @@ async def handle_execute(request: web.Request) -> web.Response:
     # categoria la cui RISPOSTA porta comunque identificativi fuori (list_tasks
     # restituisce le definizioni dei task, azioni ed entita' incluse).
     da_potare = is_read or tool in PRUNED_NON_READ_TOOLS
-    denylist = _read_denylist(request) if (da_potare and not _is_local_chat(request)) else []
+    denylist = _read_denylist(request) if (da_potare and not local_chat) else []
     if denylist:
         # Lato INGRESSO: una richiesta che nomina esplicitamente un'entita'
         # coperta viene rifiutata qui, senza raggiungere Home Assistant.
@@ -351,6 +367,12 @@ async def handle_execute(request: web.Request) -> web.Response:
         # a Chatbot id -- intentionally frozen, see _origin().
         chatbot_id=_origin(body),
         cloud=True,
+        # Fix 1: True for every request that does NOT carry the local-chat
+        # process secret -- i.e. the real remote MCP gateway. NOT derived
+        # from `_origin(body)`/`tool`: origin is client-supplied and
+        # falsifiable, and this must hold for save_memory specifically, the
+        # one PROPOSE_TOOLS entry that writes memory HIRIS then trusts.
+        from_remote_gateway=not local_chat,
     )
     if denylist:
         # Lato USCITA, ed e' il lato che regge il perimetro: molte letture non

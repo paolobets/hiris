@@ -39,9 +39,6 @@ from .diagnostics_tools import (
 from .proposal_tools import create_automation_proposal
 from .config_tools import normalize_config_inputs, apply_ha_config
 from .dashboard_tools import propose_dashboard
-from .knowledge_tools import (
-    handle_save_knowledge, handle_recall_knowledge,
-)
 from ..brain.briefing import build_briefing_bundle, render_briefing_template
 from ..security.semaphore import gate_action, normalize_target
 
@@ -121,6 +118,36 @@ def _check_entity_allowed(
     return None
 
 
+def union_memory_kind(knowledge_kinds: list[str] | str | None) -> list[str] | str | None:
+    """`knowledge_access.kinds` (an agent's egress on the five *knowledge*
+    kinds -- fact/preference/obligation/expense/note) union'd with 'memory',
+    which is never a value that vocabulary contains (chatbot-editor.js
+    serializes "all" or a subset of KNOWLEDGE_KINDS, and 'memory' is not in
+    it). Without this union an agent restricted to e.g. kinds=['fact'] (or
+    kinds=[], "no second-brain access", a value the UI permits) could still
+    save_memory successfully but never recall its own memory back, or never
+    see it in the chat declared block -- saved and unrecoverable.
+
+    SINGLE definition (whole-branch review, final fix wave, Fix 2/Fix 6):
+    dispatch()'s `recall_memory` branch below and `api/handlers_chat.py`'s
+    declared-block call both need exactly this union and must not drift
+    apart, so both import this function instead of each keeping their own
+    copy of the rule.
+
+    Handles the plain-string shape too (`knowledge_access.kinds: "fact"`, a
+    form `KnowledgeStore` itself normalises) -- a hand-edited single-kind
+    string used to bypass this union entirely (Fix 6) because only the
+    `list` shape was tested for. `None` (= "tutto") and the literal
+    'memory' pass through unchanged."""
+    if isinstance(knowledge_kinds, list):
+        if "memory" not in knowledge_kinds:
+            return knowledge_kinds + ["memory"]
+        return knowledge_kinds
+    if isinstance(knowledge_kinds, str) and knowledge_kinds != "memory":
+        return [knowledge_kinds, "memory"]
+    return knowledge_kinds
+
+
 # I messaggi e la regola dei tre casi vivono accanto alla bandiera che li
 # governa (proxy/entity_cache.py), perche' li condividono anche ha_tools,
 # brain/briefing e api/handlers_entities: il difetto era sopravvissuto nei
@@ -137,7 +164,6 @@ class ToolDispatcher:
         entity_cache: Any = None,
         semantic_map: Any = None,
         embedding_provider: Any = None,
-        memory_retention_days: int | None = None,
         health_monitor: Any = None,
         advisory_store: Any = None,
         proposal_store: Any = None,
@@ -155,7 +181,6 @@ class ToolDispatcher:
         self._cache = entity_cache
         self._semantic_map = semantic_map
         self._embedder = embedding_provider
-        self._memory_retention_days = memory_retention_days
         self._health_monitor = health_monitor
         self._advisory_store = advisory_store
         self._proposal_store = proposal_store
@@ -251,6 +276,7 @@ class ToolDispatcher:
         tier_confirmed: bool = False,
         user_id: str | None = None,
         pseudonym_map: dict[str, str] | None = None,
+        from_remote_gateway: bool = False,
     ) -> Any:
         _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization", "code"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
@@ -589,21 +615,69 @@ class ToolDispatcher:
                     allowed_endpoints=allowed_endpoints,
                 )
             if name == "recall_memory":
+                # Il ramo era condizionato allo store: senza store l'esecuzione
+                # cadeva in fondo, dove la risposta e' «Tool 'recall_memory'
+                # non esiste. [...] Non inventare nomi di tool.» -- un rimprovero
+                # per aver chiamato uno strumento che il system prompt gli aveva
+                # elencato, dopo il quale il modello smette di usarlo per tutta
+                # la conversazione. La condizione va DENTRO il ramo.
                 if self._knowledge_store is None:
-                    return {"error": "Memory store not configured"}
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "cercare nei ricordi di casa in questo "
+                                      "momento.")}
+                # Review Important (chiuso in questo task, esteso da Fix 6 della
+                # review wave successiva alla forma stringa): `knowledge_kinds`
+                # e' l'egress dell'agente sui cinque kind di *conoscenza* --
+                # unito con 'memory' da `union_memory_kind` (vedi la sua
+                # docstring per il perche', condivisa con
+                # `api/handlers_chat.py`). `None` (= "tutto") resta intoccato.
+                recall_kinds = union_memory_kind(knowledge_kinds)
+                # Niente piu' chatbot_id qui (Task 3, memoria unica):
+                # handle_recall_memory non lo accetta piu' -- il richiamo
+                # copre tutto cio' che questo owner puo' vedere a
+                # prescindere da quale chatbot lo chiede.
                 return await _handle_recall_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
-                    chatbot_id=chatbot_id or "hiris-default",
+                    allow_sensitive=knowledge_allow_sensitive,
+                    kinds=recall_kinds,
+                    pseudonymizer=self._pseudonymizer,
+                    cloud=cloud,
+                    pseudonym_map=pseudonym_map,
                 )
             if name == "save_memory":
+                # Stesso ramo per un ricordo generico (kind omesso, legato a
+                # questo chatbot) e per un fatto/preferenza/scadenza/spesa/nota
+                # (kind esplicito, condiviso con la casa) -- Task 2: erano due
+                # tool sulla stessa funzione, ora sono un solo ramo.
                 if self._knowledge_store is None:
-                    return {"error": "Memory store not configured"}
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "salvare questo ricordo perché non "
+                                      "potrei più ritrovarlo.")}
+                # Fix 1 (CRITICAL, whole-branch review, final fix wave): la provenienza
+                # scritta su `source` decide se la riga entra nel blocco
+                # "dichiarato da una persona" (KnowledgeStore.declared() /
+                # DECLARED_SOURCES) su chat e sui due prompt proattivi.
+                # `from_remote_gateway` arriva SOLO da handlers_execute.py, che
+                # lo imposta a True quando la richiesta NON porta il marcatore
+                # di chat locale (`_is_local_chat`, un segreto di processo che
+                # solo LocalExecuteClient conosce -- non falsificabile dal
+                # corpo della richiesta, a differenza di `origin`). Una sessione
+                # Claude remota pilotata da prompt injection (stati HA letti
+                # attraverso lo stesso gateway) puo' chiamare save_memory una
+                # volta sola e ottenere una riga permanente, house-wide,
+                # SENZA che nessuna persona l'abbia mai detta: quella riga deve
+                # restare richiamabile (recall_memory) ma MAI auto-iniettata
+                # come dichiarazione di casa. `source="gateway"` non e' in
+                # DECLARED_SOURCES (knowledge_store.py) per costruzione -- ogni
+                # altro chiamante (chat locale, chat-via-abbonamento via MCP
+                # interno su loopback) lascia `from_remote_gateway` al default
+                # False e continua a scrivere `source="chat"`, invariato.
                 return await _handle_save_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
                     chatbot_id=chatbot_id or "hiris-default",
-                    retention_days=self._memory_retention_days,
+                    source="gateway" if from_remote_gateway else "chat",
                 )
             if name == "get_ha_health":
                 return get_ha_health(self._health_monitor, inputs.get("sections") or ["all"])
@@ -670,50 +744,16 @@ class ToolDispatcher:
                     inputs.get("reason", ""),
                     title=inputs.get("title"),
                 )
-            if name == "save_knowledge":
-                # Il ramo era condizionato allo store: senza store non c'e'
-                # dove scrivere. La condizione va DENTRO il ramo, come in
-                # recall_memory/save_memory.
-                if self._knowledge_store is None:
-                    return {"error": ("La memoria non è disponibile: non posso "
-                                      "salvare questo ricordo perché non "
-                                      "potrei più ritrovarlo.")}
-                return await handle_save_knowledge(
-                    self._knowledge_store, self._knowledge_embedder, inputs,
-                    owner=user_id or "home",
-                )
-            if name == "recall_knowledge":
-                # Il ramo era condizionato allo store: senza store l'esecuzione
-                # cadeva in fondo, dove la risposta e' «Tool 'recall_knowledge'
-                # non esiste. [...] Non inventare nomi di tool.» -- un rimprovero
-                # per aver chiamato uno strumento che il system prompt gli aveva
-                # elencato, dopo il quale il modello smette di usarlo per tutta
-                # la conversazione. La condizione va DENTRO il ramo, come in
-                # recall_memory/save_memory.
-                if self._knowledge_store is None:
-                    return {"error": ("La memoria non è disponibile: non posso "
-                                      "cercare nei ricordi di casa in questo "
-                                      "momento.")}
-                return await handle_recall_knowledge(
-                    self._knowledge_store, self._knowledge_embedder, inputs,
-                    owner=user_id or "home",
-                    chatbot_id=chatbot_id or "hiris-default",
-                    allow_sensitive=knowledge_allow_sensitive,
-                    kinds=knowledge_kinds,
-                    pseudonymizer=self._pseudonymizer,
-                    cloud=cloud,
-                    pseudonym_map=pseudonym_map,
-                )
             if name == "daily_briefing":
                 # On-demand chat butler summary (Slice 7 Task 5). READ-ONLY: no HA
                 # service call, no semaforo — it only reads knowledge_store/entity_cache.
                 #
-                # allow_sensitive mirrors recall_knowledge's model: the agent config
+                # allow_sensitive mirrors recall_memory's model: the agent config
                 # (knowledge_allow_sensitive) AND the current chat backend's locality
                 # (cloud) both gate it. Sensitive deadlines are included only when the
                 # agent is allowed to see them AND the chat backend is local — fail-closed
                 # whenever either signal is missing/False (config disallows OR backend is
-                # cloud), same as recall_knowledge. Hidden items are still counted in
+                # cloud), same as recall_memory. Hidden items are still counted in
                 # bundle["counts"]["hidden_sensitive"] regardless.
                 #
                 # Le batterie scariche arrivano dalle segnalazioni gia' prodotte dai

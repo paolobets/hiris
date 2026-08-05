@@ -162,13 +162,14 @@ def test_editor_chatbot_dichiara_cosa_copre_la_conferma():
 #                     tier giallo/rosso diventa step-up all'owner (task_engine
 #                     478-497, pinnato da tests/test_task_engine.py::
 #                     test_confirm_tier_task_action_requests_stepup_and_holds).
-#   save_knowledge -- l'elemento nasce in stato `pending` e resta invisibile
-#                     alle ricerche finche' l'utente non lo approva
-#                     (tools/knowledge_tools.py::handle_save_knowledge).
 #
-# Ogni altra promessa di conferma in tiers.py sarebbe una rete dichiarata e
-# assente.
-_TOOL_MCP_CON_CONFERMA_VERA = {"call_service", "create_task", "save_knowledge"}
+# save_knowledge (l'elemento nasceva `pending` e restava invisibile alle
+# ricerche finche' l'utente non lo approvava) e' uscito da questo elenco con
+# la fetta memoria-unica (Task 2): e' fuso in save_memory, che scrive sempre
+# `status='approved'` -- nessuna coda, quindi nessuna promessa di conferma da
+# fare. Ogni altra promessa di conferma in tiers.py sarebbe una rete
+# dichiarata e assente.
+_TOOL_MCP_CON_CONFERMA_VERA = {"call_service", "create_task"}
 
 # La sola parola "conferma" non basta: la stessa promessa si scrive "richiede
 # approvazione", "gate di sicurezza", "step-up", "autorizzazione". Un elenco

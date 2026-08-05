@@ -77,7 +77,6 @@ export MQTT_PASSWORD=$(bashio::config 'mqtt.password' '')
 export MEMORY_EMBEDDING_PROVIDER=$(bashio::config 'memory.embedding_provider' '')
 export MEMORY_EMBEDDING_MODEL=$(bashio::config 'memory.embedding_model' '')
 export MEMORY_RAG_K=$(bashio::config 'memory.rag_k' '5')
-export MEMORY_RETENTION_DAYS=$(bashio::config 'memory.retention_days' '90')
 
 export MAYAN_URL=$(bashio::config 'mayan.url' '')
 export MAYAN_TOKEN=$(bashio::config 'mayan.token' '')

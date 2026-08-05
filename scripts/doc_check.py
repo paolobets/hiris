@@ -44,7 +44,14 @@ _STALE_KEYS: dict[str, str] = {
     "memory_embedding_provider":"memory.embedding_provider",
     "memory_embedding_model":   "memory.embedding_model",
     "memory_rag_k":             "memory.rag_k",
-    "memory_retention_days":    "memory.retention_days",
+    # "memory_retention_days" -> "memory.retention_days" REMOVED (Task 5,
+    # "memoria unica 3a"): Task 6 of the same slice deleted the automatic
+    # 90-day expiry entirely (memory no longer evaporates), and with it the
+    # config key `memory.retention_days` itself -- it no longer exists
+    # anywhere in hiris/config.yaml's `memory:` block (embedding_provider,
+    # embedding_model, rag_k only). Keeping this mapping would make
+    # `doc_check.py --fix` "correct" a doc into pointing at a config key that
+    # no longer exists -- a stale-key fixer that itself points at a dead key.
 }
 
 # ── Docs that must carry a version header ───────────────────────────────────

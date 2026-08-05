@@ -4,6 +4,11 @@ try:
     from ..proxy._sanitize import sanitize_ha_value as _san
 except Exception:
     _san = lambda v: v  # noqa: E731
+try:
+    from .reasoner_memory import sanitize_declared_item
+except Exception:  # pragma: no cover - fallback difensivo
+    def sanitize_declared_item(s):  # type: ignore
+        return " ".join(str(_san(s)).split())
 
 COVERAGE_REVIEW_SYSTEM = (
     "Sei il cervello di HIRIS che rivede la copertura della casa. Ricevi l'inventario "
@@ -21,7 +26,7 @@ COVERAGE_REVIEW_SYSTEM = (
 _JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
 
 def build_review_context(snapshot, inventory, current_config, memory=None,
-                         memory_by_meaning=False, portrait=None) -> dict:
+                         memory_by_meaning=False, portrait=None, declared=None) -> dict:
     inv = [{"entity_id": e.get("entity_id"), "friendly_name": _san(e.get("friendly_name") or ""),
             "domain": e.get("domain"), "device_class": e.get("device_class")} for e in (inventory or [])]
     # Review C/#4: sanitize the HA-health/error-log snapshot through the SAME
@@ -47,6 +52,14 @@ def build_review_context(snapshot, inventory, current_config, memory=None,
         # context is built the same way regardless of whether the store
         # compared meanings or degraded to the most recent rows.
         ctx["memory_by_meaning"] = bool(memory_by_meaning)
+    if declared:
+        # Task 4 ("memoria unica 3a"): i DICHIARATI (source in
+        # DECLARED_SOURCES), SEMPRE inclusi quando non vuoti -- a differenza
+        # di `memory` sopra, non hanno bisogno di un flag "by_meaning": non
+        # sono un risultato di richiamo, sono sempre veri quando presenti.
+        # Solo-se-non-vuoto, stessa disciplina di `memory`/`portrait`: tiene
+        # byte-identico il messaggio quando non c'e' nulla di dichiarato.
+        ctx["declared"] = list(declared)
     if isinstance(portrait, str) and portrait.strip():
         # Solo-se-non-vuoto, come per `memory`: mantiene byte-identico il
         # messaggio quando il ritratto non e' disponibile (test di
@@ -86,12 +99,35 @@ def build_review_message(context) -> str:
             # paths cannot drift apart in what they tell the model.
             heading = "Cosa so di rilevante:" if by_meaning else "Ultimi ricordi:"
             memory_block = f"{heading}\n{lines}\n\n"
+    # Task 4 ("memoria unica 3a"): i DICHIARATI, popped alongside `memory`
+    # for the same reason (must not leak into the JSON blob above). No
+    # by_meaning discriminator -- see build_review_context's comment.
+    #
+    # Fix 1 (review wave, task-4-fixes): items go through
+    # `reasoner_memory.sanitize_declared_item`, NOT the bare `_san` this file
+    # uses for `memory`/inventory/snapshot -- `_san` (sanitize_ha_value)
+    # clamps at 120 chars, meant for terse HA attribute values, and silently
+    # cut a two-sentence declared fact mid-sentence. `sanitize_declared_item`
+    # runs the same injection filter but caps at DECLARED_ITEM_MAX (500,
+    # chosen for this exact content shape) and marks a truncation visibly
+    # ("… (troncato)") instead of doing it in silence. `_declared_snippets`
+    # (reasoner_memory.py) already sanitizes at the source before this
+    # function ever sees the list; calling it again here is defense-in-depth
+    # for a caller that hands `declared` in raw (some tests do), and is
+    # idempotent for content already sanitized upstream.
+    declared = ctx.pop("declared", None)
+    declared_block = ""
+    if isinstance(declared, list) and declared:
+        flat_d = [sanitize_declared_item(s) for s in declared]
+        lines_d = "\n".join(f"- {s}" for s in flat_d if s)
+        if lines_d:
+            declared_block = f"Fatti dichiarati:\n{lines_d}\n\n"
     portrait = ctx.pop("portrait", None)
     portrait_block = ""
     if isinstance(portrait, str) and portrait.strip():
         portrait_block = f"{portrait.strip()}\n\n"
     return ("Inventario + config attuale:\n" + json.dumps(ctx, ensure_ascii=False)
-            + "\n\n" + portrait_block + memory_block
+            + "\n\n" + portrait_block + declared_block + memory_block
             + "Proponi coperture/gestioni col blocco json richiesto.")
 
 def parse_suggestions(text) -> list[dict]:

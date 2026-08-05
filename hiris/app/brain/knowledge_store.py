@@ -9,6 +9,72 @@ from ..storage import connect, init_schema
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
+# Task 4 ("memoria unica 3a"): i valori di `source` scritti in produzione
+# (verificati con un grep su `source=` in tutto `hiris/`) si dividono in due
+# gruppi. DICHIARATI -- una PERSONA lo ha detto -- sono 'chat' (il tool
+# remember_this durante una conversazione, tools/memory_tools.py),
+# 'manual' (l'API di knowledge management, api/handlers_knowledge.py, ed e'
+# anche il default di add_item quando nessun source e' specificato) e
+# 'migrated' (le memorie dell'agente legacy, migrate una tantum in Slice 3 da
+# brain/memory_migration.py: erano gia' parole di una persona, scritte
+# attraverso il vecchio tool di memoria -- solo con provenienza diversa da
+# 'chat'). DEDOTTI -- HIRIS li ha prodotti da solo -- sono 'history-digest'
+# (le medie settimanali del digest notturno, brain/history_digest.py),
+# 'brain' (le tracce del brain, brain/brain_trace.py) e 'mayan' (i documenti
+# ingeriti da Mayan, brain/mayan_ingest.py: contenuto esterno importato, non
+# dedotto da HIRIS ne' dichiarato a voce da una persona in questa
+# conversazione).
+# "gateway" (Fix 1, whole-branch review, final fix wave: tools/memory_tools.py's
+# handle_save_memory, chosen by ToolDispatcher.dispatch based on
+# from_remote_gateway) is DELIBERATELY absent here: a save arriving through
+# the remote MCP gateway is recallable (search()/recent()) but never
+# auto-injected as "declared by a person" -- see the docstring on
+# handle_save_memory for why.
+DECLARED_SOURCES = ("chat", "manual", "migrated")
+
+# Quanti elementi dichiarati al massimo entrano in un prompt (chat e
+# ragionatore proattivo, vedi api/handlers_chat.py e
+# brain/reasoner_memory.py). 30 e' la cifra che il brief del Task 4 stesso
+# usa come esempio di "ci sta comodamente" (duecento medie settimanali NON
+# stanno in un prompt; trenta fatti dichiarati da chi abita la casa si',
+# sempre) -- in produzione, quattro mesi di uso ne hanno prodotti 3. Quando
+# i dichiarati superano questo numero, KnowledgeStore.declared() NON tronca
+# in silenzio: restituisce anche il conteggio totale, cosi' chi rende il
+# prompt (handlers_chat._render_declared_block,
+# reasoner_memory._declared_snippets) puo' dirlo esplicitamente invece di
+# far sparire un fatto dichiarato senza che nessuno se ne accorga -- e'
+# esattamente il guasto che questa fetta esiste per eliminare.
+DECLARED_MAX = 30
+
+
+def render_declared_overflow_note(total: int, shown: int, limit: int) -> str:
+    """Il testo -- SEMPRE lo stesso, ovunque venga reso -- che dice "e
+    altri N piu' vecchi, non mostrati" quando `KnowledgeStore.declared()` ha
+    trovato piu' righe di quante `limit` ne abbia lasciate passare (`total`
+    e' il conteggio PRIMA del limite, `shown` quante ne sono arrivate al
+    chiamante -- normalmente `len(items)`).
+
+    Fix 2 (review wave, task-4-fixes): prima viveva come una f-string
+    IDENTICA duplicata in due file (`api/handlers_chat.
+    _render_declared_block` e `brain/reasoner_memory._declared_snippets`),
+    e ciascuna copia hardcodava `DECLARED_MAX` nel testo invece di leggere
+    il limite EFFETTIVAMENTE passato a `declared()` -- cosi' un futuro
+    chiamante con un limite personalizzato avrebbe visto nella nota il
+    numero sbagliato. Vive qui, accanto a `DECLARED_MAX`, con `limit` come
+    parametro esplicito: i due chiamanti non possono piu' divergere sul
+    testo, e il numero mostrato e' sempre quello vero.
+
+    Ritorna "" quando non c'e' overflow (`total <= shown`) -- i chiamanti
+    aggiungono la nota solo se questa stringa non e' vuota."""
+    overflow = total - shown
+    if overflow <= 0:
+        return ""
+    return (
+        f"(+ altri {overflow} elementi dichiarati più vecchi, non "
+        f"mostrati — limite {limit})"
+    )
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS knowledge_items (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +141,57 @@ def _migrate_v4(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS knowledge_links")
 
 
+def _migrate_v5(conn: sqlite3.Connection) -> None:
+    """v4 -> v5 (Task 3, memoria unica): `chatbot_id` smette di essere una
+    clausola di ambito (vedi `_clausole_di_scope`) -- resta in tabella solo
+    come provenienza (quale chatbot ha scritto la riga; azzerato da
+    `detach_chatbot_id` alla cancellazione di un chatbot). Le righe
+    kind='memory' gia' esistenti erano scritte quando chatbot_id ANCORA
+    delimitava la visibilita': azzerarlo qui e' cio' che le rende
+    immediatamente di tutta la casa all'aggiornamento, invece di restarci
+    intrappolate finche' qualcuno non le riscrive. Non tocca altri kind (non
+    hanno mai portato un chatbot_id, per costruzione di
+    `handle_save_memory`) ne' `valid_until` (task 4 -- diventata task 6,
+    "la memoria non evapora": vedi `_migrate_v6`)."""
+    conn.execute("UPDATE knowledge_items SET chatbot_id = NULL"
+                 " WHERE kind = 'memory' AND chatbot_id IS NOT NULL")
+
+
+def _migrate_v6(conn: sqlite3.Connection) -> None:
+    """v5 -> v6 (Task 6, "la memoria non evapora"): azzera `valid_until` su
+    ogni riga kind='memory' esistente.
+
+    Prima di questa fetta l'UNICO scrittore che valorizzava `valid_until`
+    per kind='memory' era `handle_save_memory` (tools/memory_tools.py),
+    sempre e solo come scadenza di CONSERVAZIONE calcolata da
+    `retention_days` -- mai come validita' di un fatto (quella semantica,
+    dove esiste, vive su altri kind: es. obligation/due_date, o un
+    kind='fact' con un proprio `valid_until`, mai toccati qui). Quel calcolo
+    e' stato rimosso: kind='memory' non guadagna piu' una scadenza al
+    salvataggio, esattamente come ogni altro kind.
+
+    Questa migrazione bonifica due difetti sulle righe scritte PRIMA della
+    fetta:
+
+    - righe gia' scadute sotto il vecchio schema, invisibili su ogni
+      percorso di lettura (`_clausole_di_scope` filtra su `valid_until`);
+    - le "righe immortali e invisibili" del brief: una riga distaccata dal
+      suo chatbot (`chatbot_id` azzerato da `detach_chatbot_id` o da
+      `_migrate_v5`) ma con `valid_until` ancora impostato. Una volta
+      scaduta, il filtro di ambito la nasconde su ogni lettura, e il
+      vecchio `purge_expired_chatbot` -- che cercava per chatbot -- non la
+      trovava piu': restava nel database per sempre, invisibile e
+      impurgabile (`purge_expired_chatbot` stesso e' stato rimosso in
+      questa fetta, non avendo piu' nessun chiamante che gli producesse
+      lavoro).
+
+    `WHERE kind = 'memory'` senza altre condizioni, apposta: tocca sia le
+    righe ancora agganciate a un chatbot sia quelle gia' orfane, perche' in
+    entrambi i casi il `valid_until` presente era comunque conservazione,
+    mai altro."""
+    conn.execute("UPDATE knowledge_items SET valid_until = NULL WHERE kind = 'memory'")
+
+
 def confronta_significati(query_vec: list[float] | None) -> bool:
     """Unica definizione di "abbiamo confrontato i significati, o siamo
     degradati ai piu' recenti?" -- vera quando `query_vec` e' un vettore di
@@ -87,9 +204,10 @@ def confronta_significati(query_vec: list[float] | None) -> bool:
     - `api/handlers_chat.py` -- intestazione del blocco RAG della chat
     - `brain/reasoner_memory.py` -- `MemoryRecall.by_meaning`, da cui prendono
       l'intestazione il reasoner per-evento e la revisione olistica
-    - `tools/knowledge_tools.handle_recall_knowledge` -- flag `degraded` verso il
-      modello, e il gate della ricerca sui chunk documentali
-    - `tools/memory_tools.handle_recall_memory` -- flag `degraded` verso il modello
+    - `tools/memory_tools.handle_recall_memory` -- flag `degraded` verso il
+      modello, e il gate della ricerca sui chunk documentali (fusione Task 2
+      del vecchio `tools/knowledge_tools.handle_recall_knowledge`, oggi
+      rimosso)
 
     Cosi' se `search` guadagnasse un altro motivo di degradazione (es. un
     mismatch di dimensione dell'embedding) etichette e flag resterebbero coerenti
@@ -103,8 +221,9 @@ class KnowledgeStore:
         self._conn = connect(db_path)
         self._mu = threading.Lock()
         init_schema(
-            self._conn, _SCHEMA, version=4,
-            migrations={2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4},
+            self._conn, _SCHEMA, version=6,
+            migrations={2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5,
+                        6: _migrate_v6},
         )
 
     def _now(self) -> str:
@@ -249,7 +368,7 @@ class KnowledgeStore:
         return row is not None and row["owner"] in (owner, "home")
 
     def _clausole_di_scope(
-        self, *, owner: str | None, chatbot_id: str | None,
+        self, *, owner: str | None,
         allow_sensitive: bool, kinds: list[str] | str | None,
     ) -> tuple[list[str], dict]:
         """Filtri condivisi da search() e recent().
@@ -257,35 +376,32 @@ class KnowledgeStore:
         Stanno qui, e non duplicati nei due metodi, perche' governano la
         riservatezza: due copie che divergono sono una falla, non un difetto
         di stile. L'unica clausola che resta fuori e' `embedding IS NOT
-        NULL`, perche' e' l'unica specifica del percorso vettoriale."""
+        NULL`, perche' e' l'unica specifica del percorso vettoriale.
+
+        `chatbot_id` NON e' (piu') una clausola qui (Task 3, memoria unica):
+        cio' che dici lo sa HIRIS, non il chatbot con cui parlavi. Prima di
+        questa fetta una riga scritta parlando con un chatbot restava
+        invisibile parlando con un altro anche a parita' di owner -- costo
+        gia' osservato in produzione sulle tre memorie reali del sistema
+        (chi amministra la casa, come rispondere a "chi c'e' in casa", e il
+        fatto che il modulo meteo esterno e' guasto), tutte legate a
+        chatbot_id='hiris-default': il giorno in cui nasce un secondo
+        chatbot, quello non avrebbe saputo del guasto meteo e avrebbe ripreso
+        a proporre soluzioni basate su sensori inesistenti. La colonna
+        `chatbot_id` resta in tabella (provenienza: quale chatbot ha
+        scritto la riga; azzerata da `detach_chatbot_id` alla cancellazione
+        di un chatbot), ma non delimita piu' chi puo' vedere cosa.
+
+        L'unica eccezione che NON si tocca e' `owner`: resta l'unico asse di
+        riservatezza. Cio' che riguarda la casa e' di tutti (owner='home', o
+        owner uguale al chiamante) e porta il nome di chi l'ha detto; cio'
+        che e' marcato `sensitivity='sensitive'` (sotto) resta visibile solo
+        a chi l'ha detto."""
         clauses: list[str] = ["status='approved'"]
         params: dict = {}
         if owner is not None:
-            # Unified scope (Slice 3): a row must always be scoped to this
-            # owner (or shared as 'home') -- the owner check applies whether
-            # or not the row carries a chatbot_id. On top of that, chatbot_id
-            # rows are further restricted to the caller's own chatbot_id (or
-            # knowledge rows with no chatbot_id at all). This prevents two
-            # different HA users chatting with the SAME chatbot (same
-            # chatbot_id) from seeing each other's save_memory items: owner
-            # is no longer ignored just because chatbot_id matched. With
-            # chatbot_id=None this reduces to the pre-Slice3 filter
-            # `(owner=? OR owner='home')` restricted to un-scoped (knowledge)
-            # rows, preserving backward compatibility.
-            clauses.append(
-                "(owner = :owner OR owner = 'home') AND"
-                " (chatbot_id = :chatbot_id OR chatbot_id IS NULL)"
-            )
-            params["chatbot_id"] = chatbot_id
+            clauses.append("(owner = :owner OR owner = 'home')")
             params["owner"] = owner
-        elif chatbot_id is not None:
-            # No owner passed but a chatbot_id was: don't fail open and
-            # expose all chatbot memory across owners -- still scope by
-            # chatbot_id (or knowledge rows with no chatbot_id). Current
-            # production callers always pass owner alongside chatbot_id;
-            # this branch only guards future callers.
-            clauses.append("(chatbot_id = :chatbot_id OR chatbot_id IS NULL)")
-            params["chatbot_id"] = chatbot_id
         if not allow_sensitive:
             clauses.append("sensitivity='normal'")
         if isinstance(kinds, str):
@@ -314,7 +430,7 @@ class KnowledgeStore:
 
     def search(
         self, *, query_vec: list[float], k: int = 5,
-        owner: str | None = None, chatbot_id: str | None = None,
+        owner: str | None = None,
         allow_sensitive: bool = False,
         kinds: list[str] | str | None = None,
     ) -> list[dict]:
@@ -325,11 +441,11 @@ class KnowledgeStore:
             # e' il NullEmbedder, che ritorna [], quindi questo e' il
             # percorso NORMALE, non un caso limite.
             return self.recent(
-                k=k, owner=owner, chatbot_id=chatbot_id,
+                k=k, owner=owner,
                 allow_sensitive=allow_sensitive, kinds=kinds,
             )
         clauses, bind = self._clausole_di_scope(
-            owner=owner, chatbot_id=chatbot_id,
+            owner=owner,
             allow_sensitive=allow_sensitive, kinds=kinds,
         )
         clauses.append("embedding IS NOT NULL")
@@ -354,7 +470,7 @@ class KnowledgeStore:
 
     def recent(
         self, *, k: int = 5, owner: str | None = None,
-        chatbot_id: str | None = None, allow_sensitive: bool = False,
+        allow_sensitive: bool = False,
         kinds: list[str] | str | None = None,
     ) -> list[dict]:
         """Il percorso di degradazione di `search()` quando non c'e' un
@@ -365,7 +481,7 @@ class KnowledgeStore:
         punto: include anche le righe senza vettore, che il percorso
         vettoriale esclude per costruzione."""
         clauses, params = self._clausole_di_scope(
-            owner=owner, chatbot_id=chatbot_id,
+            owner=owner,
             allow_sensitive=allow_sensitive, kinds=kinds,
         )
         params["k"] = k
@@ -384,6 +500,57 @@ class KnowledgeStore:
                 d["data"] = {}
             out.append(d)
         return out
+
+    def declared(
+        self, *, owner: str | None = None, allow_sensitive: bool = False,
+        kinds: list[str] | str | None = None, limit: int = DECLARED_MAX,
+    ) -> tuple[list[dict], int]:
+        """Le righe che una PERSONA ha dichiarato: `source` in
+        DECLARED_SOURCES (vedi il commento li' sopra per l'elenco completo e
+        perche'). Esclude tutto cio' che HIRIS ha dedotto da solo
+        ('history-digest', 'brain', 'mayan') -- quello si richiama
+        (search()/recent()), questo entra sempre.
+
+        Stessi filtri di riservatezza di search()/recent(), RIUSATI da
+        _clausole_di_scope (mai una seconda copia: e' la clausola che
+        governa la riservatezza, e due copie che divergono sono una falla,
+        non un difetto di stile -- vedi il docstring di
+        _clausole_di_scope). L'unica clausola propria di questo metodo e'
+        il filtro su `source`.
+
+        Ordinate per recenza (stessa convenzione di recent()). Il secondo
+        elemento della tupla restituita e' il conteggio TOTALE che rispetta
+        lo scope, PRIMA di applicare `limit`: chi chiama puo' cosi' dire "e
+        altri N piu' vecchi, non mostrati" invece di troncare in silenzio --
+        vedi DECLARED_MAX qui sopra."""
+        clauses, params = self._clausole_di_scope(
+            owner=owner, allow_sensitive=allow_sensitive, kinds=kinds,
+        )
+        src_placeholders = []
+        for i, s in enumerate(DECLARED_SOURCES):
+            key = f"decl_src{i}"
+            src_placeholders.append(f":{key}")
+            params[key] = s
+        clauses.append("source IN (%s)" % ",".join(src_placeholders))
+        where = " AND ".join(clauses)
+        with self._mu:
+            total = self._conn.execute(
+                "SELECT COUNT(*) FROM knowledge_items WHERE " + where, params,
+            ).fetchone()[0]
+            rows = self._conn.execute(
+                "SELECT * FROM knowledge_items WHERE " + where
+                + " ORDER BY created_at DESC, id DESC LIMIT :lim",
+                {**params, "lim": limit},
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r); d.pop("embedding", None)
+            try:
+                d["data"] = json.loads(d["data"])
+            except Exception:
+                d["data"] = {}
+            out.append(d)
+        return out, total
 
     def upcoming_obligations(
         self, *, before: str, owner: str | None = None,
@@ -455,29 +622,31 @@ class KnowledgeStore:
                         "sensitivity": r["sensitivity"], "score": sim})
         return out
 
-    def delete_by_chatbot(self, chatbot_id: str) -> int:
-        """Delete every row scoped to this chatbot (a chatbot's own working
-        memory), regardless of expiry. Used when a chatbot is deleted, to
-        clean up its orphaned memory -- the KnowledgeStore equivalent of the
-        legacy MemoryStore.delete_by_agent (Slice 3 Task 4)."""
-        with self._mu:
-            cur = self._conn.execute(
-                "DELETE FROM knowledge_items WHERE chatbot_id = ?", (chatbot_id,),
-            )
-            self._conn.commit()
-            return cur.rowcount
+    def detach_chatbot_id(self, chatbot_id: str) -> int:
+        """A chatbot was deleted: dissociate its rows, never delete them.
 
-    def purge_expired_chatbot(self) -> int:
-        """Delete chatbot-scoped rows (per-chatbot working memory) whose
-        retention has elapsed. Rows with chatbot_id IS NULL (shared
-        knowledge) or with no valid_until (no retention set) are never
-        touched here."""
-        now = self._now()
+        Before Task 3 this method (`delete_by_chatbot`) DELETEd every row
+        carrying this chatbot_id, because chatbot_id was a scope: those rows
+        were unreachable by anyone else anyway, so deleting them on chatbot
+        deletion just cleaned up otherwise-orphaned dead weight.
+
+        That premise is gone. `_clausole_di_scope` no longer reads
+        chatbot_id -- a row saved through this chatbot is, and was already,
+        visible to the whole house (subject only to owner/sensitivity). It
+        is HIRIS's knowledge now, not the chatbot's. Deleting the chatbot
+        must not delete it: doing so would silently wipe house knowledge
+        that has nothing to do with the chatbot going away (e.g. the
+        production 'external weather module is broken' memory, if it had
+        been re-saved through a since-deleted second chatbot). So this NULLs
+        chatbot_id instead of dropping the rows -- the same operation
+        `_migrate_v5` performs on upgrade for the rows that predate this
+        change, and for the same reason: a dangling reference to a chatbot
+        that no longer exists should be cleared, not used as a deletion
+        trigger for content that outlives it."""
         with self._mu:
             cur = self._conn.execute(
-                "DELETE FROM knowledge_items"
-                " WHERE chatbot_id IS NOT NULL AND valid_until IS NOT NULL AND valid_until < ?",
-                (now,),
+                "UPDATE knowledge_items SET chatbot_id = NULL WHERE chatbot_id = ?",
+                (chatbot_id,),
             )
             self._conn.commit()
             return cur.rowcount

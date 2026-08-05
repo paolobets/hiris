@@ -1,5 +1,8 @@
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from hiris.app.brain.knowledge_store import KnowledgeStore
+
+_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def test_init_creates_tables(tmp_path):
@@ -19,13 +22,14 @@ def test_init_creates_tables(tmp_path):
 def test_db_nuovo_parte_gia_alla_versione_corrente_senza_migrazioni(tmp_path):
     """Caso 1 (brief Task 8): un database nuovo non ha tabelle prima
     dell'init, quindi `init_schema` deve stampare direttamente la versione
-    piu' recente (4) senza far girare `_migrate_v4` -- non c'e' nulla da
-    droppare perche' `knowledge_links` non e' mai nata."""
+    piu' recente (6, Task 6 memoria non evapora ha aggiunto `_migrate_v6`)
+    senza far girare `_migrate_v4` -- non c'e' nulla da droppare perche'
+    `knowledge_links` non e' mai nata."""
     db_path = tmp_path / "fresh.db"
     store = KnowledgeStore(str(db_path))
     conn = sqlite3.connect(str(db_path))
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 4
+    assert version == 6
     names = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}
@@ -77,15 +81,96 @@ def test_db_esistente_alla_v3_perde_knowledge_links_alla_riapertura(tmp_path):
     conn.commit()
     conn.close()
 
-    # Riapertura tramite la classe reale: e' qui che deve girare la migrazione.
+    # Riapertura tramite la classe reale: e' qui che devono girare le
+    # migrazioni v3->v4->v5->v6 in sequenza.
     store = KnowledgeStore(str(db_path))
     conn = sqlite3.connect(str(db_path))
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 4
+    assert version == 6
     names = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}
     assert "knowledge_links" not in names
+    store.close()
+
+
+def test_migrate_v6_azzera_valid_until_dei_ricordi_scaduti_e_orfani(tmp_path):
+    """Task 6 (memoria non evapora): un database gia' alla v5 puo' avere
+    righe kind='memory' con `valid_until` scritto dal vecchio calcolo di
+    retention (handle_save_memory, rimosso in questa fetta). Due varianti,
+    entrambe reali in produzione:
+
+    - una riga ANCORA legata a un chatbot, con `valid_until` gia' passato
+      (scaduta "normale" sotto il vecchio schema);
+    - una riga GIA' distaccata dal suo chatbot (`chatbot_id` azzerato da
+      `detach_chatbot_id`/`_migrate_v5`) ma con `valid_until` ancora
+      impostato e gia' passato -- la riga "immortale e invisibile" del
+      brief: `_clausole_di_scope` la nasconde su ogni lettura, e
+      `purge_expired_chatbot` (che cercava per chatbot) non la trovava mai,
+      quindi restava per sempre nel database, illeggibile.
+
+    Alla riapertura (v5 -> v6) entrambe devono tornare leggibili: la
+    migrazione azzera `valid_until` su ogni riga kind='memory', a
+    prescindere da chatbot_id."""
+    db_path = tmp_path / "prod_shaped.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE knowledge_items ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,"
+        " owner TEXT NOT NULL DEFAULT 'home', title TEXT NOT NULL DEFAULT '',"
+        " content TEXT NOT NULL, data TEXT NOT NULL DEFAULT '{}',"
+        " amount REAL, due_date TEXT, category TEXT, embedding BLOB,"
+        " sensitivity TEXT NOT NULL DEFAULT 'normal',"
+        " source TEXT NOT NULL DEFAULT 'manual', source_ref TEXT,"
+        " confidence REAL NOT NULL DEFAULT 1.0,"
+        " status TEXT NOT NULL DEFAULT 'approved',"
+        " valid_from TEXT, valid_until TEXT,"
+        " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+        " chatbot_id TEXT)"
+    )
+    past = (datetime.now(timezone.utc) - timedelta(days=400)).strftime(_TS_FMT)
+    now = datetime.now(timezone.utc).strftime(_TS_FMT)
+    conn.execute(
+        "INSERT INTO knowledge_items"
+        " (kind, owner, content, status, valid_until, chatbot_id, created_at, updated_at)"
+        " VALUES ('memory','home','ancora agganciata, scaduta','approved',?,'hiris-default',?,?)",
+        (past, now, now),
+    )
+    conn.execute(
+        "INSERT INTO knowledge_items"
+        " (kind, owner, content, status, valid_until, chatbot_id, created_at, updated_at)"
+        " VALUES ('memory','home','immortale e invisibile','approved',?,NULL,?,?)",
+        (past, now, now),
+    )
+    # Un fatto (non memory) con una vera validita' non deve essere toccato.
+    conn.execute(
+        "INSERT INTO knowledge_items"
+        " (kind, owner, content, status, valid_until, chatbot_id, created_at, updated_at)"
+        " VALUES ('fact','home','scadenza reale del fatto','approved',?,NULL,?,?)",
+        (past, now, now),
+    )
+    conn.execute("PRAGMA user_version = 5")
+    conn.commit()
+    conn.close()
+
+    store = KnowledgeStore(str(db_path))
+    agganciata = [i for i in store.list_items(kind="memory", limit=200)
+                  if i["content"] == "ancora agganciata, scaduta"][0]
+    orfana = [i for i in store.list_items(kind="memory", limit=200)
+              if i["content"] == "immortale e invisibile"][0]
+    fatto = [i for i in store.list_items(kind="fact", limit=200)][0]
+    assert agganciata["valid_until"] is None
+    assert orfana["valid_until"] is None
+    assert fatto["valid_until"] == past, (
+        "la migrazione tocca solo kind='memory': la validita' di un fatto "
+        "vero non e' retention e va lasciata in pace"
+    )
+
+    # Ed entrambe tornano visibili sui percorsi di lettura scopati (non solo
+    # list_items, che non filtra su valid_until).
+    visibili = {r["content"] for r in store.recent(owner="home", k=10)}
+    assert "ancora agganciata, scaduta" in visibili
+    assert "immortale e invisibile" in visibili
     store.close()
 
 

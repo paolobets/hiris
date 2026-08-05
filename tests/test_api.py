@@ -572,11 +572,14 @@ async def test_chat_rag_no_memories_no_block(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_chat_rag_no_embedder_respects_chatbot_scope(aiohttp_client, tmp_path):
-    """The degraded (no-vector) path goes through the same
-    `KnowledgeStore.search` scoping as the vector path -- a memory saved
-    under a DIFFERENT chatbot_id must not leak into this chatbot's chat
-    prompt just because there was no embedder to compare meanings with."""
+async def test_chat_rag_no_embedder_still_injects_memory_saved_under_another_chatbot(aiohttp_client, tmp_path):
+    """Task 3 (memoria unica): a memory saved under a DIFFERENT chatbot_id
+    DOES leak into -- correctly so, it is not a leak anymore -- this
+    chatbot's chat prompt, because chatbot_id no longer scopes
+    `KnowledgeStore.search`/`recent()`. Cio' che dici lo sa HIRIS, non il
+    chatbot con cui parlavi. Was named
+    'test_chat_rag_no_embedder_respects_chatbot_scope' and asserted the
+    opposite before this task."""
     from hiris.app.brain.knowledge_store import KnowledgeStore
 
     store = KnowledgeStore(":memory:")
@@ -592,7 +595,35 @@ async def test_chat_rag_no_embedder_respects_chatbot_scope(aiohttp_client, tmp_p
     await client.post("/api/chat", json={"message": "che ricordi hai?"})
 
     call_kwargs = runner.chat.call_args.kwargs
-    assert "segreto di un altro chatbot" not in call_kwargs["context_str"]
+    assert "segreto di un altro chatbot" in call_kwargs["context_str"]
+    assert "## Ultimi ricordi" in call_kwargs["context_str"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_chat_rag_no_embedder_still_respects_owner_scope(aiohttp_client, tmp_path):
+    """The degraded (no-vector) path goes through the same
+    `KnowledgeStore.search` scoping as the vector path -- the axis that
+    survives Task 3 is `owner`, not `chatbot_id`: a memory saved under a
+    DIFFERENT owner (not 'home', not the caller's own) must not leak into
+    the chat prompt just because there was no embedder to compare meanings
+    with."""
+    from hiris.app.brain.knowledge_store import KnowledgeStore
+
+    store = KnowledgeStore(":memory:")
+    store.add_item(
+        kind="memory", content="segreto di un altro owner", owner="qualcun-altro",
+        status="approved",
+    )
+    client = await _build_rag_client(aiohttp_client, tmp_path, store=store)
+
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    await client.post("/api/chat", json={"message": "che ricordi hai?"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    assert "segreto di un altro owner" not in call_kwargs["context_str"]
     assert "## Ultimi ricordi" not in call_kwargs["context_str"]
     assert "## Memoria rilevante" not in call_kwargs["context_str"]
     store.close()
@@ -711,7 +742,7 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     runner's reply with real PII values before returning the JSON response,
     using ONLY the current exchange's own per-request token map (review
     B/#7) — never a global/vault-wide lookup. ``last_pseudonym_map`` here
-    simulates the mapping the real recall_knowledge tool path would have
+    simulates the mapping the real recall_memory tool path would have
     populated during THIS exchange's own pseudonymize call."""
     from hiris.app.brain.privacy import VaultStore, Pseudonymizer
 
@@ -735,7 +766,7 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     # Runner returns a response that contains the vault token (not the real IBAN)
     mock_runner.chat = AsyncMock(return_value="Saldo su [IBAN_1].")
     mock_runner.last_tool_calls = []
-    # This exchange's own per-request token map — as if recall_knowledge had
+    # This exchange's own per-request token map — as if recall_memory had
     # pseudonymized this IBAN into [IBAN_1] earlier in THIS same tool loop.
     mock_runner.last_pseudonym_map = {"[IBAN_1]": "IT60X0542811101000000123456"}
     engine.set_claude_runner(mock_runner)

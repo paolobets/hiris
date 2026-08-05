@@ -20,6 +20,10 @@ def test_knowledge_store_opens_in_wal(tmp_path):
     assert s._conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
     # Slice 3 Task 1 bumped KnowledgeStore to schema v2 (adds the `lens`
     # column); SP-4a Task 5 bumped it to v3 (renames `lens` -> `chatbot_id`);
-    # Task 8 (fetta 2a) bumped it to v4 (drops `knowledge_links`, dead table).
-    assert s._conn.execute("PRAGMA user_version").fetchone()[0] == 4
+    # Task 8 (fetta 2a) bumped it to v4 (drops `knowledge_links`, dead table);
+    # Task 3 (memoria unica) bumped it to v5 (clears chatbot_id on existing
+    # memory rows -- chatbot_id stops being a scope, see _clausole_di_scope);
+    # Task 6 (memoria non evapora) bumped it to v6 (clears valid_until on
+    # existing memory rows, making memories immortal).
+    assert s._conn.execute("PRAGMA user_version").fetchone()[0] == 6
     s.close()

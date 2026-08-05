@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Read tools are always available to the gateway (non-destructive).
 READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
-              "get_history", "recall_knowledge", "get_automation_config",
+              "get_history", "recall_memory", "get_automation_config",
               "get_advisories", "get_logbook"]
 # render_template resta FUORI da questa lista. Questa lista non e' un menu:
 # derive_execute_policy la concede SEMPRE e per intero, senza opt-in per singolo
@@ -42,7 +42,7 @@ READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
 # does NOT hold it, so exposing it without green domains would leave its
 # call_ha_service actions unconstrained. It is added in derive_execute_policy
 # only when at least one green domain exists (allowed_services is then set).
-PROPOSE_TOOLS = ["create_automation_proposal", "save_knowledge", "list_tasks",
+PROPOSE_TOOLS = ["create_automation_proposal", "save_memory", "list_tasks",
                  "cancel_task", "create_ha_config"]
 
 # Canonical categories shown in the UI, with friendly Italian labels and the HA

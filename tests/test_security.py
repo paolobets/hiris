@@ -273,7 +273,6 @@ def _make_dispatcher(execute_policy=None, request_confirmation=None):
         entity_cache=MagicMock(),
         semantic_map=MagicMock(),
         embedding_provider=None,
-        memory_retention_days=None,
         health_monitor=MagicMock(),
         proposal_store=MagicMock(),
         execute_policy=execute_policy,
