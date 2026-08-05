@@ -9,6 +9,37 @@ from ..storage import connect, init_schema
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
+# Task 4 ("memoria unica 3a"): i valori di `source` scritti in produzione
+# (verificati con un grep su `source=` in tutto `hiris/`) si dividono in due
+# gruppi. DICHIARATI -- una PERSONA lo ha detto -- sono 'chat' (il tool
+# remember_this durante una conversazione, tools/memory_tools.py),
+# 'manual' (l'API di knowledge management, api/handlers_knowledge.py, ed e'
+# anche il default di add_item quando nessun source e' specificato) e
+# 'migrated' (le memorie dell'agente legacy, migrate una tantum in Slice 3 da
+# brain/memory_migration.py: erano gia' parole di una persona, scritte
+# attraverso il vecchio tool di memoria -- solo con provenienza diversa da
+# 'chat'). DEDOTTI -- HIRIS li ha prodotti da solo -- sono 'history-digest'
+# (le medie settimanali del digest notturno, brain/history_digest.py),
+# 'brain' (le tracce del brain, brain/brain_trace.py) e 'mayan' (i documenti
+# ingeriti da Mayan, brain/mayan_ingest.py: contenuto esterno importato, non
+# dedotto da HIRIS ne' dichiarato a voce da una persona in questa
+# conversazione).
+DECLARED_SOURCES = ("chat", "manual", "migrated")
+
+# Quanti elementi dichiarati al massimo entrano in un prompt (chat e
+# ragionatore proattivo, vedi api/handlers_chat.py e
+# brain/reasoner_memory.py). 30 e' la cifra che il brief del Task 4 stesso
+# usa come esempio di "ci sta comodamente" (duecento medie settimanali NON
+# stanno in un prompt; trenta fatti dichiarati da chi abita la casa si',
+# sempre) -- in produzione, quattro mesi di uso ne hanno prodotti 3. Quando
+# i dichiarati superano questo numero, KnowledgeStore.declared() NON tronca
+# in silenzio: restituisce anche il conteggio totale, cosi' chi rende il
+# prompt (handlers_chat._render_declared_block,
+# reasoner_memory._declared_snippets) puo' dirlo esplicitamente invece di
+# far sparire un fatto dichiarato senza che nessuno se ne accorga -- e'
+# esattamente il guasto che questa fetta esiste per eliminare.
+DECLARED_MAX = 30
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS knowledge_items (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -398,6 +429,57 @@ class KnowledgeStore:
                 d["data"] = {}
             out.append(d)
         return out
+
+    def declared(
+        self, *, owner: str | None = None, allow_sensitive: bool = False,
+        kinds: list[str] | str | None = None, limit: int = DECLARED_MAX,
+    ) -> tuple[list[dict], int]:
+        """Le righe che una PERSONA ha dichiarato: `source` in
+        DECLARED_SOURCES (vedi il commento li' sopra per l'elenco completo e
+        perche'). Esclude tutto cio' che HIRIS ha dedotto da solo
+        ('history-digest', 'brain', 'mayan') -- quello si richiama
+        (search()/recent()), questo entra sempre.
+
+        Stessi filtri di riservatezza di search()/recent(), RIUSATI da
+        _clausole_di_scope (mai una seconda copia: e' la clausola che
+        governa la riservatezza, e due copie che divergono sono una falla,
+        non un difetto di stile -- vedi il docstring di
+        _clausole_di_scope). L'unica clausola propria di questo metodo e'
+        il filtro su `source`.
+
+        Ordinate per recenza (stessa convenzione di recent()). Il secondo
+        elemento della tupla restituita e' il conteggio TOTALE che rispetta
+        lo scope, PRIMA di applicare `limit`: chi chiama puo' cosi' dire "e
+        altri N piu' vecchi, non mostrati" invece di troncare in silenzio --
+        vedi DECLARED_MAX qui sopra."""
+        clauses, params = self._clausole_di_scope(
+            owner=owner, allow_sensitive=allow_sensitive, kinds=kinds,
+        )
+        src_placeholders = []
+        for i, s in enumerate(DECLARED_SOURCES):
+            key = f"decl_src{i}"
+            src_placeholders.append(f":{key}")
+            params[key] = s
+        clauses.append("source IN (%s)" % ",".join(src_placeholders))
+        where = " AND ".join(clauses)
+        with self._mu:
+            total = self._conn.execute(
+                "SELECT COUNT(*) FROM knowledge_items WHERE " + where, params,
+            ).fetchone()[0]
+            rows = self._conn.execute(
+                "SELECT * FROM knowledge_items WHERE " + where
+                + " ORDER BY created_at DESC, id DESC LIMIT :lim",
+                {**params, "lim": limit},
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r); d.pop("embedding", None)
+            try:
+                d["data"] = json.loads(d["data"])
+            except Exception:
+                d["data"] = {}
+            out.append(d)
+        return out, total
 
     def upcoming_obligations(
         self, *, before: str, owner: str | None = None,

@@ -222,6 +222,9 @@ def test_gather_context_is_async_and_wired_to_memory_helper():
     # fetta 2b Task 2: `by_meaning` must ride alongside the snippets in the
     # SAME return -- a block can't claim/disclaim relevance without it.
     assert '"memory_by_meaning": memory_by_meaning' in src
+    # Task 4 ("memoria unica 3a"): the declared block rides alongside memory
+    # in the same return, same discipline.
+    assert '"declared": declared_items' in src
     # Task 6: the twin assertion -- the portrait is wired into the same
     # return as memory, so both must survive together.
     assert '"portrait": _portrait_context(app)' in src

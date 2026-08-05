@@ -26,13 +26,25 @@ Because the caller has to label its prompt block truthfully (a block of the
 most recent rows must not be headed as if it were chosen by relevance), the
 result also reports *how* the snippets were obtained via `MemoryRecall.
 by_meaning`.
+
+Task 4 ("memoria unica 3a") adds a second, independent piece to the result:
+`MemoryRecall.declared`. `.snippets` above is RECALLED -- it only shows up
+when the current wake/holistic query happens to resemble it (or, degraded,
+just the most recent rows). `.declared` is the opposite: everything a
+PERSON declared (`KnowledgeStore.declared()`, `source` in DECLARED_SOURCES)
+rendered unconditionally, regardless of the query, the embedder, or whether
+`query_text` is even usable -- because *"the external weather module is
+broken"* must not depend on a wake event resembling weather to be known.
+Same egress gate (`allow_sensitive`) as `.snippets`, same
+confidentiality filters (via `KnowledgeStore.declared()` ->
+`_clausole_di_scope`), never raises.
 """
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from .knowledge_store import confronta_significati
+from .knowledge_store import DECLARED_MAX, confronta_significati
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +61,16 @@ class MemoryRecall:
     -- no embedder configured, an empty/falsy embedding, or `embed()`
     raising all land here. Callers must use this to head their prompt block
     honestly (e.g. not "Cosa so di rilevante" for a degraded/recency-only
-    result)."""
+    result).
+
+    `declared` (Task 4): what a person declared (see module docstring) --
+    always populated when there is anything to show, independent of
+    `by_meaning`/query resemblance. Defaults to `[]` so existing call sites
+    that construct `MemoryRecall(snippets=..., by_meaning=...)` without it
+    (server.py's failure-fallbacks, older tests) keep working unchanged."""
     snippets: list[str]
     by_meaning: bool
+    declared: list[str] = field(default_factory=list)
 
 
 async def relevant_memory(
@@ -70,11 +89,19 @@ async def relevant_memory(
     as decided by the caller's egress gate. Total rendered length is capped
     at `char_cap`. Degrades (never raises, never gives up early just
     because there's no embedder or it failed) -- see module docstring for
-    how `by_meaning` reports which path was taken."""
+    how `by_meaning` reports which path was taken.
+
+    `declared` (Task 4) is fetched independently of everything above --
+    NOT gated on `knowledge_store is None` being false only, but computed
+    before the blank-`query_text` early return too, since a person's
+    declared facts have nothing to do with there being a usable query."""
     if knowledge_store is None:
-        return MemoryRecall(snippets=[], by_meaning=False)
+        return MemoryRecall(snippets=[], by_meaning=False, declared=[])
+
+    declared = _declared_snippets(knowledge_store, owner=owner, allow_sensitive=allow_sensitive)
+
     if not query_text or not query_text.strip():
-        return MemoryRecall(snippets=[], by_meaning=False)
+        return MemoryRecall(snippets=[], by_meaning=False, declared=declared)
 
     emb: list[float] = []
     if embedder is not None:
@@ -94,7 +121,7 @@ async def relevant_memory(
         )
     except Exception:
         logger.warning("relevant_memory: search() failed", exc_info=True)
-        return MemoryRecall(snippets=[], by_meaning=False)
+        return MemoryRecall(snippets=[], by_meaning=False, declared=declared)
 
     snippets: list[str] = []
     total = 0
@@ -110,4 +137,47 @@ async def relevant_memory(
         snippets.append(snippet)
         total += len(snippet)
 
-    return MemoryRecall(snippets=snippets, by_meaning=confronta_significati(emb))
+    return MemoryRecall(
+        snippets=snippets, by_meaning=confronta_significati(emb), declared=declared,
+    )
+
+
+def _declared_snippets(
+    knowledge_store, *, owner: str, allow_sensitive: bool,
+) -> list[str]:
+    """Task 4: le righe DICHIARATE (`KnowledgeStore.declared()`, stessi
+    filtri di riservatezza di search()/recent() via `_clausole_di_scope`)
+    rese come brevi frasi per il prompt del ragionatore -- SEMPRE incluse,
+    mai dipendenti da un embedder o da quanto il segnale/la revisione
+    corrente somigli al loro contenuto (a differenza di `snippets` sopra).
+
+    Nessun filtro `kinds` qui: cio' che una persona ha dichiarato puo'
+    essere di qualsiasi kind (memory, fact, preference, obligation, ...) --
+    Task 4 riguarda `source`, non `kind`.
+
+    Non solleva mai: un fallimento qui degrada a lista vuota, come il resto
+    di questo modulo (e coerentemente con `declared` default a `[]` su
+    `MemoryRecall`).
+
+    Quando KnowledgeStore.declared() riporta piu' righe di quante ne
+    restituisce (il limite DECLARED_MAX e' stato raggiunto), l'ultima riga
+    della lista lo dice esplicitamente -- mai un troncamento silenzioso,
+    stessa disciplina di handlers_chat._render_declared_block."""
+    try:
+        items, total = knowledge_store.declared(owner=owner, allow_sensitive=allow_sensitive)
+    except Exception:
+        logger.warning("relevant_memory: declared() failed", exc_info=True)
+        return []
+    out: list[str] = []
+    for item in items:
+        content = (item.get("content") or "").strip()
+        if not content:
+            continue
+        out.append(" ".join(content.split()))
+    overflow = total - len(items)
+    if overflow > 0:
+        out.append(
+            f"(+ altri {overflow} elementi dichiarati più vecchi, non "
+            f"mostrati — limite {DECLARED_MAX})"
+        )
+    return out

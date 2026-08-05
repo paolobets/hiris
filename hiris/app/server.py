@@ -1791,10 +1791,16 @@ async def _on_startup(app: web.Application) -> None:
             mem = await _reason_memory_context(app, embedder, wake, friendly_name)
             memory_snippets = mem.snippets
             memory_by_meaning = mem.by_meaning
+            # Task 4 ("memoria unica 3a"): i DICHIARATI viaggiano insieme a
+            # memory/memory_by_meaning, dentro lo stesso try -- un
+            # MemoryRecall malformato non deve poter far fallire QUESTO
+            # ramo diversamente dagli altri due campi.
+            declared_items = mem.declared
         except Exception:
             return {"friendly_name": friendly_name, "portrait": _portrait_context(app)}
         return {"friendly_name": friendly_name, "memory": memory_snippets,
                 "memory_by_meaning": memory_by_meaning,
+                "declared": declared_items,
                 "portrait": _portrait_context(app)}
 
     async def _llm_reason(system, user, *, model, max_tokens,
@@ -2395,6 +2401,7 @@ async def _on_startup(app: web.Application) -> None:
                 _ctx = build_review_context(snapshot, _inventory, _current,
                                             memory=_mem.snippets,
                                             memory_by_meaning=_mem.by_meaning,
+                                            declared=_mem.declared,
                                             portrait=_portrait_context(app))
                 # SP-2 Task 4: il Brain (questo passaggio olistico) usa il
                 # modello scelto per il Brain, se esplicito; "auto" (default)

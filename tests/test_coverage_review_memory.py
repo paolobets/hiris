@@ -152,6 +152,9 @@ def test_holistic_reason_wires_memory_into_review_context():
     assert "build_review_context(snapshot, _inventory, _current," in src
     assert "memory=_mem.snippets," in src
     assert "memory_by_meaning=_mem.by_meaning," in src
+    # Task 4 ("memoria unica 3a"): the declared block rides alongside
+    # memory/memory_by_meaning into the same build_review_context() call.
+    assert "declared=_mem.declared," in src
     assert "memory=_mem,\n" not in src
 
 

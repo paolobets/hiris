@@ -58,11 +58,27 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
     # Missing/None (a context built without the flag) is treated as NOT
     # by-meaning: absent provenance must not earn the "relevant" heading.
     by_meaning = ctx.pop("memory_by_meaning", None)
+    # Task 4 ("memoria unica 3a"): i DICHIARATI (server.py's _gather_context
+    # -> _reason_memory_context -> MemoryRecall.declared), popped for the
+    # same reason as `memory` (must not leak into the JSON "Contesto:"
+    # block below). Unlike `memory`, this has no by_meaning discriminator --
+    # it is not a recall result, it is always true when present, so its
+    # heading never varies.
+    declared = ctx.pop("declared", None)
     portrait_block = ""
     if isinstance(portrait, str) and portrait.strip():
         # "" significa "nessun blocco": e' il contratto che tiene il messaggio
         # identico a prima quando il ritratto non c'e'.
         portrait_block = f"{portrait.strip()}\n\n"
+    declared_block = ""
+    if isinstance(declared, list) and declared:
+        # Stessa disciplina di sanificazione/appiattimento del blocco memory
+        # sotto: una riga dichiarata e' contenuto quanto una richiamata, e
+        # deve passare per lo stesso filtro anti-injection.
+        flat_d = [" ".join(str(s).split()) for s in declared]
+        lines_d = "\n".join(f"- {s}" for s in flat_d if s)
+        if lines_d:
+            declared_block = f"Fatti dichiarati:\n{lines_d}\n\n"
     memory_block = ""
     if isinstance(memory, list) and memory:
         # Snippets are rendered raw (not JSON-encoded like ev/ctx), so flatten
@@ -87,6 +103,7 @@ def build_user_message(wake: WakeEvent, context: dict) -> str:
         f"Evidenza: {json.dumps(ev, ensure_ascii=False)}\n"
         f"Contesto: {json.dumps(ctx, ensure_ascii=False)}\n\n"
         f"{portrait_block}"
+        f"{declared_block}"
         f"{memory_block}"
         "Valuta e rispondi con il blocco json richiesto."
     )
