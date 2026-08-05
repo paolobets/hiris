@@ -279,3 +279,37 @@ def test_file_con_errore_di_sintassi_non_ferma_il_censimento(tmp_path):
     buono = _scrivi(tmp_path, "buono.py", "def orfana():\n    pass\n")
     reperti = censimento.censisci_simboli([rotto, buono], [])
     assert [r.nome for r in reperti] == ["orfana"]
+
+
+def test_il_file_con_il_bom_viene_letto(tmp_path):
+    p = tmp_path / "conbom.py"
+    p.write_bytes(b"\xef\xbb\xbfdef orfana_con_bom():\n    pass\n")
+    reperti = censimento.censisci_simboli([p], [])
+    assert [r.nome for r in reperti] == ["orfana_con_bom"]
+
+
+def test_la_copertura_viene_registrata(tmp_path):
+    app = _scrivi(tmp_path, "m.py", '''
+def orfana():
+    pass
+
+class A:
+    def salva(self):
+        pass
+
+class B:
+    def salva(self):
+        pass
+''')
+    censimento.censisci_simboli([app], [])
+    copertura = censimento.COPERTURA_SIMBOLI
+    assert copertura["ambigui"] == 1          # `salva`, definita due volte
+    assert copertura["esaminati"] >= 3        # orfana, A, B
+    assert copertura["illeggibili"] == 0
+
+
+def test_un_file_illeggibile_viene_contato(tmp_path):
+    rotto = _scrivi(tmp_path, "rotto.py", "def (:\n")
+    buono = _scrivi(tmp_path, "buono.py", "def orfana():\n    pass\n")
+    censimento.censisci_simboli([rotto, buono], [])
+    assert censimento.COPERTURA_SIMBOLI["illeggibili"] == 1

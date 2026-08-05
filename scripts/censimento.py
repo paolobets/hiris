@@ -32,6 +32,7 @@ _GIALLO = "\033[33m"
 _GRIGIO = "\033[90m"
 _RESET = "\033[0m"
 
+COPERTURA_SIMBOLI: dict[str, int] = {}
 
 @dataclass
 class Reperto:
@@ -75,7 +76,7 @@ def _file_py(base: Path) -> list[Path]:
 
 
 def _leggi(p: Path) -> str:
-    return p.read_text(encoding="utf-8", errors="replace")
+    return p.read_text(encoding="utf-8-sig", errors="replace")
 
 
 def _senza_commenti(testo: str) -> str:
@@ -317,12 +318,15 @@ def censisci_rotte(
 _INGRESSI = {"main", "run", "create_app", "setup", "handler"}
 
 
-def _definizioni(testo: str) -> list[tuple[str, int]]:
-    """Funzioni, metodi e classi definiti in un file, con la loro riga."""
+def _definizioni(testo: str) -> list[tuple[str, int]] | None:
+    """Funzioni, metodi e classi definiti in un file, con la loro riga.
+
+    Restituisce None se il file non e' parsabile (illeggibile), [] se e' vuoto.
+    """
     try:
         albero = ast.parse(testo)
     except SyntaxError:
-        return []
+        return None
     out: list[tuple[str, int]] = []
     for nodo in ast.walk(albero):
         if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -342,20 +346,32 @@ def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Repert
     testi_test = [_leggi(f) for f in file_test]
 
     definizioni: dict[str, list[tuple[Path, int]]] = {}
+    illeggibili = 0
     for f, testo in testi_app.items():
-        for nome, riga in _definizioni(testo):
+        defs = _definizioni(testo)
+        if defs is None:
+            illeggibili += 1
+            continue
+        for nome, riga in defs:
             definizioni.setdefault(nome, []).append((f, riga))
 
     tutto_app = "\n".join(testi_app.values())
     tutto_test = "\n".join(testi_test)
 
     reperti: list[Reperto] = []
+    ambigui_count = 0
+    esaminati_count = 0
+    ingressi_count = 0
+
     for nome, siti in sorted(definizioni.items()):
         if len(siti) > 1:
+            ambigui_count += 1
             continue  # nome ambiguo: il conteggio non direbbe niente
         if nome in _INGRESSI or nome.startswith("test_"):
+            ingressi_count += 1
             continue
 
+        esaminati_count += 1
         rx = re.compile(rf"\b{re.escape(nome)}\b")
         occorrenze = len(rx.findall(tutto_app))
         # Le citazioni fra virgolette contano anch'esse come occorrenze di
@@ -381,6 +397,13 @@ def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Repert
             ))
         else:
             reperti.append(Reperto("simbolo-orfano", nome, dove, nota))
+
+    # Popola il dict di copertura
+    COPERTURA_SIMBOLI["esaminati"] = esaminati_count
+    COPERTURA_SIMBOLI["ambigui"] = ambigui_count
+    COPERTURA_SIMBOLI["ingressi"] = ingressi_count
+    COPERTURA_SIMBOLI["illeggibili"] = illeggibili
+
     return reperti
 
 
@@ -401,8 +424,19 @@ def stampa(reperti: list[Reperto]) -> None:
             nota = f"  {_GRIGIO}{r.nota}{_RESET}" if r.nota else ""
             print(f"       {r.nome}  {_GRIGIO}({r.dove}){_RESET}{nota}")
 
+    # Stampa la copertura dei simboli se il censimento e' stato eseguito
+    if COPERTURA_SIMBOLI:
+        esaminati = COPERTURA_SIMBOLI.get("esaminati", 0)
+        ambigui = COPERTURA_SIMBOLI.get("ambigui", 0)
+        ingressi = COPERTURA_SIMBOLI.get("ingressi", 0)
+        illeggibili = COPERTURA_SIMBOLI.get("illeggibili", 0)
+        print(f"\n{_GRIGIO}Copertura dei simboli: {esaminati} nomi esaminati, {ambigui} saltati"
+              f" perche' definiti in piu'\n  punti, {ingressi} punto{'i' if ingressi != 1 else ''} d'ingresso, "
+              f"{illeggibili} file illeggibili.{_RESET}")
+
     print(f"\n{_GRIGIO}I limiti di questo strumento, dichiarati:")
-    print("  - un nome definito in piu' punti viene saltato: il conteggio non direbbe niente;")
+    print("  - i nomi definiti in piu' punti si saltano: contare le occorrenze di un nome")
+    print("    omonimo non direbbe niente. Quanti siano lo dice la riga di copertura;")
     print("  - i nomi che compaiono anche come stringa possono essere chiamati")
     print("    dinamicamente (vedi tools/dispatcher.py): sono segnalati, non condannati;")
     print("  - le opzioni annidate hanno nomi generici (host, port) e il confronto e' prudente;")
