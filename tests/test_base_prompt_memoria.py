@@ -33,7 +33,11 @@ def test_base_prompt_instructs_saving_user_statements():
     """Must name the save tool and use an imperative save verb -- asserting
     on a whole sentence would break on the first stylistic touch-up."""
     assert "save_memory" in BASE_SYSTEM_PROMPT
-    assert "salva" in BASE_SYSTEM_PROMPT.lower()
+    assert BASE_SYSTEM_PROMPT.count("save_memory") >= 2, (
+        "save_memory must appear at least twice: in the positive instruction and "
+        "in the negative clause forbidding claims without saving. If only one "
+        "occurrence remains, the first (positive) bullet was likely removed."
+    )
 
 
 def test_base_prompt_forbids_claiming_note_without_saving():
@@ -94,6 +98,55 @@ async def test_openai_compat_runner_system_prompt_carries_memory_rule(tmp_path):
     runner._client.chat.completions.create = AsyncMock(return_value=_FakeResponse())
 
     await runner.chat(user_message="ciao", model="gpt-4o", max_tokens=64)
+
+    sent_messages = runner._client.chat.completions.create.call_args.kwargs["messages"]
+    assert "save_memory" in sent_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_openai_compat_runner_chat_stream_carries_memory_rule(tmp_path):
+    """backends/openai_compat_runner.py's chat_stream() must also place the
+    memory rule in the system message sent to the OpenAI API, since the
+    streaming path assembles the system prompt independently of chat()."""
+    dispatcher = MagicMock()
+    dispatcher.has_memory = True
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        dispatcher=dispatcher,
+        usage_path=str(tmp_path / "usage.json"),
+    )
+
+    class _FakeDelta:
+        content = None
+
+    class _FakeChunk:
+        """Minimal mock of an OpenAI stream chunk with the structure
+        chat_stream() iterates over."""
+        finish_reason = None
+        delta = _FakeDelta()
+        tool_calls = None
+
+    class _FakeStreamChoice:
+        finish_reason = "stop"
+        delta = _FakeDelta()
+        index = 0
+
+    class _FakeStreamResponse:
+        """Represents a single chunk from the stream."""
+        choices = [_FakeStreamChoice()]
+
+    async def _fake_stream():
+        """Async generator simulating the stream response."""
+        yield _FakeStreamResponse()
+
+    runner._client = MagicMock()
+    runner._client.chat.completions.create = AsyncMock(return_value=_fake_stream())
+
+    # Consume the generator to trigger the API call
+    _ = [chunk async for chunk in runner.chat_stream(
+        user_message="ciao", model="gpt-4o", max_tokens=64
+    )]
 
     sent_messages = runner._client.chat.completions.create.call_args.kwargs["messages"]
     assert "save_memory" in sent_messages[0]["content"]
