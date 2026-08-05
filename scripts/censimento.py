@@ -45,6 +45,8 @@ _TITOLI: dict[str, str] = {
     "tabella-mai-toccata":       "Tabelle create e mai toccate",
     "tabella-scritta-mai-letta": "Tabelle scritte e mai lette",
     "tabella-letta-mai-scritta": "Tabelle lette e mai scritte",
+    "opzione-mai-letta":         "Opzioni dell'add-on che nessun codice legge",
+    "envvar-mai-esportata":      "Variabili d'ambiente lette e mai esportate da run.sh",
 }
 
 
@@ -143,6 +145,67 @@ def censisci_tabelle(files: list[Path]) -> list[Reperto]:
     return reperti
 
 
+# ── Opzioni e variabili d'ambiente ──────────────────────────────────────────
+
+_RE_EXPORT = re.compile(r"^\s*export\s+([A-Z_][A-Z0-9_]*)=", re.M)
+_RE_ENV = re.compile(
+    r"""(?:os\.environ\.get\(|os\.getenv\(|os\.environ\[)\s*["']([A-Z_][A-Z0-9_]*)["']"""
+)
+_RE_CHIAVE_YAML = re.compile(r"^(\s+)([a-z_][a-z0-9_]*):")
+
+
+def _opzioni_addon(config_yaml: Path) -> list[tuple[str, int]]:
+    """Chiavi del blocco `options:` di config.yaml, con la loro riga.
+
+    Lettura per indentazione invece che con un parser YAML: lo strumento non
+    deve avere dipendenze. Restituisce sia le chiavi di primo livello sia le
+    annidate (mqtt, e poi host): quelle annidate sono nomi generici e il
+    confronto sara' prudente, vedi la nota nel report.
+    """
+    if not config_yaml.exists():
+        return []
+    out: list[tuple[str, int]] = []
+    dentro = False
+    for i, riga in enumerate(_leggi(config_yaml).splitlines(), 1):
+        if riga.startswith("options:"):
+            dentro = True
+            continue
+        if not dentro:
+            continue
+        if riga and not riga.startswith((" ", "#")):
+            break  # e' cominciato un altro blocco di primo livello (schema:)
+        m = _RE_CHIAVE_YAML.match(riga)
+        if m:
+            out.append((m.group(2), i))
+    return out
+
+
+def censisci_configurazione(
+    config_yaml: Path, run_sh: Path, file_app: list[Path]
+) -> list[Reperto]:
+    """Opzioni che nessuno legge, e variabili d'ambiente che nessuno esporta."""
+    testi = [_leggi(f) for f in file_app]
+    reperti: list[Reperto] = []
+
+    for nome, riga in _opzioni_addon(config_yaml):
+        citata = f'"{nome}"' in "".join(testi) or f"'{nome}'" in "".join(testi)
+        if not citata:
+            reperti.append(Reperto("opzione-mai-letta", nome,
+                                   f"{_rel(config_yaml)}:{riga}"))
+
+    esportate = set(_RE_EXPORT.findall(_leggi(run_sh))) if run_sh.exists() else set()
+    lette: dict[str, str] = {}
+    for f, testo in zip(file_app, testi):
+        for m in _RE_ENV.finditer(testo):
+            lette.setdefault(m.group(1), f"{_rel(f)}:{_riga(testo, m.start())}")
+
+    for nome, dove in sorted(lette.items()):
+        if nome not in esportate:
+            reperti.append(Reperto("envvar-mai-esportata", nome, dove,
+                                   "il codice la legge, run.sh non la esporta: e' una costante"))
+    return reperti
+
+
 # ── Report ──────────────────────────────────────────────────────────────────
 
 def stampa(reperti: list[Reperto]) -> None:
@@ -166,6 +229,9 @@ def stampa(reperti: list[Reperto]) -> None:
 def run() -> int:
     file_app = _file_py(APP)
     reperti = censisci_tabelle(file_app)
+    reperti += censisci_configurazione(
+        ROOT / "hiris" / "config.yaml", ROOT / "hiris" / "run.sh", file_app
+    )
     stampa(reperti)
     return 0
 
