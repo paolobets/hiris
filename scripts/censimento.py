@@ -13,6 +13,7 @@ Uso:
 """
 import argparse
 import ast
+import functools
 import io
 import re
 import sys
@@ -105,6 +106,18 @@ def _senza_commenti(testo: str) -> str:
     return "".join(righe)
 
 
+@functools.lru_cache(maxsize=None)
+def _leggi_pulito(p: Path) -> str:
+    """Il testo di un file Python senza i commenti, letto una volta sola.
+
+    `_senza_commenti` passa da `tokenize` ed e' costosa; tutti e quattro i
+    rilevatori la vogliono sugli stessi 132 file. Senza memoria il censimento
+    ripete quattro volte lo stesso lavoro e arriva a due minuti — e uno
+    strumento da lanciare a ogni sviluppo che costa due minuti non si lancia.
+    """
+    return _senza_commenti(_leggi(p))
+
+
 # ── Tabelle ─────────────────────────────────────────────────────────────────
 # Le parole chiave SQL si cercano MAIUSCOLE e case-sensitive: la codebase
 # scrive CREATE TABLE 25 volte su 25. Cercare "from" senza distinzione di
@@ -125,7 +138,7 @@ def censisci_tabelle(files: list[Path]) -> list[Reperto]:
     lette: set[str] = set()
 
     for f in files:
-        testo = _senza_commenti(_leggi(f))
+        testo = _leggi_pulito(f)
         for m in _RE_CREATE.finditer(testo):
             create.setdefault(m.group(1).lower(), f"{_rel(f)}:{_riga(testo, m.start())}")
         for rx in (_RE_INSERT, _RE_UPDATE, _RE_DELETE):
@@ -233,7 +246,7 @@ def censisci_configurazione(
     config_yaml: Path, run_sh: Path, file_app: list[Path]
 ) -> list[Reperto]:
     """Opzioni che nessuno legge, e variabili d'ambiente che nessuno esporta."""
-    testi = [_senza_commenti(_leggi(f)) for f in file_app]
+    testi = [_leggi_pulito(f) for f in file_app]
     reperti: list[Reperto] = []
 
     da_run_sh = _chiavi_lette_da_run_sh(run_sh)
@@ -294,7 +307,7 @@ def censisci_rotte(
         # I file Python si spogliano dei commenti: un commento che nomina una
         # rotta ("la /api/dismessa non si usa piu'") non deve zittire il
         # rilevatore facendola sembrare ancora citata altrove.
-        testo = _senza_commenti(_leggi(f))
+        testo = _leggi_pulito(f)
         for m in _RE_ADD.finditer(testo):
             rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
         for m in _RE_ADD_ROUTE.finditer(testo):
@@ -304,7 +317,7 @@ def censisci_rotte(
     # Il frontend resta crudo: _senza_commenti usa il tokenizer Python e su
     # JavaScript non avrebbe senso applicarlo.
     fuori = "\n".join(corpus_app + [_leggi(f) for f in file_frontend])
-    nei_test = "\n".join(_senza_commenti(_leggi(f)) for f in file_test)
+    nei_test = "\n".join(_leggi_pulito(f) for f in file_test)
 
     reperti: list[Reperto] = []
     for percorso, dove in sorted(rotte.items()):
@@ -372,8 +385,8 @@ def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Repert
     # I commenti si spogliano prima di contare le occorrenze: un commento che
     # confessa "non piu' chiamata da qui" nomina il simbolo e zittirebbe il
     # rilevatore esattamente come farebbe un chiamante vero.
-    testi_app = {f: _senza_commenti(_leggi(f)) for f in file_app}
-    testi_test = [_senza_commenti(_leggi(f)) for f in file_test]
+    testi_app = {f: _leggi_pulito(f) for f in file_app}
+    testi_test = [_leggi_pulito(f) for f in file_test]
 
     definizioni: dict[str, list[tuple[Path, int]]] = {}
     illeggibili = 0
