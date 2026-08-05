@@ -148,19 +148,40 @@ pulsante rispondeva `503` — non perché qualcuno abbia deciso di non approvarl
 - **Il destino di `sensitivity` a lungo termine**: qui resta com'è perché è l'unica protezione fra
   abitanti, ma nasce da un'epoca in cui la memoria era per-chatbot.
 
-## 5. Cosa resta da verificare prima di costruire
+## 5. La prova, dal sistema vivo
 
-Il difetto ① è **fortemente indicato ma non provato**: il modello potrebbe aver chiamato
-`save_memory` e aver comunque risposto «preso nota». Una sola osservazione lo chiude:
+Interrogato il database dell'add-on in produzione (5 agosto 2026, `1.1.0-beta.17`):
 
-```bash
-docker exec addon_6354e165_hiris python3 -c "import sqlite3;print(sqlite3.connect('/data/knowledge.db').execute('SELECT id,kind,status,owner,substr(content,1,70) FROM knowledge_items ORDER BY id DESC LIMIT 10').fetchall())"
-```
+| tipo | stato | righe |
+|---|---|---|
+| `insight` | approved | **199** |
+| `memory` | approved | **3** |
+| `note` | approved | 1 |
+| **qualunque tipo** | **`pending`** | **0** |
 
-- **nessuna riga sui 19.5** → ① confermato: serve la regola nel prompt, ed è la parte più importante
-  di tutta la fetta;
-- **una riga `kind='memory'`, `status='approved'`** → ① smentito: il modello salva già da sé, e il
-  difetto è tutto nel fatto che non lo vedi (② e ③).
+Nessuna riga contiene il dato che l'utente aveva dichiarato in chat. Le uniche corrispondenze
+testuali su «soggiorno» e «19» sono insight del digest notturno, per coincidenza.
 
-Le decisioni di questo documento valgono in entrambi i casi. Cambia **quanto pesa** la regola nel
-prompt — e non si scrive un piano senza sapere quale sia il pezzo che conta.
+**Difetto ① CONFERMATO.** Il modello ha risposto «preso nota» senza chiamare alcuno strumento.
+
+E due fatti che l'indagine non cercava:
+
+**Zero righe `pending`, da sempre.** La sezione «Memoria» interroga **solo** i pending. Su questa
+installazione quella pagina **non ha mai avuto nulla da mostrare, in tutta la vita dell'add-on** —
+ed è nella navigazione, con un contatore e un badge. Non è che manchi un elemento: la pagina è vuota
+per costruzione.
+
+**Tre ricordi in quattro mesi, contro 199 insight.** Il 98% di ciò che HIRIS ha in memoria è rumore
+che ha prodotto su sé stesso. Gli id arrivano a 4344 su 203 righe vive, quindi la **potatura
+funziona** — il problema non è la crescita, è il rapporto. Quando finalmente ricorderà qualcosa
+detto da una persona, quella riga sarà una su duecento.
+
+### Cosa questo cambia nel piano
+
+La **regola nel prompt** (decisione ④) non è un dettaglio dell'unificazione: **è il pezzo che conta
+di più.** Senza, il resto della fetta costruisce una pagina più bella su una memoria che resta vuota.
+
+E ne discende un requisito che il resto del documento non aveva: **ciò che l'utente ha detto e ciò
+che HIRIS ha dedotto da solo non possono avere lo stesso peso.** La pagina della memoria deve
+distinguerli, e il richiamo deve preferire i primi — altrimenti 199 medie settimanali sommergono le
+tre cose che contano davvero.
