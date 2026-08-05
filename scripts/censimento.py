@@ -13,6 +13,7 @@ Uso:
 """
 import argparse
 import ast
+import collections
 import functools
 import io
 import re
@@ -357,6 +358,24 @@ def censisci_rotte(
 
 _INGRESSI = {"main", "run", "create_app", "setup", "handler"}
 
+_RE_PAROLA = re.compile(r"\b\w+\b")
+# Backreference sull'apice: deve chiudere con lo STESSO carattere con cui ha
+# aperto, o "nome' (apici spaiati) verrebbe contato come citazione mentre
+# l'originale, che cercava le sottostringhe letterali `"nome"` e `'nome'`
+# separatamente e le sommava, non lo farebbe mai.
+_RE_QUOTATA = re.compile(r"""(["'])(\w+)\1""")
+
+
+def _conta_parole(testo: str) -> collections.Counter:
+    """Quante volte ogni identificatore compare nel testo, in una passata sola.
+
+    Sostituisce una regex `\\bnome\\b` compilata e lanciata per ognuno degli
+    ~845 nomi definiti: erano tre gigabyte di scansione per un lavoro che il
+    corpus paga una volta. `\\w+` e' a bocconi massimi, quindi il conteggio e'
+    identico a quello per-nome, non un'approssimazione.
+    """
+    return collections.Counter(_RE_PAROLA.findall(testo))
+
 
 def _definizioni(testo: str) -> list[tuple[str, int]] | None:
     """Funzioni, metodi e classi definiti in un file, con la loro riga.
@@ -401,6 +420,17 @@ def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Repert
     tutto_app = "\n".join(testi_app.values())
     tutto_test = "\n".join(testi_test)
 
+    # Una sola passata sul corpus invece di una regex `\bnome\b` compilata e
+    # lanciata per ognuno degli ~845 nomi definiti: gia' descritto in
+    # `_conta_parole`. `_RE_QUOTATA` con backreference (`(["'])(\w+)\1`)
+    # replica esattamente `tutto_app.count(f'"{nome}"') + tutto_app.count(f"'{nome}'")`
+    # per ogni nome insieme, sommando le citazioni fra doppi e singoli apici.
+    conteggio_app = _conta_parole(tutto_app)
+    conteggio_test = _conta_parole(tutto_test)
+    conteggio_citazioni = collections.Counter(
+        m.group(2) for m in _RE_QUOTATA.finditer(tutto_app)
+    )
+
     reperti: list[Reperto] = []
     ambigui_count = 0
     esaminati_count = 0
@@ -415,14 +445,13 @@ def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Repert
             continue
 
         esaminati_count += 1
-        rx = re.compile(rf"\b{re.escape(nome)}\b")
-        occorrenze = len(rx.findall(tutto_app))
+        occorrenze = conteggio_app.get(nome, 0)
         # Le citazioni fra virgolette contano anch'esse come occorrenze di
         # \bnome\b (le virgolette non sono caratteri di parola): vanno tolte
         # dal conteggio prima di decidere "qualcuno lo nomina nel codice",
         # altrimenti una citazione come stringa varrebbe come una chiamata
         # vera e la nota della regola 2 non scatterebbe mai.
-        come_stringa = tutto_app.count(f'"{nome}"') + tutto_app.count(f"'{nome}'")
+        come_stringa = conteggio_citazioni.get(nome, 0)
         if occorrenze - come_stringa > 1:
             continue  # qualcuno lo nomina nel codice, oltre alla definizione
 
@@ -432,7 +461,7 @@ def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Repert
         if come_stringa:
             nota = "compare come stringa: potrebbe essere chiamato dinamicamente"
 
-        usi_test = len(rx.findall(tutto_test))
+        usi_test = conteggio_test.get(nome, 0)
         if usi_test:
             reperti.append(Reperto(
                 "simbolo-solo-test", nome, dove,
