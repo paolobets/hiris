@@ -328,7 +328,6 @@ memory:
   embedding_provider: openai
   embedding_model: text-embedding-3-small
   rag_k: 5
-  retention_days: 90
 ```
 
 **Alternative models:**
@@ -369,7 +368,6 @@ memory:
   embedding_provider: ollama
   embedding_model: nomic-embed-text
   rag_k: 5
-  retention_days: 90
 ```
 
 > **Important:** `local_model.url` is used both for Ollama chat models and for Ollama embeddings.
@@ -395,7 +393,6 @@ memory:
   embedding_provider: model2vec
   embedding_model: minishlab/potion-base-8M
   rag_k: 5
-  retention_days: 90
 ```
 
 Leave `embedding_model` empty to use the default (`minishlab/potion-base-8M`) automatically.
@@ -423,7 +420,6 @@ memory:
   embedding_provider: ""
   embedding_model: ""
   rag_k: 5
-  retention_days: 90
 ```
 
 ---
@@ -433,7 +429,7 @@ memory:
 | Parameter | Default | Guidance |
 |-----------|---------|----------|
 | `rag_k` | 5 | Number of memories injected per request. Increase to 10 for agents with rich history; decrease to 2-3 to save tokens. |
-| `retention_days` | 90 | Memories older than this are deleted automatically at 03:00 UTC. Set to 0 to keep forever (not recommended — the store grows unbounded). |
+| ~~`retention_days`~~ | — | Removed. Memories no longer expire — `save_memory` writes them permanently, whatever their age. There is currently no UI to review or delete them; a memory management page (view/delete) is planned for a future release. |
 | `history_retention_days` | 90 | Conversation message history retention, independent of vector memories. |
 
 **Typical configurations:**
@@ -444,12 +440,10 @@ memory:
   embedding_provider: openai
   embedding_model: text-embedding-3-small
   rag_k: 3
-  retention_days: 30
 
 # Rich context for power users
 memory:
   embedding_provider: openai
   embedding_model: text-embedding-3-large
   rag_k: 10
-  retention_days: 365
 ```

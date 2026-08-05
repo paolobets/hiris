@@ -106,7 +106,6 @@ memory:
   embedding_provider: model2vec
   embedding_model: minishlab/potion-base-8M
   rag_k: 5
-  retention_days: 90
 
 # Leave empty — not required for local-only mode
 claude_api_key: ""
