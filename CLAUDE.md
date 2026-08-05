@@ -100,8 +100,8 @@ demolire i test significa difendere con centinaia di asserzioni ciò che si è a
 rimuovere, e pagarne il prezzo a ogni fetta successiva. **Anche i test si smontano**, insieme a ciò
 che testavano.
 
-Fatta a occhio su 43.000 righe questa regola non è eseguibile: usa `scripts/censimento.py`, che la
-rende un comando invece di una buona intenzione.
+Fatta a occhio su 43.000 righe questa regola non è eseguibile: usa `python scripts/censimento.py`,
+che la rende un comando invece di una buona intenzione.
 
 ## Cosa è condannato dal refactor
 
