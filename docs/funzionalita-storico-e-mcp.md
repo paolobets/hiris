@@ -49,7 +49,7 @@ più allowlist/exclude puntuali e la **retention** dei dati grezzi.
 
 Un job notturno distilla lo storico in **insight testuali** salvati nella knowledge
 base (es. *"negli ultimi 7 giorni il consumo medio è +12% rispetto alla settimana
-precedente"*). Sono **ricercabili** dall'AI (`recall_knowledge`), deterministici e a
+precedente"*). Sono **ricercabili** dall'AI (`recall_memory`), deterministici e a
 costo zero (regole, niente chiamate LLM). Un riepilogo per entità, aggiornato ogni
 notte (non si accumula).
 
@@ -109,7 +109,7 @@ elementi che aspettano.
 
 Per ciascuno vedi il contenuto, quando è stato imparato e da quale conversazione o
 strumento arriva, e scegli se **approvarlo** o **scartarlo**. Solo ciò che approvi
-diventa richiamabile da `recall_knowledge`, dal briefing e dalla ricerca.
+diventa richiamabile da `recall_memory`, dal briefing e dalla ricerca.
 
 - Gli elementi marcati **sensibili** restano coperti: il contenuto si mostra solo
   se lo chiedi esplicitamente, così puoi decidere senza esporlo per sbaglio.

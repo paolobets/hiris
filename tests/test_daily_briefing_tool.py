@@ -3,7 +3,7 @@
 Unlike the scheduled `run_daily_briefing` (server.py Task 4), which gates
 `allow_sensitive` on `LLMRouter.automatic_allows_sensitive()`, the dispatch()
 call for `daily_briefing` gates `allow_sensitive` on the SAME two signals
-`recall_knowledge` already uses: the per-agent `knowledge_allow_sensitive`
+`recall_memory` already uses: the per-agent `knowledge_allow_sensitive`
 config and whether the current chat backend is `cloud`. Sensitive deadlines
 are surfaced only when the agent config allows it AND the backend is local
 (not cloud) -- fail-closed whenever either signal says otherwise (still
@@ -132,7 +132,7 @@ async def test_daily_briefing_never_raises_when_entity_cache_broken(tmp_path):
 async def test_daily_briefing_shows_sensitive_when_allowed_and_local(tmp_path):
     """Fix A: sensitive deadlines are surfaced when BOTH the per-agent config
     allows them AND the chat backend is local (cloud=False) — mirrors
-    recall_knowledge's allow_sensitive model."""
+    recall_memory's allow_sensitive model."""
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     store.add_item(kind="obligation", content="Cartella clinica riservata",
                     due_date=_due(1), sensitivity="sensitive")
@@ -341,7 +341,7 @@ def test_daily_briefing_tool_declared_in_chat_tool_schema():
 
 
 def test_daily_briefing_not_in_evaluation_only_tools():
-    """Read-only chat tool, same treatment as recall_knowledge/save_knowledge:
+    """Read-only chat tool, same treatment as recall_memory/save_memory:
     not exposed to non-chat evaluation agents (no llm_router there either,
     and evaluation agents don't need an on-demand butler summary)."""
     from hiris.app.claude_runner import EVALUATION_ONLY_TOOLS

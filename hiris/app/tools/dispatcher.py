@@ -39,9 +39,6 @@ from .diagnostics_tools import (
 from .proposal_tools import create_automation_proposal
 from .config_tools import normalize_config_inputs, apply_ha_config
 from .dashboard_tools import propose_dashboard
-from .knowledge_tools import (
-    handle_save_knowledge, handle_recall_knowledge,
-)
 from ..brain.briefing import build_briefing_bundle, render_briefing_template
 from ..security.semaphore import gate_action, normalize_target
 
@@ -589,16 +586,35 @@ class ToolDispatcher:
                     allowed_endpoints=allowed_endpoints,
                 )
             if name == "recall_memory":
+                # Il ramo era condizionato allo store: senza store l'esecuzione
+                # cadeva in fondo, dove la risposta e' «Tool 'recall_memory'
+                # non esiste. [...] Non inventare nomi di tool.» -- un rimprovero
+                # per aver chiamato uno strumento che il system prompt gli aveva
+                # elencato, dopo il quale il modello smette di usarlo per tutta
+                # la conversazione. La condizione va DENTRO il ramo.
                 if self._knowledge_store is None:
-                    return {"error": "Memory store not configured"}
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "cercare nei ricordi di casa in questo "
+                                      "momento.")}
                 return await _handle_recall_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
                     chatbot_id=chatbot_id or "hiris-default",
+                    allow_sensitive=knowledge_allow_sensitive,
+                    kinds=knowledge_kinds,
+                    pseudonymizer=self._pseudonymizer,
+                    cloud=cloud,
+                    pseudonym_map=pseudonym_map,
                 )
             if name == "save_memory":
+                # Stesso ramo per un ricordo generico (kind omesso, legato a
+                # questo chatbot) e per un fatto/preferenza/scadenza/spesa/nota
+                # (kind esplicito, condiviso con la casa) -- Task 2: erano due
+                # tool sulla stessa funzione, ora sono un solo ramo.
                 if self._knowledge_store is None:
-                    return {"error": "Memory store not configured"}
+                    return {"error": ("La memoria non è disponibile: non posso "
+                                      "salvare questo ricordo perché non "
+                                      "potrei più ritrovarlo.")}
                 return await _handle_save_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
@@ -670,50 +686,16 @@ class ToolDispatcher:
                     inputs.get("reason", ""),
                     title=inputs.get("title"),
                 )
-            if name == "save_knowledge":
-                # Il ramo era condizionato allo store: senza store non c'e'
-                # dove scrivere. La condizione va DENTRO il ramo, come in
-                # recall_memory/save_memory.
-                if self._knowledge_store is None:
-                    return {"error": ("La memoria non è disponibile: non posso "
-                                      "salvare questo ricordo perché non "
-                                      "potrei più ritrovarlo.")}
-                return await handle_save_knowledge(
-                    self._knowledge_store, self._knowledge_embedder, inputs,
-                    owner=user_id or "home",
-                )
-            if name == "recall_knowledge":
-                # Il ramo era condizionato allo store: senza store l'esecuzione
-                # cadeva in fondo, dove la risposta e' «Tool 'recall_knowledge'
-                # non esiste. [...] Non inventare nomi di tool.» -- un rimprovero
-                # per aver chiamato uno strumento che il system prompt gli aveva
-                # elencato, dopo il quale il modello smette di usarlo per tutta
-                # la conversazione. La condizione va DENTRO il ramo, come in
-                # recall_memory/save_memory.
-                if self._knowledge_store is None:
-                    return {"error": ("La memoria non è disponibile: non posso "
-                                      "cercare nei ricordi di casa in questo "
-                                      "momento.")}
-                return await handle_recall_knowledge(
-                    self._knowledge_store, self._knowledge_embedder, inputs,
-                    owner=user_id or "home",
-                    chatbot_id=chatbot_id or "hiris-default",
-                    allow_sensitive=knowledge_allow_sensitive,
-                    kinds=knowledge_kinds,
-                    pseudonymizer=self._pseudonymizer,
-                    cloud=cloud,
-                    pseudonym_map=pseudonym_map,
-                )
             if name == "daily_briefing":
                 # On-demand chat butler summary (Slice 7 Task 5). READ-ONLY: no HA
                 # service call, no semaforo — it only reads knowledge_store/entity_cache.
                 #
-                # allow_sensitive mirrors recall_knowledge's model: the agent config
+                # allow_sensitive mirrors recall_memory's model: the agent config
                 # (knowledge_allow_sensitive) AND the current chat backend's locality
                 # (cloud) both gate it. Sensitive deadlines are included only when the
                 # agent is allowed to see them AND the chat backend is local — fail-closed
                 # whenever either signal is missing/False (config disallows OR backend is
-                # cloud), same as recall_knowledge. Hidden items are still counted in
+                # cloud), same as recall_memory. Hidden items are still counted in
                 # bundle["counts"]["hidden_sensitive"] regardless.
                 #
                 # Le batterie scariche arrivano dalle segnalazioni gia' prodotte dai

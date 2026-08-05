@@ -1005,7 +1005,7 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path, mock_ha
     runner instance -- sharing the SAME ToolDispatcher/KnowledgeStore/
     Pseudonymizer/vault, exactly as two concurrent real users would on a
     live server -- must never leak each other's per-request pseudonymize
-    token map. Each call's own recall_knowledge tool invocation pseudonymizes
+    token map. Each call's own recall_memory tool invocation pseudonymizes
     DIFFERENT sensitive PII into the SAME global vault; `last_pseudonym_map`
     read right after each call's own `await runner.chat(...)` must contain
     ONLY that call's own token, and using it to detokenize would never
@@ -1013,7 +1013,7 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path, mock_ha
 
     This is the concurrency-flavored counterpart to
     test_chat_concurrent_calls_do_not_leak_tool_calls above, exercising the
-    REAL dispatcher -> knowledge_tools -> Pseudonymizer path end-to-end
+    REAL dispatcher -> memory_tools -> Pseudonymizer path end-to-end
     (dispatch is not mocked here) so the ContextVar-based per-Task isolation
     is proven against the actual security-sensitive code path, not just
     last_tool_calls bookkeeping.
@@ -1050,7 +1050,7 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path, mock_ha
         # return BOTH regardless of query vector, defeating the point of this
         # test (each call must only ever pseudonymize ITS OWN best match).
         block = MagicMock(type="tool_use", id=f"id-{query}", input={"query": query, "k": 1})
-        block.name = "recall_knowledge"
+        block.name = "recall_memory"
         return MagicMock(stop_reason="tool_use", content=[block], usage=_usage())
 
     def _end_response(text: str):
@@ -1071,14 +1071,14 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path, mock_ha
 
     async def call_a():
         text = await runner.chat(
-            "call-A", allowed_tools=["recall_knowledge"],
+            "call-A", allowed_tools=["recall_memory"],
             knowledge_allow_sensitive=True,
         )
         return text, dict(runner.last_pseudonym_map)
 
     async def call_b():
         text = await runner.chat(
-            "call-B", allowed_tools=["recall_knowledge"],
+            "call-B", allowed_tools=["recall_memory"],
             knowledge_allow_sensitive=True,
         )
         return text, dict(runner.last_pseudonym_map)

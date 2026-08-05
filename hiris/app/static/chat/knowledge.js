@@ -1,12 +1,19 @@
 /* HIRIS · Chat page · coda di approvazione della memoria.
 
-   Perche' esiste: `save_knowledge` — lo strumento che il modello chiama quando
-   l'utente dice "ricordati che..." — salva in stato `pending`, mentre la
-   ricerca nella knowledge base legge solo gli elementi `approved`. Senza una
-   superficie che approvi, il Chatbot risponde "salvato" e quel ricordo non
-   torna mai: nessun errore, nessun log. Gli endpoint (GET
+   Perche' esisteva: fino alla fetta memoria-unica (Task 2), lo strumento che
+   il modello chiamava quando l'utente diceva "ricordati che..." (allora
+   `save_knowledge`, oggi fuso in `save_memory`) salvava in stato `pending`,
+   mentre la ricerca nella knowledge base legge solo gli elementi `approved`.
+   Senza una superficie che approvi, il Chatbot rispondeva "salvato" e quel
+   ricordo non tornava mai: nessun errore, nessun log. Gli endpoint (GET
    /api/knowledge/pending, POST /api/knowledge/{id}/approve|reject) c'erano
    gia': mancava il posto dove decidere.
+
+   Dopo Task 2 `save_memory` scrive sempre `status='approved'`: questa coda
+   non riceve piu' nulla dal percorso della chat (resta raggiungibile solo da
+   righe pre-esistenti o create a mano sullo store). La rimozione della coda
+   stessa e la ridefinizione della pagina "Memoria" come "cio' che HIRIS sa"
+   sono fuori dallo scope di questa fetta (design memoria-unica §2⑤, §4).
 
    Sta nella chat, accanto a Proposte e Task, perche' e' la stessa natura —
    un'inbox di cose che aspettano una decisione — e perche' e' li' che nasce:
@@ -23,7 +30,7 @@
    - il contenuto e' testo scritto da un LLM su dettatura dell'utente: ogni
      valore interpolato passa da `esc()`;
    - un elemento marcato sensibile non viene reso in chiaro. Altrove (briefing,
-     recall_knowledge) il sensibile viene nascosto o pseudonimizzato; qui non
+     recall_memory) il sensibile viene nascosto o pseudonimizzato; qui non
      puo' essere nascosto del tutto — chi approva deve sapere cosa approva — ma
      resta coperto finche' non lo si chiede esplicitamente, e il contenuto non
      entra nemmeno nel DOM prima di quel momento. */
@@ -39,11 +46,12 @@
   };
 
   /* Le chiavi sono i valori che gli scrittori della knowledge base mettono
-     davvero in `source` (knowledge_tools "chat", handlers_knowledge "manual",
+     davvero in `source` (memory_tools "chat", handlers_knowledge "manual",
      mayan_ingest "mayan", history_digest "history-digest", brain_trace
-     "brain", memory_migration "migrated"). In pratica qui arriva solo "chat"
-     — e' l'unico scrittore che salva in attesa — ma un elenco che inventa
-     nomi mai scritti inganna chi legge. */
+     "brain", memory_migration "migrated"). Dopo Task 2 (memoria unica)
+     memory_tools scrive sempre approvato: "chat" non arriva piu' qui da solo
+     -- resta nell'elenco perche' un elenco che inventa nomi mai scritti
+     inganna chi legge, non perche' sia ancora l'unico caso pratico. */
   var SOURCE_LABELS = {
     chat: 'conversazione',
     manual: 'inserimento manuale',
@@ -84,7 +92,7 @@
   }
 
   /* Lo store tratta come sensibile QUALUNQUE valore diverso da 'normal'
-     (knowledge_store.search, briefing._collect_deadlines, recall_knowledge):
+     (knowledge_store.search, briefing._collect_deadlines, recall_memory):
      stessa regola qui, altrimenti un terzo valore di sensibilita' passerebbe
      in chiaro proprio dove altrove viene coperto. */
   function isSensitive(item) {

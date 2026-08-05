@@ -37,10 +37,11 @@ async def record_brain_action(
     swallow anything, because it still results in the trace being written
     (the whole point of this function), and the caller's own try/except
     (e.g. cognitive_loop.auto_tune_detectors) still guards the rest of its
-    own work regardless of whether this function raises or not. All four
-    sibling write paths (save_memory, recall_memory's degrade, save_knowledge,
-    recall_knowledge) already treat a raising embedder as "write without a
-    vector"; this is the same rule."""
+    own work regardless of whether this function raises or not. The sibling
+    write path (save_memory -- Task 2/memoria-unica merged the old
+    save_knowledge into it) and recall_memory's own degrade path already
+    treat a raising embedder as "write without a vector"; this is the same
+    rule."""
     try:
         emb: list[float] = await embedder.embed(text) if embedder is not None else []
     except Exception:

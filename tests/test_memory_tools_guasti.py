@@ -126,7 +126,7 @@ async def test_save_memory_riuscito_e_davvero_richiamabile(tmp_path):
         store, embedder, {"query": "temperatura"},
         owner="paolo", chatbot_id="agentA",
     )
-    assert [m["content"] for m in ricordato["memories"]] == ["preferisco 21 gradi"]
+    assert [m["content"] for m in ricordato["results"]] == ["preferisco 21 gradi"]
     store.close()
 
 
@@ -163,7 +163,7 @@ async def test_recall_memory_con_embedder_rotto_degrada_ai_piu_recenti(tmp_path)
     )
 
     assert "error" not in res
-    assert [m["content"] for m in res["memories"]] == ["preferisco 21 gradi"]
+    assert [m["content"] for m in res["results"]] == ["preferisco 21 gradi"]
     assert res["count"] == 1
     assert res.get("degraded") is True, (
         "il richiamo degradato deve dichiararsi tale, non presentarsi come "
@@ -185,7 +185,7 @@ async def test_recall_memory_con_vettore_vuoto_degrada_ai_piu_recenti(tmp_path):
         owner="paolo", chatbot_id="agentA",
     )
     assert "error" not in res
-    assert [m["content"] for m in res["memories"]] == ["preferisco 21 gradi"]
+    assert [m["content"] for m in res["results"]] == ["preferisco 21 gradi"]
     assert res.get("degraded") is True
     store.close()
 
@@ -203,7 +203,7 @@ async def test_recall_memory_con_embedder_funzionante_non_degrada(tmp_path):
         owner="paolo", chatbot_id="agentA",
     )
     assert "error" not in res
-    assert [m["content"] for m in res["memories"]] == ["preferisco 21 gradi"]
+    assert [m["content"] for m in res["results"]] == ["preferisco 21 gradi"]
     assert not res.get("degraded"), (
         "una ricerca vettoriale vera non deve portare il segnale di degradazione"
     )
@@ -229,7 +229,7 @@ async def test_recall_memory_degradato_applica_gli_stessi_filtri_di_riservatezza
         owner="paolo", chatbot_id="agentA",
     )
     assert res.get("degraded") is True
-    contents = [m["content"] for m in res["memories"]]
+    contents = [m["content"] for m in res["results"]]
     assert "segreto di agentB" not in contents
     assert contents == ["nota di agentA"]
     store.close()
@@ -245,7 +245,7 @@ async def test_recall_memory_vuoto_legittimo_non_e_un_errore(tmp_path):
         owner="paolo", chatbot_id="agentA",
     )
     assert "error" not in res
-    assert res["memories"] == []
+    assert res["results"] == []
     assert res["count"] == 0
     store.close()
 

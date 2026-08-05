@@ -25,9 +25,9 @@ log = logging.getLogger("hiris.agent")
 _DEFAULT_CHAT_TOOLS = ",".join(
     "mcp__hiris__" + n for n in (
         "get_home_status", "get_area_entities", "get_entity_states", "get_history",
-        "get_automation_config", "recall_knowledge", "create_task", "list_tasks",
+        "get_automation_config", "recall_memory", "create_task", "list_tasks",
         "cancel_task", "create_automation_proposal", "send_notification",
-        "save_knowledge", "call_service",
+        "save_memory", "call_service",
     )
 )
 # Tool LOCALI del CLI sempre vietati (il modello non deve toccare shell/fs del

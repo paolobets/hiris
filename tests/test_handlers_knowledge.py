@@ -333,27 +333,33 @@ async def test_approvazione_rende_richiamabile(aiohttp_client, tmp_path):
     `embedding IS NOT NULL`) resterebbero verdi mentre il ricordo tornerebbe
     irraggiungibile. Qui l'elemento viene CERCATO davvero, prima e dopo
     l'approvazione, passando dallo stesso endpoint che tocca il bottone
-    "Approva" della coda."""
+    "Approva" della coda.
+
+    Nota (Task 2 -- memoria unica): il tool LLM `save_memory` (fusione dei
+    vecchi save_memory/save_knowledge) scrive oggi sempre `status='approved'`
+    -- non esiste piu' un percorso che passi da questo tool a `pending`. La
+    coda di approvazione manuale (`handlers_knowledge.py`, questo file)
+    resta invece invariata: qui l'elemento in coda si crea direttamente
+    sullo store, come fa il resto del file, per esercitare l'endpoint
+    `/approve` a prescindere da come una riga finisce in coda."""
     from unittest.mock import AsyncMock
     from aiohttp import web
     from hiris.app.api.handlers_knowledge import handle_approve
-    from hiris.app.tools.knowledge_tools import (
-        handle_save_knowledge, handle_recall_knowledge,
-    )
+    from hiris.app.tools.memory_tools import handle_recall_memory
 
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     embedder = AsyncMock()
     embedder.embed = AsyncMock(return_value=[1.0, 0.0])
 
-    saved = await handle_save_knowledge(
-        store, embedder,
-        {"kind": "obligation", "content": "La caldaia va revisionata a ottobre"},
-        owner="home",
+    saved_id = store.add_item(
+        kind="obligation", content="La caldaia va revisionata a ottobre",
+        owner="home", status="pending",
+        embedding=await embedder.embed("La caldaia va revisionata a ottobre"),
     )
-    assert saved["status"] == "pending"
+    saved = {"id": saved_id, "status": "pending"}
 
     async def cerca():
-        res = await handle_recall_knowledge(
+        res = await handle_recall_memory(
             store, embedder, {"query": "caldaia"}, owner="home")
         return [r["content"] for r in res["results"]]
 

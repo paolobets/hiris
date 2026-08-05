@@ -711,7 +711,7 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     runner's reply with real PII values before returning the JSON response,
     using ONLY the current exchange's own per-request token map (review
     B/#7) — never a global/vault-wide lookup. ``last_pseudonym_map`` here
-    simulates the mapping the real recall_knowledge tool path would have
+    simulates the mapping the real recall_memory tool path would have
     populated during THIS exchange's own pseudonymize call."""
     from hiris.app.brain.privacy import VaultStore, Pseudonymizer
 
@@ -735,7 +735,7 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     # Runner returns a response that contains the vault token (not the real IBAN)
     mock_runner.chat = AsyncMock(return_value="Saldo su [IBAN_1].")
     mock_runner.last_tool_calls = []
-    # This exchange's own per-request token map — as if recall_knowledge had
+    # This exchange's own per-request token map — as if recall_memory had
     # pseudonymized this IBAN into [IBAN_1] earlier in THIS same tool loop.
     mock_runner.last_pseudonym_map = {"[IBAN_1]": "IT60X0542811101000000123456"}
     engine.set_claude_runner(mock_runner)

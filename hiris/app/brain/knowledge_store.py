@@ -87,9 +87,10 @@ def confronta_significati(query_vec: list[float] | None) -> bool:
     - `api/handlers_chat.py` -- intestazione del blocco RAG della chat
     - `brain/reasoner_memory.py` -- `MemoryRecall.by_meaning`, da cui prendono
       l'intestazione il reasoner per-evento e la revisione olistica
-    - `tools/knowledge_tools.handle_recall_knowledge` -- flag `degraded` verso il
-      modello, e il gate della ricerca sui chunk documentali
-    - `tools/memory_tools.handle_recall_memory` -- flag `degraded` verso il modello
+    - `tools/memory_tools.handle_recall_memory` -- flag `degraded` verso il
+      modello, e il gate della ricerca sui chunk documentali (fusione Task 2
+      del vecchio `tools/knowledge_tools.handle_recall_knowledge`, oggi
+      rimosso)
 
     Cosi' se `search` guadagnasse un altro motivo di degradazione (es. un
     mismatch di dimensione dell'embedding) etichette e flag resterebbero coerenti

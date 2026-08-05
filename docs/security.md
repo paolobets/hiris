@@ -93,7 +93,7 @@ lamp green) instead of making a whole heterogeneous domain green.
 
 > Note: **reads** not covered by the denylist (states, history, automation configs)
 > still go to the cloud model. Don't put secrets in automations. The denylist
-> filters by **entity**: textual memory (`recall_knowledge`) holds free text, so a
+> filters by **entity**: textual memory (`recall_memory`) holds free text, so a
 > hand-written note containing sensitive data **cannot** be caught that way.
 
 ---

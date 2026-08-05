@@ -37,10 +37,6 @@ from .tools.memory_tools import (
     RECALL_MEMORY_TOOL_DEF,
     SAVE_MEMORY_TOOL_DEF,
 )
-from .tools.knowledge_tools import (
-    SAVE_KNOWLEDGE_TOOL_DEF,
-    RECALL_KNOWLEDGE_TOOL_DEF,
-)
 from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
 from .tools.advisory_tools import GET_ADVISORIES_TOOL_DEF
 from .tools.diagnostics_tools import (
@@ -217,8 +213,6 @@ ALL_TOOL_DEFS = [
     LIST_DASHBOARDS_TOOL_DEF,
     GET_DASHBOARD_CONFIG_TOOL_DEF,
     PROPOSE_DASHBOARD_TOOL_DEF,
-    SAVE_KNOWLEDGE_TOOL_DEF,
-    RECALL_KNOWLEDGE_TOOL_DEF,
     DAILY_BRIEFING_TOOL_DEF,
     CONFIRM_PENDING_TOOL_DEF,
 ]
@@ -233,7 +227,9 @@ EVALUATION_ONLY_TOOLS = frozenset({
     "get_energy_history", "get_weather_forecast", "get_history",
     "get_ha_automations", "get_automation_config", "get_calendar_events",
     "create_task", "list_tasks", "cancel_task",
-    "recall_memory",  # read-only — safe for non-chat agents
+    "recall_memory",  # read-only — safe for non-chat agents. Task 2 (memoria
+                      # unica) merged the old recall_knowledge into this same
+                      # tool, so this single entry now covers both.
     "get_ha_health",  # read-only cached data — safe for proactive monitors
     "get_advisories",  # sola lettura sulle segnalazioni gia' note del Brain:
                        # un agente che sorveglia la casa deve poterle vedere
@@ -449,7 +445,7 @@ _current_thinking_blocks: "contextvars.ContextVar[Optional[list]]" = contextvars
 # Per-request pseudonymization token map (review B/#7 — PII cross-leak fix).
 # Same ContextVar-per-Task isolation rationale as the two ContextVars above:
 # chat()/chat_stream() reset this dict to {} at the start of every call, the
-# recall_knowledge tool path (dispatcher.dispatch -> knowledge_tools) records
+# recall_memory tool path (dispatcher.dispatch -> memory_tools) records
 # token->value pairs into it as it pseudonymizes sensitive content for THIS
 # exchange, and the caller (handlers_chat.py / server.py) reads it back
 # AFTER chat()/chat_stream() returns (same Task, so the ContextVar value is
@@ -676,7 +672,7 @@ class ClaudeRunner:
             self._per_chatbot_usage[chatbot_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         # Fresh per-exchange pseudonymization map (review B/#7) — populated by
-        # the recall_knowledge tool path below, read by the caller afterwards.
+        # the recall_memory tool path below, read by the caller afterwards.
         self.last_pseudonym_map = {}
         # ── System prompt blocks with prompt caching ─────────────────────────
         # Anthropic prompt caching is *cumulative*: a single cache_control

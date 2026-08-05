@@ -1,11 +1,12 @@
 """A2/A3 — quando una dipendenza manca, il dispatcher deve dirlo.
 
-A2: `recall_knowledge` era un ramo condizionato alla presenza dello store.
-Senza store l'esecuzione cadeva nel ramo finale, che risponde «Tool 'X' non
-esiste. [...] Non inventare nomi di tool.»: il modello viene rimproverato per
-aver chiamato uno strumento che gli era stato elencato, e la reazione tipica
-e' smettere di usarlo per il resto della conversazione. I gemelli
-`recall_memory`/`save_memory` gestiscono correttamente lo stesso caso.
+A2: `recall_knowledge` (ora fusa in `recall_memory`, Task 2 -- memoria unica)
+era un ramo condizionato alla presenza dello store. Senza store l'esecuzione
+cadeva nel ramo finale, che risponde «Tool 'X' non esiste. [...] Non
+inventare nomi di tool.»: il modello viene rimproverato per aver chiamato uno
+strumento che gli era stato elencato, e la reazione tipica e' smettere di
+usarlo per il resto della conversazione. `recall_memory`/`save_memory`
+gestiscono correttamente lo stesso caso.
 
 A3: i tre strumenti che leggono dalla cache delle entita' rispondevano con un
 elenco vuoto quando la cache non c'era o non era ancora popolata -- «la casa e'
@@ -36,7 +37,7 @@ def _disp(**kwargs) -> ToolDispatcher:
 @pytest.mark.parametrize(
     "tool, inputs",
     [
-        ("recall_knowledge", {"query": "caldaia"}),
+        ("recall_memory", {"query": "caldaia"}),
     ],
 )
 async def test_senza_store_non_accusa_il_modello_di_essersi_inventato_il_tool(tool, inputs):
@@ -53,7 +54,7 @@ async def test_senza_store_non_accusa_il_modello_di_essersi_inventato_il_tool(to
 
 
 @pytest.mark.asyncio
-async def test_recall_knowledge_senza_embedder_degrada_invece_di_rifiutare(tmp_path):
+async def test_recall_memory_senza_embedder_degrada_invece_di_rifiutare(tmp_path):
     """Non piu' un rifiuto (fetta 2a): senza embedder la ricerca non puo'
     confrontare i significati, ma degrada ai piu' recenti (stesso
     comportamento di `KnowledgeStore.search` -> `recent()`) invece di
@@ -64,7 +65,7 @@ async def test_recall_knowledge_senza_embedder_degrada_invece_di_rifiutare(tmp_p
     store.add_item(kind="fact", content="la caldaia e' in cantina", owner="home")
 
     res = await _disp(knowledge_store=store, embedder=None).dispatch(
-        "recall_knowledge", {"query": "caldaia"})
+        "recall_memory", {"query": "caldaia"})
 
     assert "error" not in res
     assert res["degraded"] is True

@@ -1,18 +1,20 @@
 """La prova che serviva -- il resoconto funziona a scatola chiusa.
 
-Le task 1-4 di questa fetta sono state verificate ognuna per conto suo. Nessuna
-delle due attraversa l'intero percorso: una scadenza detta in chat, su
+Le task 1-4 della fetta 2a erano state verificate ognuna per conto suo, ma
+nessuna attraversava l'intero percorso: una scadenza detta in chat, su
 un'installazione senza alcun embedder configurato (il default di fabbrica),
-che arriva davvero al resoconto delle 08:00.
+che arriva davvero al resoconto delle 08:00. All'epoca quel percorso era rotto
+in due punti indipendenti (handle_save_knowledge rifiutava di scrivere senza
+un vettore; l'approvazione rispondeva 503 senza un provider configurato) --
+entrambi chiusi dalla fetta 2a.
 
-Oggi quel percorso era rotto in due punti indipendenti:
-  1. `handle_save_knowledge` rifiutava di scrivere senza un vettore;
-  2. anche se la scrittura fosse riuscita, `handle_approve` rispondeva 503
-     senza un provider di embedding configurato.
-
-Questo file usa il `NullEmbedder` VERO -- quello che gira in produzione su
-ogni installazione stock -- non un finto, perche' e' esattamente il caso che
-il difetto colpiva."""
+Task 2 (memoria unica) toglie un TERZO ostacolo dallo stesso percorso: non
+c'e' piu' una coda da approvare. `handle_save_memory` scrive gia'
+`status='approved'`, quindi il percorso e' oggi piu' corto -- salvato in chat
+-> subito trovato da upcoming_obligations -> nel bundle del resoconto -- non
+piu' lungo. Questo file usa il `NullEmbedder` VERO -- quello che gira in
+produzione su ogni installazione stock -- non un finto, perche' e'
+esattamente il caso che il difetto originale colpiva."""
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -24,23 +26,12 @@ from hiris.app.brain.briefing import build_briefing_bundle
 from hiris.app.brain.knowledge_store import KnowledgeStore
 
 
-def _app_approve(store, embedder):
-    from aiohttp import web
-    from hiris.app.api.handlers_knowledge import handle_approve
-
-    app = web.Application()
-    app["knowledge_store"] = store
-    app["embedding_provider"] = embedder
-    app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
-    return app
-
-
 @pytest.mark.asyncio
-async def test_scadenza_senza_embedder_arriva_al_resoconto(aiohttp_client, tmp_path):
+async def test_scadenza_senza_embedder_arriva_al_resoconto(tmp_path):
     """Il percorso intero, su un'installazione di fabbrica (NullEmbedder):
-    salvata in chat -> pending -> approvata -> trovata da
+    salvata in chat -> subito approvata (niente coda, Task 2) -> trovata da
     upcoming_obligations -> presente nel bundle del resoconto."""
-    from hiris.app.tools.knowledge_tools import handle_save_knowledge
+    from hiris.app.tools.memory_tools import handle_save_memory
 
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     embedder = NullEmbedder()
@@ -48,37 +39,29 @@ async def test_scadenza_senza_embedder_arriva_al_resoconto(aiohttp_client, tmp_p
     due = (today + timedelta(days=3)).isoformat()
 
     # 1. Salvata dalla chat, senza alcun embedder che calcoli un vettore.
-    saved = await handle_save_knowledge(
+    saved = await handle_save_memory(
         store, embedder,
         {
             "kind": "obligation",
             "content": "Revisione caldaia",
             "due_date": due,
         },
-        owner="home",
+        owner="home", chatbot_id="hiris-default",
     )
     assert "error" not in saved
-    assert saved["status"] == "pending"
+    assert saved.get("saved") is True
 
-    # 2. La coda di approvazione non e' cambiata da questa fetta.
+    # 2. Gia' approvata: niente coda da smaltire (Task 2).
     item = store.get_item(saved["id"])
     assert item is not None
-    assert item["status"] == "pending"
+    assert item["status"] == "approved"
 
-    # 3. Approvarla riesce -- prima di questa fetta rispondeva 503 qui.
-    app = _app_approve(store, embedder)
-    client = await aiohttp_client(app)
-    r = await client.post(f"/api/knowledge/{saved['id']}/approve")
-    assert r.status == 200
-    approved = store.get_item(saved["id"])
-    assert approved["status"] == "approved"
-
-    # 4. upcoming_obligations la trova.
+    # 3. upcoming_obligations la trova, subito.
     before = (today + timedelta(days=7)).isoformat()
     upcoming = store.upcoming_obligations(before=before, owner="home")
     assert any(row["id"] == saved["id"] for row in upcoming)
 
-    # 5. E il bundle del resoconto delle 08:00 la include fra le scadenze.
+    # 4. E il bundle del resoconto delle 08:00 la include fra le scadenze.
     bundle = build_briefing_bundle(
         store, entity_cache=None, today=today, allow_sensitive=True,
         horizon_days=7, owner="home",
@@ -90,14 +73,11 @@ async def test_scadenza_senza_embedder_arriva_al_resoconto(aiohttp_client, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_stesso_percorso_con_embedder_funzionante_non_regredisce(
-    aiohttp_client, tmp_path,
-):
+async def test_stesso_percorso_con_embedder_funzionante_non_regredisce(tmp_path):
     """Non-regresso: con un embedder che funziona lo stesso percorso continua
-    a funzionare, e la riga finisce per avere un vettore -- non solo la
-    chiamata HTTP che riesce."""
+    a funzionare, e la riga porta gia' un vettore fin dal salvataggio."""
     from unittest.mock import AsyncMock
-    from hiris.app.tools.knowledge_tools import handle_save_knowledge
+    from hiris.app.tools.memory_tools import handle_save_memory
 
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     embedder = AsyncMock()
@@ -105,31 +85,21 @@ async def test_stesso_percorso_con_embedder_funzionante_non_regredisce(
     today = date.today()
     due = (today + timedelta(days=3)).isoformat()
 
-    saved = await handle_save_knowledge(
+    saved = await handle_save_memory(
         store, embedder,
         {
             "kind": "obligation",
             "content": "Revisione caldaia (con embedder)",
             "due_date": due,
         },
-        owner="home",
+        owner="home", chatbot_id="hiris-default",
     )
     assert "error" not in saved
-    assert saved["status"] == "pending"
+    assert saved.get("saved") is True
 
-    # Con l'embedder che funziona, save_knowledge calcola gia' il vettore:
-    # la riga in coda lo porta prima ancora dell'approvazione.
     item = store.get_item(saved["id"])
+    assert item["status"] == "approved"
     assert item["has_embedding"]
-
-    app = _app_approve(store, embedder)
-    client = await aiohttp_client(app)
-    r = await client.post(f"/api/knowledge/{saved['id']}/approve")
-    assert r.status == 200
-
-    approved = store.get_item(saved["id"])
-    assert approved["status"] == "approved"
-    assert approved["has_embedding"]
 
     before = (today + timedelta(days=7)).isoformat()
     upcoming = store.upcoming_obligations(before=before, owner="home")
@@ -146,16 +116,15 @@ async def test_stesso_percorso_con_embedder_funzionante_non_regredisce(
 
 
 @pytest.mark.asyncio
-async def test_save_knowledge_expense_conserva_amount_e_category(tmp_path):
-    """Copertura persa da una pulizia precedente in questa fetta: `add_item`
-    accetta ancora `amount` e `category`, alimentati da save_knowledge per
-    kind='expense'. Nessun test esistente li esercitava piu'."""
-    from hiris.app.tools.knowledge_tools import handle_save_knowledge
+async def test_save_memory_expense_conserva_amount_e_category(tmp_path):
+    """Copertura persa da una pulizia precedente: `add_item` accetta ancora
+    `amount` e `category`, alimentati da save_memory per kind='expense'."""
+    from hiris.app.tools.memory_tools import handle_save_memory
 
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     embedder = NullEmbedder()
 
-    saved = await handle_save_knowledge(
+    saved = await handle_save_memory(
         store, embedder,
         {
             "kind": "expense",
@@ -163,7 +132,7 @@ async def test_save_knowledge_expense_conserva_amount_e_category(tmp_path):
             "amount": 123.45,
             "category": "utenze",
         },
-        owner="home",
+        owner="home", chatbot_id="hiris-default",
     )
     assert "error" not in saved
 

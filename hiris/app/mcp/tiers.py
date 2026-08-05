@@ -58,9 +58,9 @@ TOOLS: list[ToolDef] = [
     # conteggio in tests/test_mcp_server_build.py e le asserzioni di assenza in
     # tests/test_diagnostics_tools.py). In chat e agli agenti locali resta
     # pienamente disponibile — vedi claude_runner.py.
-    ToolDef("recall_knowledge", Tier.READ, "recall_knowledge",
-            "Cerca nella knowledge base HIRIS e negli insight storici settimanali (non sensibili). "
-            "Es: tendenze o variazioni recenti."),
+    ToolDef("recall_memory", Tier.READ, "recall_memory",
+            "Cerca in cio' che HIRIS ricorda (preferenze, fatti, scadenze, spese, appunti) "
+            "e negli insight storici settimanali (non sensibili). Es: tendenze o variazioni recenti."),
     # --- SCHEDULE / PROPOSE ---
     # Il gate di conferma qui NON esiste e non e' un'omissione: api/
     # handlers_execute.py dispaccia create_task direttamente. Il limite reale e'
@@ -119,8 +119,9 @@ TOOLS: list[ToolDef] = [
             "(title + message; per rimuoverla passa notification_id con message vuoto); "
             "'ha_push' = push sul telefono (title + message); 'apprise' = Telegram/WhatsApp/ntfy; "
             "'retropanel' = toast kiosk. Per le notifiche usa SEMPRE questo tool, mai call_service."),
-    ToolDef("save_knowledge", Tier.SCHEDULE, "save_knowledge",
-            "Salva un elemento di conoscenza (in attesa di approvazione umana in HIRIS)."),
+    ToolDef("save_memory", Tier.SCHEDULE, "save_memory",
+            "Salva subito qualcosa da ricordare (preferenza, fatto, scadenza, spesa, appunto): "
+            "nessuna approvazione, nessuna coda."),
     # --- ACTION (confirmation required, gated dal semaforo HIRIS) ---
     ToolDef("call_service", Tier.ACTION, "call_ha_service",
             "Esegue un servizio HA whitelisted su un'entita' whitelisted. Azione gated dal semaforo: "
