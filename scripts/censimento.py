@@ -155,8 +155,16 @@ def censisci_tabelle(files: list[Path]) -> list[Reperto]:
 
 _RE_EXPORT = re.compile(r"^\s*export\s+([A-Z_][A-Z0-9_]*)=", re.M)
 _RE_ENV = re.compile(
-    r"""(?:os\.environ\.get\(|os\.getenv\(|os\.environ\[)\s*["']([A-Z_][A-Z0-9_]*)["']"""
+    r"""(?:os\.environ\.get\(|os\.getenv\(|os\.environ\[|env_bool\()"""
+    r"""\s*["']([A-Z_][A-Z0-9_]*)["']"""
 )
+# `env_bool()` (hiris/app/env_util.py) e' il canale promosso dal refactor SP-2
+# per unificare gli idiomi di lettura booleana: le variabili lette solo cosi'
+# vanno viste allo stesso modo delle lette con os.environ/os.getenv. E' l'unica
+# funzione pubblica del modulo che legge l'ambiente e prende il nome come primo
+# argomento; handlers_models.py la chiama anche con un nome non letterale
+# (`env_bool(env_var)`) — quel caso resta fuori dal perimetro di questa regex,
+# dichiarato fra i limiti (vedi stampa()).
 _RE_CHIAVE_YAML = re.compile(r"^(\s+)([a-z_][a-z0-9_]*):")
 _RE_BASHIO = re.compile(r"""bashio::config\s+['"]([\w.]+)['"]""")
 
@@ -283,15 +291,20 @@ def censisci_rotte(
     corpus_app: list[str] = []
 
     for f in file_app:
-        testo = _leggi(f)
+        # I file Python si spogliano dei commenti: un commento che nomina una
+        # rotta ("la /api/dismessa non si usa piu'") non deve zittire il
+        # rilevatore facendola sembrare ancora citata altrove.
+        testo = _senza_commenti(_leggi(f))
         for m in _RE_ADD.finditer(testo):
             rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
         for m in _RE_ADD_ROUTE.finditer(testo):
             rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
         corpus_app.append(_RE_ADD_ROUTE.sub(" ", _RE_ADD.sub(" ", testo)))
 
+    # Il frontend resta crudo: _senza_commenti usa il tokenizer Python e su
+    # JavaScript non avrebbe senso applicarlo.
     fuori = "\n".join(corpus_app + [_leggi(f) for f in file_frontend])
-    nei_test = "\n".join(_leggi(f) for f in file_test)
+    nei_test = "\n".join(_senza_commenti(_leggi(f)) for f in file_test)
 
     reperti: list[Reperto] = []
     for percorso, dove in sorted(rotte.items()):
@@ -303,9 +316,23 @@ def censisci_rotte(
             continue
         # Il frontend scrive le rotte sia con che senza slash iniziale
         ago_senza_slash = ago.lstrip("/")
-        if ago in fuori or ago_senza_slash in fuori:
+
+        if "{" in percorso:
+            # Parametrica: il frontend la compone a pezzi e il percorso
+            # intero non compare mai. Il prefisso basta, e deve bastare.
+            in_fuori = ago in fuori or ago_senza_slash in fuori
+            in_test = ago in nei_test or ago_senza_slash in nei_test
+        else:
+            # Non parametrica: esigere che il match non prosegua con un
+            # carattere di percorso, o `/api/knowledge` risulterebbe viva
+            # per colpa di `api/knowledge/pending`, che e' una rotta sorella.
+            confine = re.compile(rf"{re.escape(ago_senza_slash)}(?![\w/-])")
+            in_fuori = bool(confine.search(fuori))
+            in_test = bool(confine.search(nei_test))
+
+        if in_fuori:
             continue
-        if ago in nei_test or ago_senza_slash in nei_test:
+        if in_test:
             reperti.append(Reperto("rotta-solo-test", percorso, dove,
                                    "la esercitano solo i test"))
         else:
@@ -342,8 +369,11 @@ def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Repert
     Conta le occorrenze del nome come parola intera. La definizione stessa
     vale una occorrenza: piu' di una significa che qualcuno lo nomina.
     """
-    testi_app = {f: _leggi(f) for f in file_app}
-    testi_test = [_leggi(f) for f in file_test]
+    # I commenti si spogliano prima di contare le occorrenze: un commento che
+    # confessa "non piu' chiamata da qui" nomina il simbolo e zittirebbe il
+    # rilevatore esattamente come farebbe un chiamante vero.
+    testi_app = {f: _senza_commenti(_leggi(f)) for f in file_app}
+    testi_test = [_senza_commenti(_leggi(f)) for f in file_test]
 
     definizioni: dict[str, list[tuple[Path, int]]] = {}
     illeggibili = 0
@@ -442,7 +472,10 @@ def stampa(reperti: list[Reperto]) -> None:
     print("  - le opzioni annidate hanno nomi generici (host, port) e il confronto e' prudente;")
     print("  - le rotte sono indicizzate per percorso, non per metodo: un POST morto su un")
     print("    percorso il cui GET e' vivo non viene visto;")
-    print(f"  - il frontend non viene analizzato: solo le rotte che nomina.{_RESET}")
+    print("  - il frontend non viene analizzato: solo le rotte che nomina;")
+    print("  - le variabili d'ambiente lette con env_bool() si vedono solo se il nome e'")
+    print("    passato come stringa letterale: env_bool(env_var) con un nome indiretto")
+    print(f"    (vedi handlers_models.py) resta invisibile allo strumento.{_RESET}")
 
     print(f"\nTotale reperti: {len(reperti)}")
 

@@ -122,6 +122,19 @@ c = os.environ["HIRIS_ALTRA"]
     assert nomi == {"HIRIS_MORTA", "HIRIS_ALTRA"}
 
 
+def test_envvar_letta_con_env_bool_e_mai_esportata(tmp_path):
+    cfg = _scrivi(tmp_path, "config.yaml", _CONFIG_YAML)
+    run_sh = _scrivi(tmp_path, "run.sh", 'export HIRIS_VIVA="1"\n')
+    app = _scrivi(tmp_path, "app.py", '''
+from .env_util import env_bool
+a = env_bool("HIRIS_VIVA")
+b = env_bool("HIRIS_MORTA", True)
+''')
+    reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
+    nomi = {r.nome for r in reperti if r.categoria == "envvar-mai-esportata"}
+    assert nomi == {"HIRIS_MORTA"}
+
+
 def test_config_mancante_non_esplode(tmp_path):
     assert censimento.censisci_configurazione(
         tmp_path / "assente.yaml", tmp_path / "assente.sh", []
@@ -209,6 +222,33 @@ def test_add_route_con_metodo_esplicito(tmp_path):
     assert [r.nome for r in reperti] == ["/api/vecchia"]
 
 
+def test_rotta_non_parametrica_non_combacia_con_una_rotta_sorella(tmp_path):
+    # /api/knowledge (non parametrica) non deve risultare viva per colpa di
+    # /api/knowledge/pending, che e' una rotta sorella diversa: il match deve
+    # avere un confine, non essere una sottostringa libera.
+    app = _scrivi(tmp_path, "server.py", '''
+app.router.add_post("/api/knowledge", handle_manual_add)
+app.router.add_get("/api/knowledge/pending", handle_list_pending)
+''')
+    fe = _scrivi(tmp_path, "pagina.js", '''
+fetch('api/knowledge/pending');
+fetch('api/knowledge/' + id + '/approve');
+''')
+    reperti = censimento.censisci_rotte([app], [fe], [])
+    nomi = {r.nome for r in reperti}
+    assert "/api/knowledge" in nomi
+    assert "/api/knowledge/pending" not in nomi
+
+
+def test_rotta_nominata_solo_in_un_commento_resta_senza_chiamanti(tmp_path):
+    app = _scrivi(tmp_path, "server.py", '''
+app.router.add_get("/api/dismessa", h)
+# la /api/dismessa non si usa piu', va tolta
+''')
+    reperti = censimento.censisci_rotte([app], [], [])
+    assert [r.nome for r in reperti] == ["/api/dismessa"]
+
+
 def test_funzione_senza_chiamanti(tmp_path):
     app = _scrivi(tmp_path, "modulo.py", '''
 def viva():
@@ -231,6 +271,17 @@ def test_funzione_usata_solo_dai_test(tmp_path):
     t = _scrivi(tmp_path, "test_m.py", "def test_x():\n    assert solo_test() == 1\n")
     reperti = censimento.censisci_simboli([app], [t])
     assert [(r.categoria, r.nome) for r in reperti] == [("simbolo-solo-test", "solo_test")]
+
+
+def test_simbolo_nominato_solo_in_un_commento_resta_orfano(tmp_path):
+    app = _scrivi(tmp_path, "m.py", '''
+def dismessa():
+    pass
+
+# `dismessa` e' tenuta solo come helper testato, non piu' chiamata da qui
+''')
+    reperti = censimento.censisci_simboli([app], [])
+    assert [(r.categoria, r.nome) for r in reperti] == [("simbolo-orfano", "dismessa")]
 
 
 def test_nome_ambiguo_si_salta(tmp_path):
