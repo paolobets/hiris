@@ -205,14 +205,16 @@ async def handle_delete_chatbot(request: web.Request) -> web.Response:
     deleted = engine.delete_chatbot(agent_id)
     if not deleted:
         return web.json_response({"error": "Not found"}, status=404)
-    # Clean up orphaned data: long-term memories (chatbot_id-scoped
-    # KnowledgeStore rows, Slice 3) and persisted chat history.
+    # Dissociate this chatbot's memory rows (Task 3, memoria unica): they are
+    # house knowledge now, not this chatbot's private working memory, so
+    # deleting the chatbot must not delete them -- only clear the now-dangling
+    # chatbot_id reference. See KnowledgeStore.detach_chatbot_id.
     knowledge_store = request.app.get("knowledge_store")
     if knowledge_store is not None:
         try:
-            knowledge_store.delete_by_chatbot(agent_id)
+            knowledge_store.detach_chatbot_id(agent_id)
         except Exception as exc:
-            logger.warning("knowledge_store.delete_by_chatbot(%s) failed: %s", agent_id, exc)
+            logger.warning("knowledge_store.detach_chatbot_id(%s) failed: %s", agent_id, exc)
     data_dir = request.app.get("data_dir")
     if data_dir:
         try:

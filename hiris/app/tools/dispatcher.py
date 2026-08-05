@@ -616,10 +616,13 @@ class ToolDispatcher:
                 recall_kinds = knowledge_kinds
                 if isinstance(recall_kinds, list) and "memory" not in recall_kinds:
                     recall_kinds = recall_kinds + ["memory"]
+                # Niente piu' chatbot_id qui (Task 3, memoria unica):
+                # handle_recall_memory non lo accetta piu' -- il richiamo
+                # copre tutto cio' che questo owner puo' vedere a
+                # prescindere da quale chatbot lo chiede.
                 return await _handle_recall_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
-                    chatbot_id=chatbot_id or "hiris-default",
                     allow_sensitive=knowledge_allow_sensitive,
                     kinds=recall_kinds,
                     pseudonymizer=self._pseudonymizer,

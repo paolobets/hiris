@@ -1,3 +1,22 @@
+"""Task 3 (memoria unica): la memoria e' di HIRIS, non del chatbot.
+
+Prima di questa fetta `chatbot_id` era un secondo asse di ambito: una riga
+scritta parlando con un chatbot restava invisibile parlando con un altro,
+anche se l'owner era lo stesso. Il costo era reale, non teorico -- le tre
+memorie di produzione (chi amministra la casa, come rispondere a "chi c'e'
+in casa", e il fatto che il modulo meteo esterno e' guasto) erano tutte
+legate a chatbot_id='hiris-default': il giorno in cui nasce un secondo
+chatbot, quello non avrebbe saputo del guasto meteo.
+
+La decisione: cio' che dici lo sa HIRIS, non il chatbot con cui parlavi.
+`chatbot_id` resta in tabella (provenienza/lifecycle: quale chatbot ha
+scritto la riga, usato da retention e — prima di questa fetta — dalla pulizia
+alla cancellazione di un chatbot) ma non e' piu' una clausola di ambito.
+
+L'unica eccezione che resta, e che questi test devono provare non degradata:
+un elemento `sensitivity='sensitive'` resta visibile solo al suo owner (o a
+chi ha owner='home' come proprio owner) -- MAI a un owner diverso, a
+prescindere dal chatbot."""
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -8,14 +27,62 @@ def _store(tmp_path):
     return KnowledgeStore(str(tmp_path / "knowledge.db"))
 
 
-def test_chatbot_item_isolated_from_other_agents(tmp_path):
+def test_memory_saved_with_chatbot_a_is_recallable_with_chatbot_b(tmp_path):
+    """La prova che conta (#1): un ricordo salvato parlando con un chatbot e'
+    richiamabile parlando con un altro -- chatbot_id non e' piu' un filtro di
+    ambito."""
     s = _store(tmp_path)
     a = s.add_item(kind="memory", content="pref A", owner="paolo", chatbot_id="agentA",
                     status="approved", embedding=[0.1, 0.2])
-    got_a = s.search(query_vec=[0.1, 0.2], owner="paolo", chatbot_id="agentA", k=5)
-    got_b = s.search(query_vec=[0.1, 0.2], owner="paolo", chatbot_id="agentB", k=5)
+    got_a = s.search(query_vec=[0.1, 0.2], owner="paolo", k=5)
+    got_b = s.search(query_vec=[0.1, 0.2], owner="paolo", k=5)
     assert any(r["id"] == a for r in got_a)
-    assert all(r["id"] != a for r in got_b)
+    assert any(r["id"] == a for r in got_b), (
+        "un ricordo scritto con un chatbot deve restare visibile parlando "
+        "con un altro: la memoria e' di HIRIS, non del chatbot"
+    )
+    s.close()
+
+
+def test_memory_saved_with_chatbot_a_recallable_via_recent_too(tmp_path):
+    """Stessa prova sul percorso degradato (recent()), che condivide i filtri
+    di ambito con search() via _clausole_di_scope."""
+    s = _store(tmp_path)
+    a = s.add_item(kind="memory", content="pref A senza vettore", owner="paolo",
+                    chatbot_id="agentA", status="approved")
+    got = s.recent(k=5, owner="paolo")
+    assert any(r["id"] == a for r in got)
+    s.close()
+
+
+def test_sensitive_item_of_one_owner_not_visible_to_another_owner(tmp_path):
+    """La prova che conta (#2): un elemento sensibile di un owner NON e'
+    visibile a un altro owner. Senza questo test, la fetta degraderebbe una
+    protezione reale -- oggi `owner` serve anche a nascondere le cose agli
+    altri abitanti, e quella protezione non deve muoversi di un millimetro."""
+    s = _store(tmp_path)
+    secret = s.add_item(kind="memory", content="segreto di paolo", owner="paolo",
+                        chatbot_id="agentA", sensitivity="sensitive",
+                        status="approved", embedding=[0.2, 0.2])
+
+    # Stesso owner, chatbot diverso: visibile (con allow_sensitive).
+    got_same_owner = s.search(query_vec=[0.2, 0.2], owner="paolo", k=5,
+                              allow_sensitive=True)
+    assert any(r["id"] == secret for r in got_same_owner)
+
+    # Owner diverso: MAI visibile, a prescindere da allow_sensitive.
+    got_other_owner = s.search(query_vec=[0.2, 0.2], owner="altro", k=5,
+                               allow_sensitive=True)
+    assert all(r["id"] != secret for r in got_other_owner), (
+        "un elemento sensibile di un owner non deve mai comparire a un "
+        "owner diverso, nemmeno con allow_sensitive=True"
+    )
+
+    # Anche senza allow_sensitive, l'owner proprietario non lo perde per
+    # via del filtro di riservatezza (qui verifica solo che il filtro di
+    # sensitivity resti applicato correttamente, non l'ambito chatbot).
+    got_same_owner_default = s.search(query_vec=[0.2, 0.2], owner="paolo", k=5)
+    assert all(r["id"] != secret for r in got_same_owner_default)
     s.close()
 
 
@@ -23,7 +90,7 @@ def test_home_knowledge_visible_regardless_of_chatbot(tmp_path):
     s = _store(tmp_path)
     k = s.add_item(kind="fact", content="solare 6kWp", owner="home", chatbot_id=None,
                     status="approved", embedding=[0.3, 0.3])
-    got = s.search(query_vec=[0.3, 0.3], owner="paolo", chatbot_id="agentA", k=5)
+    got = s.search(query_vec=[0.3, 0.3], owner="paolo", k=5)
     assert any(r["id"] == k for r in got)
     s.close()
 
@@ -32,7 +99,7 @@ def test_owner_scoped_not_visible_to_other_user(tmp_path):
     s = _store(tmp_path)
     k = s.add_item(kind="fact", content="scadenza TARI", owner="paolo", chatbot_id=None,
                     status="approved", embedding=[0.4, 0.4])
-    got = s.search(query_vec=[0.4, 0.4], owner="altro", chatbot_id=None, k=5)
+    got = s.search(query_vec=[0.4, 0.4], owner="altro", k=5)
     assert all(r["id"] != k for r in got)
     s.close()
 
@@ -97,6 +164,8 @@ def test_expired_valid_until_excluded(tmp_path):
 
 
 def test_get_item_includes_chatbot_id(tmp_path):
+    """chatbot_id resta scritto e leggibile: e' provenienza/lifecycle, non
+    ambito -- get_item (che non passa da _clausole_di_scope) non cambia."""
     s = _store(tmp_path)
     a = s.add_item(kind="memory", content="pref A", owner="paolo", chatbot_id="agentA",
                     status="approved", embedding=[0.1, 0.2])
@@ -129,9 +198,9 @@ CREATE TABLE IF NOT EXISTS knowledge_items (
 );
 """
 
-_V2_SCHEMA = _V1_SCHEMA.replace(
+_V4_SCHEMA = _V1_SCHEMA.replace(
     "updated_at   TEXT NOT NULL\n);",
-    "updated_at   TEXT NOT NULL,\n    lens         TEXT\n);",
+    "updated_at   TEXT NOT NULL,\n    chatbot_id   TEXT\n);",
 )
 
 
@@ -155,7 +224,7 @@ def test_migration_v1_to_v3_ends_with_chatbot_id(tmp_path):
     conn.commit()
     conn.close()
 
-    s2 = KnowledgeStore(db)  # reopen triggers v1 -> v2 -> v3 migration chain
+    s2 = KnowledgeStore(db)  # reopen triggers v1 -> v2 -> v3 -> v4 -> v5 chain
     row = s2.get_item(old)
     assert "chatbot_id" in row and row["chatbot_id"] is None
     assert "lens" not in row
@@ -172,6 +241,10 @@ def test_migration_v2_to_v3_renames_lens_to_chatbot_id_preserving_data(tmp_path)
     (the real production shape -- a genuine `lens` column with data), open it
     through KnowledgeStore and assert the rename to `chatbot_id` happened and
     every row's data (including the scoping value) survived intact."""
+    _V2_SCHEMA = _V1_SCHEMA.replace(
+        "updated_at   TEXT NOT NULL\n);",
+        "updated_at   TEXT NOT NULL,\n    lens         TEXT\n);",
+    )
     db = str(tmp_path / "knowledge.db")
     conn = sqlite3.connect(db)
     conn.executescript(_V2_SCHEMA)
@@ -194,7 +267,7 @@ def test_migration_v2_to_v3_renames_lens_to_chatbot_id_preserving_data(tmp_path)
     conn.commit()
     conn.close()
 
-    s = KnowledgeStore(db)  # reopen triggers v2 -> v3 migration (RENAME COLUMN)
+    s = KnowledgeStore(db)  # reopen triggers v2 -> v3 -> v4 -> v5 migration chain
 
     conn2 = sqlite3.connect(db)
     cols = {r[1] for r in conn2.execute("PRAGMA table_info(knowledge_items)").fetchall()}
@@ -202,8 +275,9 @@ def test_migration_v2_to_v3_renames_lens_to_chatbot_id_preserving_data(tmp_path)
     assert "lens" not in cols
     conn2.close()
 
+    # `scoped_id` is kind='memory' -> migration v5 clears chatbot_id (house-wide now).
     scoped = s.get_item(scoped_id)
-    assert scoped["chatbot_id"] == "agentA"
+    assert scoped["chatbot_id"] is None
     assert scoped["content"] == "scoped to agentA"
 
     shared = s.get_item(shared_id)
@@ -214,54 +288,41 @@ def test_migration_v2_to_v3_renames_lens_to_chatbot_id_preserving_data(tmp_path)
 
 
 def test_migration_v2_to_v3_idempotent_when_reopened_twice(tmp_path):
-    """Reopening an already-migrated (v3) DB must not fail or re-run the
+    """Reopening an already-migrated (v5) DB must not fail or re-run the
     RENAME COLUMN (which would raise since `lens` no longer exists)."""
     db = str(tmp_path / "knowledge.db")
     s1 = KnowledgeStore(db)
     s1.add_item(kind="memory", content="x", chatbot_id="agentA")
     s1.close()
 
-    s2 = KnowledgeStore(db)  # second open at already-v3: must be a no-op
+    s2 = KnowledgeStore(db)  # second open at already-v5: must be a no-op
     items = s2.list_items(limit=10)
     assert len(items) == 1
+    # This row was inserted AFTER the v5 migration already ran once (store
+    # was already fresh/latest), so it is not touched by _migrate_v5 -- its
+    # chatbot_id was never cleared, unlike pre-existing production rows.
     assert items[0]["chatbot_id"] == "agentA"
     s2.close()
 
 
-def test_chatbot_memory_not_leaked_across_users_of_same_agent(tmp_path):
-    """Two different HA users chatting with the SAME agent (same chatbot_id)
-    must not see each other's chatbot-scoped memory. Before the owner-scope
-    fix, the search WHERE was `(lens=:lens OR (lens IS NULL AND (owner=...
-    )))` — once `lens` matched, `owner` was ignored entirely, leaking
-    userA's memory to userB. The fix ANDs the owner-scope with the
-    chatbot_id clause."""
-    s = _store(tmp_path)
-    a = s.add_item(kind="memory", content="userA pref 21C", owner="userA",
-                    chatbot_id="agentA", status="approved", embedding=[0.2, 0.2])
-    got_by_a = s.search(query_vec=[0.2, 0.2], owner="userA", chatbot_id="agentA", k=5)
-    got_by_b = s.search(query_vec=[0.2, 0.2], owner="userB", chatbot_id="agentA", k=5)
-    assert any(r["id"] == a for r in got_by_a)
-    assert all(r["id"] != a for r in got_by_b)
-    s.close()
-
-
-def test_home_owned_chatbot_memory_shared_across_users_of_same_agent(tmp_path):
+def test_chatbot_memory_visible_across_users_of_same_agent_when_owner_is_home(tmp_path):
     """A chatbot-scoped item explicitly owned by 'home' is shared across
     users of that agent (owner='home' still matches the
-    (owner=? OR owner='home') clause)."""
+    (owner=? OR owner='home') clause) -- unaffected by removing chatbot_id
+    from scope."""
     s = _store(tmp_path)
     h = s.add_item(kind="memory", content="shared agent note", owner="home",
                     chatbot_id="agentA", status="approved", embedding=[0.25, 0.25])
-    got_by_a = s.search(query_vec=[0.25, 0.25], owner="userA", chatbot_id="agentA", k=5)
-    got_by_b = s.search(query_vec=[0.25, 0.25], owner="userB", chatbot_id="agentA", k=5)
+    got_by_a = s.search(query_vec=[0.25, 0.25], owner="userA", k=5)
+    got_by_b = s.search(query_vec=[0.25, 0.25], owner="userB", k=5)
     assert any(r["id"] == h for r in got_by_a)
     assert any(r["id"] == h for r in got_by_b)
     s.close()
 
 
-def test_backward_compat_chatbot_id_none_equivalent_to_previous_owner_scope(tmp_path):
-    """With chatbot_id=None, the unified WHERE must give identical results
-    to the pre-Slice3 scope filter (owner=? OR owner='home')."""
+def test_backward_compat_owner_scope_unaffected_by_chatbot_id_removal(tmp_path):
+    """With chatbot_id no longer a scope axis, the WHERE must give identical
+    results to the pre-Slice3 scope filter (owner=? OR owner='home')."""
     s = _store(tmp_path)
     mine = s.add_item(kind="fact", content="mio", owner="paolo", status="approved",
                        embedding=[0.9, 0.1])
@@ -274,4 +335,58 @@ def test_backward_compat_chatbot_id_none_equivalent_to_previous_owner_scope(tmp_
     assert mine in ids
     assert home in ids
     assert other not in ids
+    s.close()
+
+
+def test_migration_clears_chatbot_id_on_production_shaped_memory_rows(tmp_path):
+    """La prova che conta (#3): costruisci un db con righe esattamente come
+    le tre reali di produzione (kind='memory', status='approved',
+    chatbot_id='hiris-default'), apri con la classe vera, e verifica che
+    diventino di tutta la casa E restino leggibili."""
+    db = str(tmp_path / "knowledge.db")
+    conn = sqlite3.connect(db)
+    conn.executescript(_V4_SCHEMA)
+    now = "2026-01-01T00:00:00Z"
+    rows = [
+        ("memory", "home", "chi amministra la casa", now, now, "hiris-default"),
+        ("memory", "home", "come rispondere a chi c'e' in casa", now, now, "hiris-default"),
+        ("memory", "home", "il modulo meteo esterno e' guasto", now, now, "hiris-default"),
+    ]
+    ids = []
+    for kind, owner, content, created_at, updated_at, chatbot_id in rows:
+        cur = conn.execute(
+            "INSERT INTO knowledge_items"
+            "(kind, owner, title, content, data, status, created_at, updated_at, chatbot_id)"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
+            (kind, owner, "", content, "{}", "approved", created_at, updated_at, chatbot_id),
+        )
+        ids.append(cur.lastrowid)
+    conn.execute("PRAGMA user_version = 4")
+    conn.commit()
+    conn.close()
+
+    s = KnowledgeStore(db)  # reopen triggers v4 -> v5 migration
+
+    conn2 = sqlite3.connect(db)
+    remaining_chatbot_ids = {
+        r[0] for r in conn2.execute(
+            "SELECT chatbot_id FROM knowledge_items WHERE kind='memory'"
+        ).fetchall()
+    }
+    conn2.close()
+    assert remaining_chatbot_ids == {None}, (
+        "le righe di memoria esistenti devono uscire dalla migrazione senza "
+        "chatbot_id -- diventano subito di tutta la casa"
+    )
+
+    # E restano leggibili/richiamabili da un chatbot diverso da quello che
+    # le aveva scritte in origine.
+    for item_id in ids:
+        row = s.get_item(item_id)
+        assert row is not None
+        assert row["chatbot_id"] is None
+
+    got = s.recent(k=10, owner="chiunque")
+    contents = {r["content"] for r in got}
+    assert "il modulo meteo esterno e' guasto" in contents
     s.close()

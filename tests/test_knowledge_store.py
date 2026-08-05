@@ -19,13 +19,14 @@ def test_init_creates_tables(tmp_path):
 def test_db_nuovo_parte_gia_alla_versione_corrente_senza_migrazioni(tmp_path):
     """Caso 1 (brief Task 8): un database nuovo non ha tabelle prima
     dell'init, quindi `init_schema` deve stampare direttamente la versione
-    piu' recente (4) senza far girare `_migrate_v4` -- non c'e' nulla da
-    droppare perche' `knowledge_links` non e' mai nata."""
+    piu' recente (5, Task 3 memoria unica ha aggiunto `_migrate_v5`) senza
+    far girare `_migrate_v4` -- non c'e' nulla da droppare perche'
+    `knowledge_links` non e' mai nata."""
     db_path = tmp_path / "fresh.db"
     store = KnowledgeStore(str(db_path))
     conn = sqlite3.connect(str(db_path))
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 4
+    assert version == 5
     names = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}
@@ -77,11 +78,12 @@ def test_db_esistente_alla_v3_perde_knowledge_links_alla_riapertura(tmp_path):
     conn.commit()
     conn.close()
 
-    # Riapertura tramite la classe reale: e' qui che deve girare la migrazione.
+    # Riapertura tramite la classe reale: e' qui che devono girare le
+    # migrazioni v3->v4->v5 in sequenza.
     store = KnowledgeStore(str(db_path))
     conn = sqlite3.connect(str(db_path))
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 4
+    assert version == 5
     names = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}

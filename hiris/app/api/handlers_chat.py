@@ -266,8 +266,10 @@ async def handle_chat(request: web.Request) -> web.Response:
         )
         context_str = ctx_str.strip() if ctx_str else ""
 
-    # RAG memory injection -- unified KnowledgeStore, chatbot_id-scoped to
-    # this agent (Slice 3 Task 4: this used to read the legacy MemoryStore, which
+    # RAG memory injection -- unified KnowledgeStore, owner-scoped (Task 3,
+    # memoria unica: chatbot_id no longer restricts visibility -- what you
+    # tell HIRIS, HIRIS knows, not the chatbot you happened to be talking
+    # to). Slice 3 Task 4: this used to read the legacy MemoryStore, which
     # save_memory stopped writing to back in Task 2; repointed here so the
     # feature keeps working against the store that is actually written).
     knowledge_store = request.app.get("knowledge_store")
@@ -313,7 +315,6 @@ async def handle_chat(request: web.Request) -> web.Response:
                     query_vec=query_vec,
                     k=rag_k,
                     owner=owner,
-                    chatbot_id=effective_chatbot_id,
                     kinds=["memory"],
                 ),
             )

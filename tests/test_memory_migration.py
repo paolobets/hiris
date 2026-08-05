@@ -92,7 +92,7 @@ def test_migration_decodes_real_embedding_and_tags(tmp_path):
     assert n == 1
 
     # recallable via vector search using the decoded embedding
-    got = store.search(query_vec=vec, owner="home", chatbot_id="agentC", k=5)
+    got = store.search(query_vec=vec, owner="home", k=5)
     assert any("with vector" in (r.get("content") or "") for r in got)
 
     # tags preserved into `data`

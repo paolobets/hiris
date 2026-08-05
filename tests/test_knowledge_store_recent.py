@@ -60,14 +60,18 @@ def test_recent_filters_kinds_and_treats_empty_list_as_deny_all(tmp_path):
     s.close()
 
 
-def test_recent_scopes_by_owner_and_chatbot(tmp_path):
+def test_recent_scopes_by_owner_only_chatbot_id_does_not_hide_rows(tmp_path):
+    """Task 3 (memoria unica): chatbot_id non e' piu' un asse di ambito. Una
+    riga scritta con un chatbot_id resta visibile esattamente come una senza,
+    purche' l'owner corrisponda (o sia 'home') -- prima di questa fetta
+    "del bot" sarebbe stata invisibile qui."""
     s = _store(tmp_path)
     _add(s, "di casa", owner="home")
     _add(s, "di paolo", owner="paolo")
     _add(s, "del bot", owner="home", chatbot_id="bot-1")
+    _add(s, "di paolo col bot", owner="paolo", chatbot_id="bot-2")
     got = set(r["content"] for r in s.recent(k=9, owner="paolo"))
-    assert "di paolo" in got and "di casa" in got
-    assert "del bot" not in got
+    assert got == {"di paolo", "di casa", "del bot", "di paolo col bot"}
     s.close()
 
 

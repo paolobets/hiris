@@ -89,7 +89,6 @@ async def relevant_memory(
             query_vec=emb,
             k=limit,
             owner=owner,
-            chatbot_id=None,
             allow_sensitive=allow_sensitive,
             kinds=list(kinds),
         )

@@ -25,7 +25,13 @@ class _Emb:
         return 3
 
 
-async def test_save_memory_writes_chatbot_item_and_recall_finds_it(tmp_path):
+async def test_save_memory_writes_chatbot_item_and_recall_finds_it_from_another_chatbot(tmp_path):
+    """Task 3 (memoria unica): cio' che dici lo sa HIRIS, non il chatbot con
+    cui parlavi. Un ricordo salvato parlando con agentA e' richiamabile
+    parlando con agentB, a parita' di owner -- il costo osservato in
+    produzione (le tre memorie reali, tutte legate a
+    chatbot_id='hiris-default', invisibili a un secondo chatbot) e' esattamente
+    quello che questa fetta chiude."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
                           knowledge_store=store, embedder=_Emb())
@@ -35,10 +41,10 @@ async def test_save_memory_writes_chatbot_item_and_recall_finds_it(tmp_path):
                               chatbot_id="agentA", user_id="paolo")
     # the recalled result mentions the stored memory
     assert "21" in str(res)
-    # a different agent does NOT see agentA's chatbot-scoped memory
+    # a DIFFERENT agent still sees it: chatbot_id no longer scopes visibility
     res_b = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
                                 chatbot_id="agentB", user_id="paolo")
-    assert "21" not in str(res_b)
+    assert "21" in str(res_b)
     store.close()
 
 

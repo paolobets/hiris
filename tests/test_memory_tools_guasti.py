@@ -65,7 +65,7 @@ async def test_save_memory_con_embedder_rotto_salva_comunque_senza_vettore(tmp_p
     # La riga e' davvero nel db, recuperabile via store.recent() -- save_memory
     # scrive sempre status='approved', quindi (a differenza di save_knowledge)
     # e' il percorso di lettura corretto.
-    trovati = store.recent(owner="paolo", chatbot_id="agentA", kinds=["memory"])
+    trovati = store.recent(owner="paolo", kinds=["memory"])
     assert [m["content"] for m in trovati] == ["preferisco 21 gradi"]
     assert trovati[0]["id"] == res["id"]
     item = store.get_item(res["id"])
@@ -85,7 +85,7 @@ async def test_save_memory_con_vettore_vuoto_salva_comunque_senza_vettore(tmp_pa
 
     assert res.get("saved") is True
     assert "error" not in res
-    trovati = store.recent(owner="paolo", chatbot_id="agentA", kinds=["memory"])
+    trovati = store.recent(owner="paolo", kinds=["memory"])
     assert [m["content"] for m in trovati] == ["preferisco 21 gradi"]
     item = store.get_item(res["id"])
     assert item["has_embedding"] is False
@@ -125,7 +125,7 @@ async def test_save_memory_riuscito_e_davvero_richiamabile(tmp_path):
 
     ricordato = await handle_recall_memory(
         store, embedder, {"query": "temperatura"},
-        owner="paolo", chatbot_id="agentA",
+        owner="paolo",
     )
     assert [m["content"] for m in ricordato["results"]] == ["preferisco 21 gradi"]
     store.close()
@@ -160,7 +160,7 @@ async def test_recall_memory_con_embedder_rotto_degrada_ai_piu_recenti(tmp_path)
 
     res = await handle_recall_memory(
         store, _Embedder(esplode=True), {"query": "temperatura"},
-        owner="paolo", chatbot_id="agentA",
+        owner="paolo",
     )
 
     assert "error" not in res
@@ -183,7 +183,7 @@ async def test_recall_memory_con_vettore_vuoto_degrada_ai_piu_recenti(tmp_path):
 
     res = await handle_recall_memory(
         store, _Embedder(vettore=[]), {"query": "temperatura"},
-        owner="paolo", chatbot_id="agentA",
+        owner="paolo",
     )
     assert "error" not in res
     assert [m["content"] for m in res["results"]] == ["preferisco 21 gradi"]
@@ -201,7 +201,7 @@ async def test_recall_memory_con_embedder_funzionante_non_degrada(tmp_path):
 
     res = await handle_recall_memory(
         store, _Embedder(), {"query": "temperatura"},
-        owner="paolo", chatbot_id="agentA",
+        owner="paolo",
     )
     assert "error" not in res
     assert [m["content"] for m in res["results"]] == ["preferisco 21 gradi"]
@@ -216,23 +216,47 @@ async def test_recall_memory_degradato_applica_gli_stessi_filtri_di_riservatezza
     """Task 6 punto 4: il richiamo degradato non deve perdere il filtro di
     riservatezza. Una riga sensibile non deve comparire a chi non puo'
     vederla -- una degradazione che perde un filtro e' una falla, non una
-    degradazione. (recall_memory chiama sempre con allow_sensitive di default,
-    quindi qui verifichiamo lo scoping owner/chatbot_id, l'altro asse che
-    recall_memory applica.)"""
+    degradazione. (recall_memory chiama sempre con allow_sensitive di
+    default, quindi qui verifichiamo lo scoping owner/sensitivity, gli assi
+    che recall_memory applica davvero -- chatbot_id non ne fa piu' parte
+    dalla Task 3, memoria unica: vedi
+    test_recall_memory_two_chatbots_stesso_owner_vede_entrambi sotto.)"""
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
-    store.add_item(kind="memory", content="segreto di agentB", owner="paolo",
+    store.add_item(kind="memory", content="segreto di altro", owner="altro",
+                   status="approved", embedding=[0.1, 0.2, 0.3])
+    store.add_item(kind="memory", content="nota di paolo", owner="paolo",
+                   status="approved", embedding=[0.1, 0.2, 0.3])
+
+    res = await handle_recall_memory(
+        store, _Embedder(vettore=[]), {"query": "qualunque cosa"},
+        owner="paolo",
+    )
+    assert res.get("degraded") is True
+    contents = [m["content"] for m in res["results"]]
+    assert "segreto di altro" not in contents
+    assert contents == ["nota di paolo"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_recall_memory_two_chatbots_stesso_owner_vede_entrambi(tmp_path):
+    """Task 3 (memoria unica): un ricordo scritto parlando con un chatbot e'
+    richiamabile parlando con un altro, a parita' di owner -- chatbot_id non
+    e' piu' un asse di ambito. Prova diretta sul percorso reale
+    (handle_recall_memory), non solo su KnowledgeStore."""
+    store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    store.add_item(kind="memory", content="nota scritta con agentB", owner="paolo",
                    chatbot_id="agentB", status="approved", embedding=[0.1, 0.2, 0.3])
-    store.add_item(kind="memory", content="nota di agentA", owner="paolo",
+    store.add_item(kind="memory", content="nota scritta con agentA", owner="paolo",
                    chatbot_id="agentA", status="approved", embedding=[0.1, 0.2, 0.3])
 
     res = await handle_recall_memory(
         store, _Embedder(vettore=[]), {"query": "qualunque cosa"},
-        owner="paolo", chatbot_id="agentA",
+        owner="paolo",
     )
-    assert res.get("degraded") is True
-    contents = [m["content"] for m in res["results"]]
-    assert "segreto di agentB" not in contents
-    assert contents == ["nota di agentA"]
+    contents = {m["content"] for m in res["results"]}
+    assert "nota scritta con agentB" in contents
+    assert "nota scritta con agentA" in contents
     store.close()
 
 
@@ -243,7 +267,7 @@ async def test_recall_memory_vuoto_legittimo_non_e_un_errore(tmp_path):
     store = KnowledgeStore(str(tmp_path / "memoria.db"))
     res = await handle_recall_memory(
         store, _Embedder(), {"query": "qualunque cosa"},
-        owner="paolo", chatbot_id="agentA",
+        owner="paolo",
     )
     assert "error" not in res
     assert res["results"] == []
@@ -308,7 +332,7 @@ async def test_save_memory_kind_sconosciuto_e_rifiutato_in_italiano(tmp_path):
     # non deve essere finito nello store sotto mentite spoglie -- nessun
     # filtro di kind, per essere sicuri che non sia stato scritto affatto
     # (ne' come 'insight' ne' sotto un kind valido)
-    trovati = store.recent(owner="paolo", chatbot_id="agentA")
+    trovati = store.recent(owner="paolo")
     assert trovati == []
     store.close()
 

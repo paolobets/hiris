@@ -158,12 +158,21 @@ async def handle_save_memory(
     approvazione. E' un cambio di comportamento per cio' che prima passava da
     save_knowledge (nasceva 'pending'); save_memory scriveva gia' cosi'.
 
-    Ambito e scadenza (deliberatamente NON toccati in questa fetta -- sono le
-    task 3/4): un ricordo kind='memory' resta legato a QUESTO chatbot_id e
-    guadagna una scadenza da `retention_days`, esattamente come faceva il
-    vecchio save_memory; ogni altro kind resta condiviso con tutta la casa
-    (chatbot_id=None) e senza scadenza, esattamente come faceva il vecchio
-    save_knowledge. La sola differenza e' che ora e' lo stesso strumento a
+    Scadenza (deliberatamente NON toccata in questa fetta -- e' la task 4):
+    un ricordo kind='memory' guadagna una scadenza da `retention_days`,
+    esattamente come faceva il vecchio save_memory; ogni altro kind resta
+    senza scadenza, esattamente come faceva il vecchio save_knowledge.
+
+    Ambito: chi ha scritto la riga si registra ancora (`chatbot_id` per un
+    kind='memory', provenienza/lifecycle -- letta da retention e dalla
+    pulizia alla cancellazione di un chatbot, vedi
+    `KnowledgeStore.detach_chatbot_id`), ma dalla Task 3 (memoria unica)
+    NON delimita piu' chi puo' vedere la riga: `_clausole_di_scope` non la
+    legge. Cio' che dici lo sa HIRIS, non il chatbot con cui parlavi -- un
+    ricordo kind='memory' e' visibile a chiunque condivida l'owner della
+    riga, parlando con qualunque chatbot, esattamente come lo era gia'
+    ogni altro kind. La sola differenza fra i due rami sotto e' ora la
+    scadenza, non piu' anche la visibilita': e' lo stesso strumento a
     decidere quale dei due, guardando `kind` invece del nome del tool
     chiamato.
 
@@ -193,14 +202,17 @@ async def handle_save_memory(
         embedding = None
 
     if kind == "memory":
-        scope_chatbot_id: str | None = chatbot_id
+        # Provenienza/lifecycle, non ambito (Task 3): letta da retention e
+        # dalla pulizia alla cancellazione di un chatbot, non da
+        # _clausole_di_scope -- vedi KnowledgeStore.detach_chatbot_id.
+        provenance_chatbot_id: str | None = chatbot_id
         valid_until: str | None = None
         if retention_days and retention_days > 0:
             valid_until = (
                 datetime.now(timezone.utc) + timedelta(days=retention_days)
             ).strftime(_TS_FMT)
     else:
-        scope_chatbot_id = None
+        provenance_chatbot_id = None
         valid_until = None
 
     loop = asyncio.get_running_loop()
@@ -211,7 +223,7 @@ async def handle_save_memory(
                 kind=kind,
                 content=content,
                 owner=owner,
-                chatbot_id=scope_chatbot_id,
+                chatbot_id=provenance_chatbot_id,
                 title=tool_input.get("title", ""),
                 data={"tags": tags},
                 amount=tool_input.get("amount"),
@@ -238,7 +250,6 @@ async def handle_recall_memory(
     tool_input: dict,
     *,
     owner: str,
-    chatbot_id: str | None = None,
     allow_sensitive: bool = False,
     kinds: list[str] | str | None = None,
     pseudonymizer: Any = None,
@@ -249,7 +260,7 @@ async def handle_recall_memory(
     recall_memory (forzava kinds=['memory']) E il vecchio recall_knowledge
     (kinds libero, chunk documentali, pseudonimizzazione cloud). Qui non c'e'
     piu' un kind forzato -- di default (kinds=None) la ricerca copre tutto
-    cio' che questo owner/chatbot puo' vedere, memory compresa: e' il punto
+    cio' che questo owner puo' vedere, memory compresa: e' il punto
     dell'unificazione, non un effetto collaterale.
 
     Il vecchio recall_memory forzava kinds=['memory'] per proteggere il
@@ -259,7 +270,13 @@ async def handle_recall_memory(
     Con un solo strumento quel meccanismo non serve piu' come automatismo
     incorporato nel nome del tool -- il chiamante (dispatcher, dal config
     knowledge_access.kinds dell'agente) puo' ancora restringere passando
-    `kinds` esplicitamente, e la restrizione resta rispettata."""
+    `kinds` esplicitamente, e la restrizione resta rispettata.
+
+    Niente piu' `chatbot_id` (Task 3, memoria unica): non c'e' piu' nulla da
+    passare a `KnowledgeStore.search`, che non lo legge -- cio' che dici lo
+    sa HIRIS, non il chatbot con cui parlavi, quindi il richiamo copre tutto
+    cio' che questo owner puo' vedere a prescindere da quale chatbot lo
+    chiede."""
     k = min(max(1, int(tool_input.get("k", 5))), 20)
     tags = tool_input.get("tags") or None
     # Senza vettore di ricerca non si e' potuto confrontare i significati.
@@ -284,7 +301,7 @@ async def handle_recall_memory(
         # starve the result set below k.
         search_k = k * 4 if tags else k
         items = store.search(
-            query_vec=qv or [], k=search_k, owner=owner, chatbot_id=chatbot_id,
+            query_vec=qv or [], k=search_k, owner=owner,
             allow_sensitive=allow_sensitive, kinds=kinds,
         )
         if tags:
