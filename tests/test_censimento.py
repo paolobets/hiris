@@ -178,3 +178,32 @@ def test_envvar_letta_solo_in_un_commento_non_conta(tmp_path):
     app = _scrivi(tmp_path, "app.py", '# os.environ.get("HIRIS_COMMENTATA")\n')
     reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
     assert [r.nome for r in reperti if r.categoria == "envvar-mai-esportata"] == []
+
+
+def test_rotta_senza_chiamanti(tmp_path):
+    app = _scrivi(tmp_path, "server.py", '''
+app.router.add_get("/api/viva", h1)
+app.router.add_post("/api/morta", h2)
+''')
+    fe = _scrivi(tmp_path, "pagina.js", 'fetch("api/viva")')
+    reperti = censimento.censisci_rotte([app], [fe], [])
+    assert [r.nome for r in reperti] == ["/api/morta"]
+
+
+def test_rotta_chiamata_dai_soli_test_e_un_reperto(tmp_path):
+    app = _scrivi(tmp_path, "server.py", 'app.router.add_get("/api/solo-test", h)')
+    t = _scrivi(tmp_path, "test_x.py", 'await client.get("/api/solo-test")')
+    reperti = censimento.censisci_rotte([app], [], [t])
+    assert [r.categoria for r in reperti] == ["rotta-solo-test"]
+
+
+def test_rotta_parametrica_si_cerca_per_prefisso(tmp_path):
+    app = _scrivi(tmp_path, "server.py", 'app.router.add_get("/api/item/{id}", h)')
+    fe = _scrivi(tmp_path, "pagina.js", 'fetch(`api/item/${x}`)')
+    assert censimento.censisci_rotte([app], [fe], []) == []
+
+
+def test_add_route_con_metodo_esplicito(tmp_path):
+    app = _scrivi(tmp_path, "server.py", 'app.router.add_route("GET", "/api/vecchia", h)')
+    reperti = censimento.censisci_rotte([app], [], [])
+    assert [r.nome for r in reperti] == ["/api/vecchia"]

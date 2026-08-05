@@ -47,6 +47,8 @@ _TITOLI: dict[str, str] = {
     "tabella-letta-mai-scritta": "Tabelle lette e mai scritte",
     "opzione-mai-letta":         "Opzioni dell'add-on che nessun codice legge",
     "envvar-mai-esportata":      "Variabili d'ambiente lette e mai esportate da run.sh",
+    "rotta-senza-chiamanti":     "Rotte HTTP che nessuno chiama",
+    "rotta-solo-test":           "Rotte HTTP chiamate solo dai test",
 }
 
 
@@ -245,6 +247,68 @@ def censisci_configurazione(
     return reperti
 
 
+# ── Rotte HTTP ──────────────────────────────────────────────────────────────
+
+_RE_ADD = re.compile(
+    r"""add_(get|post|put|delete|patch|head)\(\s*["']([^"']+)["']"""
+)
+_RE_ADD_ROUTE = re.compile(
+    r"""add_route\(\s*["'](\w+)["']\s*,\s*["']([^"']+)["']"""
+)
+
+
+def _file_frontend() -> list[Path]:
+    base = APP / "static"
+    if not base.exists():
+        return []
+    return sorted(
+        p for p in base.rglob("*")
+        if p.suffix in {".js", ".html", ".css"} and "node_modules" not in p.parts
+    )
+
+
+def censisci_rotte(
+    file_app: list[Path], file_frontend: list[Path], file_test: list[Path]
+) -> list[Reperto]:
+    """Rotte registrate confrontate con chi le nomina altrove.
+
+    Il corpus di ricerca esclude le registrazioni stesse: altrimenti ogni
+    rotta risulterebbe citata almeno una volta, da se'.
+    """
+    rotte: dict[str, str] = {}
+    corpus_app: list[str] = []
+
+    for f in file_app:
+        testo = _leggi(f)
+        for m in _RE_ADD.finditer(testo):
+            rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
+        for m in _RE_ADD_ROUTE.finditer(testo):
+            rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
+        corpus_app.append(_RE_ADD_ROUTE.sub(" ", _RE_ADD.sub(" ", testo)))
+
+    fuori = "\n".join(corpus_app + [_leggi(f) for f in file_frontend])
+    nei_test = "\n".join(_leggi(f) for f in file_test)
+
+    reperti: list[Reperto] = []
+    for percorso, dove in sorted(rotte.items()):
+        # Una rotta parametrica si cerca per il pezzo che precede il primo
+        # segnaposto: il frontend la compone a pezzi e il percorso completo
+        # non compare mai per intero.
+        ago = percorso.split("{")[0].rstrip("/")
+        if not ago or ago in {"/api", "/"}:
+            continue
+        # Il frontend scrive le rotte sia con che senza slash iniziale
+        ago_senza_slash = ago.lstrip("/")
+        if ago in fuori or ago_senza_slash in fuori:
+            continue
+        if ago in nei_test or ago_senza_slash in nei_test:
+            reperti.append(Reperto("rotta-solo-test", percorso, dove,
+                                   "la esercitano solo i test"))
+        else:
+            reperti.append(Reperto("rotta-senza-chiamanti", percorso, dove))
+    return reperti
+
+
 # ── Report ──────────────────────────────────────────────────────────────────
 
 def stampa(reperti: list[Reperto]) -> None:
@@ -271,6 +335,7 @@ def run() -> int:
     reperti += censisci_configurazione(
         ROOT / "hiris" / "config.yaml", ROOT / "hiris" / "run.sh", file_app
     )
+    reperti += censisci_rotte(file_app, _file_frontend(), _file_py(TESTS))
     stampa(reperti)
     return 0
 
