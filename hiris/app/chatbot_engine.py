@@ -15,6 +15,7 @@ from .proxy.ha_client import HAClient
 from .proxy._sanitize import sanitize_ha_value as _sanitize_ha_value
 from .claude_runner import RunnerBackendError
 from .config import EUR_RATE
+from .tools.memory_tools import normalize_tool_names
 
 # Timeout complessivo per un singolo run di chatbot. Evita che un modello locale
 # lento (Ollama) blocchi APScheduler per ore. Configurabile via env.
@@ -189,7 +190,13 @@ class ChatbotEngine:
                     id=raw["id"],
                     name=raw["name"],
                     system_prompt=raw.get("system_prompt", ""),
-                    allowed_tools=raw.get("allowed_tools", []),
+                    # Fix 4 (whole-branch review, final fix wave): a Chatbot persisted
+                    # before the memoria-unica merge may still name the
+                    # retired recall_knowledge/save_knowledge tools here --
+                    # normalize_tool_names maps them to the current
+                    # recall_memory/save_memory (and de-duplicates, in case
+                    # both the old and new name were ever saved together).
+                    allowed_tools=normalize_tool_names(raw.get("allowed_tools", [])),
                     enabled=raw.get("enabled", True),
                     is_default=raw.get("is_default", False),
                     last_run=raw.get("last_run"),

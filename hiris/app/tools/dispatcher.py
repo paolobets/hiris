@@ -118,6 +118,36 @@ def _check_entity_allowed(
     return None
 
 
+def union_memory_kind(knowledge_kinds: list[str] | str | None) -> list[str] | str | None:
+    """`knowledge_access.kinds` (an agent's egress on the five *knowledge*
+    kinds -- fact/preference/obligation/expense/note) union'd with 'memory',
+    which is never a value that vocabulary contains (chatbot-editor.js
+    serializes "all" or a subset of KNOWLEDGE_KINDS, and 'memory' is not in
+    it). Without this union an agent restricted to e.g. kinds=['fact'] (or
+    kinds=[], "no second-brain access", a value the UI permits) could still
+    save_memory successfully but never recall its own memory back, or never
+    see it in the chat declared block -- saved and unrecoverable.
+
+    SINGLE definition (whole-branch review, final fix wave, Fix 2/Fix 6):
+    dispatch()'s `recall_memory` branch below and `api/handlers_chat.py`'s
+    declared-block call both need exactly this union and must not drift
+    apart, so both import this function instead of each keeping their own
+    copy of the rule.
+
+    Handles the plain-string shape too (`knowledge_access.kinds: "fact"`, a
+    form `KnowledgeStore` itself normalises) -- a hand-edited single-kind
+    string used to bypass this union entirely (Fix 6) because only the
+    `list` shape was tested for. `None` (= "tutto") and the literal
+    'memory' pass through unchanged."""
+    if isinstance(knowledge_kinds, list):
+        if "memory" not in knowledge_kinds:
+            return knowledge_kinds + ["memory"]
+        return knowledge_kinds
+    if isinstance(knowledge_kinds, str) and knowledge_kinds != "memory":
+        return [knowledge_kinds, "memory"]
+    return knowledge_kinds
+
+
 # I messaggi e la regola dei tre casi vivono accanto alla bandiera che li
 # governa (proxy/entity_cache.py), perche' li condividono anche ha_tools,
 # brain/briefing e api/handlers_entities: il difetto era sopravvissuto nei
@@ -246,6 +276,7 @@ class ToolDispatcher:
         tier_confirmed: bool = False,
         user_id: str | None = None,
         pseudonym_map: dict[str, str] | None = None,
+        from_remote_gateway: bool = False,
     ) -> Any:
         _REDACT_KEYS = frozenset({"api_key", "token", "password", "secret", "authorization", "code"})
         _log_inputs = {k: "***" if k.lower() in _REDACT_KEYS else v for k, v in inputs.items()}
@@ -594,26 +625,13 @@ class ToolDispatcher:
                     return {"error": ("La memoria non è disponibile: non posso "
                                       "cercare nei ricordi di casa in questo "
                                       "momento.")}
-                # Review Important (chiuso in questo task): `knowledge_kinds` e'
-                # l'egress dell'agente sui cinque kind di *conoscenza*
-                # (fact/preference/obligation/expense/note) -- 'memory' non e'
-                # un valore che la UI possa mai produrre (chatbot-editor.js
-                # serializza "all" o un sottoinsieme di KNOWLEDGE_KINDS, che non
-                # contiene 'memory'). Inoltrarlo cosi' com'era voleva dire: un
-                # agente ristretto a es. kinds=['fact'] (o kinds=[], "nessun
-                # accesso al second brain", valore che la UI permette) poteva
-                # ancora save_memory con successo ma non si sarebbe MAI
-                # ritrovato il proprio ricordo via recall_memory -- salvato e
-                # mai piu' richiamabile, la classe di difetto che questa fetta
-                # esiste per eliminare. 'memory' non e' mai stato nel
-                # vocabolario che knowledge_access.kinds governa, quindi va
-                # unito qui: ripristina esattamente la capacita' netta
-                # pre-merge (un agente vede sempre la propria memoria di
-                # lavoro) senza allargare cio' che il setting controlla.
-                # `None` (= "tutto") resta intoccato.
-                recall_kinds = knowledge_kinds
-                if isinstance(recall_kinds, list) and "memory" not in recall_kinds:
-                    recall_kinds = recall_kinds + ["memory"]
+                # Review Important (chiuso in questo task, esteso da Fix 6 della
+                # review wave successiva alla forma stringa): `knowledge_kinds`
+                # e' l'egress dell'agente sui cinque kind di *conoscenza* --
+                # unito con 'memory' da `union_memory_kind` (vedi la sua
+                # docstring per il perche', condivisa con
+                # `api/handlers_chat.py`). `None` (= "tutto") resta intoccato.
+                recall_kinds = union_memory_kind(knowledge_kinds)
                 # Niente piu' chatbot_id qui (Task 3, memoria unica):
                 # handle_recall_memory non lo accetta piu' -- il richiamo
                 # copre tutto cio' che questo owner puo' vedere a
@@ -636,10 +654,30 @@ class ToolDispatcher:
                     return {"error": ("La memoria non è disponibile: non posso "
                                       "salvare questo ricordo perché non "
                                       "potrei più ritrovarlo.")}
+                # Fix 1 (CRITICAL, whole-branch review, final fix wave): la provenienza
+                # scritta su `source` decide se la riga entra nel blocco
+                # "dichiarato da una persona" (KnowledgeStore.declared() /
+                # DECLARED_SOURCES) su chat e sui due prompt proattivi.
+                # `from_remote_gateway` arriva SOLO da handlers_execute.py, che
+                # lo imposta a True quando la richiesta NON porta il marcatore
+                # di chat locale (`_is_local_chat`, un segreto di processo che
+                # solo LocalExecuteClient conosce -- non falsificabile dal
+                # corpo della richiesta, a differenza di `origin`). Una sessione
+                # Claude remota pilotata da prompt injection (stati HA letti
+                # attraverso lo stesso gateway) puo' chiamare save_memory una
+                # volta sola e ottenere una riga permanente, house-wide,
+                # SENZA che nessuna persona l'abbia mai detta: quella riga deve
+                # restare richiamabile (recall_memory) ma MAI auto-iniettata
+                # come dichiarazione di casa. `source="gateway"` non e' in
+                # DECLARED_SOURCES (knowledge_store.py) per costruzione -- ogni
+                # altro chiamante (chat locale, chat-via-abbonamento via MCP
+                # interno su loopback) lascia `from_remote_gateway` al default
+                # False e continua a scrivere `source="chat"`, invariato.
                 return await _handle_save_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
                     chatbot_id=chatbot_id or "hiris-default",
+                    source="gateway" if from_remote_gateway else "chat",
                 )
             if name == "get_ha_health":
                 return get_ha_health(self._health_monitor, inputs.get("sections") or ["all"])
