@@ -1500,8 +1500,6 @@ async def _on_startup(app: web.Application) -> None:
     mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
     mem_model = os.environ.get("MEMORY_EMBEDDING_MODEL", "")
     memory_rag_k = int(os.environ.get("MEMORY_RAG_K", "5"))
-    _mem_ret_raw = os.environ.get("MEMORY_RETENTION_DAYS", "90")
-    memory_retention_days: int | None = None if _mem_ret_raw == "0" else int(_mem_ret_raw)
 
     embedder = build_embedding_provider(
         provider=mem_provider,
@@ -1565,7 +1563,10 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=120,
     )
 
-    # Daily retention job (chat messages + expired memories)
+    # Daily retention job (chat messages only -- knowledge/memory items no
+    # longer expire, Task 6 "la memoria non evapora": handle_save_memory
+    # stopped computing a valid_until, so purge_expired_chatbot had no more
+    # work fed to it and was removed).
     from .chat_store import delete_old_messages as _delete_old_messages
 
     def _run_retention() -> None:
@@ -1574,9 +1575,6 @@ async def _on_startup(app: web.Application) -> None:
             n = _delete_old_messages(data_dir, HISTORY_RETENTION_DAYS)
             if n:
                 logger.info("Retention: deleted %d old chat messages", n)
-        n2 = knowledge_store.purge_expired_chatbot()
-        if n2:
-            logger.info("Retention: purged %d expired chatbot memories", n2)
 
     engine._scheduler.add_job(
         _run_retention,
@@ -1720,7 +1718,6 @@ async def _on_startup(app: web.Application) -> None:
         entity_cache=entity_cache,
         semantic_map=semantic_map,
         embedding_provider=embedder,
-        memory_retention_days=memory_retention_days,
         health_monitor=health_monitor,
         advisory_store=advisory_store,
         proposal_store=proposal_store,

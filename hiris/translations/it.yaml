@@ -74,9 +74,6 @@ configuration:
     rag_k:
       name: "Risultati RAG (k)"
       description: "Numero di memorie rilevanti restituite durante la ricerca semantica. Valori più alti danno più contesto ma aumentano l'uso di token."
-    retention_days:
-      name: "Conservazione Memoria (giorni)"
-      description: "Quanti giorni conservare le memorie prima della cancellazione automatica. Predefinito: 90 giorni."
   internal_token:
     name: "Token Interno"
     description: "Token segreto usato per proteggere le chiamate API interne tra i componenti di HIRIS. Lascia vuoto per generarlo automaticamente."

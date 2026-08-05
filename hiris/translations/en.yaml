@@ -74,9 +74,6 @@ configuration:
     rag_k:
       name: "RAG Results (k)"
       description: "Number of relevant memories returned during semantic search. Higher values give more context but increase token usage."
-    retention_days:
-      name: "Memory Retention (days)"
-      description: "How many days to keep memories before automatic deletion. Default is 90 days."
   internal_token:
     name: "Internal Token"
     description: "Secret token used to secure internal API calls between HIRIS components. Leave empty to auto-generate."

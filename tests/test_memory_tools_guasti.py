@@ -337,13 +337,22 @@ async def test_save_memory_kind_sconosciuto_e_rifiutato_in_italiano(tmp_path):
     store.close()
 
 
-def test_descrizione_save_memory_non_promette_persistenza_illimitata():
-    """La descrizione diceva "I ricordi persistono tra le conversazioni", ma
-    esiste una scadenza configurabile (MEMORY_RETENTION_DAYS, 90 giorni per
-    impostazione predefinita) che scrive `valid_until` e fa cancellare il
-    ricordo da `purge_expired_chatbot`. La promessa va detta per intero."""
+def test_descrizione_save_memory_non_promette_una_scadenza_che_non_esiste_piu():
+    """Task 6 (memoria non evapora): la descrizione prometteva che
+    kind='memory' "scade dopo il periodo di conservazione configurato (90
+    giorni per impostazione predefinita...)" -- il meccanismo dietro quella
+    frase (MEMORY_RETENTION_DAYS, `valid_until` calcolato da
+    handle_save_memory, cancellazione via `purge_expired_chatbot`) e' stato
+    rimosso del tutto. Ripetere quella promessa sarebbe ora una bugia nella
+    direzione opposta: dire al modello che un ricordo puo' scadere quando
+    non puo' piu' farlo. Non basta cercare "scad" ovunque nella descrizione:
+    la parola resta legittima per le SCADENZE (obligation/due_date, una
+    proprieta' reale dell'elemento) -- il test mira solo alla frase sulla
+    conservazione a tempo del ricordo stesso."""
     descrizione = SAVE_MEMORY_TOOL_DEF["description"].lower()
-    assert "scad" in descrizione, (
-        "la descrizione deve nominare la scadenza dei ricordi, non solo la "
-        "loro persistenza tra le conversazioni"
-    )
+    assert "90 giorni" not in descrizione
+    assert "periodo di conservazione" not in descrizione
+    assert "conservazione configurato" not in descrizione
+    # Le vere scadenze (bollette, tasse) restano nominabili: il test non
+    # deve bandire la parola, solo la promessa di auto-cancellazione.
+    assert "quali scadenze questo mese" in descrizione

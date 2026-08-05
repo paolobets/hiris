@@ -1,7 +1,6 @@
 from __future__ import annotations
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from ..brain.knowledge_store import confronta_significati
@@ -11,9 +10,6 @@ if TYPE_CHECKING:
     from ..backends.embeddings import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
-
-# Same timestamp format used by KnowledgeStore (see brain/knowledge_store.py).
-_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 # Il messaggio che il modello legge -- e che quindi arriva all'utente. Dice
 # cosa NON e' successo e perche' conta, mai il dettaglio tecnico: l'eccezione
@@ -97,10 +93,9 @@ SAVE_MEMORY_TOOL_DEF = {
         "generico legato a questo agente. Per una scadenza o una spesa valorizza "
         "anche `due_date`/`amount`/`category` quando li conosci: sono ciò che "
         "permette di chiedere poi 'quali scadenze questo mese' invece di "
-        "cercare a tentoni. Un ricordo di kind='memory' resta legato a questo "
-        "agente e scade dopo il periodo di conservazione configurato (90 giorni "
-        "per impostazione predefinita, illimitato se impostato a 0); gli altri "
-        "tipi sono condivisi con tutta la casa e non scadono."
+        "cercare a tentoni. Un ricordo di kind='memory' non scade mai, "
+        "esattamente come ogni altro tipo: ciò che dici lo sa HIRIS, non "
+        "scompare perché è passato del tempo."
     ),
     "input_schema": {
         "type": "object",
@@ -114,7 +109,7 @@ SAVE_MEMORY_TOOL_DEF = {
                 "enum": list(_KINDS_VALIDI),
                 "description": (
                     "Tipo di ricordo. Omesso = 'memory' (ricordo generico "
-                    "legato a questo agente, con scadenza)."
+                    "legato a questo agente, non scade mai)."
                 ),
             },
             "title": {"type": "string"},
@@ -146,7 +141,6 @@ async def handle_save_memory(
     *,
     owner: str,
     chatbot_id: str,
-    retention_days: int | None = None,
 ) -> dict:
     """Unico strumento di salvataggio (Task 2 -- fetta memoria unica): scrive
     nella stessa KnowledgeStore che scriveva il vecchio save_memory (ricordo
@@ -158,21 +152,27 @@ async def handle_save_memory(
     approvazione. E' un cambio di comportamento per cio' che prima passava da
     save_knowledge (nasceva 'pending'); save_memory scriveva gia' cosi'.
 
-    Scadenza (deliberatamente NON toccata in questa fetta -- e' la task 4):
-    un ricordo kind='memory' guadagna una scadenza da `retention_days`,
-    esattamente come faceva il vecchio save_memory; ogni altro kind resta
-    senza scadenza, esattamente come faceva il vecchio save_knowledge.
+    Scadenza: NESSUNA, per qualunque kind (Task 6, "la memoria non evapora" --
+    design memoria-unica §2③). Un kind='memory' guadagnava una scadenza da
+    `retention_days` (il vecchio save_memory calcolava `valid_until` a 90
+    giorni per impostazione predefinita); quel calcolo e' stato rimosso
+    perché ciò che HIRIS sa della casa non deve svanire perché è passato un
+    trimestre -- le tre memorie reali di produzione (chi amministra la casa,
+    come rispondere a "chi c'è in casa", il modulo meteo esterno guasto)
+    erano tutte a un passo dallo sparire per questa stessa ragione. Ogni
+    kind resta senza scadenza, esattamente come già faceva il vecchio
+    save_knowledge per i suoi.
 
     Ambito: chi ha scritto la riga si registra ancora (`chatbot_id` per un
-    kind='memory', provenienza/lifecycle -- letta da retention e dalla
-    pulizia alla cancellazione di un chatbot, vedi
-    `KnowledgeStore.detach_chatbot_id`), ma dalla Task 3 (memoria unica)
-    NON delimita piu' chi puo' vedere la riga: `_clausole_di_scope` non la
-    legge. Cio' che dici lo sa HIRIS, non il chatbot con cui parlavi -- un
-    ricordo kind='memory' e' visibile a chiunque condivida l'owner della
-    riga, parlando con qualunque chatbot, esattamente come lo era gia'
-    ogni altro kind. La sola differenza fra i due rami sotto e' ora la
-    scadenza, non piu' anche la visibilita': e' lo stesso strumento a
+    kind='memory', provenienza -- azzerata dalla pulizia alla cancellazione
+    di un chatbot, vedi `KnowledgeStore.detach_chatbot_id`), ma dalla Task 3
+    (memoria unica) NON delimita piu' chi puo' vedere la riga:
+    `_clausole_di_scope` non la legge. Cio' che dici lo sa HIRIS, non il
+    chatbot con cui parlavi -- un ricordo kind='memory' e' visibile a
+    chiunque condivida l'owner della riga, parlando con qualunque chatbot,
+    esattamente come lo era gia' ogni altro kind. Da questa fetta i due
+    rami sotto differiscono solo per la provenienza registrata (chatbot_id
+    o niente), non piu' anche per la scadenza: e' lo stesso strumento a
     decidere quale dei due, guardando `kind` invece del nome del tool
     chiamato.
 
@@ -201,19 +201,11 @@ async def handle_save_memory(
         logger.exception("save_memory: embedding non calcolato, salvo senza vettore")
         embedding = None
 
-    if kind == "memory":
-        # Provenienza/lifecycle, non ambito (Task 3): letta da retention e
-        # dalla pulizia alla cancellazione di un chatbot, non da
-        # _clausole_di_scope -- vedi KnowledgeStore.detach_chatbot_id.
-        provenance_chatbot_id: str | None = chatbot_id
-        valid_until: str | None = None
-        if retention_days and retention_days > 0:
-            valid_until = (
-                datetime.now(timezone.utc) + timedelta(days=retention_days)
-            ).strftime(_TS_FMT)
-    else:
-        provenance_chatbot_id = None
-        valid_until = None
+    # Provenienza, non ambito (Task 3): azzerata dalla pulizia alla
+    # cancellazione di un chatbot, non letta da _clausole_di_scope -- vedi
+    # KnowledgeStore.detach_chatbot_id. Nessuna scadenza per nessun kind
+    # (Task 6): valid_until non si calcola piu' qui, per nessun ramo.
+    provenance_chatbot_id: str | None = chatbot_id if kind == "memory" else None
 
     loop = asyncio.get_running_loop()
     try:
@@ -233,7 +225,6 @@ async def handle_save_memory(
                 sensitivity=tool_input.get("sensitivity", "normal"),
                 source="chat",
                 status="approved",
-                valid_until=valid_until,
             ),
         )
     except Exception:

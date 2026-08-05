@@ -69,7 +69,6 @@ options:
     embedding_provider: ""
     embedding_model: ""
     rag_k: 5
-    retention_days: 90
 
   # ── General ───────────────────────────────────────────────────────────────
   internal_token: ""
@@ -172,7 +171,6 @@ schema:
     embedding_provider: str
     embedding_model: str
     rag_k: int(1,50)
-    retention_days: int(0,3650)
 
   # ── General ───────────────────────────────────────────────────────────────
   internal_token: password

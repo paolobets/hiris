@@ -124,50 +124,44 @@ async def test_save_memory_defaults_owner_to_home_without_user_id(tmp_path):
     store.close()
 
 
-async def test_save_memory_sets_valid_until_from_retention_days(tmp_path):
+async def test_save_memory_non_riceve_piu_scadenza_automatica(tmp_path):
+    """Task 6 (memoria non evapora): il calcolo automatico di `valid_until`
+    da `retention_days` e' stato rimosso da `handle_save_memory` -- un
+    ricordo salvato ora non porta MAI una scadenza, a prescindere da cosa
+    venga passato al dispatcher (che non accetta piu' nemmeno il parametro:
+    vedi test_security.py/_make_dispatcher e ToolDispatcher.__init__)."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb(),
-                          memory_retention_days=30)
-    saved = await disp.dispatch("save_memory", {"content": "scade tra 30gg"},
+                          knowledge_store=store, embedder=_Emb())
+    saved = await disp.dispatch("save_memory", {"content": "non scade mai"},
                                 chatbot_id="agentA", user_id="paolo")
     item = store.get_item(saved["id"])
-    assert item["valid_until"] is not None
-    valid_until = datetime.strptime(item["valid_until"], "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc
-    )
-    expected = datetime.now(timezone.utc) + timedelta(days=30)
-    assert abs((valid_until - expected).total_seconds()) < 60
+    assert item["valid_until"] is None
     store.close()
 
 
-async def test_purge_expired_chatbot_deletes_only_expired_chatbot_rows(tmp_path):
+async def test_save_memory_leggibile_a_distanza_di_anni_senza_aspettare(tmp_path, monkeypatch):
+    """Test 2 del brief Task 6: un ricordo salvato oggi resta leggibile e
+    richiamabile a distanza di anni. Si simula spostando l'orologio di
+    LETTURA (`KnowledgeStore._now`, usato da `_clausole_di_scope` per il
+    confronto su `valid_until`), non aspettando davvero anni."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    past = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    future = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+    saved = await disp.dispatch("save_memory", {"content": "ricordo permanente"},
+                                chatbot_id="agentA", user_id="paolo")
 
-    expired_chatbot_id = store.add_item(
-        kind="memory", content="scaduto", chatbot_id="agentA", valid_until=past
+    tra_cinque_anni = (datetime.now(timezone.utc) + timedelta(days=5 * 365)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
     )
-    fresh_chatbot_id = store.add_item(
-        kind="memory", content="fresco", chatbot_id="agentA", valid_until=future
-    )
-    no_expiry_chatbot_id = store.add_item(
-        kind="memory", content="senza scadenza", chatbot_id="agentA", valid_until=None
-    )
-    shared_knowledge_id = store.add_item(
-        kind="fact", content="conoscenza condivisa", chatbot_id=None, valid_until=past
-    )
+    monkeypatch.setattr(store, "_now", lambda: tra_cinque_anni)
 
-    deleted = store.purge_expired_chatbot()
-
-    assert deleted == 1
-    assert store.get_item(expired_chatbot_id) is None
-    assert store.get_item(fresh_chatbot_id) is not None
-    assert store.get_item(no_expiry_chatbot_id) is not None
-    # Shared (non-chatbot) knowledge is untouched even if expired — Task 2
-    # scope is only per-agent chatbot memory retention.
-    assert store.get_item(shared_knowledge_id) is not None
+    trovato = await disp.dispatch("recall_memory", {"query": "ricordo permanente"},
+                                  chatbot_id="agentA", user_id="paolo")
+    contenuti = [r["content"] for r in trovato.get("results", [])]
+    assert "ricordo permanente" in contenuti
+    recenti = store.recent(owner="paolo", k=10)
+    assert any(r["id"] == saved["id"] for r in recenti)
     store.close()
 
 

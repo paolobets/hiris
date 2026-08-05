@@ -134,7 +134,6 @@ class ToolDispatcher:
         entity_cache: Any = None,
         semantic_map: Any = None,
         embedding_provider: Any = None,
-        memory_retention_days: int | None = None,
         health_monitor: Any = None,
         advisory_store: Any = None,
         proposal_store: Any = None,
@@ -152,7 +151,6 @@ class ToolDispatcher:
         self._cache = entity_cache
         self._semantic_map = semantic_map
         self._embedder = embedding_provider
-        self._memory_retention_days = memory_retention_days
         self._health_monitor = health_monitor
         self._advisory_store = advisory_store
         self._proposal_store = proposal_store
@@ -642,7 +640,6 @@ class ToolDispatcher:
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
                     chatbot_id=chatbot_id or "hiris-default",
-                    retention_days=self._memory_retention_days,
                 )
             if name == "get_ha_health":
                 return get_ha_health(self._health_monitor, inputs.get("sections") or ["all"])

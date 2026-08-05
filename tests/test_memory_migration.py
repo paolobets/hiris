@@ -50,7 +50,12 @@ def test_migration_moves_rows_and_is_idempotent(tmp_path):
     assert item["status"] == "approved"
     assert item["sensitivity"] == "normal"
     assert item["source"] == "migrated"
-    assert item["valid_until"] == "2027-01-01T00:00:00Z"
+    # Task 6 ("la memoria non evapora"): il legacy `expires_at` NON viene
+    # piu' portato come `valid_until` -- era comunque una scadenza di
+    # conservazione, la stessa cosa che handle_save_memory ha smesso di
+    # calcolare. Riportarlo qui ricreerebbe la memoria che evapora da sola
+    # per chiunque avesse ancora un hiris_memory.db legacy da migrare.
+    assert item["valid_until"] is None
     full = store.get_item(item["id"])
     assert full is not None and full["chatbot_id"] == "agentA"
 

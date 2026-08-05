@@ -138,16 +138,52 @@ def _migrate_v4(conn: sqlite3.Connection) -> None:
 def _migrate_v5(conn: sqlite3.Connection) -> None:
     """v4 -> v5 (Task 3, memoria unica): `chatbot_id` smette di essere una
     clausola di ambito (vedi `_clausole_di_scope`) -- resta in tabella solo
-    come provenienza/lifecycle (quale chatbot ha scritto la riga; usato da
-    retention e dalla pulizia alla cancellazione di un chatbot). Le righe
+    come provenienza (quale chatbot ha scritto la riga; azzerato da
+    `detach_chatbot_id` alla cancellazione di un chatbot). Le righe
     kind='memory' gia' esistenti erano scritte quando chatbot_id ANCORA
     delimitava la visibilita': azzerarlo qui e' cio' che le rende
     immediatamente di tutta la casa all'aggiornamento, invece di restarci
     intrappolate finche' qualcuno non le riscrive. Non tocca altri kind (non
     hanno mai portato un chatbot_id, per costruzione di
-    `handle_save_memory`) ne' `valid_until` (task 4)."""
+    `handle_save_memory`) ne' `valid_until` (task 4 -- diventata task 6,
+    "la memoria non evapora": vedi `_migrate_v6`)."""
     conn.execute("UPDATE knowledge_items SET chatbot_id = NULL"
                  " WHERE kind = 'memory' AND chatbot_id IS NOT NULL")
+
+
+def _migrate_v6(conn: sqlite3.Connection) -> None:
+    """v5 -> v6 (Task 6, "la memoria non evapora"): azzera `valid_until` su
+    ogni riga kind='memory' esistente.
+
+    Prima di questa fetta l'UNICO scrittore che valorizzava `valid_until`
+    per kind='memory' era `handle_save_memory` (tools/memory_tools.py),
+    sempre e solo come scadenza di CONSERVAZIONE calcolata da
+    `retention_days` -- mai come validita' di un fatto (quella semantica,
+    dove esiste, vive su altri kind: es. obligation/due_date, o un
+    kind='fact' con un proprio `valid_until`, mai toccati qui). Quel calcolo
+    e' stato rimosso: kind='memory' non guadagna piu' una scadenza al
+    salvataggio, esattamente come ogni altro kind.
+
+    Questa migrazione bonifica due difetti sulle righe scritte PRIMA della
+    fetta:
+
+    - righe gia' scadute sotto il vecchio schema, invisibili su ogni
+      percorso di lettura (`_clausole_di_scope` filtra su `valid_until`);
+    - le "righe immortali e invisibili" del brief: una riga distaccata dal
+      suo chatbot (`chatbot_id` azzerato da `detach_chatbot_id` o da
+      `_migrate_v5`) ma con `valid_until` ancora impostato. Una volta
+      scaduta, il filtro di ambito la nasconde su ogni lettura, e il
+      vecchio `purge_expired_chatbot` -- che cercava per chatbot -- non la
+      trovava piu': restava nel database per sempre, invisibile e
+      impurgabile (`purge_expired_chatbot` stesso e' stato rimosso in
+      questa fetta, non avendo piu' nessun chiamante che gli producesse
+      lavoro).
+
+    `WHERE kind = 'memory'` senza altre condizioni, apposta: tocca sia le
+    righe ancora agganciate a un chatbot sia quelle gia' orfane, perche' in
+    entrambi i casi il `valid_until` presente era comunque conservazione,
+    mai altro."""
+    conn.execute("UPDATE knowledge_items SET valid_until = NULL WHERE kind = 'memory'")
 
 
 def confronta_significati(query_vec: list[float] | None) -> bool:
@@ -179,8 +215,9 @@ class KnowledgeStore:
         self._conn = connect(db_path)
         self._mu = threading.Lock()
         init_schema(
-            self._conn, _SCHEMA, version=5,
-            migrations={2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5},
+            self._conn, _SCHEMA, version=6,
+            migrations={2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5,
+                        6: _migrate_v6},
         )
 
     def _now(self) -> str:
@@ -345,10 +382,9 @@ class KnowledgeStore:
         chatbot_id='hiris-default': il giorno in cui nasce un secondo
         chatbot, quello non avrebbe saputo del guasto meteo e avrebbe ripreso
         a proporre soluzioni basate su sensori inesistenti. La colonna
-        `chatbot_id` resta in tabella (provenienza/lifecycle: quale chatbot
-        ha scritto la riga; letta da retention e dalla pulizia alla
-        cancellazione di un chatbot, vedi `detach_chatbot_id` /
-        `purge_expired_chatbot`), ma non delimita piu' chi puo' vedere cosa.
+        `chatbot_id` resta in tabella (provenienza: quale chatbot ha
+        scritto la riga; azzerata da `detach_chatbot_id` alla cancellazione
+        di un chatbot), ma non delimita piu' chi puo' vedere cosa.
 
         L'unica eccezione che NON si tocca e' `owner`: resta l'unico asse di
         riservatezza. Cio' che riguarda la casa e' di tutti (owner='home', o
@@ -605,31 +641,6 @@ class KnowledgeStore:
             cur = self._conn.execute(
                 "UPDATE knowledge_items SET chatbot_id = NULL WHERE chatbot_id = ?",
                 (chatbot_id,),
-            )
-            self._conn.commit()
-            return cur.rowcount
-
-    def purge_expired_chatbot(self) -> int:
-        """Delete rows whose OWN retention (`valid_until`, set at save time
-        from the caller's `retention_days` -- see `handle_save_memory`) has
-        elapsed. Rows with chatbot_id IS NULL (never had a retention policy
-        attached, per `handle_save_memory`) or with no valid_until (no
-        retention set) are never touched here.
-
-        Left unchanged by Task 3: this is not a scoping decision like
-        `detach_chatbot_id` above -- it never deletes a row *because* a
-        chatbot was deleted, only because that row's own previously-chosen
-        expiry passed. `chatbot_id IS NOT NULL` here identifies "a row that
-        carries a retention policy", not "a row private to some chatbot".
-        Whether letting now-house-wide memory still expire on its
-        originally-set retention is the right long-term behavior is exactly
-        the question Task 4 (valid_until) owns; not touched here."""
-        now = self._now()
-        with self._mu:
-            cur = self._conn.execute(
-                "DELETE FROM knowledge_items"
-                " WHERE chatbot_id IS NOT NULL AND valid_until IS NOT NULL AND valid_until < ?",
-                (now,),
             )
             self._conn.commit()
             return cur.rowcount
