@@ -12,6 +12,7 @@ Uso:
   python scripts/censimento.py
 """
 import argparse
+import ast
 import io
 import re
 import sys
@@ -49,6 +50,8 @@ _TITOLI: dict[str, str] = {
     "envvar-mai-esportata":      "Variabili d'ambiente lette e mai esportate da run.sh",
     "rotta-senza-chiamanti":     "Rotte HTTP che nessuno chiama",
     "rotta-solo-test":           "Rotte HTTP chiamate solo dai test",
+    "simbolo-orfano":    "Funzioni e classi senza alcun chiamante",
+    "simbolo-solo-test": "Funzioni e classi usate solo dai test",
 }
 
 
@@ -309,6 +312,78 @@ def censisci_rotte(
     return reperti
 
 
+# ── Simboli Python ──────────────────────────────────────────────────────────
+
+_INGRESSI = {"main", "run", "create_app", "setup", "handler"}
+
+
+def _definizioni(testo: str) -> list[tuple[str, int]]:
+    """Funzioni, metodi e classi definiti in un file, con la loro riga."""
+    try:
+        albero = ast.parse(testo)
+    except SyntaxError:
+        return []
+    out: list[tuple[str, int]] = []
+    for nodo in ast.walk(albero):
+        if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if nodo.name.startswith("__") and nodo.name.endswith("__"):
+                continue
+            out.append((nodo.name, nodo.lineno))
+    return out
+
+
+def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Reperto]:
+    """Simboli definiti una volta sola e mai citati altrove.
+
+    Conta le occorrenze del nome come parola intera. La definizione stessa
+    vale una occorrenza: piu' di una significa che qualcuno lo nomina.
+    """
+    testi_app = {f: _leggi(f) for f in file_app}
+    testi_test = [_leggi(f) for f in file_test]
+
+    definizioni: dict[str, list[tuple[Path, int]]] = {}
+    for f, testo in testi_app.items():
+        for nome, riga in _definizioni(testo):
+            definizioni.setdefault(nome, []).append((f, riga))
+
+    tutto_app = "\n".join(testi_app.values())
+    tutto_test = "\n".join(testi_test)
+
+    reperti: list[Reperto] = []
+    for nome, siti in sorted(definizioni.items()):
+        if len(siti) > 1:
+            continue  # nome ambiguo: il conteggio non direbbe niente
+        if nome in _INGRESSI or nome.startswith("test_"):
+            continue
+
+        rx = re.compile(rf"\b{re.escape(nome)}\b")
+        occorrenze = len(rx.findall(tutto_app))
+        # Le citazioni fra virgolette contano anch'esse come occorrenze di
+        # \bnome\b (le virgolette non sono caratteri di parola): vanno tolte
+        # dal conteggio prima di decidere "qualcuno lo nomina nel codice",
+        # altrimenti una citazione come stringa varrebbe come una chiamata
+        # vera e la nota della regola 2 non scatterebbe mai.
+        come_stringa = tutto_app.count(f'"{nome}"') + tutto_app.count(f"'{nome}'")
+        if occorrenze - come_stringa > 1:
+            continue  # qualcuno lo nomina nel codice, oltre alla definizione
+
+        f, riga = siti[0]
+        dove = f"{_rel(f)}:{riga}"
+        nota = ""
+        if come_stringa:
+            nota = "compare come stringa: potrebbe essere chiamato dinamicamente"
+
+        usi_test = len(rx.findall(tutto_test))
+        if usi_test:
+            reperti.append(Reperto(
+                "simbolo-solo-test", nome, dove,
+                nota or f"{usi_test} occorrenze nei test, nessuna in produzione",
+            ))
+        else:
+            reperti.append(Reperto("simbolo-orfano", nome, dove, nota))
+    return reperti
+
+
 # ── Report ──────────────────────────────────────────────────────────────────
 
 def stampa(reperti: list[Reperto]) -> None:
@@ -326,6 +401,15 @@ def stampa(reperti: list[Reperto]) -> None:
             nota = f"  {_GRIGIO}{r.nota}{_RESET}" if r.nota else ""
             print(f"       {r.nome}  {_GRIGIO}({r.dove}){_RESET}{nota}")
 
+    print(f"\n{_GRIGIO}I limiti di questo strumento, dichiarati:")
+    print("  - un nome definito in piu' punti viene saltato: il conteggio non direbbe niente;")
+    print("  - i nomi che compaiono anche come stringa possono essere chiamati")
+    print("    dinamicamente (vedi tools/dispatcher.py): sono segnalati, non condannati;")
+    print("  - le opzioni annidate hanno nomi generici (host, port) e il confronto e' prudente;")
+    print("  - le rotte sono indicizzate per percorso, non per metodo: un POST morto su un")
+    print("    percorso il cui GET e' vivo non viene visto;")
+    print(f"  - il frontend non viene analizzato: solo le rotte che nomina.{_RESET}")
+
     print(f"\nTotale reperti: {len(reperti)}")
 
 
@@ -336,6 +420,7 @@ def run() -> int:
         ROOT / "hiris" / "config.yaml", ROOT / "hiris" / "run.sh", file_app
     )
     reperti += censisci_rotte(file_app, _file_frontend(), _file_py(TESTS))
+    reperti += censisci_simboli(file_app, _file_py(TESTS))
     stampa(reperti)
     return 0
 

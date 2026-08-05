@@ -207,3 +207,75 @@ def test_add_route_con_metodo_esplicito(tmp_path):
     app = _scrivi(tmp_path, "server.py", 'app.router.add_route("GET", "/api/vecchia", h)')
     reperti = censimento.censisci_rotte([app], [], [])
     assert [r.nome for r in reperti] == ["/api/vecchia"]
+
+
+def test_funzione_senza_chiamanti(tmp_path):
+    app = _scrivi(tmp_path, "modulo.py", '''
+def viva():
+    return 1
+
+def morta():
+    return 2
+
+def usa():
+    return viva()
+''')
+    reperti = censimento.censisci_simboli([app], [])
+    nomi = {r.nome for r in reperti if r.categoria == "simbolo-orfano"}
+    assert "morta" in nomi
+    assert "viva" not in nomi
+
+
+def test_funzione_usata_solo_dai_test(tmp_path):
+    app = _scrivi(tmp_path, "modulo.py", "def solo_test():\n    return 1\n")
+    t = _scrivi(tmp_path, "test_m.py", "def test_x():\n    assert solo_test() == 1\n")
+    reperti = censimento.censisci_simboli([app], [t])
+    assert [(r.categoria, r.nome) for r in reperti] == [("simbolo-solo-test", "solo_test")]
+
+
+def test_nome_ambiguo_si_salta(tmp_path):
+    # A e B sono referenziate da main() apposta: altrimenti sarebbero due
+    # classi davvero orfane per conto loro, ed estranee a cio' che il test
+    # vuole verificare (che "salva", ambiguo fra le due classi, si salta).
+    a = _scrivi(tmp_path, "a.py",
+               "class A:\n    def salva(self):\n        pass\n\n"
+               "def main():\n    return A()\n")
+    b = _scrivi(tmp_path, "b.py",
+               "class B:\n    def salva(self):\n        pass\n\n"
+               "def main():\n    return B()\n")
+    assert censimento.censisci_simboli([a, b], []) == []
+
+
+def test_nome_citato_come_stringa_viene_segnalato(tmp_path):
+    app = _scrivi(tmp_path, "modulo.py", '''
+def forse_dinamica():
+    return 1
+
+CATALOGO = {"forse_dinamica": None}
+''')
+    reperti = censimento.censisci_simboli([app], [])
+    assert len(reperti) == 1
+    assert "dinamic" in reperti[0].nota
+
+
+def test_dunder_e_ingressi_si_saltano(tmp_path):
+    # C e' referenziata da main() apposta: altrimenti sarebbe una classe
+    # davvero orfana per conto suo, ed estranea a cio' che il test vuole
+    # verificare (che __init__ e main, come dunder e punto d'ingresso, si
+    # saltano).
+    app = _scrivi(tmp_path, "modulo.py", '''
+class C:
+    def __init__(self):
+        pass
+
+def main():
+    return C()
+''')
+    assert censimento.censisci_simboli([app], []) == []
+
+
+def test_file_con_errore_di_sintassi_non_ferma_il_censimento(tmp_path):
+    rotto = _scrivi(tmp_path, "rotto.py", "def (:\n")
+    buono = _scrivi(tmp_path, "buono.py", "def orfana():\n    pass\n")
+    reperti = censimento.censisci_simboli([rotto, buono], [])
+    assert [r.nome for r in reperti] == ["orfana"]
