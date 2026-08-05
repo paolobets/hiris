@@ -4,6 +4,11 @@ try:
     from ..proxy._sanitize import sanitize_ha_value as _san
 except Exception:
     _san = lambda v: v  # noqa: E731
+try:
+    from .reasoner_memory import sanitize_declared_item
+except Exception:  # pragma: no cover - fallback difensivo
+    def sanitize_declared_item(s):  # type: ignore
+        return " ".join(str(_san(s)).split())
 
 COVERAGE_REVIEW_SYSTEM = (
     "Sei il cervello di HIRIS che rivede la copertura della casa. Ricevi l'inventario "
@@ -97,11 +102,23 @@ def build_review_message(context) -> str:
     # Task 4 ("memoria unica 3a"): i DICHIARATI, popped alongside `memory`
     # for the same reason (must not leak into the JSON blob above). No
     # by_meaning discriminator -- see build_review_context's comment.
+    #
+    # Fix 1 (review wave, task-4-fixes): items go through
+    # `reasoner_memory.sanitize_declared_item`, NOT the bare `_san` this file
+    # uses for `memory`/inventory/snapshot -- `_san` (sanitize_ha_value)
+    # clamps at 120 chars, meant for terse HA attribute values, and silently
+    # cut a two-sentence declared fact mid-sentence. `sanitize_declared_item`
+    # runs the same injection filter but caps at DECLARED_ITEM_MAX (500,
+    # chosen for this exact content shape) and marks a truncation visibly
+    # ("… (troncato)") instead of doing it in silence. `_declared_snippets`
+    # (reasoner_memory.py) already sanitizes at the source before this
+    # function ever sees the list; calling it again here is defense-in-depth
+    # for a caller that hands `declared` in raw (some tests do), and is
+    # idempotent for content already sanitized upstream.
     declared = ctx.pop("declared", None)
     declared_block = ""
     if isinstance(declared, list) and declared:
-        # Stessa sanificazione/appiattimento del blocco memory sopra.
-        flat_d = [" ".join(str(_san(s)).split()) for s in declared]
+        flat_d = [sanitize_declared_item(s) for s in declared]
         lines_d = "\n".join(f"- {s}" for s in flat_d if s)
         if lines_d:
             declared_block = f"Fatti dichiarati:\n{lines_d}\n\n"

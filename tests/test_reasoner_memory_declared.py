@@ -152,3 +152,49 @@ def test_memory_recall_declared_field_defaults_to_empty_list():
     (server.py's failure-fallbacks, other tests) must keep working."""
     mem = MemoryRecall(snippets=[], by_meaning=False)
     assert mem.declared == []
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 (review wave, task-4-fixes): declared facts over 120 chars must not
+# be silently truncated by the 120-char sanitize_ha_value clamp that used to
+# reach them via watcher/reasoner.py's `_san(_raw_ctx)`. Pinned here at the
+# source (`_declared_snippets`, exercised through `relevant_memory`), and
+# again at both proactive render surfaces in
+# tests/test_declared_block_reasoner.py.
+# ---------------------------------------------------------------------------
+
+LONG_DECLARED_TEXT = (
+    "Il termostato del salotto e' stato sostituito con un nuovo modello "
+    "smart che supporta la programmazione settimanale e l'integrazione "
+    "diretta con Home Assistant tramite MQTT."
+)
+
+
+@pytest.mark.asyncio
+async def test_relevant_memory_declared_item_over_120_chars_survives_intact(tmp_path):
+    assert len(LONG_DECLARED_TEXT) > 120  # the old, wrong clamp
+    store = KnowledgeStore(str(tmp_path / "mem.db"))
+    store.add_item(
+        kind="memory", content=LONG_DECLARED_TEXT, owner="home",
+        status="approved", source="chat",
+    )
+    out = await relevant_memory(store, None, query_text="x", allow_sensitive=False)
+    assert LONG_DECLARED_TEXT in out.declared
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_relevant_memory_declared_item_over_cap_is_marked_not_silently_cut(tmp_path):
+    """Beyond DECLARED_ITEM_MAX (500) the item IS cut -- but visibly, never
+    silently: the raw over-cap text must not appear whole, and a marker
+    must say so."""
+    huge_text = "y" * 700
+    store = KnowledgeStore(str(tmp_path / "mem.db"))
+    store.add_item(
+        kind="memory", content=huge_text, owner="home",
+        status="approved", source="chat",
+    )
+    out = await relevant_memory(store, None, query_text="x", allow_sensitive=False)
+    assert not any(huge_text in d for d in out.declared)
+    assert any("troncato" in d for d in out.declared)
+    store.close()

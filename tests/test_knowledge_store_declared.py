@@ -11,7 +11,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from hiris.app.brain.knowledge_store import DECLARED_MAX, DECLARED_SOURCES, KnowledgeStore
+from hiris.app.brain.knowledge_store import (
+    DECLARED_MAX, DECLARED_SOURCES, KnowledgeStore, render_declared_overflow_note,
+)
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -183,3 +185,30 @@ def test_declared_reuses_clausole_di_scope_not_a_second_copy(tmp_path):
 
     src = inspect.getsource(knowledge_store.KnowledgeStore.declared)
     assert "_clausole_di_scope(" in src
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 (review wave, task-4-fixes): the overflow note used to be an
+# identical f-string duplicated in handlers_chat._render_declared_block and
+# reasoner_memory._declared_snippets, and both hardcoded `limite
+# {DECLARED_MAX}` regardless of what limit was actually passed to
+# declared(). It now lives once, here, and takes the limit explicitly.
+# ---------------------------------------------------------------------------
+
+def test_render_declared_overflow_note_empty_when_nothing_hidden():
+    assert render_declared_overflow_note(total=3, shown=3, limit=3) == ""
+    assert render_declared_overflow_note(total=2, shown=3, limit=30) == ""
+
+
+def test_render_declared_overflow_note_reports_true_overflow_and_given_limit():
+    note = render_declared_overflow_note(total=10, shown=3, limit=3)
+    assert "+ altri 7" in note
+    assert "limite 3" in note
+
+
+def test_render_declared_overflow_note_uses_passed_limit_not_the_module_constant():
+    """The defect Fix 2 closes: a caller passing a CUSTOM limit (not
+    DECLARED_MAX) must see that number in the note, not the constant."""
+    note = render_declared_overflow_note(total=50, shown=5, limit=5)
+    assert "limite 5" in note
+    assert f"limite {DECLARED_MAX}" not in note

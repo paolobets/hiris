@@ -40,6 +40,35 @@ DECLARED_SOURCES = ("chat", "manual", "migrated")
 # esattamente il guasto che questa fetta esiste per eliminare.
 DECLARED_MAX = 30
 
+
+def render_declared_overflow_note(total: int, shown: int, limit: int) -> str:
+    """Il testo -- SEMPRE lo stesso, ovunque venga reso -- che dice "e
+    altri N piu' vecchi, non mostrati" quando `KnowledgeStore.declared()` ha
+    trovato piu' righe di quante `limit` ne abbia lasciate passare (`total`
+    e' il conteggio PRIMA del limite, `shown` quante ne sono arrivate al
+    chiamante -- normalmente `len(items)`).
+
+    Fix 2 (review wave, task-4-fixes): prima viveva come una f-string
+    IDENTICA duplicata in due file (`api/handlers_chat.
+    _render_declared_block` e `brain/reasoner_memory._declared_snippets`),
+    e ciascuna copia hardcodava `DECLARED_MAX` nel testo invece di leggere
+    il limite EFFETTIVAMENTE passato a `declared()` -- cosi' un futuro
+    chiamante con un limite personalizzato avrebbe visto nella nota il
+    numero sbagliato. Vive qui, accanto a `DECLARED_MAX`, con `limit` come
+    parametro esplicito: i due chiamanti non possono piu' divergere sul
+    testo, e il numero mostrato e' sempre quello vero.
+
+    Ritorna "" quando non c'e' overflow (`total <= shown`) -- i chiamanti
+    aggiungono la nota solo se questa stringa non e' vuota."""
+    overflow = total - shown
+    if overflow <= 0:
+        return ""
+    return (
+        f"(+ altri {overflow} elementi dichiarati più vecchi, non "
+        f"mostrati — limite {limit})"
+    )
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS knowledge_items (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -7,7 +7,9 @@ import time
 from aiohttp import web
 
 from ..brain.identity import resolve_owner
-from ..brain.knowledge_store import DECLARED_MAX, confronta_significati
+from ..brain.knowledge_store import (
+    DECLARED_MAX, confronta_significati, render_declared_overflow_note,
+)
 from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
@@ -51,7 +53,7 @@ def _build_system_prompt(agent) -> str:
     return "\n\n---\n\n".join(static_parts)
 
 
-def _render_declared_block(items: list[dict], total: int) -> str:
+def _render_declared_block(items: list[dict], total: int, limit: int = DECLARED_MAX) -> str:
     """Task 4 ("memoria unica 3a"): il testo del blocco "quello che una
     persona ha dichiarato" per il prompt della chat -- SEMPRE presente
     quando `items` non e' vuota, MAI quando lo e' (nessun blocco, nessuna
@@ -62,7 +64,11 @@ def _render_declared_block(items: list[dict], total: int) -> str:
     (stessi filtri di riservatezza di ovunque altro, via
     `_clausole_di_scope`); `total` e' il conteggio PRIMA del limite --
     quando `total > len(items)` il blocco lo dice esplicitamente, invece di
-    troncare in silenzio (vedi DECLARED_MAX in knowledge_store.py)."""
+    troncare in silenzio (vedi DECLARED_MAX in knowledge_store.py). `limit`
+    e' il valore EFFETTIVAMENTE passato a `.declared()` dal chiamante (Fix 2,
+    review wave task-4-fixes) -- la nota stessa e' resa da
+    `render_declared_overflow_note`, non piu' da una f-string locale, cosi'
+    da non poter divergere dalla copia gemella in reasoner_memory.py."""
     if not items:
         return ""
     lines = [
@@ -75,12 +81,9 @@ def _render_declared_block(items: list[dict], total: int) -> str:
         tags = (item.get("data") or {}).get("tags") or []
         tags_str = f" [{', '.join(tags)}]" if tags else ""
         lines.append(f"[{dt}]{tags_str} {item['content']}")
-    overflow = total - len(items)
-    if overflow > 0:
-        lines.append(
-            f"(+ altri {overflow} elementi dichiarati più vecchi, non "
-            f"mostrati — limite {DECLARED_MAX})"
-        )
+    note = render_declared_overflow_note(total, len(items), limit)
+    if note:
+        lines.append(note)
     return "\n".join(lines)
 
 
@@ -395,9 +398,9 @@ async def handle_chat(request: web.Request) -> web.Response:
         try:
             loop = asyncio.get_running_loop()
             declared_items, declared_total = await loop.run_in_executor(
-                None, lambda: knowledge_store.declared(owner=owner),
+                None, lambda: knowledge_store.declared(owner=owner, limit=DECLARED_MAX),
             )
-            declared_str = _render_declared_block(declared_items, declared_total)
+            declared_str = _render_declared_block(declared_items, declared_total, DECLARED_MAX)
         except Exception as exc:
             logger.warning("declared memory injection failed: %s", exc)
 
