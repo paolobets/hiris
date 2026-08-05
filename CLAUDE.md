@@ -8,8 +8,13 @@ del codice esistente è **deliberatamente condannata**. Prima di scrivere qualun
 | Domanda | Documento |
 |---|---|
 | Cosa **deve** fare HIRIS | `docs/design/2026-08-04-scope-hiris.md` — **il contratto** |
-| Cosa **fa oggi** il codice | `docs/design/2026-08-03-analisi-funzionale.md` — con riferimenti `file:riga` |
+| Cosa **c'è dentro**, e cosa ne resta | `docs/design/2026-08-05-mappa-funzionalita.md` — **l'ordine di demolizione** |
+| Come si conosce la casa | `docs/design/2026-08-05-la-conoscenza-di-hiris.md` |
+| Cosa **fa oggi** il codice, in dettaglio | `docs/design/2026-08-03-analisi-funzionale.md` — con `file:riga`. **Descrive**; la mappa **decide** |
 | Che **stato tecnico** ha | `docs/design/2026-08-03-revisione-tecnica.md` |
+
+Il lavoro del Refactor 2.0 vive sul ramo **`2.0`**. Non un repository nuovo: la mappa ha chiesto di
+**cancellare**, non di riscrivere — e cancellare si verifica con i test esistenti, ricostruire no.
 
 Tutto ciò che sta in `docs/archive/` e in `docs/superpowers/_archivio-pre-refactor-2.0/` è **storia,
 non specifica**: descrive il prodotto precedente. Non usarlo come fonte.
@@ -70,6 +75,33 @@ In ogni piano e in ogni task:
 
 Nomina in chiaro nel piano ciò che verrà cancellato, così la cancellazione è rivedibile invece che
 silenziosa.
+
+### La review totale — a ogni sviluppo
+
+In un progetto di demolizione **la domanda della review si rovescia**. Una review normale chiede
+*«ciò che hai aggiunto è corretto?»*. Qui si chiede: **«cosa hai lasciato orfano?»**
+
+Le righe morte non stanno **dentro** il diff. Stanno altrove, e ci sono arrivate perché la modifica
+ha tolto il loro ultimo chiamante. Guardare il diff non le trova: **ogni sviluppo si chiude con una
+review dell'intero ramo**, non del solo diff della fetta.
+
+Cerca cinque cose:
+
+| | |
+|---|---|
+| **Senza chiamanti** | funzioni, rotte HTTP, tabelle, opzioni dell'add-on, variabili d'ambiente |
+| **Scritte e mai lette** | tabelle che si riempiono e nessuno interroga |
+| **Configurabili solo a parole** | opzioni lette dal codice che nessuna interfaccia può cambiare |
+| **Doppioni divergenti** | due funzioni che fanno la stessa cosa con logiche diverse |
+| **Test orfani** | asserzioni che difendono un comportamento che abbiamo deciso di togliere |
+
+L'ultimo è il più insidioso: i test sono **più grandi dell'applicazione**. Demolire il codice senza
+demolire i test significa difendere con centinaia di asserzioni ciò che si è appena deciso di
+rimuovere, e pagarne il prezzo a ogni fetta successiva. **Anche i test si smontano**, insieme a ciò
+che testavano.
+
+Fatta a occhio su 43.000 righe questa regola non è eseguibile: usa `scripts/censimento.py`, che la
+rende un comando invece di una buona intenzione.
 
 ## Cosa è condannato dal refactor
 
