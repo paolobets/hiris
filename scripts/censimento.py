@@ -152,6 +152,7 @@ _RE_ENV = re.compile(
     r"""(?:os\.environ\.get\(|os\.getenv\(|os\.environ\[)\s*["']([A-Z_][A-Z0-9_]*)["']"""
 )
 _RE_CHIAVE_YAML = re.compile(r"^(\s+)([a-z_][a-z0-9_]*):")
+_RE_BASHIO = re.compile(r"""bashio::config\s+['"]([\w.]+)['"]""")
 
 
 def _opzioni_addon(config_yaml: Path) -> list[tuple[str, int]]:
@@ -180,6 +181,27 @@ def _opzioni_addon(config_yaml: Path) -> list[tuple[str, int]]:
     return out
 
 
+def _chiavi_lette_da_run_sh(run_sh: Path) -> set[str]:
+    """Chiavi che `run.sh` legge con bashio::config, percorsi e segmenti.
+
+    Il ponte fra le opzioni dell'add-on e il codice e' run.sh: legge
+    `bashio::config 'log_level'` e ne esporta LOG_LEVEL. Il Python vede solo la
+    variabile d'ambiente e non nomina mai l'opzione, quindi cercarla nel solo
+    Python dichiarerebbe morta quasi ogni opzione dell'add-on.
+
+    Le chiavi annidate arrivano puntate (`local_model.url`) mentre l'elenco da
+    config.yaml le espone a segmenti (`local_model`, poi `url`): si raccolgono
+    entrambe le forme.
+    """
+    if not run_sh.exists():
+        return set()
+    chiavi: set[str] = set()
+    for percorso in _RE_BASHIO.findall(_leggi(run_sh)):
+        chiavi.add(percorso)
+        chiavi.update(percorso.split("."))
+    return chiavi
+
+
 def censisci_configurazione(
     config_yaml: Path, run_sh: Path, file_app: list[Path]
 ) -> list[Reperto]:
@@ -187,11 +209,15 @@ def censisci_configurazione(
     testi = [_leggi(f) for f in file_app]
     reperti: list[Reperto] = []
 
+    da_run_sh = _chiavi_lette_da_run_sh(run_sh)
+    corpo = "".join(testi)
     for nome, riga in _opzioni_addon(config_yaml):
-        citata = f'"{nome}"' in "".join(testi) or f"'{nome}'" in "".join(testi)
-        if not citata:
-            reperti.append(Reperto("opzione-mai-letta", nome,
-                                   f"{_rel(config_yaml)}:{riga}"))
+        if nome in da_run_sh:
+            continue
+        if f'"{nome}"' in corpo or f"'{nome}'" in corpo:
+            continue
+        reperti.append(Reperto("opzione-mai-letta", nome,
+                               f"{_rel(config_yaml)}:{riga}"))
 
     esportate = set(_RE_EXPORT.findall(_leggi(run_sh))) if run_sh.exists() else set()
     lette: dict[str, str] = {}

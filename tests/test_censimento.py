@@ -125,3 +125,29 @@ def test_config_mancante_non_esplode(tmp_path):
     assert censimento.censisci_configurazione(
         tmp_path / "assente.yaml", tmp_path / "assente.sh", []
     ) == []
+
+
+def test_opzione_letta_solo_da_run_sh_non_e_un_reperto(tmp_path):
+    cfg = _scrivi(tmp_path, "config.yaml", '''name: "HIRIS"
+version: "1.0.0"
+options:
+  usata: ""
+  fantasma: ""
+schema:
+  usata: str
+''')
+    run_sh = _scrivi(tmp_path, "run.sh",
+                     "export FANTASMA=$(bashio::config 'fantasma' '')\n")
+    app = _scrivi(tmp_path, "app.py", 'valore = opzioni.get("usata")\n')
+    reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
+    assert [r.nome for r in reperti if r.categoria == "opzione-mai-letta"] == []
+
+
+def test_opzione_annidata_letta_in_forma_puntata(tmp_path):
+    cfg = _scrivi(tmp_path, "config.yaml", _CONFIG_YAML)
+    run_sh = _scrivi(tmp_path, "run.sh",
+                     "export H=$(bashio::config 'mqtt.host' '')\n"
+                     "export F=$(bashio::config 'fantasma' '')\n")
+    app = _scrivi(tmp_path, "app.py", 'valore = opzioni.get("usata")\n')
+    reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
+    assert [r.nome for r in reperti if r.categoria == "opzione-mai-letta"] == []
