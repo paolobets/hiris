@@ -156,16 +156,20 @@ _RE_BASHIO = re.compile(r"""bashio::config\s+['"]([\w.]+)['"]""")
 
 
 def _opzioni_addon(config_yaml: Path) -> list[tuple[str, int]]:
-    """Chiavi del blocco `options:` di config.yaml, con la loro riga.
+    """Percorsi puntati delle opzioni FOGLIA del blocco `options:`.
+
+    Restituisce `mqtt.host`, non `mqtt` e `host` separati: una foglia dal nome
+    generico (`host`, `url`, `token`) cercata da sola verrebbe dichiarata viva
+    dal primo dizionario HTTP che la nomina, e il rilevatore tacerebbe su
+    un'opzione davvero morta. I contenitori non sono opzioni: non si segnalano.
 
     Lettura per indentazione invece che con un parser YAML: lo strumento non
-    deve avere dipendenze. Restituisce sia le chiavi di primo livello sia le
-    annidate (mqtt, e poi host): quelle annidate sono nomi generici e il
-    confronto sara' prudente, vedi la nota nel report.
+    deve avere dipendenze.
     """
     if not config_yaml.exists():
         return []
-    out: list[tuple[str, int]] = []
+
+    chiavi: list[tuple[int, str, int]] = []  # (indentazione, nome, riga)
     dentro = False
     for i, riga in enumerate(_leggi(config_yaml).splitlines(), 1):
         if riga.startswith("options:"):
@@ -177,28 +181,37 @@ def _opzioni_addon(config_yaml: Path) -> list[tuple[str, int]]:
             break  # e' cominciato un altro blocco di primo livello (schema:)
         m = _RE_CHIAVE_YAML.match(riga)
         if m:
-            out.append((m.group(2), i))
+            chiavi.append((len(m.group(1)), m.group(2), i))
+
+    out: list[tuple[str, int]] = []
+    pila: list[tuple[int, str]] = []
+    for pos, (indentazione, nome, riga) in enumerate(chiavi):
+        while pila and pila[-1][0] >= indentazione:
+            pila.pop()
+        e_contenitore = pos + 1 < len(chiavi) and chiavi[pos + 1][0] > indentazione
+        if e_contenitore:
+            pila.append((indentazione, nome))
+            continue
+        out.append((".".join([n for _, n in pila] + [nome]), riga))
     return out
 
 
 def _chiavi_lette_da_run_sh(run_sh: Path) -> set[str]:
-    """Chiavi che `run.sh` legge con bashio::config, percorsi e segmenti.
+    """Chiavi che `run.sh` legge con bashio::config, come percorsi puntati.
 
     Il ponte fra le opzioni dell'add-on e il codice e' run.sh: legge
     `bashio::config 'log_level'` e ne esporta LOG_LEVEL. Il Python vede solo la
     variabile d'ambiente e non nomina mai l'opzione, quindi cercarla nel solo
     Python dichiarerebbe morta quasi ogni opzione dell'add-on.
 
-    Le chiavi annidate arrivano puntate (`local_model.url`) mentre l'elenco da
-    config.yaml le espone a segmenti (`local_model`, poi `url`): si raccolgono
-    entrambe le forme.
+    Ora che _opzioni_addon restituisce percorsi puntati completi, il confronto
+    avviene sui percorsi interi: nessuna scomposizione in segmenti.
     """
     if not run_sh.exists():
         return set()
     chiavi: set[str] = set()
     for percorso in _RE_BASHIO.findall(_leggi(run_sh)):
         chiavi.add(percorso)
-        chiavi.update(percorso.split("."))
     return chiavi
 
 
@@ -206,17 +219,17 @@ def censisci_configurazione(
     config_yaml: Path, run_sh: Path, file_app: list[Path]
 ) -> list[Reperto]:
     """Opzioni che nessuno legge, e variabili d'ambiente che nessuno esporta."""
-    testi = [_leggi(f) for f in file_app]
+    testi = [_senza_commenti(_leggi(f)) for f in file_app]
     reperti: list[Reperto] = []
 
     da_run_sh = _chiavi_lette_da_run_sh(run_sh)
     corpo = "".join(testi)
-    for nome, riga in _opzioni_addon(config_yaml):
-        if nome in da_run_sh:
+    for percorso, riga in _opzioni_addon(config_yaml):
+        if percorso in da_run_sh:
             continue
-        if f'"{nome}"' in corpo or f"'{nome}'" in corpo:
+        if f'"{percorso}"' in corpo or f"'{percorso}'" in corpo:
             continue
-        reperti.append(Reperto("opzione-mai-letta", nome,
+        reperti.append(Reperto("opzione-mai-letta", percorso,
                                f"{_rel(config_yaml)}:{riga}"))
 
     esportate = set(_RE_EXPORT.findall(_leggi(run_sh))) if run_sh.exists() else set()

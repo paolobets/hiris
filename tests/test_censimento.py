@@ -104,6 +104,7 @@ def test_opzione_mai_letta(tmp_path):
     reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
     nomi = {r.nome for r in reperti if r.categoria == "opzione-mai-letta"}
     assert "fantasma" in nomi
+    assert "mqtt.host" in nomi
     assert "usata" not in nomi
 
 
@@ -151,3 +152,29 @@ def test_opzione_annidata_letta_in_forma_puntata(tmp_path):
     app = _scrivi(tmp_path, "app.py", 'valore = opzioni.get("usata")\n')
     reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
     assert [r.nome for r in reperti if r.categoria == "opzione-mai-letta"] == []
+
+
+def test_foglia_generica_non_e_salvata_da_una_citazione_estranea(tmp_path):
+    cfg = _scrivi(tmp_path, "config.yaml", _CONFIG_YAML)
+    run_sh = _scrivi(tmp_path, "run.sh", "export U=$(bashio::config 'usata' '')\n")
+    app = _scrivi(tmp_path, "app.py", 'intestazioni = {"host": "esempio.it"}\n')
+    reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
+    nomi = {r.nome for r in reperti if r.categoria == "opzione-mai-letta"}
+    assert "mqtt.host" in nomi
+
+
+def test_il_contenitore_non_e_una_opzione(tmp_path):
+    cfg = _scrivi(tmp_path, "config.yaml", _CONFIG_YAML)
+    run_sh = _scrivi(tmp_path, "run.sh", "")
+    reperti = censimento.censisci_configurazione(cfg, run_sh, [])
+    nomi = {r.nome for r in reperti if r.categoria == "opzione-mai-letta"}
+    assert "mqtt" not in nomi
+    assert "mqtt.host" in nomi
+
+
+def test_envvar_letta_solo_in_un_commento_non_conta(tmp_path):
+    cfg = _scrivi(tmp_path, "config.yaml", _CONFIG_YAML)
+    run_sh = _scrivi(tmp_path, "run.sh", "")
+    app = _scrivi(tmp_path, "app.py", '# os.environ.get("HIRIS_COMMENTATA")\n')
+    reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
+    assert [r.nome for r in reperti if r.categoria == "envvar-mai-esportata"] == []
