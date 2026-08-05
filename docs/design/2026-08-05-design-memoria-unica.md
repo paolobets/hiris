@@ -176,6 +176,41 @@ che ha prodotto su sé stesso. Gli id arrivano a 4344 su 203 righe vive, quindi 
 funziona** — il problema non è la crescita, è il rapporto. Quando finalmente ricorderà qualcosa
 detto da una persona, quella riga sarà una su duecento.
 
+### I tre ricordi, letti per intero
+
+Valgono una sezione, perché dicono più del conteggio.
+
+1. chi è l'utente principale e che è l'amministratore della casa;
+2. una regola operativa non banale: per rispondere a «chi c'è in casa» incrociare **sempre**
+   tracciamento persone e sensori di presenza, e cosa concludere quando le due fonti divergono;
+3. il modulo meteo esterno è **guasto** — usare le previsioni, e **non proporre soluzioni basate su
+   sensori esterni**.
+
+Sono esattamente ciò che una casa dovrebbe sapere di sé. E hanno **tutti e tre lo stesso timestamp,
+lo stesso secondo**: salvati in un unico momento, il 24 luglio, quasi certamente perché richiesto in
+modo esplicito. **Da allora, dodici giorni, nessuno.**
+
+Lo strumento funziona e il modello sa usarlo. **Non è rotto: è muto.**
+
+**E sono legati a `chatbot_id='hiris-default'`.** Il giorno in cui nasce un secondo chatbot, quello
+non saprà che il modulo esterno è guasto e ricomincerà a proporre soluzioni basate su sensori che non
+esistono. Il difetto di ambito non è teorico: è già lì, in tre righe che valgono per la casa e sono
+prigioniere di un assistente.
+
+### Un requisito in più: sapere sempre, non richiamare
+
+*«Il modulo esterno è guasto»* non è un'informazione da recuperare quando la domanda le somiglia: è
+una cosa che HIRIS deve **sapere sempre**, o continuerà a sbagliare proprio quando nessuno gli ha
+chiesto dei sensori.
+
+Con tre righe — o trenta — non serve cercare: ci stanno in contesto tutte. È la direzione già
+approvata in `2026-08-04-cosa-sa-il-brain.md` (*«la memoria di conversazione entra in contesto senza
+cercare»*); questi tre la rendono concreta e urgente.
+
+Ne discende la distinzione operativa della sezione precedente: **ciò che una persona ha detto entra
+sempre; ciò che HIRIS ha dedotto si richiama.** Duecento medie settimanali non stanno in un prompt;
+trenta fatti dichiarati da chi ci abita, sì.
+
 ### Cosa questo cambia nel piano
 
 La **regola nel prompt** (decisione ④) non è un dettaglio dell'unificazione: **è il pezzo che conta
