@@ -12,8 +12,10 @@ Uso:
   python scripts/censimento.py
 """
 import argparse
+import io
 import re
 import sys
+import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,6 +71,32 @@ def _leggi(p: Path) -> str:
     return p.read_text(encoding="utf-8", errors="replace")
 
 
+def _senza_commenti(testo: str) -> str:
+    """Il testo con i commenti Python sostituiti da spazi.
+
+    Il SQL vive nei letterali di stringa; i commenti no. Ma un commento che
+    *cita* del SQL — `advisory_store.py` spiega a parole perche' il suo
+    `CREATE TABLE IF NOT EXISTS` basta — verrebbe letto come una tabella vera.
+    Si usa `tokenize` invece di una regex su `#` perche' un cancelletto dentro
+    una stringa non e' un commento.
+
+    Le posizioni non cambiano: ogni commento diventa altrettanti spazi, cosi'
+    i numeri di riga restano quelli del file originale.
+    """
+    try:
+        token = list(tokenize.generate_tokens(io.StringIO(testo).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return testo  # file non tokenizzabile: meglio scansionarlo com'e'
+    righe = testo.splitlines(keepends=True)
+    for tok in token:
+        if tok.type != tokenize.COMMENT:
+            continue
+        i = tok.start[0] - 1
+        inizio, fine = tok.start[1], tok.end[1]
+        righe[i] = righe[i][:inizio] + " " * (fine - inizio) + righe[i][fine:]
+    return "".join(righe)
+
+
 # ── Tabelle ─────────────────────────────────────────────────────────────────
 # Le parole chiave SQL si cercano MAIUSCOLE e case-sensitive: la codebase
 # scrive CREATE TABLE 25 volte su 25. Cercare "from" senza distinzione di
@@ -89,7 +117,7 @@ def censisci_tabelle(files: list[Path]) -> list[Reperto]:
     lette: set[str] = set()
 
     for f in files:
-        testo = _leggi(f)
+        testo = _senza_commenti(_leggi(f))
         for m in _RE_CREATE.finditer(testo):
             create.setdefault(m.group(1).lower(), f"{_rel(f)}:{_riga(testo, m.start())}")
         for rx in (_RE_INSERT, _RE_UPDATE, _RE_DELETE):

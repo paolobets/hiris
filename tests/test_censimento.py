@@ -64,3 +64,22 @@ db.execute("INSERT INTO history (id) VALUES (1)")
 ''')
     reperti = censimento.censisci_tabelle([tmp_path / "store.py"])
     assert [r.categoria for r in reperti] == ["tabella-scritta-mai-letta"]
+
+
+def test_sql_dentro_un_commento_non_e_una_tabella(tmp_path):
+    _scrivi(tmp_path, "store.py", '''
+db.execute("CREATE TABLE vera (id INTEGER)")
+db.execute("INSERT INTO vera (id) VALUES (1)")
+db.execute("SELECT id FROM vera")
+# il `CREATE TABLE IF NOT EXISTS` qui sopra basta anche per un archivio nuovo
+''')
+    assert censimento.censisci_tabelle([tmp_path / "store.py"]) == []
+
+
+def test_cancelletto_dentro_una_stringa_non_e_un_commento(tmp_path):
+    _scrivi(tmp_path, "store.py", '''
+etichetta = "# CREATE TABLE finta (id INTEGER)"
+db.execute("CREATE TABLE vera (id INTEGER)")
+''')
+    reperti = censimento.censisci_tabelle([tmp_path / "store.py"])
+    assert sorted(r.nome for r in reperti) == ["finta", "vera"]
