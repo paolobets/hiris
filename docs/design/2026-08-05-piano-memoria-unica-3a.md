@@ -236,6 +236,76 @@ dimentica una cosa che gli hai detto **senza dirlo a nessuno**.
 
 ---
 
+## Task 6: la memoria non evapora — *(buco del piano, scoperto durante l'esecuzione)*
+
+**Files:**
+- Modify: `hiris/app/tools/memory_tools.py` (dove si calcola `valid_until`)
+- Modify: `hiris/app/brain/knowledge_store.py` (`purge_expired_chatbot`)
+- Modify: `hiris/config.yaml` / `run.sh` se la conservazione diventa un'opzione
+- Test: i file che coprono scadenza e purga
+
+**Perché questa task esiste.** Il documento di progetto decide (§2 ③) che **la memoria non evapora**:
+ciò che HIRIS sa della tua casa non deve svanire perché è passato un trimestre. Il piano lo dichiara
+nella tabella dei file e **poi non lo implementa in nessuna task**. La Task 3 ha lasciato
+correttamente `valid_until` in pace, motivando che «lo possiede la Task 4» — che non lo possiede.
+
+E la Task 3 ha prodotto, come effetto collaterale documentato, un difetto che questa task deve
+chiudere:
+
+> **Righe immortali e invisibili.** Staccare un ricordo dal suo chatbot azzera `chatbot_id` ma
+> **lascia `valid_until`**. Quando quella data passa, il filtro di ambito la **nasconde su ogni
+> percorso di lettura** — e `purge_expired_chatbot`, che cerca per chatbot, non la trova più. La riga
+> resta nel database per sempre, invisibile e impurgabile. Una riga **già scaduta** al momento del
+> distacco sopravvive direttamente illeggibile.
+
+**La decisione:** niente scadenza automatica. La conservazione diventa un'impostazione, **spenta di
+default**.
+
+- [ ] **Step 1: Censisci**
+
+```bash
+grep -rn "valid_until\|retention_days\|purge_expired\|MEMORY_RETENTION" hiris/ tests/ --include=*.py --include=*.yaml --include=*.sh
+```
+
+Metti l'elenco nel rapporto. Distingui i **due** significati che `valid_until` ha oggi: la scadenza
+di conservazione dei ricordi, e il campo `valid_until` usato come **validità di un fatto** (una cosa
+vera fino a una certa data). **Non sono la stessa cosa** e questa task tocca solo la prima.
+
+- [ ] **Step 2: Scrivi i test che falliscono**
+
+1. un ricordo salvato **non riceve** una scadenza automatica;
+2. un ricordo salvato oggi è ancora leggibile e richiamabile **a distanza di anni** — simula
+   spostando l'orologio, non aspettando;
+3. **le righe già scadute che esistono adesso tornano leggibili** — è la bonifica del difetto delle
+   righe immortali. Costruisci un db con una riga `kind='memory'`, `chatbot_id=NULL`, `valid_until`
+   nel passato, e verifica che dopo la migrazione sia di nuovo visibile;
+4. se implementi la conservazione come impostazione: con l'impostazione **spenta** (default) nulla
+   scade; con un valore impostato, la purga funziona **e non tocca ciò che non è un ricordo**.
+
+- [ ] **Step 3: Esegui e verifica che falliscano**
+
+- [ ] **Step 4: Implementa**
+
+Togli il calcolo automatico della scadenza al salvataggio. Scrivi una **migrazione** che azzera
+`valid_until` sui ricordi esistenti — è ciò che riporta in vita le righe già scadute e quelle
+immortali. Decidi cosa fare di `purge_expired_chatbot` ora che nessuno gli produce più lavoro: se
+resta senza chiamanti utili, **esce** (questa fetta è anche pulizia), ma solo se il censimento lo
+conferma morto.
+
+**Attenzione:** se la conservazione diventa un'opzione dell'add-on, deve comparire **prima nella UI
+dell'add-on** e poi come variabile d'ambiente — regola del repo. Una env var che `run.sh` non esporta
+è di fatto una costante.
+
+- [ ] **Step 5: Esegui in primo piano** i file mirati
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(memoria): cio' che HIRIS sa non evapora"
+```
+
+---
+
 ## Task 5: la prova, e la pulizia
 
 **Files:**
