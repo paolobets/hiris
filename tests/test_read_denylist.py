@@ -389,21 +389,30 @@ def test_prune_empty_denylist_is_identity():
 class _FakeDispatcher:
     def __init__(self, result=None):
         self.calls = []
+        self.kwargs_calls = []
         self._result = result if result is not None else []
 
     async def dispatch(self, name, inputs, allowed_entities=None,
                        allowed_services=None, chatbot_id=None, cloud=True, **kw):
         self.calls.append((name, inputs))
+        # Fix 1 plumbing (whole-branch review, final fix wave): capture the
+        # full kwargs too, so a test can assert `from_remote_gateway` without
+        # widening the tuple every other test in this file already unpacks.
+        self.kwargs_calls.append({
+            "chatbot_id": chatbot_id, "cloud": cloud, **kw,
+        })
         return self._result
 
 
-def _make_app(tmp_path, *, denylist, result=None, local_token="LOCALE"):
+def _make_app(tmp_path, *, denylist, result=None, local_token="LOCALE", tools=None):
     app = web.Application()
     app["internal_token"] = "secret"
     app["data_dir"] = str(tmp_path)
-    app["execute_policy"] = {"tools": ["get_home_status", "get_history",
-                                       "get_logbook", "list_tasks"],
-                             "allowed_entities": None, "allowed_services": None}
+    app["execute_policy"] = {
+        "tools": tools if tools is not None else
+                 ["get_home_status", "get_history", "get_logbook", "list_tasks"],
+        "allowed_entities": None, "allowed_services": None,
+    }
     app["read_denylist"] = denylist
     app["local_execute_token"] = local_token
     app["tool_dispatcher"] = _FakeDispatcher(result)
@@ -498,6 +507,57 @@ async def test_execute_forged_local_marker_does_not_exempt(aiohttp_client, tmp_p
     resp = await _post(client, {"tool": "get_history", "input": {"entity_ids": ["lock.porta"]}},
                        headers={LOCAL_CHAT_HEADER: "indovinato"})
     assert resp.status == 403
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 (CRITICAL, whole-branch review, final fix wave): handle_execute must
+# tell the dispatcher whether THIS request is the real remote MCP gateway or
+# the chat-in-addon re-entering via LocalExecuteClient -- save_memory writes
+# a permanent, house-wide row that is auto-injected as "declared" on 'chat'
+# provenance. The discriminant is the SAME local-chat process secret the read
+# denylist already uses (LOCAL_CHAT_HEADER), never the client-supplied
+# `origin` field alone.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_execute_remote_call_marks_save_memory_as_gateway_origin(aiohttp_client, tmp_path):
+    app = _make_app(tmp_path, denylist=_DENY, tools=["save_memory"])
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "save_memory", "input": {"content": "detto dal gateway"}})
+    assert resp.status == 200
+    fake = app["tool_dispatcher"]
+    assert fake.kwargs_calls[-1]["from_remote_gateway"] is True
+
+
+@pytest.mark.asyncio
+async def test_execute_local_chat_call_does_not_mark_save_memory_as_gateway_origin(
+    aiohttp_client, tmp_path,
+):
+    app = _make_app(tmp_path, denylist=_DENY, tools=["save_memory"])
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "save_memory", "input": {"content": "detto in chat locale"}},
+                       headers={LOCAL_CHAT_HEADER: "LOCALE"})
+    assert resp.status == 200
+    fake = app["tool_dispatcher"]
+    assert fake.kwargs_calls[-1]["from_remote_gateway"] is False
+
+
+@pytest.mark.asyncio
+async def test_execute_forged_local_marker_still_marks_save_memory_as_gateway_origin(
+    aiohttp_client, tmp_path,
+):
+    """A caller that knows the internal_token but not the LOCAL_CHAT_HEADER
+    process secret (see test_execute_forged_local_marker_does_not_exempt
+    above, same guess) must still be tagged as gateway provenance -- the
+    marker is unguessable by construction, so a wrong guess is
+    indistinguishable from no marker at all."""
+    app = _make_app(tmp_path, denylist=_DENY, tools=["save_memory"])
+    client = await aiohttp_client(app)
+    resp = await _post(client, {"tool": "save_memory", "input": {"content": "x"}},
+                       headers={LOCAL_CHAT_HEADER: "indovinato"})
+    assert resp.status == 200
+    fake = app["tool_dispatcher"]
+    assert fake.kwargs_calls[-1]["from_remote_gateway"] is True
 
 
 # ---------------------------------------------------------------------------

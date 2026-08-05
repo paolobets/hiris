@@ -69,6 +69,28 @@ def test_declared_excludes_deduced_sources(tmp_path):
     s.close()
 
 
+def test_declared_excludes_gateway_source(tmp_path):
+    """Fix 1 (CRITICAL, whole-branch review, final fix wave): a save_memory
+    call arriving through the remote MCP gateway is written with
+    source='gateway' (ToolDispatcher.dispatch(from_remote_gateway=True) ->
+    tools/memory_tools.handle_save_memory), a value deliberately NOT in
+    DECLARED_SOURCES (see the comment above the tuple). This is the single
+    shared primitive all three auto-injection surfaces read from
+    (api/handlers_chat.py's declared block, and both proactive prompts via
+    brain/reasoner_memory._declared_snippets) -- pinning the exclusion here
+    is what keeps a gateway-originated row out of every one of them at once,
+    without a separate test per surface having to re-derive the same store
+    behaviour."""
+    s = _store(tmp_path)
+    _add(s, "detto in chat locale", source="chat")
+    _add(s, "iniettato via gateway MCP remoto", source="gateway")
+    items, total = s.declared()
+    contents = set(r["content"] for r in items)
+    assert contents == {"detto in chat locale"}
+    assert total == 1
+    s.close()
+
+
 def test_declared_default_source_manual_is_declared(tmp_path):
     """add_item()'s default source ('manual') is itself a declared source --
     an item saved without an explicit `source=` must still surface here."""

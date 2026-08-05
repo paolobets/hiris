@@ -364,3 +364,91 @@ async def test_save_memory_un_solo_strumento_salva_preferenza_e_scadenza_e_recal
     assert "preferisco 21 gradi" in contenuti
     assert "TARI da pagare" in contenuti
     store.close()
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 (CRITICAL, whole-branch review, final fix wave): save_memory's
+# `source` depends on WHO called dispatch(), not on what was saved.
+# `from_remote_gateway` is threaded ONLY by api/handlers_execute.py, based on
+# a process secret (_is_local_chat) the request body cannot forge -- every
+# other caller (this test's direct dispatch(), claude_runner.py,
+# openai_compat_runner.py) leaves it at its default False and keeps writing
+# source="chat", unchanged from before this fix.
+# ---------------------------------------------------------------------------
+
+async def test_save_memory_default_source_is_chat(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+    saved = await disp.dispatch(
+        "save_memory", {"content": "detto in chat locale"},
+        chatbot_id="agentA", user_id="paolo",
+    )
+    item = store.get_item(saved["id"])
+    assert item["source"] == "chat"
+    store.close()
+
+
+async def test_save_memory_from_remote_gateway_writes_gateway_source(tmp_path):
+    """The defect this fix closes: before it, EVERY save_memory call (gateway
+    included) wrote source='chat', which IS in DECLARED_SOURCES -- a single
+    tool call from a remote MCP session (reachable via api/handlers_execute.py,
+    /api/execute) produced a row auto-injected into every future prompt as
+    something 'a person of the house declared'. source='gateway' is not in
+    DECLARED_SOURCES (test_knowledge_store_declared.py pins the exclusion),
+    so the row stays recallable but is never auto-injected as a declaration."""
+    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+    saved = await disp.dispatch(
+        "save_memory", {"content": "salvato dal gateway MCP remoto"},
+        chatbot_id="mcp-gateway", user_id="home", from_remote_gateway=True,
+    )
+    assert saved.get("saved") is True
+    item = store.get_item(saved["id"])
+    assert item["source"] == "gateway"
+
+    # Still recallable -- Fix 1 narrows WHERE it surfaces, not whether it can
+    # be found at all.
+    recalled = await disp.dispatch(
+        "recall_memory", {"query": "salvato dal gateway"},
+        chatbot_id="mcp-gateway", user_id="home",
+    )
+    assert "salvato dal gateway MCP remoto" in str(recalled)
+
+    # Never in the declared() read path, regardless of caller.
+    declared_items, _total = store.declared(owner="home")
+    assert not any("salvato dal gateway MCP remoto" in (d.get("content") or "")
+                   for d in declared_items)
+    store.close()
+
+
+# ---------------------------------------------------------------------------
+# Fix 6 (Minor, whole-branch review, final fix wave): `knowledge_kinds` given
+# as a plain string (a form KnowledgeStore itself normalises, e.g. a
+# hand-edited knowledge_access.kinds: "fact") must still gain the 'memory'
+# union recall_memory needs to see the caller's own working memory --
+# dispatcher.py used to test only `isinstance(recall_kinds, list)`.
+# ---------------------------------------------------------------------------
+
+async def test_recall_memory_kinds_as_plain_string_still_unions_memory(tmp_path):
+    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+
+    saved = await disp.dispatch(
+        "save_memory", {"content": "memoria propria dell'agente"},
+        chatbot_id="agentA", user_id="paolo", knowledge_kinds="fact",
+    )
+    assert saved.get("saved") is True
+
+    res = await disp.dispatch(
+        "recall_memory", {"query": "memoria propria"},
+        chatbot_id="agentA", user_id="paolo", knowledge_kinds="fact",
+    )
+    contents = [r["content"] for r in res.get("results", [])]
+    assert "memoria propria dell'agente" in contents, (
+        "kinds='fact' (stringa nuda) deve comunque unire 'memory', esattamente "
+        "come kinds=['fact']"
+    )
+    store.close()
