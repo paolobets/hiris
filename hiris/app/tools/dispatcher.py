@@ -596,12 +596,32 @@ class ToolDispatcher:
                     return {"error": ("La memoria non è disponibile: non posso "
                                       "cercare nei ricordi di casa in questo "
                                       "momento.")}
+                # Review Important (chiuso in questo task): `knowledge_kinds` e'
+                # l'egress dell'agente sui cinque kind di *conoscenza*
+                # (fact/preference/obligation/expense/note) -- 'memory' non e'
+                # un valore che la UI possa mai produrre (chatbot-editor.js
+                # serializza "all" o un sottoinsieme di KNOWLEDGE_KINDS, che non
+                # contiene 'memory'). Inoltrarlo cosi' com'era voleva dire: un
+                # agente ristretto a es. kinds=['fact'] (o kinds=[], "nessun
+                # accesso al second brain", valore che la UI permette) poteva
+                # ancora save_memory con successo ma non si sarebbe MAI
+                # ritrovato il proprio ricordo via recall_memory -- salvato e
+                # mai piu' richiamabile, la classe di difetto che questa fetta
+                # esiste per eliminare. 'memory' non e' mai stato nel
+                # vocabolario che knowledge_access.kinds governa, quindi va
+                # unito qui: ripristina esattamente la capacita' netta
+                # pre-merge (un agente vede sempre la propria memoria di
+                # lavoro) senza allargare cio' che il setting controlla.
+                # `None` (= "tutto") resta intoccato.
+                recall_kinds = knowledge_kinds
+                if isinstance(recall_kinds, list) and "memory" not in recall_kinds:
+                    recall_kinds = recall_kinds + ["memory"]
                 return await _handle_recall_memory(
                     self._knowledge_store, self._knowledge_embedder, inputs,
                     owner=user_id or "home",
                     chatbot_id=chatbot_id or "hiris-default",
                     allow_sensitive=knowledge_allow_sensitive,
-                    kinds=knowledge_kinds,
+                    kinds=recall_kinds,
                     pseudonymizer=self._pseudonymizer,
                     cloud=cloud,
                     pseudonym_map=pseudonym_map,

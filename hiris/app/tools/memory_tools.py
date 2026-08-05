@@ -22,6 +22,23 @@ _ERRORE_SALVATAGGIO = (
     "Non sono riuscito a salvare questo ricordo. Riprova più tardi."
 )
 
+# Rifiutato ad alta voce (mai troncato in silenzio): il modello deve poter
+# reagire, quindi il messaggio dice anche cosa fare -- accorciare il testo o
+# dividerlo in più ricordi -- non solo che il limite e' stato superato.
+_ERRORE_LUNGHEZZA = (
+    "Il contenuto supera il limite di 1000 caratteri. Accorcialo oppure "
+    "dividilo in più ricordi separati."
+)
+
+# Idem per un `kind` fuori vocabolario: 'insight' o 'brain-action' scrivono
+# nei namespace del digest storico e delle tracce del Brain -- indistinguibili
+# da righe generate dalla macchina, condivise con tutta la casa, senza
+# scadenza. Anthropic filtra sull'enum dello schema, ma i backend
+# OpenAI-compatibili e il gateway MCP potrebbero non farlo: va controllato qui.
+_ERRORE_KIND = (
+    "Tipo di ricordo non valido: '{kind}'. Usa uno tra: {validi}."
+)
+
 # `kind` che il modello puo' scegliere. 'memory' e' il default (ricordo
 # generico di questo agente, kind fisso del vecchio save_memory); gli altri
 # cinque sono il vocabolario del vecchio save_knowledge -- vivono nella
@@ -162,8 +179,12 @@ async def handle_save_memory(
     """
     content = tool_input["content"]
     if len(content) > 1000:
-        return {"error": "content exceeds 1000 character limit"}
+        return {"error": _ERRORE_LUNGHEZZA}
     kind = tool_input.get("kind") or "memory"
+    if kind not in _KINDS_VALIDI:
+        return {"error": _ERRORE_KIND.format(
+            kind=kind, validi=", ".join(_KINDS_VALIDI),
+        )}
     tags = tool_input.get("tags") or []
     try:
         embedding = await embedder.embed(content) if embedder is not None else None

@@ -253,6 +253,77 @@ async def test_recall_memory_kinds_filter_still_restricts_to_memory_when_asked(t
     store.close()
 
 
+async def test_recall_memory_own_memory_still_recallable_when_kinds_restricted_to_fact(tmp_path):
+    """Review Important (fix 1): `knowledge_kinds` here is `['fact']` --
+    a value a REAL caller can produce, unlike the pre-existing test above
+    that used `['memory']` (chatbot-editor.js / KNOWLEDGE_KINDS never emit
+    'memory': the UI serializes "all" or a subset of the five *knowledge*
+    kinds only, see hiris/app/static/config/chatbot-editor.js and
+    templates.js KNOWLEDGE_KINDS). Before the fix, a Chatbot configured with
+    kinds=['fact'] could save_memory (kind omitted -> 'memory') and get
+    saved:true, but recall_memory with that same config forwarded
+    kinds=['fact'] unmodified -- the just-saved memory could never come
+    back. This is the exact silent-loss class the memoria-unica slice exists
+    to eliminate."""
+    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+
+    saved = await disp.dispatch(
+        "save_memory", {"content": "l'utente preferisce 21 gradi"},
+        chatbot_id="agentA", user_id="paolo", knowledge_kinds=["fact"],
+    )
+    assert saved.get("saved") is True
+
+    res = await disp.dispatch(
+        "recall_memory", {"query": "temperatura preferita"},
+        chatbot_id="agentA", user_id="paolo", knowledge_kinds=["fact"],
+    )
+    contents = [r["content"] for r in res.get("results", [])]
+    assert "l'utente preferisce 21 gradi" in contents, (
+        "un agente ristretto a kinds=['fact'] (valore reale della UI) deve "
+        "comunque poter richiamare la propria memoria di lavoro appena "
+        "salvata -- 'memory' non fa parte del vocabolario che "
+        "knowledge_access.kinds governa"
+    )
+    store.close()
+
+
+async def test_recall_memory_own_memory_still_recallable_when_kinds_empty_but_knowledge_stays_hidden(tmp_path):
+    """Review Important (fix 1), second real value: `knowledge_kinds=[]` is
+    the UI's "no access to the second brain at all" setting (chatbot-editor.js
+    comment: "kinds:[] e' una scelta valida e significa 'nessun accesso al
+    second brain'"). An agent configured this way must still see its own
+    save_memory -- 'memory' isn't second-brain knowledge -- but must NOT
+    gain visibility into house-wide facts as a side effect of the union."""
+    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
+    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
+                          knowledge_store=store, embedder=_Emb())
+
+    await disp.dispatch(
+        "save_memory", {"kind": "fact", "content": "il modulo meteo esterno e' guasto"},
+        chatbot_id="agentA", user_id="paolo",
+    )
+    saved = await disp.dispatch(
+        "save_memory", {"content": "nota privata agente"},
+        chatbot_id="agentA", user_id="paolo", knowledge_kinds=[],
+    )
+    assert saved.get("saved") is True
+
+    res = await disp.dispatch(
+        "recall_memory", {"query": "nota privata modulo meteo"},
+        chatbot_id="agentA", user_id="paolo", knowledge_kinds=[],
+    )
+    contents = [r["content"] for r in res.get("results", [])]
+    assert "nota privata agente" in contents, (
+        "kinds=[] non deve bloccare la memoria propria dell'agente"
+    )
+    assert "il modulo meteo esterno e' guasto" not in contents, (
+        "kinds=[] deve comunque bloccare l'accesso alla conoscenza condivisa"
+    )
+    store.close()
+
+
 async def test_save_memory_un_solo_strumento_salva_preferenza_e_scadenza_e_recall_trova_entrambe(tmp_path):
     """Task 2 -- un solo strumento di salvataggio, uno di richiamo: una
     preferenza nuda (kind omesso) e una scadenza con due campi strutturati

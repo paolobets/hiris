@@ -23,6 +23,7 @@ import pytest
 from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.tools.memory_tools import (
     SAVE_MEMORY_TOOL_DEF,
+    _KINDS_VALIDI,
     handle_recall_memory,
     handle_save_memory,
 )
@@ -247,6 +248,68 @@ async def test_recall_memory_vuoto_legittimo_non_e_un_errore(tmp_path):
     assert "error" not in res
     assert res["results"] == []
     assert res["count"] == 0
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_save_memory_contenuto_troppo_lungo_per_kind_diverso_da_memory_e_rifiutato_in_italiano(tmp_path):
+    """Review Minor (fix 3): il limite di 1000 caratteri si applica a
+    QUALUNQUE kind, non solo a 'memory' -- prima di questo test nulla lo
+    verificava per un kind di conoscenza. Il messaggio deve essere in
+    italiano (come ogni altro messaggio rivolto al modello in questo file) e
+    deve dire cosa fare, non solo che il limite e' stato superato."""
+    store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    contenuto_lungo = "x" * 1001
+    res = await handle_save_memory(
+        store, _Embedder(), {"kind": "fact", "content": contenuto_lungo},
+        owner="paolo", chatbot_id="agentA",
+    )
+    assert res.get("saved") is None
+    assert "error" in res
+    assert "1000 caratteri" in res["error"]
+    assert "content exceeds" not in res["error"], "il messaggio non deve piu' essere in inglese"
+    # deve dire cosa fare, non solo che il limite e' superato
+    assert any(verbo in res["error"].lower() for verbo in ("accorcia", "dividi", "divid")), (
+        "il messaggio deve indicare come rimediare (accorciare o dividere)"
+    )
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_save_memory_content_esattamente_1000_caratteri_e_accettato_per_kind_diverso_da_memory(tmp_path):
+    """Il confine va pinnato su entrambi i lati: 1000 esatti passano, per un
+    kind di conoscenza esattamente come per 'memory'."""
+    store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    contenuto = "x" * 1000
+    res = await handle_save_memory(
+        store, _Embedder(), {"kind": "note", "content": contenuto},
+        owner="paolo", chatbot_id="agentA",
+    )
+    assert res.get("saved") is True
+    assert "error" not in res
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_save_memory_kind_sconosciuto_e_rifiutato_in_italiano(tmp_path):
+    """Review Minor (fix 4): `_KINDS_VALIDI` esisteva gia' ma alimentava solo
+    l'enum dello schema -- Anthropic lo fa rispettare, ma un backend
+    OpenAI-compatibile o il gateway MCP potrebbero non farlo. Un kind fuori
+    vocabolario (es. 'insight', 'brain-action' -- i namespace del digest
+    storico e delle tracce del Brain) va rifiutato qui, non scritto."""
+    store = KnowledgeStore(str(tmp_path / "memoria.db"))
+    res = await handle_save_memory(
+        store, _Embedder(), {"kind": "insight", "content": "qualcosa"},
+        owner="paolo", chatbot_id="agentA",
+    )
+    assert res.get("saved") is None
+    assert "error" in res
+    assert "insight" in res["error"]
+    # non deve essere finito nello store sotto mentite spoglie -- nessun
+    # filtro di kind, per essere sicuri che non sia stato scritto affatto
+    # (ne' come 'insight' ne' sotto un kind valido)
+    trovati = store.recent(owner="paolo", chatbot_id="agentA")
+    assert trovati == []
     store.close()
 
 
