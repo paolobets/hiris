@@ -1,5 +1,57 @@
 # HIRIS — Changelog
 
+## [1.1.0-beta.18] — Adesso ricorda davvero (2026-08-05)
+
+**Se gli dicevi una cosa, HIRIS non la teneva.** Rispondeva «preso nota» — e non
+salvava niente. Non era un guasto: nel testo che lo governa non c'era **nessuna
+riga** che gli dicesse quando ricordare. Aveva lo strumento e nessuna istruzione
+per usarlo. In quattro mesi ha imparato da te **tre volte**, tutte e tre lo stesso
+giorno, e solo perché gliel'avevi chiesto in modo esplicito.
+
+Adesso basta dirglielo normalmente. *«D'inverno il soggiorno sta bene a 19.5»* è
+un'affermazione, non un comando, e tanto basta.
+
+**E quelle tre cose che sapeva erano già sparite.** Chi sei, come capire chi c'è
+in casa, e che il sensore meteo esterno è guasto: erano state salvate a luglio con
+una scadenza automatica di novanta giorni, ed erano già scadute — invisibili, senza
+che nulla lo dicesse. **Questa versione le riporta indietro**, e toglie la scadenza:
+ciò che HIRIS sa della tua casa non svanisce più perché è passato un trimestre.
+
+**Ora se ne ricorda da solo.** Prima, anche i ricordi salvati riemergevano solo se
+HIRIS decideva di andarseli a cercare. Adesso ciò che gli hai detto entra da sé
+nelle conversazioni nuove e nei suoi ragionamenti — e resta distinto da ciò che ha
+dedotto per conto suo, così duecento medie settimanali non seppelliscono le tre cose
+che contano.
+
+**E quello che dici lo sa HIRIS, non il singolo assistente.** Le tre cose di sopra
+erano legate al chatbot con cui parlavi: un secondo assistente non avrebbe saputo del
+sensore guasto, e avrebbe ricominciato a proporti soluzioni basate su sensori che non
+esistono. Ora valgono ovunque, e ognuna porta il nome di chi l'ha detta. Ciò che è
+marcato come riservato resta di chi l'ha scritto.
+
+### Meno cose, non solo più cose
+
+- **Un solo modo di ricordare.** C'erano due strumenti che facevano la stessa cosa
+  scrivendo nella stessa tabella, con regole diverse e senza motivo: uno salvava
+  subito ma legato a un assistente e con scadenza, l'altro chiedeva il permesso ma
+  valeva per tutta la casa e non scadeva mai. Adesso è uno.
+- **Via la coda di approvazione per i ricordi**: si salva e basta. La pagina che
+  mostra ciò che HIRIS sa — con la possibilità di correggere e cancellare — arriva
+  nella prossima versione.
+- Via anche l'impostazione di conservazione, la pulizia periodica che non serviva più
+  e alcune scritte che promettevano comportamenti non più veri.
+
+### Corretto anche
+
+- **Cancellare un assistente non cancella più ciò che sapeva la casa.** Prima
+  spariva insieme a lui.
+- Un assistente con permessi ristretti poteva salvare un ricordo e non ritrovarlo
+  mai più.
+- Un fatto lungo più di due righe veniva **tagliato a metà in silenzio** prima di
+  arrivare al modello.
+- Le scritte che dicevano «dichiarato da una persona di casa» ora dicono la verità:
+  «salvato in conversazione».
+
 ## [1.1.0-beta.17] — HIRIS ricorda, e si ricorda da solo (2026-08-04)
 
 **Se non hai mai configurato un fornitore di embedding — cioè, quasi certamente,
