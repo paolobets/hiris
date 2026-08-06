@@ -46,9 +46,14 @@ CREATE TABLE IF NOT EXISTS integrazioni (
 CREATE TABLE IF NOT EXISTS meta (
     chiave TEXT PRIMARY KEY, valore TEXT
 );
+CREATE TABLE IF NOT EXISTS comportamento (
+    id TEXT PRIMARY KEY, tipo TEXT NOT NULL, nome TEXT,
+    corpo TEXT, origine TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_entita_area ON entita(area_id);
 CREATE INDEX IF NOT EXISTS idx_entita_dispositivo ON entita(dispositivo_id);
 CREATE INDEX IF NOT EXISTS idx_aree_piano ON aree(piano_id);
+CREATE INDEX IF NOT EXISTS idx_comportamento_tipo ON comportamento(tipo);
 """
 
 _TABELLE = ["piani", "aree", "dispositivi", "entita", "etichette",
@@ -166,6 +171,48 @@ class ArchivioCasa:
         except (TypeError, ValueError):
             return []
         return valore if isinstance(valore, list) else []
+
+    def sostituisci_comportamento(self, voci: list[dict]) -> None:
+        """Rimpiazza cio' che la casa sa fare da sola. Tutto o niente.
+
+        Separato da `sostituisci()` perche' cambia con una cadenza diversa
+        (giorni contro mesi) e da una fonte diversa (i file di configurazione
+        contro i registri): rileggere i registri perche' e' cambiata
+        un'automazione sarebbe uno spreco, e viceversa.
+        """
+        c = self._conn
+        try:
+            c.execute("BEGIN")
+            c.execute("DELETE FROM comportamento")
+            for v in voci:
+                corpo = v.get("corpo")
+                c.execute("INSERT INTO comportamento (id, tipo, nome, corpo, origine) "
+                          "VALUES (?,?,?,?,?)",
+                          (v["id"], v["tipo"], v.get("nome"),
+                           # `None` resta `None`: «non ho il corpo» e «il corpo
+                           # e' vuoto» sono due cose diverse.
+                           None if corpo is None else json.dumps(corpo, ensure_ascii=False),
+                           v.get("origine", "file")))
+            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
+                      "VALUES ('comportamento_letto_il', ?)",
+                      (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+
+    def comportamento(self) -> list[dict]:
+        """Cio' che la casa sa fare da sola, coi corpi gia' sciolti."""
+        voci = []
+        for riga in self._conn.execute("SELECT * FROM comportamento ORDER BY id").fetchall():
+            v = dict(riga)
+            if v.get("corpo") is not None:
+                try:
+                    v["corpo"] = json.loads(v["corpo"])
+                except (TypeError, ValueError):
+                    v["corpo"] = None
+            voci.append(v)
+        return voci
 
     def leggi(self) -> dict[str, list[dict]]:
         """L'anagrafe intera, con le liste JSON gia' sciolte."""

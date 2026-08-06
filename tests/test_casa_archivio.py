@@ -87,3 +87,52 @@ def test_il_nome_dell_utente_vince_su_quello_dell_integrazione(archivio):
     registri = dict(_REGISTRI, entita=[dict(_REGISTRI["entita"][0], name="Il mio frigo")])
     archivio.sostituisci(registri)
     assert archivio.leggi()["entita"][0]["nome"] == "Il mio frigo"
+
+
+_COMPORTAMENTO = [
+    {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+     "corpo": {"trigger": [{"platform": "time", "at": "07:00"}]}, "origine": "file"},
+    {"id": "automation.a_mano", "tipo": "automazione", "nome": "Scritta a mano",
+     "corpo": None, "origine": "solo_stato"},
+    {"id": "script.saluta", "tipo": "script", "nome": "Saluta",
+     "corpo": {"sequence": []}, "origine": "file"},
+]
+
+
+def test_il_comportamento_si_sostituisce_e_si_rilegge(archivio):
+    archivio.sostituisci_comportamento(_COMPORTAMENTO)
+    voci = {v["id"]: v for v in archivio.comportamento()}
+    assert voci["automation.sveglia"]["corpo"]["trigger"][0]["at"] == "07:00"
+    assert voci["automation.sveglia"]["tipo"] == "automazione"
+
+
+def test_un_corpo_che_non_si_puo_leggere_resta_None_non_vuoto(archivio):
+    """«Non ho il corpo» e «il corpo e' vuoto» dicono due cose diverse:
+    la prima e' un limite di HIRIS, la seconda un fatto sulla casa."""
+    archivio.sostituisci_comportamento(_COMPORTAMENTO)
+    voci = {v["id"]: v for v in archivio.comportamento()}
+    assert voci["automation.a_mano"]["corpo"] is None
+    assert voci["automation.a_mano"]["origine"] == "solo_stato"
+
+
+def test_sostituire_il_comportamento_non_tocca_l_anagrafe(archivio):
+    """Cadenze diverse, fonti diverse: un'automazione modificata non deve
+    costringere a rileggere i registri, e viceversa un registro riletto non
+    deve far sparire il comportamento gia' noto."""
+    archivio.sostituisci(_REGISTRI)
+    archivio.sostituisci_comportamento(_COMPORTAMENTO)
+    assert [a["nome"] for a in archivio.leggi()["aree"]] == ["Cucina"]
+    archivio.sostituisci_comportamento([])
+    assert [a["nome"] for a in archivio.leggi()["aree"]] == ["Cucina"]
+
+    # Direzione inversa: ricostruire l'anagrafe (sostituisci) non deve
+    # cancellare il comportamento gia' letto dai file.
+    archivio.sostituisci_comportamento(_COMPORTAMENTO)
+    archivio.sostituisci(_REGISTRI)
+    assert len(archivio.comportamento()) == len(_COMPORTAMENTO)
+
+
+def test_il_comportamento_non_accumula(archivio):
+    archivio.sostituisci_comportamento(_COMPORTAMENTO)
+    archivio.sostituisci_comportamento(_COMPORTAMENTO[:1])
+    assert len(archivio.comportamento()) == 1
