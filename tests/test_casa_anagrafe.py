@@ -70,7 +70,7 @@ def test_l_area_dell_entita_vince_su_quella_del_dispositivo(archivio):
 def test_le_aree_senza_piano_stanno_in_un_piano_senza_nome(archivio):
     archivio.sostituisci(_REGISTRI)
     piani = gerarchia(archivio.leggi())
-    senza = [p for p in piani if p["id"] is None][0]
+    senza = [p for p in piani if p["id"] == "__senza_piano__"][0]
     assert [a["nome"] for a in senza["aree"]] == ["Solaio"]
 
 
@@ -84,5 +84,41 @@ def test_le_entita_disabilitate_non_entrano_nella_gerarchia(archivio):
 def test_le_entita_senza_casa_sono_raccolte_a_parte(archivio):
     archivio.sostituisci(_REGISTRI)
     piani = gerarchia(archivio.leggi())
-    fuori = [a for p in piani for a in p["aree"] if a["id"] is None]
+    fuori = [a for p in piani for a in p["aree"] if a["id"] == "__senza_area__"]
     assert [e["id"] for a in fuori for e in a["entita"]] == ["sensor.orfana"]
+
+
+def test_un_registro_delle_aree_caduto_non_diventa_una_casa_senza_aree(archivio):
+    """Il caso che la review ha riprodotto: se cade il SOLO registro delle aree,
+    ogni entita' della casa finiva in «Senza area», e HIRIS presentava «questa
+    casa non ha organizzazione» invece di «non ho potuto leggere le aree»."""
+    archivio.sostituisci(dict(_REGISTRI, aree=[]), ["aree"])
+    piani = gerarchia(archivio.leggi(), ("aree",))
+    aree = [a for p in piani for a in p["aree"]]
+    assert [a["nome"] for a in aree] == ["Aree non lette"]
+    assert "sensor.frigo_temp" in [e["id"] for e in aree[0]["entita"]]
+
+
+def test_un_riferimento_penzolante_non_e_una_entita_senza_area(archivio):
+    """Un'area letta ma inesistente e' un'incoerenza dell'anagrafe: va vista,
+    non confusa con un'entita' che davvero non sta in nessuna stanza."""
+    registri = dict(_REGISTRI, entita=[
+        {"entity_id": "sensor.fantasma", "device_id": None, "area_id": "area_che_non_esiste"},
+        {"entity_id": "sensor.orfana", "device_id": None, "area_id": None},
+    ])
+    archivio.sostituisci(registri)
+    aree = {a["nome"]: a for p in gerarchia(archivio.leggi()) for a in p["aree"]}
+    assert [e["id"] for e in aree["Area sconosciuta"]["entita"]] == ["sensor.fantasma"]
+    assert [e["id"] for e in aree["Senza area"]["entita"]] == ["sensor.orfana"]
+
+
+def test_i_due_contenitori_hanno_identita_distinte(archivio):
+    """Due piani con lo stesso id facevano sparire in silenzio le aree vere
+    senza piano, appena qualcuno indicizzava per id."""
+    archivio.sostituisci(_REGISTRI)
+    piani = gerarchia(archivio.leggi())
+    identita = [p["id"] for p in piani]
+    assert len(identita) == len(set(identita))
+    per_id = {p["id"]: p for p in piani}
+    assert [a["nome"] for a in per_id["__senza_piano__"]["aree"]] == ["Solaio"]
+    assert [a["nome"] for a in per_id["__fuori_dalle_aree__"]["aree"]] == ["Senza area"]

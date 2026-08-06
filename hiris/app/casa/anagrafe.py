@@ -32,7 +32,18 @@ async def ricostruisci(client, archivio) -> dict:
     return {"conteggi": conteggi, "non_disponibili": non_disponibili}
 
 
-def gerarchia(casa: dict[str, list[dict]]) -> list[dict]:
+# Id espliciti per le pseudo-aree e i piani-contenitore: mai None, cosi' un
+# consumatore che indicizzi per id (naturale, su un albero con id) non fa
+# sparire in silenzio due contenitori diversi che per caso condividevano la
+# stessa chiave.
+_ID_SENZA_AREA = "__senza_area__"
+_ID_AREE_NON_LETTE = "__aree_non_lette__"
+_ID_AREA_SCONOSCIUTA = "__area_sconosciuta__"
+_ID_SENZA_PIANO = "__senza_piano__"
+_ID_FUORI_DALLE_AREE = "__fuori_dalle_aree__"
+
+
+def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()) -> list[dict]:
     """La casa in forma di albero: piani → aree → entita'.
 
     Due regole di Home Assistant che vanno rispettate o meta' della casa
@@ -41,9 +52,37 @@ def gerarchia(casa: dict[str, list[dict]]) -> list[dict]:
     - un'entita' appartiene alla PROPRIA area se ce l'ha, altrimenti a quella
       del proprio dispositivo. Moltissime entita' non hanno area propria: e'
       il dispositivo a portarla;
-    - un'area puo' non avere piano, e un'entita' puo' non avere area. Non si
-      buttano: finiscono in un piano e in un'area senza nome, cosi' chi guarda
-      vede che esistono invece di credere che la casa sia piu' piccola.
+    - un'area puo' non avere piano: le aree vere di Home Assistant senza piano
+      finiscono nel contenitore "Senza piano" (`__senza_piano__`), separato da
+      tutto il resto.
+
+    Le entita' che non finiscono in nessuna area nota si dividono per CAUSA,
+    non si mischiano in un unico "non si sa", perche' le cause sono
+    contrapposte:
+
+    - se il registro delle aree e' stato letto con successo (`"aree"` non e'
+      in `non_disponibili`), un'entita' senza `area_id` (ne' proprio ne'
+      ereditato dal dispositivo) davvero non sta in nessuna stanza: va in
+      "Senza area" (`__senza_area__`). Se invece ha un `area_id` che non
+      corrisponde a nessuna area nota, e' un riferimento penzolante —
+      un'incoerenza vera dell'anagrafe, non un'assenza: va in "Area
+      sconosciuta" (`__area_sconosciuta__`), cosi' resta visibile invece di
+      confondersi con chi davvero non ha casa;
+    - se il registro delle aree NON e' stato letto, non possiamo piu' fidarci
+      di nessuna delle due letture sopra: un'entita' con `area_id` a None
+      potrebbe davvero non avere area, ma un'entita' con un `area_id` che
+      "non risulta noto" potrebbe semplicemente stare in un'area che non
+      abbiamo potuto leggere. Non potendo distinguerle, non si distinguono:
+      finiscono tutte insieme in "Aree non lette" (`__aree_non_lette__`),
+      cosi' chi guarda vede "non ho potuto leggere le aree" e non "questa
+      casa non ha organizzazione".
+
+    Questi tre gruppi (quelli non vuoti) stanno dentro un secondo
+    piano-contenitore, "Fuori dalle aree" (`__fuori_dalle_aree__`), distinto
+    dal "Senza piano" delle aree vere — sono concetti diversi che in una
+    versione precedente condividevano per errore lo stesso id `None`,
+    facendo sparire in silenzio l'uno o l'altro a chiunque indicizzasse i
+    piani per id.
 
     Le entita' disabilitate restano nell'archivio ma non nell'albero: sono in
     Home Assistant e non funzionano, quindi contarle come stanze arredate
@@ -70,13 +109,21 @@ def gerarchia(casa: dict[str, list[dict]]) -> list[dict]:
             "entita": per_area.get(area["id"], []),
         })
 
-    # Le entita' senza area (ne' propria, ne' ereditata dal dispositivo) sono
-    # un concetto diverso dalle aree senza piano: non vanno mischiate nello
-    # stesso bucket "None", o le prime finiscono per travestirsi da seconde
-    # (e un test che verifica il contenuto esatto del piano senza nome
-    # smaschera subito la confusione).
-    senza_casa = [e for area_id, elenco in per_area.items()
-                  if area_id not in aree_note for e in elenco]
+    # Le entita' fuori dalle aree note si dividono per causa. Se le aree non
+    # sono state lette, non possiamo fidarci nemmeno della distinzione fra
+    # "area_id assente" e "area_id sconosciuto": vanno tutte in un unico
+    # bucket "Aree non lette".
+    aree_lette = "aree" not in non_disponibili
+    senza_area, aree_non_lette, area_sconosciuta = [], [], []
+    for area_id, elenco in per_area.items():
+        if area_id in aree_note:
+            continue
+        if not aree_lette:
+            aree_non_lette.extend(elenco)
+        elif area_id is None:
+            senza_area.extend(elenco)
+        else:
+            area_sconosciuta.extend(elenco)
 
     piani = []
     for piano in casa.get("piani", []):
@@ -88,11 +135,20 @@ def gerarchia(casa: dict[str, list[dict]]) -> list[dict]:
 
     resto = [a for elenco in aree_per_piano.values() for a in elenco]
     if resto:
-        piani.append({"id": None, "nome": "Senza piano", "livello": None, "aree": resto})
+        piani.append({"id": _ID_SENZA_PIANO, "nome": "Senza piano", "livello": None, "aree": resto})
 
-    if senza_casa:
-        piani.append({"id": None, "nome": "Senza piano", "livello": None, "aree": [
-            {"id": None, "nome": "Senza area", "alias": [], "etichette": [],
-             "entita": senza_casa},
-        ]})
+    fuori_dalle_aree = []
+    if aree_non_lette:
+        fuori_dalle_aree.append({"id": _ID_AREE_NON_LETTE, "nome": "Aree non lette",
+                                 "alias": [], "etichette": [], "entita": aree_non_lette})
+    if area_sconosciuta:
+        fuori_dalle_aree.append({"id": _ID_AREA_SCONOSCIUTA, "nome": "Area sconosciuta",
+                                 "alias": [], "etichette": [], "entita": area_sconosciuta})
+    if senza_area:
+        fuori_dalle_aree.append({"id": _ID_SENZA_AREA, "nome": "Senza area",
+                                 "alias": [], "etichette": [], "entita": senza_area})
+    if fuori_dalle_aree:
+        piani.append({"id": _ID_FUORI_DALLE_AREE, "nome": "Fuori dalle aree", "livello": None,
+                      "aree": fuori_dalle_aree})
+
     return piani
