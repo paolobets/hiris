@@ -21,11 +21,17 @@ from ..casa.anagrafe import gerarchia
 async def handle_get_casa(request: web.Request) -> web.Response:
     archivio = request.app.get("archivio_casa")
     if archivio is None:
-        # L'anagrafe puo' non esserci: Home Assistant poteva non essere pronto
-        # all'avvio. Vuota e 200, non 500 -- chi guarda deve poter distinguere
-        # «non c'e' ancora niente» da «e' rotto».
+        # Difesa, non stato atteso: in produzione questo ramo non dovrebbe mai
+        # scattare. Se `_on_startup` fallisce, l'add-on non parte affatto; un
+        # Home Assistant non ancora pronto all'avvio produce un archivio
+        # VUOTO (create_app() lo istanzia comunque), non assente. Resta qui
+        # come rete di sicurezza per un futuro in cui l'ordine di avvio
+        # cambiasse -- una difesa che non scatta e' giusta, non va tolta.
+        #
+        # `non_disponibili: None`, non `[]`: `[]` afferma "tutti i registri
+        # ok", e qui non lo sappiamo -- non abbiamo nemmeno letto niente.
         return web.json_response({
-            "aggiornata_il": None, "non_disponibili": [], "conteggi": {}, "piani": [],
+            "aggiornata_il": None, "non_disponibili": None, "conteggi": {}, "piani": [],
         })
     casa = archivio.leggi()
     non_disponibili = archivio.non_disponibili()

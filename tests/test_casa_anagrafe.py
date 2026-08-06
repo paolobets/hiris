@@ -54,6 +54,24 @@ async def test_ricostruisci_riporta_i_registri_caduti(archivio):
     assert esito["conteggi"]["aree"] == 2   # il resto e' passato lo stesso
 
 
+@pytest.mark.asyncio
+async def test_una_lettura_del_tutto_fallita_non_cancella_la_casa(archivio):
+    """L'utente rinomina un'entita' e subito riavvia HA: l'antirimbalzo scade a
+    HA spento. La casa buona di ieri non deve sparire."""
+    client = AsyncMock()
+    client.leggi_registri = AsyncMock(return_value=(_REGISTRI, []))
+    await ricostruisci(client, archivio)
+    prima = archivio.aggiornata_il()
+
+    vuoti = {chiave: [] for chiave in _REGISTRI}
+    client.leggi_registri = AsyncMock(return_value=(vuoti, list(_REGISTRI)))
+    esito = await ricostruisci(client, archivio)
+
+    assert archivio.leggi()["aree"]           # la casa di ieri e' ancora li'
+    assert archivio.aggiornata_il() == prima  # e non finge di essere fresca
+    assert esito["non_disponibili"] == list(_REGISTRI)
+
+
 def test_l_entita_eredita_l_area_dal_proprio_dispositivo(archivio):
     archivio.sostituisci(_REGISTRI)
     aree = {a["nome"]: a for a in gerarchia(archivio.leggi())[0]["aree"]}
@@ -110,6 +128,39 @@ def test_un_riferimento_penzolante_non_e_una_entita_senza_area(archivio):
     aree = {a["nome"]: a for p in gerarchia(archivio.leggi()) for a in p["aree"]}
     assert [e["id"] for e in aree["Area sconosciuta"]["entita"]] == ["sensor.fantasma"]
     assert [e["id"] for e in aree["Senza area"]["entita"]] == ["sensor.orfana"]
+
+
+def test_un_registro_dispositivi_caduto_non_svuota_le_stanze(archivio):
+    """Il caso della review: tre luci in Cucina con l'area dichiarata SUL
+    DISPOSITIVO — il caso normale in HA. Cade il solo registro dei dispositivi:
+    prima la cucina appariva vuota E le luci apparivano senza casa."""
+    registri = {
+        "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
+        "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
+        "dispositivi": [],
+        "entita": [{"entity_id": f"light.cucina_{i}", "device_id": "d1", "area_id": None}
+                   for i in range(3)],
+        "etichette": [], "categorie": [], "integrazioni": [],
+    }
+    archivio.sostituisci(registri, ["dispositivi"])
+    piani = gerarchia(archivio.leggi(), ("dispositivi",))
+    aree = {a["nome"]: a for p in piani for a in p["aree"]}
+    assert "Dispositivi non letti" in aree
+    assert len(aree["Dispositivi non letti"]["entita"]) == 3
+    assert "Senza area" not in aree
+
+
+def test_un_registro_piani_caduto_non_diventa_una_casa_senza_piani(archivio):
+    registri = {
+        "piani": [],
+        "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
+        "dispositivi": [], "entita": [],
+        "etichette": [], "categorie": [], "integrazioni": [],
+    }
+    archivio.sostituisci(registri, ["piani"])
+    piani = gerarchia(archivio.leggi(), ("piani",))
+    assert [p["id"] for p in piani] == ["__piani_non_letti__"]
+    assert [a["nome"] for a in piani[0]["aree"]] == ["Cucina"]
 
 
 def test_i_due_contenitori_hanno_identita_distinte(archivio):

@@ -999,6 +999,23 @@ class HAClient:
                     ):
                         await ws.send_json({"id": numero, "type": "subscribe_events", "event_type": tipo_evento})
 
+                    # Task 6: ogni (ri)connessione riuscita rifa' l'anagrafe, non solo
+                    # gli eventi di registro ricevuti mentre la connessione era su. Un
+                    # distacco (riavvio di HA, blip di rete, i 10s di backoff sotto)
+                    # perde gli eventi emessi nel frattempo per sempre: nessuna
+                    # rilettura successiva li recupera da sola, e l'anagrafe resta
+                    # stantia in silenzio mentre `aggiornata_il` continua a raccontare
+                    # l'ultima ricostruzione come se fosse il presente. Questo chiude
+                    # anche la micro-finestra fra la lettura iniziale di _on_startup e
+                    # la prima sottoscrizione qui sopra. L'antirimbalzo di
+                    # programma_ricostruzione_anagrafe assorbe le riconnessioni
+                    # ravvicinate, quindi non costa una lettura extra ad ogni giro.
+                    for cb in self._anagrafe_listeners:
+                        try:
+                            cb("riconnessione")
+                        except Exception as cb_exc:
+                            logger.exception("anagrafe_listener callback raised: %s", cb_exc)
+
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             data = msg.json()

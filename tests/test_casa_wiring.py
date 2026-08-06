@@ -1,9 +1,11 @@
 import asyncio
 from unittest.mock import AsyncMock
 
+import aiohttp
 import pytest
 
 from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import programma_ricostruzione_anagrafe
 
 _VUOTI = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
@@ -56,14 +58,92 @@ async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio):
     assert client.leggi_registri.await_count == 2
 
 
-def test_si_ascoltano_tutti_i_registri():
-    """Prima se ne ascoltava UNO su dieci, e solo alla creazione."""
-    from hiris.app.proxy.ha_client import EVENTI_ANAGRAFE
-    assert set(EVENTI_ANAGRAFE) == {
-        "area_registry_updated",
-        "device_registry_updated",
-        "entity_registry_updated",
-        "floor_registry_updated",
-        "label_registry_updated",
-        "category_registry_updated",
-    }
+class _MsgFinto:
+    """Un messaggio TEXT del WebSocket di HA che porta un evento."""
+
+    def __init__(self, event_type: str, data: dict):
+        self.type = aiohttp.WSMsgType.TEXT
+        self._payload = {"type": "event", "event": {"event_type": event_type, "data": data}}
+
+    def json(self):
+        return self._payload
+
+
+class _FintoWSEventi:
+    """Consegna auth_required/auth_ok, poi la sequenza di eventi data, poi si
+    blocca -- il test cancella il task invece di aspettare una fine che in
+    produzione non arriva mai. Stessa forma di _FintoWS in test_ws_batch.py."""
+
+    def __init__(self, eventi: list[tuple[str, dict]]):
+        self._auth = [{"type": "auth_required"}, {"type": "auth_ok"}]
+        self._eventi = list(eventi)
+        self.comandi: list[dict] = []
+
+    async def receive_json(self):
+        return self._auth.pop(0)
+
+    async def send_json(self, payload):
+        self.comandi.append(payload)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._eventi:
+            event_type, data = self._eventi.pop(0)
+            return _MsgFinto(event_type, data)
+        await asyncio.sleep(3600)  # nessun altro evento: si blocca finche' il test non cancella
+
+
+class _FintaSessioneEventi:
+    def __init__(self, ws: _FintoWSEventi):
+        self._ws = ws
+
+    def ws_connect(self, url):
+        return self._ws
+
+
+@pytest.mark.asyncio
+async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti():
+    """Sostituisce la tautologia che confrontava EVENTI_ANAGRAFE con se stessa.
+    Cancellando il blocco `if event_type in EVENTI_ANAGRAFE` o il ciclo di
+    sottoscrizione, questo test si accorge -- quello vecchio no.
+
+    Un floor_registry_updated deve chiamare l'ascoltatore dell'anagrafe. Un
+    entity_registry_updated deve chiamare ENTRAMBI: quello storico, filtrato
+    su action=="create", e quello dell'anagrafe, senza filtro.
+    """
+    ws = _FintoWSEventi([
+        ("floor_registry_updated", {}),
+        ("entity_registry_updated", {"action": "create", "entity_id": "light.nuova"}),
+        ("entity_registry_updated", {"action": "update", "entity_id": "light.rinominata"}),
+    ])
+    client = HAClient(base_url="http://ha.test", token="t")
+    client._session = _FintaSessioneEventi(ws)
+
+    anagrafe_chiamate: list[str] = []
+    registro_chiamate: list[str] = []
+    client.add_anagrafe_listener(lambda tipo: anagrafe_chiamate.append(tipo))
+    client.add_registry_listener(lambda eid, attrs: registro_chiamate.append(eid))
+
+    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    # "riconnessione" (fix Task 6, punto 2) apre la lista: ogni connessione
+    # riuscita rifa' l'anagrafe, non solo gli eventi ricevuti mentre era su.
+    assert anagrafe_chiamate == [
+        "riconnessione", "floor_registry_updated",
+        "entity_registry_updated", "entity_registry_updated",
+    ]
+    assert registro_chiamate == ["light.nuova"]  # solo il create, non l'update
