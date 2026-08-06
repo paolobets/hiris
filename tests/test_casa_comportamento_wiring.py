@@ -91,3 +91,31 @@ async def test_una_rilettura_fallita_non_blocca_le_successive(archivio, cartella
     guarda = sentinella_comportamento(client, archivio, cartella)
     assert await guarda() is False      # fallita, e lo dice
     assert await guarda() is True       # riprova senza aspettare un tocco
+
+
+@pytest.mark.asyncio
+async def test_la_cartella_che_compare_dopo_l_avvio_viene_vista(archivio, cartella):
+    """L'add-on puo' partire prima che il Supervisor abbia montato /config.
+
+    Risolvendo la cartella una volta sola all'avvio, la sentinella restava
+    convinta PER SEMPRE che non ci fosse niente da leggere: il giro ogni 5
+    minuti andava a vuoto in silenzio, e /api/casa raccontava lo stantio come
+    stato attuale.
+    """
+    client = _client()
+    montata: list = [None]                       # all'inizio non c'e'
+    guarda = sentinella_comportamento(client, archivio, None,
+                                      trova_cartella=lambda: montata[0])
+
+    assert await guarda() is True                # prima lettura, senza cartella
+    assert await guarda() is False               # e non si ripete a vuoto
+    assert archivio.comportamento() == []        # niente cartella, niente corpi
+
+    montata[0] = str(cartella)                   # il Supervisor finisce il mount
+    assert await guarda() is True                # la sentinella se ne accorge
+
+    # Il finto non ha stati vivi, quindi le voci del file risultano scritte ma
+    # non caricate: cio' che conta e' che PRIMA non c'erano affatto.
+    voci = archivio.comportamento()
+    assert sorted(v["nome"] for v in voci) == ["Saluta", "Sveglia"]
+    assert all(v["origine"] == "solo_file" for v in voci)

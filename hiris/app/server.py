@@ -1250,7 +1250,8 @@ def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
 _MAI_LETTA = object()
 
 
-def sentinella_comportamento(client, archivio, cartella_ha: Path | None):
+def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
+                             trova_cartella=None):
     """Restituisce `guarda()`: rilegge il comportamento solo se i file sono cambiati.
 
     L'mtime di `automations.yaml` e `scripts.yaml` e' l'unico segnale che
@@ -1259,18 +1260,36 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None):
     spara niente. Un solo meccanismo per automazioni e script, invece di due
     percorsi di cui uno incompleto. Costa due `stat()` per chiamata.
 
+    Finche' la cartella non c'e', la si **ricerca a ogni giro**: l'add-on puo'
+    partire prima che il Supervisor abbia finito di montarla, e risolverla una
+    volta sola all'avvio significherebbe restare convinti per sempre che non ci
+    sia niente da leggere -- con `/api/casa` che racconta lo stantio come
+    stato attuale, in silenzio.
+
     Restituisce `True` se ha riletto, `False` se non serviva o se la
     rilettura e' fallita.
     """
     ultimo: dict[str, object] = {"impronta": _MAI_LETTA}
+    stato: dict[str, Path | None] = {"cartella": cartella_ha}
+    _trova = trova_cartella if trova_cartella is not None else _find_ha_config_dir
+
+    def _cartella() -> Path | None:
+        if stato["cartella"] is None:
+            trovata = _trova()
+            if trovata:
+                stato["cartella"] = Path(trovata)
+                logger.info("cartella di Home Assistant comparsa dopo l'avvio: %s",
+                            stato["cartella"])
+        return stato["cartella"]
 
     def _impronta():
-        if cartella_ha is None:
+        cartella = _cartella()
+        if cartella is None:
             return None
         marche = []
         for nome in ("automations.yaml", "scripts.yaml"):
             try:
-                marche.append((nome, (cartella_ha / nome).stat().st_mtime_ns))
+                marche.append((nome, (cartella / nome).stat().st_mtime_ns))
             except OSError:
                 marche.append((nome, None))
         return tuple(marche)
@@ -1280,7 +1299,7 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None):
         if ultimo["impronta"] is not _MAI_LETTA and adesso == ultimo["impronta"]:
             return False
         try:
-            await rileggi(client, archivio, cartella_ha)
+            await rileggi(client, archivio, stato["cartella"])
         except Exception as exc:
             # NON si memorizza l'impronta qui: se lo si facesse prima di aver
             # letto davvero, un guasto passeggero (Home Assistant che si
