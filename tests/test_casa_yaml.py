@@ -56,3 +56,13 @@ def test_un_file_vuoto_e_una_lista_vuota(tmp_path):
     p = tmp_path / "vuoto.yaml"
     p.write_text("", encoding="utf-8")
     assert carica_file(p) == []
+
+
+def test_un_file_in_un_altro_encoding_solleva_invece_di_sporcare(tmp_path):
+    """Con `errors="replace"` un byte non-UTF-8 diventava `�` e il file
+    tornava come un dato buono con una macchia dentro: chi legge non poteva
+    distinguerlo da un alias scritto male."""
+    p = tmp_path / "sporco.yaml"
+    p.write_bytes(b"- id: '1'\n  alias: Bagno\xe8\n")
+    with pytest.raises(UnicodeDecodeError):
+        carica_file(p)

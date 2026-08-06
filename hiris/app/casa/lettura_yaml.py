@@ -61,8 +61,13 @@ def carica_file(percorso: Path) -> Any:
 
     `None` e `[]` sono cose diverse: «non c'e' nessun file delle automazioni»
     e «il file c'e' ed e' vuoto» dicono due cose diverse sulla casa.
+
+    E si legge in UTF-8 **stretto**, senza sostituire i byte illeggibili: con
+    `errors="replace"` un file in un altro encoding tornerebbe come un dato
+    buono con un carattere sporco dentro, e chi legge non avrebbe modo di
+    distinguerlo da un alias scritto male. Meglio un'eccezione.
     """
     if not percorso.exists():
         return None
-    contenuto = carica_yaml(percorso.read_text(encoding="utf-8-sig", errors="replace"))
+    contenuto = carica_yaml(percorso.read_text(encoding='utf-8-sig'))
     return [] if contenuto is None else contenuto
