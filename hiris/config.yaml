@@ -6,7 +6,7 @@ description: >-
   AI-powered agent platform for smart home management.
   Combines Claude AI reasoning with Home Assistant automation.
 url: "https://github.com/paolobets/hiris"
-homeassistant: "2023.1.0"
+homeassistant: "2024.7.0"
 arch:
   - aarch64
   - amd64

@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/paolobets/hiris/releases"><img src="https://img.shields.io/github/v/release/paolobets/hiris?label=version&color=blue" alt="version"/></a>
-  <img src="https://img.shields.io/badge/Home%20Assistant-2023.1%2B-41BDF5" alt="Home Assistant"/>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2024.7%2B-41BDF5" alt="Home Assistant"/>
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20aarch64-lightgrey" alt="arch"/>
   <img src="https://img.shields.io/badge/license-Proprietary-red" alt="license"/>
 </p>

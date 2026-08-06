@@ -3071,6 +3071,11 @@ def create_app() -> web.Application:
     app.router.add_post("/api/brain/advisories/{id}/ack", handle_ack_advisory)
     app.router.add_post("/api/brain/advisories/{id}/dismiss", handle_dismiss_advisory)
 
+    # Task 6 SDD casa: sola lettura, per guardare dal vivo cio' che l'archivio
+    # ha ricostruito -- la suite verde non prova che la lettura funzioni.
+    from .api.handlers_casa import handle_get_casa
+    app.router.add_get("/api/casa", handle_get_casa)
+
     return app
 
 

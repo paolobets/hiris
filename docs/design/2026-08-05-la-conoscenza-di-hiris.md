@@ -324,12 +324,13 @@ Ordini di grandezza, per calibrare cosa può stare dove:
 
 ## 10. Il vincolo di versione — deciso
 
-`hiris/config.yaml` dichiara `homeassistant: "2023.1.0"`. Alcune sottoscrizioni su cui questo progetto
-si appoggia — quelle delle plance e delle risorse — **non esistono prima di 2024.7**.
+`hiris/config.yaml` dichiarava `homeassistant: "2023.1.0"`. Alcune sottoscrizioni su cui questo
+progetto si appoggia — quelle delle plance e delle risorse — **non esistono prima di 2024.7**.
 
-**Decisione: si alza la soglia.** `homeassistant: "2024.7.0"`. Niente ripiego, niente doppia strada:
-un ripiego per una versione che nessuno usa più è codice morto il giorno in cui nasce, ed è
-esattamente il modo in cui questa applicazione è arrivata a novanta funzionalità.
+**Decisione: si alza la soglia.** `homeassistant: "2024.7.0"` — **eseguita** (Task 6). Niente
+ripiego, niente doppia strada: un ripiego per una versione che nessuno usa più è codice morto il
+giorno in cui nasce, ed è esattamente il modo in cui questa applicazione è arrivata a novanta
+funzionalità.
 
 Va scritto nelle note di rilascio: chi ha un Home Assistant più vecchio resta sulla `1.x`.
 
