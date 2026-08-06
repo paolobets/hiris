@@ -2,9 +2,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import ArchivioCasa, _CHIAVE_PLANCIA_PRINCIPALE as _CHIAVE_ARCHIVIO
 from hiris.app.casa.comportamento import rileggi_plance
-from hiris.app.proxy.ha_client import HAClient
+from hiris.app.proxy.ha_client import HAClient, _CHIAVE_PLANCIA_PRINCIPALE as _CHIAVE_HA_CLIENT
 
 
 def _client():
@@ -120,3 +120,85 @@ async def test_una_lettura_del_tutto_fallita_non_cancella_le_plance(archivio):
     client.leggi_plance = AsyncMock(return_value=([], ["principale"]))
     await rileggi_plance(client, archivio)
     assert archivio.plance()[0]["titolo"] == "Principale"
+
+
+def test_la_chiave_sentinella_non_e_derivata_due_volte():
+    """La chiave sentinella e' duplicata (non importata) fra archivio.py e
+    ha_client.py per non far dipendere il client HA dallo storage — ma le due
+    copie devono restare identiche, altrimenti la collisione che leggi_plance
+    dovrebbe intercettare smetterebbe di essere riconosciuta."""
+    assert _CHIAVE_HA_CLIENT == _CHIAVE_ARCHIVIO
+
+
+@pytest.mark.asyncio
+async def test_due_plance_con_lo_stesso_percorso_non_fermano_l_aggiornamento():
+    """Prima: UNIQUE constraint failed -> l'aggiornamento delle plance
+    smetteva finche' la condizione persisteva, indistinguibile da «tutto
+    normale»."""
+    elenco_duplicato = [
+        {"url_path": "cucina", "title": "Cucina", "mode": "storage"},
+        {"url_path": "cucina", "title": "Cucina (di nuovo)", "mode": "storage"},
+    ]
+    finto = _finto_ws_batch({
+        ("lovelace/dashboards/list", None): _msg(elenco_duplicato),
+        ("lovelace/config", None): _msg(_CONFIG_DEFAULT),
+        ("lovelace/config", "cucina"): _msg(_CONFIG_CUCINA),
+    })
+    with patch.object(HAClient, "_ws_batch", finto):
+        plance, non_disponibili = await _client().leggi_plance()
+    percorsi = [p["url_path"] for p in plance]
+    assert percorsi.count("cucina") == 1
+    assert any("cucina" in nd for nd in non_disponibili)
+
+
+@pytest.mark.asyncio
+async def test_una_plancia_chiamata_come_la_chiave_della_predefinita_non_la_scalza():
+    """La chiave sentinella della predefinita non e' un percorso vietato in
+    HA: una plancia puo' chiamarsi davvero cosi'."""
+    elenco = [{"url_path": _CHIAVE_HA_CLIENT, "title": "Omonima", "mode": "storage"}]
+    finto = _finto_ws_batch({
+        ("lovelace/dashboards/list", None): _msg(elenco),
+        ("lovelace/config", None): _msg(_CONFIG_DEFAULT),
+    })
+    with patch.object(HAClient, "_ws_batch", finto):
+        plance, non_disponibili = await _client().leggi_plance()
+    percorsi = [p["url_path"] for p in plance]
+    assert percorsi == [None]  # solo la predefinita e' sopravvissuta
+    assert plance[0]["config"] == _CONFIG_DEFAULT
+    assert any(_CHIAVE_HA_CLIENT in nd for nd in non_disponibili)
+
+
+@pytest.mark.asyncio
+async def test_una_plancia_con_percorso_vuoto_non_sparisce():
+    """"" e' falsy ma non e' assente: prima non compariva ne' fra le plance
+    ne' fra le non disponibili."""
+    elenco = [{"url_path": "", "title": "Vuota", "mode": "storage"}]
+    finto = _finto_ws_batch({
+        ("lovelace/dashboards/list", None): _msg(elenco),
+        ("lovelace/config", None): _msg(_CONFIG_DEFAULT),
+        ("lovelace/config", ""): _msg(_CONFIG_CUCINA),
+    })
+    with patch.object(HAClient, "_ws_batch", finto):
+        plance, non_disponibili = await _client().leggi_plance()
+    percorsi = [p["url_path"] for p in plance]
+    assert "" in percorsi
+    vuota = [p for p in plance if p["url_path"] == ""][0]
+    assert vuota["config"] == _CONFIG_CUCINA
+    assert non_disponibili == []
+
+
+def test_sostituisci_plance_non_sovrascrive_in_silenzio_una_chiave_duplicata(archivio):
+    """Difende la scelta di NON usare INSERT OR REPLACE: due voci con lo
+    stesso percorso passate direttamente a sostituisci_plance (bypassando la
+    deduplica di leggi_plance) devono sollevare, non sovrascriversi in
+    silenzio. E' leggi_plance() il punto che dichiara gli scarti — l'archivio
+    resta l'ultima linea di difesa, non la prima."""
+    voci = [
+        {"url_path": "cucina", "title": "Cucina", "mode": "storage",
+         "config": _CONFIG_CUCINA},
+        {"url_path": "cucina", "title": "Cucina (duplicata)", "mode": "storage",
+         "config": _CONFIG_DEFAULT},
+    ]
+    import sqlite3
+    with pytest.raises(sqlite3.IntegrityError):
+        archivio.sostituisci_plance(voci)

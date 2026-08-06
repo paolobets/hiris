@@ -39,6 +39,15 @@ EVENTI_ANAGRAFE = (
 # un'altra cosa — le plance hanno un proprio ascoltatore.
 EVENTO_PLANCE = "lovelace_updated"
 
+# Deve restare identica a `_CHIAVE_PLANCIA_PRINCIPALE` in casa/archivio.py: e'
+# la chiave sotto cui la predefinita finisce nell'archivio (percorso vero
+# `None` -> questa stringa li'). Duplicata invece di importata per non far
+# dipendere il client HA dallo storage — stesso principio per cui EVENTO_PLANCE
+# e' referenziato per commento (mai importato) dall'altro verso in archivio.py.
+# leggi_plance() la usa per rifiutare una plancia vera il cui url_path collide
+# con la chiave sentinella, invece di lasciarla scontrarsi in scrittura.
+_CHIAVE_PLANCIA_PRINCIPALE = "__principale__"
+
 # Chiavi che identificano la forma minima di un'automazione Home Assistant.
 # Fino a HA 2024.10 i nomi erano al singolare (trigger/condition/action); da li'
 # in poi i nomi canonici sono al plurale, ma i singolari restano accettati per
@@ -532,21 +541,57 @@ class HAClient:
         YAML non sta nell'archivio interno di HA e la sua configurazione non
         si legge — `config` resta `None` e il suo percorso finisce fra i non
         disponibili, invece di sembrare una plancia senza viste.
+
+        Un percorso duplicato nell'elenco, o uguale alla chiave sentinella
+        della predefinita, finisce anche lui fra i `non_disponibili` (con una
+        ragione leggibile) invece di far fallire `sostituisci_plance` con
+        `UNIQUE constraint failed` — che altrimenti ferma silenziosamente
+        l'aggiornamento della replica delle plance.
         """
         elenco = await self._ws_request("lovelace/dashboards/list")
         elenco = elenco if isinstance(elenco, list) else []
 
-        # `None` = la predefinita, sempre in testa.
-        percorsi: list[str | None] = [None] + [
-            d.get("url_path") for d in elenco if d.get("url_path")
-        ]
+        # `None` = la predefinita, sempre in testa. Un percorso vero deve
+        # essere sia UNICO (la tabella `plance` lo usa come chiave primaria:
+        # due voci con lo stesso percorso mandano `sostituisci_plance` in
+        # `UNIQUE constraint failed`, e l'aggiornamento della replica smette
+        # silenziosamente) sia DIVERSO dalla chiave sentinella della
+        # predefinita (altrimenti le due collidono nello stesso modo quando
+        # l'archivio traduce `None` in quella chiave per lo storage). Niente
+        # `INSERT OR REPLACE`: un percorso scartato va dichiarato in
+        # `non_disponibili`, non nascosto sovrascrivendo in silenzio.
+        # `is not None` (non verita' booleana): un url_path vuoto ("") e'
+        # falsy ma e' un percorso legittimo, non un'assenza.
+        non_disponibili: list[str] = []
+        percorsi: list[str | None] = [None]
+        visti: set[str] = set()
+        for d in elenco:
+            p = d.get("url_path")
+            if p is None:
+                continue
+            if p == _CHIAVE_PLANCIA_PRINCIPALE:
+                non_disponibili.append(
+                    f"{p} (collide con la chiave della plancia predefinita, ignorata)")
+                continue
+            if p in visti:
+                non_disponibili.append(f"{p} (duplicata nell'elenco, ignorata)")
+                continue
+            visti.add(p)
+            percorsi.append(p)
+
         comandi = [("lovelace/config", {} if p is None else {"url_path": p})
                    for p in percorsi]
         risposte = await self._ws_batch(comandi)
 
-        per_percorso = {d.get("url_path"): d for d in elenco if isinstance(d, dict)}
+        # setdefault, non un comprehension che sovrascrive: un percorso
+        # duplicato deve accoppiarsi al PRIMO dizionario visto (coerente con
+        # `visti` sopra), non all'ultimo — altrimenti la voce tenuta e quella
+        # dichiarata scartata si scambierebbero i dati.
+        per_percorso: dict[str | None, dict] = {}
+        for d in elenco:
+            if isinstance(d, dict):
+                per_percorso.setdefault(d.get("url_path"), d)
         plance: list[dict] = []
-        non_disponibili: list[str] = []
         for percorso, msg in zip(percorsi, risposte):
             config = msg.get("result") if msg else None
             if not isinstance(config, dict):
