@@ -136,3 +136,26 @@ def test_il_comportamento_non_accumula(archivio):
     archivio.sostituisci_comportamento(_COMPORTAMENTO)
     archivio.sostituisci_comportamento(_COMPORTAMENTO[:1])
     assert len(archivio.comportamento()) == 1
+
+
+def test_un_corpo_illeggibile_su_disco_diventa_None_non_vuoto(archivio):
+    """Il ramo difensivo della rilettura, che nessun test esercitava.
+
+    `test_un_corpo_che_non_si_puo_leggere_resta_None_non_vuoto` scrive gia'
+    `corpo=None` a monte, quindi salta il json.dumps E il try/except in
+    lettura: quel ramo restava scoperto, e chi domani lo cambiasse in `{}`
+    passerebbe la suite verde. Qui il JSON si corrompe DOPO la scrittura, come
+    farebbe un troncamento o una scrittura interrotta.
+    """
+    archivio.sostituisci_comportamento([
+        {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+         "corpo": {"trigger": []}, "origine": "file"},
+    ])
+    archivio._conn.execute(
+        "UPDATE comportamento SET corpo = ? WHERE id = ?",
+        ("{questo non e' json", "automation.sveglia"))
+    archivio._conn.commit()
+
+    voce = archivio.comportamento()[0]
+    assert voce["corpo"] is None          # non {} e non un'eccezione
+    assert voce["origine"] == "file"      # il resto della voce sopravvive
