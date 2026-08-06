@@ -877,38 +877,66 @@ class HAClient:
     async def get_entity_registry(self) -> list[dict]:
         return await self._ws_call("config/entity_registry/list")
 
+    # Gli ambiti delle categorie di Home Assistant. Sono partizionate per
+    # ambito: chiederne uno solo farebbe sparire la tassonomia che l'utente ha
+    # scritto sugli script o sugli helper, contro il principio per cui il
+    # significato e' dichiarato e non dedotto. Costano quattro comandi sulla
+    # stessa connessione: praticamente nulla.
+    _AMBITI_CATEGORIA = ("automation", "script", "scene", "helpers")
+
     # I registri che l'utente ha gia' compilato in Home Assistant. Sono la
     # spina dorsale del significato per HIRIS: piani, aree, dispositivi,
     # etichette e categorie sono la tassonomia che ha scelto lui — non serve
     # dedurla, e dedurla costerebbe token e sbaglierebbe in silenzio.
+    # Le voci "categorie" sono una per ambito (vedi _AMBITI_CATEGORIA) e
+    # condividono tutte la chiave "categorie": leggi_registri le fonde in
+    # un'unica lista, marcando ogni riga con il proprio ambito.
     _REGISTRI: list[tuple[str, str, dict | None]] = [
         ("piani",        "config/floor_registry/list",        None),
         ("aree",         "config/area_registry/list",         None),
         ("dispositivi",  "config/device_registry/list",       None),
         ("entita",       "config/entity_registry/list",       None),
         ("etichette",    "config/label_registry/list",        None),
-        ("categorie",    "config/category_registry/list",     {"scope": "automation"}),
         ("integrazioni", "config/config_entries/get_entries", None),
+    ] + [
+        ("categorie", "config/category_registry/list", {"scope": ambito})
+        for ambito in _AMBITI_CATEGORIA
     ]
 
-    async def leggi_registri(self) -> dict[str, list[dict]]:
+    async def leggi_registri(self) -> tuple[dict[str, list[dict]], list[str]]:
         """Tutti i registri della casa, su una connessione sola.
 
-        Un registro che manca o fallisce diventa una lista vuota, non un
-        guasto: un Home Assistant senza piani deve comunque produrre
-        un'anagrafe. Chi legge distingue «vuoto» da «assente» guardando gli
-        altri registri, non sollevando.
+        Restituisce `(registri, non_disponibili)`. Un registro che manca o
+        fallisce diventa una lista vuota — un Home Assistant senza piani deve
+        comunque produrre un'anagrafe — ma il suo nome finisce in
+        `non_disponibili`: una casa senza piani e un registro dei piani caduto
+        producono la stessa lista vuota, e chi ci costruisce sopra deve poterli
+        distinguere. Il valore restituito lo dice; un commento no.
+
+        Le categorie sono chieste per ogni ambito (automation, script, scene,
+        helpers): ogni categoria restituita porta un campo `ambito` proprio,
+        perche' HA non lo include e due categorie omonime in ambiti diversi
+        sarebbero altrimenti indistinguibili. Se un singolo ambito fallisce,
+        `non_disponibili` riporta quale (es. `categorie:script`), non un
+        generico `categorie`.
         """
         comandi = [(tipo, extra) for _, tipo, extra in self._REGISTRI]
         risposte = await self._ws_batch(comandi)
         registri: dict[str, list[dict]] = {}
-        for (chiave, tipo, _), msg in zip(self._REGISTRI, risposte):
+        non_disponibili: list[str] = []
+        for (chiave, tipo, extra), msg in zip(self._REGISTRI, risposte):
             risultato = msg.get("result") if msg else None
             if not isinstance(risultato, list):
-                logger.debug("registro %s non disponibile (%s)", chiave, tipo)
+                ambito = extra.get("scope") if extra else None
+                nome = f"{chiave}:{ambito}" if chiave == "categorie" and ambito else chiave
+                logger.debug("registro %s non disponibile (%s)", nome, tipo)
+                non_disponibili.append(nome)
                 risultato = []
-            registri[chiave] = risultato
-        return registri
+            if chiave == "categorie" and extra:
+                ambito = extra.get("scope")
+                risultato = [{**riga, "ambito": ambito} for riga in risultato]
+            registri.setdefault(chiave, []).extend(risultato)
+        return registri, non_disponibili
 
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         self._state_listeners.append(callback)
