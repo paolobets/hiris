@@ -201,7 +201,9 @@ async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
     else:
         non_letti = {_AUTOMAZIONI: "assente", _SCRIPT: "assente"}
 
-    stati = await client.get_states()
+    # `[]` significa «tutte»: e' la convenzione di HAClient.get_states, che
+    # richiede l'argomento. Gli altri sei chiamanti fanno cosi'.
+    stati = await client.get_states([])
     voci, problemi = componi(automazioni, script, stati or [])
     archivio.sostituisci_comportamento(voci)
 

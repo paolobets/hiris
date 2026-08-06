@@ -125,10 +125,33 @@ def test_uno_scripts_yaml_che_e_una_lista_si_dichiara():
 
 
 class _ClienteFinto:
-    """Home Assistant finto: nessuno stato vivo, non serve altro per questo test."""
+    """Home Assistant finto: nessuno stato vivo, non serve altro per questo test.
 
-    async def get_states(self):
+    La firma di `get_states` combacia con quella vera di `HAClient` — che
+    richiede `entity_ids`, dove `[]` significa «tutte». Un finto con una firma
+    propria non e' una semplificazione: e' un test che codifica il bug. Questo
+    finto lo aveva, e `rileggi()` chiamava `get_states()` senza argomenti:
+    `TypeError` alla prima chiamata vera, invisibile alla suite.
+    """
+
+    def __init__(self):
+        self.chiamato_con = None
+
+    async def get_states(self, entity_ids):
+        self.chiamato_con = entity_ids
         return []
+
+
+def test_il_finto_combacia_con_la_firma_vera():
+    """La rete di sicurezza contro la deriva: se HAClient.get_states cambia
+    firma, questo test cade invece di lasciare che il finto menta."""
+    import inspect
+
+    from hiris.app.proxy.ha_client import HAClient
+
+    vera = inspect.signature(HAClient.get_states)
+    finta = inspect.signature(_ClienteFinto.get_states)
+    assert list(vera.parameters) == list(finta.parameters)
 
 
 @pytest.mark.asyncio
@@ -142,9 +165,11 @@ async def test_un_file_rotto_si_distingue_da_un_file_assente(tmp_path):
 
     archivio = ArchivioCasa(str(tmp_path / "casa.db"))
     try:
-        esito = await rileggi(_ClienteFinto(), archivio, tmp_path)
+        cliente = _ClienteFinto()
+        esito = await rileggi(cliente, archivio, tmp_path)
     finally:
         archivio.chiudi()
 
     assert "illeggibile" in esito["file_non_letti"]["automations.yaml"]
     assert esito["file_non_letti"]["scripts.yaml"] == "assente"
+    assert cliente.chiamato_con == []   # «tutte», la convenzione di HAClient
