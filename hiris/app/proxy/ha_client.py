@@ -796,67 +796,65 @@ class HAClient:
             resp.raise_for_status()
             return await resp.json()
 
-    async def _ws_request(self, msg_type: str, extra: dict | None = None,
-                          timeout: float = 10.0) -> Any:
-        """Single WebSocket command → raw `result` (dict OR list, per command)."""
+    async def _ws_batch(self, comandi: list[tuple[str, dict | None]],
+                        timeout: float = 10.0) -> list[dict | None]:
+        """N comandi WebSocket su UNA connessione → N messaggi interi, in ordine.
+
+        Prima ogni lettura WS apriva una sessione e una connessione nuove, con
+        handshake e autenticazione completi, e le chiudeva: sei registri
+        costavano sei handshake in serie. Qui il costo si paga una volta.
+
+        Ogni elemento e' il messaggio INTERO ({success, result, error}), oppure
+        `None` per i comandi rimasti senza risposta o se la connessione e'
+        fallita del tutto: chi chiama decide se un guasto e' tollerabile.
+        """
+        risposte: list[dict | None] = [None] * len(comandi)
+        if not comandi:
+            return risposte
         ws_url = (
             self._base_url.replace("http://", "ws://").replace("https://", "wss://")
             + "/api/websocket"
         )
         token = self._headers["Authorization"].removeprefix("Bearer ")
+        tipi = [t for t, _ in comandi]
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.ws_connect(ws_url) as ws:
                     handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
                     if handshake.get("type") == "auth_required":
                         await ws.send_json({"type": "auth", "access_token": token})
-                        auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                        if auth_resp.get("type") != "auth_ok":
-                            logger.warning("HA WS auth failed in _ws_request(%s)", msg_type)
-                            return None
-                    payload = {"id": 1, "type": msg_type}
-                    if extra is not None:
-                        payload.update(extra)
-                    await ws.send_json(payload)
-                    while True:
+                        auth = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                        if auth.get("type") != "auth_ok":
+                            logger.warning("HA WS auth failed in _ws_batch(%s)", tipi)
+                            return risposte
+                    for numero, (msg_type, extra) in enumerate(comandi, start=1):
+                        payload = {"id": numero, "type": msg_type}
+                        if extra:
+                            payload.update(extra)
+                        await ws.send_json(payload)
+                    attesi = set(range(1, len(comandi) + 1))
+                    while attesi:
                         msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                        if msg.get("id") == 1:
-                            return msg.get("result")
+                        numero = msg.get("id")
+                        if numero in attesi:
+                            risposte[numero - 1] = msg
+                            attesi.discard(numero)
         except Exception as exc:
-            logger.debug("_ws_request(%s) failed: %s", msg_type, exc)
-            return None
+            logger.debug("_ws_batch(%s) failed: %s", tipi, exc)
+        return risposte
+
+    async def _ws_request(self, msg_type: str, extra: dict | None = None,
+                          timeout: float = 10.0) -> Any:
+        """Un comando WS → il solo `result` (dict o list, secondo il comando)."""
+        msg = (await self._ws_batch([(msg_type, extra)], timeout=timeout))[0]
+        return msg.get("result") if msg else None
 
     async def _ws_command(self, msg_type: str, extra: dict | None = None,
                           timeout: float = 10.0) -> dict | None:
-        """Single WS command → the FULL result message ({success, result, error}).
-        Unlike _ws_request, this exposes the success flag so writes can be verified.
-        Returns None only on connection/auth failure."""
-        ws_url = (
-            self._base_url.replace("http://", "ws://").replace("https://", "wss://")
-            + "/api/websocket"
-        )
-        token = self._headers["Authorization"].removeprefix("Bearer ")
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.ws_connect(ws_url) as ws:
-                    handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                    if handshake.get("type") == "auth_required":
-                        await ws.send_json({"type": "auth", "access_token": token})
-                        auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                        if auth_resp.get("type") != "auth_ok":
-                            logger.warning("HA WS auth failed in _ws_command(%s)", msg_type)
-                            return None
-                    payload = {"id": 1, "type": msg_type}
-                    if extra is not None:
-                        payload.update(extra)
-                    await ws.send_json(payload)
-                    while True:
-                        msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                        if msg.get("id") == 1:
-                            return msg
-        except Exception as exc:
-            logger.debug("_ws_command(%s) failed: %s", msg_type, exc)
-            return None
+        """Un comando WS → il messaggio intero ({success, result, error}), cosi'
+        le scritture possono verificare l'esito. `None` solo se la connessione
+        o l'autenticazione sono fallite."""
+        return (await self._ws_batch([(msg_type, extra)], timeout=timeout))[0]
 
     async def _ws_call(self, msg_type: str, timeout: float = 10.0) -> list[dict]:
         """Back-compat wrapper: WS command whose result is a list (registry, etc.)."""
