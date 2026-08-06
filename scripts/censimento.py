@@ -49,6 +49,7 @@ _TITOLI: dict[str, str] = {
     "tabella-mai-toccata":       "Tabelle create e mai toccate",
     "tabella-scritta-mai-letta": "Tabelle scritte e mai lette",
     "tabella-letta-mai-scritta": "Tabelle lette e mai scritte",
+    "tabella-non-concludibile": "Tabelle su cui il rilevatore non puo' concludere",
     "opzione-mai-letta":         "Opzioni dell'add-on che nessun codice legge",
     "envvar-mai-esportata":      "Variabili d'ambiente lette e mai esportate da run.sh",
     "rotta-senza-chiamanti":     "Rotte HTTP che nessuno chiama",
@@ -130,18 +131,26 @@ _RE_INSERT = re.compile(r"(?:INSERT|REPLACE)(?:\s+OR\s+\w+)?\s+INTO\s+[\"'`]?(\w
 _RE_UPDATE = re.compile(r"UPDATE\s+[\"'`]?(\w+)[\"'`]?\s+SET")
 _RE_DELETE = re.compile(r"DELETE\s+FROM\s+[\"'`]?(\w+)")
 _RE_LETTURA = re.compile(r"(?:FROM|JOIN)\s+[\"'`]?(\w+)")
+# Un nome di tabella composto a runtime — `SELECT * FROM {tabella}` — e'
+# invisibile a queste regex. Un file che ne usa uno va dichiarato inconcludibile
+# invece che raccontato come morto: e' successo davvero, sulle sette tabelle
+# dell'anagrafe, e fidandosi del report si sarebbe cancellata la casa intera.
+_RE_TABELLA_DINAMICA = re.compile(r"(?:FROM|JOIN|INTO|UPDATE)\s+\{")
 
 
 def censisci_tabelle(files: list[Path]) -> list[Reperto]:
     """Tabelle dichiarate con CREATE TABLE, confrontate con chi le usa."""
-    create: dict[str, str] = {}
+    create: dict[str, tuple[str, Path]] = {}
     scritte: set[str] = set()
     lette: set[str] = set()
+    dinamici: set[Path] = set()
 
     for f in files:
         testo = _leggi_pulito(f)
+        if _RE_TABELLA_DINAMICA.search(testo):
+            dinamici.add(f)
         for m in _RE_CREATE.finditer(testo):
-            create.setdefault(m.group(1).lower(), f"{_rel(f)}:{_riga(testo, m.start())}")
+            create.setdefault(m.group(1).lower(), (f"{_rel(f)}:{_riga(testo, m.start())}", f))
         for rx in (_RE_INSERT, _RE_UPDATE, _RE_DELETE):
             for m in rx.finditer(testo):
                 scritte.add(m.group(1).lower())
@@ -151,10 +160,14 @@ def censisci_tabelle(files: list[Path]) -> list[Reperto]:
             lette.add(m.group(1).lower())
 
     reperti: list[Reperto] = []
-    for nome, dove in sorted(create.items()):
+    for nome, (dove, f) in sorted(create.items()):
         if nome in scritte and nome in lette:
             continue
-        if nome not in scritte and nome not in lette:
+        if f in dinamici:
+            reperti.append(Reperto(
+                "tabella-non-concludibile", nome, dove,
+                "il file compone i nomi di tabella a runtime: il rilevatore non puo' concludere"))
+        elif nome not in scritte and nome not in lette:
             reperti.append(Reperto("tabella-mai-toccata", nome, dove))
         elif nome not in lette:
             reperti.append(Reperto("tabella-scritta-mai-letta", nome, dove,
@@ -513,6 +526,8 @@ def stampa(reperti: list[Reperto]) -> None:
     print("  - i nomi che compaiono anche come stringa possono essere chiamati")
     print("    dinamicamente (vedi tools/dispatcher.py): sono segnalati, non condannati;")
     print("  - le opzioni annidate hanno nomi generici (host, port) e il confronto e' prudente;")
+    print("  - un nome di tabella composto a runtime (SELECT * FROM {tabella}) e'")
+    print("    invisibile: le tabelle di quei file finiscono fra le inconcludibili;")
     print("  - le rotte sono indicizzate per percorso, non per metodo: un POST morto su un")
     print("    percorso il cui GET e' vivo non viene visto;")
     print("  - il frontend non viene analizzato: solo le rotte che nomina;")

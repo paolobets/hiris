@@ -364,3 +364,36 @@ def test_un_file_illeggibile_viene_contato(tmp_path):
     buono = _scrivi(tmp_path, "buono.py", "def orfana():\n    pass\n")
     censimento.censisci_simboli([rotto, buono], [])
     assert censimento.COPERTURA_SIMBOLI["illeggibili"] == 1
+
+
+def test_un_nome_di_tabella_composto_a_runtime_non_e_una_tabella_morta(tmp_path):
+    """E' successo davvero, sulle sette tabelle dell'anagrafe: si scrivono per
+    nome e si leggono con `SELECT * FROM {tabella}`. Il rilevatore le dava per
+    morte, e fidandosi del report si sarebbe cancellata la casa intera."""
+    _scrivi(tmp_path, "archivio.py", '''
+TABELLE = ["aree", "entita"]
+
+def crea(db):
+    db.execute("CREATE TABLE aree (id TEXT)")
+    db.execute("CREATE TABLE entita (id TEXT)")
+
+def salva(db):
+    db.execute("INSERT INTO aree (id) VALUES (?)", ("x",))
+
+def leggi(db):
+    for t in TABELLE:
+        db.execute(f"SELECT * FROM {t}")
+''')
+    reperti = censimento.censisci_tabelle([tmp_path / "archivio.py"])
+    assert {r.categoria for r in reperti} == {"tabella-non-concludibile"}
+    assert sorted(r.nome for r in reperti) == ["aree", "entita"]
+
+
+def test_un_file_senza_nomi_dinamici_conclude_ancora(tmp_path):
+    """La prudenza vale per il file che compone i nomi, non per tutti."""
+    _scrivi(tmp_path, "store.py", '''
+db.execute("CREATE TABLE morta (id TEXT)")
+db.execute("INSERT INTO morta (id) VALUES (1)")
+''')
+    reperti = censimento.censisci_tabelle([tmp_path / "store.py"])
+    assert [r.categoria for r in reperti] == ["tabella-scritta-mai-letta"]
