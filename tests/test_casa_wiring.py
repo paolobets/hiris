@@ -6,7 +6,7 @@ import pytest
 
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.proxy.ha_client import HAClient
-from hiris.app.server import programma_ricostruzione_anagrafe
+from hiris.app.server import programma_ricostruzione_anagrafe, programma_rilettura_comportamento
 
 _VUOTI = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
           "etichette": [], "categorie": [], "integrazioni": []}
@@ -56,6 +56,34 @@ async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio):
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)
     assert client.leggi_registri.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_una_raffica_di_eventi_rilegge_il_comportamento_una_volta_sola():
+    """Important (6): stesso antirimbalzo di
+    `test_una_raffica_di_eventi_ricostruisce_una_volta_sola`, ma per il
+    comportamento -- riusa EVENTI_ANAGRAFE (nessun meccanismo nuovo)."""
+    guarda_finta = AsyncMock(return_value=True)
+    innesca = programma_rilettura_comportamento(guarda_finta, ritardo=0.05)
+    for _ in range(10):
+        innesca("entity_registry_updated")
+    await asyncio.sleep(0.2)
+    assert guarda_finta.await_count == 1
+    # FORZA la rilettura: l'mtime dei file puo' non essere cambiato affatto
+    # (un'automazione tolta/aggiunta in un pacchetto), ed e' proprio il
+    # punto di questo innesco.
+    guarda_finta.assert_awaited_once_with(forza=True)
+
+
+@pytest.mark.asyncio
+async def test_una_rilettura_del_comportamento_fallita_non_uccide_l_ascoltatore():
+    guarda_finta = AsyncMock(side_effect=[OSError("HA giu'"), True])
+    innesca = programma_rilettura_comportamento(guarda_finta, ritardo=0.05)
+    innesca("entity_registry_updated")
+    await asyncio.sleep(0.2)
+    innesca("entity_registry_updated")
+    await asyncio.sleep(0.2)
+    assert guarda_finta.await_count == 2
 
 
 class _MsgFinto:

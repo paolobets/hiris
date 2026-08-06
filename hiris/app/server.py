@@ -1294,6 +1294,15 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
     sia niente da leggere -- con `/api/casa` che racconta lo stantio come
     stato attuale, in silenzio.
 
+    L'mtime dei due file non basta da solo: un'automazione tolta o aggiunta
+    dentro un PACCHETTO (o una cartella inclusa) non tocca `automations.yaml`,
+    quindi non cambia l'impronta -- resterebbe in `/api/casa` come fantasma
+    (o invisibile, per un'aggiunta) finche' nessuno tocca a mano i due file
+    "principali". `guarda(forza=True)` bypassa il confronto sull'impronta:
+    e' quanto usa `programma_rilettura_comportamento`, agganciata allo stesso
+    evento di registro entita' (EVENTI_ANAGRAFE) che gia' fa ricostruire
+    l'anagrafe -- aggiungere o togliere un'automazione CAMBIA quel registro.
+
     Restituisce `True` se ha riletto, `False` se non serviva o se la
     rilettura e' fallita.
     """
@@ -1322,9 +1331,9 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
                 marche.append((nome, None))
         return tuple(marche)
 
-    async def guarda() -> bool:
+    async def guarda(forza: bool = False) -> bool:
         adesso = _impronta()
-        if ultimo["impronta"] is not _MAI_LETTA and adesso == ultimo["impronta"]:
+        if not forza and ultimo["impronta"] is not _MAI_LETTA and adesso == ultimo["impronta"]:
             return False
         try:
             await rileggi(client, archivio, stato["cartella"])
@@ -1340,6 +1349,39 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
         return True
 
     return guarda
+
+
+def programma_rilettura_comportamento(guarda, ritardo: float = 3.0):
+    """Restituisce `innesca(tipo_evento)`: rilegge il comportamento FORZANDO
+    il confronto sull'impronta, una volta sola per raffica.
+
+    Gemello di `programma_ricostruzione_anagrafe` -- stesso antirimbalzo,
+    stessa tolleranza ai guasti, stesso evento (EVENTI_ANAGRAFE, via
+    `add_anagrafe_listener`: nessun meccanismo nuovo). Aggiungere o togliere
+    un'automazione cambia il registro delle entita', ma NON tocca sempre
+    `automations.yaml` -- un'automazione dentro un pacchetto no. Senza questo
+    innesco, quel cambiamento resterebbe invisibile a `/api/casa` finche'
+    qualcuno non tocca a mano i due file "principali" (vedi
+    `sentinella_comportamento`).
+    """
+    stato: dict[str, asyncio.Task | None] = {"attesa": None}
+
+    async def _fra_poco():
+        try:
+            await asyncio.sleep(ritardo)
+            await guarda(forza=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("rilettura forzata del comportamento fallita: %s", exc)
+
+    def innesca(tipo_evento: str) -> None:
+        attesa = stato["attesa"]
+        if attesa is not None and not attesa.done():
+            attesa.cancel()
+        stato["attesa"] = _spawn(_fra_poco(), name="rilettura_comportamento")
+
+    return innesca
 
 
 async def _on_startup(app: web.Application) -> None:
@@ -1466,10 +1508,14 @@ async def _on_startup(app: web.Application) -> None:
     # Task 4 SDD casa: il comportamento (il corpo di automazioni e script)
     # segue lo stesso principio -- prima lettura all'avvio senza poter
     # impedire il boot -- ma un meccanismo diverso: il comportamento cambia
-    # con una cadenza di giorni, non ha un evento di registro da ascoltare
-    # (e per gli script non esiste proprio), quindi lo tiene aggiornato una
-    # sentinella periodica sull'mtime dei due file (vedi sotto, job
-    # "hiris_comportamento_sentinella").
+    # con una cadenza di giorni, e per gli script non esiste ALCUN evento di
+    # ricarica (il servizio non accetta un id), quindi lo tiene aggiornato
+    # una sentinella periodica sull'mtime dei due file (vedi sotto, job
+    # "hiris_comportamento_sentinella"). Un evento di registro entita' esiste
+    # pero' (EVENTI_ANAGRAFE) e aggiungere/togliere un'automazione lo emette:
+    # lo si aggancia qui sotto per forzare una rilettura anche quando l'mtime
+    # non basta -- un'automazione tolta o messa in un PACCHETTO non tocca
+    # `automations.yaml` (vedi `programma_rilettura_comportamento`).
     ha_config_dir = _find_ha_config_dir()
     guarda_comportamento = sentinella_comportamento(
         ha_client, archivio_casa, Path(ha_config_dir) if ha_config_dir else None
@@ -1478,6 +1524,8 @@ async def _on_startup(app: web.Application) -> None:
         await guarda_comportamento()
     except Exception as exc:
         logger.warning("prima lettura del comportamento fallita: %s", exc)
+    ha_client.add_anagrafe_listener(
+        programma_rilettura_comportamento(guarda_comportamento))
 
     # Task 5 SDD casa: le plance, compresa la predefinita (url_path nullo)
     # che HIRIS non aveva mai visto. Cadenza propria (EVENTO_PLANCE, non i

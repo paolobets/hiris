@@ -182,13 +182,21 @@ class ArchivioCasa:
             return []
         return valore if isinstance(valore, list) else []
 
-    def sostituisci_comportamento(self, voci: list[dict]) -> None:
+    def sostituisci_comportamento(self, voci: list[dict], problemi: list[str] | None = None,
+                                  file_non_letti: dict[str, str] | None = None) -> None:
         """Rimpiazza cio' che la casa sa fare da sola. Tutto o niente.
 
         Separato da `sostituisci()` perche' cambia con una cadenza diversa
         (giorni contro mesi) e da una fonte diversa (i file di configurazione
         contro i registri): rileggere i registri perche' e' cambiata
         un'automazione sarebbe uno spreco, e viceversa.
+
+        `problemi` e `file_non_letti` si archiviano ACCANTO ai dati, non solo
+        nei log: sono costruiti con cura da `comportamento.componi()`/`rileggi()`
+        proprio per dire a chi guarda perche' qualcosa manca o e' incerto —
+        conservarli solo in una riga di log li rende invisibili a chiunque non
+        stia leggendo il log in quel momento (vedi `non_disponibili` sopra,
+        stesso principio).
         """
         c = self._conn
         try:
@@ -206,6 +214,12 @@ class ArchivioCasa:
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
                       "VALUES ('comportamento_letto_il', ?)",
                       (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
+            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
+                      "VALUES ('comportamento_problemi', ?)",
+                      (json.dumps(list(problemi or []), ensure_ascii=False),))
+            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
+                      "VALUES ('comportamento_file_non_letti', ?)",
+                      (json.dumps(dict(file_non_letti or {}), ensure_ascii=False),))
             c.commit()
         except Exception:
             c.rollback()
@@ -221,10 +235,53 @@ class ArchivioCasa:
                     v["corpo"] = json.loads(v["corpo"])
                 except (TypeError, ValueError):
                     v["corpo"] = None
+            # Derivato da `origine`, non una colonna propria: le due cose
+            # sono la STESSA informazione (solo `solo_file` genera un id
+            # sintetico — vedi comportamento.componi()) e duplicarla in una
+            # colonna aprirebbe la porta a farle disallineare. Dichiarato qui
+            # comunque, cosi' chi legge /api/casa non deve dedurlo da una
+            # convenzione di prefisso sull'id.
+            v["id_reale"] = v.get("origine") != "solo_file"
             voci.append(v)
         return voci
 
-    def sostituisci_plance(self, voci: list[dict]) -> None:
+    def comportamento_letto_il(self) -> str | None:
+        """Quando il comportamento e' stato riletto l'ultima volta -- data
+        propria, diversa da `aggiornata_il()` (quella e' dell'anagrafe):
+        cadenze e fonti diverse, vedi `sostituisci_comportamento`."""
+        riga = self._conn.execute(
+            "SELECT valore FROM meta WHERE chiave = 'comportamento_letto_il'").fetchone()
+        return riga["valore"] if riga else None
+
+    def problemi_comportamento(self) -> list[str]:
+        """Le frasi su cio' che l'ultima rilettura del comportamento NON ha
+        potuto concludere con certezza (id duplicati, script vuoti, file mal
+        formati). Vedi `comportamento.componi()`."""
+        riga = self._conn.execute(
+            "SELECT valore FROM meta WHERE chiave = 'comportamento_problemi'").fetchone()
+        if not riga:
+            return []
+        try:
+            valore = json.loads(riga["valore"])
+        except (TypeError, ValueError):
+            return []
+        return valore if isinstance(valore, list) else []
+
+    def file_non_letti(self) -> dict[str, str]:
+        """Il nome di ogni file di comportamento non letto, con la RAGIONE
+        (`"assente"` o `"illeggibile: <motivo>"`). Vedi `comportamento.rileggi()`."""
+        riga = self._conn.execute(
+            "SELECT valore FROM meta WHERE chiave = 'comportamento_file_non_letti'").fetchone()
+        if not riga:
+            return {}
+        try:
+            valore = json.loads(riga["valore"])
+        except (TypeError, ValueError):
+            return {}
+        return valore if isinstance(valore, dict) else {}
+
+    def sostituisci_plance(self, voci: list[dict],
+                           non_disponibili: list[str] | None = None) -> None:
         """Rimpiazza le plance. Tutto o niente, stessa forma di
         sostituisci_comportamento(): stesso BEGIN/rollback, stesso
         scioglimento del JSON, `config` a `None` che resta `None`.
@@ -233,6 +290,10 @@ class ArchivioCasa:
         cadenza propria (l'evento EVENTO_PLANCE), diversa da quella
         dell'anagrafe — ci finirebbero cancellate a ogni ricostruzione dei
         registri.
+
+        `non_disponibili` si archivia accanto ai dati, stesso principio di
+        `non_disponibili` dell'anagrafe: senza conservarlo, /api/casa non
+        potrebbe dire perche' una plancia manca.
         """
         c = self._conn
         try:
@@ -253,10 +314,34 @@ class ArchivioCasa:
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
                       "VALUES ('plance_lette_il', ?)",
                       (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
+            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
+                      "VALUES ('plance_non_disponibili', ?)",
+                      (json.dumps(list(non_disponibili or []), ensure_ascii=False),))
             c.commit()
         except Exception:
             c.rollback()
             raise
+
+    def plance_lette_il(self) -> str | None:
+        """Quando le plance sono state rilette l'ultima volta -- data propria,
+        diversa da `aggiornata_il()` (anagrafe) e da `comportamento_letto_il()`."""
+        riga = self._conn.execute(
+            "SELECT valore FROM meta WHERE chiave = 'plance_lette_il'").fetchone()
+        return riga["valore"] if riga else None
+
+    def non_disponibili_plance(self) -> list[str]:
+        """Le plance/percorsi che l'ultima lettura non e' riuscita a
+        risolvere (elenco non arrivato, config illeggibile, percorso
+        duplicato). Vedi `comportamento.rileggi_plance()`."""
+        riga = self._conn.execute(
+            "SELECT valore FROM meta WHERE chiave = 'plance_non_disponibili'").fetchone()
+        if not riga:
+            return []
+        try:
+            valore = json.loads(riga["valore"])
+        except (TypeError, ValueError):
+            return []
+        return valore if isinstance(valore, list) else []
 
     def plance(self) -> list[dict]:
         """Le plance con la loro configurazione, coi campi JSON gia' sciolti.

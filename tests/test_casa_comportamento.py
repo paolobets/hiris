@@ -173,3 +173,125 @@ async def test_un_file_rotto_si_distingue_da_un_file_assente(tmp_path):
     assert "illeggibile" in esito["file_non_letti"]["automations.yaml"]
     assert esito["file_non_letti"]["scripts.yaml"] == "assente"
     assert cliente.chiamato_con == []   # «tutte», la convenzione di HAClient
+
+
+def test_un_automazione_reale_si_dichiara_reale():
+    """Complemento di `test_un_automazione_nel_file_e_nello_stato_ha_il_corpo`:
+    l'id combacia con un entity_id vero, ricevuto dallo stato."""
+    voci, _ = componi(_AUTOMAZIONI, _SCRIPT, _STATI)
+    voci = _per_id(voci)
+    assert voci["automation.sveglia"]["id_reale"] is True
+
+
+def test_un_id_sintetico_si_dichiara_non_reale():
+    """Critical minore (7): `automation.__non_caricata_1701` combacia con la
+    forma di un entity_id vero (dominio.oggetto) — senza questo campo un
+    consumatore non ha modo di saperlo se non deducendolo da una convenzione
+    di prefisso."""
+    voci, _ = componi(_AUTOMAZIONI, _SCRIPT, _STATI)
+    voci = _per_id(voci)
+    assert voci["automation.__non_caricata_1701"]["id_reale"] is False
+
+
+def test_un_automazione_non_a_dizionario_si_scarta_senza_esplodere():
+    """Critical (2): un trattino residuo in coda a automations.yaml
+    (`- id: '1'\\n  alias: X\\n-\\n`) e' YAML VALIDO e produce `[{...}, None]`.
+    Prima `componi` esplodeva con `AttributeError: 'NoneType' object has no
+    attribute 'get'` sul secondo elemento; ora si scarta e si dichiara."""
+    automazioni = [
+        {"id": "1", "alias": "Sveglia", "trigger": []},
+        None,
+    ]
+    voci, problemi = componi(automazioni, {}, [])
+    assert [v["nome"] for v in voci] == ["Sveglia"]
+    assert any("voce #2" in p and "automations.yaml" in p for p in problemi)
+
+
+def test_un_automazione_scalare_si_scarta_senza_esplodere():
+    """Stessa classe di guasto, forma diversa: uno scalare al posto di una
+    mappa (es. una riga YAML mal indentata che finisce come stringa)."""
+    voci, problemi = componi(["non e' una mappa"], {}, [])
+    assert voci == []
+    assert any("voce #1" in p for p in problemi)
+
+
+def test_uno_script_a_valore_scalare_si_scarta_senza_esplodere():
+    """Speculare a `test_uno_script_presente_e_nullo_non_genera_un_doppione`,
+    ma per il valore-scalare invece del valore-nullo: `saluta: 'ciao'`.
+    Prima crashava con `AttributeError` in `(corpo or {}).get("alias")`
+    quando lo script restava senza entita' viva corrispondente (solo_file)."""
+    voci, problemi = componi([], {"saluta": "ciao"}, [])
+    assert voci == []
+    assert any("saluta" in p and "dizionario" in p for p in problemi)
+
+
+@pytest.mark.asyncio
+async def test_un_trattino_residuo_non_pianta_la_rilettura(tmp_path):
+    """Stesso guasto di `test_un_automazione_non_a_dizionario_si_scarta_senza_esplodere`,
+    ma attraverso `rileggi()` per intero — file veri su disco, corpo YAML
+    reale, non solo `componi()` isolato."""
+    (tmp_path / "automations.yaml").write_text(
+        "- id: '1'\n  alias: Sveglia\n  trigger: []\n-\n", encoding="utf-8"
+    )
+    # scripts.yaml resta assente: non serve a questo test.
+
+    class _ClienteConSveglia:
+        async def get_states(self, entity_ids):
+            return [{"entity_id": "automation.sveglia", "state": "on",
+                      "attributes": {"id": "1", "friendly_name": "Sveglia"}}]
+
+    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
+    try:
+        esito = await rileggi(_ClienteConSveglia(), archivio, tmp_path)
+        assert any("voce #2" in p for p in esito["problemi"])
+        voci = archivio.comportamento()
+        assert [v["nome"] for v in voci] == ["Sveglia"]
+    finally:
+        archivio.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_uno_stato_senza_automazioni_ne_script_non_sostituisce(tmp_path):
+    """Critical (1): Home Assistant ripartito in safe mode (configuration.yaml
+    rotto) risponde 200 su /api/states MA senza alcuna automation.*/script.*:
+    e' un successo HTTP, non un errore. Sostituire comunque trasformerebbe
+    ogni automazione viva in "solo_file" (falso: sembra scritta-ma-non-
+    caricata) e farebbe sparire quelle scritte a mano (solo_stato)."""
+    (tmp_path / "automations.yaml").write_text(
+        "- id: '1700'\n  alias: Sveglia\n  trigger: []\n", encoding="utf-8"
+    )
+    # scripts.yaml resta assente: non serve a questo test, e una seconda voce
+    # "solo_file" per lo script renderebbe l'asserzione sul conteggio meno
+    # diretta senza aggiungere niente alla dimostrazione.
+
+    class _ClienteConStati:
+        def __init__(self, stati):
+            self._stati = stati
+
+        async def get_states(self, entity_ids):
+            return self._stati
+
+    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
+    try:
+        # Prima lettura: HA e' su, l'automazione e' viva -> replica buona.
+        cliente_su = _ClienteConStati([
+            {"entity_id": "automation.sveglia", "state": "on",
+             "attributes": {"id": "1700", "friendly_name": "Sveglia"}},
+        ])
+        await rileggi(cliente_su, archivio, tmp_path)
+        assert len(archivio.comportamento()) == 1
+        assert archivio.comportamento()[0]["origine"] == "file"
+
+        # HA riparte in safe mode: /api/states risponde 200 ma vuoto.
+        cliente_safe_mode = _ClienteConStati([])
+        esito = await rileggi(cliente_safe_mode, archivio, tmp_path)
+
+        # La replica precedente resta INTATTA: non diventa "solo_file", e
+        # l'automazione a mano scritta a mano (se ci fosse stata) non sparisce.
+        voci = archivio.comportamento()
+        assert len(voci) == 1
+        assert voci[0]["nome"] == "Sveglia"
+        assert voci[0]["origine"] == "file"
+        assert esito["problemi"]  # il fatto e' dichiarato, non solo loggato
+    finally:
+        archivio.chiudi()

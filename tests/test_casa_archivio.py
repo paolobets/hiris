@@ -159,3 +159,64 @@ def test_un_corpo_illeggibile_su_disco_diventa_None_non_vuoto(archivio):
     voce = archivio.comportamento()[0]
     assert voce["corpo"] is None          # non {} e non un'eccezione
     assert voce["origine"] == "file"      # il resto della voce sopravvive
+
+
+def test_problemi_e_file_non_letti_si_conservano_accanto_ai_dati(archivio):
+    """Important (3): prima morivano in una riga di log, scartati da tutti i
+    chiamanti. Vanno in `meta`, accanto ai dati, come `non_disponibili`
+    dell'anagrafe -- altrimenti chi guarda /api/casa non puo' sapere PERCHE'
+    un'automazione manca o e' ambigua."""
+    archivio.sostituisci_comportamento(
+        _COMPORTAMENTO,
+        problemi=["automations.yaml: id 1700 usato da 2 voci"],
+        file_non_letti={"scripts.yaml": "assente"},
+    )
+    assert archivio.problemi_comportamento() == ["automations.yaml: id 1700 usato da 2 voci"]
+    assert archivio.file_non_letti() == {"scripts.yaml": "assente"}
+    # Una lettura successiva senza problemi li azzera -- non restano
+    # appiccicati da una rilettura vecchia.
+    archivio.sostituisci_comportamento(_COMPORTAMENTO)
+    assert archivio.problemi_comportamento() == []
+    assert archivio.file_non_letti() == {}
+
+
+def test_non_disponibili_delle_plance_si_conservano_accanto_ai_dati(archivio):
+    archivio.sostituisci_plance(
+        [{"url_path": "cucina", "title": "Cucina", "mode": "storage", "config": {}}],
+        non_disponibili=["camera (config illeggibile)"],
+    )
+    assert archivio.non_disponibili_plance() == ["camera (config illeggibile)"]
+    archivio.sostituisci_plance(
+        [{"url_path": "cucina", "title": "Cucina", "mode": "storage", "config": {}}])
+    assert archivio.non_disponibili_plance() == []
+
+
+def test_ogni_sezione_ha_la_propria_data(archivio):
+    """Important (5): `aggiornata_il` era l'unico campo di primo livello,
+    letto anche per il comportamento e le plance -- un comportamento
+    congelato da settimane appariva "aggiornato a oggi" solo perche'
+    l'anagrafe era stata riletta di recente. Ogni sezione porta la propria."""
+    assert archivio.aggiornata_il() is None
+    assert archivio.comportamento_letto_il() is None
+    assert archivio.plance_lette_il() is None
+
+    archivio.sostituisci(_REGISTRI)
+    archivio.sostituisci_comportamento(_COMPORTAMENTO)
+    assert archivio.aggiornata_il() is not None
+    assert archivio.comportamento_letto_il() is not None
+    assert archivio.plance_lette_il() is None   # le plance non sono ancora state lette
+
+
+def test_l_id_sintetico_si_dichiara_non_reale_anche_dall_archivio(archivio):
+    """Minor (7): il campo si ricalcola da `origine` in lettura -- e' la
+    stessa informazione, tenerle allineate a mano in due colonne aprirebbe
+    la porta a farle disallineare."""
+    archivio.sostituisci_comportamento([
+        {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+         "corpo": {}, "origine": "file"},
+        {"id": "automation.__non_caricata_99", "tipo": "automazione", "nome": "Fantasma",
+         "corpo": {}, "origine": "solo_file"},
+    ])
+    voci = {v["id"]: v for v in archivio.comportamento()}
+    assert voci["automation.sveglia"]["id_reale"] is True
+    assert voci["automation.__non_caricata_99"]["id_reale"] is False

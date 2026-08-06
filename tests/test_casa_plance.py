@@ -187,6 +187,54 @@ async def test_una_plancia_con_percorso_vuoto_non_sparisce():
     assert non_disponibili == []
 
 
+@pytest.mark.asyncio
+async def test_l_elenco_non_arrivato_si_distingue_da_un_elenco_vuoto():
+    """Important (4): `_ws_request` restituiva `None` sia se il comando falliva
+    sia se riusciva con un risultato vuoto -- le due cose sono fatti diversi
+    sulla casa (non lo so / non ce ne sono). Qui l'elenco non risponde
+    affatto, ma la predefinita si legge lo stesso (un'ALTRA connessione)."""
+    finto = _finto_ws_batch({
+        ("lovelace/config", None): _msg(_CONFIG_DEFAULT),
+        # "lovelace/dashboards/list" assente da risposte_per_comando: nessuna
+        # risposta -> il comando risulta fallito, non vuoto-e-riuscito.
+    })
+    with patch.object(HAClient, "_ws_batch", finto):
+        plance, non_disponibili = await _client().leggi_plance()
+    assert any(nd.startswith("elenco:") for nd in non_disponibili)
+    percorsi = [p["url_path"] for p in plance]
+    assert percorsi == [None]  # solo la predefinita, letta da un'altra connessione
+
+
+@pytest.mark.asyncio
+async def test_un_elenco_fallito_non_cancella_le_plance_aggiuntive(archivio):
+    """Important (4), riprodotto a livello di `rileggi_plance`: l'elenco va
+    in timeout ma la config della predefinita si legge lo stesso -> senza
+    distinguere i due casi, la guardia "nessuna leggibile" non scatterebbe
+    (la predefinita E' leggibile) e la replica verrebbe sostituita con la
+    sola predefinita: Cucina sparirebbe senza finire nemmeno fra i non
+    disponibili, perche' l'elenco che l'avrebbe nominata non e' mai arrivato."""
+    client = AsyncMock()
+    client.leggi_plance = AsyncMock(return_value=(
+        [{"url_path": None, "title": "Principale", "mode": "storage",
+          "config": _CONFIG_DEFAULT},
+         {"url_path": "cucina", "title": "Cucina", "mode": "storage",
+          "config": _CONFIG_CUCINA}],
+        []))
+    await rileggi_plance(client, archivio)
+    assert {p["titolo"] for p in archivio.plance()} == {"Principale", "Cucina"}
+
+    # Ora l'elenco va in timeout: solo la predefinita risulta leggibile.
+    client.leggi_plance = AsyncMock(return_value=(
+        [{"url_path": None, "title": "Principale", "mode": "storage",
+          "config": _CONFIG_DEFAULT}],
+        ["elenco: lovelace/dashboards/list non ha risposto"]))
+    esito = await rileggi_plance(client, archivio)
+    # La replica precedente resta INTATTA: Cucina non sparisce.
+    assert {p["titolo"] for p in archivio.plance()} == {"Principale", "Cucina"}
+    assert esito["conteggi"]["plance"] == 0
+    assert any(nd.startswith("elenco:") for nd in esito["non_disponibili"])
+
+
 def test_sostituisci_plance_non_sovrascrive_in_silenzio_una_chiave_duplicata(archivio):
     """Difende la scelta di NON usare INSERT OR REPLACE: due voci con lo
     stesso percorso passate direttamente a sostituisci_plance (bypassando la

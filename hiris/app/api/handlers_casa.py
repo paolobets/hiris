@@ -31,14 +31,22 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # `non_disponibili: None`, non `[]`: `[]` afferma "tutti i registri
         # ok", e qui non lo sappiamo -- non abbiamo nemmeno letto niente.
         return web.json_response({
-            "aggiornata_il": None, "non_disponibili": None, "conteggi": {}, "piani": [],
+            # Nome proprio, non "aggiornata_il" generico: tre sezioni di
+            # questa risposta hanno ciascuna la propria data (anagrafe,
+            # comportamento, plance) e un unico campo di primo livello senza
+            # nome che dica di cosa parla prometterebbe una freschezza che
+            # vale solo per una delle tre.
+            "anagrafe_letta_il": None, "non_disponibili": None, "conteggi": {}, "piani": [],
             # Stesso principio di "non_disponibili" qui sopra, applicato al
             # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
             # e senza archivio non lo sappiamo -- resta `None`. `conteggi` e
             # `voci`, come `conteggi`/`piani` sopra, sono contenitori naturali
-            # e restano vuoti.
-            "comportamento": {"conteggi": {}, "senza_corpo": None, "voci": []},
-            "plance": [],
+            # e restano vuoti. `problemi`/`file_non_letti` restano `None` per
+            # lo stesso motivo di `senza_corpo`: un elenco vuoto affermerebbe
+            # "nessun problema", e senza archivio non lo sappiamo.
+            "comportamento": {"letto_il": None, "conteggi": {}, "senza_corpo": None,
+                              "problemi": None, "file_non_letti": None, "voci": []},
+            "plance": {"lette_il": None, "non_disponibili": None, "voci": []},
         })
     casa = archivio.leggi()
     non_disponibili = archivio.non_disponibili()
@@ -47,7 +55,7 @@ async def handle_get_casa(request: web.Request) -> web.Response:
     for v in voci_comportamento:
         conteggi_comportamento[v["tipo"]] = conteggi_comportamento.get(v["tipo"], 0) + 1
     return web.json_response({
-        "aggiornata_il": archivio.aggiornata_il(),
+        "anagrafe_letta_il": archivio.aggiornata_il(),
         # I registri che non hanno risposto all'ultima lettura. Senza questo
         # campo una casa senza piani e un registro dei piani caduto sarebbero
         # la stessa schermata.
@@ -55,6 +63,7 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         "conteggi": {chiave: len(valore) for chiave, valore in casa.items()},
         "piani": gerarchia(casa, non_disponibili),
         "comportamento": {
+            "letto_il": archivio.comportamento_letto_il(),
             "conteggi": conteggi_comportamento,
             # Il campo che conta di piu': quante voci HIRIS conosce solo di
             # nome. Le automazioni scritte a mano non stanno nei file, e di
@@ -63,7 +72,21 @@ async def handle_get_casa(request: web.Request) -> web.Response:
             # un corpo vuoto (`{}`, presente ma senza niente dentro) e' un
             # fatto diverso da un corpo assente, e non va confuso con esso.
             "senza_corpo": sum(1 for v in voci_comportamento if v["corpo"] is None),
+            # Cio' che l'ultima lettura NON ha potuto concludere con
+            # certezza (id duplicati, script vuoti, voci malformate) e i
+            # file che non si sono letti, con la ragione. Costruiti con
+            # cura da comportamento.componi()/rileggi() -- prima morivano in
+            # una riga di log, invisibili a chi guarda solo /api/casa.
+            "problemi": archivio.problemi_comportamento(),
+            "file_non_letti": archivio.file_non_letti(),
             "voci": voci_comportamento,
         },
-        "plance": archivio.plance(),
+        "plance": {
+            "lette_il": archivio.plance_lette_il(),
+            # Le plance/percorsi che l'ultima lettura non e' riuscita a
+            # risolvere -- stesso principio di "non_disponibili" sopra,
+            # applicato alle plance invece che ai registri.
+            "non_disponibili": archivio.non_disponibili_plance(),
+            "voci": archivio.plance(),
+        },
     })

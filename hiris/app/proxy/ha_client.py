@@ -531,7 +531,10 @@ class HAClient:
         return [dict(d) for d in result if isinstance(d, dict)]
 
     async def leggi_plance(self) -> tuple[list[dict], list[str]]:
-        """Le plance con la loro configurazione. Una connessione, N comandi.
+        """Le plance con la loro configurazione. Due connessioni, N comandi:
+        prima l'elenco (`lovelace/dashboards/list`), poi — solo dopo, perche'
+        e' li' che si scoprono i percorsi da interrogare — un'unica
+        connessione batch per tutte le `lovelace/config`.
 
         La **predefinita** non compare in `lovelace/dashboards/list`: ha
         `url_path` nullo e si chiede a parte. E' la plancia che l'utente
@@ -547,9 +550,27 @@ class HAClient:
         ragione leggibile) invece di far fallire `sostituisci_plance` con
         `UNIQUE constraint failed` — che altrimenti ferma silenziosamente
         l'aggiornamento della replica delle plance.
+
+        Se l'elenco stesso non arriva (timeout, disconnessione), lo si
+        dichiara come `"elenco: ..."` in `non_disponibili` — invece di
+        confonderlo con «l'elenco e' arrivato ed e' vuoto», che e' un fatto
+        diverso sulla casa (nessuna plancia aggiuntiva, non «non lo so»). Per
+        questo si usa `_ws_command` (il messaggio intero, con `success`) e
+        non `_ws_request`: quest'ultimo restituisce `None` sia se il comando
+        e' fallito sia se e' riuscito con `result: None`, le due cose non si
+        distinguerebbero.
         """
-        elenco = await self._ws_request("lovelace/dashboards/list")
+        got = await self._ws_command("lovelace/dashboards/list", {})
+        elenco_arrivato = bool(got and got.get("success"))
+        elenco = got.get("result") if elenco_arrivato else None
         elenco = elenco if isinstance(elenco, list) else []
+
+        non_disponibili: list[str] = []
+        if not elenco_arrivato:
+            non_disponibili.append(
+                "elenco: lovelace/dashboards/list non ha risposto — le plance "
+                "aggiuntive potrebbero non essere tutte qui"
+            )
 
         # `None` = la predefinita, sempre in testa. Un percorso vero deve
         # essere sia UNICO (la tabella `plance` lo usa come chiave primaria:
@@ -562,7 +583,9 @@ class HAClient:
         # `non_disponibili`, non nascosto sovrascrivendo in silenzio.
         # `is not None` (non verita' booleana): un url_path vuoto ("") e'
         # falsy ma e' un percorso legittimo, non un'assenza.
-        non_disponibili: list[str] = []
+        # `non_disponibili` non si ridichiara qui: gia' inizializzata sopra,
+        # puo' gia' portare la dichiarazione "elenco" se l'elenco non e'
+        # arrivato — ridichiararla la cancellerebbe.
         percorsi: list[str | None] = [None]
         visti: set[str] = set()
         for d in elenco:

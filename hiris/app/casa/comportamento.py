@@ -55,6 +55,24 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
     problemi: list[str] = []
     automazioni_yaml = automazioni_yaml or []
 
+    # Un trattino residuo in coda ("- id: '1'\n  alias: X\n-\n") o un valore
+    # scalare al posto di una mappa sono entrambi YAML VALIDO: il parser non
+    # solleva, quindi `file_non_letti` resterebbe vuoto e il guasto sarebbe
+    # invisibile finche' non arriva qui sotto e fa esplodere `.get()` su
+    # `None` o su una stringa. Si scarta PRIMA di tutto il resto — id,
+    # conteggi, aggancio allo stato — cosi' nessuno di quei passaggi vede mai
+    # una voce che non e' un dizionario.
+    automazioni_valide: list[dict] = []
+    for indice, v in enumerate(automazioni_yaml):
+        if not isinstance(v, dict):
+            problemi.append(
+                f"{_AUTOMAZIONI}: voce #{indice + 1} non e' un dizionario "
+                f"(trovato {type(v).__name__}) — scartata"
+            )
+            continue
+        automazioni_valide.append(v)
+    automazioni_yaml = automazioni_valide
+
     # Un id usato da piu' voci non e' una chiave: prima si conta, poi si
     # decide chi entra nella mappa. Tenerla "l'ultima vince" (il bug
     # originale) marcherebbe come "file" — dato certo — l'entita' viva che
@@ -95,9 +113,24 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
             f"{type(script_yaml).__name__} — nessuno script letto dal file"
         )
 
+    # Stessa difesa della lista sopra, per gli script: la chiave e' una mappa
+    # attesa (`saluta:\n  alias: ...`), ma niente nello YAML impedisce
+    # `saluta: 'ciao'` — uno scalare al posto della mappa. Prima si scartano i
+    # valori che non sono ne' `None` (assente-e-nullo, gia' gestito) ne' un
+    # dizionario, cosi' il `.get("alias")` piu' sotto non vede mai altro.
+    script_validi: dict = {}
     for chiave, valore in script_per_chiave.items():
         if valore is None:
             problemi.append(f"{_SCRIPT}: script '{chiave}' presente nel file ma vuoto")
+            script_validi[chiave] = None
+        elif isinstance(valore, dict):
+            script_validi[chiave] = valore
+        else:
+            problemi.append(
+                f"{_SCRIPT}: script '{chiave}' non e' un dizionario "
+                f"(trovato {type(valore).__name__}) — scartato"
+            )
+    script_per_chiave = script_validi
 
     voci: list[dict] = []
     visti_automazione: set[str] = set()
@@ -117,7 +150,7 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
             if chiave and chiave in ambigui:
                 voci.append({
                     "id": entity_id, "tipo": "automazione", "nome": nome,
-                    "corpo": None, "origine": "ambiguo",
+                    "corpo": None, "origine": "ambiguo", "id_reale": True,
                 })
                 continue
             corpo = per_id_automazione.get(chiave) if chiave else None
@@ -126,6 +159,7 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
             voci.append({
                 "id": entity_id, "tipo": "automazione", "nome": nome,
                 "corpo": corpo, "origine": "file" if corpo is not None else "solo_stato",
+                "id_reale": True,
             })
         elif dominio == "script":
             corpo = script_per_chiave.get(object_id, _ASSENTE)
@@ -138,6 +172,7 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
             voci.append({
                 "id": entity_id, "tipo": "script", "nome": nome,
                 "corpo": corpo, "origine": "file" if corpo is not None else "solo_stato",
+                "id_reale": True,
             })
 
     # Cio' che sta nel file e non nello stato e' scritto ma NON caricato:
@@ -148,13 +183,17 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
             voci.append({
                 "id": f"automation.__non_caricata_{chiave}", "tipo": "automazione",
                 "nome": corpo.get("alias") or chiave, "corpo": corpo,
-                "origine": "solo_file",
+                # Questo id e' sintetico (combacia comunque con la forma
+                # dominio.oggetto di un entity_id vero — vedi _ENTITY_ID_RE):
+                # senza questo campo un consumatore lo passerebbe a un
+                # servizio come se l'entita' esistesse davvero.
+                "origine": "solo_file", "id_reale": False,
             })
     for indice, corpo in enumerate(senza_id):
         nome = corpo.get("alias") or f"automazione senza id #{indice + 1}"
         voci.append({
             "id": f"automation.__senza_id_{indice}", "tipo": "automazione",
-            "nome": nome, "corpo": corpo, "origine": "solo_file",
+            "nome": nome, "corpo": corpo, "origine": "solo_file", "id_reale": False,
         })
         problemi.append(
             f"{_AUTOMAZIONI}: automazione '{nome}' senza id, non collegabile a nessuna entita'"
@@ -167,7 +206,7 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
             voci.append({
                 "id": f"script.__non_caricato_{chiave}", "tipo": "script",
                 "nome": (corpo or {}).get("alias") or chiave, "corpo": corpo,
-                "origine": "solo_file",
+                "origine": "solo_file", "id_reale": False,
             })
 
     return voci, problemi
@@ -209,9 +248,45 @@ async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
 
     # `[]` significa «tutte»: e' la convenzione di HAClient.get_states, che
     # richiede l'argomento. Gli altri sei chiamanti fanno cosi'.
-    stati = await client.get_states([])
-    voci, problemi = componi(automazioni, script, stati or [])
-    archivio.sostituisci_comportamento(voci)
+    stati = await client.get_states([]) or []
+
+    # Guardia sulla gamba dello stato, stessa forma di quella dell'anagrafe
+    # (anagrafe.ricostruisci, anagrafe.py:40-43): se lo stato NON porta
+    # nessuna entita' automation.*/script.* mentre i file ne contengono, non
+    # e' un fatto sulla casa — e' quasi certamente Home Assistant ripartito
+    # senza avere ancora caricato le automazioni (riavvio, safe mode dopo un
+    # configuration.yaml rotto). `/api/states` risponde 200: e' un successo,
+    # non un errore, e senza questa guardia sarebbe indistinguibile da una
+    # casa che ha DAVVERO cancellato tutte le sue automazioni. Sostituire
+    # comunque trasformerebbe ogni automazione viva in "solo_file" — scritta
+    # ma NON caricata: qualcosa non va — un'affermazione positiva e FALSA, e
+    # farebbe sparire del tutto quelle scritte a mano (solo_stato). Una
+    # replica vecchia e dichiarata stantia e' meglio di una fresca e falsa.
+    domini_comportamento = {"automation", "script"}
+    stato_ha_comportamento = any(
+        s.get("entity_id", "").split(".", 1)[0] in domini_comportamento for s in stati
+    )
+    file_hanno_voci = bool(automazioni) or bool(script)
+    if not stato_ha_comportamento and file_hanno_voci:
+        messaggio = (
+            "nessuna entita' automation.*/script.* nello stato mentre i file "
+            "ne contengono voci: Home Assistant probabilmente non ha ancora "
+            "caricato le automazioni (riavvio, safe mode) — comportamento NON "
+            "sostituito, mantenuta la replica precedente"
+        )
+        logger.warning("comportamento: %s", messaggio)
+        voci_correnti = archivio.comportamento()
+        conteggi_correnti: dict[str, int] = {}
+        for v in voci_correnti:
+            conteggi_correnti[v["tipo"]] = conteggi_correnti.get(v["tipo"], 0) + 1
+        return {
+            "conteggi": conteggi_correnti,
+            "senza_corpo": sum(1 for v in voci_correnti if v["corpo"] is None),
+            "file_non_letti": non_letti, "problemi": [messaggio],
+        }
+
+    voci, problemi = componi(automazioni, script, stati)
+    archivio.sostituisci_comportamento(voci, problemi=problemi, file_non_letti=non_letti)
 
     conteggi: dict[str, int] = {}
     for v in voci:
@@ -272,18 +347,34 @@ async def rileggi_plance(client, archivio) -> dict:
     convivono invece senza problemi: quella YAML resta con `config` a
     `None`, visibile in `non_disponibili`, le altre si aggiornano.
 
+    Stessa regola anche quando e' l'ELENCO stesso a non arrivare (timeout su
+    `lovelace/dashboards/list`): la predefinita si legge da un'altra
+    connessione e puo' risultare leggibile da sola, ma sostituire in quel
+    caso rimpiazzerebbe la replica con la sola predefinita — le plance
+    aggiuntive sparirebbero senza nemmeno finire fra i non disponibili,
+    perche' l'elenco che le nominerebbe non e' mai arrivato.
+
     Restituisce `{"conteggi": {"plance": n}, "non_disponibili": [...]}`.
     """
     plance, non_disponibili = await client.leggi_plance()
+    # L'elenco stesso ("lovelace/dashboards/list") puo' fallire (timeout,
+    # disconnessione) mentre la config della predefinita si legge lo stesso —
+    # e' un'altra connessione WS. Senza distinguere questo caso, `plance`
+    # conterrebbe la sola predefinita leggibile: la guardia sotto ("nessuna
+    # leggibile") non scatterebbe, e la replica verrebbe sostituita con la
+    # sola predefinita — Cucina, Camera, Tablet sparirebbero senza finire
+    # nemmeno fra i non disponibili, perche' l'elenco non li ha mai nominati.
+    elenco_fallito = any(nd.split(":", 1)[0] == "elenco" for nd in non_disponibili)
     leggibili = [p for p in plance if p.get("config") is not None]
-    if not leggibili:
+    if not leggibili or elenco_fallito:
         logger.warning(
-            "plance: nessuna leggibile (non disponibili: %s) — replica precedente conservata",
+            "plance: %s (non disponibili: %s) — replica precedente conservata",
+            "elenco delle plance non arrivato" if elenco_fallito else "nessuna leggibile",
             non_disponibili)
         return {"conteggi": {"plance": 0}, "non_disponibili": non_disponibili}
 
     voci = [{**p, "entita": _entita_in(p.get("config"))} for p in plance]
-    archivio.sostituisci_plance(voci)
+    archivio.sostituisci_plance(voci, non_disponibili=non_disponibili)
     if non_disponibili:
         logger.info("plance: %d lette, %d non disponibili (%s)",
                     len(voci), len(non_disponibili), non_disponibili)

@@ -94,6 +94,22 @@ async def test_una_rilettura_fallita_non_blocca_le_successive(archivio, cartella
 
 
 @pytest.mark.asyncio
+async def test_forza_rilegge_anche_se_i_file_non_sono_cambiati(archivio, cartella):
+    """Important (6): un'automazione tolta o aggiunta dentro un PACCHETTO non
+    tocca l'mtime dei due file "principali" -- resterebbe un fantasma (o
+    invisibile) fino al prossimo tocco a mano. `guarda(forza=True)` e' il
+    modo in cui `programma_rilettura_comportamento` bypassa il confronto
+    sull'impronta quando arriva un evento di registro entita'."""
+    client = _client()
+    guarda = sentinella_comportamento(client, archivio, cartella)
+    await guarda()
+    assert await guarda() is False              # impronta invariata: non rilegge
+    assert client.get_states.await_count == 1
+    assert await guarda(forza=True) is True      # bypassata
+    assert client.get_states.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_la_cartella_che_compare_dopo_l_avvio_viene_vista(archivio, cartella):
     """L'add-on puo' partire prima che il Supervisor abbia montato /config.
 
@@ -112,10 +128,21 @@ async def test_la_cartella_che_compare_dopo_l_avvio_viene_vista(archivio, cartel
     assert archivio.comportamento() == []        # niente cartella, niente corpi
 
     montata[0] = str(cartella)                   # il Supervisor finisce il mount
+    # Ora anche Home Assistant riporta vive le due voci del file: uno stato
+    # senza NESSUNA automation.*/script.* mentre i file ne contengono
+    # (guardia del Critical (1), vedi comportamento.rileggi) terrebbe la
+    # replica precedente invece di sostituirla -- qui invece lo stato e' in
+    # regola, ed e' la comparsa della cartella a fare la differenza.
+    client.get_states = AsyncMock(return_value=[
+        {"entity_id": "automation.sveglia", "state": "on",
+         "attributes": {"id": "1", "friendly_name": "Sveglia"}},
+        {"entity_id": "script.saluta", "state": "off",
+         "attributes": {"friendly_name": "Saluta"}},
+    ])
     assert await guarda() is True                # la sentinella se ne accorge
 
-    # Il finto non ha stati vivi, quindi le voci del file risultano scritte ma
-    # non caricate: cio' che conta e' che PRIMA non c'erano affatto.
+    # Cio' che conta: PRIMA della cartella non c'era niente, DOPO i due corpi
+    # dei file sono agganciati alle entita' vive.
     voci = archivio.comportamento()
     assert sorted(v["nome"] for v in voci) == ["Saluta", "Sveglia"]
-    assert all(v["origine"] == "solo_file" for v in voci)
+    assert all(v["origine"] == "file" for v in voci)
