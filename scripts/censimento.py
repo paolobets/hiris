@@ -269,7 +269,8 @@ def censisci_configurazione(
     for nome, dove in sorted(lette.items()):
         if nome not in esportate:
             reperti.append(Reperto("envvar-mai-esportata", nome, dove,
-                                   "il codice la legge, run.sh non la esporta: e' una costante"))
+                                   "run.sh non la esporta: o e' una costante travestita, "
+                                   "o arriva da fuori (Supervisor, Docker, ambiente)"))
     return reperti
 
 
