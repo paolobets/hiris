@@ -48,6 +48,8 @@ from .chatbot_engine import ChatbotEngine
 from .task_engine import TaskEngine
 from .version import read_version
 from .proxy.ha_client import HAClient
+from .casa.archivio import ArchivioCasa
+from .casa.anagrafe import ricostruisci
 from .env_util import env_bool
 from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
@@ -1203,6 +1205,41 @@ def should_start_agent_worker() -> bool:
     return sub_on and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
 
 
+def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
+    """Restituisce `innesca(tipo_evento)`: ricostruisce l'anagrafe, una volta sola.
+
+    Riorganizzare la casa in Home Assistant produce una raffica di eventi —
+    spostare dieci entita' ne emette dieci. Ricostruire a ogni evento
+    significherebbe dieci letture di tutti i registri per un unico gesto
+    dell'utente: si aspetta che la raffica finisca, e si rilegge una volta.
+
+    Un guasto viene registrato e basta: l'ascoltatore deve sopravvivere a un
+    Home Assistant che si riavvia, o dopo il primo intoppo l'anagrafe resta
+    ferma per sempre senza che nessuno lo sappia.
+    """
+    stato: dict[str, asyncio.Task | None] = {"attesa": None}
+
+    async def _fra_poco():
+        try:
+            await asyncio.sleep(ritardo)
+            await ricostruisci(client, archivio)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("ricostruzione dell'anagrafe fallita: %s", exc)
+
+    def innesca(tipo_evento: str) -> None:
+        attesa = stato["attesa"]
+        if attesa is not None and not attesa.done():
+            attesa.cancel()
+        # _spawn(), non un asyncio.create_task(...) nudo: tiene un riferimento
+        # forte finche' la ricostruzione non finisce (review C/#15) -- vedi il
+        # commento in cima al modulo su _background_tasks.
+        stato["attesa"] = _spawn(_fra_poco(), name="ricostruzione_anagrafe")
+
+    return innesca
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner, RunnerBackendError
     from .proxy.semantic_map import SemanticMap
@@ -1310,6 +1347,19 @@ async def _on_startup(app: web.Application) -> None:
     ambiguous = semantic_map.build_from_cache(entity_cache)
     app["semantic_map"] = semantic_map
     ha_client.add_registry_listener(semantic_map.on_entity_added)
+
+    # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
+    # casa cambia. La costruzione iniziale non deve poter impedire il boot: un
+    # Home Assistant non ancora pronto lascia l'anagrafe vuota con un avviso
+    # nel log, non fa fallire l'add-on -- il primo evento di registro la
+    # ricostruira' comunque.
+    archivio_casa = ArchivioCasa(os.path.join(data_dir, "casa.db"))
+    app["archivio_casa"] = archivio_casa
+    try:
+        await ricostruisci(ha_client, archivio_casa)
+    except Exception as exc:
+        logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
+    ha_client.add_anagrafe_listener(programma_ricostruzione_anagrafe(ha_client, archivio_casa))
 
     engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)
@@ -2870,6 +2920,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["portrait_store"].close()
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
+    if "archivio_casa" in app:
+        app["archivio_casa"].chiudi()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()

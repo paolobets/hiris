@@ -19,6 +19,19 @@ _AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 # comporlo in un URL.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
+# I registri che HIRIS replica. Prima se ne ascoltava UNO — quello delle
+# entita' — e per giunta solo con action="create": rinomini, cambi d'area,
+# disabilitazioni e cancellazioni passavano inosservati, e la casa che HIRIS
+# credeva di conoscere si allontanava da quella vera in silenzio.
+EVENTI_ANAGRAFE = (
+    "area_registry_updated",
+    "device_registry_updated",
+    "entity_registry_updated",
+    "floor_registry_updated",
+    "label_registry_updated",
+    "category_registry_updated",
+)
+
 # Chiavi che identificano la forma minima di un'automazione Home Assistant.
 # Fino a HA 2024.10 i nomi erano al singolare (trigger/condition/action); da li'
 # in poi i nomi canonici sono al plurale, ma i singolari restano accettati per
@@ -151,6 +164,7 @@ class HAClient:
         self._state_listeners: list[Callable[[dict], None]] = []
         self._registry_listeners: list[Callable[[str, dict], None]] = []
         self._action_listeners: list[Callable[[dict], None]] = []
+        self._anagrafe_listeners: list[Callable[[str], None]] = []
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -950,6 +964,10 @@ class HAClient:
         """Register callback(entity_id, attributes) for entity_registry_updated events."""
         self._registry_listeners.append(callback)
 
+    def add_anagrafe_listener(self, callback: Callable[[str], None]) -> None:
+        """callback(tipo_evento) a ogni cambio di registro: la casa e' cambiata."""
+        self._anagrafe_listeners.append(callback)
+
     async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url}/api/websocket"
@@ -971,6 +989,15 @@ class HAClient:
                     await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
                     await ws.send_json({"id": 2, "type": "subscribe_events", "event_type": "entity_registry_updated"})
                     await ws.send_json({"id": 3, "type": "subscribe_events", "event_type": "mobile_app_notification_action"})
+                    # Gli altri registri dell'anagrafe (Task 5): entity_registry_updated
+                    # e' gia' sottoscritto sopra (id 2) e resta condiviso fra i due
+                    # smistamenti sotto — quello storico (solo action="create", verso
+                    # add_registry_listener) e quello nuovo verso add_anagrafe_listener,
+                    # che copre anche rinomini, spostamenti, disabilitazioni e cancellazioni.
+                    for numero, tipo_evento in enumerate(
+                        (t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"), start=4
+                    ):
+                        await ws.send_json({"id": numero, "type": "subscribe_events", "event_type": tipo_evento})
 
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -1001,6 +1028,17 @@ class HAClient:
                                             cb(eid, attrs)
                                         except Exception as cb_exc:
                                             logger.exception("registry_listener callback raised: %s", cb_exc)
+                            if event_type in EVENTI_ANAGRAFE:
+                                # La casa e' cambiata (create/update/move/remove, su
+                                # qualsiasi registro): l'anagrafe va rifatta. A
+                                # differenza di _registry_listeners sopra, qui non si
+                                # filtra per action ne' per tipo di registro — vedi
+                                # EVENTI_ANAGRAFE in cima al modulo.
+                                for cb in self._anagrafe_listeners:
+                                    try:
+                                        cb(event_type)
+                                    except Exception as cb_exc:
+                                        logger.exception("anagrafe_listener callback raised: %s", cb_exc)
             except asyncio.CancelledError:
                 return
             except Exception as exc:
