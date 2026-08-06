@@ -31,13 +31,17 @@ async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
 @pytest.mark.asyncio
 async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
     client = AsyncMock()
-    client.leggi_registri = AsyncMock(return_value=_VUOTI)
+    client.leggi_registri = AsyncMock(return_value=(_VUOTI, []))
     innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
     assert client.leggi_registri.await_count == 2
+    # Contare le chiamate non basta: `_fra_poco` ingoia ogni eccezione per non
+    # uccidere l'ascoltatore, quindi due ricostruzioni FALLITE darebbero lo
+    # stesso conteggio. Solo l'archivio scritto prova che sono riuscite.
+    assert archivio.aggiornata_il() is not None
 
 
 @pytest.mark.asyncio
