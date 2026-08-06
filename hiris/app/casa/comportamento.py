@@ -13,6 +13,7 @@ frase piu' utile che esista — «non serve, ce l'hai gia', si chiama cosi'».
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from .lettura_yaml import carica_file
@@ -21,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 _AUTOMAZIONI = "automations.yaml"
 _SCRIPT = "scripts.yaml"
+
+# entity_id canonico (dominio.oggetto) — stessa forma usata da ha_client per
+# validare gli entity_id in ingresso. Qui serve a riconoscere, dentro una
+# configurazione di plancia, quali stringhe SONO un entity_id.
+_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # Sentinella per distinguere «la chiave non c'e'» da «la chiave c'e' e vale
 # None» in `script_per_chiave.get(...)`. Con `None` come default le due cose
@@ -219,3 +225,66 @@ async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
         "conteggi": conteggi, "senza_corpo": senza_corpo,
         "file_non_letti": non_letti, "problemi": problemi,
     }
+
+
+def _entita_in(config) -> list[str]:
+    """Le entita' nominate in una configurazione di plancia: ogni valore che
+    somiglia a un entity_id (dominio.oggetto), trovato nelle chiavi `entity`
+    e `entities`, in tutto l'albero della config (viste, card, card
+    annidate). E' una passeggiata ricorsiva: non esiste uno schema fisso
+    delle card di Lovelace da rispettare — le card custom inventano le
+    proprie chiavi — quindi si cerca la FORMA (quelle due chiavi), non un
+    tipo di card particolare.
+
+    Serve a rispondere «questa entita' la vedi gia' in Cucina» invece di
+    riproporla: e' il senso di leggere le plance."""
+    trovate: set[str] = set()
+
+    def _aggiungi_se_entita(valore) -> None:
+        if isinstance(valore, str) and _ENTITY_ID_RE.match(valore):
+            trovate.add(valore)
+
+    def _cammina(nodo) -> None:
+        if isinstance(nodo, dict):
+            for chiave, valore in nodo.items():
+                if chiave in ("entity", "entities"):
+                    if isinstance(valore, list):
+                        for elemento in valore:
+                            _aggiungi_se_entita(elemento)
+                    else:
+                        _aggiungi_se_entita(valore)
+                _cammina(valore)
+        elif isinstance(nodo, list):
+            for elemento in nodo:
+                _cammina(elemento)
+
+    _cammina(config)
+    return sorted(trovate)
+
+
+async def rileggi_plance(client, archivio) -> dict:
+    """Rilegge le plance da HA (compresa la predefinita) e sostituisce.
+
+    Se NESSUNA plancia risulta leggibile (`config` a `None` su tutte, o
+    l'elenco stesso vuoto) NON si sostituisce: stessa regola dell'anagrafe
+    (`anagrafe.ricostruisci`) — una replica vecchia e dichiarata e' meglio
+    di una vuota e falsa. Una plancia leggibile e una in modalita' YAML
+    convivono invece senza problemi: quella YAML resta con `config` a
+    `None`, visibile in `non_disponibili`, le altre si aggiornano.
+
+    Restituisce `{"conteggi": {"plance": n}, "non_disponibili": [...]}`.
+    """
+    plance, non_disponibili = await client.leggi_plance()
+    leggibili = [p for p in plance if p.get("config") is not None]
+    if not leggibili:
+        logger.warning(
+            "plance: nessuna leggibile (non disponibili: %s) — replica precedente conservata",
+            non_disponibili)
+        return {"conteggi": {"plance": 0}, "non_disponibili": non_disponibili}
+
+    voci = [{**p, "entita": _entita_in(p.get("config"))} for p in plance]
+    archivio.sostituisci_plance(voci)
+    if non_disponibili:
+        logger.info("plance: %d lette, %d non disponibili (%s)",
+                    len(voci), len(non_disponibili), non_disponibili)
+    return {"conteggi": {"plance": len(voci)}, "non_disponibili": non_disponibili}

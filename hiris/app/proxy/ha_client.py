@@ -32,6 +32,13 @@ EVENTI_ANAGRAFE = (
     "category_registry_updated",
 )
 
+# L'evento delle plance (Task 5): porta il PERCORSO di quella cambiata, ma
+# innesca comunque una rilettura completa (sono poche, e la replica si rifa'
+# invece di rattopparsi — vedi rileggi_plance). Deliberatamente FUORI da
+# EVENTI_ANAGRAFE: quello innesca la ricostruzione dei *registri*, che e'
+# un'altra cosa — le plance hanno un proprio ascoltatore.
+EVENTO_PLANCE = "lovelace_updated"
+
 # Chiavi che identificano la forma minima di un'automazione Home Assistant.
 # Fino a HA 2024.10 i nomi erano al singolare (trigger/condition/action); da li'
 # in poi i nomi canonici sono al plurale, ma i singolari restano accettati per
@@ -165,6 +172,7 @@ class HAClient:
         self._registry_listeners: list[Callable[[str, dict], None]] = []
         self._action_listeners: list[Callable[[dict], None]] = []
         self._anagrafe_listeners: list[Callable[[str], None]] = []
+        self._plance_listeners: list[Callable[[dict], None]] = []
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -495,23 +503,61 @@ class HAClient:
         return result
 
     async def list_dashboards(self) -> list[dict] | dict:
-        """Elenca le dashboard Lovelace (storage mode) via WS.
-        Ritorna una lista di {url_path, title, mode} oppure {"error": ...}."""
+        """Elenca le dashboard Lovelace (storage mode) via WS, voci grezze.
+
+        Restituisce le voci cosi' come le manda Home Assistant (compresi
+        `id`, `icon`, `require_admin`, `show_in_sidebar`, oltre a `url_path`,
+        `title`, `mode`): il client riferisce cio' che HA dice, il
+        consumatore sceglie cosa tenere — lo stesso principio gia' applicato
+        a `get_config_entries`. NON include la plancia predefinita (ha
+        `url_path` nullo e non compare in questo elenco): per quella, e per
+        le configurazioni, vedi `leggi_plance()`.
+        Ritorna {"error": ...} se l'elenco non e' leggibile."""
         got = await self._ws_command("lovelace/dashboards/list", {})
         if not got or not got.get("success"):
             return {"error": f"elenco dashboard non leggibile: {self._ws_error(got)}"}
         result = got.get("result")
         if not isinstance(result, list):
             return {"error": "elenco dashboard vuoto o non valido"}
-        out = []
-        for d in result:
-            if isinstance(d, dict):
-                out.append({
-                    "url_path": d.get("url_path"),
-                    "title": d.get("title"),
-                    "mode": d.get("mode"),
-                })
-        return out
+        return [dict(d) for d in result if isinstance(d, dict)]
+
+    async def leggi_plance(self) -> tuple[list[dict], list[str]]:
+        """Le plance con la loro configurazione. Una connessione, N comandi.
+
+        La **predefinita** non compare in `lovelace/dashboards/list`: ha
+        `url_path` nullo e si chiede a parte. E' la plancia che l'utente
+        guarda tutti i giorni, ed e' l'unica che HIRIS non ha mai visto.
+
+        Restituisce `(plance, non_disponibili)`: una plancia in modalita'
+        YAML non sta nell'archivio interno di HA e la sua configurazione non
+        si legge — `config` resta `None` e il suo percorso finisce fra i non
+        disponibili, invece di sembrare una plancia senza viste.
+        """
+        elenco = await self._ws_request("lovelace/dashboards/list")
+        elenco = elenco if isinstance(elenco, list) else []
+
+        # `None` = la predefinita, sempre in testa.
+        percorsi: list[str | None] = [None] + [
+            d.get("url_path") for d in elenco if d.get("url_path")
+        ]
+        comandi = [("lovelace/config", {} if p is None else {"url_path": p})
+                   for p in percorsi]
+        risposte = await self._ws_batch(comandi)
+
+        per_percorso = {d.get("url_path"): d for d in elenco if isinstance(d, dict)}
+        plance: list[dict] = []
+        non_disponibili: list[str] = []
+        for percorso, msg in zip(percorsi, risposte):
+            config = msg.get("result") if msg else None
+            if not isinstance(config, dict):
+                config = None
+                non_disponibili.append(percorso or "principale")
+            voce = dict(per_percorso.get(percorso) or {})
+            voce.setdefault("url_path", percorso)
+            voce.setdefault("title", "Principale" if percorso is None else percorso)
+            voce["config"] = config
+            plance.append(voce)
+        return plance, non_disponibili
 
     async def save_dashboard_config(self, url_path: str, config: dict) -> dict:
         """Sovrascrive la config di una dashboard storage-mode esistente.
@@ -968,6 +1014,12 @@ class HAClient:
         """callback(tipo_evento) a ogni cambio di registro: la casa e' cambiata."""
         self._anagrafe_listeners.append(callback)
 
+    def add_plance_listener(self, callback: Callable[[dict], None]) -> None:
+        """callback(dati_evento) a ogni cambio di una plancia (EVENTO_PLANCE).
+        `dati_evento` porta il `url_path` di quella cambiata, ma chi ascolta
+        rilegge tutte le plance — vedi EVENTO_PLANCE."""
+        self._plance_listeners.append(callback)
+
     async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url}/api/websocket"
@@ -994,10 +1046,14 @@ class HAClient:
                     # smistamenti sotto — quello storico (solo action="create", verso
                     # add_registry_listener) e quello nuovo verso add_anagrafe_listener,
                     # che copre anche rinomini, spostamenti, disabilitazioni e cancellazioni.
-                    for numero, tipo_evento in enumerate(
-                        (t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"), start=4
-                    ):
+                    numero = 3
+                    for tipo_evento in (t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"):
+                        numero += 1
                         await ws.send_json({"id": numero, "type": "subscribe_events", "event_type": tipo_evento})
+                    # Task 5: le plance hanno un ascoltatore proprio, separato
+                    # dall'anagrafe (vedi EVENTO_PLANCE in cima al modulo).
+                    numero += 1
+                    await ws.send_json({"id": numero, "type": "subscribe_events", "event_type": EVENTO_PLANCE})
 
                     # Task 6: ogni (ri)connessione riuscita rifa' l'anagrafe, non solo
                     # gli eventi di registro ricevuti mentre la connessione era su. Un
@@ -1015,6 +1071,13 @@ class HAClient:
                             cb("riconnessione")
                         except Exception as cb_exc:
                             logger.exception("anagrafe_listener callback raised: %s", cb_exc)
+                    # Stessa logica per le plance: una disconnessione perde per
+                    # sempre un eventuale EVENTO_PLANCE emesso nel frattempo.
+                    for cb in self._plance_listeners:
+                        try:
+                            cb({})
+                        except Exception as cb_exc:
+                            logger.exception("plance_listener callback raised: %s", cb_exc)
 
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -1045,6 +1108,16 @@ class HAClient:
                                             cb(eid, attrs)
                                         except Exception as cb_exc:
                                             logger.exception("registry_listener callback raised: %s", cb_exc)
+                            elif event_type == EVENTO_PLANCE:
+                                # Il percorso della plancia cambiata sta in
+                                # event["data"], ma non lo si usa per filtrare:
+                                # chi ascolta rilegge tutte le plance (vedi
+                                # EVENTO_PLANCE e rileggi_plance).
+                                for cb in self._plance_listeners:
+                                    try:
+                                        cb(event.get("data", {}))
+                                    except Exception as cb_exc:
+                                        logger.exception("plance_listener callback raised: %s", cb_exc)
                             if event_type in EVENTI_ANAGRAFE:
                                 # La casa e' cambiata (create/update/move/remove, su
                                 # qualsiasi registro): l'anagrafe va rifatta. A

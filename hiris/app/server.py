@@ -51,7 +51,7 @@ from .version import read_version
 from .proxy.ha_client import HAClient
 from .casa.archivio import ArchivioCasa
 from .casa.anagrafe import ricostruisci
-from .casa.comportamento import rileggi
+from .casa.comportamento import rileggi, rileggi_plance
 from .env_util import env_bool
 from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
@@ -1242,6 +1242,34 @@ def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
     return innesca
 
 
+def programma_rilettura_plance(client, archivio, ritardo: float = 3.0):
+    """Restituisce `innesca(dati_evento)`: rilegge le plance, una volta sola.
+
+    Gemello di `programma_ricostruzione_anagrafe` — stesso antirimbalzo,
+    stessa tolleranza ai guasti — ma per un innesco DIVERSO (EVENTO_PLANCE,
+    non i registri): le plance non stanno in _TABELLE e non vanno confuse con
+    l'anagrafe, che questa funzione non tocca.
+    """
+    stato: dict[str, asyncio.Task | None] = {"attesa": None}
+
+    async def _fra_poco():
+        try:
+            await asyncio.sleep(ritardo)
+            await rileggi_plance(client, archivio)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("rilettura delle plance fallita: %s", exc)
+
+    def innesca(dati_evento: dict) -> None:
+        attesa = stato["attesa"]
+        if attesa is not None and not attesa.done():
+            attesa.cancel()
+        stato["attesa"] = _spawn(_fra_poco(), name="rilettura_plance")
+
+    return innesca
+
+
 # Sentinella per distinguere, dentro `sentinella_comportamento`, «non ho
 # ancora letto nulla» da «ho letto e l'impronta e' None» (cartella di Home
 # Assistant assente). Con `None` come valore iniziale le due cose sarebbero
@@ -1450,6 +1478,17 @@ async def _on_startup(app: web.Application) -> None:
         await guarda_comportamento()
     except Exception as exc:
         logger.warning("prima lettura del comportamento fallita: %s", exc)
+
+    # Task 5 SDD casa: le plance, compresa la predefinita (url_path nullo)
+    # che HIRIS non aveva mai visto. Cadenza propria (EVENTO_PLANCE, non i
+    # registri): non stanno in _TABELLE, quindi una ricostruzione
+    # dell'anagrafe non le tocca e viceversa. Come l'anagrafe, la prima
+    # lettura non deve poter impedire il boot.
+    try:
+        await rileggi_plance(ha_client, archivio_casa)
+    except Exception as exc:
+        logger.warning("prima lettura delle plance fallita: %s", exc)
+    ha_client.add_plance_listener(programma_rilettura_plance(ha_client, archivio_casa))
 
     engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)

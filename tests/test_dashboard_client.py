@@ -20,12 +20,16 @@ def _client(ws):
 
 
 @pytest.mark.asyncio
-async def test_list_dashboards_returns_url_path_and_title():
-    ws = FakeWS({"lovelace/dashboards/list": {"success": True, "result": [
-        {"id": "1", "url_path": "casa-mia", "title": "Casa Mia", "mode": "storage"},
-    ]}})
+async def test_list_dashboards_returns_raw_entries():
+    """Il client riferisce cio' che HA dice (compresi id/icon/require_admin/
+    show_in_sidebar), il consumatore sceglie cosa tenere — stesso principio
+    gia' applicato a get_config_entries. Prima potava a {url_path, title,
+    mode}: qui si verifica che NON lo faccia piu'."""
+    voce = {"id": "1", "url_path": "casa-mia", "title": "Casa Mia", "mode": "storage",
+            "icon": "mdi:home", "require_admin": False, "show_in_sidebar": True}
+    ws = FakeWS({"lovelace/dashboards/list": {"success": True, "result": [voce]}})
     out = await _client(ws).list_dashboards()
-    assert out == [{"url_path": "casa-mia", "title": "Casa Mia", "mode": "storage"}]
+    assert out == [voce]
     assert ws.calls[0][0] == "lovelace/dashboards/list"
 
 

@@ -147,3 +147,38 @@ async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti()
         "entity_registry_updated", "entity_registry_updated",
     ]
     assert registro_chiamate == ["light.nuova"]  # solo il create, non l'update
+
+
+@pytest.mark.asyncio
+async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
+    """Task 5: EVENTO_PLANCE ha un ascoltatore proprio, separato
+    dall'anagrafe. Cancellare la sua sottoscrizione o il suo smistamento (e
+    lasciare solo quello dell'anagrafe) farebbe cadere questo test da solo --
+    a differenza di un confronto EVENTI_ANAGRAFE-con-se-stesso, che non si
+    accorgerebbe di niente."""
+    ws = _FintoWSEventi([("lovelace_updated", {"url_path": "cucina"})])
+    client = HAClient(base_url="http://ha.test", token="t")
+    client._session = _FintaSessioneEventi(ws)
+
+    anagrafe_chiamate: list[str] = []
+    plance_chiamate: list[dict] = []
+    client.add_anagrafe_listener(lambda tipo: anagrafe_chiamate.append(tipo))
+    client.add_plance_listener(lambda dati: plance_chiamate.append(dati))
+
+    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    # "riconnessione" (stesso principio del Task 6 per l'anagrafe): una
+    # disconnessione perde per sempre un EVENTO_PLANCE emesso nel frattempo.
+    assert plance_chiamate == [{}, {"url_path": "cucina"}]
+    # EVENTO_PLANCE non deve innescare la ricostruzione dei REGISTRI: solo
+    # "riconnessione" tocca l'ascoltatore dell'anagrafe qui.
+    assert anagrafe_chiamate == ["riconnessione"]
+
+    tipi_sottoscritti = {c.get("event_type") for c in ws.comandi if c.get("type") == "subscribe_events"}
+    assert "lovelace_updated" in tipi_sottoscritti

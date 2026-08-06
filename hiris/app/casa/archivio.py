@@ -50,6 +50,10 @@ CREATE TABLE IF NOT EXISTS comportamento (
     id TEXT PRIMARY KEY, tipo TEXT NOT NULL, nome TEXT,
     corpo TEXT, origine TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS plance (
+    percorso TEXT PRIMARY KEY, titolo TEXT, modalita TEXT,
+    config TEXT, entita TEXT NOT NULL DEFAULT '[]'
+);
 CREATE INDEX IF NOT EXISTS idx_entita_area ON entita(area_id);
 CREATE INDEX IF NOT EXISTS idx_entita_dispositivo ON entita(dispositivo_id);
 CREATE INDEX IF NOT EXISTS idx_aree_piano ON aree(piano_id);
@@ -58,6 +62,12 @@ CREATE INDEX IF NOT EXISTS idx_comportamento_tipo ON comportamento(tipo);
 
 _TABELLE = ["piani", "aree", "dispositivi", "entita", "etichette",
             "categorie", "integrazioni"]
+
+# La plancia predefinita di Home Assistant ha `url_path` nullo. SQLite non
+# considera due NULL uguali (NULL != NULL): usarlo come chiave primaria non
+# la protegge da duplicati, quindi la si archivia sotto una chiave esplicita
+# e la si ritraduce a `None` in lettura — vedi plance()/sostituisci_plance().
+_CHIAVE_PLANCIA_PRINCIPALE = "__principale__"
 
 
 def _lista(valore) -> str:
@@ -211,6 +221,64 @@ class ArchivioCasa:
                     v["corpo"] = json.loads(v["corpo"])
                 except (TypeError, ValueError):
                     v["corpo"] = None
+            voci.append(v)
+        return voci
+
+    def sostituisci_plance(self, voci: list[dict]) -> None:
+        """Rimpiazza le plance. Tutto o niente, stessa forma di
+        sostituisci_comportamento(): stesso BEGIN/rollback, stesso
+        scioglimento del JSON, `config` a `None` che resta `None`.
+
+        NON sta in _TABELLE ne' in sostituisci(): le plance hanno una
+        cadenza propria (l'evento EVENTO_PLANCE), diversa da quella
+        dell'anagrafe — ci finirebbero cancellate a ogni ricostruzione dei
+        registri.
+        """
+        c = self._conn
+        try:
+            c.execute("BEGIN")
+            c.execute("DELETE FROM plance")
+            for v in voci:
+                percorso = v.get("url_path")
+                chiave = percorso if percorso is not None else _CHIAVE_PLANCIA_PRINCIPALE
+                config = v.get("config")
+                c.execute(
+                    "INSERT INTO plance (percorso, titolo, modalita, config, entita) "
+                    "VALUES (?,?,?,?,?)",
+                    (chiave, v.get("title"), v.get("mode"),
+                     # `None` resta `None`: «plancia illeggibile» e «plancia
+                     # senza viste» sono due cose diverse (vedi leggi_plance).
+                     None if config is None else json.dumps(config, ensure_ascii=False),
+                     _lista(v.get("entita"))))
+            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
+                      "VALUES ('plance_lette_il', ?)",
+                      (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+
+    def plance(self) -> list[dict]:
+        """Le plance con la loro configurazione, coi campi JSON gia' sciolti.
+
+        La predefinita torna con `percorso` a `None`, come l'ha data
+        `leggi_plance()`: la chiave esplicita usata per archiviarla e' un
+        dettaglio di storage, non deve trapelare verso l'esterno.
+        """
+        voci = []
+        for riga in self._conn.execute("SELECT * FROM plance ORDER BY percorso").fetchall():
+            v = dict(riga)
+            if v.get("percorso") == _CHIAVE_PLANCIA_PRINCIPALE:
+                v["percorso"] = None
+            if v.get("config") is not None:
+                try:
+                    v["config"] = json.loads(v["config"])
+                except (TypeError, ValueError):
+                    v["config"] = None
+            try:
+                v["entita"] = json.loads(v["entita"])
+            except (TypeError, ValueError):
+                v["entita"] = []
             voci.append(v)
         return voci
 
