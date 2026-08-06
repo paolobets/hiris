@@ -727,21 +727,14 @@ class HAClient:
             return {"error": "valutazione del template non riuscita"}
 
     async def get_config_entries(self) -> list[dict]:
-        """Return HA config entries with error state via WebSocket."""
-        result = await self._ws_call("config/config_entries/get_entries")
-        if not result:
-            return []
-        errors = []
-        for entry in result:
-            state = entry.get("state", "")
-            if state not in ("loaded", "not_loaded", "setup_in_progress"):
-                errors.append({
-                    "integration": entry.get("domain", "unknown"),
-                    "title": entry.get("title", ""),
-                    "state": state,
-                    "error": entry.get("reason", ""),
-                })
-        return errors
+        """Le voci di configurazione di HA, grezze — l'elenco delle integrazioni.
+
+        Prima questo metodo restituiva le sole voci in ERRORE, con le chiavi
+        rinominate: il nome mentiva, e l'elenco delle integrazioni installate
+        — che sta qui dentro — veniva buttato. Il filtro ora vive dove serve,
+        in health_monitor.errori_di_integrazione().
+        """
+        return await self._ws_call("config/config_entries/get_entries")
 
     async def get_system_info(self) -> dict:
         """Return HA system info from /api/config."""
@@ -883,6 +876,39 @@ class HAClient:
 
     async def get_entity_registry(self) -> list[dict]:
         return await self._ws_call("config/entity_registry/list")
+
+    # I registri che l'utente ha gia' compilato in Home Assistant. Sono la
+    # spina dorsale del significato per HIRIS: piani, aree, dispositivi,
+    # etichette e categorie sono la tassonomia che ha scelto lui — non serve
+    # dedurla, e dedurla costerebbe token e sbaglierebbe in silenzio.
+    _REGISTRI: list[tuple[str, str, dict | None]] = [
+        ("piani",        "config/floor_registry/list",        None),
+        ("aree",         "config/area_registry/list",         None),
+        ("dispositivi",  "config/device_registry/list",       None),
+        ("entita",       "config/entity_registry/list",       None),
+        ("etichette",    "config/label_registry/list",        None),
+        ("categorie",    "config/category_registry/list",     {"scope": "automation"}),
+        ("integrazioni", "config/config_entries/get_entries", None),
+    ]
+
+    async def leggi_registri(self) -> dict[str, list[dict]]:
+        """Tutti i registri della casa, su una connessione sola.
+
+        Un registro che manca o fallisce diventa una lista vuota, non un
+        guasto: un Home Assistant senza piani deve comunque produrre
+        un'anagrafe. Chi legge distingue «vuoto» da «assente» guardando gli
+        altri registri, non sollevando.
+        """
+        comandi = [(tipo, extra) for _, tipo, extra in self._REGISTRI]
+        risposte = await self._ws_batch(comandi)
+        registri: dict[str, list[dict]] = {}
+        for (chiave, tipo, _), msg in zip(self._REGISTRI, risposte):
+            risultato = msg.get("result") if msg else None
+            if not isinstance(risultato, list):
+                logger.debug("registro %s non disponibile (%s)", chiave, tipo)
+                risultato = []
+            registri[chiave] = risultato
+        return registri
 
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         self._state_listeners.append(callback)

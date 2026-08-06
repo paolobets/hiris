@@ -48,6 +48,26 @@ def _ha_contenuto(sezione: Any) -> bool:
     return isinstance(sezione, dict) and any(bool(v) for v in sezione.values())
 
 
+def errori_di_integrazione(voci: list[dict]) -> list[dict]:
+    """Le sole integrazioni in errore, nella forma che la scansione di salute usa.
+
+    Vive qui e non nel client perche' e' un giudizio del consumatore: il client
+    riferisce cosa dice Home Assistant, non decide cosa interessa a chi chiede.
+    """
+    fuori_servizio = []
+    for voce in voci:
+        stato = voce.get("state", "")
+        if stato in ("loaded", "not_loaded", "setup_in_progress"):
+            continue
+        fuori_servizio.append({
+            "integration": voce.get("domain", "unknown"),
+            "title": voce.get("title", ""),
+            "state": stato,
+            "error": voce.get("reason", ""),
+        })
+    return fuori_servizio
+
+
 def _quando(voce: Any) -> str:
     """Istante di caduta di una entita' non disponibile, per l'ordinamento.
 
@@ -167,7 +187,7 @@ class HealthMonitor:
             logger.debug("HealthMonitor: get_error_log skipped (%s)", exc)
 
         try:
-            updated["integration_errors"] = await self._ha.get_config_entries()
+            updated["integration_errors"] = errori_di_integrazione(await self._ha.get_config_entries())
         except Exception as exc:
             logger.debug("HealthMonitor: get_config_entries skipped (%s)", exc)
 

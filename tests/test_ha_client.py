@@ -286,8 +286,10 @@ async def test_get_updates_returns_update_entities(client):
 
 
 @pytest.mark.asyncio
-async def test_get_config_entries_filters_loaded(client):
-    """Entries with state 'loaded' should be excluded; error states should be returned."""
+async def test_get_config_entries_returns_entries_raw(client):
+    """Il client restituisce le voci cosi' come le manda HA, senza filtrarle
+    ne' rinominarne: il filtro sugli errori vive ora in
+    health_monitor.errori_di_integrazione(), non qui."""
     entries = [
         {
             "domain": "hue",
@@ -312,12 +314,7 @@ async def test_get_config_entries_filters_loaded(client):
     with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
         result = await client.get_config_entries()
 
-    # "loaded" and "not_loaded" are both filtered out; only "setup_error" survives
-    assert len(result) == 1
-    assert result[0]["integration"] == "zwave_js"
-    assert result[0]["title"] == "Z-Wave JS"
-    assert result[0]["state"] == "setup_error"
-    assert result[0]["error"] == "Connection refused"
+    assert result == entries
 
 
 @pytest.mark.asyncio
