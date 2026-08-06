@@ -108,6 +108,51 @@ def _senza_commenti(testo: str) -> str:
     return "".join(righe)
 
 
+def _senza_docstring(testo: str) -> str:
+    """Il testo con le docstring sostituite da spazi.
+
+    Una docstring che NOMINA una rotta o un simbolo lo fa risultare citato, e
+    quindi vivo. Misurato su questa codebase: **19 rotte su 54** sono nominate
+    dentro una docstring — oltre un terzo della superficie era esente per
+    sempre dal rilevatore, e non compariva in nessuna categoria. Non un falso
+    positivo: una sparizione silenziosa, il caso peggiore per uno strumento
+    che esiste per trovare cio' che nessuno segnala.
+
+    Come per i commenti, ogni docstring diventa altrettanti spazi: i numeri di
+    riga restano quelli del file originale.
+    """
+    try:
+        albero = ast.parse(testo)
+    except SyntaxError:
+        return testo
+    righe = testo.splitlines(keepends=True)
+    for nodo in ast.walk(albero):
+        if not isinstance(nodo, (ast.Module, ast.ClassDef,
+                                 ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        corpo = getattr(nodo, "body", None)
+        if not corpo:
+            continue
+        primo = corpo[0]
+        if not (isinstance(primo, ast.Expr)
+                and isinstance(primo.value, ast.Constant)
+                and isinstance(primo.value.value, str)):
+            continue
+        for i in range(primo.lineno - 1, (primo.end_lineno or primo.lineno)):
+            if i >= len(righe):
+                break
+            riga = righe[i]
+            inizio = primo.col_offset if i == primo.lineno - 1 else 0
+            corpo_riga = riga.rstrip("\r\n")
+            coda = riga[len(corpo_riga):]      # gli a capo si conservano:
+            fine = (primo.end_col_offset       # i numeri di riga non devono
+                    if i == (primo.end_lineno or primo.lineno) - 1
+                    else len(corpo_riga))      # cambiare
+            righe[i] = (corpo_riga[:inizio] + " " * max(0, fine - inizio)
+                        + corpo_riga[fine:] + coda)
+    return "".join(righe)
+
+
 @functools.lru_cache(maxsize=None)
 def _leggi_pulito(p: Path) -> str:
     """Il testo di un file Python senza i commenti, letto una volta sola.
@@ -117,7 +162,7 @@ def _leggi_pulito(p: Path) -> str:
     ripete quattro volte lo stesso lavoro e arriva a due minuti — e uno
     strumento da lanciare a ogni sviluppo che costa due minuti non si lancia.
     """
-    return _senza_commenti(_leggi(p))
+    return _senza_docstring(_senza_commenti(_leggi(p)))
 
 
 # ── Tabelle ─────────────────────────────────────────────────────────────────

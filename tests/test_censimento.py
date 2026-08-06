@@ -397,3 +397,28 @@ db.execute("INSERT INTO morta (id) VALUES (1)")
 ''')
     reperti = censimento.censisci_tabelle([tmp_path / "store.py"])
     assert [r.categoria for r in reperti] == ["tabella-scritta-mai-letta"]
+
+
+def test_una_rotta_nominata_in_una_docstring_non_e_viva(tmp_path):
+    """19 rotte su 54 di questa codebase sono nominate in una docstring: erano
+    esenti per sempre dal rilevatore, e non comparivano in NESSUNA categoria."""
+    _scrivi(tmp_path, "server.py", '''
+def avvia(app):
+    """Registra le rotte. Vedi /api/dismessa per il caso della cartella."""
+    app.router.add_get("/api/dismessa", h)
+''')
+    reperti = censimento.censisci_rotte([tmp_path / "server.py"], [], [])
+    assert [r.nome for r in reperti] == ["/api/dismessa"]
+
+
+def test_un_simbolo_nominato_solo_in_una_docstring_resta_orfano(tmp_path):
+    _scrivi(tmp_path, "m.py", '''
+def dismessa():
+    pass
+
+def altra():
+    """Sostituisce `dismessa`, che non si usa piu'."""
+    pass
+''')
+    reperti = censimento.censisci_simboli([tmp_path / "m.py"], [])
+    assert "dismessa" in [r.nome for r in reperti]
