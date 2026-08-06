@@ -10,6 +10,7 @@ import secrets
 import shutil
 import time
 from datetime import date, datetime, timezone
+from pathlib import Path
 import aiohttp
 import uvicorn
 from aiohttp import web
@@ -50,6 +51,7 @@ from .version import read_version
 from .proxy.ha_client import HAClient
 from .casa.archivio import ArchivioCasa
 from .casa.anagrafe import ricostruisci
+from .casa.comportamento import rileggi
 from .env_util import env_bool
 from .proxy.entity_cache import EntityCache
 from .proxy.knowledge_db import KnowledgeDB
@@ -1240,6 +1242,59 @@ def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
     return innesca
 
 
+# Sentinella per distinguere, dentro `sentinella_comportamento`, «non ho
+# ancora letto nulla» da «ho letto e l'impronta e' None» (cartella di Home
+# Assistant assente). Con `None` come valore iniziale le due cose sarebbero
+# indistinguibili: senza cartella l'impronta resta sempre `None`, e
+# `guarda()` rileggerebbe a ogni chiamata invece che una volta sola.
+_MAI_LETTA = object()
+
+
+def sentinella_comportamento(client, archivio, cartella_ha: Path | None):
+    """Restituisce `guarda()`: rilegge il comportamento solo se i file sono cambiati.
+
+    L'mtime di `automations.yaml` e `scripts.yaml` e' l'unico segnale che
+    esiste per gli script: Home Assistant, per gli script, non emette ALCUN
+    evento di ricarica -- il servizio non accetta un id e il gestore non
+    spara niente. Un solo meccanismo per automazioni e script, invece di due
+    percorsi di cui uno incompleto. Costa due `stat()` per chiamata.
+
+    Restituisce `True` se ha riletto, `False` se non serviva o se la
+    rilettura e' fallita.
+    """
+    ultimo: dict[str, object] = {"impronta": _MAI_LETTA}
+
+    def _impronta():
+        if cartella_ha is None:
+            return None
+        marche = []
+        for nome in ("automations.yaml", "scripts.yaml"):
+            try:
+                marche.append((nome, (cartella_ha / nome).stat().st_mtime_ns))
+            except OSError:
+                marche.append((nome, None))
+        return tuple(marche)
+
+    async def guarda() -> bool:
+        adesso = _impronta()
+        if ultimo["impronta"] is not _MAI_LETTA and adesso == ultimo["impronta"]:
+            return False
+        try:
+            await rileggi(client, archivio, cartella_ha)
+        except Exception as exc:
+            # NON si memorizza l'impronta qui: se lo si facesse prima di aver
+            # letto davvero, un guasto passeggero (Home Assistant che si
+            # riavvia) congelerebbe il comportamento fino al prossimo tocco
+            # dei file -- potenzialmente per settimane, senza che nessuno lo
+            # sappia. Si riprova al giro successivo, tocco o non tocco.
+            logger.warning("rilettura del comportamento fallita: %s", exc)
+            return False
+        ultimo["impronta"] = adesso
+        return True
+
+    return guarda
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner, RunnerBackendError
     from .proxy.semantic_map import SemanticMap
@@ -1360,6 +1415,22 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
     ha_client.add_anagrafe_listener(programma_ricostruzione_anagrafe(ha_client, archivio_casa))
+
+    # Task 4 SDD casa: il comportamento (il corpo di automazioni e script)
+    # segue lo stesso principio -- prima lettura all'avvio senza poter
+    # impedire il boot -- ma un meccanismo diverso: il comportamento cambia
+    # con una cadenza di giorni, non ha un evento di registro da ascoltare
+    # (e per gli script non esiste proprio), quindi lo tiene aggiornato una
+    # sentinella periodica sull'mtime dei due file (vedi sotto, job
+    # "hiris_comportamento_sentinella").
+    ha_config_dir = _find_ha_config_dir()
+    guarda_comportamento = sentinella_comportamento(
+        ha_client, archivio_casa, Path(ha_config_dir) if ha_config_dir else None
+    )
+    try:
+        await guarda_comportamento()
+    except Exception as exc:
+        logger.warning("prima lettura del comportamento fallita: %s", exc)
 
     engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)
@@ -1611,6 +1682,17 @@ async def _on_startup(app: web.Application) -> None:
         trigger="interval", minutes=2,
         id="hiris_entity_cache_reload", replace_existing=True,
         misfire_grace_time=120,
+    )
+
+    # Task 4 SDD casa: la sentinella dell'mtime, registrata come lavoro
+    # periodico come gli altri qui sopra. Cinque minuti: il comportamento
+    # cambia con una cadenza di giorni, non serve un giro piu' stretto, e il
+    # costo di un giro a vuoto sono solo due `stat()`.
+    engine._scheduler.add_job(
+        guarda_comportamento,
+        trigger="interval", minutes=5,
+        id="hiris_comportamento_sentinella", replace_existing=True,
+        misfire_grace_time=300,
     )
 
     # Daily retention job (chat messages only -- knowledge/memory items no
