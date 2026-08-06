@@ -32,9 +32,20 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # ok", e qui non lo sappiamo -- non abbiamo nemmeno letto niente.
         return web.json_response({
             "aggiornata_il": None, "non_disponibili": None, "conteggi": {}, "piani": [],
+            # Stesso principio di "non_disponibili" qui sopra, applicato al
+            # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
+            # e senza archivio non lo sappiamo -- resta `None`. `conteggi` e
+            # `voci`, come `conteggi`/`piani` sopra, sono contenitori naturali
+            # e restano vuoti.
+            "comportamento": {"conteggi": {}, "senza_corpo": None, "voci": []},
+            "plance": [],
         })
     casa = archivio.leggi()
     non_disponibili = archivio.non_disponibili()
+    voci_comportamento = archivio.comportamento()
+    conteggi_comportamento: dict[str, int] = {}
+    for v in voci_comportamento:
+        conteggi_comportamento[v["tipo"]] = conteggi_comportamento.get(v["tipo"], 0) + 1
     return web.json_response({
         "aggiornata_il": archivio.aggiornata_il(),
         # I registri che non hanno risposto all'ultima lettura. Senza questo
@@ -43,4 +54,16 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         "non_disponibili": non_disponibili,
         "conteggi": {chiave: len(valore) for chiave, valore in casa.items()},
         "piani": gerarchia(casa, non_disponibili),
+        "comportamento": {
+            "conteggi": conteggi_comportamento,
+            # Il campo che conta di piu': quante voci HIRIS conosce solo di
+            # nome. Le automazioni scritte a mano non stanno nei file, e di
+            # quelle sa il nome e non il corpo -- e' la misura onesta di
+            # quanto sa davvero della casa. `corpo is None` e non falsy:
+            # un corpo vuoto (`{}`, presente ma senza niente dentro) e' un
+            # fatto diverso da un corpo assente, e non va confuso con esso.
+            "senza_corpo": sum(1 for v in voci_comportamento if v["corpo"] is None),
+            "voci": voci_comportamento,
+        },
+        "plance": archivio.plance(),
     })

@@ -52,3 +52,68 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
     corpo = await resp.json()
     assert corpo["piani"] == []
     assert corpo["aggiornata_il"] is None
+    # Stesso principio applicato al comportamento: senza archivio, un
+    # "senza_corpo" a zero affermerebbe "conosco tutto" -- resta `None`,
+    # non un fatto finto. `conteggi`/`voci` sono contenitori naturali.
+    assert corpo["comportamento"] == {"conteggi": {}, "senza_corpo": None, "voci": []}
+    assert corpo["plance"] == []
+
+
+@pytest.mark.asyncio
+async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, tmp_path):
+    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio.sostituisci_comportamento([
+        {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+         "corpo": {"trigger": []}, "origine": "file"},
+        {"id": "automation.a_mano", "tipo": "automazione", "nome": "A mano",
+         "corpo": None, "origine": "solo_stato"},
+        {"id": "script.vuoto", "tipo": "script", "nome": "Vuoto",
+         "corpo": {}, "origine": "file"},
+    ])
+    app = web.Application()
+    app["archivio_casa"] = archivio
+    app.router.add_get("/api/casa", handle_get_casa)
+    client = await aiohttp_client(app)
+
+    resp = await client.get("/api/casa")
+    assert resp.status == 200
+    corpo = await resp.json()
+    comportamento = corpo["comportamento"]
+    assert comportamento["conteggi"] == {"automazione": 2, "script": 1}
+    # Solo "a_mano" e' senza corpo: "vuoto" un corpo ce l'ha, e' solo vuoto --
+    # le due cose non sono la stessa cosa e non vanno confuse.
+    assert comportamento["senza_corpo"] == 1
+    assert len(comportamento["voci"]) == 3
+    per_id = {v["id"]: v for v in comportamento["voci"]}
+    assert per_id["automation.a_mano"]["corpo"] is None
+    assert per_id["script.vuoto"]["corpo"] == {}
+    archivio.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client, tmp_path):
+    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio.sostituisci_plance([
+        {"url_path": None, "title": "Principale", "mode": "storage",
+         "config": {"views": []}, "entita": ["light.cucina"]},
+        {"url_path": "cucina", "title": "Cucina", "mode": "storage",
+         "config": None, "entita": []},
+    ])
+    app = web.Application()
+    app["archivio_casa"] = archivio
+    app.router.add_get("/api/casa", handle_get_casa)
+    client = await aiohttp_client(app)
+
+    resp = await client.get("/api/casa")
+    assert resp.status == 200
+    corpo = await resp.json()
+    plance = corpo["plance"]
+    assert len(plance) == 2
+    principale = next(p for p in plance if p["percorso"] is None)
+    assert principale["titolo"] == "Principale"
+    assert principale["entita"] == ["light.cucina"]
+    cucina = next(p for p in plance if p["percorso"] == "cucina")
+    # Una plancia in modalita' YAML non si legge: `config: None` e' un fatto
+    # diverso da "plancia senza viste" e non va appiattito.
+    assert cucina["config"] is None
+    archivio.chiudi()
