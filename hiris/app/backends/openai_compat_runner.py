@@ -483,6 +483,8 @@ class OpenAICompatRunner:
         knowledge_allow_sensitive: bool = False,
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
+        strumenti: list[dict] | None = None,
+        dispatcher: Any | None = None,
     ) -> str:
         # thinking_budget is part of the runner contract since v0.9.5 because
         # ClaudeRunner uses it for Anthropic Extended Thinking. OpenAI/Ollama/
@@ -544,18 +546,25 @@ class OpenAICompatRunner:
         messages.append({"role": "user", "content": user_message})
 
         # Build tool list
-        tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
-        # render_template legge tutta la casa (template Jinja, nessun entity_id
-        # da filtrare): senza whitelist esplicita di tool non deve arrivare a un
-        # bot che ha un perimetro di entita'. Vedi claude_runner.chat() per il
-        # ragionamento completo; qui va replicato perche' questo backend
-        # costruisce la lista dei tool per conto suo.
-        if not allowed_tools and allowed_entities is not None:
-            tools = [t for t in tools if t["name"] != "render_template"]
-        if allowed_endpoints is None:
-            tools = [t for t in tools if t["name"] != "http_request"]
-        if not self._dispatcher.has_memory:
-            tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
+        if strumenti is not None:
+            # Il catalogo arriva gia' deciso dal chiamante: i filtri sotto
+            # restringono ALL_TOOL_DEFS, il catalogo di fabbrica -- non un
+            # catalogo che il chiamante ha gia' scelto lui stesso. Stessa
+            # regola di ClaudeRunner.chat() (vedi il suo commento gemello).
+            tools = list(strumenti)
+        else:
+            tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+            # render_template legge tutta la casa (template Jinja, nessun entity_id
+            # da filtrare): senza whitelist esplicita di tool non deve arrivare a un
+            # bot che ha un perimetro di entita'. Vedi claude_runner.chat() per il
+            # ragionamento completo; qui va replicato perche' questo backend
+            # costruisce la lista dei tool per conto suo.
+            if not allowed_tools and allowed_entities is not None:
+                tools = [t for t in tools if t["name"] != "render_template"]
+            if allowed_endpoints is None:
+                tools = [t for t in tools if t["name"] != "http_request"]
+            if not self._dispatcher.has_memory:
+                tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
 
@@ -708,19 +717,25 @@ class OpenAICompatRunner:
                             }),
                         })
                         continue
-                    result = await self._dispatcher.dispatch(
-                        tc.function.name, tool_input,
-                        allowed_entities=allowed_entities,
-                        allowed_services=allowed_services,
-                        allowed_endpoints=allowed_endpoints,
-                        chatbot_id=chatbot_id,
-                        visible_entity_ids=visible_entity_ids,
-                        knowledge_allow_sensitive=knowledge_allow_sensitive,
-                        knowledge_kinds=knowledge_kinds,
-                        cloud=self._is_cloud,
-                        user_id=user_id,
-                        pseudonym_map=self.last_pseudonym_map,
-                    )
+                    if dispatcher is not None:
+                        # DispatcherConoscenza (e affini): stessa interfaccia
+                        # minima dispatch(nome, argomenti) -- vedi il commento
+                        # gemello in ClaudeRunner.chat().
+                        result = await dispatcher.dispatch(tc.function.name, tool_input)
+                    else:
+                        result = await self._dispatcher.dispatch(
+                            tc.function.name, tool_input,
+                            allowed_entities=allowed_entities,
+                            allowed_services=allowed_services,
+                            allowed_endpoints=allowed_endpoints,
+                            chatbot_id=chatbot_id,
+                            visible_entity_ids=visible_entity_ids,
+                            knowledge_allow_sensitive=knowledge_allow_sensitive,
+                            knowledge_kinds=knowledge_kinds,
+                            cloud=self._is_cloud,
+                            user_id=user_id,
+                            pseudonym_map=self.last_pseudonym_map,
+                        )
                     self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
                     messages.append({
                         "role": "tool",

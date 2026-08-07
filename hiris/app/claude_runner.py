@@ -660,6 +660,8 @@ class ClaudeRunner:
         knowledge_allow_sensitive: bool = False,
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
+        strumenti: list[dict] | None = None,
+        dispatcher: Any | None = None,
     ) -> str:
         if chatbot_id:
             if chatbot_id not in self._per_chatbot_usage:
@@ -710,22 +712,31 @@ class ClaudeRunner:
         if context_str:
             system_blocks.append({"type": "text", "text": context_str})
         effective_model = resolve_model(model, agent_type, self._default_model)
-        tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
-        # render_template valuta un template Jinja: non ha un entity_id da
-        # filtrare, quindi legge TUTTA la casa per costruzione. Concederlo resta
-        # possibile, ma solo esplicitamente -- e' la casella del Designer, che
-        # avvisa chi la spunta. Senza whitelist esplicita di tool il bot
-        # riceverebbe l'intero catalogo, e un bot con perimetro di entita' si
-        # ritroverebbe in mano proprio lo strumento che quel perimetro lo
-        # scavalca ({{ states('lock.portone') }}) senza che nessuno gliel'abbia
-        # concesso -- ed e' la configurazione piu' comune. Chi NON ha perimetro
-        # vede gia' tutto: togliergli il tool sarebbe una regressione inutile.
-        if not allowed_tools and allowed_entities is not None:
-            tools = [t for t in tools if t["name"] != "render_template"]
-        if allowed_endpoints is None:
-            tools = [t for t in tools if t["name"] != "http_request"]
-        if not self._dispatcher.has_memory:
-            tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
+        if strumenti is not None:
+            # Il catalogo arriva gia' deciso dal chiamante (es. i quattro
+            # strumenti di DispatcherConoscenza, casa/strumenti.py): i quattro
+            # filtri in cascata sotto esistono per restringere ALL_TOOL_DEFS,
+            # il catalogo di fabbrica -- applicarli anche qui sarebbe una
+            # seconda regola nascosta sopra una decisione gia' presa altrove
+            # (Task 2, .superpowers/sdd/task-2-brief.md).
+            tools = list(strumenti)
+        else:
+            tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+            # render_template valuta un template Jinja: non ha un entity_id da
+            # filtrare, quindi legge TUTTA la casa per costruzione. Concederlo resta
+            # possibile, ma solo esplicitamente -- e' la casella del Designer, che
+            # avvisa chi la spunta. Senza whitelist esplicita di tool il bot
+            # riceverebbe l'intero catalogo, e un bot con perimetro di entita' si
+            # ritroverebbe in mano proprio lo strumento che quel perimetro lo
+            # scavalca ({{ states('lock.portone') }}) senza che nessuno gliel'abbia
+            # concesso -- ed e' la configurazione piu' comune. Chi NON ha perimetro
+            # vede gia' tutto: togliergli il tool sarebbe una regressione inutile.
+            if not allowed_tools and allowed_entities is not None:
+                tools = [t for t in tools if t["name"] != "render_template"]
+            if allowed_endpoints is None:
+                tools = [t for t in tools if t["name"] != "http_request"]
+            if not self._dispatcher.has_memory:
+                tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         # Cache tool definitions — stable per agent config, reused across turns
         if tools:
             tools = tools[:-1] + [{**tools[-1], "cache_control": {"type": "ephemeral"}}]
@@ -806,19 +817,26 @@ class ClaudeRunner:
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        result = await self._dispatcher.dispatch(
-                            block.name, block.input,
-                            allowed_entities=allowed_entities,
-                            allowed_services=allowed_services,
-                            allowed_endpoints=allowed_endpoints,
-                            chatbot_id=chatbot_id,
-                            visible_entity_ids=visible_entity_ids,
-                            knowledge_allow_sensitive=knowledge_allow_sensitive,
-                            knowledge_kinds=knowledge_kinds,
-                            cloud=self._is_cloud,
-                            user_id=user_id,
-                            pseudonym_map=self.last_pseudonym_map,
-                        )
+                        if dispatcher is not None:
+                            # DispatcherConoscenza (e affini) espone la stessa
+                            # interfaccia minima -- dispatch(nome, argomenti) --
+                            # non le 16 dipendenze di ToolDispatcher: si chiama
+                            # posizionale, senza le kwargs pensate per l'altro.
+                            result = await dispatcher.dispatch(block.name, block.input)
+                        else:
+                            result = await self._dispatcher.dispatch(
+                                block.name, block.input,
+                                allowed_entities=allowed_entities,
+                                allowed_services=allowed_services,
+                                allowed_endpoints=allowed_endpoints,
+                                chatbot_id=chatbot_id,
+                                visible_entity_ids=visible_entity_ids,
+                                knowledge_allow_sensitive=knowledge_allow_sensitive,
+                                knowledge_kinds=knowledge_kinds,
+                                cloud=self._is_cloud,
+                                user_id=user_id,
+                                pseudonym_map=self.last_pseudonym_map,
+                            )
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({
                             "type": "tool_result",
