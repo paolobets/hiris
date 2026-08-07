@@ -195,7 +195,13 @@ def _raggruppa_notevoli(voci: list[dict]) -> list[str]:
         conteggio[chiave] = conteggio.get(chiave, 0) + 1
     righe = [f"({len(voci)} elementi notevoli: raggruppati per area, dominio e stato -- "
              f"oltre {_SOGLIA_NOTEVOLE_INDIVIDUALE} il dettaglio individuale non ci sta.)"]
-    for area_nome, dominio, stato_leggibile in ordine:
+    # Le righe si raccolgono nell'ordine in cui capitano le entita', che e'
+    # quello dell'anagrafe: la stessa area finirebbe sparsa in tre punti
+    # diversi dell'elenco. Qui si tengono insieme -- la leggibilita' non e' un
+    # abbellimento, e' cio' che permette a chi legge (una persona dalla pagina,
+    # o il modello nel prompt) di vedere una stanza per volta invece di
+    # ricomporla a mente.
+    for area_nome, dominio, stato_leggibile in sorted(ordine):
         n = conteggio[(area_nome, dominio, stato_leggibile)]
         righe.append(f"- {area_nome}: {n} {_nome_dominio(dominio, n)} ({stato_leggibile})")
     return righe

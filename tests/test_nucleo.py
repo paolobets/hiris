@@ -303,3 +303,27 @@ def test_una_casa_grande_la_mappa_sopravvive_al_taglio():
                               if l.strip().startswith("- Area") and "acceso" in l]
     assert len(righe_notevole_singole) < 200, "oltre soglia, i notevoli si raggruppano"
     assert "elementi notevoli" in sezione_notevole
+
+
+def test_il_notevole_raggruppato_tiene_insieme_le_aree():
+    """La stessa area finiva sparsa in tre punti diversi dell'elenco, nell'ordine
+    in cui capitavano le entita'. Leggibilita' e' un requisito dichiarato: chi
+    legge deve vedere una stanza per volta, non ricomporla a mente."""
+    entita, stato = [], {}
+    for i in range(30):
+        area = "cucina" if i % 2 else "sala"
+        eid = f"light.e{i}"
+        entita.append({"id": eid, "nome": f"Luce {i}", "area_id": area,
+                       "dispositivo_id": None, "classe": None, "unita": None,
+                       "disabilitata": 0})
+        stato[eid] = "on"
+    casa = dict(_CASA, entita=entita,
+                aree=[{"id": "cucina", "nome": "Cucina", "piano_id": "terra",
+                       "alias": [], "etichette": []},
+                      {"id": "sala", "nome": "Sala", "piano_id": "terra",
+                       "alias": [], "etichette": []}])
+    testo, _ = componi(casa, [], [], stato)
+    sezione = testo.split("## Notevole adesso")[1].split("##")[0]
+    aree_in_ordine = [r.split(":")[0].removeprefix("- ").strip()
+                      for r in sezione.splitlines() if r.startswith("- ")]
+    assert aree_in_ordine == sorted(aree_in_ordine)   # ogni area in un blocco solo
