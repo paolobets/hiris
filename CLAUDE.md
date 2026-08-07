@@ -76,6 +76,27 @@ In ogni piano e in ogni task:
 Nomina in chiaro nel piano ciò che verrà cancellato, così la cancellazione è rivedibile invece che
 silenziosa.
 
+### Prima le strutture, poi le sicurezze
+
+**Istruzione dell'utente, 7 agosto 2026:** *«creiamo le strutture e poi applichiamo le sicurezze. Una
+volta terminato di creare le basi andiamo a individuare i rischi e creare le sicurezze. Non ereditiamo
+queste dalla versione precedente.»*
+
+Le protezioni della `1.x` — filtri di riservatezza, ambito per proprietario, `sensitivity`, coda di
+approvazione, semaforo — sono state costruite per **un altro prodotto**: uno con un Brain che
+produceva duecento insight, chatbot multipli e un gateway esposto verso l'esterno. Portarle avanti
+significa portarsi dietro **il modello di minaccia di quel prodotto**, e smettere di cercare i rischi
+veri del nuovo. `sensitivity` lo ammette per iscritto: nasce da un'epoca in cui la memoria era
+per-chatbot.
+
+Quindi: **si costruisce la struttura nuda, e le difese si derivano dopo, dai rischi che la struttura
+nuova ha davvero.**
+
+**La distinzione che questa regola NON autorizza a saltare:** un comportamento scritto nel contratto
+non è un'eredità. La ricerca che degrada ai più recenti senza embedder, ciò che una persona ha detto
+che entra sempre in contesto, la memoria che non evapora — stanno in
+`docs/design/2026-08-05-la-conoscenza-di-hiris.md`, e sono **cosa costruiamo**, non cosa ereditiamo.
+
 ### La review totale — a ogni sviluppo
 
 In un progetto di demolizione **la domanda della review si rovescia**. Una review normale chiede

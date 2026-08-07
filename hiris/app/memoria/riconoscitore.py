@@ -141,6 +141,17 @@ class Indice:
         """
         return self._per_tipo.get(tipo, {}).get(riferimento)
 
+    def tutti(self, tipo: str) -> list[dict]:
+        """Tutte le voci dell'anagrafe di un tipo — aree, entita' o dispositivi.
+
+        Serve a chi deve DEDURRE qualcosa dalla casa invece che verificarla:
+        per esempio l'unita' di misura di un'area, che si ricava dall'entita'
+        di quell'area la cui classe combacia con la grandezza. E' pubblico
+        perche' altrimenti chi ne ha bisogno finisce a leggere `_per_tipo`, e
+        un accoppiamento a un dettaglio interno si propaga in silenzio.
+        """
+        return list(self._per_tipo.get(tipo, {}).values())
+
 
 def costruisci_indice(casa: dict) -> Indice:
     """Costruisce l'indice di una casa: nome e alias di aree, entita' e

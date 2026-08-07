@@ -179,23 +179,21 @@ def _deduci_unita(ancore: list[dict], grandezza, indice) -> str | None:
       di quell'area, quella la cui `classe` (il `device_class` di HA)
       combacia con la `grandezza` proposta, e si prende la sua unita'.
 
-    Si usa `indice._per_tipo` (interno a `Indice`) perche' l'anagrafe non
-    espone un modo pubblico per elencare "le entita' di un'area" -- e
-    Task 3 non tocca `riconoscitore.py`. Se in futuro serve altrove, vale
-    la pena promuovere questa ricerca a un metodo pubblico di `Indice`.
+    Si usa solo la superficie pubblica di `Indice`: `verifica()` per la ricerca
+    per identificatore, `tutti()` per l'enumerazione. Leggere `_per_tipo`
+    funzionava, ma accoppiava a un dettaglio interno -- e un accoppiamento del
+    genere si propaga in silenzio al modulo successivo.
 
     Se non si trova nulla, resta `None`: **non si inventa**.
     """
-    entita_per_riferimento: dict[str, dict] = indice._per_tipo.get("entita", {})
-
     for ancora in ancore:
         if ancora["tipo"] == "entita":
-            entita = entita_per_riferimento.get(ancora["riferimento"])
+            entita = indice.verifica("entita", ancora["riferimento"])
             if entita and entita.get("unita") is not None:
                 return entita["unita"]
         elif ancora["tipo"] == "area" and grandezza is not None:
             area_id = ancora["riferimento"]
-            for entita in entita_per_riferimento.values():
+            for entita in indice.tutti("entita"):
                 if entita.get("area_id") == area_id and entita.get("classe") == grandezza \
                         and entita.get("unita") is not None:
                     return entita["unita"]
