@@ -155,6 +155,74 @@ def test_guarda_un_dispositivo_dice_se_e_spento_e_quali_entita_sono_morte():
     assert dettaglio["entita"][0]["disabilitata"] is True
 
 
+def test_guarda_un_entita_non_trovata_dichiara_il_registro_caduto():
+    """CRITICAL ③: `non_disponibili` era inoltrato SOLO a `_guarda_area`.
+    Col registro "entita" caduto, un'entita' vera non trovata qui non e'
+    un'entita' che non esiste -- e' un registro che non ha risposto. Senza
+    dichiararlo il modello legge "quell'entita' non esiste nella tua casa"."""
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "entita", "light.cucina_0", non_disponibili=("entita",))
+    assert dettaglio["esiste"] is False
+    assert dettaglio["non_disponibile"] is True
+
+
+def test_guarda_un_entita_non_trovata_senza_registro_caduto_non_si_inventa_incertezza():
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "entita", "light.non_esiste")
+    assert dettaglio["esiste"] is False
+    assert "non_disponibile" not in dettaglio
+
+
+def test_guarda_un_dispositivo_non_trovato_dichiara_il_registro_caduto():
+    """CRITICAL ③, stesso difetto sul dispositivo."""
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "dispositivo", "d_inventato", non_disponibili=("dispositivi",))
+    assert dettaglio["esiste"] is False
+    assert dettaglio["non_disponibile"] is True
+
+
+def test_guarda_un_area_non_trovata_dichiara_il_registro_caduto():
+    """CRITICAL ③: prima del fix nemmeno il ramo dell'area, l'unico che
+    riceveva `non_disponibili`, dichiarava l'incertezza sul CASO "non
+    trovata" -- solo sull'elenco di un'area trovata."""
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "area", "taverna", non_disponibili=("aree",))
+    assert dettaglio["esiste"] is False
+    assert dettaglio["non_disponibile"] is True
+
+
+def test_guarda_un_automazione_non_trovata_dichiara_i_file_non_letti():
+    """CRITICAL ③, quinto ramo: `_guarda_comportamento` non aveva alcun
+    punto d'ingresso per `file_non_letti` -- uno script il cui file non si
+    e' letto risultava `esiste: False` secco, indistinguibile da uno script
+    che davvero non esiste."""
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "script", "script.scritto_a_mano",
+                       file_non_letti={"scripts.yaml": "assente"})
+    assert dettaglio["esiste"] is False
+    assert dettaglio["non_disponibile"] is True
+
+
+def test_guarda_un_automazione_non_trovata_senza_file_non_letti_non_si_inventa_incertezza():
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "automazione", "automation.non_esiste")
+    assert dettaglio["esiste"] is False
+    assert "non_disponibile" not in dettaglio
+
+
+def test_guarda_un_area_marca_le_entita_disabilitate_invece_di_nasconderle():
+    """MINOR: `_guarda_area` nascondeva le entita' disabilitate senza dirlo,
+    mentre `_guarda_dispositivo` le mostra marcate. Per una vista di
+    dettaglio e' informazione, non rumore."""
+    casa = dict(_CASA, entita=_CASA["entita"] + [
+        {"id": "light.cucina_morta", "nome": "Faretto rotto", "area_id": "cucina",
+         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 1}])
+    dettaglio = guarda(casa, _COMPORTAMENTO, _RICORDI, _STATO, "area", "cucina")
+    per_id = {e["id"]: e for e in dettaglio["entita"]}
+    assert per_id["light.cucina_morta"]["disabilitata"] is True
+    assert per_id["light.cucina_1"]["disabilitata"] is False
+
+
 def test_l_entita_orfana_finisce_nella_pseudo_area_giusta():
     """La bandierina «elenco_incompleto» non basta: difende se stessa, non la
     propagazione. Qui si guarda cosa fa DAVVERO `gerarchia()`.

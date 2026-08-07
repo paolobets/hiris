@@ -239,3 +239,81 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     assert "Senza area" not in sezione_casa
     assert any("aree" in a and "non hanno risposto" in a for a in corpo["riepilogo"]["avvisi"])
     archivio_casa.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_client, tmp_path):
+    """CRITICAL ①: il default di `ArchivioMemoria.richiama()` e' `limite=20`.
+    Con 200 ricordi veri, il vecchio handler ne passava a `componi()` solo
+    20 -- il primo ricordo ("d'inverno la sala...") spariva PRIMA ancora di
+    arrivare al taglio, e il riepilogo giurava `ricordi_esclusi: 0` su una
+    casa con 180 ricordi invisibili. Qui si verifica che TUTTI i ricordi
+    arrivino a `componi()` (usando `conta()`), lasciando al taglio -- che
+    dichiara sempre -- decidere cosa non entra."""
+    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio_casa.sostituisci({
+        "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
+        "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
+        "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
+    })
+    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
+    primo_ricordo = "d'inverno la sala la preferisco fra 19 e 20 gradi"
+    archivio_memoria.ricorda(primo_ricordo, "paolo")  # il PIU' VECCHIO (id piu' basso)
+    for i in range(200):
+        archivio_memoria.ricorda(f"ricordo numero {i}: qualcosa che qualcuno ha detto", "paolo")
+    app = web.Application()
+    app["archivio_casa"] = archivio_casa
+    app["archivio_memoria"] = archivio_memoria
+    app["entity_cache"] = None
+    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    client = await aiohttp_client(app)
+
+    resp = await client.get("/api/nucleo")
+    assert resp.status == 200
+    corpo = await resp.json()
+    riepilogo = corpo["riepilogo"]
+    n_righe_ricordo = corpo["testo"].count('" (detto da')
+    # 201 ricordi in tutto: il taglio (non l'handler) decide quanti entrano,
+    # e dichiara sempre il resto -- MAI un default silenzioso a 20.
+    assert n_righe_ricordo + riepilogo["ricordi_esclusi"] == 201
+    assert riepilogo["ricordi_esclusi"] > 0  # con 201 ricordi lunghi, il tetto di default taglia
+    # Il PIU' VECCHIO (il primo scritto) e' anche il primo a saltare per la
+    # regola "il piu' vecchio prima" -- ma la sua assenza deve essere
+    # CONTATA in ricordi_esclusi, mai un'invisibilita' gratuita come prima.
+    archivio_casa.chiudi()
+    archivio_memoria.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento(
+        aiohttp_client, tmp_path):
+    """IMPORTANT ⑧: `/api/casa` espone gia' `problemi`/`file_non_letti` del
+    comportamento, ma `componi()` non aveva un parametro per riceverli --
+    con un `automations.yaml` malformato, il PERCHE' non arrivava mai al
+    modello attraverso `/api/nucleo`."""
+    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio_casa.sostituisci({
+        "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
+        "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
+        "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
+    })
+    archivio_casa.sostituisci_comportamento(
+        [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+          "corpo": {"trigger": []}, "origine": "file"}],
+        problemi=["automations.yaml: id 42 usato da 2 voci"],
+        file_non_letti={"scripts.yaml": "assente"},
+    )
+    app = web.Application()
+    app["archivio_casa"] = archivio_casa
+    app["archivio_memoria"] = None
+    app["entity_cache"] = None
+    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    client = await aiohttp_client(app)
+
+    resp = await client.get("/api/nucleo")
+    assert resp.status == 200
+    corpo = await resp.json()
+    avvisi = corpo["riepilogo"]["avvisi"]
+    assert any("problema" in a and "comportamento" in a for a in avvisi)
+    assert any("scripts.yaml" in a for a in avvisi)
+    archivio_casa.chiudi()

@@ -112,11 +112,28 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     piani = gerarchia(casa, tuple(non_disponibili))
     area = _trova_area(piani, riferimento)
     if area is None:
-        return {"esiste": False, "tipo": "area", "riferimento": riferimento}
+        dettaglio = {"esiste": False, "tipo": "area", "riferimento": riferimento}
+        # CRITICAL ③: se il registro delle aree non ha risposto, "non
+        # trovata" non e' lo stesso di "non esiste" -- potrebbe stare
+        # proprio nella parte che non si e' letta. Senza dichiararlo, il
+        # modello legge "quest'area non esiste nella tua casa", un'
+        # affermazione che nessuno ha il diritto di fare.
+        if "aree" in non_disponibili:
+            dettaglio["non_disponibile"] = True
+        return dettaglio
     entita = [
         {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-         "stato": stato.get(e["id"])}
+         "stato": stato.get(e["id"]), "disabilitata": False}
         for e in area["entita"]
+    ] + [
+        # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
+        # dire "questa luce c'e' ma e' disabilitata" -- `_guarda_dispositivo`
+        # e `_guarda_entita` lo fanno gia', `_guarda_area` no. `gerarchia()`
+        # le tiene apposta fuori dai conteggi ma raggiungibili qui (vedi
+        # anagrafe.py).
+        {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
+         "stato": stato.get(e["id"]), "disabilitata": True}
+        for e in area.get("entita_disabilitate", [])
     ]
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
     incompleto = sorted(set(non_disponibili) & {"aree", "dispositivi", "entita"})
@@ -130,10 +147,20 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     return dettaglio
 
 
-def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento) -> dict:
+def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
+                   non_disponibili: tuple[str, ...] = ()) -> dict:
     entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
     if entita is None:
-        return {"esiste": False, "tipo": "entita", "riferimento": riferimento}
+        dettaglio = {"esiste": False, "tipo": "entita", "riferimento": riferimento}
+        # CRITICAL ③: col registro "entita" caduto (`sostituisci` parziale
+        # lascia la tabella vuota), un'entita' vera non trovata qui non e'
+        # un'entita' che non esiste -- e' un registro che non ha risposto.
+        # Prima di questo fix la firma non aveva nemmeno un punto d'ingresso
+        # per dirlo: `non_disponibili` era ricevuto da `guarda()` ma
+        # inoltrato SOLO a `_guarda_area`.
+        if "entita" in non_disponibili:
+            dettaglio["non_disponibile"] = True
+        return dettaglio
     return {
         "esiste": True, "tipo": "entita", "id": entita["id"], "nome": entita.get("nome"),
         "classe": entita.get("classe"), "unita": entita.get("unita"),
@@ -147,11 +174,17 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento) ->
     }
 
 
-def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento) -> dict:
+def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
+                        non_disponibili: tuple[str, ...] = ()) -> dict:
     dispositivo = next(
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:
-        return {"esiste": False, "tipo": "dispositivo", "riferimento": riferimento}
+        dettaglio = {"esiste": False, "tipo": "dispositivo", "riferimento": riferimento}
+        # CRITICAL ③, stesso difetto applicato al dispositivo: col registro
+        # "dispositivi" caduto, "non trovato" non e' "non esiste".
+        if "dispositivi" in non_disponibili:
+            dettaglio["non_disponibile"] = True
+        return dettaglio
     # Stessa ragione per cui `_guarda_entita` porta `disabilitata`: qui si
     # legge `casa["entita"]` grezzo, fuori da `gerarchia()`, che le disabilitate
     # le esclude. Senza dirlo, un dispositivo spento e le sue entita' morte
@@ -161,21 +194,40 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento) -> dict:
          "disabilitata": bool(e.get("disabilitata"))}
         for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento
     ]
-    return {
+    dettaglio = {
         "esiste": True, "tipo": "dispositivo", "id": dispositivo["id"],
         "nome": dispositivo.get("nome"),
         "disabilitato": bool(dispositivo.get("disabilitato")),
         "entita": entita_del_dispositivo,
         "ricordi": _ricordi_ancorati(ricordi, "dispositivo", riferimento),
     }
+    # L'elenco sopra viene da "entita" grezzo: se quel registro non ha
+    # risposto, l'elenco puo' essere incompleto (o vuoto) senza che si veda
+    # -- stesso principio di `_guarda_area`.
+    if "entita" in non_disponibili:
+        dettaglio["elenco_incompleto"] = ["entita"]
+    return dettaglio
 
 
 def _guarda_comportamento(comportamento: list[dict], ricordi: list[dict],
-                           tipo: str, riferimento) -> dict:
+                           tipo: str, riferimento,
+                           file_non_letti: dict[str, str] | None = None) -> dict:
     voce = next(
         (v for v in comportamento if v.get("id") == riferimento and v.get("tipo") == tipo), None)
     if voce is None:
-        return {"esiste": False, "tipo": tipo, "riferimento": riferimento}
+        dettaglio = {"esiste": False, "tipo": tipo, "riferimento": riferimento}
+        # CRITICAL ③, quinto ramo: se un file di comportamento non si e'
+        # letto (`automations.yaml`/`scripts.yaml`, o uno incluso in un
+        # pacchetto), "non trovato" non e' "non esiste" -- potrebbe essere
+        # scritto proprio li'. Non si prova a indovinare QUALE file avrebbe
+        # contenuto QUESTA voce (le automazioni scritte a mano non stanno
+        # per forza nel file principale, vedi comportamento.py): se un file
+        # qualsiasi non si e' letto, l'incertezza si dichiara comunque,
+        # invece di tacerla come prima -- la firma non aveva nemmeno un
+        # punto d'ingresso per riceverlo.
+        if file_non_letti:
+            dettaglio["non_disponibile"] = True
+        return dettaglio
     return {
         "esiste": True, "tipo": tipo, "id": voce["id"], "nome": voce.get("nome"),
         # `corpo` passa cosi' com'e': `None` (HIRIS non l'ha, `origine` lo
@@ -207,7 +259,8 @@ def _guarda_ricordo(ricordi: list[dict], riferimento) -> dict:
 
 def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: dict,
            tipo: str, riferimento,
-           non_disponibili: tuple[str, ...] = ()) -> dict:
+           non_disponibili: tuple[str, ...] = (),
+           file_non_letti: dict[str, str] | None = None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -218,6 +271,17 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     scambiare per un fatto sulla casa invece che per "non trovato" -- un
     silenzio non dichiarato e' indistinguibile da un'assenza di problemi.
 
+    `non_disponibili` (registri dell'anagrafe caduti: "aree", "dispositivi",
+    "entita") e `file_non_letti` (i file di comportamento non letti, stessa
+    forma di `ArchivioCasa.file_non_letti()`) vanno propagati a OGNI ramo,
+    non solo a quello dell'area: un "non trovato" e un "non ho potuto
+    guardare" sono due fatti diversi, e prima di questo fix solo l'area
+    poteva dirlo (CRITICAL ③ -- sbagliato quattro volte su questo ramo). Chi
+    non li passa non e' punito con un errore: resta silenziosamente onesto,
+    non silenziosamente sbagliato -- vedi `dettaglio["non_disponibile"]`,
+    presente solo quando `esiste` e' `False` E il registro/file pertinente
+    non ha risposto.
+
     Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
     dal chiamante (`ArchivioCasa`, `ArchivioMemoria`, lo stato vivo di Home
     Assistant), non apre archivi ne' chiama la rete.
@@ -225,11 +289,11 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     if tipo == "area":
         return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili)
     if tipo == "entita":
-        return _guarda_entita(casa, ricordi, stato, riferimento)
+        return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili)
     if tipo == "dispositivo":
-        return _guarda_dispositivo(casa, ricordi, riferimento)
+        return _guarda_dispositivo(casa, ricordi, riferimento, non_disponibili)
     if tipo in _TIPI_COMPORTAMENTO:
-        return _guarda_comportamento(comportamento, ricordi, tipo, riferimento)
+        return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, file_non_letti)
     if tipo == "ricordo":
         return _guarda_ricordo(ricordi, riferimento)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo

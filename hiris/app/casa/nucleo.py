@@ -20,13 +20,27 @@ tests/test_nucleo.py.
 **Un nucleo troncato in silenzio e' un HIRIS che crede di sapere.** Quando il
 tetto di caratteri costringe a tagliare, il taglio e' scritto DENTRO il
 nucleo (sezione 5, "cio' che HIRIS ignora"), non solo in un riepilogo che
-nessuno legge -- e si tagliano per ultimi i ricordi, perche' sono l'unica
-cosa irrecuperabile: la casa e il comportamento si rileggono da Home
-Assistant, un ricordo scartato senza dirlo e' perso per sempre.
+nessuno legge.
+
+La priorita' di taglio NON e' "cosa e' recuperabile": tutto qui dentro lo e',
+un ricordo tagliato incluso -- sta in SQLite e si raggiunge con
+`guarda("ricordo", id)`, esattamente come un'area o un dispositivo (una
+versione precedente di questo commento affermava il contrario: era falso, e
+motivava con una bugia una scelta che una ragione vera ha comunque). La
+priorita' vera e' "cosa il modello perde la possibilita' di SAPERE che
+esiste", perche' il nucleo e' l'unico posto da cui puo' scoprirlo: un
+ricordo mai comparso qui non e' uno che il modello sa di dover cercare (vedi
+sopra, "entrano interi"), ma la mappa delle aree e' cio' che costa meno per
+riga e serve di piu' per orientarsi -- senza, il modello non sa nemmeno quali
+stanze esistono, il che e' peggio che non sapere una singola preferenza
+detta una volta. Per questo la mappa ha una riserva minima che il taglio non
+tocca (`_RISERVA_MINIMA_RIGHE_CASA`), e i ricordi restano l'ultima cosa a
+sparire -- non perche' irrecuperabili, ma perche' e' l'unico contenuto per
+cui il nucleo e' l'unica via di scoperta.
 """
 from __future__ import annotations
 
-from .anagrafe import gerarchia
+from .anagrafe import e_pseudo_area, gerarchia
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
@@ -97,8 +111,20 @@ _CLASSI_APERTURA = {"door", "window", "garage_door", "opening", "damper"}
 # Il buffer riservato alla sezione "cio' che HIRIS ignora": deve poter contenere
 # l'avviso di taglio anche quando il taglio e' avvenuto, quindi si sottrae
 # dal budget PRIMA di tagliare, non dopo -- altrimenti l'avviso stesso
-# rischierebbe di essere cio' che sfonda il tetto.
+# rischierebbe di essere cio' che sfonda il tetto. E' un MINIMO, non un
+# valore fisso: se le lacune GIA' note (prima ancora di tagliare) pesano
+# piu' di questo, il budget per il resto si restringe di conseguenza (vedi
+# `componi()`) -- altrimenti l'avviso stesso, cresciuto oltre la stima,
+# sarebbe cio' che sfonda il tetto in silenzio (IMPORTANT ④).
 _RISERVA_SEZIONE_LACUNE = 400
+
+# Quante righe della mappa (`_righe_casa`) il taglio non tocca MAI. E' la
+# sezione piu' economica per riga e la piu' utile per orientarsi (vedi
+# `componi()`): senza un minimo, con molti ricordi lunghi il taglio la
+# svuota per intero PRIMA di toccare un solo ricordo, perche' "casa" viene
+# prima di "ricordi" nell'ordine di taglio -- un modello che legge quel
+# nucleo non saprebbe piu' quali stanze esistono (IMPORTANT ⑥).
+_RISERVA_MINIMA_RIGHE_CASA = 3
 
 
 def _dominio(entity_id: str) -> str:
@@ -137,6 +163,19 @@ def _conta_per_dominio(entita: list[dict]) -> dict[str, int]:
     return {dominio: conteggio[dominio] for dominio in sorted(conteggio)}
 
 
+def _nome_area_visualizzato(area: dict) -> str:
+    """Il nome di un'area, con l'id accanto se e' una pseudo-area (IMPORTANT
+    ⑦): "Senza area", "Aree non lette" & co. non esistono nell'anagrafe
+    grezza di Home Assistant, quindi ne' `cerca()` ne' `guarda('area',
+    nome)` le trovano per nome -- solo per id (`guarda('area',
+    '__senza_area__')`). Mostrare solo il nome e' un vicolo cieco: le
+    entita' che piu' meritano attenzione (orfane, non lette) finirebbero
+    contate nel nucleo e irraggiungibili nel dettaglio."""
+    if e_pseudo_area(area["id"]):
+        return f"{area['nome']} (id: {area['id']})"
+    return area["nome"]
+
+
 def _righe_casa(piani: list[dict]) -> list[str]:
     """Piano per piano, area per area: quante entita' per tipo. Non i nomi
     -- vedi il docstring del modulo sul perche'.
@@ -160,7 +199,7 @@ def _righe_casa(piani: list[dict]) -> list[str]:
                     f"{n} {_nome_dominio(dom, n)}" for dom, n in conteggio.items())
             else:
                 dettaglio = "nessuna entita'"
-            righe.append(f"  - {area['nome']}: {dettaglio}")
+            righe.append(f"  - {_nome_area_visualizzato(area)}: {dettaglio}")
     return righe
 
 
@@ -175,17 +214,21 @@ def _area_di_ogni_entita(piani: list[dict]) -> dict[str, str]:
     mappa = {}
     for piano in piani:
         for area in piano["aree"]:
+            nome = _nome_area_visualizzato(area)
             for entita in area["entita"]:
-                mappa[entita["id"]] = area["nome"]
+                mappa[entita["id"]] = nome
     return mappa
 
 
-def _raggruppa_notevoli(voci: list[dict]) -> list[str]:
+def _raggruppa_notevoli(voci: list[dict]) -> list[tuple[int, str]]:
     """Oltre `_SOGLIA_NOTEVOLE_INDIVIDUALE`, "Notevole adesso" CONTA anche
-    lei invece di elencare -- "Cucina: 3 luci (accese)" invece di tre righe
-    -- dichiarando in testa quanti elementi sono stati raggruppati, cosi'
-    non sparisce in silenzio il dettaglio individuale che il modello
-    potrebbe aspettarsi di trovare."""
+    lei invece di elencare -- "Cucina: 3 luci (accese)" invece di tre righe.
+
+    Restituisce `(peso, riga)`: il PESO (quante entita' individuali quella
+    riga rappresenta) serve a chi taglia (`componi()`) per dichiarare
+    correttamente quanti ELEMENTI sono esclusi quando una riga raggruppata
+    viene tagliata, non quante RIGHE (IMPORTANT ⑤) -- una riga puo' valere
+    per cento entita'."""
     conteggio: dict[tuple[str, str, str], int] = {}
     ordine: list[tuple[str, str, str]] = []
     for v in voci:
@@ -193,27 +236,46 @@ def _raggruppa_notevoli(voci: list[dict]) -> list[str]:
         if chiave not in conteggio:
             ordine.append(chiave)
         conteggio[chiave] = conteggio.get(chiave, 0) + 1
-    righe = [f"({len(voci)} elementi notevoli: raggruppati per area, dominio e stato -- "
-             f"oltre {_SOGLIA_NOTEVOLE_INDIVIDUALE} il dettaglio individuale non ci sta.)"]
     # Le righe si raccolgono nell'ordine in cui capitano le entita', che e'
     # quello dell'anagrafe: la stessa area finirebbe sparsa in tre punti
     # diversi dell'elenco. Qui si tengono insieme -- la leggibilita' non e' un
     # abbellimento, e' cio' che permette a chi legge (una persona dalla pagina,
     # o il modello nel prompt) di vedere una stanza per volta invece di
     # ricomporla a mente.
+    righe = []
     for area_nome, dominio, stato_leggibile in sorted(ordine):
         n = conteggio[(area_nome, dominio, stato_leggibile)]
-        righe.append(f"- {area_nome}: {n} {_nome_dominio(dominio, n)} ({stato_leggibile})")
+        riga = f"- {area_nome}: {n} {_nome_dominio(dominio, n)} ({stato_leggibile})"
+        righe.append((n, riga))
     return righe
 
 
-def _stato_inaffidabile(casa: dict, stato: dict, stato_affidabile: bool) -> bool:
+def _intestazione_notevoli_raggruppati(totale: int) -> str:
+    """La riga di testa di "Notevole adesso" quando raggruppato, ricostruita
+    dal TOTALE ATTUALMENTE mostrato -- non da quello originale prima di un
+    eventuale taglio (IMPORTANT ⑤): un'intestazione che dice "150 elementi"
+    sopra righe che ne sommano 95 e' il nucleo che si contraddice da solo."""
+    voce = _plurale(totale, "elemento notevole", "elementi notevoli")
+    return (f"({totale} {voce}: raggruppati per area, dominio e stato -- "
+            f"oltre {_SOGLIA_NOTEVOLE_INDIVIDUALE} il dettaglio individuale non ci sta.)")
+
+
+def _stato_inaffidabile(casa: dict, stato: dict, stato_affidabile: bool,
+                        non_disponibili: tuple[str, ...] = ()) -> bool:
     """Distingue «ho guardato ed e' tutto tranquillo» da «non ho guardato»:
     sono due cose diverse, e la Sezione 2 deve dirle diversamente (CRITICAL
-    ②). Due modi per finirci dentro:
+    ②). Tre modi per finirci dentro:
 
     - il chiamante lo dichiara esplicitamente (`stato_affidabile=False`) --
       per esempio una lettura iniziata ma non ancora conclusa;
+    - il registro "entita" non ha risposto (in `non_disponibili`): dopo un
+      `sostituisci` parziale la tabella e' VUOTA, non piccola. Senza questo
+      controllo, `casa.get("entita", [])` vuota fa scattare il ramo "casa
+      senza entita' = niente da guardare" qui sotto -- ma non e' una casa
+      senza entita', e' un registro che non ha risposto: cinque luci accese
+      nella cache viva (che non passa da questa lista) resterebbero "niente
+      di notevole", contraddette due sezioni dopo dall'avviso sul registro
+      caduto;
     - lo si deduce: se in anagrafe ci sono entita' ma NESSUNA ha uno stato
       leggibile (assente da `stato`, o "unknown" -- lo stato comunissimo di
       un'entita' subito dopo un riavvio di Home Assistant, prima che il
@@ -223,6 +285,8 @@ def _stato_inaffidabile(casa: dict, stato: dict, stato_affidabile: bool) -> bool
     Una casa senza entita' non ci finisce: li' "niente di notevole" e'
     vero, non e' un silenzio -- non c'e' nulla da guardare."""
     if not stato_affidabile:
+        return True
+    if "entita" in non_disponibili:
         return True
     entita_attive = [e for e in casa.get("entita", []) if not e.get("disabilitata")]
     if not entita_attive:
@@ -235,17 +299,27 @@ def _stato_inaffidabile(casa: dict, stato: dict, stato_affidabile: bool) -> bool
 
 
 def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
-                    stato_inaffidabile: bool) -> list[str]:
+                    stato_inaffidabile: bool) -> tuple[list[str], list[int], bool]:
     """Cio' che e' notevole ADESSO: acceso, aperto, in allarme scattato.
     Serve lo stato vivo, che arriva dal chiamante -- il nucleo non lo va a
     cercare -- e l'albero gia' costruito da `gerarchia()` per l'area, non
-    uno ricalcolato a mano (vedi `_area_di_ogni_entita`)."""
+    uno ricalcolato a mano (vedi `_area_di_ogni_entita`).
+
+    Restituisce `(righe, pesi, raggruppato)`. `pesi` e' parallelo a `righe`:
+    quante entita' individuali OGNI riga rappresenta (1 quando non
+    raggruppato, il conteggio del gruppo quando lo e') -- serve al taglio in
+    `componi()` per dichiarare ELEMENTI esclusi, non righe (IMPORTANT ⑤).
+    `raggruppato` dice se serve ricostruire l'intestazione dopo un eventuale
+    taglio (vedi `_intestazione_notevoli_raggruppati`): l'intestazione non e'
+    nelle righe tagliabili apposta, per poterla ricalcolare sul totale VERO
+    dopo il taglio invece di lasciarla affermare un numero che le righe
+    sotto non confermano piu'."""
     if stato_inaffidabile:
-        return [
+        return ([
             "Stato non letto (o dichiarato non attendibile): non si puo' dire se in "
             "questo momento c'e' qualcosa di notevole -- non e' lo stesso di "
             "'niente di notevole'."
-        ]
+        ], [1], False)
     area_per_entita = _area_di_ogni_entita(piani)
     voci = []
     for e in casa.get("entita", []):
@@ -264,14 +338,15 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
             "nome": e.get("nome") or entity_id,
         })
     if not voci:
-        return ["Niente di notevole al momento."]
+        return (["Niente di notevole al momento."], [1], False)
     if len(voci) > _SOGLIA_NOTEVOLE_INDIVIDUALE:
-        return _raggruppa_notevoli(voci)
+        gruppi = _raggruppa_notevoli(voci)
+        return ([riga for _, riga in gruppi], [peso for peso, _ in gruppi], True)
     righe = []
     for v in voci:
         prefisso = f"{v['area_nome']}: " if v["area_nome"] else ""
         righe.append(f"- {prefisso}{v['nome']} ({v['stato_leggibile']})")
-    return righe
+    return (righe, [1] * len(righe), False)
 
 
 def _righe_comportamento(comportamento: list[dict]) -> list[str]:
@@ -349,7 +424,9 @@ def _assembla(sezioni: list[tuple[str, list[str]]]) -> str:
 def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             stato: dict, tetto: int = 6000,
             non_disponibili: tuple[str, ...] = (),
-            stato_affidabile: bool = True) -> tuple[str, dict]:
+            stato_affidabile: bool = True,
+            problemi_comportamento: tuple[str, ...] = (),
+            file_non_letti_comportamento: dict[str, str] | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -367,24 +444,33 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     grave che esista: una casa letta a meta' che il nucleo racconterebbe
     come una casa piccola (o senz'area) invece che come una casa non letta
     per intero. Va passato a `gerarchia()` (tramite `_righe_casa`) E a
-    `_righe_notevole` -- attraverso lo STESSO albero, cosi' le due sezioni
-    non possono raccontarla in modo incompatibile. Una casa non ancora
-    letta non e' una casa cambiata.
+    `_stato_inaffidabile`/`_righe_notevole` -- attraverso lo STESSO albero,
+    cosi' le sezioni non possono raccontarla in modo incompatibile. Una casa
+    non ancora letta non e' una casa cambiata.
 
     `stato_affidabile=False` dichiara esplicitamente che `stato` non ci si
     puo' fidare (es. una lettura iniziata ma non ancora conclusa): senza un
     modo per dirlo, il chiamante non avrebbe potuto distinguere "ho letto lo
     stato ed e' vuoto/sospetto" da "questo e' lo stato vero". Anche senza
     dichiararlo, il nucleo lo deduce da solo se in anagrafe ci sono entita'
-    ma nessuna ha uno stato leggibile -- vedi `_stato_inaffidabile`.
+    ma nessuna ha uno stato leggibile, o se il registro "entita" stesso non
+    ha risposto (CRITICAL ②, tabella vuota dopo un `sostituisci` parziale) --
+    vedi `_stato_inaffidabile`.
+
+    `problemi_comportamento`/`file_non_letti_comportamento` sono le
+    dichiarazioni che `comportamento.rileggi()` costruisce gia' e che
+    `/api/casa` espone (`ArchivioCasa.problemi_comportamento()`/
+    `.file_non_letti()`): senza un parametro per riceverle, il PERCHE' di
+    un'automazione sconosciuta (id duplicato, file malformato) non arrivava
+    mai al modello (IMPORTANT ⑧).
 
     Quando serve tagliare per stare sotto `tetto`, si tagliano prima gli
-    elementi notevoli (elencati uno per uno finche' sono pochi: sono la
-    sezione piu' pesante per riga), poi cio' che la casa fa da sola, poi i
-    conteggi della casa -- i piu' economici e i piu' utili, quasi mai la
-    causa del problema, quindi fra gli ultimi a sparire -- e per ultimi in
-    assoluto -- solo se resta ancora da tagliare -- i ricordi: sono
-    l'unica cosa che non si ricostruisce da Home Assistant.
+    elementi notevoli (raggruppati o no, vedi `_righe_notevole`), poi cio'
+    che la casa fa da sola, poi -- fino a una riserva minima che non si
+    tocca mai (`_RISERVA_MINIMA_RIGHE_CASA`, IMPORTANT ⑥) -- i conteggi
+    della casa, e per ultimi i ricordi. Il PERCHE' di quest'ordine e' nel
+    docstring del modulo: non e' "cosa e' recuperabile" (lo e' tutto), e'
+    "cosa il modello perde la possibilita' di sapere che esiste".
     """
     avvisi: list[str] = []
 
@@ -394,12 +480,29 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             f"lettura: {', '.join(sorted(non_disponibili))}. "
             "Cio' che manca qui sotto potrebbe esistere lo stesso.")
 
+    # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il
+    # nucleo applica a trecento entita' (vedi il docstring del modulo),
+    # applicata qui al modulo stesso. Con cento script `solo_stato` (il
+    # caso comunissimo delle scene importate) elencare tutti i nomi
+    # sfondava il tetto del 94% da solo, e duplicava un'informazione gia'
+    # visibile riga per riga in "Cio' che la casa fa gia' da sola"
+    # (`_righe_comportamento` marca ogni voce senza corpo in linea).
     corpi_mancanti = [v for v in comportamento if v.get("corpo") is None]
     if corpi_mancanti:
         n = len(corpi_mancanti)
-        nomi = ", ".join(v.get("nome") or v.get("id") or "?" for v in corpi_mancanti)
         voce = _plurale(n, "voce di comportamento", "voci di comportamento")
-        avvisi.append(f"{n} {voce} senza corpo disponibile (solo il nome): {nomi}.")
+        avvisi.append(f"{n} {voce} senza corpo disponibile (solo il nome).")
+
+    if problemi_comportamento:
+        n = len(problemi_comportamento)
+        voce = _plurale(n, "problema", "problemi")
+        avvisi.append(
+            f"{n} {voce} nella lettura del comportamento (id duplicati, voci "
+            "malformate: vedi /api/casa per il dettaglio).")
+
+    if file_non_letti_comportamento:
+        nomi = ", ".join(sorted(file_non_letti_comportamento))
+        avvisi.append(f"file di comportamento non letti: {nomi}.")
 
     # Un solo albero (`gerarchia()`, con `non_disponibili` applicato),
     # condiviso da "La casa" e da "Notevole adesso": prima di questo fix
@@ -409,47 +512,67 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     piani = gerarchia(casa, non_disponibili)
     righe_casa = _righe_casa(piani)
 
-    inaffidabile = _stato_inaffidabile(casa, stato, stato_affidabile)
+    inaffidabile = _stato_inaffidabile(casa, stato, stato_affidabile, non_disponibili)
     if inaffidabile:
         avvisi.append(
             "lo stato delle entita' non e' stato letto, o e' stato dichiarato non "
             "attendibile: 'Notevole adesso' qui sotto non dice che va tutto bene, "
             "dice che non si e' potuto guardare.")
-    righe_notevole = _righe_notevole(casa, stato, piani, inaffidabile)
+    righe_notevole, pesi_notevole, notevole_raggruppato = _righe_notevole(
+        casa, stato, piani, inaffidabile)
     righe_comportamento = _righe_comportamento(comportamento)
     righe_ricordi = _righe_ricordi(ricordi)
+
+    pesi_casa = [1] * len(righe_casa)
+    pesi_comportamento = [1] * len(righe_comportamento)
+    pesi_ricordi = [1] * len(righe_ricordi)
+
+    def _sezione_notevole_corrente() -> list[str]:
+        # L'intestazione raggruppata (se serve) si ricostruisce dal totale
+        # ATTUALMENTE rappresentato dalle righe rimaste, mai da quello
+        # originale: dopo un taglio, un'intestazione che afferma il numero
+        # di PRIMA sopra righe che ne sommano meno e' il nucleo che si
+        # contraddice da solo (IMPORTANT ⑤).
+        if notevole_raggruppato and righe_notevole:
+            return [_intestazione_notevoli_raggruppati(sum(pesi_notevole))] + righe_notevole
+        return list(righe_notevole)
 
     # L'ordine di STAMPA e' fisso (vedi docstring); l'ordine di TAGLIO e'
     # diverso e definito piu' sotto (`ordine_taglio`).
     sez_casa = ("## La casa", righe_casa)
-    sez_notevole = ("## Notevole adesso", righe_notevole)
+    sez_notevole = ("## Notevole adesso", _sezione_notevole_corrente())
     sez_comportamento = ("## Cio' che la casa fa gia' da sola", righe_comportamento)
     sez_ricordi = ("## Cio' che le persone hanno detto", righe_ricordi)
 
     ordine_stampa = [sez_casa, sez_notevole, sez_comportamento, sez_ricordi]
-    # (chiave, righe) -- l'ordine qui e' l'ordine di taglio: dal meno utile
-    # al piu' prezioso. IMPORTANT ③: prima si tagliano gli elementi
-    # notevoli (la sezione senza tetto proprio, e la piu' pesante per riga
-    # quando la casa e' grande -- vedi `_raggruppa_notevoli` per come si
-    # comprime prima ancora di arrivare qui), poi cio' che la casa fa da
-    # sola, poi -- fra le ULTIME a sparire, non fra le prime -- i conteggi
-    # della casa: e' la mappa che costa meno per riga e serve di piu' per
-    # orientarsi, quindi e' quella che deve sopravvivere piu' a lungo. I
-    # ricordi restano gli ultimissimi in assoluto.
+
+    def _aggiorna_sezione_notevole() -> None:
+        ordine_stampa[1] = ("## Notevole adesso", _sezione_notevole_corrente())
+
+    # (chiave, righe, pesi, riserva minima) -- l'ordine qui e' l'ordine di
+    # taglio: dal meno utile al piu' prezioso. Prima si tagliano gli
+    # elementi notevoli (la sezione senza tetto proprio, e la piu' pesante
+    # per riga quando la casa e' grande -- vedi `_raggruppa_notevoli` per
+    # come si comprime prima ancora di arrivare qui), poi cio' che la casa
+    # fa da sola, poi -- fino alla riserva minima, MAI oltre
+    # (`_RISERVA_MINIMA_RIGHE_CASA`, IMPORTANT ⑥) -- i conteggi della casa:
+    # e' la mappa che costa meno per riga e serve di piu' per orientarsi. I
+    # ricordi restano gli ultimi in assoluto (vedi il docstring del modulo
+    # sul perche' non e' "recuperabilita'").
     #
     # Quando lo stato e' inaffidabile, "Notevole adesso" e' UNA riga sola --
     # la dichiarazione stessa di "non ho guardato" (CRITICAL ②). Metterla
-    # nel pool tagliabile la renderebbe la prima cosa a sparire (e' la
-    # prima del pool), il che la ricreerebbe esattamente: un silenzio non
-    # dichiarato. Resta fuori dal taglio; se il nucleo sfora lo stesso, ci
-    # pensa la rete di sicurezza sui ricordi piu' sotto.
-    ordine_taglio = []
+    # nel pool tagliabile la renderebbe la prima cosa a sparire, il che la
+    # ricreerebbe esattamente: un silenzio non dichiarato. Resta fuori dal
+    # taglio; se il nucleo sfora lo stesso, ci pensa la rete di sicurezza
+    # piu' sotto.
+    ordine_taglio: list[tuple[str, list[str], list[int], int]] = []
     if not inaffidabile:
-        ordine_taglio.append(("notevole", righe_notevole))
+        ordine_taglio.append(("notevole", righe_notevole, pesi_notevole, 0))
     ordine_taglio += [
-        ("comportamento", righe_comportamento),
-        ("casa", righe_casa),
-        ("ricordi", righe_ricordi),
+        ("comportamento", righe_comportamento, pesi_comportamento, 0),
+        ("casa", righe_casa, pesi_casa, _RISERVA_MINIMA_RIGHE_CASA),
+        ("ricordi", righe_ricordi, pesi_ricordi, 0),
     ]
     # (chiave, frase singolare, frase plurale) GIA' concordate col genere
     # del sostantivo -- vedi il docstring di `_avviso_taglio`.
@@ -466,13 +589,46 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
 
     troncato = False
     esclusi_per_pool: dict[str, int] = {}
-    budget = max(0, tetto - _RISERVA_SEZIONE_LACUNE)
 
-    for nome_pool, righe_pool in ordine_taglio:
-        while righe_pool and len(_assembla(ordine_stampa)) > budget:
-            righe_pool.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
-            troncato = True
-            esclusi_per_pool[nome_pool] = esclusi_per_pool.get(nome_pool, 0) + 1
+    def _pop(nome_pool: str, righe_pool: list[str], pesi_pool: list[int], riserva: int) -> None:
+        # IMPORTANT ⑤: si conta il PESO (quante entita'/elementi la riga
+        # rappresenta davvero -- per "notevole" raggruppato puo' essere
+        # molto piu' di 1), non la riga. Sottostimare l'escluso di nove
+        # volte sulla lacuna piu' calda della casa e' peggio di non
+        # dichiararlo affatto: sembra onesto e non lo e'.
+        nonlocal troncato
+        righe_pool.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
+        peso = pesi_pool.pop()
+        troncato = True
+        esclusi_per_pool[nome_pool] = esclusi_per_pool.get(nome_pool, 0) + peso
+        if nome_pool == "notevole":
+            _aggiorna_sezione_notevole()
+        if nome_pool == "casa":
+            # MINOR: un'intestazione di piano ("Primo piano:") senza righe
+            # sotto e' un artefatto del taglio, non un'informazione -- si
+            # toglie a sua volta. Non conta come elemento escluso: le aree
+            # che c'erano sotto sono gia' state contate ai loro rispettivi
+            # pop, questo e' solo il titolo rimasto orfano.
+            while (len(righe_pool) > riserva and righe_pool
+                   and righe_pool[-1].endswith(":") and not righe_pool[-1].startswith("  ")):
+                righe_pool.pop()
+                pesi_pool.pop()
+
+    # IMPORTANT ④: il budget per casa/notevole/comportamento/ricordi non e'
+    # `tetto - _RISERVA_SEZIONE_LACUNE` alla cieca. Se le lacune GIA' note
+    # (registri caduti, corpi mancanti, problemi di comportamento, stato
+    # inaffidabile...) pesano gia' piu' della riserva stimata, il budget per
+    # il resto si restringe di conseguenza -- altrimenti il resto del
+    # nucleo occuperebbe uno spazio che le lacune, gia' dichiarate, non
+    # avrebbero avuto, e la rete di sicurezza sotto sarebbe l'unica cosa a
+    # farsi carico dello sforamento.
+    lunghezza_lacune_note = len(_assembla([("## Cio' che HIRIS ignora", _righe_lacune(avvisi))]))
+    riserva_lacune = max(_RISERVA_SEZIONE_LACUNE, lunghezza_lacune_note + _RISERVA_SEZIONE_LACUNE)
+    budget = max(0, tetto - riserva_lacune)
+
+    for nome_pool, righe_pool, pesi_pool, riserva in ordine_taglio:
+        while len(righe_pool) > riserva and len(_assembla(ordine_stampa)) > budget:
+            _pop(nome_pool, righe_pool, pesi_pool, riserva)
         if len(_assembla(ordine_stampa)) <= budget:
             break
 
@@ -489,14 +645,32 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     sez_lacune = ("## Cio' che HIRIS ignora", _righe_lacune(avvisi))
     testo = _assembla(ordine_stampa + [sez_lacune])
 
-    # Rete di sicurezza: se anche cosi' il testo sfora (l'avviso stesso puo'
-    # pesare piu' della riserva stimata), si tagliano ancora ricordi -- gia'
-    # l'ultima cosa nell'ordine di taglio -- finche' non rientra. Non deve
-    # mai essere l'avviso a far sfondare il tetto in modo silenzioso.
-    while len(testo) > int(tetto * 1.1) and righe_ricordi:
-        righe_ricordi.pop()
-        esclusi_per_pool["ricordi"] = esclusi_per_pool.get("ricordi", 0) + 1
-        troncato = True
+    # Rete di sicurezza: se anche cosi' il testo sfora, si continua a
+    # tagliare -- ricordi prima (gia' l'ultima cosa nell'ordine di taglio),
+    # ma NON SOLO ricordi (IMPORTANT ④): una casa con pochi o zero ricordi
+    # che sfora lo stesso (es. lacune cresciute oltre ogni stima) non deve
+    # fermarsi solo perche' "non ci sono piu' ricordi da tagliare" --
+    # sforerebbe il tetto in silenzio, che e' peggio di un taglio
+    # dichiarato in piu'. Si scende fino alla riserva minima della mappa;
+    # oltre quella, mai (IMPORTANT ⑥): sforare il tetto in modo dichiarato
+    # e' meno grave che svuotare anche la mappa in silenzio.
+    pools_sicurezza = [
+        ("ricordi", righe_ricordi, pesi_ricordi, 0),
+        ("comportamento", righe_comportamento, pesi_comportamento, 0),
+        ("casa", righe_casa, pesi_casa, _RISERVA_MINIMA_RIGHE_CASA),
+    ]
+    if not inaffidabile:
+        pools_sicurezza.append(("notevole", righe_notevole, pesi_notevole, 0))
+
+    while len(testo) > int(tetto * 1.1):
+        tagliato = False
+        for nome_pool, righe_pool, pesi_pool, riserva in pools_sicurezza:
+            if len(righe_pool) > riserva:
+                _pop(nome_pool, righe_pool, pesi_pool, riserva)
+                tagliato = True
+                break
+        if not tagliato:
+            break
         messaggio = _avviso_taglio(esclusi_per_pool, etichette_taglio, tetto)
         if indice_avviso_taglio is None:
             avvisi.append(messaggio)

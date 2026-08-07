@@ -62,6 +62,24 @@ _ID_SENZA_PIANO = "__senza_piano__"
 _ID_PIANI_NON_LETTI = "__piani_non_letti__"
 _ID_FUORI_DALLE_AREE = "__fuori_dalle_aree__"
 
+# Le pseudo-aree che una vista di dettaglio (`domande.guarda("area", ...)`)
+# sa raggiungere per ID -- MAI per nome: "Senza area" e' un nome che due case
+# diverse possono condividere (e' generico, non dichiarato dall'utente), e
+# `cerca()`/l'indice (riconoscitore.py) non lo indicizzano perche' non
+# esistono nell'anagrafe grezza di Home Assistant, solo nell'albero che
+# `gerarchia()` costruisce. Chi mostra il nome da solo (IMPORTANT ⑦) mostra
+# un vicolo cieco: il nome non porta a nessun `guarda()` che funzioni.
+_ID_PSEUDO_AREA = frozenset(
+    {_ID_SENZA_AREA, _ID_AREE_NON_LETTE, _ID_AREA_SCONOSCIUTA, _ID_DISPOSITIVI_NON_LETTI})
+
+
+def e_pseudo_area(area_id: str) -> bool:
+    """Vero se `area_id` e' una pseudo-area generata da `gerarchia()` (non
+    un'area vera di Home Assistant): chi la mostra per nome deve mostrare
+    anche l'id, l'unica chiave con cui `guarda('area', ...)` la ritrova
+    davvero (IMPORTANT ⑦)."""
+    return area_id in _ID_PSEUDO_AREA
+
 
 def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()) -> list[dict]:
     """La casa in forma di albero: piani → aree → entita'.
@@ -116,28 +134,36 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
     condividevano per errore lo stesso id `None`, facendo sparire in silenzio
     l'uno o l'altro a chiunque indicizzasse i piani per id.
 
-    Le entita' disabilitate restano nell'archivio ma non nell'albero: sono in
+    Le entita' disabilitate restano nell'archivio ma non nei CONTEGGI: sono in
     Home Assistant e non funzionano, quindi contarle come stanze arredate
-    ingannerebbe chi legge.
+    ingannerebbe chi legge. Restano pero' raggiungibili per area, nella chiave
+    parallela `entita_disabilitate` di ogni area (mai in `entita`, che conta):
+    una vista di DETTAGLIO su un'area (`domande.guarda`) deve poter mostrare
+    "questa luce c'e' ma e' disabilitata", marcata, non farla sparire in
+    silenzio come se non esistesse (IMPORTANT ⑦-adiacente, Minor).
     """
     dispositivi_letti = "dispositivi" not in non_disponibili
     area_del_dispositivo = {d["id"]: d.get("area_id") for d in casa.get("dispositivi", [])}
 
     per_area: dict[str | None, list[dict]] = {}
+    per_area_disabilitate: dict[str | None, list[dict]] = {}
     dispositivi_non_letti = []
     for entita in casa.get("entita", []):
-        if entita.get("disabilitata"):
-            continue
         area_propria = entita.get("area_id")
         dispositivo_id = entita.get("dispositivo_id")
         if not area_propria and dispositivo_id and not dispositivi_letti:
             # Erediterebbe l'area dal dispositivo, ma il registro dei
             # dispositivi non ha risposto: non possiamo sapere quale sarebbe,
-            # quindi non finge di essere "senza area".
-            dispositivi_non_letti.append(entita)
+            # quindi non finge di essere "senza area". Vale anche per le
+            # disabilitate: non risolvibili, non tracciate nemmeno a parte.
+            if not entita.get("disabilitata"):
+                dispositivi_non_letti.append(entita)
             continue
         area_id = area_propria or area_del_dispositivo.get(dispositivo_id)
-        per_area.setdefault(area_id, []).append(entita)
+        if entita.get("disabilitata"):
+            per_area_disabilitate.setdefault(area_id, []).append(entita)
+        else:
+            per_area.setdefault(area_id, []).append(entita)
 
     aree_per_piano: dict[str | None, list[dict]] = {}
     aree_note = set()
@@ -149,6 +175,9 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
             "alias": area.get("alias", []),
             "etichette": area.get("etichette", []),
             "entita": per_area.get(area["id"], []),
+            # Non nei conteggi (vedi il docstring), ma raggiungibili nel
+            # dettaglio di un'area -- vedi `domande._guarda_area`.
+            "entita_disabilitate": per_area_disabilitate.get(area["id"], []),
         })
 
     # Le entita' fuori dalle aree note si dividono per causa. Se le aree non

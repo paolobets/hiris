@@ -145,12 +145,31 @@ async def handle_get_nucleo(request: web.Request) -> web.Response:
         casa: dict = {}
         non_disponibili: tuple[str, ...] = ()
         comportamento: list[dict] = []
+        problemi_comportamento: tuple[str, ...] = ()
+        file_non_letti_comportamento: dict[str, str] = {}
     else:
         casa = archivio_casa.leggi()
         non_disponibili = tuple(archivio_casa.non_disponibili())
         comportamento = archivio_casa.comportamento()
+        # IMPORTANT ⑧: senza questi due, il PERCHE' di un'automazione
+        # sconosciuta (id duplicato, file malformato) non arrivava mai al
+        # modello -- `/api/casa` li espone gia', `componi()` non aveva un
+        # parametro per riceverli.
+        problemi_comportamento = tuple(archivio_casa.problemi_comportamento())
+        file_non_letti_comportamento = archivio_casa.file_non_letti()
 
-    ricordi = archivio_memoria.richiama() if archivio_memoria is not None else []
+    # CRITICAL ①: il default di `ArchivioMemoria.richiama()` e' `limite=20`.
+    # Con `conta()` (scritto apposta per dichiarare questa differenza) si
+    # richiamano TUTTI i ricordi, e si lascia decidere al taglio di
+    # `componi()` -- che dichiara sempre, nel nucleo stesso, quanti ne
+    # restano fuori (`ricordi_esclusi`). Prima di questo fix, i ricordi
+    # oltre il ventesimo sparivano PRIMA ancora di arrivare a `componi()`,
+    # e il riepilogo giurava "ricordi_esclusi: 0" su una casa con 200
+    # ricordi veri e solo 20 nel nucleo.
+    if archivio_memoria is not None:
+        ricordi = archivio_memoria.richiama(limite=archivio_memoria.conta())
+    else:
+        ricordi = []
 
     # `stato` nella forma che `componi()` vuole: entity_id -> valore grezzo.
     # `entity_cache.all_states()` usa la chiave "id", non "entity_id" (vedi
@@ -173,5 +192,7 @@ async def handle_get_nucleo(request: web.Request) -> web.Response:
         casa, comportamento, ricordi, stato,
         non_disponibili=non_disponibili,
         stato_affidabile=stato_affidabile,
+        problemi_comportamento=problemi_comportamento,
+        file_non_letti_comportamento=file_non_letti_comportamento,
     )
     return web.json_response({"testo": testo, "riepilogo": riepilogo})
