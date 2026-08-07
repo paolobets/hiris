@@ -55,14 +55,30 @@ _NOMI_DOMINIO = {
     "input_boolean": ("interruttore helper", "interruttori helper"),
 }
 
-# Stati che rendono un'entita' NOTEVOLE adesso: acceso, aperto, in allarme.
-# Il resto e' rumore in una casa da trecento entita' -- una temperatura di
-# 19.5 non e' notevole solo perche' e' un numero, uno stato "on"/"open" lo e'
-# perche' e' un'eccezione rispetto al riposo.
+# Stati che rendono un'entita' NOTEVOLE adesso: acceso, aperto, in allarme
+# SCATTATO. Il resto e' rumore in una casa da trecento entita' -- una
+# temperatura di 19.5 non e' notevole solo perche' e' un numero, uno stato
+# "on"/"open" lo e' perche' e' un'eccezione rispetto al riposo.
+#
+# Per l'allarme (`alarm_control_panel`) SOLO "triggered" e' notevole: e'
+# l'unico stato che significa "sta succedendo qualcosa adesso". Gli altri
+# stati veri di Home Assistant -- "armed_home", "armed_away", "armed_night",
+# "armed_vacation", "armed_custom_bypass", "arming", "pending", "disarmed" --
+# sono la routine quotidiana (si arma e si disarma piu' volte al giorno,
+# come si accende e si spegne una luce): non sono un'eccezione rispetto al
+# riposo, sono il riposo. (Il letterale "alarm" che stava qui non era MAI
+# stato uno stato reale di Home Assistant: era voce morta che affermava di
+# coprire un caso che non copriva.)
 _STATI_NOTEVOLI = {
-    "on", "open", "unlocked", "home", "playing", "alarm", "triggered",
+    "on", "open", "unlocked", "home", "playing", "triggered",
     "detected", "problem", "unavailable", "cleaning",
 }
+
+# Oltre questa quantita' di elementi notevoli, elencarli uno per uno
+# sfonderebbe il nucleo tanto quanto elencare le trecento entita' della casa
+# (vedi il docstring del modulo): si raggruppa per area, dominio e stato --
+# vedi `_raggruppa_notevoli`.
+_SOGLIA_NOTEVOLE_INDIVIDUALE = 15
 
 _TRADUZIONE_STATO = {
     "on": "acceso", "off": "spento", "open": "aperta", "closed": "chiusa",
@@ -121,10 +137,14 @@ def _conta_per_dominio(entita: list[dict]) -> dict[str, int]:
     return {dominio: conteggio[dominio] for dominio in sorted(conteggio)}
 
 
-def _righe_casa(casa: dict) -> list[str]:
+def _righe_casa(piani: list[dict]) -> list[str]:
     """Piano per piano, area per area: quante entita' per tipo. Non i nomi
-    -- vedi il docstring del modulo sul perche'."""
-    piani = gerarchia(casa)
+    -- vedi il docstring del modulo sul perche'.
+
+    Prende l'albero gia' costruito da `gerarchia()` (con `non_disponibili`
+    applicato dal chiamante, `componi()`) invece di ricostruirselo: cosi'
+    "La casa" e "Notevole adesso" -- che condividono lo stesso albero --
+    non possono mai raccontare due storie diverse sulla stessa area."""
     if not piani:
         return ["Nessun piano registrato."]
     righe = []
@@ -144,12 +164,84 @@ def _righe_casa(casa: dict) -> list[str]:
     return righe
 
 
-def _righe_notevole(casa: dict, stato: dict) -> list[str]:
-    """Cio' che e' notevole ADESSO: acceso, aperto, in allarme. Serve lo
-    stato vivo, che arriva dal chiamante -- il nucleo non lo va a cercare."""
-    aree_nome = {a["id"]: a["nome"] for a in casa.get("aree", [])}
-    area_del_dispositivo = {d["id"]: d.get("area_id") for d in casa.get("dispositivi", [])}
-    righe = []
+def _area_di_ogni_entita(piani: list[dict]) -> dict[str, str]:
+    """entity_id -> nome dell'area (o pseudo-area: "Senza area", "Aree non
+    lette", ...) che le e' stata assegnata, letta dallo STESSO albero usato
+    per "La casa". Serve a "Notevole adesso" per non ricalcolare l'area a
+    mano con una logica propria che finirebbe per divergere da quella di
+    `gerarchia()` -- e per raccontare, di un'entita' con un riferimento
+    penzolante o un registro caduto, esattamente cio' che "La casa" ne
+    direbbe, invece di lasciarla senza prefisso in silenzio."""
+    mappa = {}
+    for piano in piani:
+        for area in piano["aree"]:
+            for entita in area["entita"]:
+                mappa[entita["id"]] = area["nome"]
+    return mappa
+
+
+def _raggruppa_notevoli(voci: list[dict]) -> list[str]:
+    """Oltre `_SOGLIA_NOTEVOLE_INDIVIDUALE`, "Notevole adesso" CONTA anche
+    lei invece di elencare -- "Cucina: 3 luci (accese)" invece di tre righe
+    -- dichiarando in testa quanti elementi sono stati raggruppati, cosi'
+    non sparisce in silenzio il dettaglio individuale che il modello
+    potrebbe aspettarsi di trovare."""
+    conteggio: dict[tuple[str, str, str], int] = {}
+    ordine: list[tuple[str, str, str]] = []
+    for v in voci:
+        chiave = (v["area_nome"] or "Fuori da un'area nota", v["dominio"], v["stato_leggibile"])
+        if chiave not in conteggio:
+            ordine.append(chiave)
+        conteggio[chiave] = conteggio.get(chiave, 0) + 1
+    righe = [f"({len(voci)} elementi notevoli: raggruppati per area, dominio e stato -- "
+             f"oltre {_SOGLIA_NOTEVOLE_INDIVIDUALE} il dettaglio individuale non ci sta.)"]
+    for area_nome, dominio, stato_leggibile in ordine:
+        n = conteggio[(area_nome, dominio, stato_leggibile)]
+        righe.append(f"- {area_nome}: {n} {_nome_dominio(dominio, n)} ({stato_leggibile})")
+    return righe
+
+
+def _stato_inaffidabile(casa: dict, stato: dict, stato_affidabile: bool) -> bool:
+    """Distingue «ho guardato ed e' tutto tranquillo» da «non ho guardato»:
+    sono due cose diverse, e la Sezione 2 deve dirle diversamente (CRITICAL
+    ②). Due modi per finirci dentro:
+
+    - il chiamante lo dichiara esplicitamente (`stato_affidabile=False`) --
+      per esempio una lettura iniziata ma non ancora conclusa;
+    - lo si deduce: se in anagrafe ci sono entita' ma NESSUNA ha uno stato
+      leggibile (assente da `stato`, o "unknown" -- lo stato comunissimo di
+      un'entita' subito dopo un riavvio di Home Assistant, prima che il
+      primo aggiornamento arrivi), il nucleo non ha visto una casa tranquilla:
+      non ha visto niente.
+
+    Una casa senza entita' non ci finisce: li' "niente di notevole" e'
+    vero, non e' un silenzio -- non c'e' nulla da guardare."""
+    if not stato_affidabile:
+        return True
+    entita_attive = [e for e in casa.get("entita", []) if not e.get("disabilitata")]
+    if not entita_attive:
+        return False
+    for e in entita_attive:
+        valore = stato.get(e["id"])
+        if valore is not None and str(valore).lower() != "unknown":
+            return False
+    return True
+
+
+def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
+                    stato_inaffidabile: bool) -> list[str]:
+    """Cio' che e' notevole ADESSO: acceso, aperto, in allarme scattato.
+    Serve lo stato vivo, che arriva dal chiamante -- il nucleo non lo va a
+    cercare -- e l'albero gia' costruito da `gerarchia()` per l'area, non
+    uno ricalcolato a mano (vedi `_area_di_ogni_entita`)."""
+    if stato_inaffidabile:
+        return [
+            "Stato non letto (o dichiarato non attendibile): non si puo' dire se in "
+            "questo momento c'e' qualcosa di notevole -- non e' lo stesso di "
+            "'niente di notevole'."
+        ]
+    area_per_entita = _area_di_ogni_entita(piani)
+    voci = []
     for e in casa.get("entita", []):
         if e.get("disabilitata"):
             continue
@@ -159,13 +251,20 @@ def _righe_notevole(casa: dict, stato: dict) -> list[str]:
         valore = stato[entity_id]
         if str(valore).lower() not in _STATI_NOTEVOLI:
             continue
-        area_id = e.get("area_id") or area_del_dispositivo.get(e.get("dispositivo_id"))
-        area_nome = aree_nome.get(area_id) if area_id else None
-        prefisso = f"{area_nome}: " if area_nome else ""
-        stato_leggibile = _traduci_stato(valore, e.get("classe"))
-        righe.append(f"- {prefisso}{e.get('nome') or entity_id} ({stato_leggibile})")
-    if not righe:
-        righe.append("Niente di notevole al momento.")
+        voci.append({
+            "area_nome": area_per_entita.get(entity_id),
+            "dominio": _dominio(entity_id),
+            "stato_leggibile": _traduci_stato(valore, e.get("classe")),
+            "nome": e.get("nome") or entity_id,
+        })
+    if not voci:
+        return ["Niente di notevole al momento."]
+    if len(voci) > _SOGLIA_NOTEVOLE_INDIVIDUALE:
+        return _raggruppa_notevoli(voci)
+    righe = []
+    for v in voci:
+        prefisso = f"{v['area_nome']}: " if v["area_nome"] else ""
+        righe.append(f"- {prefisso}{v['nome']} ({v['stato_leggibile']})")
     return righe
 
 
@@ -188,11 +287,22 @@ def _righe_comportamento(comportamento: list[dict]) -> list[str]:
 
 def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     """I ricordi ENTRANO INTERI, con chi li ha detti -- l'unica eccezione
-    al "conta, non elencare" (vedi docstring del modulo)."""
+    al "conta, non elencare" (vedi docstring del modulo).
+
+    Ordinati QUI, esplicitamente, dal piu' recente al piu' vecchio (per
+    `id`, che in `ArchivioMemoria` e' AUTOINCREMENT: monotono con l'ordine
+    di scrittura). Il taglio in `componi()` toglie dalla coda dichiarando
+    "il piu' vecchio prima" -- una promessa che oggi e' vera solo perche'
+    `ArchivioMemoria.richiama()` fa gia' `ORDER BY id DESC`: se un
+    chiamante futuro passasse i ricordi in un altro ordine, si
+    scarterebbero i piu' recenti mentre l'avviso continuerebbe ad
+    affermare il contrario. Ordinando qui, la promessa la mantiene il
+    codice, non il caso con cui arrivano gli argomenti."""
     if not ricordi:
         return ["Nessun ricordo registrato."]
+    ricordi_ordinati = sorted(ricordi, key=lambda r: r.get("id", 0), reverse=True)
     righe = []
-    for r in ricordi:
+    for r in ricordi_ordinati:
         detto_da = r.get("detto_da") or "qualcuno"
         righe.append(f"- \"{r['testo']}\" (detto da {detto_da})")
     return righe
@@ -232,7 +342,8 @@ def _assembla(sezioni: list[tuple[str, list[str]]]) -> str:
 
 def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             stato: dict, tetto: int = 6000,
-            non_disponibili: tuple[str, ...] = ()) -> tuple[str, dict]:
+            non_disponibili: tuple[str, ...] = (),
+            stato_affidabile: bool = True) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -245,16 +356,29 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     hanno detto, 5) cio' che HIRIS ignora (incluso l'eventuale taglio).
 
     `non_disponibili` sono i registri dell'anagrafe che non hanno risposto
-    all'ultima lettura (`ArchivioCasa.non_disponibili()`). Senza, la sezione
-    "cio' che HIRIS ignora" non potrebbe nominare la lacuna piu' grave che
-    esista: una casa letta a meta' che il nucleo racconterebbe come una casa
-    piccola. Una casa non ancora letta non e' una casa cambiata.
+    all'ultima lettura (`ArchivioCasa.non_disponibili()`). Senza, ne' "La
+    casa" ne' "cio' che HIRIS ignora" potrebbero nominare la lacuna piu'
+    grave che esista: una casa letta a meta' che il nucleo racconterebbe
+    come una casa piccola (o senz'area) invece che come una casa non letta
+    per intero. Va passato a `gerarchia()` (tramite `_righe_casa`) E a
+    `_righe_notevole` -- attraverso lo STESSO albero, cosi' le due sezioni
+    non possono raccontarla in modo incompatibile. Una casa non ancora
+    letta non e' una casa cambiata.
 
-    Quando serve tagliare per stare sotto `tetto`, si tagliano prima i
-    conteggi meno utili (casa), poi cio' che la casa fa da sola, poi cio'
-    che e' notevole adesso, e per ultimi -- solo se resta ancora da tagliare
-    -- i ricordi: sono l'unica cosa che non si ricostruisce da Home
-    Assistant.
+    `stato_affidabile=False` dichiara esplicitamente che `stato` non ci si
+    puo' fidare (es. una lettura iniziata ma non ancora conclusa): senza un
+    modo per dirlo, il chiamante non avrebbe potuto distinguere "ho letto lo
+    stato ed e' vuoto/sospetto" da "questo e' lo stato vero". Anche senza
+    dichiararlo, il nucleo lo deduce da solo se in anagrafe ci sono entita'
+    ma nessuna ha uno stato leggibile -- vedi `_stato_inaffidabile`.
+
+    Quando serve tagliare per stare sotto `tetto`, si tagliano prima gli
+    elementi notevoli (elencati uno per uno finche' sono pochi: sono la
+    sezione piu' pesante per riga), poi cio' che la casa fa da sola, poi i
+    conteggi della casa -- i piu' economici e i piu' utili, quasi mai la
+    causa del problema, quindi fra gli ultimi a sparire -- e per ultimi in
+    assoluto -- solo se resta ancora da tagliare -- i ricordi: sono
+    l'unica cosa che non si ricostruisce da Home Assistant.
     """
     avvisi: list[str] = []
 
@@ -271,14 +395,26 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
         voce = _plurale(n, "voce di comportamento", "voci di comportamento")
         avvisi.append(f"{n} {voce} senza corpo disponibile (solo il nome): {nomi}.")
 
-    righe_casa = _righe_casa(casa)
-    righe_notevole = _righe_notevole(casa, stato)
+    # Un solo albero (`gerarchia()`, con `non_disponibili` applicato),
+    # condiviso da "La casa" e da "Notevole adesso": prima di questo fix
+    # `_righe_notevole` se ne ricalcolava uno proprio a mano, che poteva
+    # dire "Senza area" dove "La casa" -- correttamente -- diceva "Aree non
+    # lette" (CRITICAL ①).
+    piani = gerarchia(casa, non_disponibili)
+    righe_casa = _righe_casa(piani)
+
+    inaffidabile = _stato_inaffidabile(casa, stato, stato_affidabile)
+    if inaffidabile:
+        avvisi.append(
+            "lo stato delle entita' non e' stato letto, o e' stato dichiarato non "
+            "attendibile: 'Notevole adesso' qui sotto non dice che va tutto bene, "
+            "dice che non si e' potuto guardare.")
+    righe_notevole = _righe_notevole(casa, stato, piani, inaffidabile)
     righe_comportamento = _righe_comportamento(comportamento)
     righe_ricordi = _righe_ricordi(ricordi)
 
     # L'ordine di STAMPA e' fisso (vedi docstring); l'ordine di TAGLIO e'
-    # diverso -- dal meno utile (casa) al piu' prezioso (ricordi), che si
-    # tocca solo se resta ancora da tagliare dopo tutto il resto.
+    # diverso e definito piu' sotto (`ordine_taglio`).
     sez_casa = ("## La casa", righe_casa)
     sez_notevole = ("## Notevole adesso", righe_notevole)
     sez_comportamento = ("## Cio' che la casa fa gia' da sola", righe_comportamento)
@@ -286,22 +422,38 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
 
     ordine_stampa = [sez_casa, sez_notevole, sez_comportamento, sez_ricordi]
     # (chiave, righe) -- l'ordine qui e' l'ordine di taglio: dal meno utile
-    # al piu' prezioso.
-    ordine_taglio = [
-        ("casa", righe_casa),
+    # al piu' prezioso. IMPORTANT ③: prima si tagliano gli elementi
+    # notevoli (la sezione senza tetto proprio, e la piu' pesante per riga
+    # quando la casa e' grande -- vedi `_raggruppa_notevoli` per come si
+    # comprime prima ancora di arrivare qui), poi cio' che la casa fa da
+    # sola, poi -- fra le ULTIME a sparire, non fra le prime -- i conteggi
+    # della casa: e' la mappa che costa meno per riga e serve di piu' per
+    # orientarsi, quindi e' quella che deve sopravvivere piu' a lungo. I
+    # ricordi restano gli ultimissimi in assoluto.
+    #
+    # Quando lo stato e' inaffidabile, "Notevole adesso" e' UNA riga sola --
+    # la dichiarazione stessa di "non ho guardato" (CRITICAL ②). Metterla
+    # nel pool tagliabile la renderebbe la prima cosa a sparire (e' la
+    # prima del pool), il che la ricreerebbe esattamente: un silenzio non
+    # dichiarato. Resta fuori dal taglio; se il nucleo sfora lo stesso, ci
+    # pensa la rete di sicurezza sui ricordi piu' sotto.
+    ordine_taglio = []
+    if not inaffidabile:
+        ordine_taglio.append(("notevole", righe_notevole))
+    ordine_taglio += [
         ("comportamento", righe_comportamento),
-        ("notevole", righe_notevole),
+        ("casa", righe_casa),
         ("ricordi", righe_ricordi),
     ]
     # (chiave, frase singolare, frase plurale) GIA' concordate col genere
     # del sostantivo -- vedi il docstring di `_avviso_taglio`.
     etichette_taglio = [
-        ("casa", "riga di conteggio della casa non inclusa",
-                 "righe di conteggio della casa non incluse"),
-        ("comportamento", "voce di comportamento non inclusa",
-                          "voci di comportamento non incluse"),
         ("notevole", "elemento notevole non incluso",
                      "elementi notevoli non inclusi"),
+        ("comportamento", "voce di comportamento non inclusa",
+                          "voci di comportamento non incluse"),
+        ("casa", "riga di conteggio della casa non inclusa",
+                 "righe di conteggio della casa non incluse"),
         ("ricordi", "ricordo non incluso (il piu' vecchio prima)",
                     "ricordi non inclusi (i piu' vecchi prima)"),
     ]
