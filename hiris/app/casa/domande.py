@@ -101,8 +101,15 @@ def _trova_area(piani: list[dict], riferimento) -> dict | None:
     return None
 
 
-def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento) -> dict:
-    piani = gerarchia(casa)
+def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
+                 non_disponibili: tuple[str, ...] = ()) -> dict:
+    # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `gerarchia()`
+    # crede che sia andato tutto bene e un'entita' che eredita l'area dal
+    # proprio dispositivo -- col registro dispositivi caduto -- finisce in
+    # "Senza area" invece che in "Dispositivi non letti". Risultato: una
+    # cucina con cinque luci ne mostra quattro, con `esiste: True` e nessun
+    # avviso: la stessa forma di una cucina davvero piu' piccola.
+    piani = gerarchia(casa, tuple(non_disponibili))
     area = _trova_area(piani, riferimento)
     if area is None:
         return {"esiste": False, "tipo": "area", "riferimento": riferimento}
@@ -111,11 +118,16 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento) -> d
          "stato": stato.get(e["id"])}
         for e in area["entita"]
     ]
-    return {
+    # L'elenco puo' essere incompleto senza che si veda: si dichiara.
+    incompleto = sorted(set(non_disponibili) & {"aree", "dispositivi", "entita"})
+    dettaglio = {
         "esiste": True, "tipo": "area", "id": area["id"], "nome": area["nome"],
         "entita": entita,
         "ricordi": _ricordi_ancorati(ricordi, "area", riferimento),
     }
+    if incompleto:
+        dettaglio["elenco_incompleto"] = incompleto
+    return dettaglio
 
 
 def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento) -> dict:
@@ -140,13 +152,20 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento) -> dict:
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:
         return {"esiste": False, "tipo": "dispositivo", "riferimento": riferimento}
+    # Stessa ragione per cui `_guarda_entita` porta `disabilitata`: qui si
+    # legge `casa["entita"]` grezzo, fuori da `gerarchia()`, che le disabilitate
+    # le esclude. Senza dirlo, un dispositivo spento e le sue entita' morte
+    # avrebbero la stessa forma di uno che funziona.
     entita_del_dispositivo = [
-        {"id": e["id"], "nome": e.get("nome")}
+        {"id": e["id"], "nome": e.get("nome"),
+         "disabilitata": bool(e.get("disabilitata"))}
         for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento
     ]
     return {
         "esiste": True, "tipo": "dispositivo", "id": dispositivo["id"],
-        "nome": dispositivo.get("nome"), "entita": entita_del_dispositivo,
+        "nome": dispositivo.get("nome"),
+        "disabilitato": bool(dispositivo.get("disabilitato")),
+        "entita": entita_del_dispositivo,
         "ricordi": _ricordi_ancorati(ricordi, "dispositivo", riferimento),
     }
 
@@ -187,7 +206,8 @@ def _guarda_ricordo(ricordi: list[dict], riferimento) -> dict:
 
 
 def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: dict,
-           tipo: str, riferimento) -> dict:
+           tipo: str, riferimento,
+           non_disponibili: tuple[str, ...] = ()) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -203,7 +223,7 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     Assistant), non apre archivi ne' chiama la rete.
     """
     if tipo == "area":
-        return _guarda_area(casa, ricordi, stato, riferimento)
+        return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili)
     if tipo == "entita":
         return _guarda_entita(casa, ricordi, stato, riferimento)
     if tipo == "dispositivo":
