@@ -3285,6 +3285,13 @@ def create_app() -> web.Application:
     app.router.add_patch("/api/memoria/{id}", handle_patch_memoria)
     app.router.add_delete("/api/memoria/{id}", handle_delete_memoria)
 
+    # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
+    # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.
+    # Stessa forma di /api/casa e /api/memoria: nessun frontend in questo
+    # task, si guarda dal browser.
+    from .api.handlers_casa import handle_get_nucleo
+    app.router.add_get("/api/nucleo", handle_get_nucleo)
+
     return app
 
 

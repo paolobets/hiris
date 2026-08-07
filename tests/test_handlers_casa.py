@@ -9,8 +9,22 @@ il secondo modo di fare la stessa cosa che questo refactor vuole eliminare.
 import pytest
 from aiohttp import web
 
-from hiris.app.api.handlers_casa import handle_get_casa
+from hiris.app.api.handlers_casa import handle_get_casa, handle_get_nucleo
 from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.memoria.archivio import ArchivioMemoria
+
+
+class _CacheFinta:
+    """Sostituto minimo di `EntityCache` per i test: stessa forma di
+    `all_states()` (lista di dict con chiave "id", non "entity_id") e
+    stessa bandiera `loaded` che governa `inventario_leggibile()`."""
+
+    def __init__(self, stati: list[dict], *, pronta: bool = True) -> None:
+        self._stati = stati
+        self.loaded = pronta
+
+    def all_states(self) -> list[dict]:
+        return self._stati
 
 
 @pytest.mark.asyncio
@@ -135,3 +149,93 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
     # diverso da "plancia senza viste" e non va appiattito.
     assert cucina["config"] is None
     archivio.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_path):
+    """`/api/nucleo` mostra il testo ESATTO che il modello ha davanti, e il
+    riepilogo (caratteri, troncato, ricordi esclusi) e' coerente col testo."""
+    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio_casa.sostituisci({
+        "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
+        "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
+        "dispositivi": [],
+        "entita": [{"entity_id": "light.cucina", "name": "Faretti", "area_id": "cucina"}],
+        "etichette": [], "categorie": [], "integrazioni": [],
+    })
+    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
+    archivio_memoria.ricorda("d'inverno la sala la preferisco fra 19 e 20 gradi", "paolo")
+    app = web.Application()
+    app["archivio_casa"] = archivio_casa
+    app["archivio_memoria"] = archivio_memoria
+    app["entity_cache"] = _CacheFinta([{"id": "light.cucina", "state": "on"}])
+    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    client = await aiohttp_client(app)
+
+    resp = await client.get("/api/nucleo")
+    assert resp.status == 200
+    corpo = await resp.json()
+    testo = corpo["testo"]
+    riepilogo = corpo["riepilogo"]
+    assert "Cucina" in testo
+    assert "Faretti" in testo                     # accesa: e' notevole
+    assert "fra 19 e 20 gradi" in testo            # i ricordi entrano interi
+    # Il riepilogo non puo' mentire su cio' che il testo contiene davvero.
+    assert riepilogo["caratteri"] == len(testo)
+    assert riepilogo["troncato"] is False
+    assert riepilogo["ricordi_esclusi"] == 0
+    archivio_casa.chiudi()
+    archivio_memoria.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_api_nucleo_senza_archivi_non_afferma_di_sapere(aiohttp_client):
+    """Senza archivio della casa e senza inventario vivo, il nucleo deve
+    dichiarare "non ho potuto guardare" -- MAI un nucleo vuoto spacciato per
+    una casa vuota. 200 comunque: e' una lacuna dichiarata, non un guasto."""
+    app = web.Application()
+    app["archivio_casa"] = None
+    app["archivio_memoria"] = None
+    app["entity_cache"] = None
+    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    client = await aiohttp_client(app)
+
+    resp = await client.get("/api/nucleo")
+    assert resp.status == 200
+    corpo = await resp.json()
+    testo = corpo["testo"]
+    riepilogo = corpo["riepilogo"]
+    # "Notevole adesso" dice "non ho guardato", non "niente di notevole".
+    assert "non si e' potuto guardare" in testo or "non si e’ potuto guardare" in testo
+    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["avvisi"])
+
+
+@pytest.mark.asyncio
+async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp_path):
+    """Il difetto sbagliato tre volte su questo ramo: un registro caduto
+    (qui "aree") deve comparire sia nella sezione "La casa" (che NON deve
+    dire "Senza area", un'affermazione che non abbiamo il diritto di fare)
+    sia nel riepilogo -- mai inghiottito da un modulo che lo riceve e non
+    lo passa oltre."""
+    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio_casa.sostituisci({
+        "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
+        "aree": [], "dispositivi": [],
+        "entita": [{"entity_id": "light.orfana", "name": "Orfana", "area_id": None}],
+        "etichette": [], "categorie": [], "integrazioni": [],
+    }, non_disponibili=["aree"])
+    app = web.Application()
+    app["archivio_casa"] = archivio_casa
+    app["archivio_memoria"] = None
+    app["entity_cache"] = None
+    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    client = await aiohttp_client(app)
+
+    resp = await client.get("/api/nucleo")
+    assert resp.status == 200
+    corpo = await resp.json()
+    sezione_casa = corpo["testo"].split("## Notevole adesso")[0]
+    assert "Aree non lette" in sezione_casa
+    assert "Senza area" not in sezione_casa
+    assert any("aree" in a and "non hanno risposto" in a for a in corpo["riepilogo"]["avvisi"])
+    archivio_casa.chiudi()

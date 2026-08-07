@@ -16,6 +16,8 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..casa.anagrafe import gerarchia
+from ..casa.nucleo import componi
+from ..proxy.entity_cache import inventario_leggibile
 
 
 async def handle_get_casa(request: web.Request) -> web.Response:
@@ -90,3 +92,86 @@ async def handle_get_casa(request: web.Request) -> web.Response:
             "voci": archivio.plance(),
         },
     })
+
+
+async def handle_get_nucleo(request: web.Request) -> web.Response:
+    """GET /api/nucleo: il testo ESATTO che il modello ha sempre davanti, e
+    il riepilogo di quanto ne resta fuori.
+
+    Serve all'utente per capire, prima di accendere la chat, se HIRIS sta
+    guardando la casa giusta -- e a noi per la verifica dal vivo, che qui
+    e' l'unica prova che conta: `componi()` e' pura e coperta da
+    `tests/test_nucleo.py`, ma nessun test dice se QUESTA casa, letta da
+    QUESTO Home Assistant, produce un nucleo sensato.
+
+    Questo ramo ha sbagliato tre volte a propagare `non_disponibili` (i
+    registri che non hanno risposto all'ultima lettura): un modulo lo
+    riceveva e non lo passava oltre, o non lo riceveva affatto, e il
+    risultato era sempre lo stesso -- una casa letta a meta' raccontata
+    come una casa piu' piccola. Qui si prende da `archivio.non_disponibili()`,
+    esattamente come fa `handle_get_casa` qui sopra per `/api/casa`, e si
+    passa a `componi()` cosi' com'e'.
+
+    Lo stato vivo (chi e' acceso adesso) NON viene ricalcolato con una
+    strada propria: si legge dalla stessa `entity_cache` che il resto del
+    server usa (vedi `handlers_entities.handle_list_entities`,
+    `server._osserva_la_casa`), nella stessa forma (`{"id": ..., "state":
+    ...}`, non `entity_id`). `inventario_leggibile()` -- la bandiera che
+    dispatcher/ha_tools/briefing/handlers_entities gia' usano per non
+    spacciare "non ho guardato" per "va tutto bene" -- decide se quello
+    stato e' abbastanza fresco da essere dichiarato affidabile a
+    `componi()`. Senza archivio della casa (quali entita' esistono) O senza
+    un inventario vivo pronto (in che stato sono adesso), il nucleo non
+    afferma la quiete: dichiara esplicitamente `stato_affidabile=False`, e
+    "Notevole adesso" dira' "non ho potuto guardare" invece di "niente di
+    notevole" -- la stessa distinzione che `componi()` esiste per fare
+    (vedi `_stato_inaffidabile` in `casa/nucleo.py`).
+    """
+    archivio_casa = request.app.get("archivio_casa")
+    archivio_memoria = request.app.get("archivio_memoria")
+    cache = request.app.get("entity_cache")
+    # Stessa difesa di `handle_list_entities`: una cache finta senza
+    # `all_states` (o assente) non e' un inventario leggibile.
+    if cache is not None and not hasattr(cache, "all_states"):
+        cache = None
+
+    if archivio_casa is None:
+        # Difesa, non stato atteso: come in `handle_get_casa` qui sopra,
+        # in produzione questo ramo non dovrebbe mai scattare (se
+        # `_on_startup` fallisce, l'add-on non parte affatto). Senza
+        # archivio non c'e' una casa da comporre -- `componi()` riceve una
+        # casa vuota, non inventata -- ma soprattutto lo stato non puo'
+        # essere dichiarato affidabile: vedi `stato_affidabile` sotto.
+        casa: dict = {}
+        non_disponibili: tuple[str, ...] = ()
+        comportamento: list[dict] = []
+    else:
+        casa = archivio_casa.leggi()
+        non_disponibili = tuple(archivio_casa.non_disponibili())
+        comportamento = archivio_casa.comportamento()
+
+    ricordi = archivio_memoria.richiama() if archivio_memoria is not None else []
+
+    # `stato` nella forma che `componi()` vuole: entity_id -> valore grezzo.
+    # `entity_cache.all_states()` usa la chiave "id", non "entity_id" (vedi
+    # `brain.portrait.notable_state`, che documenta la stessa forma).
+    stato: dict[str, str] = {}
+    if cache is not None:
+        for e in cache.all_states():
+            entity_id = e.get("id") if isinstance(e, dict) else None
+            if entity_id:
+                stato[entity_id] = e.get("state")
+
+    # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
+    # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle
+    # due sole non basta: un archivio letto ma una cache non ancora caricata
+    # produrrebbe uno stato vuoto che "Notevole adesso" leggerebbe come
+    # "niente acceso" invece di "non ho potuto guardare".
+    stato_affidabile = archivio_casa is not None and inventario_leggibile(cache)
+
+    testo, riepilogo = componi(
+        casa, comportamento, ricordi, stato,
+        non_disponibili=non_disponibili,
+        stato_affidabile=stato_affidabile,
+    )
+    return web.json_response({"testo": testo, "riepilogo": riepilogo})
