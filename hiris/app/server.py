@@ -51,6 +51,7 @@ from .version import read_version
 from .proxy.ha_client import HAClient
 from .casa.archivio import ArchivioCasa
 from .casa.anagrafe import ricostruisci
+from .memoria.archivio import ArchivioMemoria
 from .casa.comportamento import rileggi, rileggi_plance
 from .env_util import env_bool
 from .proxy.entity_cache import EntityCache
@@ -1537,6 +1538,14 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning("prima lettura delle plance fallita: %s", exc)
     ha_client.add_plance_listener(programma_rilettura_plance(ha_client, archivio_casa))
+
+    # Task 4 SDD memoria: l'archivio della memoria vive nel suo file
+    # (memoria.db), separato da casa.db -- e' cio' che l'utente ha detto e
+    # cio' che HIRIS ne ha capito, non una REPLICA ricostruibile da HA (vedi
+    # memoria/archivio.py). Nessuna lettura iniziale da fare qui: a
+    # differenza dell'anagrafe non c'e' nulla da ricostruire all'avvio.
+    archivio_memoria = ArchivioMemoria(os.path.join(data_dir, "memoria.db"))
+    app["archivio_memoria"] = archivio_memoria
 
     engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)
@@ -3110,6 +3119,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["reasoning_queue"].close()
     if "archivio_casa" in app:
         app["archivio_casa"].chiudi()
+    if "archivio_memoria" in app:
+        app["archivio_memoria"].chiudi()
     if "task_engine" in app:
         await app["task_engine"].stop()
     await app["engine"].stop()
@@ -3263,6 +3274,16 @@ def create_app() -> web.Application:
     # ha ricostruito -- la suite verde non prova che la lettura funzioni.
     from .api.handlers_casa import handle_get_casa
     app.router.add_get("/api/casa", handle_get_casa)
+
+    # Task 4 SDD memoria: la pagina "cio' che HIRIS sa" -- la decisione (5)
+    # del progetto della memoria. Nessun frontend in questo task: si guarda
+    # dal browser come /api/casa.
+    from .api.handlers_memoria import (
+        handle_get_memoria, handle_patch_memoria, handle_delete_memoria,
+    )
+    app.router.add_get("/api/memoria", handle_get_memoria)
+    app.router.add_patch("/api/memoria/{id}", handle_patch_memoria)
+    app.router.add_delete("/api/memoria/{id}", handle_delete_memoria)
 
     return app
 
