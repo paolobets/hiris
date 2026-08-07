@@ -335,28 +335,47 @@ class DispatcherConoscenza:
         # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
         # lei (chiave "id", non "entity_id").
-        stato = self._stato_vivo()
+        stato, letto = self._stato_vivo()
         dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
                                       non_disponibili=non_disponibili,
                                       file_non_letti=file_non_letti)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
-        if isinstance(dettaglio, dict) and not inventario_leggibile(self._cache):
+        # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
+        # fine) va OR-ato con `inventario_leggibile` (cosa dichiara la
+        # cache di se stessa), non sostituito -- una cache che si dichiara
+        # `loaded` ma il cui `all_states()` solleva davvero e' comunque
+        # "non letto" qui.
+        if isinstance(dettaglio, dict) and (not letto or not inventario_leggibile(self._cache)):
             dettaglio["stato_non_letto"] = True
         return dettaglio
 
-    def _stato_vivo(self) -> dict[str, str]:
+    def _stato_vivo(self) -> tuple[dict[str, str], bool]:
+        """Lo stato vivo, e se la lettura e' andata a buon fine.
+
+        Fix E1-③: prima un guasto durante `all_states()` (non solo l'assenza
+        della cache) restituiva `{}` indistinguibile da "nessuna entita' ha
+        stato" -- e con la cache che si dichiara comunque `loaded`,
+        `inventario_leggibile()` in `_guarda` restava vero, quindi
+        `stato_non_letto` non scattava mai: ogni `stato: None` sul risultato
+        sembrava "l'entita' non ha stato" invece di "non ho potuto
+        guardare" -- proprio l'ambiguita' che quel flag esiste per
+        impedire. Restituire anche `letto` lascia a `_guarda` la stessa
+        decisione che gia' prende per `inventario_leggibile`, ma basata su
+        cio' che e' successo DAVVERO in questa lettura, non solo su cosa la
+        cache dichiara di se stessa.
+        """
         stato: dict[str, str] = {}
         if self._cache is None or not hasattr(self._cache, "all_states"):
-            return stato
+            return stato, True
         try:
             for e in self._cache.all_states():
                 entity_id = e.get("id") if isinstance(e, dict) else None
                 if entity_id:
                     stato[entity_id] = e.get("state")
         except Exception:
-            return {}
-        return stato
+            return {}, False
+        return stato, True
 
     # -- ricorda -----------------------------------------------------------
 
@@ -412,6 +431,20 @@ class DispatcherConoscenza:
         if riferimento is None:
             return {"errore": "«richiama» richiede un «riferimento»."}
         tipo = argomenti.get("tipo")
+        # Fix E1-②: un `tipo` fuori dal vocabolario delle ancore ("stanza",
+        # o "entita'" con l'accento -- plausibilissimo per un modello
+        # italiano che non lo sta copiando da uno schema) finiva silenzioso
+        # in `per_ancora(tipo, riferimento)`, che semplicemente non trova
+        # mai nulla per un tipo che nessuna ancora usa: il risultato era
+        # `{"ricordi": []}`, indistinguibile da "nessun ricordo riguarda
+        # questa cosa" -- proprio quando invece il ricordo esiste. `guarda`
+        # con un tipo ignoto almeno risponde `esiste: False`; qui si
+        # dichiara l'errore invece, cosi' un input non valido resta
+        # distinguibile da "non ti ho detto niente".
+        if tipo is not None and tipo not in _TIPI_ANCORA:
+            disponibili = ", ".join(_TIPI_ANCORA)
+            return {"errore": f"«{tipo}» non e' un tipo di ancora valido per «richiama» "
+                              f"({disponibili})."}
         tipi = (tipo,) if tipo else _TIPI_ANCORA
 
         # Il modello puo' non sapere se «cucina» e' un'area o un dispositivo

@@ -269,6 +269,40 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
 
 
 # ---------------------------------------------------------------------------
+# Fix E1-①: un archivio GUASTO (non semplicemente assente -- quello e' il
+# test sopra) non deve mai far rispondere 500 a `POST /api/chat`. Il vecchio
+# dispatcher avvolgeva OGNI fonte in un try/except con questo commento
+# esplicito: "un fallimento qui non deve mai impedire alla chat di
+# rispondere" (vedi git blame su handlers_chat.py). Diventare una fonte sola
+# (Task 3) ha fatto sparire quel commento insieme al codice, e la regola con
+# lui -- `costruisci_nucleo()` non era protetta, quindi un `casa.db` in lock
+# dopo un riavvio sporco (qui riprodotto chiudendo la connessione sotto
+# l'archivio, che e' esattamente lo stesso sqlite3.ProgrammingError di un
+# database inutilizzabile) faceva sollevare handle_chat per intero.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_un_archivio_guasto_non_fa_rispondere_500_alla_chat(aiohttp_client, tmp_path):
+    archivio_casa = _semina_casa(tmp_path)
+    archivio_casa.chiudi()  # la connessione sotto e' chiusa: ogni query solleva
+    client, mock_runner = await _build_chat_client(
+        aiohttp_client, tmp_path, archivio_casa=archivio_casa,
+    )
+
+    resp = await client.post("/api/chat", json={"message": "ciao"})
+    assert resp.status == 200  # non 500: la chat risponde comunque
+
+    context_str = mock_runner.chat.call_args.kwargs["context_str"]
+    # Il modello deve SAPERE che non ha il contesto -- non riceverne uno
+    # vuoto che scambierebbe per una casa vuota (diverso dal test sopra:
+    # qui l'archivio C'E', solo guasto, quindi non e' lo stesso testo di
+    # "nessun archivio wired").
+    assert "nucleo non si e' potuto comporre" in context_str
+    assert "Non e' una casa vuota" in context_str
+
+
+
+# ---------------------------------------------------------------------------
 # Step 1: le sessioni precedenti restano -- sono cronologia, non conoscenza,
 # quindi vivono A PARTE dal nucleo (non dentro di esso).
 # ---------------------------------------------------------------------------

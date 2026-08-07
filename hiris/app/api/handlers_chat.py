@@ -272,7 +272,38 @@ async def handle_chat(request: web.Request) -> web.Response:
     # (test_api_nucleo_senza_archivi_non_afferma_di_sapere). Un silenzio non
     # dichiarato e' indistinguibile da un'assenza di problemi: qui non puo'
     # scattare, perche' il testo che il modello legge lo dice da solo.
-    nucleo_testo, _nucleo_riepilogo = costruisci_nucleo(request.app)
+    # Fix E1-①: `costruisci_nucleo()` non e' protetta -- apre `archivio_casa`
+    # e `archivio_memoria` (SQLite) e puo' sollevare (file corrotto, o in
+    # lock dopo un riavvio sporco: sqlite3.DatabaseError/OperationalError).
+    # Il codice pre-fetta avvolgeva OGNI fonte in un try/except con questo
+    # stesso commento: "un fallimento qui non deve mai impedire alla chat di
+    # rispondere" (vedi git blame -- il blocco RAG e i dichiarati, qualche
+    # riga sopra qui in cronologia). Diventare una fonte sola ha fatto
+    # sparire quel commento insieme al codice che avvolgeva, e la regola con
+    # lui: senza questo try/except un `memoria.db` corrotto o un `casa.db`
+    # in lock fa rispondere 500 a OGNI `POST /api/chat`, dove prima -- coi
+    # quattro try/except separati -- la chat rispondeva semplicemente SENZA
+    # quella fonte. Il fallback qui sotto non e' una stringa vuota (che
+    # `if nucleo_testo:` scarterebbe zittendo la chat sul contesto, e che il
+    # modello leggerebbe come "casa vuota" invece che "guasto"): e' la
+    # stessa distinzione che il nucleo gia' fa per i registri caduti
+    # (`non_disponibili`) e per lo stato inaffidabile (`stato_non_letto`),
+    # qui applicata al caso in cui comporlo del tutto solleva invece di
+    # dichiarare.
+    try:
+        nucleo_testo, _nucleo_riepilogo = costruisci_nucleo(request.app)
+    except Exception as exc:
+        logger.warning("composizione del nucleo fallita, la chat risponde senza: %s", exc)
+        nucleo_testo = (
+            "## Cio' che HIRIS ignora\n"
+            "- il nucleo non si e' potuto comporre: un archivio della casa o "
+            "della memoria e' guasto o non leggibile in questo momento. "
+            "Nessuna delle sezioni che normalmente lo precedono (la casa, "
+            "cio' che e' notevole adesso, cio' che la casa fa da sola, cio' "
+            "che le persone hanno detto) e' disponibile in questo turno. "
+            "Non e' una casa vuota -- e' un guasto: dillo a chi ti ha "
+            "scritto, non rispondere come se conoscessi la casa."
+        )
     context_parts: list[str] = []
     if nucleo_testo:
         context_parts.append(nucleo_testo)

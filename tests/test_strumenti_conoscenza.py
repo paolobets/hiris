@@ -253,3 +253,47 @@ async def test_senza_inventario_leggibile_lo_stato_si_dichiara_non_letto(archivi
     d = DispatcherConoscenza(archivio_casa, memoria, cache=None)
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
     assert esito["stato_non_letto"] is True
+
+
+class _CacheGuastaMaDichiarataPronta:
+    """`loaded` e' True (la cache si dichiara pronta) ma `all_states()`
+    solleva -- il caso che il fix E1-③ chiude: senza di esso
+    `inventario_leggibile()` vedrebbe solo `loaded=True` e non
+    dichiarerebbe mai `stato_non_letto`, anche con la lettura vera fallita
+    e `stato: None` su tutto."""
+
+    loaded = True
+
+    def all_states(self):
+        raise RuntimeError("cache corrotta")
+
+
+@pytest.mark.asyncio
+async def test_uno_stato_vivo_che_solleva_si_dichiara_non_letto(archivio_casa, memoria):
+    """Fix E1-③: `_stato_vivo` inghiottiva l'eccezione e restituiva `{}`,
+    indistinguibile da "nessuna entita' ha stato" -- con la cache che si
+    dichiara comunque caricata, `stato_non_letto` non scattava mai."""
+    d = DispatcherConoscenza(archivio_casa, memoria, cache=_CacheGuastaMaDichiarataPronta())
+    esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
+    assert esito["stato_non_letto"] is True
+
+
+@pytest.mark.asyncio
+async def test_richiama_con_tipo_fuori_vocabolario_lo_dice(dispatcher, memoria):
+    """Fix E1-②: «richiama» con un `tipo` che non e' area/entita/dispositivo
+    restituiva `{"ricordi": []}` -- indistinguibile da "non ti ho detto
+    niente", anche quando il ricordo esiste davvero."""
+    memoria.ricorda("in cucina niente luci dopo le 23", detto_da="paolo",
+                    ancore=[{"tipo": "area", "riferimento": "cucina",
+                             "nome_visto": "cucina"}])
+    esito = await dispatcher.dispatch("richiama", {"riferimento": "cucina", "tipo": "stanza"})
+    assert "errore" in esito
+
+
+@pytest.mark.asyncio
+async def test_richiama_con_tipo_accentato_lo_dice(dispatcher):
+    """«entità» con l'accento -- plausibilissimo per un modello italiano che
+    non lo sta copiando da uno schema -- non e' lo stesso testo del
+    vocabolario vero ("entita", senza accento)."""
+    esito = await dispatcher.dispatch("richiama", {"riferimento": "cucina", "tipo": "entità"})
+    assert "errore" in esito
