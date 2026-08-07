@@ -40,6 +40,7 @@ from .archivio import ArchivioCasa
 from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
 from ..memoria.archivio import ArchivioMemoria
+from ..proxy.entity_cache import inventario_leggibile
 from ..memoria.interpretazione import valida
 from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
 
@@ -258,9 +259,15 @@ class DispatcherConoscenza:
     modello -- mai un'eccezione che gli spezza il turno.
     """
 
-    def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria) -> None:
+    def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria,
+                 cache=None) -> None:
         self._casa = archivio_casa
         self._memoria = archivio_memoria
+        # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
+        # il nucleo prende "notevole adesso": una sola fonte, un solo
+        # specchio. Sapere che una luce e' accesa e' CONOSCENZA, non
+        # azione: «conosce, non agisce» vuol dire che non SCRIVE.
+        self._cache = cache
 
     async def dispatch(self, nome: str, argomenti: dict[str, Any] | None) -> dict:
         argomenti = argomenti or {}
@@ -325,15 +332,31 @@ class DispatcherConoscenza:
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
         # recenti -- stessa scelta di `handlers_casa.handle_get_nucleo`.
         ricordi = self._memoria.richiama(limite=self._memoria.conta())
-        # `guarda()` (domande.py) e' pura e non ha una fonte di stato vivo:
-        # questa fetta collega la CONOSCENZA (anagrafe, comportamento,
-        # ricordi), non lo stato in tempo reale di Home Assistant, che resta
-        # fuori dal perimetro "conosce, non agisce" di questo modulo. Un
-        # `stato` vuoto e' onesto qui: `domande.guarda()` restituisce
-        # `stato: None` per ogni entita' invece di inventare un valore.
+        # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
+        # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
+        # lei (chiave "id", non "entity_id").
+        stato = self._stato_vivo()
+        dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
+                                      non_disponibili=non_disponibili,
+                                      file_non_letti=file_non_letti)
+        # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
+        # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
+        if isinstance(dettaglio, dict) and not inventario_leggibile(self._cache):
+            dettaglio["stato_non_letto"] = True
+        return dettaglio
+
+    def _stato_vivo(self) -> dict[str, str]:
         stato: dict[str, str] = {}
-        return _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
-                                 non_disponibili=non_disponibili, file_non_letti=file_non_letti)
+        if self._cache is None or not hasattr(self._cache, "all_states"):
+            return stato
+        try:
+            for e in self._cache.all_states():
+                entity_id = e.get("id") if isinstance(e, dict) else None
+                if entity_id:
+                    stato[entity_id] = e.get("state")
+        except Exception:
+            return {}
+        return stato
 
     # -- ricorda -----------------------------------------------------------
 

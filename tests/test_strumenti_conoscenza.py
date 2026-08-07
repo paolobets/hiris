@@ -220,3 +220,36 @@ async def test_cerca_senza_testo_non_esplode(dispatcher):
 async def test_cerca_niente_di_riconoscibile_non_e_un_errore(dispatcher):
     esito = await dispatcher.dispatch("cerca", {"testo": "xyzzy qwerty"})
     assert esito["trovati"] == []
+
+
+class _CacheFinta:
+    """La forma vera di `entity_cache`: chiave "id", non "entity_id"."""
+
+    def __init__(self, stati):
+        self._stati = stati
+
+    def all_states(self):
+        return [{"id": k, "state": v} for k, v in self._stati.items()]
+
+
+@pytest.mark.asyncio
+async def test_guarda_mostra_lo_stato_vivo(archivio_casa, memoria):
+    """Sapere che una luce e' accesa e' CONOSCENZA, non azione: «conosce, non
+    agisce» vuol dire che non SCRIVE. Prima `guarda` restituiva sempre
+    `stato: None` perche' la cache non era cablata -- onesto ma inutile."""
+    cache = _CacheFinta({"light.cucina_1": "on", "light.cucina_2": "off"})
+    d = DispatcherConoscenza(archivio_casa, memoria, cache=cache)
+    esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
+    stati = {e["id"]: e["stato"] for e in esito["entita"]}
+    assert stati["light.cucina_1"] == "on"
+    assert stati["light.cucina_2"] == "off"
+    assert "stato_non_letto" not in esito
+
+
+@pytest.mark.asyncio
+async def test_senza_inventario_leggibile_lo_stato_si_dichiara_non_letto(archivio_casa, memoria):
+    """Ogni `stato: None` sarebbe altrimenti ambiguo fra «l'entita' non ha
+    stato» e «non ho potuto guardare»."""
+    d = DispatcherConoscenza(archivio_casa, memoria, cache=None)
+    esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
+    assert esito["stato_non_letto"] is True
