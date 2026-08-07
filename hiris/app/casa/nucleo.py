@@ -231,7 +231,8 @@ def _assembla(sezioni: list[tuple[str, list[str]]]) -> str:
 
 
 def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
-            stato: dict, tetto: int = 6000) -> tuple[str, dict]:
+            stato: dict, tetto: int = 6000,
+            non_disponibili: tuple[str, ...] = ()) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -243,6 +244,12 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     adesso, 3) cio' che la casa fa gia' da sola, 4) cio' che le persone
     hanno detto, 5) cio' che HIRIS ignora (incluso l'eventuale taglio).
 
+    `non_disponibili` sono i registri dell'anagrafe che non hanno risposto
+    all'ultima lettura (`ArchivioCasa.non_disponibili()`). Senza, la sezione
+    "cio' che HIRIS ignora" non potrebbe nominare la lacuna piu' grave che
+    esista: una casa letta a meta' che il nucleo racconterebbe come una casa
+    piccola. Una casa non ancora letta non e' una casa cambiata.
+
     Quando serve tagliare per stare sotto `tetto`, si tagliano prima i
     conteggi meno utili (casa), poi cio' che la casa fa da sola, poi cio'
     che e' notevole adesso, e per ultimi -- solo se resta ancora da tagliare
@@ -250,6 +257,12 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     Assistant.
     """
     avvisi: list[str] = []
+
+    if non_disponibili:
+        avvisi.append(
+            "registri di Home Assistant che non hanno risposto all'ultima "
+            f"lettura: {', '.join(sorted(non_disponibili))}. "
+            "Cio' che manca qui sotto potrebbe esistere lo stesso.")
 
     corpi_mancanti = [v for v in comportamento if v.get("corpo") is None]
     if corpi_mancanti:

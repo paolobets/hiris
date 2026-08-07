@@ -97,3 +97,18 @@ def test_le_entita_disabilitate_non_si_contano():
          "classe": None, "unita": None, "disabilitata": 1}])
     testo, _ = componi(casa, _COMPORTAMENTO, _RICORDI, _STATO)
     assert "3 luci" not in testo                  # restano 2
+
+
+def test_un_registro_caduto_si_dichiara_nel_nucleo():
+    """La lacuna piu' grave che esista: una casa letta a meta' che il nucleo
+    racconterebbe come una casa piccola. La sezione «cio' che HIRIS ignora»
+    esiste apposta, ma senza questo parametro non poteva nominarla."""
+    testo, riepilogo = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                               non_disponibili=("aree", "dispositivi"))
+    assert "aree" in testo and "dispositivi" in testo
+    assert any("non hanno risposto" in a for a in riepilogo["avvisi"])
+
+
+def test_senza_registri_caduti_non_si_inventa_un_avviso():
+    _, riepilogo = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
+    assert not any("non hanno risposto" in a for a in riepilogo["avvisi"])
