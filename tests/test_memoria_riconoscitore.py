@@ -155,14 +155,57 @@ def test_cucinare_non_nomina_ancora_la_cucina():
     assert costruisci_indice(casa).trova("mi piace cucinare la sera") == []
 
 
-def test_le_espressioni_si_compilano_una_volta_sola():
-    """Il costo passava da 7 a 76 ms intorno alle 300 entita', perche' la cache
-    implicita di CPython ha un tetto di 512 pattern condiviso col processo."""
+def test_nome_visto_conserva_il_testo_originale():
+    """`nome_visto` e' cio' che l'utente ha scritto, non il testo
+    normalizzato su cui si cerca -- oggi non morde perche' nessuno lo
+    archivia, ma nella fetta E sarebbe gia' una riscrittura silenziosa
+    (memoria/archivio.py, regola 1: il testo e' la verita')."""
+    casa = _casa_con_aree([{"id": "camera_niccolo", "nome": "Camera di Niccolo'", "alias": []}])
+    indice = costruisci_indice(casa)
+
+    trovate = indice.trova("nella Camera di Niccolo' fa freddo")
+    assert len(trovate) == 1
+    assert trovate[0]["nome_visto"] == "Camera di Niccolo'"
+
+
+def test_nome_visto_sopravvive_a_spazi_multipli():
+    """La compressione degli spazi multipli nel testo normalizzato sposta le
+    posizioni: `nome_visto` deve comunque recuperare lo spezzone giusto del
+    testo originale, spazi doppi compresi."""
+    casa = _casa_con_aree([{"id": "sala_pranzo", "nome": "Sala da pranzo", "alias": []}])
+    indice = costruisci_indice(casa)
+
+    trovate = indice.trova("nella sala  da   pranzo fa freddo")
+    assert len(trovate) == 1
+    assert trovate[0]["nome_visto"] == "sala  da   pranzo"
+
+
+def test_le_espressioni_non_si_compilano_prima_del_primo_trova():
+    """`costruisci_indice()` gira a ogni GET/PATCH di /api/memoria, ma quelle
+    rotte usano solo `verifica()` -- un accesso a dizionario. Compilare i
+    pattern li' sarebbe lavoro morto (misurato: 16,8 ms a 380 voci): si
+    compila pigri, alla prima trova()."""
     casa = _casa_con_aree([{"id": "bagno_terra", "nome": "Bagno (piano terra)", "alias": []}])
     indice = costruisci_indice(casa)
-    # verifica strutturale: dopo costruisci_indice le espressioni esistono
-    # gia' come re.Pattern, non come stringhe da compilare a ogni trova().
-    assert indice._termini
-    for candidati, pattern in indice._termini:
-        assert candidati
-        assert isinstance(pattern, re.Pattern)
+    assert indice._termini_compilati is None
+
+
+def test_le_espressioni_si_compilano_una_volta_sola():
+    """Il costo passava da 7 a 76 ms intorno alle 300 entita', perche' la
+    cache implicita di CPython ha un tetto di 512 pattern condiviso col
+    processo. Un controllo puramente strutturale ("esistono dei
+    re.Pattern?") passerebbe anche se trova() li ricompilasse a ogni
+    chiamata: qui si prova che gli OGGETTI pattern restano gli STESSI fra
+    due chiamate di trova(), non solo che qualche pattern esiste."""
+    casa = _casa_con_aree([{"id": "bagno_terra", "nome": "Bagno (piano terra)", "alias": []}])
+    indice = costruisci_indice(casa)
+
+    indice.trova("il bagno (piano terra) e' freddo")
+    prima = indice._termini()
+    assert prima
+    assert all(isinstance(pattern, re.Pattern) for _, pattern in prima)
+
+    indice.trova("un'altra frase qualsiasi, per chiamare trova() una seconda volta")
+    seconda = indice._termini()
+
+    assert [id(pattern) for _, pattern in prima] == [id(pattern) for _, pattern in seconda]

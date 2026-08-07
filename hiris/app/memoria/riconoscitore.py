@@ -39,6 +39,13 @@ import unicodedata
 # con cui si cerca qui.
 _ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo"))
 
+# Stessa mappa di _ARCHIVI, capovolta: dato il tipo di un'ancora, la chiave
+# del registro che l'anagrafe usa per quel tipo. Pubblica perche' serve a chi
+# deve sapere se QUEL registro specifico ha risposto all'ultima lettura
+# (`ArchivioCasa.non_disponibili()`), non solo se l'anagrafe intera e' stata
+# letta -- vedi handlers_memoria.py.
+CHIAVE_ARCHIVIO_PER_TIPO: dict[str, str] = {tipo: chiave for chiave, tipo in _ARCHIVI}
+
 
 def _normalizza(testo: str) -> str:
     """Minuscole, accenti tolti, spazi multipli compressi.
@@ -50,6 +57,52 @@ def _normalizza(testo: str) -> str:
     decomposto = unicodedata.normalize("NFKD", testo)
     senza_accenti = "".join(c for c in decomposto if not unicodedata.combining(c))
     return re.sub(r"\s+", " ", senza_accenti).strip()
+
+
+def _normalizza_con_mappa(testo: str) -> tuple[str, list[int]]:
+    """Come `_normalizza`, ma restituisce anche la mappa posizione
+    normalizzata -> posizione originale.
+
+    `trova()` cerca sul testo normalizzato, ma `nome_visto` deve restare
+    cio' che l'utente ha scritto davvero (maiuscole, accenti, spaziatura),
+    non il testo normalizzato: oggi non morde perche' nessuno lo archivia,
+    ma nella fetta E sarebbe gia' una riscrittura silenziosa di cio' che
+    l'utente ha detto -- e il testo e' la verita' (memoria/archivio.py,
+    regola 1).
+
+    Minuscolo e NFKD-senza-combinanti sono, carattere per carattere, quasi
+    sempre 1:1; la compressione degli spazi multipli invece sposta le
+    posizioni, quindi va tracciata esplicitamente invece di essere assunta.
+    """
+    minuscolo = testo.lower()
+    grezzo: list[str] = []
+    mappa_grezza: list[int] = []
+    for indice_originale, carattere in enumerate(minuscolo):
+        decomposto = unicodedata.normalize("NFKD", carattere)
+        for c in decomposto:
+            if unicodedata.combining(c):
+                continue
+            grezzo.append(c)
+            mappa_grezza.append(indice_originale)
+
+    normalizzato: list[str] = []
+    mappa: list[int] = []
+    spazio_precedente = True  # tronca anche gli spazi iniziali, come .strip()
+    for c, indice_originale in zip(grezzo, mappa_grezza):
+        if re.match(r"\s", c):
+            if spazio_precedente:
+                continue
+            spazio_precedente = True
+            normalizzato.append(" ")
+            mappa.append(indice_originale)
+        else:
+            spazio_precedente = False
+            normalizzato.append(c)
+            mappa.append(indice_originale)
+    while normalizzato and normalizzato[-1] == " ":
+        normalizzato.pop()
+        mappa.pop()
+    return "".join(normalizzato), mappa
 
 
 def _e_carattere_di_parola(carattere: str) -> bool:
@@ -81,18 +134,29 @@ class Indice:
     def __init__(self, termini: dict[str, list[tuple[str, str]]],
                  per_tipo: dict[str, dict[str, dict]]) -> None:
         # I termini piu' lunghi vincono e consumano il testo, cosi' "sala da
-        # pranzo" non collassa su "sala": l'ordine e' deciso una volta sola
-        # qui, non a ogni chiamata di trova(). Le espressioni si compilano
-        # qui una volta sola (non dentro trova()): l'indice e' gia' l'unico
-        # posto in cui questo costo va pagato. Un testo normalizzato che piu'
+        # pranzo" non collassa su "sala": l'ordine e' deciso una volta sola,
+        # non a ogni chiamata di trova(). Un testo normalizzato che piu'
         # voci condividono (due aree omonime, un alias che collide col nome
         # di un'altra) non viene deciso qui: resta un unico termine con piu'
         # candidati, ed e' trova() a dichiararlo, non a sceglierne uno.
-        self._termini = [
-            (candidati, _compila(termine))
-            for termine, candidati in sorted(termini.items(), key=lambda kv: len(kv[0]), reverse=True)
-        ]
+        #
+        # Le espressioni pero' NON si compilano qui: costruisci_indice()
+        # gira a ogni GET/PATCH di /api/memoria (handlers_memoria.py), ma
+        # quelle rotte usano solo verifica() -- un accesso a dizionario.
+        # Compilare un pattern per termine per una richiesta che non chiama
+        # mai trova() e' lavoro morto (misurato: 16,8 ms a 380 voci). Si
+        # compila pigri, alla prima trova(), e resta cache per la vita di
+        # questo Indice.
+        self._termini_grezzi = sorted(termini.items(), key=lambda kv: len(kv[0]), reverse=True)
+        self._termini_compilati: list[tuple[list[tuple[str, str]], re.Pattern[str]]] | None = None
         self._per_tipo = per_tipo
+
+    def _termini(self) -> list[tuple[list[tuple[str, str]], re.Pattern[str]]]:
+        if self._termini_compilati is None:
+            self._termini_compilati = [
+                (candidati, _compila(termine)) for termine, candidati in self._termini_grezzi
+            ]
+        return self._termini_compilati
 
     def trova(self, frase: str) -> list[dict]:
         """I riferimenti riconosciuti in `frase`, sui confini di parola.
@@ -107,21 +171,29 @@ class Indice:
         quando sono piu' di una. Non c'e' un "il" riferimento: un testo che
         piu' voci condividono e' ambiguo per costruzione, e questo modulo
         non sceglie al posto del modello o dell'utente.
+
+        `nome_visto` e' il testo ORIGINALE (maiuscole, accenti, spaziatura
+        di chi ha scritto la frase), non il testo normalizzato su cui si
+        cerca: il testo e' la verita' (memoria/archivio.py, regola 1), e
+        vale anche per il frammento riconosciuto, non solo per la frase
+        intera.
         """
-        normalizzata = _normalizza(frase)
+        normalizzata, mappa = _normalizza_con_mappa(frase)
         if not normalizzata:
             return []
 
         intervalli_occupati: list[tuple[int, int]] = []
         trovate: list[tuple[int, dict]] = []
-        for candidati, pattern in self._termini:
+        for candidati, pattern in self._termini():
             for m in pattern.finditer(normalizzata):
                 inizio, fine = m.span()
                 if any(inizio < f and i < fine for i, f in intervalli_occupati):
                     continue
                 intervalli_occupati.append((inizio, fine))
+                inizio_originale = mappa[inizio]
+                fine_originale = mappa[fine - 1] + 1
                 trovate.append((inizio, {
-                    "nome_visto": normalizzata[inizio:fine],
+                    "nome_visto": frase[inizio_originale:fine_originale],
                     "candidati": [{"tipo": tipo, "riferimento": riferimento}
                                   for tipo, riferimento in candidati],
                     "ambiguo": len(candidati) > 1,

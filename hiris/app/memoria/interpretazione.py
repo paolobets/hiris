@@ -56,7 +56,8 @@ VOCABOLARIO: dict[str, frozenset[str]] = {
 }
 
 
-def valida(interpretazione: dict, indice) -> tuple[dict, list[str]]:
+def valida(interpretazione: dict, indice,
+           tipi_non_verificabili: frozenset[str] = frozenset()) -> tuple[dict, list[str]]:
     """Ripulisce un'interpretazione proposta dal modello, contro il
     vocabolario chiuso e l'anagrafe di `indice`.
 
@@ -66,6 +67,16 @@ def valida(interpretazione: dict, indice) -> tuple[dict, list[str]]:
     parziale: un'interpretazione a meta' e' legittima (Regola 3 -- "mi
     piace il caffe'" non ha ne' ancore ne' condizioni, e non e' un errore).
     `problemi` e' vuota solo se davvero non c'era nulla da scartare.
+
+    `tipi_non_verificabili` (default vuoto, per non rompere chi chiama con
+    due soli argomenti) sono i tipi di ancora (`area`/`entita`/`dispositivo`)
+    per cui `indice` non puo' dare una risposta affidabile -- l'anagrafe non
+    e' mai stata letta, o quel registro specifico non ha risposto
+    all'ultima lettura (`ArchivioCasa.non_disponibili()`). Restano
+    scartate lo stesso (fail-closed: un'ancora senza riscontro non si
+    scrive), ma con la ragione vera -- "non si puo' verificare", non "non
+    esiste", che sarebbe falso quando semplicemente non si e' potuto
+    guardare.
     """
     problemi: list[str] = []
 
@@ -73,9 +84,10 @@ def valida(interpretazione: dict, indice) -> tuple[dict, list[str]]:
     grandezza = interpretazione.get("grandezza")
     minimo, massimo = _valida_intervallo(
         interpretazione.get("minimo"), interpretazione.get("massimo"), problemi)
-    ancore = _valida_ancore(interpretazione.get("ancore") or [], indice, problemi)
+    ancore = _valida_ancore(interpretazione.get("ancore") or [], indice,
+                             tipi_non_verificabili, problemi)
     condizioni = _valida_condizioni(interpretazione.get("condizioni") or [], problemi)
-    unita = _deduci_unita(ancore, grandezza, indice)
+    unita = deduci_unita(ancore, grandezza, indice)
 
     pulita = {
         "forza": forza,
@@ -125,11 +137,18 @@ def _valida_intervallo(minimo, massimo, problemi: list[str]) -> tuple[float | No
     return minimo, massimo
 
 
-def _valida_ancore(ancore, indice, problemi: list[str]) -> list[dict]:
+def _valida_ancore(ancore, indice, tipi_non_verificabili: frozenset[str],
+                    problemi: list[str]) -> list[dict]:
     """Ogni ancora deve avere un tipo del vocabolario ED esistere
     nell'anagrafe -- le due condizioni sono indipendenti e vengono
     dichiarate separatamente, cosi' il problema dice davvero cosa non ha
-    funzionato invece di un generico "ancora non valida"."""
+    funzionato invece di un generico "ancora non valida".
+
+    Un terzo caso, distinto da entrambi: il tipo e' valido ma non si puo'
+    nemmeno controllare (`tipi_non_verificabili` -- l'anagrafe non e' mai
+    stata letta, o quel registro non ha risposto). Si scarta comunque
+    (fail-closed), ma dirlo come "non esiste" sarebbe falso: si dice "non
+    si puo' verificare"."""
     pulite: list[dict] = []
     for ancora in ancore:
         tipo = ancora.get("tipo")
@@ -140,6 +159,12 @@ def _valida_ancore(ancore, indice, problemi: list[str]) -> list[dict]:
             problemi.append(
                 f"ancora «{etichetta}» ha un tipo («{tipo}») fuori dal vocabolario "
                 f"({', '.join(sorted(VOCABOLARIO['ancore']))}) -- scartata")
+            continue
+        if tipo in tipi_non_verificabili:
+            problemi.append(
+                f"ancora {tipo} «{etichetta}» non si puo' verificare: l'anagrafe della casa "
+                f"non e' disponibile -- scartata (un'ancora che non si puo' controllare "
+                f"non si scrive)")
             continue
         if riferimento is None or indice.verifica(tipo, riferimento) is None:
             problemi.append(
@@ -155,20 +180,29 @@ def _valida_condizioni(condizioni, problemi: list[str]) -> list[dict]:
     """`valore` non ha un vocabolario chiuso qui: e' il modello che lo
     riempie con cio' che Home Assistant intende per quella condizione
     (es. `sole: tramontato`), e la traduzione in automazione verifica il
-    resto. Qui si restringe solo il `tipo` della condizione."""
+    resto. Qui si restringe il `tipo` della condizione, e si richiede che
+    `valore` ci sia: la colonna `condizioni.valore` e' `NOT NULL`
+    (memoria/archivio.py), quindi una condizione senza valore che
+    superasse questo cancello finirebbe a spaccare la scrittura con un
+    `IntegrityError` invece di essere scartata e dichiarata qui -- ed e'
+    esattamente il silenzio che questo cancello esiste per evitare."""
     pulite: list[dict] = []
     for condizione in condizioni:
         tipo = condizione.get("tipo")
+        valore = condizione.get("valore")
         if tipo not in VOCABOLARIO["condizioni"]:
             problemi.append(
                 f"condizione «{tipo}» non e' nel vocabolario "
                 f"({', '.join(sorted(VOCABOLARIO['condizioni']))}) -- scartata")
             continue
-        pulite.append({"tipo": tipo, "valore": condizione.get("valore")})
+        if valore is None:
+            problemi.append(f"condizione «{tipo}» senza valore -- scartata")
+            continue
+        pulite.append({"tipo": tipo, "valore": valore})
     return pulite
 
 
-def _deduci_unita(ancore: list[dict], grandezza, indice) -> str | None:
+def deduci_unita(ancore: list[dict], grandezza, indice) -> str | None:
     """L'unita' non si chiede al modello, si deduce da cio' che l'anagrafe
     gia' sa:
 

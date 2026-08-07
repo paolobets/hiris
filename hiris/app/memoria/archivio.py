@@ -123,9 +123,14 @@ class ArchivioMemoria:
             "SELECT * FROM ricordi ORDER BY id DESC LIMIT ?", (limite,)).fetchall()
         return [self._componi(dict(r)) for r in righe]
 
-    def per_ancora(self, riferimento: str) -> list[dict]:
-        """I ricordi ancorati a `riferimento` (un'area, un'entita', un
-        dispositivo), i piu' recenti prima.
+    def per_ancora(self, tipo: str, riferimento: str) -> list[dict]:
+        """I ricordi ancorati a `riferimento` con quel `tipo` (un'area,
+        un'entita', un dispositivo), i piu' recenti prima.
+
+        Il contratto di un'ancora e' la COPPIA tipo+riferimento (stessa
+        forma di `Indice.verifica()` in riconoscitore.py): un `riferimento`
+        da solo non basta, o un'entita' e un'area con lo stesso id
+        letterale (capita raramente, ma capita) si mescolerebbero.
 
         E' il punto per cui le ancore esistono: senza un modo per chiedere
         "quali preferenze riguardano la sala da pranzo?", un'ancora sarebbe
@@ -134,10 +139,32 @@ class ArchivioMemoria:
         righe = self._conn.execute(
             "SELECT DISTINCT r.* FROM ricordi r "
             "JOIN ancore a ON a.ricordo_id = r.id "
-            "WHERE a.riferimento = ? ORDER BY r.id DESC", (riferimento,)).fetchall()
+            "WHERE a.tipo = ? AND a.riferimento = ? ORDER BY r.id DESC",
+            (tipo, riferimento)).fetchall()
         return [self._componi(dict(r)) for r in righe]
 
-    def correggi(self, id: int, **campi) -> None:
+    def ottieni(self, id: int) -> dict | None:
+        """Un ricordo per id, con ancore e condizioni gia' risolte, o
+        `None` se non esiste.
+
+        Serve a chi deve leggere lo stato ARCHIVIATO prima di scrivere una
+        correzione parziale -- handlers_memoria.py verifica la coerenza di
+        un intervallo (minimo/massimo) contro il valore gia' archiviato
+        quando la richiesta ne tocca solo meta', non contro `None`.
+        """
+        riga = self._conn.execute("SELECT * FROM ricordi WHERE id = ?", (id,)).fetchone()
+        return self._componi(dict(riga)) if riga else None
+
+    def conta(self) -> int:
+        """Quanti ricordi ci sono in tutto -- non solo i `limite` che
+        `richiama()` restituisce. La memoria non evapora (regola del
+        modulo): oltre `limite` voci restano vere e proprio invisibili
+        senza questo numero, e un ricordo invisibile e' indistinguibile
+        da uno cancellato."""
+        riga = self._conn.execute("SELECT COUNT(*) AS n FROM ricordi").fetchone()
+        return riga["n"]
+
+    def correggi(self, id: int, **campi) -> bool:
         """Corregge l'interpretazione di un ricordo -- mai il testo.
 
         `campi` puo' contenere colonne scalari di `ricordi` (`forza`,
@@ -147,6 +174,18 @@ class ArchivioMemoria:
         aprirebbe una classe di derive silenziose). Alza sempre
         `corretto_da_utente`, anche se si corregge solo `ancore` o
         `condizioni`: e' comunque HIRIS che aveva interpretato male.
+
+        Restituisce `True` se `id` esisteva ed e' stato corretto, `False`
+        se non esisteva -- il chiamante DEVE poterlo distinguere da un
+        successo (handlers_memoria.py risponde 404, non 200 `ok: true`:
+        un `PATCH` su un id sparito non e' andato a buon fine solo perche'
+        la UPDATE non ha sollevato). L'UPDATE su `ricordi` gira SEMPRE,
+        anche quando `campi` e' vuoto (il ramo `else` sotto), proprio
+        perche' e' l'unico punto che tocca la tabella genitrice e puo'
+        quindi controllare `rowcount` prima di scrivere ancore/condizioni:
+        se `id` non esiste, la INSERT in `ancore` violerebbe la chiave
+        esterna con un `IntegrityError` non gestito invece di un rifiuto
+        pulito -- controllare qui prima evita anche quello.
         """
         ancore = campi.pop("ancore", None)
         condizioni = campi.pop("condizioni", None)
@@ -159,10 +198,14 @@ class ArchivioMemoria:
             c.execute("BEGIN")
             assegnazioni = ", ".join(f"{colonna} = ?" for colonna in campi)
             if assegnazioni:
-                c.execute(f"UPDATE ricordi SET {assegnazioni}, corretto_da_utente = 1 "
-                          f"WHERE id = ?", (*campi.values(), id))
+                cursore = c.execute(f"UPDATE ricordi SET {assegnazioni}, corretto_da_utente = 1 "
+                                     f"WHERE id = ?", (*campi.values(), id))
             else:
-                c.execute("UPDATE ricordi SET corretto_da_utente = 1 WHERE id = ?", (id,))
+                cursore = c.execute(
+                    "UPDATE ricordi SET corretto_da_utente = 1 WHERE id = ?", (id,))
+            if cursore.rowcount == 0:
+                c.rollback()
+                return False
             if ancore is not None:
                 c.execute("DELETE FROM ancore WHERE ricordo_id = ?", (id,))
                 self._scrivi_ancore(id, ancore)
@@ -170,6 +213,7 @@ class ArchivioMemoria:
                 c.execute("DELETE FROM condizioni WHERE ricordo_id = ?", (id,))
                 self._scrivi_condizioni(id, condizioni)
             c.commit()
+            return True
         except Exception:
             c.rollback()
             raise

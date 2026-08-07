@@ -47,7 +47,7 @@ def test_si_trovano_i_ricordi_di_una_parte_della_casa(memoria):
                     ancore=[{"tipo": "area", "riferimento": "sala_pranzo", "nome_visto": "sala"}])
     memoria.ricorda("in cucina niente luci dopo le 23", detto_da="paolo",
                     ancore=[{"tipo": "area", "riferimento": "cucina", "nome_visto": "cucina"}])
-    assert [r["testo"] for r in memoria.per_ancora("sala_pranzo")] == [_FRASE]
+    assert [r["testo"] for r in memoria.per_ancora("area", "sala_pranzo")] == [_FRASE]
 
 
 def test_correggere_l_interpretazione_non_tocca_il_testo(memoria):
@@ -78,16 +78,72 @@ def test_dimenticare_toglie_anche_ancore_e_condizioni(memoria):
                             condizioni=[{"tipo": "stagione", "valore": "inverno"}])
     memoria.dimentica(ident)
     assert memoria.richiama() == []
-    assert memoria.per_ancora("sala_pranzo") == []
+    assert memoria.per_ancora("area", "sala_pranzo") == []
 
 
 def test_la_memoria_non_evapora(memoria):
     """Contratto §1: niente scadenza. Non esiste nessun campo che la faccia
-    sparire, e questo test esiste perche' nella 1.x c'era e ha fatto danni."""
+    sparire, e questo test esiste perche' nella 1.x c'era e ha fatto danni.
+
+    Negare due nomi di colonna esatti (`valid_until`, `scade_il`) lo
+    lascerebbe passare una terza colonna di scadenza con un altro nome
+    (`expires_at`, per esempio): qui si nega qualunque colonna il cui nome
+    SUGGERISCA una scadenza, non solo le due gia' viste."""
     memoria.ricorda("una cosa vecchissima", detto_da="paolo")
     colonne = {r[1] for r in memoria._conn.execute("PRAGMA table_info(ricordi)")}
-    assert "valid_until" not in colonne and "scade_il" not in colonne
+    parole_di_scadenza = ("scad", "expir", "ttl", "valid_until", "valid_from", "valid_to")
+    sospette = {c for c in colonne if any(p in c.lower() for p in parole_di_scadenza)}
+    assert not sospette, f"colonna che sa di scadenza: {sospette}"
     assert len(memoria.richiama()) == 1
+
+
+def test_correggere_un_id_inesistente_dice_di_no(memoria):
+    """`correggi()` deve poter distinguere "ho corretto" da "non c'era
+    niente da correggere": il chiamante (handlers_memoria.py) risponde 404
+    su questo `False`, non 200 `ok: true` su un ricordo che non esiste."""
+    assert memoria.correggi(9999, forza="preferenza") is False
+
+
+def test_correggere_un_id_esistente_dice_di_si(memoria):
+    ident = memoria.ricorda("mi piace il caffe'", detto_da="paolo")
+    assert memoria.correggi(ident, forza="preferenza") is True
+
+
+def test_ottieni_un_id_inesistente_e_none(memoria):
+    assert memoria.ottieni(9999) is None
+
+
+def test_ottieni_restituisce_il_ricordo_intero(memoria):
+    ident = memoria.ricorda(_FRASE, detto_da="paolo",
+                            ancore=[{"tipo": "area", "riferimento": "sala_pranzo",
+                                     "nome_visto": "sala"}],
+                            forza="fatto", minimo=19.0, massimo=20.0)
+    r = memoria.ottieni(ident)
+    assert r["testo"] == _FRASE
+    assert r["forza"] == "fatto"
+    assert (r["minimo"], r["massimo"]) == (19.0, 20.0)
+    assert [a["riferimento"] for a in r["ancore"]] == ["sala_pranzo"]
+
+
+def test_conta_i_ricordi(memoria):
+    assert memoria.conta() == 0
+    memoria.ricorda("prima", detto_da="paolo")
+    memoria.ricorda("seconda", detto_da="paolo")
+    assert memoria.conta() == 2
+    assert memoria.conta() == len(memoria.richiama(limite=200))
+
+
+def test_per_ancora_distingue_il_tipo(memoria):
+    """Il contratto di un'ancora e' la coppia tipo+riferimento (stessa
+    forma di `Indice.verifica()`): un riferimento identico con tipo
+    diverso (un'entita' e un'area con lo stesso id letterale) non deve
+    mescolarsi."""
+    memoria.ricorda("preferenza sull'area", detto_da="paolo",
+                    ancore=[{"tipo": "area", "riferimento": "x", "nome_visto": "x"}])
+    memoria.ricorda("preferenza sull'entita'", detto_da="paolo",
+                    ancore=[{"tipo": "entita", "riferimento": "x", "nome_visto": "x"}])
+    assert [r["testo"] for r in memoria.per_ancora("area", "x")] == ["preferenza sull'area"]
+    assert [r["testo"] for r in memoria.per_ancora("entita", "x")] == ["preferenza sull'entita'"]
 
 
 def test_un_salvataggio_a_meta_non_lascia_un_ricordo_monco(memoria):

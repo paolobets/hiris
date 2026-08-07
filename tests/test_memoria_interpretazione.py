@@ -66,6 +66,30 @@ def test_un_intervallo_rovesciato_si_raddrizza(indice):
     assert problemi
 
 
+def test_una_condizione_senza_valore_si_scarta_e_si_dichiara(indice):
+    """`condizioni.valore` e' `NOT NULL` in archivio (memoria/archivio.py):
+    una condizione senza valore che superasse il cancello spaccherebbe la
+    scrittura con un IntegrityError invece di essere scartata qui, dove il
+    problema si puo' ancora dichiarare a chi legge."""
+    pulita, problemi = valida({"condizioni": [{"tipo": "ora"}]}, indice)
+    assert pulita["condizioni"] == []
+    assert any("ora" in p and "valore" in p for p in problemi)
+
+
+def test_un_ancora_non_verificabile_si_scarta_con_la_ragione_vera(indice):
+    """Quando il tipo dell'ancora e' fra quelli che non si possono
+    controllare (anagrafe non letta, o quel registro non ha risposto), il
+    problema deve dire "non si puo' verificare", non "non esiste" -- sono
+    due fatti diversi, e il secondo e' falso quando non si e' potuto
+    nemmeno guardare."""
+    pulita, problemi = valida(
+        {"ancore": [{"tipo": "area", "riferimento": "sala_pranzo", "nome_visto": "sala"}]},
+        indice, frozenset({"area"}))
+    assert pulita["ancore"] == []
+    assert any("non si puo' verificare" in p for p in problemi)
+    assert not any("non esiste nell'anagrafe" in p for p in problemi)
+
+
 def test_il_vocabolario_e_chiuso():
     """Se domani qualcuno aggiunge una casella, questo test lo fa sapere:
     un vocabolario che cresce in silenzio smette di essere compilabile bene."""
