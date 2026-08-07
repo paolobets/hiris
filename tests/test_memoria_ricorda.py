@@ -7,8 +7,10 @@ tests/test_base_prompt_memoria.py), the two tools became one (Task 2,
 tests/test_knowledge_tools.py + tests/test_memory_alias_unified.py), memory
 stopped being scoped to a single chatbot (Task 3,
 tests/test_knowledge_store_chatbot.py), what a person declares always enters
-context (Task 4, tests/test_declared_block_chat.py +
-tests/test_declared_block_reasoner.py), and memory stopped expiring (Task 6,
+context (Task 4, formerly tests/test_declared_block_chat.py -- retired for
+the chat surface by Task 3 of the "nucleo alla chat" slice, 2.0, see the
+note on Test 1 below -- + tests/test_declared_block_reasoner.py, which is
+untouched), and memory stopped expiring (Task 6,
 tests/test_memory_alias_unified.py + tests/test_knowledge_store.py). None of
 those checked the whole chain end to end, with the REAL default-install
 embedder, the way a real conversation would actually exercise it. That is
@@ -25,14 +27,12 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from hiris.app.backends.embeddings import NullEmbedder
 from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.brain.reasoner_memory import relevant_memory
 from hiris.app.chat_store import close_all_stores
-from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot, ChatbotEngine
-from hiris.app.server import _reason_memory_context, create_app
+from hiris.app.server import _reason_memory_context
 from hiris.app.tools.dispatcher import ToolDispatcher
 from hiris.app.watcher.reasoner import build_user_message
 from hiris.app.watcher.signals import WakeEvent
@@ -81,66 +81,33 @@ def _declared_section(msg: str) -> str:
     return rest if end == -1 else rest[:end]
 
 
-async def _build_chat_client(aiohttp_client, tmp_path, *, store, embedder):
-    """Real aiohttp app via create_app(), same wiring convention established
-    by tests/test_memoria_affiora_senza_embedder.py and
-    tests/test_declared_block_chat.py: goes through the real HTTP route
-    (/api/chat -> handlers_chat.handle_chat), reading context_str off the
-    mocked runner.chat() call -- exactly what the real handler hands to the
-    LLM, not a value read back from the store."""
-    app = create_app()
-
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
-
-    mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="ok")
-    mock_runner.last_tool_calls = []
-    engine.set_claude_runner(mock_runner)
-
-    app["ha_client"] = mock_ha
-    app["engine"] = engine
-    app["claude_runner"] = mock_runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    app["knowledge_store"] = store
-    app["embedding_provider"] = embedder
-    app.on_startup.clear()
-    app.on_cleanup.clear()
-
-    client = await aiohttp_client(app)
-    return client, mock_runner
-
-
 # ---------------------------------------------------------------------------
 # Test 1 -- the whole promise, in one test.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_the_whole_slice_end_to_end_with_real_null_embedder(aiohttp_client, tmp_path):
+async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
     """One test, traversing the whole slice with the real NullEmbedder:
 
     1. a preference is saved with the single save tool, WITHOUT any approval
        step;
     2. it is recallable while talking to a DIFFERENT chatbot than the one
        that saved it;
-    3. it appears ON ITS OWN in the chat context of a later turn -- nobody
-       searched for it, and the question is unrelated;
-    4. it appears in the proactive reasoner's context too;
-    5. an insight sitting in the same store does NOT appear in the declared
-       block, on either surface.
+    3. it appears in the proactive reasoner's context too;
+    4. an insight sitting in the same store does NOT appear in the declared
+       block.
+
+    A step used to sit here between (2) and (3): "it appears ON ITS OWN in
+    the chat context of a later turn". Task 3 of the "nucleo alla chat"
+    slice (.superpowers/sdd/task-3-brief.md, 2.0) retired that path --
+    `handle_chat` no longer calls `KnowledgeStore.declared()`/`.search()` at
+    all, its context comes from the nucleo (`casa/nucleo.py`) instead. The
+    step was removed rather than repointed: "a person's declared fact
+    always enters context, unsearched" is still true and still tested (this
+    file's own Step 3 below, via the reasoner; the chat surface's OWN
+    equivalent claim -- "the nucleo degrades honestly when it can't be
+    composed" -- is covered by tests/test_chat_al_nucleo.py, a genuinely
+    different contract, not a repointed copy of this one).
     """
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     embedder = NullEmbedder()
@@ -178,22 +145,7 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(aiohttp_client
         "parlando con chatbot-b: la memoria e' di HIRIS, non del chatbot"
     )
 
-    # --- Step 3: appears ON ITS OWN in the chat context, unsearched -------
-    client, mock_runner = await _build_chat_client(
-        aiohttp_client, tmp_path, store=store, embedder=embedder,
-    )
-    resp = await client.post("/api/chat", json={"message": "che ore sono?"})
-    assert resp.status == 200
-    context_str = mock_runner.chat.call_args.kwargs["context_str"]
-    assert "## Fatti dichiarati" in context_str
-    assert PREF_TEXT in context_str
-    # The insight must never appear anywhere in the chat context: the RAG
-    # block only ever searches kind='memory' (handlers_chat.py), and
-    # declared() only ever returns DECLARED_SOURCES -- 'history-digest' is
-    # neither.
-    assert INSIGHT_TEXT not in context_str
-
-    # --- Step 4: appears in the proactive reasoner's context too ----------
+    # --- Step 3: appears in the proactive reasoner's context too ----------
     app_stub = {"knowledge_store": store, "llm_router": _LocalRouter()}
     mem = await _reason_memory_context(app_stub, embedder, _wake(), "Salotto")
     assert any(PREF_TEXT in d for d in mem.declared), (

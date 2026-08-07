@@ -19,18 +19,28 @@ tests/test_gather_context_memory.py and tests/test_coverage_review_memory.py
 for why some of these tests stop at a module-level helper rather than the
 _on_startup closures (_gather_context, _holistic_reason) that are not
 independently reachable from tests.
+
+Originally three automatic consumers, chat included ("Test 1 -- the chat
+remembers by itself" lived here, right below this docstring). Task 3 of the
+"nucleo alla chat" slice (.superpowers/sdd/task-3-brief.md, 2.0) retired
+that surface: `handle_chat` no longer calls `KnowledgeStore.search()`/
+`.declared()` at all -- its context comes from the nucleo (`casa/nucleo.py`)
+instead, which has no "degrades to recency when there's no embedder"
+mechanic to verify (a nucleo without an embedder is unaffected; it doesn't
+compare meanings in the first place). That test, and the chat portion of
+Test 4 below, were removed rather than repointed -- there is no equivalent
+chat-surface claim left to make here. The two remaining automatic consumers
+(the per-event sentinel reasoner, the holistic daily review) are untouched
+by that slice and still verified end to end below.
 """
 import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock
 
 from hiris.app.backends.embeddings import NullEmbedder
 from hiris.app.brain.coverage_review import build_review_context, build_review_message
 from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.brain.reasoner_memory import relevant_memory
 from hiris.app.chat_store import close_all_stores
-from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot, ChatbotEngine
-from hiris.app.server import _reason_memory_context, create_app
+from hiris.app.server import _reason_memory_context
 from hiris.app.watcher.reasoner import build_user_message
 from hiris.app.watcher.signals import WakeEvent
 
@@ -63,99 +73,6 @@ class _LocalRouter:
 
     def automatic_allows_sensitive(self) -> bool:
         return True
-
-
-async def _build_chat_client(aiohttp_client, tmp_path, *, store=None, embedder=None):
-    """Same wiring as tests/test_api.py's `client` fixture, inlined here so
-    this file is self-contained and can attach a fresh KnowledgeStore +
-    embedding_provider per test without cross-file fixture coupling.
-
-    `store`/`embedder` are wired into the `web.Application` BEFORE it is
-    handed to `aiohttp_client()` (not mutated on `client.app[...]`
-    afterwards) -- setting an app key after `aiohttp_client()` has started
-    the app trips aiohttp's "Changing state of started or joined
-    application" DeprecationWarning, and this suite's output is pristine by
-    design."""
-    app = create_app()
-
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
-
-    mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="ok")
-    mock_runner.last_tool_calls = []
-    engine.set_claude_runner(mock_runner)
-
-    app["ha_client"] = mock_ha
-    app["engine"] = engine
-    app["claude_runner"] = mock_runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    if store is not None:
-        app["knowledge_store"] = store
-    if embedder is not None:
-        app["embedding_provider"] = embedder
-    app.on_startup.clear()
-    app.on_cleanup.clear()
-
-    client = await aiohttp_client(app)
-    return client, mock_runner
-
-
-# ---------------------------------------------------------------------------
-# Test 1 -- the chat remembers by itself.
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_chat_surfaces_saved_memory_without_embedder(aiohttp_client, tmp_path):
-    """A memory is saved (with the real NullEmbedder wired as
-    app["embedding_provider"], exactly what a stock install has), and on a
-    SUBSEQUENT chat turn it appears in the prompt context ON ITS OWN --
-    nobody asks for it, no tool call, no query_vec -- under the degraded
-    heading.
-
-    Goes through the real production HTTP path (POST /api/chat ->
-    handlers_chat.handle_chat), not a shortcut straight to the store: the
-    assertion reads context_str out of the mocked runner.chat() call, which
-    is exactly what handle_chat hands to the LLM.
-    """
-    store = KnowledgeStore(str(tmp_path / "mem_chat.db"))
-    store.add_item(
-        kind="memory", content=MEMORY_TEXT, owner="home",
-        chatbot_id=DEFAULT_CHATBOT_ID, status="approved",
-        # No `embedding=` -- this memory was saved the way a stock install
-        # saves one: no vector to compare against.
-    )
-    # The real factory default, not a fake -- this is the whole point.
-    client, mock_runner = await _build_chat_client(
-        aiohttp_client, tmp_path, store=store, embedder=NullEmbedder(),
-    )
-
-    resp = await client.post(
-        "/api/chat", json={"message": "che temperatura preferisco in salotto?"}
-    )
-    assert resp.status == 200
-
-    call_kwargs = mock_runner.chat.call_args.kwargs
-    context_str = call_kwargs["context_str"]
-
-    assert "## Ultimi ricordi" in context_str
-    assert "## Memoria rilevante" not in context_str
-    assert "21 gradi" in context_str
-
-    store.close()
 
 
 # ---------------------------------------------------------------------------
@@ -270,38 +187,21 @@ async def test_holistic_review_surfaces_saved_memory_without_embedder(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_all_three_surfaces_use_relevant_heading_with_working_embedder(
-    aiohttp_client, tmp_path,
-):
-    """With a WORKING embedder (not the NullEmbedder), all three surfaces
-    behave exactly as they did before this slice: the usual "relevant by
-    meaning" heading, because the store actually compared meanings instead
-    of degrading to recency. One test, three surfaces, so a change that
-    accidentally forces every path onto the degraded branch (e.g. always
-    passing `[]` regardless of what embed() returned) would fail here even
-    though Tests 1-3 (which use NullEmbedder on purpose) would stay green.
+async def test_both_surfaces_use_relevant_heading_with_working_embedder(tmp_path):
+    """With a WORKING embedder (not the NullEmbedder), both remaining
+    surfaces behave exactly as they did before this slice: the usual
+    "relevant by meaning" heading, because the store actually compared
+    meanings instead of degrading to recency. One test, two surfaces, so a
+    change that accidentally forces every path onto the degraded branch
+    (e.g. always passing `[]` regardless of what embed() returned) would
+    fail here even though Tests 1-2 above (which use NullEmbedder on
+    purpose) would stay green.
+
+    Was "all THREE surfaces" (chat included) before Task 3 of the "nucleo
+    alla chat" slice retired the chat portion -- see the module docstring.
     """
     embedder = _WorkingEmbedder()
     matching_vec = [1.0, 0.0, 0.0]
-
-    # --- chat -----------------------------------------------------------
-    store_chat = KnowledgeStore(str(tmp_path / "mem_chat_wk.db"))
-    store_chat.add_item(
-        kind="memory", content=MEMORY_TEXT, owner="home",
-        chatbot_id=DEFAULT_CHATBOT_ID, status="approved", embedding=matching_vec,
-    )
-    client, mock_runner = await _build_chat_client(
-        aiohttp_client, tmp_path, store=store_chat, embedder=embedder,
-    )
-
-    resp = await client.post(
-        "/api/chat", json={"message": "che temperatura preferisco in salotto?"}
-    )
-    assert resp.status == 200
-    context_str = mock_runner.chat.call_args.kwargs["context_str"]
-    assert "## Memoria rilevante" in context_str
-    assert "## Ultimi ricordi" not in context_str
-    store_chat.close()
 
     # --- per-event reasoner ---------------------------------------------
     store_reasoner = KnowledgeStore(str(tmp_path / "mem_reasoner_wk.db"))

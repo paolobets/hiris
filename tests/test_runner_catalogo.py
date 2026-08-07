@@ -39,6 +39,20 @@ def test_i_due_runner_accettano_gli_stessi_argomenti():
     assert {"strumenti", "dispatcher"} <= b
 
 
+def test_i_due_runner_accettano_gli_stessi_argomenti_anche_in_streaming():
+    """Task 3 della fetta "il contesto della chat viene dal nucleo": il buco
+    oltre il brief -- `chat_stream()` non riceveva `strumenti`/`dispatcher`,
+    quindi la card Lovelace (che streamma, static/hiris-chat-card.js) sarebbe
+    rimasta sul catalogo di trentaquattro strumenti mentre la pagina chat
+    (che non streamma, static/chat/send.js) passava ai quattro del nucleo --
+    due strade divergenti per la stessa conversazione. Stesso confronto via
+    inspect del test gemello sopra, sul metodo streaming."""
+    a = set(inspect.signature(ClaudeRunner.chat_stream).parameters)
+    b = set(inspect.signature(OpenAICompatRunner.chat_stream).parameters)
+    assert {"strumenti", "dispatcher"} <= a
+    assert {"strumenti", "dispatcher"} <= b
+
+
 # --- fixture condivise, stesso pattern di test_claude_runner.py / -----------
 # --- test_openai_compat_runner.py -------------------------------------------
 
@@ -236,4 +250,85 @@ async def test_openai_con_dispatcher_esterno_chiama_linterfaccia_minima(openai_r
     )
 
     assert result == "trovato"
+    finto_dispatcher.dispatch.assert_awaited_once_with("cerca", {"testo": "bagno"})
+
+
+# --- Task 3: lo stesso, ma per `chat_stream()` -------------------------------
+# `ClaudeRunner.chat_stream` e' gia' un guscio sottile attorno a `chat()`
+# (vedi il suo docstring): il pass-through e' quindi coperto per transitivita'
+# dai test sopra, e replicarlo qui aggiungerebbe solo rumore. `OpenAICompat
+# Runner.chat_stream` invece costruisce il proprio loop agentico da zero --
+# qui sotto gli stessi due comportamenti (catalogo esatto, dispatch minimo)
+# verificati sul VERO metodo streaming, non per estrapolazione da chat().
+
+def _fake_delta(content=None, tool_calls=None):
+    d = MagicMock()
+    d.content = content
+    d.tool_calls = tool_calls
+    return d
+
+
+def _fake_chunk(*, content=None, tool_calls=None, finish_reason=None):
+    choice = MagicMock()
+    choice.delta = _fake_delta(content=content, tool_calls=tool_calls)
+    choice.finish_reason = finish_reason
+    chunk = MagicMock()
+    chunk.choices = [choice]
+    return chunk
+
+
+def _fake_tc_delta(index, *, id_=None, name=None, arguments=None):
+    d = MagicMock()
+    d.index = index
+    d.id = id_
+    d.function = MagicMock()
+    d.function.name = name
+    d.function.arguments = arguments
+    return d
+
+
+async def _fake_stream(chunks):
+    for c in chunks:
+        yield c
+
+
+@pytest.mark.asyncio
+async def test_openai_stream_con_strumenti_offre_esattamente_quelli(openai_runner):
+    catturati: dict = {}
+
+    async def capture(**kwargs):
+        catturati.update(kwargs)
+        return _fake_stream([_fake_chunk(content="ok", finish_reason="stop")])
+
+    openai_runner._client.chat.completions.create = capture
+    async for _ in openai_runner.chat_stream(
+        user_message="ciao", model="gpt-4o", strumenti=STRUMENTI_CONOSCENZA,
+    ):
+        pass
+
+    nomi = {t["function"]["name"] for t in catturati.get("tools", [])}
+    assert nomi == {"cerca", "guarda", "ricorda", "richiama"}
+
+
+@pytest.mark.asyncio
+async def test_openai_stream_con_dispatcher_esterno_chiama_linterfaccia_minima(openai_runner):
+    finto_dispatcher = MagicMock()
+    finto_dispatcher.dispatch = AsyncMock(return_value={"trovati": []})
+
+    chiamate = {"n": 0}
+
+    async def capture(**kwargs):
+        chiamate["n"] += 1
+        if chiamate["n"] == 1:
+            tc = _fake_tc_delta(0, id_="tc_1", name="cerca", arguments='{"testo": "bagno"}')
+            return _fake_stream([_fake_chunk(tool_calls=[tc], finish_reason="tool_calls")])
+        return _fake_stream([_fake_chunk(content="trovato", finish_reason="stop")])
+
+    openai_runner._client.chat.completions.create = capture
+    async for _ in openai_runner.chat_stream(
+        user_message="cerca il bagno", model="gpt-4o",
+        strumenti=STRUMENTI_CONOSCENZA, dispatcher=finto_dispatcher,
+    ):
+        pass
+
     finto_dispatcher.dispatch.assert_awaited_once_with("cerca", {"testo": "bagno"})

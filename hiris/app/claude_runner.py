@@ -877,6 +877,8 @@ class ClaudeRunner:
         knowledge_allow_sensitive: bool = False,
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
+        strumenti: list[dict] | None = None,
+        dispatcher: Any | None = None,
     ):
         """Async generator yielding SSE-formatted lines for the chat response.
 
@@ -889,6 +891,15 @@ class ClaudeRunner:
           'data: {"type": "token", "text": "<chunk>"}\\n\\n'
           'data: {"type": "done", "agent_id": "<id>", "tool_calls": [...]}\\n\\n'
           'data: {"type": "error", "message": "<msg>"}\\n\\n'
+
+        `strumenti`/`dispatcher` (Task 3 of the nucleo-alla-chat slice):
+        forwarded to `self.chat()` unchanged -- since this generator is
+        already just a thin wrapper around it (see Phase 1 above), accepting
+        the two here and passing them through is enough to keep the SSE path
+        (Lovelace card) and the non-streaming path (chat page) offering the
+        SAME tools/context, instead of the card silently keeping the old
+        34-tool catalog while the page switched to the four that know the
+        house.
         """
         import json as _json
         try:
@@ -913,6 +924,8 @@ class ClaudeRunner:
                 knowledge_allow_sensitive=knowledge_allow_sensitive,
                 knowledge_kinds=knowledge_kinds,
                 user_id=user_id,
+                strumenti=strumenti,
+                dispatcher=dispatcher,
             )
         except Exception as exc:
             yield f'data: {_json.dumps({"type": "error", "message": str(exc)})}\n\n'

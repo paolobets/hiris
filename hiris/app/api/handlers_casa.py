@@ -94,42 +94,33 @@ async def handle_get_casa(request: web.Request) -> web.Response:
     })
 
 
-async def handle_get_nucleo(request: web.Request) -> web.Response:
-    """GET /api/nucleo: il testo ESATTO che il modello ha sempre davanti, e
-    il riepilogo di quanto ne resta fuori.
+def costruisci_nucleo(app) -> tuple[str, dict]:
+    """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
 
-    Serve all'utente per capire, prima di accendere la chat, se HIRIS sta
-    guardando la casa giusta -- e a noi per la verifica dal vivo, che qui
-    e' l'unica prova che conta: `componi()` e' pura e coperta da
-    `tests/test_nucleo.py`, ma nessun test dice se QUESTA casa, letta da
-    QUESTO Home Assistant, produce un nucleo sensato.
+    Condivisa da `handle_get_nucleo` (GET /api/nucleo, la verifica dal vivo)
+    e da `handlers_chat.handle_chat` (il contesto che il modello riceve
+    davvero, Task 3 -- vedi .superpowers/sdd/task-3-brief.md): la STESSA
+    composizione, non due che potrebbero divergere -- e' esattamente la
+    sovrapposizione n.1 della mappa del prodotto (vedi
+    docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7) che questa
+    condivisione esiste per chiudere: prima la chat vedeva una mappa senza
+    ritratto, il resto del sistema il ritratto senza la mappa.
 
-    Questo ramo ha sbagliato tre volte a propagare `non_disponibili` (i
-    registri che non hanno risposto all'ultima lettura): un modulo lo
-    riceveva e non lo passava oltre, o non lo riceveva affatto, e il
-    risultato era sempre lo stesso -- una casa letta a meta' raccontata
-    come una casa piu' piccola. Qui si prende da `archivio.non_disponibili()`,
-    esattamente come fa `handle_get_casa` qui sopra per `/api/casa`, e si
-    passa a `componi()` cosi' com'e'.
+    Prende `app` (un `web.Application`, o l'equivalente `.get()`-abile nei
+    test) invece di un `web.Request`, cosi' un chiamante che non ha una
+    request in corso (nessuno oggi, ma non c'e' motivo di legarla) puo'
+    comunque chiamarla.
 
-    Lo stato vivo (chi e' acceso adesso) NON viene ricalcolato con una
-    strada propria: si legge dalla stessa `entity_cache` che il resto del
-    server usa (vedi `handlers_entities.handle_list_entities`,
-    `server._osserva_la_casa`), nella stessa forma (`{"id": ..., "state":
-    ...}`, non `entity_id`). `inventario_leggibile()` -- la bandiera che
-    dispatcher/ha_tools/briefing/handlers_entities gia' usano per non
-    spacciare "non ho guardato" per "va tutto bene" -- decide se quello
-    stato e' abbastanza fresco da essere dichiarato affidabile a
-    `componi()`. Senza archivio della casa (quali entita' esistono) O senza
-    un inventario vivo pronto (in che stato sono adesso), il nucleo non
-    afferma la quiete: dichiara esplicitamente `stato_affidabile=False`, e
-    "Notevole adesso" dira' "non ho potuto guardare" invece di "niente di
-    notevole" -- la stessa distinzione che `componi()` esiste per fare
-    (vedi `_stato_inaffidabile` in `casa/nucleo.py`).
+    Il resto del ragionamento -- perche' `non_disponibili` va propagato,
+    perche' `ArchivioMemoria.richiama(limite=conta())` e non il default,
+    perche' `stato_affidabile` richiede ENTRAMBI l'archivio e un inventario
+    vivo pronto -- e' invariato da prima di questo refactor: vedi i
+    commenti storici in git blame su questa funzione (era il corpo di
+    `handle_get_nucleo`) per il dettaglio di ciascuna scelta.
     """
-    archivio_casa = request.app.get("archivio_casa")
-    archivio_memoria = request.app.get("archivio_memoria")
-    cache = request.app.get("entity_cache")
+    archivio_casa = app.get("archivio_casa")
+    archivio_memoria = app.get("archivio_memoria")
+    cache = app.get("entity_cache")
     # Stessa difesa di `handle_list_entities`: una cache finta senza
     # `all_states` (o assente) non e' un inventario leggibile.
     if cache is not None and not hasattr(cache, "all_states"):
@@ -188,11 +179,29 @@ async def handle_get_nucleo(request: web.Request) -> web.Response:
     # "niente acceso" invece di "non ho potuto guardare".
     stato_affidabile = archivio_casa is not None and inventario_leggibile(cache)
 
-    testo, riepilogo = componi(
+    return componi(
         casa, comportamento, ricordi, stato,
         non_disponibili=non_disponibili,
         stato_affidabile=stato_affidabile,
         problemi_comportamento=problemi_comportamento,
         file_non_letti_comportamento=file_non_letti_comportamento,
     )
+
+
+async def handle_get_nucleo(request: web.Request) -> web.Response:
+    """GET /api/nucleo: il testo ESATTO che il modello ha sempre davanti, e
+    il riepilogo di quanto ne resta fuori.
+
+    Serve all'utente per capire, prima di accendere la chat, se HIRIS sta
+    guardando la casa giusta -- e a noi per la verifica dal vivo, che qui
+    e' l'unica prova che conta: `componi()` e' pura e coperta da
+    `tests/test_nucleo.py`, ma nessun test dice se QUESTA casa, letta da
+    QUESTO Home Assistant, produce un nucleo sensato.
+
+    La composizione vera e' in `costruisci_nucleo()` qui sopra, condivisa
+    con `handlers_chat.handle_chat` -- questo handler resta un guscio
+    sottile che la chiama e la serializza, cosi' i due punti non possono
+    raccontare due nuclei diversi della stessa casa.
+    """
+    testo, riepilogo = costruisci_nucleo(request.app)
     return web.json_response({"testo": testo, "riepilogo": riepilogo})

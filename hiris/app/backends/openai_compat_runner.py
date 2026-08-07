@@ -784,10 +784,24 @@ class OpenAICompatRunner:
         knowledge_allow_sensitive: bool = False,
         knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
+        strumenti: list[dict] | None = None,
+        dispatcher: Any | None = None,
     ):
         """Vero streaming SSE: i token arrivano mentre il modello genera.
         Le iterazioni tool-call vengono risolte prima di cedere il controllo
         al loop successivo; il testo finale è streamato token per token.
+
+        `strumenti`/`dispatcher` (Task 3 della fetta "il contesto della chat
+        viene dal nucleo"): a differenza di `ClaudeRunner.chat_stream`, che e'
+        gia' un guscio sottile attorno a `chat()`, questo metodo costruisce il
+        proprio loop agentico da zero -- quindi i due punti dove `chat()`
+        applica la stessa regola (catalogo tool, dispatch) sono replicati qui
+        sotto uno per uno, non ereditati per delega. Senza questo, il ramo SSE
+        (la card Lovelace) sarebbe rimasto sul catalogo di trentaquattro
+        strumenti mentre la pagina chat (che non streamma, vedi
+        static/chat/send.js) passava ai quattro del nucleo -- due strade
+        divergenti per la stessa conversazione, esattamente il difetto che
+        questa fetta esiste per chiudere.
         """
         # See chat() for rationale on accepting+ignoring thinking_budget here.
         del thinking_budget
@@ -847,16 +861,23 @@ class OpenAICompatRunner:
             messages.append({"role": msg["role"], "content": str(msg["content"])})
         messages.append({"role": "user", "content": user_message})
 
-        tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
-        # Stesso vincolo di chat(): render_template scavalca il perimetro delle
-        # entita', quindi fuori dalla concessione esplicita non arriva a un bot
-        # che quel perimetro ce l'ha. Lo streaming non e' una porta di servizio.
-        if not allowed_tools and allowed_entities is not None:
-            tools = [t for t in tools if t["name"] != "render_template"]
-        if allowed_endpoints is None:
-            tools = [t for t in tools if t["name"] != "http_request"]
-        if not self._dispatcher.has_memory:
-            tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
+        if strumenti is not None:
+            # Il catalogo arriva gia' deciso dal chiamante -- stessa regola di
+            # chat() (vedi il suo commento gemello): i filtri sotto restringono
+            # ALL_TOOL_DEFS, il catalogo di fabbrica, non un catalogo che il
+            # chiamante ha gia' scelto lui stesso.
+            tools = list(strumenti)
+        else:
+            tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+            # Stesso vincolo di chat(): render_template scavalca il perimetro delle
+            # entita', quindi fuori dalla concessione esplicita non arriva a un bot
+            # che quel perimetro ce l'ha. Lo streaming non e' una porta di servizio.
+            if not allowed_tools and allowed_entities is not None:
+                tools = [t for t in tools if t["name"] != "render_template"]
+            if allowed_endpoints is None:
+                tools = [t for t in tools if t["name"] != "http_request"]
+            if not self._dispatcher.has_memory:
+                tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
 
@@ -1018,19 +1039,25 @@ class OpenAICompatRunner:
                             }),
                         })
                         continue
-                    result = await self._dispatcher.dispatch(
-                        tc_data["name"], tool_input,
-                        allowed_entities=allowed_entities,
-                        allowed_services=allowed_services,
-                        allowed_endpoints=allowed_endpoints,
-                        chatbot_id=chatbot_id,
-                        visible_entity_ids=visible_entity_ids,
-                        knowledge_allow_sensitive=knowledge_allow_sensitive,
-                        knowledge_kinds=knowledge_kinds,
-                        cloud=self._is_cloud,
-                        user_id=user_id,
-                        pseudonym_map=self.last_pseudonym_map,
-                    )
+                    if dispatcher is not None:
+                        # DispatcherConoscenza (e affini): stessa interfaccia
+                        # minima dispatch(nome, argomenti) -- vedi il commento
+                        # gemello in chat().
+                        result = await dispatcher.dispatch(tc_data["name"], tool_input)
+                    else:
+                        result = await self._dispatcher.dispatch(
+                            tc_data["name"], tool_input,
+                            allowed_entities=allowed_entities,
+                            allowed_services=allowed_services,
+                            allowed_endpoints=allowed_endpoints,
+                            chatbot_id=chatbot_id,
+                            visible_entity_ids=visible_entity_ids,
+                            knowledge_allow_sensitive=knowledge_allow_sensitive,
+                            knowledge_kinds=knowledge_kinds,
+                            cloud=self._is_cloud,
+                            user_id=user_id,
+                            pseudonym_map=self.last_pseudonym_map,
+                        )
                     self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
                     messages.append({
                         "role": "tool",
