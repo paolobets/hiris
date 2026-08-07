@@ -207,11 +207,18 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
         "ancore": campi.get("ancore") or [],
         "condizioni": campi.get("condizioni") or [],
     }
-    pulita, problemi = valida(interpretazione, indice, tipi_non_verificabili)
+    pulita, problemi, correzioni = valida(interpretazione, indice, tipi_non_verificabili)
     if problemi:
         # Rifiutata con la ragione, non accettata a meta' (regola 2 di
         # ArchivioMemoria): nessuna delle correzioni si scrive, il ricordo
         # resta esattamente com'era.
+        #
+        # Solo i PROBLEMI rifiutano. Una CORREZIONE -- un intervallo
+        # raddrizzato -- e' un dato riparato, non scartato: rifiutarla
+        # significherebbe punire l'utente per un refuso gia' sistemato, e
+        # per giunta solo quando ne corregge meta': lo stesso intervallo
+        # mandato intero veniva accettato. Due comportamenti opposti per la
+        # stessa situazione, a seconda di come arrivava.
         return web.json_response(
             {"errore": "; ".join(problemi), "problemi": problemi}, status=400)
 
@@ -262,6 +269,8 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     risposta: dict = {"ok": True}
     if ignorati:
         risposta["ignorati"] = ignorati
+    if correzioni:
+        risposta["correzioni"] = correzioni
     return web.json_response(risposta)
 
 

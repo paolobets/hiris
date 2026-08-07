@@ -252,21 +252,28 @@ async def test_una_condizione_senza_valore_viene_rifiutata(aiohttp_client, tmp_p
 @pytest.mark.asyncio
 async def test_una_correzione_parziale_non_crea_un_intervallo_rovesciato_in_silenzio(
         aiohttp_client, tmp_path):
-    """«fra 19 e 20 gradi», poi `PATCH {"minimo": 25}` (refuso per 15): la
-    coerenza si verifica contro il `massimo` GIA' ARCHIVIATO, non contro
-    `None` -- altrimenti si archivierebbe silenziosamente (25.0, 20.0)."""
+    """«fra 19 e 20 gradi», poi `PATCH {"minimo": 25}` (refuso per 15).
+
+    La coerenza si verifica contro il `massimo` GIA' ARCHIVIATO, non contro
+    `None`: altrimenti si archivierebbe silenziosamente (25.0, 20.0).
+
+    E l'intervallo si RADDRIZZA dichiarandolo, non si rifiuta: e' lo stesso
+    comportamento che ha da sempre un intervallo mandato intero. Prima erano
+    due comportamenti opposti per la stessa situazione a seconda di come
+    arrivava -- il tipo di divergenza che questo refactor esiste per togliere.
+    """
     memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
     ident = memoria.ricorda(_FRASE, detto_da="paolo", minimo=19.0, massimo=20.0)
     app = _app(archivio_memoria=memoria, archivio_casa=None)
     client = await aiohttp_client(app)
 
     resp = await client.patch(f"/api/memoria/{ident}", json={"minimo": 25})
-    assert resp.status == 400
+    assert resp.status == 200
     corpo = await resp.json()
-    assert corpo["errore"]
+    assert corpo["correzioni"]                            # e non in silenzio
 
     r = memoria.richiama()[0]
-    assert (r["minimo"], r["massimo"]) == (19.0, 20.0)   # intatto, nessuna scrittura a meta'
+    assert (r["minimo"], r["massimo"]) == (20.0, 25.0)    # raddrizzato, non (25, 20)
 
     memoria.chiudi()
 

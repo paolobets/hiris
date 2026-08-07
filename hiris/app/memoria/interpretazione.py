@@ -57,11 +57,22 @@ VOCABOLARIO: dict[str, frozenset[str]] = {
 
 
 def valida(interpretazione: dict, indice,
-           tipi_non_verificabili: frozenset[str] = frozenset()) -> tuple[dict, list[str]]:
+           tipi_non_verificabili: frozenset[str] = frozenset()
+           ) -> tuple[dict, list[str], list[str]]:
     """Ripulisce un'interpretazione proposta dal modello, contro il
     vocabolario chiuso e l'anagrafe di `indice`.
 
-    Restituisce `(interpretazione_ripulita, problemi)`. La ripulita ha
+    Restituisce `(interpretazione_ripulita, problemi, correzioni)`.
+
+    **`problemi` e `correzioni` sono cose diverse, e confonderle produce
+    due comportamenti opposti per la stessa situazione.** Un problema e'
+    qualcosa che e' stato SCARTATO: chi riceve deve poter rifiutare. Una
+    correzione e' qualcosa che e' stato RIPARATO e dichiarato: il dato c'e',
+    e rifiutarlo punirebbe l'utente per un refuso che abbiamo gia' sistemato.
+    Prima erano un elenco solo, e un intervallo raddrizzato -- riparato con
+    successo -- faceva rifiutare tutta la correzione.
+
+    La ripulita ha
     sempre tutte le chiavi (`forza`, `grandezza`, `minimo`, `massimo`,
     `unita`, `ancore`, `condizioni`), anche quando l'input era vuoto o
     parziale: un'interpretazione a meta' e' legittima (Regola 3 -- "mi
@@ -79,11 +90,13 @@ def valida(interpretazione: dict, indice,
     guardare.
     """
     problemi: list[str] = []
+    correzioni: list[str] = []
 
     forza = _valida_forza(interpretazione.get("forza"), problemi)
     grandezza = interpretazione.get("grandezza")
     minimo, massimo = _valida_intervallo(
-        interpretazione.get("minimo"), interpretazione.get("massimo"), problemi)
+        interpretazione.get("minimo"), interpretazione.get("massimo"),
+        problemi, correzioni)
     ancore = _valida_ancore(interpretazione.get("ancore") or [], indice,
                              tipi_non_verificabili, problemi)
     condizioni = _valida_condizioni(interpretazione.get("condizioni") or [], problemi)
@@ -98,7 +111,7 @@ def valida(interpretazione: dict, indice,
         "ancore": ancore,
         "condizioni": condizioni,
     }
-    return pulita, problemi
+    return pulita, problemi, correzioni
 
 
 def _valida_forza(forza, problemi: list[str]):
@@ -116,7 +129,8 @@ def _valida_forza(forza, problemi: list[str]):
     return forza
 
 
-def _valida_intervallo(minimo, massimo, problemi: list[str]) -> tuple[float | None, float | None]:
+def _valida_intervallo(minimo, massimo, problemi: list[str],
+                       correzioni: list[str]) -> tuple[float | None, float | None]:
     """Un valore o un intervallo, mai un testo: qui si converte a numero e
     si raddrizza un intervallo scritto al contrario, che e' un errore di
     battitura del modello, non un'intenzione -- si corregge, ma si
@@ -131,7 +145,12 @@ def _valida_intervallo(minimo, massimo, problemi: list[str]) -> tuple[float | No
         return None, None
 
     if minimo is not None and massimo is not None and minimo > massimo:
-        problemi.append(
+        # CORREZIONE, non problema: il dato c'e' ed e' stato riparato. Metterlo
+        # fra i problemi faceva rifiutare l'intera richiesta -- cioe' punire
+        # l'utente per un refuso che avevamo gia' sistemato, e per giunta solo
+        # quando ne correggeva meta': lo stesso intervallo mandato intero
+        # veniva raddrizzato e accettato.
+        correzioni.append(
             f"minimo ({minimo}) maggiore di massimo ({massimo}): intervallo invertito -- raddrizzato")
         minimo, massimo = massimo, minimo
     return minimo, massimo
