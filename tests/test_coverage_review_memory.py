@@ -2,12 +2,15 @@
 
 Mirrors test_sentinel_reasoner.py's Task 3/4 coverage for the sentinel path,
 applied to coverage_review.py's build_review_context/build_review_message
-(the holistic "va tutto bene?" reviewer) plus a source-level wiring check
-for server.py's _holistic_reason (same inspect.getsource convention as
-test_coverage_wiring.py).
-"""
-import inspect
+(the holistic "va tutto bene?" reviewer).
 
+fetta E3 Task 4: this module used to also carry a source-level wiring check
+for server.py's `_holistic_reason` (same inspect.getsource convention as
+test_coverage_wiring.py) -- removed along with `_holistic_reason` itself,
+which the ronda's removal deleted wholesale. build_review_context/
+build_review_message stay live (orphaned pending Task 5, not deleted) and
+are still fully exercised by the tests below.
+"""
 from hiris.app.brain.coverage_review import build_review_context, build_review_message
 
 
@@ -134,29 +137,13 @@ def test_build_review_message_flattens_multiline_memory_snippet():
     assert block.startswith("- ")
 
 
-def test_holistic_reason_wires_memory_into_review_context():
-    """Source-level wiring check, same inspect.getsource convention as
-    test_coverage_wiring.py: _holistic_reason must compute allow_sensitive
-    via LLMRouter.automatic_allows_sensitive(), fetch relevant_memory(...),
-    and pass memory=/memory_by_meaning= into build_review_context(...).
-
-    fetta 2b Task 3: relevant_memory() returns a `MemoryRecall` dataclass,
-    not a list -- the call site must pass its `.snippets`/`.by_meaning`
-    attributes, NOT the object itself (`memory=_mem,` was the defect: it
-    made build_review_context's `list(memory)` raise on the dataclass,
-    silently aborting the whole holistic pass)."""
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    assert "automatic_allows_sensitive()" in src
-    assert "await relevant_memory(" in src
-    assert "build_review_context(snapshot, _inventory, _current," in src
-    assert "memory=_mem.snippets," in src
-    assert "memory_by_meaning=_mem.by_meaning," in src
-    # Task 4 ("memoria unica 3a"): the declared block rides alongside
-    # memory/memory_by_meaning into the same build_review_context() call.
-    assert "declared=_mem.declared," in src
-    assert "memory=_mem,\n" not in src
+# fetta E3 Task 4: test_holistic_reason_wires_memory_into_review_context e'
+# uscito -- source-level check sul CORPO di `_holistic_reason` (il fetch
+# relevant_memory()/automatic_allows_sensitive() e il pass-through
+# memory=/memory_by_meaning=/declared= in build_review_context()), che e'
+# stato cancellato per intero con la ronda. `build_review_context` stessa
+# resta viva e testata (i test sopra/sotto in questo file), solo il call
+# site dentro `_holistic_reason` non esiste piu'.
 
 
 def test_portrait_absent_keeps_context_and_message_identical():

@@ -205,6 +205,8 @@ def test_gather_context_is_wired_to_the_portrait():
     assert '"portrait"' in src
 
 
-def test_holistic_is_wired_to_the_portrait():
-    src = inspect.getsource(server._on_startup)
-    assert "portrait=_portrait_context(app)" in src
+# fetta E3 Task 4: test_holistic_is_wired_to_the_portrait e' uscito -- pinnava
+# la chiamata `portrait=_portrait_context(app)` dentro `_holistic_reason`,
+# cancellata per intero con la ronda. `test_gather_context_is_wired_to_the_
+# portrait` sopra resta: `_gather_context` (il percorso del Guardian) e'
+# vivo e passa ancora il ritratto.

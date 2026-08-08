@@ -85,7 +85,6 @@ options:
   # ── Sentinella (knobs) ────────────────────────────────────────────────────
   sentinel_daily_cap: 20
   sentinel_cooldown_min: 30
-  sentinel_ronda_min: 15
 
   # ── Brain (salute del sistema) ───────────────────────────────────────────
   # Notifica push quando la scansione di salute apre, riapre o aggrava fino a
@@ -98,7 +97,6 @@ options:
   # ── Ponte push (knobs) ────────────────────────────────────────────────────
   bridge_enabled: false
   bridge_deadline_min: 5
-  bridge_fallback: true
   chat_daily_cap: 50
   chat_via_subscription: false
   claude_code_oauth_token: ""
@@ -164,7 +162,6 @@ schema:
   # ── Sentinella (knobs) ────────────────────────────────────────────────────
   sentinel_daily_cap: int(0,200)
   sentinel_cooldown_min: int(1,1440)
-  sentinel_ronda_min: int(1,240)
 
   # ── Brain (salute del sistema) ───────────────────────────────────────────
   brain_notify_high: bool
@@ -172,7 +169,6 @@ schema:
   # ── Ponte push (knobs) ────────────────────────────────────────────────────
   bridge_enabled: bool
   bridge_deadline_min: int(1,120)
-  bridge_fallback: bool
   chat_daily_cap: int(0,1000)?
   chat_via_subscription: bool?
   claude_code_oauth_token: password

@@ -231,11 +231,16 @@ def test_gather_context_is_async_and_wired_to_memory_helper():
 
 
 def test_gather_context_call_sites_await_reason():
-    """Both reason(wake, gather_context=_gather_context, ...) call sites
-    (_on_wake per-signal path, situations/holistic path) must await reason()
-    -- reason() itself awaits gather_context when it's awaitable (Task 3),
-    so no separate await of _gather_context is needed or expected at the
-    call sites themselves."""
+    """The reason(wake, gather_context=_gather_context, ...) call site
+    (_on_wake, the guardian's per-signal path) must await reason() --
+    reason() itself awaits gather_context when it's awaitable (Task 3), so
+    no separate await of _gather_context is needed or expected at the call
+    site itself.
+
+    fetta E3 Task 4: this used to pin TWO call sites (_on_wake + the
+    situations/ronda path's `_run_decision`). `_run_decision` and its whole
+    call chain (evaluator/situations/arrival/holistic) is gone with the
+    ronda -- _on_wake is the only caller left."""
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
@@ -243,7 +248,7 @@ def test_gather_context_call_sites_await_reason():
         line for line in src.splitlines()
         if "gather_context=_gather_context" in line
     ]
-    assert len(occurrences) == 2
+    assert len(occurrences) == 1
     for line in occurrences:
         assert "await reason(" in line
 
@@ -264,4 +269,4 @@ def test_no_other_synchronous_gather_context_callers():
     assert "async def _gather_context(wake)" in src
 
     by_reference = re.findall(r"gather_context=_gather_context\b", src)
-    assert len(by_reference) == 2  # _on_wake (per-signal) + situations/ronda
+    assert len(by_reference) == 1  # _on_wake (per-signal) -- fetta E3 Task 4: situations/ronda is gone

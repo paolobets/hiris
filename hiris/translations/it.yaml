@@ -98,21 +98,15 @@ configuration:
   sentinel_cooldown_min:
     name: "Sentinella — Pausa tra risvegli (minuti)"
     description: "Minuti minimi tra due risvegli sullo stesso segnale. Predefinito: 30."
-  sentinel_ronda_min:
-    name: "Sentinella — Intervallo ronda situazioni (minuti)"
-    description: "Ogni quanti minuti la Sentinella scansiona le situazioni della casa (caldo+assenza, tutti-fuori+allarme-off, olistica). Predefinito: 15."
   brain_notify_high:
     name: "Salute del sistema — notifica i problemi gravi"
     description: "Invia una notifica push quando la scansione di salute apre o riapre una segnalazione grave, o quando una già aperta si aggrava fino a diventare grave. Mai per un aggiornamento che non alza la gravità, e mai due volte per lo stesso problema entro 12 ore: la scansione gira ogni 30 minuti. Predefinito: attivo."
   bridge_enabled:
     name: "Ponte abbonamento — attiva"
-    description: "Instrada la scansione olistica del cervello a un runner esterno su abbonamento (via coda di ragionamento) invece di ragionare in locale/a consumo. Spento = ragionamento inline come prima."
+    description: "Instrada la chat via abbonamento (se attiva sotto) a un runner esterno su abbonamento invece che al provider locale/a consumo. Spento = la chat via abbonamento non si attiva."
   bridge_deadline_min:
     name: "Ponte abbonamento — scadenza (minuti)"
-    description: "Minuti entro cui un job di ragionamento deve essere servito dal runner prima di ricadere sul provider a consumo/locale. Predefinito: 5."
-  bridge_fallback:
-    name: "Ponte abbonamento — fallback a consumo"
-    description: "Se attivo, i job scaduti (runner assente/giù) vengono ragionati dal provider a consumo/locale così il cervello resta attivo. Se spento, i job scaduti vengono scartati (nessun ragionamento). Predefinito: attivo."
+    description: "Minuti entro cui un messaggio di chat instradato al runner esterno deve ricevere risposta prima di scadere (l'utente vede un errore, nessun ripiego automatico). Predefinito: 5."
   chat_daily_cap:
     name: "Chat via abbonamento — cap messaggi/giorno"
     description: "Numero massimo di messaggi chat instradati al giorno verso il runner esterno su abbonamento, indipendente dal cap della Sentinella. Predefinito: 50."

@@ -98,21 +98,15 @@ configuration:
   sentinel_cooldown_min:
     name: "Sentinella — Cooldown between wakeups (minutes)"
     description: "Minimum minutes between two wakeups on the same signal. Default: 30."
-  sentinel_ronda_min:
-    name: "Sentinella — Situation scan interval (minutes)"
-    description: "How often Sentinella scans home situations (hot+absence, all-away+alarm-off, holistic scan). Default: 15."
   brain_notify_high:
     name: "System health — notify severe issues"
     description: "Sends a push notification when the health scan opens or reopens a severe advisory, or when an already open one escalates to severe. Never for an update that does not raise the severity, and never twice for the same issue within 12 hours: the scan runs every 30 minutes. Default: enabled."
   bridge_enabled:
     name: "Subscription bridge — enable"
-    description: "Routes the brain's holistic scan to an external subscription runner (via the reasoning queue) instead of reasoning locally/pay-per-use. Off = inline reasoning as before."
+    description: "Routes chat via subscription (if enabled below) to an external subscription runner instead of the local/pay-per-use provider. Off = chat via subscription never activates."
   bridge_deadline_min:
     name: "Subscription bridge — deadline (minutes)"
-    description: "Minutes within which a reasoning job must be served by the runner before falling back to the pay-per-use/local provider. Default: 5."
-  bridge_fallback:
-    name: "Subscription bridge — fall back to pay-per-use"
-    description: "When enabled, expired jobs (runner missing/down) are reasoned by the pay-per-use/local provider so the brain keeps working. When disabled, expired jobs are dropped (no reasoning). Default: enabled."
+    description: "Minutes within which a chat message routed to the external runner must get a reply before expiring (the user sees an error, no automatic fallback). Default: 5."
   chat_daily_cap:
     name: "Chat via subscription — messages/day cap"
     description: "Maximum number of chat messages routed per day to the external subscription runner, separate from Sentinella's cap. Default: 50."

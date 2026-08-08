@@ -61,4 +61,15 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         except Exception:
             logger.exception("execute_decision failed")
             outcome = "error"
+    else:
+        # fetta E3 Task 4: `app["execute_decision"]` non viene piu' wired da
+        # server.py -- la ronda/revisione olistica che lo attuava e' uscita,
+        # e con lei l'unico produttore di job non-"chat". Un submit non-chat
+        # puo' arrivare qui solo da un job scaduto/legacy: non tace (il
+        # silenzio non e' distinguibile da un'assenza di problemi), ma non
+        # attua piu' nulla -- resta "recorded", com'era gia' il default.
+        logger.warning(
+            "reasoning submit: nessun execute_decision wired -- l'attuazione "
+            "remota della revisione olistica non esiste piu' (job_id=%s, kind=%s), "
+            "decisione solo registrata", job_id, (job or {}).get("kind"))
     return web.json_response({"ok": True, "outcome": outcome})

@@ -32,7 +32,6 @@ export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 
 export SENTINEL_DAILY_CAP=$(bashio::config 'sentinel_daily_cap' '20')
 export SENTINEL_COOLDOWN_SEC=$(( $(bashio::config 'sentinel_cooldown_min' '30') * 60 ))
-export SENTINEL_RONDA_MINUTES=$(bashio::config 'sentinel_ronda_min' '15')
 
 # Notifica push per le segnalazioni gravi nuove o riaperte della scansione di
 # salute (Brain). Attiva per impostazione predefinita.
@@ -40,7 +39,6 @@ export BRAIN_NOTIFY_HIGH=$(bashio::config 'brain_notify_high' 'true')
 
 export BRIDGE_ENABLED=$(bashio::config 'bridge_enabled' 'false')
 export BRIDGE_DEADLINE_MIN=$(bashio::config 'bridge_deadline_min' '5')
-export BRIDGE_FALLBACK=$(bashio::config 'bridge_fallback' 'true')
 export CHAT_DAILY_CAP=$(bashio::config 'chat_daily_cap' '50')
 export CHAT_VIA_SUBSCRIPTION=$(bashio::config 'chat_via_subscription' 'false')
 export CLAUDE_CODE_OAUTH_TOKEN=$(bashio::config 'claude_code_oauth_token' '')

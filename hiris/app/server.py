@@ -1104,10 +1104,11 @@ async def _on_startup(app: web.Application) -> None:
     # bridge, invariato) altrimenti bloccherebbe la chat lasciando i job
     # 'chat' in coda senza nessuno che li spazzi/reclami/pruni. Calcolato qui,
     # PRIMA di ogni gate più sotto che legge BRIDGE_ENABLED dall'env
-    # (_holistic_reason, _reasoning_sweep, il wiring di chat_via_subscription
-    # poco più in basso), così ognuno di quei tre punti vede l'abbonamento
-    # senza duplicare il parsing env. Vedi task-3-report.md per il grep
-    # BRIDGE_ENABLED che ha individuato tutti e tre i gate.
+    # (_reasoning_sweep, il wiring di chat_via_subscription poco più in
+    # basso -- fetta E3 Task 4: il terzo gate, l'enqueue di
+    # `_holistic_reason`, e' uscito con lei), così ognuno di quei punti vede
+    # l'abbonamento senza duplicare il parsing env. Vedi task-3-report.md per
+    # il grep BRIDGE_ENABLED che aveva individuato i tre gate originari.
     # SP-2 T3 review: usa lo stato di attivazione CREDENZIALE-CONSAPEVOLE
     # (_active["subscription"] = toggle AND token presente, o derivato legacy),
     # non il toggle grezzo: così provider_subscription=true SENZA token non apre
@@ -1332,12 +1333,10 @@ async def _on_startup(app: web.Application) -> None:
     from .watcher.sentinel_store import SentinelStore
     from .watcher.guardian import Guardian
     from .watcher.policy import load_policy
-    from .watcher.reasoner import reason, SENTINEL_SYSTEM, SITUATION_HOLISTIC_SYSTEM
+    from .watcher.reasoner import reason
     from .watcher.executor import execute
-    from .watcher.signals import WakeEvent
     from .watcher.sentinel_proposal import propose_sentinel_script
     from .notifiche import send_notification
-    from .tools.proposal_tools import create_automation_proposal
     import time as _time
     from datetime import datetime as _dt
 
@@ -1406,12 +1405,17 @@ async def _on_startup(app: web.Application) -> None:
         #
         # Agenti v1.1 Fase 2 Task 3: `agent_id` + `allowed_entities`/
         # `allowed_services` are the reasoning agent's IDENTITY and PERIMETER.
-        # They are `None` for every caller today (guardian wakes, situations,
-        # holistic, briefing, coverage review) -- the anonymous/unscoped call
-        # they always made. The only supplier was a user-defined Agentbot
-        # with a perimeter block (mode="objective"), via `_run_decision` --
-        # that whole layer (`watcher/agentbot_runner.py`, `_run_decision`'s
-        # own `agent_id`/`perimeter` params) is gone since fetta E3 Task 3.
+        # They are `None` for every caller today (guardian wakes, briefing) --
+        # the anonymous/unscoped call they always made. Situations/holistic/
+        # coverage-review were also unscoped callers, and are gone entirely
+        # since fetta E3 Task 4 (the ronda). The only supplier of a real
+        # perimeter was a user-defined Agentbot with a perimeter block
+        # (mode="objective"), via `_run_decision` -- that whole layer
+        # (`watcher/agentbot_runner.py`, `_run_decision`'s own `agent_id`/
+        # `perimeter` params) is gone since fetta E3 Task 3; `_run_decision`
+        # itself (the last non-Agentbot caller of this shape) followed it out
+        # in Task 4, once its own last caller (`_on_situation`) died with the
+        # ronda.
         # Kept here, dormant, rather than stripped: the shape (identity +
         # allow-lists into the reasoning call) is exactly what a future
         # "Agenti" project would need to reintroduce, and every current
@@ -1603,103 +1607,40 @@ async def _on_startup(app: web.Application) -> None:
         _reset_sentinel_counter, trigger="cron", hour=0, minute=1,
         id="hiris_sentinel_reset", replace_existing=True, misfire_grace_time=3600)
 
-    # ── Situazioni (ronda periodica + revisione olistica, fetta 2) ──────────
-    # Same semaforo (execute_policy) and same Fetta-1 adapters (_gather_context,
-    # _llm_reason, _notify, _propose) as the guardian above — situations
-    # are just another wake source feeding the identical reason→execute path.
-    from .watcher.snapshot import build_snapshot as _build_snapshot
-    from .watcher.evaluator import SituationEvaluator
-    from .tools.weather_tools import get_weather_forecast
-
-    _snap_deps = {
-        "get_states": lambda ids: ha_client.get_states(ids),
-        "get_weather": lambda: get_weather_forecast(hours=6),
-        "get_health": (lambda: health_monitor.get_snapshot(["all"])) if health_monitor is not None else (lambda: None),
-    }
-
-    async def _snapshot():
-        return await _build_snapshot(_snap_deps, load_policy(data_dir).get("situations", {}))
-
-    async def _record_situation_event(kind, entity_id, decision, outcome):
-        sentinel_store.record_event({
-            "ts": _time.time(), "kind": kind, "entity_id": entity_id,
-            "verdict": getattr(decision, "verdict", None), "severity": getattr(decision, "severity", None),
-            "outcome": outcome, "message": getattr(decision, "message", "")})
-
-    async def _run_decision(wake, suggested, system, force_notify_only=False, model="auto"):
-        # Task 4B: `model` lasciava scegliere a un Agentbot il proprio
-        # modello di ragionamento. `force_notify_only` forzava a None
-        # un'azione proposta dall'LLM per un Agentbot di tipo "notify".
-        # fetta E3 Task 3: l'unico chiamante che valorizzava questi due
-        # parametri (`watcher/agentbot_runner.py`) e' uscito con l'intero
-        # strato Agentbot -- restano coi valori di default per ogni
-        # chiamante rimasto (situazioni, ronda, olistico): stessa identica
-        # chiamata di sempre, "auto" e nessun forzo.
-        #
-        # Agenti v1.1 Fase 2 Task 3-5 avevano aggiunto qui `agent_id` +
-        # `perimeter` (identita' e bound per esecuzione di un Agentbot in
-        # modalita' obiettivo, con `agent_run_bound` & co. a livello di
-        # modulo). Uscito insieme a `watcher/agentbot_runner.py`: nessun
-        # chiamante rimasto ha mai un perimetro da far rispettare, quindi
-        # tutta quella macchina (bound, deadline, contabilita' token) era
-        # morta per costruzione, non solo inutilizzata -- rimossa, non
-        # lasciata spenta.
-        decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason, system=system, model=model)
-        if suggested and getattr(decision, "verdict", "") != "falso_positivo":
-            decision.action = suggested  # target deterministico dalla config, non dall'LLM
-        if force_notify_only:
-            decision.action = None
-        _ep = app.get("execute_policy") or {}
-        outcome = await execute(
-            decision, wake,
-            tiers=_ep.get("tiers") or {}, entity_tiers=_ep.get("entity_tiers") or {},
-            notify=_notify, propose=_propose)
-        await _record_situation_event(wake.signal_kind, wake.entity_id, decision, outcome)
-
-    async def _on_situation(wake, suggested):
-        await _run_decision(wake, suggested, SENTINEL_SYSTEM)
+    # fetta E3 Task 4 ("esce la casa vecchia, e con lei chi la guardava"): la
+    # ronda periodica (snapshot + le due situazioni hot_and_away/
+    # away_alarm_off + la revisione olistica) e' uscita per intero --
+    # girava ogni 15 minuti con tutte le situazioni spente di fabbrica
+    # (watcher/policy.py), consumando una GET /api/states e una chiamata
+    # meteo a vuoto, e dalla fetta E2 il suo execute() non attuava piu'
+    # nulla. Con lei sono usciti `_snap_deps`/`_snapshot` (watcher/snapshot.py
+    # + watcher/evaluator.py + watcher/situations.py), e -- verificato che
+    # nessun chiamante restava dopo aver tolto evaluator/situazioni/arrivo/
+    # olistico sotto -- anche `_record_situation_event`, `_run_decision` e
+    # `_on_situation`: erano tre gradini della stessa catena, orfani a
+    # cascata. Il Guardian (sopra) ha sempre avuto la propria `_on_wake`
+    # indipendente: non perde nulla.
+    #
+    # `_snap_deps["get_health"]` era l'ultima dipendenza reale che teneva
+    # `health_monitor` agganciato a questa macchina -- tolta qui, libera il
+    # Task 11 (che NON e' questo task: `health_monitor` resta orfano di
+    # proposito, costruito e servito su /api/health esattamente come prima).
+    #
+    # Silenzio dichiarato: da qui la casa non viene piu' "guardata" ogni 15
+    # minuti. Nessun log da aggiungere per questo -- non c'e' piu' codice che
+    # possa accorgersene.
 
     # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
-    # runner remoto. execute_decision applica una Decisione GIA' PRESA dal
-    # runner attraverso lo STESSO executor.execute()/semaforo/adapters usati
-    # sopra — nessun path di actuation nuovo, solo un altro chiamante.
+    # runner remoto. Resta -- lo usa il ramo chat sotto (Slice 4b) -- ma
+    # `_execute_decision`/`app["execute_decision"]` sono usciti qui (fetta
+    # E3 Task 4): applicavano una Decisione del runner attraverso lo stesso
+    # executor.execute()/semaforo/adapters della revisione olistica, che non
+    # esiste piu'. handlers_reasoning.py (il consumer di questo slot) non
+    # trova piu' nulla in `app["execute_decision"]` -- vedi il commento li'.
     from .reasoning.queue import ReasoningQueue
-    from .watcher.signals import Decision
-    try:
-        from .proxy._sanitize import sanitize_ha_value as _san
-    except Exception:
-        _san = lambda v: v  # noqa: E731
 
     reasoning_queue = ReasoningQueue(os.path.join(data_dir, "reasoning.db"))
     app["reasoning_queue"] = reasoning_queue
-
-    async def _execute_decision(decision_dict, wake_dict):
-        # Fail-CLOSED on the verdict: the runner submits this over the
-        # network, so a missing/malformed/unknown verdict must NOT default to
-        # the actuation-eligible "anomalia" — it degrades to "falso_positivo",
-        # which execute() turns into a no-op "skip".
-        _v = decision_dict.get("verdict")
-        verdict = _v if _v in ("anomalia", "falso_positivo") else "falso_positivo"
-        d = Decision(verdict=verdict,
-                     severity=decision_dict.get("severity", "info"),
-                     message=decision_dict.get("message", ""),
-                     action=decision_dict.get("action"))
-        wake = WakeEvent(signal_kind=wake_dict.get("signal_kind", "holistic"),
-                          entity_id=wake_dict.get("entity_id", "home"),
-                          severity_hint=wake_dict.get("severity_hint", "info"),
-                          evidence=wake_dict.get("evidence") or {},
-                          ts=wake_dict.get("ts") or _time.time())
-        _ep = app.get("execute_policy") or {}
-        outcome = await execute(
-            d, wake,
-            tiers=_ep.get("tiers") or {}, entity_tiers=_ep.get("entity_tiers") or {},
-            notify=_notify, propose=_propose)
-        sentinel_store.record_event({
-            "ts": _time.time(), "kind": wake.signal_kind, "entity_id": wake.entity_id,
-            "verdict": d.verdict, "severity": d.severity,
-            "outcome": outcome, "message": d.message})
-        return outcome
-    app["execute_decision"] = _execute_decision
 
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
     # jobs — writes the runner's reply into chat_store instead of actuating
@@ -1746,165 +1687,23 @@ async def _on_startup(app: web.Application) -> None:
     # reasoning_queue.count_chat_today() -- independent of SENTINEL_DAILY_CAP.
     app["chat_daily_cap"] = int(os.environ.get("CHAT_DAILY_CAP", "50"))
 
-    async def _holistic_reason(snapshot):
-        # Cervello auto-proponente: revisione di copertura sulla cadenza olistica.
-        # Gira SEMPRE (anche quando BRIDGE_ENABLED e' attivo, prima del branch
-        # sotto) perche' riusa direttamente _llm_reason (locale/metered) — non
-        # instrada nessuna azione sulla casa, solo config detector (gated,
-        # apply_suggestions) e proposte. Wrapped in try/except: non deve mai
-        # rompere il giro olistico.
-        try:
-            _store = app.get("suggestion_store")
-            _cache = app.get("entity_cache")
-            if _store is not None and _cache is not None and hasattr(_cache, "all_states"):
-                from .brain.coverage_review import (
-                    COVERAGE_REVIEW_SYSTEM, build_review_context,
-                    build_review_message, parse_suggestions)
-                from .brain.suggestions import apply_suggestions, reconcile_proposal_outcome
-                from .brain.cognitive_loop import auto_tune_detectors, trace_applied_coverage
-                from .api.handlers_entities import filter_entities
-                _inventory = filter_entities(_cache.all_states(), None, None)
-                _current = load_policy(data_dir)
-                # Slice 6b Task 5: same bounded, home-scoped memory enrichment
-                # as the per-wake sentinel path (_reason_memory_context /
-                # Task 4), applied to the holistic coverage-review context.
-                # Memory enrichment degrades to no-memory on ANY failure and
-                # must never abort the holistic pass (coverage review + auto-
-                # tune + guardian refresh below). relevant_memory() is already
-                # non-throwing for the real store, but wrap independently so a
-                # nonconforming store/embedder can't take the whole round down.
-                #
-                # fetta 2b Task 3: `_mem` is always a `MemoryRecall` (never a
-                # bare list) on every path -- including this except branch --
-                # so `.snippets`/`.by_meaning` can be read unconditionally
-                # below, exactly like `_reason_memory_context`'s per-wake
-                # counterpart. Passing `.snippets` (not the dataclass itself)
-                # as `memory=` was the fix: the dataclass previously reached
-                # build_review_context's `list(memory)`, raising TypeError and
-                # silently aborting the whole holistic pass (caught by this
-                # function's outer try/except). `.by_meaning` rides alongside
-                # so build_review_message can head the memory block honestly,
-                # same as the per-event path (reasoner.py).
-                _mem = MemoryRecall(snippets=[], by_meaning=False)
-                try:
-                    _llm_router = app.get("llm_router")
-                    _allow_sensitive = _llm_router.automatic_allows_sensitive() if _llm_router is not None else False
-                    _mem = await relevant_memory(
-                        knowledge_store, embedder,
-                        query_text="stato generale della casa", allow_sensitive=_allow_sensitive,
-                        limit=5)
-                except Exception:
-                    logger.warning("holistic memory retrieval failed", exc_info=True)
-                _ctx = build_review_context(snapshot, _inventory, _current,
-                                            memory=_mem.snippets,
-                                            memory_by_meaning=_mem.by_meaning,
-                                            declared=_mem.declared,
-                                            portrait=_portrait_context(app))
-                # SP-2 Task 4: il Brain (questo passaggio olistico) usa il
-                # modello scelto per il Brain, se esplicito; "auto" (default)
-                # -> catena, invariato.
-                _brain_model = (app.get("models_config") or {}).get("brain_model", "auto")
-                _text = await _llm_reason(COVERAGE_REVIEW_SYSTEM, build_review_message(_ctx),
-                                          model=_brain_model, max_tokens=1536)
-                _suggs = parse_suggestions(_text)
-
-                try:
-                    _rlog = app.get("reasoning_log")
-                    if _rlog is not None and _text and _text.strip():
-                        _rlog.capture(mode="holistic", text=_text)
-                except Exception:
-                    logger.warning("reasoning capture failed", exc_info=True)
-
-                def _mk_proposal(c, suggestion_id):
-                    # Consolidamento 1.2: apply_suggestions inoltra qui SOLO i
-                    # suggerimenti 'management' che sono davvero una config di
-                    # automazione HA (is_automation_config), quindi il tipo
-                    # dichiarato e il contenuto coincidono e l'apply scrive in
-                    # HA qualcosa che funziona. Il nome leggibile di
-                    # un'automazione e' `alias`, non `name`.
-                    task = _spawn(create_automation_proposal(
-                        proposal_store, proposal_type="ha_automation",
-                        name=str(c.get("alias") or c.get("name") or "Brain coverage-review"),
-                        description=str(c.get("description") or ""),
-                        config=c, routing_reason="brain coverage-review"),
-                        name="create_automation_proposal")
-                    # I-1: create_automation_proposal segnala il fallimento
-                    # come valore di ritorno, non un'eccezione, e questo task
-                    # e' fire-and-forget -- prima di questo callback nessuno
-                    # lo ispezionava e la riga 'management' restava marcata
-                    # 'proposed' (scritta sopra, in apply_suggestions, prima
-                    # che questo task finisse) anche quando la proposta non
-                    # era stata salvata. Riconcilia lo stato quando l'esito
-                    # vero e' disponibile.
-                    def _on_proposal_done(t, _sid=suggestion_id):
-                        try:
-                            result = t.result()
-                        except Exception as exc:
-                            result = {"error": str(exc)}
-                        reconcile_proposal_outcome(_store, _sid, result)
-                    task.add_done_callback(_on_proposal_done)
-                    return task
-
-                _applied_coverage = apply_suggestions(
-                    _suggs, data_dir=data_dir, store=_store,
-                    inventory_ids={e["entity_id"] for e in _inventory},
-                    current_config=_current, create_proposal=_mk_proposal,
-                    cap=int(os.environ.get("BRAIN_SUGGEST_CAP", "5")))
-
-                # Slice 6 Task 4: write-back a recallable brain-action trace
-                # for every coverage suggestion just auto-applied above, so
-                # the chat can later explain what the brain did on its own.
-                await trace_applied_coverage(knowledge_store, embedder, _applied_coverage)
-
-                # Slice 6 Task 4: auto-tune enabled LEARNABLE detectors (v1:
-                # "power") from history baselines. Deterministic-action
-                # discipline: the tuning value comes ONLY from
-                # learned_threshold (pure/deterministic), never from the
-                # LLM/reasoner above -- re-read the policy so a detector/
-                # entity apply_suggestions just enabled above is considered.
-                await auto_tune_detectors(
-                    data_dir=data_dir, policy=load_policy(data_dir),
-                    history_store=history_store, knowledge_store=knowledge_store,
-                    embedder=embedder,
-                    cap=int(os.environ.get("BRAIN_TUNE_CAP", "5")),
-                    # Slice 6 Task 5: surface applied tunings in the same
-                    # "Suggerimenti del cervello" store/UI as coverage
-                    # suggestions, so they are undoable via the existing
-                    # /api/suggestions/{id}/undo route.
-                    store=_store)
-
-                # Slice 6 (whole-branch review I1): the running guardian holds
-                # a policy override snapshot (set at startup / on UI save), so
-                # threshold tunings and coverage detectors just written to disk
-                # above are invisible to the live DETECTORS loop until the next
-                # UI save or restart -- making the auto-tune (and its undo)
-                # behaviorally inert live. Refresh the override from disk so the
-                # brain's changes take effect immediately.
-                guardian.set_policy(load_policy(data_dir))
-        except Exception:
-            logger.exception("coverage-review failed")
-
-        if env_bool("BRIDGE_ENABLED") or _sub_first_class:
-            wake = {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
-                    "evidence": {}, "ts": _time.time()}
-            ctx = {"snapshot": {k: (_san(v) if isinstance(v, str) else v) for k, v in (snapshot or {}).items()}}
-            deadline = _time.time() + int(os.environ.get("BRIDGE_DEADLINE_MIN", "5")) * 60
-            reasoning_queue.enqueue("holistic", wake, ctx, deadline, now=_time.time())
-            return
-        wake = WakeEvent("holistic", "home", "info", {"snapshot": snapshot}, _time.time())
-        await _run_decision(wake, None, SITUATION_HOLISTIC_SYSTEM)
-
-    situation_evaluator = SituationEvaluator(
-        sentinel_store, lambda: load_policy(data_dir),
-        build_snapshot=_snapshot, on_situation=_on_situation, holistic_reason=_holistic_reason,
-        cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
-        daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")))
-    app["situation_evaluator"] = situation_evaluator
-
-    engine._scheduler.add_job(
-        situation_evaluator.run_evaluation, trigger="interval",
-        minutes=int(os.environ.get("SENTINEL_RONDA_MINUTES", "15")),
-        id="hiris_sentinel_ronda", replace_existing=True, misfire_grace_time=300)
+    # fetta E3 Task 4: `_holistic_reason` (il cervello auto-proponente sulla
+    # cadenza olistica: coverage-review, apply_suggestions, auto_tune_
+    # detectors, il ramo bridge-enqueue) e' uscito con la ronda che lo
+    # chiamava (`SituationEvaluator`/job `hiris_sentinel_ronda`, sopra).
+    # Orfani DI PROPOSITO qui, non cancellati -- li raccoglie il Task 5, che
+    # trova la checklist d'ingresso nel report di questo task:
+    # `brain.coverage_review` (COVERAGE_REVIEW_SYSTEM, build_review_context,
+    # build_review_message, parse_suggestions), `brain.suggestions`
+    # (apply_suggestions, reconcile_proposal_outcome, SuggestionStore --
+    # quest'ultima resta wired per l'API /api/suggestions), `brain.
+    # cognitive_loop` (auto_tune_detectors, trace_applied_coverage),
+    # `brain.learned_thresholds`, `reasoning_log.capture()` (l'oggetto e il
+    # suo job di prune restano wired, solo `.capture()` non ha piu'
+    # chiamanti), `tools.proposal_tools.create_automation_proposal`. Il
+    # ramo bridge-enqueue di `_holistic_reason` era l'UNICO produttore di
+    # job `kind="holistic"` in `reasoning_queue` -- da qui in poi quel kind
+    # non viene piu' mai accodato (vedi `_reasoning_sweep` sotto).
 
     # SP-3 Task 8: periodic read-only health scan (8 checks: 5 sulla casa, 3
     # sul sistema tramite il Supervisor) reconciled into
@@ -1960,30 +1759,25 @@ async def _on_startup(app: web.Application) -> None:
         _run_reasoning_prune, trigger="cron", hour=3, minute=15,
         id="hiris_reasoning_prune", replace_existing=True, misfire_grace_time=3600)
 
-    # ── Ponte push (Piano A): spazzata di fallback per i job scaduti senza risposta dal
-    # runner remoto. Se BRIDGE_FALLBACK è attivo, ragiona in locale riusando
-    # lo stesso _run_decision (e quindi lo stesso cap del router LLM) delle
-    # situazioni sopra — nessun path metrico/actuation nuovo.
+    # ── Ponte push (Piano A): spazzata dei job scaduti senza risposta dal
+    # runner remoto. Il ramo chat resta (Slice 4b): un job "chat" scaduto
+    # resta semplicemente 'expired', esposto alla sua stessa route di poll.
+    # fetta E3 Task 4: il ramo di fallback olistico (ragionava in locale via
+    # _run_decision) e' uscito con `_holistic_reason`, l'unico produttore di
+    # job kind="holistic" -- nessun job di quel tipo viene piu' accodato.
+    # Silenzio dichiarato: un job kind="holistic" qui puo' arrivare SOLO da
+    # un reasoning.db lasciato da un'installazione precedente questo
+    # deploy -- nessun fallback locale lo ragiona piu', quindi non e' un
+    # pass silenzioso: un log esplicito lo dichiara prima di lasciarlo
+    # scadere (sweep_expired lo ha gia' marcato 'expired' sopra).
     async def _reasoning_sweep() -> None:
         if not env_bool("BRIDGE_ENABLED") and not _sub_first_class:
             return
-        fallback = env_bool("BRIDGE_FALLBACK", default=True)
         for job in reasoning_queue.sweep_expired(_time.time()):
-            if job.get("kind") != "holistic":
-                # Non-holistic jobs (e.g. kind="chat") must never be routed
-                # into holistic reasoning: they simply stay 'expired' and are
-                # surfaced to their own caller (e.g. the chat poll route).
-                continue
-            if not fallback:
-                continue
-            jw = job.get("wake") or {}
-            wake = WakeEvent(jw.get("signal_kind", "holistic"), jw.get("entity_id", "home"),
-                              jw.get("severity_hint", "info"),
-                              {"snapshot": (job.get("context") or {}).get("snapshot", {})}, _time.time())
-            try:
-                await _run_decision(wake, None, SITUATION_HOLISTIC_SYSTEM)  # metered/locale, già capato dal router
-            except Exception:
-                logger.exception("reasoning fallback failed for %s", job.get("job_id"))
+            if job.get("kind") != "chat":
+                logger.warning(
+                    "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, fetta E3 Task 4), scartato",
+                    job.get("job_id"), job.get("kind"))
         reasoning_queue.prune(_time.time() - 7 * 86400)
 
     engine._scheduler.add_job(
@@ -1995,10 +1789,10 @@ async def _on_startup(app: web.Application) -> None:
     # just checks that app["reasoning_queue"] is wired -- and it always is in
     # prod (created unconditionally a few lines above) -- so on its own it's
     # not a signal that anything actually claims/sweeps/prunes those jobs.
-    # That sweeping/pruning (both _holistic_reason's enqueue above and
-    # _reasoning_sweep just above) is gated on BRIDGE_ENABLED, read the same
-    # way here as everywhere else in this module. Gating the flag itself at
-    # this single wiring point -- rather than teaching _bridge_on about
+    # That sweeping/pruning (_reasoning_sweep just above, for the chat kind
+    # it still processes) is gated on BRIDGE_ENABLED, read the same way here
+    # as everywhere else in this module. Gating the flag itself at this
+    # single wiring point -- rather than teaching _bridge_on about
     # BRIDGE_ENABLED -- keeps handlers_chat.py's tests able to wire/unwire
     # the queue directly without touching env vars, while still making sure
     # chat_via_subscription=true + BRIDGE_ENABLED=0 enqueues nothing that
@@ -2006,10 +1800,11 @@ async def _on_startup(app: web.Application) -> None:
     #
     # SP-2 T3: provider_subscription (first-class) must ALSO force the bridge
     # on, everywhere BRIDGE_ENABLED is read -- not just here. _sub_first_class
-    # (computed once, right after _active above) is OR'd into all THREE
-    # BRIDGE_ENABLED reads in this module: _holistic_reason's enqueue gate,
-    # _reasoning_sweep's early-return, and this cfg/bridge derivation. Missing
-    # any one of them would leave a hole where the fail-safe below
+    # (computed once, right after _active above) is OR'd into all remaining
+    # BRIDGE_ENABLED reads in this module: _reasoning_sweep's early-return
+    # (fetta E3 Task 4: this used to be one of three, the holistic-enqueue
+    # read went with `_holistic_reason`) and this cfg/bridge derivation.
+    # Missing it would leave a hole where the fail-safe below
     # (_chat_subscription_active, still a strict AND) blocks chat while the
     # sweep that's supposed to drain the queue never runs.
     _bridge_enabled = (
@@ -2022,25 +1817,11 @@ async def _on_startup(app: web.Application) -> None:
     )
     app["chat_via_subscription"] = _chat_subscription_active(_chat_via_subscription_cfg, _bridge_enabled)
 
-    # ── Arrivo serale (fetta 3): riusa lo stesso adapter _on_situation ──────
-    # (reason→inietta suggested_action→execute→record), stessa gate del
-    # semaforo (execute_policy) delle situazioni sopra. Nessun path di
-    # actuation nuovo: instrada solo attraverso _on_situation.
-    from .watcher.arrival import ArrivalWatcher
-
-    _arrival_deps = {
-        "get_states": lambda ids: ha_client.get_states(ids),
-        "now_hour": lambda: _dt.now().hour,
-    }
-    arrival_watcher = ArrivalWatcher(
-        sentinel_store, lambda: load_policy(data_dir), deps=_arrival_deps,
-        on_arrival=_on_situation,  # riuso identico: (wake, suggested) → reason→inietta→execute→record
-        cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
-        daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")))
-    app["arrival_watcher"] = arrival_watcher
-    ha_client.add_state_listener(
-        lambda evt: _spawn(arrival_watcher.on_state_changed(evt), name="arrival_watcher_on_state_changed")
-    )
+    # fetta E3 Task 4: l'arrivo serale (watcher/arrival.py, ArrivalWatcher)
+    # e' uscito -- riusava lo stesso adapter `_on_situation` della ronda,
+    # uscito con lei (vedi il commento piu' in alto). Nessun sostituto:
+    # nessun path di actuation restava dietro, solo una proposta che ora
+    # nessuno genera piu'.
 
     # SP-2 T5C: per-provider DEFAULT model chosen by the user (used when an
     # entity's model is "auto"); Ollama excluded — it uses local_model.model

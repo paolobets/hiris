@@ -30,33 +30,17 @@ def test_create_app_registers_sentinel_routes():
     assert "/api/sentinel/timeline" in paths
 
 
-def test_evaluator_and_off_task_wired(tmp_path):
-    """Task 8 wiring smoke test: evaluator + off_task modules import cleanly and
-    are usable, without reloading hiris.app.server (which has import-time side
-    effects — see test_create_app_registers_sentinel_routes for that coverage).
-    The real startup wiring (server.py's _on_startup) is verified separately via
-    `python -c "import hiris.app.server"` and manual/integration checks, same as
-    fetta 1's guardian wiring."""
-    from hiris.app.watcher.evaluator import SituationEvaluator
+def test_off_task_wired():
+    """Task 8 wiring smoke test: off_task imports cleanly and is usable.
+
+    fetta E3 Task 4: this used to also smoke-test `SituationEvaluator`
+    (watcher/evaluator.py), which was one of the two producers of an
+    off_after_min-bearing action (the other being the guardian's own
+    detectors, via propose_sentinel_script). The evaluator is gone with the
+    ronda; build_off_task itself is NOT an orphan -- propose_sentinel_script
+    (watcher/sentinel_proposal.py) still calls it for every Guardian
+    proposal, so this half of the original test survives on its own."""
     from hiris.app.watcher.off_task import build_off_task
-
-    store = SentinelStore(str(tmp_path / "s.db"))
-
-    async def _build_snapshot():
-        return {}
-
-    async def _on_situation(wake, suggested):
-        return None
-
-    async def _holistic_reason(snapshot):
-        return None
-
-    evaluator = SituationEvaluator(
-        store, lambda: {"situations": {}},
-        build_snapshot=_build_snapshot, on_situation=_on_situation,
-        holistic_reason=_holistic_reason)
-    assert evaluator is not None
-    store.close()
 
     # build_off_task: only builds a delayed turn_off for turn_on + off_after_min.
     off = build_off_task({
@@ -74,12 +58,6 @@ def test_evaluator_and_off_task_wired(tmp_path):
     assert build_off_task({"domain": "switch", "service": "turn_on", "entity_id": "switch.x"}) is None
     assert build_off_task({"domain": "light", "service": "turn_off", "entity_id": "light.x", "off_after_min": 5}) is None
 
-
-def test_arrival_watcher_importable():
-    """Task 3 wiring smoke test: ArrivalWatcher + is_evening import cleanly.
-    The real startup wiring (server.py's _on_startup) is verified separately via
-    `python -c "import hiris.app.server"`, same convention as the evaluator/
-    off_task check above."""
-    from hiris.app.watcher.arrival import ArrivalWatcher, is_evening
-
-    assert ArrivalWatcher is not None and is_evening is not None
+# fetta E3 Task 4: test_arrival_watcher_importable e' uscito -- il suo
+# soggetto (watcher/arrival.py, ArrivalWatcher/is_evening) e' cancellato
+# insieme all'arrivo serale, nessun successore a cui spostarlo.
