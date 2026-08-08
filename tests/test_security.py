@@ -140,42 +140,12 @@ async def test_security_headers_present():
                 assert resp.headers.get("Referrer-Policy") == "no-referrer"
 
 
-# ---------------------------------------------------------------------------
-# SEC-010 — domain/service regex in ha_client
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_ha_client_rejects_invalid_domain():
-    from hiris.app.proxy.ha_client import HAClient
-    client = HAClient("http://supervisor/core", "token")
-    client._session = MagicMock()
-    result = await client.call_service("../evil", "turn_on", {})
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_ha_client_rejects_invalid_service():
-    from hiris.app.proxy.ha_client import HAClient
-    client = HAClient("http://supervisor/core", "token")
-    client._session = MagicMock()
-    result = await client.call_service("light", "turn_on; rm -rf /", {})
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_ha_client_accepts_valid_service():
-    from hiris.app.proxy.ha_client import HAClient
-    client = HAClient("http://supervisor/core", "token")
-    mock_resp = AsyncMock()
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-    mock_resp.status = 200
-    mock_session = MagicMock()
-    mock_session.post.return_value = mock_resp
-    client._session = mock_session
-    result = await client.call_service("light", "turn_on", {"entity_id": "light.sala"})
-    assert result is True
-
+# SEC-010 — domain/service regex in ha_client: usciva con `call_service`
+# (review finale fetta E3, Important #3 -- l'ultima primitiva di attuazione
+# del codebase, zero chiamanti di produzione). Le tre prove qui sopra
+# difendevano SOLO quella funzione (dominio/servizio invalidi rifiutati,
+# servizio valido accettato): con lei uscita, non restava nessun soggetto
+# vivo da difendere.
 
 # ---------------------------------------------------------------------------
 # SEC-004 — max_tokens cap

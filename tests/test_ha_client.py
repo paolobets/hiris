@@ -26,21 +26,6 @@ async def test_get_states_returns_list(client):
 
 
 @pytest.mark.asyncio
-async def test_call_service_returns_true(client):
-    mock_resp = AsyncMock()
-    mock_resp.status = 200
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-    with patch("aiohttp.ClientSession.post", return_value=mock_resp):
-        await client.start()
-        result = await client.call_service("light", "turn_on", {"entity_id": "light.living"})
-        await client.stop()
-
-    assert result is True
-
-
-@pytest.mark.asyncio
 async def test_get_states_filters_correctly(client):
     mock_resp = AsyncMock()
     mock_resp.status = 200
@@ -63,22 +48,6 @@ async def test_get_states_filters_correctly(client):
     assert "light.living" in entity_ids
     assert "sensor.temp" in entity_ids
     assert "light.kitchen" not in entity_ids
-
-
-@pytest.mark.asyncio
-async def test_call_service_returns_false_on_error(client):
-    mock_resp = AsyncMock()
-    mock_resp.status = 400
-    mock_resp.text = AsyncMock(return_value="Bad request")
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-
-    with patch("aiohttp.ClientSession.post", return_value=mock_resp):
-        await client.start()
-        result = await client.call_service("light", "turn_on", {"entity_id": "light.bad"})
-        await client.stop()
-
-    assert result is False
 
 
 def _make_ws_registry_mock(msg_type: str, result_data: list) -> tuple:

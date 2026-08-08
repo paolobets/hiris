@@ -368,7 +368,7 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 # growth (the queue itself is created unconditionally in _on_startup, so
 # handlers_chat._bridge_on's "queue present" check alone can't catch this).
 #
-# Full _on_startup is HA-client/engine/mqtt-heavy and out of scope for a unit
+# Full _on_startup is HA-client/engine-heavy and out of scope for a unit
 # test here -- verified at the source level instead, same convention as the
 # other inspect.getsource wiring tests in test_coverage_wiring.py (README'd
 # as "runtime wiring verified separately via manual/integration checks").
@@ -379,6 +379,9 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 # (test_supervisor_client_lifecycle_wired_in_server_source,
 # test_health_monitor_lifecycle_wired_in_server_source) exited with the
 # HealthMonitor and SupervisorClient; the convention itself is unaffected.
+# Review finale fetta E3, Minor: la dicitura "mqtt-heavy" e' uscita -- MQTT
+# stesso e' uscito col Task 14 di questa fetta ("esce mqtt"), e questo file
+# e' stato toccato dalla fetta senza aggiornare la nota.
 # ---------------------------------------------------------------------------
 
 def test_chat_via_subscription_wiring_requires_bridge_enabled_in_source():

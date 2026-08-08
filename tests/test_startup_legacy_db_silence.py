@@ -193,3 +193,29 @@ def test_portrait_db_silent_when_file_absent(tmp_path, caplog):
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_portrait_silence"))
     assert not caplog.records, "nessun portrait.db sul disco -- nessun log deve uscire"
+
+
+# Review finale fetta E3, Minor: `tasks.json` (Task 9, il TaskEngine) aveva la
+# stessa forma di silenzio degli altri sei file ma la nota diceva "nessun log
+# e' possibile" -- falso, corretto aggiungendo lo stesso genere di silenzio
+# dichiarato, pinnato qui con lo stesso metodo.
+
+
+def test_tasks_json_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _load_silence_check(
+        "tasks_json_path", 'api_key = os.environ.get("CLAUDE_API_KEY"',
+    )
+    (tmp_path / "tasks.json").write_text("{}")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_tasks_json_silence"))
+    assert any("tasks.json" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_tasks_json_silent_when_file_absent(tmp_path, caplog):
+    check = _load_silence_check(
+        "tasks_json_path", 'api_key = os.environ.get("CLAUDE_API_KEY"',
+    )
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_tasks_json_silence"))
+    assert not caplog.records, "nessun tasks.json sul disco -- nessun log deve uscire"

@@ -10,6 +10,14 @@ instruction exists, names the right tool, closes the "preso nota" path, and
 reaches BOTH runners -- claude_runner.py and backends/openai_compat_runner.py
 assemble the system prompt separately, so a rule reaching only one of them
 is a rule half the users never get.
+
+Review finale fetta E3, Important #1: this file used to pin the literal
+string "save_memory" -- a tool that stopped existing at E3 Task 8 (the chat
+catalog is today casa/strumenti.py's four tools: cerca, guarda, ricorda,
+richiama). The suite was DEFENDING the stale prompt instead of catching it.
+Fixed by reading the real save-tool name from casa/strumenti.py
+(RICORDA_TOOL_DEF["name"]) instead of hardcoding a guess -- if the tool is
+ever renamed again, this pin moves with it instead of silently going stale.
 """
 from __future__ import annotations
 
@@ -18,7 +26,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
+from hiris.app.casa.strumenti import RICORDA_TOOL_DEF
 from hiris.app.claude_runner import BASE_SYSTEM_PROMPT, ClaudeRunner
+
+NOME_RICORDA = RICORDA_TOOL_DEF["name"]
 
 
 def _sys_text(system) -> str:
@@ -29,11 +40,12 @@ def _sys_text(system) -> str:
 
 
 def test_base_prompt_instructs_saving_user_statements():
-    """Must name the save tool and use an imperative save verb -- asserting
-    on a whole sentence would break on the first stylistic touch-up."""
-    assert "save_memory" in BASE_SYSTEM_PROMPT
-    assert BASE_SYSTEM_PROMPT.count("save_memory") >= 2, (
-        "save_memory must appear at least twice: in the positive instruction and "
+    """Must name the real save tool (`ricorda`, casa/strumenti.py) and use an
+    imperative save verb -- asserting on a whole sentence would break on the
+    first stylistic touch-up."""
+    assert NOME_RICORDA in BASE_SYSTEM_PROMPT
+    assert BASE_SYSTEM_PROMPT.count(NOME_RICORDA) >= 2, (
+        f"{NOME_RICORDA} must appear at least twice: in the positive instruction and "
         "in the negative clause forbidding claims without saving. If only one "
         "occurrence remains, the first (positive) bullet was likely removed."
     )
@@ -63,7 +75,7 @@ async def test_claude_runner_system_prompt_carries_memory_rule():
     await runner.chat("ciao")
 
     sent_system = instance.messages.create.call_args.kwargs["system"]
-    assert "save_memory" in _sys_text(sent_system)
+    assert NOME_RICORDA in _sys_text(sent_system)
 
 
 @pytest.mark.asyncio
@@ -97,7 +109,7 @@ async def test_openai_compat_runner_system_prompt_carries_memory_rule(tmp_path):
     await runner.chat(user_message="ciao", model="gpt-4o", max_tokens=64)
 
     sent_messages = runner._client.chat.completions.create.call_args.kwargs["messages"]
-    assert "save_memory" in sent_messages[0]["content"]
+    assert NOME_RICORDA in sent_messages[0]["content"]
 
 
 @pytest.mark.asyncio
@@ -146,4 +158,4 @@ async def test_openai_compat_runner_chat_stream_carries_memory_rule(tmp_path):
     )]
 
     sent_messages = runner._client.chat.completions.create.call_args.kwargs["messages"]
-    assert "save_memory" in sent_messages[0]["content"]
+    assert NOME_RICORDA in sent_messages[0]["content"]

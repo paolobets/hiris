@@ -261,9 +261,15 @@ class ChatbotEngine:
         except Exception as exc:
             logger.error("Failed to load chatbots from %s: %s", self._data_path, exc)
 
+    # Review finale fetta E3, Important #2: la versione precedente istruiva a
+    # chiamare `get_home_status()`/`get_area_entities()`, morti dalla E2
+    # Task 8 -- catturato dal vivo in un turno di chat reale (il runner
+    # riceveva esattamente questo prompt). Riscritta sui due strumenti veri
+    # di oggi (casa/strumenti.py: cerca, guarda).
     _DEFAULT_SYSTEM_PROMPT = (
         "Sei l'assistente principale per la gestione della smart home.\n"
-        "Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
+        "Per scoprire cosa c'è in casa usa `cerca` (trova per nome un'area, un'entità o un"
+        " dispositivo) e `guarda` (il dettaglio di una cosa sola, col suo stato).\n"
         "La sezione CASA in fondo al prompt è uno snapshot di orientamento:"
         " usa i tool per valori precisi come temperature e stati correnti."
     )
@@ -271,6 +277,13 @@ class ChatbotEngine:
     _LEGACY_DEFAULT_PROMPTS = {
         "Sei HIRIS, assistente per la smart home. Rispondi nella lingua dell'utente.",
         "You are HIRIS, an AI assistant for smart home management. Respond in the same language as the user.",
+        # Il default precedente a questa correzione: un'installazione che lo
+        # ha ancora persistito su disco va migrata al nuovo, non incontrata
+        # in silenzio (stessa disciplina delle due righe sopra).
+        "Sei l'assistente principale per la gestione della smart home.\n"
+        "Per scoprire cosa c'è in casa chiama get_home_status() o get_area_entities().\n"
+        "La sezione CASA in fondo al prompt è uno snapshot di orientamento:"
+        " usa i tool per valori precisi come temperature e stati correnti.",
     }
 
     def _seed_default_chatbot(self) -> None:

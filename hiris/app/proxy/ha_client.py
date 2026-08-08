@@ -6,7 +6,8 @@ from typing import Any, Callable, Optional
 from urllib.parse import quote
 import aiohttp
 
-_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+# Review finale fetta E3, Important #3: `_IDENTIFIER_RE` serviva solo a
+# `call_service`, uscita qui sotto -- vedi il commento sopra `class HAClient`.
 
 # fetta E3 Task 12 ("esce il ritratto"): `_AUTOMATION_ID_RE` e' uscita --
 # serviva solo a `is_automation_id_candidate`/`get_automation_config`,
@@ -141,17 +142,16 @@ class HAClient:
     # erano gia' caduti col ToolDispatcher. Raccolto qui (fetta E3 Task 12):
     # verificato di nuovo, zero chiamanti in tutto il repo.
 
-    async def call_service(self, domain: str, service: str, data: dict) -> bool:
-        if not _IDENTIFIER_RE.match(domain) or not _IDENTIFIER_RE.match(service):
-            logger.error("Rejected invalid domain/service: %r.%r", domain, service)
-            return False
-        url = f"{self._base_url}/api/services/{domain}/{service}"
-        async with self._session.post(url, json=data) as resp:
-            if resp.status != 200:
-                body = await resp.text()
-                logger.error("call_service %s.%s failed %s: %s", domain, service, resp.status, body)
-                return False
-            return True
+    # Review finale fetta E3, Important #3: `call_service` (POST
+    # /api/services/{domain}/{service}) e' uscita -- era l'ULTIMA primitiva
+    # di attuazione rimasta nel codebase, zero chiamanti di produzione (ne'
+    # in questo modulo ne' altrove: verificato con grep sull'intero repo).
+    # Nessun piano o report la dichiarava "tenuta apposta" (a differenza di
+    # `get_statistics`), e il censimento non la vedeva: la stringa del suo
+    # stesso log d'errore ("call_service %s.%s failed %s: %s") contava come
+    # occorrenza nel codice, mascherando l'orfano. In un HIRIS che "conosce e
+    # non agisce" la primitiva che agisce non deve esistere -- torna quando
+    # tornera' un progetto agenti con perimetro e verifica umana.
 
     # fetta E3 Task 12: `get_automations`/`create_automation`/
     # `resolve_automation_id_by_alias`/`resolve_automation_id_by_entity_id`/

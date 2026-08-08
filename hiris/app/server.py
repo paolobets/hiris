@@ -786,12 +786,23 @@ async def _on_startup(app: web.Application) -> None:
     #     Task 12.
     #  2. un `tasks.json` con task pendenti ereditato da un'installazione
     #     precedente non viene piu' ne' caricato ne' eseguito: nessun codice
-    #     lo incontra piu' (a differenza di advisory.db/sentinel.db, Task
-    #     6/7, qui non resta alcun punto del boot che tocchi ancora
-    #     TASKS_DATA_PATH per poterne loggare la presenza) -- quindi nessun
-    #     log e' possibile. Il file resta su disco, intatto (mai dati utente
-    #     cancellati in /data): va nell'elenco /data del Task 15 e nelle note
-    #     di release.
+    #     lo incontra piu'. Review finale fetta E3, Minor: la nota precedente
+    #     diceva che "nessun log e' possibile" -- falso, come per gli altri
+    #     file di questa lista: un `os.path.exists` sul path letterale e'
+    #     esattamente cio' che si fa qui sotto, stessa disciplina di
+    #     advisory.db/sentinel.db/portrait.db/proposals.db/
+    #     dashboard_backups.json/ha_health.json. Il file resta su disco,
+    #     intatto (mai dati utente cancellati in /data): va nell'elenco /data
+    #     del Task 15 e nelle note di release.
+    _tasks_json_path = os.path.join(data_dir, "tasks.json")
+    if os.path.exists(_tasks_json_path):
+        logger.info(
+            "tasks.json presente in %s da un'installazione precedente: "
+            "da fetta E3 Task 9 nessun codice lo legge ne' lo scrive piu' "
+            "(il TaskEngine e le rotte /api/tasks* sono usciti per intero). "
+            "Il file resta su disco, intatto.",
+            _tasks_json_path,
+        )
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
