@@ -1,8 +1,12 @@
-from __future__ import annotations
-from typing import TYPE_CHECKING, Any
+"""Definizioni dei tre strumenti sui task differiti.
 
-if TYPE_CHECKING:
-    from ..task_engine import TaskEngine
+fetta E2 Task 8: `create_task_tool`/`list_tasks_tool`/`cancel_task_tool` (le
+funzioni esecutrici) sono uscite -- orfane dal Task 7 (il `ToolDispatcher` che
+le chiamava e' uscito), nessun chiamante di produzione le invocava piu'. Le
+tre definizioni restano: sono nominate da `EVALUATION_ONLY_TOOLS`
+(claude_runner.py), l'unico catalogo rimasto in piedi -- lo usa la Sentinella.
+"""
+from __future__ import annotations
 
 CREATE_TASK_TOOL_DEF = {
     "name": "create_task",
@@ -79,39 +83,3 @@ CANCEL_TASK_TOOL_DEF = {
         "required": ["task_id"],
     },
 }
-
-
-def create_task_tool(
-    task_engine: "TaskEngine",
-    label: str,
-    trigger: dict,
-    actions: list,
-    condition: dict | None = None,
-    one_shot: bool = True,
-    agent_id: str = "hiris-default",
-    allowed_entities: list | None = None,
-    allowed_services: list | None = None,
-) -> dict:
-    task = task_engine.add_task(
-        {"label": label, "trigger": trigger, "actions": actions,
-         "condition": condition, "one_shot": one_shot},
-        agent_id=agent_id,
-        allowed_entities=allowed_entities,
-        allowed_services=allowed_services,
-    )
-    return {"task_id": task.id, "label": task.label, "status": task.status}
-
-
-def list_tasks_tool(
-    task_engine: "TaskEngine",
-    agent_id: str | None = None,
-    status: str | None = None,
-) -> list[dict]:
-    return task_engine.list_tasks(agent_id=agent_id, status=status)
-
-
-def cancel_task_tool(task_engine: "TaskEngine", task_id: str) -> dict:
-    success = task_engine.cancel_task(task_id)
-    if success:
-        return {"cancelled": True, "task_id": task_id}
-    return {"error": f"Task {task_id!r} not found or not in pending state"}

@@ -20,7 +20,6 @@ import pytest
 
 from hiris.app import server
 from hiris.app.proxy.entity_cache import EntityCache, inventario_non_leggibile
-from hiris.app.tools.ha_tools import get_entities_on
 
 
 class _HA:
@@ -78,11 +77,14 @@ async def test_ricarica_linventario_dopo_un_avvio_senza_home_assistant():
 async def _get_entities_on_come_lo_strumento(cache):
     """Stessa forma del vecchio ramo `get_entities_on` di `ToolDispatcher.dispatch`
     (uscito -- fetta E2 Task 7): il guasto sull'inventario si controlla PRIMA
-    di leggere, esattamente come faceva il dispatcher."""
+    di leggere, esattamente come faceva il dispatcher. `tools.ha_tools.
+    get_entities_on` era un pass-through di una riga a `cache.get_on()` --
+    uscita anche lei (fetta E2 Task 8, orfana dallo stesso Task 7): si chiama
+    `cache.get_on()` direttamente."""
     guasto = inventario_non_leggibile(cache)
     if guasto is not None:
         return guasto
-    return get_entities_on(cache)
+    return cache.get_on()
 
 
 @pytest.mark.asyncio

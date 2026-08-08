@@ -1,8 +1,14 @@
-"""Slice 3 Task 6 — kinds egress: handle_recall_memory forwards `kinds` to
-KnowledgeStore.search, closing the dead-config on Agent.knowledge_access.kinds.
+"""Slice 3 Task 6 — kinds egress: `kinds` filtra `KnowledgeStore.search`,
+chiudendo la config morta su Agent.knowledge_access.kinds.
 
-Task 2 (memoria unica) merged handle_recall_knowledge into handle_recall_memory;
-these tests moved onto the survivor, unchanged in substance.
+fetta E2 Task 8 ("escono i trentaquattro"): questi test chiamavano
+`handle_recall_memory` (tools/memory_tools.py), ma quel wrapper si limitava a
+inoltrare `kinds` invariato a `KnowledgeStore.search` -- la normalizzazione
+verificata qui (lista, o stringa singola trattata come lista) vive TUTTA in
+`_clausole_di_scope` (knowledge_store.py), non nel wrapper. Il wrapper e'
+uscito -- orfano dal Task 7 (`ToolDispatcher`, l'unico chiamante, e' uscito
+lui per primo) -- ma il soggetto vero di questi test (la normalizzazione)
+sopravvive intatto: chiamano `store.search` direttamente.
 
 Also covers the Task 1 review Low: a plain string kinds="fact" (not "all")
 must behave like ["fact"], not be iterated character-by-character.
@@ -11,7 +17,6 @@ import pytest
 from unittest.mock import AsyncMock
 
 from hiris.app.brain.knowledge_store import KnowledgeStore
-from hiris.app.tools.memory_tools import handle_recall_memory
 
 
 @pytest.mark.asyncio
@@ -24,12 +29,11 @@ async def test_recall_memory_kinds_list_filters_out_other_kinds(tmp_path):
     embedder = AsyncMock()
     embedder.embed = AsyncMock(return_value=[0.5, 0.5])
 
-    res = await handle_recall_memory(
-        store, embedder, {"query": "gatto"}, owner="home", kinds=["fact"],
-    )
-    kinds_seen = {r["kind"] for r in res["results"]}
+    qv = await embedder.embed("gatto")
+    results = store.search(query_vec=qv, k=5, owner="home", kinds=["fact"])
+    kinds_seen = {r["kind"] for r in results}
     assert "expense" not in kinds_seen
-    assert any(r["id"] == fact_id for r in res["results"])
+    assert any(r["id"] == fact_id for r in results)
     store.close()
 
 
@@ -45,10 +49,9 @@ async def test_recall_memory_kinds_plain_string_behaves_like_list(tmp_path):
     embedder = AsyncMock()
     embedder.embed = AsyncMock(return_value=[0.5, 0.5])
 
-    res = await handle_recall_memory(
-        store, embedder, {"query": "gatto"}, owner="home", kinds="fact",
-    )
-    kinds_seen = {r["kind"] for r in res["results"]}
+    qv = await embedder.embed("gatto")
+    results = store.search(query_vec=qv, k=5, owner="home", kinds="fact")
+    kinds_seen = {r["kind"] for r in results}
     assert "expense" not in kinds_seen
-    assert any(r["id"] == fact_id for r in res["results"])
+    assert any(r["id"] == fact_id for r in results)
     store.close()

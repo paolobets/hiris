@@ -33,7 +33,6 @@ from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.brain.reasoner_memory import relevant_memory
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import _reason_memory_context
-from hiris.app.tools.memory_tools import handle_recall_memory, handle_save_memory
 from hiris.app.watcher.reasoner import build_user_message
 from hiris.app.watcher.signals import WakeEvent
 
@@ -41,6 +40,44 @@ _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 PREF_TEXT = "d'inverno il soggiorno sta bene a 19.5 gradi"
 INSIGHT_TEXT = "media settimanale del consumo elettrico"
+
+
+# fetta E2 Task 8 ("escono i trentaquattro"): `handle_save_memory`/
+# `handle_recall_memory` (tools/memory_tools.py) sono usciti -- orfani dal
+# Task 7 (il `ToolDispatcher` che li chiamava e' uscito), nessun chiamante di
+# produzione li invocava piu'. Questo file prova la catena end-to-end della
+# memoria unica, non l'orchestrazione di quei due wrapper: le due funzioni
+# sotto chiamano `KnowledgeStore` direttamente, con lo stesso comportamento
+# che i wrapper avevano per il caso 'memory' che questo file esercita
+# (nessuna scadenza, provenienza chatbot_id solo per kind='memory', subito
+# 'approved') -- non un test dei wrapper stessi, che e' stato spostato dove
+# vive ora la logica che stavano sparendo (tests/test_kinds_egress.py, il
+# forward di `kinds` a `KnowledgeStore.search`) o cancellato dove non aveva
+# successore (tests/test_knowledge_tools.py e affini: validazione e
+# pseudonimizzazione erano proprieta' dei wrapper stessi, morte con loro).
+async def _salva_ricordo(store: KnowledgeStore, embedder, content: str, *,
+                         owner: str = "home", chatbot_id: str | None = None,
+                         kind: str | None = None) -> dict:
+    kind = kind or "memory"
+    try:
+        embedding = await embedder.embed(content)
+    except Exception:
+        embedding = None
+    item_id = store.add_item(
+        kind=kind, content=content, owner=owner,
+        chatbot_id=chatbot_id if kind == "memory" else None,
+        embedding=embedding or None, source="chat",
+    )
+    return {"saved": True, "id": item_id}
+
+
+async def _richiama_ricordi(store: KnowledgeStore, embedder, query: str, *,
+                            owner: str = "home") -> dict:
+    try:
+        qv = await embedder.embed(query)
+    except Exception:
+        qv = None
+    return {"results": store.search(query_vec=qv or [], k=5, owner=owner)}
 
 
 @pytest.fixture(autouse=True)
@@ -115,10 +152,11 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
     )
 
     # --- Step 1: save with the single tool, no approval step -------------
-    # fetta E2 Task 7: chiamato direttamente (era `ToolDispatcher.dispatch`,
-    # uscito) -- stessa funzione, stesso comportamento, un chiamante in meno.
-    saved = await handle_save_memory(
-        store, embedder, {"content": PREF_TEXT},
+    # fetta E2 Task 8: `_salva_ricordo` chiama KnowledgeStore direttamente
+    # (era `handle_save_memory`, uscita -- vedi il commento sopra
+    # l'helper) -- stesso comportamento, un livello di wrapper in meno.
+    saved = await _salva_ricordo(
+        store, embedder, PREF_TEXT,
         owner="home", chatbot_id="chatbot-a",
     )
     assert saved.get("saved") is True, saved
@@ -130,8 +168,8 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
     assert item["content"] == PREF_TEXT
 
     # --- Step 2: recallable from a DIFFERENT chatbot ----------------------
-    recalled = await handle_recall_memory(
-        store, embedder, {"query": "temperatura ideale del soggiorno d'inverno"},
+    recalled = await _richiama_ricordi(
+        store, embedder, "temperatura ideale del soggiorno d'inverno",
         owner="home",
     )
     recalled_contents = [r["content"] for r in recalled.get("results", [])]
@@ -186,12 +224,12 @@ async def test_saved_item_never_lands_in_pending(tmp_path):
 
     # Every kind the single save tool can produce -- kind omitted (bare
     # 'memory') and each of the five knowledge kinds it absorbed.
-    await handle_save_memory(store, embedder, {"content": "ricordo generico"},
-                             owner="home", chatbot_id="chatbot-a")
+    await _salva_ricordo(store, embedder, "ricordo generico",
+                         owner="home", chatbot_id="chatbot-a")
     for kind in ("fact", "preference", "obligation", "expense", "note"):
-        res = await handle_save_memory(
-            store, embedder, {"kind": kind, "content": f"elemento di tipo {kind}"},
-            owner="home", chatbot_id="chatbot-a",
+        res = await _salva_ricordo(
+            store, embedder, f"elemento di tipo {kind}",
+            owner="home", chatbot_id="chatbot-a", kind=kind,
         )
         assert res.get("saved") is True, res
 
@@ -218,8 +256,8 @@ async def test_memory_does_not_evaporate_years_later(tmp_path, monkeypatch):
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     embedder = NullEmbedder()
 
-    saved = await handle_save_memory(
-        store, embedder, {"content": PREF_TEXT},
+    saved = await _salva_ricordo(
+        store, embedder, PREF_TEXT,
         owner="home", chatbot_id="chatbot-a",
     )
     item_id = saved["id"]
@@ -242,8 +280,8 @@ async def test_memory_does_not_evaporate_years_later(tmp_path, monkeypatch):
     assert item["content"] == PREF_TEXT
 
     # Still recallable, from a different chatbot than the one that saved it.
-    recalled = await handle_recall_memory(
-        store, embedder, {"query": "temperatura del soggiorno"},
+    recalled = await _richiama_ricordi(
+        store, embedder, "temperatura del soggiorno",
         owner="home",
     )
     recalled_contents = [r["content"] for r in recalled.get("results", [])]
@@ -319,8 +357,8 @@ async def test_production_shaped_expired_memory_row_is_revived(tmp_path):
 
     # Recallable (degrades to recent() with the real NullEmbedder -- the
     # same path a stock install takes).
-    recalled = await handle_recall_memory(
-        store, NullEmbedder(), {"query": "sensori esterni guasti"},
+    recalled = await _richiama_ricordi(
+        store, NullEmbedder(), "sensori esterni guasti",
         owner="home",
     )
     recalled_contents = [r["content"] for r in recalled.get("results", [])]

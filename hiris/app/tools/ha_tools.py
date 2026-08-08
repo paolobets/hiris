@@ -1,14 +1,14 @@
+"""Definizioni dei cinque strumenti di lettura sullo stato della casa.
+
+fetta E2 Task 8 ("escono i trentaquattro"): le funzioni esecutrici
+(`get_entity_states`, `get_area_entities`, `get_home_status`,
+`get_entities_on`, `get_entities_by_domain`) sono uscite -- erano orfane da
+quando il `ToolDispatcher` che le chiamava e' uscito (fetta E2 Task 7): nessun
+chiamante di produzione le invocava piu', solo i test. Le cinque definizioni
+qui sotto restano invece: `EVALUATION_ONLY_TOOLS` (claude_runner.py), l'unico
+catalogo rimasto in piedi -- lo usa la Sentinella -- le nomina tutte e cinque.
+"""
 from __future__ import annotations
-import logging
-
-from ..proxy.ha_client import HAClient
-from ..proxy.entity_cache import (
-    ERRORE_INVENTARIO_NON_PRONTO,
-    EntityCache,
-    inventario_leggibile,
-)
-
-logger = logging.getLogger(__name__)
 
 TOOL_DEF = {
     "name": "get_entity_states",
@@ -64,100 +64,3 @@ GET_ENTITIES_BY_DOMAIN_TOOL_DEF = {
         "required": ["domain"],
     },
 }
-
-
-async def get_entity_states(
-    ha: HAClient,
-    ids: list[str],
-    entity_cache: EntityCache | None = None,
-) -> list[dict] | dict:
-    """Stato delle entita' richieste, dalla cache se cablata.
-
-    Una cache presente ma mai caricata NON e' una casa senza quelle entita':
-    `get_minimal` risponderebbe un elenco vuoto e il modello leggerebbe
-    "quell'entita' non esiste". Stesso esito dichiarato dei tre strumenti che
-    leggono lo stesso inventario (`get_home_status`, `get_entities_on`,
-    `get_entities_by_domain`; il controllo comune era
-    `ToolDispatcher._cache_non_leggibile`, uscito con lui -- fetta E2 Task 7).
-
-    Cache assente resta invece un percorso legittimo: senza inventario cablato
-    questo strumento ha sempre letto dal vivo da Home Assistant, ed e' cio' che
-    continua a fare.
-    """
-    if entity_cache is not None:
-        if not inventario_leggibile(entity_cache):
-            logger.warning(
-                "get_entity_states rifiutata: inventario delle entita' non ancora caricato")
-            return {"error": ERRORE_INVENTARIO_NON_PRONTO}
-        return entity_cache.get_minimal(ids)
-    states = await ha.get_states(ids)
-    result = []
-    for s in states:
-        eid = s.get("entity_id", "unknown")
-        attrs = s.get("attributes") or {}
-        result.append({
-            "id": eid,
-            "state": s.get("state", "unknown"),
-            "name": attrs.get("friendly_name") or "",
-            "unit": attrs.get("unit_of_measurement") or "",
-        })
-    return result
-
-
-async def get_area_entities(
-    ha: HAClient,
-    entity_cache: EntityCache | None = None,
-) -> dict[str, list[str]]:
-    """Return area→[entity_id] map. Uses EntityCache if populated, else HA WebSocket fallback."""
-    if entity_cache is not None:
-        cached = entity_cache.get_area_map()
-        if cached is not None:
-            return cached
-
-    areas = await ha.get_area_registry()
-    entities = await ha.get_entity_registry()
-
-    area_lookup: dict[str, str] = {a["area_id"]: a["name"] for a in areas}
-    result: dict[str, list[str]] = {}
-    no_area: list[str] = []
-
-    for entry in entities:
-        eid = entry.get("entity_id", "")
-        if not eid:
-            continue
-        area_id = entry.get("area_id")
-        if area_id and area_id in area_lookup:
-            result.setdefault(area_lookup[area_id], []).append(eid)
-        else:
-            no_area.append(eid)
-
-    if no_area:
-        result["__no_area__"] = no_area
-
-    return result
-
-
-
-def get_home_status(entity_cache, semantic_map=None) -> list[dict]:
-    """Return all useful entity states, enriched with semantic labels if map is available."""
-    entities = entity_cache.get_all_useful() if entity_cache else []
-    if semantic_map is None:
-        return entities
-    enriched = []
-    for e in entities:
-        eid = e["id"]
-        meta = semantic_map.get_entity_meta(eid)
-        if meta and meta.get("label"):
-            e = dict(e)
-            e["semantic_label"] = meta["label"]
-            e["semantic_role"] = meta.get("role", "")
-        enriched.append(e)
-    return enriched
-
-
-def get_entities_on(entity_cache: EntityCache) -> list[dict]:
-    return entity_cache.get_on()
-
-
-def get_entities_by_domain(domain: str, entity_cache: EntityCache) -> list[dict]:
-    return entity_cache.get_by_domain(domain)

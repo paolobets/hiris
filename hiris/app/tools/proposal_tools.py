@@ -21,64 +21,13 @@ _VALID_PROPOSAL_TYPES = frozenset({"ha_automation", "hiris_agent"})
 # il Chatbot ha proposto type='automation').
 _PROPOSAL_TYPE_ALIASES = {"automation": "ha_automation", "agent": "hiris_agent"}
 
-CREATE_AUTOMATION_PROPOSAL_TOOL_DEF = {
-    "name": "create_automation_proposal",
-    "description": (
-        "Propose a new automation to the user. Use this after explaining your "
-        "routing choice (HA native vs HIRIS agent). The proposal is saved as "
-        "disabled/pending — the user must explicitly activate it."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "type": {"type": "string", "enum": ["ha_automation", "hiris_agent"]},
-            "name": {"type": "string"},
-            "description": {
-                "type": "string",
-                "description": "Human-readable explanation of what this does",
-            },
-            "config": {
-                "type": "object",
-                "description": (
-                    "HA automation YAML dict (trigger/condition/action/mode/alias) "
-                    "or HIRIS agent config dict. To MODIFY an existing automation, "
-                    "INCLUDE its numeric 'id' (as returned by get_automation_config) "
-                    "in this config. Its entity_id (e.g. 'automation.foo') or bare "
-                    "object_id (e.g. 'foo') are ALSO accepted here, but are NOT "
-                    "the same guarantee as the numeric id: they are looked up "
-                    "against Home Assistant only when the user APPROVES the "
-                    "proposal, not now. If at that point none of them resolves to "
-                    "an existing automation, approval FAILS outright — nothing is "
-                    "created or overwritten. To create a NEW automation, OMIT "
-                    "'id' entirely. Caveat: if you omit 'id' but 'config' has an "
-                    "'alias' matching the friendly_name of an automation that "
-                    "already exists, approval overwrites THAT one instead of "
-                    "creating a duplicate — this is deliberate (avoids duplicates "
-                    "when re-proposing an edit without the id), but means the "
-                    "alias alone decides the target: reuse the exact existing "
-                    "name only when you mean to overwrite it."
-                ),
-            },
-            "routing_reason": {
-                "type": "string",
-                "description": "Why this level was chosen over the alternative",
-            },
-            "automation_id": {
-                "type": "string",
-                "description": (
-                    "Optional. The numeric unique id of an existing HA automation "
-                    "to MODIFY — or its entity_id (e.g. 'automation.foo') or bare "
-                    "object_id (e.g. 'foo') if you only have that (looked up at "
-                    "approval time; approval fails if none resolves — see "
-                    "'config' above for what that means). Alternative to putting "
-                    "'id' inside config (this param wins if both are given). Omit "
-                    "for a brand-new automation."
-                ),
-            },
-        },
-        "required": ["type", "name", "description", "config", "routing_reason"],
-    },
-}
+# `CREATE_AUTOMATION_PROPOSAL_TOOL_DEF` e' uscita in fetta E2 Task 8: non
+# nominata da `EVALUATION_ONLY_TOOLS` (crea una proposta -- chat-only, vedi il
+# commento su quel catalogo in claude_runner.py), e la chat nuova non passa
+# piu' da un catalogo di trentaquattro (STRUMENTI_CONOSCENZA, quattro
+# strumenti che conoscono la casa e basta -- casa/strumenti.py). La funzione
+# sotto resta: la chiama davvero la Sentinella (server.py, ramo delle
+# proposte di automazione), non e' orfana.
 
 
 async def create_automation_proposal(

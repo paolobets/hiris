@@ -19,10 +19,17 @@ fetta E2 Task 7: un quarto fratello viveva qui -- `get_entity_states` letto
 attraverso `ToolDispatcher.dispatch`, per provare che il wrapper non perdesse
 la garanzia del tool sottostante. `ToolDispatcher` e' uscito e con lui quel
 wrapper; la garanzia che contava (`get_entity_states` dichiara il guasto
-invece di rispondere elenco vuoto) resta provata direttamente qui sotto da
-`test_get_entity_states_con_cache_mai_caricata_non_dice_che_lentita_non_ce`,
-quindi il test del wrapper e' stato cancellato, non spostato: non
-proteggeva piu' nulla che l'altro non provasse gia'.
+invece di rispondere elenco vuoto) e' rimasta provata per una fetta contro
+`tools/ha_tools.get_entity_states` direttamente.
+
+fetta E2 Task 8 ("escono i trentaquattro"): `get_entity_states` stessa e'
+uscita -- orfana dallo stesso Task 7 (nessun chiamante di produzione la
+invocava piu', solo questi test). La sua garanzia non ha piu' un soggetto da
+proteggere: la funzione non esiste piu' in nessun percorso, ne' di
+produzione ne' di test. I quattro test che la esercitavano sono stati
+cancellati, non spostati -- non c'e' piu' nulla a valle da provare. I tre
+fratelli restano (`build_briefing_bundle`, `handle_list_entities`): sono vivi
+e la loro sezione qui sotto e' intatta.
 """
 from __future__ import annotations
 
@@ -34,7 +41,6 @@ from aiohttp import web
 from hiris.app.api.handlers_entities import handle_list_entities
 from hiris.app.brain.briefing import build_briefing_bundle, render_briefing_template
 from hiris.app.proxy.entity_cache import EntityCache
-from hiris.app.tools.ha_tools import get_entity_states
 
 
 class _HA:
@@ -50,54 +56,6 @@ async def _cache_viva() -> EntityCache:
     await cache.load(_HA([{"entity_id": "light.cucina", "state": "on",
                            "attributes": {"friendly_name": "Cucina"}}]))
     return cache
-
-
-# ── get_entity_states ────────────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_get_entity_states_con_cache_mai_caricata_non_dice_che_lentita_non_ce():
-    cache = EntityCache()
-    assert cache.loaded is False
-
-    res = await get_entity_states(_HA(), ["light.cucina"], entity_cache=cache)
-
-    assert isinstance(res, dict) and res.get("error"), (
-        "elenco vuoto = «quell'entita' non esiste»: qui non si e' potuto guardare"
-    )
-    assert "pront" in res["error"].lower()
-
-
-@pytest.mark.asyncio
-async def test_get_entity_states_con_cache_viva_risponde_normalmente():
-    cache = await _cache_viva()
-
-    res = await get_entity_states(_HA(), ["light.cucina"], entity_cache=cache)
-
-    assert [e["id"] for e in res] == ["light.cucina"]
-
-
-@pytest.mark.asyncio
-async def test_get_entity_states_senza_cache_legge_ancora_da_home_assistant():
-    """Non regressione: senza cache cablata il tool ha sempre letto dal vivo, ed
-    e' un percorso legittimo -- non va trasformato in un guasto."""
-    ha = _HA([{"entity_id": "light.cucina", "state": "on",
-               "attributes": {"friendly_name": "Cucina"}}])
-
-    res = await get_entity_states(ha, ["light.cucina"], entity_cache=None)
-
-    assert [e["id"] for e in res] == ["light.cucina"]
-
-
-@pytest.mark.asyncio
-async def test_get_entity_states_con_cache_viva_e_vuota_resta_un_elenco_vuoto():
-    """Il controcanto: una cache caricata che non contiene quell'entita' e' una
-    risposta vera, non un guasto."""
-    cache = EntityCache()
-    await cache.load(_HA([]))
-
-    res = await get_entity_states(_HA(), ["light.cucina"], entity_cache=cache)
-
-    assert res == []
 
 
 # ── briefing ─────────────────────────────────────────────────────────────────

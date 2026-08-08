@@ -839,105 +839,13 @@ async def test_chat_healthy_backend_behavior_unchanged(dispatcher, tmp_path):
 
 
 # --- render_template e il perimetro delle entita' ---------------------------
-# Gemello del test in tests/test_claude_runner.py. render_template valuta un
-# template Jinja: non ha un entity_id da filtrare e legge tutta la casa per
-# costruzione. Concederlo esplicitamente resta possibile (la checkbox del
-# Designer avvisa), ma per default non deve mai arrivare a un bot che ha un
-# perimetro di entita' -- altrimenti quel perimetro non regge. Qui i punti da
-# coprire sono DUE, chat() e chat_stream(), che costruiscono la lista dei tool
-# ciascuno per conto proprio.
-
-def _runner(dispatcher, tmp_path):
-    return OpenAICompatRunner(
-        base_url="https://api.openai.com/v1", api_key="sk-test",
-        dispatcher=dispatcher, usage_path=str(tmp_path / "u.json"),
-    )
-
-
-def _risposta_senza_tool():
-    resp = MagicMock()
-    choice = MagicMock()
-    choice.finish_reason = "stop"
-    choice.message.content = "ok"
-    choice.message.tool_calls = []
-    resp.choices = [choice]
-    resp.usage.prompt_tokens = 5
-    resp.usage.completion_tokens = 2
-    return resp
-
-
-async def _tools_di_chat(runner, **kw) -> set:
-    catturati: dict = {}
-
-    async def capture(**kwargs):
-        catturati.update(kwargs)
-        return _risposta_senza_tool()
-
-    runner._client.chat.completions.create = capture
-    await runner.chat(user_message="Ciao", model="gpt-4o", max_tokens=64, **kw)
-    return {t["function"]["name"] for t in catturati.get("tools", [])}
-
-
-async def _tools_di_chat_stream(runner, **kw) -> set:
-    catturati: dict = {}
-
-    async def capture(**kwargs):
-        catturati.update(kwargs)
-        # Interrompe subito: serve solo la lista dei tool costruita a monte.
-        # chat_stream cattura l'eccezione e chiude lo stream con un evento.
-        raise RuntimeError("stop")
-
-    runner._client.chat.completions.create = capture
-    async for _ in runner.chat_stream(user_message="Ciao", model="gpt-4o",
-                                      max_tokens=64, **kw):
-        pass
-    return {t["function"]["name"] for t in catturati.get("tools", [])}
-
-
-@pytest.mark.asyncio
-async def test_chat_toglie_render_template_a_un_bot_con_perimetro(dispatcher, tmp_path):
-    nomi = await _tools_di_chat(_runner(dispatcher, tmp_path),
-                                allowed_entities=["light.*"])
-    assert "render_template" not in nomi
-    assert "get_entity_states" in nomi
-
-
-@pytest.mark.asyncio
-async def test_chat_lascia_render_template_a_un_bot_senza_perimetro(dispatcher, tmp_path):
-    nomi = await _tools_di_chat(_runner(dispatcher, tmp_path), allowed_entities=None)
-    assert "render_template" in nomi
-
-
-@pytest.mark.asyncio
-async def test_chat_lascia_render_template_se_concesso_esplicitamente(dispatcher, tmp_path):
-    nomi = await _tools_di_chat(
-        _runner(dispatcher, tmp_path),
-        allowed_tools=["render_template", "get_entity_states"],
-        allowed_entities=["light.*"],
-    )
-    assert "render_template" in nomi
-
-
-@pytest.mark.asyncio
-async def test_chat_stream_toglie_render_template_a_un_bot_con_perimetro(dispatcher, tmp_path):
-    nomi = await _tools_di_chat_stream(_runner(dispatcher, tmp_path),
-                                       allowed_entities=["light.*"])
-    assert "render_template" not in nomi
-    assert "get_entity_states" in nomi
-
-
-@pytest.mark.asyncio
-async def test_chat_stream_lascia_render_template_a_un_bot_senza_perimetro(dispatcher, tmp_path):
-    nomi = await _tools_di_chat_stream(_runner(dispatcher, tmp_path),
-                                       allowed_entities=None)
-    assert "render_template" in nomi
-
-
-@pytest.mark.asyncio
-async def test_chat_stream_lascia_render_template_se_concesso_esplicitamente(dispatcher, tmp_path):
-    nomi = await _tools_di_chat_stream(
-        _runner(dispatcher, tmp_path),
-        allowed_tools=["render_template", "get_entity_states"],
-        allowed_entities=["light.*"],
-    )
-    assert "render_template" in nomi
+# fetta E2 Task 8 ("escono i trentaquattro"): i sei test che vivevano qui
+# (gemelli di quelli in tests/test_claude_runner.py, per chat() e
+# chat_stream()) sono stati cancellati, non spostati -- stessa ragione del
+# file gemello: RENDER_TEMPLATE_TOOL_DEF e' uscita da EVALUATION_TOOL_DEFS
+# insieme al resto dei 34 (non nominata da EVALUATION_ONLY_TOOLS, esclusa di
+# proposito), e la chat non offre piu' un catalogo da questo file
+# (STRUMENTI_CONOSCENZA, casa/strumenti.py). Nessuna combinazione di
+# allowed_tools/allowed_entities puo' piu' far comparire "render_template" in
+# un catalogo che non lo contiene: tre dei sei test fallivano gia' per
+# costruzione, gli altri tre erano diventati vacui.

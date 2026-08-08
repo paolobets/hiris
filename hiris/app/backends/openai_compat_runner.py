@@ -11,7 +11,7 @@ from typing import Any, Optional
 import httpx as _httpx
 
 from ..claude_runner import (
-    ALL_TOOL_DEFS,
+    EVALUATION_TOOL_DEFS,
     BASE_SYSTEM_PROMPT,
     EVALUATION_ONLY_TOOLS,
     RESTRICT_PROMPT,
@@ -548,12 +548,12 @@ class OpenAICompatRunner:
         # Build tool list
         if strumenti is not None:
             # Il catalogo arriva gia' deciso dal chiamante: i filtri sotto
-            # restringono ALL_TOOL_DEFS, il catalogo di fabbrica -- non un
-            # catalogo che il chiamante ha gia' scelto lui stesso. Stessa
+            # restringono EVALUATION_TOOL_DEFS, il catalogo della Sentinella --
+            # non un catalogo che il chiamante ha gia' scelto lui stesso. Stessa
             # regola di ClaudeRunner.chat() (vedi il suo commento gemello).
             tools = list(strumenti)
         else:
-            tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+            tools = [t for t in EVALUATION_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
             # render_template legge tutta la casa (template Jinja, nessun entity_id
             # da filtrare): senza whitelist esplicita di tool non deve arrivare a un
             # bot che ha un perimetro di entita'. Vedi claude_runner.chat() per il
@@ -872,11 +872,11 @@ class OpenAICompatRunner:
         if strumenti is not None:
             # Il catalogo arriva gia' deciso dal chiamante -- stessa regola di
             # chat() (vedi il suo commento gemello): i filtri sotto restringono
-            # ALL_TOOL_DEFS, il catalogo di fabbrica, non un catalogo che il
-            # chiamante ha gia' scelto lui stesso.
+            # EVALUATION_TOOL_DEFS, il catalogo della Sentinella, non un catalogo
+            # che il chiamante ha gia' scelto lui stesso.
             tools = list(strumenti)
         else:
-            tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+            tools = [t for t in EVALUATION_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
             # Stesso vincolo di chat(): render_template scavalca il perimetro delle
             # entita', quindi fuori dalla concessione esplicita non arriva a un bot
             # che quel perimetro ce l'ha. Lo streaming non e' una porta di servizio.

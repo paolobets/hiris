@@ -132,8 +132,8 @@ async def test_restrict_to_home_false_does_not_inject(runner):
 
 
 def test_get_area_entities_in_all_tool_defs():
-    from hiris.app.claude_runner import ALL_TOOL_DEFS
-    names = [t["name"] for t in ALL_TOOL_DEFS]
+    from hiris.app.claude_runner import EVALUATION_TOOL_DEFS
+    names = [t["name"] for t in EVALUATION_TOOL_DEFS]
     assert "get_area_entities" in names
 
 
@@ -485,15 +485,21 @@ async def test_simple_chat_returns_text(runner):
 
 
 def test_get_calendar_events_in_all_tool_defs():
-    from hiris.app.claude_runner import ALL_TOOL_DEFS
-    names = [t["name"] for t in ALL_TOOL_DEFS]
+    from hiris.app.claude_runner import EVALUATION_TOOL_DEFS
+    names = [t["name"] for t in EVALUATION_TOOL_DEFS]
     assert "get_calendar_events" in names
 
 
-def test_set_input_helper_in_all_tool_defs():
-    from hiris.app.claude_runner import ALL_TOOL_DEFS
-    names = [t["name"] for t in ALL_TOOL_DEFS]
-    assert "set_input_helper" in names
+# fetta E2 Task 8 ("escono i trentaquattro"): `test_set_input_helper_in_all_
+# tool_defs` e' stato cancellato, non spostato -- `set_input_helper` ATTUA
+# (scrive su un input helper di Home Assistant), quindi non fa parte di
+# `EVALUATION_ONLY_TOOLS` per costruzione (lo stesso motivo per cui non ci
+# sono `call_ha_service`/`trigger_automation`/`toggle_automation`/
+# `http_request`, vedi test_empty_allowed_tools_does_not_narrow_evaluation_
+# set sotto): il catalogo ridotto a EVALUATION_TOOL_DEFS non lo contiene piu',
+# e nessun altro catalogo lo offre (la chat riceve i quattro strumenti di
+# STRUMENTI_CONOSCENZA, casa/strumenti.py). Il soggetto -- SET_INPUT_HELPER_
+# TOOL_DEF nel catalogo del runner -- non esiste piu' in nessun percorso.
 
 
 # ---------------------------------------------------------------------------
@@ -738,76 +744,67 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
     assert tools_b == [{"tool": "get_home_status", "input": {"entity_id": "entity-B"}}]
 
 
-class _DispatcherRecallMemoryDiScorta:
-    """fetta E2 Task 7: sostituisce `ToolDispatcher` (uscito) SOLO per il
-    test sotto, che deve provare l'isolamento per-Task di
+class _DispatcherPseudonimizzaDiScorta:
+    """fetta E2 Task 8: sostituisce `_DispatcherRecallMemoryDiScorta` (Task 7).
+
+    Quella classe stava al posto di `ToolDispatcher` (uscito nel Task 7) SOLO
+    per il test sotto, che deve provare l'isolamento per-Task di
     `last_pseudonym_map` attraverso un dispatch VERO (non mockato) fino a
-    `Pseudonymizer` -- l'unico modo di far girare quella prova end-to-end
-    ora che la classe che lo faceva in produzione non esiste piu'. Stessa
-    interfaccia minima (`.dispatch(nome, argomenti, **kwargs)`) e stesso
-    forwarding a `handle_recall_memory` che il ramo `recall_memory` di
-    `ToolDispatcher.dispatch` faceva -- nessun'altra logica: questo test non
-    tocca nessun altro strumento."""
+    `Pseudonymizer` -- l'unico modo di far girare quella prova end-to-end.
+    Per arrivarci chiamava `tools/memory_tools.handle_recall_memory`, che pero'
+    e' uscita a sua volta in questo stesso task: era orfana dallo stesso Task
+    7 che le aveva gia' tolto l'unico chiamante (`ToolDispatcher`), quindi
+    nessun test doveva piu' dipenderne. Il soggetto di QUESTO test non e' mai
+    stato "la ricerca semantica trova il contenuto giusto" -- e' "due chat
+    concorrenti sullo stesso runner non si scambiano il vettore di
+    pseudonimizzazione" -- quindi qui si pseudonimizza direttamente un
+    contenuto canonico per query, senza passare da KnowledgeStore/embedder:
+    stessa `Pseudonymizer`/vault reali, stesso forwarding di `pseudonym_map`,
+    una dipendenza in meno."""
 
-    has_memory = True  # store e' sempre configurato in questo test
+    has_memory = True
 
-    def __init__(self, store, embedder, pseudonymizer):
-        self._store = store
-        self._embedder = embedder
+    _CONTENUTO_PER_QUERY = {
+        "query-A": "Bonifico su IT60X0542811101000000123456",
+        "query-B": "Contatto: segreto.userB@example.it",
+    }
+
+    def __init__(self, pseudonymizer):
         self._pseudonymizer = pseudonymizer
 
-    async def dispatch(self, name, inputs, *, knowledge_allow_sensitive=False,
-                       cloud=True, pseudonym_map=None, user_id=None, **_ignored):
-        from hiris.app.tools.memory_tools import handle_recall_memory
+    async def dispatch(self, name, inputs, *, pseudonym_map=None, **_ignored):
         assert name == "recall_memory"
-        return await handle_recall_memory(
-            self._store, self._embedder, inputs,
-            owner=user_id or "home",
-            allow_sensitive=knowledge_allow_sensitive,
-            pseudonymizer=self._pseudonymizer,
-            cloud=cloud,
-            pseudonym_map=pseudonym_map,
-        )
+        contenuto = self._pseudonymizer.pseudonymize(
+            self._CONTENUTO_PER_QUERY[inputs["query"]], pseudonym_map)
+        return {"results": [{"content": contenuto}], "count": 1, "degraded": False}
 
 
 @pytest.mark.asyncio
 async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path):
     """SECURITY (review B/#7): two overlapping chat() calls on the SAME
-    runner instance -- sharing the SAME dispatcher/KnowledgeStore/
-    Pseudonymizer/vault, exactly as two concurrent real users would on a
-    live server -- must never leak each other's per-request pseudonymize
-    token map. Each call's own recall_memory tool invocation pseudonymizes
-    DIFFERENT sensitive PII into the SAME global vault; `last_pseudonym_map`
-    read right after each call's own `await runner.chat(...)` must contain
-    ONLY that call's own token, and using it to detokenize would never
-    resolve the other call's PII.
+    runner instance -- sharing the SAME dispatcher/Pseudonymizer/vault,
+    exactly as two concurrent real users would on a live server -- must never
+    leak each other's per-request pseudonymize token map. Each call's own
+    recall_memory tool invocation pseudonymizes DIFFERENT sensitive PII into
+    the SAME global vault; `last_pseudonym_map` read right after each call's
+    own `await runner.chat(...)` must contain ONLY that call's own token, and
+    using it to detokenize would never resolve the other call's PII.
 
     This is the concurrency-flavored counterpart to
     test_chat_concurrent_calls_do_not_leak_tool_calls above, exercising a
-    REAL dispatch -> memory_tools -> Pseudonymizer path end-to-end (dispatch
-    is not mocked here) so the ContextVar-based per-Task isolation is proven
-    against the actual security-sensitive code path, not just
-    last_tool_calls bookkeeping. `ToolDispatcher` used to be that dispatcher;
-    it is gone (fetta E2 Task 7), so `_DispatcherRecallMemoryDiScorta` above
-    stands in for it -- same forwarding, same real KnowledgeStore/
-    Pseudonymizer/vault, only the routing class is a smaller stand-in."""
-    from hiris.app.brain.knowledge_store import KnowledgeStore
+    REAL dispatch -> Pseudonymizer path end-to-end (dispatch is not mocked
+    here) so the ContextVar-based per-Task isolation is proven against the
+    actual security-sensitive code path, not just last_tool_calls
+    bookkeeping. `ToolDispatcher` used to be that dispatcher; it is gone
+    (fetta E2 Task 7). `_DispatcherPseudonimizzaDiScorta` above stands in for
+    it -- see its own docstring for why it no longer routes through
+    KnowledgeStore/memory_tools (fetta E2 Task 8)."""
     from hiris.app.brain.privacy import VaultStore, Pseudonymizer
-
-    store = KnowledgeStore(str(tmp_path / "kb.db"))
-    store.add_item(kind="expense", content="Bonifico su IT60X0542811101000000123456",
-                    embedding=[1.0, 0.0], sensitivity="sensitive")
-    store.add_item(kind="fact", content="Contatto: segreto.userB@example.it",
-                    embedding=[0.0, 1.0], sensitivity="sensitive")
-
-    class _FakeEmbedder:
-        async def embed(self, query: str):
-            return [1.0, 0.0] if query == "query-A" else [0.0, 1.0]
 
     vault = VaultStore(str(tmp_path / "vault.db"))
     pseudonymizer = Pseudonymizer(vault)
 
-    dispatcher = _DispatcherRecallMemoryDiScorta(store, _FakeEmbedder(), pseudonymizer)
+    dispatcher = _DispatcherPseudonimizzaDiScorta(pseudonymizer)
     with patch("anthropic.AsyncAnthropic"):
         runner = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
 
@@ -870,7 +867,6 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path):
     token_a = next(iter(map_a))
     assert pseudonymizer.detokenize(f"testo con {token_a}", map_b) == f"testo con {token_a}"
 
-    store.close()
     vault.close()
 
 
@@ -908,52 +904,18 @@ def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):
 
 
 # --- render_template e il perimetro delle entita' ---------------------------
-# render_template non ha un entity_id da filtrare: valuta un template Jinja e
-# legge tutta la casa per costruzione. E' concedibile esplicitamente (la
-# checkbox del Designer lo avvisa), ma NON deve arrivare per default a un bot
-# che ha un perimetro di entita': quel perimetro sarebbe carta straccia.
-# Stesso precedente di http_request, due righe piu' sotto nello stesso punto.
-
-async def _tools_di_chat(runner, **kw) -> set:
-    catturati: dict = {}
-
-    async def capture(**kwargs):
-        catturati.update(kwargs)
-        m = MagicMock()
-        m.stop_reason = "end_turn"
-        m.content = [MagicMock(type="text", text="ok")]
-        m.usage.input_tokens = 5
-        m.usage.output_tokens = 2
-        return m
-
-    runner._client.messages.create = capture
-    await runner.chat("Ciao", **kw)
-    return {t["name"] for t in catturati["tools"]}
-
-
-@pytest.mark.asyncio
-async def test_render_template_non_arriva_a_un_bot_con_perimetro(runner):
-    nomi = await _tools_di_chat(runner, allowed_entities=["light.*"])
-    assert "render_template" not in nomi
-    # Il resto del catalogo non deve sparire con lui.
-    assert "get_entity_states" in nomi
-
-
-@pytest.mark.asyncio
-async def test_render_template_resta_a_un_bot_senza_perimetro(runner):
-    # Chi vede gia' tutta la casa non guadagna nulla dallo scavalcamento:
-    # togliergli il tool sarebbe una regressione, non una difesa.
-    nomi = await _tools_di_chat(runner, allowed_entities=None)
-    assert "render_template" in nomi
-
-
-@pytest.mark.asyncio
-async def test_render_template_resta_se_concesso_esplicitamente(runner):
-    # La concessione esplicita e' una decisione dell'operatore, presa davanti
-    # all'avviso della checkbox: deve continuare a funzionare.
-    nomi = await _tools_di_chat(
-        runner,
-        allowed_tools=["render_template", "get_entity_states"],
-        allowed_entities=["light.*"],
-    )
-    assert "render_template" in nomi
+# fetta E2 Task 8 ("escono i trentaquattro"): i tre test che vivevano qui
+# (render_template tolto sotto perimetro, lasciato senza, concedibile
+# esplicitamente) sono stati cancellati, non spostati. Il loro soggetto era
+# la presenza CONDIZIONATA di `render_template` nel catalogo che `chat()`
+# offre quando `strumenti` non e' passato -- ma quella definizione (RENDER_
+# TEMPLATE_TOOL_DEF) e' uscita da EVALUATION_TOOL_DEFS insieme al resto dei
+# 34: non e' nominata da EVALUATION_ONLY_TOOLS (esclusa di proposito, vedi il
+# commento su quel set in claude_runner.py), e la chat non offre piu' un
+# catalogo da questo file (STRUMENTI_CONOSCENZA, casa/strumenti.py). Nessuna
+# combinazione di allowed_tools/allowed_entities puo' piu' far comparire
+# "render_template" in un catalogo che non lo contiene: due dei tre test
+# fallivano gia' per costruzione, il terzo era diventato vacuo. Il filtro
+# stesso (la riga `tools = [t for t in tools if t["name"] != "render_
+# template"]` in claude_runner.chat()) resta nel codice come no-op innocuo,
+# non e' stato toccato da questo task.

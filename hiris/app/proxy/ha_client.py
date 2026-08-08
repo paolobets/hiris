@@ -15,9 +15,8 @@ _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 # path-injection/SSRF via a hostile automation_id (review A/#4).
 _AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
-# entity_id canonico (dominio.oggetto): stessa forma usata da
-# get_calendar_events_range. Serve a rifiutare un entity_id ostile PRIMA di
-# comporlo in un URL.
+# entity_id canonico (dominio.oggetto). Serve a rifiutare un entity_id
+# ostile PRIMA di comporlo in un URL.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # I registri che HIRIS replica. Prima se ne ascoltava UNO — quello delle
@@ -897,25 +896,14 @@ class HAClient:
                 })
         return updates
 
-    async def get_calendars(self) -> list[dict]:
-        """Return list of all calendar entities from HA."""
-        url = f"{self._base_url}/api/calendars"
-        async with self._session.get(url) as resp:
-            resp.raise_for_status()
-            return await resp.json()
-
-    async def get_calendar_events_range(self, entity_id: str, start: str, end: str) -> list[dict]:
-        """Return events for a single calendar entity in [start, end] ISO8601 range."""
-        if not re.match(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$", entity_id):
-            logger.warning("Rejected invalid calendar entity_id: %r", entity_id)
-            return []
-        from urllib.parse import quote
-        url = f"{self._base_url}/api/calendars/{entity_id}?start={quote(start, safe='')}&end={quote(end, safe='')}"
-        async with self._session.get(url) as resp:
-            if resp.status == 404:
-                return []
-            resp.raise_for_status()
-            return await resp.json()
+    # fetta E2 Task 8 ("escono i trentaquattro"): `get_calendars`/
+    # `get_calendar_events_range` sono uscite -- orfane a cascata dalla
+    # stessa fetta: il loro unico chiamante era `tools/calendar_tools.
+    # get_calendar_events`, uscito lui stesso perche' orfano dal Task 7 (il
+    # `ToolDispatcher` che lo chiamava e' uscito). Nessun test le copriva
+    # come API del client (a differenza di `get_statistics`, che ha una sua
+    # suite dedicata, tests/test_ha_client_statistics.py, e resta): nessuna
+    # garanzia persa.
 
     async def _ws_batch(self, comandi: list[tuple[str, dict | None]],
                         timeout: float = 10.0) -> list[dict | None]:

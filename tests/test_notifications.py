@@ -6,6 +6,7 @@ blocked by the fail-closed semaforo. These tests cover the new 'ha_persistent'
 channel (create + dismiss), title support, and validation.
 """
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from hiris.app.notifiche import send_notification
 
@@ -91,3 +92,45 @@ async def test_unknown_channel_returns_false():
     ha = _FakeHA()
     assert await send_notification(ha, "x", "carrier_pigeon", {}) is False
     assert ha.calls == []
+
+
+# fetta E2 Task 8 ("escono i trentaquattro"): questi tre test vivevano in
+# test_tools.py (poi test_weather_tools.py) insieme ai test sui tool morti
+# hiris/app/tools/*.py -- spostati qui, non cancellati: `send_notification`
+# (hiris/app/notifiche.py) e' viva, i canali telegram/apprise e retropanel
+# non hanno copertura altrove in questo file.
+
+@pytest.mark.asyncio
+async def test_send_notification_telegram():
+    ha = _FakeHA()
+    config = {"apprise_urls": ["tgram://test_token/123456"]}
+    with patch("hiris.app.notifiche._APPRISE_AVAILABLE", True), \
+         patch("hiris.app.notifiche._apprise_lib") as mock_apprise_lib:
+        mock_apobj = MagicMock()
+        mock_apobj.async_notify = AsyncMock(return_value=True)
+        mock_apprise_lib.Apprise.return_value = mock_apobj
+        result = await send_notification(ha, "Hello Telegram", "telegram", config)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_send_notification_telegram_missing_credentials():
+    ha = _FakeHA()
+    config = {}  # no token, no chat_id
+    result = await send_notification(ha, "Hello", "telegram", config)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_send_notification_retropanel():
+    ha = _FakeHA()
+    config = {"retropanel_url": "http://retropanel:8098"}
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("aiohttp.ClientSession.post", return_value=mock_resp):
+        result = await send_notification(ha, "Hello kiosk", "retropanel", config)
+
+    assert result is True

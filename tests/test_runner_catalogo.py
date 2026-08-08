@@ -1,6 +1,8 @@
 """Task 2: i runner accettano un catalogo di strumenti (e un dispatcher) dall'esterno.
 
-Oggi il catalogo e' DENTRO il runner (`ALL_TOOL_DEFS`, claude_runner.py) e si
+Oggi il catalogo e' DENTRO il runner (`EVALUATION_TOOL_DEFS`, claude_runner.py
+-- fetta E2 Task 8: era `ALL_TOOL_DEFS`, il catalogo di fabbrica da 34; oggi e'
+gia' ridotto ai soli 18 nomi di `EVALUATION_ONLY_TOOLS`, la Sentinella) e si
 filtra con quattro passaggi in cascata (allowed_tools, render_template contro
 il perimetro delle entita', http_request contro allowed_endpoints,
 recall_memory/save_memory contro has_memory). Perche' la chat nuova
@@ -25,9 +27,22 @@ import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
-from hiris.app.claude_runner import ALL_TOOL_DEFS, ClaudeRunner
-from hiris.app.tools.http_tools import HTTP_REQUEST_TOOL_DEF
+from hiris.app.claude_runner import EVALUATION_TOOL_DEFS, ClaudeRunner
 from hiris.app.tools.memory_tools import RECALL_MEMORY_TOOL_DEF
+
+# fetta E2 Task 8: `tools/http_tools.py` e' uscito per intero (HTTP_REQUEST_
+# TOOL_DEF non serve a EVALUATION_ONLY_TOOLS, e `http_request` era gia'
+# orfana dal Task 7). I due test sotto che lo usavano non provano
+# `http_request` in se': provano che i quattro filtri in cascata (qui quello
+# su `allowed_endpoints`) NON si applicano quando `strumenti` e' passato
+# esplicitamente -- serve solo un tool_def qualunque il cui NOME sia uno che
+# quel filtro toglierebbe. Un dizionario minimo locale, non importato da
+# nessun modulo di produzione, prova esattamente la stessa cosa.
+_FINTO_HTTP_REQUEST_TOOL_DEF = {
+    "name": "http_request",
+    "description": "finto, solo per provare il bypass dei filtri a cascata",
+    "input_schema": {"type": "object", "properties": {}},
+}
 
 
 def test_i_due_runner_accettano_gli_stessi_argomenti():
@@ -119,21 +134,24 @@ async def _tools_di_chat_openai(runner, **kw) -> set:
 
 @pytest.mark.asyncio
 async def test_claude_senza_strumenti_offre_il_catalogo_di_sempre(claude_runner):
-    """Additivita': non passando `strumenti`, il catalogo resta ALL_TOOL_DEFS
-    filtrato dai quattro passaggi in cascata come oggi -- has_memory=False
-    qui toglie recall_memory/save_memory, non essendoci `strumenti`."""
+    """Additivita': non passando `strumenti`, il catalogo resta
+    EVALUATION_TOOL_DEFS filtrato dai quattro passaggi in cascata come oggi --
+    has_memory=False qui toglie recall_memory (save_memory/http_request non
+    sono nemmeno nel catalogo ridotto -- fetta E2 Task 8 -- ma la sottrazione
+    dei loro nomi resta innocua: un insieme non perde cio' che non contiene)."""
     nomi = await _tools_di_chat_claude(claude_runner)
-    # has_memory=False toglie recall_memory/save_memory; allowed_endpoints
-    # non passato (None di default) toglie http_request -- stessi due filtri
-    # che oggi si applicano SEMPRE quando `strumenti` non c'e'.
-    attesi = {t["name"] for t in ALL_TOOL_DEFS} - {"recall_memory", "save_memory", "http_request"}
+    # has_memory=False toglie recall_memory; allowed_endpoints non passato
+    # (None di default) toglierebbe http_request se fosse nel catalogo --
+    # stessi due filtri che oggi si applicano SEMPRE quando `strumenti` non
+    # c'e'.
+    attesi = {t["name"] for t in EVALUATION_TOOL_DEFS} - {"recall_memory", "save_memory", "http_request"}
     assert nomi == attesi
 
 
 @pytest.mark.asyncio
 async def test_openai_senza_strumenti_offre_il_catalogo_di_sempre(openai_runner):
     nomi = await _tools_di_chat_openai(openai_runner)
-    attesi = {t["name"] for t in ALL_TOOL_DEFS} - {"recall_memory", "save_memory", "http_request"}
+    attesi = {t["name"] for t in EVALUATION_TOOL_DEFS} - {"recall_memory", "save_memory", "http_request"}
     assert nomi == attesi
 
 
@@ -161,7 +179,7 @@ async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
 async def test_claude_con_strumenti_i_filtri_non_si_applicano(claude_runner):
     nomi = await _tools_di_chat_claude(
         claude_runner,
-        strumenti=[HTTP_REQUEST_TOOL_DEF, RECALL_MEMORY_TOOL_DEF],
+        strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, RECALL_MEMORY_TOOL_DEF],
         allowed_endpoints=None,
     )
     assert nomi == {"http_request", "recall_memory"}
@@ -171,7 +189,7 @@ async def test_claude_con_strumenti_i_filtri_non_si_applicano(claude_runner):
 async def test_openai_con_strumenti_i_filtri_non_si_applicano(openai_runner):
     nomi = await _tools_di_chat_openai(
         openai_runner,
-        strumenti=[HTTP_REQUEST_TOOL_DEF, RECALL_MEMORY_TOOL_DEF],
+        strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, RECALL_MEMORY_TOOL_DEF],
         allowed_endpoints=None,
     )
     assert nomi == {"http_request", "recall_memory"}

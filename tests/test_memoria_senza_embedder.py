@@ -26,27 +26,44 @@ from hiris.app.brain.briefing import build_briefing_bundle
 from hiris.app.brain.knowledge_store import KnowledgeStore
 
 
+# fetta E2 Task 8 ("escono i trentaquattro"): `handle_save_memory` (tools/
+# memory_tools.py) e' uscita -- orfana dal Task 7 (il `ToolDispatcher` che la
+# chiamava e' uscito), nessun chiamante di produzione la invocava piu'. Questo
+# file prova il percorso end-to-end (salvataggio -> upcoming_obligations ->
+# resoconto), non l'orchestrazione del wrapper: `_salva` chiama KnowledgeStore
+# direttamente, con lo stesso comportamento che il wrapper aveva per i kind
+# non-'memory' che questo file esercita (nessuna provenienza chatbot_id,
+# subito 'approved').
+async def _salva(store: KnowledgeStore, embedder, *, kind: str, content: str,
+                 owner: str = "home", due_date: str | None = None,
+                 amount: float | None = None, category: str | None = None) -> dict:
+    try:
+        embedding = await embedder.embed(content)
+    except Exception:
+        embedding = None
+    item_id = store.add_item(
+        kind=kind, content=content, owner=owner, due_date=due_date,
+        amount=amount, category=category, embedding=embedding or None,
+        source="chat",
+    )
+    return {"saved": True, "id": item_id}
+
+
 @pytest.mark.asyncio
 async def test_scadenza_senza_embedder_arriva_al_resoconto(tmp_path):
     """Il percorso intero, su un'installazione di fabbrica (NullEmbedder):
     salvata in chat -> subito approvata (niente coda, Task 2) -> trovata da
     upcoming_obligations -> presente nel bundle del resoconto."""
-    from hiris.app.tools.memory_tools import handle_save_memory
-
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     embedder = NullEmbedder()
     today = date.today()
     due = (today + timedelta(days=3)).isoformat()
 
     # 1. Salvata dalla chat, senza alcun embedder che calcoli un vettore.
-    saved = await handle_save_memory(
+    saved = await _salva(
         store, embedder,
-        {
-            "kind": "obligation",
-            "content": "Revisione caldaia",
-            "due_date": due,
-        },
-        owner="home", chatbot_id="hiris-default",
+        kind="obligation", content="Revisione caldaia", due_date=due,
+        owner="home",
     )
     assert "error" not in saved
     assert saved.get("saved") is True
@@ -77,7 +94,6 @@ async def test_stesso_percorso_con_embedder_funzionante_non_regredisce(tmp_path)
     """Non-regresso: con un embedder che funziona lo stesso percorso continua
     a funzionare, e la riga porta gia' un vettore fin dal salvataggio."""
     from unittest.mock import AsyncMock
-    from hiris.app.tools.memory_tools import handle_save_memory
 
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     embedder = AsyncMock()
@@ -85,14 +101,10 @@ async def test_stesso_percorso_con_embedder_funzionante_non_regredisce(tmp_path)
     today = date.today()
     due = (today + timedelta(days=3)).isoformat()
 
-    saved = await handle_save_memory(
+    saved = await _salva(
         store, embedder,
-        {
-            "kind": "obligation",
-            "content": "Revisione caldaia (con embedder)",
-            "due_date": due,
-        },
-        owner="home", chatbot_id="hiris-default",
+        kind="obligation", content="Revisione caldaia (con embedder)", due_date=due,
+        owner="home",
     )
     assert "error" not in saved
     assert saved.get("saved") is True
@@ -119,20 +131,13 @@ async def test_stesso_percorso_con_embedder_funzionante_non_regredisce(tmp_path)
 async def test_save_memory_expense_conserva_amount_e_category(tmp_path):
     """Copertura persa da una pulizia precedente: `add_item` accetta ancora
     `amount` e `category`, alimentati da save_memory per kind='expense'."""
-    from hiris.app.tools.memory_tools import handle_save_memory
-
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     embedder = NullEmbedder()
 
-    saved = await handle_save_memory(
+    saved = await _salva(
         store, embedder,
-        {
-            "kind": "expense",
-            "content": "Bolletta del gas",
-            "amount": 123.45,
-            "category": "utenze",
-        },
-        owner="home", chatbot_id="hiris-default",
+        kind="expense", content="Bolletta del gas", amount=123.45, category="utenze",
+        owner="home",
     )
     assert "error" not in saved
 

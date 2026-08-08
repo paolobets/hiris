@@ -69,14 +69,14 @@ def test_daily_briefing_shows_hidden_sensitive_count(tmp_path):
     store.close()
 
 
-def test_daily_briefing_tool_declared_in_chat_tool_schema():
-    from hiris.app.claude_runner import ALL_TOOL_DEFS, DAILY_BRIEFING_TOOL_DEF
-
-    names = [t["name"] for t in ALL_TOOL_DEFS]
-    assert "daily_briefing" in names
-    assert DAILY_BRIEFING_TOOL_DEF in ALL_TOOL_DEFS
-    # No required inputs — invocable with an empty/optional object.
-    assert DAILY_BRIEFING_TOOL_DEF["input_schema"].get("required", []) == []
+# fetta E2 Task 8 ("escono i trentaquattro"): `test_daily_briefing_tool_
+# declared_in_chat_tool_schema` e' stato cancellato, non spostato --
+# `DAILY_BRIEFING_TOOL_DEF` e' uscita da claude_runner.py insieme al resto
+# dei 34 (non nominata da EVALUATION_ONLY_TOOLS: chat-only per costruzione,
+# legge la memoria/i documenti del maggiordomo), e la chat non offre piu' un
+# catalogo da quel file (STRUMENTI_CONOSCENZA, casa/strumenti.py). Il
+# soggetto -- "daily_briefing e' nel catalogo che il runner offre alla chat"
+# -- non esiste piu': ne' il tool_def ne' un catalogo che lo nomini.
 
 
 def test_daily_briefing_not_in_evaluation_only_tools():

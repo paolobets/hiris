@@ -115,8 +115,10 @@ class SemanticMap:
     def get_category(self, role: str) -> list[str]:
         return list(self._categories.get(role, []))
 
-    def get_entity_meta(self, entity_id: str) -> dict:
-        return dict(self._entity_meta.get(entity_id) or {})
+    # fetta E2 Task 8 ("escono i trentaquattro"): `get_entity_meta` e' uscita
+    # -- orfana a cascata: il suo unico chiamante era `tools/ha_tools.
+    # get_home_status`, uscito lui stesso perche' orfano dal Task 7 (il
+    # `ToolDispatcher` che lo chiamava e' uscito). Nessun test la copriva.
 
     def get_all_entity_ids(self) -> list[str]:
         return list(self._entity_meta.keys())

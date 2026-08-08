@@ -1,5 +1,13 @@
+"""Definizione dello strumento di lettura sulla salute di Home Assistant.
+
+fetta E2 Task 8: `get_ha_health` (la funzione esecutrice) e' uscita -- orfana
+dal Task 7 (il `ToolDispatcher` che la chiamava e' uscito), nessun chiamante
+di produzione la invocava piu'. La definizione resta: e' nominata da
+`EVALUATION_ONLY_TOOLS` (claude_runner.py, sola lettura da cache -- sicura per
+un sorvegliante proattivo), l'unico catalogo rimasto in piedi -- lo usa la
+Sentinella.
+"""
 from __future__ import annotations
-from typing import Any
 
 GET_HA_HEALTH_TOOL_DEF = {
     "name": "get_ha_health",
@@ -49,9 +57,3 @@ GET_HA_HEALTH_TOOL_DEF = {
         "required": [],
     },
 }
-
-
-def get_ha_health(health_monitor: Any, sections: list[str] | None) -> dict:
-    if health_monitor is None:
-        return {"error": "HealthMonitor not available — check server startup logs"}
-    return health_monitor.get_snapshot(sections or ["all"])

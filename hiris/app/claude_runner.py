@@ -7,6 +7,14 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
 import anthropic
+# fetta E2 Task 8 ("escono i trentaquattro"): il catalogo da 34 sparisce, e
+# con lui le tre copie divergenti che la mappa del prodotto ha condannato (34
+# per la chat -- QUESTO file --, 16 per l'execute API e 15 per l'MCP interno,
+# entrambi gia' usciti). La chat non riceve piu' un catalogo da qui: passa
+# `strumenti=STRUMENTI_CONOSCENZA` (casa/strumenti.py, quattro strumenti che
+# conoscono la casa e non la toccano). Le sole 18 definizioni sotto restano
+# perche' le nomina `EVALUATION_ONLY_TOOLS`: l'unico catalogo ancora vivo,
+# usato dalla Sentinella via `run_with_actions`.
 from .tools.ha_tools import (
     TOOL_DEF as HA_TOOL,
     GET_AREA_ENTITIES_TOOL_DEF,
@@ -17,39 +25,18 @@ from .tools.ha_tools import (
 from .tools.energy_tools import TOOL_DEF as ENERGY_TOOL
 from .tools.history_tools import GET_HISTORY_TOOL_DEF
 from .tools.weather_tools import TOOL_DEF as WEATHER_TOOL
-from .tools.notify_tools import TOOL_DEF as NOTIFY_TOOL
 from .tools.automation_tools import (
     GET_AUTOMATIONS_TOOL_DEF,
     GET_AUTOMATION_CONFIG_TOOL_DEF,
-    TRIGGER_TOOL_DEF,
-    TOGGLE_TOOL_DEF,
 )
 from .tools.task_tools import (
     CREATE_TASK_TOOL_DEF, LIST_TASKS_TOOL_DEF, CANCEL_TASK_TOOL_DEF,
 )
-from .tools.calendar_tools import (
-    GET_CALENDAR_EVENTS_TOOL_DEF,
-    SET_INPUT_HELPER_TOOL_DEF,
-    CREATE_CALENDAR_EVENT_TOOL_DEF,
-)
-from .tools.http_tools import HTTP_REQUEST_TOOL_DEF
-from .tools.memory_tools import (
-    RECALL_MEMORY_TOOL_DEF,
-    SAVE_MEMORY_TOOL_DEF,
-)
+from .tools.calendar_tools import GET_CALENDAR_EVENTS_TOOL_DEF
+from .tools.memory_tools import RECALL_MEMORY_TOOL_DEF
 from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
 from .tools.advisory_tools import GET_ADVISORIES_TOOL_DEF
-from .tools.diagnostics_tools import (
-    GET_LOGBOOK_TOOL_DEF,
-    RENDER_TEMPLATE_TOOL_DEF,
-)
-from .tools.proposal_tools import CREATE_AUTOMATION_PROPOSAL_TOOL_DEF
-from .tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF
-from .tools.dashboard_tools import (
-    LIST_DASHBOARDS_TOOL_DEF,
-    GET_DASHBOARD_CONFIG_TOOL_DEF,
-    PROPOSE_DASHBOARD_TOOL_DEF,
-)
+from .tools.diagnostics_tools import GET_LOGBOOK_TOOL_DEF
 
 logger = logging.getLogger(__name__)
 
@@ -137,49 +124,25 @@ BASE_SYSTEM_PROMPT = (
     "- Rispondi nella lingua dell'utente."
 )
 
-CALL_SERVICE_TOOL_DEF = {
-    "name": "call_ha_service",
-    "description": "Call a Home Assistant service to control devices (light, switch, climate, etc.).",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "domain": {"type": "string", "description": "Service domain, e.g. 'light', 'switch'"},
-            "service": {"type": "string", "description": "Service name, e.g. 'turn_on', 'turn_off'"},
-            "data": {"type": "object", "description": "Service call data, e.g. {entity_id: 'light.living'}"},
-        },
-        "required": ["domain", "service"],
-    },
-}
+# fetta E2 Task 8: `CALL_SERVICE_TOOL_DEF`, `DAILY_BRIEFING_TOOL_DEF` e
+# `CONFIRM_PENDING_TOOL_DEF` sono usciti da qui insieme al resto dei 34: nessuno
+# dei tre e' nominato da `EVALUATION_ONLY_TOOLS` (tutti e tre chat-only per
+# costruzione -- attuano, o leggono la memoria/i documenti del maggiordomo), e
+# la chat non offre piu' un catalogo da questo file (STRUMENTI_CONOSCENZA,
+# casa/strumenti.py). Senza un catalogo che li nomini erano gia' irraggiungibili
+# per qualunque chiamante.
 
-DAILY_BRIEFING_TOOL_DEF = {
-    "name": "daily_briefing",
-    "description": (
-        "Riepilogo del maggiordomo per oggi: scadenze imminenti dai documenti "
-        "e stato notevole della casa (porte/finestre aperte, batterie scariche). "
-        "Sola lettura."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {},
-    },
-}
-
-CONFIRM_PENDING_TOOL_DEF = {
-    "name": "confirm_pending",
-    "description": (
-        "Conferma un'azione a rischio in attesa fornendo il codice ricevuto sul "
-        "telefono. Usa questo tool SOLO quando l'utente ti comunica il codice."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "code": {"type": "string", "description": "Codice OTP a 6 cifre ricevuto via notifica sul telefono"},
-        },
-        "required": ["code"],
-    },
-}
-
-ALL_TOOL_DEFS = [
+# EVALUATION_TOOL_DEFS (fetta E2 Task 8, ex `ALL_TOOL_DEFS`): non e' piu' "il
+# catalogo di fabbrica" da cui la chat sceglie -- quel ruolo lo aveva quando
+# esisteva un solo posto dove i 34 strumenti vivevano. Oggi la chat riceve il
+# suo catalogo dall'esterno (`strumenti=STRUMENTI_CONOSCENZA`); l'unico
+# chiamante che arriva ancora fin qui SENZA passare `strumenti` e'
+# `run_with_actions` (la Sentinella), che poi restringe con `allowed_tools`
+# a `EVALUATION_ONLY_TOOLS` (sotto). Questa lista contiene percio' SOLO le
+# definizioni nominate da quel set: cancellare un tool da qui senza prima
+# toglierlo da `EVALUATION_ONLY_TOOLS` romperebbe la Sentinella (`t["name"] in
+# allowed_tools` non troverebbe piu' nulla per quel nome).
+EVALUATION_TOOL_DEFS = [
     HA_TOOL,
     GET_AREA_ENTITIES_TOOL_DEF,
     GET_HOME_STATUS_TOOL_DEF,
@@ -188,32 +151,16 @@ ALL_TOOL_DEFS = [
     ENERGY_TOOL,
     GET_HISTORY_TOOL_DEF,
     WEATHER_TOOL,
-    NOTIFY_TOOL,
     GET_AUTOMATIONS_TOOL_DEF,
     GET_AUTOMATION_CONFIG_TOOL_DEF,
-    TRIGGER_TOOL_DEF,
-    TOGGLE_TOOL_DEF,
-    CALL_SERVICE_TOOL_DEF,
     CREATE_TASK_TOOL_DEF,
     LIST_TASKS_TOOL_DEF,
     CANCEL_TASK_TOOL_DEF,
     GET_CALENDAR_EVENTS_TOOL_DEF,
-    SET_INPUT_HELPER_TOOL_DEF,
-    CREATE_CALENDAR_EVENT_TOOL_DEF,
-    HTTP_REQUEST_TOOL_DEF,
     RECALL_MEMORY_TOOL_DEF,
-    SAVE_MEMORY_TOOL_DEF,
     GET_HA_HEALTH_TOOL_DEF,
     GET_ADVISORIES_TOOL_DEF,
     GET_LOGBOOK_TOOL_DEF,
-    RENDER_TEMPLATE_TOOL_DEF,
-    CREATE_AUTOMATION_PROPOSAL_TOOL_DEF,
-    CREATE_HA_CONFIG_TOOL_DEF,
-    LIST_DASHBOARDS_TOOL_DEF,
-    GET_DASHBOARD_CONFIG_TOOL_DEF,
-    PROPOSE_DASHBOARD_TOOL_DEF,
-    DAILY_BRIEFING_TOOL_DEF,
-    CONFIRM_PENDING_TOOL_DEF,
 ]
 
 # Tools available to non-chat agents in evaluation mode.
@@ -729,13 +676,13 @@ class ClaudeRunner:
         if strumenti is not None:
             # Il catalogo arriva gia' deciso dal chiamante (es. i quattro
             # strumenti di DispatcherConoscenza, casa/strumenti.py): i quattro
-            # filtri in cascata sotto esistono per restringere ALL_TOOL_DEFS,
-            # il catalogo di fabbrica -- applicarli anche qui sarebbe una
+            # filtri in cascata sotto esistono per restringere EVALUATION_TOOL_DEFS,
+            # il catalogo della Sentinella -- applicarli anche qui sarebbe una
             # seconda regola nascosta sopra una decisione gia' presa altrove
             # (Task 2, .superpowers/sdd/task-2-brief.md).
             tools = list(strumenti)
         else:
-            tools = [t for t in ALL_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
+            tools = [t for t in EVALUATION_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
             # render_template valuta un template Jinja: non ha un entity_id da
             # filtrare, quindi legge TUTTA la casa per costruzione. Concederlo resta
             # possibile, ma solo esplicitamente -- e' la casella del Designer, che

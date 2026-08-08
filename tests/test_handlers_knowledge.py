@@ -345,7 +345,6 @@ async def test_approvazione_rende_richiamabile(aiohttp_client, tmp_path):
     from unittest.mock import AsyncMock
     from aiohttp import web
     from hiris.app.api.handlers_knowledge import handle_approve
-    from hiris.app.tools.memory_tools import handle_recall_memory
 
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     embedder = AsyncMock()
@@ -358,10 +357,15 @@ async def test_approvazione_rende_richiamabile(aiohttp_client, tmp_path):
     )
     saved = {"id": saved_id, "status": "pending"}
 
+    # fetta E2 Task 8 ("escono i trentaquattro"): `handle_recall_memory`
+    # (tools/memory_tools.py) e' uscita -- orfana dal Task 7 (il
+    # `ToolDispatcher` che la chiamava e' uscito). Il soggetto vero di questo
+    # test e' `KnowledgeStore.search`, che chiamava attraverso quel wrapper:
+    # lo chiama direttamente.
     async def cerca():
-        res = await handle_recall_memory(
-            store, embedder, {"query": "caldaia"}, owner="home")
-        return [r["content"] for r in res["results"]]
+        qv = await embedder.embed("caldaia")
+        res = store.search(query_vec=qv, k=5, owner="home")
+        return [r["content"] for r in res]
 
     # Prima dell'approvazione: in coda, quindi NON richiamabile.
     assert "La caldaia va revisionata a ottobre" not in await cerca()

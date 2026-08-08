@@ -1,9 +1,18 @@
+"""fetta E2 Task 8 ("escono i trentaquattro"): questo file era test_config_
+tools.py, e portava anche due test su `tools/config_tools.CREATE_HA_CONFIG_
+TOOL_DEF` -- il modulo e' uscito per intero (non serve a
+`EVALUATION_ONLY_TOOLS`, e nessuna funzione viva lo importa piu': `create_ha_
+config` era gia' orfana dal Task 7, il `ToolDispatcher` che la chiamava e'
+uscito). Il resto del file prova `hiris.app.proxy.proposta_config`, un modulo
+vivo (lo importano watcher/sentinel_proposal.py, api/handlers_execute.py,
+api/handlers_proposals.py -- vedi il commento in cima a config_tools.py, ora
+sparito insieme al modulo) e non tocca `tools/`: rinominato per riflettere
+cio' che prova davvero."""
 import pytest
 from unittest.mock import AsyncMock
 from hiris.app.proxy.proposta_config import (
     normalize_config_inputs, apply_ha_config, build_config_proposal, VALID_KINDS,
 )
-from hiris.app.tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF
 
 
 def _script_inputs(**o):
@@ -115,17 +124,3 @@ def test_valid_kinds():
     # cio' che e' stato tolto e' solo la possibilita' per l'LLM di invocarlo
     # direttamente con create_ha_config.
     assert VALID_KINDS == frozenset({"dashboard", "script", "scene"})
-
-
-# --- l'LLM non puo' piu' creare plance direttamente ---
-
-def test_create_ha_config_tool_def_no_dashboard_kind():
-    kinds = CREATE_HA_CONFIG_TOOL_DEF["input_schema"]["properties"]["kind"]["enum"]
-    assert set(kinds) == {"script", "scene"}
-    assert "propose_dashboard" in CREATE_HA_CONFIG_TOOL_DEF["description"]
-
-
-def test_add_dashboard_view_tool_is_gone():
-    import hiris.app.tools.config_tools as ct
-    assert not hasattr(ct, "add_dashboard_view")
-    assert not hasattr(ct, "ADD_DASHBOARD_VIEW_TOOL_DEF")
