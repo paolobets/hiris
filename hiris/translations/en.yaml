@@ -104,9 +104,6 @@ configuration:
   sentinel_ronda_min:
     name: "Sentinella — Situation scan interval (minutes)"
     description: "How often Sentinella scans home situations (hot+absence, all-away+alarm-off, holistic scan). Default: 15."
-  agent_owner:
-    name: "Agents owner"
-    description: "Identity (a key of *Notify users*) that receives tap/OTP when an autonomous agent asks for confirmation. Without it, above-green actions are skipped."
   brain_notify_high:
     name: "System health — notify severe issues"
     description: "Sends a push notification when the health scan opens or reopens a severe advisory, or when an already open one escalates to severe. Never for an update that does not raise the severity, and never twice for the same issue within 12 hours: the scan runs every 30 minutes. Default: enabled."

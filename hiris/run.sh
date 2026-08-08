@@ -20,7 +20,6 @@ export CHAT_POLICY=$(bashio::config 'chat_policy' '')
 export HIRIS_HIDE_FREE_MODELS=$(bashio::config 'hide_free_models' 'false')
 export THEME=$(bashio::config 'theme' 'auto')
 export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
-export AGENT_OWNER=$(bashio::config 'agent_owner' '')
 export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
 # Guard the jq parse (review medium): a malformed options.json used to silently
 # blank APPRISE_URLS with no hint. Warn and fall back to an empty list.

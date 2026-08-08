@@ -39,7 +39,6 @@ from .api.handlers_dashboards import handle_restore_dashboard, handle_list_dashb
 from .api.handlers_knowledge import (
     handle_list_pending, handle_approve, handle_reject, handle_manual_add,
 )
-from .api.handlers_gateway_pending import verify_otp, execute_pending, resolve_pending
 from .proxy.health_monitor import HealthMonitor
 from .proxy.supervisor_client import SupervisorClient
 from .proxy.proposal_store import ProposalStore
@@ -178,34 +177,6 @@ def _deploy_card_to_www(slug: str = "hiris") -> None:
         logger.info("HIRIS card deployed to %s", dst)
     except Exception as exc:
         logger.error("Failed to deploy HIRIS card to %s: %s", dst, exc, exc_info=True)
-
-
-def _confirmation_push_message(label: str, inputs: dict, otp: str) -> str:
-    """Build the phone-push confirmation message for a chat step-up action.
-
-    This notification IS the entire human-in-the-loop safety check: the tap or
-    typed OTP executes exactly the frozen ``inputs`` (denylist included), never
-    re-derived. So the human on the phone must see WHICH entity is being
-    actuated, not just ``domain.service`` — otherwise a prompt-injected LLM
-    could request e.g. turn_on on ``switch.boiler`` while the chat discusses
-    something unrelated, and the user would have no way to notice.
-
-    Extracts the target entity id(s) from ``inputs["data"]["entity_id"]`` and/or
-    ``inputs["target"]["entity_id"]`` (either a single string or a list), joins
-    them for display, and falls back to a placeholder when no entity_id is
-    present at all (e.g. a broadcast service call with no target). The OTP is
-    interpolated here ONLY — this string is passed straight to ``notify(...)``
-    (the phone push), never returned to the chat/LLM side.
-    """
-    # Show the UNION of data+target entities -- the exact set that actuates
-    # after confirmation (review A/#5 I1). First-wins here would let a decoy
-    # `data` entity hide a smuggled `target` entity the human is really
-    # approving. Uses the same normalizer the gate/execution use.
-    from .security.semaphore import normalize_target
-    ids = normalize_target(inputs.get("data"), inputs.get("target")).entity_ids
-    targets_str = ", ".join(ids) if ids else "(nessuna entità)"
-    return (f'HIRIS: confermi "{label}" su {targets_str}? '
-            f'Tocca Conferma, oppure usa il codice {otp}.')
 
 
 async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
@@ -384,116 +355,13 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
         logger.warning("Lovelace card registration error: %s", exc)
 
 
-# Chat OTP fallback: the LLM calls confirm_pending(code) when the user
-# types the code from the phone notification. `code` is untrusted tool
-# input from the LLM, so it is validated (exactly 6 ASCII digits) BEFORE it
-# ever reaches verify_otp's comparison. On match, the FROZEN pending
-# entry is executed via execute_pending — never anything re-derived from
-# this tool call — so the OTP only unlocks the action, it cannot alter it.
-#
-# Module-level (rather than a closure captured inside _on_startup) so tests
-# can exercise the real 6-digit gate directly instead of a hand-rebuilt
-# replica of it.
-async def confirm_pending_execute(app: web.Application, *, code: str, user: str) -> dict:
-    if not (isinstance(code, str) and code.isascii() and code.isdigit() and len(code) == 6):
-        return {"error": "Codice non valido."}
-    data_dir = app["data_dir"]
-    entry = verify_otp(data_dir, user, code)
-    if entry is None:
-        return {"error": "Codice non valido o scaduto."}
-    res = await execute_pending(app, entry)
-    resolve_pending(data_dir, entry["id"], "approved")
-    return {"ok": True, "result": res}
-
-
-# Step-up chat (Slice 2): when the semaforo gate returns "confirm" on a
-# chat-initiated call_ha_service, freeze the action as a pending (never
-# re-derived later — this exact `inputs` is what a later approve/OTP will
-# execute) and push tap+OTP to the chatting user's phone. The OTP travels
-# ONLY in the phone notification, never in this function's return value.
-#
-# Module-level (same rationale as confirm_pending_execute above) so tests
-# can exercise the real no-identity guard and the yellow/red actionable
-# split directly instead of a hand-rebuilt replica of it.
-async def request_confirmation_stepup(
-    app: web.Application, data_dir: str, *, tool: str, inputs: dict, tier: str, user: str | None,
-) -> dict | None:
-    from .api.handlers_gateway_pending import (
-        create_pending, notify, invalidate_user_otp_pendings,
-    )
-    from .api.handlers_gateway_policy import private_notify_service_for_user
-
-    # Safety (Fix 5): with no real identity (falsy user, or the "home"
-    # no-identity fallback bucket — see brain/identity.py's `uid or "home"`)
-    # there is no phone to target and no chat OTP flow that could ever
-    # resolve this pending, since verify_otp() matches on `user`. Minting one
-    # anyway would create a dead pending nobody can confirm. Return None so
-    # the dispatcher falls back to the Slice-1 "richiede conferma" error.
-    if not user or user == "home":
-        return None
-    # Safety (Review C/#1 + backlog #4): the OTP secret (and one-tap approval)
-    # must land only on a channel bound to THIS user. `private_notify_service_
-    # for_user` returns a service only when it comes from the explicit per-user
-    # mapping; it returns None for the shared, globally-configured
-    # `notify_service` (which may be a family group or a shared dashboard) and
-    # for the `notify.persistent_notification` default. In those cases there is
-    # no private channel to complete step-up, so fail closed exactly like the
-    # no-identity guard above: mint no pending, and let the dispatcher fall
-    # back to the Slice-1 "richiede conferma" error.
-    svc = private_notify_service_for_user(app, user)
-    if not svc:
-        logger.warning(
-            "step-up confirmation skipped for user=%s: no PRIVATE per-user "
-            "notify target configured (a shared/global notify service must "
-            "not carry the OTP secret; set notify_users[%s] to enable "
-            "chat step-up)", user, user,
-        )
-        return None
-    label = f"{inputs.get('domain')}.{inputs.get('service')}"
-    # At most one OTP pending per user at a time: `verify_otp` resolves a
-    # typed code by scanning for the first live pending bound to `user`, so a
-    # second concurrent one would be ambiguous. Invalidate any prior chat OTP
-    # pending for this user before minting the new one.
-    invalidate_user_otp_pendings(data_dir, user)
-    entry = create_pending(
-        data_dir, tool=tool, inputs=inputs, tier=tier,
-        origin="chat", label=label, user=user, with_otp=True,
-    )
-    msg = _confirmation_push_message(label, inputs, entry["otp"])
-    # Owner decision (Fix 3): red/dangerous pendings are page/OTP-only — no
-    # one-tap notification buttons (matches the actionable=(tier=="yellow")
-    # rule the execute-API used when it still existed -- see Fetta E2 Task 4).
-    # Only yellow gets actionable=True. The OTP is included in `msg` above
-    # unconditionally either way.
-    otp_sent = await notify(app, message=msg, actionable=(tier == "yellow"),
-                            nonce=entry["id"], service=svc)
-    return {"id": entry["id"], "otp_sent": bool(otp_sent)}
-
-
-def _make_task_stepup(*, app, data_dir: str, owner: str | None):
-    """Fase 2.5 C2: chiusura di step-up per i Task autonomi. `owner` e'
-    l'identita' (chiave di notify_users) a cui recapitare tap/OTP. Falsy ->
-    None (TaskEngine fara' fail-closed allo skip). La guardia canale-privato
-    vive dentro request_confirmation_stepup (private_notify_service_for_user)."""
-    if not owner:
-        return None
-
-    async def _request_stepup(*, tool: str, inputs: dict, tier: str):
-        return await request_confirmation_stepup(
-            app, data_dir, tool=tool, inputs=inputs, tier=tier, user=owner)
-
-    return _request_stepup
-
-
 # ---------------------------------------------------------------------------
 # Slice 5b Task 5: SCHEDULED (cron/interval) user Agentbots (renamed from
 # "lens" in SP-4 Fase A Task 3) -- per-Agentbot jobs on `engine._scheduler`,
 # the SAME AsyncIOScheduler instance the built-in ronda/reset/due-reminders
 # jobs use (verified: `_on_startup` never creates a second scheduler).
-# Module-level (same rationale as confirm_pending_execute/
-# request_confirmation_stepup above) so tests can drive
-# `register_agentbot_schedules` against a fake scheduler + fake entity_cache
-# without booting the whole aiohttp app.
+# Module-level so tests can drive `register_agentbot_schedules` against a
+# fake scheduler + fake entity_cache without booting the whole aiohttp app.
 # ---------------------------------------------------------------------------
 
 _AGENTBOT_JOB_PREFIX = "hiris_agentbot_"
@@ -581,9 +449,8 @@ async def register_agentbot_schedules(app: web.Application) -> None:
     ronda/reset jobs use), `data_dir` (to reload the current Agentbot set)
     and `entity_cache` (for the schedule trigger's optional `condition`,
     checked at fire time by `_run_scheduled_agentbot`/`_condition_holds`)
-    straight off `app`, mirroring `confirm_pending_execute`'s
-    "module-level, reads from app, testable without booting `_on_startup`"
-    shape.
+    straight off `app`, keeping this function module-level, reads from app,
+    testable without booting `_on_startup`.
     """
     engine = app.get("engine")
     scheduler = getattr(engine, "_scheduler", None)
@@ -1405,14 +1272,6 @@ async def _on_startup(app: web.Application) -> None:
     # If the user manages the gateway policy from the UI, it overrides the env CSV.
     from .api.handlers_gateway_policy import apply_saved_policy
     apply_saved_policy(app)
-    # Yellow approval: route iPhone notification-action button taps to approve/reject.
-    # review C/#15: this is the approval-critical listener -- go through
-    # _spawn() (strong ref) so a phone-tap Approve/Reject can't be silently
-    # dropped by GC mid-flight.
-    from .api.handlers_gateway_pending import on_notification_action
-    ha_client.add_action_listener(
-        lambda ev: _spawn(on_notification_action(app, ev), name="notification_action")
-    )
 
     # Build semantic map
     semantic_map = SemanticMap(data_dir=data_dir)
@@ -1540,7 +1399,7 @@ async def _on_startup(app: web.Application) -> None:
     # HIRIS invece della Dashboard home. Slug installato dal Supervisor -> path
     # frontend stabile `/hassio/ingress/<slug>`; se irraggiungibile, None ->
     # il deep-link viene omesso (nessuna regressione). Letto da notify_tools
-    # (ha_push) e da handlers_gateway_pending (pending step-up).
+    # (ha_push).
     _slug = await _fetch_addon_slug(os.environ.get("SUPERVISOR_TOKEN", ""))
     _ingress_click_path = f"/hassio/ingress/{_slug}" if _slug else None
     notify_config["ingress_click_path"] = _ingress_click_path
@@ -1548,14 +1407,17 @@ async def _on_startup(app: web.Application) -> None:
     app["theme"] = os.environ.get("THEME", "auto")
 
     tasks_data_path = os.environ.get("TASKS_DATA_PATH", "/data/tasks.json")
-    _agent_owner = os.environ.get("AGENT_OWNER", "").strip()
+    # request_stepup resta a None (fetta E2 Task 5: escono le conferme del
+    # gateway -- lo step-up per i Task autonomi si appoggiava alla STESSA
+    # mappa utente->canale (notify_users) che nessuna interfaccia scrive,
+    # quindi era morto per costruzione come il resto). TaskEngine degrada
+    # gia' allo skip loggato quando request_stepup e' None: nessuna regressione.
     task_engine = TaskEngine(
         ha_client=ha_client,
         entity_cache=entity_cache,
         notify_config=notify_config,
         data_path=tasks_data_path,
         execute_policy=app["execute_policy"],
-        request_stepup=_make_task_stepup(app=app, data_dir=app["data_dir"], owner=_agent_owner),
     )
     await task_engine.start()
     app["task_engine"] = task_engine
@@ -1874,20 +1736,13 @@ async def _on_startup(app: web.Application) -> None:
             "questo avvio", exc_info=True,
         )
 
-    # Thin wrapper binding the module-level request_confirmation_stepup to
-    # this app instance; see request_confirmation_stepup for the actual
-    # no-identity guard and yellow/red actionable logic.
-    async def _request_confirmation(*, tool, inputs, tier, user):
-        return await request_confirmation_stepup(
-            app, data_dir, tool=tool, inputs=inputs, tier=tier, user=user,
-        )
-
-    # Thin wrapper binding the module-level confirm_pending_execute to this
-    # app instance; see confirm_pending_execute for the actual 6-digit gate
-    # and pending-execution logic.
-    async def _confirm_executor(*, code, user):
-        return await confirm_pending_execute(app, code=code, user=user)
-
+    # request_confirmation/confirm_executor restano a None (fetta E2 Task 5:
+    # escono le conferme del gateway -- morte per costruzione, la mappa
+    # utente->canale che avrebbero usato non e' mai scritta da alcuna
+    # interfaccia). ToolDispatcher._gate degrada gia' all'errore "richiede
+    # conferma" quando request_confirmation e' None, e il tool confirm_pending
+    # risponde "Conferma non disponibile" quando confirm_executor e' None:
+    # nessuna regressione, solo un fallback che ora e' l'unico percorso.
     dispatcher = ToolDispatcher(
         ha_client=ha_client,
         notify_config=notify_config,
@@ -1902,8 +1757,6 @@ async def _on_startup(app: web.Application) -> None:
         pseudonymizer=pseudonymizer,
         history_store=history_store,
         execute_policy=app["execute_policy"],
-        request_confirmation=_request_confirmation,
-        confirm_executor=_confirm_executor,
         data_dir=data_dir,
     )
     dispatcher.set_task_engine(task_engine)
@@ -3138,15 +2991,6 @@ def create_app() -> web.Application:
     app.router.add_post("/api/agentbots", handle_create_agentbot)
     app.router.add_put("/api/agentbots/{id}", handle_update_agentbot)
     app.router.add_delete("/api/agentbots/{id}", handle_delete_agentbot)
-
-    from .api.handlers_gateway_pending import (
-        handle_list_pending as _gw_list_pending,
-        handle_approve_pending as _gw_approve_pending,
-        handle_reject_pending as _gw_reject_pending,
-    )
-    app.router.add_get("/api/gateway/pending", _gw_list_pending)
-    app.router.add_post("/api/gateway/pending/{nonce}/approve", _gw_approve_pending)
-    app.router.add_post("/api/gateway/pending/{nonce}/reject", _gw_reject_pending)
 
     from .api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)

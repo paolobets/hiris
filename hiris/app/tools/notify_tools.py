@@ -1,9 +1,8 @@
 # Il canale di invio (send_notification, build_app_deeplink, build_push_data,
 # il supporto Apprise) e' stato spostato in ..notifiche: non e' uno strumento,
 # e' il canale push dell'add-on, usato anche da moduli fuori da tools/
-# (server.py, task_engine.py, brain/health_scan.py,
-# api/handlers_gateway_pending.py). Qui resta solo la definizione del tool
-# per l'LLM.
+# (server.py, task_engine.py, brain/health_scan.py). Qui resta solo la
+# definizione del tool per l'LLM.
 
 TOOL_DEF = {
     "name": "send_notification",

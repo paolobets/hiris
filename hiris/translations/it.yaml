@@ -104,9 +104,6 @@ configuration:
   sentinel_ronda_min:
     name: "Sentinella — Intervallo ronda situazioni (minuti)"
     description: "Ogni quanti minuti la Sentinella scansiona le situazioni della casa (caldo+assenza, tutti-fuori+allarme-off, olistica). Predefinito: 15."
-  agent_owner:
-    name: "Owner degli agenti"
-    description: "Identità (una chiave di *Utenti notifica*) a cui recapitare tap/OTP quando un agente autonomo chiede conferma. Senza, le azioni oltre il verde vengono saltate."
   brain_notify_high:
     name: "Salute del sistema — notifica i problemi gravi"
     description: "Invia una notifica push quando la scansione di salute apre o riapre una segnalazione grave, o quando una già aperta si aggrava fino a diventare grave. Mai per un aggiornamento che non alza la gravità, e mai due volte per lo stesso problema entro 12 ore: la scansione gira ogni 30 minuti. Predefinito: attivo."

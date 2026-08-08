@@ -1,8 +1,7 @@
 """Tests for review C/#15: fire-and-forget asyncio.create_task(...) results
-were discarded across server.py (no stored reference), including the HA
-notification-action listener that drives the step-up APPROVAL flow (phone-tap
-Approve/Reject). Per asyncio's documented weak-reference semantics, a task
-with no external referrer can be garbage-collected mid-execution.
+were discarded across server.py (no stored reference). Per asyncio's
+documented weak-reference semantics, a task with no external referrer can be
+garbage-collected mid-execution.
 
 Fix: a module-level `_background_tasks` strong-reference set plus a
 `_spawn()` helper that adds each created task to it and wires a done-callback
@@ -16,8 +15,15 @@ GC itself is not directly testable/deterministic here, so this file verifies:
      server.py outside `_spawn()`'s own body (mirrors the existing
      `test_*_wiring.py` inspect-source convention, e.g. test_mayan_wiring.py /
      test_sentinel_wiring.py).
-  3. The approval-critical notification-action listener specifically routes
-     through `_spawn(...)`.
+
+Fetta E2 Task 5 ("escono le conferme del gateway"): point 3 originally here
+asserted that the HA notification-action listener (the phone-tap
+Approve/Reject wiring for the gateway's pending/OTP store) routed through
+`_spawn(...)`. That listener registration -- and `add_action_listener` /
+`_action_listeners` on HAClient entirely -- is removed with it: the pending
+store it drove was dead by construction (see handlers_gateway_pending.py's
+removal), so there is nothing left to phone-tap. The test asserting that
+wiring is gone with its subject, not moved.
 """
 import ast
 import asyncio
@@ -129,20 +135,3 @@ def test_spawn_body_adds_to_background_tasks_and_wires_done_callback():
     assert "_background_tasks.add(" in source
     assert "add_done_callback(" in source
     assert "_background_tasks.discard" in source
-
-
-# ── 3. The approval-critical notification-action listener uses _spawn ──────
-
-
-def test_notification_action_listener_uses_spawn():
-    """The HA notification-action listener drives the step-up APPROVAL flow
-    (phone-tap Approve/Reject) and awaits HTTP calls to HA -- this is the
-    single highest-stakes site from review C/#15. Assert its wiring in
-    _on_startup specifically routes through _spawn(), not a bare
-    asyncio.create_task(...)."""
-    source = inspect.getsource(server._on_startup)
-    idx = source.index("add_action_listener")
-    snippet = source[idx: idx + 200]
-    assert "_spawn(" in snippet
-    assert "on_notification_action" in snippet
-    assert "asyncio.create_task(" not in snippet

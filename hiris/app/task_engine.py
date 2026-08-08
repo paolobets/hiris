@@ -84,10 +84,15 @@ class TaskEngine:
         self._data_path = data_path
         self._execute_policy = execute_policy if execute_policy is not None else {}
         # Fase 2.5 C2: callable opzionale per lo step-up di un'azione autonoma
-        # oltre il verde. Iniettato (server.py) come chiusura su
-        # request_confirmation_stepup(user=agent_owner). None -> fail-closed
-        # allo skip (comportamento pre-fetta). task_engine NON importa lo store
-        # dei pending: la dipendenza viaggia solo per questo callable.
+        # oltre il verde. None -> fail-closed allo skip (comportamento
+        # pre-fetta). task_engine NON importa lo store dei pending: la
+        # dipendenza viaggia solo per questo callable.
+        # Fetta E2 Task 5 ("escono le conferme del gateway"): server.py non
+        # inietta piu' alcuna chiusura qui -- si appoggiava alla stessa mappa
+        # utente->canale (notify_users) che nessuna interfaccia scrive, quindi
+        # era morta per costruzione come il resto del pending/OTP store
+        # (handlers_gateway_pending.py, rimosso). Il parametro resta: e'
+        # generico, testato, e degrada gia' correttamente a None.
         self._request_stepup = request_stepup
         self._tasks: dict[str, Task] = {}
         # Guards mutation of self._tasks. _cleanup() is a SYNC APScheduler job

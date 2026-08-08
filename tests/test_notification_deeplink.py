@@ -14,7 +14,6 @@ import pytest
 
 from hiris.app.notifiche import (
     build_app_deeplink, build_push_data, send_notification)
-from hiris.app.api import handlers_gateway_pending as gp
 
 _PATH = "/hassio/ingress/abc_hiris"
 _DEEPLINK = "homeassistant://navigate/hassio/ingress/abc_hiris?server=default"
@@ -103,56 +102,3 @@ async def test_ha_push_without_click_path_still_sends_channel():
     _, _, data = ha.calls[0]
     assert data["data"]["channel"] == "HIRIS"
     assert "clickAction" not in data["data"]
-
-
-# --- pending step-up notify -------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_pending_notify_deeplinks_body_and_uri_action():
-    ha = _FakeHA()
-    app = {"ha_client": ha,
-           "gateway_settings": {"notify_service": "notify.mobile_app_bet"},
-           "ingress_click_path": _PATH}
-    ok = await gp.notify(app, message="serve conferma", actionable=True, nonce="n1")
-    assert ok
-    _, _, data = ha.calls[0]
-    assert data["data"]["clickAction"] == _PATH        # Android
-    assert data["data"]["url"] == _DEEPLINK            # iOS
-    # `uri` e' un campo solo: porta il collegamento, l'unica forma che entrambe
-    # le Companion sanno aprire (Android toglie il prefisso `.../navigate/`).
-    uri = [a for a in data["data"]["actions"] if a.get("action") == "URI"]
-    assert uri and uri[0]["uri"] == _DEEPLINK
-    # le azioni di approvazione restano
-    assert any(a["action"].endswith("approve:n1") for a in data["data"]["actions"])
-
-
-@pytest.mark.asyncio
-async def test_pending_notify_non_actionable_still_deeplinks():
-    """Un pending rosso/OTP-only (non actionable) prima NON aveva `data` affatto
-    -> nessun deep-link. Ora lo porta comunque (con canale), senza pulsanti."""
-    ha = _FakeHA()
-    app = {"ha_client": ha,
-           "gateway_settings": {"notify_service": "notify.mobile_app_bet"},
-           "ingress_click_path": _PATH}
-    ok = await gp.notify(app, message="serve OTP", actionable=False, nonce="n2")
-    assert ok
-    _, _, data = ha.calls[0]
-    assert data["data"]["clickAction"] == _PATH
-    assert data["data"]["url"] == _DEEPLINK
-    assert data["data"]["channel"] == "HIRIS"
-    assert "actions" not in data["data"]
-
-
-@pytest.mark.asyncio
-async def test_pending_notify_without_click_path_omits_uri_action():
-    """Senza slug (Supervisor irraggiungibile) niente deep-link e niente
-    pulsante 'Apri HIRIS' rotto -- solo Approva/Nega."""
-    ha = _FakeHA()
-    app = {"ha_client": ha,
-           "gateway_settings": {"notify_service": "notify.mobile_app_bet"}}
-    ok = await gp.notify(app, message="serve conferma", actionable=True, nonce="n3")
-    assert ok
-    _, _, data = ha.calls[0]
-    assert "clickAction" not in data["data"]
-    assert all(a.get("action") != "URI" for a in data["data"]["actions"])
-    assert data["data"]["channel"] == "HIRIS"
