@@ -999,8 +999,11 @@ async def test_agent_not_auto_disabled_regardless_of_usage(tmp_path):
 async def test_run_agent_uses_chat_not_run_with_actions(engine):
     """Slice 5: no agent type executes actions anymore — _run_agent always
     calls chat() (plain text), regardless of agent.type, and never touches
-    run_with_actions (that method is now Sentinella-only, invoked directly
-    by server.py's _llm_reason, not through ChatbotEngine)."""
+    run_with_actions. fetta E3 Task 8: `run_with_actions` non esiste piu'
+    affatto su ClaudeRunner (era Sentinella-only, invocato direttamente da
+    `_llm_reason`, uscita a sua volta col Task 7) -- l'assert_not_called()
+    sotto resta comunque un guard valido sul comportamento di ChatbotEngine
+    verso QUALUNQUE oggetto le passi come runner, mock incluso."""
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="Analisi OK.")
     mock_runner.run_with_actions = AsyncMock(return_value=("should not be used", {}))

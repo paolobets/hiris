@@ -1293,11 +1293,14 @@ async def _on_startup(app: web.Application) -> None:
     # prima di questo task non incontra piu' nessun codice -- nessuno slot
     # app, nessuna rotta, nessun log possibile perche' nessun codice li
     # apre piu' (vedi il commento sopra dove prima viveva questo cablaggio).
-    # `tools.proposal_tools.create_automation_proposal` resta orfano (il
-    # modulo non e' nel perimetro di questo task): nessun chiamante di
+    # `tools.proposal_tools.create_automation_proposal` restava orfano qui
+    # (il modulo non era nel perimetro del Task 5): nessun chiamante di
     # produzione, solo citazioni in commenti/metadata (handlers_gateway_
     # policy.py's PROPOSE_TOOLS, gia' morto da prima) e nella lista UI del
-    # Designer (static/config/templates.js, fuori scope, e' la E5).
+    # Designer (static/config/templates.js, fuori scope, e' la E5 -- la
+    # voce resta li' come checkbox inerte, dichiarata nel report del Task 8).
+    # Il Task 8 di questa fetta ha cancellato l'intera cartella `tools/`,
+    # `proposal_tools.py` incluso: la citazione sopra e' storica.
     # `watcher.policy.apply_brain_detector/remove_brain_detector/
     # apply_brain_tuning/remove_brain_tuning` (PARAM_BOUNDS resta vivo, lo
     # usa la validazione di save_policy/load_policy) perdono qui il loro

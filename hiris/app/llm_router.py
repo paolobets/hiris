@@ -92,8 +92,8 @@ class LLMRouter:
     the next backend in the policy chain is tried automatically.
 
     Two independent ordered policies select the backend chain when
-    model="auto", picked via the `mode` kwarg on chat/chat_stream/
-    run_with_actions ("chat" → chat_policy, else → automatic_policy).
+    model="auto", picked via the `mode` kwarg on chat/chat_stream
+    ("chat" → chat_policy, else → automatic_policy).
     If a policy is not supplied (None/empty), it derives from
     _STRATEGY_ORDER[strategy] — unchanged behavior for existing callers.
     When the caller instead passes `model_chain` (the boot-time reconciled
@@ -144,7 +144,7 @@ class LLMRouter:
 
         Rationale: a prompt composed for a local primary backend could still
         fall back to a cloud backend if that primary is unreachable (see the
-        automatic-mode retry loop in chat()/run_with_actions()). So sensitive
+        automatic-mode retry loop in chat()). So sensitive
         content is safe to include only when NO cloud backend is reachable
         anywhere in the automatic chain -- the chain must be non-empty and
         every backend registered in it (non-None) must be local.
@@ -239,31 +239,10 @@ class LLMRouter:
         async for chunk in runner.chat_stream(**kwargs):
             yield chunk
 
-    async def run_with_actions(self, **kwargs):
-        # Slice 4 backlog fix: real runners (claude_runner/openai_compat_runner)
-        # return a 2-tuple (clean_text, structured), and the sole real caller
-        # (server.py's `_llm_reason`, via `out = await runner.run_with_actions(...)`
-        # then `out[0] if isinstance(out, tuple) else out`) tolerates either a
-        # tuple or a bare string -- but both fallback returns below still use
-        # the 2-tuple shape for consistency with the real runners, not the
-        # old 3-tuple.
-        mode = kwargs.pop("mode", "automatic")
-        model = kwargs.get("model", "auto")
-        if model != "auto":
-            runner = self._route(model)
-            if runner is None:
-                return "Nessun provider AI configurato per questo modello.", {}
-            return await runner.run_with_actions(**kwargs)
-        last_friendly: str | None = None
-        for runner in self._ordered_backends(mode):
-            try:
-                return await runner.run_with_actions(**kwargs)
-            except RunnerBackendError as exc:
-                logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
-                last_friendly = exc.friendly_message
-            except Exception as exc:
-                logger.warning("Backend %s failed, trying next: %s", type(runner).__name__, exc)
-        return (last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."), {}
+    # fetta E3 Task 8: `run_with_actions` e' uscito. Il "sole real caller" che
+    # il commento qui sopra citava (server.py's `_llm_reason`) era la
+    # Sentinella, uscita per intero al Task 7 di questa fetta -- senza di lei
+    # nessun chiamante di produzione arrivava piu' fin qui.
 
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
         """Nessun provider configurato NON e' una risposta vuota del modello.
@@ -271,7 +250,7 @@ class LLMRouter:
         Prima si tornava "", che il chiamante non puo' distinguere da un
         modello che ha davvero taciuto: il guasto veniva trattato come
         risposta valida. Si risponde con lo stesso messaggio esplicito gia'
-        usato da `chat` e `run_with_actions` in questo file. Quando un runner
+        usato da `chat` in questo file. Quando un runner
         c'e', la sua risposta passa cosi' com'e' -- anche vuota, perche' li' e'
         davvero il modello ad aver taciuto.
         """

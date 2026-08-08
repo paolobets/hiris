@@ -7,42 +7,22 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
 import anthropic
-# fetta E2 Task 8 ("escono i trentaquattro"): il catalogo da 34 sparisce, e
-# con lui le tre copie divergenti che la mappa del prodotto ha condannato (34
-# per la chat -- QUESTO file --, 16 per l'execute API e 15 per l'MCP interno,
-# entrambi gia' usciti). La chat non riceve piu' un catalogo da qui: passa
-# `strumenti=STRUMENTI_CONOSCENZA` (casa/strumenti.py, quattro strumenti che
-# conoscono la casa e non la toccano). Le sole 18 definizioni sotto restano
-# perche' le nomina `EVALUATION_ONLY_TOOLS`: l'unico catalogo ancora vivo,
-# usato dalla Sentinella via `run_with_actions`.
-from .tools.ha_tools import (
-    TOOL_DEF as HA_TOOL,
-    GET_AREA_ENTITIES_TOOL_DEF,
-    GET_HOME_STATUS_TOOL_DEF,
-    GET_ENTITIES_ON_TOOL_DEF,
-    GET_ENTITIES_BY_DOMAIN_TOOL_DEF,
-)
-from .tools.energy_tools import TOOL_DEF as ENERGY_TOOL
-from .tools.history_tools import GET_HISTORY_TOOL_DEF
-from .tools.weather_tools import TOOL_DEF as WEATHER_TOOL
-from .tools.automation_tools import (
-    GET_AUTOMATIONS_TOOL_DEF,
-    GET_AUTOMATION_CONFIG_TOOL_DEF,
-)
-from .tools.task_tools import (
-    CREATE_TASK_TOOL_DEF, LIST_TASKS_TOOL_DEF, CANCEL_TASK_TOOL_DEF,
-)
-from .tools.calendar_tools import GET_CALENDAR_EVENTS_TOOL_DEF
-from .tools.memory_tools import RECALL_MEMORY_TOOL_DEF
-from .tools.health_tools import GET_HA_HEALTH_TOOL_DEF
-from .tools.advisory_tools import GET_ADVISORIES_TOOL_DEF
-from .tools.diagnostics_tools import GET_LOGBOOK_TOOL_DEF
+# fetta E3 Task 8 ("esce l'ultimo catalogo"): la E2 aveva lasciato vive le 18
+# definizioni sotto (`EVALUATION_ONLY_TOOLS`/`EVALUATION_TOOL_DEFS`) perche'
+# erano l'unico catalogo che la Sentinella usava, via `run_with_actions` --
+# dichiarato per iscritto: "escono con lei". La Sentinella e' uscita al Task
+# 7 di questa fetta: `run_with_actions` non aveva piu' un solo chiamante, e i
+# 12 moduli di `tools/` (da cui venivano importate queste definizioni)
+# sopravvivevano solo per donargliele. Cataloghi, `run_with_actions` e
+# `tools/` escono qui insieme -- la chat riceve il suo catalogo da fuori
+# (`strumenti=STRUMENTI_CONOSCENZA`, casa/strumenti.py, quattro strumenti che
+# conoscono la casa e non la toccano) da prima di questo task.
 
 logger = logging.getLogger(__name__)
 
 
 class RunnerBackendError(Exception):
-    """Raised by a runner's chat()/run_with_actions() when the underlying
+    """Raised by a runner's chat() when the underlying
     provider API call itself failed (rate limit, connection error, timeout,
     auth failure, 5xx, or any other persistent outage) — as opposed to the
     model producing a normal (if unusual) reply.
@@ -50,7 +30,7 @@ class RunnerBackendError(Exception):
     Review C/#13: ClaudeRunner/OpenAICompatRunner used to CATCH these errors
     and RETURN a friendly Italian string, indistinguishable from a real
     successful reply to any caller. LLMRouter's ordered-backend fallback loop
-    wraps chat()/run_with_actions() in `except Exception` specifically to
+    wraps chat() in `except Exception` specifically to
     fail over to the next configured backend on a primary outage — but a
     returned string never raises, so the loop always "succeeded" on the
     first (broken) backend and the fallback chain was dead code.
@@ -124,76 +104,12 @@ BASE_SYSTEM_PROMPT = (
     "- Rispondi nella lingua dell'utente."
 )
 
-# fetta E2 Task 8: `CALL_SERVICE_TOOL_DEF`, `DAILY_BRIEFING_TOOL_DEF` e
-# `CONFIRM_PENDING_TOOL_DEF` sono usciti da qui insieme al resto dei 34: nessuno
-# dei tre e' nominato da `EVALUATION_ONLY_TOOLS` (tutti e tre chat-only per
-# costruzione -- attuano, o leggono la memoria/i documenti del maggiordomo), e
-# la chat non offre piu' un catalogo da questo file (STRUMENTI_CONOSCENZA,
-# casa/strumenti.py). Senza un catalogo che li nomini erano gia' irraggiungibili
-# per qualunque chiamante.
-
-# EVALUATION_TOOL_DEFS (fetta E2 Task 8, ex `ALL_TOOL_DEFS`): non e' piu' "il
-# catalogo di fabbrica" da cui la chat sceglie -- quel ruolo lo aveva quando
-# esisteva un solo posto dove i 34 strumenti vivevano. Oggi la chat riceve il
-# suo catalogo dall'esterno (`strumenti=STRUMENTI_CONOSCENZA`); l'unico
-# chiamante che arriva ancora fin qui SENZA passare `strumenti` e'
-# `run_with_actions` (la Sentinella), che poi restringe con `allowed_tools`
-# a `EVALUATION_ONLY_TOOLS` (sotto). Questa lista contiene percio' SOLO le
-# definizioni nominate da quel set: cancellare un tool da qui senza prima
-# toglierlo da `EVALUATION_ONLY_TOOLS` romperebbe la Sentinella (`t["name"] in
-# allowed_tools` non troverebbe piu' nulla per quel nome).
-EVALUATION_TOOL_DEFS = [
-    HA_TOOL,
-    GET_AREA_ENTITIES_TOOL_DEF,
-    GET_HOME_STATUS_TOOL_DEF,
-    GET_ENTITIES_ON_TOOL_DEF,
-    GET_ENTITIES_BY_DOMAIN_TOOL_DEF,
-    ENERGY_TOOL,
-    GET_HISTORY_TOOL_DEF,
-    WEATHER_TOOL,
-    GET_AUTOMATIONS_TOOL_DEF,
-    GET_AUTOMATION_CONFIG_TOOL_DEF,
-    CREATE_TASK_TOOL_DEF,
-    LIST_TASKS_TOOL_DEF,
-    CANCEL_TASK_TOOL_DEF,
-    GET_CALENDAR_EVENTS_TOOL_DEF,
-    RECALL_MEMORY_TOOL_DEF,
-    GET_HA_HEALTH_TOOL_DEF,
-    GET_ADVISORIES_TOOL_DEF,
-    GET_LOGBOOK_TOOL_DEF,
-]
-
-# Tools available to non-chat agents in evaluation mode.
-# Excludes direct-execution tools (send_notification, call_ha_service,
-# trigger_automation, toggle_automation, http_request) to prevent prompt
-# injection from HA entity state from triggering real-world actions.
-EVALUATION_ONLY_TOOLS = frozenset({
-    "get_entity_states", "get_area_entities", "get_home_status",
-    "get_entities_on", "get_entities_by_domain",
-    "get_energy_history", "get_weather_forecast", "get_history",
-    "get_ha_automations", "get_automation_config", "get_calendar_events",
-    "create_task", "list_tasks", "cancel_task",
-    "recall_memory",  # read-only — safe for non-chat agents. Task 2 (memoria
-                      # unica) merged the old recall_knowledge into this same
-                      # tool, so this single entry now covers both.
-    "get_ha_health",  # read-only cached data — safe for proactive monitors
-    "get_advisories",  # sola lettura sulle segnalazioni gia' note del Brain:
-                       # un agente che sorveglia la casa deve poterle vedere
-    "get_logbook",     # sola lettura sulla cronologia degli eventi: sapere cosa
-                       # e' successo e' esattamente il mestiere di un sorvegliante
-    # render_template excluded ON PURPOSE, and NOT because it writes -- non
-    # scrive nulla, HA si limita a renderizzare. Il motivo e' un altro: un
-    # template Jinja puo' leggere QUALUNQUE stato di Home Assistant, e un agente
-    # non-chat gira proprio SULLO STATO di HA. Il nome o l'attributo di
-    # un'entita' sono testo che un dispositivo (o chi lo controlla) puo'
-    # scegliere: un'entita' battezzata in modo ostile diventa un'istruzione nel
-    # contesto dell'agente, che potrebbe valutare un template arbitrario e
-    # rastrellare l'intera casa senza che nessun perimetro di entita' possa
-    # fermarlo (un template non ha entity_id da filtrare). In chat la stessa
-    # richiesta la fa un umano che sta guardando la risposta: e' un rischio
-    # accettato li' e non altrove. Chat-only.
-    # create_automation_proposal excluded: writes to store — chat-only
-})
+# fetta E3 Task 8: `EVALUATION_TOOL_DEFS` (ex `ALL_TOOL_DEFS`, il catalogo da
+# 34) e `EVALUATION_ONLY_TOOLS` (le 18 letture concesse alla Sentinella) sono
+# uscite insieme a `run_with_actions`, il loro unico chiamante -- vedi il
+# commento in testa al file. La chat non ha mai smesso di ricevere il suo
+# catalogo dall'esterno (`strumenti=STRUMENTI_CONOSCENZA`); ora e' l'UNICO
+# modo in cui `chat()` vede dei tool, non piu' il ramo di scorta.
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
@@ -326,7 +242,7 @@ RESTRICT_PROMPT = (
 # instance attribute, via the _PerCallList descriptor below. asyncio.Task
 # creation copies the current Context, and ContextVar.set() inside a Task
 # mutates only that Task's own copy — never a sibling Task's. Two concurrent
-# Tasks calling chat()/run_with_actions() on the very same runner instance
+# Tasks calling chat()/chat_stream() on the very same runner instance
 # therefore never observe each other's resets or appends, even though they
 # share the object. Within a single Task (the normal, non-overlapping case —
 # e.g. handlers_chat.py reading `runner.last_tool_calls` right after
@@ -425,13 +341,13 @@ class ClaudeRunner:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         # fetta E2 Task 7: nessun chiamante costruisce piu' un ToolDispatcher
         # (uscito -- 818 righe, 16 dipendenze, un semaforo spento). Questo e'
-        # il dispatcher "di scorta" usato SOLO da chat()/run_with_actions()
-        # quando il chiamante non passa il suo (il parametro dispatcher/
-        # strumenti per-chiamata, che invece resta: la chat ci passa
-        # DispatcherConoscenza). Resta None per costruzione: gli strumenti
-        # che lo richiedono (EVALUATION_ONLY_TOOLS, unico catalogo rimasto
-        # della Sentinella) degradano a "non disponibile" invece di
-        # attuare -- vedi has_memory/il ramo `dispatcher is None` sotto.
+        # il dispatcher "di scorta" usato SOLO da chat() quando il chiamante
+        # non passa il suo (il parametro dispatcher/strumenti per-chiamata,
+        # che invece resta: la chat ci passa DispatcherConoscenza). Resta
+        # None per costruzione: senza catalogo di scorta (fetta E3 Task 8,
+        # uscito con run_with_actions/la Sentinella) uno strumento richiesto
+        # su questo ramo degrada comunque a "non disponibile" -- vedi il ramo
+        # `dispatcher is None` sotto.
         self._dispatcher = dispatcher
         self._usage_path = usage_path
         self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto"
@@ -455,12 +371,16 @@ class ClaudeRunner:
         self._save_lock = threading.Lock()
         self._load_usage()
 
-    def set_task_engine(self, engine: Any) -> None:
-        # fetta E2 Task 7: nessun chiamante di produzione lo invoca piu' (il
-        # cablaggio era in server.py, uscito con ToolDispatcher) -- resta per
-        # chi costruisce il runner senza dispatcher e lo chiama comunque.
-        if self._dispatcher is not None:
-            self._dispatcher.set_task_engine(engine)
+    # fetta E3 Task 8: `set_task_engine` e' uscito. Nella E2 Task 7 restava
+    # per "chi costruisce il runner senza dispatcher e lo chiama comunque" --
+    # ma quel comunque non esiste: zero chiamanti di produzione (server.py
+    # non lo invoca dal T7, chatbot_engine non ancora, arrivera' al T9 e
+    # chiamera' il proprio `ChatbotEngine.set_task_engine`, un metodo
+    # diverso). Inoltrava a `self._dispatcher.set_task_engine`, un metodo che
+    # nessun dispatcher di produzione ha mai avuto (self._dispatcher e'
+    # sempre None: vedi il commento sopra) ne' che DispatcherConoscenza
+    # (casa/strumenti.py, il dispatcher per-chiamata che la chat usa davvero)
+    # espone.
 
     def _load_usage(self) -> None:
         if not self._usage_path or not os.path.exists(self._usage_path):
@@ -635,32 +555,20 @@ class ClaudeRunner:
         effective_model = resolve_model(model, agent_type, self._default_model)
         if strumenti is not None:
             # Il catalogo arriva gia' deciso dal chiamante (es. i quattro
-            # strumenti di DispatcherConoscenza, casa/strumenti.py): i quattro
-            # filtri in cascata sotto esistono per restringere EVALUATION_TOOL_DEFS,
-            # il catalogo della Sentinella -- applicarli anche qui sarebbe una
-            # seconda regola nascosta sopra una decisione gia' presa altrove
-            # (Task 2, .superpowers/sdd/task-2-brief.md).
+            # strumenti di DispatcherConoscenza, casa/strumenti.py).
             tools = list(strumenti)
         else:
-            tools = [t for t in EVALUATION_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
-            # render_template valuta un template Jinja: non ha un entity_id da
-            # filtrare, quindi legge TUTTA la casa per costruzione. Concederlo resta
-            # possibile, ma solo esplicitamente -- e' la casella del Designer, che
-            # avvisa chi la spunta. Senza whitelist esplicita di tool il bot
-            # riceverebbe l'intero catalogo, e un bot con perimetro di entita' si
-            # ritroverebbe in mano proprio lo strumento che quel perimetro lo
-            # scavalca ({{ states('lock.portone') }}) senza che nessuno gliel'abbia
-            # concesso -- ed e' la configurazione piu' comune. Chi NON ha perimetro
-            # vede gia' tutto: togliergli il tool sarebbe una regressione inutile.
-            if not allowed_tools and allowed_entities is not None:
-                tools = [t for t in tools if t["name"] != "render_template"]
-            if allowed_endpoints is None:
-                tools = [t for t in tools if t["name"] != "http_request"]
-            # Senza dispatcher (fetta E2 Task 7: nessuno ne costruisce piu' uno
-            # di produzione) non c'e' memoria da interrogare -- stessa
-            # degradazione di un dispatcher che dichiara has_memory=False.
-            if self._dispatcher is None or not self._dispatcher.has_memory:
-                tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
+            # fetta E3 Task 8: non esiste piu' un catalogo di scorta da cui
+            # pescare qui. `EVALUATION_TOOL_DEFS`/`EVALUATION_ONLY_TOOLS`
+            # (il catalogo a 18 letture della Sentinella, filtrato con
+            # `allowed_tools`) sono usciti insieme al loro unico chiamante,
+            # `run_with_actions` -- la Sentinella e' uscita al Task 7. Nessun
+            # chiamante di produzione arriva fin qui senza passare
+            # `strumenti` (verificato: chatbot_engine.py e
+            # api/handlers_chat.py lo passano sempre); i test del "loop
+            # mechanic" che chiamano `chat()` senza `strumenti` provano
+            # apposta che la conversazione regge comunque, senza tool_use.
+            tools = []
         # Cache tool definitions — stable per agent config, reused across turns
         if tools:
             tools = tools[:-1] + [{**tools[-1], "cache_control": {"type": "ephemeral"}}]
@@ -878,94 +786,14 @@ class ClaudeRunner:
         tool_calls = self.last_tool_calls if isinstance(self.last_tool_calls, list) else []
         yield f'data: {_json.dumps({"type": "done", "agent_id": chatbot_id, "tool_calls": tool_calls})}\n\n'
 
-    async def run_with_actions(
-        self,
-        user_message: str,
-        system_prompt: str,
-        allowed_tools: Optional[list[str]] = None,
-        allowed_entities: Optional[list[str]] = None,
-        allowed_services: Optional[list[str]] = None,
-        allowed_endpoints: Optional[list[dict]] = None,
-        model: str = "auto",
-        max_tokens: int = MAX_TOKENS,
-        agent_type: str = "agent",
-        restrict_to_home: bool = False,
-        require_confirmation: bool = False,
-        chatbot_id: Optional[str] = None,
-        response_mode: str = "auto",
-        thinking_budget: int = 0,
-        knowledge_allow_sensitive: bool = False,
-        knowledge_kinds: list[str] | str | None = None,
-        user_id: str | None = None,
-    ) -> tuple[str, dict]:
-        """Run a tool-restricted evaluation pass — used solely by the Sentinella.
-
-        Slice 5 retired the action/rules execution machinery (AZIONI blocks,
-        configured rules): this is now a plain agentic loop that runs the given
-        system prompt restricted to read-only (``EVALUATION_ONLY_TOOLS``) tools
-        and returns the model's raw text, unmodified. The Sentinella reasoner
-        (``watcher/reasoner.py``) parses its own ```json``` block out of the
-        returned text; it does not depend on the ``structured`` dict.
-
-        Args:
-            user_message: Trigger message (may contain event context or a cron prompt).
-            system_prompt: Caller-provided instructions (not augmented here).
-            allowed_tools: Whitelist of tool names, or None for all evaluation tools.
-            allowed_entities: Entity glob patterns allowed for this agent.
-            allowed_services: Service patterns allowed for this agent.
-            allowed_endpoints: HTTP endpoint whitelist.
-            model: Model ID or ``"auto"``.
-            max_tokens: Response token budget.
-            agent_type: Used for model auto-resolution (``"agent"`` maps to Haiku).
-            restrict_to_home: Inject home-topic restriction prompt.
-            require_confirmation: Not used for agents; present for API symmetry.
-            chatbot_id: Chatbot ID for per-chatbot usage tracking.
-            response_mode: ``"minimal"`` for terse motivazione, ``"auto"`` for standard.
-
-        Returns:
-            Tuple of ``(clean_text, structured)``. Nothing instructs the model
-            to emit a VALUTAZIONE/NOTIFICA/PARAM/AZIONI block anymore, so
-            ``structured`` is always the all-defaults (None/empty) shape kept
-            for backward-compat callers, and ``clean_text`` is the model's raw
-            text unmodified (Slice 5 Task 2 dropped the dead
-            ``_parse_structured_output`` scanning pass — the Sentinella
-            reasoner parses its own ```json``` block out of ``clean_text``
-            directly, never touching ``structured``).
-        """
-        # Restrict to evaluation-only tools — Claude may read HA state but
-        # cannot directly call action services (prevents prompt-injection attacks).
-        eval_tools = list(EVALUATION_ONLY_TOOLS)
-        if allowed_tools:
-            eval_tools = [t for t in eval_tools if t in allowed_tools]
-
-        raw_result = await self.chat(
-            user_message=user_message,
-            system_prompt=system_prompt,
-            allowed_tools=eval_tools,
-            allowed_entities=allowed_entities,
-            allowed_services=allowed_services,
-            allowed_endpoints=allowed_endpoints,
-            model=model,
-            max_tokens=max_tokens,
-            agent_type=agent_type,
-            restrict_to_home=restrict_to_home,
-            require_confirmation=require_confirmation,
-            chatbot_id=chatbot_id,
-            response_mode=response_mode,
-            thinking_budget=thinking_budget,
-            knowledge_allow_sensitive=knowledge_allow_sensitive,
-            knowledge_kinds=knowledge_kinds,
-            user_id=user_id,
-        )
-        # Slice 5 Task 2: dropped the _parse_structured_output scanning pass —
-        # nothing emits VALUTAZIONE/NOTIFICA/PARAM/AZIONI markers anymore, so
-        # it always returned clean_text == raw_result (mod trailing
-        # whitespace) and an all-defaults structured dict. Return that same
-        # shape directly instead of paying for a 40-line bottom-up scan on
-        # every Sentinella evaluation.
-        clean_text = raw_result.rstrip() if isinstance(raw_result, str) else raw_result
-        structured = {"valutazione": None, "notifica": None, "params": {}, "azioni": []}
-        return clean_text, structured
+    # fetta E3 Task 8: `run_with_actions` e' uscito. Girava un passaggio
+    # agentico ristretto a `EVALUATION_ONLY_TOOLS` (le 18 letture) per conto
+    # di UN solo chiamante: `watcher/reasoner.py::_llm_reason`, la Sentinella
+    # -- uscita per intero al Task 7 di questa fetta. Senza quel chiamante,
+    # `run_with_actions` non aveva piu' nessuno a cui rispondere; usciva
+    # insieme ai due cataloghi che esistevano solo per lui
+    # (`EVALUATION_TOOL_DEFS`/`EVALUATION_ONLY_TOOLS`, sopra) e alla cartella
+    # `tools/` da cui quei cataloghi pescavano le 18 definizioni.
 
     async def _call_api(self, **kwargs) -> Any:
         for attempt in range(MAX_RETRIES + 1):

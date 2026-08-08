@@ -1,24 +1,26 @@
 """Task 2: i runner accettano un catalogo di strumenti (e un dispatcher) dall'esterno.
 
-Oggi il catalogo e' DENTRO il runner (`EVALUATION_TOOL_DEFS`, claude_runner.py
--- fetta E2 Task 8: era `ALL_TOOL_DEFS`, il catalogo di fabbrica da 34; oggi e'
-gia' ridotto ai soli 18 nomi di `EVALUATION_ONLY_TOOLS`, la Sentinella) e si
-filtra con quattro passaggi in cascata (allowed_tools, render_template contro
-il perimetro delle entita', http_request contro allowed_endpoints,
-recall_memory/save_memory contro has_memory). Perche' la chat nuova
-(`DispatcherConoscenza`, casa/strumenti.py -- quattro strumenti che conoscono
-la casa e non la toccano) ne offra quattro invece di trentaquattro, i runner
-devono poterli ricevere dall'esterno.
+fetta E3 Task 8: il catalogo che una volta viveva DENTRO il runner
+(`EVALUATION_TOOL_DEFS`/`EVALUATION_ONLY_TOOLS`, claude_runner.py -- la
+Sentinella, filtrata con quattro passaggi in cascata: allowed_tools,
+render_template contro il perimetro delle entita', http_request contro
+allowed_endpoints, recall_memory/save_memory contro has_memory) e' uscito
+insieme al suo unico chiamante, `run_with_actions` (la Sentinella e' uscita
+al Task 7). Senza `strumenti`, `chat()` non offre piu' nessun tool -- i due
+test che pinnavano il vecchio fallback (`EVALUATION_TOOL_DEFS` filtrato) sono
+usciti con lui, non spostati: il loro soggetto non esiste piu'.
 
-Additivita': quando `strumenti` non e' passato tutto resta com'era prima --
-gli altri chiamanti (sorveglianza, agenti, ponte push, test run) non se ne
-accorgono. Quando `strumenti` e' passato, i quattro filtri in cascata NON si
-applicano: il catalogo passato e' gia' la decisione, applicarli sopra sarebbe
-una seconda regola nascosta. Stessa cosa per `dispatcher`: se passato, il
-runner lo chiama con `dispatch(nome, argomenti)` -- l'interfaccia minima di
-`DispatcherConoscenza` -- non con le kwargs che il dispatcher di scorta del
-runner accetta (allowed_entities, chatbot_id, visible_entity_ids, ...; era
-`ToolDispatcher`, uscito -- fetta E2 Task 7).
+Il soggetto di QUESTO file pero' e' un altro, ed e' vivo: perche' la chat
+(`DispatcherConoscenza`, casa/strumenti.py -- quattro strumenti che conoscono
+la casa e non la toccano) offra quattro strumenti invece del catalogo
+interno, i runner devono poterli ricevere dall'esterno. Quando `strumenti` e'
+passato, i quattro filtri in cascata (gia' spariti insieme al catalogo che
+filtravano) NON si applicano comunque: il catalogo passato e' gia' la
+decisione. Stessa cosa per `dispatcher`: se passato, il runner lo chiama con
+`dispatch(nome, argomenti)` -- l'interfaccia minima di `DispatcherConoscenza`
+-- non con le kwargs che il dispatcher di scorta del runner accetta
+(allowed_entities, chatbot_id, visible_entity_ids, ...; era `ToolDispatcher`,
+uscito -- fetta E2 Task 7).
 """
 import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,8 +29,7 @@ import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
-from hiris.app.claude_runner import EVALUATION_TOOL_DEFS, ClaudeRunner
-from hiris.app.tools.memory_tools import RECALL_MEMORY_TOOL_DEF
+from hiris.app.claude_runner import ClaudeRunner
 
 # fetta E2 Task 8: `tools/http_tools.py` e' uscito per intero (HTTP_REQUEST_
 # TOOL_DEF non serve a EVALUATION_ONLY_TOOLS, e `http_request` era gia'
@@ -40,6 +41,16 @@ from hiris.app.tools.memory_tools import RECALL_MEMORY_TOOL_DEF
 # nessun modulo di produzione, prova esattamente la stessa cosa.
 _FINTO_HTTP_REQUEST_TOOL_DEF = {
     "name": "http_request",
+    "description": "finto, solo per provare il bypass dei filtri a cascata",
+    "input_schema": {"type": "object", "properties": {}},
+}
+
+# fetta E3 Task 8: `tools/memory_tools.py` (da cui veniva RECALL_MEMORY_TOOL_
+# DEF) e' uscito per intero insieme all'intera cartella `tools/` -- stesso
+# ragionamento del finto http_request sopra: al test sotto non serve la
+# definizione VERA, solo un tool_def il cui nome sia "recall_memory".
+_FINTO_RECALL_MEMORY_TOOL_DEF = {
+    "name": "recall_memory",
     "description": "finto, solo per provare il bypass dei filtri a cascata",
     "input_schema": {"type": "object", "properties": {}},
 }
@@ -74,10 +85,10 @@ def test_i_due_runner_accettano_gli_stessi_argomenti_anche_in_streaming():
 
 @pytest.fixture
 def claude_runner():
-    # Nessun dispatcher di scorta -> self._dispatcher e' None -> has_memory
-    # degrada a False (vedi claude_runner.py): serve al test che verifica
-    # che i quattro filtri NON si applichino quando `strumenti` e' passato
-    # (senza `strumenti`, recall_memory/save_memory sparirebbero da qui).
+    # Nessun dispatcher di scorta -> self._dispatcher e' None (fetta E3 Task
+    # 8: senza catalogo di scorta questo non ha piu' alcun effetto osservabile
+    # sui test qui sotto -- resta il pattern minimo condiviso con
+    # test_claude_runner.py).
     with patch("anthropic.AsyncAnthropic"):
         r = ClaudeRunner(api_key="test-key")
     return r
@@ -130,29 +141,26 @@ async def _tools_di_chat_openai(runner, **kw) -> set:
     return {t["function"]["name"] for t in catturati.get("tools", [])}
 
 
-# --- senza `strumenti`: nessuna regressione ---------------------------------
+# --- senza `strumenti`: nessun catalogo di scorta ---------------------------
+# fetta E3 Task 8: `EVALUATION_TOOL_DEFS`/`EVALUATION_ONLY_TOOLS` (il vecchio
+# fallback) sono usciti insieme al loro unico chiamante, `run_with_actions`
+# (la Sentinella, uscita al Task 7). L'"additivita'" che questi due test
+# pinnavano -- "senza `strumenti` tutto resta com'era prima" -- non descrive
+# piu' nessun chiamante reale: chatbot_engine.py e api/handlers_chat.py
+# passano sempre `strumenti=STRUMENTI_CONOSCENZA`. Il nuovo comportamento e'
+# piu' semplice da dichiarare che da giustificare: senza `strumenti`, nessun
+# tool.
 
 @pytest.mark.asyncio
-async def test_claude_senza_strumenti_offre_il_catalogo_di_sempre(claude_runner):
-    """Additivita': non passando `strumenti`, il catalogo resta
-    EVALUATION_TOOL_DEFS filtrato dai quattro passaggi in cascata come oggi --
-    has_memory=False qui toglie recall_memory (save_memory/http_request non
-    sono nemmeno nel catalogo ridotto -- fetta E2 Task 8 -- ma la sottrazione
-    dei loro nomi resta innocua: un insieme non perde cio' che non contiene)."""
+async def test_claude_senza_strumenti_non_offre_alcun_tool(claude_runner):
     nomi = await _tools_di_chat_claude(claude_runner)
-    # has_memory=False toglie recall_memory; allowed_endpoints non passato
-    # (None di default) toglierebbe http_request se fosse nel catalogo --
-    # stessi due filtri che oggi si applicano SEMPRE quando `strumenti` non
-    # c'e'.
-    attesi = {t["name"] for t in EVALUATION_TOOL_DEFS} - {"recall_memory", "save_memory", "http_request"}
-    assert nomi == attesi
+    assert nomi == set()
 
 
 @pytest.mark.asyncio
-async def test_openai_senza_strumenti_offre_il_catalogo_di_sempre(openai_runner):
+async def test_openai_senza_strumenti_non_offre_alcun_tool(openai_runner):
     nomi = await _tools_di_chat_openai(openai_runner)
-    attesi = {t["name"] for t in EVALUATION_TOOL_DEFS} - {"recall_memory", "save_memory", "http_request"}
-    assert nomi == attesi
+    assert nomi == set()
 
 
 # --- con `strumenti`: esattamente quelli, nessun altro ----------------------
@@ -169,27 +177,31 @@ async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
     assert nomi == {"cerca", "guarda", "ricorda", "richiama"}
 
 
-# --- con `strumenti`, i quattro filtri in cascata NON si applicano ---------
-# http_request verrebbe tolto da `allowed_endpoints is None`; recall_memory
-# verrebbe tolto da `not dispatcher.has_memory` (qui False, vedi fixture). Con
-# `strumenti` passato esplicitamente il catalogo e' gia' la decisione: nessuno
-# dei due va tolto.
+# --- con `strumenti`, nessun filtro in cascata (mai esistito su questo ramo) -
+# fetta E3 Task 8: i quattro filtri che un tempo restringevano il fallback
+# (allowed_endpoints contro http_request, has_memory contro recall_memory,
+# ecc.) sono usciti insieme al fallback stesso -- non sono mai esistiti sul
+# ramo `strumenti is not None`, che passa il catalogo del chiamante cosi'
+# com'e' da prima di questo task. Il test prova esattamente questo: nomi
+# "sensibili" come http_request/recall_memory, se dentro `strumenti`, NON
+# vengono tolti -- non c'e' nessuna seconda regola nascosta sopra la
+# decisione del chiamante.
 
 @pytest.mark.asyncio
-async def test_claude_con_strumenti_i_filtri_non_si_applicano(claude_runner):
+async def test_claude_con_strumenti_nessun_filtro_si_applica(claude_runner):
     nomi = await _tools_di_chat_claude(
         claude_runner,
-        strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, RECALL_MEMORY_TOOL_DEF],
+        strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
         allowed_endpoints=None,
     )
     assert nomi == {"http_request", "recall_memory"}
 
 
 @pytest.mark.asyncio
-async def test_openai_con_strumenti_i_filtri_non_si_applicano(openai_runner):
+async def test_openai_con_strumenti_nessun_filtro_si_applica(openai_runner):
     nomi = await _tools_di_chat_openai(
         openai_runner,
-        strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, RECALL_MEMORY_TOOL_DEF],
+        strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
         allowed_endpoints=None,
     )
     assert nomi == {"http_request", "recall_memory"}

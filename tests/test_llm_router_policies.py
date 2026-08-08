@@ -11,10 +11,6 @@ class _R:
         self.calls.append(kw)
         return self.name
 
-    async def run_with_actions(self, **kw):
-        self.calls.append(kw)
-        return (self.name, None)
-
     async def chat_stream(self, **kw):
         self.calls.append(kw)
         yield self.name
@@ -35,11 +31,15 @@ async def test_chat_mode_uses_chat_policy_first():
     assert out == "claude"
 
 
-@pytest.mark.asyncio
-async def test_automatic_mode_uses_automatic_policy_first():
-    r = _router()
-    out, _ = await r.run_with_actions(model="auto")  # default automatic -> ollama
-    assert out == "ollama"
+# fetta E3 Task 8: `test_automatic_mode_uses_automatic_policy_first` e'
+# uscito, cancellato e non spostato -- provava che chiamare
+# `run_with_actions` SENZA `mode` esplicito usasse comunque `automatic_
+# policy` (il suo default interno era "automatic", a differenza di `chat()`
+# che defaulta a "chat"). Uscito il metodo (con il suo unico chiamante, la
+# Sentinella, al Task 7), non resta piu' nessun punto d'ingresso che
+# defaulti ad "automatic" da provare -- il caso gemello esplicito
+# (`test_scheduled_chat_can_force_automatic_mode`, sotto) resta: quello
+# passa `mode="automatic"` a `chat()`, che e' vivo.
 
 
 @pytest.mark.asyncio
@@ -74,11 +74,6 @@ class _StrictR:
         self.seen.append(kw)
         return self.name
 
-    async def run_with_actions(self, *, model, **kw):
-        assert "mode" not in kw
-        self.seen.append(kw)
-        return (self.name, None)
-
 
 @pytest.mark.asyncio
 async def test_chat_mode_leak_hardening_strict_runner_rejects_mode_kwarg():
@@ -91,15 +86,11 @@ async def test_chat_mode_leak_hardening_strict_runner_rejects_mode_kwarg():
     assert all("mode" not in kw for kw in r._claude.seen + r._ollama.seen)
 
 
-@pytest.mark.asyncio
-async def test_run_with_actions_mode_leak_hardening_strict_runner_rejects_mode_kwarg():
-    r = LLMRouter(
-        claude=_StrictR("claude"), ollama=_StrictR("ollama"),
-        automatic_policy=["ollama", "claude"], chat_policy=["claude", "ollama"],
-    )
-    out, _ = await r.run_with_actions(model="auto", mode="automatic")
-    assert out == "ollama"
-    assert all("mode" not in kw for kw in r._claude.seen + r._ollama.seen)
+# fetta E3 Task 8: `test_run_with_actions_mode_leak_hardening_strict_runner_
+# rejects_mode_kwarg` e' uscito, cancellato e non spostato -- stessa prova
+# del test sopra, ma per `run_with_actions`, uscito insieme al suo unico
+# chiamante (la Sentinella, uscita al Task 7). `_StrictR.run_with_actions`
+# (sopra) e' uscito con lui: nessun altro test in questo file lo chiamava.
 
 
 @pytest.mark.asyncio
@@ -112,9 +103,10 @@ async def test_explicit_model_overrides_policy():
 @pytest.mark.asyncio
 async def test_backward_compat_policies_default_from_strategy():
     r = LLMRouter(claude=_R("claude"), ollama=_R("ollama"), strategy="cost_first")
-    # cost_first order: ollama before claude; both modes derive from it
-    out, _ = await r.run_with_actions(model="auto")
-    assert out == "ollama"
+    # cost_first order: ollama before claude; both modes derive from it.
+    # fetta E3 Task 8: la meta' di questo test su `run_with_actions` e'
+    # uscita insieme al metodo (uscito con la Sentinella, Task 7) -- la
+    # prova su `chat()` sotto copre lo stesso invariante su un ramo vivo.
     assert await r.chat(model="auto") == "ollama"
 
 

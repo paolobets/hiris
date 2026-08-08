@@ -4,17 +4,6 @@ Task 1: ChatbotEngine is now purely a persona store: create/read/update/delete a
 persona without any proactive/action-execution field being required, and no
 autonomous scheduling happening as a side effect.
 
-Also guards the one thing that must NOT break when `run_with_actions` loses
-its action_mode/AZIONI branch: the Sentinella's `_llm_reason` (server.py) →
-`watcher.reasoner.reason` path. `_llm_reason` calls
-`runner.run_with_actions(user_message=..., system_prompt=..., allowed_tools=[],
-model=..., max_tokens=..., agent_type="agent")` (no `action_mode` kwarg since
-Slice 5) and feeds the returned text into `reason()`, which parses its own
-```json``` block independently of anything `run_with_actions` does to the
-prompt. This test replicates that exact call shape against the real
-`ClaudeRunner.run_with_actions` (mocking only the underlying `chat()` call) to
-prove the reasoner still produces a Decision.
-
 Task 2: trims the `Agent` dataclass itself — `type`, `triggers`,
 `action_mode`, `rules`, `states`, `fallback_action`, `budget_eur_limit` are
 gone (Task 1 already stopped executing them; nothing read them anymore).
@@ -117,14 +106,13 @@ async def test_run_persona_produces_text_only_no_actions(engine):
 # action_mode/AZIONI branch" viveva qui. Entrambi gli estremi del percorso
 # che pinnava sono usciti per intero in questo task: `_llm_reason` (la
 # closure della Sentinella, server.py) e `watcher.reasoner.reason`/
-# `SENTINEL_SYSTEM` (l'intero pacchetto watcher/). Nessun successore -- non
-# resta alcun chiamante anonimo/unscoped di `run_with_actions` nel processo
-# in-addon (il ponte push remoto, agent/runner.py, non lo chiama: usa il
-# sottoprocesso `claude -p`). `run_with_actions` stesso non e' cancellato
-# (esce con la promessa fatta dalla E2, al Task 8 -- non tocca a questo
-# task): resta un metodo vivo su ClaudeRunner/LLMRouter/OpenAICompatRunner,
-# ma orfano di ogni chiamante di produzione da qui in poi -- dichiarato nel
-# report del task, non raccolto (fuori dal perimetro di questo task).
+# `SENTINEL_SYSTEM` (l'intero pacchetto watcher/). A quel punto restava
+# orfano di ogni chiamante di produzione, dichiarato ma non raccolto
+# (fuori dal perimetro del Task 7) -- promessa mantenuta al Task 8 di
+# questa fetta: `run_with_actions` e' uscito per intero da ClaudeRunner,
+# LLMRouter e OpenAICompatRunner, insieme ai due cataloghi che esistevano
+# solo per lui (`EVALUATION_TOOL_DEFS`/`EVALUATION_ONLY_TOOLS`) e alla
+# cartella `tools/`.
 # ---------------------------------------------------------------------------
 
 

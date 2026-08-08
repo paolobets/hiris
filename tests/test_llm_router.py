@@ -36,7 +36,6 @@ async def test_ollama_backend_simple_chat():
 def mock_runner():
     runner = MagicMock()
     runner.chat = AsyncMock(return_value="response text")
-    runner.run_with_actions = AsyncMock(return_value=("text", {"OK": "action"}))
     runner.simple_chat = AsyncMock(return_value='{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}')
     runner.last_tool_calls = []
     runner.total_input_tokens = 10
@@ -186,32 +185,14 @@ async def test_router_chat_all_backends_raise_returns_last_friendly_message(mock
     assert result == "Crediti OpenRouter esauriti."
 
 
-@pytest.mark.asyncio
-async def test_router_run_with_actions_fails_over_on_runner_backend_error():
-    """Same fallback proof as above, for run_with_actions (the Sentinella's
-    safety-evaluation path)."""
-    failing_runner = MagicMock()
-    failing_runner.run_with_actions = AsyncMock(
-        side_effect=RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco.")
-    )
-    healthy = MagicMock()
-    healthy.run_with_actions = AsyncMock(return_value=("ok from fallback", {}))
-    router = LLMRouter(claude=failing_runner, ollama=healthy, strategy="quality_first")
-    result = await router.run_with_actions(user_message="hello", model="auto")
-    assert result == ("ok from fallback", {})
-    failing_runner.run_with_actions.assert_awaited_once()
-    healthy.run_with_actions.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_router_run_with_actions_all_fail_returns_last_friendly_message():
-    first = MagicMock()
-    first.run_with_actions = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
-    second = MagicMock()
-    second.run_with_actions = AsyncMock(side_effect=RunnerBackendError("Ollama irraggiungibile."))
-    router = LLMRouter(claude=first, ollama=second, strategy="quality_first")
-    result = await router.run_with_actions(user_message="hello", model="auto")
-    assert result == ("Ollama irraggiungibile.", {})
+# fetta E3 Task 8: `test_router_run_with_actions_fails_over_on_runner_
+# backend_error` e `test_router_run_with_actions_all_fail_returns_last_
+# friendly_message` sono usciti, cancellati e non spostati -- provavano
+# `LLMRouter.run_with_actions`, uscito insieme al suo unico chiamante
+# (server.py's `_llm_reason`, la Sentinella, uscita al Task 7). La prova
+# gemella sul fallback di `chat()` (test_router_chat_fails_over_on_runner_
+# backend_error / test_router_chat_all_backends_raise_returns_last_friendly_
+# message, sopra) resta: quel meccanismo e' vivo, `chat()` non e' uscito.
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +333,7 @@ def test_all_inactive_fails_closed_for_sensitive_egress():
 async def test_simple_chat_senza_runner_non_finge_una_risposta_vuota():
     """A3: senza alcun provider configurato `simple_chat` restituiva "", che il
     chiamante non puo' distinguere da una risposta vuota del modello. Deve
-    dirlo, come gia' fanno `chat` e `run_with_actions` nello stesso file."""
+    dirlo, come gia' fa `chat` nello stesso file."""
     router = LLMRouter()
 
     res = await router.simple_chat([{"role": "user", "content": "ciao"}])

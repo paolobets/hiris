@@ -171,33 +171,10 @@ async def test_chat_accepts_thinking_budget_kwarg_silently(dispatcher, tmp_path)
     assert out == "ok"
 
 
-@pytest.mark.asyncio
-async def test_run_with_actions_accepts_thinking_budget_kwarg_silently(dispatcher, tmp_path):
-    """OpenAI-compat run_with_actions() must accept thinking_budget."""
-    runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1",
-        api_key="ollama",
-        dispatcher=dispatcher,
-        fixed_model="gemma4:e4b",
-        usage_path=str(tmp_path / "u.json"),
-    )
-    msg = MagicMock()
-    msg.content = "VALUTAZIONE: OK\nNOTIFICA: -"
-    msg.tool_calls = None
-    choice = MagicMock(finish_reason="stop", message=msg)
-    response = MagicMock(choices=[choice])
-    response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
-    runner._client.chat.completions.create = AsyncMock(return_value=response)
-
-    # Must not raise — this is exactly the call path that broke in v0.9.6:
-    # agent_engine -> LLMRouter.run_with_actions(**kwargs incl thinking_budget)
-    # -> Ollama runner.run_with_actions
-    out = await runner.run_with_actions(
-        user_message="check",
-        system_prompt="be brief",
-        thinking_budget=4096,
-    )
-    assert isinstance(out, tuple) and len(out) == 2
+# fetta E3 Task 8: `test_run_with_actions_accepts_thinking_budget_kwarg_
+# silently` e' uscito, cancellato e non spostato -- provava
+# `OpenAICompatRunner.run_with_actions`, uscito insieme al suo unico
+# chiamante (la Sentinella, uscita al Task 7).
 
 
 def test_openrouter_runner_accepts_thinking_budget_kwarg(tmp_path):
@@ -208,12 +185,12 @@ def test_openrouter_runner_accepts_thinking_budget_kwarg(tmp_path):
         dispatcher=MagicMock(),
         usage_path=str(tmp_path / "u.json"),
     )
-    # Just verify the method signature accepts thinking_budget (introspection)
+    # Just verify the method signature accepts thinking_budget (introspection).
+    # fetta E3 Task 8: la seconda meta' di questo test (su `run_with_actions`)
+    # e' uscita insieme al metodo stesso -- vedi la nota sopra.
     import inspect
     sig = inspect.signature(runner.chat)
     assert "thinking_budget" in sig.parameters
-    sig2 = inspect.signature(runner.run_with_actions)
-    assert "thinking_budget" in sig2.parameters
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +262,19 @@ def test_detect_leaked_tool_call_accepts_list_input():
 @pytest.mark.asyncio
 async def test_chat_replaces_leaked_tool_call_with_user_msg(dispatcher, tmp_path):
     """End-to-end: a leaked tool call must be replaced before returning to the caller,
-    so chat_store does not persist the corrupted assistant turn."""
+    so chat_store does not persist the corrupted assistant turn.
+
+    fetta E3 Task 8: prima passava `allowed_tools=[...]` senza `strumenti`, e
+    contava sul vecchio fallback (EVALUATION_TOOL_DEFS filtrato da
+    allowed_tools) per popolare `tool_name_set`, la base su cui
+    `detect_leaked_tool_call` riconosce il nome fuoriuscito. Quel fallback e'
+    uscito insieme al suo unico chiamante (la Sentinella): senza `strumenti`
+    la chat non offre piu' nessun tool, quindi `tool_name_set` sarebbe vuoto e
+    la fuga non verrebbe piu' riconosciuta. Il soggetto del test -- la
+    detection end-to-end -- e' vivo (e' cosi' che funziona in produzione,
+    dove la chat passa sempre `strumenti=STRUMENTI_CONOSCENZA`): si sposta su
+    `strumenti`, con due tool_def minimi locali (stesso pattern di
+    test_runner_catalogo.py's _FINTO_HTTP_REQUEST_TOOL_DEF)."""
     runner = OpenAICompatRunner(
         base_url="https://openrouter.ai/api/v1",
         api_key="sk-or-test",
@@ -301,10 +290,14 @@ async def test_chat_replaces_leaked_tool_call_with_user_msg(dispatcher, tmp_path
     response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
     runner._client.chat.completions.create = AsyncMock(return_value=response)
 
+    finti_tool_def = [
+        {"name": "get_ha_health", "description": "finto", "input_schema": {"type": "object", "properties": {}}},
+        {"name": "get_home_status", "description": "finto", "input_schema": {"type": "object", "properties": {}}},
+    ]
     out = await runner.chat(
         user_message="check health",
         model="mistralai/mistral-large",
-        allowed_tools=["get_ha_health", "get_home_status"],
+        strumenti=finti_tool_def,
     )
     assert out == TOOL_LEAK_USER_MSG
     assert "get_ha_health" not in out  # No leak in returned text

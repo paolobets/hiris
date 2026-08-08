@@ -22,10 +22,12 @@ than assumed:
     (see claude_runner.py's `chat()`), so there is no surviving path that
     still applies `allowed_entities`/`allowed_services` filtering or maps
     tool arguments onto real HA service calls the way ToolDispatcher did --
-    that specific 34-tool-catalog routing has no successor (it is explicitly
-    OUT of scope for this fetta per .superpowers/sdd/progress.md: the
-    Sentinel's EVALUATION_ONLY_TOOLS/run_with_actions catalog stays as CODE,
-    not as working dispatch). Those tests were deleted, not moved.
+    that specific 34-tool-catalog routing has no successor (it was explicitly
+    OUT of scope for this fetta per .superpowers/sdd/progress.md at the time:
+    the Sentinel's EVALUATION_ONLY_TOOLS/run_with_actions catalog stayed as
+    CODE, not as working dispatch -- fetta E3 Task 8 later removed that code
+    too, once the Sentinella itself left in Task 7). Those tests were
+    deleted, not moved.
   - The two concurrency/security tests near the end
     (`test_chat_concurrent_calls_do_not_leak_tool_calls`,
     `test_chat_concurrent_calls_do_not_leak_pseudonym_map`) needed a
@@ -129,12 +131,6 @@ async def test_restrict_to_home_false_does_not_inject(runner):
     system_text = _sys_text(captured[0]["system"])
     assert "Prompt originale" in system_text
     assert RESTRICT_PROMPT not in system_text
-
-
-def test_get_area_entities_in_all_tool_defs():
-    from hiris.app.claude_runner import EVALUATION_TOOL_DEFS
-    names = [t["name"] for t in EVALUATION_TOOL_DEFS]
-    assert "get_area_entities" in names
 
 
 @pytest.mark.asyncio
@@ -270,63 +266,14 @@ async def test_require_confirmation_no_longer_alters_system_prompt(runner):
     assert _sys_text(captured[0]["system"]) == _sys_text(captured[1]["system"])
 
 
-@pytest.mark.asyncio
-async def test_run_with_actions_is_plain_agentic_loop():
-    """Slice 5: run_with_actions no longer injects VALUTAZIONE/AZIONI
-    instructions into the system prompt — it passes it through unmodified
-    and returns whatever text the model produced (plus a best-effort
-    structured dict, normally empty since nothing asks for that block)."""
-    from unittest.mock import AsyncMock
-    from hiris.app.claude_runner import ClaudeRunner
-
-    runner = ClaudeRunner.__new__(ClaudeRunner)
-    runner.chat = AsyncMock(return_value="Tutto OK, nessuna anomalia rilevata.")
-
-    text, structured = await runner.run_with_actions(
-        user_message="test",
-        system_prompt="base system",
-    )
-
-    assert text == "Tutto OK, nessuna anomalia rilevata."
-    assert structured["valutazione"] is None
-    assert structured["azioni"] == []
-    call_kwargs = runner.chat.call_args.kwargs
-    # No more prompt augmentation — the system prompt passes through as-is.
-    assert call_kwargs["system_prompt"] == "base system"
-    assert "VALUTAZIONE:" not in call_kwargs["system_prompt"]
-    assert "AZIONI:" not in call_kwargs["system_prompt"]
-
-
-@pytest.mark.asyncio
-async def test_run_with_actions_restricts_to_evaluation_only_tools():
-    """The Sentinella relies on run_with_actions never exposing actuation
-    tools — verify the eval_tools restriction (EVALUATION_ONLY_TOOLS ∩
-    allowed_tools) still applies post-simplification."""
-    from unittest.mock import AsyncMock
-    from hiris.app.claude_runner import ClaudeRunner, EVALUATION_ONLY_TOOLS
-
-    runner = ClaudeRunner.__new__(ClaudeRunner)
-    runner.chat = AsyncMock(return_value="ok")
-
-    await runner.run_with_actions(
-        user_message="test",
-        system_prompt="base system",
-        allowed_tools=[],
-    )
-
-    call_kwargs = runner.chat.call_args.kwargs
-    assert set(call_kwargs["allowed_tools"]) == set(EVALUATION_ONLY_TOOLS)
-
-
-def test_empty_allowed_tools_does_not_narrow_evaluation_set():
-    """allowed_tools=[] e' falsy: NON restringe. Il ragionatore riceve tutti
-    gli EVALUATION_ONLY_TOOLS. L'invariante e' che quel set esclude i tool
-    che attuano -- non che i tool siano zero."""
-    from hiris.app.claude_runner import EVALUATION_ONLY_TOOLS
-    for actuating in ("call_ha_service", "send_notification", "trigger_automation",
-                      "toggle_automation", "http_request"):
-        assert actuating not in EVALUATION_ONLY_TOOLS
-    assert "create_task" in EVALUATION_ONLY_TOOLS   # la capacita' c'e': documentala
+# fetta E3 Task 8: `test_run_with_actions_is_plain_agentic_loop`,
+# `test_run_with_actions_restricts_to_evaluation_only_tools` e
+# `test_empty_allowed_tools_does_not_narrow_evaluation_set` sono usciti,
+# cancellati e non spostati -- provavano `run_with_actions`/
+# `EVALUATION_ONLY_TOOLS`, usciti insieme al loro unico chiamante (la
+# Sentinella, uscita al Task 7). Verificato che cadessero per costruzione
+# prima di cancellarli (AttributeError su `run_with_actions`, ImportError su
+# `EVALUATION_ONLY_TOOLS`).
 
 
 def test_resolve_model_auto_agent_returns_haiku():
@@ -440,22 +387,13 @@ async def test_simple_chat_returns_text(runner):
     assert result == '{"result": "ok"}'
 
 
-def test_get_calendar_events_in_all_tool_defs():
-    from hiris.app.claude_runner import EVALUATION_TOOL_DEFS
-    names = [t["name"] for t in EVALUATION_TOOL_DEFS]
-    assert "get_calendar_events" in names
-
-
-# fetta E2 Task 8 ("escono i trentaquattro"): `test_set_input_helper_in_all_
-# tool_defs` e' stato cancellato, non spostato -- `set_input_helper` ATTUA
-# (scrive su un input helper di Home Assistant), quindi non fa parte di
-# `EVALUATION_ONLY_TOOLS` per costruzione (lo stesso motivo per cui non ci
-# sono `call_ha_service`/`trigger_automation`/`toggle_automation`/
-# `http_request`, vedi test_empty_allowed_tools_does_not_narrow_evaluation_
-# set sotto): il catalogo ridotto a EVALUATION_TOOL_DEFS non lo contiene piu',
-# e nessun altro catalogo lo offre (la chat riceve i quattro strumenti di
-# STRUMENTI_CONOSCENZA, casa/strumenti.py). Il soggetto -- SET_INPUT_HELPER_
-# TOOL_DEF nel catalogo del runner -- non esiste piu' in nessun percorso.
+# fetta E3 Task 8: `test_get_calendar_events_in_all_tool_defs` e' uscito
+# (cancellato, non spostato) -- provava l'appartenenza al catalogo
+# `EVALUATION_TOOL_DEFS`, uscito insieme al suo unico chiamante
+# (`run_with_actions`, la Sentinella, uscita al Task 7). La nota della E2
+# Task 8 su `test_set_input_helper_in_all_tool_defs` (gia' cancellato allora)
+# citava lo stesso catalogo come punto di riferimento -- non ne resta piu'
+# traccia da provare.
 
 
 # ---------------------------------------------------------------------------

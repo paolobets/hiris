@@ -14,10 +14,6 @@ class _R:
         self.seen.append(kw)
         return self.name
 
-    async def run_with_actions(self, **kw):
-        self.seen.append(kw)
-        return (self.name, None, None)
-
 
 @pytest.mark.asyncio
 async def test_scheduled_chat_agent_uses_automatic_policy():

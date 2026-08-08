@@ -11,9 +11,7 @@ from typing import Any, Optional
 import httpx as _httpx
 
 from ..claude_runner import (
-    EVALUATION_TOOL_DEFS,
     BASE_SYSTEM_PROMPT,
-    EVALUATION_ONLY_TOOLS,
     RESTRICT_PROMPT,
     RunnerBackendError,
     _current_tool_calls,
@@ -183,7 +181,7 @@ class OpenAICompatRunner:
     # ClaudeRunner (review A/#3 — see claude_runner.py's module comment for
     # the full rationale). No last_thinking_blocks here: OpenAI-compatible
     # backends don't support Anthropic Extended Thinking (thinking_budget is
-    # accepted-and-ignored in chat()/run_with_actions() below).
+    # accepted-and-ignored in chat() below).
     last_tool_calls = _PerCallList(_current_tool_calls)
     # Per-request pseudonymization token map (review B/#7) — same ContextVar
     # shared with ClaudeRunner; see claude_runner.py's module comment.
@@ -550,27 +548,13 @@ class OpenAICompatRunner:
 
         # Build tool list
         if strumenti is not None:
-            # Il catalogo arriva gia' deciso dal chiamante: i filtri sotto
-            # restringono EVALUATION_TOOL_DEFS, il catalogo della Sentinella --
-            # non un catalogo che il chiamante ha gia' scelto lui stesso. Stessa
-            # regola di ClaudeRunner.chat() (vedi il suo commento gemello).
+            # Il catalogo arriva gia' deciso dal chiamante. Stessa regola di
+            # ClaudeRunner.chat() (vedi il suo commento gemello).
             tools = list(strumenti)
         else:
-            tools = [t for t in EVALUATION_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
-            # render_template legge tutta la casa (template Jinja, nessun entity_id
-            # da filtrare): senza whitelist esplicita di tool non deve arrivare a un
-            # bot che ha un perimetro di entita'. Vedi claude_runner.chat() per il
-            # ragionamento completo; qui va replicato perche' questo backend
-            # costruisce la lista dei tool per conto suo.
-            if not allowed_tools and allowed_entities is not None:
-                tools = [t for t in tools if t["name"] != "render_template"]
-            if allowed_endpoints is None:
-                tools = [t for t in tools if t["name"] != "http_request"]
-            # Senza dispatcher (fetta E2 Task 7: nessuno ne costruisce piu' uno
-            # di produzione) non c'e' memoria da interrogare -- stessa
-            # degradazione di un dispatcher che dichiara has_memory=False.
-            if self._dispatcher is None or not self._dispatcher.has_memory:
-                tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
+            # fetta E3 Task 8: nessun catalogo di scorta da cui pescare --
+            # vedi il commento gemello in claude_runner.chat().
+            tools = []
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
 
@@ -882,24 +866,13 @@ class OpenAICompatRunner:
 
         if strumenti is not None:
             # Il catalogo arriva gia' deciso dal chiamante -- stessa regola di
-            # chat() (vedi il suo commento gemello): i filtri sotto restringono
-            # EVALUATION_TOOL_DEFS, il catalogo della Sentinella, non un catalogo
-            # che il chiamante ha gia' scelto lui stesso.
+            # chat() (vedi il suo commento gemello).
             tools = list(strumenti)
         else:
-            tools = [t for t in EVALUATION_TOOL_DEFS if allowed_tools is None or t["name"] in allowed_tools]
-            # Stesso vincolo di chat(): render_template scavalca il perimetro delle
-            # entita', quindi fuori dalla concessione esplicita non arriva a un bot
-            # che quel perimetro ce l'ha. Lo streaming non e' una porta di servizio.
-            if not allowed_tools and allowed_entities is not None:
-                tools = [t for t in tools if t["name"] != "render_template"]
-            if allowed_endpoints is None:
-                tools = [t for t in tools if t["name"] != "http_request"]
-            # Senza dispatcher (fetta E2 Task 7: nessuno ne costruisce piu' uno
-            # di produzione) non c'e' memoria da interrogare -- stessa
-            # degradazione di un dispatcher che dichiara has_memory=False.
-            if self._dispatcher is None or not self._dispatcher.has_memory:
-                tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
+            # fetta E3 Task 8: nessun catalogo di scorta da cui pescare --
+            # vedi il commento gemello in claude_runner.chat(). Lo streaming
+            # non e' una porta di servizio: stessa regola di chat().
+            tools = []
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
 
@@ -1102,62 +1075,6 @@ class OpenAICompatRunner:
 
         yield f'data: {json.dumps({"type": "done", "agent_id": chatbot_id, "tool_calls": self.last_tool_calls})}\n\n'
 
-    async def run_with_actions(
-        self,
-        user_message: str,
-        system_prompt: str,
-        allowed_tools: Optional[list[str]] = None,
-        allowed_entities: Optional[list[str]] = None,
-        allowed_services: Optional[list[str]] = None,
-        allowed_endpoints: Optional[list[dict]] = None,
-        model: str = "auto",
-        max_tokens: int = 4096,
-        agent_type: str = "agent",
-        restrict_to_home: bool = False,
-        require_confirmation: bool = False,
-        chatbot_id: Optional[str] = None,
-        response_mode: str = "auto",
-        thinking_budget: int = 0,
-        knowledge_allow_sensitive: bool = False,
-        knowledge_kinds: list[str] | str | None = None,
-        user_id: str | None = None,
-    ) -> tuple[str, dict]:
-        """Run a tool-restricted evaluation pass — used solely by the Sentinella.
-
-        Mirrors ``ClaudeRunner.run_with_actions`` (see its docstring): Slice 5
-        retired the action/rules machinery, so this is a plain agentic loop
-        restricted to read-only (``EVALUATION_ONLY_TOOLS``) tools that returns
-        the model's raw text unmodified.
-        """
-        # thinking_budget accepted for runner-contract symmetry with
-        # ClaudeRunner; not applicable on OpenAI-compat APIs (Ollama uses
-        # extra_body think:false instead, applied unconditionally in chat()).
-        del thinking_budget
-        eval_tools = list(EVALUATION_ONLY_TOOLS)
-        if allowed_tools:
-            eval_tools = [t for t in eval_tools if t in allowed_tools]
-
-        raw_result = await self.chat(
-            user_message=user_message,
-            system_prompt=system_prompt,
-            allowed_tools=eval_tools,
-            allowed_entities=allowed_entities,
-            allowed_services=allowed_services,
-            allowed_endpoints=allowed_endpoints,
-            model=model,
-            max_tokens=max_tokens,
-            agent_type=agent_type,
-            restrict_to_home=restrict_to_home,
-            require_confirmation=require_confirmation,
-            chatbot_id=chatbot_id,
-            response_mode=response_mode,
-            knowledge_allow_sensitive=knowledge_allow_sensitive,
-            knowledge_kinds=knowledge_kinds,
-            user_id=user_id,
-        )
-        # Slice 5 Task 2: dropped the _parse_structured_output scanning pass
-        # (mirrors ClaudeRunner.run_with_actions — see its comment) — nothing
-        # emits VALUTAZIONE/NOTIFICA/PARAM/AZIONI markers anymore.
-        clean_text = raw_result.rstrip() if isinstance(raw_result, str) else raw_result
-        structured = {"valutazione": None, "notifica": None, "params": {}, "azioni": []}
-        return clean_text, structured
+    # fetta E3 Task 8: `run_with_actions` e' uscito -- vedi il commento
+    # gemello in claude_runner.py (stesso motivo: il suo unico chiamante, la
+    # Sentinella, e' uscito al Task 7 di questa fetta).
