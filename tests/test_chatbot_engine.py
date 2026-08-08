@@ -832,6 +832,9 @@ async def test_execution_log_result_summary_truncated_at_1000(tmp_path):
 
     engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     await engine.start()
+    # Task 1 fetta E4: il websocket e' del server, non dell'engine -- start()
+    # non lo tocca piu'.
+    mock_ha.start_websocket.assert_not_called()
 
     agent = engine.create_chatbot({
         "name": "Log Test", "type": "agent",
@@ -900,6 +903,9 @@ async def test_agent_not_auto_disabled_regardless_of_usage(tmp_path):
 
     engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
     await engine.start()
+    # Task 1 fetta E4: il websocket e' del server, non dell'engine -- start()
+    # non lo tocca piu'.
+    mock_ha.start_websocket.assert_not_called()
 
     agent = engine.create_chatbot({
         "name": "Budget Test", "type": "agent",

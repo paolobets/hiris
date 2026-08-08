@@ -700,6 +700,12 @@ async def _on_startup(app: web.Application) -> None:
     engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)
     engine.set_archivi(archivio_casa, archivio_memoria)
+    # Task 1 fetta E4: il WebSocket verso HA parte qui, non dentro
+    # `engine.start()` -- e' il server ad aprire i sensi della casa, non i
+    # chatbot. Deve stare dopo la registrazione di tutti i listener sopra
+    # (state/anagrafe/plance, :633-690): aprirlo prima lascerebbe una finestra
+    # di eventi senza nessuno ad ascoltarli.
+    await ha_client.start_websocket()
     await engine.start()
     app["engine"] = engine
 

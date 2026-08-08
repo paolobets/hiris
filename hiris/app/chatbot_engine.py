@@ -169,8 +169,10 @@ class ChatbotEngine:
         self._archivio_memoria = archivio_memoria
 
     async def start(self) -> None:
+        # Il WebSocket verso HA e' del server (`server.py::_on_startup`), non
+        # dell'engine: parte dopo la registrazione dei listener, prima di
+        # questo `start()` -- i sensi della casa non dipendono dai chatbot.
         self._scheduler.start()
-        await self._ha.start_websocket()
         self._load()
         self._seed_default_chatbot()
         logger.info("ChatbotEngine started")
