@@ -93,6 +93,17 @@ def _truncate(text: str, cap: int) -> str:
     return text[:cap - len(_TRUNC_MARK)] + _TRUNC_MARK
 
 
+# fetta E3 Task 10: le proposte escono per intero. Il gruppo di metodi di
+# scrittura HA di questo file che serviva SOLO quel percorso -- create_automation
+# (+ is_automation_config appena sotto), create_script, create_scene,
+# create_dashboard, get_lovelace_config, save_dashboard_config -- perde il suo
+# ultimo chiamante di produzione (handlers_proposals.py/proposta_config.py,
+# cancellati). Restano cosi' come sono, orfani DI PROPOSITO: sono la superficie
+# di scrittura HA che le proposte torneranno a usare quando saranno rifatte col
+# perimetro e la verifica umana (progetto agenti). Ognuno resta coperto da una
+# sua suite dedicata come API del client, indipendente dalle proposte
+# (test_ha_client_automation_config.py, test_ha_client_config.py,
+# test_dashboard_client.py) -- nessuna garanzia persa cancellandoli qui.
 def is_automation_config(config: object) -> bool:
     """True se `config` ha la forma minima di un'automazione Home Assistant.
 
@@ -270,9 +281,9 @@ class HAClient:
         # sull'alias. Chi ha nominato un bersaglio ha gia' espresso
         # un'intenzione precisa: se quel bersaglio non esiste, indovinarne un
         # altro dal `friendly_name` e sovrascriverlo sarebbe un danno
-        # irreversibile e silenzioso -- a differenza delle plance
-        # (proposta_config.apply_ha_config, mode == "replace"), qui non esiste
-        # nessuno snapshot da cui tornare indietro. Il ripiego per alias
+        # irreversibile e silenzioso -- a differenza delle plance (il replace
+        # di save_dashboard_config, oggi orfano: fetta E3 Task 10), qui non
+        # esiste nessuno snapshot da cui tornare indietro. Il ripiego per alias
         # resta SOLO nel ramo "if not aid" qui sotto, dove non c'e' un
         # bersaglio dichiarato da tradire: e' il caso per cui era stato
         # costruito (bug live-verify #2).

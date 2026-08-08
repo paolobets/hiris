@@ -14,6 +14,11 @@ i due blocchi qui sono istruzioni inline dentro `_on_startup`: li isoliamo
 per marcatore di testo e li incapsuliamo in una funzione sintetica minima
 che riceve `data_dir`/`os`/`logger` dall'esterno -- il corpo eseguito e'
 comunque quello vero, non una parafrasi.
+
+fetta E3 Task 10: le proposte escono per intero e lasciano lo stesso genere
+di silenzio dichiarato per `proposals.db` e `dashboard_backups.json`
+(`server.py`, appena dopo dove viveva la ProposalStore) -- pinnato qui con
+lo stesso metodo, invece di un nuovo file.
 """
 import inspect
 import logging
@@ -75,3 +80,53 @@ def test_sentinel_db_silent_when_file_absent(tmp_path, caplog):
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_sentinel_silence"))
     assert not caplog.records, "nessun sentinel.db sul disco -- nessun log deve uscire"
+
+
+# fetta E3 Task 10: le proposte escono per intero (ProposalStore,
+# proxy/proposta_config.py, proxy/dashboard_backups.py, le rotte
+# /api/proposals*, /api/dashboards*). Stessa disciplina di advisory.db/
+# sentinel.db: un proposals.db o un dashboard_backups.json ereditati da
+# un'installazione precedente non vengono cancellati (mai dati utente in
+# /data) ma il loro incontro va dichiarato nel log, non muto.
+
+
+def test_proposals_db_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _load_silence_check(
+        "proposals_db_path",
+        '_dashboard_backups_path = os.path.join(data_dir, "dashboard_backups.json")',
+    )
+    (tmp_path / "proposals.db").write_text("x")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_proposals_silence"))
+    assert any("proposals.db" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_proposals_db_silent_when_file_absent(tmp_path, caplog):
+    check = _load_silence_check(
+        "proposals_db_path",
+        '_dashboard_backups_path = os.path.join(data_dir, "dashboard_backups.json")',
+    )
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_proposals_silence"))
+    assert not caplog.records, "nessun proposals.db sul disco -- nessun log deve uscire"
+
+
+def test_dashboard_backups_json_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _load_silence_check(
+        "dashboard_backups_path", '_apprise_raw = os.environ.get("APPRISE_URLS"',
+    )
+    (tmp_path / "dashboard_backups.json").write_text("{}")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_dashboard_backups_silence"))
+    assert any("dashboard_backups.json" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_dashboard_backups_json_silent_when_file_absent(tmp_path, caplog):
+    check = _load_silence_check(
+        "dashboard_backups_path", '_apprise_raw = os.environ.get("APPRISE_URLS"',
+    )
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_dashboard_backups_silence"))
+    assert not caplog.records, "nessun dashboard_backups.json sul disco -- nessun log deve uscire"

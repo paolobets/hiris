@@ -26,17 +26,11 @@ from .api.handlers_models import (
     handle_list_models, handle_get_models_config, handle_save_models_config,
 )
 from .api.handlers_health import handle_get_ha_health, handle_refresh_ha_health
-from .api.handlers_proposals import (
-    handle_list_proposals, handle_get_proposal,
-    handle_apply_proposal, handle_reject_proposal,
-)
-from .api.handlers_dashboards import handle_restore_dashboard, handle_list_dashboard_backups
 from .api.handlers_knowledge import (
     handle_list_pending, handle_approve, handle_reject, handle_manual_add,
 )
 from .proxy.health_monitor import HealthMonitor
 from .proxy.supervisor_client import SupervisorClient
-from .proxy.proposal_store import ProposalStore
 from .chatbot_engine import ChatbotEngine
 from .version import read_version
 from .proxy.ha_client import HAClient
@@ -813,11 +807,36 @@ async def _on_startup(app: web.Application) -> None:
     await health_monitor.start()
     app["health_monitor"] = health_monitor
 
-    proposal_store = ProposalStore(
-        db_path=os.path.join(data_dir, "proposals.db"),
-        scheduler=engine._scheduler,
-    )
-    app["proposal_store"] = proposal_store
+    # fetta E3 Task 10: le proposte escono per intero -- ProposalStore,
+    # proxy/proposta_config.py (apply_ha_config), proxy/dashboard_backups.py
+    # e le rotte /api/proposals*, /api/dashboards* (handlers_proposals.py,
+    # handlers_dashboards.py). Scrivevano in HA col solo token del richiedente
+    # (nessuna verifica umana indipendente -- mappa §3.5): l'ultima via
+    # d'attuazione rimasta in un HIRIS che per decisione non agisce.
+    # Torneranno rifatte, col perimetro e la verifica umana, nel progetto
+    # agenti. SILENZIO DICHIARATO, stessa disciplina di advisory.db/
+    # sentinel.db (Task 6/7): un proposals.db o un dashboard_backups.json
+    # ereditati da un'installazione precedente non vengono ne' cancellati
+    # (mai dati utente in /data) ne' incontrati in silenzio.
+    _proposals_db_path = os.path.join(data_dir, "proposals.db")
+    if os.path.exists(_proposals_db_path):
+        logger.info(
+            "proposals.db presente in %s da un'installazione precedente: "
+            "da fetta E3 Task 10 nessun codice lo legge ne' lo scrive piu' "
+            "(ProposalStore e le rotte /api/proposals* sono uscite per "
+            "intero). Il file resta su disco, intatto.",
+            _proposals_db_path,
+        )
+    _dashboard_backups_path = os.path.join(data_dir, "dashboard_backups.json")
+    if os.path.exists(_dashboard_backups_path):
+        logger.info(
+            "dashboard_backups.json presente in %s da un'installazione "
+            "precedente: da fetta E3 Task 10 nessun codice lo legge ne' lo "
+            "scrive piu' (dashboard_backups.py e le rotte /api/dashboards* "
+            "sono uscite insieme all'apply delle proposte che salvava). Il "
+            "file resta su disco, intatto.",
+            _dashboard_backups_path,
+        )
 
     _apprise_raw = os.environ.get("APPRISE_URLS", "[]")
     try:
@@ -1575,8 +1594,6 @@ async def _on_cleanup(app: web.Application) -> None:
         app["knowledge_store"].close()
     if "vault" in app:
         app["vault"].close()
-    if "proposal_store" in app:
-        app["proposal_store"].close()
     if "history_store" in app:
         app["history_store"].close()
     if "portrait_store" in app:
@@ -1661,14 +1678,11 @@ def create_app() -> web.Application:
     app.router.add_put("/api/models/config", handle_save_models_config)
     app.router.add_get("/api/health/ha", handle_get_ha_health)
     app.router.add_post("/api/health/ha/refresh", handle_refresh_ha_health)
-    app.router.add_get("/api/proposals", handle_list_proposals)
-    app.router.add_get("/api/proposals/{proposal_id}", handle_get_proposal)
-    app.router.add_post("/api/proposals/{proposal_id}/apply", handle_apply_proposal)
-    app.router.add_post("/api/proposals/{proposal_id}/reject", handle_reject_proposal)
-    # "backups" e' un segmento fisso a un livello diverso da {url_path}/restore:
-    # nessuna ambiguita' di routing fra le due rotte.
-    app.router.add_get("/api/dashboards/backups", handle_list_dashboard_backups)
-    app.router.add_post("/api/dashboards/{url_path}/restore", handle_restore_dashboard)
+    # fetta E3 Task 10: le rotte /api/proposals* e /api/dashboards*
+    # (backups/restore) sono uscite con le proposte -- vedi il commento
+    # sopra la ProposalStore che viveva qui. Restano rotte, senza rimpiazzo
+    # in questa fetta: #/proposals, il pannello Proposte della chat e le
+    # card/badge in Dashboard (elenco E5).
     app.router.add_get("/api/knowledge/pending", handle_list_pending)
     app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
     app.router.add_post("/api/knowledge/{id}/reject", handle_reject)
