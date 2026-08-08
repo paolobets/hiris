@@ -66,8 +66,6 @@ GATEWAY_CATEGORIES = [
 
 _VALID_LEVELS = frozenset({"green", "yellow", "red", "off"})
 _BY_ID = {c["id"]: c for c in GATEWAY_CATEGORIES}
-DEFAULT_NOTIFY_SERVICE = "notify.persistent_notification"
-_SERVICE_RE = re.compile(r"^notify\.[A-Za-z0-9_]{1,64}$")
 _ENTITY_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 
@@ -109,17 +107,9 @@ def load_entities(data_dir: str) -> dict:
             if isinstance(k, str) and _ENTITY_RE.match(k) and v in _VALID_LEVELS}
 
 
-def load_settings(data_dir: str) -> dict:
-    s = _read_full(data_dir).get("settings", {})
-    svc = s.get("notify_service")
-    if not (isinstance(svc, str) and _SERVICE_RE.match(svc)):
-        svc = DEFAULT_NOTIFY_SERVICE
-    return {"notify_service": svc}
-
-
-def save_categories(data_dir: str, categories: dict, settings: dict | None = None,
+def save_categories(data_dir: str, categories: dict,
                     entities: dict | None = None) -> dict:
-    """Validate and persist the category map (+ optional per-entity overrides, settings)."""
+    """Validate and persist the category map (+ optional per-entity overrides)."""
     clean = {k: v for k, v in categories.items() if k in _BY_ID and v in _VALID_LEVELS}
     full = _read_full(data_dir)
     full["version"] = 2
@@ -127,11 +117,6 @@ def save_categories(data_dir: str, categories: dict, settings: dict | None = Non
     if entities is not None:
         full["entities"] = {k: v for k, v in entities.items()
                             if isinstance(k, str) and _ENTITY_RE.match(k) and v in _VALID_LEVELS}
-    if settings is not None:
-        svc = settings.get("notify_service")
-        full.setdefault("settings", {})
-        if isinstance(svc, str) and _SERVICE_RE.match(svc):
-            full["settings"]["notify_service"] = svc
     _write_full(data_dir, full)
     return clean
 
@@ -196,11 +181,16 @@ def derive_execute_policy(categories: dict, entities: dict | None = None) -> dic
 # Review finale fetta E2, I-3: `notify_service_for_user` e' uscita --
 # scriveva/leggeva `gateway_settings.notify_users`, una mappa utente->canale
 # che nessuna interfaccia scrive (il suo unico chiamante di produzione,
-# `private_notify_service_for_user`, e' uscito nel Task 5). Il campo restava
-# scrivibile via API senza che nulla lo leggesse piu' -- configurabile solo a
-# parole. Chi vuole il canale di notifica legge ora direttamente
-# `gateway_settings["notify_service"]` (il globale, l'unico che governa
-# ancora qualcosa).
+# `private_notify_service_for_user`, e' uscito nel Task 5). Verifica
+# fetta E2 fix2 (rilievo I-3, campo gemello): `gateway_settings.notify_service`
+# aveva LO STESSO difetto -- un solo scrittore (questa funzione) e zero
+# lettori di produzione, l'utente lo configurava in #/gateway
+# (gateway-route.js) senza che governasse nulla (le notifiche reali usano
+# `HA_NOTIFY_SERVICE`/`ha_notify_service` da env, vedi `server.py` e
+# `notifiche.py`). Uscito con lui: `load_settings`/`save_categories`'s
+# parametro `settings`, `DEFAULT_NOTIFY_SERVICE`/`_SERVICE_RE`, i due campi
+# UI in gateway-route.js. `gateway_settings` non aveva altri campi: il
+# contenitore `app["gateway_settings"]` esce con l'unico campo che teneva.
 
 
 def apply_saved_policy(app: web.Application) -> None:
@@ -209,13 +199,6 @@ def apply_saved_policy(app: web.Application) -> None:
     existing dict in place so it works at request time too — aiohttp forbids
     reassigning app[key] after the app has started."""
     data_dir = app.get("data_dir") or "/data"
-    # Notify service for the approval flow (always applied). Mutate a dict holder
-    # in place so it works at request time (aiohttp forbids app[key]= after start).
-    holder = app.get("gateway_settings")
-    if not isinstance(holder, dict):
-        app["gateway_settings"] = holder = {}
-    settings = load_settings(data_dir)
-    holder["notify_service"] = settings["notify_service"]
     cats = load_categories(data_dir)
     ents = load_entities(data_dir)
     if not cats and not ents:
@@ -261,7 +244,6 @@ async def handle_get_gateway_policy(request: web.Request) -> web.Response:
         "categories": categories,
         "levels": cats,                       # {category_id: level} (missing = off)
         "valid_levels": sorted(_VALID_LEVELS),
-        "settings": load_settings(data_dir),  # {"notify_service": ...}
         "entities": load_entities(data_dir),  # {entity_id: level} overrides
     })
 
@@ -273,17 +255,19 @@ async def handle_autonomy_summary(request: web.Request) -> web.Response:
     Backend is the single authority here on purpose (review finding, SP-4
     Fase B Task 4): the summary used to recompute the tier client-side,
     mirroring ``effective_tier`` but WITHOUT the ``DANGEROUS_DOMAINS``
-    denylist ``security.semaphore.gate_action`` always applies on top (lock/
-    alarm_control_panel/cover/siren/garage_door — "difesa in profondità").
-    That let the UI show a domain like ``cover`` as green while
-    ``gate_action`` would always ``deny_dangerous`` it — display-only (no
-    security hole, enforcement itself was untouched) but actively
-    misinformed the user about the Chatbot's real autonomy in exactly the
-    highest-stakes domains. Computing the summary here, with the exact same
-    ``summarize_autonomy`` (which itself reuses ``effective_tier`` and
-    ``DANGEROUS_DOMAINS``) that real enforcement is built from, makes that
-    class of drift structurally impossible: one implementation, not two kept
-    in sync by hand.
+    denylist that the semaforo's own gate always applies on top (lock/
+    alarm_control_panel/cover/siren/garage_door — "difesa in profondità"; that
+    gate lived in ``security.semaphore.gate_action`` when this finding was
+    closed, and is inline in ``watcher/executor.py::execute`` since
+    ``gate_action`` left, review finale fetta E2 I-1). That let the UI show a
+    domain like ``cover`` as green while real enforcement would always deny
+    it — display-only (no security hole, enforcement itself was untouched)
+    but actively misinformed the user about the Chatbot's real autonomy in
+    exactly the highest-stakes domains. Computing the summary here, with the
+    exact same ``summarize_autonomy`` (which itself reuses ``effective_tier``
+    and ``DANGEROUS_DOMAINS``) that real enforcement is built from, makes
+    that class of drift structurally impossible: one implementation, not two
+    kept in sync by hand.
     """
     try:
         body = await request.json()
@@ -313,11 +297,9 @@ async def handle_save_gateway_policy(request: web.Request) -> web.Response:
     cats = body.get("levels") or body.get("categories") or {}
     if not isinstance(cats, dict):
         return web.json_response({"error": "levels must be an object"}, status=400)
-    settings = body.get("settings") if isinstance(body.get("settings"), dict) else None
     ents = body.get("entities") if isinstance(body.get("entities"), dict) else None
     data_dir = request.app.get("data_dir") or "/data"
-    clean = save_categories(data_dir, cats, settings, entities=ents)
+    clean = save_categories(data_dir, cats, entities=ents)
     apply_saved_policy(request.app)
     return web.json_response({"ok": True, "levels": clean,
-                             "settings": load_settings(data_dir),
                              "execute_policy": request.app.get("execute_policy")})

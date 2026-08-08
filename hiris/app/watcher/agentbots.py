@@ -55,9 +55,13 @@ ALLOWED_ACTION_TYPES = {"notify", "service"}
 ALLOWED_SEVERITIES = {"info", "warn", "alert"}
 ALLOWED_MODES = frozenset({"rule", "objective"})
 # The ceiling an objective Agentbot can reach WITHOUT asking. "red" always
-# asks (see security.semaphore.gate_action) and "off" means nothing is
-# allowed at all -- neither is a coherent "how far without asking" value, so
-# both are excluded from the ceiling's own value space, not just left unset.
+# needs a human (never auto) and "off" means nothing is allowed at all --
+# neither is a coherent "how far without asking" value, so both are excluded
+# from the ceiling's own value space, not just left unset. (The tier gate
+# itself lives in security/semaphore.py's DANGEROUS_DOMAINS/effective_tier,
+# applied inline by watcher/executor.py::execute -- not in a function called
+# gate_action, which this comment used to cite and which left in the review
+# finale fetta E2, I-1.)
 ALLOWED_MAX_TIERS = frozenset({"green", "yellow"})
 
 # Home Assistant's real grammar for the bits of a lens that end up in an

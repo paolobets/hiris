@@ -19,9 +19,13 @@
      dall'output del modello (vedi run_decision/force_notify_only lì);
    - il ragionamento AI gira con allowed_tools=[] (nessun tool esposto al
      modello per una regola Agentbot -- solo verdetto/severità in testo);
-   - il semaforo (security/semaphore.py::gate_action) resta l'UNICO gate
-     sull'esecuzione dell'azione, qualunque sia il verdetto del
-     ragionamento. Questo editor non introduce alcun percorso che aggiri
+   - il semaforo (denylist DANGEROUS_DOMAINS + tier via effective_tier,
+     security/semaphore.py, applicato in watcher/executor.py::execute)
+     resta l'UNICO gate su cosa succede al verdetto del ragionamento -- e
+     comunque, dalla fetta E2 (Task 6), quel gate non esegue mai nulla su
+     HA: propone (da approvare) o notifica soltanto (security/semaphore.py::
+     gate_action, che questo commento citava, è uscita con la review finale
+     fetta E2, I-1). Questo editor non introduce alcun percorso che aggiri
      quel gate: costruisce solo il payload che watcher/agentbots.py::
      validate_agentbot valida server-side.
 

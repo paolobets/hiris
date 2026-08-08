@@ -1,6 +1,8 @@
 /* HIRIS · Config · Accessi Gateway (route #/gateway)
-   Semaforo per categoria (Off / 🟢 / 🟡 / 🔴), servizio notifica configurabile,
-   e coda "Da approvare (inbox)" (Giallo/Rosso, gateway o chat) con Approva/Rifiuta.
+   Semaforo per categoria (Off / 🟢 / 🟡 / 🔴) e coda "Da approvare (inbox)"
+   (Giallo/Rosso, gateway o chat) con Approva/Rifiuta. Il campo "Servizio
+   notifica" e' uscito (fetta E2 fix2, rilievo I-3 sul campo gemello): era
+   scritto e mai letto, le notifiche reali usano HA_NOTIFY_SERVICE da env.
    Sicurezza: testi dinamici via textContent / nodi DOM, mai innerHTML. */
 window.HirisGatewayRoute = (function () {
   'use strict';
@@ -229,7 +231,6 @@ window.HirisGatewayRoute = (function () {
   function render(outlet, data) {
     outlet.innerHTML = '';
     var levels = data.levels || {};
-    var settings = data.settings || {};
 
     outlet.appendChild(el('div', 'page-title', 'Accessi Gateway'));
     outlet.appendChild(el('p', 'page-subtitle',
@@ -240,18 +241,6 @@ window.HirisGatewayRoute = (function () {
 
     var card = el('section', 'section-card');
     var body = el('div', 'sc-body');
-
-    // notify service
-    var srow = el('div');
-    srow.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 0 14px';
-    srow.appendChild(el('span', null, '🔔 Servizio notifica (Giallo):'));
-    var svc = el('input');
-    svc.type = 'text';
-    svc.value = settings.notify_service || '';
-    svc.placeholder = 'es. notify.mobile_app_<device>';
-    svc.style.cssText = 'padding:8px 10px;border-radius:8px;min-width:160px;flex:1 1 200px;min-height:44px;box-sizing:border-box';
-    srow.appendChild(svc);
-    body.appendChild(srow);
 
     var selects = {};
     (data.categories || []).forEach(function (cat) {
@@ -347,8 +336,7 @@ window.HirisGatewayRoute = (function () {
       save.disabled = true; status.textContent = 'Salvataggio…';
       api('/policy', { method: 'POST', body: JSON.stringify({
         levels: out,
-        entities: parseEntityOverrides(entTa.value),
-        settings: { notify_service: svc.value.trim() }
+        entities: parseEntityOverrides(entTa.value)
       }) })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
         .then(function () { status.textContent = 'Salvato ✓'; save.disabled = false; })

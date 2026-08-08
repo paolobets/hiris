@@ -27,7 +27,7 @@ event. `set_agentbots`/`get_event_agentbots` hold a live, in-place-mutated
 list on `app["user_agentbots"]` instead (aiohttp forbids rebinding
 `app[key]` once the app has started, so the holder is cleared+extended,
 never reassigned -- same trick as `handlers_gateway_policy.
-apply_saved_policy`'s `gateway_settings`/`execute_policy` holders).
+apply_saved_policy`'s `execute_policy` holder).
 `server.py` populates it once at startup and repoints the Guardian's
 `get_user_agentbots` callback to `get_event_agentbots(app)`.
 """

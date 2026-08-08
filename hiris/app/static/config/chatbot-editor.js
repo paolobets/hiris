@@ -43,20 +43,23 @@
    Review finding (Important, chiuso in questo stesso task): il riepilogo
    ricalcolava il tier lato client, mirror di effective_tier in
    handlers_gateway_policy.py, MA senza la denylist DANGEROUS_DOMAINS che
-   security/semaphore.py::gate_action applica sempre sopra al tier (lock/
-   alarm_control_panel/cover/siren/garage_door -- "difesa in profondità").
-   Risultato: bastava mettere `cover.*` in scope (uno dei SCOPE_PILLS qui
-   sotto) e impostarlo verde in #/gateway perché il riepilogo mostrasse
-   "verde" su un dominio che il backend nega SEMPRE. Display-only (nessun
-   buco di sicurezza, l'enforcement non era toccato) ma disinformava
-   l'utente proprio sui domini più delicati. Fix: niente più calcolo lato
-   client -- renderAutonomiaSummary() chiama POST api/gateway/autonomy-
-   summary, che nel backend usa security/semaphore.py::summarize_autonomy
-   (la STESSA funzione che gate_action userebbe) e ritorna i conteggi già
-   corretti, incluso un bucket "dangerous" separato dai tier. Un'unica
-   implementazione: un domino aggiunto a DANGEROUS_DOMAINS non può più
-   disallineare silenziosamente la UI. Vedi tests/js/chatbot-editor.test.mjs
-   ("cover.* pericoloso non è mai verde") e tests/test_gateway_policy.py. */
+   il gate del semaforo applica sempre sopra al tier (lock/
+   alarm_control_panel/cover/siren/garage_door -- "difesa in profondità";
+   quel gate era security/semaphore.py::gate_action quando questo finding fu
+   chiuso, è inline in watcher/executor.py::execute da quando gate_action è
+   uscita, review finale fetta E2 I-1). Risultato: bastava mettere `cover.*`
+   in scope (uno dei SCOPE_PILLS qui sotto) e impostarlo verde in #/gateway
+   perché il riepilogo mostrasse "verde" su un dominio che il backend nega
+   SEMPRE. Display-only (nessun buco di sicurezza, l'enforcement non era
+   toccato) ma disinformava l'utente proprio sui domini più delicati. Fix:
+   niente più calcolo lato client -- renderAutonomiaSummary() chiama POST
+   api/gateway/autonomy-summary, che nel backend usa security/semaphore.py::
+   summarize_autonomy (la STESSA funzione che il gate del semaforo usa per
+   una vera decisione) e ritorna i conteggi già corretti, incluso un bucket
+   "dangerous" separato dai tier. Un'unica implementazione: un domino
+   aggiunto a DANGEROUS_DOMAINS non può più disallineare silenziosamente la
+   UI. Vedi tests/js/chatbot-editor.test.mjs ("cover.* pericoloso non è mai
+   verde") e tests/test_gateway_policy.py. */
 (function() {
 
   /* ── sezione: fonte unica per section-card + anchor-nav ─────────────── */
@@ -359,9 +362,11 @@
 
   /* Riepilogo READ-ONLY: chiede al backend (POST api/gateway/autonomy-
      summary) i conteggi tier delle entità/pattern in scope. Il backend usa
-     security/semaphore.py::summarize_autonomy -- la stessa funzione che
-     gate_action() userebbe per una vera azione, denylist DANGEROUS_DOMAINS
-     inclusa -- quindi qui non si ricalcola più nulla: nessun rischio che
+     security/semaphore.py::summarize_autonomy -- la stessa funzione che il
+     gate del semaforo usa per una vera decisione (watcher/executor.py::
+     execute, denylist DANGEROUS_DOMAINS inclusa -- non più
+     security/semaphore.py::gate_action, uscita con la review finale fetta
+     E2, I-1) -- quindi qui non si ricalcola più nulla: nessun rischio che
      questa vista disallinei dal reale enforcement (vedi il commento in
      testa al file). Non scrive mai nulla: la pagina #/gateway resta
      l'unica fonte per configurare i tier. */
