@@ -1549,6 +1549,7 @@ async def _on_startup(app: web.Application) -> None:
 
     engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
     engine.set_entity_cache(entity_cache)
+    engine.set_archivi(archivio_casa, archivio_memoria)
     await engine.start()
     app["engine"] = engine
 

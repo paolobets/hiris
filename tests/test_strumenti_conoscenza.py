@@ -297,3 +297,22 @@ async def test_richiama_con_tipo_accentato_lo_dice(dispatcher):
     vocabolario vero ("entita", senza accento)."""
     esito = await dispatcher.dispatch("richiama", {"riferimento": "cucina", "tipo": "entità"})
     assert "errore" in esito
+
+
+@pytest.mark.asyncio
+async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
+    """Il dispatcher promette errori LEGGIBILI dal modello. Con gli archivi a
+    None il modello riceveva «'NoneType' object has no attribute 'leggi'»: un
+    errore Python travestito da risposta, che non gli permette ne' di capire
+    ne' di spiegarlo all'utente -- solo di riprovare all'infinito."""
+    d = DispatcherConoscenza(None, None, cache=None)
+    for nome, argomenti in [
+        ("cerca", {"testo": "cucina"}),
+        ("guarda", {"tipo": "area", "riferimento": "cucina"}),
+        ("ricorda", {"testo": "una frase"}),
+        ("richiama", {"riferimento": "cucina"}),
+    ]:
+        esito = await d.dispatch(nome, argomenti)
+        assert "errore" in esito
+        assert "NoneType" not in esito["errore"]
+        assert "caricat" in esito["errore"]      # dice COSA manca

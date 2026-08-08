@@ -269,8 +269,31 @@ class DispatcherConoscenza:
         # azione: «conosce, non agisce» vuol dire che non SCRIVE.
         self._cache = cache
 
+    _ARCHIVIO_PER_STRUMENTO = {
+        "cerca": ("casa",), "guarda": ("casa", "memoria"),
+        "ricorda": ("casa", "memoria"), "richiama": ("memoria",),
+    }
+
+    def _archivio_mancante(self, nome: str) -> str | None:
+        """Quale archivio serve a questo strumento e non c'e'."""
+        for quale in self._ARCHIVIO_PER_STRUMENTO.get(nome, ()):
+            if quale == "casa" and self._casa is None:
+                return "la conoscenza della casa non e' ancora stata caricata"
+            if quale == "memoria" and self._memoria is None:
+                return "l'archivio della memoria non e' ancora stato caricato"
+        return None
+
     async def dispatch(self, nome: str, argomenti: dict[str, Any] | None) -> dict:
         argomenti = argomenti or {}
+        # Gli archivi possono mancare: il chiamante puo' costruirci prima che
+        # esistano. Senza questo controllo il modello riceve
+        # «'NoneType' object has no attribute 'leggi'» -- un errore Python
+        # travestito da risposta, mentre questo dispatcher promette messaggi
+        # LEGGIBILI. Dire cosa manca e' anche l'unico modo perche' il modello
+        # possa spiegarlo all'utente invece di riprovare all'infinito.
+        mancante = self._archivio_mancante(nome)
+        if mancante is not None:
+            return {"errore": f"«{nome}» non e' disponibile: {mancante}."}
         if nome not in _NOMI_STRUMENTI:
             # NON "non inventare nomi di tool": se il modello ha chiamato
             # questo nome, gliel'abbiamo dato NOI in un turno precedente (un

@@ -13,6 +13,7 @@ from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
 from .proxy._sanitize import sanitize_ha_value as _sanitize_ha_value
+from .casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
 from .claude_runner import RunnerBackendError
 from .config import EUR_RATE
 
@@ -128,6 +129,8 @@ class ChatbotEngine:
         self._ha = ha_client
         self._data_path = data_path
         self._entity_cache: Any = None
+        self._archivio_casa: Any = None
+        self._archivio_memoria: Any = None
         self._running_chatbots: set[str] = set()
         self._error_chatbots: set[str] = set()
         self._mqtt_publisher = None
@@ -151,6 +154,12 @@ class ChatbotEngine:
 
     def set_entity_cache(self, cache: Any) -> None:
         self._entity_cache = cache
+
+    def set_archivi(self, archivio_casa, archivio_memoria) -> None:
+        """Gli archivi della conoscenza, iniettati come la cache: il motore
+        nasce prima di loro in `create_app()`."""
+        self._archivio_casa = archivio_casa
+        self._archivio_memoria = archivio_memoria
 
     def set_mqtt_publisher(self, publisher) -> None:
         self._mqtt_publisher = publisher
@@ -550,6 +559,23 @@ class ChatbotEngine:
             _allow_sensitive = bool(_ka.get("allow_sensitive", False))
             _kinds_raw = _ka.get("kinds", "all")
             _knowledge_kinds = None if _kinds_raw == "all" else _kinds_raw
+
+            # Task 2 (E2, .superpowers/sdd/task-2-brief.md): il Test Run vede
+            # gli STESSI quattro strumenti della chat (casa/strumenti.py), non
+            # piu' il catalogo di trentaquattro di ALL_TOOL_DEFS -- "conosce,
+            # non agisce" vale anche qui. Stessa forma di
+            # api/handlers_chat.py (non se ne inventa una seconda): un
+            # DispatcherConoscenza costruito dagli archivi disponibili, SEMPRE
+            # passato, mai None. Questo modulo pero' non ha (e non prende
+            # qui -- il Task 2 tocca solo chatbot_engine.py) un riferimento ad
+            # archivio_casa/archivio_memoria come li ha server.py: passarli
+            # None e' il caso che DispatcherConoscenza e' fatto apposta per
+            # tollerare, la stessa garanzia su cui gia' si appoggia
+            # handlers_chat.py quando l'app non li ha ancora -- i suoi quattro
+            # metodi non sollevano mai, dichiarano un `errore` per strumento
+            # invece di spezzare il turno (vedi DispatcherConoscenza.dispatch).
+            dispatcher_conoscenza = DispatcherConoscenza(self._archivio_casa, self._archivio_memoria,
+                                                 cache=self._entity_cache)
             try:
                 # asyncio.timeout (not wait_for): wait_for wraps the coroutine in
                 # a NEW Task on Python 3.11, which gets a COPY of the context, so
@@ -559,7 +585,6 @@ class ChatbotEngine:
                     result = await self._claude_runner.chat(
                         user_message=user_message,
                         system_prompt=effective_prompt,
-                        allowed_tools=chatbot.allowed_tools or None,
                         allowed_entities=chatbot.allowed_entities or None,
                         allowed_services=chatbot.allowed_services or None,
                         allowed_endpoints=chatbot.allowed_endpoints,
@@ -577,6 +602,8 @@ class ChatbotEngine:
                         thinking_budget=chatbot.thinking_budget,
                         knowledge_allow_sensitive=_allow_sensitive,
                         knowledge_kinds=_knowledge_kinds,
+                        strumenti=STRUMENTI_CONOSCENZA,
+                        dispatcher=dispatcher_conoscenza,
                     )
             except asyncio.TimeoutError:
                 raise RuntimeError(
