@@ -5,32 +5,20 @@ missing, just enough to prevent silent regressions in v0.9.2.
 """
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from aiohttp.test_utils import make_mocked_request
 
 
 # ---------------------------------------------------------------------------
-# handle_status
+# handle_status -- fetta E4 Task 4 ("un bot solo"): test_handle_status_
+# returns_version_and_agent_counts e' uscito insieme all'entita' Chatbot.
+# handlers_status.py (il modulo che importava) e' cancellato per intero
+# (Decisione 6 del brief: GET /api/status era gia' una rotta solo-test,
+# il suo unico contenuto era un conteggio agents.total/agents.enabled che
+# non significa piu' niente con un bot solo). Verificato che cadesse per
+# costruzione: `ModuleNotFoundError: No module named
+# 'hiris.app.api.handlers_status'`, prima della cancellazione.
 # ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_handle_status_returns_version_and_agent_counts():
-    from hiris.app.api.handlers_status import handle_status
-    engine = MagicMock()
-    engine.list_chatbots.return_value = {
-        "a1": {"enabled": True},
-        "a2": {"enabled": False},
-        "a3": {"enabled": True},
-    }
-    app = MagicMock()
-    app.__getitem__ = MagicMock(side_effect=lambda k: engine if k == "engine" else None)
-    request = make_mocked_request("GET", "/api/status", app=app)
-    resp = await handle_status(request)
-    data = json.loads(resp.body)
-    assert "version" in data
-    assert data["agents"]["total"] == 3
-    assert data["agents"]["enabled"] == 2
-
 
 # ---------------------------------------------------------------------------
 # handle_config

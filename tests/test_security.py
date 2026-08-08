@@ -26,30 +26,13 @@ def _make_app_with_runner(runner):
     is left as a live subject here, so only that route is registered now.
     """
     from hiris.app.api.handlers_chat import handle_chat
+    from hiris.app.impostazioni_chat import ImpostazioniChat
     from hiris.app.server import _security_headers
-
-    agent = MagicMock()
-    agent.id = "test-agent"
-    agent.is_default = False
-    agent.system_prompt = "test"
-    agent.strategic_context = ""
-    agent.allowed_tools = None
-    agent.allowed_entities = None
-    agent.allowed_services = None
-    agent.model = "auto"
-    agent.max_tokens = 4096
-    agent.restrict_to_home = False
-    agent.require_confirmation = False
-    agent.max_chat_turns = 0
-
-    engine = MagicMock()
-    engine.get_chatbot.return_value = agent
-    engine.get_default_chatbot.return_value = agent
 
     app = web.Application(middlewares=[_security_headers])
     app["llm_router"] = runner
     app["claude_runner"] = runner
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat(system_prompt="test")
     app["data_dir"] = "/tmp"
 
     app.router.add_post("/api/chat", handle_chat)

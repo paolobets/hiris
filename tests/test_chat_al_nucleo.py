@@ -32,7 +32,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.strumenti import DispatcherConoscenza
 from hiris.app.chat_store import _get_store, _TS_FMT, close_all_stores
-from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot, ChatbotEngine
+from hiris.app.impostazioni_chat import ID_CHAT_DEFAULT, ImpostazioniChat
 from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.memoria.archivio import ArchivioMemoria
 from hiris.app.server import create_app
@@ -75,21 +75,12 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
-
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="ok")
     mock_runner.last_tool_calls = []
-    engine.set_claude_runner(mock_runner)
 
     app["ha_client"] = mock_ha
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat(system_prompt="base prompt")
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
@@ -201,14 +192,6 @@ async def test_lo_streaming_offre_gli_stessi_quattro_strumenti(aiohttp_client, t
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
-
     catturati: dict = {}
 
     async def fake_chat_stream(**kwargs):
@@ -220,10 +203,9 @@ async def test_lo_streaming_offre_gli_stessi_quattro_strumenti(aiohttp_client, t
     mock_runner = AsyncMock()
     mock_runner.chat_stream = fake_chat_stream
     mock_runner.last_tool_calls = []
-    engine.set_claude_runner(mock_runner)
 
     app["ha_client"] = mock_ha
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat(system_prompt="base prompt")
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
@@ -323,7 +305,7 @@ async def test_le_sessioni_precedenti_restano(aiohttp_client, tmp_path):
     store._conn.execute(
         "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at, summary) "
         "VALUES(?,?,?,?,?)",
-        ("closed-1", DEFAULT_CHATBOT_ID, ts, ts, "parlato di irrigazione del giardino"),
+        ("closed-1", ID_CHAT_DEFAULT, ts, ts, "parlato di irrigazione del giardino"),
     )
     store._conn.commit()
 
@@ -352,7 +334,7 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
     store._conn.execute(
         "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at, summary) "
         "VALUES(?,?,?,?,?)",
-        ("closed-1", DEFAULT_CHATBOT_ID, ts, ts, "parlato di irrigazione del giardino"),
+        ("closed-1", ID_CHAT_DEFAULT, ts, ts, "parlato di irrigazione del giardino"),
     )
     store._conn.commit()
 
@@ -397,24 +379,15 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="base prompt",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
-
     # Solo il client HTTP verso Anthropic e' finto (`anthropic.AsyncAnthropic`
     # patchato in costruzione, stessa forma della fixture `claude_runner` di
     # tests/test_runner_catalogo.py) -- il resto del runner (il loop
     # tool_use/tool_result dentro `chat()`) e' vero.
     with patch("anthropic.AsyncAnthropic"):
         runner = ClaudeRunner(api_key="test-key")
-    engine.set_claude_runner(runner)
 
     app["ha_client"] = mock_ha
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat(system_prompt="base prompt")
     app["claude_runner"] = runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)

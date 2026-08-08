@@ -383,8 +383,8 @@ class ClaudeRunner:
         # Serialize tmp-write + os.replace across concurrent _save_usage() calls.
         # _save_usage runs on every API response and is reachable from multiple
         # concurrent agent runs / chats; without this two writers race on the
-        # same .tmp path and can corrupt usage.json (chatbot_engine._save already
-        # guards its own save the same way).
+        # same .tmp path and can corrupt usage.json (ImpostazioniChat.salva,
+        # impostazioni_chat.py, guards its own save the same way).
         self._save_lock = threading.Lock()
         self._load_usage()
 
@@ -580,10 +580,11 @@ class ClaudeRunner:
             # `allowed_tools`) sono usciti insieme al loro unico chiamante,
             # `run_with_actions` -- la Sentinella e' uscita al Task 7. Nessun
             # chiamante di produzione arriva fin qui senza passare
-            # `strumenti` (verificato: chatbot_engine.py e
-            # api/handlers_chat.py lo passano sempre); i test del "loop
-            # mechanic" che chiamano `chat()` senza `strumenti` provano
-            # apposta che la conversazione regge comunque, senza tool_use.
+            # `strumenti` (verificato: api/handlers_chat.py, l'unico
+            # chiamante di produzione rimasto dalla fetta E4 Task 4, lo passa
+            # sempre); i test del "loop mechanic" che chiamano `chat()` senza
+            # `strumenti` provano apposta che la conversazione regge
+            # comunque, senza tool_use.
             tools = []
         # Cache tool definitions — stable per agent config, reused across turns
         if tools:

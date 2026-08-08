@@ -24,32 +24,38 @@ from unittest.mock import AsyncMock, MagicMock
 # `handle_list_chatbots` is the one handler left (compatibility surface,
 # Global Constraints) -- its tests below are untouched, live subject.
 
+# fetta E4 Task 4 ("un bot solo"): test_list_agents_has_budget_fields e
+# test_list_agents_budget_computed_from_usage sono usciti -- il loro
+# soggetto (handle_list_chatbots che calcolava budget_eur/usage da
+# runner.get_chatbot_usage(agent_id)) e' uscito per intero col resto
+# dell'entita' Chatbot: niente piu' usage per-persona con un bot solo senza
+# id (la card mostra 0/--, "agent.budget_eur || 0" in
+# hiris-chat-card.js -- l'elenco dei consumi torna nella E5). Verificato che
+# cadessero per costruzione prima della cancellazione:
+# test_list_agents_has_budget_fields -> AssertionError ("budget_eur" non e'
+# piu' nel payload); test_list_agents_budget_computed_from_usage -> KeyError
+# "budget_eur". test_list_agents_has_status_field resta: il campo "status"
+# c'e' ancora (valore letterale "idle" ora, non piu' un lookup -- vedi
+# handlers_chatbots.py).
+
 # ---- Dashboard field tests (Task 2) ----
 
 @pytest.fixture
 def _dashboard_app(tmp_path):
     """Shared app factory for dashboard-field tests."""
     from hiris.app.server import create_app
-    from hiris.app.chatbot_engine import ChatbotEngine
+    from hiris.app.impostazioni_chat import ImpostazioniChat
     app = create_app()
     mock_ha = AsyncMock()
     mock_ha.start = AsyncMock()
     mock_ha.stop = AsyncMock()
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="ok")
     mock_runner.last_tool_calls = []
-    mock_runner.get_chatbot_usage = MagicMock(return_value={
-        "input_tokens": 100, "output_tokens": 50,
-        "requests": 2, "cost_usd": 0.13, "last_run": None,
-    })
-    engine.set_claude_runner(mock_runner)
     app["ha_client"] = mock_ha
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat()
     app["claude_runner"] = mock_runner
     app["llm_router"] = mock_runner
     app["theme"] = "auto"
@@ -76,31 +82,6 @@ async def test_list_agents_has_status_field(dashboard_client):
     for agent in agents:
         assert "status" in agent
         assert agent["status"] in ("idle", "running", "error")
-
-
-@pytest.mark.asyncio
-async def test_list_agents_has_budget_fields(dashboard_client):
-    """Task 3: `budget_limit_eur` is gone from the /api/chatbots payload — it
-    was a defensive `.get("budget_eur_limit", 0.0)` read of a dataclass field
-    Task 2 already removed, so it was always hardcoded 0.0. `budget_eur`
-    (actual computed usage cost) is the only budget field left."""
-    resp = await dashboard_client.get("/api/chatbots")
-    assert resp.status == 200
-    agents = await resp.json()
-    for agent in agents:
-        assert "budget_eur" in agent
-        assert isinstance(agent["budget_eur"], float)
-        assert "budget_limit_eur" not in agent
-
-
-@pytest.mark.asyncio
-async def test_list_agents_budget_computed_from_usage(dashboard_client):
-    resp = await dashboard_client.get("/api/chatbots")
-    assert resp.status == 200
-    agents = await resp.json()
-    # mock_runner returns cost_usd=0.13, EUR rate=0.92 → 0.1196
-    for agent in agents:
-        assert agent["budget_eur"] == round(0.13 * 0.92, 4)
 
 
 # fetta E4 Task 3: test_created_agent_has_all_dashboard_fields (POST-then-GET),

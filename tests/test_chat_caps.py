@@ -30,10 +30,11 @@ import time
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.chat_store import close_all_stores
+from hiris.app.impostazioni_chat import ID_CHAT_DEFAULT, ImpostazioniChat
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -44,35 +45,27 @@ def reset_stores():
     close_all_stores()
 
 
-def _make_agent(agent_id="test-agent"):
-    agent = MagicMock()
-    agent.id = agent_id
-    agent.is_default = False
-    agent.system_prompt = "You are a helpful assistant."
-    agent.strategic_context = "Home context."
-    agent.allowed_tools = None
-    agent.allowed_entities = None
-    agent.allowed_services = None
-    agent.model = "auto"
-    agent.max_tokens = 4096
-    agent.restrict_to_home = False
-    agent.require_confirmation = False
-    agent.max_chat_turns = 0
-    agent.response_mode = "auto"
-    agent.thinking_budget = 0
-    agent.knowledge_access = {}
-    return agent
+# fetta E4 Task 4 ("un bot solo"): non c'e' piu' un `Chatbot` per id da
+# mockare -- `_make_agent`/l'`engine` MagicMock sono sostituiti da
+# un'`ImpostazioniChat` vera (nessuna selezione da simulare: e' l'unica
+# istanza, sempre quella). Il `chatbot_id`/`agent_id` che i test mandano nel
+# body resta nel payload delle richieste sotto (per continuare a coprire "un
+# id qualsiasi non rompe nulla"), ma non seleziona piu' niente: la chiave di
+# conversazione effettiva e' sempre `ID_CHAT_DEFAULT` (vedi handlers_chat.py).
+def _make_impostazioni(*, max_chat_turns=0):
+    return ImpostazioniChat(
+        nome="test-agent",
+        system_prompt="You are a helpful assistant.",
+        max_chat_turns=max_chat_turns,
+    )
 
 
 def _make_app(tmp_path, *, chat_via_subscription=True, with_queue=True,
-              chat_daily_cap=None, agent_id="test-agent", runner=None):
+              chat_daily_cap=None, runner=None, max_chat_turns=0):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
 
-    agent = _make_agent(agent_id)
-    engine = MagicMock()
-    engine.get_chatbot.return_value = agent
-    engine.get_default_chatbot.return_value = agent
+    impostazioni = _make_impostazioni(max_chat_turns=max_chat_turns)
 
     if runner is None:
         runner = AsyncMock()
@@ -83,7 +76,7 @@ def _make_app(tmp_path, *, chat_via_subscription=True, with_queue=True,
     app = web.Application()
     app["llm_router"] = runner
     app["claude_runner"] = runner
-    app["engine"] = engine
+    app["impostazioni_chat"] = impostazioni
     app["data_dir"] = data_dir
     app["chat_via_subscription"] = chat_via_subscription
     if chat_daily_cap is not None:
@@ -95,7 +88,7 @@ def _make_app(tmp_path, *, chat_via_subscription=True, with_queue=True,
         app["reasoning_queue"] = q
 
     app.router.add_post("/api/chat", handle_chat)
-    return app, q, runner, agent, data_dir
+    return app, q, runner, impostazioni, data_dir
 
 
 # ---------------------------------------------------------------------------
@@ -239,50 +232,61 @@ def test_count_chat_today_counts_regardless_of_status(tmp_path):
 
 @pytest.mark.asyncio
 async def test_second_enqueue_same_conversation_returns_409(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path)
     async with TestClient(TestServer(app)) as client:
-        first = await client.post("/api/chat", json={"message": "prima", "agent_id": agent.id})
+        first = await client.post("/api/chat", json={"message": "prima"})
         assert first.status == 202
 
-        second = await client.post("/api/chat", json={"message": "seconda", "agent_id": agent.id})
+        second = await client.post("/api/chat", json={"message": "seconda"})
         assert second.status == 409
         body = await second.json()
         assert body == {"error": "C'è già una risposta in arrivo per questa conversazione."}
 
 
+# fetta E4 Task 4 ("un bot solo"): test_409_guard_scoped_per_conversation_not_
+# global pinnava una scoping PER CHATBOT che non esiste piu' -- un
+# `chatbot_id` diverso nel body non produce piu' una conversazione diversa
+# (vedi handlers_chat.py: l'id inviato dal client e' accettato e ignorato,
+# la chiave effettiva e' sempre `ID_CHAT_DEFAULT`). Con un bot solo la guardia
+# 409 e' necessariamente globale, non piu' "per conversazione" -- e' esattamente
+# quello che la riscritta sotto verifica: un secondo `chatbot_id`, anche
+# distinto, finisce comunque nella STESSA corsia e prende 409. Il vecchio
+# corpo del test non e' nemmeno piu' eseguibile cosi' com'era (mockava
+# `app["engine"].get_chatbot.side_effect` -- `_make_app` non valorizza piu'
+# quella chiave: `KeyError: 'engine'` al primo accesso, prima ancora di
+# arrivare all'assert); la riscritta sotto e' stata verificata girando
+# davvero contro il codice nuovo (vedi il comando nel report).
 @pytest.mark.asyncio
-async def test_409_guard_scoped_per_conversation_not_global(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path)
-    other_agent = _make_agent("other-agent")
-    app["engine"].get_chatbot.side_effect = lambda aid: agent if aid == agent.id else other_agent
+async def test_409_guard_e_ora_globale_un_chatbot_id_diverso_non_lo_evita(tmp_path):
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path)
 
     async with TestClient(TestServer(app)) as client:
-        first = await client.post("/api/chat", json={"message": "prima", "agent_id": agent.id})
+        first = await client.post("/api/chat", json={"message": "prima", "chatbot_id": "a"})
         assert first.status == 202
 
-        other = await client.post("/api/chat", json={"message": "altra conv", "agent_id": other_agent.id})
-        assert other.status == 202
+        other = await client.post("/api/chat", json={"message": "altro id", "chatbot_id": "b"})
+        assert other.status == 409
 
 
 @pytest.mark.asyncio
 async def test_409_guard_clears_once_first_job_resolved(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path)
     async with TestClient(TestServer(app)) as client:
-        first = await client.post("/api/chat", json={"message": "prima", "agent_id": agent.id})
+        first = await client.post("/api/chat", json={"message": "prima"})
         job_id = (await first.json())["job_id"]
 
         claimed = q.claim(now=time.time())
         q.submit(job_id, claimed["nonce"], {"reply": "ok"}, now=time.time())
 
-        second = await client.post("/api/chat", json={"message": "seconda", "agent_id": agent.id})
+        second = await client.post("/api/chat", json={"message": "seconda"})
         assert second.status == 202
 
 
 @pytest.mark.asyncio
 async def test_daily_cap_reached_returns_429(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_daily_cap=1)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_daily_cap=1)
     async with TestClient(TestServer(app)) as client:
-        first = await client.post("/api/chat", json={"message": "prima", "agent_id": agent.id})
+        first = await client.post("/api/chat", json={"message": "prima"})
         assert first.status == 202
         job_id = (await first.json())["job_id"]
 
@@ -290,7 +294,7 @@ async def test_daily_cap_reached_returns_429(tmp_path):
         claimed = q.claim(now=time.time())
         q.submit(job_id, claimed["nonce"], {"reply": "ok"}, now=time.time())
 
-        second = await client.post("/api/chat", json={"message": "seconda", "agent_id": agent.id})
+        second = await client.post("/api/chat", json={"message": "seconda"})
         assert second.status == 429
         body = await second.json()
         assert body == {"error": "Limite giornaliero di messaggi chat raggiunto."}
@@ -300,9 +304,9 @@ async def test_daily_cap_reached_returns_429(tmp_path):
 async def test_daily_cap_default_is_generous_enough_for_normal_use(tmp_path):
     # No chat_daily_cap set on the app -> handler must fall back to a sane
     # default (50) rather than crashing or capping at 0/None.
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_daily_cap=None)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_daily_cap=None)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
 
 
@@ -310,14 +314,15 @@ async def test_daily_cap_default_is_generous_enough_for_normal_use(tmp_path):
 async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
     """With chat_via_subscription OFF, handle_chat must use the sync path
     regardless of pending jobs or the daily cap -- guards are subscription-only."""
-    app, q, runner, agent, data_dir = _make_app(
+    app, q, runner, impostazioni, data_dir = _make_app(
         tmp_path, chat_via_subscription=False, chat_daily_cap=0)
-    # Pre-seed a "pending" chat job for this agent directly on the queue --
-    # if the guard wrongly applied to the sync path this would still 409.
-    q.enqueue("chat", {}, {"chatbot_id": agent.id}, deadline_ts=time.time() + 300, now=time.time())
+    # Pre-seed a "pending" chat job on the queue, keyed like handle_chat keys
+    # it today (ID_CHAT_DEFAULT, fixed) -- if the guard wrongly applied to
+    # the sync path this would still 409.
+    q.enqueue("chat", {}, {"chatbot_id": ID_CHAT_DEFAULT}, deadline_ts=time.time() + 300, now=time.time())
 
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
         body = await resp.json()
         assert body["response"] == "sync reply"
@@ -327,28 +332,29 @@ async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
 
 @pytest.mark.asyncio
 async def test_chat_accepts_new_chatbot_id_key(tmp_path):
-    """SP-4 Fase A chat-wire coherence: the new "chatbot_id" body key must
-    resolve the same chatbot as the legacy "agent_id" key did."""
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=False)
+    """fetta E4 Task 4: il body key "chatbot_id" non seleziona piu' nessun
+    Chatbot (l'entita' e' uscita) -- viene accettato e ignorato. Quello che
+    resta da verificare e' che mandarlo non rompa nulla: la chat risponde
+    comunque sul percorso sincrono."""
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=False)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "chatbot_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao", "chatbot_id": "qualunque-id"})
         assert resp.status == 200
         body = await resp.json()
         assert body["response"] == "sync reply"
-    app["engine"].get_chatbot.assert_called_with(agent.id)
 
 
 @pytest.mark.asyncio
 async def test_chat_still_accepts_legacy_agent_id_key(tmp_path):
     """Retro-compat: older clients / Lovelace card configs sending "agent_id"
-    must keep working unchanged after the chat-wire rename to "chatbot_id"."""
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=False)
+    must keep working unchanged after the chat-wire rename to "chatbot_id" --
+    stesso discorso di sopra, anche questo id non seleziona piu' niente."""
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=False)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": "qualunque-id"})
         assert resp.status == 200
         body = await resp.json()
         assert body["response"] == "sync reply"
-    app["engine"].get_chatbot.assert_called_with(agent.id)
 
 
 @pytest.mark.asyncio
@@ -368,11 +374,11 @@ async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
     )
     runner.last_tool_calls = []
     runner.last_thinking_blocks = []
-    app, q, runner, agent, data_dir = _make_app(
+    app, q, runner, impostazioni, data_dir = _make_app(
         tmp_path, chat_via_subscription=False, chat_daily_cap=0, runner=runner)
 
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
         body = await resp.json()
         assert body["response"] == "Errore temporaneo del servizio AI. Riprova tra poco."
@@ -383,10 +389,10 @@ async def test_bridge_off_falls_back_to_sync_guards_do_not_apply(tmp_path):
     """chat_via_subscription on but bridge not wired (no reasoning_queue) ->
     existing Task 2 fallback to sync path; the new guards must not blow up
     without a queue to query."""
-    app, q, runner, agent, data_dir = _make_app(
+    app, q, runner, impostazioni, data_dir = _make_app(
         tmp_path, chat_via_subscription=True, with_queue=False, chat_daily_cap=0)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
         body = await resp.json()
         assert body["response"] == "sync reply"
@@ -397,10 +403,10 @@ async def test_409_takes_precedence_when_both_conditions_true(tmp_path):
     """Order matters for the user-facing message: an in-flight reply for THIS
     conversation is the more specific/actionable signal, so it wins over the
     daily cap even if the cap is also exhausted."""
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_daily_cap=1)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_daily_cap=1)
     async with TestClient(TestServer(app)) as client:
-        first = await client.post("/api/chat", json={"message": "prima", "agent_id": agent.id})
+        first = await client.post("/api/chat", json={"message": "prima"})
         assert first.status == 202
         # First job still pending (not resolved) AND cap (1) already consumed.
-        second = await client.post("/api/chat", json={"message": "seconda", "agent_id": agent.id})
+        second = await client.post("/api/chat", json={"message": "seconda"})
         assert second.status == 409

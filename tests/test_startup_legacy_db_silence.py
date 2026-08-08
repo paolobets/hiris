@@ -219,3 +219,44 @@ def test_tasks_json_silent_when_file_absent(tmp_path, caplog):
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_tasks_json_silence"))
     assert not caplog.records, "nessun tasks.json sul disco -- nessun log deve uscire"
+
+
+# fetta E4 Task 4 ("un bot solo"): l'entita' Chatbot esce per intero
+# (chatbot_engine.py, cancellato) sostituita dalle impostazioni della chat
+# (impostazioni_chat.py). Un chatbots.json (o il suo predecessore
+# agents.json, la stessa coppia che ChatbotEngine._load migrava) di
+# un'installazione precedente non ha piu' nessun lettore/scrittore -- stessa
+# disciplina degli altri sette file sopra, pinnata qui con lo stesso metodo.
+
+
+def test_chatbots_json_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _load_silence_check(
+        "chatbots_json_path", "scheduler = AsyncIOScheduler()",
+    )
+    (tmp_path / "chatbots.json").write_text("{}")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_chatbots_json_silence"))
+    assert any("chatbots.json" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_agents_json_legacy_presence_logged_when_file_exists(tmp_path, caplog):
+    """Il predecessore di chatbots.json (prima della rinomina SP-4 Fase A)
+    deve dichiararsi anche da solo, senza che chatbots.json esista."""
+    check = _load_silence_check(
+        "chatbots_json_path", "scheduler = AsyncIOScheduler()",
+    )
+    (tmp_path / "agents.json").write_text("{}")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_agents_json_legacy_silence"))
+    assert any("chatbots.json" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_chatbots_json_silent_when_both_files_absent(tmp_path, caplog):
+    check = _load_silence_check(
+        "chatbots_json_path", "scheduler = AsyncIOScheduler()",
+    )
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_chatbots_json_silence"))
+    assert not caplog.records, "ne' chatbots.json ne' agents.json sul disco -- nessun log deve uscire"

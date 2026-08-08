@@ -5,7 +5,7 @@ import pathlib
 from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import TestClient
 from hiris.app.server import create_app
-from hiris.app.chatbot_engine import ChatbotEngine, DEFAULT_CHATBOT_ID, Chatbot
+from hiris.app.impostazioni_chat import ImpostazioniChat, ID_CHAT_DEFAULT
 from hiris.app.chat_store import close_all_stores
 
 
@@ -33,17 +33,12 @@ async def client(aiohttp_client, tmp_path):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="Test response")
     mock_runner.last_tool_calls = []
-    engine.set_claude_runner(mock_runner)
 
     app["ha_client"] = mock_ha
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat()
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
@@ -63,13 +58,12 @@ async def test_health_endpoint(client):
     assert data["version"] == _cfg_version()
 
 
-@pytest.mark.asyncio
-async def test_status_endpoint(client):
-    resp = await client.get("/api/status")
-    assert resp.status == 200
-    data = await resp.json()
-    assert "agents" in data
-    assert "version" in data
+# fetta E4 Task 4 ("un bot solo"): test_status_endpoint esercitava
+# GET /api/status -- uscita insieme all'entita' Chatbot (Decisione 6 del
+# brief: era una rotta solo-test, il suo unico contenuto era un conteggio
+# `agents.total`/`agents.enabled` che non significa piu' niente con un bot
+# solo). Verificato che cadesse per costruzione (404, rotta non piu'
+# registrata) prima della cancellazione.
 
 
 @pytest.mark.asyncio
@@ -103,13 +97,8 @@ async def test_chat_no_runner(aiohttp_client):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    from hiris.app.chatbot_engine import ChatbotEngine
-    engine = ChatbotEngine(ha_client=mock_ha)
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-
     app["ha_client"] = mock_ha
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat()
     app["claude_runner"] = None
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -145,55 +134,58 @@ async def test_chat_no_runner(aiohttp_client):
 # returned False for the default before saving) is gone too, per brief.
 
 
+# fetta E4 Task 4 ("un bot solo"): test_chat_with_agent_id_uses_agent_system_
+# prompt, test_chat_without_agent_id_uses_default_agent e
+# test_chat_with_unknown_agent_id_fallback_to_default pinnavano una
+# SELEZIONE fra piu' `Chatbot` diversi per id -- quella selezione non esiste
+# piu': c'e' un solo `ImpostazioniChat`, senza id, e il `chatbot_id`/
+# `agent_id` che il client manda viene accettato e ignorato (vedi
+# handlers_chat.py). Verificato prima di riscriverli: coi vecchi corpi
+# ancora in piedi, `client.app["engine"]` solleva `KeyError` -- il
+# fixture non lo valorizza piu'. Le tre riscritte sotto verificano lo stesso
+# comportamento di fondo (il prompt configurato arriva al runner, un id
+# sconosciuto o assente non rompe nulla) senza pretendere una selezione che
+# non c'e' piu'.
+
+
 @pytest.mark.asyncio
-async def test_chat_with_agent_id_uses_agent_system_prompt(client):
-    from hiris.app.chatbot_engine import Chatbot
-    engine = client.app["engine"]
-    engine._chatbots["agent-chat-001"] = Chatbot(
-        id="agent-chat-001", name="Energia", system_prompt="Sei un esperto di energia.",
-        allowed_tools=[], enabled=True, is_default=False,
-        strategic_context="Contesto: casa a Milano.",
+async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
+    client.app["impostazioni_chat"] = ImpostazioniChat(
+        nome="Energia", system_prompt="Sei un esperto di energia.",
     )
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="risposta energia")
 
     resp = await client.post("/api/chat", json={
         "message": "quanto consumo?",
-        "agent_id": "agent-chat-001",
+        "chatbot_id": "qualunque-cosa",
     })
     assert resp.status == 200
     data = await resp.json()
     assert data["response"] == "risposta energia"
     call_kwargs = runner.chat.call_args.kwargs
-    assert "Contesto: casa a Milano." in call_kwargs["system_prompt"]
-    assert "esperto di energia" in call_kwargs["system_prompt"]
+    assert call_kwargs["system_prompt"] == "Sei un esperto di energia."
 
 
 @pytest.mark.asyncio
-async def test_chat_without_agent_id_uses_default_agent(client):
-    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
-    engine = client.app["engine"]
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="Prompt default HIRIS.",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
+async def test_chat_senza_chatbot_id_usa_comunque_le_impostazioni(client):
+    client.app["impostazioni_chat"] = ImpostazioniChat(system_prompt="Prompt di default HIRIS.")
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="risposta default")
 
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
     call_kwargs = runner.chat.call_args.kwargs
-    assert "Prompt default HIRIS." in call_kwargs["system_prompt"]
+    assert call_kwargs["system_prompt"] == "Prompt di default HIRIS."
 
 
 @pytest.mark.asyncio
-async def test_chat_with_unknown_agent_id_fallback_to_default(client):
-    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
-    engine = client.app["engine"]
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="Fallback prompt.",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
+async def test_chat_con_chatbot_id_sconosciuto_non_rompe_e_ignora_lid(client):
+    """Prima un `agent_id` che non corrispondeva a nessun Chatbot ricadeva
+    sul default (fallback). Ora non c'e' nessuna ricerca da far fallire: un
+    id qualsiasi -- esistito o mai esistito -- non cambia il comportamento,
+    perche' non seleziona piu' niente."""
+    client.app["impostazioni_chat"] = ImpostazioniChat(system_prompt="Fallback prompt.")
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="fallback")
 
@@ -203,7 +195,7 @@ async def test_chat_with_unknown_agent_id_fallback_to_default(client):
     })
     assert resp.status == 200
     call_kwargs = runner.chat.call_args.kwargs
-    assert "Fallback prompt." in call_kwargs["system_prompt"]
+    assert call_kwargs["system_prompt"] == "Fallback prompt."
 
 
 @pytest.mark.asyncio
@@ -217,50 +209,39 @@ async def test_config_endpoint_returns_theme(client):
 
 @pytest.mark.asyncio
 async def test_chat_passes_model_to_runner(client):
-    from hiris.app.chatbot_engine import Chatbot
-    engine = client.app["engine"]
-    engine._chatbots["agent-haiku-001"] = Chatbot(
-        id="agent-haiku-001", name="Haiku Agent", system_prompt="Chat test",
-        allowed_tools=[], enabled=True, is_default=False,
-        model="claude-haiku-4-5-20251001", max_tokens=1024, restrict_to_home=False,
+    client.app["impostazioni_chat"] = ImpostazioniChat(
+        nome="Haiku", system_prompt="Chat test",
+        model="claude-haiku-4-5-20251001", restrict_to_home=False,
     )
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="ok")
 
-    await client.post("/api/chat", json={"message": "test", "agent_id": "agent-haiku-001"})
+    await client.post("/api/chat", json={"message": "test"})
 
     call_kwargs = runner.chat.call_args.kwargs
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
-    # chat is floored up to CHAT_MAX_TOKENS regardless of the stored per-agent
-    # value — max_tokens is a ceiling, not a target, so this doesn't raise cost
-    # for normal replies but prevents truncation of large outputs (dashboards).
+    # fetta E4 Task 4: `max_tokens` non e' piu' un campo delle impostazioni
+    # (era gia' inerte in pratica -- vedi handlers_chat.py) -- la chat usa
+    # sempre CHAT_MAX_TOKENS come tetto, non piu' un valore floorato.
     assert call_kwargs["max_tokens"] == 16000
     assert call_kwargs["agent_type"] == "chat"
 
 
 @pytest.mark.asyncio
 async def test_chat_max_turns_blocks_when_limit_reached(client):
-    from hiris.app.chatbot_engine import Chatbot
     from hiris.app.chat_store import append_messages
-    engine = client.app["engine"]
+    client.app["impostazioni_chat"] = ImpostazioniChat(max_chat_turns=2)
     data_dir = client.app["data_dir"]
-    engine._chatbots["agent-limited"] = Chatbot(
-        id="agent-limited", name="Limited", system_prompt="test",
-        allowed_tools=[], enabled=True, is_default=False,
-        max_chat_turns=2,
-    )
-    # Pre-fill 2 user turns in server-side history
-    append_messages("agent-limited", [
+    # Pre-fill 2 user turns in server-side history (stessa chiave fissa che
+    # handle_chat usa oggi, ID_CHAT_DEFAULT -- vedi handlers_chat.py).
+    append_messages(ID_CHAT_DEFAULT, [
         {"role": "user", "content": "first"},
         {"role": "assistant", "content": "reply1"},
         {"role": "user", "content": "second"},
         {"role": "assistant", "content": "reply2"},
     ], data_dir)
 
-    resp = await client.post("/api/chat", json={
-        "message": "third message",
-        "agent_id": "agent-limited",
-    })
+    resp = await client.post("/api/chat", json={"message": "third message"})
     assert resp.status == 200
     data = await resp.json()
     assert data.get("error") == "max_turns_reached"
@@ -270,20 +251,14 @@ async def test_chat_max_turns_blocks_when_limit_reached(client):
 
 @pytest.mark.asyncio
 async def test_chat_persists_exchange_in_history(client):
-    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from hiris.app.chat_store import load_history
-    engine = client.app["engine"]
     data_dir = client.app["data_dir"]
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="test",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="stored response")
 
     await client.post("/api/chat", json={"message": "persist me"})
 
-    history = load_history(DEFAULT_CHATBOT_ID, data_dir)
+    history = load_history(ID_CHAT_DEFAULT, data_dir)
     assert any(m["content"] == "persist me" for m in history)
     assert any(m["content"] == "stored response" for m in history)
 
@@ -294,14 +269,8 @@ async def test_chat_does_not_persist_toxic_response(client):
     tool calls, etc.) must not be persisted to chat history — they would
     poison subsequent turns and the user already sees the error in the
     current response payload."""
-    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from hiris.app.chat_store import load_history
-    engine = client.app["engine"]
     data_dir = client.app["data_dir"]
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="test",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(
         return_value="Errore temporaneo del servizio AI. Riprova tra poco."
@@ -309,7 +278,7 @@ async def test_chat_does_not_persist_toxic_response(client):
 
     await client.post("/api/chat", json={"message": "fail me"})
 
-    history = load_history(DEFAULT_CHATBOT_ID, data_dir)
+    history = load_history(ID_CHAT_DEFAULT, data_dir)
     assert history == []  # nothing persisted
 
 
@@ -317,21 +286,15 @@ async def test_chat_does_not_persist_toxic_response(client):
 async def test_chat_does_not_persist_leaked_tool_call_response(client):
     """Same protection for the TOOL_LEAK_USER_MSG sentinel returned by the
     runner when a model emits a tool call as raw text content."""
-    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     from hiris.app.chat_store import load_history
     from hiris.app.backends.openai_compat_runner import TOOL_LEAK_USER_MSG
-    engine = client.app["engine"]
     data_dir = client.app["data_dir"]
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="test",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value=TOOL_LEAK_USER_MSG)
 
     await client.post("/api/chat", json={"message": "leak me"})
 
-    history = load_history(DEFAULT_CHATBOT_ID, data_dir)
+    history = load_history(ID_CHAT_DEFAULT, data_dir)
     assert history == []
 
 
@@ -419,10 +382,6 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-
     mock_runner = AsyncMock()
     # Runner returns a response that contains the vault token (not the real IBAN)
     mock_runner.chat = AsyncMock(return_value="Saldo su [IBAN_1].")
@@ -430,10 +389,9 @@ async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
     # This exchange's own per-request token map — as if recall_memory had
     # pseudonymized this IBAN into [IBAN_1] earlier in THIS same tool loop.
     mock_runner.last_pseudonym_map = {"[IBAN_1]": "IT60X0542811101000000123456"}
-    engine.set_claude_runner(mock_runner)
 
     app["ha_client"] = mock_ha
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat()
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
@@ -476,20 +434,15 @@ async def test_chat_does_not_detokenize_cross_request_token(aiohttp_client, tmp_
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
 
-    engine = ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
-    engine.start = AsyncMock()
-    engine.stop = AsyncMock()
-
     mock_runner = AsyncMock()
     # THIS exchange's reply happens to mention the same token string, but
     # THIS exchange never pseudonymized anything -- its own map is empty.
     mock_runner.chat = AsyncMock(return_value="Il tuo saldo è su [IBAN_1].")
     mock_runner.last_tool_calls = []
     mock_runner.last_pseudonym_map = {}
-    engine.set_claude_runner(mock_runner)
 
     app["ha_client"] = mock_ha
-    app["engine"] = engine
+    app["impostazioni_chat"] = ImpostazioniChat()
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)

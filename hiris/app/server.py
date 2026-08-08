@@ -11,10 +11,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 import aiohttp
 from aiohttp import web
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_chatbots import handle_list_chatbots
 from .api.handlers_entities import handle_list_entities
-from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
 from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
@@ -24,7 +24,7 @@ from .api.handlers_models import (
 from .api.handlers_knowledge import (
     handle_list_pending, handle_approve, handle_reject, handle_manual_add,
 )
-from .chatbot_engine import ChatbotEngine
+from .impostazioni_chat import ImpostazioniChat
 from .version import read_version
 from .proxy.ha_client import HAClient
 from .casa.archivio import ArchivioCasa
@@ -629,8 +629,12 @@ async def _on_startup(app: web.Application) -> None:
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
 
-    data_path = os.environ.get("CHATBOTS_DATA_PATH", "/data/chatbots.json")
-    data_dir = os.path.dirname(os.path.abspath(data_path))
+    # fetta E4 Task 4 ("un bot solo"): prima `data_dir` si derivava da
+    # `CHATBOTS_DATA_PATH` (un file per l'entita' Chatbot che non esiste
+    # piu'). Ne' l'una ne' l'altra erano un'opzione dell'add-on (nessuna voce
+    # in config.yaml/run.sh: solo un varco interno per i test) -- lo stesso
+    # varco, letto direttamente come directory.
+    data_dir = os.environ.get("HIRIS_DATA_DIR", "/data")
     app["data_dir"] = data_dir
     # SP-2 Task 4: models-config store (chain_order + brain_model), letta prima
     # della costruzione LLMRouter più sotto così il chain-build (Task 2 Step 5)
@@ -693,17 +697,61 @@ async def _on_startup(app: web.Application) -> None:
     archivio_memoria = ArchivioMemoria(os.path.join(data_dir, "memoria.db"))
     app["archivio_memoria"] = archivio_memoria
 
-    engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)
-    engine.set_entity_cache(entity_cache)
-    engine.set_archivi(archivio_casa, archivio_memoria)
-    # Task 1 fetta E4: il WebSocket verso HA parte qui, non dentro
-    # `engine.start()` -- e' il server ad aprire i sensi della casa, non i
-    # chatbot. Deve stare dopo la registrazione di tutti i listener sopra
-    # (state/anagrafe/plance, :633-690): aprirlo prima lascerebbe una finestra
-    # di eventi senza nessuno ad ascoltarli.
+    # Task 1 fetta E4: il WebSocket verso HA parte qui -- non e' mai stato
+    # dentro un "engine.start()" da quando quel task lo ha spostato (e ora
+    # l'entita' Chatbot, con l'engine che la portava, e' uscita per intero:
+    # fetta E4 Task 4, "un bot solo"). Deve stare dopo la registrazione di
+    # tutti i listener sopra (state/anagrafe/plance, :633-690): aprirlo prima
+    # lascerebbe una finestra di eventi senza nessuno ad ascoltarli.
     await ha_client.start_websocket()
-    await engine.start()
-    app["engine"] = engine
+
+    # fetta E4 Task 4: l'entita' Chatbot esce, sostituita dalle impostazioni
+    # della chat -- un bot solo, senza id, coi default nel codice (mai
+    # "assente": e' la chiusura per costruzione del degrado silenzioso che
+    # handlers_chat.py aveva prima -- vedi impostazioni_chat.py). Gli ex
+    # `engine.set_entity_cache(entity_cache)`/`set_archivi(archivio_casa,
+    # archivio_memoria)` non hanno bisogno di un successore: erano gia'
+    # orfani prima di questo task (nessun lettore in produzione dalla fetta
+    # E4 Task 2 -- DispatcherConoscenza legge `app["entity_cache"]`/
+    # `app["archivio_casa"]`/`app["archivio_memoria"]` direttamente, gia'
+    # valorizzati sopra).
+    impostazioni_chat = ImpostazioniChat.carica(data_dir)
+    app["impostazioni_chat"] = impostazioni_chat
+
+    # Silenzio dichiarato, stessa disciplina di advisory.db/sentinel.db/ecc.
+    # (tests/test_startup_legacy_db_silence.py): un chatbots.json (o il suo
+    # predecessore agents.json) di un'installazione precedente non ha piu'
+    # nessun lettore/scrittore -- l'entita' Chatbot e la sua migrazione
+    # (ChatbotEngine._load, chatbot_engine.py) sono uscite per intero con
+    # questo task. Decisione utente (vedi il commit): il prompt
+    # personalizzato eventualmente salvato sul bot di default NON viene
+    # migrato in ImpostazioniChat -- si riparte puliti, coi default nel
+    # codice. I file restano su disco, intatti (mai dati utente cancellati
+    # in /data).
+    _chatbots_json_path = os.path.join(data_dir, "chatbots.json")
+    _agents_json_path_legacy = os.path.join(data_dir, "agents.json")
+    if os.path.exists(_chatbots_json_path) or os.path.exists(_agents_json_path_legacy):
+        logger.info(
+            "chatbots.json (o il suo predecessore agents.json) presente in %s "
+            "da un'installazione precedente: da fetta E4 Task 4 nessun codice "
+            "li legge ne' li scrive piu' (l'entita' Chatbot e' uscita, "
+            "sostituita dalle impostazioni della chat). Il prompt "
+            "personalizzato eventualmente salvato sul bot di default non "
+            "viene migrato -- si riparte con i default nel codice. I file "
+            "restano su disco, intatti.",
+            data_dir,
+        )
+
+    # Lo scheduler (APScheduler) non era mai stato concettualmente
+    # dell'entita' Chatbot -- ci viveva sopra solo perche' ChatbotEngine lo
+    # ospitava (avviato/fermato nel suo start()/stop()), ma i lavori che
+    # registra piu' sotto (ricarica inventario, sentinella comportamento,
+    # retention, digest, ingest Mayan, spazzata della coda di ragionamento)
+    # non hanno niente a che fare coi chatbot. Con l'entita' uscita per
+    # intero, trova casa direttamente qui.
+    scheduler = AsyncIOScheduler()
+    scheduler.start()
+    app["scheduler"] = scheduler
 
     # fetta E3 Task 11: l'HealthMonitor esce -- il suo unico consumatore reale
     # era `snapshot["ha_health"]`, caduto col Task 4 (deps["get_health"] non
@@ -919,7 +967,7 @@ async def _on_startup(app: web.Application) -> None:
     async def _ricarica_inventario() -> None:
         await ricarica_inventario_entita(app.get("entity_cache"), ha_client)
 
-    engine._scheduler.add_job(
+    scheduler.add_job(
         _ricarica_inventario,
         trigger="interval", minutes=2,
         id="hiris_entity_cache_reload", replace_existing=True,
@@ -930,7 +978,7 @@ async def _on_startup(app: web.Application) -> None:
     # periodico come gli altri qui sopra. Cinque minuti: il comportamento
     # cambia con una cadenza di giorni, non serve un giro piu' stretto, e il
     # costo di un giro a vuoto sono solo due `stat()`.
-    engine._scheduler.add_job(
+    scheduler.add_job(
         guarda_comportamento,
         trigger="interval", minutes=5,
         id="hiris_comportamento_sentinella", replace_existing=True,
@@ -950,7 +998,7 @@ async def _on_startup(app: web.Application) -> None:
             if n:
                 logger.info("Retention: deleted %d old chat messages", n)
 
-    engine._scheduler.add_job(
+    scheduler.add_job(
         _run_retention,
         trigger="cron",
         hour=3,
@@ -969,7 +1017,7 @@ async def _on_startup(app: web.Application) -> None:
         except Exception as exc:
             logger.error("History compaction failed: %s", exc, exc_info=True)
 
-    engine._scheduler.add_job(
+    scheduler.add_job(
         _run_history_compact,
         trigger="cron", hour=3, minute=30,
         id="hiris_history_compact", replace_existing=True, misfire_grace_time=3600,
@@ -984,7 +1032,7 @@ async def _on_startup(app: web.Application) -> None:
         except Exception as exc:
             logger.error("History digest failed: %s", exc, exc_info=True)
 
-    engine._scheduler.add_job(
+    scheduler.add_job(
         _run_history_digest_job,
         trigger="cron", hour=4, minute=0,
         id="hiris_history_digest", replace_existing=True, misfire_grace_time=3600,
@@ -1026,7 +1074,7 @@ async def _on_startup(app: web.Application) -> None:
             except Exception as exc:
                 logger.error("Mayan ingest job failed: %s", exc, exc_info=True)
 
-        engine._scheduler.add_job(
+        scheduler.add_job(
             _run_mayan_ingest,
             trigger="interval",
             minutes=mayan_poll_minutes,
@@ -1255,7 +1303,7 @@ async def _on_startup(app: web.Application) -> None:
                     job.get("job_id"), job.get("kind"))
         reasoning_queue.prune(_time.time() - 7 * 86400)
 
-    engine._scheduler.add_job(
+    scheduler.add_job(
         _reasoning_sweep, trigger="interval", minutes=2,
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
 
@@ -1405,7 +1453,6 @@ async def _on_startup(app: web.Application) -> None:
         )
         app["claude_runner"] = claude_runner  # backward compat (may be None)
         app["llm_router"] = router
-        engine.set_claude_runner(router)
     else:
         app["claude_runner"] = None
         app["llm_router"] = None
@@ -1467,7 +1514,13 @@ async def _on_cleanup(app: web.Application) -> None:
         app["archivio_casa"].chiudi()
     if "archivio_memoria" in app:
         app["archivio_memoria"].chiudi()
-    await app["engine"].stop()
+    # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
+    # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
+    # uscita per intero. `wait=False`, stessa disciplina di
+    # `ChatbotEngine.stop()` (chatbot_engine.py, uscito con lei): non
+    # aspettare i job in corso al momento dello shutdown.
+    if "scheduler" in app:
+        app["scheduler"].shutdown(wait=False)
     await app["ha_client"].stop()
     close_all_stores()
 
@@ -1513,7 +1566,11 @@ def create_app() -> web.Application:
     app.router.add_get("/", _serve_index)
     app.router.add_get("/config", _serve_config)
     app.router.add_get("/api/health", _handle_health)
-    app.router.add_get("/api/status", handle_status)
+    # fetta E4 Task 4 ("un bot solo"): GET /api/status esce insieme
+    # all'entita' Chatbot -- il suo unico contenuto era `agents.total`/
+    # `agents.enabled` (handlers_status.py, cancellato), un conteggio che non
+    # significa piu' niente con un bot solo. Nessun chiamante frontend (era
+    # gia' una rotta solo-test nel censimento, prima di questo task).
     app.router.add_get("/api/config", handle_config)
     app.router.add_get("/api/usage", handle_usage)
     app.router.add_post("/api/usage/reset", handle_reset_usage)

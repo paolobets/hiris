@@ -12,6 +12,7 @@ from ..chat_store import (
     _is_toxic_assistant,
 )
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
+from ..impostazioni_chat import ID_CHAT_DEFAULT
 from .handlers_casa import costruisci_nucleo
 
 logger = logging.getLogger(__name__)
@@ -40,15 +41,20 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     return trimmed
 
 
-def _build_system_prompt(agent) -> str:
-    """Static agent persona (strategic_context + system_prompt), same
-    assembly used by the sync path and reused for the async job context."""
-    static_parts = []
-    if agent and agent.strategic_context:
-        static_parts.append(agent.strategic_context.strip())
-    if agent and agent.system_prompt:
-        static_parts.append(agent.system_prompt.strip())
-    return "\n\n---\n\n".join(static_parts)
+def _build_system_prompt(impostazioni) -> str:
+    """Il prompt statico della chat, condiviso dal ramo sincrono e da quello
+    in abbonamento (async job context).
+
+    fetta E4 Task 4 ("un bot solo"): prima componeva `strategic_context` +
+    `system_prompt` di un `Chatbot` -- due campi pensati per una molteplicita'
+    di persone che non esiste piu'. `ImpostazioniChat` ha un solo campo
+    (`system_prompt`): niente piu' da comporre. `impostazioni` non e' mai
+    `None` (vedi `ImpostazioniChat.carica`, che non lo restituisce mai) --
+    il parametro resta accettabile a `None` solo per i test che passano un
+    oggetto costruito a mano."""
+    if impostazioni and impostazioni.system_prompt:
+        return impostazioni.system_prompt.strip()
+    return ""
 
 
 def _bridge_on(app) -> bool:
@@ -68,7 +74,7 @@ def _bridge_on(app) -> bool:
 
 
 async def _enqueue_chat_job(
-    request: web.Request, agent, effective_chatbot_id: str | None,
+    request: web.Request, impostazioni, effective_chatbot_id: str | None,
     message: str, data_dir: str,
 ) -> web.Response:
     """Chat-via-abbonamento (Slice 4b, Task 2): hand the turn to the async
@@ -90,7 +96,7 @@ async def _enqueue_chat_job(
     # entry — the external runner needs it to know what it's replying to.
     history = load_history(effective_chatbot_id, data_dir) if effective_chatbot_id else []
     sanitized_history = _trim_history(history)
-    system_prompt = _build_system_prompt(agent)
+    system_prompt = _build_system_prompt(impostazioni)
 
     reasoning_queue = request.app["reasoning_queue"]
     now = time.time()
@@ -154,32 +160,38 @@ async def handle_chat(request: web.Request) -> web.Response:
     if len(message) > 4000:
         return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
 
-    # "chatbot_id" is the current wire key (SP-4 Fase A rename); "agent_id" is
-    # kept as a retro-compat fallback so existing Lovelace card configs / older
-    # clients that still send the pre-rename key keep working unchanged.
-    chatbot_id = body.get("chatbot_id") or body.get("agent_id")
+    # "chatbot_id" is the wire key (SP-4 Fase A rename, "agent_id" the older
+    # pre-rename fallback) -- fetta E4 Task 4 ("un bot solo"): accepted but no
+    # longer used to SELECT anything. There is exactly one chat now
+    # (`ImpostazioniChat`, no id), so whatever id the client sends (or
+    # doesn't) makes no difference to which settings apply. Still read here
+    # (not just dropped) so a request carrying the key doesn't behave
+    # differently from one that omits it, and to document that this is a
+    # deliberate no-op, not an oversight -- the wire key itself dies with the
+    # frontend that sends it (fetta E5, Task 5 of this fetta's brief).
+    _chatbot_id_ignorato = body.get("chatbot_id") or body.get("agent_id")
     data_dir = request.app.get("data_dir", "/data")
-    engine = request.app["engine"]
+    impostazioni = request.app["impostazioni_chat"]
 
-    agent = None
-    if chatbot_id:
-        agent = engine.get_chatbot(chatbot_id)
-    if agent is None:
-        agent = engine.get_default_chatbot()
-
-    effective_chatbot_id = getattr(agent, "id", None) if agent else None
+    # Id fisso, transitorio: la cronologia (chat_store.py) ha ancora bisogno
+    # di UNA chiave per riga, e le rotte di compatibilita' (GET/DELETE
+    # .../chat-history, handlers_chat_history.py) e il payload di GET
+    # /api/chatbots (handlers_chatbots.py) usano lo stesso id -- deve restare
+    # lo stesso in tutti e tre i posti finche' la E5 non toglie l'id dal
+    # wire per intero.
+    effective_chatbot_id = ID_CHAT_DEFAULT
 
     # Enforce max turns limit (count from DB, not from the trimmed context
     # window). Final-review Fix 1 (Slice 4b): hoisted ABOVE the subscription
     # branch below — this check is branch-independent (it reads the turn
     # count from chat_store, never from the sync path's trimmed history) and
-    # must run before anything is persisted/enqueued, otherwise an agent's
-    # session turn limit is silently bypassed whenever chat_via_subscription
-    # is on (the old position, after the subscription branch's early return,
-    # was never reached in that mode).
-    max_turns = getattr(agent, "max_chat_turns", 0) if agent else 0
+    # must run before anything is persisted/enqueued, otherwise a session
+    # turn limit is silently bypassed whenever chat_via_subscription is on
+    # (the old position, after the subscription branch's early return, was
+    # never reached in that mode).
+    max_turns = impostazioni.max_chat_turns
     if max_turns > 0:
-        turn_count = count_user_turns(effective_chatbot_id, data_dir) if effective_chatbot_id else 0
+        turn_count = count_user_turns(effective_chatbot_id, data_dir)
         if turn_count >= max_turns:
             return web.json_response({
                 "error": "max_turns_reached",
@@ -214,7 +226,7 @@ async def handle_chat(request: web.Request) -> web.Response:
                 {"error": "Limite giornaliero di messaggi chat raggiunto."},
                 status=429,
             )
-        return await _enqueue_chat_job(request, agent, effective_chatbot_id, message, data_dir)
+        return await _enqueue_chat_job(request, impostazioni, effective_chatbot_id, message, data_dir)
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -223,25 +235,30 @@ async def handle_chat(request: web.Request) -> web.Response:
         )
 
     # Load server-side history (client-sent history field is ignored)
-    history = load_history(effective_chatbot_id, data_dir) if effective_chatbot_id else []
+    history = load_history(effective_chatbot_id, data_dir)
 
     # (max-turns check now runs above, before the subscription branch — see
     # Fix 1 comment there.)
 
     context_history = _trim_history(history)
 
-    if agent is None:
-        logger.warning("No agent found (requested: %s). BASE_SYSTEM_PROMPT will be used.", chatbot_id)
-
-    # system_prompt = static agent content (strategic_context + system_prompt).
-    # Kept separate from context_str so claude_runner can cache it independently.
-    system_prompt = _build_system_prompt(agent)
+    # fetta E4 Task 4: il ramo "agent is None -> BASE_SYSTEM_PROMPT senza
+    # cronologia" non esiste piu'. Prima, un chatbot seminato mancante (id
+    # sbagliato, seed mai girato) faceva silenziosamente cadere `agent` a
+    # `None`: il prompt degradava a una stringa vuota E la cronologia
+    # smetteva di essere letta/scritta (`effective_chatbot_id` diventava
+    # anch'esso `None`), senza che nessun log lo dicesse. `impostazioni_chat`
+    # non e' mai `None` (`ImpostazioniChat.carica` non lo restituisce mai) e
+    # `effective_chatbot_id` e' un id fisso, non piu' condizionato dalla
+    # ricerca di un chatbot che potrebbe non esistere -- quel ramo di
+    # degrado e' impossibile per costruzione, non solo non piu' preso.
+    system_prompt = _build_system_prompt(impostazioni)
 
     # Inject closed-session summaries so Claude remembers previous conversations.
     # Le sessioni precedenti restano una fonte A PARTE dal nucleo (Task 3):
     # sono cronologia di conversazioni chiuse, non conoscenza sulla casa --
     # il nucleo non le contiene e non deve contenerle.
-    past = get_past_summaries(effective_chatbot_id, data_dir) if effective_chatbot_id else []
+    past = get_past_summaries(effective_chatbot_id, data_dir)
     past_str = ""
     if past:
         lines = ["Sessioni precedenti (memoria):"]
@@ -343,26 +360,33 @@ async def handle_chat(request: web.Request) -> web.Response:
         cache=request.app.get("entity_cache"),
     )
 
-    agent_model = getattr(agent, "model", "auto") if agent else "auto"
-    agent_max_tokens = getattr(agent, "max_tokens", 4096) if agent else 4096
+    agent_model = impostazioni.model
     # Personas are always the chat entity (Slice 5 retired the non-chat
     # "agent" type and the `type` field itself) — no per-type branch needed
     # here. Kept as a literal only because runner.chat/chat_stream still take
     # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
     agent_type = "chat"
-    # Interactive chat gets a higher output ceiling than the per-agent eval cap:
-    # complex requests (a multi-view dashboard, a long script) legitimately need
-    # more room, and the old 4096 default truncated them mid-tool-call. Floor up.
-    if agent_max_tokens < CHAT_MAX_TOKENS:
-        logger.info(
-            "chat: max_tokens floored %d -> %d (ceiling, not target — no extra cost "
-            "on normal replies)", agent_max_tokens, CHAT_MAX_TOKENS,
-        )
-        agent_max_tokens = CHAT_MAX_TOKENS
-    agent_restrict = getattr(agent, "restrict_to_home", False) if agent else False
-    agent_require_confirmation = getattr(agent, "require_confirmation", False) if agent else False
-    agent_response_mode = getattr(agent, "response_mode", "auto") if agent else "auto"
-    agent_thinking_budget = getattr(agent, "thinking_budget", 0) if agent else 0
+    # fetta E4 Task 4: `max_tokens`/`require_confirmation` erano due dei sette
+    # campi che il turno di chat leggeva dal vecchio `Chatbot`, ma GIA' inerti
+    # in pratica -- non sono entrati in `ImpostazioniChat`, diventano qui due
+    # costanti dirette:
+    # - `max_tokens`: interactive chat gets a higher output ceiling than the
+    #   per-agent eval cap (complex requests -- a multi-view dashboard, a long
+    #   script -- legitimately need more room, and the old 4096 default
+    #   truncated them mid-tool-call). Il vecchio codice "floorava" un valore
+    #   persistito fino a CHAT_MAX_TOKENS -- ma senza piu' un editor che possa
+    #   persisterne uno diverso da 4096 (uscito con la E4 Task 3), il floor
+    #   scattava SEMPRE: usare direttamente CHAT_MAX_TOKENS e' lo stesso
+    #   comportamento, senza il giro morto.
+    # - `require_confirmation`: claude_runner.py:557 -- "non ha piu' alcun
+    #   effetto" da quando l'impianto OTP che lo consumava e' uscito (fetta
+    #   E2 Task 5). Resta `False` perche' i runner (ClaudeRunner/
+    #   OpenAICompatRunner) hanno ancora il parametro nella propria firma.
+    agent_max_tokens = CHAT_MAX_TOKENS
+    agent_require_confirmation = False
+    agent_restrict = impostazioni.restrict_to_home
+    agent_response_mode = impostazioni.response_mode
+    agent_thinking_budget = impostazioni.thinking_budget
 
     wants_stream = (
         "text/event-stream" in request.headers.get("Accept", "")
@@ -429,7 +453,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # zeroes collected_tokens for tool-call leaks; this also covers the
         # rare case where the runner returns a known-bad payload some other
         # way (e.g. partial leak that slipped past detection).
-        if effective_chatbot_id and full_response and not _is_toxic_assistant(full_response):
+        if full_response and not _is_toxic_assistant(full_response):
             append_messages(effective_chatbot_id, [
                 {"role": "user", "content": message},
                 {"role": "assistant", "content": full_response},
@@ -478,7 +502,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # returned a synthetic error / leak sentinel, so the next turn doesn't
     # inherit a degraded history. The user retains the visible error in the
     # current response payload.
-    if effective_chatbot_id and not _is_toxic_assistant(response):
+    if not _is_toxic_assistant(response):
         append_messages(effective_chatbot_id, [
             {"role": "user", "content": message},
             {"role": "assistant", "content": response},

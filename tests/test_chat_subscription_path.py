@@ -33,10 +33,11 @@ import time
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_store import close_all_stores, load_history
+from hiris.app.impostazioni_chat import ID_CHAT_DEFAULT, ImpostazioniChat
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -47,34 +48,26 @@ def reset_stores():
     close_all_stores()
 
 
-def _make_agent():
-    agent = MagicMock()
-    agent.id = "test-agent"
-    agent.is_default = False
-    agent.system_prompt = "You are a helpful assistant."
-    agent.strategic_context = "Home context."
-    agent.allowed_tools = None
-    agent.allowed_entities = None
-    agent.allowed_services = None
-    agent.model = "auto"
-    agent.max_tokens = 4096
-    agent.restrict_to_home = False
-    agent.require_confirmation = False
-    agent.max_chat_turns = 0
-    agent.response_mode = "auto"
-    agent.thinking_budget = 0
-    agent.knowledge_access = {}
-    return agent
+# fetta E4 Task 4 ("un bot solo"): non c'e' piu' un `Chatbot` per id da
+# mockare -- `_make_agent`/l'`engine` MagicMock sono sostituiti da
+# un'`ImpostazioniChat` vera. Il `chatbot_id`/`agent_id` che i test mandano
+# nel body resta nel payload (continua a coprire "un id qualsiasi non rompe
+# nulla"), ma non seleziona piu' niente: la chiave di conversazione (e del
+# job in coda) e' sempre `ID_CHAT_DEFAULT` (vedi handlers_chat.py).
+def _make_impostazioni(*, max_chat_turns=0):
+    return ImpostazioniChat(
+        nome="test-agent",
+        system_prompt="You are a helpful assistant.",
+        max_chat_turns=max_chat_turns,
+    )
 
 
-def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=None):
+def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=None,
+              max_chat_turns=0):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
 
-    agent = _make_agent()
-    engine = MagicMock()
-    engine.get_chatbot.return_value = agent
-    engine.get_default_chatbot.return_value = agent
+    impostazioni = _make_impostazioni(max_chat_turns=max_chat_turns)
 
     if runner is None:
         runner = AsyncMock()
@@ -85,7 +78,7 @@ def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=
     app = web.Application()
     app["llm_router"] = runner
     app["claude_runner"] = runner
-    app["engine"] = engine
+    app["impostazioni_chat"] = impostazioni
     app["data_dir"] = data_dir
     app["chat_via_subscription"] = chat_via_subscription
 
@@ -96,7 +89,7 @@ def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=
 
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
-    return app, q, runner, agent, data_dir
+    return app, q, runner, impostazioni, data_dir
 
 
 # ---------------------------------------------------------------------------
@@ -105,9 +98,9 @@ def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=
 
 @pytest.mark.asyncio
 async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
         body = await resp.json()
         assert body["status"] == "pending"
@@ -117,14 +110,14 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
     job = q.get(body["job_id"])
     assert job["kind"] == "chat"
-    assert job["context"]["chatbot_id"] == agent.id
+    assert job["context"]["chatbot_id"] == ID_CHAT_DEFAULT
 
 
 @pytest.mark.asyncio
 async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=False)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=False)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
         body = await resp.json()
         assert body["response"] == "sync reply"
@@ -134,9 +127,9 @@ async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
 
 @pytest.mark.asyncio
 async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=False, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=False, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
         body = await resp.json()
         assert body["response"] == "sync reply"
@@ -154,16 +147,16 @@ async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
 
 @pytest.mark.asyncio
 async def test_max_turns_reached_blocks_subscription_path(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
-    agent.max_chat_turns = 1
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    impostazioni.max_chat_turns = 1
     from hiris.app.chat_store import append_messages
-    append_messages(agent.id, [
+    append_messages(ID_CHAT_DEFAULT, [
         {"role": "user", "content": "prima"},
         {"role": "assistant", "content": "risposta"},
     ], data_dir)
 
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "seconda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "seconda"})
         assert resp.status == 200
         body = await resp.json()
         assert body.get("error") == "max_turns_reached"
@@ -179,16 +172,16 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
 async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_path):
     """Sanity check: the hoisted check must not block turns that are still
     under the limit -- the subscription path must remain reachable."""
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
-    agent.max_chat_turns = 5
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    impostazioni.max_chat_turns = 5
     from hiris.app.chat_store import append_messages
-    append_messages(agent.id, [
+    append_messages(ID_CHAT_DEFAULT, [
         {"role": "user", "content": "prima"},
         {"role": "assistant", "content": "risposta"},
     ], data_dir)
 
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "seconda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "seconda"})
         assert resp.status == 202
         body = await resp.json()
         assert body["status"] == "pending"
@@ -202,20 +195,20 @@ async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_pat
 
 @pytest.mark.asyncio
 async def test_user_message_persisted_before_enqueue(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "salva questo", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "salva questo"})
         assert resp.status == 202
 
-    history = load_history(agent.id, data_dir)
+    history = load_history(ID_CHAT_DEFAULT, data_dir)
     assert history == [{"role": "user", "content": "salva questo"}]
 
 
 @pytest.mark.asyncio
 async def test_job_context_history_includes_current_user_turn(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "prima domanda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "prima domanda"})
         body = await resp.json()
 
     job = q.get(body["job_id"])
@@ -231,9 +224,9 @@ async def test_job_context_history_includes_current_user_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_pending_then_done(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
 
         poll1 = await client.get(f"/api/chat/reply/{job_id}")
@@ -254,7 +247,7 @@ async def test_poll_route_pending_then_done(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_unknown_job_id_404(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.get("/api/chat/reply/does-not-exist")
         assert resp.status == 404
@@ -269,9 +262,9 @@ async def test_poll_route_unknown_job_id_404(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
 
         # Simulate the ponte-push sweep expiring the job (deadline passed,
@@ -288,9 +281,9 @@ async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_failed_job_returns_error_not_pending(tmp_path):
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
 
     # ReasoningQueue has no public API to force status='failed' directly;
@@ -313,9 +306,9 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
     """Mirrors Task 1's chat_reply_skipped outcome: the job reached
     'decided' but the decision carries no truthy 'reply' (e.g. the runner's
     decision was empty/garbage). The UI must stop polling, not spin forever."""
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
 
         claimed = q.claim(now=5.0)
@@ -333,9 +326,9 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
 async def test_poll_route_pending_job_still_returns_pending(tmp_path):
     """Sanity check: a genuinely in-flight job (not yet claimed) still polls
     as pending -- the terminal-state handling must not regress this."""
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
 
         poll = await client.get(f"/api/chat/reply/{job_id}")
@@ -347,9 +340,9 @@ async def test_poll_route_pending_job_still_returns_pending(tmp_path):
 async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
     """A job claimed by the external runner but not yet submitted is still
     in-flight -- must poll as pending, not error."""
-    app, q, runner, agent, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "domanda", "agent_id": agent.id})
+        resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
 
         claimed = q.claim(now=5.0)
