@@ -92,8 +92,10 @@ async def test_get_proposal_not_found_returns_404():
 @pytest.mark.asyncio
 async def test_apply_proposal_returns_ok():
     # A proposal type with no dedicated apply branch (not ha_automation, not
-    # a _CONFIG_TYPES entry, not hiris_agent -- which now materializes a real
-    # Agentbot, see test_proposals_apply.py): falls through to the generic
+    # a _CONFIG_TYPES entry -- fetta E3 Task 3: "hiris_agent" also had a
+    # dedicated branch once, materializing an Agentbot; it fell through to
+    # this same generic status-only apply once the Agentbot layer was
+    # removed, see test_proposals_apply.py): falls through to the generic
     # status-only apply, no HA client/data_dir required.
     store = _make_store(
         get=AsyncMock(return_value={"id": "abc", "status": "pending", "type": "unknown_type"}),

@@ -16,10 +16,14 @@ logger = logging.getLogger(__name__)
 # saltare la validazione fail-closed di propose_dashboard (formato url_path,
 # presenza delle viste, limite di dimensione, titolo obbligatorio). Le plance
 # si propongono SOLO con propose_dashboard.
-_VALID_PROPOSAL_TYPES = frozenset({"ha_automation", "hiris_agent"})
+# fetta E3 Task 3: "hiris_agent" (e il suo alias "agent") sono usciti insieme
+# all'intero strato Agentbot -- handle_apply_proposal non sa piu' materializzarlo
+# (watcher.agentbots e' cancellato), quindi accettarlo qui alla creazione
+# produrrebbe solo una proposta destinata a un vicolo cieco dichiarato.
+_VALID_PROPOSAL_TYPES = frozenset({"ha_automation"})
 # Alias comuni che gli LLM usano al posto dei valori canonici (root cause bug #2:
 # il Chatbot ha proposto type='automation').
-_PROPOSAL_TYPE_ALIASES = {"automation": "ha_automation", "agent": "hiris_agent"}
+_PROPOSAL_TYPE_ALIASES = {"automation": "ha_automation"}
 
 # `CREATE_AUTOMATION_PROPOSAL_TOOL_DEF` e' uscita in fetta E2 Task 8: non
 # nominata da `EVALUATION_ONLY_TOOLS` (crea una proposta -- chat-only, vedi il

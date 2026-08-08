@@ -86,6 +86,18 @@ async def test_create_proposal_rejects_unknown_type(store):
 
 
 @pytest.mark.asyncio
+async def test_create_proposal_rejects_hiris_agent_now_unknown(store):
+    """fetta E3 Task 3: "hiris_agent" (e l'alias "agent") sono usciti da
+    `_VALID_PROPOSAL_TYPES` insieme all'intero strato Agentbot --
+    `handle_apply_proposal` non sa piu' materializzarlo, quindi crearne una
+    nuova proposta produrrebbe solo un vicolo cieco. Ora e' un tipo come
+    "banana": rifiutato alla creazione, niente save."""
+    res = await create_automation_proposal(store, **_sample_args(proposal_type="hiris_agent"))
+    assert "error" in res
+    assert "proposal_id" not in res
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("bad_type", ["ha_dashboard", "ha_script", "ha_scene"])
 async def test_create_proposal_rejects_config_types(store, bad_type):
     """Scorciatoia chiusa: questi tipi qui salterebbero la validazione
@@ -98,24 +110,17 @@ async def test_create_proposal_rejects_config_types(store, bad_type):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("alias,expected", [("automation", "ha_automation"),
-                                            ("agent", "hiris_agent")])
+@pytest.mark.parametrize("alias,expected", [("automation", "ha_automation")])
 async def test_create_proposal_aliases_still_accepted(store, alias, expected):
-    """La restrizione dei tipi non deve rompere gli alias gia' gestiti."""
+    """La restrizione dei tipi non deve rompere gli alias gia' gestiti.
+
+    fetta E3 Task 3: il caso ("agent", "hiris_agent") e' uscito insieme
+    all'intero strato Agentbot -- "hiris_agent" non e' piu' un tipo valido
+    (vedi test_create_proposal_rejects_unknown_type-style: ora rifiutato
+    come qualsiasi altro tipo sconosciuto)."""
     res = await create_automation_proposal(store, **_sample_args(proposal_type=alias))
     saved = await store.get(res["proposal_id"])
     assert saved["type"] == expected
-
-
-@pytest.mark.asyncio
-async def test_create_proposal_hiris_agent_config_untouched(store):
-    """A hiris_agent proposal must not have its config['id'] touched (the id
-    logic is scoped to ha_automation only)."""
-    args = _sample_args(proposal_type="hiris_agent",
-                        config={"id": "keep-me", "role": "x"}, automation_id="999")
-    res = await create_automation_proposal(store, **args)
-    saved = await store.get(res["proposal_id"])
-    assert saved["config"]["id"] == "keep-me"
 
 
 @pytest.mark.asyncio
