@@ -50,11 +50,6 @@ export LOCAL_MODEL_NAME=$(bashio::config 'local_model.model' '')
 # need 240–300s before completion).
 export OLLAMA_REQUEST_TIMEOUT=$(bashio::config 'local_model.request_timeout' '120')
 
-export MQTT_HOST=$(bashio::config 'mqtt.host' '')
-export MQTT_PORT=$(bashio::config 'mqtt.port' '1883')
-export MQTT_USER=$(bashio::config 'mqtt.user' '')
-export MQTT_PASSWORD=$(bashio::config 'mqtt.password' '')
-
 export MEMORY_EMBEDDING_PROVIDER=$(bashio::config 'memory.embedding_provider' '')
 export MEMORY_EMBEDDING_MODEL=$(bashio::config 'memory.embedding_model' '')
 export MEMORY_RAG_K=$(bashio::config 'memory.rag_k' '5')

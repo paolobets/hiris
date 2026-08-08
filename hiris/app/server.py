@@ -43,7 +43,6 @@ from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
-from .mqtt_publisher import MQTTPublisher
 from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 
 logger = logging.getLogger(__name__)
@@ -794,55 +793,6 @@ async def _on_startup(app: web.Application) -> None:
     #     cancellati in /data): va nell'elenco /data del Task 15 e nelle note
     #     di release.
 
-    mqtt_pub = MQTTPublisher()
-    await mqtt_pub.start(
-        host=os.environ.get("MQTT_HOST", ""),
-        port=int(os.environ.get("MQTT_PORT", "1883")),
-        user=os.environ.get("MQTT_USER", ""),
-        password=os.environ.get("MQTT_PASSWORD", ""),
-    )
-    app["mqtt_publisher"] = mqtt_pub
-    engine.set_mqtt_publisher(mqtt_pub)
-
-    # SP-4 Fase A Task 1: one-time removal of HA entities discovered under
-    # the pre-rename MQTT scheme (hiris_<id> / hiris/agents) for chatbots
-    # already loaded from disk — guarded by a marker file so it only runs
-    # once per install, before anything republishes discovery under the new
-    # chatbot_<id> / hiris/chatbots scheme.
-    # SP-4 Fase B Task 3: cleanup_legacy_discovery() now also retracts the
-    # old-scheme COMMAND entities (switch/button) — installs that already
-    # booted 0.102.0 have the v1 marker written and would never re-run the
-    # fixed cleanup, so the marker is bumped to a new versioned name. This
-    # makes the cleanup run once more for exactly the affected installs
-    # without ever re-running for everyone else on every boot.
-    _mqtt_migration_marker = os.path.join(data_dir, ".mqtt_discovery_migrated_v2")
-    if mqtt_pub._enabled and not os.path.exists(_mqtt_migration_marker):
-        try:
-            await mqtt_pub.cleanup_legacy_discovery(
-                list(engine.list_chatbots().keys()),
-                list(mqtt_pub._DISCOVERY_METRICS),
-            )
-            # The marker must only be written once the retraction publishes
-            # above have actually reached the broker, not merely been
-            # enqueued: if MQTT is unreachable at boot (HA host and add-ons
-            # routinely start together), writing the marker right after
-            # enqueueing would permanently skip the retraction, orphaning
-            # the old hiris_<id>_* entities in HA forever. Bounded wait so a
-            # genuinely-down broker doesn't hang startup; on timeout the
-            # marker is left absent so the next boot retries.
-            if await mqtt_pub.wait_drained(timeout=30.0):
-                os.makedirs(data_dir, exist_ok=True)
-                with open(_mqtt_migration_marker, "w", encoding="utf-8") as f:
-                    f.write(datetime.now(timezone.utc).isoformat())
-            else:
-                logger.warning(
-                    "MQTT legacy discovery cleanup: publish queue did not "
-                    "drain within 30s (broker unreachable?) — marker not "
-                    "written, retraction will retry on next boot"
-                )
-        except Exception as exc:
-            logger.warning("MQTT legacy discovery cleanup failed: %s", exc)
-
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
@@ -1491,8 +1441,6 @@ async def _on_cleanup(app: web.Application) -> None:
             await asyncio.wait_for(aw, timeout=5)
     if app.get("mayan_client") is not None:
         await app["mayan_client"].aclose()
-    if "mqtt_publisher" in app:
-        await app["mqtt_publisher"].stop()
     if "knowledge_store" in app:
         app["knowledge_store"].close()
     if "vault" in app:

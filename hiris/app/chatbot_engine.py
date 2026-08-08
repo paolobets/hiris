@@ -13,7 +13,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
 from .casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
 from .claude_runner import RunnerBackendError
-from .config import EUR_RATE
 
 # Timeout complessivo per un singolo run di chatbot. Evita che un modello locale
 # lento (Ollama) blocchi APScheduler per ore. Configurabile via env.
@@ -143,7 +142,6 @@ class ChatbotEngine:
         self._archivio_memoria: Any = None
         self._running_chatbots: set[str] = set()
         self._error_chatbots: set[str] = set()
-        self._mqtt_publisher = None
         # Serialize tmp-write + os.replace across concurrent _save() calls
         # (executor uses a thread pool — two fire-and-forget _save() can otherwise
         # overlap on the same .tmp file and corrupt state).
@@ -169,9 +167,6 @@ class ChatbotEngine:
         nasce prima di loro in `create_app()`."""
         self._archivio_casa = archivio_casa
         self._archivio_memoria = archivio_memoria
-
-    def set_mqtt_publisher(self, publisher) -> None:
-        self._mqtt_publisher = publisher
 
     async def start(self) -> None:
         self._scheduler.start()
@@ -338,11 +333,6 @@ class ChatbotEngine:
             knowledge_access=data.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
         )
         self._chatbots[chatbot.id] = chatbot
-        if self._mqtt_publisher:
-            asyncio.create_task(
-                self._mqtt_publisher.publish_discovery(chatbot),
-                name=f"mqtt_disc_{chatbot.id}",
-            )
         self._save()
         return chatbot
 
@@ -361,7 +351,6 @@ class ChatbotEngine:
         chatbot = self._chatbots.get(agent_id)
         if not chatbot:
             return None
-        enabled_before = chatbot.enabled
         self._unschedule_chatbot(agent_id)
         _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
         _INT_FIELDS = {"max_chat_turns"}
@@ -376,14 +365,6 @@ class ChatbotEngine:
                 else:
                     setattr(chatbot, key, data[key])
         self._save()
-        if self._mqtt_publisher and chatbot.enabled != enabled_before:
-            try:
-                asyncio.create_task(
-                    self._mqtt_publisher.publish_chatbot_state(chatbot, budget_eur=0.0, status="idle"),
-                    name=f"mqtt_enable_{chatbot.id}",
-                )
-            except RuntimeError:
-                pass
         return chatbot
 
     def delete_chatbot(self, agent_id: str) -> bool:
@@ -644,28 +625,6 @@ class ChatbotEngine:
                 self._error_chatbots.add(chatbot.id)
             else:
                 self._error_chatbots.discard(chatbot.id)
-            if self._mqtt_publisher:
-                runner = self._claude_runner
-                budget_eur = 0.0
-                tokens_today = 0
-                if runner and hasattr(runner, "get_chatbot_usage"):
-                    try:
-                        usage = runner.get_chatbot_usage(chatbot.id)
-                        budget_eur = round(usage.get("cost_usd", 0.0) * EUR_RATE, 4)
-                        tokens_today = usage.get("tokens_today", 0)
-                    except Exception as exc:
-                        logger.debug("get_chatbot_usage(%s) failed: %s", chatbot.id, exc)
-                asyncio.create_task(
-                    self._mqtt_publisher.publish_chatbot_state(
-                        chatbot, budget_eur=budget_eur,
-                        status="error" if _had_error else "idle",
-                        # No more per-chatbot budget_eur_limit (Slice 5 Task 2) —
-                        # there is nothing left to subtract a remainder from.
-                        budget_remaining_eur="unlimited",
-                        tokens_used_today=tokens_today,
-                    ),
-                    name=f"mqtt_pub_{chatbot.id}",
-                )
 
     def _append_execution_log(
         self,

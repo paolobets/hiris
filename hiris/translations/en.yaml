@@ -47,21 +47,6 @@ configuration:
     request_timeout:
       name: "Ollama request timeout (seconds)"
       description: "Maximum wait time for a single Ollama call. Default 120s. Increase for slow hardware running large models (Pi 5 with gemma2:9b may need 240–300s). Range: 10–1800."
-  mqtt:
-    name: "MQTT"
-    description: "MQTT broker settings for receiving commands and events via message queue. Leave empty if MQTT is not used."
-    host:
-      name: "MQTT Host"
-      description: "Hostname or IP address of your MQTT broker. Example: 192.168.1.10 or core-mosquitto."
-    port:
-      name: "MQTT Port"
-      description: "Port of the MQTT broker. Default is 1883."
-    user:
-      name: "MQTT Username"
-      description: "Username for MQTT authentication. Leave empty if no authentication is required."
-    password:
-      name: "MQTT Password"
-      description: "Password for MQTT authentication. Leave empty if no authentication is required."
   memory:
     name: "Memory & RAG"
     description: "Settings for HIRIS long-term memory and semantic search (RAG). Leave embedding fields empty to disable RAG."
