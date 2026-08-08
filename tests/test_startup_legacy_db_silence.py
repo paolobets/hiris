@@ -19,6 +19,11 @@ fetta E3 Task 10: le proposte escono per intero e lasciano lo stesso genere
 di silenzio dichiarato per `proposals.db` e `dashboard_backups.json`
 (`server.py`, appena dopo dove viveva la ProposalStore) -- pinnato qui con
 lo stesso metodo, invece di un nuovo file.
+
+fetta E3 Task 11: l'HealthMonitor esce (col SupervisorClient, suo ultimo
+lettore) e lascia lo stesso genere di silenzio dichiarato per
+`ha_health.json` (`server.py`, dove viveva la costruzione dell'HealthMonitor)
+-- pinnato qui con lo stesso metodo.
 """
 import inspect
 import logging
@@ -130,3 +135,28 @@ def test_dashboard_backups_json_silent_when_file_absent(tmp_path, caplog):
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_dashboard_backups_silence"))
     assert not caplog.records, "nessun dashboard_backups.json sul disco -- nessun log deve uscire"
+
+
+# fetta E3 Task 11: l'HealthMonitor esce (col SupervisorClient, suo ultimo
+# lettore rimasto) e lascia lo stesso genere di silenzio dichiarato per
+# `ha_health.json`.
+
+
+def test_ha_health_json_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _load_silence_check(
+        "ha_health_path", "# fetta E3 Task 10: le proposte escono per intero",
+    )
+    (tmp_path / "ha_health.json").write_text("{}")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_ha_health_silence"))
+    assert any("ha_health.json" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_ha_health_json_silent_when_file_absent(tmp_path, caplog):
+    check = _load_silence_check(
+        "ha_health_path", "# fetta E3 Task 10: le proposte escono per intero",
+    )
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_ha_health_silence"))
+    assert not caplog.records, "nessun ha_health.json sul disco -- nessun log deve uscire"

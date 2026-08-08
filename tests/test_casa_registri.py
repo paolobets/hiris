@@ -107,16 +107,10 @@ async def test_get_config_entries_restituisce_tutto_non_solo_gli_errori():
         assert await _client().get_config_entries() == voci
 
 
-@pytest.mark.asyncio
-async def test_il_monitor_di_salute_filtra_da_se_gli_errori():
-    """Il filtro e' passato dal client al consumatore: l'esito non cambia."""
-    from hiris.app.proxy.health_monitor import errori_di_integrazione
-    voci = [
-        {"domain": "hue", "title": "Hue", "state": "loaded"},
-        {"domain": "rotto", "title": "Rotto", "state": "setup_error", "reason": "boom"},
-        {"domain": "attesa", "title": "Attesa", "state": "setup_in_progress"},
-        {"domain": "disabilitata", "title": "Disabilitata", "state": "not_loaded"},
-    ]
-    assert errori_di_integrazione(voci) == [
-        {"integration": "rotto", "title": "Rotto", "state": "setup_error", "error": "boom"}
-    ]
+# fetta E3 Task 11: test_il_monitor_di_salute_filtra_da_se_gli_errori e'
+# cancellato -- importava `errori_di_integrazione` da
+# `hiris.app.proxy.health_monitor`, cancellato per intero insieme
+# all'HealthMonitor (il suo unico lettore rimasto). Verificato che cade per
+# costruzione: `ModuleNotFoundError: No module named
+# 'hiris.app.proxy.health_monitor'`, prima della cancellazione. Nessun
+# successore: quel filtro non ha piu' alcun consumatore.

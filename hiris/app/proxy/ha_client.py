@@ -854,8 +854,10 @@ class HAClient:
 
         Prima questo metodo restituiva le sole voci in ERRORE, con le chiavi
         rinominate: il nome mentiva, e l'elenco delle integrazioni installate
-        — che sta qui dentro — veniva buttato. Il filtro ora vive dove serve,
-        in health_monitor.errori_di_integrazione().
+        — che sta qui dentro — veniva buttato. Il filtro per errori
+        (`errori_di_integrazione`) viveva nell'HealthMonitor, uscito per
+        intero (fetta E3 Task 11, era il suo unico consumatore): nessun
+        codice filtra piu' queste voci, il metodo resta cosi' com'è.
         """
         return await self._ws_call("config/config_entries/get_entries")
 

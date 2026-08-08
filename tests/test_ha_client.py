@@ -281,8 +281,9 @@ async def test_get_updates_returns_update_entities(client):
 @pytest.mark.asyncio
 async def test_get_config_entries_returns_entries_raw(client):
     """Il client restituisce le voci cosi' come le manda HA, senza filtrarle
-    ne' rinominarne: il filtro sugli errori vive ora in
-    health_monitor.errori_di_integrazione(), non qui."""
+    ne' rinominarne. Il filtro sugli errori (errori_di_integrazione) viveva
+    nell'HealthMonitor, uscito per intero con fetta E3 Task 11: nessun
+    codice lo applica piu'."""
     entries = [
         {
             "domain": "hue",

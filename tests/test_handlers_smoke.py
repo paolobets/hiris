@@ -64,69 +64,15 @@ async def test_handle_config_default_theme_is_auto():
 # 'hiris.app.api.handlers_tasks'` su tutti e quattro, prima della
 # cancellazione.
 
-# ---------------------------------------------------------------------------
-# handle_get_ha_health / handle_refresh_ha_health
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_handle_get_ha_health_no_monitor_returns_503():
-    from hiris.app.api.handlers_health import handle_get_ha_health
-    app = MagicMock()
-    app.get = MagicMock(return_value=None)
-    request = make_mocked_request("GET", "/api/health/ha", app=app)
-    resp = await handle_get_ha_health(request)
-    assert resp.status == 503
-
-
-@pytest.mark.asyncio
-async def test_handle_get_ha_health_returns_snapshot():
-    from hiris.app.api.handlers_health import handle_get_ha_health
-    monitor = MagicMock()
-    monitor.get_snapshot.return_value = {"unavailable": []}
-    app = MagicMock()
-    app.get = MagicMock(side_effect=lambda k, d=None: monitor if k == "health_monitor" else d)
-    request = make_mocked_request("GET", "/api/health/ha", app=app)
-    resp = await handle_get_ha_health(request)
-    assert resp.status == 200
-    monitor.get_snapshot.assert_called_once_with(["all"], capped=False)
-
-
-@pytest.mark.asyncio
-async def test_handle_get_ha_health_filters_sections_param():
-    from hiris.app.api.handlers_health import handle_get_ha_health
-    monitor = MagicMock()
-    monitor.get_snapshot.return_value = {}
-    app = MagicMock()
-    app.get = MagicMock(side_effect=lambda k, d=None: monitor if k == "health_monitor" else d)
-    request = make_mocked_request(
-        "GET", "/api/health/ha?sections=unavailable,integrations", app=app
-    )
-    await handle_get_ha_health(request)
-    monitor.get_snapshot.assert_called_once_with(["unavailable", "integrations"], capped=False)
-
-
-@pytest.mark.asyncio
-async def test_handle_refresh_ha_health_no_monitor_returns_503():
-    from hiris.app.api.handlers_health import handle_refresh_ha_health
-    app = MagicMock()
-    app.get = MagicMock(return_value=None)
-    request = make_mocked_request("POST", "/api/health/ha/refresh", app=app)
-    resp = await handle_refresh_ha_health(request)
-    assert resp.status == 503
-
-
-@pytest.mark.asyncio
-async def test_handle_refresh_ha_health_calls_refresh():
-    from hiris.app.api.handlers_health import handle_refresh_ha_health
-    monitor = MagicMock()
-    monitor.refresh = AsyncMock()
-    app = MagicMock()
-    app.get = MagicMock(side_effect=lambda k, d=None: monitor if k == "health_monitor" else d)
-    request = make_mocked_request("POST", "/api/health/ha/refresh", app=app)
-    resp = await handle_refresh_ha_health(request)
-    assert resp.status == 200
-    monitor.refresh.assert_awaited_once()
-
+# I cinque smoke test di handle_get_ha_health/handle_refresh_ha_health che
+# vivevano qui sono cancellati dalla fetta E3 Task 11 ("esce il monitor di
+# salute HA"): il modulo che importavano, `hiris.app.api.handlers_health`,
+# e' cancellato per intero insieme all'HealthMonitor che serviva (il suo
+# unico consumatore reale, `snapshot["ha_health"]`, era gia' caduto col
+# Task 4). Erano un duplicato di `tests/test_handlers_health.py`, anch'esso
+# cancellato nello stesso task. Verificato che cadano per costruzione:
+# `ModuleNotFoundError: No module named 'hiris.app.api.handlers_health'`
+# su tutti e cinque, prima della cancellazione.
 
 # ---------------------------------------------------------------------------
 # handle_run_chatbot (handlers_chatbots.py) -- handle_context_preview e'

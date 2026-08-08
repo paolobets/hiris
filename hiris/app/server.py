@@ -25,12 +25,9 @@ from .api.handlers_chat_history import handle_get_chat_history, handle_clear_cha
 from .api.handlers_models import (
     handle_list_models, handle_get_models_config, handle_save_models_config,
 )
-from .api.handlers_health import handle_get_ha_health, handle_refresh_ha_health
 from .api.handlers_knowledge import (
     handle_list_pending, handle_approve, handle_reject, handle_manual_add,
 )
-from .proxy.health_monitor import HealthMonitor
-from .proxy.supervisor_client import SupervisorClient
 from .chatbot_engine import ChatbotEngine
 from .version import read_version
 from .proxy.ha_client import HAClient
@@ -783,29 +780,25 @@ async def _on_startup(app: web.Application) -> None:
     await engine.start()
     app["engine"] = engine
 
-    # Client Supervisor di sola lettura (add-on, disco, aggiornamenti). Senza
-    # SUPERVISOR_TOKEN siamo su un'installazione standalone (container senza
-    # Supervisor): non lo costruiamo affatto, cosi' evitiamo tre GET destinate
-    # al timeout a ogni refresh. Il monitor riceve None e la sezione non compare.
-    supervisor_token = os.environ.get("SUPERVISOR_TOKEN", "").strip()
-    supervisor_client = None
-    if supervisor_token:
-        supervisor_client = SupervisorClient(token=supervisor_token)
-        await supervisor_client.start()
-        app["supervisor_client"] = supervisor_client
-    else:
+    # fetta E3 Task 11: l'HealthMonitor esce -- il suo unico consumatore reale
+    # era `snapshot["ha_health"]`, caduto col Task 4 (deps["get_health"] non
+    # esisteva piu' nello snapshot della ronda). Le sue due rotte
+    # (GET /api/health/ha, POST /api/health/ha/refresh) non avevano alcun
+    # chiamante nel frontend. Con lui esce anche il SupervisorClient
+    # (add-on, disco, aggiornamenti): l'HealthMonitor era il suo ultimo
+    # lettore rimasto. SILENZIO DICHIARATO, stessa disciplina di advisory.db/
+    # sentinel.db/proposals.db: un ha_health.json ereditato da
+    # un'installazione precedente non viene cancellato (mai dati utente in
+    # /data) ne' incontrato in silenzio.
+    _ha_health_path = os.path.join(data_dir, "ha_health.json")
+    if os.path.exists(_ha_health_path):
         logger.info(
-            "SUPERVISOR_TOKEN assente: sezione supervisor dello stato di salute disattivata"
+            "ha_health.json presente in %s da un'installazione precedente: "
+            "da fetta E3 Task 11 nessun codice lo legge ne' lo scrive piu' "
+            "(HealthMonitor, SupervisorClient e le rotte /api/health/ha* "
+            "sono usciti per intero). Il file resta su disco, intatto.",
+            _ha_health_path,
         )
-
-    health_monitor = HealthMonitor(
-        ha_client=ha_client,
-        data_path=os.path.join(data_dir, "ha_health.json"),
-        scheduler=engine._scheduler,
-        supervisor_client=supervisor_client,
-    )
-    await health_monitor.start()
-    app["health_monitor"] = health_monitor
 
     # fetta E3 Task 10: le proposte escono per intero -- ProposalStore,
     # proxy/proposta_config.py (apply_ha_config), proxy/dashboard_backups.py
@@ -1606,8 +1599,6 @@ async def _on_cleanup(app: web.Application) -> None:
         app["archivio_memoria"].chiudi()
     await app["engine"].stop()
     await app["ha_client"].stop()
-    if app.get("supervisor_client") is not None:
-        await app["supervisor_client"].stop()
     close_all_stores()
 
 
@@ -1676,8 +1667,10 @@ def create_app() -> web.Application:
     app.router.add_get("/api/models", handle_list_models)
     app.router.add_get("/api/models/config", handle_get_models_config)
     app.router.add_put("/api/models/config", handle_save_models_config)
-    app.router.add_get("/api/health/ha", handle_get_ha_health)
-    app.router.add_post("/api/health/ha/refresh", handle_refresh_ha_health)
+    # fetta E3 Task 11: le rotte /api/health/ha e /api/health/ha/refresh sono
+    # uscite con l'HealthMonitor -- vedi il silenzio dichiarato su
+    # ha_health.json in _on_startup. /api/health (poco sopra, il build
+    # stamp) e' un'altra cosa e resta.
     # fetta E3 Task 10: le rotte /api/proposals* e /api/dashboards*
     # (backups/restore) sono uscite con le proposte -- vedi il commento
     # sopra la ProposalStore che viveva qui. Restano rotte, senza rimpiazzo
