@@ -602,11 +602,6 @@ def test_translations_present():
         assert "execute_api_read_denylist" in t
 
 
-def test_local_client_sends_the_marker():
-    py = (_BASE / "app" / "mcp" / "local_client.py").read_text(encoding="utf-8")
-    assert "LOCAL_CHAT_HEADER" in py
-
-
 @pytest.mark.asyncio
 async def test_execute_prunes_logbook_from_the_gateway(aiohttp_client, tmp_path):
     # get_logbook e' tornato fra gli strumenti di lettura del gateway perche'

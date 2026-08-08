@@ -1,6 +1,4 @@
 import asyncio
-import os
-import stat
 import subprocess
 import time
 import pytest
@@ -11,40 +9,6 @@ from hiris.app.agent import runner, prompts
 def test_build_chat_messages_available():
     system, user = prompts.build_chat_messages("Sei HIRIS.", [{"role": "user", "content": "ciao"}])
     assert "Sei HIRIS." in system and "Utente: ciao" in user
-
-
-def test_mcp_config_loopback_no_auth():
-    # 2A internal MCP is unauthenticated (loopback only) -> no auth header.
-    cfg = runner.build_mcp_config("http://127.0.0.1:8199/mcp")
-    srv = cfg["mcpServers"]["hiris"]
-    assert srv["type"] == "http" and srv["url"] == "http://127.0.0.1:8199/mcp"
-    assert "headers" not in srv
-
-
-def test_configure_chat_mcp_writes_no_auth_config(tmp_path, monkeypatch):
-    # configure_chat_mcp() writes the mcp-config actually used by `claude
-    # --mcp-config`: it must be the loopback/no-auth shape (no headers key at
-    # all), and (on POSIX) locked down to 0600 since it lives in a shared tmp dir.
-    cfg_path = tmp_path / "hiris-mcp.json"
-    monkeypatch.setenv("HIRIS_AGENT_MCP_CONFIG_PATH", str(cfg_path))
-    monkeypatch.setenv("HIRIS_AGENT_MCP_URL", "http://127.0.0.1:8199/mcp")
-
-    returned_path = runner.configure_chat_mcp()
-
-    assert returned_path == str(cfg_path)
-    assert runner._CHAT_MCP_CONFIG_PATH == str(cfg_path)
-    assert cfg_path.exists()
-
-    import json
-    with open(cfg_path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    srv = data["mcpServers"]["hiris"]
-    assert srv["type"] == "http" and srv["url"] == "http://127.0.0.1:8199/mcp"
-    assert "headers" not in srv
-
-    if os.name != "nt":
-        mode = stat.S_IMODE(os.stat(cfg_path).st_mode)
-        assert mode == 0o600
 
 
 def test_build_headers_only_internal_token_no_cf_access(monkeypatch):
@@ -77,10 +41,9 @@ def test_safe_subprocess_env_excludes_metered_api_keys(monkeypatch):
     assert env.get("CLAUDE_CODE_OAUTH_TOKEN") == "oauth-token"
 
 
-def test_reason_chat_returns_fallback_reply_on_nonzero_returncode(monkeypatch):
+def test_reason_chat_returns_fallback_reply_on_nonzero_returncode():
     job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
-    monkeypatch.setattr(runner, "_CHAT_MCP_CONFIG_PATH", "/tmp/hiris-mcp.json")
 
     class _Proc:
         returncode = 1
@@ -94,10 +57,9 @@ def test_reason_chat_returns_fallback_reply_on_nonzero_returncode(monkeypatch):
     assert isinstance(result.get("reply"), str) and result["reply"]
 
 
-def test_reason_chat_returns_fallback_reply_on_timeout(monkeypatch):
+def test_reason_chat_returns_fallback_reply_on_timeout():
     job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
-    monkeypatch.setattr(runner, "_CHAT_MCP_CONFIG_PATH", "/tmp/hiris-mcp.json")
 
     def _raise_timeout(*a, **k):
         raise subprocess.TimeoutExpired(cmd="claude", timeout=300)
@@ -123,13 +85,12 @@ class _Client:
         raise AssertionError(url)
 
 
-def test_run_once_chat_reasons_and_submits(monkeypatch):
+def test_run_once_chat_reasons_and_submits():
     job = {"job_id": "J", "nonce": "N", "kind": "chat",
            "context": {"system_prompt": "Sei HIRIS.", "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job})
 
     class _Proc: returncode = 0; stdout = '{"result": "2 luci accese"}'; stderr = ""
-    monkeypatch.setattr(runner, "_CHAT_MCP_CONFIG_PATH", "/tmp/hiris-mcp.json")
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
         out = runner.run_once(c, "http://127.0.0.1:8099", {"X-HIRIS-Internal-Token": "TOK"}, "live")
     assert out == "done"

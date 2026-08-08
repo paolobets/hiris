@@ -239,108 +239,16 @@ def test_i_testi_dei_modelli_non_citano_tool_inesistenti():
     )
 
 
-# ── I DUE percorsi, non uno solo ─────────────────────────────────────────────
+# ── Un solo percorso, oggi ────────────────────────────────────────────────
 #
-# Lo stesso bot creato da un modello preconfigurato puo' girare su due percorsi
-# con due cataloghi di strumenti diversi:
-#
-#   1. la chat locale (claude_runner.ALL_TOOL_DEFS), l'elenco lungo;
-#   2. la chat via abbonamento, che parla con l'MCP interno: il modello vede
-#      SOLO i tool elencati in agent/runner._DEFAULT_CHAT_TOOLS, con i nomi MCP
-#      del catalogo mcp/tiers.py.
-#
-# I due elenchi non coincidono ne' per contenuto ne' sempre per nome (l'azione
-# su Home Assistant si chiama `call_ha_service` sul primo e `call_service` sul
-# secondo). Un testo che cita uno strumento assente dal percorso in uso fa
-# sprecare al bot un tentativo su uno strumento fantasma -- la stessa classe di
-# difetto del catalogo, viva su uno solo dei due percorsi e quindi invisibile a
-# un test che ne guarda uno. Da qui in poi si guardano entrambi.
-
-# Citazioni che valgono per il SOLO percorso locale. Ogni voce DEVE dire
-# perche' non e' sostituibile con uno strumento presente su entrambi:
-# altrimenti la si sostituisce nel testo, non la si dichiara qui.
-CITAZIONI_SOLO_PERCORSO_LOCALE = {
-    # Le previsioni meteo non hanno equivalente nel catalogo MCP: nessun tool
-    # di tiers.py legge un servizio meteo, e i modelli Clima e Irrigazione
-    # decidono proprio sulla previsione. Sostituirlo con uno strumento comune
-    # significherebbe togliere la previsione dai testi, non spostarla. I due
-    # testi che lo citano dicono percio' cosa fare quando non c'e' (i sensori
-    # meteo di Home Assistant), cosi' il bot in abbonamento non resta fermo
-    # davanti a uno strumento che non trova.
-    "get_weather_forecast",
-}
-
-
-def _gateway_chat_tool_names() -> set[str]:
-    """I nomi degli strumenti che il modello vede nella chat via abbonamento.
-
-    Sono i tool MCP elencati in `_DEFAULT_CHAT_TOOLS` (prefisso `mcp__hiris__`),
-    cioe' un sottoinsieme del catalogo di mcp/tiers.py: quello e' il perimetro
-    reale di quel percorso, non ALL_TOOL_DEFS."""
-    from hiris.app.agent.runner import _DEFAULT_CHAT_TOOLS
-
-    nomi = set()
-    for voce in _DEFAULT_CHAT_TOOLS.split(","):
-        voce = voce.strip()
-        if not voce:
-            continue
-        assert voce.startswith("mcp__hiris__"), (
-            f"voce di _DEFAULT_CHAT_TOOLS senza il prefisso MCP atteso: {voce!r}"
-        )
-        nomi.add(voce[len("mcp__hiris__"):])
-    return nomi
-
-
-def test_i_tool_della_chat_ad_abbonamento_esistono_nel_catalogo_mcp():
-    # Se _DEFAULT_CHAT_TOOLS nominasse un tool che l'MCP non espone, il modello
-    # in abbonamento avrebbe gia' oggi uno strumento fantasma nel permesso --
-    # prima ancora dei testi dei modelli.
-    from hiris.app.mcp.tiers import TOOLS
-
-    esposti = {t.name for t in TOOLS}
-    chat = _gateway_chat_tool_names()
-    assert chat, "l'elenco dei tool della chat ad abbonamento non deve essere vuoto"
-    fantasmi = chat - esposti
-    assert not fantasmi, (
-        "_DEFAULT_CHAT_TOOLS abilita nomi che il catalogo MCP (mcp/tiers.py) "
-        f"non espone: {sorted(fantasmi)}"
-    )
-
-
-def test_i_testi_dei_modelli_non_citano_tool_assenti_dalla_chat_ad_abbonamento():
-    chat = _gateway_chat_tool_names()
-    testi = _model_texts(TEMPLATES_JS.read_text(encoding="utf-8"))
-    fuori: dict[str, set[str]] = {}
-    for campo, testo in testi:
-        mancanti = _tool_references(testo) - chat - CITAZIONI_SOLO_PERCORSO_LOCALE
-        if mancanti:
-            fuori.setdefault(campo, set()).update(mancanti)
-    assert not fuori, (
-        "i testi dei modelli preconfigurati citano strumenti che nella chat via "
-        "abbonamento non esistono (o hanno un altro nome), e non sono dichiarati "
-        "in CITAZIONI_SOLO_PERCORSO_LOCALE: "
-        f"{ {k: sorted(v) for k, v in fuori.items()} }"
-    )
-
-
-def test_le_citazioni_solo_locali_sono_strumenti_reali_e_davvero_solo_locali():
-    # Un'eccezione che non e' un tool locale e' un refuso mascherato; una che e'
-    # anche nel catalogo dell'abbonamento e' rumore che nasconderebbe un vero
-    # disallineamento futuro con lo stesso nome.
-    from hiris.app.claude_runner import ALL_TOOL_DEFS
-
-    locali = {t["name"] for t in ALL_TOOL_DEFS}
-    chat = _gateway_chat_tool_names()
-    inesistenti = CITAZIONI_SOLO_PERCORSO_LOCALE - locali
-    assert not inesistenti, (
-        "voci di CITAZIONI_SOLO_PERCORSO_LOCALE che non sono strumenti del "
-        f"percorso locale: {sorted(inesistenti)}"
-    )
-    non_piu_solo_locali = CITAZIONI_SOLO_PERCORSO_LOCALE & chat
-    assert not non_piu_solo_locali, (
-        "voci di CITAZIONI_SOLO_PERCORSO_LOCALE ora presenti anche nella chat "
-        f"ad abbonamento: vanno tolte da qui: {sorted(non_piu_solo_locali)}"
-    )
+# Fino alla Fetta E2 Task 3 esistevano DUE cataloghi di strumenti per lo
+# stesso bot: la chat locale (claude_runner.ALL_TOOL_DEFS) e la chat via
+# abbonamento, che parlava con l'MCP interno (agent/runner._DEFAULT_CHAT_TOOLS,
+# nomi del catalogo mcp/tiers.py). L'MCP interno e' uscito -- e' il terzo
+# catalogo della mappa del prodotto, e ora MCP non e' piu' servito a Claude --
+# quindi la chat via abbonamento ragiona in puro testo, senza alcun catalogo di
+# strumenti da tenere sincronizzato. Le guardie che confrontavano i due
+# percorsi sono uscite con lui.
 
 
 def test_il_vocabolario_ha_non_maschera_strumenti_reali():

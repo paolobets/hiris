@@ -149,102 +149,14 @@ def test_editor_chatbot_dichiara_cosa_copre_la_conferma():
 
 
 # ---------------------------------------------------------------------------
-# A6 — cio' che le descrizioni MCP promettono al modello
+# A6 (storico) — le descrizioni MCP promettevano una conferma al modello
 # ---------------------------------------------------------------------------
-
-# I soli tool del catalogo MCP la cui descrizione PUO' nominare un passaggio
-# di conferma, perche' sul loro percorso ne esiste davvero uno:
 #
-#   call_service   -- api/handlers_execute.py instrada call_ha_service per
-#                     tier e trattiene giallo/rosso in pending_approval.
-#   create_task    -- non ha un gate sul proprio dispatch, ma allo scatto ogni
-#                     sua azione call_ha_service ripassa dal semaforo e un
-#                     tier giallo/rosso diventa step-up all'owner (task_engine
-#                     478-497, pinnato da tests/test_task_engine.py::
-#                     test_confirm_tier_task_action_requests_stepup_and_holds).
-#
-# save_knowledge (l'elemento nasceva `pending` e restava invisibile alle
-# ricerche finche' l'utente non lo approvava) e' uscito da questo elenco con
-# la fetta memoria-unica (Task 2): e' fuso in save_memory, che scrive sempre
-# `status='approved'` -- nessuna coda, quindi nessuna promessa di conferma da
-# fare. Ogni altra promessa di conferma in tiers.py sarebbe una rete
-# dichiarata e assente.
-_TOOL_MCP_CON_CONFERMA_VERA = {"call_service", "create_task"}
-
-# La sola parola "conferma" non basta: la stessa promessa si scrive "richiede
-# approvazione", "gate di sicurezza", "step-up", "autorizzazione". Un elenco
-# piccolo di formulazioni copre i modi in cui una ToolDef puo' millantare una
-# rete.
-_FORMULAZIONI_DI_CONFERMA = (
-    "conferma", "approva", "autorizzazione", "autorizza",
-    "gate", "step-up", "stepup", "via libera", "benestare",
-)
-
-# Le stesse formulazioni in NEGATIVO sono affermazioni oneste -- "non richiede
-# conferma", "senza approvazione", "nessun gate" -- ed e' proprio il testo che
-# questo sprint vuole incoraggiare: vanno tolte prima di cercare, altrimenti
-# la guardia boccerebbe la formulazione corretta.
-_NEGAZIONE_RE = re.compile(
-    r"\b(?:non|senza|nessun[aeio]?|niente|mai|priva di)\b"
-    r"(?:\s+\w+){0,3}?\s+"
-    r"(?:conferma\w*|approva\w*|autorizza\w*|gate\w*|step-?up|via libera|benestare)"
-)
-
-
-def _promette_conferma(descrizione: str) -> bool:
-    """Vero se la descrizione promette al modello un passaggio di conferma."""
-    testo = _NEGAZIONE_RE.sub(" ", descrizione.lower())
-    return any(f in testo for f in _FORMULAZIONI_DI_CONFERMA)
-
-
-def test_la_guardia_riconosce_le_formulazioni_equivalenti():
-    """La guardia sotto vale quanto vale questo riconoscitore: se cercasse la
-    sola parola "conferma", una promessa scritta altrimenti passerebbe."""
-    for promessa in (
-        "Richiede conferma (gate di sicurezza).",
-        "Richiede approvazione dell'utente.",
-        "Passa da un gate di sicurezza.",
-        "Attiva uno step-up sull'owner.",
-        "Serve l'autorizzazione del proprietario.",
-    ):
-        assert _promette_conferma(promessa), f"promessa non riconosciuta: {promessa!r}"
-    for onesto in (
-        "Non richiede conferma: e' il semaforo il limite.",
-        "Viene eseguito senza approvazione umana.",
-        "Nessun gate di sicurezza fra la chiamata e l'effetto.",
-        "Elenca i task HIRIS pianificati.",
-    ):
-        assert not _promette_conferma(onesto), f"falso allarme su: {onesto!r}"
-
-
-def test_nessuna_descrizione_mcp_promette_una_conferma_inesistente():
-    from hiris.app.mcp.tiers import TOOLS
-
-    bugiardi = {
-        t.name for t in TOOLS
-        if _promette_conferma(t.description)
-    } - _TOOL_MCP_CON_CONFERMA_VERA
-    assert not bugiardi, (
-        f"promettono conferma senza attraversare alcun gate: {bugiardi}"
-    )
-
-
-def test_create_task_dichiara_il_perimetro_reale_del_filtro():
-    """La vecchia asserzione ("verd" nella descrizione) era verde anche prima
-    della correzione: la descrizione difettosa gia' nominava le entita' verdi,
-    quindi non esercitava alcuna pressione. Qui si chiede cio' che PRIMA
-    mancava -- che il filtro sia dichiarato valido sulle azioni di primo
-    livello, che l'annidamento sia nominato, e che non si prometta l'assenza
-    di passaggi umani (smentita allo scatto dallo step-up del task_engine)."""
-    from hiris.app.mcp.tiers import get_tool
-
-    desc = get_tool("create_task").description.lower()
-    assert "verd" in desc
-    assert "primo livello" in desc, "il filtro e' dichiarato piu' largo di quanto sia"
-    assert "annidat" in desc, "l'annidamento sfugge al filtro e va detto"
-    assert "nessun passaggio umano" not in desc, (
-        "allo scatto un'azione non verde produce uno step-up: promessa smentita"
-    )
+# Il catalogo MCP (mcp/tiers.py) e il server che lo esponeva sono usciti con
+# la Fetta E2 Task 3 -- MCP non e' piu' servito a Claude. Le guardie che
+# leggevano le sue descrizioni (promesse di conferma, perimetro del filtro di
+# create_task) sono uscite con lui: quel testo non esiste piu' in nessun file.
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio

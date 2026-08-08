@@ -35,7 +35,6 @@ if jq -e 'has("execute_api_read_denylist")' /data/options.json >/dev/null 2>&1; 
   export EXECUTE_API_READ_DENYLIST=$(bashio::config 'execute_api_read_denylist' '')
 fi
 export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
-export INTERNAL_MCP_PORT=$(bashio::config 'internal_mcp_port' '8199')
 # Guard the jq parse (review medium): a malformed options.json used to silently
 # blank APPRISE_URLS with no hint. Warn and fall back to an empty list.
 export APPRISE_URLS=$(jq -c '.apprise_urls // []' /data/options.json 2>/dev/null)

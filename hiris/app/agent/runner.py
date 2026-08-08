@@ -1,14 +1,15 @@
 """Runner hiris-agent: polla la coda di ragionamento HIRIS e ragiona (mock|live).
 
-Porta in-addon del runner del gateway esterno (hiris-mcp-gateway/agent/runner.py),
-adattata a loopback: l'MCP interno (Piano 2A) e' raggiungibile solo da
-127.0.0.1 e non richiede auth (FastMCP auth=None) -> nessun bearer/JWT nella
-mcp-config scritta su disco, nessun residuo CF-Access/JWT di servizio.
-L'internal token (env INTERNAL_TOKEN) resta usato solo per l'HTTP verso la
-reasoning API (`/api/reasoning/claim` e `/api/reasoning/submit`) e, dentro
-2A, dal forward MCP->execute-API (LocalExecuteClient) — non dalla connessione
-claude->MCP.
-"""
+Porta in-addon del runner del gateway esterno (hiris-mcp-gateway/agent/runner.py).
+L'internal token (env INTERNAL_TOKEN) resta usato per l'HTTP verso la reasoning
+API (`/api/reasoning/claim` e `/api/reasoning/submit`).
+
+NB (Fetta E2 Task 3): il percorso `claude --mcp-config` verso l'MCP interno
+(Piano 2A, hiris/app/mcp/) e' uscito insieme al server che serviva -- era il
+terzo catalogo di strumenti della mappa del prodotto, e ora MCP non e' piu'
+servito a Claude. `_reason_chat` sotto quindi ragiona in puro testo, senza
+poter leggere o controllare la casa: e' un guscio ridotto, non spetta a
+questo task rifarlo (arriva con il ponte push, un'altra fetta)."""
 import asyncio, json, logging, os, subprocess, time
 from dataclasses import asdict
 import httpx
@@ -19,63 +20,17 @@ from ..watcher import reasoner as _reasoner
 
 log = logging.getLogger("hiris.agent")
 
-# Tool del gateway abilitati nella chat (nomi MCP: mcp__hiris__<nome>). Esclude i
-# tool ponte-reasoning (claim_reasoning_job/submit_decision), che sono per il
-# runner stesso, non per la chat.
-_DEFAULT_CHAT_TOOLS = ",".join(
-    "mcp__hiris__" + n for n in (
-        "get_home_status", "get_area_entities", "get_entity_states", "get_history",
-        "get_automation_config", "recall_memory", "create_task", "list_tasks",
-        "cancel_task", "create_automation_proposal", "send_notification",
-        "save_memory", "call_service",
-    )
-)
 # Tool LOCALI del CLI sempre vietati (il modello non deve toccare shell/fs del
-# container addon); i tool mcp__hiris__* NON sono qui e restano permessi.
+# container addon).
 _LOCAL_TOOLS_DENY = "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookEdit,NotebookRead,Task"
 
-_CHAT_MCP_CONFIG_PATH: "str | None" = None
-_CHAT_TOOLS = _DEFAULT_CHAT_TOOLS
 
-
-def build_mcp_config(mcp_url: str) -> dict:
-    """MCP interno (2A) su loopback, SENZA auth: nessun header Authorization
-    né X-HIRIS-Internal-Token nella config passata a `claude --mcp-config`."""
-    return {"mcpServers": {"hiris": {"type": "http", "url": mcp_url}}}
-
-
-def configure_chat_mcp() -> "str | None":
-    """Chiamato una volta all'avvio: scrive l'mcp-config (path da
-    HIRIS_AGENT_MCP_CONFIG_PATH, default /tmp/hiris-mcp.json) puntando
-    all'MCP interno di 2A (default http://127.0.0.1:8199/mcp) e ritorna il
-    path (settando anche i global). L'MCP e' senza auth (loopback-only) quindi
-    il file non contiene segreti, ma lo si scrive comunque con permessi 0600
-    per prudenza."""
-    global _CHAT_MCP_CONFIG_PATH, _CHAT_TOOLS
-    mcp_url = os.environ.get("HIRIS_AGENT_MCP_URL", "http://127.0.0.1:8199/mcp")
-    _CHAT_TOOLS = os.environ.get("HIRIS_AGENT_CHAT_TOOLS", _DEFAULT_CHAT_TOOLS)
-    path = os.environ.get("HIRIS_AGENT_MCP_CONFIG_PATH", "/tmp/hiris-mcp.json")
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(build_mcp_config(mcp_url), fh)
-    if os.name != "nt":
-        os.chmod(path, 0o600)
-    _CHAT_MCP_CONFIG_PATH = path
-    log.info("chat MCP configurato: url=%s tools=%d", mcp_url, len(_CHAT_TOOLS.split(",")))
-    return path
-
-
-def _chat_claude_args(system: str, user: str, model: str,
-                      mcp_config_path: "str | None", tools: str) -> list:
-    args = ["claude", "-p", user, "--model", model,
+def _chat_claude_args(system: str, user: str, model: str) -> list:
+    return ["claude", "-p", user, "--model", model,
             "--system-prompt", system,
             "--exclude-dynamic-system-prompt-sections",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default", "--output-format", "json"]
-    if mcp_config_path:
-        args += ["--mcp-config", mcp_config_path, "--strict-mcp-config",
-                 "--allowedTools", tools]
-    return args
 
 def parse_decision(text: str) -> dict:
     """Decisione del runner nella forma che viaggia sulla reasoning API.
@@ -121,9 +76,9 @@ def _safe_subprocess_env() -> dict:
     return env
 
 def _reason_chat(job: dict, mode: str) -> dict:
-    """Chat-via-abbonamento: risponde come HIRIS con tool HA reali (via MCP
-    interno 2A) quando configurato. Fail-safe: mode!=live -> mock; su errore
-    torna sempre una {"reply": <str>}."""
+    """Chat-via-abbonamento: risponde come HIRIS in puro testo (nessun tool HA:
+    l'MCP interno che li serviva e' uscito, Fetta E2 Task 3). Fail-safe:
+    mode!=live -> mock; su errore torna sempre una {"reply": <str>}."""
     context = job.get("context") or {}
     history = context.get("history") or []
     system_prompt = context.get("system_prompt") or ""
@@ -131,7 +86,7 @@ def _reason_chat(job: dict, mode: str) -> dict:
         return {"reply": "[mock] risposta di prova"}
     system, user = prompts.build_chat_messages(system_prompt, history)
     model = os.environ.get("HIRIS_AGENT_CHAT_MODEL", "sonnet")
-    argv = _chat_claude_args(system, user, model, _CHAT_MCP_CONFIG_PATH, _CHAT_TOOLS)
+    argv = _chat_claude_args(system, user, model)
     try:
         proc = subprocess.run(argv, capture_output=True, text=True,
                               timeout=300, env=_safe_subprocess_env())
@@ -242,7 +197,6 @@ def main() -> None:
     base_url = os.environ["HIRIS_BASE_URL"].rstrip("/")
     mode = os.environ.get("HIRIS_AGENT_MODE", "mock")
     headers = build_headers()
-    configure_chat_mcp()
     interval = poll_seconds()
     log.info("hiris-agent avviato mode=%s poll=%ss", mode, interval)
     with httpx.Client(timeout=330) as client:

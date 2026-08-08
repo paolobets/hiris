@@ -12,7 +12,6 @@ import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 import aiohttp
-import uvicorn
 from aiohttp import web
 from apscheduler.triggers.cron import CronTrigger
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
@@ -1131,72 +1130,6 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
     return True
 
 
-async def _run_internal_mcp(server) -> None:
-    """Run the internal MCP server, containing a bind/startup failure to this
-    optional feature instead of letting SystemExit kill the whole addon.
-
-    uvicorn.Server.serve() calls sys.exit() when it can't bind its port (e.g.
-    INTERNAL_MCP_PORT already in use). Since this task is scheduled on the
-    SAME asyncio loop as the aiohttp app (see _on_startup below), an
-    unwrapped SystemExit would propagate through that shared loop and take
-    down the entire HIRIS process over what should be an optional, isolated
-    feature. Module-level (not inlined in _on_startup) so tests can exercise
-    the containment directly without booting the whole app.
-    """
-    try:
-        await server.serve()
-    except SystemExit as exc:
-        logger.error("Internal MCP server non avviato (porta occupata?): %s", exc)
-    except Exception:
-        logger.exception("Internal MCP server terminato con errore")
-
-
-class _EmbeddedMCPServer(uvicorn.Server):
-    """uvicorn.Server subclass for the embedded internal MCP server.
-
-    install_signal_handlers() is a no-op here: the internal MCP server runs
-    as a background asyncio task on the SAME event loop/process as the
-    aiohttp addon (see _on_startup/_on_cleanup below). uvicorn.Server.serve()
-    normally calls install_signal_handlers() and replaces the process-wide
-    SIGTERM/SIGINT handlers for the whole lifetime of the process -- that
-    would hijack the addon's own shutdown signals. The aiohttp app + s6 own
-    process shutdown; this task's cleanup is already driven by _on_cleanup
-    cancelling internal_mcp_task, so the embedded uvicorn must never touch
-    process signals.
-    """
-
-    def install_signal_handlers(self) -> None:
-        return
-
-
-def build_internal_mcp_server(*, hiris_base_url: str = "http://127.0.0.1:8099",
-                              local_token: str = ""):
-    """Costruisce (client, uvicorn.Config, guard) per il server MCP interno su
-    loopback. Isolato dall'avvio dell'app cosi' e' testabile senza bootare
-    tutto.
-
-    I-2 partial (Plan 2B final review, fast-follow): also returns `guard` so
-    callers can reach it -- previously `McpGuard()` was built here and handed
-    straight to `build_mcp`, with no reference kept anywhere else, so nothing
-    outside this function could ever inspect its audit trail or flip its
-    kill-switch. `_on_startup` below stores it on `app["mcp_guard"]`. No HTTP
-    endpoint/UI is added here (that remains a later gate) -- this only makes
-    the guard reachable in-process."""
-    from .mcp.guard import McpGuard
-    from .mcp.local_client import LocalExecuteClient
-    from .mcp.server import build_mcp, make_asgi_app
-    port = int(os.environ.get("INTERNAL_MCP_PORT", "8199"))
-    token = os.environ.get("INTERNAL_TOKEN", "")
-    # `local_token` marca queste letture come chat in-addon, esentandole dalla
-    # denylist di lettura del gateway (superficie remota). Vuoto = nessun
-    # marcatore = trattate come remote: fail-closed.
-    client = LocalExecuteClient(hiris_base_url, token, local_token=local_token)
-    guard = McpGuard()
-    asgi = make_asgi_app(build_mcp(client, guard))
-    config = uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="warning")
-    return client, config, guard
-
-
 def should_start_agent_worker() -> bool:
     """Gate worker chat-via-abbonamento in-addon (SP-2): attivo quando
     l'abbonamento è attivo (provider_subscription, o il legacy
@@ -1426,12 +1359,18 @@ async def _on_startup(app: web.Application) -> None:
     from .api.read_denylist import parse_read_denylist
     app["read_denylist"] = parse_read_denylist(
         os.environ.get("EXECUTE_API_READ_DENYLIST"))
-    # Marcatore delle letture della chat in-addon, che rientra in /api/execute
-    # dall'MCP interno su loopback: la denylist e' pensata per la superficie
-    # REMOTA, non per la chat, dove vale il perimetro del Chatbot. Segreto di
-    # processo (mai su disco, mai in configurazione) proprio perche' il campo
-    # `origin` del corpo, essendo fornito dal chiamante, sarebbe falsificabile
-    # da chiunque tenga l'internal token.
+    # Marcatore delle letture della chat in-addon: la denylist di
+    # api/handlers_execute.py e' pensata per la superficie REMOTA, non per la
+    # chat, dove vale il perimetro del Chatbot. Segreto di processo (mai su
+    # disco, mai in configurazione) proprio perche' il campo `origin` del
+    # corpo, essendo fornito dal chiamante, sarebbe falsificabile da chiunque
+    # tenga l'internal token.
+    # NB (Fetta E2 Task 3): il produttore di questo marcatore era l'MCP
+    # interno (mcp/local_client.py), uscito con questo task. Il token resta
+    # generato perche' api/handlers_execute.py (_is_local_chat) e' fuori
+    # perimetro qui -- nessun chiamante lo invia piu', quindi oggi
+    # _is_local_chat e' fail-closed sempre: revisione rimandata a quando
+    # tocchera' a handlers_execute.py.
     app["local_execute_token"] = secrets.token_urlsafe(32)
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
@@ -3015,43 +2954,17 @@ async def _on_startup(app: web.Application) -> None:
         app["claude_runner"] = None
         app["llm_router"] = None
 
-    # ── Internal MCP server (loopback-only, Plan 2A Task 3) ────────────────
-    # Serves the MCP tool surface over the local execute-API to an MCP-aware
-    # LLM client (e.g. Claude Desktop/Code via a local bridge), bound to
-    # 127.0.0.1 only -- never reachable off-box. Runs as a background asyncio
-    # task on the SAME event loop as the rest of the app; cancelled + the
-    # client's aiohttp session closed in _on_cleanup below.
-    _mcp_client, _mcp_config, _mcp_guard = build_internal_mcp_server(
-        local_token=app.get("local_execute_token") or "")
-    await _mcp_client.start()
-    _mcp_server = _EmbeddedMCPServer(_mcp_config)
-    app["internal_mcp_client"] = _mcp_client
-    # I-2 partial (Plan 2B final review, fast-follow): store the guard on the
-    # app so it's reachable (e.g. by a future admin endpoint or diagnostics)
-    # instead of being trapped inside build_internal_mcp_server's closure.
-    app["mcp_guard"] = _mcp_guard
-    # Through _spawn() (not a bare asyncio.create_task) per review C/#15's
-    # convention for every fire-and-forget task in this module -- _spawn's
-    # strong reference is redundant here (app already holds one via
-    # internal_mcp_task) but keeps this the ONE call site the AST-enforced
-    # test_only_spawn_itself_calls_asyncio_create_task expects.
-    app["internal_mcp_task"] = _spawn(
-        _run_internal_mcp(_mcp_server), name="internal_mcp_server"
-    )
-    logger.info("Internal MCP server avviato su 127.0.0.1:%s", _mcp_config.port)
-
     # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
     # Polls the internal reasoning queue and reasons via `claude -p` under the
     # user's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN) instead of metered
     # API spend. Off unless both the feature flag and the token are present
-    # (should_start_agent_worker); gated separately from the MCP server above
-    # since a subscription may be absent even when the MCP tool surface is
-    # up. Same _spawn()/app[...] cancel-in-cleanup convention as
-    # internal_mcp_task.
+    # (should_start_agent_worker). Il server MCP interno che la chat usava
+    # per i tool di controllo casa e' uscito (Fetta E2 Task 3): questo worker
+    # resta, ma senza quel percorso ragiona in puro testo (vedi
+    # agent/runner.py).
     if should_start_agent_worker():
         from .agent import runner as _agent_runner
 
-        _agent_runner.configure_chat_mcp()
         app["agent_worker_task"] = _spawn(
             _agent_runner.run_loop(
                 "http://127.0.0.1:8099",
@@ -3069,8 +2982,8 @@ async def _on_startup(app: web.Application) -> None:
 async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
     # M-2 (Plan 2B final review, fast-follow): stop the reasoning-queue
-    # CONSUMER (agent_worker_task) before the internal_mcp_task producer, and
-    # bound the wait. A claimed job can be sitting inside run_loop's
+    # consumer (agent_worker_task) and bound the wait. A claimed job can be
+    # sitting inside run_loop's
     # run_in_executor offload of the blocking `run_once` (subprocess.run
     # timeout=300 + httpx.Client timeout=330) -- an unbounded
     # `await aw` after cancel() would then stall addon shutdown for up to
@@ -3084,14 +2997,6 @@ async def _on_cleanup(app: web.Application) -> None:
         aw.cancel()
         with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
             await asyncio.wait_for(aw, timeout=5)
-    task = app.get("internal_mcp_task")
-    if task is not None:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-    client = app.get("internal_mcp_client")
-    if client is not None:
-        await client.stop()
     if app.get("mayan_client") is not None:
         await app["mayan_client"].aclose()
     if "mqtt_publisher" in app:

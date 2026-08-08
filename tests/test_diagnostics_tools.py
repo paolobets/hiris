@@ -307,18 +307,6 @@ def test_registrati_nel_runner_con_il_gating_giusto():
     assert "render_template" not in EVALUATION_ONLY_TOOLS
 
 
-def test_solo_il_logbook_nel_registro_mcp_del_gateway():
-    # Il gateway esegue i tool di lettura senza whitelist di entita': il
-    # perimetro remoto e' la denylist di lettura, che pota la risposta del
-    # logbook -- quindi la cronologia non e' piu' enumerabile in blocco e il
-    # tool e' rientrato. render_template no: un template legge qualunque stato e
-    # non ha un entity_id da filtrare, quindi la denylist non lo coprirebbe.
-    from hiris.app.mcp.tiers import TOOLS
-    voci = {t.name for t in TOOLS}
-    assert "get_logbook" in voci
-    assert "render_template" not in voci
-
-
 def test_solo_il_logbook_fra_i_read_tools_del_gateway():
     # Stessa ragione: derive_execute_policy concede SEMPRE i READ_TOOLS, senza
     # opt-in per singolo tool, e le letture partono con allowed_entities=None.
