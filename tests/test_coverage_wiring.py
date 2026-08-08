@@ -66,39 +66,10 @@ def test_health_monitor_lifecycle_wired_in_server_source():
 # quindi non c'e' proprio piu' nessun blocco coverage-review da ordinare.
 
 
-def test_health_scan_job_receives_supervisor_client_from_app_source():
-    """Fix wave 1 (FIX 1): il job periodico della scansione di salute (Task 6)
-    passa a run_health_scan() il SupervisorClient tramite `app.get(...)` -- un
-    accesso tollerante all'assenza perche' su installazioni senza Supervisor
-    lo slot non esiste affatto. Nessun test di questo file lo pinnava:
-    cancellare quell'argomento non farebbe fallire nulla (tutti i test di
-    run_health_scan passano il client direttamente), e i tre controlli di
-    sistema (addon_down, disk_space, updates_available) diventerebbero
-    silenziosamente muti in produzione mentre la suite resta verde. Controllo
-    sul sorgente, stessa convenzione inspect.getsource degli altri wiring
-    test di questo file."""
-    import inspect
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    assert 'supervisor_client=app.get("supervisor_client")' in src
-
-
-def test_health_scan_job_reads_notify_option_and_config_from_server_source():
-    """Fix wave 1 (FIX 5b): il job periodico deve passare a run_health_scan()
-    sia `notify_config` (il canale su cui inviare) sia `notify_enabled` letto
-    dall'opzione dell'add-on `brain_notify_high`. Nessun test lo pinnava:
-    cancellando quelle due righe la suite resterebbe verde (tutti i test di
-    run_health_scan passano la configurazione direttamente) e la notifica
-    tornerebbe codice morto in produzione, senza che nulla se ne accorga.
-    Controllo sul sorgente, stessa convenzione inspect.getsource degli altri
-    wiring test di questo file; ristretto al blocco della chiamata perche'
-    `notify_config=notify_config` compare anche altrove in _on_startup."""
-    import inspect
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    inizio = src.index("await run_health_scan(")
-    blocco = src[inizio:inizio + 1500]
-    assert "notify_config=notify_config" in blocco
-    assert 'notify_enabled=env_bool("BRAIN_NOTIFY_HIGH", True)' in blocco
+# fetta E3 Task 6: test_health_scan_job_receives_supervisor_client_from_app_
+# source e test_health_scan_job_reads_notify_option_and_config_from_server_
+# source sono usciti -- entrambi source-level check sulla chiamata a
+# `run_health_scan(...)` dentro `_on_startup`, cancellata per intero insieme
+# al job schedulato "hiris_health_scan" e a `brain/health_scan.py` (il Brain
+# che parlava). Nessun successore: quella call-site non esiste piu' in
+# nessuna forma.

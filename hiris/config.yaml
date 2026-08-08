@@ -86,13 +86,9 @@ options:
   sentinel_daily_cap: 20
   sentinel_cooldown_min: 30
 
-  # ── Brain (salute del sistema) ───────────────────────────────────────────
-  # Notifica push quando la scansione di salute apre, riapre o aggrava fino a
-  # grave una segnalazione. Solo severita' alta, e mai due volte per lo stesso
-  # problema entro 12 ore: la scansione gira ogni 30 minuti e ri-notificare
-  # sarebbe rumore. Metti a false per non riceverle: le segnalazioni restano
-  # comunque visibili.
-  brain_notify_high: true
+  # fetta E3 Task 6: esce `brain_notify_high` -- la scansione di salute che
+  # notificava e l'AdvisoryStore che le segnalazioni le persisteva sono
+  # entrambi usciti col Brain che parlava (resoconto, solleciti, scansione).
 
   # ── Ponte push (knobs) ────────────────────────────────────────────────────
   bridge_enabled: false
@@ -162,9 +158,6 @@ schema:
   # ── Sentinella (knobs) ────────────────────────────────────────────────────
   sentinel_daily_cap: int(0,200)
   sentinel_cooldown_min: int(1,1440)
-
-  # ── Brain (salute del sistema) ───────────────────────────────────────────
-  brain_notify_high: bool
 
   # ── Ponte push (knobs) ────────────────────────────────────────────────────
   bridge_enabled: bool

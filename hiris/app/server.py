@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import shutil
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 import aiohttp
 from aiohttp import web
@@ -53,8 +53,6 @@ from .brain.knowledge_store import KnowledgeStore
 from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
 from .brain.reasoner_memory import relevant_memory, MemoryRecall
-from .brain.briefing import build_briefing_bundle, compose_briefing
-from .brain.reminders import ReminderSeen, due_nudges
 from .watcher.policy import load_policy
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
@@ -454,110 +452,14 @@ def _portrait_context(app) -> str:
         return ""
 
 
-async def run_daily_briefing(app, *, today, llm_reason, notify) -> str | None:
-    """Slice 7 (Maggiordomo) Task 4: the consolidated daily butler briefing
-    job, replacing the old per-obligation spam (`hiris_due_reminders` /
-    `_notify_due_obligations`, one notification per due obligation, no
-    dedup) with ONE grounded resoconto per day.
-
-    Module-level (not inlined in `_on_startup`) so it's unit-testable with a
-    plain dict standing in for `app` -- same convention as
-    `_reason_memory_context` above; `app` only needs `.get("knowledge_store")`,
-    `.get("entity_cache")`, `.get("llm_router")` and `.get("advisory_store")`.
-
-    Le batterie scariche arrivano da `advisory_store`, dove i controlli di
-    salute del Brain hanno gia' scritto le loro segnalazioni: il briefing non
-    le ricalcola piu' e la policy dei rilevatori non entra piu' qui.
-
-    Egress gate: `allow_sensitive` is True only when
-    `LLMRouter.automatic_allows_sensitive()` reports the automatic backend
-    chain is entirely local (Slice 6b Task 1) -- the SAME gate
-    `_reason_memory_context` applies, fed into `build_briefing_bundle`
-    (Task 1) so sensitive deadlines are excluded (but still counted) from
-    a cloud-routed briefing. `compose_briefing` (Task 2) is itself
-    failure-safe (grounded LLM composition with a deterministic template
-    fallback, never raises, never returns empty), and is called with the
-    injected `llm_reason` -- SAME `_llm_reason` closure the sentinel
-    reasoner uses (allowed_tools=[], no actuation from this call).
-
-    The WHOLE body is wrapped in try/except: any failure (bad app wiring,
-    a raising `notify`, anything) is logged and degrades to returning
-    None -- this must NEVER raise into the scheduler.
-    """
-    try:
-        router = app.get("llm_router")
-        allow_sensitive = router.automatic_allows_sensitive() if router is not None else False
-        bundle = build_briefing_bundle(
-            app.get("knowledge_store"), app.get("entity_cache"),
-            today=today, allow_sensitive=allow_sensitive,
-            advisory_store=app.get("advisory_store"),
-        )
-        text = await compose_briefing(bundle, llm_reason)
-        await notify(text)
-        return text
-    except Exception:
-        logger.error("run_daily_briefing failed", exc_info=True)
-        return None
-
-
-_NUDGE_THRESHOLD_LABELS = {"overdue": "Scaduto", "today": "Oggi", "tomorrow": "Domani"}
-
-
-def _format_nudge_message(item: dict, threshold: str) -> str:
-    """Deterministic (non-LLM) urgent-nudge message text.
-
-    CRITICAL (Task 3 carry-forward): an obligation's `due_date` column is
-    free TEXT with no write-time format validation, so a poisoned value
-    that passed the store's lexicographic `upcoming_obligations` filter
-    must NEVER be echoed verbatim into a notification. `due_nudges` has
-    already re-derived `threshold` via `urgency_of` (which only ever
-    returns "overdue"/"today"/"tomorrow"/None off a validated `%Y-%m-%d`
-    parse) -- the label below is the only date information this message
-    exposes, never the raw column value. `content` is sanitized through
-    the shared `_san` filter (proxy._sanitize.sanitize_ha_value), same
-    prompt-injection defense `build_briefing_message` applies -- relevant
-    here too since this text is what actually reaches the user's device.
-    """
-    try:
-        from .proxy._sanitize import sanitize_ha_value as _san
-    except Exception:  # pragma: no cover - fallback difensivo
-        _san = lambda v: v  # noqa: E731
-    label = _NUDGE_THRESHOLD_LABELS.get(threshold, threshold or "")
-    content = _san((item or {}).get("content") or "")
-    return f"{label}: {content}"
-
-
-async def run_urgent_nudges(store, *, today, seen, notify_item) -> int:
-    """Slice 7 Task 4: the deduped urgent-nudge job, separate from the
-    once-a-day briefing above so a deadline crossing into overdue/today/
-    tomorrow doesn't wait until the next 08:00 run to be flagged.
-
-    `due_nudges` (Task 3) is a pure query + dedup lookup that does NOT mark
-    anything itself; marking only happens here, and only AFTER a
-    successful `notify_item`, so a failed send is naturally retried on the
-    next tick instead of being silently dropped.
-
-    Per-item try/except: one failing notification must not block the rest
-    of the batch, and a failure must not mark that (key, threshold) as
-    seen. Outer guard: a `due_nudges`/`store` failure degrades to 0 sent
-    rather than raising into the scheduler.
-    """
-    count = 0
-    try:
-        nudges = due_nudges(store, today=today, seen=seen)
-    except Exception:
-        logger.error("run_urgent_nudges: due_nudges query failed", exc_info=True)
-        return 0
-
-    for n in nudges:
-        try:
-            await notify_item(n["item"], n["threshold"])
-            seen.mark(n["key"], n["threshold"])
-            count += 1
-        except Exception:
-            logger.error("run_urgent_nudges: notify/mark failed for key=%r", n.get("key"), exc_info=True)
-            continue
-    return count
+# fetta E3 Task 6: `run_daily_briefing` (resoconto delle 08:00),
+# `_format_nudge_message`/`run_urgent_nudges` (solleciti ogni 6 ore) sono
+# uscite qui insieme al canale che le portava all'utente. Leggevano
+# `knowledge_store.upcoming_obligations` e `advisory_store` -- due basi che
+# questa fetta svuota di senso (l'advisory_store muore in questo stesso
+# task, il resoconto sulla conoscenza 2.0 tornera' quando avra' il nucleo da
+# leggere). SILENZIO DICHIARATO: da qui HIRIS smette di parlare da solo,
+# vedi il commento sopra il cablaggio dello scheduler, piu' sotto.
 
 
 async def ricarica_inventario_entita(cache, ha_client) -> bool:
@@ -574,8 +476,8 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
     Non tocca una cache gia' viva: da quel momento la mantengono aggiornata gli
     eventi di stato, e rileggere tutta la casa a ogni giro sarebbe traffico
     inutile verso Home Assistant. Modulo-level (non chiuso dentro
-    `_on_startup`) per la stessa ragione di `run_daily_briefing`: si prova
-    senza avviare l'applicazione.
+    `_on_startup`) per essere unit-testabile con un semplice dict al posto
+    di `app`: si prova senza avviare l'applicazione.
 
     Non solleva mai: gira nello scheduler, e un Home Assistant ancora giu' e'
     il caso previsto, non un errore da propagare -- il giro successivo
@@ -1301,11 +1203,25 @@ async def _on_startup(app: web.Application) -> None:
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
 
-    # Archivio delle segnalazioni del Brain. Il resto del cervello proattivo
-    # (piu' sotto) usa lo stesso oggetto.
-    from .brain.advisory_store import AdvisoryStore
-    advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
-    app["advisory_store"] = advisory_store
+    # fetta E3 Task 6: l'AdvisoryStore (le segnalazioni del Brain -- batterie
+    # scariche, entita' non disponibili, automazioni rotte, domini pericolosi,
+    # entita' senza area) esce insieme a tutti i suoi lettori/scrittori: il
+    # resoconto delle 08:00, i solleciti ogni 6 ore e la scansione di salute
+    # ogni 30 minuti che la popolava. SILENZIO DICHIARATO: nessuno slot app
+    # "advisory_store", nessuna rotta /api/brain/advisories*, nessuna
+    # scrittura. Un'installazione precedente puo' avere un advisory.db
+    # popolato su disco -- non lo cancelliamo (mai dati utente in /data), ma
+    # se c'e' lo diciamo esplicitamente nel log invece di incontrarlo in
+    # silenzio: un pass muto sarebbe indistinguibile da un guasto.
+    _advisory_db_path = os.path.join(data_dir, "advisory.db")
+    if os.path.exists(_advisory_db_path):
+        logger.info(
+            "advisory.db presente in %s da un'installazione precedente: "
+            "da fetta E3 Task 6 nessun codice lo legge ne' lo scrive piu' "
+            "(il Brain che parlava -- resoconto, solleciti, scansione di "
+            "salute -- e' uscito). Il file resta su disco, intatto.",
+            _advisory_db_path,
+        )
 
     from .brain.portrait_store import PortraitStore
     try:
@@ -1407,10 +1323,12 @@ async def _on_startup(app: web.Application) -> None:
         #
         # Agenti v1.1 Fase 2 Task 3: `agent_id` + `allowed_entities`/
         # `allowed_services` are the reasoning agent's IDENTITY and PERIMETER.
-        # They are `None` for every caller today (guardian wakes, briefing) --
-        # the anonymous/unscoped call they always made. Situations/holistic/
-        # coverage-review were also unscoped callers, and are gone entirely
-        # since fetta E3 Task 4 (the ronda). The only supplier of a real
+        # They are `None` for every caller today (guardian wakes) -- the
+        # anonymous/unscoped call they always made. The daily briefing was
+        # also an unscoped caller, and is gone since fetta E3 Task 6 (the
+        # Brain stops speaking). Situations/holistic/coverage-review were
+        # also unscoped callers, and are gone entirely since fetta E3 Task 4
+        # (the ronda). The only supplier of a real
         # perimeter was a user-defined Agentbot with a perimeter block
         # (mode="objective"), via `_run_decision` -- that whole layer
         # (`watcher/agentbot_runner.py`, `_run_decision`'s own `agent_id`/
@@ -1462,62 +1380,16 @@ async def _on_startup(app: web.Application) -> None:
             return out[0] or ""
         return out or ""
 
-    # ── Daily butler briefing + deduped urgent nudges (Slice 7, Task 4) ────
-    # Replaces the old per-obligation daily spam job (id "hiris_due_reminders",
-    # one notification per due obligation, no dedup, template-only text)
-    # with ONE consolidated grounded briefing
-    # (build_briefing_bundle + compose_briefing, Tasks 1-2) at 08:00, plus a
-    # separate deduped urgent-nudge job (Task 3's due_nudges/ReminderSeen)
-    # that flags overdue/today/tomorrow deadlines between briefings without
-    # re-sending ones already delivered. Both helpers (run_daily_briefing,
-    # run_urgent_nudges) live at module level and are independently
-    # unit-testable -- see test_briefing_wiring.py.
-    #
-    # Single long-lived ReminderSeen instance: its sidecar JSON file is a
-    # read-modify-write (load, mutate, atomic replace) that is NOT safe to
-    # race across concurrent instances (Task 3's concurrency note) -- one
-    # instance shared by every _urgent_nudges tick avoids that.
-    reminder_seen = ReminderSeen(data_dir)
-
-    async def _briefing_notify(message: str) -> None:
-        # SAME notification path the removed job used (ha_push channel).
-        await send_notification(ha_client, message, "ha_push", notify_config)
-
-    async def _daily_briefing() -> None:
-        await run_daily_briefing(
-            app, today=date.today(), llm_reason=_llm_reason, notify=_briefing_notify,
-        )
-
-    async def _nudge_notify(item: dict, threshold: str) -> None:
-        # Deterministic message (NOT via the LLM) -- see _format_nudge_message
-        # for why the raw due_date column is never echoed here.
-        await send_notification(
-            ha_client, _format_nudge_message(item, threshold), "ha_push", notify_config,
-        )
-
-    async def _urgent_nudges() -> None:
-        store = app.get("knowledge_store")
-        if store is None:
-            return
-        await run_urgent_nudges(
-            store, today=date.today(), seen=reminder_seen, notify_item=_nudge_notify,
-        )
-
-    engine._scheduler.add_job(
-        _daily_briefing,
-        trigger="cron", hour=8, minute=0,
-        id="hiris_daily_briefing", replace_existing=True, misfire_grace_time=3600,
-    )
-    # Interval (not a single daily cron) so an obligation that becomes urgent
-    # BETWEEN morning briefings -- e.g. a document ingested midday creating a
-    # deadline due tomorrow -- gets its punctual nudge within hours instead of
-    # waiting for the next 08:00. Dedup (ReminderSeen) keeps each threshold to
-    # one notification regardless of how many ticks see it.
-    engine._scheduler.add_job(
-        _urgent_nudges,
-        trigger="interval", hours=6,
-        id="hiris_urgent_nudges", replace_existing=True, misfire_grace_time=3600,
-    )
+    # fetta E3 Task 6, SILENZIO DICHIARATO: qui vivevano i job schedulati
+    # "hiris_daily_briefing" (cron 08:00, resoconto consolidato via
+    # build_briefing_bundle+compose_briefing) e "hiris_urgent_nudges"
+    # (interval 6h, solleciti dedup via due_nudges/ReminderSeen) -- il canale
+    # per cui il Brain parlava all'utente ogni giorno. Usciti insieme a
+    # `brain/briefing.py` e `brain/reminders.py`: da questo task HIRIS non
+    # manda piu' ne' il resoconto delle 08:00 ne' i solleciti sulle
+    # scadenze. E' il comportamento deciso ("conosce ma non agisce"), non un
+    # guasto -- vedi il commit e il report del task per il perche'. Tornera'
+    # quando la conoscenza 2.0 avra' il nucleo da cui comporlo.
 
     async def _notify(message, *, title):
         # Reuses the exact notify_config object passed to the dispatcher/
@@ -1714,36 +1586,21 @@ async def _on_startup(app: web.Application) -> None:
     # task (non e' nel file-list del brief), quindi non li tocco -- restano
     # orfani dichiarati per chi tocchera' la Sentinella/il semaforo.
 
-    # SP-3 Task 8: periodic read-only health scan (8 checks: 5 sulla casa, 3
-    # sul sistema tramite il Supervisor) reconciled into the AdvisoryStore.
-    # fetta E3 Task 5: la prune notturna del reasoning capture log e' uscita
-    # insieme a `reasoning_log`/ReasoningLog (sotto non c'e' piu' nessun job
+    # fetta E3 Task 6, SILENZIO DICHIARATO: qui viveva il job schedulato
+    # "hiris_health_scan" (interval `HIRIS_HEALTH_SCAN_MINUTES`, 30' di
+    # default -- 8 controlli, 5 sulla casa e 3 sul sistema via Supervisor,
+    # riconciliati nell'AdvisoryStore con push delle sole segnalazioni gravi
+    # nuove o riaperte, l'opzione add-on `brain_notify_high`). `health_
+    # checks.py` importava il semaforo (la casa vecchia); l'archivio che
+    # scriveva (`brain/advisory_store.py`) e' uscito sopra, insieme al
+    # canale (`notifiche.py`) che portava le sue segnalazioni gravi
+    # all'utente. Da questo task nessuna scansione di salute gira piu' --
+    # comportamento deciso, non un guasto: vedi il commit e il report.
+    # `HIRIS_HEALTH_SCAN_MINUTES` esce con il suo unico lettore (non era
+    # un'opzione add-on: nessuna voce in config.yaml/run.sh/translations).
+    # fetta E3 Task 5: la prune notturna del reasoning capture log era gia'
+    # uscita insieme a `reasoning_log`/ReasoningLog (nessun job
     # `hiris_reasoning_prune`).
-    from .brain.health_scan import run_health_scan
-
-    async def _run_health_scan():
-        try:
-            pol = app.get("execute_policy") or {}
-            await run_health_scan(
-                ha_client=ha_client, entity_cache=app.get("entity_cache"),
-                tiers=pol.get("tiers") or {}, entity_tiers=pol.get("entity_tiers") or {},
-                store=advisory_store, now=datetime.now(timezone.utc),
-                # Senza SUPERVISOR_TOKEN lo slot non esiste affatto: `.get`
-                # restituisce None e i controlli di sistema restano muti.
-                supervisor_client=app.get("supervisor_client"),
-                # Notifica push per le sole segnalazioni gravi nuove o
-                # riaperte: stesso `notify_config` (e stesso deep-link) del
-                # briefing e dei solleciti. Disattivabile con l'opzione
-                # `brain_notify_high`, attiva per impostazione predefinita.
-                notify_config=notify_config,
-                notify_enabled=env_bool("BRAIN_NOTIFY_HIGH", True))
-        except Exception:
-            logger.exception("health scan failed")
-
-    engine._scheduler.add_job(
-        _run_health_scan, trigger="interval",
-        minutes=int(os.environ.get("HIRIS_HEALTH_SCAN_MINUTES", "30")),
-        id="hiris_health_scan", replace_existing=True, misfire_grace_time=300)
 
     async def _portrait_observe_job():
         try:
@@ -1994,8 +1851,6 @@ async def _on_cleanup(app: web.Application) -> None:
         app["history_store"].close()
     if "sentinel_store" in app:
         app["sentinel_store"].close()
-    if "advisory_store" in app:
-        app["advisory_store"].close()
     if "portrait_store" in app:
         app["portrait_store"].close()
     if "reasoning_queue" in app:
@@ -2125,13 +1980,13 @@ def create_app() -> web.Application:
     # fetta E3 Task 5: /api/brain/feed e /api/brain/reasoning sono uscite col
     # Brain auto-proponente (handle_brain_feed componeva reasoning_log/
     # brain.feed, handle_brain_reasoning leggeva il solo reasoning_log --
-    # entrambi usciti). Le advisories restano fino al Task 6.
-    from .api.handlers_brain import (
-        handle_list_advisories, handle_ack_advisory, handle_dismiss_advisory,
-    )
-    app.router.add_get("/api/brain/advisories", handle_list_advisories)
-    app.router.add_post("/api/brain/advisories/{id}/ack", handle_ack_advisory)
-    app.router.add_post("/api/brain/advisories/{id}/dismiss", handle_dismiss_advisory)
+    # entrambi usciti).
+    # fetta E3 Task 6: /api/brain/advisories* e' uscita con loro --
+    # `handlers_brain.py` (che a questo punto conteneva solo le advisories)
+    # e' cancellato per intero. La Dashboard (static/config/dashboard.js:206,
+    # 257-258 e static/config/main.js:127) chiamava queste tre rotte per il
+    # pannello segnalazioni e il badge nella nav: restano rotte morte,
+    # elenco per la E5 (static/ non e' nel perimetro di questo task).
 
     # Task 6 SDD casa: sola lettura, per guardare dal vivo cio' che l'archivio
     # ha ricostruito -- la suite verde non prova che la lettura funzioni.

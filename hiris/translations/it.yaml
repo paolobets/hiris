@@ -98,9 +98,6 @@ configuration:
   sentinel_cooldown_min:
     name: "Sentinella — Pausa tra risvegli (minuti)"
     description: "Minuti minimi tra due risvegli sullo stesso segnale. Predefinito: 30."
-  brain_notify_high:
-    name: "Salute del sistema — notifica i problemi gravi"
-    description: "Invia una notifica push quando la scansione di salute apre o riapre una segnalazione grave, o quando una già aperta si aggrava fino a diventare grave. Mai per un aggiornamento che non alza la gravità, e mai due volte per lo stesso problema entro 12 ore: la scansione gira ogni 30 minuti. Predefinito: attivo."
   bridge_enabled:
     name: "Ponte abbonamento — attiva"
     description: "Instrada la chat via abbonamento (se attiva sotto) a un runner esterno su abbonamento invece che al provider locale/a consumo. Spento = la chat via abbonamento non si attiva."

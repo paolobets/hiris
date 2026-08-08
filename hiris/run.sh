@@ -33,9 +33,8 @@ export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 export SENTINEL_DAILY_CAP=$(bashio::config 'sentinel_daily_cap' '20')
 export SENTINEL_COOLDOWN_SEC=$(( $(bashio::config 'sentinel_cooldown_min' '30') * 60 ))
 
-# Notifica push per le segnalazioni gravi nuove o riaperte della scansione di
-# salute (Brain). Attiva per impostazione predefinita.
-export BRAIN_NOTIFY_HIGH=$(bashio::config 'brain_notify_high' 'true')
+# fetta E3 Task 6: esce BRAIN_NOTIFY_HIGH/brain_notify_high -- la scansione di
+# salute che leggeva questa opzione e' uscita col Brain che parlava.
 
 export BRIDGE_ENABLED=$(bashio::config 'bridge_enabled' 'false')
 export BRIDGE_DEADLINE_MIN=$(bashio::config 'bridge_deadline_min' '5')

@@ -11,6 +11,7 @@ from hiris.app.proxy.health_monitor import (
     MAX_TOP_ERRORS,
     MAX_UNAVAILABLE_ENTITIES,
     MAX_UPDATES,
+    entita_non_disponibili,
 )
 
 
@@ -186,6 +187,52 @@ def test_on_state_changed_non_duplica_ne_ringiovanisce_una_caduta(monitor):
     voci = monitor._snapshot_data["unavailable_entities"]
     assert len(voci) == 1
     assert voci[0]["since"] == "2026-03-05T10:00:00Z"
+
+
+# ── entita_non_disponibili (funzione pura) ──────────────────────────────────
+# fetta E3 Task 6: spostati da tests/test_health_checks.py -- la funzione si
+# e' trasferita qui (unico lettore rimasto, vedi health_monitor.py) insieme
+# alle prove sulla sua forma che i test sopra, passando dalla classe
+# HealthMonitor, non coprivano (split del dominio, ripiego del nome
+# sull'identificativo, `since` assente). Le prove sulla RELAZIONE con
+# `check_entity_unavailable` (segnalazione del Brain come sottoinsieme di
+# questa lista) sono cancellate, non spostate: quel controllo e' uscito con
+# tutto il Brain che parlava.
+
+def test_entita_non_disponibili_e_la_fonte_del_fatto():
+    """La lista di chi non risponde ADESSO nasce dagli stati veri di HA.
+
+    `since` viene da `last_changed`, non dall'istante in cui HIRIS se n'e'
+    accorto: la durata dell'assenza e' quella di Home Assistant, uguale per
+    chiunque la legga.
+    """
+    states = [
+        {"entity_id": "sensor.giu", "state": "unavailable",
+         "last_changed": "2026-07-20T00:00:00+00:00",
+         "attributes": {"friendly_name": "Giu"}},
+        {"entity_id": "light.ignota", "state": "unknown",
+         "last_updated": "2026-07-27T23:00:00+00:00", "attributes": {}},
+        {"entity_id": "sensor.ok", "state": "22.5",
+         "last_changed": "2026-07-01T00:00:00+00:00", "attributes": {}},
+    ]
+    voci = entita_non_disponibili(states)
+    assert [v["entity_id"] for v in voci] == ["sensor.giu", "light.ignota"]
+    assert voci[0] == {
+        "entity_id": "sensor.giu", "domain": "sensor",
+        "since": "2026-07-20T00:00:00Z", "state": "unavailable", "name": "Giu",
+    }
+    # Senza nome amichevole si ripiega sull'identificativo.
+    assert voci[1]["name"] == "light.ignota"
+    assert voci[1]["domain"] == "light"
+
+
+def test_entita_non_disponibili_senza_istante_resta_nell_elenco():
+    """HA puo' non portare un istante leggibile: l'entita' non risponde lo
+    stesso (resta nello snapshot), ma da quanto non si sa."""
+    states = [{"entity_id": "sensor.senza_ts", "state": "unavailable",
+               "attributes": {}}]
+    voci = entita_non_disponibili(states)
+    assert len(voci) == 1 and voci[0]["since"] is None
 
 
 @pytest.mark.asyncio

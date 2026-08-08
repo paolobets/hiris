@@ -7,17 +7,60 @@ import threading
 from datetime import datetime, timezone
 from typing import Any
 
-# Il fatto "questa entita' non risponde" ha una sola derivazione, e vive
-# accanto al controllo del Brain che ne fa una segnalazione
-# (brain/health_checks.entita_non_disponibili). Qui la si usa per lo snapshot
-# istantaneo: stessa regola, stessa forma delle voci, stesso `since`. Prima le
-# due liste nascevano da due calcoli distinti e potevano contraddirsi sulla
-# stessa entita' -- vedi il docstring di `check_entity_unavailable`.
-from ..brain.health_checks import entita_non_disponibili
-
 logger = logging.getLogger(__name__)
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+# Stati con cui Home Assistant dice "non ho un valore per questa entita'".
+STATI_NON_DISPONIBILI = ("unavailable", "unknown")
+
+
+def _parse_iso(v):
+    if not v or not isinstance(v, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def entita_non_disponibili(states):
+    """Entita' che NON rispondono adesso, dalla lista completa degli stati.
+
+    fetta E3 Task 6: viveva in `brain/health_checks.py` (unica derivazione
+    del fatto "questa entita' non risponde", usata sia da questo monitor sia
+    dal controllo `check_entity_unavailable` del Brain). Il Brain e il suo
+    health_scan sono usciti con quel task -- questo era il solo altro
+    lettore, e la funzione si sposta qui con lui invece di sparire: e' pura
+    (nessun I/O, nessuna scrittura, mai solleva su voci malformate) e resta
+    l'unica fonte di questo fatto per lo snapshot istantaneo.
+
+    `since` viene da `last_changed` (o `last_updated`) normalizzato a UTC:
+    la durata dell'assenza e' quella di Home Assistant, non l'istante in cui
+    HIRIS se n'e' accorto. Vale None quando HA non porta un istante
+    leggibile -- l'entita' non risponde lo stesso, ma da quanto non si sa.
+    """
+    out = []
+    for s in states or []:
+        if not isinstance(s, dict):
+            continue
+        if s.get("state") not in STATI_NON_DISPONIBILI:
+            continue
+        eid = s.get("entity_id") or ""
+        if not eid:
+            continue
+        ts = _parse_iso(s.get("last_changed") or s.get("last_updated"))
+        attributi = s.get("attributes")
+        nome = (attributi or {}).get("friendly_name") if isinstance(attributi, dict) else None
+        out.append({
+            "entity_id": eid,
+            "domain": eid.split(".", 1)[0] if "." in eid else "",
+            "since": ts.astimezone(timezone.utc).strftime(_TS_FMT) if ts else None,
+            "state": s.get("state"),
+            "name": nome or eid,
+        })
+    return out
 
 # Cap per sezione. Servono a proteggere il PROMPT dell'LLM: con molti problemi
 # in casa una lista senza limite finirebbe intera nel contesto. Il taglio
@@ -87,12 +130,12 @@ class HealthMonitor:
     - APScheduler ogni 30 min → full refresh di tutte le sezioni
     - Persistenza JSON su disco → sopravvive ai restart
 
-    La sezione `unavailable` risponde a «cosa non risponde ADESSO». Non e' la
-    stessa domanda a cui rispondono le segnalazioni del Brain
-    (`brain/health_checks.check_entity_unavailable`), che tengono solo le
-    assenze che durano da giorni -- ma il fatto sotto le due letture e' uno
-    solo: entrambe passano da `entita_non_disponibili`, e le segnalazioni sono
-    sempre un sottoinsieme di questa sezione.
+    La sezione `unavailable` risponde a «cosa non risponde ADESSO», sempre
+    da `entita_non_disponibili` qui sopra. fetta E3 Task 6: rispondeva anche
+    a una seconda domanda -- «cosa e' rotto da giorni?», le segnalazioni
+    persistenti del Brain (`brain/health_checks.check_entity_unavailable`,
+    un FILTRO per durata sopra questa stessa lista) -- uscita con tutto il
+    Brain che parlava. Questa sezione resta l'unica fonte del fatto.
     """
 
     def __init__(
@@ -238,10 +281,10 @@ class HealthMonitor:
 
         Tiene aggiornata fra un refresh e l'altro la lista di chi non risponde
         adesso. La voce la costruisce `entita_non_disponibili`, la stessa
-        derivazione usata dal refresh e dal controllo del Brain: cosi' `since`
-        e' sempre l'istante di Home Assistant e non quello in cui HIRIS ha
-        visto l'evento (che dopo un riavvio farebbe sembrare appena avvenuta
-        una caduta vecchia di giorni).
+        derivazione usata dal refresh: cosi' `since` e' sempre l'istante di
+        Home Assistant e non quello in cui HIRIS ha visto l'evento (che dopo
+        un riavvio farebbe sembrare appena avvenuta una caduta vecchia di
+        giorni).
         """
         entity_id = event_data.get("entity_id", "")
         if not entity_id:
