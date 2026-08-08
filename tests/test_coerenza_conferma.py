@@ -32,9 +32,6 @@
 import re
 from pathlib import Path
 
-import pytest
-from aiohttp import web
-
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app"
 DOCS = Path(__file__).resolve().parents[1] / "docs"
 
@@ -156,121 +153,16 @@ def test_editor_chatbot_dichiara_cosa_copre_la_conferma():
 # la Fetta E2 Task 3 -- MCP non e' piu' servito a Claude. Le guardie che
 # leggevano le sue descrizioni (promesse di conferma, perimetro del filtro di
 # create_task) sono uscite con lui: quel testo non esiste piu' in nessun file.
+#
+# I due pin che restavano qui (cancel_task senza gate, create_task filtrato
+# solo al primo livello) esercitavano `handle_execute` direttamente: erano
+# fatti reali di /api/execute, non della descrizione MCP. Con la Fetta E2
+# Task 4 api/handlers_execute.py esce a sua volta -- quella superficie (e il
+# suo pre-screening delle azioni di create_task per tier, unico nel suo
+# genere: ne' dispatcher.py ne' task_engine.py lo rifanno) non esiste piu' in
+# nessun file. Il soggetto dei due pin e' sparito con lei, non solo la via
+# d'accesso: nessun posto dove spostarli.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_cancel_task_viene_dispacciato_senza_gate(aiohttp_client):
-    """Pin della realta' che la descrizione ora racconta: cancel_task va
-    diritto al dispatcher. Se un domani gli si costruisce davvero un gate,
-    questo test cade e la descrizione va riscritta insieme."""
-    from hiris.app.api.handlers_execute import handle_execute
-
-    class _FakeDispatcher:
-        def __init__(self):
-            self.calls = []
-
-        async def dispatch(self, name, inputs, **kw):
-            self.calls.append((name, inputs))
-            return {"ok": True}
-
-    app = web.Application()
-    app["internal_token"] = "secret"
-    app["execute_policy"] = {"tools": ["cancel_task"]}
-    app["read_denylist"] = []
-    app["tool_dispatcher"] = _FakeDispatcher()
-    app.router.add_post("/api/execute", handle_execute)
-
-    client = await aiohttp_client(app)
-    resp = await client.post(
-        "/api/execute",
-        json={"tool": "cancel_task", "input": {"task_id": "t1"}},
-        headers={"X-HIRIS-Internal-Token": "secret"},
-    )
-    assert resp.status == 200
-    body = await resp.json()
-    assert body["result"] == {"ok": True}
-    assert app["tool_dispatcher"].calls == [("cancel_task", {"task_id": "t1"})]
-
-
-class _DispatcherTask:
-    """Dispatcher finto: registra le chiamate che superano il filtro."""
-
-    def __init__(self):
-        self.calls = []
-
-    async def dispatch(self, name, inputs, **kw):
-        self.calls.append((name, inputs))
-        return {"task_id": "t9"}
-
-
-def _app_create_task(tmp_path) -> web.Application:
-    """App minima per /api/execute con create_task esposto e light.rosso rosso."""
-    from hiris.app.api.handlers_execute import handle_execute
-
-    app = web.Application()
-    app["internal_token"] = "secret"
-    app["data_dir"] = str(tmp_path)
-    app["execute_policy"] = {
-        "tools": ["create_task"],
-        "tiers": {"light": "green"},
-        "entity_tiers": {"light.rosso": "red"},
-    }
-    app["read_denylist"] = []
-    app["tool_dispatcher"] = _DispatcherTask()
-    app.router.add_post("/api/execute", handle_execute)
-    return app
-
-
-def _azione_rossa() -> dict:
-    return {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-            "data": {"entity_id": "light.rosso"}}
-
-
-@pytest.mark.asyncio
-async def test_create_task_filtra_solo_le_azioni_di_primo_livello(aiohttp_client, tmp_path):
-    """Pin della realta' che la descrizione ora racconta.
-
-    Il filtro verde di handlers_execute (224-246) ispeziona le azioni di PRIMO
-    LIVELLO. Un'azione non verde nascosta dentro un task annidato
-    (create_task dentro create_task, ammesso da tools/dispatcher.py::
-    _ALLOWED_TASK_ACTIONS e attuato da task_engine 513-521) non viene vista
-    qui: e' fermata allo scatto dal semaforo del task_engine, che per un tier
-    giallo/rosso chiede uno step-up all'owner. Non e' un varco sul semaforo,
-    e' un messaggio d'errore peggiore -- lo stesso compromesso gia' accettato
-    per allowed_entities in tools/dispatcher.py.
-
-    Se un domani il filtro scendera' nell'annidamento, questo test cade e la
-    descrizione MCP va riscritta insieme.
-    """
-    app = _app_create_task(tmp_path)
-    client = await aiohttp_client(app)
-
-    # Primo livello: l'azione rossa fa rifiutare il task, senza dispatch.
-    resp = await client.post(
-        "/api/execute",
-        json={"tool": "create_task", "input": {
-            "label": "diretto", "trigger": {"type": "delay", "minutes": 1},
-            "actions": [_azione_rossa()]}},
-        headers={"X-HIRIS-Internal-Token": "secret"},
-    )
-    assert resp.status == 200
-    assert (await resp.json())["result"]["ok"] is False
-    assert app["tool_dispatcher"].calls == []
-
-    # Stessa azione, annidata: passa il filtro e arriva al dispatcher.
-    resp = await client.post(
-        "/api/execute",
-        json={"tool": "create_task", "input": {
-            "label": "annidato", "trigger": {"type": "delay", "minutes": 1},
-            "actions": [{"type": "create_task", "task": {
-                "label": "figlio", "trigger": {"type": "delay", "minutes": 2},
-                "actions": [_azione_rossa()]}}]}},
-        headers={"X-HIRIS-Internal-Token": "secret"},
-    )
-    assert resp.status == 200
-    assert (await resp.json())["result"] == {"task_id": "t9"}
-    assert len(app["tool_dispatcher"].calls) == 1
 
 
 # ---------------------------------------------------------------------------

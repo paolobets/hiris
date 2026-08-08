@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import shutil
 import time
 from datetime import date, datetime, timezone
@@ -462,10 +461,10 @@ async def request_confirmation_stepup(
     )
     msg = _confirmation_push_message(label, inputs, entry["otp"])
     # Owner decision (Fix 3): red/dangerous pendings are page/OTP-only — no
-    # one-tap notification buttons (matches the gateway's execute-API
-    # behaviour in handlers_execute.py, which uses actionable=(tier ==
-    # "yellow")). Only yellow gets actionable=True. The OTP is included in
-    # `msg` above unconditionally either way.
+    # one-tap notification buttons (matches the actionable=(tier=="yellow")
+    # rule the execute-API used when it still existed -- see Fetta E2 Task 4).
+    # Only yellow gets actionable=True. The OTP is included in `msg` above
+    # unconditionally either way.
     otp_sent = await notify(app, message=msg, actionable=(tier == "yellow"),
                             nonce=entry["id"], service=svc)
     return {"id": entry["id"], "otp_sent": bool(otp_sent)}
@@ -1344,34 +1343,24 @@ async def _on_startup(app: web.Application) -> None:
     _cidrs = [c.strip() for c in os.environ.get(
         "SUPERVISOR_INGRESS_CIDR", "172.30.32.0/23").split(",") if c.strip()]
     app["supervisor_ingress_cidrs"] = _cidrs or ["172.30.32.0/23"]
-    from .api.handlers_execute import parse_execute_policy
-    app["execute_policy"] = parse_execute_policy(
-        tools=os.environ.get("EXECUTE_API_TOOLS", ""),
-        entities=os.environ.get("EXECUTE_API_ENTITIES", ""),
-        services=os.environ.get("EXECUTE_API_SERVICES", ""),
-    )
-    # Denylist di lettura del gateway: entita'/domini che non escono mai da
-    # /api/execute. Volutamente NON dentro execute_policy: quel dict viene
-    # sostituito in blocco da apply_saved_policy quando l'utente salva il
-    # semaforo dalla UI, e la denylist ci sparirebbe dentro. `get` senza
-    # default: variabile assente = anello mancante = default protettivo
-    # (parse_read_denylist); stringa vuota = opzione svuotata dall'utente.
-    from .api.read_denylist import parse_read_denylist
-    app["read_denylist"] = parse_read_denylist(
-        os.environ.get("EXECUTE_API_READ_DENYLIST"))
-    # Marcatore delle letture della chat in-addon: la denylist di
-    # api/handlers_execute.py e' pensata per la superficie REMOTA, non per la
-    # chat, dove vale il perimetro del Chatbot. Segreto di processo (mai su
-    # disco, mai in configurazione) proprio perche' il campo `origin` del
-    # corpo, essendo fornito dal chiamante, sarebbe falsificabile da chiunque
-    # tenga l'internal token.
-    # NB (Fetta E2 Task 3): il produttore di questo marcatore era l'MCP
-    # interno (mcp/local_client.py), uscito con questo task. Il token resta
-    # generato perche' api/handlers_execute.py (_is_local_chat) e' fuori
-    # perimetro qui -- nessun chiamante lo invia piu', quindi oggi
-    # _is_local_chat e' fail-closed sempre: revisione rimandata a quando
-    # tocchera' a handlers_execute.py.
-    app["local_execute_token"] = secrets.token_urlsafe(32)
+    # Il semaforo (tiers/entity_tiers) resta anche senza la superficie
+    # remota: lo leggono ancora watcher/executor.py e task_engine.py, e lo
+    # costruisce apply_saved_policy() poco sotto quando l'utente ha salvato
+    # una policy del gateway dalla UI. Va inizializzato QUI comunque perche'
+    # TaskEngine e ToolDispatcher (piu' sotto in questa funzione) leggono
+    # app["execute_policy"] con l'accesso diretto -- senza questa riga,
+    # un'installazione senza policy salvata (apply_saved_policy ritorna
+    # subito) troverebbe la chiave assente e il boot fallirebbe con
+    # KeyError. Un dict vuoto e' gia' il default sicuro: ogni consumatore
+    # legge `.get("tiers") or {}` e un tiers vuoto fa risultare "off"
+    # (fail-closed) in security.semaphore.effective_tier, mai fail-open.
+    # NB (Fetta E2 Task 4): fino a qui, questa chiave veniva popolata da
+    # parse_execute_policy in api/handlers_execute.py -- uscita con questo
+    # task insieme a tutta la superficie /api/execute che leggeva
+    # policy["tools"]/["allowed_entities"]/["allowed_services"]. Quei tre
+    # campi non hanno piu' alcun consumatore: solo "tiers"/"entity_tiers"
+    # restano letti (dispatcher.py, task_engine.py, watcher/*).
+    app["execute_policy"] = {}
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
         logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
@@ -3117,9 +3106,6 @@ def create_app() -> web.Application:
     app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
     app.router.add_post("/api/knowledge/{id}/reject", handle_reject)
     app.router.add_post("/api/knowledge", handle_manual_add)
-
-    from .api.handlers_execute import handle_execute
-    app.router.add_post("/api/execute", handle_execute)
 
     from .api.handlers_gateway_policy import (
         handle_get_gateway_policy, handle_save_gateway_policy, handle_autonomy_summary,

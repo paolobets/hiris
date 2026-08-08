@@ -67,8 +67,10 @@ def normalize_tool_names(names: list[str]) -> list[str]:
     prima comparsa. Idempotente: rieseguirla sul proprio output non cambia
     nulla. Va chiamata in OGNI punto che legge un elenco di nomi di tool
     persistito/configurato da prima della fusione -- oggi
-    `chatbot_engine.py` (Chatbot.allowed_tools, al caricamento) e
-    `handlers_execute.py` (parse_execute_policy, la CSV EXECUTE_API_TOOLS)."""
+    `chatbot_engine.py` (Chatbot.allowed_tools, al caricamento). Un secondo
+    chiamante viveva in `handlers_execute.py` (parse_execute_policy, la CSV
+    EXECUTE_API_TOOLS): uscito con la Fetta E2 Task 4 insieme a tutta la
+    superficie /api/execute."""
     out: list[str] = []
     seen: set[str] = set()
     for n in names:

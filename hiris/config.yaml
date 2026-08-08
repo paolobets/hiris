@@ -72,20 +72,6 @@ options:
 
   # ── General ───────────────────────────────────────────────────────────────
   internal_token: ""
-  # ── Execute-API (MCP gateway) ─────────────────────────────────────────────
-  # Allowlist server-side dei tool eseguibili via POST /api/execute (gated da
-  # internal_token). Vuoto = nessun tool esposto (fail-closed). Le whitelist
-  # entità/servizi (glob CSV, es. light.*) vincolano ulteriormente il gateway.
-  execute_api_tools: ""
-  execute_api_entities: ""
-  execute_api_services: ""
-  # Denylist di LETTURA del gateway: glob CSV su entity_id che non escono mai
-  # da /api/execute, comunque li si chieda (richiesta rifiutata in ingresso,
-  # risposta potata in uscita). Non e' l'elenco dei domini pericolosi del
-  # semaforo, che riguarda l'azione: una tapparella e' pericolosa da muovere ma
-  # innocua da leggere, una telecamera e' l'opposto. Svuotala per tornare al
-  # comportamento precedente (ogni lettura vede tutta la casa).
-  execute_api_read_denylist: "lock.*, alarm_control_panel.*, camera.*, person.*, device_tracker.*"
   # CR-1: CIDR sorgenti fidate per il bypass-ingress (X-Ingress-Path). Solo le
   # richieste da questi range sono trattate come ingress del Supervisor; tutto
   # il resto richiede internal_token. Default = rete Docker standard del
@@ -170,10 +156,6 @@ schema:
 
   # ── General ───────────────────────────────────────────────────────────────
   internal_token: password
-  execute_api_tools: "str?"
-  execute_api_entities: "str?"
-  execute_api_services: "str?"
-  execute_api_read_denylist: "str?"
   supervisor_ingress_cidr: "str?"
   log_level: "list(debug|info|warning|error)"
   theme: "list(light|dark|auto)"

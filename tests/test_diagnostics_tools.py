@@ -315,13 +315,7 @@ def test_solo_il_logbook_fra_i_read_tools_del_gateway():
     assert "render_template" not in READ_TOOLS
 
 
-def test_la_risposta_del_logbook_e_potata_dalla_denylist():
-    # La riabilitazione regge SOLO se la potatura c'e': senza questa, il tool
-    # tornerebbe a enumerare tutta la cronologia della casa.
-    from hiris.app.api.read_denylist import prune_read_result
-    risposta = {"entries": [{"when": "1", "entity_id": "lock.porta"},
-                            {"when": "2", "entity_id": "light.salotto"}],
-                "count": 2, "hours": 24, "entity_id": None}
-    out = prune_read_result("get_logbook", risposta, ["lock.*"])
-    assert [v["entity_id"] for v in out["entries"]] == ["light.salotto"]
-    assert out["filtered"] == {"shown": 1, "total": 2}
+# La potatura della risposta del logbook (api/read_denylist.py) e' uscita con
+# la Fetta E2 Task 4 insieme a tutta la superficie /api/execute che la
+# consumava: il suo soggetto (prune_read_result) non esiste piu' in nessun
+# file, quindi il test che lo pinnava qui e' stato rimosso, non spostato.
