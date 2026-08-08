@@ -1,12 +1,15 @@
 """I quattro strumenti della chat -- da trentaquattro a quattro.
 
-Oggi il modello riceve un catalogo di trentaquattro strumenti, che esiste in
+Il modello riceveva un catalogo di trentaquattro strumenti, che esisteva in
 TRE copie divergenti (claude_runner.py, e altre due -- vedi
-docs/design/2026-08-05-la-conoscenza-di-hiris.md), e ogni azione passa da un
-semaforo che di fabbrica nega tutto in silenzio. Qui ne riceve quattro, e
-NESSUNO di essi tocca Home Assistant: la chat della 2.0 CONOSCE, non agisce
--- le azioni rientreranno rifatte, con un progetto proprio, quando la
-conoscenza sara' solida.
+docs/design/2026-08-05-la-conoscenza-di-hiris.md), e ogni azione passava da
+un semaforo che di fabbrica negava tutto in silenzio. Il catalogo dei
+trentaquattro e il semaforo sono usciti per intero (fetta E2 Task 8 "escono
+i trentaquattro"; fetta E3 Task 7 "esce la Sentinella intera, e il semaforo
+che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
+Qui il modello ne riceve quattro, e NESSUNO di essi tocca Home Assistant: la
+chat della 2.0 CONOSCE, non agisce -- le azioni rientreranno rifatte, con un
+progetto proprio, quando la conoscenza sara' solida.
 
     cerca    -- trova qualcosa per nome o alias, dichiarando le ambiguita'
     guarda   -- il dettaglio di una cosa: un'area, un'entita', un'automazione

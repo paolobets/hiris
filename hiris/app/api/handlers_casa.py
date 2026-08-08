@@ -163,8 +163,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         ricordi = []
 
     # `stato` nella forma che `componi()` vuole: entity_id -> valore grezzo.
-    # `entity_cache.all_states()` usa la chiave "id", non "entity_id" (vedi
-    # `brain.portrait.notable_state`, che documenta la stessa forma).
+    # `entity_cache.all_states()` usa la chiave "id", non "entity_id".
     stato: dict[str, str] = {}
     if cache is not None:
         for e in cache.all_states():

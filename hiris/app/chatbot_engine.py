@@ -393,10 +393,12 @@ class ChatbotEngine:
     # Scheduling
     # ------------------------------------------------------------------
     # Autonomous agent scheduling (interval/cron triggers) and reactive
-    # state-change dispatch were retired in Slice 5 — the Sentinella
-    # (watcher/) is now the sole proactive engine. `_unschedule_chatbot`
-    # remains as a defensive no-op-safe cleanup for any job left over from
-    # a pre-upgrade scheduler state.
+    # state-change dispatch were retired in Slice 5, handed off to the
+    # Sentinella (watcher/) as the sole proactive engine. The Sentinella
+    # itself is gone too now (fetta E3 Task 7, semaphore included): HIRIS
+    # has no proactive/actuating engine left at all, it knows and does not
+    # act. `_unschedule_chatbot` remains as a defensive no-op-safe cleanup
+    # for any job left over from a pre-upgrade scheduler state.
 
     def _unschedule_chatbot(self, agent_id: str) -> None:
         for job in list(self._scheduler.get_jobs()):
@@ -426,9 +428,11 @@ class ChatbotEngine:
     # ------------------------------------------------------------------
     # Slice 5 retired the action/rules execution machinery (AZIONI parsing,
     # configured rules, action chains/batches) and the notion of an agent
-    # "acting" on its own conclusions. The Sentinella (watcher/) is now the
-    # sole proactive/actuating engine. `_run_chatbot` below only ever produces
-    # text via the runner's plain chat() — it never executes actions.
+    # "acting" on its own conclusions, handing that role to the Sentinella
+    # (watcher/). The Sentinella is gone too now (fetta E3 Task 7): nothing
+    # in HIRIS acts on its own conclusions today. `_run_chatbot` below only
+    # ever produces text via the runner's plain chat() — it never executes
+    # actions.
 
     # ------------------------------------------------------------------
     # Rate-limit backoff helpers (v0.9.10)

@@ -1186,12 +1186,13 @@ async def _on_startup(app: web.Application) -> None:
     # Il Task 8 di questa fetta ha cancellato l'intera cartella `tools/`,
     # `proposal_tools.py` incluso: la citazione sopra e' storica.
     # `watcher.policy.apply_brain_detector/remove_brain_detector/
-    # apply_brain_tuning/remove_brain_tuning` (PARAM_BOUNDS resta vivo, lo
-    # usa la validazione di save_policy/load_policy) perdono qui il loro
-    # ultimo chiamante di produzione (`brain.suggestions`/`brain.
-    # cognitive_loop`): watcher/policy.py non e' nel perimetro di questo
-    # task (non e' nel file-list del brief), quindi non li tocco -- restano
-    # orfani dichiarati per chi tocchera' la Sentinella/il semaforo.
+    # apply_brain_tuning/remove_brain_tuning` perdevano qui il loro ultimo
+    # chiamante di produzione (`brain.suggestions`/`brain.cognitive_loop`):
+    # non erano nel perimetro del Task 5 (non nel file-list del brief),
+    # dichiarati orfani per chi avrebbe toccato la Sentinella/il semaforo.
+    # Il Task 7 di questa fetta li ha raccolti: `watcher/policy.py` e'
+    # uscito per intero insieme al resto di `watcher/` -- la nota sopra e'
+    # storica.
 
     # fetta E3 Task 6, SILENZIO DICHIARATO: qui viveva il job schedulato
     # "hiris_health_scan" (interval `HIRIS_HEALTH_SCAN_MINUTES`, 30' di

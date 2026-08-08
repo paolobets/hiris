@@ -1,10 +1,13 @@
 """Il nucleo -- il testo che il modello ha SEMPRE davanti.
 
 E' il punto in cui muore la sovrapposizione n.1 della mappa del prodotto:
-oggi la chat riceve una mappa senza il ritratto, il Brain il ritratto senza
+la chat riceveva una mappa senza il ritratto, il Brain il ritratto senza
 la mappa -- due intelligenze nella stessa casa che ne vedono due diverse
-(vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7). Il nucleo e'
-**lo stesso per chiunque ragioni**: chat, Brain, agenti.
+(vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7). Ritratto e
+Brain sono usciti per intero nella fetta E3 ("esce la casa vecchia"): oggi
+il nucleo e' l'unica rappresentazione della casa rimasta, e resta
+**lo stesso per chiunque ragioni**: chat, e un domani Brain e agenti, quando
+torneranno con un progetto proprio.
 
 Con trecento entita' elencarle tutte sfonderebbe il contesto a ogni
 messaggio: il nucleo CONTA, non elenca -- "Cucina: 2 luci, 1 sensore", non i

@@ -55,11 +55,14 @@ def _bridge_on(app) -> bool:
     """Whether the reasoning-queue bridge is wired into this app.
 
     server.py's ``_on_startup`` always creates ``app["reasoning_queue"]``
-    unconditionally — the holistic path's own ``BRIDGE_ENABLED`` env var only
-    gates whether *it* enqueues into that same queue vs. reasoning locally,
-    it doesn't control whether the queue object exists. So presence of the
-    key is the right signal for chat: it's also how tests opt in/out (wire
-    or don't wire ``app["reasoning_queue"]``) without touching env vars.
+    unconditionally — ``BRIDGE_ENABLED`` only gates whether server.py's
+    sweep (``_reasoning_sweep``) actually claims/prunes that queue and
+    whether ``chat_via_subscription`` is considered usable (fetta E3 Task 4
+    removed the third reader, the holistic path's own enqueue via
+    ``_holistic_reason`` — that path is gone entirely now), it doesn't
+    control whether the queue object exists. So presence of the key is the
+    right signal for chat: it's also how tests opt in/out (wire or don't
+    wire ``app["reasoning_queue"]``) without touching env vars.
     """
     return app.get("reasoning_queue") is not None
 

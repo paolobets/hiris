@@ -13,10 +13,13 @@ NOISE_DOMAINS = {"button", "update", "number", "select", "tag",
 # suggeriscono all'utente due cose diverse: uno e' configurazione mancante,
 # l'altro passa da solo (il lavoro periodico di ricarica ritenta).
 #
-# Vivono qui, accanto alla bandiera `loaded` che li governa, perche' li usano
-# quattro moduli diversi (dispatcher, ha_tools, briefing, api/handlers_entities)
-# e duplicarne il testo era esattamente il modo in cui il difetto e'
-# sopravvissuto nei fratelli.
+# Vivono qui, accanto alla bandiera `loaded` che li governa, perche' duplicarne
+# il testo era esattamente il modo in cui il difetto e' sopravvissuto nei
+# fratelli. Al momento in cui questi messaggi sono nati li usavano quattro
+# moduli (dispatcher, ha_tools, briefing, api/handlers_entities): i primi tre
+# sono usciti nella demolizione (rispettivamente 68d3670, bca1b85, 2441b7d) --
+# oggi il solo lettore di produzione e' `api/handlers_entities.py`, via
+# `inventario_non_leggibile()` sotto.
 ERRORE_INVENTARIO_ASSENTE = (
     "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
     "entità non è disponibile. Non posso dire che non ci sia nulla, solo che "
