@@ -8,12 +8,10 @@ import aiohttp
 
 _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
-# Mirrored dispatcher._AUTOMATION_ID_RE (hiris/app/tools/dispatcher.py,
-# gone since fetta E2 Task 7). HA automation ids are slug-style: lowercase
-# alphanumeric + underscore. Reject
-# anything else before composing a request path — last line of defense against
-# path-injection/SSRF via a hostile automation_id (review A/#4).
-_AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")
+# fetta E3 Task 12 ("esce il ritratto"): `_AUTOMATION_ID_RE` e' uscita --
+# serviva solo a `is_automation_id_candidate`/`get_automation_config`,
+# entrambe cancellate qui insieme al resto della superficie di scrittura
+# automazioni (vedi il commento piu' sotto, dove viveva `is_automation_config`).
 
 # entity_id canonico (dominio.oggetto). Serve a rifiutare un entity_id
 # ostile PRIMA di comporlo in un URL.
@@ -47,14 +45,6 @@ EVENTO_PLANCE = "lovelace_updated"
 # leggi_plance() la usa per rifiutare una plancia vera il cui url_path collide
 # con la chiave sentinella, invece di lasciarla scontrarsi in scrittura.
 _CHIAVE_PLANCIA_PRINCIPALE = "__principale__"
-
-# Chiavi che identificano la forma minima di un'automazione Home Assistant.
-# Fino a HA 2024.10 i nomi erano al singolare (trigger/condition/action); da li'
-# in poi i nomi canonici sono al plurale, ma i singolari restano accettati per
-# retrocompatibilita' — quindi vanno riconosciuti entrambi, o si rifiuterebbero
-# automazioni legittime scritte nell'una o nell'altra forma.
-_TRIGGER_KEYS = ("triggers", "trigger")
-_ACTION_KEYS = ("actions", "action")
 
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
@@ -93,90 +83,26 @@ def _truncate(text: str, cap: int) -> str:
     return text[:cap - len(_TRUNC_MARK)] + _TRUNC_MARK
 
 
-# fetta E3 Task 10: le proposte escono per intero. Il gruppo di metodi di
-# scrittura HA di questo file che serviva SOLO quel percorso -- create_automation
-# (+ is_automation_config appena sotto), create_script, create_scene,
-# create_dashboard, get_lovelace_config, save_dashboard_config -- perde il suo
-# ultimo chiamante di produzione (handlers_proposals.py/proposta_config.py,
-# cancellati). Restano cosi' come sono, orfani DI PROPOSITO: sono la superficie
-# di scrittura HA che le proposte torneranno a usare quando saranno rifatte col
-# perimetro e la verifica umana (progetto agenti). Ognuno resta coperto da una
-# sua suite dedicata come API del client, indipendente dalle proposte
-# (test_ha_client_automation_config.py, test_ha_client_config.py,
-# test_dashboard_client.py) -- nessuna garanzia persa cancellandoli qui.
-def is_automation_config(config: object) -> bool:
-    """True se `config` ha la forma minima di un'automazione Home Assistant.
-
-    Home Assistant richiede due sole cose perche' un'automazione sia
-    un'automazione: i trigger e le azioni. Tutto il resto (alias, description,
-    mode, id, conditions) e' facoltativo. Fa eccezione l'automazione costruita
-    su un blueprint, che non ha trigger ne' azioni proprie — li eredita dal
-    blueprint — e porta solo `use_blueprint` (path + input): e' una terza forma
-    legittima e va accettata.
-
-    Il controllo e' volutamente sulla STRUTTURA e non sul CONTENUTO: HA accetta
-    la stessa cosa scritta in piu' modi (singolare o plurale, un mapping singolo
-    al posto di una lista, liste vuote) e imitare la sua validazione qui
-    significherebbe rifiutare automazioni valide. Basta distinguere una
-    configurazione di automazione da un dizionario qualsiasi: senza queste
-    chiavi non c'e' nulla che possa scattare ne' nulla che possa succedere, e
-    scriverla in HA produrrebbe un'automazione inerte (o un errore) dopo che
-    l'utente ha premuto "attiva".
-    """
-    if not isinstance(config, dict) or not config:
-        return False
-    blueprint = config.get("use_blueprint")
-    if isinstance(blueprint, dict) and blueprint:
-        return True
-    has_trigger = any(config.get(k) is not None for k in _TRIGGER_KEYS)
-    has_action = any(config.get(k) is not None for k in _ACTION_KEYS)
-    return has_trigger and has_action
-
-
-def is_automation_entity_id(value: object) -> bool:
-    """True se `value` ha la forma di un entity_id di automazione
-    (`automation.<slug>`) — la forma che l'LLM confonde spesso con l'id
-    numerico che HA usa nell'URL di configurazione (bug live-verify #3: la
-    proposta aveva 'automation.avviso_...' in config['id'] al posto dell'id
-    numerico). Solo forma, nessuna verifica che l'automazione esista davvero:
-    quella spetta a resolve_automation_id_by_entity_id.
-
-    M-4: valida sull'intera stringa con _ENTITY_ID_RE (la stessa forma
-    canonica dominio.oggetto usata da get_calendar_events_range) invece di
-    applicare _AUTOMATION_ID_RE al solo suffisso -- terza convenzione che si
-    era infilata in questo stesso file per fare la stessa domanda.
-
-    Condivisa fra HAClient.create_automation (Correzione 1) e
-    create_automation_proposal (Correzione 2) cosi' le due validazioni non
-    divergono su cosa conta come 'sembra un entity_id'."""
-    return (isinstance(value, str) and value.startswith("automation.")
-            and bool(_ENTITY_ID_RE.match(value)))
-
-
-def is_automation_id_candidate(value: object) -> bool:
-    """True se `value` ha una delle TRE forme che HA accetta per identificare
-    un'automazione esistente: id numerico, entity_id (`automation.<slug>`) o
-    object_id nudo (`<slug>`) -- lo stesso contratto a tre forme che
-    get_automation_config accetta da sempre (righe piu' sotto) e che
-    trigger_automation/toggle_automation (automation_tools.py) e
-    create_automation (risoluzione dell'id fornito) usano per lo stesso oggetto.
-
-    Solo forma, nessuna verifica che l'automazione esista davvero (quella
-    spetta a resolve_automation_id_by_entity_id / get_automation_config).
-
-    C-2: prima di questa funzione la validazione alla CREAZIONE della
-    proposta (proposal_tools.py) riconosceva solo due forme (numerico,
-    entity_id) mentre l'APPLY (create_automation, sotto) ne accetta tre da
-    sempre -- il gate rifiutava una proposta che l'apply avrebbe applicato.
-    Principio: alla creazione si rifiuta SOLO cio' che l'apply rifiuterebbe
-    di sicuro, quindi le due validazioni condividono questo unico predicato."""
-    if not isinstance(value, str) or not value:
-        return False
-    if value.isascii() and value.isdigit():
-        return True
-    if is_automation_entity_id(value):
-        return True
-    return bool(_AUTOMATION_ID_RE.match(value))
+# fetta E3 Task 12 ("esce il ritratto", il task della coerenza): il Task 10
+# aveva lasciato QUESTO gruppo di metodi di scrittura HA orfano DI PROPOSITO
+# (create_automation/is_automation_config, create_script, create_scene,
+# create_dashboard, get_lovelace_config, save_dashboard_config -- persero il
+# loro ultimo chiamante di produzione, handlers_proposals.py/
+# proposta_config.py, quando le proposte uscirono per intero), promettendo
+# che sarebbero tornati "quando saranno rifatte col perimetro e la verifica
+# umana (progetto agenti)". Questo task raccoglie quella promessa: escono qui,
+# insieme alle loro suite dedicate (test_ha_client_automation_config.py,
+# test_ha_client_config.py, test_dashboard_client.py, test_proposal_config_
+# shape.py) e a cio' che li serviva SOLO loro -- is_automation_entity_id/
+# is_automation_id_candidate (usate solo da create_automation),
+# resolve_automation_id_by_alias/resolve_automation_id_by_entity_id (usate
+# solo da create_automation), _is_slug/_post_config (usate solo da
+# create_script/create_scene), _ws_error (usato solo da create_dashboard/
+# get_lovelace_config/save_dashboard_config) e get_automation_config (che non
+# aveva NESSUN chiamante nemmeno prima -- ne' create_automation lo invocava
+# mai, solo lo nominava nei propri messaggi d'errore). Tornera' tutto insieme
+# quando il progetto agenti lo richiedera' davvero: prima non c'era motivo di
+# tenerlo in piedi senza un chiamante che lo eserciti.
 
 
 class HAClient:
@@ -210,18 +136,10 @@ class HAClient:
             return [s for s in all_states if s["entity_id"] in entity_ids]
         return all_states
 
-    async def get_history(self, entity_ids: list[str], days: int) -> list[dict]:
-        start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        # Review L/4 (defense in depth): quote each entity id before joining
-        # -- currently safe only because both call sites (history_tools.py,
-        # calendar_tools.py) pre-validate with a strict regex, but this way
-        # the query string stays safe even if a future caller skips that.
-        filter_param = ",".join(quote(eid, safe="") for eid in entity_ids)
-        url = f"{self._base_url}/api/history/period/{start}?filter_entity_id={filter_param}&minimal_response=true"
-        async with self._session.get(url) as resp:
-            resp.raise_for_status()
-            nested: list[list[dict]] = await resp.json()
-        return [item for sublist in nested for item in sublist]
+    # fetta E3 Task 8 ("escono i trentaquattro"): `get_history` e' uscito --
+    # ORFANO DICHIARATO, i suoi call site (history_tools.py, calendar_tools.py)
+    # erano gia' caduti col ToolDispatcher. Raccolto qui (fetta E3 Task 12):
+    # verificato di nuovo, zero chiamanti in tutto il repo.
 
     async def call_service(self, domain: str, service: str, data: dict) -> bool:
         if not _IDENTIFIER_RE.match(domain) or not _IDENTIFIER_RE.match(service):
@@ -235,290 +153,14 @@ class HAClient:
                 return False
             return True
 
-    async def get_automations(self) -> list[dict]:
-        url = f"{self._base_url}/api/states"
-        async with self._session.get(url) as resp:
-            resp.raise_for_status()
-            all_states: list[dict] = await resp.json()
-        return [s for s in all_states if s["entity_id"].startswith("automation.")]
-
-    async def create_automation(self, config: dict,
-                                automation_id: str | None = None) -> dict:
-        """Create/replace a UI-managed automation via HA's config API, then reload.
-        Returns {"ok": True, "id": <id>} or {"error": ...}. Human-gated upstream."""
-        # Consolidamento 1.2: non basta "un dizionario non vuoto". Un config
-        # senza trigger ne' azioni diventava in HA un'automazione inerte dopo
-        # che l'utente aveva approvato la proposta — la stessa promessa non
-        # mantenuta del bug di luglio, con il tipo giusto e il contenuto
-        # sbagliato. Si rifiuta qui, prima di coniare l'id e di scrivere.
-        if not is_automation_config(config):
-            return {"error": ("config automazione non valida: servono i trigger e le "
-                              "azioni (oppure use_blueprint)")}
-        # Update-in-place vs create: HA identifies a UI automation by the {id}
-        # in the config URL. To MODIFY an existing automation we must reuse its
-        # id — take it from the explicit param, else from the config's own "id"
-        # field (get_automation_config returns it). Se nessuno dei due c'e' ma il
-        # config ha un `alias` che corrisponde UNIVOCAMENTE a un'automazione
-        # esistente, modifichiamo quella: l'LLM spesso propone il fix di
-        # un'automazione SENZA riportarne l'id, e senza questo si creava un
-        # doppione invece di sovrascrivere l'originale (bug live-verify #2).
-        # Solo come ultima risorsa si conia un id nuovo (automazione davvero nuova).
-        async def _by_alias() -> str | None:
-            alias = config.get("alias")
-            if isinstance(alias, str) and alias.strip():
-                return await self.resolve_automation_id_by_alias(alias.strip())
-            return None
-
-        aid = str(automation_id or config.get("id") or "")
-        # Un id FORNITO ma non numerico non e' "assente": e' un bersaglio
-        # dichiarato, quasi sempre l'entity_id (o l'object_id nudo) al posto
-        # dell'id numerico (bug live-verify #3). Le forme provate qui sotto
-        # sono le stesse tre che get_automation_config accetta (C-2):
-        # numerico (gia' escluso dall'if), entity_id, object_id nudo.
-        #
-        # DECISIONE (review C-1, non negoziabile): se l'id fornito non
-        # risolve a NESSUNA di queste forme, si FALLISCE -- MAI un ripiego
-        # sull'alias. Chi ha nominato un bersaglio ha gia' espresso
-        # un'intenzione precisa: se quel bersaglio non esiste, indovinarne un
-        # altro dal `friendly_name` e sovrascriverlo sarebbe un danno
-        # irreversibile e silenzioso -- a differenza delle plance (il replace
-        # di save_dashboard_config, oggi orfano: fetta E3 Task 10), qui non
-        # esiste nessuno snapshot da cui tornare indietro. Il ripiego per alias
-        # resta SOLO nel ramo "if not aid" qui sotto, dove non c'e' un
-        # bersaglio dichiarato da tradire: e' il caso per cui era stato
-        # costruito (bug live-verify #2).
-        if aid and not (aid.isascii() and aid.isdigit()):
-            if not is_automation_id_candidate(aid):
-                return {"error": (
-                    f"id automazione non valido: {aid!r}. Serve l'id numerico "
-                    "che Home Assistant usa nell'URL di configurazione (lo "
-                    "restituisce get_automation_config), oppure l'entity_id "
-                    "(automation.<nome>) o l'object_id nudo (<nome>) di "
-                    "un'automazione esistente. Per creare una automazione "
-                    "nuova, ometti 'id'.")}
-            eid = aid if aid.startswith("automation.") else f"automation.{aid}"
-            resolved, lookup_failed = await self.resolve_automation_id_by_entity_id(eid)
-            if resolved:
-                aid = resolved
-            elif lookup_failed:
-                # I-3: un guasto di HA durante la verifica non e' "id
-                # sbagliato", e' "non ho potuto controllare" -- confondere i
-                # due casi spinge il modello a seguire il consiglio "ometti
-                # l'id" e a creare il doppione che il bug live-verify #2
-                # aveva chiuso. Nessuna scrittura in nessuno dei due casi.
-                return {"error": (
-                    f"non sono riuscito a verificare l'id fornito ({aid!r}): "
-                    "Home Assistant non ha risposto alla lettura delle "
-                    "automazioni esistenti. Riprova; l'automazione indicata "
-                    "potrebbe esistere davvero.")}
-            else:
-                # Deliberato: NON si conia un id nuovo qui. Chi ha scritto un
-                # id (anche sbagliato) ha indicato un bersaglio preciso e non
-                # voleva un doppione — coniare un id nuovo produrrebbe
-                # un'automazione indesiderata invece di segnalare l'errore.
-                return {"error": (
-                    f"id automazione non valido: {aid!r}. Nessuna automazione "
-                    "esistente corrisponde a questo id. Serve l'id numerico "
-                    "che Home Assistant usa nell'URL di configurazione (lo "
-                    "restituisce get_automation_config). Per creare una "
-                    "automazione nuova, ometti 'id'.")}
-        if not aid:
-            resolved = await _by_alias()
-            if resolved:
-                aid = resolved
-        if not aid:
-            aid = str(int(datetime.now(timezone.utc).timestamp() * 1_000_000))
-        if not (aid.isascii() and aid.isdigit()):
-            return {"error": "automation_id non valido"}
-        # id coerente anche nel body scritto (l'URL identifica l'automazione, ma
-        # teniamo il config allineato).
-        body = {**config, "id": aid}
-        url = f"{self._base_url}/api/config/automation/config/{aid}"
-        try:
-            async with self._session.post(url, json=body) as resp:
-                if resp.status not in (200, 201):
-                    err = await resp.text()
-                    return {"error": f"HA ha rifiutato la config ({resp.status}): {err[:200]}"}
-        except Exception as exc:
-            # M-5: mai fare eco di str(exc) al chiamante (puo' contenere host,
-            # path o dettagli di libreria) -- stessa regola gia' rispettata da
-            # render_template. Questa funzione e' quella che il commit
-            # riapre, quindi e' quella sanata qui; _post_config e
-            # get_automation_config hanno la stessa forma pre-esistente ma
-            # restano fuori dal perimetro di questa fix wave.
-            logger.warning("create_automation: scrittura fallita (id=%s): %s", aid, exc)
-            return {"error": "scrittura automazione fallita"}
-        # Reload so the new automation becomes active immediately (idempotent).
-        try:
-            await self.call_service("automation", "reload", {})
-        except Exception as exc:
-            logger.warning("automation.reload after create failed (automation %s persisted, "
-                           "will load on next HA restart): %s", aid, exc)
-        return {"ok": True, "id": aid}
-
-    async def resolve_automation_id_by_alias(self, alias: str) -> str | None:
-        """L'id numerico dell'automazione il cui `friendly_name` == alias, SOLO se
-        il match e' UNIVOCO (altrimenti None: ambiguo o assente). Usato per
-        modificare l'automazione giusta quando la proposta non riporta l'id.
-        Non solleva mai (fail-safe): in caso di errore -> None -> id nuovo."""
-        try:
-            autos = await self.get_automations()
-        except Exception:
-            return None
-        ids = []
-        for a in autos or []:
-            attrs = a.get("attributes") or {}
-            if attrs.get("friendly_name") == alias:
-                aid = str(attrs.get("id") or "")
-                if aid.isascii() and aid.isdigit():
-                    ids.append(aid)
-        return ids[0] if len(ids) == 1 else None
-
-    async def resolve_automation_id_by_entity_id(self, entity_id: str) -> tuple[str | None, bool]:
-        """(id, lookup_fallito).
-
-        id: l'id numerico dell'automazione il cui `entity_id` == entity_id, se
-        trovato ed e' un numero valido (altrimenti None). Gemello di
-        resolve_automation_id_by_alias: stessa fonte `get_automations()`,
-        stesso controllo isascii()/isdigit() sull'id trovato. A differenza
-        dell'alias (un `friendly_name` puo' ripetersi su piu' automazioni)
-        l'entity_id e' univoco per costruzione in HA: non serve alcun
-        controllo di ambiguita'.
-
-        lookup_fallito: True quando `get_automations()` ha sollevato -- in tal
-        caso `id is None` NON significa "nessuna automazione con questo
-        entity_id", significa "non ho potuto controllare" (stessa classe A3
-        gia' chiusa in proxy.entity_cache.inventario_non_leggibile: un elenco
-        vuoto/None racconta due cose diverse e il chiamante deve poterle
-        distinguere). Prima di questa distinzione (I-3) un guasto transitorio
-        di HA durante `create_automation` veniva raccontato al modello come
-        "id automazione non valido", col consiglio di ometterlo -- che produce
-        il doppione gia' chiuso dal bug live-verify #2.
-
-        Non solleva mai (fail-safe)."""
-        try:
-            autos = await self.get_automations()
-        except Exception:
-            return None, True
-        for a in autos or []:
-            if a.get("entity_id") != entity_id:
-                continue
-            attrs = a.get("attributes") or {}
-            aid = str(attrs.get("id") or "")
-            return (aid if aid.isascii() and aid.isdigit() else None), False
-        return None, False
-
-    @staticmethod
-    def _is_slug(value: str) -> bool:
-        return bool(value) and all(c.islower() or c.isdigit() or c == "_" for c in value)
-
-    async def _post_config(self, path: str, config: dict) -> dict:
-        """POST a UI-managed config to /api/config/{path}. Returns ok/error."""
-        url = f"{self._base_url}/api/config/{path}"
-        try:
-            async with self._session.post(url, json=config) as resp:
-                if resp.status not in (200, 201):
-                    body = await resp.text()
-                    return {"error": f"HA ha rifiutato la config ({resp.status}): {body[:200]}"}
-        except Exception as exc:
-            return {"error": f"scrittura config fallita: {exc}"}
-        return {"ok": True}
-
-    async def create_script(self, object_id: str, config: dict) -> dict:
-        """Create a UI-managed script via HA config API, then reload. Human-gated upstream."""
-        if not isinstance(config, dict) or not config:
-            return {"error": "config script vuota o non valida"}
-        if not self._is_slug(object_id):
-            return {"error": "object_id script non valido (usa a-z 0-9 _)"}
-        res = await self._post_config(f"script/config/{object_id}", config)
-        if res.get("error"):
-            return res
-        try:
-            await self.call_service("script", "reload", {})
-        except Exception as exc:
-            logger.warning("script.reload after create failed (script %s persisted): %s", object_id, exc)
-        return {"ok": True, "id": object_id}
-
-    async def create_scene(self, scene_id: str, config: dict) -> dict:
-        """Create a UI-managed scene via HA config API, then reload. Human-gated upstream."""
-        if not isinstance(config, dict) or not config:
-            return {"error": "config scena vuota o non valida"}
-        if not self._is_slug(scene_id):
-            return {"error": "scene_id non valido (usa a-z 0-9 _)"}
-        res = await self._post_config(f"scene/config/{scene_id}", config)
-        if res.get("error"):
-            return res
-        try:
-            await self.call_service("scene", "reload", {})
-        except Exception as exc:
-            logger.warning("scene.reload after create failed (scene %s persisted): %s", scene_id, exc)
-        return {"ok": True, "id": scene_id}
-
-    @staticmethod
-    def _ws_error(msg: dict | None) -> str:
-        if not msg:
-            return "nessuna risposta WS"
-        err = msg.get("error")
-        if isinstance(err, dict):
-            return str(err.get("message") or err)
-        return str(err or "errore WS sconosciuto")
-
-    async def create_dashboard(self, url_path: str, title: str, config: dict,
-                               icon: str | None = None, show_in_sidebar: bool = True) -> dict:
-        """Create a new storage-mode Lovelace dashboard + save its config (two WS commands).
-        Additive: appears as a new sidebar entry; never touches existing dashboards."""
-        if not isinstance(config, dict) or "views" not in config:
-            return {"error": "config dashboard non valida (manca 'views')"}
-        created = await self._ws_command("lovelace/dashboards/create", {
-            "url_path": url_path,
-            "title": title,
-            "icon": icon,
-            "show_in_sidebar": bool(show_in_sidebar),
-            "require_admin": False,
-            "mode": "storage",
-        })
-        if not created or not created.get("success"):
-            return {"error": f"creazione dashboard fallita: {self._ws_error(created)}"}
-        saved = await self._ws_command("lovelace/config/save", {
-            "url_path": url_path,
-            "config": config,
-        })
-        if not saved or not saved.get("success"):
-            # Roll back the just-created (guaranteed new) dashboard so the pending
-            # proposal stays retryable: without this, a retry hits the now-existing
-            # url_path and fails forever, leaving an orphan empty dashboard.
-            # Best-effort — we only delete what THIS call created (create succeeded,
-            # so url_path was new), never a pre-existing dashboard.
-            dash_id = (created.get("result") or {}).get("id")
-            if dash_id:
-                rolled = await self._ws_command(
-                    "lovelace/dashboards/delete", {"dashboard_id": dash_id}
-                )
-                if not rolled or not rolled.get("success"):
-                    logger.warning(
-                        "dashboard rollback failed (url_path=%s id=%s): %s — orphan dashboard remains",
-                        url_path, dash_id, self._ws_error(rolled),
-                    )
-            else:
-                logger.warning(
-                    "dashboard rollback skipped: create response had no id (url_path=%s) — orphan may remain",
-                    url_path,
-                )
-            return {"error": f"salvataggio config dashboard fallito: {self._ws_error(saved)}"}
-        return {"ok": True, "url_path": url_path}
-
-    async def get_lovelace_config(self, url_path: str) -> dict:
-        """Return the current Lovelace config of a storage-mode dashboard via WS.
-        Returns the config dict (with 'views'), or {"error": ...} if unavailable."""
-        got = await self._ws_command(
-            "lovelace/config", {"url_path": url_path, "force": False}
-        )
-        if not got or not got.get("success"):
-            return {"error": f"config dashboard non leggibile: {self._ws_error(got)}"}
-        result = got.get("result")
-        if not isinstance(result, dict):
-            return {"error": "config dashboard vuota o in modalità YAML (non gestita da storage)"}
-        return result
+    # fetta E3 Task 12: `get_automations`/`create_automation`/
+    # `resolve_automation_id_by_alias`/`resolve_automation_id_by_entity_id`/
+    # `_is_slug`/`_post_config`/`create_script`/`create_scene`/`_ws_error`/
+    # `create_dashboard`/`get_lovelace_config` sono usciti insieme (vedi il
+    # commento sopra `class HAClient`): erano la superficie di scrittura HA
+    # delle proposte, orfana di proposito dal Task 10. `get_automations`
+    # (che HA nomina "automazioni", non lette da nessun altro tool "conosce")
+    # non aveva altro chiamante che i due `resolve_*` qui sopra.
 
     # Review finale fetta E2, I-2: `list_dashboards` e' uscito -- orfano dal
     # Task 7 (il suo ultimo chiamante di produzione, `tools/dispatcher.py`,
@@ -622,61 +264,12 @@ class HAClient:
             plance.append(voce)
         return plance, non_disponibili
 
-    async def save_dashboard_config(self, url_path: str, config: dict) -> dict:
-        """Sovrascrive la config di una dashboard storage-mode esistente.
-        NON crea la dashboard: usare create_dashboard per quello.
-
-        Home Assistant ammette DUE forme di config Lovelace valide: quella a
-        viste ({"views": [...]}) e quella a strategia ({"strategy": {...}},
-        senza 'views') usata dalle dashboard generate da template. Qui le
-        accettiamo entrambe perche' il client HA deve accettare cio' che HA
-        accetta: altrimenti il ripristino di uno snapshot "strategy" (pulsante
-        Annulla dopo un replace) verrebbe rifiutato con 502 pur avendo lo
-        snapshot su disco. La validazione stretta che pretende 'views' resta
-        invece in tools/dashboard_tools.propose_dashboard, dove il contenuto e'
-        scritto da un LLM: il tool accetta solo cio' che il modello puo'
-        legittimamente proporre. La distinzione e' voluta."""
-        if not isinstance(config, dict) or not ("views" in config or "strategy" in config):
-            return {"error": "config dashboard non valida (serve 'views' o 'strategy')"}
-        saved = await self._ws_command(
-            "lovelace/config/save", {"url_path": url_path, "config": config}
-        )
-        if not saved or not saved.get("success"):
-            return {"error": f"salvataggio config dashboard fallito: {self._ws_error(saved)}"}
-        return {"ok": True, "url_path": url_path}
-
-    async def get_automation_config(self, automation_id: str) -> dict:
-        """Return the config (YAML-equivalent dict) of a UI-managed automation.
-
-        `automation_id` may be the numeric unique id, the entity_id
-        ('automation.foo') or the object_id ('foo'). HA's config API only serves
-        automations created/managed via the UI (404 for hand-written YAML ones)."""
-        numeric = str(automation_id or "")
-        if not numeric.isascii() or not numeric.isdigit():
-            bare = numeric[len("automation."):] if numeric.startswith("automation.") else numeric
-            if not _AUTOMATION_ID_RE.match(bare):
-                return {"error": "automation_id non valido"}
-            eid = f"automation.{bare}"
-            numeric = ""
-            try:
-                async with self._session.get(f"{self._base_url}/api/states/{eid}") as r:
-                    if r.status == 200:
-                        s = await r.json()
-                        numeric = str(s.get("attributes", {}).get("id", "") or "")
-            except Exception:
-                numeric = ""
-        if not numeric:
-            return {"error": "automazione non trovata o priva di id univoco"}
-        url = f"{self._base_url}/api/config/automation/config/{numeric}"
-        try:
-            async with self._session.get(url) as resp:
-                if resp.status == 404:
-                    return {"error": "config non disponibile: l'automazione non e' "
-                                     "gestita dalla UI di HA (forse definita a mano in YAML)"}
-                resp.raise_for_status()
-                return await resp.json()
-        except Exception as exc:
-            return {"error": f"lettura config fallita: {exc}"}
+    # fetta E3 Task 12: `save_dashboard_config` esce con `create_dashboard`
+    # (stessa superficie di scrittura, vedi il commento sopra `class
+    # HAClient`). `get_automation_config` esce con lei: non aveva NESSUN
+    # chiamante nemmeno prima di questo task -- ne' `create_automation` lo
+    # invocava mai (lo nominava solo nei propri messaggi d'errore, come
+    # suggerimento per l'LLM), ne' alcun altro modulo vivo.
 
     async def get_error_log(self, limit: int = 100) -> dict:
         """Fetch HA error log and return parsed summary."""
@@ -791,9 +384,9 @@ class HAClient:
         window = int(min(float(MAX_LOGBOOK_HOURS), max(1.0, numeric)))
         now = datetime.now(timezone.utc)
         start = (now - timedelta(hours=window)).isoformat()
-        # start sta nel path (come get_history); end_time ed entity stanno nella
-        # query, dove il "+" del fuso orario va percent-encoded o verrebbe letto
-        # come spazio.
+        # start sta nel path (come /api/history/period); end_time ed entity
+        # stanno nella query, dove il "+" del fuso orario va percent-encoded
+        # o verrebbe letto come spazio.
         url = (f"{self._base_url}/api/logbook/{start}"
                f"?end_time={quote(now.isoformat(), safe='')}")
         if entity_id is not None:
@@ -849,50 +442,13 @@ class HAClient:
             logger.debug("render_template: valutazione fallita (%s)", exc)
             return {"error": "valutazione del template non riuscita"}
 
-    async def get_config_entries(self) -> list[dict]:
-        """Le voci di configurazione di HA, grezze — l'elenco delle integrazioni.
-
-        Prima questo metodo restituiva le sole voci in ERRORE, con le chiavi
-        rinominate: il nome mentiva, e l'elenco delle integrazioni installate
-        — che sta qui dentro — veniva buttato. Il filtro per errori
-        (`errori_di_integrazione`) viveva nell'HealthMonitor, uscito per
-        intero (fetta E3 Task 11, era il suo unico consumatore): nessun
-        codice filtra piu' queste voci, il metodo resta cosi' com'è.
-        """
-        return await self._ws_call("config/config_entries/get_entries")
-
-    async def get_system_info(self) -> dict:
-        """Return HA system info from /api/config."""
-        url = f"{self._base_url}/api/config"
-        async with self._session.get(url) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
-        return {
-            "ha_version": data.get("version", "unknown"),
-            "config_dir": data.get("config_dir", ""),
-            "state": data.get("state", "unknown"),
-            "unit_system": data.get("unit_system", {}).get("length", ""),
-        }
-
-    async def get_updates(self) -> list[dict]:
-        """Return available updates from HA update.* entities."""
-        url = f"{self._base_url}/api/states"
-        async with self._session.get(url) as resp:
-            resp.raise_for_status()
-            all_states: list[dict] = await resp.json()
-        updates = []
-        for s in all_states:
-            entity_id = s.get("entity_id", "")
-            if entity_id.startswith("update.") and s.get("state") == "on":
-                attrs = s.get("attributes", {})
-                updates.append({
-                    "entity_id": entity_id,
-                    "name": attrs.get("friendly_name", s["entity_id"]),
-                    "current": attrs.get("installed_version", "?"),
-                    "available": attrs.get("latest_version", "?"),
-                    "release_url": attrs.get("release_url"),
-                })
-        return updates
+    # fetta E3 Task 11 -> Task 12: `get_config_entries`/`get_system_info`/
+    # `get_updates` sono usciti. Erano gia' ORFANI DICHIARATI dal Task 11
+    # (l'HealthMonitor/SupervisorClient che li leggeva e' uscito per intero):
+    # verificato di nuovo qui, zero chiamanti in tutto il repo.
+    # `leggi_registri` (sopra) non li richiama: chiede
+    # "config/config_entries/get_entries" direttamente nel suo batch WS, non
+    # passando da `get_config_entries`.
 
     # fetta E2 Task 8 ("escono i trentaquattro"): `get_calendars`/
     # `get_calendar_events_range` sono uscite -- orfane a cascata dalla

@@ -780,75 +780,16 @@ def test_set_entity_cache_stores_cache(engine):
     assert engine._entity_cache is cache
 
 
-def test_build_entity_context_with_allowed_entities(engine):
-    cache = _make_entity_cache([
-        {"id": "light.soggiorno", "state": "on",   "name": "Luce Soggiorno", "unit": ""},
-        {"id": "sensor.temp",     "state": "22.5", "name": "Temperatura",    "unit": "°C"},
-        {"id": "switch.pompa",    "state": "off",  "name": "Pompa",          "unit": ""},
-    ])
-    engine.set_entity_cache(cache)
-    agent = engine.create_chatbot({
-        "name": "Monitor",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "Monitor",
-        "allowed_tools": [],
-        "allowed_entities": ["light.*", "sensor.*"],
-        "enabled": False,
-    })
-    ctx = engine._build_entity_context(agent)
-    assert "[CONTESTO ENTITÀ]" in ctx
-    assert "Luce Soggiorno: on" in ctx
-    assert "Temperatura: 22.5 °C" in ctx
-    # switch.pompa is not in allowed_entities → must not appear
-    assert "Pompa" not in ctx
-
-
-def test_build_entity_context_no_allowed_entities_uses_useful(engine):
-    entities = [
-        {"id": f"light.l{i}", "state": "on", "name": f"Luce {i}", "unit": ""}
-        for i in range(60)
-    ]
-    cache = _make_entity_cache(entities)
-    engine.set_entity_cache(cache)
-    agent = engine.create_chatbot({
-        "name": "Monitor",
-        "type": "monitor",
-        "trigger": {"type": "schedule"},
-        "system_prompt": "test",
-        "allowed_tools": [],
-        "allowed_entities": [],
-        "enabled": False,
-    })
-    ctx = engine._build_entity_context(agent)
-    # cap at 50 entities even without filter
-    lines = [l for l in ctx.splitlines() if l.startswith("- ")]
-    assert len(lines) == 50
-
-
-def test_build_entity_context_returns_empty_without_cache(engine):
-    # no cache set → empty string
-    agent = engine.create_chatbot({
-        "name": "Monitor",
-        "type": "monitor",
-        "trigger": {"type": "schedule"},
-        "system_prompt": "test",
-        "allowed_tools": [],
-        "allowed_entities": [],
-        "enabled": False,
-    })
-    ctx = engine._build_entity_context(agent)
-    assert ctx == ""
-
-
 @pytest.mark.asyncio
 async def test_run_agent_never_injects_entity_context(engine):
     """Slice 5 Task 2: the entity-context injection that used to be gated on
     `agent.type == "agent"` is gone along with the `type` field itself — a
-    persona's manual run never builds/injects `_build_entity_context` output
-    into `user_message`, regardless of `allowed_entities`. (`_build_entity_context`
-    itself is kept and still directly tested — see the tests above — it's
-    just no longer called from `_run_agent`.)"""
+    persona's manual run never builds/injects an entity-context block into
+    `user_message`, regardless of `allowed_entities`. (fetta E3 Task 12:
+    `_build_entity_context` itself — the helper that used to build that
+    block, kept until now only as a directly-tested dead helper — is gone
+    too; this test's own subject was always "never called from
+    `_run_agent`", not the helper's internals, so it survives unchanged.)"""
     cache = _make_entity_cache([
         {"id": "sensor.temp", "state": "21.0", "name": "Temp", "unit": "°C"},
     ])

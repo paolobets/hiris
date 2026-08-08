@@ -1,9 +1,9 @@
 """Test per le tre letture diagnostiche di HAClient:
 system_health (WS), logbook (REST) e render_template (REST).
 
-Stile: fake della sessione aiohttp + asserzione sull'URL esatto chiamato
-(come tests/test_ha_client_config.py). Tutti i metodi sono di sola lettura e
-degradano in silenzio: nessuna eccezione deve mai raggiungere il chiamante.
+Stile: fake della sessione aiohttp + asserzione sull'URL esatto chiamato.
+Tutti i metodi sono di sola lettura e degradano in silenzio: nessuna
+eccezione deve mai raggiungere il chiamante.
 """
 
 from datetime import datetime, timedelta, timezone

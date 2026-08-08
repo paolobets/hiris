@@ -1,5 +1,4 @@
 import asyncio
-import fnmatch
 import json
 import logging
 import os
@@ -12,7 +11,6 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .proxy.ha_client import HAClient
-from .proxy._sanitize import sanitize_ha_value as _sanitize_ha_value
 from .casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
 from .claude_runner import RunnerBackendError
 from .config import EUR_RATE
@@ -431,30 +429,16 @@ class ChatbotEngine:
     # Context helpers
     # ------------------------------------------------------------------
 
-    def _build_entity_context(self, chatbot: "Chatbot") -> str:
-        if self._entity_cache is None:
-            return ""
-        all_entities = self._entity_cache.get_all_useful()
-        if chatbot.allowed_entities:
-            relevant = [
-                e for e in all_entities
-                if any(fnmatch.fnmatch(e["id"], pat) for pat in chatbot.allowed_entities)
-            ]
-        else:
-            relevant = all_entities
-        if not relevant:
-            return ""
-        lines = [
-            "[INIZIO DATI NON AFFIDABILI — fonte: Home Assistant]",
-            "[CONTESTO ENTITÀ]",
-        ]
-        for e in relevant[:50]:
-            name = _sanitize_ha_value(e.get("name") or e["id"])
-            state = _sanitize_ha_value(str(e.get("state", "")))
-            unit = f" {e['unit']}" if e.get("unit") else ""
-            lines.append(f"- {name}: {state}{unit}")
-        lines.append("[FINE DATI NON AFFIDABILI]")
-        return "\n".join(lines)
+    # fetta E3 Task 12 ("esce il ritratto"): `_build_entity_context` e'
+    # uscita -- il filo morto era gia' dichiarato dalla ricognizione (§1,
+    # censimento "solo test": tre casi in tests/test_chatbot_engine.py e
+    # nessun chiamante di produzione). Slice 5 Task 2 l'aveva gia' scollegata
+    # da `_run_chatbot` (l'injection di contesto entita' dedicata al tipo
+    # "agent" e' uscita col campo `type` stesso) e l'aveva tenuta solo come
+    # helper direttamente testato; qui esce anche quello, coi suoi tre test.
+    # `set_entity_cache`/`self._entity_cache` NON escono con lei: restano
+    # vivi, usati dal Test Run (vedi `dispatcher_conoscenza = ...
+    # cache=self._entity_cache` piu' sotto, in `_run_chatbot`).
 
     # ------------------------------------------------------------------
     # Chatbot run
@@ -464,11 +448,6 @@ class ChatbotEngine:
     # "acting" on its own conclusions. The Sentinella (watcher/) is now the
     # sole proactive/actuating engine. `_run_chatbot` below only ever produces
     # text via the runner's plain chat() — it never executes actions.
-    #
-    # Slice 5 Task 2: every persona is a chat entity now (the "agent"/
-    # "monitor" type and its dedicated entity-context injection are gone
-    # along with the `type` field) — `_build_entity_context` above is kept
-    # only as a directly-tested helper, no longer called from here.
 
     # ------------------------------------------------------------------
     # Rate-limit backoff helpers (v0.9.10)

@@ -97,16 +97,6 @@ async def test_un_ambito_di_categorie_caduto_si_dice_quale():
     assert non_disponibili == ["categorie:script"]
 
 
-@pytest.mark.asyncio
-async def test_get_config_entries_restituisce_tutto_non_solo_gli_errori():
-    voci = [
-        {"domain": "hue", "title": "Hue", "state": "loaded"},
-        {"domain": "rotto", "title": "Rotto", "state": "setup_error", "reason": "boom"},
-    ]
-    with patch.object(HAClient, "_ws_call", AsyncMock(return_value=voci)):
-        assert await _client().get_config_entries() == voci
-
-
 # fetta E3 Task 11: test_il_monitor_di_salute_filtra_da_se_gli_errori e'
 # cancellato -- importava `errori_di_integrazione` da
 # `hiris.app.proxy.health_monitor`, cancellato per intero insieme
@@ -114,3 +104,12 @@ async def test_get_config_entries_restituisce_tutto_non_solo_gli_errori():
 # costruzione: `ModuleNotFoundError: No module named
 # 'hiris.app.proxy.health_monitor'`, prima della cancellazione. Nessun
 # successore: quel filtro non ha piu' alcun consumatore.
+#
+# fetta E3 Task 12: test_get_config_entries_restituisce_tutto_non_solo_gli_
+# errori e' cancellato -- testava `HAClient.get_config_entries()` in
+# isolamento, un metodo diverso da `leggi_registri()` sopra (che chiede
+# "config/config_entries/get_entries" direttamente nel proprio batch WS, non
+# passando da `get_config_entries`). `get_config_entries` era gia' ORFANO
+# DICHIARATO dal Task 11 (l'HealthMonitor che lo leggeva e' uscito):
+# verificato che cade per costruzione (`AttributeError: 'HAClient' object
+# has no attribute 'get_config_entries'`), poi cancellato insieme al metodo.

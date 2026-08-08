@@ -147,8 +147,11 @@ class EntityCache:
             self._by_domain.setdefault(dom, []).append(eid)
         self._states[eid] = minimal
 
-    def get_state(self, entity_id: str) -> dict | None:
-        return self._states.get(entity_id)
+    # fetta E3 Task 12 ("esce il ritratto"): `get_state` e' uscito -- ORFANO
+    # DICHIARATO dal Task 9, il cui unico chiamante era
+    # `TaskEngine._evaluate_condition`, cancellato per intero col Task
+    # Engine. Verificato di nuovo qui (grep sull'intero repo, zero
+    # chiamanti): nessun successore.
 
     def get_minimal(self, entity_ids: list[str]) -> list[dict]:
         return [self._states[eid] for eid in entity_ids if eid in self._states]
@@ -157,9 +160,10 @@ class EntityCache:
         ids = self._by_domain.get(domain, [])
         return self.get_minimal(ids)
 
-    def domain_counts(self) -> dict:
-        """Map of domain -> number of cached entities (for the gateway policy UI)."""
-        return {d: len(v) for d, v in self._by_domain.items()}
+    # fetta E3 Task 12 ("esce il ritratto"): `domain_counts` e' uscito --
+    # ORFANO DICHIARATO dal Task 7 (viveva per la UI della gateway policy,
+    # cancellata insieme al semaforo). Verificato di nuovo qui: zero
+    # chiamanti nell'intero repo.
 
     def get_on(self) -> list[dict]:
         return [e for e in self._states.values() if e["state"] == "on"]
@@ -173,8 +177,13 @@ class EntityCache:
     def get_all(self) -> list[dict]:
         return list(self._states.values())
 
-    def get_all_states(self) -> dict[str, dict]:
-        return dict(self._states)
+    # fetta E3 Task 12 ("esce il ritratto"): `get_all_states` (la forma a
+    # dizionario, entity_id -> stato) e' uscito -- ORFANO DICHIARATO dal
+    # Task 2, il cui unico chiamante era `semantic_context_map`, cancellata
+    # insieme alla context map. Verificato di nuovo qui: zero chiamanti.
+    # Da non confondere con `all_states` (sotto), la forma a lista che
+    # `api/handlers_casa.py` e l'inventario entita' usano ancora: quella
+    # resta.
 
     def all_states(self) -> list[dict]:
         """Return all cached entity states as a list (read-only access for the entity inventory API)."""

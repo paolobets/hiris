@@ -332,71 +332,19 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
 # avevano altri chiamanti: il modulo e' cancellato con loro.
 
 
-async def _osserva_la_casa(app) -> int:
-    """Registra lo stato notevole della casa e ne calcola il cambiamento.
-
-    E' l'UNICO scrittore della linea di base del ritratto: i consumatori
-    leggono soltanto. Se aggiornasse la linea di base ogni consumatore,
-    ciascuno vedrebbe solo cio' che e' cambiato dopo il precedente, e il
-    delta smetterebbe di voler dire "dall'ultima volta che ho guardato".
-
-    Non solleva mai: un'osservazione saltata e' un delta piu' vecchio, non un
-    giro di scheduler perso.
-    """
-    try:
-        store = app.get("portrait_store") if app is not None else None
-        cache = app.get("entity_cache") if app is not None else None
-        if store is None or cache is None or not hasattr(cache, "all_states"):
-            return 0
-        from .proxy.entity_cache import inventario_leggibile
-        if not inventario_leggibile(cache):
-            # Riavvio host: il Supervisor puo' avviare HIRIS prima che il
-            # core HA sia pronto. Il primo `entity_cache.load()` fallisce (e
-            # viene inghiottito), la cache resta parziale/vuota e
-            # `cache.loaded` resta False. Un'osservazione su quello stato
-            # cancellerebbe o riempirebbe di falsi "riapparsi" la linea di
-            # base -- saltare il giro e' "un delta piu' vecchio", la
-            # degradazione che il docstring sopra promette, non un guasto.
-            return 0
-        from .brain.portrait import notable_state
-        changes = store.observe(notable_state(cache.all_states()))
-        return len(changes)
-    except Exception:
-        logger.warning("_osserva_la_casa: osservazione fallita", exc_info=True)
-        return 0
-
-
-def _portrait_context(app) -> str:
-    """Il ritratto reso, pronto per il prompt. "" se non disponibile.
-
-    Sincrona di proposito: legge solo la cache in memoria e lo store locale,
-    nessun I/O verso Home Assistant.
-
-    ORFANO DICHIARATO (fetta E3 Task 7): il suo ultimo chiamante di
-    produzione era `_gather_context`, la closure del Guardian dentro il
-    blocco Sentinella -- cancellata per intero in questo task insieme a
-    guardiano/ragionatore/esecutore. Il chiamante olistico era gia' uscito
-    col Task 4. Nessun chiamante di produzione resta oggi. Non tocca a
-    questo task ricollegarla: il ritratto e' fuori dal suo perimetro
-    ("non anticipare... il ritratto al Task 12"), che la trovera' qui.
-    `_osserva_la_casa` (sopra) NON e' orfana: il job schedulato
-    "hiris_portrait_observe" continua a scrivere la linea di base -- solo
-    questo consumatore del TESTO composto e' rimasto senza chiamante.
-    """
-    try:
-        store = app.get("portrait_store") if app is not None else None
-        cache = app.get("entity_cache") if app is not None else None
-        if store is None or cache is None or not hasattr(cache, "all_states"):
-            return ""
-        from .brain.portrait import build_portrait, render_portrait
-        area_map = cache.get_area_map() if hasattr(cache, "get_area_map") else None
-        return render_portrait(build_portrait(
-            area_map=area_map, states=cache.all_states(),
-            baseline=store.baseline(), changes=store.last_changes(),
-        ))
-    except Exception:
-        logger.warning("_portrait_context: ritratto non disponibile", exc_info=True)
-        return ""
+# fetta E3 Task 12 ("esce il ritratto"): `_osserva_la_casa` (l'unico
+# scrittore della linea di base, sul job schedulato "hiris_portrait_observe")
+# e `_portrait_context` (il testo reso, gia' ORFANO DICHIARATO dal Task 7 --
+# il suo ultimo chiamante di produzione, `_gather_context` dentro il blocco
+# Sentinella, era caduto li') sono usciti insieme a tutto il ritratto:
+# `brain/portrait.py`, `brain/portrait_store.py`, il job e il suo cablaggio
+# piu' sotto. I lettori del TESTO composto erano gia' tutti caduti nei Task
+# 4-7 (server.py:1777,1801,1805,2390 nella ricognizione -> prompt di
+# watcher/reasoner.py e coverage_review.py, entrambi cancellati); la chat non
+# lo ha mai letto (handlers_chat.py non lo chiama). Con lui esce il concetto
+# di "delta dall'ultima osservazione", che il nucleo oggi non ha: e'
+# materiale che tornera' nella conoscenza 2.0 se il nucleo vorra' imparare il
+# delta -- con un progetto, non trascinando portrait.db.
 
 
 # fetta E3 Task 6: `run_daily_briefing` (resoconto delle 08:00),
@@ -1188,23 +1136,23 @@ async def _on_startup(app: web.Application) -> None:
             _advisory_db_path,
         )
 
-    from .brain.portrait_store import PortraitStore
-    try:
-        app["portrait_store"] = PortraitStore(os.path.join(data_dir, "portrait.db"))
-        logger.info("PortraitStore ready")
-    except Exception:
-        # Un portrait.db corrotto (perdita di corrente, disco guasto) fa
-        # sollevare sqlite3.DatabaseError da init_schema anche se connect()
-        # riesce: senza questo try/except l'eccezione uscirebbe da
-        # _on_startup e fermerebbe l'intero add-on (niente reasoner, niente
-        # scheduler, niente chat) per un file che e' una cache ricostruibile.
-        # I due consumatori del ritratto controllano gia' esplicitamente
-        # `app.get("portrait_store") is None` e degradano a ""/skip: non
-        # scriverla in app basta a innescare quella degradazione.
-        logger.warning(
-            "PortraitStore non disponibile (portrait.db corrotto o "
-            "illeggibile): il ritratto della casa resta disattivato per "
-            "questo avvio", exc_info=True,
+    # fetta E3 Task 12 ("esce il ritratto"): PortraitStore/portrait.py sono
+    # usciti per intero -- i loro unici lettori (il Brain, la Sentinella)
+    # erano gia' caduti nei Task 4-7, e l'unico scrittore era il job
+    # schedulato "hiris_portrait_observe" (cancellato piu' sotto insieme al
+    # resto del cablaggio). SILENZIO DICHIARATO, stessa disciplina di
+    # advisory.db/sentinel.db (Task 6/7): un portrait.db ereditato da
+    # un'installazione precedente non viene cancellato (mai dati utente in
+    # /data) ma il suo incontro va dichiarato nel log, non muto.
+    _portrait_db_path = os.path.join(data_dir, "portrait.db")
+    if os.path.exists(_portrait_db_path):
+        logger.info(
+            "portrait.db presente in %s da un'installazione precedente: "
+            "da fetta E3 Task 12 nessun codice lo legge ne' lo scrive piu' "
+            "(il ritratto della casa -- portrait.py, portrait_store.py, il "
+            "job schedulato 'hiris_portrait_observe' -- e' uscito per "
+            "intero). Il file resta su disco, intatto.",
+            _portrait_db_path,
         )
 
     # fetta E3 Task 7 ("esce la Sentinella intera, e il semaforo che la E2 le
@@ -1345,20 +1293,16 @@ async def _on_startup(app: web.Application) -> None:
     # uscita insieme a `reasoning_log`/ReasoningLog (nessun job
     # `hiris_reasoning_prune`).
 
-    async def _portrait_observe_job():
-        try:
-            n = await _osserva_la_casa(app)
-            if n:
-                logger.info("ritratto: %d cambiamenti registrati", n)
-        except Exception:
-            logger.warning("portrait observe job failed", exc_info=True)
-
-    engine._scheduler.add_job(
-        _portrait_observe_job, "interval",
-        minutes=int(os.environ.get("HIRIS_PORTRAIT_OBSERVE_MINUTES", "15")),
-        id="hiris_portrait_observe", replace_existing=True,
-        misfire_grace_time=300,
-    )
+    # fetta E3 Task 12 ("esce il ritratto"), SILENZIO DICHIARATO: qui viveva
+    # il job schedulato "hiris_portrait_observe" (interval
+    # HIRIS_PORTRAIT_OBSERVE_MINUTES, 15' di default), che chiamava
+    # `_osserva_la_casa` per aggiornare la linea di base del ritratto in
+    # `portrait.db`. Con `_osserva_la_casa`/`_portrait_context`/
+    # PortraitStore/portrait.py usciti per intero, nessuna osservazione gira
+    # piu' -- comportamento deciso, non un guasto: vedi il commit e il
+    # report. `HIRIS_PORTRAIT_OBSERVE_MINUTES` esce con il suo unico
+    # lettore (non era un'opzione add-on: nessuna voce in
+    # config.yaml/run.sh/translations).
 
     # ── Ponte push (Piano A): spazzata dei job scaduti senza risposta dal
     # runner remoto. Il ramo chat resta (Slice 4b): un job "chat" scaduto
@@ -1589,8 +1533,6 @@ async def _on_cleanup(app: web.Application) -> None:
         app["vault"].close()
     if "history_store" in app:
         app["history_store"].close()
-    if "portrait_store" in app:
-        app["portrait_store"].close()
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "archivio_casa" in app:

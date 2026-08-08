@@ -53,9 +53,7 @@ def _sys_text(system) -> str:
 def mock_ha():
     ha = AsyncMock()
     ha.get_states = AsyncMock(return_value=[])
-    ha.get_history = AsyncMock(return_value=[])
     ha.call_service = AsyncMock(return_value=True)
-    ha.get_automations = AsyncMock(return_value=[])
     return ha
 
 

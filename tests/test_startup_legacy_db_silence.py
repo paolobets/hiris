@@ -24,6 +24,14 @@ fetta E3 Task 11: l'HealthMonitor esce (col SupervisorClient, suo ultimo
 lettore) e lascia lo stesso genere di silenzio dichiarato per
 `ha_health.json` (`server.py`, dove viveva la costruzione dell'HealthMonitor)
 -- pinnato qui con lo stesso metodo.
+
+fetta E3 Task 12: il ritratto esce per intero (portrait.py, portrait_store.py,
+il job schedulato "hiris_portrait_observe") e lascia lo stesso genere di
+silenzio dichiarato per `portrait.db` (`server.py`, dove viveva la
+costruzione di PortraitStore) -- pinnato qui con lo stesso metodo. Il marcatore
+di chiusura del blocco advisory.db (`next_marker`) cambia di conseguenza: non
+punta piu' all'import di PortraitStore (uscito), ma all'inizio del nuovo
+blocco portrait.db.
 """
 import inspect
 import logging
@@ -49,7 +57,7 @@ def _load_silence_check(path_literal: str, next_marker: str):
 
 def test_advisory_db_presence_logged_when_file_exists(tmp_path, caplog):
     check = _load_silence_check(
-        "advisory_db_path", "from .brain.portrait_store import PortraitStore",
+        "advisory_db_path", '_portrait_db_path = os.path.join(data_dir, "portrait.db")',
     )
     (tmp_path / "advisory.db").write_text("x")
     with caplog.at_level("INFO"):
@@ -60,7 +68,7 @@ def test_advisory_db_presence_logged_when_file_exists(tmp_path, caplog):
 
 def test_advisory_db_silent_when_file_absent(tmp_path, caplog):
     check = _load_silence_check(
-        "advisory_db_path", "from .brain.portrait_store import PortraitStore",
+        "advisory_db_path", '_portrait_db_path = os.path.join(data_dir, "portrait.db")',
     )
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_advisory_silence"))
@@ -160,3 +168,28 @@ def test_ha_health_json_silent_when_file_absent(tmp_path, caplog):
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_ha_health_silence"))
     assert not caplog.records, "nessun ha_health.json sul disco -- nessun log deve uscire"
+
+
+# fetta E3 Task 12: il ritratto esce per intero (portrait.py,
+# portrait_store.py, il job schedulato "hiris_portrait_observe") e lascia lo
+# stesso genere di silenzio dichiarato per `portrait.db`.
+
+
+def test_portrait_db_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _load_silence_check(
+        "portrait_db_path", "# fetta E3 Task 7 (",
+    )
+    (tmp_path / "portrait.db").write_text("x")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_portrait_silence"))
+    assert any("portrait.db" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_portrait_db_silent_when_file_absent(tmp_path, caplog):
+    check = _load_silence_check(
+        "portrait_db_path", "# fetta E3 Task 7 (",
+    )
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_portrait_silence"))
+    assert not caplog.records, "nessun portrait.db sul disco -- nessun log deve uscire"
