@@ -1186,7 +1186,6 @@ def programma_rilettura_comportamento(guarda, ritardo: float = 3.0):
 
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner, RunnerBackendError
-    from .proxy.semantic_map import SemanticMap
     from .llm_router import LLMRouter
 
     # Pre-load static HTML so request handlers don't do sync open().read()
@@ -1276,13 +1275,6 @@ async def _on_startup(app: web.Application) -> None:
     # Task 4 -- non c'e' piu' nulla da sovrascrivere).
     from .api.handlers_gateway_policy import apply_saved_policy
     apply_saved_policy(app)
-
-    # Build semantic map
-    semantic_map = SemanticMap(data_dir=data_dir)
-    semantic_map.load()
-    ambiguous = semantic_map.build_from_cache(entity_cache)
-    app["semantic_map"] = semantic_map
-    ha_client.add_registry_listener(semantic_map.on_entity_added)
 
     # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
     # casa cambia. La costruzione iniziale non deve poter impedire il boot: un
@@ -2735,18 +2727,10 @@ async def _on_startup(app: web.Application) -> None:
             chat_policy=chat_policy,            # deprecato
             model_chain=_chain,
         )
-        semantic_map.set_router(router)
         app["claude_runner"] = claude_runner  # backward compat (may be None)
         app["llm_router"] = router
         engine.set_claude_runner(router)
         engine.set_task_engine(task_engine)
-
-        # Kick off LLM classification for ambiguous entities (background, non-blocking)
-        if ambiguous:
-            _spawn(
-                semantic_map._classify_unknown_batch(),
-                name="semantic_map_initial_classify",
-            )
     else:
         app["claude_runner"] = None
         app["llm_router"] = None

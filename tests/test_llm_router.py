@@ -59,27 +59,6 @@ async def test_router_chat_delegates_to_runner(mock_runner):
     assert result == "response text"
 
 
-@pytest.mark.asyncio
-async def test_router_classify_entities_no_local_uses_runner(mock_runner):
-    router = LLMRouter(claude=mock_runner)
-    entities = [{"id": "sensor.test", "state": "100", "name": "Test", "unit": "W"}]
-    result = await router.classify_entities(entities)
-    mock_runner.simple_chat.assert_awaited_once()
-    assert "sensor.test" in result
-    assert result["sensor.test"]["role"] == "energy_meter"
-
-
-@pytest.mark.asyncio
-async def test_router_classify_entities_uses_ollama_if_configured(mock_runner):
-    mock_ollama = MagicMock()
-    mock_ollama.simple_chat = AsyncMock(return_value='{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}')
-    router = LLMRouter(claude=mock_runner, ollama=mock_ollama)
-    entities = [{"id": "sensor.test", "state": "100", "name": "Test", "unit": "W"}]
-    result = await router.classify_entities(entities)
-    mock_ollama.simple_chat.assert_awaited_once()
-    mock_runner.simple_chat.assert_not_awaited()
-
-
 def test_router_proxies_usage_properties(mock_runner):
     router = LLMRouter(claude=mock_runner)
     assert router.total_input_tokens == 10
@@ -320,22 +299,6 @@ def test_backend_is_cloud():
     assert backend_is_cloud("llama3.1:8b") is False   # Ollama locale
     # 'auto' è cloud-first nelle strategie default → trattato come cloud (prudente)
     assert backend_is_cloud("auto") is True
-
-
-@pytest.mark.asyncio
-async def test_classify_entities_empty_response_returns_empty():
-    """An empty backend reply (down / circuit open) returns {} without routing
-    through the JSON parser — avoids the 'could not parse' log flood."""
-    from unittest.mock import AsyncMock, MagicMock
-    from hiris.app.llm_router import LLMRouter
-
-    ollama = MagicMock()
-    ollama.simple_chat = AsyncMock(return_value="")
-    router = LLMRouter(ollama=ollama)
-
-    result = await router.classify_entities([{"id": "sensor.x", "state": "1", "name": "X"}])
-    assert result == {}
-    ollama.simple_chat.assert_awaited_once()
 
 
 class _Dummy:

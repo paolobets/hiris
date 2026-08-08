@@ -13,16 +13,6 @@ from .claude_runner import (
 
 logger = logging.getLogger(__name__)
 
-_CLASSIFY_SYSTEM = (
-    "Sei un classificatore di entità Home Assistant. "
-    "Rispondi SOLO con JSON valido, nessun testo aggiuntivo."
-)
-
-_CLASSIFY_ROLES = (
-    "energy_meter, solar_production, grid_import, climate_sensor, "
-    "presence, lighting, appliance, door_window, electrical, diagnostic, other"
-)
-
 
 def _is_openai_model(model: str) -> bool:
     return bool(re.match(r"^(gpt-|o[1-9])", model))
@@ -378,76 +368,3 @@ class LLMRouter:
     def reset_usage(self) -> None:
         for r in self._all:
             r.reset_usage()
-
-    # ------------------------------------------------------------------
-    # Entity classification (prefers Ollama for cheap inference)
-    # ------------------------------------------------------------------
-
-    async def classify_entities(self, entities: list[dict]) -> dict[str, dict]:
-        if not entities:
-            return {}
-
-        batch_text = "\n".join(
-            f"- {e['id']}: state={e.get('state', 'unknown')}, "
-            f"name={e.get('name', '')}, unit={e.get('unit', '')}"
-            for e in entities
-        )
-        user_msg = (
-            f"Classifica queste entità HA. Restituisci JSON:\n"
-            f'{{\"entity_id\": {{\"role\": \"...\", \"label\": \"...\", \"confidence\": 0.0}}}}\n\n'
-            f"Ruoli validi: {_CLASSIFY_ROLES}\n\n"
-            f"Entità:\n{batch_text}\n\n"
-            f"Rispondi con SOLO il JSON."
-        )
-        messages = [{"role": "user", "content": user_msg}]
-
-        # Ollama is cheapest; fall back to primary runner
-        runner = self._ollama or self._openrouter or self._claude or self._openai
-        if runner is None:
-            return {}
-        raw = await runner.simple_chat(messages, system=_CLASSIFY_SYSTEM)
-        # Empty reply = backend down / circuit open. Return early instead of
-        # routing it through the JSON parser, which would log a "could not parse"
-        # warning on every call and flood the log when a backend is unreachable.
-        if not raw or not raw.strip():
-            return {}
-        return _parse_classify_response(raw)
-
-
-_VALID_ROLES = frozenset([
-    "energy_meter", "solar_production", "grid_import", "climate_sensor",
-    "presence", "lighting", "appliance", "door_window", "electrical",
-    "diagnostic", "other", "unknown",
-])
-
-
-def _parse_classify_response(raw: str) -> dict[str, dict]:
-    raw = raw[:100_000]
-    data: dict | None = None
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        for m in reversed(list(re.finditer(r'\{', raw))):
-            try:
-                data = json.loads(raw[m.start():])
-                break
-            except json.JSONDecodeError:
-                continue
-    if not isinstance(data, dict):
-        logger.warning("classify_entities: could not parse JSON from LLM response: %.200s", raw)
-        return {}
-    result: dict[str, dict] = {}
-    for eid, meta in list(data.items())[:500]:
-        if not isinstance(meta, dict):
-            continue
-        role = str(meta.get("role", "other"))
-        if role not in _VALID_ROLES:
-            role = "other"
-        label = str(meta.get("label", ""))[:128] or eid.split(".")[-1]
-        try:
-            confidence = float(meta.get("confidence", 0.8))
-            confidence = max(0.0, min(1.0, confidence))
-        except (TypeError, ValueError):
-            confidence = 0.8
-        result[eid] = {"role": role, "label": label, "confidence": confidence}
-    return result
