@@ -74,8 +74,7 @@ def _bridge_on(app) -> bool:
 
 
 async def _enqueue_chat_job(
-    request: web.Request, impostazioni, effective_chatbot_id: str | None,
-    message: str, data_dir: str,
+    request: web.Request, impostazioni, message: str, data_dir: str,
 ) -> web.Response:
     """Chat-via-abbonamento (Slice 4b, Task 2): hand the turn to the async
     reasoning queue (``kind="chat"``) instead of calling a runner
@@ -86,15 +85,20 @@ async def _enqueue_chat_job(
     from Task 1's report): a consumer could claim and resolve the job, and
     ultimately read history back, before this request even returns, and a
     session that opens on an assistant turn is rejected by the Claude API.
+
+    fetta E4 Task 5 ("un bot solo"): chat_store non prende piu' un id —
+    c'e' UNA cronologia, non piu' una per chatbot. Il parametro
+    `effective_chatbot_id` (e con lui il ramo `if effective_chatbot_id:`
+    che poteva saltare l'append) sparisce insieme al concetto: append e
+    load qui sotto sono sempre incondizionati.
     """
-    if effective_chatbot_id:
-        append_messages(effective_chatbot_id, [
-            {"role": "user", "content": message},
-        ], data_dir)
+    append_messages([
+        {"role": "user", "content": message},
+    ], data_dir)
 
     # Built AFTER the append above, so the current user turn is the last
     # entry — the external runner needs it to know what it's replying to.
-    history = load_history(effective_chatbot_id, data_dir) if effective_chatbot_id else []
+    history = load_history(data_dir)
     sanitized_history = _trim_history(history)
     system_prompt = _build_system_prompt(impostazioni)
 
@@ -102,7 +106,6 @@ async def _enqueue_chat_job(
     now = time.time()
     deadline = now + int(os.environ.get("BRIDGE_DEADLINE_MIN", "5")) * 60
     context = {
-        "chatbot_id": effective_chatbot_id,
         "history": sanitized_history,
         "system_prompt": system_prompt,
     }
@@ -173,14 +176,6 @@ async def handle_chat(request: web.Request) -> web.Response:
     data_dir = request.app.get("data_dir", "/data")
     impostazioni = request.app["impostazioni_chat"]
 
-    # Id fisso, transitorio: la cronologia (chat_store.py) ha ancora bisogno
-    # di UNA chiave per riga, e le rotte di compatibilita' (GET/DELETE
-    # .../chat-history, handlers_chat_history.py) e il payload di GET
-    # /api/chatbots (handlers_chatbots.py) usano lo stesso id -- deve restare
-    # lo stesso in tutti e tre i posti finche' la E5 non toglie l'id dal
-    # wire per intero.
-    effective_chatbot_id = ID_CHAT_DEFAULT
-
     # Enforce max turns limit (count from DB, not from the trimmed context
     # window). Final-review Fix 1 (Slice 4b): hoisted ABOVE the subscription
     # branch below — this check is branch-independent (it reads the turn
@@ -191,7 +186,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # never reached in that mode).
     max_turns = impostazioni.max_chat_turns
     if max_turns > 0:
-        turn_count = count_user_turns(effective_chatbot_id, data_dir)
+        turn_count = count_user_turns(data_dir)
         if turn_count >= max_turns:
             return web.json_response({
                 "error": "max_turns_reached",
@@ -214,7 +209,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # In-flight guard first: it's the more specific, more actionable
         # signal for the user (retry once the current answer lands), so it
         # wins even if the daily cap is ALSO exhausted.
-        if reasoning_queue.has_pending_chat(effective_chatbot_id):
+        if reasoning_queue.has_pending_chat():
             return web.json_response(
                 {"error": "C'è già una risposta in arrivo per questa conversazione."},
                 status=409,
@@ -226,7 +221,7 @@ async def handle_chat(request: web.Request) -> web.Response:
                 {"error": "Limite giornaliero di messaggi chat raggiunto."},
                 status=429,
             )
-        return await _enqueue_chat_job(request, impostazioni, effective_chatbot_id, message, data_dir)
+        return await _enqueue_chat_job(request, impostazioni, message, data_dir)
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -235,7 +230,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         )
 
     # Load server-side history (client-sent history field is ignored)
-    history = load_history(effective_chatbot_id, data_dir)
+    history = load_history(data_dir)
 
     # (max-turns check now runs above, before the subscription branch — see
     # Fix 1 comment there.)
@@ -246,19 +241,21 @@ async def handle_chat(request: web.Request) -> web.Response:
     # cronologia" non esiste piu'. Prima, un chatbot seminato mancante (id
     # sbagliato, seed mai girato) faceva silenziosamente cadere `agent` a
     # `None`: il prompt degradava a una stringa vuota E la cronologia
-    # smetteva di essere letta/scritta (`effective_chatbot_id` diventava
-    # anch'esso `None`), senza che nessun log lo dicesse. `impostazioni_chat`
-    # non e' mai `None` (`ImpostazioniChat.carica` non lo restituisce mai) e
-    # `effective_chatbot_id` e' un id fisso, non piu' condizionato dalla
-    # ricerca di un chatbot che potrebbe non esistere -- quel ramo di
-    # degrado e' impossibile per costruzione, non solo non piu' preso.
+    # smetteva di essere letta/scritta, senza che nessun log lo dicesse.
+    # `impostazioni_chat` non e' mai `None` (`ImpostazioniChat.carica` non lo
+    # restituisce mai) -- quel ramo di degrado e' impossibile per
+    # costruzione, non solo non piu' preso. fetta E4 Task 5 ("un bot solo"):
+    # anche l'id transitorio che qui sotto selezionava la cronologia
+    # (`effective_chatbot_id`) e' uscito -- chat_store non ha piu' alcuna
+    # nozione di id da cui degradare, `load_history`/`get_past_summaries`
+    # leggono sempre l'UNICA cronologia che esiste.
     system_prompt = _build_system_prompt(impostazioni)
 
     # Inject closed-session summaries so Claude remembers previous conversations.
     # Le sessioni precedenti restano una fonte A PARTE dal nucleo (Task 3):
     # sono cronologia di conversazioni chiuse, non conoscenza sulla casa --
     # il nucleo non le contiene e non deve contenerle.
-    past = get_past_summaries(effective_chatbot_id, data_dir)
+    past = get_past_summaries(data_dir)
     past_str = ""
     if past:
         lines = ["Sessioni precedenti (memoria):"]
@@ -414,7 +411,13 @@ async def handle_chat(request: web.Request) -> web.Response:
             agent_type=agent_type,
             restrict_to_home=agent_restrict,
             require_confirmation=agent_require_confirmation,
-            chatbot_id=effective_chatbot_id,
+            # fetta E4 Task 5: non c'e' piu' un `effective_chatbot_id` -- questo
+            # kwarg alimenta solo il tracking dei consumi per-bot dei runner
+            # (_per_chatbot_usage, claude_runner.py/openai_compat_runner.py) e
+            # il campo di debug `agent_id` del done-event SSE, entrambi non
+            # toccati da questo task (la loro sorte e' del Task 6, vedi il
+            # brief). ID_CHAT_DEFAULT resta l'unico id che il prodotto conosce.
+            chatbot_id=ID_CHAT_DEFAULT,
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             strumenti=STRUMENTI_CONOSCENZA,
@@ -454,7 +457,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # rare case where the runner returns a known-bad payload some other
         # way (e.g. partial leak that slipped past detection).
         if full_response and not _is_toxic_assistant(full_response):
-            append_messages(effective_chatbot_id, [
+            append_messages([
                 {"role": "user", "content": message},
                 {"role": "assistant", "content": full_response},
             ], data_dir)
@@ -471,7 +474,8 @@ async def handle_chat(request: web.Request) -> web.Response:
             agent_type=agent_type,
             restrict_to_home=agent_restrict,
             require_confirmation=agent_require_confirmation,
-            chatbot_id=effective_chatbot_id,
+            # Vedi il commento gemello sul ramo streaming sopra.
+            chatbot_id=ID_CHAT_DEFAULT,
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             strumenti=STRUMENTI_CONOSCENZA,
@@ -503,7 +507,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # inherit a degraded history. The user retains the visible error in the
     # current response payload.
     if not _is_toxic_assistant(response):
-        append_messages(effective_chatbot_id, [
+        append_messages([
             {"role": "user", "content": message},
             {"role": "assistant", "content": response},
         ], data_dir)

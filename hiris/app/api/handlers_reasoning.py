@@ -34,18 +34,23 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
     if (job or {}).get("kind") == "chat":
         # Chat-via-abbonamento (Slice 4b): a chat job's submit writes the
         # reply into chat_store — it must NEVER actuate the house through
-        # execute_decision. Fail-closed: missing chatbot_id/reply -> no write,
-        # but the job stays "decided" (already committed by q.submit above).
-        # Retro-compat (one-deploy window): jobs enqueued before the
-        # agent_id->chatbot_id rename still carry the legacy key. Fall back
-        # to it so an in-flight pre-deploy job's reply isn't dropped.
-        _ctx = (job or {}).get("context") or {}
-        chatbot_id = _ctx.get("chatbot_id") or _ctx.get("agent_id")
+        # execute_decision. Fail-closed: missing reply -> no write, but the
+        # job stays "decided" (already committed by q.submit above).
+        #
+        # fetta E4 Task 5 ("un bot solo"): submit_chat_reply non prende piu'
+        # un chatbot_id -- chat_store non ne ha piu' bisogno, c'e' UNA
+        # cronologia. Non estraiamo piu' nulla dal context_json: un job
+        # rimasto in reasoning.db da prima di questo task puo' ancora
+        # portare chatbot_id/agent_id dentro il suo context (scritto da un
+        # server piu' vecchio) -- quella chiave e' semplicemente ignorata,
+        # non impedisce piu' la consegna (prima, un context legacy con solo
+        # `agent_id` avrebbe fatto risolvere `chatbot_id` a `None` e saltare
+        # la scrittura: quel guasto non esiste piu' per costruzione).
         reply = decision.get("reply")
         submit_chat_reply = request.app.get("submit_chat_reply")
-        if submit_chat_reply is not None and chatbot_id and reply:
+        if submit_chat_reply is not None and reply:
             try:
-                await submit_chat_reply(chatbot_id, reply)
+                await submit_chat_reply(reply)
                 outcome = "chat_reply_recorded"
             except Exception:
                 logger.exception("submit_chat_reply failed")

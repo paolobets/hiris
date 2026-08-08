@@ -32,7 +32,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.strumenti import DispatcherConoscenza
 from hiris.app.chat_store import _get_store, _TS_FMT, close_all_stores
-from hiris.app.impostazioni_chat import ID_CHAT_DEFAULT, ImpostazioniChat
+from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.memoria.archivio import ArchivioMemoria
 from hiris.app.server import create_app
@@ -299,13 +299,15 @@ async def test_le_sessioni_precedenti_restano(aiohttp_client, tmp_path):
 
     # Stesso pattern di tests/test_chat_store.py::test_get_past_summaries_returns_closed_sessions:
     # una sessione GIA' chiusa (summary non nullo), inserita direttamente nella
-    # stessa ChatStore che `handle_chat` legge per questo `data_dir`.
+    # stessa ChatStore che `handle_chat` legge per questo `data_dir`. fetta E4
+    # Task 5 ("un bot solo"): chat_sessions non ha piu' una colonna chatbot_id
+    # -- c'e' UNA cronologia, non serve piu' un id per riga.
     ts = datetime.now(timezone.utc).strftime(_TS_FMT)
     store = _get_store(str(tmp_path))
     store._conn.execute(
-        "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at, summary) "
-        "VALUES(?,?,?,?,?)",
-        ("closed-1", ID_CHAT_DEFAULT, ts, ts, "parlato di irrigazione del giardino"),
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "
+        "VALUES(?,?,?,?)",
+        ("closed-1", ts, ts, "parlato di irrigazione del giardino"),
     )
     store._conn.commit()
 
@@ -332,9 +334,9 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
     ts = datetime.now(timezone.utc).strftime(_TS_FMT)
     store = _get_store(str(tmp_path))
     store._conn.execute(
-        "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at, summary) "
-        "VALUES(?,?,?,?,?)",
-        ("closed-1", ID_CHAT_DEFAULT, ts, ts, "parlato di irrigazione del giardino"),
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "
+        "VALUES(?,?,?,?)",
+        ("closed-1", ts, ts, "parlato di irrigazione del giardino"),
     )
     store._conn.commit()
 

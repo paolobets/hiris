@@ -5,7 +5,7 @@ import pathlib
 from unittest.mock import AsyncMock, MagicMock
 from aiohttp.test_utils import TestClient
 from hiris.app.server import create_app
-from hiris.app.impostazioni_chat import ImpostazioniChat, ID_CHAT_DEFAULT
+from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.chat_store import close_all_stores
 
 
@@ -232,9 +232,9 @@ async def test_chat_max_turns_blocks_when_limit_reached(client):
     from hiris.app.chat_store import append_messages
     client.app["impostazioni_chat"] = ImpostazioniChat(max_chat_turns=2)
     data_dir = client.app["data_dir"]
-    # Pre-fill 2 user turns in server-side history (stessa chiave fissa che
-    # handle_chat usa oggi, ID_CHAT_DEFAULT -- vedi handlers_chat.py).
-    append_messages(ID_CHAT_DEFAULT, [
+    # Pre-fill 2 user turns nell'UNICA cronologia server-side (fetta E4
+    # Task 5: chat_store non prende piu' un id -- vedi handlers_chat.py).
+    append_messages([
         {"role": "user", "content": "first"},
         {"role": "assistant", "content": "reply1"},
         {"role": "user", "content": "second"},
@@ -258,7 +258,7 @@ async def test_chat_persists_exchange_in_history(client):
 
     await client.post("/api/chat", json={"message": "persist me"})
 
-    history = load_history(ID_CHAT_DEFAULT, data_dir)
+    history = load_history(data_dir)
     assert any(m["content"] == "persist me" for m in history)
     assert any(m["content"] == "stored response" for m in history)
 
@@ -278,7 +278,7 @@ async def test_chat_does_not_persist_toxic_response(client):
 
     await client.post("/api/chat", json={"message": "fail me"})
 
-    history = load_history(ID_CHAT_DEFAULT, data_dir)
+    history = load_history(data_dir)
     assert history == []  # nothing persisted
 
 
@@ -294,7 +294,7 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
 
     await client.post("/api/chat", json={"message": "leak me"})
 
-    history = load_history(ID_CHAT_DEFAULT, data_dir)
+    history = load_history(data_dir)
     assert history == []
 
 

@@ -16,8 +16,15 @@ tests/test_chat_subscription_path.py):
   stop counting as "in flight" (pending/claimed).
 
 New in this task:
-- ReasoningQueue.has_pending_chat(chatbot_id) -> bool: a kind="chat" job in
-  pending/claimed state whose context_json carries this chatbot_id.
+- ReasoningQueue.has_pending_chat() -> bool: a kind="chat" job in
+  pending/claimed state. fetta E4 Task 5 ("un bot solo") dropped the
+  `chatbot_id` parameter this originally took (a conversation used to be a
+  chatbot's active session, keyed by chatbot_id; with one bot there's one
+  conversation, so "in flight for this id" and "in flight" collapsed into
+  the same question) -- its unit tests moved to test_reasoning_queue.py,
+  the queue class's natural home. What stays here are the HTTP-level 409
+  integration tests below (handle_chat's use of the guard), unaffected by
+  the signature change.
 - ReasoningQueue.count_chat_today(now=None) -> int: kind="chat" jobs whose
   created_ts falls on the same local calendar day as `now` (defaults to
   time.time()). Takes an explicit `now` -- like every other method on this
@@ -34,7 +41,7 @@ from unittest.mock import AsyncMock
 
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import ID_CHAT_DEFAULT, ImpostazioniChat
+from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -50,8 +57,9 @@ def reset_stores():
 # un'`ImpostazioniChat` vera (nessuna selezione da simulare: e' l'unica
 # istanza, sempre quella). Il `chatbot_id`/`agent_id` che i test mandano nel
 # body resta nel payload delle richieste sotto (per continuare a coprire "un
-# id qualsiasi non rompe nulla"), ma non seleziona piu' niente: la chiave di
-# conversazione effettiva e' sempre `ID_CHAT_DEFAULT` (vedi handlers_chat.py).
+# id qualsiasi non rompe nulla"), ma non seleziona piu' niente. fetta E4
+# Task 5: nemmeno una chiave interna fissa resta -- chat_store e la coda non
+# hanno proprio piu' un concetto di id (vedi handlers_chat.py).
 def _make_impostazioni(*, max_chat_turns=0):
     return ImpostazioniChat(
         nome="test-agent",
@@ -92,91 +100,12 @@ def _make_app(tmp_path, *, chat_via_subscription=True, with_queue=True,
 
 
 # ---------------------------------------------------------------------------
-# ReasoningQueue.has_pending_chat
+# ReasoningQueue.has_pending_chat: le unit test dirette sulla coda si sono
+# spostate in test_reasoning_queue.py (fetta E4 Task 5, "un bot solo" --
+# senza piu' un chatbot_id da passare, la loro casa naturale e' li' insieme
+# alle altre unit test di ReasoningQueue). Qui restano solo le integration
+# test HTTP piu' sotto (handle_chat che usa la guardia 409).
 # ---------------------------------------------------------------------------
-
-def test_has_pending_chat_false_when_no_jobs(tmp_path):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    assert q.has_pending_chat("agentX") is False
-
-
-def test_has_pending_chat_true_for_pending_job(tmp_path):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    # `now` explicit and still before deadline_ts (100.0) -- job is
-    # genuinely in-flight, not merely unswept-but-expired.
-    assert q.has_pending_chat("agentX", now=50.0) is True
-
-
-def test_has_pending_chat_true_for_claimed_job(tmp_path):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    q.claim(now=2.0)
-    assert q.has_pending_chat("agentX", now=50.0) is True
-
-
-def test_has_pending_chat_false_after_submit_resolves_job(tmp_path):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    claimed = q.claim(now=2.0)
-    q.submit(claimed["job_id"], claimed["nonce"], {"reply": "ciao"}, now=3.0)
-    assert q.has_pending_chat("agentX") is False
-
-
-def test_has_pending_chat_false_after_expiry(tmp_path):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    q.sweep_expired(now=200.0)
-    assert q.has_pending_chat("agentX") is False
-
-
-def test_has_pending_chat_scoped_to_agent_id_not_other_conversations(tmp_path):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    assert q.has_pending_chat("agentY") is False
-
-
-def test_has_pending_chat_ignores_non_chat_kinds(tmp_path):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home",
-              "severity_hint": "info", "evidence": {}, "ts": 1.0},
-              {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    assert q.has_pending_chat("agentX") is False
-
-
-def test_has_pending_chat_false_for_missing_agent_id(tmp_path):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    assert q.has_pending_chat(None) is False
-    assert q.has_pending_chat("") is False
-
-
-def test_has_pending_chat_false_for_expired_but_unswept_job(tmp_path):
-    """Task 5 fix (Task 3 review, MEDIUM): a chat job whose deadline has
-    already passed but was never swept (e.g. BRIDGE_ENABLED off, or the
-    2-minute sweep just hasn't run yet) must NOT count as in-flight --
-    otherwise it 409s the conversation forever with no way to clear it.
-    Still status='pending' in the DB (no sweep_expired call here), but
-    `now` is past its deadline_ts."""
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    # Still 'pending' in the DB -- no sweep_expired call -- but `now` (200.0)
-    # is already past deadline_ts (100.0).
-    assert q.has_pending_chat("agentX", now=200.0) is False
-
-
-def test_has_pending_chat_recognizes_legacy_agent_id_context_key(tmp_path):
-    """Retro-compat: a job enqueued PRE-deploy (before the agent_id ->
-    chatbot_id rename) has context_json = {"agent_id": ...} only. Without
-    the dual-key fallback in has_pending_chat, this in-flight job would
-    silently stop being recognized post-deploy (losing the duplicate-turn
-    guard, though not dropping data by itself -- see
-    test_reasoning_api.py::test_submit_recognizes_legacy_agent_id_context_key
-    for the data-loss half of this bug)."""
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, now=1.0)
-    assert q.has_pending_chat("agentX", now=50.0) is True
-
-
 
 # ---------------------------------------------------------------------------
 # ReasoningQueue.count_chat_today
@@ -316,10 +245,10 @@ async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
     regardless of pending jobs or the daily cap -- guards are subscription-only."""
     app, q, runner, impostazioni, data_dir = _make_app(
         tmp_path, chat_via_subscription=False, chat_daily_cap=0)
-    # Pre-seed a "pending" chat job on the queue, keyed like handle_chat keys
-    # it today (ID_CHAT_DEFAULT, fixed) -- if the guard wrongly applied to
-    # the sync path this would still 409.
-    q.enqueue("chat", {}, {"chatbot_id": ID_CHAT_DEFAULT}, deadline_ts=time.time() + 300, now=time.time())
+    # Pre-seed a "pending" chat job on the queue -- fetta E4 Task 5:
+    # has_pending_chat() is unconditional now (no id to key it by) -- if the
+    # guard wrongly applied to the sync path this would still 409.
+    q.enqueue("chat", {}, {}, deadline_ts=time.time() + 300, now=time.time())
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})

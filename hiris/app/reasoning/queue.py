@@ -93,48 +93,36 @@ class ReasoningQueue:
         out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
         return out
 
-    def has_pending_chat(self, chatbot_id: Optional[str], now: Optional[float] = None) -> bool:
-        """True if a kind="chat" job for this chatbot_id is still in flight
-        (status 'pending' or 'claimed') AND its deadline hasn't passed yet.
-        Slice 4b Task 3 -- "one answer in flight per conversation" guard on
-        the async subscription path.
+    def has_pending_chat(self, now: Optional[float] = None) -> bool:
+        """True if ANY kind="chat" job is still in flight (status 'pending'
+        or 'claimed') AND its deadline hasn't passed yet. Slice 4b Task 3 --
+        "one answer in flight per conversation" guard on the async
+        subscription path.
 
-        Task 5 fix (Task 3 review, MEDIUM): a job whose deadline_ts is
-        already in the past is excluded even if its status is still
-        'pending'/'claimed' -- e.g. because the ponte-push sweep
-        (server.py's _reasoning_sweep, gated on BRIDGE_ENABLED) never ran or
-        is off. Without this, an expired-but-unswept job would 409 the
-        conversation forever with no way to clear it. Takes an explicit
-        `now`, like every other method on this class (enqueue/claim/submit/
-        sweep_expired/count_chat_today), defaulting to time.time() only when
-        the caller (production code) doesn't pass one.
+        fetta E4 Task 5 ("un bot solo"): this used to take a `chatbot_id`
+        and scan each in-flight row's context_json to match it (a
+        conversation was a chatbot's active session, keyed by chatbot_id).
+        With one bot there's exactly one conversation, so "in flight for
+        this id" and "in flight" collapsed into the same question -- the
+        per-row context parse is gone, this is now a single indexed COUNT.
 
-        Chat jobs have no dedicated conversation_id column: Task 2 put
-        chatbot_id inside context_json (a conversation IS a chatbot's active
-        session, keyed by chatbot_id -- there's no separate concept). So this
-        scans the in-flight chat-kind rows (typically a handful -- bounded by
-        chat_daily_cap and by the fact that most turns resolve quickly) and
-        parses each row's context to match chatbot_id, rather than adding a
-        dedicated indexed column for a query this cheap in practice."""
-        if not chatbot_id:
-            return False
+        Task 5 fix (Task 3 review, MEDIUM; preserved through this
+        simplification): a job whose deadline_ts is already in the past is
+        excluded even if its status is still 'pending'/'claimed' -- e.g.
+        because the ponte-push sweep (server.py's _reasoning_sweep, gated on
+        BRIDGE_ENABLED) never ran or is off. Without this, an
+        expired-but-unswept job would 409 the conversation forever with no
+        way to clear it. Takes an explicit `now`, like every other method on
+        this class (enqueue/claim/submit/sweep_expired/count_chat_today),
+        defaulting to time.time() only when the caller (production code)
+        doesn't pass one."""
         ts = time.time() if now is None else now
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT context_json FROM reasoning_jobs "
+            row = self._conn.execute(
+                "SELECT 1 FROM reasoning_jobs "
                 "WHERE kind='chat' AND status IN ('pending','claimed') "
-                "AND deadline_ts > ?", (ts,)).fetchall()
-        for r in rows:
-            try:
-                ctx = json.loads(r["context_json"])
-            except (TypeError, ValueError):
-                continue
-            # Retro-compat (one-deploy window): jobs enqueued before the
-            # agent_id->chatbot_id rename still carry the legacy key. Fall
-            # back to it so an in-flight pre-deploy job is still recognized.
-            if isinstance(ctx, dict) and (ctx.get("chatbot_id") or ctx.get("agent_id")) == chatbot_id:
-                return True
-        return False
+                "AND deadline_ts > ? LIMIT 1", (ts,)).fetchone()
+        return row is not None
 
     def count_chat_today(self, now: Optional[float] = None) -> int:
         """Count of kind="chat" jobs enqueued (created_ts) on the same local

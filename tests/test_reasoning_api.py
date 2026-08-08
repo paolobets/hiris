@@ -66,17 +66,22 @@ async def test_submit_without_execute_decision_wired_records_and_logs(aiohttp_cl
 
 
 @pytest.mark.asyncio
-async def test_submit_recognizes_legacy_agent_id_context_key(aiohttp_client, tmp_path):
-    """Retro-compat: a kind="chat" job enqueued PRE-deploy (before the
-    agent_id -> chatbot_id rename) has context_json = {"agent_id": ...}
-    only. Without the dual-key fallback in handle_reasoning_submit, a
-    real computed assistant reply for this in-flight job would be
-    silently dropped (outcome "chat_reply_skipped", submit_chat_reply
-    never called) because chatbot_id resolves to None."""
+async def test_submit_delivers_reply_even_with_legacy_id_key_in_context(aiohttp_client, tmp_path):
+    """fetta E4 Task 5 ("un bot solo"): handle_reasoning_submit non estrae
+    piu' nessun chatbot_id/agent_id dal context -- chat_store non ne ha
+    piu' bisogno, c'e' UNA cronologia. Prima di questo task, un job
+    enqueued pre-deploy con SOLO `agent_id` nel context (prima della
+    rinomina agent_id -> chatbot_id) dipendeva da un fallback a doppia
+    chiave per non perdere la risposta; oggi il context non viene nemmeno
+    piu' letto per un id, quindi qualunque chiave (o nessuna) ci sia
+    dentro e' irrilevante -- verificato che questo pin cade per
+    costruzione se si torna al vecchio `submit_chat_reply(chatbot_id,
+    reply)`: `TypeError: _submit_chat_reply() takes 1 positional argument
+    but 2 were given` nel chiamante reale (handlers_reasoning.py)."""
     app, q = _app(tmp_path)
     replies = []
-    async def _submit_chat_reply(chatbot_id, reply):
-        replies.append((chatbot_id, reply))
+    async def _submit_chat_reply(reply):
+        replies.append(reply)
     app["submit_chat_reply"] = _submit_chat_reply
     q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, job_id="J", now=1.0)
     client = await aiohttp_client(app)
@@ -86,7 +91,7 @@ async def test_submit_recognizes_legacy_agent_id_context_key(aiohttp_client, tmp
         "decision": {"reply": "ecco la risposta"}})
     body = await r.json()
     assert body["ok"] is True and body["outcome"] == "chat_reply_recorded"
-    assert replies == [("agentX", "ecco la risposta")]
+    assert replies == ["ecco la risposta"]
 
 
 @pytest.mark.asyncio

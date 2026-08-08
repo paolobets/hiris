@@ -3,12 +3,11 @@
 When ``app["chat_via_subscription"]`` is truthy AND the reasoning-queue
 bridge is wired (``app["reasoning_queue"]`` present — see
 ``handlers_chat._bridge_on``), ``handle_chat`` must:
-  1. persist the user turn to chat_store (keyed by agent_id) BEFORE
-     enqueueing — otherwise a session could start on an assistant turn,
-     which the Claude API rejects (contract from Task 1's report);
+  1. persist the user turn to chat_store BEFORE enqueueing — otherwise a
+     session could start on an assistant turn, which the Claude API rejects
+     (contract from Task 1's report);
   2. enqueue a ``kind="chat"`` reasoning job whose context carries
-     ``agent_id`` (NOT ``conversation_id`` — that's the real chat_store key,
-     confirmed in Task 1);
+     ``history``/``system_prompt`` (no id at all — see below);
   3. return HTTP 202 ``{"status": "pending", "job_id": ...}`` WITHOUT
      calling the runner.
 
@@ -19,13 +18,17 @@ A new ``GET /api/chat/reply/{job_id}`` route polls the same queue
 (``ReasoningQueue.get``) and returns ``{"status": "pending"}`` until a
 decision exists, then ``{"status": "done", "reply": ...}``.
 
+fetta E4 Task 5 ("un bot solo"): chat_store lost the `chatbot_id` it used to
+be keyed by (there's one conversation, full stop) — `append_messages`/
+`load_history` take no id, and the enqueued job context no longer carries
+one either (`handlers_chat.py::_enqueue_chat_job`).
+
 Real APIs verified before writing this test (matches Task 1's report):
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
 - ReasoningQueue.get(job_id) -> dict with "kind"/"context"/"decision" (decision
   is None until ReasoningQueue.submit() has been called)
 - ReasoningQueue.submit(job_id, nonce, decision, now) -> bool
-- chat_store.append_messages(agent_id, messages, data_dir) /
-  chat_store.load_history(agent_id, data_dir)
+- chat_store.append_messages(messages, data_dir) / chat_store.load_history(data_dir)
 """
 import os
 import time
@@ -37,7 +40,7 @@ from unittest.mock import AsyncMock
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_store import close_all_stores, load_history
-from hiris.app.impostazioni_chat import ID_CHAT_DEFAULT, ImpostazioniChat
+from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -52,8 +55,9 @@ def reset_stores():
 # mockare -- `_make_agent`/l'`engine` MagicMock sono sostituiti da
 # un'`ImpostazioniChat` vera. Il `chatbot_id`/`agent_id` che i test mandano
 # nel body resta nel payload (continua a coprire "un id qualsiasi non rompe
-# nulla"), ma non seleziona piu' niente: la chiave di conversazione (e del
-# job in coda) e' sempre `ID_CHAT_DEFAULT` (vedi handlers_chat.py).
+# nulla"), ma non seleziona piu' niente. fetta E4 Task 5: nemmeno una
+# chiave interna fissa resta -- chat_store e la coda non hanno proprio piu'
+# un concetto di id (vedi handlers_chat.py).
 def _make_impostazioni(*, max_chat_turns=0):
     return ImpostazioniChat(
         nome="test-agent",
@@ -110,7 +114,10 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
     job = q.get(body["job_id"])
     assert job["kind"] == "chat"
-    assert job["context"]["chatbot_id"] == ID_CHAT_DEFAULT
+    # fetta E4 Task 5 ("un bot solo"): il context del job non porta piu' un
+    # chatbot_id -- non c'e' piu' nulla da instradare per chiave, c'e' UNA
+    # conversazione.
+    assert "chatbot_id" not in job["context"]
 
 
 @pytest.mark.asyncio
@@ -150,7 +157,7 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
     app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     impostazioni.max_chat_turns = 1
     from hiris.app.chat_store import append_messages
-    append_messages(ID_CHAT_DEFAULT, [
+    append_messages([
         {"role": "user", "content": "prima"},
         {"role": "assistant", "content": "risposta"},
     ], data_dir)
@@ -175,7 +182,7 @@ async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_pat
     app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
     impostazioni.max_chat_turns = 5
     from hiris.app.chat_store import append_messages
-    append_messages(ID_CHAT_DEFAULT, [
+    append_messages([
         {"role": "user", "content": "prima"},
         {"role": "assistant", "content": "risposta"},
     ], data_dir)
@@ -200,7 +207,7 @@ async def test_user_message_persisted_before_enqueue(tmp_path):
         resp = await client.post("/api/chat", json={"message": "salva questo"})
         assert resp.status == 202
 
-    history = load_history(ID_CHAT_DEFAULT, data_dir)
+    history = load_history(data_dir)
     assert history == [{"role": "user", "content": "salva questo"}]
 
 

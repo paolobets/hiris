@@ -34,6 +34,10 @@ drift from the shipped code, this test extracts the REAL function source via
 ``inspect.getsource`` and executes it against test doubles for its free
 variables (``app``, ``data_dir``, ``_append_chat_messages``,
 ``_is_toxic_chat_reply``).
+
+fetta E4 Task 5 ("un bot solo"): ``_submit_chat_reply`` perde il parametro
+``chatbot_id`` -- chat_store non ha piu' un id per cui instradare, c'e' UNA
+cronologia. Ogni fake/call qui sotto passa/riceve solo ``reply_text``.
 """
 import inspect
 import textwrap
@@ -53,8 +57,8 @@ def reset_stores():
 
 def _load_real_submit_chat_reply(app, data_dir, append_fn=None):
     src = inspect.getsource(server._on_startup)
-    start = src.index("    async def _submit_chat_reply(chatbot_id: str, reply_text: str) -> None:")
-    end_marker = '_append_chat_messages(chatbot_id, [{"role": "assistant", "content": reply_text}], data_dir)'
+    start = src.index("    async def _submit_chat_reply(reply_text: str) -> None:")
+    end_marker = '_append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir)'
     end = src.index(end_marker, start) + len(end_marker)
     func_src = textwrap.dedent(src[start:end])
 
@@ -113,13 +117,13 @@ async def test_toxic_reply_is_dropped_not_persisted(tmp_path):
     data_dir = str(tmp_path / "data")
     calls = []
 
-    def _fake_append(chatbot_id, messages, data_dir):
-        calls.append((chatbot_id, messages))
+    def _fake_append(messages, data_dir):
+        calls.append(messages)
 
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
 
-    await submit("agentX", "Errore temporaneo del servizio AI. Riprova tra poco.")
+    await submit("Errore temporaneo del servizio AI. Riprova tra poco.")
 
     assert calls == []
 
@@ -130,9 +134,9 @@ async def test_clean_reply_is_persisted(tmp_path):
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir)
 
-    await submit("agentX", "ecco la risposta")
+    await submit("ecco la risposta")
 
-    assert load_history("agentX", data_dir) == [
+    assert load_history(data_dir) == [
         {"role": "assistant", "content": "ecco la risposta"},
     ]
 
@@ -150,10 +154,10 @@ async def test_pseudonymizer_detokenize_called_with_empty_mapping_no_expansion(t
     app = {"pseudonymizer": pseudonymizer}
     submit = _load_real_submit_chat_reply(app, data_dir)
 
-    await submit("agentX", "Il tuo indirizzo è [[TOKEN_1]].")
+    await submit("Il tuo indirizzo è [[TOKEN_1]].")
 
     assert pseudonymizer.calls == [("Il tuo indirizzo è [[TOKEN_1]].", {})]
-    assert load_history("agentX", data_dir) == [
+    assert load_history(data_dir) == [
         {"role": "assistant", "content": "Il tuo indirizzo è [[TOKEN_1]]."},
     ]
 
@@ -174,13 +178,13 @@ async def test_detokenize_runs_before_toxicity_check(tmp_path):
     )
     calls = []
 
-    def _fake_append(chatbot_id, messages, data_dir):
-        calls.append((chatbot_id, messages))
+    def _fake_append(messages, data_dir):
+        calls.append(messages)
 
     app = {"pseudonymizer": pseudonymizer}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
 
-    await submit("agentX", "risposta grezza qualsiasi")
+    await submit("risposta grezza qualsiasi")
 
     # detokenize was invoked (with an explicit empty mapping) and its
     # returned value -- the toxic sentinel -- is what the toxicity check
@@ -198,27 +202,29 @@ async def test_no_pseudonymizer_configured_still_persists(tmp_path):
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir)
 
-    await submit("agentX", "risposta senza pseudonymizer")
+    await submit("risposta senza pseudonymizer")
 
-    assert load_history("agentX", data_dir) == [
+    assert load_history(data_dir) == [
         {"role": "assistant", "content": "risposta senza pseudonymizer"},
     ]
 
 
 @pytest.mark.asyncio
-async def test_empty_agent_id_or_reply_still_short_circuits(tmp_path):
-    """Pre-existing guard must survive the refactor unchanged."""
+async def test_empty_reply_still_short_circuits(tmp_path):
+    """Pre-existing guard must survive the refactor: fetta E4 Task 5 dropped
+    the `chatbot_id` half of this guard (there's nothing left to be empty/
+    None on that side -- the parameter itself is gone), the empty-reply half
+    survives unchanged."""
     data_dir = str(tmp_path / "data")
     calls = []
 
-    def _fake_append(chatbot_id, messages, data_dir):
-        calls.append((chatbot_id, messages))
+    def _fake_append(messages, data_dir):
+        calls.append(messages)
 
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
 
-    await submit("", "some reply")
-    await submit("agentX", "")
-    await submit(None, "some reply")
+    await submit("")
+    await submit(None)
 
     assert calls == []

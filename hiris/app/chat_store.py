@@ -1,5 +1,3 @@
-import glob as _glob
-import json
 import logging
 import os
 import re
@@ -11,8 +9,6 @@ from datetime import datetime, timezone, timedelta
 from .storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
-
-_CHATBOT_ID_RE = re.compile(r'^[\w\-]{1,64}$')
 
 # Identifies historical assistant turns that should NOT be replayed back to the
 # model on the next chat call because they would degrade the response. Kept in
@@ -76,10 +72,18 @@ _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 _stores: dict[str, "ChatStore"] = {}
 _lock = threading.Lock()
 
+# fetta E4 Task 5 ("un bot solo"): niente piu' `chatbot_id` in nessuna delle
+# due tabelle -- era una chiave di partizione su un insieme di cardinalita'
+# uno, ereditata da un mondo con piu' bot che l'entita' Chatbot rappresentava
+# (uscita per intero col Task 4). Gli indici tornano dentro _SCHEMA (prima
+# vivevano fuori, creati a mano da ChatStore.__init__ DOPO init_schema: quel
+# giro esisteva solo perche' il vecchio idx_msg_chatbot/idx_sess_chatbot
+# referenziava una colonna che su un DB v1 non esisteva ancora al momento
+# dell'executescript -- senza chatbot_id negli indici quel problema non c'e'
+# piu', session_id/last_msg_at esistono in ogni versione dello schema).
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS chat_messages (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    chatbot_id  TEXT NOT NULL,
     session_id  TEXT NOT NULL,
     role        TEXT NOT NULL,
     content     TEXT NOT NULL,
@@ -87,54 +91,61 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 CREATE TABLE IF NOT EXISTS chat_sessions (
     session_id  TEXT PRIMARY KEY,
-    chatbot_id  TEXT NOT NULL,
     started_at  TEXT NOT NULL,
     last_msg_at TEXT NOT NULL,
     summary     TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_msg_session  ON chat_messages(session_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_sess_last_msg ON chat_sessions(last_msg_at);
 """
-# The two indexes are intentionally NOT part of _SCHEMA: init_schema() runs
-# executescript(_SCHEMA) unconditionally, BEFORE any migration -- on a
-# pre-existing v1 DB the `chatbot_id` column doesn't exist yet at that point
-# (still `agent_id`, renamed by _migrate_v2 below), so `CREATE INDEX ...
-# ON chat_messages(chatbot_id, ...)` would raise "no such column: chatbot_id"
-# if it lived in _SCHEMA. Both indexes are (re)created explicitly in
-# ChatStore.__init__ AFTER init_schema() returns, once `chatbot_id` is
-# guaranteed to exist (fresh install via _SCHEMA, or renamed by the
-# migration) -- safe and idempotent either way.
 
 
-def _migrate_v2(conn: sqlite3.Connection) -> None:
-    """v1 -> v2: rinomina `agent_id` (id del Chatbot) in `chatbot_id` in
-    entrambe le tabelle, e droppa i vecchi indici col vecchio nome (i nuovi
-    indici idx_msg_chatbot/idx_sess_chatbot vengono (ri)creati da
-    ChatStore.__init__ dopo init_schema, vedi commento sopra). SQLite rinomina
-    la colonna con RENAME COLUMN ma non gli indici che la referenziano.
-    Idempotente: salta ogni passo già applicato (rerun-safe)."""
-    msg_cols = [r[1] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()]
-    if "agent_id" in msg_cols and "chatbot_id" not in msg_cols:
-        conn.execute("ALTER TABLE chat_messages RENAME COLUMN agent_id TO chatbot_id")
-    sess_cols = [r[1] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
-    if "agent_id" in sess_cols and "chatbot_id" not in sess_cols:
-        conn.execute("ALTER TABLE chat_sessions RENAME COLUMN agent_id TO chatbot_id")
-    conn.execute("DROP INDEX IF EXISTS idx_msg_agent")
-    conn.execute("DROP INDEX IF EXISTS idx_sess_agent")
+def _azzera(conn: sqlite3.Connection) -> None:
+    """v1/v2 -> v3 ("un bot solo", fetta E4 Task 5): NESSUNA conversione.
+
+    Decisione esplicita dell'utente (vedi il commit): *"anche se perdiamo i
+    dati ora non c'e' problema, partiamo puliti, non serve migrare nulla"*.
+    Un DB 1.x aveva `chatbot_id NOT NULL` in entrambe le tabelle -- una
+    chiave partizionata su un insieme di cardinalita' uno, ora che esiste un
+    solo bot (`impostazioni_chat.py`, senza id). Non si rinomina/droppa la
+    colonna con un ALTER TABLE mirato come faceva `_migrate_v2` (uscita con
+    questo task, che rinominava `agent_id` in `chatbot_id`): si droppano le
+    due tabelle e si ricreano da `_SCHEMA`, che quella colonna non ce l'ha
+    piu'.
+
+    Il salto NON e' silenzioso: la cronologia che butta via e' esattamente
+    il difetto che questo prodotto ripete -- un azzeramento muto sarebbe
+    indistinguibile da un guasto. Logga quante righe scarta, cosi' chi
+    aggiorna da 1.x lo legge nei log invece di scoprirlo dalla chat vuota
+    (pinnato da tests/test_chat_store_azzeramento.py, stessa disciplina di
+    tests/test_startup_legacy_db_silence.py).
+
+    Idempotente se richiamata due volte in sequenza sullo stesso DB (caso
+    limite: `init_schema` la richiama per i target 2 E 3 quando parte da un
+    DB pre-versioning, `user_version` mai stampato prima d'ora) -- la
+    seconda passata trova le tabelle gia' vuote/nuove e logga zero righe
+    scartate."""
+    n_msg = conn.execute("SELECT COUNT(*) FROM chat_messages").fetchone()[0]
+    n_sess = conn.execute("SELECT COUNT(*) FROM chat_sessions").fetchone()[0]
+    conn.execute("DROP TABLE IF EXISTS chat_messages")
+    conn.execute("DROP TABLE IF EXISTS chat_sessions")
+    conn.executescript(_SCHEMA)
+    logger.info(
+        "cronologia 1.x azzerata, non convertita -- si parte puliti: %d messaggi e "
+        "%d sessioni di conversazioni precedenti sono stati scartati. Lo schema "
+        "precedente partizionava la cronologia per chatbot_id (NOT NULL in "
+        "chat_messages/chat_sessions), pensato per piu' bot; con un bot solo "
+        "quella colonna non ha piu' senso ed e' uscita insieme alle righe che "
+        "portava. Nessuna migrazione, per decisione esplicita dell'utente.",
+        n_msg, n_sess,
+    )
 
 
 class ChatStore:
     def __init__(self, db_path: str):
         self._conn = connect(db_path)
         self._mu = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migrate_v2})
-        # See the comment above _SCHEMA: safe here, chatbot_id is guaranteed
-        # to exist by now on both the fresh-install and migrated-legacy paths.
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_msg_chatbot  ON chat_messages(chatbot_id, timestamp)"
-        )
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sess_chatbot ON chat_sessions(chatbot_id, last_msg_at)"
-        )
-        self._conn.commit()
+        init_schema(self._conn, _SCHEMA, version=3, migrations={2: _azzera, 3: _azzera})
 
     # ------------------------------------------------------------------
     # Internal helpers (called with self._mu already held)
@@ -143,12 +154,11 @@ class ChatStore:
     def _now(self) -> str:
         return datetime.now(timezone.utc).strftime(_TS_FMT)
 
-    def _fresh_session_id(self, chatbot_id: str) -> str | None:
+    def _fresh_session_id(self) -> str | None:
         """Return the open session_id only if within the gap window — no side effects."""
         row = self._conn.execute(
             "SELECT session_id, last_msg_at FROM chat_sessions "
-            "WHERE chatbot_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
-            (chatbot_id,),
+            "WHERE summary IS NULL ORDER BY last_msg_at DESC LIMIT 1"
         ).fetchone()
         if not row:
             return None
@@ -160,21 +170,20 @@ class ChatStore:
             return row["session_id"]
         return None
 
-    def _active_session(self, chatbot_id: str) -> str | None:
+    def _active_session(self) -> str | None:
         """Return fresh session_id, closing stale ones as side effect (write path only)."""
-        sid = self._fresh_session_id(chatbot_id)
+        sid = self._fresh_session_id()
         if sid:
             return sid
         row = self._conn.execute(
-            "SELECT session_id FROM chat_sessions "
-            "WHERE chatbot_id = ? AND summary IS NULL ORDER BY last_msg_at DESC LIMIT 1",
-            (chatbot_id,),
+            "SELECT session_id FROM chat_sessions WHERE summary IS NULL "
+            "ORDER BY last_msg_at DESC LIMIT 1"
         ).fetchone()
         if row:
-            self._close_session(chatbot_id, row["session_id"])
+            self._close_session(row["session_id"])
         return None
 
-    def _close_session(self, chatbot_id: str, session_id: str) -> None:
+    def _close_session(self, session_id: str) -> None:
         rows = self._conn.execute(
             "SELECT role, content FROM chat_messages WHERE session_id = ? "
             "ORDER BY id DESC LIMIT ?",
@@ -205,44 +214,44 @@ class ChatStore:
             (summary, session_id),
         )
 
-    def _new_session(self, chatbot_id: str) -> str:
+    def _new_session(self) -> str:
         session_id = str(uuid.uuid4())
         ts = self._now()
         self._conn.execute(
-            "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at) VALUES(?,?,?,?)",
-            (session_id, chatbot_id, ts, ts),
+            "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
+            (session_id, ts, ts),
         )
         return session_id
 
-    def _get_or_create_session(self, chatbot_id: str) -> str:
-        sid = self._active_session(chatbot_id)
+    def _get_or_create_session(self) -> str:
+        sid = self._active_session()
         if sid:
             return sid
-        return self._new_session(chatbot_id)
+        return self._new_session()
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def append(self, chatbot_id: str, messages: list[dict]) -> None:
+    def append(self, messages: list[dict]) -> None:
         with self._mu:
-            sid = self._get_or_create_session(chatbot_id)
+            sid = self._get_or_create_session()
             ts = self._now()
             for m in messages:
                 self._conn.execute(
-                    "INSERT INTO chat_messages(chatbot_id, session_id, role, content, timestamp) "
-                    "VALUES(?,?,?,?,?)",
-                    (chatbot_id, sid, m["role"], m["content"], ts),
+                    "INSERT INTO chat_messages(session_id, role, content, timestamp) "
+                    "VALUES(?,?,?,?)",
+                    (sid, m["role"], m["content"], ts),
                 )
             self._conn.execute(
                 "UPDATE chat_sessions SET last_msg_at = ? WHERE session_id = ?", (ts, sid)
             )
             self._conn.commit()
 
-    def load_context(self, chatbot_id: str, max_turns: int = 30) -> list[dict]:
+    def load_context(self, max_turns: int = 30) -> list[dict]:
         """Return last max_turns pairs from the active (non-stale) session."""
         with self._mu:
-            sid = self._fresh_session_id(chatbot_id)
+            sid = self._fresh_session_id()
             if not sid:
                 return []
             if HISTORY_RETENTION_DAYS > 0:
@@ -270,20 +279,20 @@ class ChatStore:
                 messages = messages[-(max_turns * 2):]
             return messages
 
-    def get_past_summaries(self, chatbot_id: str, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
+    def get_past_summaries(self, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
         """Return closed sessions with summaries, most recent first."""
         with self._mu:
             rows = self._conn.execute(
                 "SELECT session_id, started_at, last_msg_at, summary FROM chat_sessions "
-                "WHERE chatbot_id = ? AND summary IS NOT NULL ORDER BY last_msg_at DESC LIMIT ?",
-                (chatbot_id, n),
+                "WHERE summary IS NOT NULL ORDER BY last_msg_at DESC LIMIT ?",
+                (n,),
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def count_user_turns(self, chatbot_id: str) -> int:
+    def count_user_turns(self) -> int:
         """Count user messages in the active (non-stale) session."""
         with self._mu:
-            sid = self._fresh_session_id(chatbot_id)
+            sid = self._fresh_session_id()
             if not sid:
                 return 0
             cnt = self._conn.execute(
@@ -292,16 +301,10 @@ class ChatStore:
             ).fetchone()
             return cnt[0] if cnt else 0
 
-    def clear(self, chatbot_id: str) -> None:
+    def clear(self) -> None:
         with self._mu:
-            sessions = self._conn.execute(
-                "SELECT session_id FROM chat_sessions WHERE chatbot_id = ?", (chatbot_id,)
-            ).fetchall()
-            for s in sessions:
-                self._conn.execute(
-                    "DELETE FROM chat_messages WHERE session_id = ?", (s["session_id"],)
-                )
-            self._conn.execute("DELETE FROM chat_sessions WHERE chatbot_id = ?", (chatbot_id,))
+            self._conn.execute("DELETE FROM chat_messages")
+            self._conn.execute("DELETE FROM chat_sessions")
             self._conn.commit()
 
     def delete_old_messages(self, retention_days: int) -> int:
@@ -322,60 +325,6 @@ class ChatStore:
             self._conn.commit()
             return cur.rowcount
 
-    def migrate_from_json(self, data_dir: str) -> None:
-        """One-time import of legacy chat_history_*.json files into SQLite."""
-        for path in _glob.glob(os.path.join(data_dir, "chat_history_*.json")):
-            try:
-                with open(path, encoding="utf-8") as f:
-                    data = json.load(f)
-                chatbot_id = data.get("agent_id") or (
-                    os.path.basename(path)[len("chat_history_"):-len(".json")]
-                )
-                if not _CHATBOT_ID_RE.match(chatbot_id):
-                    logger.warning("migrate_from_json: skipping %s — invalid chatbot_id %r", path, chatbot_id)
-                    continue
-                messages = data.get("messages", [])
-                if not messages:
-                    continue
-                with self._mu:
-                    existing = self._conn.execute(
-                        "SELECT COUNT(*) FROM chat_sessions WHERE chatbot_id = ?", (chatbot_id,)
-                    ).fetchone()[0]
-                    if existing > 0:
-                        continue
-                    session_id = str(uuid.uuid4())
-                    ts_start = messages[0].get("timestamp", self._now())
-                    ts_end = messages[-1].get("timestamp", self._now())
-                    self._conn.execute(
-                        "INSERT INTO chat_sessions(session_id, chatbot_id, started_at, last_msg_at) "
-                        "VALUES(?,?,?,?)",
-                        (session_id, chatbot_id, ts_start, ts_end),
-                    )
-                    for m in messages:
-                        role = m.get("role")
-                        if role not in {"user", "assistant", "system"}:
-                            logger.warning("migrate_from_json: skipping message with invalid role %r", role)
-                            continue
-                        content = m.get("content", "")
-                        if len(content) > 32768:
-                            logger.warning("migrate_from_json: truncating message content from %d chars", len(content))
-                            content = content[:32768]
-                        self._conn.execute(
-                            "INSERT INTO chat_messages(chatbot_id, session_id, role, content, timestamp) "
-                            "VALUES(?,?,?,?,?)",
-                            (chatbot_id, session_id, role, content, m.get("timestamp", ts_end)),
-                        )
-                    last_asst = next((m for m in reversed(messages) if m["role"] == "assistant"), None)
-                    text = last_asst["content"] if last_asst else "(migrated)"
-                    summary = text[:SUMMARY_MAX_CHARS] + "…" if len(text) > SUMMARY_MAX_CHARS else text
-                    self._conn.execute(
-                        "UPDATE chat_sessions SET summary = ? WHERE session_id = ?",
-                        (summary, session_id),
-                    )
-                    self._conn.commit()
-            except Exception as exc:
-                logger.warning("Failed to migrate %s: %s", path, exc)
-
     def close(self) -> None:
         with self._mu:
             self._conn.close()
@@ -390,39 +339,38 @@ def _get_store(data_dir: str) -> ChatStore:
         with _lock:
             if data_dir not in _stores:
                 db_path = os.path.join(data_dir, "chat_history.db")
-                store = ChatStore(db_path)
-                store.migrate_from_json(data_dir)
-                _stores[data_dir] = store
+                _stores[data_dir] = ChatStore(db_path)
     return _stores[data_dir]
 
 
 # ---------------------------------------------------------------------------
-# Backward-compatible public functions (same signatures as old JSON store)
+# Backward-compatible public functions (same signatures as old JSON store,
+# minus `chatbot_id` -- fetta E4 Task 5, "un bot solo": c'e' UNA cronologia)
 # ---------------------------------------------------------------------------
 
-def load_history(chatbot_id: str, data_dir: str) -> list[dict]:
+def load_history(data_dir: str) -> list[dict]:
     """Return [{role, content}] for the active session (Claude API format)."""
-    return _get_store(data_dir).load_context(chatbot_id)
+    return _get_store(data_dir).load_context()
 
 
-def append_messages(chatbot_id: str, messages: list[dict], data_dir: str) -> None:
+def append_messages(messages: list[dict], data_dir: str) -> None:
     """Append [{role, content}] to the active session."""
-    _get_store(data_dir).append(chatbot_id, messages)
+    _get_store(data_dir).append(messages)
 
 
-def clear_history(chatbot_id: str, data_dir: str) -> None:
-    """Delete all history and sessions for the given agent."""
-    _get_store(data_dir).clear(chatbot_id)
+def clear_history(data_dir: str) -> None:
+    """Delete all history and sessions."""
+    _get_store(data_dir).clear()
 
 
-def get_past_summaries(chatbot_id: str, data_dir: str, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
+def get_past_summaries(data_dir: str, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
     """Return up to n closed session summaries, most recent first."""
-    return _get_store(data_dir).get_past_summaries(chatbot_id, n)
+    return _get_store(data_dir).get_past_summaries(n)
 
 
-def count_user_turns(chatbot_id: str, data_dir: str) -> int:
+def count_user_turns(data_dir: str) -> int:
     """Count user turns in the active session (used for max_chat_turns enforcement)."""
-    return _get_store(data_dir).count_user_turns(chatbot_id)
+    return _get_store(data_dir).count_user_turns()
 
 
 def delete_old_messages(data_dir: str, retention_days: int) -> int:
