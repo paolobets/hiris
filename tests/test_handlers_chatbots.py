@@ -518,36 +518,11 @@ async def test_update_agent_accepts_payload_with_bogus_proactive_fields(monkeypa
     engine.update_chatbot.assert_called_once_with(aid, body)
 
 
-# ---------------------------------------------------------------------------
-# Task 3: handle_run_chatbot stays a minimal "run the persona once, return its
-# text reply" — no action execution, no structured-output parsing.
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_handle_run_agent_returns_plain_text_result():
-    from hiris.app.api.handlers_chatbots import handle_run_chatbot
-
-    engine = MagicMock()
-    fake_agent = MagicMock()
-    engine.get_chatbot.return_value = fake_agent
-    engine.run_chatbot = AsyncMock(return_value="Ciao! Come posso aiutarti?")
-
-    app = MagicMock()
-    app.__getitem__ = MagicMock(side_effect=lambda k: {"engine": engine}[k])
-
-    aid = "550e8400-e29b-41d4-a716-446655440000"
-    req = make_mocked_request(
-        "POST", f"/api/chatbots/{aid}/run",
-        match_info={"agent_id": aid},
-        app=app,
-    )
-
-    resp = await handle_run_chatbot(req)
-    assert resp.status == 200
-    payload = json.loads(resp.body)
-    assert payload == {"result": "Ciao! Come posso aiutarti?"}
-    engine.run_chatbot.assert_called_once_with(fake_agent)
-
+# handle_run_chatbot e' uscito con l'intero Test Run (fetta E4 Task 2, 2.0):
+# morto per costruzione (TypeError su ogni chiamata reale, difeso solo da un
+# AsyncMock -- vedi task-2-report.md). Verificato che il test qui sopra
+# cadesse per costruzione (`ImportError: cannot import name
+# 'handle_run_chatbot'`) prima della cancellazione.
 
 # ---------------------------------------------------------------------------
 # Task 4 (SP-4 Fase B): knowledge_access is finally editable in the UI, so it

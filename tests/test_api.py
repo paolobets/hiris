@@ -165,23 +165,11 @@ async def test_agent_update(client):
     assert data["system_prompt"] == "updated"
 
 
-@pytest.mark.asyncio
-async def test_agent_run(client):
-    payload = {
-        "name": "Run Test",
-        "type": "agent",
-        "triggers": [{"type": "schedule", "interval_minutes": 5}],
-        "system_prompt": "run test",
-        "allowed_tools": [],
-        "enabled": False,
-    }
-    create_resp = await client.post("/api/chatbots", json=payload)
-    agent_id = (await create_resp.json())["id"]
-
-    run_resp = await client.post(f"/api/chatbots/{agent_id}/run")
-    assert run_resp.status == 200
-    data = await run_resp.json()
-    assert "result" in data
+# test_agent_run (POST /api/chatbots/{id}/run) e' uscito con l'intero Test
+# Run (fetta E4 Task 2, 2.0): morto per costruzione (TypeError su ogni
+# chiamata reale ai runner, mai una risposta valida). Verificato che cadesse
+# per costruzione prima della cancellazione: 404 invece del 200 atteso
+# (route rimossa da server.py) -- vedi task-2-report.md.
 
 
 @pytest.mark.asyncio

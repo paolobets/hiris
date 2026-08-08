@@ -13,7 +13,7 @@ list, per "no migration" in the brief (Step 1 chose "discard" over "reject").
 """
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from hiris.app.chatbot_engine import ChatbotEngine, Chatbot
 
@@ -75,29 +75,6 @@ def test_delete_persona(engine):
     })
     assert engine.delete_chatbot(persona.id) is True
     assert persona.id not in engine.list_chatbots()
-
-
-@pytest.mark.asyncio
-async def test_run_persona_produces_text_only_no_actions(engine):
-    """Manual "run" of a persona calls the plain chat() path and returns text
-    — there is no action/rules execution left in ChatbotEngine to trigger."""
-    mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="Ciao! Come posso aiutarti?")
-    mock_runner.run_with_actions = AsyncMock(return_value=("should not be used", {}))
-    mock_runner.last_tool_calls = []
-    mock_runner.total_input_tokens = 0
-    mock_runner.total_output_tokens = 0
-    engine.set_claude_runner(mock_runner)
-
-    persona = engine.create_chatbot({
-        "name": "Assistente", "type": "chat",
-        "system_prompt": "Sei utile.", "allowed_tools": [],
-    })
-    result = await engine.run_chatbot(persona)
-
-    assert result == "Ciao! Come posso aiutarti?"
-    mock_runner.chat.assert_called_once()
-    mock_runner.run_with_actions.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

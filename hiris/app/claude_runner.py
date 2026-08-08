@@ -40,10 +40,12 @@ class RunnerBackendError(Exception):
     backend, and once every backend in the chain has failed, surfaces the
     LAST failure's `friendly_message` to the end user — the router becomes
     the single place that produces the user-facing degradation. Callers that
-    bypass the router (e.g. ChatbotEngine._run_chatbot, handlers_chat.handle_chat
-    when an agent pins an explicit non-"auto" model) catch it directly at
-    their own call site to preserve their pre-existing graceful-degradation
-    behavior instead of crashing.
+    bypass the router (e.g. handlers_chat.handle_chat when an agent pins an
+    explicit non-"auto" model) catch it directly at their own call site to
+    preserve their pre-existing graceful-degradation behavior instead of
+    crashing. (ChatbotEngine._run_chatbot used to be the other such caller —
+    it's gone, fetta E4 Task 2: the manual "Test Run" it backed was dead by
+    construction, see task-2-report.md.)
     """
 
     def __init__(self, friendly_message: str) -> None:

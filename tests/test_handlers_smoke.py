@@ -75,35 +75,10 @@ async def test_handle_config_default_theme_is_auto():
 # su tutti e cinque, prima della cancellazione.
 
 # ---------------------------------------------------------------------------
-# handle_run_chatbot (handlers_chatbots.py) -- handle_context_preview e'
-# uscito con la context map (fetta E3 Task 2, 2.0).
+# handle_run_chatbot (handlers_chatbots.py) e' uscito con l'intero Test Run
+# (fetta E4 Task 2, 2.0): morto per costruzione (TypeError su ogni chiamata
+# reale, difeso solo da un AsyncMock -- vedi task-2-report.md). I due smoke
+# test che lo esercitavano cadevano per costruzione con `ImportError: cannot
+# import name 'handle_run_chatbot'`, verificato prima della cancellazione.
+# `handle_context_preview` e' uscito con la context map (fetta E3 Task 2, 2.0).
 # ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_handle_run_agent_unknown_returns_404():
-    from hiris.app.api.handlers_chatbots import handle_run_chatbot
-    engine = MagicMock()
-    engine.get_chatbot.return_value = None
-    app = MagicMock()
-    app.__getitem__ = MagicMock(side_effect=lambda k: engine if k == "engine" else None)
-    aid = "550e8400-e29b-41d4-a716-446655440000"
-    request = make_mocked_request(
-        "POST", f"/api/chatbots/{aid}/run",
-        match_info={"agent_id": aid},
-        app=app,
-    )
-    resp = await handle_run_chatbot(request)
-    assert resp.status == 404
-
-
-@pytest.mark.asyncio
-async def test_handle_run_agent_invalid_id_returns_400():
-    from hiris.app.api.handlers_chatbots import handle_run_chatbot
-    app = MagicMock()
-    request = make_mocked_request(
-        "POST", "/api/chatbots/bad<script>id/run",
-        match_info={"agent_id": "bad<script>id"},
-        app=app,
-    )
-    resp = await handle_run_chatbot(request)
-    assert resp.status == 400

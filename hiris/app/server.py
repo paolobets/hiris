@@ -14,7 +14,7 @@ from aiohttp import web
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_chatbots import (
     handle_list_chatbots, handle_create_chatbot, handle_get_chatbot,
-    handle_update_chatbot, handle_delete_chatbot, handle_run_chatbot,
+    handle_update_chatbot, handle_delete_chatbot,
     handle_get_chatbot_usage, handle_reset_chatbot_usage,
 )
 from .api.handlers_entities import handle_list_entities
@@ -1528,7 +1528,6 @@ def create_app() -> web.Application:
     app.router.add_get("/api/chatbots/{agent_id}", handle_get_chatbot)
     app.router.add_put("/api/chatbots/{agent_id}", handle_update_chatbot)
     app.router.add_delete("/api/chatbots/{agent_id}", handle_delete_chatbot)
-    app.router.add_post("/api/chatbots/{agent_id}/run", handle_run_chatbot)
     app.router.add_get("/api/entities", handle_list_entities)
     app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
     app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)

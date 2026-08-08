@@ -225,18 +225,6 @@ async def handle_delete_chatbot(request: web.Request) -> web.Response:
     return web.Response(status=204)
 
 
-async def handle_run_chatbot(request: web.Request) -> web.Response:
-    agent_id = request.match_info["agent_id"]
-    if err := _check_chatbot_id(agent_id):
-        return err
-    engine = request.app["engine"]
-    agent = engine.get_chatbot(agent_id)
-    if not agent:
-        return web.json_response({"error": "Not found"}, status=404)
-    result = await engine.run_chatbot(agent)
-    return web.json_response({"result": result})
-
-
 async def handle_get_chatbot_usage(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
     if err := _check_chatbot_id(agent_id):
