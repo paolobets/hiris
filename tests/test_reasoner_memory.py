@@ -256,9 +256,10 @@ async def test_relevant_memory_degraded_path_hides_sensitive_unless_allowed(tmp_
 
 # ---------------------------------------------------------------------------
 # Fix 1 (CRITICAL, whole-branch review, final fix wave): the proactive
-# reasoner's `.declared` field (rendered into both proactive prompts by
-# watcher/reasoner.py and brain/coverage_review.py -- this function is the
-# ONE place both read from) must never surface a source='gateway' row,
+# reasoner's `.declared` field (rendered into the proactive prompt by
+# watcher/reasoner.py -- brain/coverage_review.py used to read from the same
+# place too, before it exited whole in fetta E3 Task 5) must never surface
+# a source='gateway' row,
 # mirroring the exclusion already pinned at the store level
 # (test_knowledge_store_declared.py) and on the chat surface
 # (test_declared_block_chat.py). `.declared` is independent of the embedder

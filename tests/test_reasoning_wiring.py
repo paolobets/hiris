@@ -14,63 +14,18 @@ def test_reasoning_queue_importable():
     assert ReasoningQueue is not None
 
 
-# ---------------------------------------------------------------------------
-# Fail-closed verdict on remote input (review fix on Task 3)
-# ---------------------------------------------------------------------------
-
-def _resolve_verdict(decision_dict):
-    """Mirrors server.py's _execute_decision verdict resolution exactly:
-    anything other than the two known verdict values degrades to
-    "falso_positivo" (fail-CLOSED), never defaults to the actuation-eligible
-    "anomalia"."""
-    v = decision_dict.get("verdict")
-    return v if v in ("anomalia", "falso_positivo") else "falso_positivo"
-
-
-def test_verdict_resolution_fails_closed():
-    assert _resolve_verdict({}) == "falso_positivo"
-    assert _resolve_verdict({"verdict": None}) == "falso_positivo"
-    assert _resolve_verdict({"verdict": "bogus"}) == "falso_positivo"
-    assert _resolve_verdict({"verdict": "anomalia"}) == "anomalia"
-    assert _resolve_verdict({"verdict": "falso_positivo"}) == "falso_positivo"
-
-
-@pytest.mark.asyncio
-async def test_missing_verdict_decision_does_not_execute_action():
-    """A submitted decision with a missing/unknown verdict must fail CLOSED
-    all the way through the real executor: execute() must skip (no
-    notify/propose call reaches actuation), even when the decision carries a
-    concrete, green-tier action — the worst case where a fail-OPEN default
-    would have let it through to a proposal."""
-    from hiris.app.watcher.executor import execute
-    from hiris.app.watcher.signals import Decision, WakeEvent
-
-    proposed = []
-
-    async def _notify(message, *, title):
-        pass
-
-    async def _propose(decision, wake):
-        proposed.append(decision)
-
-    decision_dict = {"message": "runner sent garbage", "action": {
-        "domain": "light", "service": "turn_on", "entity_id": "light.x"}}
-    wake_dict = {"signal_kind": "holistic", "entity_id": "home"}
-
-    verdict = _resolve_verdict(decision_dict)  # no "verdict" key -> falso_positivo
-    d = Decision(verdict=verdict, severity=decision_dict.get("severity", "info"),
-                 message=decision_dict.get("message", ""), action=decision_dict.get("action"))
-    wake = WakeEvent(signal_kind=wake_dict.get("signal_kind", "holistic"),
-                      entity_id=wake_dict.get("entity_id", "home"),
-                      severity_hint=wake_dict.get("severity_hint", "info"),
-                      evidence=wake_dict.get("evidence") or {}, ts=1.0)
-
-    outcome = await execute(
-        d, wake, tiers={"light": "green"}, entity_tiers={},
-        notify=_notify, propose=_propose)
-
-    assert outcome == "skip"
-    assert proposed == []
+# fetta E3 Task 5 (raccoglie la riserva della review E3 blocco 1, I-1):
+# `_resolve_verdict` viveva qui come specchio LOCALE della risoluzione del
+# verdetto che un tempo viveva in `_execute_decision` (server.py) --
+# cancellata per intero dal Task 4 (101189a). Da allora
+# `test_verdict_resolution_fails_closed` testava solo lo specchio, non
+# poteva piu' cadere per nessuna modifica al prodotto: cancellato.
+# La META' VIVA di `test_missing_verdict_decision_does_not_execute_action`
+# (il fail-closed vero, dentro `watcher.executor.execute` su un verdetto
+# "falso_positivo") e' stata SPOSTATA in tests/test_sentinel_executor.py
+# come `test_falso_positivo_verdict_skips_execution` -- quell'esecutore e'
+# vivo (Guardian/Sentinella, esce solo al Task 7), quindi il test si sposta
+# invece di morire, come impone la regola della fetta.
 
 
 @pytest.mark.asyncio

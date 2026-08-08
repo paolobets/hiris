@@ -43,12 +43,19 @@ def parse_decision(text: str) -> dict:
 
     Il comportamento in caso di dubbio e' dichiarato qui, non ereditato:
     `default_verdict="falso_positivo"` (fail-closed). Questa Decisione
-    attraversa la rete e viene applicata da `_execute_decision` (server.py),
-    che sul verdetto e' gia' fail-closed; il runner si allinea a monte, cosi'
-    una risposta che non si capisce non chiede mai di agire sulla casa.
-    `default_severity="info"` per lo stesso motivo: nel dubbio il livello piu'
-    basso. La Sentinella in-process dichiara l'opposto ("anomalia"), e sta
-    tutto scritto nella docstring del ragionatore."""
+    attraversa la rete verso /api/reasoning/submit -- ma da `101189a` (fetta
+    E3 Task 4) quella rotta non attua piu' nulla: `_execute_decision`
+    (server.py) e' stato cancellato insieme alla ronda/revisione olistica
+    che lo chiamava, e `app["execute_decision"]` non e' piu' wired da
+    nessuna parte in produzione. Il ramo non-chat di `handle_reasoning_
+    submit` (handlers_reasoning.py) si limita quindi a REGISTRARE la
+    decisione con un warning esplicito, mai ad applicarla. Il fail-closed
+    qui resta comunque la scelta giusta in caso di dubbio -- difesa in
+    profondita', anche se oggi non c'e' piu' nessun esecutore a valle che
+    potrebbe attuarla. `default_severity="info"` per lo stesso motivo: nel
+    dubbio il livello piu' basso. La Sentinella in-process (watcher/
+    reasoner.py, viva) dichiara l'opposto ("anomalia"), e sta tutto scritto
+    nella docstring del ragionatore."""
     return asdict(_reasoner.parse_decision(
         text, default_severity="info",
         default_verdict=_reasoner.VERDICT_FALSE_POSITIVE))

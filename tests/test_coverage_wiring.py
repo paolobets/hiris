@@ -1,46 +1,12 @@
-def test_create_app_registers_entities_and_suggestions_routes():
+def test_create_app_registers_entities_routes():
+    """fetta E3 Task 5: era test_create_app_registers_entities_and_suggestions_
+    routes -- le due asserzioni /api/suggestions* sono uscite col Brain
+    auto-proponente (handlers_suggestions.py, cancellato). /api/entities non
+    c'entra nulla col Brain: resta, potato al proprio soggetto."""
     from hiris.app.server import create_app
     app = create_app()
     paths = {r.resource.canonical for r in app.router.routes() if r.resource is not None}
     assert "/api/entities" in paths
-    assert "/api/suggestions" in paths
-    assert "/api/suggestions/{id}/undo" in paths
-
-
-def test_coverage_review_symbols_importable():
-    """Task 6 wiring smoke test: the pieces _holistic_reason's coverage-review
-    block wires together import cleanly and are usable, without reloading
-    hiris.app.server (import-time side effects — see the route-registration
-    test above for that coverage). The real startup wiring (server.py's
-    _on_startup/_holistic_reason) is verified separately via
-    `python -c "import hiris.app.server"`, same convention as fetta 1/3's
-    wiring tests (test_sentinel_wiring.py, test_reasoning_wiring.py)."""
-    from hiris.app.brain.coverage_review import (
-        COVERAGE_REVIEW_SYSTEM, build_review_context, build_review_message,
-        parse_suggestions)
-    from hiris.app.brain.suggestions import SuggestionStore, apply_suggestions
-    from hiris.app.api.handlers_entities import filter_entities
-
-    assert COVERAGE_REVIEW_SYSTEM
-    assert build_review_context is not None
-    assert build_review_message is not None
-    assert parse_suggestions is not None
-    assert SuggestionStore is not None
-    assert apply_suggestions is not None
-    assert filter_entities is not None
-
-
-def test_suggestion_store_instantiated_in_server_source():
-    """Task 6: assert server.py actually wires up the SuggestionStore in
-    _on_startup (instantiation + app slot + cleanup), source-level check as a
-    light complement to the runtime route-registration test above."""
-    import inspect
-    from hiris.app import server
-
-    src = inspect.getsource(server)
-    assert 'SuggestionStore(os.path.join(data_dir, "suggestions.db"))' in src
-    assert 'app["suggestion_store"] = suggestion_store' in src
-    assert 'app["suggestion_store"].close()' in src
 
 
 def test_supervisor_client_lifecycle_wired_in_server_source():
@@ -85,18 +51,19 @@ def test_health_monitor_lifecycle_wired_in_server_source():
 # (auto_tune_detectors/trace_applied_coverage e il refresh guardian.set_
 # policy() dopo l'auto-tune), che e' stato cancellato per intero con la
 # ronda. Nessun successore: quella call-site non esiste piu' in nessuna
-# forma. `auto_tune_detectors`/`trace_applied_coverage` restano importabili
-# (vedi test_coverage_review_symbols_importable sopra) -- orfani dichiarati
-# per il Task 5, non piu' wired da nessuna parte.
+# forma. `auto_tune_detectors`/`trace_applied_coverage` erano rimasti
+# importabili come orfani dichiarati per il Task 5 -- il Task 5 li ha
+# cancellati per intero insieme a `brain.cognitive_loop`.
 #
-# test_coverage_review_runs_before_bridge_enabled_branch e' uscito per lo
-# stesso motivo (l'ordinamento che verificava viveva TUTTO dentro
-# `_holistic_reason`): verificato che con il codice cancellato il test
-# passava comunque, per un motivo sbagliato -- la stringa "coverage-review"
-# sopravviveva per coincidenza in un commento successivo non correlato
-# (`_on_startup`'s new orphans-declaration comment), quindi l'assert
-# sull'ordine non testava piu' nulla di reale. Cancellato invece di
-# "aggiustato": non c'e' piu' un ordine da pinnare.
+# fetta E3 Task 5: test_coverage_review_runs_before_bridge_enabled_branch
+# (l'ordinamento del blocco coverage-review prima del ramo BRIDGE_ENABLED,
+# dentro _holistic_reason) NON era stato davvero cancellato dal Task 4
+# nonostante il suo report lo dichiarasse: il report aveva diagnosticato
+# correttamente che passava per un motivo sbagliato (la stringa
+# "coverage-review" sopravviveva per coincidenza in un commento successivo
+# non correlato) ma la funzione era rimasta nel file. Trovato ed eliminato
+# qui: `brain.coverage_review` e' cancellato per intero in questo task,
+# quindi non c'e' proprio piu' nessun blocco coverage-review da ordinare.
 
 
 def test_health_scan_job_receives_supervisor_client_from_app_source():
@@ -135,17 +102,3 @@ def test_health_scan_job_reads_notify_option_and_config_from_server_source():
     blocco = src[inizio:inizio + 1500]
     assert "notify_config=notify_config" in blocco
     assert 'notify_enabled=env_bool("BRAIN_NOTIFY_HIGH", True)' in blocco
-
-
-def test_coverage_review_runs_before_bridge_enabled_branch():
-    """The coverage-review block must sit BEFORE the BRIDGE_ENABLED early
-    return in _holistic_reason, so it runs on every holistic pass regardless
-    of the bridge flag (bridge coverage-review is out of scope/fast-follow)."""
-    import inspect
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    review_pos = src.index("coverage-review")
-    # SP-2 tech-debt: the BRIDGE_ENABLED gate now reads via env_util.env_bool.
-    bridge_pos = src.index('env_bool("BRIDGE_ENABLED")')
-    assert review_pos < bridge_pos

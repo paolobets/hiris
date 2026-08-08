@@ -277,8 +277,10 @@ def test_delete_item_purges_document_chunks(tmp_path):
 
 
 def test_approve_delete_owner_none_preserves_unscoped_behavior(tmp_path):
-    """Internal callers (brain_trace, history_digest) call approve/delete_item
-    without an owner arg -- must keep acting unconditionally (backward compat)."""
+    """Internal callers (history_digest, mayan_ingest) call delete_item
+    without an owner arg -- must keep acting unconditionally (backward
+    compat). (brain_trace was the third such caller; it exited whole in
+    fetta E3 Task 5.)"""
     store = KnowledgeStore(str(tmp_path / "brain.db"))
     pid = store.add_item(kind="fact", content="x", owner="userA", status="pending")
     ok = store.approve(pid)

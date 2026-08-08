@@ -15,10 +15,9 @@ Tasks 1-4 were each verified on their own terms, with fakes standing in for
 the embedder. NONE of them verified the thing the slice exists for, end to
 end, with the REAL NullEmbedder that ships in production. That is this
 file's job -- see the module docstring convention shared with
-tests/test_gather_context_memory.py and tests/test_coverage_review_memory.py
-for why some of these tests stop at a module-level helper rather than the
-_on_startup closures (_gather_context, _holistic_reason) that are not
-independently reachable from tests.
+tests/test_gather_context_memory.py for why some of these tests stop at a
+module-level helper rather than the _on_startup closure (_gather_context)
+that is not independently reachable from tests.
 
 Originally three automatic consumers, chat included ("Test 1 -- the chat
 remembers by itself" lived here, right below this docstring). Task 3 of the
@@ -29,16 +28,19 @@ instead, which has no "degrades to recency when there's no embedder"
 mechanic to verify (a nucleo without an embedder is unaffected; it doesn't
 compare meanings in the first place). That test, and the chat portion of
 Test 4 below, were removed rather than repointed -- there is no equivalent
-chat-surface claim left to make here. The two remaining automatic consumers
-(the per-event sentinel reasoner, the holistic daily review) are untouched
-by that slice and still verified end to end below.
+chat-surface claim left to make here.
+
+fetta E3 Task 5: the holistic daily review, the OTHER of the "two remaining
+automatic consumers" mentioned above, exited too -- the Brain
+auto-proponente (`brain.coverage_review`, `_holistic_reason`'s caller) is
+gone. Test 3 below (`test_holistic_review_surfaces_saved_memory_without_
+embedder`) and the holistic half of Test 4 were removed; only the per-event
+sentinel reasoner is left to verify end to end below.
 """
 import pytest
 
 from hiris.app.backends.embeddings import NullEmbedder
-from hiris.app.brain.coverage_review import build_review_context, build_review_message
 from hiris.app.brain.knowledge_store import KnowledgeStore
-from hiris.app.brain.reasoner_memory import relevant_memory
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import _reason_memory_context
 from hiris.app.watcher.reasoner import build_user_message
@@ -122,88 +124,38 @@ async def test_reasoner_prompt_surfaces_saved_memory_without_embedder(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Test 3 -- the holistic review remembers, and does not abort.
+# fetta E3 Task 5: Test 3 ("the holistic review remembers, and does not
+# abort") lived here -- it exercised `relevant_memory()` for real and fed the
+# result into `build_review_context`/`build_review_message`
+# (`brain.coverage_review`), pinning the regression where a raw `MemoryRecall`
+# hit `list(memory)` and raised inside `_holistic_reason`'s swallowed
+# try/except. `brain.coverage_review` is cancelled whole in this task (the
+# Brain auto-proponente it belonged to has no executor left to propose to,
+# since Task 4); `_holistic_reason` itself was already gone since Task 4.
+# No successor -- there is no holistic path left to regress.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Test 4 -- the non-regression (per-event reasoner only, since Task 5).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_holistic_review_surfaces_saved_memory_without_embedder(tmp_path):
-    """This one matters more than it looks.
-
-    Before this slice's Task 3, a `MemoryRecall` reached
-    `build_review_context`'s `list(memory)` and raised `TypeError`, which
-    `_holistic_reason`'s outer try/except swallowed -- the entire daily
-    review aborted silently, and the full suite stayed green because no
-    test crossed that path with a REAL `MemoryRecall`. Task 3's own
-    regression test (test_coverage_review_memory.py::
-    test_holistic_review_produces_message_from_real_memoryrecall) hand-built
-    a `MemoryRecall(snippets=[...], by_meaning=True)` instead of getting one
-    from `relevant_memory()` -- so when it failed pre-fix, it failed for a
-    WEAKER reason (a missing `memory_by_meaning` keyword argument) than the
-    real defect (the dataclass itself hitting `list(memory)`).
-
-    This test calls `relevant_memory()` for real -- with the real
-    NullEmbedder and a real KnowledgeStore -- and feeds its ACTUAL return
-    value into `build_review_context`/`build_review_message`, exactly as
-    the fixed `_holistic_reason` call site does (`memory=_mem.snippets,
-    memory_by_meaning=_mem.by_meaning`). `_holistic_reason` itself is a
-    closure inside `_on_startup` and is not independently reachable from
-    tests (same convention as test_coverage_wiring.py /
-    test_coverage_review_memory.py), so this is as far end-to-end as this
-    file can honestly go: relevant_memory() itself is genuine, not a stand-in;
-    only the two-line call-site wiring between it and _llm_reason is
-    reproduced rather than executed through the closure.
-
-    The assertion that matters most is the one that doesn't look like an
-    assertion: `build_review_message(ctx)` completing at all, instead of
-    raising `TypeError` and being swallowed three frames up in production.
-    """
-    store = KnowledgeStore(str(tmp_path / "mem_holistic.db"))
-    store.add_item(
-        kind="memory", content=MEMORY_TEXT, owner="home", status="approved",
-    )
-
-    mem = await relevant_memory(
-        store, NullEmbedder(),
-        query_text="stato generale della casa", allow_sensitive=False, limit=5,
-    )
-    assert mem.by_meaning is False
-    assert mem.snippets, "relevant_memory degraded to recency but found nothing"
-
-    ctx = build_review_context(
-        {"s": 1}, [{"entity_id": "climate.salotto"}], {},
-        memory=mem.snippets, memory_by_meaning=mem.by_meaning,
-    )
-    msg = build_review_message(ctx)  # must not raise -- this IS the regression check
-
-    assert "Ultimi ricordi:" in msg
-    assert "Cosa so di rilevante" not in msg
-    assert "21 gradi" in msg
-
-    store.close()
-
-
-# ---------------------------------------------------------------------------
-# Test 4 -- the non-regression.
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_both_surfaces_use_relevant_heading_with_working_embedder(tmp_path):
-    """With a WORKING embedder (not the NullEmbedder), both remaining
-    surfaces behave exactly as they did before this slice: the usual
-    "relevant by meaning" heading, because the store actually compared
-    meanings instead of degrading to recency. One test, two surfaces, so a
-    change that accidentally forces every path onto the degraded branch
-    (e.g. always passing `[]` regardless of what embed() returned) would
-    fail here even though Tests 1-2 above (which use NullEmbedder on
-    purpose) would stay green.
+async def test_reasoner_uses_relevant_heading_with_working_embedder(tmp_path):
+    """With a WORKING embedder (not the NullEmbedder), the per-event sentinel
+    reasoner behaves exactly as it did before this slice: the usual "relevant
+    by meaning" heading, because the store actually compared meanings instead
+    of degrading to recency. A change that accidentally forces this path onto
+    the degraded branch (e.g. always passing `[]` regardless of what embed()
+    returned) would fail here even though Tests 1-2 above (which use
+    NullEmbedder on purpose) would stay green.
 
     Was "all THREE surfaces" (chat included) before Task 3 of the "nucleo
-    alla chat" slice retired the chat portion -- see the module docstring.
-    """
+    alla chat" slice retired the chat portion, then "both remaining surfaces"
+    until fetta E3 Task 5 retired the holistic review -- see the module
+    docstring."""
     embedder = _WorkingEmbedder()
     matching_vec = [1.0, 0.0, 0.0]
 
-    # --- per-event reasoner ---------------------------------------------
     store_reasoner = KnowledgeStore(str(tmp_path / "mem_reasoner_wk.db"))
     store_reasoner.add_item(
         kind="memory", content=MEMORY_TEXT, owner="home", status="approved",
@@ -223,23 +175,3 @@ async def test_both_surfaces_use_relevant_heading_with_working_embedder(tmp_path
     assert "Cosa so di rilevante:" in msg_r
     assert "Ultimi ricordi" not in msg_r
     store_reasoner.close()
-
-    # --- holistic review --------------------------------------------------
-    store_holistic = KnowledgeStore(str(tmp_path / "mem_holistic_wk.db"))
-    store_holistic.add_item(
-        kind="memory", content=MEMORY_TEXT, owner="home", status="approved",
-        embedding=matching_vec,
-    )
-    mem_h = await relevant_memory(
-        store_holistic, embedder,
-        query_text="stato generale della casa", allow_sensitive=False, limit=5,
-    )
-    assert mem_h.by_meaning is True
-    ctx_h = build_review_context(
-        {"s": 1}, [{"entity_id": "climate.salotto"}], {},
-        memory=mem_h.snippets, memory_by_meaning=mem_h.by_meaning,
-    )
-    msg_h = build_review_message(ctx_h)
-    assert "Cosa so di rilevante:" in msg_h
-    assert "Ultimi ricordi" not in msg_h
-    store_holistic.close()

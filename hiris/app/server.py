@@ -18,7 +18,6 @@ from .api.handlers_chatbots import (
     handle_get_chatbot_usage, handle_reset_chatbot_usage,
 )
 from .api.handlers_entities import handle_list_entities
-from .api.handlers_suggestions import handle_list_suggestions, handle_undo_suggestion
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
@@ -1343,13 +1342,16 @@ async def _on_startup(app: web.Application) -> None:
     sentinel_store = SentinelStore(os.path.join(data_dir, "sentinel.db"))
     app["sentinel_store"] = sentinel_store
 
-    from .brain.suggestions import SuggestionStore
-    suggestion_store = SuggestionStore(os.path.join(data_dir, "suggestions.db"))
-    app["suggestion_store"] = suggestion_store
-
-    from .brain.reasoning_log import ReasoningLog
-    reasoning_log = ReasoningLog(os.path.join(data_dir, "brain_reasoning.db"))
-    app["reasoning_log"] = reasoning_log
+    # fetta E3 Task 5: SuggestionStore/suggestions.db e ReasoningLog/
+    # brain_reasoning.db erano cablati qui SOLO per il Brain auto-proponente
+    # (rispettivamente: coda "Suggerimenti del Brain" applicata dalla ronda
+    # olistica, e testo dei ragionamenti mostrato da /api/brain/reasoning).
+    # Entrambi gli apparati sono usciti in questo task -- vedi il commento
+    # piu' sotto, dove prima viveva la lista dei nove orfani lasciati dal
+    # Task 4: sono tutti usciti con loro. Un'installazione con suggestions.db
+    # o brain_reasoning.db popolati da un'installazione precedente non
+    # incontra piu' nessun codice che li legga o scriva: nessuno slot
+    # app["suggestion_store"]/app["reasoning_log"], nessun cleanup da fare.
 
     async def _gather_context(wake) -> dict:
         # Best-effort friendly_name from the entity cache; falls back to the
@@ -1687,27 +1689,36 @@ async def _on_startup(app: web.Application) -> None:
     # reasoning_queue.count_chat_today() -- independent of SENTINEL_DAILY_CAP.
     app["chat_daily_cap"] = int(os.environ.get("CHAT_DAILY_CAP", "50"))
 
-    # fetta E3 Task 4: `_holistic_reason` (il cervello auto-proponente sulla
-    # cadenza olistica: coverage-review, apply_suggestions, auto_tune_
-    # detectors, il ramo bridge-enqueue) e' uscito con la ronda che lo
-    # chiamava (`SituationEvaluator`/job `hiris_sentinel_ronda`, sopra).
-    # Orfani DI PROPOSITO qui, non cancellati -- li raccoglie il Task 5, che
-    # trova la checklist d'ingresso nel report di questo task:
-    # `brain.coverage_review` (COVERAGE_REVIEW_SYSTEM, build_review_context,
-    # build_review_message, parse_suggestions), `brain.suggestions`
-    # (apply_suggestions, reconcile_proposal_outcome, SuggestionStore --
-    # quest'ultima resta wired per l'API /api/suggestions), `brain.
-    # cognitive_loop` (auto_tune_detectors, trace_applied_coverage),
-    # `brain.learned_thresholds`, `reasoning_log.capture()` (l'oggetto e il
-    # suo job di prune restano wired, solo `.capture()` non ha piu'
-    # chiamanti), `tools.proposal_tools.create_automation_proposal`. Il
-    # ramo bridge-enqueue di `_holistic_reason` era l'UNICO produttore di
-    # job `kind="holistic"` in `reasoning_queue` -- da qui in poi quel kind
-    # non viene piu' mai accodato (vedi `_reasoning_sweep` sotto).
+    # fetta E3 Task 5: esce il Brain auto-proponente. Il Task 4 aveva lasciato
+    # orfani DI PROPOSITO `brain.coverage_review`, `brain.suggestions`,
+    # `brain.cognitive_loop`, `brain.learned_thresholds`, `brain.brain_trace`,
+    # `brain.reasoning_log`, `brain.feed` e `api.handlers_suggestions` --
+    # proponevano a un `_execute_decision` che il Task 4 stesso aveva gia'
+    # cancellato. Tutti e otto i moduli sono usciti qui, insieme al loro
+    # cablaggio (SuggestionStore/ReasoningLog sopra, rotte /api/suggestions*
+    # e /api/brain/feed+reasoning piu' sotto). SILENZIO DICHIARATO:
+    # un'installazione con suggestions.db o brain_reasoning.db popolati da
+    # prima di questo task non incontra piu' nessun codice -- nessuno slot
+    # app, nessuna rotta, nessun log possibile perche' nessun codice li
+    # apre piu' (vedi il commento sopra dove prima viveva questo cablaggio).
+    # `tools.proposal_tools.create_automation_proposal` resta orfano (il
+    # modulo non e' nel perimetro di questo task): nessun chiamante di
+    # produzione, solo citazioni in commenti/metadata (handlers_gateway_
+    # policy.py's PROPOSE_TOOLS, gia' morto da prima) e nella lista UI del
+    # Designer (static/config/templates.js, fuori scope, e' la E5).
+    # `watcher.policy.apply_brain_detector/remove_brain_detector/
+    # apply_brain_tuning/remove_brain_tuning` (PARAM_BOUNDS resta vivo, lo
+    # usa la validazione di save_policy/load_policy) perdono qui il loro
+    # ultimo chiamante di produzione (`brain.suggestions`/`brain.
+    # cognitive_loop`): watcher/policy.py non e' nel perimetro di questo
+    # task (non e' nel file-list del brief), quindi non li tocco -- restano
+    # orfani dichiarati per chi tocchera' la Sentinella/il semaforo.
 
     # SP-3 Task 8: periodic read-only health scan (8 checks: 5 sulla casa, 3
-    # sul sistema tramite il Supervisor) reconciled into
-    # the AdvisoryStore, plus a nightly prune of the reasoning capture log.
+    # sul sistema tramite il Supervisor) reconciled into the AdvisoryStore.
+    # fetta E3 Task 5: la prune notturna del reasoning capture log e' uscita
+    # insieme a `reasoning_log`/ReasoningLog (sotto non c'e' piu' nessun job
+    # `hiris_reasoning_prune`).
     from .brain.health_scan import run_health_scan
 
     async def _run_health_scan():
@@ -1748,16 +1759,6 @@ async def _on_startup(app: web.Application) -> None:
         id="hiris_portrait_observe", replace_existing=True,
         misfire_grace_time=300,
     )
-
-    def _run_reasoning_prune():
-        try:
-            reasoning_log.prune(max_rows=500, max_age_days=30)
-        except Exception:
-            logger.exception("reasoning prune failed")
-
-    engine._scheduler.add_job(
-        _run_reasoning_prune, trigger="cron", hour=3, minute=15,
-        id="hiris_reasoning_prune", replace_existing=True, misfire_grace_time=3600)
 
     # ── Ponte push (Piano A): spazzata dei job scaduti senza risposta dal
     # runner remoto. Il ramo chat resta (Slice 4b): un job "chat" scaduto
@@ -1993,10 +1994,6 @@ async def _on_cleanup(app: web.Application) -> None:
         app["history_store"].close()
     if "sentinel_store" in app:
         app["sentinel_store"].close()
-    if "suggestion_store" in app:
-        app["suggestion_store"].close()
-    if "reasoning_log" in app:
-        app["reasoning_log"].close()
     if "advisory_store" in app:
         app["advisory_store"].close()
     if "portrait_store" in app:
@@ -2070,8 +2067,6 @@ def create_app() -> web.Application:
     app.router.add_delete("/api/chatbots/{agent_id}", handle_delete_chatbot)
     app.router.add_post("/api/chatbots/{agent_id}/run", handle_run_chatbot)
     app.router.add_get("/api/entities", handle_list_entities)
-    app.router.add_get("/api/suggestions", handle_list_suggestions)
-    app.router.add_post("/api/suggestions/{id}/undo", handle_undo_suggestion)
     app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
     app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
     app.router.add_get("/api/chatbots/{agent_id}/chat-history", handle_get_chat_history)
@@ -2127,12 +2122,13 @@ def create_app() -> web.Application:
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
+    # fetta E3 Task 5: /api/brain/feed e /api/brain/reasoning sono uscite col
+    # Brain auto-proponente (handle_brain_feed componeva reasoning_log/
+    # brain.feed, handle_brain_reasoning leggeva il solo reasoning_log --
+    # entrambi usciti). Le advisories restano fino al Task 6.
     from .api.handlers_brain import (
-        handle_brain_feed, handle_brain_reasoning, handle_list_advisories,
-        handle_ack_advisory, handle_dismiss_advisory,
+        handle_list_advisories, handle_ack_advisory, handle_dismiss_advisory,
     )
-    app.router.add_get("/api/brain/feed", handle_brain_feed)
-    app.router.add_get("/api/brain/reasoning", handle_brain_reasoning)
     app.router.add_get("/api/brain/advisories", handle_list_advisories)
     app.router.add_post("/api/brain/advisories/{id}/ack", handle_ack_advisory)
     app.router.add_post("/api/brain/advisories/{id}/dismiss", handle_dismiss_advisory)

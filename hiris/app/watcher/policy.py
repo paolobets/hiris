@@ -59,12 +59,16 @@ _BRAIN_PARAM_DENY = frozenset({"enabled", "entities"})
 # BEFORE a policy body is persisted (save_policy) or merged over defaults
 # (load_policy). Every numeric threshold key is unique to exactly one
 # detector, so a single flat bounds table is unambiguous across detectors.
-# PUBLIC (no leading underscore): brain.suggestions imports this directly so
-# its own coverage-param clamp (review C/#6) uses the exact same bounds
-# rather than a second, driftable copy. max_watt's bounds also match
-# brain.learned_thresholds' own absolute clamp (_ABS_MIN_WATT/_ABS_MAX_WATT)
-# for the deterministic auto-tune path -- kept as literals here (not
-# imported from brain) to avoid a watcher->brain dependency inversion.
+# PUBLIC (no leading underscore): historically brain.suggestions imported
+# this directly for its own coverage-param clamp, and brain.learned_
+# thresholds mirrored max_watt's bounds as literals for the deterministic
+# auto-tune path (to avoid a watcher->brain dependency inversion). Both
+# brain modules exited with the Brain auto-proponente (fetta E3 Task 5);
+# PARAM_BOUNDS now only has its own reader below (save_policy/load_policy's
+# detector validation). apply_brain_detector/remove_brain_detector/
+# apply_brain_tuning/remove_brain_tuning (below) lost their last production
+# caller in the same task -- orphaned, not removed (this module is outside
+# that task's file scope).
 PARAM_BOUNDS: dict[str, tuple[float, float]] = {
     "open_minutes": (1, 1440),
     "max_temp_c": (-20, 60),

@@ -2,44 +2,14 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..brain import feed as _feed
+# fetta E3 Task 5: handle_brain_feed (componeva reasoning_log + advisory_store
+# + proposal_store + knowledge_store via brain.feed) e handle_brain_reasoning
+# (leggeva il solo reasoning_log) sono usciti col Brain auto-proponente --
+# erano l'unica superficie che leggeva reasoning_log/ReasoningLog, uscito con
+# loro. brain.feed e' uscito nella stessa mossa (nessun altro lettore). Le
+# advisories, sotto, restano fino al Task 6.
 
 _ADV_STATUSES = frozenset({"open", "acknowledged", "resolved", "dismissed"})
-
-
-async def handle_brain_feed(request: web.Request) -> web.Response:
-    q = request.rel_url.query
-    try:
-        limit = min(int(q.get("limit", "50")), 200)
-    except ValueError:
-        limit = 50
-    type_filter = q.get("type") or None
-
-    rlog = request.app.get("reasoning_log")
-    adv = request.app.get("advisory_store")
-    prop = request.app.get("proposal_store")
-    ks = request.app.get("knowledge_store")
-
-    r_items = _feed.reasoning_items(rlog.list(limit=100)) if rlog is not None else []
-    a_items = _feed.advisory_items(adv.list()) if adv is not None else []
-    p_items = _feed.proposal_items(await prop.list(status="pending")) if prop is not None else []
-    b_items = _feed.brain_action_items(
-        ks.list_items(kind="brain-action", limit=100)) if ks is not None else []
-
-    items = _feed.merge_feed(r_items, a_items, p_items, b_items,
-                             limit=limit, type_filter=type_filter)
-    return web.json_response({"items": items})
-
-
-async def handle_brain_reasoning(request: web.Request) -> web.Response:
-    rlog = request.app.get("reasoning_log")
-    if rlog is None:
-        return web.json_response({"reasoning": []})
-    try:
-        limit = min(int(request.rel_url.query.get("limit", "50")), 200)
-    except ValueError:
-        limit = 50
-    return web.json_response({"reasoning": rlog.list(limit=limit)})
 
 
 async def handle_list_advisories(request: web.Request) -> web.Response:

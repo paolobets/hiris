@@ -20,7 +20,9 @@ _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 # attraverso il vecchio tool di memoria -- solo con provenienza diversa da
 # 'chat'). DEDOTTI -- HIRIS li ha prodotti da solo -- sono 'history-digest'
 # (le medie settimanali del digest notturno, brain/history_digest.py),
-# 'brain' (le tracce del brain, brain/brain_trace.py) e 'mayan' (i documenti
+# 'brain' (le tracce del brain -- il produttore, brain/brain_trace.py, e'
+# uscito nella fetta E3 Task 5 col Brain auto-proponente: righe gia' scritte
+# restano leggibili, nessun codice ne scrive di nuove) e 'mayan' (i documenti
 # ingeriti da Mayan, brain/mayan_ingest.py: contenuto esterno importato, non
 # dedotto da HIRIS ne' dichiarato a voce da una persona in questa
 # conversazione).
@@ -318,8 +320,9 @@ class KnowledgeStore:
         approved when its own owner matches `owner` or is 'home' (shared) --
         a cross-owner id is rejected (returns False, no mutation). `owner`
         omitted (None) preserves the pre-fix unscoped behavior for internal
-        callers (brain_trace, history_digest) that manage their own rows and
-        don't carry a caller identity.
+        callers (history_digest, mayan_ingest) that manage their own rows
+        and don't carry a caller identity. (brain_trace was a third such
+        caller for delete_item; it exited whole in fetta E3 Task 5.)
 
         `embedding` scrive il vettore INSIEME allo stato, in un solo UPDATE: e'
         il caso degli elementi salvati da una versione precedente, che finivano

@@ -72,11 +72,11 @@ DECLARED_ITEM_MAX = 500
 def sanitize_declared_item(content) -> str:
     """Sanitize+flatten a single declared fact for a prompt, at the source
     (or, defensively, wherever it is rendered -- watcher/reasoner.py's
-    build_user_message and brain/coverage_review.py's build_review_message
-    both call this on the way out too, so a caller that hands them a raw,
-    unsanitized `declared` list directly -- bypassing `_declared_snippets`
-    entirely -- still gets the same treatment; the two call sites cannot
-    drift on cap or marker).
+    build_user_message calls this on the way out too, so a caller that hands
+    it a raw, unsanitized `declared` list directly -- bypassing
+    `_declared_snippets` entirely -- still gets the same treatment. brain/
+    coverage_review.py's build_review_message used to call this too, on the
+    now-exited holistic path -- fetta E3 Task 5).
 
     Runs the shared injection filter (`sanitize_text`) so a poisoned
     declared row can't smuggle an instruction-override phrase, then
@@ -91,8 +91,8 @@ def sanitize_declared_item(content) -> str:
 
     Idempotent by construction -- callers apply this both at the source
     (`_declared_snippets` below) and defensively downstream (watcher/
-    reasoner.py, brain/coverage_review.py), so re-running it on its own
-    output must reproduce that output exactly. The slice point is always
+    reasoner.py), so re-running it on its own output must reproduce that
+    output exactly. The slice point is always
     the fixed `DECLARED_ITEM_MAX` offset with NO `.rstrip()` beforehand:
     stripping trailing whitespace before appending the marker would make
     the cut position content-dependent, so a second pass over an

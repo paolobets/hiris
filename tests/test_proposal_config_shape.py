@@ -324,73 +324,10 @@ async def test_executor_records_the_outcome_the_propose_adapter_reports():
     assert out == "propose"
 
 
-# ---------------------------------------------------------------------------
-# Chi propone (2) — la coverage-review propone solo cio' che e' applicabile
-# ---------------------------------------------------------------------------
-
-from hiris.app.brain.suggestions import SuggestionStore, apply_suggestions  # noqa: E402
-
-_AUTOMATION = {"alias": "Spegni la stufa di notte",
-               "trigger": [{"platform": "time", "at": "23:00:00"}],
-               "action": [{"service": "switch.turn_off",
-                           "target": {"entity_id": "switch.stufa"}}]}
-
-
-def _run_management(config, tmp_path):
-    store = SuggestionStore(str(tmp_path / "suggestions.db"))
-    proposed = []
-    try:
-        apply_suggestions(
-            [{"kind": "management", "title": "T", "rationale": "R", "config": config}],
-            data_dir=str(tmp_path), store=store, inventory_ids=set(),
-            current_config={}, create_proposal=lambda c, _sid: proposed.append(c), cap=5)
-        rows = store.list()
-    finally:
-        store.close()
-    return proposed, rows
-
-
-def test_management_suggestion_with_real_automation_is_proposed(tmp_path):
-    proposed, rows = _run_management(_AUTOMATION, tmp_path)
-    assert proposed == [_AUTOMATION]
-    assert len(rows) == 1 and rows[0]["status"] == "proposed"
-
-
-def test_management_suggestion_without_automation_creates_no_proposal(tmp_path):
-    """Il suggerimento grezzo non e' un'automazione: niente proposta che
-    prometta un'applicazione impossibile. Resta comunque registrato e visibile
-    fra i "Suggerimenti del Brain"."""
-    raw = {"idea": "raggruppa le luci del piano terra", "entita": ["light.a"]}
-    proposed, rows = _run_management(raw, tmp_path)
-    assert proposed == []
-    assert len(rows) == 1 and rows[0]["config"] == raw
-
-
-def test_management_suggestion_without_automation_is_not_marked_proposed(tmp_path):
-    """Due esiti opposti non possono portare la stessa etichetta: la sezione
-    "Suggerimenti del Brain" mostra lo stato cosi' com'e', quindi "proposed" su
-    una riga che non ha generato nessuna proposta manda l'utente a cercare nella
-    pagina Proposte una cosa che non c'e'."""
-    raw = {"idea": "raggruppa le luci del piano terra"}
-    _, rows = _run_management(raw, tmp_path)
-    assert rows[0]["status"] != "proposed"
-    assert rows[0]["status"] == "recorded"
-
-
-def test_management_suggestion_without_automation_is_logged(tmp_path, caplog):
-    """Lo scarto non puo' essere muto: nei log deve restare traccia del perche'
-    un suggerimento non e' diventato una proposta, come gia' fa la Sentinella."""
-    import logging
-    with caplog.at_level(logging.WARNING, logger="hiris.app.brain.suggestions"):
-        _run_management({"idea": "niente trigger"}, tmp_path)
-    assert any("management" in r.getMessage().lower() or "gestione" in r.getMessage().lower()
-               for r in caplog.records), caplog.text
-
-
-def test_coverage_review_prompt_declares_the_management_contract():
-    """Il modello deve sapere che per 'management' il config e' una vera
-    configurazione di automazione, altrimenti il filtro sopra scarta sempre."""
-    from hiris.app.brain.coverage_review import COVERAGE_REVIEW_SYSTEM
-    assert "management" in COVERAGE_REVIEW_SYSTEM
-    assert "automazione" in COVERAGE_REVIEW_SYSTEM
-    assert "trigger" in COVERAGE_REVIEW_SYSTEM
+# fetta E3 Task 5: la sezione "Chi propone (2) — la coverage-review propone
+# solo cio' che e' applicabile" che viveva qui e' uscita per intero: il suo
+# soggetto (brain.suggestions.apply_suggestions/SuggestionStore e brain.
+# coverage_review.COVERAGE_REVIEW_SYSTEM) e' cancellato insieme al Brain
+# auto-proponente. Nessun successore -- la "coverage-review" del docstring
+# di modulo (in cima a questo file) e' un riferimento storico al motivo per
+# cui la difesa "chi applica" esiste, non un soggetto vivo di questo file.

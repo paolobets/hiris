@@ -370,9 +370,13 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 #
 # Full _on_startup is HA-client/engine/mqtt-heavy and out of scope for a unit
 # test here -- verified at the source level instead, same convention as
-# test_coverage_wiring.py's test_coverage_review_runs_before_bridge_enabled_branch
-# and test_suggestion_store_instantiated_in_server_source (both README'd as
-# "runtime wiring verified separately via manual/integration checks").
+# test_coverage_wiring.py's test_supervisor_client_lifecycle_wired_in_
+# server_source and test_health_monitor_lifecycle_wired_in_server_source
+# (both README'd as "runtime wiring verified separately via manual/
+# integration checks"). fetta E3 Task 5: the two examples this comment used
+# to cite (test_coverage_review_runs_before_bridge_enabled_branch,
+# test_suggestion_store_instantiated_in_server_source) exited with the
+# Brain auto-proponente; the convention itself is unaffected.
 # ---------------------------------------------------------------------------
 
 def test_chat_via_subscription_wiring_requires_bridge_enabled_in_source():

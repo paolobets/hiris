@@ -95,11 +95,12 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
             continue
         # Il nome area e' testo libero del registro aree di HA (l'utente lo
         # scrive a mano) e diventa qui la chiave con cui il ritratto finisce
-        # in ENTRAMBI i prompt (reasoner.py e coverage_review.py bypassano
-        # _san sul ritratto, fidandosi che sia "gia' sanificato alla fonte,
-        # stringa per stringa"): senza questa riga quella fiducia sarebbe
-        # falsa proprio per il nome area. Stesso trattamento gia' applicato
-        # ai nomi area nella (ex) SemanticContextMap, uscita nella fetta E3
+        # nel prompt (reasoner.py bypassa _san sul ritratto, fidandosi che
+        # sia "gia' sanificato alla fonte, stringa per stringa" -- lo stesso
+        # valeva per brain/coverage_review.py, uscito nella fetta E3 Task 5):
+        # senza questa riga quella fiducia sarebbe falsa proprio per il nome
+        # area. Stesso trattamento gia' applicato ai nomi area nella (ex)
+        # SemanticContextMap, uscita nella fetta E3
         # Task 2 (2.0) insieme alla context map.
         area_nome = sanitize_ha_value(str(area))
         acceso: list[str] = []

@@ -63,3 +63,26 @@ async def test_dangerous_entity_with_spoofed_domain_never_proposes():
     out = await execute(d, _wake(), tiers={"light":"green"}, entity_tiers={},
                         notify=r.notify, propose=r.propose)
     assert out == "alert" and not r.proposed
+
+@pytest.mark.asyncio
+async def test_falso_positivo_verdict_skips_execution():
+    """fetta E3 Task 5 (raccoglie la riserva della review E3 blocco 1, I-1):
+    spostato da tests/test_reasoning_wiring.py::
+    test_missing_verdict_decision_does_not_execute_action, dove il verdetto
+    "falso_positivo" veniva costruito passando da uno specchio locale
+    (`_resolve_verdict`) di una risoluzione che un tempo viveva in
+    `_execute_decision` (server.py, cancellata dal Task 4). Il fail-closed
+    VERO vive qui, dentro execute() stessa (vedi executor.py: `if
+    decision.verdict == "falso_positivo": return "skip"`), quindi il test si
+    sposta al suo vero soggetto invece di continuare a passare per uno
+    specchio morto. Un verdetto "falso_positivo" deve saltare l'esecuzione
+    per intero -- nessuna notifica, nessuna proposta -- anche quando
+    l'azione porta un'entita' concreta su un tier "green" che altrimenti
+    proporrebbe sempre (vedi test_green_proposes sopra)."""
+    r = _Rec()
+    d = Decision("falso_positivo", "info", "runner sent garbage",
+                 {"domain": "light", "service": "turn_on", "entity_id": "light.x", "data": {}})
+    out = await execute(d, _wake(), tiers={"light": "green"}, entity_tiers={},
+                        notify=r.notify, propose=r.propose)
+    assert out == "skip"
+    assert not r.proposed and not r.notified
