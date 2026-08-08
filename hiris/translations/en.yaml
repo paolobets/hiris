@@ -86,9 +86,6 @@ configuration:
   theme:
     name: "Theme"
     description: "Color theme for the HIRIS web interface. 'auto' follows your system preference."
-  apprise_urls:
-    name: "Notification URLs (Apprise)"
-    description: "List of Apprise-compatible URLs for sending notifications (e.g. Telegram, WhatsApp, email). See apprise.readthedocs.io for supported formats."
   history_retention_days:
     name: "Conversation History Retention (days)"
     description: "How many days to keep conversation history before automatic deletion. Default is 90 days."

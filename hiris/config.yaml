@@ -79,7 +79,6 @@ options:
   supervisor_ingress_cidr: "172.30.32.0/23"
   log_level: "info"
   theme: "auto"
-  apprise_urls: []
   history_retention_days: 90
 
   # fetta E3 Task 7: escono `sentinel_daily_cap`/`sentinel_cooldown_min` --
@@ -88,6 +87,10 @@ options:
   # fetta E3 Task 6: esce `brain_notify_high` -- la scansione di salute che
   # notificava e l'AdvisoryStore che le segnalazioni le persisteva sono
   # entrambi usciti col Brain che parlava (resoconto, solleciti, scansione).
+  # fetta E3 Task 13: esce `apprise_urls` -- notifiche.py, il suo unico
+  # lettore, e' uscito per intero insieme alle altre cinque strade per dire
+  # una cosa a una persona. `HA_NOTIFY_SERVICE`/`RETROPANEL_URL` non erano
+  # opzioni add-on (mai un export in run.sh): escono con lui, dal codice.
 
   # ── Ponte push (knobs) ────────────────────────────────────────────────────
   bridge_enabled: false
@@ -150,8 +153,6 @@ schema:
   supervisor_ingress_cidr: "str?"
   log_level: "list(debug|info|warning|error)"
   theme: "list(light|dark|auto)"
-  apprise_urls:
-    - str
   history_retention_days: int(0,3650)
 
   # ── Ponte push (knobs) ────────────────────────────────────────────────────

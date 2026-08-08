@@ -86,9 +86,6 @@ configuration:
   theme:
     name: "Tema"
     description: "Tema colori per l'interfaccia web di HIRIS. 'auto' segue le preferenze del sistema."
-  apprise_urls:
-    name: "URL Notifiche (Apprise)"
-    description: "Elenco di URL compatibili con Apprise per l'invio di notifiche (es. Telegram, WhatsApp, email). Vedi apprise.readthedocs.io per i formati supportati."
   history_retention_days:
     name: "Conservazione Cronologia (giorni)"
     description: "Quanti giorni conservare la cronologia delle conversazioni prima della cancellazione automatica. Predefinito: 90 giorni."

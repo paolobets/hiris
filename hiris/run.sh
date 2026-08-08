@@ -21,13 +21,6 @@ export HIRIS_HIDE_FREE_MODELS=$(bashio::config 'hide_free_models' 'false')
 export THEME=$(bashio::config 'theme' 'auto')
 export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
 export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
-# Guard the jq parse (review medium): a malformed options.json used to silently
-# blank APPRISE_URLS with no hint. Warn and fall back to an empty list.
-export APPRISE_URLS=$(jq -c '.apprise_urls // []' /data/options.json 2>/dev/null)
-if [ -z "${APPRISE_URLS}" ]; then
-  bashio::log.warning "Impossibile leggere apprise_urls da options.json — notifiche Apprise disattivate."
-  export APPRISE_URLS="[]"
-fi
 export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 
 # fetta E3 Task 7: escono SENTINEL_DAILY_CAP/sentinel_daily_cap e
@@ -37,6 +30,11 @@ export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 
 # fetta E3 Task 6: esce BRAIN_NOTIFY_HIGH/brain_notify_high -- la scansione di
 # salute che leggeva questa opzione e' uscita col Brain che parlava.
+
+# fetta E3 Task 13: esce APPRISE_URLS/apprise_urls -- notifiche.py, il suo
+# unico lettore, e' uscito per intero. HA_NOTIFY_SERVICE/RETROPANEL_URL non
+# erano mai stati esportati qui (letti dal codice via os.environ.get, mai
+# un'opzione add-on): escono anche loro, dal codice.
 
 export BRIDGE_ENABLED=$(bashio::config 'bridge_enabled' 'false')
 export BRIDGE_DEADLINE_MIN=$(bashio::config 'bridge_deadline_min' '5')

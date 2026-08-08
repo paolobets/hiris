@@ -127,7 +127,7 @@ def test_proposals_db_silent_when_file_absent(tmp_path, caplog):
 
 def test_dashboard_backups_json_presence_logged_when_file_exists(tmp_path, caplog):
     check = _load_silence_check(
-        "dashboard_backups_path", '_apprise_raw = os.environ.get("APPRISE_URLS"',
+        "dashboard_backups_path", 'app["theme"] = os.environ.get("THEME"',
     )
     (tmp_path / "dashboard_backups.json").write_text("{}")
     with caplog.at_level("INFO"):
@@ -138,7 +138,7 @@ def test_dashboard_backups_json_presence_logged_when_file_exists(tmp_path, caplo
 
 def test_dashboard_backups_json_silent_when_file_absent(tmp_path, caplog):
     check = _load_silence_check(
-        "dashboard_backups_path", '_apprise_raw = os.environ.get("APPRISE_URLS"',
+        "dashboard_backups_path", 'app["theme"] = os.environ.get("THEME"',
     )
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_dashboard_backups_silence"))

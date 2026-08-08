@@ -203,30 +203,6 @@ async def _write_ingress_config(supervisor_token: str, slug: str = "hiris") -> N
         logger.error("Failed to write ingress config to %s: %s", dst, exc)
 
 
-async def _fetch_addon_slug(supervisor_token: str) -> str | None:
-    """Lo slug INSTALLATO dell'add-on (es. '<repohash>_hiris'), dal Supervisor.
-
-    Serve a costruire il deep-link ingress STABILE '/hassio/ingress/<slug>' per
-    il clickAction delle notifiche (aprire HIRIS al tap invece della Dashboard
-    home). Diverso dallo slug di config ('hiris') e dal token ingress che ruota.
-    Ritorna None se il Supervisor e' irraggiungibile -> il deep-link si omette."""
-    if not supervisor_token:
-        return None
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "http://supervisor/addons/self/info",
-                headers={"Authorization": f"Bearer {supervisor_token}"},
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-    except Exception as exc:
-        logger.warning("Cannot fetch add-on slug from Supervisor (%s)", exc)
-        return None
-    return (data.get("data") or {}).get("slug")
-
-
 async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
     """Register /local/{slug}/hiris-chat-card.js?v=VERSION as a Lovelace module resource.
 
@@ -779,26 +755,22 @@ async def _on_startup(app: web.Application) -> None:
             _dashboard_backups_path,
         )
 
-    _apprise_raw = os.environ.get("APPRISE_URLS", "[]")
-    try:
-        _apprise_urls: list[str] = json.loads(_apprise_raw)
-        if not isinstance(_apprise_urls, list):
-            _apprise_urls = []
-    except Exception:
-        _apprise_urls = []
-    notify_config = {
-        "ha_notify_service": os.environ.get("HA_NOTIFY_SERVICE", "notify.notify"),
-        "apprise_urls": _apprise_urls,
-        "retropanel_url": os.environ.get("RETROPANEL_URL", "http://retropanel:8098"),
-    }
-    # Deep-link ingress per le notifiche (issue live-verify #1): il tap apre
-    # HIRIS invece della Dashboard home. Slug installato dal Supervisor -> path
-    # frontend stabile `/hassio/ingress/<slug>`; se irraggiungibile, None ->
-    # il deep-link viene omesso (nessuna regressione).
-    _slug = await _fetch_addon_slug(os.environ.get("SUPERVISOR_TOKEN", ""))
-    _ingress_click_path = f"/hassio/ingress/{_slug}" if _slug else None
-    notify_config["ingress_click_path"] = _ingress_click_path
-    app["ingress_click_path"] = _ingress_click_path
+    # fetta E3 Task 13 ("escono le notifiche"): `notifiche.py` e il suo intero
+    # cablaggio (`notify_config`, `_fetch_addon_slug`, `_ingress_click_path`,
+    # `app["ingress_click_path"]`) sono usciti -- i tre chiamanti di
+    # `send_notification` (health_scan.py Task 6, task_engine.py Task 9, il
+    # ponte Sentinella/briefing di questo file Task 6/7) erano gia' tutti
+    # usciti; questo cablaggio, lasciato intatto dal Task 9 con silenzio
+    # dichiarato (vedi sotto, ora chiuso), era l'ultimo residuo -- mai piu'
+    # letto da nessuno. Con lui escono le sei strade per dire una cosa a una
+    # persona (mappa, elefante n.2) e la destinazione fissa HA_NOTIFY_SERVICE,
+    # che nessuna interfaccia poteva cambiare: da qui in avanti HIRIS non
+    # parla piu' senza essere interrogato -- esiste solo la chat. SILENZIO
+    # DICHIARATO: notifiche.py era senza stato (chiamava HA/apprise/
+    # retropanel dal vivo, nessuna scrittura in /data), quindi non c'e' alcun
+    # file ereditato da controllare al boot. La settima strada nascera' con
+    # un progetto proprio, con una destinazione configurabile -- non
+    # `notify.notify` cablato.
     app["theme"] = os.environ.get("THEME", "auto")
 
     # fetta E3 Task 9 ("esce il Task Engine"): il TaskEngine (il pianificatore
@@ -806,14 +778,8 @@ async def _on_startup(app: web.Application) -> None:
     # intero -- modulo, rotte /api/tasks*, gli hook nei due engine. Era
     # l'ULTIMO chiamante di `notifiche.send_notification` (le sue azioni
     # residue, dopo che `call_ha_service` era uscita nella review finale E2,
-    # erano solo `send_notification`): `notify_config` qui sopra (e
-    # `_fetch_addon_slug`/`_ingress_click_path` che lo riempiono) non ha piu'
-    # nessun consumatore, ma resta cosi' com'e' -- non lo anticipiamo.
-    # `hiris/app/notifiche.py` NON esce con questo task: esce al Task 13,
-    # insieme al resto del suo cablaggio (questo compreso). SILENZIO
-    # DICHIARATO, due livelli:
-    #  1. `notifiche.send_notification` e' orfano da qui in poi (zero
-    #     chiamanti di produzione) -- lo raccoglie il Task 13.
+    # erano solo `send_notification`): il resto del cablaggio (notify_config
+    # e affini) e' uscito col Task 13, vedi sopra. SILENZIO DICHIARATO:
     #  1b. `EntityCache.get_state` (proxy/entity_cache.py) e' orfano allo
     #     stesso modo: il suo unico chiamante era
     #     `TaskEngine._evaluate_condition()`. `proxy/entity_cache.py` NON si
