@@ -121,94 +121,21 @@ def test_presets_no_longer_include_known_broken_hermes3():
     )
 
 
-# ---------------------------------------------------------------------------
-# Regression: agent-save validation against OpenRouter capability (v0.9.9).
-# Pre-v0.9.9, an agent could be saved with a non-tool-capable OpenRouter model
-# (e.g. hermes-3-llama-3.1-405b:free), causing every chat call to fail with
-# HTTP 404 "No endpoints found that support tool use" until the user noticed
-# and changed the model manually.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_capability_check_passes_for_tool_capable_model():
-    payload = {
-        "data": [
-            {"id": "anthropic/claude-sonnet-4-6",
-             "supported_parameters": ["tools", "max_tokens"]},
-        ],
-    }
-    session_cm = _mock_openrouter_response(payload)
-    with patch("aiohttp.ClientSession", return_value=session_cm):
-        result = await handlers_models.is_openrouter_model_tool_capable(
-            "openrouter:anthropic/claude-sonnet-4-6", "sk-or-test"
-        )
-    assert result is True
-
-
-@pytest.mark.asyncio
-async def test_capability_check_rejects_known_broken_hermes3():
-    payload = {
-        "data": [
-            {"id": "nousresearch/hermes-3-llama-3.1-405b:free",
-             "supported_parameters": ["max_tokens"]},  # NO tools
-        ],
-    }
-    session_cm = _mock_openrouter_response(payload)
-    with patch("aiohttp.ClientSession", return_value=session_cm):
-        result = await handlers_models.is_openrouter_model_tool_capable(
-            "openrouter:nousresearch/hermes-3-llama-3.1-405b:free", "sk-or-test"
-        )
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_capability_check_rejects_unknown_model_id():
-    """A model id not present in the OpenRouter catalogue (typo / retired) → False."""
-    payload = {"data": [{"id": "anthropic/claude-sonnet-4-6",
-                          "supported_parameters": ["tools"]}]}
-    session_cm = _mock_openrouter_response(payload)
-    with patch("aiohttp.ClientSession", return_value=session_cm):
-        result = await handlers_models.is_openrouter_model_tool_capable(
-            "openrouter:typo/wrong-model", "sk-or-test"
-        )
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_capability_check_returns_none_without_api_key():
-    """No API key → cannot verify, return None so caller allows the save."""
-    result = await handlers_models.is_openrouter_model_tool_capable(
-        "openrouter:anthropic/claude-sonnet-4-6", ""
-    )
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_capability_check_returns_none_on_network_failure():
-    """Network failure → return None (degrade gracefully)."""
-    bad_session = MagicMock()
-    bad_session.__aenter__ = AsyncMock(side_effect=RuntimeError("boom"))
-    bad_session.__aexit__ = AsyncMock(return_value=None)
-    with patch("aiohttp.ClientSession", return_value=bad_session):
-        result = await handlers_models.is_openrouter_model_tool_capable(
-            "openrouter:anthropic/claude-sonnet-4-6", "sk-or-test"
-        )
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_capability_check_handles_or_slash_prefix():
-    """Both 'openrouter:' and 'openrouter/' prefix forms must be accepted."""
-    payload = {"data": [{"id": "anthropic/claude-sonnet-4-6",
-                          "supported_parameters": ["tools"]}]}
-    session_cm = _mock_openrouter_response(payload)
-    with patch("aiohttp.ClientSession", return_value=session_cm):
-        result = await handlers_models.is_openrouter_model_tool_capable(
-            "openrouter/anthropic/claude-sonnet-4-6", "sk-or-test"
-        )
-    assert result is True
-
+# fetta E4 Task 3 ("un bot solo"): the six test_capability_check_* tests
+# that lived here pinned `handlers_models.is_openrouter_model_tool_capable`,
+# used only to validate an OpenRouter model choice at chatbot save time
+# (v0.9.9 regression). Its only caller, `handlers_chatbots.
+# _validate_openrouter_model`, is gone with `handle_create_chatbot`/
+# `handle_update_chatbot` (the CRUD routes -- the three creation paths that
+# survived the E3 all converged on POST /api/chatbots with `enabled: true`
+# by default, the opposite of what the scope prescribes). Orphaned by that
+# removal (not anticipated by the brief, caught by the census), the
+# function itself is gone too now -- verified failing for construction
+# (`AttributeError: module 'hiris.app.api.handlers_models' has no attribute
+# 'is_openrouter_model_tool_capable'`) before deletion. Every other test in
+# this file (`_supports_tools`/`_fetch_openrouter_models`/
+# `_hide_free_models_enabled`) stays untouched: those feed GET /api/models,
+# the model dropdown, independent of chatbot CRUD.
 
 # ---------------------------------------------------------------------------
 # Regression: HIRIS_HIDE_FREE_MODELS env var hides :free models from dropdown

@@ -80,31 +80,12 @@ async def test_chat_endpoint(client):
     assert "response" in data
 
 
-@pytest.mark.asyncio
-async def test_agents_crud(client):
-    payload = {
-        "name": "Test Monitor",
-        "type": "agent",
-        "triggers": [{"type": "schedule", "interval_minutes": 5}],
-        "system_prompt": "Monitor test",
-        "allowed_tools": ["get_entity_states"],
-        "enabled": False,
-    }
-    create_resp = await client.post("/api/chatbots", json=payload)
-    assert create_resp.status == 201
-    agent = await create_resp.json()
-    agent_id = agent["id"]
-
-    list_resp = await client.get("/api/chatbots")
-    assert list_resp.status == 200
-    agents = await list_resp.json()
-    assert any(a["id"] == agent_id for a in agents)
-
-    get_resp = await client.get(f"/api/chatbots/{agent_id}")
-    assert get_resp.status == 200
-
-    del_resp = await client.delete(f"/api/chatbots/{agent_id}")
-    assert del_resp.status == 204
+# fetta E4 Task 3 ("un bot solo"): test_agents_crud esercitava
+# POST/GET-single/DELETE su /api/chatbots -- le tre strade di creazione
+# sopravvissute alla E3 convergevano tutte li' con `enabled: true` di
+# default, il contrario di quanto prescrive lo scope. Verificato che cadesse
+# per costruzione (POST risponde 405, la rotta non e' piu' registrata)
+# prima della cancellazione.
 
 
 @pytest.mark.asyncio
@@ -138,31 +119,15 @@ async def test_chat_no_runner(aiohttp_client):
     assert resp.status == 503
 
 
-@pytest.mark.asyncio
-async def test_agent_not_found(client):
-    resp = await client.get("/api/chatbots/nonexistent-id")
-    assert resp.status == 404
-
-
-@pytest.mark.asyncio
-async def test_agent_update(client):
-    # Create
-    payload = {
-        "name": "Update Test",
-        "type": "agent",
-        "triggers": [{"type": "schedule", "interval_minutes": 5}],
-        "system_prompt": "original",
-        "allowed_tools": [],
-        "enabled": False,
-    }
-    create_resp = await client.post("/api/chatbots", json=payload)
-    agent_id = (await create_resp.json())["id"]
-
-    # Update
-    update_resp = await client.put(f"/api/chatbots/{agent_id}", json={"system_prompt": "updated"})
-    assert update_resp.status == 200
-    data = await update_resp.json()
-    assert data["system_prompt"] == "updated"
+# fetta E4 Task 3: test_agent_not_found (GET-single, `/api/chatbots/
+# nonexistent-id`) is gone too -- not because it failed for construction
+# (an unmatched route also 404s, so the assertion happened to still pass by
+# coincidence) but because its subject, handle_get_chatbot, is gone; a
+# passing assertion on a dead route is false confidence, the same trap the
+# NOTE at the top of test_handlers_chatbots.py already names. test_agent_update
+# (PUT after POST) exercised handle_create_chatbot/handle_update_chatbot,
+# verified failing for construction (POST /api/chatbots -> 405) before
+# deletion.
 
 
 # test_agent_run (POST /api/chatbots/{id}/run) e' uscito con l'intero Test
@@ -172,18 +137,12 @@ async def test_agent_update(client):
 # (route rimossa da server.py) -- vedi task-2-report.md.
 
 
-@pytest.mark.asyncio
-async def test_delete_default_agent_returns_409(client):
-    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
-    engine = client.app["engine"]
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
-    resp = await client.delete(f"/api/chatbots/{DEFAULT_CHATBOT_ID}")
-    assert resp.status == 409
-    data = await resp.json()
-    assert "error" in data
+# fetta E4 Task 3: test_delete_default_agent_returns_409 (DELETE
+# /api/chatbots/{default_id}) exercised handle_delete_chatbot, gone with
+# the rest of the CRUD -- verified failing for construction (405, route no
+# longer registered) before deletion. The 409-on-default-delete guard lived
+# only in the handler; ChatbotEngine.delete_chatbot itself (which also
+# returned False for the default before saving) is gone too, per brief.
 
 
 @pytest.mark.asyncio

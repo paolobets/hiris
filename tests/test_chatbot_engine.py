@@ -1,7 +1,6 @@
-import asyncio
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from hiris.app.chatbot_engine import ChatbotEngine, Chatbot
 
 
@@ -15,178 +14,42 @@ def engine(mock_ha, tmp_path):
     return ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
 
 
-def test_create_agent_stores_agent(engine):
-    agent = engine.create_chatbot({
-        "name": "Energy Monitor",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "Monitor energy",
-        "allowed_tools": ["get_entity_states"],
-        "enabled": True,
-    })
-    assert agent.id in engine.list_chatbots()
-
-
-def test_list_agents_returns_dict(engine):
-    engine.create_chatbot({
-        "name": "Test Agent",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 10},
-        "system_prompt": "test",
-        "allowed_tools": [],
-        "enabled": False,
-    })
-    agents = engine.list_chatbots()
-    assert len(agents) == 1
-    first = list(agents.values())[0]
-    assert first["name"] == "Test Agent"
-
-
-def test_delete_agent_removes_agent(engine):
-    agent = engine.create_chatbot({
-        "name": "To Delete",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "",
-        "allowed_tools": [],
-        "enabled": False,
-    })
-    engine.delete_chatbot(agent.id)
-    assert agent.id not in engine.list_chatbots()
-
-
-def test_create_agent_with_new_fields(engine):
-    agent = engine.create_chatbot({
-        "name": "Climate Manager",
-        "type": "preventive",
-        "trigger": {"type": "preventive", "cron": "0 15 * * 1-5"},
-        "system_prompt": "Gestisci il clima",
-        "allowed_tools": ["get_entity_states", "call_ha_service"],
-        "enabled": True,
-        "strategic_context": "Famiglia rientra alle 16:00. Temp preferita 21°C.",
-        "allowed_entities": ["climate.*", "person.*"],
-        "allowed_services": ["climate.set_temperature", "notify.*"],
-    })
-    assert agent.strategic_context == "Famiglia rientra alle 16:00. Temp preferita 21°C."
-    assert agent.allowed_entities == ["climate.*", "person.*"]
-    assert agent.allowed_services == ["climate.set_temperature", "notify.*"]
-
-
-def test_create_agent_new_fields_default_empty(engine):
-    agent = engine.create_chatbot({
-        "name": "Minimal Agent",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "",
-        "allowed_tools": [],
-        "enabled": False,
-    })
-    assert agent.strategic_context == ""
-    assert agent.allowed_entities == []
-    assert agent.allowed_services == []
-
-
-def test_create_agent_thinking_budget_default_zero(engine):
-    """thinking_budget defaults to 0 (extended thinking disabled)."""
-    agent = engine.create_chatbot({
-        "name": "X", "type": "chat",
-        "triggers": [], "system_prompt": "", "allowed_tools": [],
-    })
-    assert agent.thinking_budget == 0
-
-
-def test_create_agent_thinking_budget_persists(engine):
-    """thinking_budget is stored from create payload."""
-    agent = engine.create_chatbot({
-        "name": "Reasoner", "type": "agent",
-        "triggers": [], "system_prompt": "",
-        "allowed_tools": [],
-        "thinking_budget": 4096,
-    })
-    assert agent.thinking_budget == 4096
-
-
-def test_update_agent_thinking_budget(engine):
-    """thinking_budget can be updated."""
-    agent = engine.create_chatbot({
-        "name": "X", "type": "chat",
-        "triggers": [], "system_prompt": "", "allowed_tools": [],
-    })
-    updated = engine.update_chatbot(agent.id, {"thinking_budget": 2048})
-    assert updated.thinking_budget == 2048
-
-
-def test_create_agent_thinking_budget_negative_clamped_to_zero(engine):
-    """Negative thinking_budget is clamped to 0 by create_agent (defensive)."""
-    agent = engine.create_chatbot({
-        "name": "X", "type": "chat",
-        "triggers": [], "system_prompt": "", "allowed_tools": [],
-        "thinking_budget": -1,
-    })
-    assert agent.thinking_budget == 0
-
-
-def test_update_agent_new_fields(engine):
-    agent = engine.create_chatbot({
-        "name": "Test Agent",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 10},
-        "system_prompt": "test",
-        "allowed_tools": [],
-        "enabled": False,
-    })
-    updated = engine.update_chatbot(agent.id, {
-        "strategic_context": "Nuovo contesto",
-        "allowed_entities": ["sensor.*"],
-        "allowed_services": [],
-    })
-    assert updated.strategic_context == "Nuovo contesto"
-    assert updated.allowed_entities == ["sensor.*"]
-    assert updated.allowed_services == []
-
-
-def test_list_agents_includes_new_fields(engine):
-    engine.create_chatbot({
-        "name": "Export Test",
-        "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "",
-        "allowed_tools": [],
-        "enabled": False,
-        "strategic_context": "contesto",
-        "allowed_entities": ["light.*"],
-        "allowed_services": [],
-    })
-    agents = list(engine.list_chatbots().values())
-    assert "strategic_context" in agents[0]
-    assert "allowed_entities" in agents[0]
-    assert "allowed_services" in agents[0]
-    assert agents[0]["strategic_context"] == "contesto"
-    assert agents[0]["allowed_entities"] == ["light.*"]
-
-
-def test_create_agent_persists_to_file(engine, tmp_path):
-    engine.create_chatbot({
-        "name": "Persist Test", "type": "agent",
-        "triggers": [{"type": "schedule", "interval_minutes": 5}],
-        "system_prompt": "test", "allowed_tools": [], "enabled": False,
-    })
-    path = tmp_path / "agents.json"
-    assert path.exists()
-    data = json.loads(path.read_text())
-    assert data["schema_version"] == 4
-    assert any(a["name"] == "Persist Test" for a in data["chatbots"])
-
-
-def test_delete_agent_removes_from_file(engine, tmp_path):
-    agent = engine.create_chatbot({
-        "name": "ToDelete", "type": "agent",
-        "triggers": [{"type": "schedule", "interval_minutes": 5}],
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    engine.delete_chatbot(agent.id)
-    data = json.loads((tmp_path / "agents.json").read_text())
-    assert not any(a["id"] == agent.id for a in data["chatbots"])
+# fetta E4 Task 3 ("un bot solo"): `create_chatbot`/`update_chatbot`/
+# `delete_chatbot` are gone -- the three creation paths that survived the E3
+# (wizard, empty editor, chat onboarding) all converged on POST
+# /api/chatbots with `enabled: true` by default, the opposite of what the
+# scope prescribes; killing the route kills them together. Every test that
+# built its fixture by calling one of those three methods is gone with them
+# (verified failing for construction --
+# `AttributeError: 'ChatbotEngine' object has no attribute 'create_chatbot'`
+# -- before deletion): test_create_agent_stores_agent,
+# test_list_agents_returns_dict, test_delete_agent_removes_agent,
+# test_create_agent_with_new_fields, test_create_agent_new_fields_default_empty,
+# test_create_agent_thinking_budget_default_zero,
+# test_create_agent_thinking_budget_persists, test_update_agent_thinking_budget,
+# test_create_agent_thinking_budget_negative_clamped_to_zero,
+# test_update_agent_new_fields, test_list_agents_includes_new_fields,
+# test_create_agent_persists_to_file, test_delete_agent_removes_from_file,
+# test_update_agent_persists_to_file, test_delete_default_agent_returns_false
+# (calls delete_chatbot directly), test_get_agent_returns_correct,
+# test_agent_model_defaults_to_auto, test_agent_per_agent_config_persists,
+# test_agent_update_model_and_max_tokens,
+# test_agent_require_confirmation_defaults_false,
+# test_update_agent_require_confirmation, test_agent_require_confirmation_persists,
+# test_execution_log_not_in_updatable_fields (UPDATABLE_FIELDS itself is
+# gone), test_execution_log_persists_across_reload,
+# test_update_agent_without_require_confirmation_preserves_existing_value,
+# test_create_agent_without_require_confirmation_defaults_false,
+# test_update_agent_with_require_confirmation_false_from_ui,
+# test_execution_log_initialises_empty_for_new_agents,
+# test_agent_knowledge_access_default_and_update.
+#
+# What survives: `_load`/`_save`/migration round-trips built from literal
+# JSON (never call the retired methods), `get_chatbot`/`get_default_chatbot`/
+# `set_entity_cache` exercised against chatbots inserted directly into
+# `engine._chatbots` (still live -- `get_chatbot` is read by `handle_chat`
+# and by `_seed_default_chatbot`; `list_chatbots`/`get_chatbot_status` feed
+# `handle_list_chatbots`, the compatibility surface).
 
 
 def test_load_agents_from_existing_file(mock_ha, tmp_path):
@@ -273,18 +136,6 @@ def test_load_agent_with_both_legacy_and_current_names_dedupes(mock_ha, tmp_path
     assert loaded.allowed_tools == ["recall_memory", "save_memory"]
 
 
-def test_update_agent_persists_to_file(engine, tmp_path):
-    agent = engine.create_chatbot({
-        "name": "Update Me", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "original", "allowed_tools": [], "enabled": False,
-    })
-    engine.update_chatbot(agent.id, {"system_prompt": "updated"})
-    data = json.loads((tmp_path / "agents.json").read_text())
-    entry = next(a for a in data["chatbots"] if a["id"] == agent.id)
-    assert entry["system_prompt"] == "updated"
-
-
 @pytest.mark.asyncio
 async def test_default_agent_seeded_after_load(mock_ha, tmp_path):
     from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID
@@ -317,28 +168,6 @@ async def test_default_agent_not_seeded_if_already_present(mock_ha, tmp_path):
     eng._scheduler.shutdown(wait=False)
 
 
-def test_delete_default_agent_returns_false(engine):
-    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS",
-        system_prompt="",
-        allowed_tools=[], enabled=True, is_default=True,
-    )
-    result = engine.delete_chatbot(DEFAULT_CHATBOT_ID)
-    assert result is False
-    assert DEFAULT_CHATBOT_ID in engine._chatbots
-
-
-def test_get_agent_returns_correct(engine):
-    agent = engine.create_chatbot({
-        "name": "Find Me", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    assert engine.get_chatbot(agent.id) is agent
-    assert engine.get_chatbot("nonexistent") is None
-
-
 def test_get_default_agent(engine):
     from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
     engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
@@ -347,107 +176,6 @@ def test_get_default_agent(engine):
         allowed_tools=[], enabled=True, is_default=True,
     )
     assert engine.get_default_chatbot() is engine._chatbots[DEFAULT_CHATBOT_ID]
-
-
-def test_agent_model_defaults_to_auto(engine):
-    agent = engine.create_chatbot({
-        "name": "Test", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    assert agent.model == "auto"
-    # Every persona is a chat entity now (Slice 5 Task 2 dropped the
-    # non-chat "agent"/"monitor" type) — new personas default to the chat
-    # ceiling (16000), not the old non-chat default (4096).
-    assert agent.max_tokens == 16000
-    assert agent.restrict_to_home is False
-
-
-def test_agent_per_agent_config_persists(engine):
-    agent = engine.create_chatbot({
-        "name": "Haiku Agent", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 1024,
-        "restrict_to_home": True,
-    })
-    engine2 = ChatbotEngine(ha_client=engine._ha, data_path=engine._data_path)
-    engine2._load()
-    loaded = engine2.get_chatbot(agent.id)
-    assert loaded.model == "claude-haiku-4-5-20251001"
-    assert loaded.max_tokens == 1024
-    assert loaded.restrict_to_home is True
-
-
-def test_agent_update_model_and_max_tokens(engine):
-    agent = engine.create_chatbot({
-        "name": "Test", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    updated = engine.update_chatbot(agent.id, {"model": "claude-sonnet-4-6", "max_tokens": 2048})
-    assert updated.model == "claude-sonnet-4-6"
-    assert updated.max_tokens == 2048
-
-
-def test_agent_require_confirmation_defaults_false(engine):
-    agent = engine.create_chatbot({
-        "name": "Default", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    assert agent.require_confirmation is False
-
-
-def test_update_agent_require_confirmation(engine):
-    agent = engine.create_chatbot({
-        "name": "Flip", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    updated = engine.update_chatbot(agent.id, {"require_confirmation": True})
-    assert updated.require_confirmation is True
-
-
-def test_agent_require_confirmation_persists(engine):
-    agent = engine.create_chatbot({
-        "name": "Persist Conf", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-        "require_confirmation": True,
-    })
-    engine2 = ChatbotEngine(ha_client=engine._ha, data_path=engine._data_path)
-    engine2._load()
-    loaded = engine2.get_chatbot(agent.id)
-    assert loaded.require_confirmation is True
-
-
-def test_execution_log_not_in_updatable_fields(engine):
-    assert "execution_log" not in ChatbotEngine.UPDATABLE_FIELDS
-
-
-def test_execution_log_persists_across_reload(engine):
-    agent = engine.create_chatbot({
-        "name": "Persist Log", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    agent.execution_log = [{
-        "timestamp": "2026-04-20T10:00:00+00:00",
-        "trigger": "schedule",
-        "tool_calls": ["get_home_status"],
-        "input_tokens": 50,
-        "output_tokens": 10,
-        "result_summary": "ok",
-        "success": True,
-    }]
-    engine._save()
-    engine2 = ChatbotEngine(ha_client=engine._ha, data_path=engine._data_path)
-    engine2._load()
-    loaded = engine2.get_chatbot(agent.id)
-    assert len(loaded.execution_log) == 1
-    assert loaded.execution_log[0]["trigger"] == "schedule"
 
 
 # ---------------------------------------------------------------------------
@@ -492,52 +220,6 @@ def test_load_old_json_without_cycle3_fields_defaults_safely(mock_ha, tmp_path):
     assert agent.execution_log == []
 
 
-def test_update_agent_without_require_confirmation_preserves_existing_value(engine):
-    """PUT payload missing require_confirmation leaves the existing value untouched."""
-    agent = engine.create_chatbot({
-        "name": "Keep Me", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-        "require_confirmation": True,
-    })
-    updated = engine.update_chatbot(agent.id, {"name": "Keep Me Updated"})
-    assert updated.require_confirmation is True  # unchanged
-
-
-def test_create_agent_without_require_confirmation_defaults_false(engine):
-    """POST /api/agents payload without require_confirmation must default to False."""
-    agent = engine.create_chatbot({
-        "name": "No Conf", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-        # no require_confirmation key
-    })
-    assert agent.require_confirmation is False
-
-
-def test_update_agent_with_require_confirmation_false_from_ui(engine):
-    """buildPayload() always sends require_confirmation:false — must not break existing agents."""
-    agent = engine.create_chatbot({
-        "name": "UI Save", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "original", "allowed_tools": [], "enabled": False,
-    })
-    # Simulate UI saving the agent (sends require_confirmation even if user never touched it)
-    updated = engine.update_chatbot(agent.id, {"system_prompt": "updated", "require_confirmation": False})
-    assert updated.system_prompt == "updated"
-    assert updated.require_confirmation is False
-
-
-def test_execution_log_initialises_empty_for_new_agents(engine):
-    """Newly created agents have an empty execution_log — no stale data."""
-    agent = engine.create_chatbot({
-        "name": "Fresh", "type": "monitor",
-        "trigger": {"type": "schedule", "interval_minutes": 5},
-        "system_prompt": "", "allowed_tools": [], "enabled": False,
-    })
-    assert agent.execution_log == []
-
-
 def _make_entity_cache(entities):
     cache = MagicMock()
     cache.get_all_useful.return_value = entities
@@ -548,16 +230,6 @@ def test_set_entity_cache_stores_cache(engine):
     cache = _make_entity_cache([])
     engine.set_entity_cache(cache)
     assert engine._entity_cache is cache
-
-
-def test_agent_knowledge_access_default_and_update(engine):
-    a = engine.create_chatbot({
-        "name": "Chat", "type": "chat", "triggers": [],
-        "system_prompt": "x", "allowed_tools": [], "enabled": True,
-    })
-    assert a.knowledge_access == {"allow_sensitive": False, "kinds": "all"}
-    engine.update_chatbot(a.id, {"knowledge_access": {"allow_sensitive": True, "kinds": "all"}})
-    assert engine.get_chatbot(a.id).knowledge_access["allow_sensitive"] is True
 
 
 # ---------------------------------------------------------------------------

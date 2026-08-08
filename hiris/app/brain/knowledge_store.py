@@ -156,8 +156,12 @@ def _migrate_v4(conn: sqlite3.Connection) -> None:
 def _migrate_v5(conn: sqlite3.Connection) -> None:
     """v4 -> v5 (Task 3, memoria unica): `chatbot_id` smette di essere una
     clausola di ambito (vedi `_clausole_di_scope`) -- resta in tabella solo
-    come provenienza (quale chatbot ha scritto la riga; azzerato da
-    `detach_chatbot_id` alla cancellazione di un chatbot). Le righe
+    come provenienza (quale chatbot ha scritto la riga; azzerato all'epoca
+    da `detach_chatbot_id` alla cancellazione di un chatbot -- quel metodo e
+    la cancellazione stessa sono usciti dalla fetta E4 Task 3, "un bot solo":
+    il prodotto non permette piu' di cancellare un chatbot, quindi la colonna
+    non riceve piu' scritture nuove, solo quelle di questa migrazione e delle
+    righe gia' su disco). Le righe
     kind='memory' gia' esistenti erano scritte quando chatbot_id ANCORA
     delimitava la visibilita': azzerarlo qui e' cio' che le rende
     immediatamente di tutta la casa all'aggiornamento, invece di restarci
@@ -188,8 +192,9 @@ def _migrate_v6(conn: sqlite3.Connection) -> None:
     - righe gia' scadute sotto il vecchio schema, invisibili su ogni
       percorso di lettura (`_clausole_di_scope` filtra su `valid_until`);
     - le "righe immortali e invisibili" del brief: una riga distaccata dal
-      suo chatbot (`chatbot_id` azzerato da `detach_chatbot_id` o da
-      `_migrate_v5`) ma con `valid_until` ancora impostato. Una volta
+      suo chatbot (`chatbot_id` azzerato dal `detach_chatbot_id` dell'epoca,
+      poi rimosso con la cancellazione dei chatbot -- fetta E4 Task 3 -- o
+      da `_migrate_v5`) ma con `valid_until` ancora impostato. Una volta
       scaduta, il filtro di ambito la nasconde su ogni lettura, e il
       vecchio `purge_expired_chatbot` -- che cercava per chatbot -- non la
       trovava piu': restava nel database per sempre, invisibile e
@@ -401,8 +406,10 @@ class KnowledgeStore:
         chatbot, quello non avrebbe saputo del guasto meteo e avrebbe ripreso
         a proporre soluzioni basate su sensori inesistenti. La colonna
         `chatbot_id` resta in tabella (provenienza: quale chatbot ha
-        scritto la riga; azzerata da `detach_chatbot_id` alla cancellazione
-        di un chatbot), ma non delimita piu' chi puo' vedere cosa.
+        scritto la riga; azzerata dal `detach_chatbot_id` dell'epoca -- la
+        cancellazione di un chatbot non esiste piu' nel prodotto, fetta E4
+        Task 3 -- o dalla migrazione v5 per le righe che predatano la
+        fetta), ma non delimita piu' chi puo' vedere cosa.
 
         L'unica eccezione che NON si tocca e' `owner`: resta l'unico asse di
         riservatezza. Cio' che riguarda la casa e' di tutti (owner='home', o
@@ -634,34 +641,15 @@ class KnowledgeStore:
                         "sensitivity": r["sensitivity"], "score": sim})
         return out
 
-    def detach_chatbot_id(self, chatbot_id: str) -> int:
-        """A chatbot was deleted: dissociate its rows, never delete them.
-
-        Before Task 3 this method (`delete_by_chatbot`) DELETEd every row
-        carrying this chatbot_id, because chatbot_id was a scope: those rows
-        were unreachable by anyone else anyway, so deleting them on chatbot
-        deletion just cleaned up otherwise-orphaned dead weight.
-
-        That premise is gone. `_clausole_di_scope` no longer reads
-        chatbot_id -- a row saved through this chatbot is, and was already,
-        visible to the whole house (subject only to owner/sensitivity). It
-        is HIRIS's knowledge now, not the chatbot's. Deleting the chatbot
-        must not delete it: doing so would silently wipe house knowledge
-        that has nothing to do with the chatbot going away (e.g. the
-        production 'external weather module is broken' memory, if it had
-        been re-saved through a since-deleted second chatbot). So this NULLs
-        chatbot_id instead of dropping the rows -- the same operation
-        `_migrate_v5` performs on upgrade for the rows that predate this
-        change, and for the same reason: a dangling reference to a chatbot
-        that no longer exists should be cleared, not used as a deletion
-        trigger for content that outlives it."""
-        with self._mu:
-            cur = self._conn.execute(
-                "UPDATE knowledge_items SET chatbot_id = NULL WHERE chatbot_id = ?",
-                (chatbot_id,),
-            )
-            self._conn.commit()
-            return cur.rowcount
+    # `detach_chatbot_id` (uscito, fetta E4 Task 3 "un bot solo"): tolgo il
+    # riferimento pendente `chatbot_id` di un chatbot cancellato, senza mai
+    # cancellare le righe -- la conoscenza e' di casa, non del chatbot. Il
+    # suo unico chiamante era `handle_delete_chatbot` (handlers_chatbots.py);
+    # con la cancellazione stessa uscita insieme al resto del CRUD (il
+    # prodotto non permette piu' di cancellare un chatbot), non restava
+    # nessun chiamante da servire. La colonna `chatbot_id` resta in tabella,
+    # nullable, come provenienza (vedi `_clausole_di_scope` sopra) -- la sua
+    # sorte e' della fetta conoscenza, non di questo task.
 
     def close(self) -> None:
         with self._mu:

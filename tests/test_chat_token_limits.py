@@ -1,46 +1,21 @@
-import pytest
-from unittest.mock import AsyncMock
-
-from hiris.app.chatbot_engine import ChatbotEngine
 from hiris.app.claude_runner import _max_tokens_message, _TRUNCATION_NOTICE, CHAT_MAX_TOKENS
 
 
-@pytest.fixture
-def engine(tmp_path):
-    return ChatbotEngine(ha_client=AsyncMock(), data_path=str(tmp_path / "agents.json"))
-
-
-# --- Part 1: max_tokens cap ---
-# Slice 5 Task 2 dropped the `type` field — every persona is a chat entity
-# now, so there is a single cap (there is no more non-chat "agent"/"monitor"
-# variant to clamp lower).
-
-def test_cap_allows_up_to_16000():
-    assert ChatbotEngine._cap_max_tokens(16000) == 16000
-    assert ChatbotEngine._cap_max_tokens(99999) == 16000  # clamped to the cap
-    assert ChatbotEngine._cap_max_tokens(12000) == 12000  # below cap kept
-
-
-def test_create_agent_keeps_high_max_tokens(engine):
-    agent = engine.create_chatbot({"name": "Chat", "max_tokens": 16000})
-    assert agent.max_tokens == 16000
-
-
-def test_create_agent_clamped_to_16000(engine):
-    agent = engine.create_chatbot({"name": "Persona", "max_tokens": 99999})
-    assert agent.max_tokens == 16000
-
-
-def test_update_agent_raises_cap(engine):
-    agent = engine.create_chatbot({"name": "Chat", "max_tokens": 4096})
-    engine.update_chatbot(agent.id, {"max_tokens": 16000})
-    assert engine.get_chatbot(agent.id).max_tokens == 16000
-
-
-def test_chat_max_tokens_constant_matches_cap():
-    # The runtime chat floor and the persistence cap must agree.
-    assert CHAT_MAX_TOKENS == ChatbotEngine._CHAT_MAX_TOKENS_CAP == 16000
-
+# --- Part 1: max_tokens cap (persistence-time, at create/update) ---
+# Retired (fetta E4 Task 3, "un bot solo"): test_cap_allows_up_to_16000,
+# test_create_agent_keeps_high_max_tokens, test_create_agent_clamped_to_16000,
+# test_update_agent_raises_cap and test_chat_max_tokens_constant_matches_cap
+# pinned `ChatbotEngine._cap_max_tokens`/`_CHAT_MAX_TOKENS_CAP`, applied only
+# inside `create_chatbot`/`update_chatbot` when persisting `max_tokens` --
+# all four are gone with the CRUD routes (the three creation paths that
+# survived the E3 all converged on POST /api/chatbots with `enabled: true`
+# by default, the opposite of what the scope prescribes). Verified failing
+# for construction (`AttributeError: type object 'ChatbotEngine' has no
+# attribute '_cap_max_tokens'` / `'... has no attribute 'create_chatbot'`)
+# before deletion. `CHAT_MAX_TOKENS` (claude_runner.py) is a separate,
+# still-live mechanism -- the runtime floor applied to every chat request
+# regardless of the stored per-persona value (see
+# tests/test_api.py::test_chat_passes_model_to_runner) -- and is untouched.
 
 # --- Part 2: max_tokens truncation message ---
 

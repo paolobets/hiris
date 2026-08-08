@@ -12,11 +12,7 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
-from .api.handlers_chatbots import (
-    handle_list_chatbots, handle_create_chatbot, handle_get_chatbot,
-    handle_update_chatbot, handle_delete_chatbot,
-    handle_get_chatbot_usage, handle_reset_chatbot_usage,
-)
+from .api.handlers_chatbots import handle_list_chatbots
 from .api.handlers_entities import handle_list_entities
 from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
@@ -1523,14 +1519,20 @@ def create_app() -> web.Application:
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
+    # fetta E4 Task 3 ("un bot solo"): le rotte di creazione/CRUD (POST
+    # /api/chatbots, GET/PUT/DELETE /api/chatbots/{agent_id}, .../usage,
+    # .../usage/reset) sono uscite -- erano le tre strade sopravvissute alla
+    # E3 (wizard, editor vuoto, onboarding della chat) che creavano tutte
+    # l'entita' gia' attiva, il contrario di quanto prescrive lo scope.
+    # GET /api/chatbots resta come superficie di compatibilita' dichiarata
+    # (Global Constraints, vedi handlers_chatbots.py): la pagina chat e la
+    # card ne dipendono per l'indicatore "connesso" e la lista (verificato
+    # in static/chat/agents.js, hiris-chat-card.js). Le due rotte
+    # chat-history restano per lo stesso motivo. Le pagine che restano rotte
+    # (editor #/chatbots, usage, assegnazione modello per entita', toggle
+    # della card) sono elencate nel report del task, per l'elenco della E5.
     app.router.add_get("/api/chatbots", handle_list_chatbots)
-    app.router.add_post("/api/chatbots", handle_create_chatbot)
-    app.router.add_get("/api/chatbots/{agent_id}", handle_get_chatbot)
-    app.router.add_put("/api/chatbots/{agent_id}", handle_update_chatbot)
-    app.router.add_delete("/api/chatbots/{agent_id}", handle_delete_chatbot)
     app.router.add_get("/api/entities", handle_list_entities)
-    app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
-    app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
     app.router.add_get("/api/chatbots/{agent_id}/chat-history", handle_get_chat_history)
     app.router.add_delete("/api/chatbots/{agent_id}/chat-history", handle_clear_chat_history)
     # fetta E3 Task 9: le tre rotte /api/tasks* sono uscite insieme al Task

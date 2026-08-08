@@ -16,12 +16,16 @@ from aiohttp import web
 # ---------------------------------------------------------------------------
 
 def _make_app_with_runner(runner):
-    """Minimal aiohttp app wired like the real server but without startup hooks."""
+    """Minimal aiohttp app wired like the real server but without startup hooks.
+
+    fetta E4 Task 3 ("un bot solo"): this used to also register the
+    /api/chatbots/{agent_id} GET/PUT/DELETE and .../usage routes, for the
+    SEC-014 tests below. Those handlers are gone with the rest of the CRUD
+    (three creation paths all converged on POST /api/chatbots with
+    `enabled: true` by default, the opposite of the scope) -- only /api/chat
+    is left as a live subject here, so only that route is registered now.
+    """
     from hiris.app.api.handlers_chat import handle_chat
-    from hiris.app.api.handlers_chatbots import (
-        handle_get_chatbot, handle_update_chatbot, handle_delete_chatbot,
-        handle_get_chatbot_usage, handle_reset_chatbot_usage,
-    )
     from hiris.app.server import _security_headers
 
     agent = MagicMock()
@@ -49,11 +53,6 @@ def _make_app_with_runner(runner):
     app["data_dir"] = "/tmp"
 
     app.router.add_post("/api/chat", handle_chat)
-    app.router.add_get("/api/chatbots/{agent_id}", handle_get_chatbot)
-    app.router.add_put("/api/chatbots/{agent_id}", handle_update_chatbot)
-    app.router.add_delete("/api/chatbots/{agent_id}", handle_delete_chatbot)
-    app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
-    app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
     return app
 
 
@@ -89,36 +88,15 @@ async def test_chat_accepts_message_at_4000_chars():
 # ---------------------------------------------------------------------------
 # SEC-014 — agent_id validation in URL path
 # ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_agent_path_rejects_path_traversal():
-    runner = AsyncMock()
-    app = _make_app_with_runner(runner)
-    async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/chatbots/../../etc/passwd")
-        # aiohttp URL routing won't match, but validate it doesn't 200 OK
-        assert resp.status in (400, 404)
-
-
-@pytest.mark.asyncio
-async def test_agent_get_rejects_invalid_id_characters():
-    runner = AsyncMock()
-    app = _make_app_with_runner(runner)
-    async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/chatbots/bad<script>id")
-        assert resp.status in (400, 404)
-
-
-@pytest.mark.asyncio
-async def test_agent_get_accepts_valid_uuid():
-    runner = AsyncMock()
-    app = _make_app_with_runner(runner)
-    async with TestClient(TestServer(app)) as client:
-        resp = await client.get("/api/chatbots/550e8400-e29b-41d4-a716-446655440000")
-        # 404 because engine mock returns agent but asdict() might fail; the key
-        # check is that we don't get 400 (validation reject)
-        assert resp.status != 400
-
+# Retired (fetta E4 Task 3, "un bot solo"): all three tests defended
+# `_check_chatbot_id` inside `handle_get_chatbot` (GET /api/chatbots/
+# {agent_id}) -- gone with the rest of the CRUD. Verified failing for
+# construction (`ImportError: cannot import name 'handle_get_chatbot'` from
+# `_make_app_with_runner`, before that helper was itself trimmed) prior to
+# deletion. Even with the helper trimmed, the route no longer resolves at
+# all: path-traversal/invalid-char/valid-uuid would all just 404 for "no
+# such route" instead of exercising any validation -- no live subject left
+# to test.
 
 # ---------------------------------------------------------------------------
 # SEC-016 — Security headers
@@ -150,45 +128,17 @@ async def test_security_headers_present():
 # SEC-004 — max_tokens cap
 # ---------------------------------------------------------------------------
 
-def test_create_agent_caps_max_tokens():
-    """Every persona is a chat entity now (Slice 5 Task 2 dropped `type`),
-    so there is a single cap regardless of what a stray "type" payload key
-    says — 16000, not the old non-chat 8192."""
-    from hiris.app.chatbot_engine import ChatbotEngine
-    from unittest.mock import MagicMock, patch
-    engine = ChatbotEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
-    with patch.object(engine, "_save"):
-        agent = engine.create_chatbot({
-            "name": "Test",
-            "type": "chat",
-            "trigger": {"type": "manual"},
-            "max_tokens": 99999,
-        })
-        formerly_non_chat = engine.create_chatbot({
-            "name": "Mon",
-            "type": "monitor",
-            "trigger": {"type": "manual"},
-            "max_tokens": 99999,
-        })
-    assert agent.max_tokens == 16000
-    assert formerly_non_chat.max_tokens == 16000  # single cap now — no non-chat variant
-
-
-def test_update_agent_caps_max_tokens():
-    from hiris.app.chatbot_engine import ChatbotEngine
-    from unittest.mock import MagicMock, patch
-    engine = ChatbotEngine(ha_client=MagicMock(), data_path="/tmp/test_agents.json")
-    with patch.object(engine, "_save"):
-        agent = engine.create_chatbot({
-            "name": "Test",
-            "type": "chat",
-            "trigger": {"type": "manual"},
-            "max_tokens": 4096,
-        })
-    with patch.object(engine, "_save"):
-        with patch.object(engine, "_unschedule_chatbot"):
-            updated = engine.update_chatbot(agent.id, {"max_tokens": 50000})
-    assert updated.max_tokens == 16000  # chat cap
+# Retired (fetta E4 Task 3, "un bot solo"): test_create_agent_caps_max_tokens
+# / test_update_agent_caps_max_tokens pinned `ChatbotEngine.create_chatbot`/
+# `update_chatbot` clamping `max_tokens` via `_cap_max_tokens` at save time --
+# both the two CRUD methods and the cap helper are gone (their only callers
+# were create/update). Verified failing for construction
+# (`AttributeError: 'ChatbotEngine' object has no attribute 'create_chatbot'`)
+# before deletion. The runtime chat floor (`claude_runner.CHAT_MAX_TOKENS`,
+# which floors every request's max_tokens regardless of the stored
+# per-persona value) is a different, still-live mechanism and is not
+# affected -- see tests/test_chat_token_limits.py Part 2 and
+# tests/test_api.py::test_chat_passes_model_to_runner.
 
 
 # ---------------------------------------------------------------------------

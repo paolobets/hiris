@@ -1,92 +1,27 @@
 # hiris/app/api/handlers_chatbots.py
 import logging
-import re
-from dataclasses import asdict
 from aiohttp import web
 from ..config import EUR_RATE as _EUR_RATE
 
 logger = logging.getLogger(__name__)
 
-_CHATBOT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
-
-def _check_chatbot_id(agent_id: str) -> web.Response | None:
-    if not _CHATBOT_ID_RE.match(agent_id):
-        return web.json_response({"error": "invalid agent_id"}, status=400)
-    return None
-
-
-def _validate_chatbot_payload(body: dict) -> str | None:
-    """Return an error message string if the payload is invalid, else None."""
-    name = body.get("name")
-    if name is not None:
-        if not isinstance(name, str) or not name.strip():
-            return "name must be a non-empty string"
-        if len(name) > 256:
-            return "name too long (max 256 chars)"
-
-    for list_field in ("allowed_tools", "allowed_entities", "allowed_services"):
-        val = body.get(list_field)
-        if val is not None and not isinstance(val, list):
-            return f"{list_field} must be a list"
-
-    response_mode = body.get("response_mode")
-    if response_mode is not None and response_mode not in ("auto", "compact", "minimal"):
-        return "response_mode must be one of: auto, compact, minimal"
-
-    # Extended Thinking budget. 0 disables; otherwise Anthropic requires
-    # 1024 ≤ budget < max_tokens. We enforce the lower bound and the
-    # cross-field upper bound here so the runner can pass it through cleanly.
-    tb = body.get("thinking_budget")
-    if tb is not None:
-        try:
-            tb_int = int(tb)
-        except (TypeError, ValueError):
-            return "thinking_budget must be an integer"
-        if tb_int < 0:
-            return "thinking_budget must be >= 0"
-        if 0 < tb_int < 1024:
-            return "thinking_budget must be 0 (disabled) or >= 1024"
-        max_t = body.get("max_tokens")
-        if max_t is not None:
-            try:
-                if tb_int >= int(max_t):
-                    return "thinking_budget must be < max_tokens"
-            except (TypeError, ValueError):
-                pass
-
-    allowed_endpoints = body.get("allowed_endpoints")
-    if allowed_endpoints is not None:
-        if not isinstance(allowed_endpoints, list):
-            return "allowed_endpoints must be a list"
-        for i, ep in enumerate(allowed_endpoints):
-            if not isinstance(ep, dict):
-                return f"allowed_endpoints[{i}] must be an object"
-            url = ep.get("url")
-            if not isinstance(url, str) or not url.startswith("http"):
-                return f"allowed_endpoints[{i}].url must be a string starting with 'http'"
-
-    # knowledge_access (SP-4 Fase B Task 4): finally editable in the UI, so
-    # it can now arrive as arbitrary attacker/typo-controlled JSON instead of
-    # the trusted default the engine used to seed it with. Before this check
-    # the value went straight into a raw setattr (chatbot_engine.py) with no
-    # shape validation at all.
-    ka = body.get("knowledge_access")
-    if ka is not None:
-        if not isinstance(ka, dict):
-            return "knowledge_access must be an object"
-        if "allow_sensitive" in ka and not isinstance(ka["allow_sensitive"], bool):
-            return "knowledge_access.allow_sensitive must be a boolean"
-        if "kinds" in ka:
-            kinds = ka["kinds"]
-            if kinds != "all" and (
-                not isinstance(kinds, list) or not all(isinstance(k, str) for k in kinds)
-            ):
-                return "knowledge_access.kinds must be \"all\" or a list of strings"
-
-    return None
-
-
+# fetta E4 Task 3 ("un bot solo"): `handle_list_chatbots` e' l'unico
+# handler rimasto in questo modulo -- superficie di compatibilita' fino
+# alla E5. Le strade di creazione (wizard, editor vuoto, onboarding della
+# chat) convergevano tutte su POST /api/chatbots con `enabled: true` di
+# default: la rotta creava sempre l'entita' gia' attiva, il contrario di
+# quanto prescrive lo scope. Uscita quella, sono usciti con lei GET-single/
+# PUT/DELETE (servivano solo l'editor #/chatbots e il toggle della card),
+# .../usage e .../usage/reset (servivano solo la pagina usage), e con essi
+# `_validate_chatbot_payload`/`_validate_openrouter_model`/
+# `_check_chatbot_id`, che non avevano piu' un payload/id di richiesta da
+# validare. GET /api/chatbots resta perche' la pagina chat e la card ne
+# dipendono davvero (indicatore "connesso", lista, polling della card --
+# verificato leggendo static/chat/agents.js e static/hiris-chat-card.js):
+# spegnerla insieme al resto avrebbe spento l'unica cosa che HIRIS oggi
+# deve saper fare. Si smonta nella fetta E5, insieme al frontend che la
+# chiama (vedi il report del task per l'elenco delle pagine lasciate rotte).
 async def handle_list_chatbots(request: web.Request) -> web.Response:
     engine = request.app["engine"]
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
@@ -115,149 +50,3 @@ async def handle_list_chatbots(request: web.Request) -> web.Response:
         entry["usage"] = usage_payload
         result.append(entry)
     return web.json_response(result)
-
-
-async def _validate_openrouter_model(request: web.Request, body: dict) -> str | None:
-    """Reject save when the agent's model is an OpenRouter id that does not
-    advertise tool support (e.g. the broken hermes-3-llama-3.1-405b:free).
-    Returns an error message string, or None if the model is OK / not OpenRouter.
-    """
-    model = body.get("model")
-    if not isinstance(model, str):
-        return None
-    if not (model.startswith("openrouter:") or model.startswith("openrouter/")):
-        return None
-    api_key = request.app.get("openrouter_api_key", "")
-    from .handlers_models import is_openrouter_model_tool_capable
-    capable = await is_openrouter_model_tool_capable(model, api_key)
-    if capable is False:
-        return (
-            f"Modello OpenRouter '{model}' non supporta i tool: HIRIS richiede "
-            "tool use per ogni agente. Scegli un altro modello (Claude, GPT-4o, "
-            "Mistral Large, Llama 3.3 70B free, Qwen 2.5 72B free, …)."
-        )
-    return None
-
-
-async def handle_create_chatbot(request: web.Request) -> web.Response:
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON body"}, status=400)
-
-    required = {"name"}
-    missing = required - set(body.keys())
-    if missing:
-        return web.json_response({"error": f"Missing required fields: {missing}"}, status=400)
-
-    if err := _validate_chatbot_payload(body):
-        return web.json_response({"error": err}, status=400)
-
-    if err := await _validate_openrouter_model(request, body):
-        return web.json_response({"error": err}, status=400)
-
-    engine = request.app["engine"]
-    agent = engine.create_chatbot(body)
-    return web.json_response(asdict(agent), status=201)
-
-
-async def handle_get_chatbot(request: web.Request) -> web.Response:
-    agent_id = request.match_info["agent_id"]
-    if err := _check_chatbot_id(agent_id):
-        return err
-    engine = request.app["engine"]
-    agent = engine.get_chatbot(agent_id)
-    if not agent:
-        return web.json_response({"error": "Not found"}, status=404)
-    return web.json_response(asdict(agent))
-
-
-async def handle_update_chatbot(request: web.Request) -> web.Response:
-    agent_id = request.match_info["agent_id"]
-    if err := _check_chatbot_id(agent_id):
-        return err
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON body"}, status=400)
-
-    if err := _validate_chatbot_payload(body):
-        return web.json_response({"error": err}, status=400)
-
-    if err := await _validate_openrouter_model(request, body):
-        return web.json_response({"error": err}, status=400)
-
-    engine = request.app["engine"]
-    agent = engine.update_chatbot(agent_id, body)
-    if not agent:
-        return web.json_response({"error": "Not found"}, status=404)
-    return web.json_response(asdict(agent))
-
-
-async def handle_delete_chatbot(request: web.Request) -> web.Response:
-    agent_id = request.match_info["agent_id"]
-    if err := _check_chatbot_id(agent_id):
-        return err
-    engine = request.app["engine"]
-    agent = engine.get_chatbot(agent_id)
-    if agent is not None and agent.is_default:
-        return web.json_response({"error": "Cannot delete default agent"}, status=409)
-    deleted = engine.delete_chatbot(agent_id)
-    if not deleted:
-        return web.json_response({"error": "Not found"}, status=404)
-    # Dissociate this chatbot's memory rows (Task 3, memoria unica): they are
-    # house knowledge now, not this chatbot's private working memory, so
-    # deleting the chatbot must not delete them -- only clear the now-dangling
-    # chatbot_id reference. See KnowledgeStore.detach_chatbot_id.
-    knowledge_store = request.app.get("knowledge_store")
-    if knowledge_store is not None:
-        try:
-            knowledge_store.detach_chatbot_id(agent_id)
-        except Exception as exc:
-            logger.warning("knowledge_store.detach_chatbot_id(%s) failed: %s", agent_id, exc)
-    data_dir = request.app.get("data_dir")
-    if data_dir:
-        try:
-            from ..chat_store import clear_history
-            clear_history(agent_id, data_dir)
-        except Exception as exc:
-            logger.warning("clear_history(%s) failed: %s", agent_id, exc)
-    return web.Response(status=204)
-
-
-async def handle_get_chatbot_usage(request: web.Request) -> web.Response:
-    agent_id = request.match_info["agent_id"]
-    if err := _check_chatbot_id(agent_id):
-        return err
-    engine = request.app["engine"]
-    if not engine.get_chatbot(agent_id):
-        return web.json_response({"error": "Not found"}, status=404)
-    runner = request.app.get("llm_router") or request.app.get("claude_runner")
-    if runner is None:
-        return web.json_response({"error": "runner not configured"}, status=503)
-    usage = runner.get_chatbot_usage(agent_id)
-    cost_usd = usage.get("cost_usd", 0.0)
-    return web.json_response({
-        "agent_id": agent_id,
-        "requests": usage.get("requests", 0),
-        "input_tokens": usage.get("input_tokens", 0),
-        "output_tokens": usage.get("output_tokens", 0),
-        "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
-        "cost_usd": round(cost_usd, 6),
-        "cost_eur": round(cost_usd * _EUR_RATE, 6),
-        "last_run": usage.get("last_run"),
-    })
-
-
-async def handle_reset_chatbot_usage(request: web.Request) -> web.Response:
-    agent_id = request.match_info["agent_id"]
-    if err := _check_chatbot_id(agent_id):
-        return err
-    engine = request.app["engine"]
-    if not engine.get_chatbot(agent_id):
-        return web.json_response({"error": "Not found"}, status=404)
-    runner = request.app.get("llm_router") or request.app.get("claude_runner")
-    if runner is None:
-        return web.json_response({"error": "runner not configured"}, status=503)
-    runner.reset_chatbot_usage(agent_id)
-    return web.json_response({"reset": True, "agent_id": agent_id})

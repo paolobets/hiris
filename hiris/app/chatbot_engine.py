@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import threading
-import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -276,81 +275,27 @@ class ChatbotEngine:
     def get_default_chatbot(self) -> Optional[Chatbot]:
         return self._chatbots.get(DEFAULT_CHATBOT_ID)
 
-    # Output-token ceiling for personas. Chat needs room for large outputs
-    # (multi-view dashboards, long scripts) — every persona is a chat entity
-    # now (Slice 5 Task 2 dropped the non-chat "agent" type), so there is a
-    # single cap. Kept as a class attr (not imported from claude_runner) to
-    # avoid a module cycle — CHAT_MAX_TOKENS there must stay in sync.
-    _CHAT_MAX_TOKENS_CAP = 16000
-
-    @classmethod
-    def _cap_max_tokens(cls, value: Any) -> int:
-        return min(int(value), cls._CHAT_MAX_TOKENS_CAP)
-
-    def create_chatbot(self, data: dict) -> Chatbot:
-        chatbot = Chatbot(
-            id=str(uuid.uuid4()),
-            name=data["name"],
-            system_prompt=data.get("system_prompt", ""),
-            allowed_tools=data.get("allowed_tools", []),
-            enabled=data.get("enabled", True),
-            is_default=False,
-            strategic_context=data.get("strategic_context", ""),
-            allowed_entities=data.get("allowed_entities", []),
-            allowed_services=data.get("allowed_services", []),
-            model=data.get("model", "auto"),
-            max_tokens=self._cap_max_tokens(data.get("max_tokens", 16000)),
-            restrict_to_home=bool(data.get("restrict_to_home", False)),
-            require_confirmation=bool(data.get("require_confirmation", False)),
-            max_chat_turns=int(data.get("max_chat_turns", 0)),
-            allowed_endpoints=data.get("allowed_endpoints"),
-            response_mode=data.get("response_mode", "auto"),
-            thinking_budget=max(0, int(data.get("thinking_budget", 0) or 0)),
-            knowledge_access=data.get("knowledge_access", {"allow_sensitive": False, "kinds": "all"}),
-        )
-        self._chatbots[chatbot.id] = chatbot
-        self._save()
-        return chatbot
+    # fetta E4 Task 3 ("un bot solo"): `create_chatbot`/`update_chatbot`/
+    # `delete_chatbot` sono usciti insieme alle rotte HTTP che erano il loro
+    # unico chiamante (server.py/handlers_chatbots.py) -- le tre strade di
+    # creazione sopravvissute alla E3 (wizard, editor vuoto, onboarding
+    # della chat) convergevano tutte su POST /api/chatbots con
+    # `enabled: true` di default, il contrario di quanto prescrive lo
+    # scope. `UPDATABLE_FIELDS` (la mappa di campi di `update_chatbot`) e
+    # `_cap_max_tokens`/`_CHAT_MAX_TOKENS_CAP` (usati solo da create/update
+    # per il tetto di `max_tokens` alla persistenza) escono con loro:
+    # nessun chiamante li usava per altro. Il tetto in fase di CHAT resta
+    # vivo altrove (claude_runner.CHAT_MAX_TOKENS, che floora ogni
+    # richiesta indipendentemente dal valore persistito) -- non e' lo
+    # stesso meccanismo e non e' toccato qui.
+    #
+    # `get_chatbot`/`list_chatbots` restano: `get_chatbot` e' letto da
+    # `handle_chat` (system prompt del chatbot attivo) e da `_seed_default_
+    # chatbot`; `list_chatbots` alimenta `handle_list_chatbots`, la
+    # superficie di compatibilita' rimasta (vedi handlers_chatbots.py).
 
     def get_chatbot(self, agent_id: str) -> Optional[Chatbot]:
         return self._chatbots.get(agent_id)
-
-    UPDATABLE_FIELDS = {
-        "name", "system_prompt", "allowed_tools", "enabled",
-        "strategic_context", "allowed_entities", "allowed_services",
-        "model", "max_tokens", "restrict_to_home", "require_confirmation",
-        "max_chat_turns", "allowed_endpoints",
-        "response_mode", "thinking_budget", "knowledge_access",
-    }
-
-    def update_chatbot(self, agent_id: str, data: dict) -> Optional[Chatbot]:
-        chatbot = self._chatbots.get(agent_id)
-        if not chatbot:
-            return None
-        self._unschedule_chatbot(agent_id)
-        _BOOL_FIELDS = {"restrict_to_home", "require_confirmation"}
-        _INT_FIELDS = {"max_chat_turns"}
-        for key in self.UPDATABLE_FIELDS:
-            if key in data:
-                if key in _BOOL_FIELDS:
-                    setattr(chatbot, key, bool(data[key]))
-                elif key in _INT_FIELDS:
-                    setattr(chatbot, key, int(data[key]))
-                elif key == "max_tokens":
-                    setattr(chatbot, key, self._cap_max_tokens(data[key]))
-                else:
-                    setattr(chatbot, key, data[key])
-        self._save()
-        return chatbot
-
-    def delete_chatbot(self, agent_id: str) -> bool:
-        chatbot = self._chatbots.get(agent_id)
-        if chatbot is None or chatbot.is_default:
-            return False
-        self._unschedule_chatbot(agent_id)
-        del self._chatbots[agent_id]
-        self._save()
-        return True
 
     def list_chatbots(self) -> dict[str, dict]:
         return {c.id: asdict(c) for c in self._chatbots.values()}
@@ -370,16 +315,17 @@ class ChatbotEngine:
     # Sentinella (watcher/) as the sole proactive engine. The Sentinella
     # itself is gone too now (fetta E3 Task 7, semaphore included): HIRIS
     # has no proactive/actuating engine left at all, it knows and does not
-    # act. `_unschedule_chatbot` remains as a defensive no-op-safe cleanup
-    # for any job left over from a pre-upgrade scheduler state.
-
-    def _unschedule_chatbot(self, agent_id: str) -> None:
-        for job in list(self._scheduler.get_jobs()):
-            if job.id == agent_id or job.id.startswith(f"{agent_id}__"):
-                try:
-                    self._scheduler.remove_job(job.id)
-                except Exception as exc:
-                    logger.debug("remove_job(%s) failed: %s", job.id, exc)
+    # act. `_unschedule_chatbot` used to remain as a defensive no-op-safe
+    # cleanup for any job left over from a pre-upgrade scheduler state, but
+    # its only callers were `update_chatbot`/`delete_chatbot` -- gone in
+    # fetta E4 Task 3 ("un bot solo") with the rest of the CRUD. Orphaned by
+    # that removal (caught by the census, not by the brief), it is raccolto
+    # qui subito rather than left dangling -- same discipline as
+    # `detach_chatbot_id` above. `self._scheduler` itself (APScheduler,
+    # started/stopped in `start()`/`stop()`) is untouched: nothing in this
+    # task's perimeter adds or removes jobs, and whether the scheduler
+    # object itself still earns its keep is a question for whichever future
+    # task looks at `start()`/`stop()`, not this one.
 
     # ------------------------------------------------------------------
     # Context helpers

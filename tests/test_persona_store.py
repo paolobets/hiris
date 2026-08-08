@@ -28,53 +28,16 @@ def engine(mock_ha, tmp_path):
     return ChatbotEngine(ha_client=mock_ha, data_path=str(tmp_path / "agents.json"))
 
 
-# ---------------------------------------------------------------------------
-# Persona store: create / read / update / delete without proactive fields
-# ---------------------------------------------------------------------------
-
-def test_create_persona_without_proactive_fields(engine):
-    """A persona can be created with no type/triggers/rules/action_mode in
-    the payload at all — those are proactive-only concerns the engine no
-    longer executes, and (Task 2) no longer even exist on the dataclass. A
-    stray "type" key in the payload is silently ignored (create_agent never
-    reads it)."""
-    persona = engine.create_chatbot({
-        "name": "Assistente di casa",
-        "type": "chat",
-        "system_prompt": "Sei l'assistente per la casa.",
-        "allowed_tools": ["get_home_status"],
-    })
-    assert persona.id in engine.list_chatbots()
-    assert not hasattr(persona, "type")
-    assert persona.name == "Assistente di casa"
-
-
-def test_read_persona(engine):
-    persona = engine.create_chatbot({
-        "name": "Cuoco", "type": "chat",
-        "system_prompt": "Suggerisci ricette.", "allowed_tools": [],
-    })
-    fetched = engine.get_chatbot(persona.id)
-    assert fetched is persona
-    assert fetched.system_prompt == "Suggerisci ricette."
-
-
-def test_update_persona(engine):
-    persona = engine.create_chatbot({
-        "name": "Cuoco", "type": "chat",
-        "system_prompt": "v1", "allowed_tools": [],
-    })
-    updated = engine.update_chatbot(persona.id, {"system_prompt": "v2"})
-    assert updated.system_prompt == "v2"
-
-
-def test_delete_persona(engine):
-    persona = engine.create_chatbot({
-        "name": "Temporanea", "type": "chat",
-        "system_prompt": "", "allowed_tools": [],
-    })
-    assert engine.delete_chatbot(persona.id) is True
-    assert persona.id not in engine.list_chatbots()
+# fetta E4 Task 3 ("un bot solo"): test_create_persona_without_proactive_fields
+# / test_read_persona / test_update_persona / test_delete_persona pinned
+# `create_chatbot`/`update_chatbot`/`delete_chatbot` themselves -- gone with
+# the three creation paths (wizard, empty editor, chat onboarding) that all
+# converged on POST /api/chatbots with `enabled: true` by default, the
+# opposite of what the scope prescribes. Verified failing for construction
+# (`AttributeError: 'ChatbotEngine' object has no attribute 'create_chatbot'`)
+# before deletion. `get_chatbot`/`list_chatbots` themselves are still live
+# (see test_get_default_agent-equivalent coverage in test_chatbot_engine.py
+# and the persistence round-trip below, both built without create_chatbot).
 
 
 # ---------------------------------------------------------------------------
@@ -111,30 +74,43 @@ def test_agent_dataclass_has_no_proactive_fields():
         assert removed not in field_names
 
 
-def test_updatable_fields_excludes_removed_fields():
-    for removed in _REMOVED_FIELDS:
-        assert removed not in ChatbotEngine.UPDATABLE_FIELDS
+# fetta E4 Task 3: test_updatable_fields_excludes_removed_fields pinned
+# `ChatbotEngine.UPDATABLE_FIELDS`, gone with `update_chatbot` (its only
+# reader). Verified failing for construction (`AttributeError: type object
+# 'ChatbotEngine' has no attribute 'UPDATABLE_FIELDS'`) before deletion.
 
 
 def test_persona_with_only_valid_fields_persists_and_reloads(engine):
     """Step 1: a persona built from only the fields the trimmed dataclass
-    still has round-trips through _save/_load unchanged."""
-    persona = engine.create_chatbot({
-        "name": "Solo campi validi",
-        "system_prompt": "Sei utile.",
-        "allowed_tools": ["get_home_status"],
-        "strategic_context": "Contesto.",
-        "allowed_entities": ["light.*"],
-        "allowed_services": [],
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 2048,
-        "restrict_to_home": True,
-        "require_confirmation": True,
-        "max_chat_turns": 5,
-        "response_mode": "compact",
-        "thinking_budget": 1024,
-        "knowledge_access": {"allow_sensitive": True, "kinds": "all"},
-    })
+    still has round-trips through _save/_load unchanged.
+
+    fetta E4 Task 3: moved off `create_chatbot` (gone, along with
+    `update_chatbot`/`delete_chatbot` -- see the module docstring/comment
+    above). The subject here -- `_save`/`_load` round-tripping every field
+    the trimmed `Chatbot` dataclass still has -- is unrelated to the CRUD
+    HTTP surface and stays alive: built by inserting a `Chatbot` directly
+    into `engine._chatbots` and calling `engine._save()`, exactly what
+    `create_chatbot` itself used to do internally."""
+    persona = Chatbot(
+        id="solo-campi-validi",
+        name="Solo campi validi",
+        system_prompt="Sei utile.",
+        allowed_tools=["get_home_status"],
+        enabled=True,
+        strategic_context="Contesto.",
+        allowed_entities=["light.*"],
+        allowed_services=[],
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2048,
+        restrict_to_home=True,
+        require_confirmation=True,
+        max_chat_turns=5,
+        response_mode="compact",
+        thinking_budget=1024,
+        knowledge_access={"allow_sensitive": True, "kinds": "all"},
+    )
+    engine._chatbots[persona.id] = persona
+    engine._save()
 
     reloaded_engine = ChatbotEngine(ha_client=engine._ha, data_path=engine._data_path)
     reloaded_engine._load()
@@ -157,7 +133,12 @@ def test_persona_with_only_valid_fields_persists_and_reloads(engine):
 
 
 def test_save_bumps_schema_version_to_4(engine, tmp_path):
-    engine.create_chatbot({"name": "X", "system_prompt": "", "allowed_tools": []})
+    """fetta E4 Task 3: moved off `create_chatbot` (gone) -- `_save`'s
+    schema_version bump is independent of how a Chatbot was constructed."""
+    engine._chatbots["x"] = Chatbot(
+        id="x", name="X", system_prompt="", allowed_tools=[], enabled=True,
+    )
+    engine._save()
     data = json.loads((tmp_path / "agents.json").read_text())
     assert data["schema_version"] == 4
 
