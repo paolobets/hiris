@@ -73,53 +73,22 @@ def test_copertura_conferma_include_i_cinque_strumenti_che_attuano():
     }
 
 
-def _tool_con_gate_semaforo() -> set[str]:
-    """Nomi dei tool che nel dispatcher attraversano il semaforo (_gate).
-
-    Legge il sorgente invece di importarlo perche' i rami sono dentro una
-    catena di `if name == "..."` in un'unica funzione: non esiste una tabella
-    da interrogare a runtime.
-
-    LIMITE DICHIARATO del parsing: riconosce il semaforo solo dalla chiamata
-    letterale `self._gate(` dentro il ramo. Un gate futuro raggiunto per via
-    indiretta -- un helper che chiama _gate al posto del ramo, un decoratore,
-    un dispatch a tabella -- sfuggirebbe IN SILENZIO: l'insieme resterebbe non
-    vuoto grazie ai rami attuali, quindi nemmeno l'assert `gated` sotto se ne
-    accorgerebbe, e lo strumento nuovo risulterebbe "non gated" senza che
-    nessuno lo dica. Chi introduce un percorso del genere deve aggiornare
-    anche questa lettura.
-    """
-    src = (BASE / "tools" / "dispatcher.py").read_text(encoding="utf-8")
-    corrente = None
-    trovati: set[str] = set()
-    for line in src.splitlines():
-        m = re.search(r'if name == "([a-z_]+)"', line)
-        if m:
-            corrente = m.group(1)
-        elif "self._gate(" in line and corrente:
-            trovati.add(corrente)
-    return trovati
-
-
-def test_ogni_tool_gated_dal_semaforo_e_anche_coperto_dalla_conferma():
-    """Anti-deriva: se domani un nuovo strumento passa dal semaforo, deve
-    entrare anche nell'elenco che l'opzione dichiara di coprire."""
-    from hiris.app.claude_runner import CONFIRMATION_COVERED_TOOLS
-
-    gated = _tool_con_gate_semaforo()
-    assert gated, "nessun ramo con self._gate trovato: guardia da rivedere"
-    mancanti = gated - set(CONFIRMATION_COVERED_TOOLS)
-    assert not mancanti, f"strumenti che attuano ma fuori dalla conferma: {mancanti}"
-
-
-def test_create_ha_config_e_coperto_pur_non_avendo_semaforo():
-    """create_ha_config scrive script e scene su HA immediatamente
-    (dispatcher: apply_ha_config, nessun _gate): e' proprio lo strumento per
-    cui la conferma dell'utente e' l'unico passaggio prima dell'effetto."""
-    from hiris.app.claude_runner import CONFIRMATION_COVERED_TOOLS
-
-    assert "create_ha_config" in CONFIRMATION_COVERED_TOOLS
-    assert "create_ha_config" not in _tool_con_gate_semaforo()
+# fetta E2 Task 7 ("esce il dispatcher"): due guardie anti-deriva vivevano
+# qui -- `test_ogni_tool_gated_dal_semaforo_e_anche_coperto_dalla_conferma`
+# e `test_create_ha_config_e_coperto_pur_non_avendo_semaforo` -- e leggevano
+# il SORGENTE di `tools/dispatcher.py` (`_tool_con_gate_semaforo()`, sopra)
+# per scoprire quali tool passassero per `self._gate(...)` a runtime, cosi'
+# da inchiodare che l'elenco `CONFIRMATION_COVERED_TOOLS` (system-prompt,
+# claude_runner.py) restasse in sincrono col controllo CHE C'ERA nel codice.
+# Quel file e' cancellato: non c'e' piu' nessun controllo di codice-livello
+# (un semaforo per-tool dentro il dispatch del runner) con cui restare in
+# sincrono -- il runner di produzione non ha piu' un dispatcher che gira
+# alcun _gate (self._dispatcher e' None per costruzione, vedi
+# claude_runner.py). Il soggetto della guardia (un gate reale a cui il
+# prompt doveva restare fedele) e' sparito con lui, non solo la lettura che
+# lo scopriva: nessun posto dove spostarla. Le altre guardie qui sotto
+# (il TESTO del prompt/dell'editor/dei documenti, indipendenti dal
+# dispatcher) restano intatte.
 
 
 def test_backend_openai_usa_lo_stesso_testo_di_conferma():

@@ -33,7 +33,7 @@ from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.brain.reasoner_memory import relevant_memory
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import _reason_memory_context
-from hiris.app.tools.dispatcher import ToolDispatcher
+from hiris.app.tools.memory_tools import handle_recall_memory, handle_save_memory
 from hiris.app.watcher.reasoner import build_user_message
 from hiris.app.watcher.signals import WakeEvent
 
@@ -47,11 +47,6 @@ INSIGHT_TEXT = "media settimanale del consumo elettrico"
 def _close_chat_stores_after_each_test():
     yield
     close_all_stores()
-
-
-class _FakeHA:
-    async def call_service(self, d, s, data):
-        return {"ok": True}
 
 
 class _LocalRouter:
@@ -111,8 +106,6 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
     """
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     embedder = NullEmbedder()
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=embedder)
 
     # An insight HIRIS produced on its own, sharing the store with what a
     # person will declare below -- it must never surface as "declared".
@@ -122,9 +115,11 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
     )
 
     # --- Step 1: save with the single tool, no approval step -------------
-    saved = await disp.dispatch(
-        "save_memory", {"content": PREF_TEXT},
-        chatbot_id="chatbot-a", user_id="home",
+    # fetta E2 Task 7: chiamato direttamente (era `ToolDispatcher.dispatch`,
+    # uscito) -- stessa funzione, stesso comportamento, un chiamante in meno.
+    saved = await handle_save_memory(
+        store, embedder, {"content": PREF_TEXT},
+        owner="home", chatbot_id="chatbot-a",
     )
     assert saved.get("saved") is True, saved
     item_id = saved["id"]
@@ -135,9 +130,9 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
     assert item["content"] == PREF_TEXT
 
     # --- Step 2: recallable from a DIFFERENT chatbot ----------------------
-    recalled = await disp.dispatch(
-        "recall_memory", {"query": "temperatura ideale del soggiorno d'inverno"},
-        chatbot_id="chatbot-b", user_id="home",
+    recalled = await handle_recall_memory(
+        store, embedder, {"query": "temperatura ideale del soggiorno d'inverno"},
+        owner="home",
     )
     recalled_contents = [r["content"] for r in recalled.get("results", [])]
     assert PREF_TEXT in recalled_contents, (
@@ -187,17 +182,16 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
 @pytest.mark.asyncio
 async def test_saved_item_never_lands_in_pending(tmp_path):
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=NullEmbedder())
+    embedder = NullEmbedder()
 
     # Every kind the single save tool can produce -- kind omitted (bare
     # 'memory') and each of the five knowledge kinds it absorbed.
-    await disp.dispatch("save_memory", {"content": "ricordo generico"},
-                        chatbot_id="chatbot-a", user_id="home")
+    await handle_save_memory(store, embedder, {"content": "ricordo generico"},
+                             owner="home", chatbot_id="chatbot-a")
     for kind in ("fact", "preference", "obligation", "expense", "note"):
-        res = await disp.dispatch(
-            "save_memory", {"kind": kind, "content": f"elemento di tipo {kind}"},
-            chatbot_id="chatbot-a", user_id="home",
+        res = await handle_save_memory(
+            store, embedder, {"kind": kind, "content": f"elemento di tipo {kind}"},
+            owner="home", chatbot_id="chatbot-a",
         )
         assert res.get("saved") is True, res
 
@@ -222,12 +216,11 @@ async def test_saved_item_never_lands_in_pending(tmp_path):
 @pytest.mark.asyncio
 async def test_memory_does_not_evaporate_years_later(tmp_path, monkeypatch):
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=NullEmbedder())
+    embedder = NullEmbedder()
 
-    saved = await disp.dispatch(
-        "save_memory", {"content": PREF_TEXT},
-        chatbot_id="chatbot-a", user_id="home",
+    saved = await handle_save_memory(
+        store, embedder, {"content": PREF_TEXT},
+        owner="home", chatbot_id="chatbot-a",
     )
     item_id = saved["id"]
     assert store.get_item(item_id)["valid_until"] is None, (
@@ -249,9 +242,9 @@ async def test_memory_does_not_evaporate_years_later(tmp_path, monkeypatch):
     assert item["content"] == PREF_TEXT
 
     # Still recallable, from a different chatbot than the one that saved it.
-    recalled = await disp.dispatch(
-        "recall_memory", {"query": "temperatura del soggiorno"},
-        chatbot_id="chatbot-b", user_id="home",
+    recalled = await handle_recall_memory(
+        store, embedder, {"query": "temperatura del soggiorno"},
+        owner="home",
     )
     recalled_contents = [r["content"] for r in recalled.get("results", [])]
     assert PREF_TEXT in recalled_contents
@@ -326,11 +319,9 @@ async def test_production_shaped_expired_memory_row_is_revived(tmp_path):
 
     # Recallable (degrades to recent() with the real NullEmbedder -- the
     # same path a stock install takes).
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=NullEmbedder())
-    recalled = await disp.dispatch(
-        "recall_memory", {"query": "sensori esterni guasti"},
-        chatbot_id="chatbot-nuovo", user_id="home",
+    recalled = await handle_recall_memory(
+        store, NullEmbedder(), {"query": "sensori esterni guasti"},
+        owner="home",
     )
     recalled_contents = [r["content"] for r in recalled.get("results", [])]
     assert PRODUCTION_SHAPED_CONTENT in recalled_contents

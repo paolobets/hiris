@@ -36,7 +36,6 @@ from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot, ChatbotEngine
 from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.memoria.archivio import ArchivioMemoria
 from hiris.app.server import create_app
-from hiris.app.tools.dispatcher import ToolDispatcher
 from tests.test_strumenti_conoscenza import _semina_casa as _semina_casa_con_comportamento
 
 
@@ -411,7 +410,7 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
     # tests/test_runner_catalogo.py) -- il resto del runner (il loop
     # tool_use/tool_result dentro `chat()`) e' vero.
     with patch("anthropic.AsyncAnthropic"):
-        runner = ClaudeRunner(api_key="test-key", dispatcher=ToolDispatcher(mock_ha, {}))
+        runner = ClaudeRunner(api_key="test-key")
     engine.set_claude_runner(runner)
 
     app["ha_client"] = mock_ha

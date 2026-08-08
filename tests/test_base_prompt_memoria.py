@@ -19,7 +19,6 @@ import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import BASE_SYSTEM_PROMPT, ClaudeRunner
-from hiris.app.tools.dispatcher import ToolDispatcher
 
 
 def _sys_text(system) -> str:
@@ -50,10 +49,8 @@ def test_base_prompt_forbids_claiming_note_without_saving():
 async def test_claude_runner_system_prompt_carries_memory_rule():
     """claude_runner.py's own chat() must place the rule in the `system`
     kwarg sent to the Anthropic API -- not just in the module constant."""
-    mock_ha = AsyncMock()
-    dispatcher = ToolDispatcher(mock_ha, {})
     with patch("anthropic.AsyncAnthropic"):
-        runner = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
+        runner = ClaudeRunner(api_key="test-key")
 
     fake_message = MagicMock()
     fake_message.stop_reason = "end_turn"

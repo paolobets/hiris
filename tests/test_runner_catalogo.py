@@ -14,7 +14,9 @@ accorgono. Quando `strumenti` e' passato, i quattro filtri in cascata NON si
 applicano: il catalogo passato e' gia' la decisione, applicarli sopra sarebbe
 una seconda regola nascosta. Stessa cosa per `dispatcher`: se passato, il
 runner lo chiama con `dispatch(nome, argomenti)` -- l'interfaccia minima di
-`DispatcherConoscenza` -- non con le kwargs pensate per `ToolDispatcher`.
+`DispatcherConoscenza` -- non con le kwargs che il dispatcher di scorta del
+runner accetta (allowed_entities, chatbot_id, visible_entity_ids, ...; era
+`ToolDispatcher`, uscito -- fetta E2 Task 7).
 """
 import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -24,7 +26,6 @@ import pytest
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 from hiris.app.claude_runner import ALL_TOOL_DEFS, ClaudeRunner
-from hiris.app.tools.dispatcher import ToolDispatcher
 from hiris.app.tools.http_tools import HTTP_REQUEST_TOOL_DEF
 from hiris.app.tools.memory_tools import RECALL_MEMORY_TOOL_DEF
 
@@ -57,37 +58,21 @@ def test_i_due_runner_accettano_gli_stessi_argomenti_anche_in_streaming():
 # --- test_openai_compat_runner.py -------------------------------------------
 
 @pytest.fixture
-def mock_ha():
-    ha = AsyncMock()
-    ha.get_states = AsyncMock(return_value=[])
-    return ha
-
-
-@pytest.fixture
-def claude_dispatcher(mock_ha):
-    # Nessun knowledge_store -> has_memory=False: serve al test che verifica
+def claude_runner():
+    # Nessun dispatcher di scorta -> self._dispatcher e' None -> has_memory
+    # degrada a False (vedi claude_runner.py): serve al test che verifica
     # che i quattro filtri NON si applichino quando `strumenti` e' passato
     # (senza `strumenti`, recall_memory/save_memory sparirebbero da qui).
-    return ToolDispatcher(mock_ha, {})
-
-
-@pytest.fixture
-def claude_runner(claude_dispatcher):
     with patch("anthropic.AsyncAnthropic"):
-        r = ClaudeRunner(api_key="test-key", dispatcher=claude_dispatcher)
+        r = ClaudeRunner(api_key="test-key")
     return r
 
 
 @pytest.fixture
-def openai_dispatcher(mock_ha):
-    return ToolDispatcher(mock_ha, {})
-
-
-@pytest.fixture
-def openai_runner(openai_dispatcher, tmp_path):
+def openai_runner(tmp_path):
     return OpenAICompatRunner(
         base_url="https://api.openai.com/v1", api_key="sk-test",
-        dispatcher=openai_dispatcher, usage_path=str(tmp_path / "u.json"),
+        usage_path=str(tmp_path / "u.json"),
     )
 
 

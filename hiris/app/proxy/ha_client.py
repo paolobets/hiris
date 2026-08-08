@@ -8,8 +8,9 @@ import aiohttp
 
 _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
-# Mirrors dispatcher._AUTOMATION_ID_RE (hiris/app/tools/dispatcher.py). HA
-# automation ids are slug-style: lowercase alphanumeric + underscore. Reject
+# Mirrored dispatcher._AUTOMATION_ID_RE (hiris/app/tools/dispatcher.py,
+# gone since fetta E2 Task 7). HA automation ids are slug-style: lowercase
+# alphanumeric + underscore. Reject
 # anything else before composing a request path — last line of defense against
 # path-injection/SSRF via a hostile automation_id (review A/#4).
 _AUTOMATION_ID_RE = re.compile(r"^[a-z0-9_]+$")

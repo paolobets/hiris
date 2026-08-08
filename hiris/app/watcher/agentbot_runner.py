@@ -328,9 +328,10 @@ async def run_agentbot(
             # rule", and a rule keeps the pre-Fase-2 call shape verbatim:
             # no identity, no scope, byte-for-byte the reasoning call it
             # always made. This matters beyond the Task it emits:
-            # `chatbot_id` also scopes the reasoner's `recall_memory` tool
-            # (`tools/dispatcher.py`), so handing a rule an identity it
-            # never had would silently move it to an empty memory bucket.
+            # `chatbot_id` also used to scope the reasoner's `recall_memory`
+            # tool (`tools/dispatcher.py`, gone since fetta E2 Task 7), so
+            # handing a rule an identity it never had would have silently
+            # moved it to an empty memory bucket.
             #
             # Downstream, `run_decision` (server.py's `_run_decision`) binds
             # both onto the `llm_reason` callable; the Task the reasoner

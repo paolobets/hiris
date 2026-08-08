@@ -77,7 +77,8 @@ async def get_entity_states(
     `get_minimal` risponderebbe un elenco vuoto e il modello leggerebbe
     "quell'entita' non esiste". Stesso esito dichiarato dei tre strumenti che
     leggono lo stesso inventario (`get_home_status`, `get_entities_on`,
-    `get_entities_by_domain`, vedi ToolDispatcher._cache_non_leggibile).
+    `get_entities_by_domain`; il controllo comune era
+    `ToolDispatcher._cache_non_leggibile`, uscito con lui -- fetta E2 Task 7).
 
     Cache assente resta invece un percorso legittimo: senza inventario cablato
     questo strumento ha sempre letto dal vivo da Home Assistant, ed e' cio' che

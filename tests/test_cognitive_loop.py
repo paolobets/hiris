@@ -26,7 +26,7 @@ from hiris.app.brain.cognitive_loop import (
 )
 from hiris.app.brain.knowledge_store import KnowledgeStore
 from hiris.app.brain.suggestions import SuggestionStore, apply_suggestions, undo
-from hiris.app.tools.dispatcher import ToolDispatcher
+from hiris.app.tools.memory_tools import handle_recall_memory
 from hiris.app.watcher.policy import load_policy, save_policy
 
 
@@ -381,8 +381,9 @@ async def test_recall_finds_tune_trace_then_real_undo_restores_value_and_keeps_e
       1. Apply a detector-level tuning (auto_tune_detectors path, two
          entities so we can also assert neither is touched by undo) with a
          SuggestionStore wired in.
-      2. BEFORE undo: the REAL chat recall path (ToolDispatcher.dispatch(
-         "recall_memory", ...), not a raw store call) finds the
+      2. BEFORE undo: the REAL recall path (`memory_tools.handle_recall_memory`,
+         not a raw store call -- fetta E2 Task 7: called directly now that
+         `ToolDispatcher`, which used to route to it, is gone) finds the
          brain-action trace on a consumption-related query.
       3. Undo via the REAL API route (handle_undo_suggestion / POST
          /api/suggestions/{id}/undo) -- not a direct call to internal helpers.
@@ -411,13 +412,12 @@ async def test_recall_finds_tune_trace_then_real_undo_restores_value_and_keeps_e
         assert len(rows) == 1
         sid = rows[0]["id"]
 
-        # (2) Real chat recall path, BEFORE undo: recall_memory must surface
+        # (2) Real recall path, BEFORE undo: recall_memory must surface
         # the brain-action trace for a consumption query -- kind is NOT
-        # restricted to exclude "brain-action" (knowledge_kinds=None default).
-        dispatcher = ToolDispatcher(None, {}, knowledge_store=kstore, embedder=emb)
-        before = await dispatcher.dispatch(
-            "recall_memory", {"query": "consumo energetico della presa"},
-            user_id="home",
+        # restricted to exclude "brain-action" (kinds=None default).
+        before = await handle_recall_memory(
+            kstore, emb, {"query": "consumo energetico della presa"},
+            owner="home",
         )
         assert any(r["kind"] == "brain-action" for r in before["results"]), before
 
@@ -441,10 +441,10 @@ async def test_recall_finds_tune_trace_then_real_undo_restores_value_and_keeps_e
         assert "sensor.quiet_power" in pol["detectors"]["power"]["entities"]
         assert sstore.get(sid)["status"] == "dismissed"
 
-        # (4b) Trace gone: recall no longer finds it via the real chat path.
-        after = await dispatcher.dispatch(
-            "recall_memory", {"query": "consumo energetico della presa"},
-            user_id="home",
+        # (4b) Trace gone: recall no longer finds it via the real recall path.
+        after = await handle_recall_memory(
+            kstore, emb, {"query": "consumo energetico della presa"},
+            owner="home",
         )
         assert not any(r["kind"] == "brain-action" for r in after["results"]), after
         assert kstore.list_items(kind="brain-action") == []

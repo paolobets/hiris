@@ -1,10 +1,43 @@
+"""fetta E2 Task 7 ("esce il dispatcher"): this file used to exercise
+ClaudeRunner's tool-dispatch loop through a REAL `ToolDispatcher` -- both to
+prove the loop mechanic itself (parse tool_use -> dispatch -> tool_result)
+AND, for a chunk of tests, to prove ToolDispatcher's OWN routing/gating
+(allowed_entities/allowed_services filtering, per-tool argument mapping to
+HA service calls). `ToolDispatcher` is gone; checked test by test rather
+than assumed:
+
+  - Tests whose assertion is about the LOOP MECHANIC or something else
+    entirely (prompt injection, usage tracking, thinking params, cache
+    control, model resolution, catalog membership, `last_tool_calls`
+    bookkeeping which is appended unconditionally regardless of dispatch
+    outcome) do not need a real dispatcher at all -- `dispatcher` now
+    defaults to `None` on the runner and stays that way here.
+  - Tests whose assertion was specifically about ToolDispatcher's OWN
+    behaviour (`test_chat_handles_tool_use`, `test_allowed_entities_*`,
+    `test_allowed_services_*`, `test_dispatch_get_area_entities`,
+    `test_dispatch_get_calendar_events_*`, `test_dispatch_set_input_helper_*`,
+    `test_set_input_helper_blocked_by_allowed_services`) died with it: with
+    `self._dispatcher` now `None` by construction, the runner's fallback
+    dispatch branch returns a generic "non disponibile" error for ANY tool
+    (see claude_runner.py's `chat()`), so there is no surviving path that
+    still applies `allowed_entities`/`allowed_services` filtering or maps
+    tool arguments onto real HA service calls the way ToolDispatcher did --
+    that specific 34-tool-catalog routing has no successor (it is explicitly
+    OUT of scope for this fetta per .superpowers/sdd/progress.md: the
+    Sentinel's EVALUATION_ONLY_TOOLS/run_with_actions catalog stays as CODE,
+    not as working dispatch). Those tests were deleted, not moved.
+  - The two concurrency/security tests near the end
+    (`test_chat_concurrent_calls_do_not_leak_tool_calls`,
+    `test_chat_concurrent_calls_do_not_leak_pseudonym_map`) needed a
+    dispatcher-shaped stand-in to keep proving the runner's OWN ContextVar
+    isolation under concurrency; see their own comments for what replaced
+    `ToolDispatcher` there.
+"""
 import asyncio
 import pytest
-import unittest.mock
 import anthropic
 from unittest.mock import AsyncMock, MagicMock, patch
 from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT, resolve_model, AUTO_MODEL_MAP
-from hiris.app.tools.dispatcher import ToolDispatcher
 
 
 def _sys_text(system) -> str:
@@ -26,19 +59,10 @@ def mock_ha():
 
 @pytest.fixture
 def runner(mock_ha):
-    # tiers green for the domains exercised by call_ha_service/trigger_automation/
-    # toggle_automation/set_input_helper tests below — the universal semaforo gate
-    # in ToolDispatcher is fail-closed by default (review A/#2, #9, #10: these
-    # three tool paths are now gated exactly like call_ha_service).
-    dispatcher = ToolDispatcher(mock_ha, {},
-                                execute_policy={"tiers": {
-                                    "light": "green", "climate": "green",
-                                    "automation": "green", "input_boolean": "green",
-                                    "input_number": "green", "input_text": "green",
-                                    "input_select": "green",
-                                }})
+    # Nessun dispatcher di scorta (ToolDispatcher e' uscito): i test qui
+    # sotto non ne hanno bisogno -- vedi il docstring del modulo.
     with patch("anthropic.AsyncAnthropic"):
-        r = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
+        r = ClaudeRunner(api_key="test-key")
     r._ha = mock_ha  # shortcut for tests
     return r
 
@@ -59,165 +83,10 @@ async def test_chat_returns_text_response(runner):
     assert result == "Hello from Claude"
 
 
-@pytest.mark.asyncio
-async def test_chat_handles_tool_use(runner):
-    tool_use_block = MagicMock()
-    tool_use_block.type = "tool_use"
-    tool_use_block.id = "tu_123"
-    tool_use_block.name = "get_entity_states"
-    tool_use_block.input = {"ids": ["light.living"]}
-
-    text_block = MagicMock()
-    text_block.type = "text"
-    text_block.text = "The light is on"
-
-    msg1 = MagicMock()
-    msg1.stop_reason = "tool_use"
-    msg1.content = [tool_use_block]
-
-    msg2 = MagicMock()
-    msg2.stop_reason = "end_turn"
-    msg2.content = [text_block]
-
-    runner._ha.get_states = AsyncMock(return_value=[{"entity_id": "light.living", "state": "on", "attributes": {}}])
-
-    with patch("anthropic.AsyncAnthropic") as MockClient:
-        instance = MockClient.return_value
-        instance.messages.create = AsyncMock(side_effect=[msg1, msg2])
-        runner._client = instance
-        result = await runner.chat("Is the light on?")
-
-    assert result == "The light is on"
-
-
-@pytest.mark.asyncio
-async def test_allowed_entities_filters_get_entity_states(runner):
-    runner._ha.get_states = AsyncMock(return_value=[
-        {"entity_id": "climate.soggiorno", "state": "heat", "attributes": {}},
-    ])
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.id = "tu_ent"
-    tool_block.name = "get_entity_states"
-    tool_block.input = {"ids": ["climate.soggiorno", "light.cucina", "sensor.temp"]}
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    text_block = MagicMock(type="text", text="Filtrato")
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("Query entit-", allowed_entities=["climate.*"])
-    call_args = runner._ha.get_states.call_args[0][0]
-    assert "climate.soggiorno" in call_args
-    assert "light.cucina" not in call_args
-    assert "sensor.temp" not in call_args
-
-
-def _entity_states_tool_call(runner, tool_id):
-    runner._ha.get_states = AsyncMock(return_value=[
-        {"entity_id": "light.cucina", "state": "on", "attributes": {}},
-    ])
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.id = tool_id
-    tool_block.name = "get_entity_states"
-    tool_block.input = {"ids": ["light.cucina", "sensor.temp"]}
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    text_block = MagicMock(type="text", text="OK")
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-
-
-@pytest.mark.asyncio
-async def test_allowed_entities_none_means_no_restriction(runner):
-    """`None` = ABSENCE of a perimeter -> every entity is readable. This is
-    the historical unscoped call (sentinel wakes, briefing, a chatbot with
-    no allow-list configured) and it must keep behaving exactly so."""
-    _entity_states_tool_call(runner, "tu_full")
-    await runner.chat("Query libera", allowed_entities=None)
-    call_args = runner._ha.get_states.call_args[0][0]
-    assert "light.cucina" in call_args
-    assert "sensor.temp" in call_args
-
-
-@pytest.mark.asyncio
-async def test_allowed_entities_empty_list_denies_everything(runner):
-    """`[]` = "nothing granted" -> NOTHING is readable. Opposite of `None`.
-    This is the semantics `task_engine._run_action` has always enforced
-    (`if task.allowed_entities is not None`); before this fix the dispatcher
-    read the very same `[]` as "unrestricted", so an objective Agentbot with
-    an empty perimeter could READ the whole house while every Task it
-    emitted was silently inert."""
-    _entity_states_tool_call(runner, "tu_deny")
-    await runner.chat("Query vietata", allowed_entities=[])
-    call_args = runner._ha.get_states.call_args[0][0]
-    assert call_args == [], "un perimetro vuoto non concede NESSUNA entita'"
-
-
-@pytest.mark.asyncio
-async def test_allowed_services_blocks_unauthorized_service(runner):
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.id = "tu_svc"
-    tool_block.name = "call_ha_service"
-    tool_block.input = {"domain": "light", "service": "turn_on", "data": {}}
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    text_block = MagicMock(type="text", text="Bloccato")
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("Accendi luce", allowed_services=["climate.*", "notify.*"])
-    runner._ha.call_service.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_allowed_services_permits_matching_service(runner):
-    runner._ha.call_service = AsyncMock(return_value=True)
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.id = "tu_svc2"
-    tool_block.name = "call_ha_service"
-    tool_block.input = {"domain": "climate", "service": "set_temperature", "data": {"temperature": 21}}
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    text_block = MagicMock(type="text", text="Temperatura impostata")
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("Imposta 21-C", allowed_services=["climate.*"])
-    runner._ha.call_service.assert_called_once_with("climate", "set_temperature", {"temperature": 21})
-
-
-def _call_service_tool_call(runner, tool_id):
-    runner._ha.call_service = AsyncMock(return_value=True)
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.id = tool_id
-    tool_block.name = "call_ha_service"
-    tool_block.input = {"domain": "light", "service": "turn_on", "data": {}}
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    text_block = MagicMock(type="text", text="OK")
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-
-
-@pytest.mark.asyncio
-async def test_allowed_services_none_means_no_restriction(runner):
-    """`None` = no service boundary (the semaforo still applies)."""
-    _call_service_tool_call(runner, "tu_free")
-    await runner.chat("Accendi", allowed_services=None)
-    runner._ha.call_service.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_allowed_services_empty_list_denies_everything(runner):
-    """`[]` = no service granted -> the call never reaches HA. Same
-    `is not None` semantics as `task_engine._run_action`."""
-    _call_service_tool_call(runner, "tu_deny_svc")
-    await runner.chat("Accendi", allowed_services=[])
-    runner._ha.call_service.assert_not_called()
-
-
 @pytest.fixture
 def restricted_runner(mock_ha):
-    dispatcher = ToolDispatcher(mock_ha, {})
     with patch("anthropic.AsyncAnthropic"):
-        r = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
+        r = ClaudeRunner(api_key="test-key")
     r._ha = mock_ha
     return r
 
@@ -260,29 +129,6 @@ async def test_restrict_to_home_false_does_not_inject(runner):
     system_text = _sys_text(captured[0]["system"])
     assert "Prompt originale" in system_text
     assert RESTRICT_PROMPT not in system_text
-
-
-@pytest.mark.asyncio
-async def test_dispatch_get_area_entities(runner):
-    runner._ha.get_area_registry = AsyncMock(return_value=[
-        {"area_id": "cucina", "name": "Cucina"}
-    ])
-    runner._ha.get_entity_registry = AsyncMock(return_value=[
-        {"entity_id": "light.luce_cucina", "area_id": "cucina"}
-    ])
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.id = "tu_area"
-    tool_block.name = "get_area_entities"
-    tool_block.input = {}
-    text_block = MagicMock(type="text", text="Cucina: light.luce_cucina")
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    result = await runner.chat("Accendi le luci della cucina")
-    assert result == "Cucina: light.luce_cucina"
-    runner._ha.get_area_registry.assert_awaited_once()
-    runner._ha.get_entity_registry.assert_awaited_once()
 
 
 def test_get_area_entities_in_all_tool_defs():
@@ -536,7 +382,6 @@ def test_get_chatbot_usage_returns_zeros_for_unknown_agent():
     from hiris.app.claude_runner import ClaudeRunner
     runner = ClaudeRunner(
         api_key="test",
-        dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path="",
     )
     usage = runner.get_chatbot_usage("agent-xyz")
@@ -555,7 +400,6 @@ def test_per_chatbot_usage_accumulates_after_chat():
 
     runner = ClaudeRunner(
         api_key="test",
-        dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path="",
     )
 
@@ -588,7 +432,6 @@ def test_reset_chatbot_usage_clears_counters():
 
     runner = ClaudeRunner(
         api_key="test",
-        dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path="",
     )
     runner._per_chatbot_usage["agent-abc"] = {
@@ -609,7 +452,6 @@ def test_per_chatbot_usage_persists_and_reloads(tmp_path):
     usage_file = str(tmp_path / "usage.json")
     runner = ClaudeRunner(
         api_key="test",
-        dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path=usage_file,
     )
     runner._per_chatbot_usage["agent-persist"] = {
@@ -620,7 +462,6 @@ def test_per_chatbot_usage_persists_and_reloads(tmp_path):
 
     runner2 = ClaudeRunner(
         api_key="test",
-        dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path=usage_file,
     )
     usage = runner2.get_chatbot_usage("agent-persist")
@@ -649,115 +490,10 @@ def test_get_calendar_events_in_all_tool_defs():
     assert "get_calendar_events" in names
 
 
-@pytest.mark.asyncio
-async def test_dispatch_get_calendar_events_all_calendars(runner):
-    runner._ha.get_calendars = AsyncMock(return_value=[
-        {"entity_id": "calendar.home", "name": "Home"},
-    ])
-    runner._ha.get_calendar_events_range = AsyncMock(return_value=[
-        {"summary": "Meeting", "start": {"dateTime": "2026-04-24T10:00:00+00:00"}, "end": {"dateTime": "2026-04-24T11:00:00+00:00"}},
-    ])
-    # MagicMock's `name` kwarg sets the mock's internal repr, not the .name attribute.
-    # Assign .name explicitly so _dispatch_tool sees the correct string.
-    tool_block = MagicMock(type="tool_use", id="tu_cal", input={"hours": 24})
-    tool_block.name = "get_calendar_events"
-    text_block = MagicMock(type="text", text="Hai un meeting alle 10.")
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    result = await runner.chat("Cosa ho in agenda oggi?")
-    assert result == "Hai un meeting alle 10."
-    runner._ha.get_calendars.assert_awaited_once()
-    runner._ha.get_calendar_events_range.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_dispatch_get_calendar_events_specific_calendar(runner):
-    runner._ha.get_calendar_events_range = AsyncMock(return_value=[])
-    runner._ha.get_calendars = AsyncMock()
-    tool_block = MagicMock(type="tool_use", id="tu_cal2", input={"hours": 48, "calendar_entity": "calendar.work"})
-    tool_block.name = "get_calendar_events"
-    text_block = MagicMock(type="text", text="Nessun evento.")
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    result = await runner.chat("Impegni di lavoro nei prossimi 2 giorni?")
-    assert result == "Nessun evento."
-    runner._ha.get_calendar_events_range.assert_awaited_once_with(
-        "calendar.work", unittest.mock.ANY, unittest.mock.ANY
-    )
-    runner._ha.get_calendars.assert_not_awaited()
-
-
 def test_set_input_helper_in_all_tool_defs():
     from hiris.app.claude_runner import ALL_TOOL_DEFS
     names = [t["name"] for t in ALL_TOOL_DEFS]
     assert "set_input_helper" in names
-
-
-@pytest.mark.asyncio
-async def test_dispatch_set_input_helper_boolean_on(runner):
-    runner._ha.call_service = AsyncMock(return_value=True)
-    tool_block = MagicMock(type="tool_use", id="tu_ih1",
-                           input={"entity_id": "input_boolean.guest_mode", "value": True})
-    tool_block.name = "set_input_helper"
-    text_block = MagicMock(type="text", text="Modalit- ospite attivata.")
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    result = await runner.chat("Attiva la modalit- ospite.")
-    assert result == "Modalit- ospite attivata."
-    runner._ha.call_service.assert_awaited_once_with(
-        "input_boolean", "turn_on", {"entity_id": "input_boolean.guest_mode"}
-    )
-
-
-@pytest.mark.asyncio
-async def test_dispatch_set_input_helper_number(runner):
-    runner._ha.call_service = AsyncMock(return_value=True)
-    tool_block = MagicMock(type="tool_use", id="tu_ih2",
-                           input={"entity_id": "input_number.target_temp", "value": 21.5})
-    tool_block.name = "set_input_helper"
-    text_block = MagicMock(type="text", text="Temperatura impostata a 21.5-C.")
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    result = await runner.chat("Imposta temperatura target a 21.5.")
-    assert result == "Temperatura impostata a 21.5-C."
-    runner._ha.call_service.assert_awaited_once_with(
-        "input_number", "set_value", {"entity_id": "input_number.target_temp", "value": 21.5}
-    )
-
-
-@pytest.mark.asyncio
-async def test_dispatch_set_input_helper_select(runner):
-    runner._ha.call_service = AsyncMock(return_value=True)
-    tool_block = MagicMock(type="tool_use", id="tu_ih3",
-                           input={"entity_id": "input_select.house_mode", "value": "Away"})
-    tool_block.name = "set_input_helper"
-    text_block = MagicMock(type="text", text="Modalit- impostata su Away.")
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    result = await runner.chat("Imposta modalit- casa su Away.")
-    assert result == "Modalit- impostata su Away."
-    runner._ha.call_service.assert_awaited_once_with(
-        "input_select", "select_option", {"entity_id": "input_select.house_mode", "option": "Away"}
-    )
-
-
-@pytest.mark.asyncio
-async def test_set_input_helper_blocked_by_allowed_services(runner):
-    runner._ha.call_service = AsyncMock(return_value=True)
-    tool_block = MagicMock(type="tool_use", id="tu_ih4",
-                           input={"entity_id": "input_boolean.guest_mode", "value": True})
-    tool_block.name = "set_input_helper"
-    text_block = MagicMock(type="text", text="Bloccato.")
-    msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
-    msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("Attiva guest mode.", allowed_services=["light.*", "climate.*"])
-    runner._ha.call_service.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -981,7 +717,10 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
         return _end_response("done-A" if is_call_a else "done-B")
 
     runner._client.messages.create = AsyncMock(side_effect=fake_create)
-    runner._dispatcher.dispatch = AsyncMock(return_value={"ok": True})
+    # Dispatcher di scorta finto: la meccanica sotto test (isolamento per-Task
+    # di last_tool_calls) non dipende da COSA risponde il dispatch, solo dal
+    # fatto che risponda -- ToolDispatcher e' uscito, fetta E2 Task 7.
+    runner._dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
 
     async def call_a():
         text = await runner.chat("call-A")
@@ -999,10 +738,42 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
     assert tools_b == [{"tool": "get_home_status", "input": {"entity_id": "entity-B"}}]
 
 
+class _DispatcherRecallMemoryDiScorta:
+    """fetta E2 Task 7: sostituisce `ToolDispatcher` (uscito) SOLO per il
+    test sotto, che deve provare l'isolamento per-Task di
+    `last_pseudonym_map` attraverso un dispatch VERO (non mockato) fino a
+    `Pseudonymizer` -- l'unico modo di far girare quella prova end-to-end
+    ora che la classe che lo faceva in produzione non esiste piu'. Stessa
+    interfaccia minima (`.dispatch(nome, argomenti, **kwargs)`) e stesso
+    forwarding a `handle_recall_memory` che il ramo `recall_memory` di
+    `ToolDispatcher.dispatch` faceva -- nessun'altra logica: questo test non
+    tocca nessun altro strumento."""
+
+    has_memory = True  # store e' sempre configurato in questo test
+
+    def __init__(self, store, embedder, pseudonymizer):
+        self._store = store
+        self._embedder = embedder
+        self._pseudonymizer = pseudonymizer
+
+    async def dispatch(self, name, inputs, *, knowledge_allow_sensitive=False,
+                       cloud=True, pseudonym_map=None, user_id=None, **_ignored):
+        from hiris.app.tools.memory_tools import handle_recall_memory
+        assert name == "recall_memory"
+        return await handle_recall_memory(
+            self._store, self._embedder, inputs,
+            owner=user_id or "home",
+            allow_sensitive=knowledge_allow_sensitive,
+            pseudonymizer=self._pseudonymizer,
+            cloud=cloud,
+            pseudonym_map=pseudonym_map,
+        )
+
+
 @pytest.mark.asyncio
-async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path, mock_ha):
+async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path):
     """SECURITY (review B/#7): two overlapping chat() calls on the SAME
-    runner instance -- sharing the SAME ToolDispatcher/KnowledgeStore/
+    runner instance -- sharing the SAME dispatcher/KnowledgeStore/
     Pseudonymizer/vault, exactly as two concurrent real users would on a
     live server -- must never leak each other's per-request pseudonymize
     token map. Each call's own recall_memory tool invocation pseudonymizes
@@ -1012,12 +783,14 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path, mock_ha
     resolve the other call's PII.
 
     This is the concurrency-flavored counterpart to
-    test_chat_concurrent_calls_do_not_leak_tool_calls above, exercising the
-    REAL dispatcher -> memory_tools -> Pseudonymizer path end-to-end
-    (dispatch is not mocked here) so the ContextVar-based per-Task isolation
-    is proven against the actual security-sensitive code path, not just
-    last_tool_calls bookkeeping.
-    """
+    test_chat_concurrent_calls_do_not_leak_tool_calls above, exercising a
+    REAL dispatch -> memory_tools -> Pseudonymizer path end-to-end (dispatch
+    is not mocked here) so the ContextVar-based per-Task isolation is proven
+    against the actual security-sensitive code path, not just
+    last_tool_calls bookkeeping. `ToolDispatcher` used to be that dispatcher;
+    it is gone (fetta E2 Task 7), so `_DispatcherRecallMemoryDiScorta` above
+    stands in for it -- same forwarding, same real KnowledgeStore/
+    Pseudonymizer/vault, only the routing class is a smaller stand-in."""
     from hiris.app.brain.knowledge_store import KnowledgeStore
     from hiris.app.brain.privacy import VaultStore, Pseudonymizer
 
@@ -1034,10 +807,7 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path, mock_ha
     vault = VaultStore(str(tmp_path / "vault.db"))
     pseudonymizer = Pseudonymizer(vault)
 
-    dispatcher = ToolDispatcher(
-        mock_ha, {}, knowledge_store=store, embedder=_FakeEmbedder(),
-        pseudonymizer=pseudonymizer,
-    )
+    dispatcher = _DispatcherRecallMemoryDiScorta(store, _FakeEmbedder(), pseudonymizer)
     with patch("anthropic.AsyncAnthropic"):
         runner = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
 
@@ -1118,7 +888,6 @@ def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):
 
     runner = ClaudeRunner(
         api_key="test",
-        dispatcher=ToolDispatcher(MagicMock(), {}),
         usage_path=str(tmp_path / "usage.json"),
     )
 

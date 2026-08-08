@@ -1214,8 +1214,8 @@ async def _on_startup(app: web.Application) -> None:
     # remota: lo leggono ancora watcher/executor.py e task_engine.py, e lo
     # costruisce apply_saved_policy() poco sotto quando l'utente ha salvato
     # una policy del gateway dalla UI. Va inizializzato QUI comunque perche'
-    # TaskEngine e ToolDispatcher (piu' sotto in questa funzione) leggono
-    # app["execute_policy"] con l'accesso diretto -- senza questa riga,
+    # TaskEngine (piu' sotto in questa funzione) legge app["execute_policy"]
+    # con l'accesso diretto -- senza questa riga,
     # un'installazione senza policy salvata (apply_saved_policy ritorna
     # subito) troverebbe la chiave assente e il boot fallirebbe con
     # KeyError. Un dict vuoto e' gia' il default sicuro: ogni consumatore
@@ -1226,7 +1226,8 @@ async def _on_startup(app: web.Application) -> None:
     # task insieme a tutta la superficie /api/execute che leggeva
     # policy["tools"]/["allowed_entities"]/["allowed_services"]. Quei tre
     # campi non hanno piu' alcun consumatore: solo "tiers"/"entity_tiers"
-    # restano letti (dispatcher.py, task_engine.py, watcher/*).
+    # restano letti (task_engine.py, watcher/*). Il dispatcher che li leggeva
+    # anche lui (tools/dispatcher.py) e' uscito -- fetta E2 Task 7.
     app["execute_policy"] = {}
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
@@ -1706,13 +1707,11 @@ async def _on_startup(app: web.Application) -> None:
             mayan_url, bool(mayan_token), mayan_tag_id,
         )
 
-    from .tools.dispatcher import ToolDispatcher
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
 
-    # Archivio delle segnalazioni del Brain. Creato QUI, prima del dispatcher,
-    # perche' il tool get_advisories lo riceve per iniezione: il resto del
-    # cervello proattivo (piu' sotto) usa lo stesso oggetto.
+    # Archivio delle segnalazioni del Brain. Il resto del cervello proattivo
+    # (piu' sotto) usa lo stesso oggetto.
     from .brain.advisory_store import AdvisoryStore
     advisory_store = AdvisoryStore(os.path.join(data_dir, "advisory.db"))
     app["advisory_store"] = advisory_store
@@ -1735,32 +1734,6 @@ async def _on_startup(app: web.Application) -> None:
             "illeggibile): il ritratto della casa resta disattivato per "
             "questo avvio", exc_info=True,
         )
-
-    # request_confirmation/confirm_executor restano a None (fetta E2 Task 5:
-    # escono le conferme del gateway -- morte per costruzione, la mappa
-    # utente->canale che avrebbero usato non e' mai scritta da alcuna
-    # interfaccia). ToolDispatcher._gate degrada gia' all'errore "richiede
-    # conferma" quando request_confirmation e' None, e il tool confirm_pending
-    # risponde "Conferma non disponibile" quando confirm_executor e' None:
-    # nessuna regressione, solo un fallback che ora e' l'unico percorso.
-    dispatcher = ToolDispatcher(
-        ha_client=ha_client,
-        notify_config=notify_config,
-        entity_cache=entity_cache,
-        semantic_map=semantic_map,
-        embedding_provider=embedder,
-        health_monitor=health_monitor,
-        advisory_store=advisory_store,
-        proposal_store=proposal_store,
-        knowledge_store=knowledge_store,
-        embedder=embedder,
-        pseudonymizer=pseudonymizer,
-        history_store=history_store,
-        execute_policy=app["execute_policy"],
-        data_dir=data_dir,
-    )
-    dispatcher.set_task_engine(task_engine)
-    app["tool_dispatcher"] = dispatcher
 
     # ── Sentinella (cervello proattivo, fetta 1) ──────────────────────────
     # Shares the SAME semaforo (execute_policy tiers) as the execute-API/gateway
@@ -1844,15 +1817,21 @@ async def _on_startup(app: web.Application) -> None:
         # exact anonymous/unscoped call they always made. Only an Agentbot
         # that HAS a perimeter block (i.e. mode="objective", see
         # `watcher/agentbot_runner.py`) supplies them, via `_run_decision`.
-        # `chatbot_id` is the runner-side name of that identity: the tool
-        # dispatcher already renames it back to `agent_id` when it stamps a
-        # freshly created Task (`tools/dispatcher.py`, create_task branch),
-        # so passing it here is what makes an emitted Task belong to the
-        # agent that emitted it instead of to "hiris-default". The two
-        # allow-lists ride the SAME dispatcher parameters, ending up on the
-        # Task itself -- where `task_engine._run_action`'s ALREADY EXISTING
-        # check enforces them at execution time. Nothing new enforces
-        # anything here.
+        # `chatbot_id` is the runner-side name of that identity: it used to
+        # reach the tool dispatcher, which renamed it back to `agent_id` when
+        # it stamped a freshly created Task (`tools/dispatcher.py`,
+        # create_task branch) -- so passing it here is what would make an
+        # emitted Task belong to the agent that emitted it instead of to
+        # "hiris-default". fetta E2 Task 7: that dispatcher is gone and no
+        # replacement calls create_task from this path, so today no Task is
+        # ever actually emitted here -- the forwarding below is dead in
+        # practice, kept only because removing it would be a second,
+        # unrelated change (EVALUATION_ONLY_TOOLS/run_with_actions are
+        # explicitly out of scope for this fetta, see
+        # .superpowers/sdd/progress.md). Historically the two allow-lists
+        # rode the SAME dispatcher parameters, ending up on the Task itself
+        # -- where `task_engine._run_action`'s check enforces them at
+        # execution time.
         # Fase 2 Task 5: la risoluzione del runner e' passata nel
         # module-level `_reasoning_runner(app)` perche' ora la usa anche il
         # bound per esecuzione, che deve misurare i token PROPRIO
@@ -2081,9 +2060,11 @@ async def _on_startup(app: web.Application) -> None:
         if perimeter is not None:
             # The lists are passed through VERBATIM, `None` and empty
             # included -- NO normalization in either direction. The whole
-            # chain (`tools/dispatcher.py` -> Task ->
-            # `task_engine._run_action`) agrees on one semantics:
-            # `None` = "no boundary on this axis", `[]` = "nothing granted".
+            # chain (historically `tools/dispatcher.py` -> Task ->
+            # `task_engine._run_action`; the dispatcher hop is gone since
+            # fetta E2 Task 7, see `_llm_reason` above) agreed on one
+            # semantics: `None` = "no boundary on this axis", `[]` = "nothing
+            # granted".
             # `validate_agentbot` already materializes the perimeter with
             # `None` for an axis the user left undeclared, so an `or []`
             # here would turn "no limits" into "deny everything" -- and a
@@ -2641,7 +2622,6 @@ async def _on_startup(app: web.Application) -> None:
     if api_key and _active["claude"]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
-            dispatcher=dispatcher,
             usage_path=usage_path,
             default_model=_pm.get("claude", ""),
         )
@@ -2654,7 +2634,6 @@ async def _on_startup(app: web.Application) -> None:
         openai_runner = OpenAICompatRunner(
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
-            dispatcher=dispatcher,
             usage_path=f"{_usage_base}_openai{_usage_ext}",
             default_model=_pm.get("openai", ""),
         )
@@ -2664,7 +2643,6 @@ async def _on_startup(app: web.Application) -> None:
         ollama_runner = OpenAICompatRunner(
             base_url=local_model_url.rstrip("/") + "/v1",
             api_key="ollama",
-            dispatcher=dispatcher,
             fixed_model=local_model_name,
             usage_path=f"{_usage_base}_ollama{_usage_ext}",
         )
@@ -2699,7 +2677,6 @@ async def _on_startup(app: web.Application) -> None:
     if openrouter_api_key and _active["openrouter"]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
-            dispatcher=dispatcher,
             usage_path=f"{_usage_base}_openrouter{_usage_ext}",
             default_model=_pm.get("openrouter", ""),
         )

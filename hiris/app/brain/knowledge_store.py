@@ -26,7 +26,8 @@ _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 # conversazione).
 # "gateway" (Fix 1, whole-branch review, final fix wave: tools/memory_tools.py's
 # handle_save_memory, chosen by ToolDispatcher.dispatch based on
-# from_remote_gateway) is DELIBERATELY absent here: a save arriving through
+# from_remote_gateway -- both the remote gateway and that dispatcher are
+# since gone, fetta E2 Tasks 4 and 7) is DELIBERATELY absent here: a save arriving through
 # the remote MCP gateway is recallable (search()/recent()) but never
 # auto-injected as "declared by a person" -- see the docstring on
 # handle_save_memory for why.

@@ -103,7 +103,8 @@ class EntityCache:
         # distinguere "inventario non ancora pronto" da "casa senza entita'":
         # server.py logga e prosegue se il caricamento iniziale fallisce, e i
         # tool che leggono da qui rispondevano con un elenco vuoto in entrambi
-        # i casi ("la casa e' vuota"). Vedi ToolDispatcher._cache_non_leggibile.
+        # i casi ("la casa e' vuota"). Il controllo comune era
+        # `ToolDispatcher._cache_non_leggibile`, uscito -- fetta E2 Task 7.
         self._loaded = False
 
     @property

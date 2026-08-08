@@ -211,27 +211,25 @@ async def test_save_knowledge_con_embedder_funzionante_salva_ancora_il_vettore(t
 
 
 @pytest.mark.asyncio
-async def test_dispatcher_save_memory_kind_esplicito_senza_embedder_riesce_comunque(tmp_path):
-    """Un tempo il dispatcher rifiutava save_knowledge anche senza embedder,
+async def test_save_memory_kind_esplicito_senza_embedder_riesce_comunque(tmp_path):
+    """Un tempo il vecchio save_knowledge rifiutava anche senza embedder,
     perche' senza vettore l'elemento non sarebbe mai stato richiamabile. Non
     e' piu' vero: `KnowledgeStore.search` degrada a `recent()` quando non c'e'
     un vettore di query (stessi filtri di riservatezza), quindi un elemento
     senza embedding resta comunque ritrovabile. Il default di fabbrica
     (NullEmbedder) non calcola MAI un vettore, quindi il rifiuto colpiva ogni
-    installazione stock: qui deve riuscire."""
-    from hiris.app.tools.dispatcher import ToolDispatcher
+    installazione stock: qui deve riuscire.
+
+    fetta E2 Task 7: chiamato direttamente (era `ToolDispatcher.dispatch`,
+    uscito) -- stessa funzione, stesso comportamento."""
+    from hiris.app.tools.memory_tools import handle_save_memory
 
     store = KnowledgeStore(str(tmp_path / "dispatch_no_emb.db"))
-    dispatcher = ToolDispatcher(
-        ha_client=MagicMock(),
-        notify_config={},
-        knowledge_store=store,
-        embedder=None,
-    )
 
-    res = await dispatcher.dispatch(
-        "save_memory",
+    res = await handle_save_memory(
+        store, None,
         {"kind": "preference", "content": "Paolo ama la pizza"},
+        owner="home", chatbot_id="hiris-default",
     )
 
     assert "error" not in res, "l'assenza di embedder non deve impedire di salvare"
@@ -244,21 +242,18 @@ async def test_dispatcher_save_memory_kind_esplicito_senza_embedder_riesce_comun
 
 
 @pytest.mark.asyncio
-async def test_dispatcher_save_memory_senza_store_fallisce(tmp_path):
+async def test_save_memory_senza_store_fallisce(tmp_path):
     """Lo store, a differenza dell'embedder, resta un motivo reale di
-    rifiuto: senza store non c'e' dove scrivere l'elemento."""
-    from hiris.app.tools.dispatcher import ToolDispatcher
+    rifiuto: senza store non c'e' dove scrivere l'elemento.
 
-    dispatcher = ToolDispatcher(
-        ha_client=MagicMock(),
-        notify_config={},
-        knowledge_store=None,
-        embedder=None,
-    )
+    fetta E2 Task 7: chiamato direttamente (era `ToolDispatcher.dispatch`,
+    uscito)."""
+    from hiris.app.tools.memory_tools import handle_save_memory
 
-    res = await dispatcher.dispatch(
-        "save_memory",
+    res = await handle_save_memory(
+        None, None,
         {"kind": "preference", "content": "Paolo ama la pizza"},
+        owner="home", chatbot_id="hiris-default",
     )
 
     assert isinstance(res, dict) and res.get("error")
@@ -432,28 +427,22 @@ async def test_recall_pseudonymizes_sensitive_chunk_for_cloud(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_dispatcher_routes_save_memory_kind_esplicito(tmp_path):
-    """ToolDispatcher.dispatch('save_memory') con un kind esplicito deve
-    instradare alla KnowledgeStore e tornare gia' approvato -- niente coda."""
-    from hiris.app.tools.dispatcher import ToolDispatcher
+async def test_save_memory_kind_esplicito_instrada_alla_knowledge_store(tmp_path):
+    """`save_memory` con un kind esplicito deve instradare alla KnowledgeStore
+    e tornare gia' approvato -- niente coda.
+
+    fetta E2 Task 7: chiamato direttamente (era `ToolDispatcher.dispatch`,
+    uscito)."""
+    from hiris.app.tools.memory_tools import handle_save_memory
 
     store = KnowledgeStore(str(tmp_path / "dispatch_brain.db"))
     embedder = AsyncMock()
     embedder.embed = AsyncMock(return_value=[0.1, 0.2])
 
-    ha_stub = MagicMock()
-    notify_cfg: dict = {}
-
-    dispatcher = ToolDispatcher(
-        ha_client=ha_stub,
-        notify_config=notify_cfg,
-        knowledge_store=store,
-        embedder=embedder,
-    )
-
-    result = await dispatcher.dispatch(
-        "save_memory",
+    result = await handle_save_memory(
+        store, embedder,
         {"kind": "preference", "content": "Paolo ama la pizza"},
+        owner="home", chatbot_id="hiris-default",
     )
 
     assert result.get("saved") is True

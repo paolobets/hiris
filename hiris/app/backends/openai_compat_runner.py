@@ -7,7 +7,7 @@ import re
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Optional
 import httpx as _httpx
 
 from ..claude_runner import (
@@ -50,9 +50,6 @@ def _is_conn_error(exc: Exception) -> bool:
     except Exception:
         pass
     return isinstance(exc, (_httpx.ConnectError, _httpx.ConnectTimeout, ConnectionError))
-
-if TYPE_CHECKING:
-    from ..tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +195,7 @@ class OpenAICompatRunner:
         self,
         base_url: str,
         api_key: str,
-        dispatcher: "ToolDispatcher",
+        dispatcher: Any = None,
         *,
         fixed_model: str = "",
         usage_path: str = "",
@@ -225,6 +222,9 @@ class OpenAICompatRunner:
             api_key=api_key, base_url=base_url,
             timeout=_client_timeout, max_retries=_max_retries,
         )
+        # fetta E2 Task 7: nessun chiamante di produzione costruisce piu' un
+        # ToolDispatcher (uscito) -- vedi il commento gemello in
+        # ClaudeRunner.__init__ per il perche' resta None per costruzione.
         self._dispatcher = dispatcher
         self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto" (unused for Ollama, see fixed_model)
         self._fixed_model = fixed_model   # Ollama: always use this model; empty for OpenAI
@@ -563,7 +563,10 @@ class OpenAICompatRunner:
                 tools = [t for t in tools if t["name"] != "render_template"]
             if allowed_endpoints is None:
                 tools = [t for t in tools if t["name"] != "http_request"]
-            if not self._dispatcher.has_memory:
+            # Senza dispatcher (fetta E2 Task 7: nessuno ne costruisce piu' uno
+            # di produzione) non c'e' memoria da interrogare -- stessa
+            # degradazione di un dispatcher che dichiara has_memory=False.
+            if self._dispatcher is None or not self._dispatcher.has_memory:
                 tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
@@ -722,7 +725,7 @@ class OpenAICompatRunner:
                         # minima dispatch(nome, argomenti) -- vedi il commento
                         # gemello in ClaudeRunner.chat().
                         result = await dispatcher.dispatch(tc.function.name, tool_input)
-                    else:
+                    elif self._dispatcher is not None:
                         result = await self._dispatcher.dispatch(
                             tc.function.name, tool_input,
                             allowed_entities=allowed_entities,
@@ -736,6 +739,11 @@ class OpenAICompatRunner:
                             user_id=user_id,
                             pseudonym_map=self.last_pseudonym_map,
                         )
+                    else:
+                        # fetta E2 Task 7: ne' un dispatcher per-chiamata ne'
+                        # un ToolDispatcher di scorta -- vedi il commento
+                        # gemello in ClaudeRunner.chat().
+                        result = {"error": f"Strumento '{tc.function.name}' non disponibile."}
                     self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
                     messages.append({
                         "role": "tool",
@@ -876,7 +884,10 @@ class OpenAICompatRunner:
                 tools = [t for t in tools if t["name"] != "render_template"]
             if allowed_endpoints is None:
                 tools = [t for t in tools if t["name"] != "http_request"]
-            if not self._dispatcher.has_memory:
+            # Senza dispatcher (fetta E2 Task 7: nessuno ne costruisce piu' uno
+            # di produzione) non c'e' memoria da interrogare -- stessa
+            # degradazione di un dispatcher che dichiara has_memory=False.
+            if self._dispatcher is None or not self._dispatcher.has_memory:
                 tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
@@ -1044,7 +1055,7 @@ class OpenAICompatRunner:
                         # minima dispatch(nome, argomenti) -- vedi il commento
                         # gemello in chat().
                         result = await dispatcher.dispatch(tc_data["name"], tool_input)
-                    else:
+                    elif self._dispatcher is not None:
                         result = await self._dispatcher.dispatch(
                             tc_data["name"], tool_input,
                             allowed_entities=allowed_entities,
@@ -1058,6 +1069,11 @@ class OpenAICompatRunner:
                             user_id=user_id,
                             pseudonym_map=self.last_pseudonym_map,
                         )
+                    else:
+                        # fetta E2 Task 7: ne' un dispatcher per-chiamata ne'
+                        # un ToolDispatcher di scorta -- vedi il commento
+                        # gemello in chat().
+                        result = {"error": f"Strumento '{tc_data['name']}' non disponibile."}
                     self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
                     messages.append({
                         "role": "tool",

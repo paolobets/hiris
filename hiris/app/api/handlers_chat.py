@@ -321,13 +321,17 @@ async def handle_chat(request: web.Request) -> web.Response:
     # strumento invece (vedi `DispatcherConoscenza.dispatch`).
     #
     # Passarlo sempre (mai `None`) tiene chiusa anche un'altra trappola: e'
-    # il ramo `self._dispatcher.dispatch(...)` dei runner (il ToolDispatcher
-    # del catalogo vecchio, preso SOLO quando `dispatcher` e' `None`) a
-    # leggere `visible_entity_ids` e a degradare APERTO quando e' assente
+    # il ramo `self._dispatcher.dispatch(...)` dei runner (il dispatcher di
+    # scorta del catalogo vecchio, preso SOLO quando `dispatcher` e' `None`)
+    # a leggere `visible_entity_ids` e a degradare APERTO quando e' assente
     # (`if visible_entity_ids: ...` -- nessun filtro quando e' `None`). Con
     # `dispatcher` sempre valorizzato quel ramo non viene mai preso dalla
     # chat, quindi non passare piu' `visible_entity_ids` da qui (la mappa
     # semantica che lo produceva non e' piu' consultata) non riapre nulla.
+    # fetta E2 Task 7: quel dispatcher di scorta (ToolDispatcher) e' uscito
+    # -- il ramo ora degrada a un errore "non disponibile" per QUALUNQUE
+    # chiamante che lo prenda, ma la chat non lo prende mai per il motivo
+    # sopra, quindi qui non cambia nulla.
     dispatcher_conoscenza = DispatcherConoscenza(
         request.app.get("archivio_casa"),
         request.app.get("archivio_memoria"),
@@ -484,8 +488,9 @@ async def handle_chat(request: web.Request) -> web.Response:
     def _debug_input(t: dict):
         # OTP secrecy toward the client: confirm_pending's `input` carries the
         # 6-digit code the user typed in chat. It must never be echoed back in
-        # the HTTP response debug payload (it's already redacted server-side
-        # in ToolDispatcher's log line — this covers the separate API surface).
+        # the HTTP response debug payload — this covers the HTTP debug-payload
+        # surface (the sibling SSE redaction is `_redact_stream_tool_calls`,
+        # claude_runner.py).
         inp = t.get("input")
         if t.get("tool") == "confirm_pending" and isinstance(inp, dict) and "code" in inp:
             return {**inp, "code": "***"}

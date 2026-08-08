@@ -19,8 +19,8 @@ import inspect
 import pytest
 
 from hiris.app import server
-from hiris.app.proxy.entity_cache import EntityCache
-from hiris.app.tools.dispatcher import ToolDispatcher
+from hiris.app.proxy.entity_cache import EntityCache, inventario_non_leggibile
+from hiris.app.tools.ha_tools import get_entities_on
 
 
 class _HA:
@@ -75,18 +75,27 @@ async def test_ricarica_linventario_dopo_un_avvio_senza_home_assistant():
     assert [e["id"] for e in cache.get_all()] == ["light.cucina"]
 
 
+async def _get_entities_on_come_lo_strumento(cache):
+    """Stessa forma del vecchio ramo `get_entities_on` di `ToolDispatcher.dispatch`
+    (uscito -- fetta E2 Task 7): il guasto sull'inventario si controlla PRIMA
+    di leggere, esattamente come faceva il dispatcher."""
+    guasto = inventario_non_leggibile(cache)
+    if guasto is not None:
+        return guasto
+    return get_entities_on(cache)
+
+
 @pytest.mark.asyncio
 async def test_dopo_la_ricarica_gli_strumenti_tornano_a_rispondere():
     """Il sintomo che l'utente vede: prima «non ancora pronto», poi la casa."""
     cache = EntityCache()
-    disp = ToolDispatcher(ha_client=_HA(), notify_config={}, entity_cache=cache)
 
-    prima = await disp.dispatch("get_entities_on", {})
+    prima = await _get_entities_on_come_lo_strumento(cache)
     assert isinstance(prima, dict) and "pront" in prima.get("error", "").lower()
 
     await server.ricarica_inventario_entita(cache, _HA())
 
-    dopo = await disp.dispatch("get_entities_on", {})
+    dopo = await _get_entities_on_come_lo_strumento(cache)
     assert [e["id"] for e in dopo] == ["light.cucina"]
 
 

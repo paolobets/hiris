@@ -1,20 +1,47 @@
 """Slice 3 Task 2: save_memory/recall_memory routed into the unified
-KnowledgeStore as chatbot-scoped memory, with the real user_id as owner."""
+KnowledgeStore as chatbot-scoped memory, with the real user_id as owner.
+
+fetta E2 Task 7 ("esce il dispatcher"): every test here used to go through
+`ToolDispatcher.dispatch("save_memory"/"recall_memory", ...)`, which is gone.
+Checked test by test against the deleted class instead of assuming:
+
+  - Most tests call `memory_tools.handle_save_memory`/`handle_recall_memory`
+    directly now -- the SAME functions the dispatcher used to call, so the
+    subject (owner threading, cross-chatbot visibility, no auto-expiry,
+    source='chat'/'gateway') is unchanged, only the access path is.
+  - Three tests (`test_recall_memory_own_memory_still_recallable_when_kinds_
+    restricted_to_fact`, its `kinds=[]` sibling, and
+    `test_recall_memory_kinds_as_plain_string_still_unions_memory`) tested
+    `union_memory_kind` -- a function that lived ONLY in `tools/dispatcher.py`
+    and had exactly one other claimed caller (`api/handlers_chat.py`'s
+    declared-block call, per its own docstring), which the "nucleo alla
+    chat" slice (2.0, E1) had already removed before this task even started
+    (`handle_chat` no longer touches `KnowledgeStore.declared()`/`.search()`
+    at all -- see tests/test_chat_al_nucleo.py). `union_memory_kind` is gone
+    and grep confirms nothing else defines or imports it: the "an agent
+    restricted to knowledge_access.kinds can still recall its OWN just-saved
+    memory" guarantee it provided has no surviving implementation anywhere
+    in the codebase to call instead, and no live caller was even reaching it
+    through the dispatcher before this task either (chatbot_engine.py's Test
+    Run computes `knowledge_kinds` but has passed `dispatcher=
+    DispatcherConoscenza` -- which ignores it -- since Task 2 of this same
+    fetta; the Sentinel/Agentbot evaluation path never sets `knowledge_kinds`
+    at all). Those three tests died with their subject rather than moved.
+    The other two `knowledge_kinds`-restriction tests survive because they
+    pass an explicit kinds list that does not depend on the union
+    (`['memory']`), so `handle_recall_memory`'s own, still-real `kinds`
+    filtering covers them without it.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from hiris.app.tools.dispatcher import ToolDispatcher
 from hiris.app.brain.knowledge_store import KnowledgeStore
+from hiris.app.tools.memory_tools import handle_recall_memory, handle_save_memory
 
 pytestmark = pytest.mark.asyncio
-
-
-class _FakeHA:
-    async def call_service(self, d, s, data):
-        return {"ok": True}
 
 
 class _Emb:
@@ -33,17 +60,16 @@ async def test_save_memory_writes_chatbot_item_and_recall_finds_it_from_another_
     chatbot_id='hiris-default', invisibili a un secondo chatbot) e' esattamente
     quello che questa fetta chiude."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-    await disp.dispatch("save_memory", {"content": "l'utente preferisce 21°C"},
-                        chatbot_id="agentA", user_id="paolo")
-    res = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
-                              chatbot_id="agentA", user_id="paolo")
+    emb = _Emb()
+    await handle_save_memory(store, emb, {"content": "l'utente preferisce 21°C"},
+                             owner="paolo", chatbot_id="agentA")
+    res = await handle_recall_memory(store, emb, {"query": "temperatura preferita"},
+                                     owner="paolo")
     # the recalled result mentions the stored memory
     assert "21" in str(res)
     # a DIFFERENT agent still sees it: chatbot_id no longer scopes visibility
-    res_b = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
-                                chatbot_id="agentB", user_id="paolo")
+    res_b = await handle_recall_memory(store, emb, {"query": "temperatura preferita"},
+                                       owner="paolo")
     assert "21" in str(res_b)
     store.close()
 
@@ -56,19 +82,18 @@ async def test_save_memory_writes_real_owner_not_hardcoded_home(tmp_path):
     refactor reverts owner threading, this catches it directly on the stored
     row (rather than relying only on search-visibility side effects)."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
+    emb = _Emb()
 
-    saved_memory = await disp.dispatch(
-        "save_memory", {"content": "nota di paolo"},
-        chatbot_id="agentA", user_id="paolo",
+    saved_memory = await handle_save_memory(
+        store, emb, {"content": "nota di paolo"},
+        owner="paolo", chatbot_id="agentA",
     )
     mem_item = store.get_item(saved_memory["id"])
     assert mem_item["owner"] == "paolo"
 
-    saved_knowledge = await disp.dispatch(
-        "save_memory", {"kind": "fact", "content": "fatto di paolo"},
-        chatbot_id="agentA", user_id="paolo",
+    saved_knowledge = await handle_save_memory(
+        store, emb, {"kind": "fact", "content": "fatto di paolo"},
+        owner="paolo", chatbot_id="agentA",
     )
     know_item = store.get_item(saved_knowledge["id"])
     assert know_item["owner"] == "paolo"
@@ -81,28 +106,27 @@ async def test_recall_memory_two_users_same_agent_no_leak(tmp_path):
     this task fixes. A home-owned chatbot-scoped item, however, is visible
     to both."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
+    emb = _Emb()
 
-    await disp.dispatch("save_memory", {"content": "userA preferisce 21 gradi"},
-                        chatbot_id="agentA", user_id="userA")
+    await handle_save_memory(store, emb, {"content": "userA preferisce 21 gradi"},
+                             owner="userA", chatbot_id="agentA")
 
-    res_a = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
-                                chatbot_id="agentA", user_id="userA")
+    res_a = await handle_recall_memory(store, emb, {"query": "temperatura preferita"},
+                                       owner="userA")
     assert "21" in str(res_a)
 
-    res_b = await disp.dispatch("recall_memory", {"query": "temperatura preferita"},
-                                chatbot_id="agentA", user_id="userB")
+    res_b = await handle_recall_memory(store, emb, {"query": "temperatura preferita"},
+                                       owner="userB")
     assert "21" not in str(res_b)
 
     # A home-owned chatbot-scoped item (e.g. saved with no user_id) is
     # shared across both users of this same agent.
-    await disp.dispatch("save_memory", {"content": "nota condivisa casa 99"},
-                        chatbot_id="agentA")  # no user_id -> owner defaults to 'home'
-    res_a2 = await disp.dispatch("recall_memory", {"query": "nota condivisa"},
-                                 chatbot_id="agentA", user_id="userA")
-    res_b2 = await disp.dispatch("recall_memory", {"query": "nota condivisa"},
-                                 chatbot_id="agentA", user_id="userB")
+    await handle_save_memory(store, emb, {"content": "nota condivisa casa 99"},
+                             owner="home", chatbot_id="agentA")  # no user_id -> owner defaults to 'home'
+    res_a2 = await handle_recall_memory(store, emb, {"query": "nota condivisa"},
+                                        owner="userA")
+    res_b2 = await handle_recall_memory(store, emb, {"query": "nota condivisa"},
+                                        owner="userB")
     assert "99" in str(res_a2)
     assert "99" in str(res_b2)
     store.close()
@@ -111,10 +135,8 @@ async def test_recall_memory_two_users_same_agent_no_leak(tmp_path):
 async def test_save_memory_defaults_owner_to_home_without_user_id(tmp_path):
     """No user_id supplied -> owner falls back to 'home' (Slice 3 contract)."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-    saved = await disp.dispatch("save_memory", {"content": "ricordo senza utente"},
-                                chatbot_id="agentA")
+    saved = await handle_save_memory(store, _Emb(), {"content": "ricordo senza utente"},
+                                     owner="home", chatbot_id="agentA")
     assert saved.get("saved") is True
     item = store.get_item(saved["id"])
     assert item["owner"] == "home"
@@ -127,14 +149,11 @@ async def test_save_memory_defaults_owner_to_home_without_user_id(tmp_path):
 async def test_save_memory_non_riceve_piu_scadenza_automatica(tmp_path):
     """Task 6 (memoria non evapora): il calcolo automatico di `valid_until`
     da `retention_days` e' stato rimosso da `handle_save_memory` -- un
-    ricordo salvato ora non porta MAI una scadenza, a prescindere da cosa
-    venga passato al dispatcher (che non accetta piu' nemmeno il parametro:
-    vedi test_security.py/_make_dispatcher e ToolDispatcher.__init__)."""
+    ricordo salvato ora non porta MAI una scadenza. `handle_save_memory`
+    non accetta piu' nemmeno il parametro: vedi test_security.py."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-    saved = await disp.dispatch("save_memory", {"content": "non scade mai"},
-                                chatbot_id="agentA", user_id="paolo")
+    saved = await handle_save_memory(store, _Emb(), {"content": "non scade mai"},
+                                     owner="paolo", chatbot_id="agentA")
     item = store.get_item(saved["id"])
     assert item["valid_until"] is None
     store.close()
@@ -146,18 +165,17 @@ async def test_save_memory_leggibile_a_distanza_di_anni_senza_aspettare(tmp_path
     LETTURA (`KnowledgeStore._now`, usato da `_clausole_di_scope` per il
     confronto su `valid_until`), non aspettando davvero anni."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-    saved = await disp.dispatch("save_memory", {"content": "ricordo permanente"},
-                                chatbot_id="agentA", user_id="paolo")
+    emb = _Emb()
+    saved = await handle_save_memory(store, emb, {"content": "ricordo permanente"},
+                                     owner="paolo", chatbot_id="agentA")
 
     tra_cinque_anni = (datetime.now(timezone.utc) + timedelta(days=5 * 365)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     monkeypatch.setattr(store, "_now", lambda: tra_cinque_anni)
 
-    trovato = await disp.dispatch("recall_memory", {"query": "ricordo permanente"},
-                                  chatbot_id="agentA", user_id="paolo")
+    trovato = await handle_recall_memory(store, emb, {"query": "ricordo permanente"},
+                                         owner="paolo")
     contenuti = [r["content"] for r in trovato.get("results", [])]
     assert "ricordo permanente" in contenuti
     recenti = store.recent(owner="paolo", k=10)
@@ -172,31 +190,31 @@ async def test_recall_memory_kinds_egress_filter_still_excludes_other_kinds_when
     test_recall_memory_includes_agents_own_chatbot_memory_and_house_knowledge
     above. What must still hold is the REAL security property the old
     hardcoding accidentally provided: when an agent's config restricts the
-    kinds it may see (knowledge_access.kinds -> dispatcher's knowledge_kinds
-    param), that restriction is honored by the merged recall_memory exactly
-    as it always was by recall_knowledge."""
+    kinds it may see (knowledge_access.kinds), that restriction is honored
+    by the merged recall_memory exactly as it always was by recall_knowledge
+    -- `handle_recall_memory`'s own `kinds` parameter, unchanged by this
+    task."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
+    emb = _Emb()
 
     store.add_item(
         kind="expense", content="bolletta luce 123 euro", owner="paolo",
         chatbot_id=None, status="approved", embedding=[0.1, 0.2, 0.3],
     )
-    await disp.dispatch("save_memory", {"content": "l'utente preferisce il te verde"},
-                        chatbot_id="agentA", user_id="paolo")
+    await handle_save_memory(store, emb, {"content": "l'utente preferisce il te verde"},
+                             owner="paolo", chatbot_id="agentA")
 
     # No kinds restriction configured: both the memory and the expense are
     # visible -- the union is the whole point of one recall tool.
-    unrestricted = await disp.dispatch("recall_memory", {"query": "bolletta luce spesa"},
-                                       chatbot_id="agentA", user_id="paolo")
+    unrestricted = await handle_recall_memory(store, emb, {"query": "bolletta luce spesa"},
+                                              owner="paolo")
     assert "123" in str(unrestricted)
 
     # An agent configured with knowledge_access.kinds=['memory'] must NOT see
     # the expense via recall_memory.
-    restricted = await disp.dispatch(
-        "recall_memory", {"query": "bolletta luce spesa"},
-        chatbot_id="agentA", user_id="paolo", knowledge_kinds=["memory"],
+    restricted = await handle_recall_memory(
+        store, emb, {"query": "bolletta luce spesa"},
+        owner="paolo", kinds=["memory"],
     )
     assert "123" not in str(restricted)
     assert "bolletta" not in str(restricted)
@@ -209,17 +227,16 @@ async def test_recall_memory_includes_agents_own_chatbot_memory_and_house_knowle
     the merge this required recall_knowledge (the tool gone after Task 2);
     recall_memory forced kinds=['memory'] and could not see the fact."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-    await disp.dispatch("save_memory", {"content": "nota privata agente"},
-                        chatbot_id="agentA", user_id="paolo")
-    await disp.dispatch(
-        "save_memory",
+    emb = _Emb()
+    await handle_save_memory(store, emb, {"content": "nota privata agente"},
+                             owner="paolo", chatbot_id="agentA")
+    await handle_save_memory(
+        store, emb,
         {"kind": "fact", "content": "il modulo meteo esterno e' guasto"},
-        chatbot_id="agentA", user_id="paolo",
+        owner="paolo", chatbot_id="agentA",
     )
-    res = await disp.dispatch("recall_memory", {"query": "nota privata"},
-                              chatbot_id="agentA", user_id="paolo")
+    res = await handle_recall_memory(store, emb, {"query": "nota privata"},
+                                     owner="paolo")
     contents = [r["content"] for r in res.get("results", [])]
     assert "nota privata agente" in contents
     assert "il modulo meteo esterno e' guasto" in contents
@@ -230,97 +247,25 @@ async def test_recall_memory_kinds_filter_still_restricts_to_memory_when_asked(t
     """The old recall_memory hardcoded kinds=['memory'] to protect an agent's
     configured kinds egress filter (knowledge_access.kinds) from being
     bypassed. After the merge there is only one recall tool and the SAME
-    mechanism (the `kinds` param the dispatcher forwards from agent config)
-    still restricts results when a caller passes it explicitly -- it is no
-    longer automatic, but it still works."""
+    mechanism (`handle_recall_memory`'s `kinds` param) still restricts
+    results when a caller passes it explicitly -- it is no longer automatic,
+    but it still works."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-    await disp.dispatch("save_memory", {"content": "nota privata agente"},
-                        chatbot_id="agentA", user_id="paolo")
-    await disp.dispatch(
-        "save_memory",
+    emb = _Emb()
+    await handle_save_memory(store, emb, {"content": "nota privata agente"},
+                             owner="paolo", chatbot_id="agentA")
+    await handle_save_memory(
+        store, emb,
         {"kind": "fact", "content": "il modulo meteo esterno e' guasto"},
-        chatbot_id="agentA", user_id="paolo",
+        owner="paolo", chatbot_id="agentA",
     )
-    res = await disp.dispatch(
-        "recall_memory", {"query": "nota privata"},
-        chatbot_id="agentA", user_id="paolo", knowledge_kinds=["memory"],
+    res = await handle_recall_memory(
+        store, emb, {"query": "nota privata"},
+        owner="paolo", kinds=["memory"],
     )
     contents = [r["content"] for r in res.get("results", [])]
     assert "nota privata agente" in contents
     assert "il modulo meteo esterno e' guasto" not in contents
-    store.close()
-
-
-async def test_recall_memory_own_memory_still_recallable_when_kinds_restricted_to_fact(tmp_path):
-    """Review Important (fix 1): `knowledge_kinds` here is `['fact']` --
-    a value a REAL caller can produce, unlike the pre-existing test above
-    that used `['memory']` (chatbot-editor.js / KNOWLEDGE_KINDS never emit
-    'memory': the UI serializes "all" or a subset of the five *knowledge*
-    kinds only, see hiris/app/static/config/chatbot-editor.js and
-    templates.js KNOWLEDGE_KINDS). Before the fix, a Chatbot configured with
-    kinds=['fact'] could save_memory (kind omitted -> 'memory') and get
-    saved:true, but recall_memory with that same config forwarded
-    kinds=['fact'] unmodified -- the just-saved memory could never come
-    back. This is the exact silent-loss class the memoria-unica slice exists
-    to eliminate."""
-    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-
-    saved = await disp.dispatch(
-        "save_memory", {"content": "l'utente preferisce 21 gradi"},
-        chatbot_id="agentA", user_id="paolo", knowledge_kinds=["fact"],
-    )
-    assert saved.get("saved") is True
-
-    res = await disp.dispatch(
-        "recall_memory", {"query": "temperatura preferita"},
-        chatbot_id="agentA", user_id="paolo", knowledge_kinds=["fact"],
-    )
-    contents = [r["content"] for r in res.get("results", [])]
-    assert "l'utente preferisce 21 gradi" in contents, (
-        "un agente ristretto a kinds=['fact'] (valore reale della UI) deve "
-        "comunque poter richiamare la propria memoria di lavoro appena "
-        "salvata -- 'memory' non fa parte del vocabolario che "
-        "knowledge_access.kinds governa"
-    )
-    store.close()
-
-
-async def test_recall_memory_own_memory_still_recallable_when_kinds_empty_but_knowledge_stays_hidden(tmp_path):
-    """Review Important (fix 1), second real value: `knowledge_kinds=[]` is
-    the UI's "no access to the second brain at all" setting (chatbot-editor.js
-    comment: "kinds:[] e' una scelta valida e significa 'nessun accesso al
-    second brain'"). An agent configured this way must still see its own
-    save_memory -- 'memory' isn't second-brain knowledge -- but must NOT
-    gain visibility into house-wide facts as a side effect of the union."""
-    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-
-    await disp.dispatch(
-        "save_memory", {"kind": "fact", "content": "il modulo meteo esterno e' guasto"},
-        chatbot_id="agentA", user_id="paolo",
-    )
-    saved = await disp.dispatch(
-        "save_memory", {"content": "nota privata agente"},
-        chatbot_id="agentA", user_id="paolo", knowledge_kinds=[],
-    )
-    assert saved.get("saved") is True
-
-    res = await disp.dispatch(
-        "recall_memory", {"query": "nota privata modulo meteo"},
-        chatbot_id="agentA", user_id="paolo", knowledge_kinds=[],
-    )
-    contents = [r["content"] for r in res.get("results", [])]
-    assert "nota privata agente" in contents, (
-        "kinds=[] non deve bloccare la memoria propria dell'agente"
-    )
-    assert "il modulo meteo esterno e' guasto" not in contents, (
-        "kinds=[] deve comunque bloccare l'accesso alla conoscenza condivisa"
-    )
     store.close()
 
 
@@ -331,23 +276,22 @@ async def test_save_memory_un_solo_strumento_salva_preferenza_e_scadenza_e_recal
     save_knowledge separato -- e la scadenza nasce gia' approvata, non in
     coda. Entrambe sono ritrovabili dallo STESSO recall_memory."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
+    emb = _Emb()
 
-    pref = await disp.dispatch(
-        "save_memory", {"content": "preferisco 21 gradi"},
-        chatbot_id="agentA", user_id="paolo",
+    pref = await handle_save_memory(
+        store, emb, {"content": "preferisco 21 gradi"},
+        owner="paolo", chatbot_id="agentA",
     )
     assert pref.get("saved") is True
     pref_item = store.get_item(pref["id"])
     assert pref_item["kind"] == "memory"
     assert pref_item["status"] == "approved"
 
-    scadenza = await disp.dispatch(
-        "save_memory",
+    scadenza = await handle_save_memory(
+        store, emb,
         {"kind": "obligation", "content": "TARI da pagare",
          "due_date": "2026-09-15", "amount": 120.50},
-        chatbot_id="agentA", user_id="paolo",
+        owner="paolo", chatbot_id="agentA",
     )
     assert scadenza.get("saved") is True
     scadenza_item = store.get_item(scadenza["id"])
@@ -356,9 +300,9 @@ async def test_save_memory_un_solo_strumento_salva_preferenza_e_scadenza_e_recal
     assert scadenza_item["amount"] == pytest.approx(120.50)
     assert scadenza_item["status"] == "approved"  # subito, niente coda
 
-    res = await disp.dispatch(
-        "recall_memory", {"query": "gradi tasse casa"},
-        chatbot_id="agentA", user_id="paolo",
+    res = await handle_recall_memory(
+        store, emb, {"query": "gradi tasse casa"},
+        owner="paolo",
     )
     contenuti = [r["content"] for r in res["results"]]
     assert "preferisco 21 gradi" in contenuti
@@ -368,21 +312,22 @@ async def test_save_memory_un_solo_strumento_salva_preferenza_e_scadenza_e_recal
 
 # ---------------------------------------------------------------------------
 # Fix 1 (CRITICAL, whole-branch review, final fix wave): save_memory's
-# `source` depends on WHO called dispatch(), not on what was saved.
-# `from_remote_gateway` is threaded ONLY by api/handlers_execute.py, based on
-# a process secret (_is_local_chat) the request body cannot forge -- every
-# other caller (this test's direct dispatch(), claude_runner.py,
-# openai_compat_runner.py) leaves it at its default False and keeps writing
-# source="chat", unchanged from before this fix.
+# `source` depends on WHO called it, not on what was saved.
+# `from_remote_gateway` used to be threaded ONLY by api/handlers_execute.py
+# (gone, fetta E2 Task 4), based on a process secret (_is_local_chat) the
+# request body could not forge, and translated by the dispatcher into
+# `source="gateway"` -- every other caller (this test's direct call,
+# claude_runner.py, openai_compat_runner.py) left it at its default and kept
+# writing source="chat". `handle_save_memory` still takes `source` directly;
+# only the translation step (the now-gone dispatcher's `if from_remote_
+# gateway else`) is no longer there to test.
 # ---------------------------------------------------------------------------
 
 async def test_save_memory_default_source_is_chat(tmp_path):
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-    saved = await disp.dispatch(
-        "save_memory", {"content": "detto in chat locale"},
-        chatbot_id="agentA", user_id="paolo",
+    saved = await handle_save_memory(
+        store, _Emb(), {"content": "detto in chat locale"},
+        owner="paolo", chatbot_id="agentA",
     )
     item = store.get_item(saved["id"])
     assert item["source"] == "chat"
@@ -392,17 +337,16 @@ async def test_save_memory_default_source_is_chat(tmp_path):
 async def test_save_memory_from_remote_gateway_writes_gateway_source(tmp_path):
     """The defect this fix closes: before it, EVERY save_memory call (gateway
     included) wrote source='chat', which IS in DECLARED_SOURCES -- a single
-    tool call from a remote MCP session (reachable via api/handlers_execute.py,
-    /api/execute) produced a row auto-injected into every future prompt as
-    something 'a person of the house declared'. source='gateway' is not in
-    DECLARED_SOURCES (test_knowledge_store_declared.py pins the exclusion),
-    so the row stays recallable but is never auto-injected as a declaration."""
+    tool call from a remote MCP session produced a row auto-injected into
+    every future prompt as something 'a person of the house declared'.
+    source='gateway' is not in DECLARED_SOURCES (test_knowledge_store_declared.py
+    pins the exclusion), so the row stays recallable but is never
+    auto-injected as a declaration."""
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-    saved = await disp.dispatch(
-        "save_memory", {"content": "salvato dal gateway MCP remoto"},
-        chatbot_id="mcp-gateway", user_id="home", from_remote_gateway=True,
+    emb = _Emb()
+    saved = await handle_save_memory(
+        store, emb, {"content": "salvato dal gateway MCP remoto"},
+        owner="home", chatbot_id="mcp-gateway", source="gateway",
     )
     assert saved.get("saved") is True
     item = store.get_item(saved["id"])
@@ -410,45 +354,12 @@ async def test_save_memory_from_remote_gateway_writes_gateway_source(tmp_path):
 
     # Still recallable -- Fix 1 narrows WHERE it surfaces, not whether it can
     # be found at all.
-    recalled = await disp.dispatch(
-        "recall_memory", {"query": "salvato dal gateway"},
-        chatbot_id="mcp-gateway", user_id="home",
-    )
+    recalled = await handle_recall_memory(store, emb, {"query": "salvato dal gateway"},
+                                          owner="home")
     assert "salvato dal gateway MCP remoto" in str(recalled)
 
     # Never in the declared() read path, regardless of caller.
     declared_items, _total = store.declared(owner="home")
     assert not any("salvato dal gateway MCP remoto" in (d.get("content") or "")
                    for d in declared_items)
-    store.close()
-
-
-# ---------------------------------------------------------------------------
-# Fix 6 (Minor, whole-branch review, final fix wave): `knowledge_kinds` given
-# as a plain string (a form KnowledgeStore itself normalises, e.g. a
-# hand-edited knowledge_access.kinds: "fact") must still gain the 'memory'
-# union recall_memory needs to see the caller's own working memory --
-# dispatcher.py used to test only `isinstance(recall_kinds, list)`.
-# ---------------------------------------------------------------------------
-
-async def test_recall_memory_kinds_as_plain_string_still_unions_memory(tmp_path):
-    store = KnowledgeStore(str(tmp_path / "knowledge.db"))
-    disp = ToolDispatcher(ha_client=_FakeHA(), notify_config={},
-                          knowledge_store=store, embedder=_Emb())
-
-    saved = await disp.dispatch(
-        "save_memory", {"content": "memoria propria dell'agente"},
-        chatbot_id="agentA", user_id="paolo", knowledge_kinds="fact",
-    )
-    assert saved.get("saved") is True
-
-    res = await disp.dispatch(
-        "recall_memory", {"query": "memoria propria"},
-        chatbot_id="agentA", user_id="paolo", knowledge_kinds="fact",
-    )
-    contents = [r["content"] for r in res.get("results", [])]
-    assert "memoria propria dell'agente" in contents, (
-        "kinds='fact' (stringa nuda) deve comunque unire 'memory', esattamente "
-        "come kinds=['fact']"
-    )
     store.close()

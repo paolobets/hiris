@@ -50,7 +50,6 @@ from .tools.dashboard_tools import (
     GET_DASHBOARD_CONFIG_TOOL_DEF,
     PROPOSE_DASHBOARD_TOOL_DEF,
 )
-from .tools.dispatcher import ToolDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -349,11 +348,13 @@ RESTRICT_PROMPT = (
 # solo (com'era: il solo call_ha_service) significa promettere all'utente una
 # rete che copre un quinto della superficie.
 #
-# Quattro di questi passano anche dal semaforo (tools/dispatcher.py::_gate),
-# che e' un controllo nel codice e vale sempre, indipendentemente da questa
-# opzione. create_ha_config no: scrive script e scene su Home Assistant
-# immediatamente (dispatcher -> apply_ha_config), quindi qui la conferma
-# dell'utente e' l'unico passaggio prima dell'effetto.
+# Quattro di questi passavano anche dal semaforo universale (era
+# tools/dispatcher.py::_gate, uscito con lui -- fetta E2 Task 7: senza
+# dispatcher questi tool non sono piu' raggiungibili dal runner, quindi
+# quel controllo non vale piu' nulla in pratica). create_ha_config no:
+# scriveva script e scene su Home Assistant immediatamente (dispatcher ->
+# apply_ha_config), quindi qui la conferma dell'utente restava l'unico
+# passaggio prima dell'effetto.
 #
 # ATTENZIONE, e' il punto che va detto per intero: questo elenco vive in
 # un'ISTRUZIONE nel system prompt, non in un controllo. Un modello che la ignora
@@ -512,11 +513,20 @@ class ClaudeRunner:
     def __init__(
         self,
         api_key: str,
-        dispatcher: ToolDispatcher,
+        dispatcher: Any = None,
         usage_path: str = "",
         default_model: str = "",
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        # fetta E2 Task 7: nessun chiamante costruisce piu' un ToolDispatcher
+        # (uscito -- 818 righe, 16 dipendenze, un semaforo spento). Questo e'
+        # il dispatcher "di scorta" usato SOLO da chat()/run_with_actions()
+        # quando il chiamante non passa il suo (il parametro dispatcher/
+        # strumenti per-chiamata, che invece resta: la chat ci passa
+        # DispatcherConoscenza). Resta None per costruzione: gli strumenti
+        # che lo richiedono (EVALUATION_ONLY_TOOLS, unico catalogo rimasto
+        # della Sentinella) degradano a "non disponibile" invece di
+        # attuare -- vedi has_memory/il ramo `dispatcher is None` sotto.
         self._dispatcher = dispatcher
         self._usage_path = usage_path
         self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto"
@@ -541,7 +551,11 @@ class ClaudeRunner:
         self._load_usage()
 
     def set_task_engine(self, engine: Any) -> None:
-        self._dispatcher.set_task_engine(engine)
+        # fetta E2 Task 7: nessun chiamante di produzione lo invoca piu' (il
+        # cablaggio era in server.py, uscito con ToolDispatcher) -- resta per
+        # chi costruisce il runner senza dispatcher e lo chiama comunque.
+        if self._dispatcher is not None:
+            self._dispatcher.set_task_engine(engine)
 
     def _load_usage(self) -> None:
         if not self._usage_path or not os.path.exists(self._usage_path):
@@ -735,7 +749,10 @@ class ClaudeRunner:
                 tools = [t for t in tools if t["name"] != "render_template"]
             if allowed_endpoints is None:
                 tools = [t for t in tools if t["name"] != "http_request"]
-            if not self._dispatcher.has_memory:
+            # Senza dispatcher (fetta E2 Task 7: nessuno ne costruisce piu' uno
+            # di produzione) non c'e' memoria da interrogare -- stessa
+            # degradazione di un dispatcher che dichiara has_memory=False.
+            if self._dispatcher is None or not self._dispatcher.has_memory:
                 tools = [t for t in tools if t["name"] not in ("recall_memory", "save_memory")]
         # Cache tool definitions — stable per agent config, reused across turns
         if tools:
@@ -820,10 +837,10 @@ class ClaudeRunner:
                         if dispatcher is not None:
                             # DispatcherConoscenza (e affini) espone la stessa
                             # interfaccia minima -- dispatch(nome, argomenti) --
-                            # non le 16 dipendenze di ToolDispatcher: si chiama
-                            # posizionale, senza le kwargs pensate per l'altro.
+                            # non le kwargs pensate per il dispatcher di scorta
+                            # sotto: si chiama posizionale.
                             result = await dispatcher.dispatch(block.name, block.input)
-                        else:
+                        elif self._dispatcher is not None:
                             result = await self._dispatcher.dispatch(
                                 block.name, block.input,
                                 allowed_entities=allowed_entities,
@@ -837,6 +854,13 @@ class ClaudeRunner:
                                 user_id=user_id,
                                 pseudonym_map=self.last_pseudonym_map,
                             )
+                        else:
+                            # fetta E2 Task 7: ne' un dispatcher per-chiamata
+                            # ne' un ToolDispatcher di scorta -- lo strumento
+                            # non e' eseguibile. Mai sollevare qui: un
+                            # dizionario leggibile dal modello, come ogni
+                            # altro dispatch() di questo ramo.
+                            result = {"error": f"Strumento '{block.name}' non disponibile."}
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({
                             "type": "tool_result",

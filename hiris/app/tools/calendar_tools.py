@@ -144,10 +144,12 @@ _INPUT_HELPER_DOMAINS = frozenset({"input_boolean", "input_number", "input_text"
 def resolve_input_helper_service(domain: str, value) -> tuple[str, dict] | dict:
     """Resolve the HA service + extra call data for a set_input_helper call.
 
-    Single source of truth for the domain -> service mapping, shared with the
-    dispatcher (which needs the resolved service *before* actuating, to gate
-    it through the semaforo with the correct domain.service — see
-    ToolDispatcher._gate).
+    Single source of truth for the domain -> service mapping. Historically
+    shared with tools/dispatcher.py's `_gate` (needed the resolved service
+    *before* actuating, to gate it through the semaforo with the correct
+    domain.service) — that dispatcher is gone (fetta E2 Task 7); this
+    function has no caller of its own left either, see tools/dispatcher.py's
+    removal.
 
     Returns:
         ``(service, extra_data)`` on success, where ``extra_data`` holds the

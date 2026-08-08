@@ -412,8 +412,9 @@ def _validate_str_list(raw, key):
 
     The two possible "empty" outcomes are OPPOSITE and must never be
     collapsed into each other -- this is the single semantics the whole
-    chain (`tools/dispatcher.py` -> Task -> `task_engine._run_action`)
-    agrees on:
+    chain agrees on. The chain used to be `tools/dispatcher.py` -> Task ->
+    `task_engine._run_action`; the dispatcher hop is gone (fetta E2 Task 7),
+    an emitted Task still lands on `task_engine._run_action` the same way:
 
       * Absent (missing key, or explicit `null`) -> `None` = NO RESTRICTION
         on this axis. The Agentbot is still confined by the semaforo
@@ -450,18 +451,24 @@ def _validate_perimeter(raw) -> dict | None:
     deadline.
 
     ONE list governs BOTH SIGHT AND TOUCH (Fase 2, deliberate). Along the
-    whole chain the SAME `allowed_entities` list is used to filter what the
+    whole chain the SAME `allowed_entities` list used to filter what the
     agent may READ (`tools/dispatcher.py`: `get_entity_states`,
     `get_history`, `get_home_status`, `get_entities_on`,
     `get_entities_by_domain`, `get_area_entities`) and to gate what it may
     ACT ON (`call_ha_service`, `set_input_helper`, `trigger_automation`,
     `toggle_automation`, and the Tasks it emits, enforced at execution time
-    by `task_engine._run_action`). There is no separate "readable" axis: an
-    entity that is not listed is not merely un-actuatable, it is NOT EVEN
-    VISIBLE to the agent's reasoning. So an Agentbot with
-    `allowed_entities: ["light.cucina"]` cannot read `sensor.consumo_cucina`
-    -- if the agent needs to SEE something to decide, that something must be
-    listed too. `allowed_services` is action-only (there is nothing to read
+    by `task_engine._run_action`). fetta E2 Task 7: that dispatcher is gone,
+    so an objective Agentbot's reasoning no longer reads/acts through it
+    either -- the READ half of this docstring is now a historical
+    description, not a live behaviour; the ACT half (Tasks emitted and
+    checked by `task_engine._run_action`) is unaffected, since Tasks never
+    went through the dispatcher to be enforced. There is no separate
+    "readable" axis: an entity that is not listed is not merely
+    un-actuatable, it is NOT EVEN VISIBLE to the agent's reasoning -- while
+    that reasoning could still reach the dispatcher. So an Agentbot with
+    `allowed_entities: ["light.cucina"]` could not read `sensor.consumo_cucina`
+    -- if the agent needed to SEE something to decide, that something had to
+    be listed too. `allowed_services` is action-only (there is nothing to read
     through a service).
 
     The empty-vs-absent distinction is the same everywhere in the chain (see

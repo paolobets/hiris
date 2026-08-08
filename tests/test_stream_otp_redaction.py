@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from hiris.app.claude_runner import ClaudeRunner, _redact_stream_tool_calls
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.tools.dispatcher import ToolDispatcher
 
 
 # ---------------------------------------------------------------------------
@@ -67,14 +66,13 @@ def test_redact_stream_tool_calls_does_not_mutate_input_dict():
 
 @pytest.mark.asyncio
 async def test_claude_runner_chat_stream_redacts_otp_in_done_event():
-    async def confirm_executor(*, code, user):
-        return {"ok": True, "result": {}}
-
-    ha = AsyncMock()
-    dispatcher = ToolDispatcher(ha, {}, confirm_executor=confirm_executor)
-
+    # La redazione si applica a `last_tool_calls` DOPO il dispatch, a
+    # prescindere dal suo esito (claude_runner.py: l'append avviene sempre,
+    # anche quando il dispatch fallisce/non e' disponibile) -- nessun
+    # dispatcher reale serve a provare questo: fetta E2 Task 7, il vecchio
+    # ToolDispatcher usato qui e' uscito senza toccare questo soggetto.
     with patch("anthropic.AsyncAnthropic"):
-        runner = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
+        runner = ClaudeRunner(api_key="test-key")
 
     tool_use_block = MagicMock()
     tool_use_block.type = "tool_use"
@@ -158,16 +156,11 @@ def _tool_call_delta(index, call_id, name, arguments):
 
 @pytest.mark.asyncio
 async def test_openai_compat_runner_chat_stream_redacts_otp_in_done_event(tmp_path):
-    async def confirm_executor(*, code, user):
-        return {"ok": True, "result": {}}
-
-    ha = AsyncMock()
-    dispatcher = ToolDispatcher(ha, {}, confirm_executor=confirm_executor)
-
+    # Stesso ragionamento del test gemello sopra: la redazione non dipende
+    # da un dispatch riuscito.
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        dispatcher=dispatcher,
         usage_path=str(tmp_path / "usage.json"),
     )
 

@@ -14,11 +14,19 @@ posto:
 
 Nella stessa sessione, con la stessa cache, tre strumenti dicevano «non ancora
 pronto» e i fratelli «non c'e' niente».
+
+fetta E2 Task 7: un quarto fratello viveva qui -- `get_entity_states` letto
+attraverso `ToolDispatcher.dispatch`, per provare che il wrapper non perdesse
+la garanzia del tool sottostante. `ToolDispatcher` e' uscito e con lui quel
+wrapper; la garanzia che contava (`get_entity_states` dichiara il guasto
+invece di rispondere elenco vuoto) resta provata direttamente qui sotto da
+`test_get_entity_states_con_cache_mai_caricata_non_dice_che_lentita_non_ce`,
+quindi il test del wrapper e' stato cancellato, non spostato: non
+proteggeva piu' nulla che l'altro non provasse gia'.
 """
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock
 
 import pytest
 from aiohttp import web
@@ -26,7 +34,6 @@ from aiohttp import web
 from hiris.app.api.handlers_entities import handle_list_entities
 from hiris.app.brain.briefing import build_briefing_bundle, render_briefing_template
 from hiris.app.proxy.entity_cache import EntityCache
-from hiris.app.tools.dispatcher import ToolDispatcher
 from hiris.app.tools.ha_tools import get_entity_states
 
 
@@ -58,17 +65,6 @@ async def test_get_entity_states_con_cache_mai_caricata_non_dice_che_lentita_non
         "elenco vuoto = «quell'entita' non esiste»: qui non si e' potuto guardare"
     )
     assert "pront" in res["error"].lower()
-
-
-@pytest.mark.asyncio
-async def test_get_entity_states_dal_dispatcher_dichiara_lo_stesso_guasto():
-    """Il fratello deve dire la stessa cosa dei tre strumenti gia' corretti."""
-    disp = ToolDispatcher(ha_client=MagicMock(), notify_config={},
-                          entity_cache=EntityCache())
-
-    res = await disp.dispatch("get_entity_states", {"ids": ["light.cucina"]})
-
-    assert isinstance(res, dict) and "pront" in res.get("error", "").lower()
 
 
 @pytest.mark.asyncio

@@ -191,12 +191,13 @@ async def handle_save_memory(
     Se un embedder c'e' e funziona, il vettore si calcola e si salva; se non
     c'e', non risponde, o solleva, si salva comunque senza vettore.
 
-    `source` (Fix 1, whole-branch review, final fix wave): il dispatcher lo sceglie in
-    base a CHI ha chiamato, non a cosa e' stato salvato -- "chat" per ogni
+    `source` (Fix 1, whole-branch review, final fix wave): il dispatcher lo sceglieva in
+    base a CHI aveva chiamato, non a cosa era stato salvato -- "chat" per ogni
     chiamante locale (chat in-addon, chat-via-abbonamento via MCP interno),
     "gateway" per una richiesta arrivata dal gateway MCP remoto
     (`ToolDispatcher.dispatch(from_remote_gateway=True)`, thread da
-    `api/handlers_execute.py`). Il default resta "chat" per chi chiama questa
+    `api/handlers_execute.py` -- entrambi gia' usciti: l'MCP remoto in fetta
+    E2 Task 4, il dispatcher in Task 7). Il default resta "chat" per chi chiama questa
     funzione direttamente (nessun chiamante di produzione lo fa: passa sempre
     da dispatch()). Solo "chat" e' in `DECLARED_SOURCES`
     (brain/knowledge_store.py): una riga scritta dal gateway resta

@@ -199,19 +199,18 @@ def test_il_cap_mostra_prima_le_severita_alte():
     assert res["truncated"]["total"] == len(righe)
 
 
-def test_dispatcher_instrada_il_tool_allo_store_iniettato(store):
-    # Il valore del task e' il cablaggio: il tool esiste solo se il dispatcher
-    # lo raggiunge con lo store giusto.
-    import asyncio
-
-    from hiris.app.tools.dispatcher import ToolDispatcher
-
-    d = ToolDispatcher(ha_client=None, notify_config={}, advisory_store=store)
-    res = asyncio.run(d.dispatch("get_advisories", {"severity": "high"}))
-    assert res["count"] == 1
-    # severity vuota = nessun filtro, non un valore fuori enum.
-    res = asyncio.run(d.dispatch("get_advisories", {"severity": ""}))
-    assert res["count"] == 3
+# fetta E2 Task 7 ("esce il dispatcher"): `test_dispatcher_instrada_il_tool_
+# allo_store_iniettato` viveva qui, provando due cose insieme: (1) che
+# `ToolDispatcher` girasse `get_advisories` allo store iniettato
+# correttamente, e (2) che il dispatcher normalizzasse `severity=""` a
+# `None` PRIMA di chiamare `get_advisories` (`inputs.get("severity") or
+# None`, dentro il ramo -- `get_advisories` stessa tratta `""` come un
+# valore fuori enum e risponde errore, vedi sotto in questo file). Entrambe
+# vivevano SOLO nel dispatcher, ora uscito, e non hanno successore: nessun
+# altro chiamante instrada piu' `get_advisories` a runtime, ne' normalizza
+# piu' una severity vuota. Il comportamento della funzione stessa (incluso
+# `severity=None` = nessun filtro) resta provato direttamente qui sotto e
+# nel resto del file, senza passare da nessun dispatcher.
 
 
 def test_il_totale_dichiarato_rispetta_il_filtro_severita():
