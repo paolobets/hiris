@@ -33,7 +33,7 @@ from typing import Awaitable, Callable, Optional
 # nemmeno confezionabile. Importate e non riscritte — erano gia' la terza e la
 # quarta copia della stessa espressione nel repo.
 from ..proxy.ha_client import _ENTITY_ID_RE, _IDENTIFIER_RE
-from ..tools.config_tools import build_config_proposal, normalize_config_inputs
+from ..proxy.proposta_config import build_config_proposal, normalize_config_inputs
 from .off_task import build_off_task
 
 logger = logging.getLogger(__name__)

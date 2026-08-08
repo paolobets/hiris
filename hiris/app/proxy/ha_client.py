@@ -273,7 +273,7 @@ class HAClient:
         # un'intenzione precisa: se quel bersaglio non esiste, indovinarne un
         # altro dal `friendly_name` e sovrascriverlo sarebbe un danno
         # irreversibile e silenzioso -- a differenza delle plance
-        # (config_tools.apply_ha_config, mode == "replace"), qui non esiste
+        # (proposta_config.apply_ha_config, mode == "replace"), qui non esiste
         # nessuno snapshot da cui tornare indietro. Il ripiego per alias
         # resta SOLO nel ramo "if not aid" qui sotto, dove non c'e' un
         # bersaglio dichiarato da tradire: e' il caso per cui era stato

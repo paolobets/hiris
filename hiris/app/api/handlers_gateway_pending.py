@@ -23,7 +23,7 @@ import time
 
 from aiohttp import web
 
-from ..tools.notify_tools import build_app_deeplink
+from ..notifiche import build_app_deeplink
 
 logger = logging.getLogger(__name__)
 

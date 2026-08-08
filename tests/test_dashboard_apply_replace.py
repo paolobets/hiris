@@ -1,5 +1,5 @@
 import pytest
-from hiris.app.tools.config_tools import apply_ha_config
+from hiris.app.proxy.proposta_config import apply_ha_config
 from hiris.app.proxy.dashboard_backups import latest_backup
 
 
@@ -106,9 +106,9 @@ async def test_replace_aborts_when_backup_write_fails(tmp_path, monkeypatch):
     """Se save_backup non riesce a scrivere lo snapshot, la sostituzione si
     ferma: non si sovrascrive mai senza aver prima messo al sicuro lo stato
     precedente."""
-    import hiris.app.tools.config_tools as config_tools
+    import hiris.app.proxy.proposta_config as proposta_config
 
-    monkeypatch.setattr(config_tools, "save_backup", lambda data_dir, url_path, config: False)
+    monkeypatch.setattr(proposta_config, "save_backup", lambda data_dir, url_path, config: False)
     ha = FakeHA(current={"views": [{"title": "VECCHIA"}]})
     out = await apply_ha_config(
         ha,

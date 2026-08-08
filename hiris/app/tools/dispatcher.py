@@ -20,7 +20,7 @@ from .ha_tools import (
 )
 from .energy_tools import get_energy_history
 from .weather_tools import get_weather_forecast
-from .notify_tools import send_notification
+from ..notifiche import send_notification
 from .automation_tools import get_ha_automations, get_automation_config, trigger_automation, toggle_automation
 from .task_tools import create_task_tool, list_tasks_tool, cancel_task_tool
 from .calendar_tools import (
@@ -37,7 +37,7 @@ from .diagnostics_tools import (
     render_template as _render_template,
 )
 from .proposal_tools import create_automation_proposal
-from .config_tools import normalize_config_inputs, apply_ha_config
+from ..proxy.proposta_config import normalize_config_inputs, apply_ha_config
 from .dashboard_tools import propose_dashboard
 from ..brain.briefing import build_briefing_bundle, render_briefing_template
 from ..security.semaphore import gate_action, normalize_target

@@ -11,7 +11,7 @@ from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .security.semaphore import gate_action, normalize_target
-from .tools.notify_tools import send_notification
+from .notifiche import send_notification
 
 logger = logging.getLogger(__name__)
 

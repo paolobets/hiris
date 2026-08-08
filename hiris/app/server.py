@@ -1991,7 +1991,7 @@ async def _on_startup(app: web.Application) -> None:
     from .watcher.off_task import build_off_task
     from .watcher.signals import WakeEvent
     from .watcher.sentinel_proposal import propose_sentinel_script
-    from .tools.notify_tools import send_notification
+    from .notifiche import send_notification
     from .tools.proposal_tools import create_automation_proposal
     import time as _time
     from datetime import datetime as _dt

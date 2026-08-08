@@ -112,7 +112,7 @@ def test_is_automation_config_predicate():
 # Chi propone (1) — la Sentinella propone uno script, non un'automazione
 # ---------------------------------------------------------------------------
 
-from hiris.app.tools.config_tools import apply_ha_config              # noqa: E402
+from hiris.app.proxy.proposta_config import apply_ha_config           # noqa: E402
 from hiris.app.watcher.sentinel_proposal import (                     # noqa: E402
     build_sentinel_script_proposal,
     propose_sentinel_script,

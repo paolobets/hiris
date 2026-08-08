@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock
-from hiris.app.tools.config_tools import (
+from hiris.app.proxy.proposta_config import (
     normalize_config_inputs, apply_ha_config, build_config_proposal, VALID_KINDS,
-    CREATE_HA_CONFIG_TOOL_DEF,
 )
+from hiris.app.tools.config_tools import CREATE_HA_CONFIG_TOOL_DEF
 
 
 def _script_inputs(**o):

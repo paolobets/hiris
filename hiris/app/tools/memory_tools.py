@@ -41,37 +41,9 @@ _ERRORE_KIND = (
 # stessa colonna, quindi nello stesso enum.
 _KINDS_VALIDI = ("memory", "fact", "preference", "obligation", "expense", "note")
 
-# Fix 4 (Important, whole-branch review, final fix wave): nomi dei due tool ritirati
-# dalla fusione di Task 2 (recall_knowledge/save_knowledge -> recall_memory/
-# save_memory). Un Chatbot creato PRIMA di questo branch puo' averli ancora
-# nel proprio `allowed_tools` persistito (erano due checkbox separate); lo
-# stesso vale per la CSV EXECUTE_API_TOOLS delle opzioni dell'add-on. Il
-# filtro per nome esatto (claude_runner.py:713, `t["name"] in allowed_tools`)
-# non li riconosce piu': un nome non mappato fa perdere in silenzio
-# lettura/scrittura del second brain a un bot il cui system prompt di base
-# ora ordina di chiamare save_memory subito -- il modello non puo' obbedire
-# e viene spinto proprio nel "preso nota" che quell'ordine vieta.
-LEGACY_TOOL_ALIASES = {
-    "recall_knowledge": "recall_memory",
-    "save_knowledge": "save_memory",
-}
-
-
-def normalize_tool_names(names: list[str]) -> list[str]:
-    """Applica LEGACY_TOOL_ALIASES e de-duplica, preservando l'ordine di
-    prima comparsa. Idempotente: rieseguirla sul proprio output non cambia
-    nulla. Va chiamata in OGNI punto che legge un elenco di nomi di tool
-    persistito/configurato da prima della fusione -- oggi
-    `chatbot_engine.py` (Chatbot.allowed_tools, al caricamento) e
-    `handlers_execute.py` (parse_execute_policy, la CSV EXECUTE_API_TOOLS)."""
-    out: list[str] = []
-    seen: set[str] = set()
-    for n in names:
-        mapped = LEGACY_TOOL_ALIASES.get(n, n)
-        if mapped not in seen:
-            seen.add(mapped)
-            out.append(mapped)
-    return out
+# `LEGACY_TOOL_ALIASES` e `normalize_tool_names` sono state spostate in
+# chatbot_engine.py: non sono uno strumento, sono una normalizzazione di
+# alias legacy dei nomi di tool, usata anche da api/handlers_execute.py.
 
 RECALL_MEMORY_TOOL_DEF = {
     "name": "recall_memory",

@@ -7,7 +7,7 @@ channel (create + dismiss), title support, and validation.
 """
 import pytest
 
-from hiris.app.tools.notify_tools import send_notification
+from hiris.app.notifiche import send_notification
 
 
 class _FakeHA:

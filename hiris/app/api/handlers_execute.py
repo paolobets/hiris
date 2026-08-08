@@ -27,7 +27,7 @@ from .read_denylist import (
     prune_read_result,
 )
 from ..security.semaphore import normalize_target
-from ..tools.memory_tools import normalize_tool_names
+from ..chatbot_engine import normalize_tool_names
 _HARD_EXECUTE_ALLOWED = frozenset(_RT) | frozenset(_PT) | {"call_ha_service", "create_task", "send_notification"}
 
 # Tools always exposed regardless of the saved EXECUTE_API_TOOLS policy. Notifications
@@ -311,7 +311,7 @@ async def handle_execute(request: web.Request) -> web.Response:
     # create_ha_config from the gateway is NEVER executed directly. It is held as a
     # pending proposal the operator reviews+approves in HIRIS (spec: MCP = convalida).
     if tool == "create_ha_config":
-        from ..tools.config_tools import normalize_config_inputs, build_config_proposal
+        from ..proxy.proposta_config import normalize_config_inputs, build_config_proposal
         store = request.app.get("proposal_store")
         if store is None:
             return web.json_response({"error": "ProposalStore non disponibile"}, status=503)

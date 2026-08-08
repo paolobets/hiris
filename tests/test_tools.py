@@ -113,7 +113,7 @@ async def test_get_weather_forecast_returns_compact_hourly():
     assert h0["r"] == 0.0
 
 
-from hiris.app.tools.notify_tools import send_notification
+from hiris.app.notifiche import send_notification
 from hiris.app.tools.automation_tools import get_ha_automations, trigger_automation, toggle_automation
 
 
@@ -161,8 +161,8 @@ async def test_toggle_automation_enable(mock_ha):
 @pytest.mark.asyncio
 async def test_send_notification_telegram(mock_ha):
     config = {"apprise_urls": ["tgram://test_token/123456"]}
-    with patch("hiris.app.tools.notify_tools._APPRISE_AVAILABLE", True), \
-         patch("hiris.app.tools.notify_tools._apprise_lib") as mock_apprise_lib:
+    with patch("hiris.app.notifiche._APPRISE_AVAILABLE", True), \
+         patch("hiris.app.notifiche._apprise_lib") as mock_apprise_lib:
         mock_apobj = MagicMock()
         mock_apobj.async_notify = AsyncMock(return_value=True)
         mock_apprise_lib.Apprise.return_value = mock_apobj

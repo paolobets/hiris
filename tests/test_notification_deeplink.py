@@ -12,7 +12,7 @@ frontend; il campo Android `clickAction` resta il path relativo, che la
 Companion Android risolve nativamente."""
 import pytest
 
-from hiris.app.tools.notify_tools import (
+from hiris.app.notifiche import (
     build_app_deeplink, build_push_data, send_notification)
 from hiris.app.api import handlers_gateway_pending as gp
 

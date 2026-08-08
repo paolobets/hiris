@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from . import health_checks as hc
 from .advisory_store import SEVERITA_GRAVE
 from .health_checks import CHECK_IDS
-from ..tools.notify_tools import send_notification
+from ..notifiche import send_notification
 
 logger = logging.getLogger(__name__)
 

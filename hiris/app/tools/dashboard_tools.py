@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .config_tools import _URL_PATH_RE, _MAX_CONFIG_BYTES
+from ..proxy.proposta_config import _URL_PATH_RE, _MAX_CONFIG_BYTES
 
 logger = logging.getLogger(__name__)
 

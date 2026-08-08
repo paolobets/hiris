@@ -61,7 +61,7 @@ async def handle_apply_proposal(request: web.Request) -> web.Response:
         ha = request.app.get("ha_client")
         if ha is None:
             return web.json_response({"error": "HA client non disponibile"}, status=503)
-        from ..tools.config_tools import apply_ha_config
+        from ..proxy.proposta_config import apply_ha_config
         result = await apply_ha_config(
             ha, proposal.get("config") or {}, data_dir=request.app.get("data_dir")
         )
