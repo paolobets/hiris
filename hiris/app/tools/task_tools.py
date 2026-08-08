@@ -5,6 +5,12 @@ funzioni esecutrici) sono uscite -- orfane dal Task 7 (il `ToolDispatcher` che
 le chiamava e' uscito), nessun chiamante di produzione le invocava piu'. Le
 tre definizioni restano: sono nominate da `EVALUATION_ONLY_TOOLS`
 (claude_runner.py), l'unico catalogo rimasto in piedi -- lo usa la Sentinella.
+
+Review finale fetta E2, I-1: la descrizione di `create_task` sotto non nomina
+piu' l'azione `call_ha_service` fra i tipi di azione validi -- il Task Engine
+(`task_engine.py::_run_action`) non la esegue piu' per nessuna via (era
+l'unica attuazione automatica rimasta in HIRIS 2.0). Restano `send_notification`
+e `create_task` (per il chaining).
 """
 from __future__ import annotations
 
@@ -21,13 +27,10 @@ CREATE_TASK_TOOL_DEF = {
         "e.g. {type: time_window, from: '18:00', to: '20:00', check_interval_minutes: 5}). "
         "Condition (optional): {entity_id, operator (<|<=|>|>=|=|!=), value}. "
         "Action types: "
-        "call_ha_service ({type: call_ha_service, domain, service, data}) — requires an explicit "
-        "entity_id target and a green semaforo level; "
         "send_notification ({type: send_notification, channel: ha_persistent|ha_push|apprise, message, title?}) — "
         "use channel 'ha_persistent' for a Home Assistant dashboard notification, 'ha_push' for a phone push; "
-        "ALWAYS use send_notification for notifications, never call_ha_service on persistent_notification/notify; "
         "create_task ({type: create_task, task: {...}}) for chaining. "
-        "HA scripts: use call_ha_service with domain='script', service='<script_name>'."
+        "No action type acts on Home Assistant: HIRIS knows, it does not act."
     ),
     "input_schema": {
         "type": "object",

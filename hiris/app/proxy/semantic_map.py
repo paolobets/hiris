@@ -112,8 +112,10 @@ class SemanticMap:
             "confidence": confidence,
         }
 
-    def get_category(self, role: str) -> list[str]:
-        return list(self._categories.get(role, []))
+    # Review finale fetta E2, I-2: `get_category` e' uscita -- orfana dal
+    # Task 8 (il suo ultimo chiamante di produzione, `tools/energy_tools.py`,
+    # e' stato cancellato lui stesso). I test che la esercitavano leggono ora
+    # `_categories` direttamente (tests/test_semantic_map.py).
 
     # fetta E2 Task 8 ("escono i trentaquattro"): `get_entity_meta` e' uscita
     # -- orfana a cascata: il suo unico chiamante era `tools/ha_tools.

@@ -45,72 +45,48 @@ def _strip_js_comments(js: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# A5 — cio' che l'opzione "richiedi conferma" dice al modello
+# A5 (storico) — cio' che l'opzione "richiedi conferma" dice al modello
 # ---------------------------------------------------------------------------
-
-def test_prompt_conferma_nomina_ogni_strumento_coperto():
-    from hiris.app.claude_runner import (
-        CONFIRMATION_COVERED_TOOLS,
-        REQUIRE_CONFIRMATION_PROMPT,
-    )
-
-    for tool in CONFIRMATION_COVERED_TOOLS:
-        assert tool in REQUIRE_CONFIRMATION_PROMPT, (
-            f"{tool} e' dichiarato coperto ma non compare nel testo che il "
-            "modello riceve"
-        )
-
-
-def test_copertura_conferma_include_i_cinque_strumenti_che_attuano():
-    from hiris.app.claude_runner import CONFIRMATION_COVERED_TOOLS
-
-    assert set(CONFIRMATION_COVERED_TOOLS) == {
-        "call_ha_service",
-        "trigger_automation",
-        "toggle_automation",
-        "set_input_helper",
-        "create_ha_config",
-    }
+#
+# Review finale fetta E2, I-5: `CONFIRMATION_COVERED_TOOLS` e
+# `REQUIRE_CONFIRMATION_PROMPT` sono uscite da claude_runner.py, e con loro
+# l'iniezione nel system prompt (qui e nei due backend OpenAI-compat). I
+# cinque strumenti che nominavano (call_ha_service, trigger_automation,
+# toggle_automation, set_input_helper, create_ha_config) non esistono in
+# NESSUN catalogo raggiungibile da nessun runner -- la promessa "richiedo
+# conferma prima di attuare" non aveva piu' nulla da coprire. I quattro test
+# che pinnavano quella copertura (l'elenco dei cinque, il testo del prompt,
+# il fatto che l'editor li nominasse) sono usciti con il loro soggetto.
+# fetta E2 Task 7 aveva gia' tolto le due guardie sul gate reale di
+# `tools/dispatcher.py` (vedi git history) per lo stesso motivo: il soggetto
+# a cui il prompt doveva restare fedele e' sparito con lui, non solo la
+# lettura che lo scopriva.
+#
+# Sopravvive un pin sul nuovo stato: l'editor non deve promettere che
+# require_confirmation copre strumenti che non esistono piu' in nessun
+# catalogo -- deve dire la verita' (oggi non ha alcun effetto osservabile),
+# non ripetere una promessa vuota.
 
 
-# fetta E2 Task 7 ("esce il dispatcher"): due guardie anti-deriva vivevano
-# qui -- `test_ogni_tool_gated_dal_semaforo_e_anche_coperto_dalla_conferma`
-# e `test_create_ha_config_e_coperto_pur_non_avendo_semaforo` -- e leggevano
-# il SORGENTE di `tools/dispatcher.py` (`_tool_con_gate_semaforo()`, sopra)
-# per scoprire quali tool passassero per `self._gate(...)` a runtime, cosi'
-# da inchiodare che l'elenco `CONFIRMATION_COVERED_TOOLS` (system-prompt,
-# claude_runner.py) restasse in sincrono col controllo CHE C'ERA nel codice.
-# Quel file e' cancellato: non c'e' piu' nessun controllo di codice-livello
-# (un semaforo per-tool dentro il dispatch del runner) con cui restare in
-# sincrono -- il runner di produzione non ha piu' un dispatcher che gira
-# alcun _gate (self._dispatcher e' None per costruzione, vedi
-# claude_runner.py). Il soggetto della guardia (un gate reale a cui il
-# prompt doveva restare fedele) e' sparito con lui, non solo la lettura che
-# lo scopriva: nessun posto dove spostarla. Le altre guardie qui sotto
-# (il TESTO del prompt/dell'editor/dei documenti, indipendenti dal
-# dispatcher) restano intatte.
-
-
-def test_backend_openai_usa_lo_stesso_testo_di_conferma():
-    """Un secondo runner con un testo proprio farebbe divergere la copertura
-    a seconda del provider scelto."""
-    src = (BASE / "backends" / "openai_compat_runner.py").read_text(encoding="utf-8")
-    assert "REQUIRE_CONFIRMATION_PROMPT" in src
-    assert "Proposta:" not in src, "testo di conferma duplicato nel backend OpenAI"
-
-
-def test_editor_chatbot_dichiara_cosa_copre_la_conferma():
-    """La descrizione che l'utente legge deve nominare gli stessi strumenti
-    del prompt e dire che e' un'istruzione al modello, non un blocco."""
-    from hiris.app.claude_runner import CONFIRMATION_COVERED_TOOLS
-
+def test_editor_non_promette_copertura_di_strumenti_morti():
+    """Isola SOLO il blocco "Conferma" (require_confirmation): chatbot-editor.js
+    nomina ancora `call_ha_service` altrove (il gruppo di checkbox
+    `allowed_tools`, fuori scope qui -- esce con la E5 insieme al resto del
+    catalogo a 34 nomi), quindi la guardia non puo' leggere l'intero file."""
     js = _strip_js_comments(
         (BASE / "static" / "config" / "chatbot-editor.js").read_text(encoding="utf-8")
     )
-    for tool in CONFIRMATION_COVERED_TOOLS:
-        assert tool in js, f"l'editor non dice all'utente che {tool} e' coperto"
-    assert "istruzione al modello" in js, (
-        "l'editor non dichiara che la conferma e' un'istruzione, non un blocco tecnico"
+    start = js.index('<div class="fg-label">Conferma</div>')
+    end = js.index("</p></div>';", start)
+    blocco_conferma = js[start:end]
+    for tool in ("call_ha_service", "trigger_automation", "toggle_automation",
+                 "set_input_helper", "create_ha_config"):
+        assert tool not in blocco_conferma, (
+            f"il blocco Conferma nomina ancora {tool} come coperto da "
+            "require_confirmation, ma nessun catalogo raggiungibile lo offre piu'"
+        )
+    assert "f-require-confirmation" in blocco_conferma, (
+        "il campo require_confirmation e' sparito dall'editor"
     )
 
 

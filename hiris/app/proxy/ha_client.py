@@ -510,24 +510,10 @@ class HAClient:
             return {"error": "config dashboard vuota o in modalità YAML (non gestita da storage)"}
         return result
 
-    async def list_dashboards(self) -> list[dict] | dict:
-        """Elenca le dashboard Lovelace (storage mode) via WS, voci grezze.
-
-        Restituisce le voci cosi' come le manda Home Assistant (compresi
-        `id`, `icon`, `require_admin`, `show_in_sidebar`, oltre a `url_path`,
-        `title`, `mode`): il client riferisce cio' che HA dice, il
-        consumatore sceglie cosa tenere — lo stesso principio gia' applicato
-        a `get_config_entries`. NON include la plancia predefinita (ha
-        `url_path` nullo e non compare in questo elenco): per quella, e per
-        le configurazioni, vedi `leggi_plance()`.
-        Ritorna {"error": ...} se l'elenco non e' leggibile."""
-        got = await self._ws_command("lovelace/dashboards/list", {})
-        if not got or not got.get("success"):
-            return {"error": f"elenco dashboard non leggibile: {self._ws_error(got)}"}
-        result = got.get("result")
-        if not isinstance(result, list):
-            return {"error": "elenco dashboard vuoto o non valido"}
-        return [dict(d) for d in result if isinstance(d, dict)]
+    # Review finale fetta E2, I-2: `list_dashboards` e' uscito -- orfano dal
+    # Task 7 (il suo ultimo chiamante di produzione, `tools/dispatcher.py`,
+    # e' stato cancellato). `leggi_plance()` sotto usa lo stesso comando WS
+    # (`lovelace/dashboards/list`) per il percorso ancora vivo.
 
     async def leggi_plance(self) -> tuple[list[dict], list[str]]:
         """Le plance con la loro configurazione. Due connessioni, N comandi:

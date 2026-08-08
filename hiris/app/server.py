@@ -1211,23 +1211,24 @@ async def _on_startup(app: web.Application) -> None:
         "SUPERVISOR_INGRESS_CIDR", "172.30.32.0/23").split(",") if c.strip()]
     app["supervisor_ingress_cidrs"] = _cidrs or ["172.30.32.0/23"]
     # Il semaforo (tiers/entity_tiers) resta anche senza la superficie
-    # remota: lo leggono ancora watcher/executor.py e task_engine.py, e lo
-    # costruisce apply_saved_policy() poco sotto quando l'utente ha salvato
-    # una policy del gateway dalla UI. Va inizializzato QUI comunque perche'
-    # TaskEngine (piu' sotto in questa funzione) legge app["execute_policy"]
-    # con l'accesso diretto -- senza questa riga,
-    # un'installazione senza policy salvata (apply_saved_policy ritorna
-    # subito) troverebbe la chiave assente e il boot fallirebbe con
-    # KeyError. Un dict vuoto e' gia' il default sicuro: ogni consumatore
-    # legge `.get("tiers") or {}` e un tiers vuoto fa risultare "off"
-    # (fail-closed) in security.semaphore.effective_tier, mai fail-open.
+    # remota: lo legge ancora watcher/executor.py (propone/nega secondo il
+    # tier), e lo costruisce apply_saved_policy() poco sotto quando l'utente
+    # ha salvato una policy del gateway dalla UI. Va inizializzato QUI
+    # comunque perche' un'installazione senza policy salvata
+    # (apply_saved_policy ritorna subito) troverebbe la chiave assente e
+    # qualche lettore fallirebbe con KeyError. Un dict vuoto e' gia' il
+    # default sicuro: ogni consumatore legge `.get("tiers") or {}` e un
+    # tiers vuoto fa risultare "off" (fail-closed) in
+    # security.semaphore.effective_tier, mai fail-open.
     # NB (Fetta E2 Task 4): fino a qui, questa chiave veniva popolata da
     # parse_execute_policy in api/handlers_execute.py -- uscita con questo
     # task insieme a tutta la superficie /api/execute che leggeva
     # policy["tools"]/["allowed_entities"]/["allowed_services"]. Quei tre
-    # campi non hanno piu' alcun consumatore: solo "tiers"/"entity_tiers"
-    # restano letti (task_engine.py, watcher/*). Il dispatcher che li leggeva
-    # anche lui (tools/dispatcher.py) e' uscito -- fetta E2 Task 7.
+    # campi non hanno piu' alcun consumatore. Il dispatcher che li leggeva
+    # anche lui (tools/dispatcher.py) e' uscito -- fetta E2 Task 7. Review
+    # finale fetta E2, I-1: task_engine.py non legge piu' `execute_policy`
+    # per nessuna via -- solo "tiers"/"entity_tiers" restano letti, e solo
+    # da watcher/* (la Sentinella).
     app["execute_policy"] = {}
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
@@ -1270,7 +1271,9 @@ async def _on_startup(app: web.Application) -> None:
     # brain_model.
     from .api.handlers_models import load_models_config
     app["models_config"] = load_models_config(data_dir)
-    # If the user manages the gateway policy from the UI, it overrides the env CSV.
+    # Se l'utente ha configurato la policy gateway dalla UI, la deriva e la
+    # applica a `app["execute_policy"]` (le CSV d'ambiente sono uscite nel
+    # Task 4 -- non c'e' piu' nulla da sovrascrivere).
     from .api.handlers_gateway_policy import apply_saved_policy
     apply_saved_policy(app)
 
@@ -1408,17 +1411,17 @@ async def _on_startup(app: web.Application) -> None:
     app["theme"] = os.environ.get("THEME", "auto")
 
     tasks_data_path = os.environ.get("TASKS_DATA_PATH", "/data/tasks.json")
-    # request_stepup resta a None (fetta E2 Task 5: escono le conferme del
-    # gateway -- lo step-up per i Task autonomi si appoggiava alla STESSA
-    # mappa utente->canale (notify_users) che nessuna interfaccia scrive,
-    # quindi era morto per costruzione come il resto). TaskEngine degrada
-    # gia' allo skip loggato quando request_stepup e' None: nessuna regressione.
+    # Review finale fetta E2, I-1: TaskEngine non riceve piu' `execute_policy`
+    # ne' `request_stepup` -- l'unica azione che li usava (l'esecuzione di
+    # `call_ha_service`) e' uscita da `_run_action` (task_engine.py). Un
+    # tasks.json ereditato da un'installazione 1.x puo' ancora contenere
+    # quell'azione: al trigger fallisce ora come "Unknown action type",
+    # loggata, non piu' eseguita in silenzio.
     task_engine = TaskEngine(
         ha_client=ha_client,
         entity_cache=entity_cache,
         notify_config=notify_config,
         data_path=tasks_data_path,
-        execute_policy=app["execute_policy"],
     )
     await task_engine.start()
     app["task_engine"] = task_engine
@@ -1808,7 +1811,10 @@ async def _on_startup(app: web.Application) -> None:
         # (claude_runner.py:210-222), create_task included -- NOT zero tools. The
         # real invariant is that set excludes the tools that ACT (call_ha_service,
         # send_notification, trigger_automation, toggle_automation, http_request).
-        # The executor below is the only thing that acts, gated by the semaforo.
+        # The executor below does NOT act either since Task 6: `executor.execute()`
+        # treats "green" like "yellow" (propose, never auto-act) -- see the comment
+        # above `_act`'s removal, further down this function. Nothing downstream of
+        # this reasoning call calls `ha.call_service` for the green tier anymore.
         #
         # Agenti v1.1 Fase 2 Task 3: `agent_id` + `allowed_entities`/
         # `allowed_services` are the reasoning agent's IDENTITY and PERIMETER.
@@ -1830,8 +1836,11 @@ async def _on_startup(app: web.Application) -> None:
         # explicitly out of scope for this fetta, see
         # .superpowers/sdd/progress.md). Historically the two allow-lists
         # rode the SAME dispatcher parameters, ending up on the Task itself
-        # -- where `task_engine._run_action`'s check enforces them at
-        # execution time.
+        # -- where `task_engine._run_action`'s check used to enforce them at
+        # execution time for `call_ha_service`. Review finale fetta E2, I-1:
+        # that action type is gone from the engine entirely now, so even if
+        # a Task were emitted here, nothing left in `_run_action` reads
+        # these two allow-lists for enforcement.
         # Fase 2 Task 5: la risoluzione del runner e' passata nel
         # module-level `_reasoning_runner(app)` perche' ora la usa anche il
         # bound per esecuzione, che deve misurare i token PROPRIO
@@ -1921,13 +1930,22 @@ async def _on_startup(app: web.Application) -> None:
     # `_act` (chiamava `dispatcher.dispatch("call_ha_service"/"create_task")`
     # per il tier verde con opt-in) e' uscita qui: fetta E2 Task 6, "la
     # Sentinella smette di usare il dispatcher". Non e' stata sostituita con
-    # un'altra via d'attuazione -- il perimetro della 2.0 e' "conosce e non
-    # agisce", e questo e' il punto in cui l'unica attuazione automatica
-    # rimasta smette di esistere: `executor.execute()` ora tratta il tier
+    # un'altra via d'attuazione: `executor.execute()` ora tratta il tier
     # "green" esattamente come "yellow" (propone, non agisce piu' da solo).
     # Con lei sono usciti anche il parametro `allow_green_auto` (ovunque lo
     # passasse: qui sotto, `_run_decision`, `_run_agentbot`,
     # `_execute_decision`) e l'opzione add-on `sentinel_allow_green_auto`.
+    #
+    # Review finale, I-1: questo NON era ancora il punto in cui "l'unica
+    # attuazione automatica rimasta smette di esistere" -- `task_engine.py`
+    # (`_run_action`) chiamava ancora `ha.call_service` per i task legacy
+    # ricaricati da `/data/tasks.json` al boot (upgrade da un'installazione
+    # 1.x, l'unico percorso di deploy previsto). Il fix di quel residuo e'
+    # nel Task Engine stesso (vedi il commento in cima a `_run_action`,
+    # task_engine.py): dopo il fix, `call_ha_service` non e' piu' un'azione
+    # riconosciuta da NESSUN motore -- ne' dalla Sentinella (qui sopra),
+    # ne' dai Task differiti (task_engine.py). Questo E' il punto in cui
+    # l'unica attuazione automatica rimasta smette di esistere.
 
     async def _propose(decision, wake):
         # Consolidamento 1.2: cio' che la Sentinella propone e' UNA chiamata di

@@ -19,25 +19,9 @@ def _client(ws):
     return c
 
 
-@pytest.mark.asyncio
-async def test_list_dashboards_returns_raw_entries():
-    """Il client riferisce cio' che HA dice (compresi id/icon/require_admin/
-    show_in_sidebar), il consumatore sceglie cosa tenere — stesso principio
-    gia' applicato a get_config_entries. Prima potava a {url_path, title,
-    mode}: qui si verifica che NON lo faccia piu'."""
-    voce = {"id": "1", "url_path": "casa-mia", "title": "Casa Mia", "mode": "storage",
-            "icon": "mdi:home", "require_admin": False, "show_in_sidebar": True}
-    ws = FakeWS({"lovelace/dashboards/list": {"success": True, "result": [voce]}})
-    out = await _client(ws).list_dashboards()
-    assert out == [voce]
-    assert ws.calls[0][0] == "lovelace/dashboards/list"
-
-
-@pytest.mark.asyncio
-async def test_list_dashboards_error_is_returned_not_raised():
-    ws = FakeWS({"lovelace/dashboards/list": {"success": False, "error": {"message": "boom"}}})
-    out = await _client(ws).list_dashboards()
-    assert isinstance(out, dict) and "error" in out
+# Review finale fetta E2, I-2: `list_dashboards` e' uscito da ha_client.py
+# (orfano, nessun chiamante di produzione dal Task 7). I due test che lo
+# esercitavano sono usciti con lui.
 
 
 @pytest.mark.asyncio

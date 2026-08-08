@@ -1,5 +1,4 @@
 import asyncio
-import fnmatch
 import json
 import logging
 import os
@@ -10,7 +9,6 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .security.semaphore import gate_action, normalize_target
 from .notifiche import send_notification
 
 logger = logging.getLogger(__name__)
@@ -75,25 +73,11 @@ class TaskEngine:
         entity_cache: Any,
         notify_config: dict,
         data_path: str = "/data/tasks.json",
-        execute_policy: dict | None = None,
-        request_stepup: Any = None,
     ) -> None:
         self._ha = ha_client
         self._cache = entity_cache
         self._notify_config = notify_config
         self._data_path = data_path
-        self._execute_policy = execute_policy if execute_policy is not None else {}
-        # Fase 2.5 C2: callable opzionale per lo step-up di un'azione autonoma
-        # oltre il verde. None -> fail-closed allo skip (comportamento
-        # pre-fetta). task_engine NON importa lo store dei pending: la
-        # dipendenza viaggia solo per questo callable.
-        # Fetta E2 Task 5 ("escono le conferme del gateway"): server.py non
-        # inietta piu' alcuna chiusura qui -- si appoggiava alla stessa mappa
-        # utente->canale (notify_users) che nessuna interfaccia scrive, quindi
-        # era morta per costruzione come il resto del pending/OTP store
-        # (handlers_gateway_pending.py, rimosso). Il parametro resta: e'
-        # generico, testato, e degrada gia' correttamente a None.
-        self._request_stepup = request_stepup
         self._tasks: dict[str, Task] = {}
         # Guards mutation of self._tasks. _cleanup() is a SYNC APScheduler job
         # (runs on APScheduler's worker thread pool), while add_task()/_load()
@@ -439,76 +423,18 @@ class TaskEngine:
             self._save()
 
     async def _run_action(self, action: dict, task: Task) -> Any:
+        # fetta E2 I-1 (fix della review finale): `call_ha_service` e' uscito
+        # da qui -- era l'unica via per cui HIRIS 2.0 poteva ancora chiamare
+        # `ha.call_service`, in contraddizione con «un HIRIS che conosce ma
+        # non agisce». Nessun percorso vivo genera piu' un'azione di questo
+        # tipo (create_task_tool non ha chiamanti dal Task 8; add_task() non
+        # ha chiamanti esterni), ma un tasks.json ereditato da un'installazione
+        # 1.x poteva ancora contenerne una schedulata: prima del fix veniva
+        # eseguita al boot. Ora cade nel ramo "Unknown action type" sotto --
+        # fallisce in modo rumoroso (loggato, task marcato 'failed'), non
+        # silenzioso: la sua assenza deve essere evidente dal codice, non un
+        # ramo spento che sembra ancora acceso.
         a_type = action.get("type")
-        if a_type == "call_ha_service":
-            domain = action["domain"]
-            service = action["service"]
-            data = action.get("data", {})
-            target = action.get("target", {}) or {}
-            # review A/#5: merge target into data ONCE (same helper the live
-            # dispatch path uses) so the entity_ids gated below are exactly the
-            # entity_ids forwarded to ha.call_service at the bottom -- a deferred
-            # task scoped via `target` must never execute as a domain-wide
-            # broadcast because `target` got silently dropped.
-            normalized = normalize_target(data, target)
-            # Fix #2/#8: un target per area/dispositivo/label (in data O target)
-            # non è risolvibile ai tier per-entità → fail-closed (skip),
-            # INDIPENDENTEMENTE da entità esplicite accompagnatorie (HA attua
-            # l'intero gruppo lato server, bypassando gli override per-entità).
-            # Questo guard deve valere anche sul path task_engine, non solo su
-            # quello live del dispatcher.
-            if normalized.has_group_target:
-                logger.warning("Task %s: call_ha_service gated: area/device/label target present (%s.%s)",
-                               task.label, domain, service)
-                return f"skipped: group_target ({domain}.{service})"
-            # Fix-wave review finale (CRITICAL): il perimetro precede il gate
-            # cosi' OGNI verdetto (allow/confirm/deny) rispetta il perimetro --
-            # altrimenti un'azione fuori-perimetro a tier>verde verrebbe
-            # escalata a step-up invece di essere saltata come al verde.
-            if task.allowed_services is not None:
-                svc_key = f"{domain}.{service}"
-                if not any(fnmatch.fnmatch(svc_key, pat) for pat in task.allowed_services):
-                    logger.warning(
-                        "Task %s: service %s blocked by policy", task.label, svc_key
-                    )
-                    return f"skipped: {svc_key} not permitted by policy"
-            if task.allowed_entities is not None:
-                for e in normalized.entity_ids:
-                    if not any(fnmatch.fnmatch(e, pat) for pat in task.allowed_entities):
-                        logger.warning(
-                            "Task %s: entity %s blocked by policy", task.label, e
-                        )
-                        return f"skipped: entity {e!r} not permitted by policy"
-            _v = gate_action(
-                domain=domain, service=service, entity_ids=normalized.entity_ids,
-                tiers=self._execute_policy.get("tiers") or {},
-                entity_tiers=self._execute_policy.get("entity_tiers") or {},
-            )
-            if _v.decision == "confirm":
-                # Fase 2.5 C2: giallo/rosso non si salta piu' in silenzio -> si
-                # CHIEDE (tap/OTP all'owner). L'inputs congelato porta i
-                # normalized.data (entity_id gia' gated), mai il data grezzo.
-                # deny_dangerous/deny_off NON passano di qui: un dominio
-                # pericoloso o un tier off non e' confermabile (denylist
-                # assoluta) -> restano skip nel ramo sotto.
-                if self._request_stepup is not None:
-                    frozen = {"domain": domain, "service": service,
-                              "data": normalized.data}
-                    entry = await self._request_stepup(
-                        tool="call_ha_service", inputs=frozen, tier=_v.tier)
-                    if entry:
-                        logger.info("Task %s: call_ha_service in attesa di conferma (%s) %s.%s",
-                                    task.label, _v.tier, domain, service)
-                        return f"pending: confirmation ({domain}.{service})"
-                # fail-closed (callable assente o niente canale privato) -> skip
-                logger.warning("Task %s: call_ha_service gated (confirm, no step-up) %s.%s",
-                               task.label, domain, service)
-                return f"skipped: confirm ({domain}.{service})"
-            if _v.decision != "allow":
-                logger.warning("Task %s: call_ha_service gated (%s) %s.%s",
-                               task.label, _v.decision, domain, service)
-                return f"skipped: {_v.decision} ({domain}.{service})"
-            return await self._ha.call_service(domain, service, normalized.data)
         if a_type == "send_notification":
             return await send_notification(
                 self._ha, action.get("message", ""), action.get("channel", "ha_push"),

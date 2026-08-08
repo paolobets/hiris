@@ -569,7 +569,7 @@ def stampa(reperti: list[Reperto]) -> None:
     print("  - i nomi definiti in piu' punti si saltano: contare le occorrenze di un nome")
     print("    omonimo non direbbe niente. Quanti siano lo dice la riga di copertura;")
     print("  - i nomi che compaiono anche come stringa possono essere chiamati")
-    print("    dinamicamente (vedi tools/dispatcher.py): sono segnalati, non condannati;")
+    print("    dinamicamente: sono segnalati, non condannati;")
     print("  - le opzioni annidate hanno nomi generici (host, port) e il confronto e' prudente;")
     print("  - un nome di tabella composto a runtime (SELECT * FROM {tabella}) e'")
     print("    invisibile: le tabelle di quei file finiscono fra le inconcludibili;")

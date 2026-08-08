@@ -644,8 +644,7 @@ async def test_conversazione_4_accendi_la_luce_non_puo_e_lo_dice(aiohttp_client,
 
     # Nessuno strumento offerto scrive in Home Assistant -- non solo i
     # quattro nomi esatti, ma esplicitamente NESSUNO dei nomi che nel
-    # catalogo vecchio (claude_runner.ALL_TOOL_DEFS) attuano davvero
-    # (CONFIRMATION_COVERED_TOOLS, claude_runner.py).
+    # catalogo vecchio (claude_runner.ALL_TOOL_DEFS) attuavano davvero.
     nomi_offerti = {t["name"] for t in richieste[0]["tools"]}
     assert nomi_offerti == {"cerca", "guarda", "ricorda", "richiama"}
     strumenti_che_scrivono = {

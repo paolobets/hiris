@@ -246,9 +246,13 @@ async def test_rate_limit_exhausts_retries_raises(runner):
     assert call_count == MAX_RETRIES + 1
 
 
+# Review finale fetta E2, I-5: `CONFIRMATION_COVERED_TOOLS` e
+# `REQUIRE_CONFIRMATION_PROMPT` sono uscite da claude_runner.py -- i tre test
+# che pinnavano l'iniezione del prompt sono usciti con il loro soggetto.
+# Sopravvive un pin del nuovo comportamento: `require_confirmation` non
+# altera piu' il system prompt, ne' quando True ne' quando False.
 @pytest.mark.asyncio
-async def test_require_confirmation_injects_prompt(runner):
-    from hiris.app.claude_runner import REQUIRE_CONFIRMATION_PROMPT
+async def test_require_confirmation_no_longer_alters_system_prompt(runner):
     captured = []
 
     async def capture(**kwargs):
@@ -262,56 +266,8 @@ async def test_require_confirmation_injects_prompt(runner):
 
     runner._client.messages.create = capture
     await runner.chat("Ciao", system_prompt="Base", require_confirmation=True)
-    system_text = _sys_text(captured[0]["system"])
-    assert REQUIRE_CONFIRMATION_PROMPT in system_text
-    assert "Base" in system_text
-
-
-@pytest.mark.asyncio
-async def test_require_confirmation_false_does_not_inject(runner):
-    from hiris.app.claude_runner import REQUIRE_CONFIRMATION_PROMPT
-    captured = []
-
-    async def capture(**kwargs):
-        captured.append(kwargs)
-        m = MagicMock()
-        m.stop_reason = "end_turn"
-        m.content = [MagicMock(type="text", text="ok")]
-        m.usage.input_tokens = 5
-        m.usage.output_tokens = 2
-        return m
-
-    runner._client.messages.create = capture
     await runner.chat("Ciao", system_prompt="Base", require_confirmation=False)
-    system_used = captured[0]["system"]
-    assert REQUIRE_CONFIRMATION_PROMPT not in system_used
-
-
-@pytest.mark.asyncio
-async def test_require_confirmation_combines_with_restrict(runner):
-    from hiris.app.claude_runner import REQUIRE_CONFIRMATION_PROMPT, RESTRICT_PROMPT
-    captured = []
-
-    async def capture(**kwargs):
-        captured.append(kwargs)
-        m = MagicMock()
-        m.stop_reason = "end_turn"
-        m.content = [MagicMock(type="text", text="ok")]
-        m.usage.input_tokens = 5
-        m.usage.output_tokens = 2
-        return m
-
-    runner._client.messages.create = capture
-    await runner.chat("Ciao", system_prompt="Base", restrict_to_home=True, require_confirmation=True)
-    system_used = captured[0]["system"]
-    system_text = _sys_text(system_used)
-    assert "Base" in system_text
-    assert RESTRICT_PROMPT in system_text
-    assert REQUIRE_CONFIRMATION_PROMPT in system_text
-    block_texts = [b["text"] for b in system_used if b.get("type") == "text"]
-    idx_restrict = next(i for i, t in enumerate(block_texts) if RESTRICT_PROMPT in t)
-    idx_confirm = next(i for i, t in enumerate(block_texts) if REQUIRE_CONFIRMATION_PROMPT in t)
-    assert idx_restrict < idx_confirm
+    assert _sys_text(captured[0]["system"]) == _sys_text(captured[1]["system"])
 
 
 @pytest.mark.asyncio

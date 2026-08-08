@@ -192,11 +192,7 @@ EVALUATION_ONLY_TOOLS = frozenset({
     # fermarlo (un template non ha entity_id da filtrare). In chat la stessa
     # richiesta la fa un umano che sta guardando la risposta: e' un rischio
     # accettato li' e non altrove. Chat-only.
-    # save_memory excluded: write risk in reactive agents (prompt injection via HA state)
     # create_automation_proposal excluded: writes to store — chat-only
-    # create_ha_config excluded: writes to HA (script/scene) — chat-only
-    # propose_dashboard excluded: writes to the proposal store — chat-only
-    # list_dashboards / get_dashboard_config excluded: chat-only per coerenza
 })
 
 MODEL = "claude-sonnet-4-6"
@@ -290,67 +286,29 @@ RESTRICT_PROMPT = (
     "Per qualsiasi altro argomento, rispondi educatamente che non puoi aiutare su quel tema."
 )
 
-# Strumenti che ATTUANO davvero: ognuno produce un effetto reale, subito.
-# L'opzione "richiedi conferma" di un Chatbot li nomina TUTTI -- nominarne uno
-# solo (com'era: il solo call_ha_service) significa promettere all'utente una
-# rete che copre un quinto della superficie.
-#
-# Quattro di questi passavano anche dal semaforo universale (era
-# tools/dispatcher.py::_gate, uscito con lui -- fetta E2 Task 7: senza
-# dispatcher questi tool non sono piu' raggiungibili dal runner, quindi
-# quel controllo non vale piu' nulla in pratica). create_ha_config no:
-# scriveva script e scene su Home Assistant immediatamente (dispatcher ->
-# apply_ha_config), quindi qui la conferma dell'utente restava l'unico
-# passaggio prima dell'effetto.
-#
-# ATTENZIONE, e' il punto che va detto per intero: questo elenco vive in
-# un'ISTRUZIONE nel system prompt, non in un controllo. Un modello che la ignora
-# attua comunque -- l'unico argine che regge da solo e' il semaforo. Per
-# questo la descrizione nell'editor dei Chatbot dichiara esattamente questo,
-# invece di lasciar credere a un blocco tecnico.
-# Guardie: tests/test_coerenza_conferma.py.
-CONFIRMATION_COVERED_TOOLS = (
-    "call_ha_service",
-    "trigger_automation",
-    "toggle_automation",
-    "set_input_helper",
-    "create_ha_config",
-)
-
-REQUIRE_CONFIRMATION_PROMPT = (
-    "Prima di eseguire un'azione reale devi chiedere conferma all'utente. "
-    "Vale per tutti questi strumenti: "
-    + ", ".join(CONFIRMATION_COVERED_TOOLS)
-    + ". Per ognuno: descrivi prima l'azione che intendi eseguire e chiedi "
-    "conferma con il formato 'Proposta: [descrizione azione]. Confermi? "
-    "(sì/no)'. Chiama lo strumento SOLO se il messaggio più recente "
-    "dell'utente contiene 'sì', 'si', 'ok', 'conferma' o 'yes' (case "
-    "insensitive). Attenzione a create_ha_config: crea script e scene su "
-    "Home Assistant subito, senza passare da una proposta da approvare, "
-    "quindi la conferma dell'utente è l'unico passaggio prima dell'effetto."
-)
+# Review finale fetta E2, I-5: `CONFIRMATION_COVERED_TOOLS` e
+# `REQUIRE_CONFIRMATION_PROMPT` sono uscite. Nominavano cinque strumenti che
+# ATTUANO (call_ha_service, trigger_automation, toggle_automation,
+# set_input_helper, create_ha_config): nessuno dei cinque esiste in un
+# catalogo raggiungibile da nessun runner (chat = i quattro strumenti di
+# conoscenza di STRUMENTI_CONOSCENZA; Sentinella = soli read + task, ne'
+# l'uno ne' l'altro li offre). L'iniezione nel system prompt (qui sotto e nei
+# due punti gemelli di backends/openai_compat_runner.py) istruiva il modello
+# a chiedere conferma prima di strumenti che non puo' comunque chiamare --
+# una promessa vuota. `require_confirmation` resta un campo di
+# configurazione del Chatbot (UI/persistenza), ma oggi non ha alcun effetto
+# osservabile sul system prompt.
 
 
-def _redact_stream_tool_calls(tool_calls: list) -> list:
-    """Redact confirm_pending's OTP `code` before a runner emits its
-    last_tool_calls list in an SSE "done" event.
-
-    Mirrors handlers_chat.py's `_debug_input` redaction for the same
-    {"tool": ..., "input": ...} shape on the non-streaming HTTP debug-payload
-    surface (see commit d86efea) — this is the streaming-path counterpart:
-    the raw 6-digit code the user typed in chat must never be echoed back to
-    the client, whether via the debug payload or the SSE tool_calls list.
-    """
-    out = []
-    for t in tool_calls:
-        if not isinstance(t, dict):
-            out.append(t)
-            continue
-        inp = t.get("input")
-        if t.get("tool") == "confirm_pending" and isinstance(inp, dict) and "code" in inp:
-            t = {**t, "input": {**inp, "code": "***"}}
-        out.append(t)
-    return out
+# Review finale fetta E2, I-4: `_redact_stream_tool_calls` e' uscita.
+# Redigeva l'OTP di `confirm_pending` prima di emetterlo in un evento SSE
+# "done" -- ma `confirm_pending` non e' dichiarato in nessun catalogo
+# raggiungibile (STRUMENTI_CONOSCENZA, EVALUATION_TOOL_DEFS): un modello non
+# puo' emettere un tool_use per un tool mai offerto, quindi il ramo che
+# redigeva non era mai raggiungibile da nessun input reale -- un OTP dentro
+# un tool input non esiste piu' in tutto il prodotto (l'impianto OTP e'
+# uscito col Task 5). `handlers_chat.py`'s `_debug_input` (la controparte
+# non-streaming) e' uscita per lo stesso motivo.
 
 
 # ── Per-call tool-call / thinking-block isolation (review A/#3) ────────────
@@ -658,8 +616,10 @@ class ClaudeRunner:
         # Behaviour modifiers — stable per agent config, must precede context_str.
         if restrict_to_home:
             system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
-        if require_confirmation:
-            system_blocks.append({"type": "text", "text": REQUIRE_CONFIRMATION_PROMPT})
+        # Review finale fetta E2, I-5: l'iniezione di REQUIRE_CONFIRMATION_PROMPT
+        # e' uscita -- vedi il commento sopra `CONFIRMATION_COVERED_TOOLS`
+        # (rimossa insieme). `require_confirmation` non ha piu' alcun effetto
+        # sul system prompt.
         if response_mode == "compact":
             system_blocks.append({"type": "text", "text": "Rispondi in modo conciso, massimo 2-3 frasi."})
         elif response_mode == "minimal":
@@ -807,6 +767,15 @@ class ClaudeRunner:
                             # non e' eseguibile. Mai sollevare qui: un
                             # dizionario leggibile dal modello, come ogni
                             # altro dispatch() di questo ramo.
+                            # Minor #7 review finale: questo degrado e'
+                            # dichiarato al modello ma prima non lasciava
+                            # traccia in log -- una ronda della Sentinella che
+                            # gira a vuoto (ogni suo tool degrada qui per
+                            # costruzione, self._dispatcher e' sempre None in
+                            # produzione) era invisibile all'operatore.
+                            logger.debug(
+                                "Strumento '%s' richiesto ma nessun dispatcher disponibile "
+                                "(degradazione dichiarata, non un errore)", block.name)
                             result = {"error": f"Strumento '{block.name}' non disponibile."}
                         self.last_tool_calls.append({"tool": block.name, "input": block.input})
                         tool_results.append({
@@ -907,7 +876,6 @@ class ClaudeRunner:
             yield f'data: {_json.dumps({"type": "token", "text": result[i:i + chunk_size]})}\n\n'
 
         tool_calls = self.last_tool_calls if isinstance(self.last_tool_calls, list) else []
-        tool_calls = _redact_stream_tool_calls(tool_calls)
         yield f'data: {_json.dumps({"type": "done", "agent_id": chatbot_id, "tool_calls": tool_calls})}\n\n'
 
     async def run_with_actions(

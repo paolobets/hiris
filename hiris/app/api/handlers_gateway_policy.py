@@ -1,12 +1,15 @@
 """Gateway access policy — UI-managed, per-category.
 
-Lets the user pick, from the HIRIS web UI, which categories of devices the MCP
-gateway (Claude) may control, instead of editing CSV globs in the add-on
-options. v1 supports two levels per category: ``green`` (allowed) and ``off``
-(not allowed). ``yellow``/``red`` are accepted and persisted but, in v1, treated
-as not-allowed for execution (their notification/confirmation flows arrive in
-v2). The derived policy feeds the same ``execute_policy`` the execute-API
-already enforces.
+Lets the user pick, from the HIRIS web UI, which categories of devices are
+``green`` (allowed) or ``off`` (not allowed). ``yellow``/``red`` are accepted
+and persisted but, in v1, treated as not-allowed for execution. The derived
+policy feeds ``app["execute_policy"]`` (``tiers``/``entity_tiers``), read by
+the Sentinel's semaforo gate (``watcher/executor.py``) -- the surface that
+used to also enforce it remotely (``api/handlers_execute.py``, the
+execute-API) is gone since fetta E2 Task 4; `tools`/`allowed_entities`/
+`allowed_services`, computed below by `derive_execute_policy` for that dead
+surface, have no consumer left (see server.py's `app["execute_policy"] = {}`
+init comment).
 """
 from __future__ import annotations
 
@@ -19,29 +22,18 @@ from aiohttp import web
 
 logger = logging.getLogger(__name__)
 
-# Read tools are always available to the gateway (non-destructive).
+# Review finale fetta E2, Minor #1: i due elenchi sotto (READ_TOOLS,
+# PROPOSE_TOOLS) alimentano `derive_execute_policy`'s campo "tools" -- che
+# non ha piu' alcun consumatore (era letto dall'execute-API,
+# api/handlers_execute.py, uscita nel Task 4; vedi il commento sul docstring
+# di modulo). Restano qui come sono per non toccare `derive_execute_policy`
+# oltre lo scope di questa fetta; i commenti che descrivevano il
+# funzionamento della superficie remota morta (denylist di lettura,
+# dispatcher, mcp/tiers.py -- tutti cancellati) sono usciti.
 READ_TOOLS = ["get_home_status", "get_area_entities", "get_entity_states",
               "get_history", "recall_memory", "get_automation_config",
               "get_advisories", "get_logbook"]
-# render_template resta FUORI da questa lista. Questa lista non e' un menu:
-# derive_execute_policy la concede SEMPRE e per intero, senza opt-in per singolo
-# tool, e le letture partono con allowed_entities=None (handlers_execute: "reads
-# see the whole home"). Il perimetro delle letture remote lo fornisce ora la
-# denylist di lettura (api/read_denylist.py), che rifiuta le richieste che nominano
-# un'entita' coperta e POTA le risposte -- quindi copre anche il caso del
-# parametro omesso. E' per questo che get_logbook e' rientrato: la sua
-# enumerazione in blocco della cronologia non e' piu' illimitata.
-# render_template no: un template non offre alcun entity_id da filtrare, quindi
-# la denylist non avrebbe presa e nessun perimetro potrebbe contenerlo.
-# Contenimento della superficie remota, non limite tecnico: gira gia' nel
-# dispatcher, riabilitarlo sarebbe una riga qui (e una in mcp/tiers.py). In chat
-# e agli agenti locali e' pienamente disponibile — vedi claude_runner.py.
 
-# Propose / schedule tools the gateway may always reach (non-destructive).
-# create_task is intentionally excluded: when confirm_actions=false the gateway
-# does NOT hold it, so exposing it without green domains would leave its
-# call_ha_service actions unconstrained. It is added in derive_execute_policy
-# only when at least one green domain exists (allowed_services is then set).
 PROPOSE_TOOLS = ["create_automation_proposal", "save_memory", "list_tasks",
                  "cancel_task", "create_ha_config"]
 
@@ -122,12 +114,7 @@ def load_settings(data_dir: str) -> dict:
     svc = s.get("notify_service")
     if not (isinstance(svc, str) and _SERVICE_RE.match(svc)):
         svc = DEFAULT_NOTIFY_SERVICE
-    users = s.get("notify_users")
-    if not isinstance(users, dict):
-        users = {}
-    users = {k: v for k, v in users.items()
-             if isinstance(k, str) and isinstance(v, str) and _SERVICE_RE.match(v)}
-    return {"notify_service": svc, "notify_users": users}
+    return {"notify_service": svc}
 
 
 def save_categories(data_dir: str, categories: dict, settings: dict | None = None,
@@ -145,12 +132,6 @@ def save_categories(data_dir: str, categories: dict, settings: dict | None = Non
         full.setdefault("settings", {})
         if isinstance(svc, str) and _SERVICE_RE.match(svc):
             full["settings"]["notify_service"] = svc
-        users = settings.get("notify_users")
-        if isinstance(users, dict):
-            full["settings"]["notify_users"] = {
-                k: v for k, v in users.items()
-                if isinstance(k, str) and isinstance(v, str) and _SERVICE_RE.match(v)
-            }
     _write_full(data_dir, full)
     return clean
 
@@ -212,17 +193,14 @@ def derive_execute_policy(categories: dict, entities: dict | None = None) -> dic
     }
 
 
-def notify_service_for_user(app, user: str | None) -> str:
-    """Resolve the notify service for a given HA user_id: the per-user mapping
-    (``gateway_settings.notify_users``) if present and valid, else the global
-    ``notify_service``, else the hard default."""
-    gs = app.get("gateway_settings") or {}
-    users = gs.get("notify_users") or {}
-    svc = users.get(user) if user else None
-    if isinstance(svc, str) and _SERVICE_RE.match(svc):
-        return svc
-    glob = gs.get("notify_service")
-    return glob if isinstance(glob, str) and _SERVICE_RE.match(glob) else DEFAULT_NOTIFY_SERVICE
+# Review finale fetta E2, I-3: `notify_service_for_user` e' uscita --
+# scriveva/leggeva `gateway_settings.notify_users`, una mappa utente->canale
+# che nessuna interfaccia scrive (il suo unico chiamante di produzione,
+# `private_notify_service_for_user`, e' uscito nel Task 5). Il campo restava
+# scrivibile via API senza che nulla lo leggesse piu' -- configurabile solo a
+# parole. Chi vuole il canale di notifica legge ora direttamente
+# `gateway_settings["notify_service"]` (il globale, l'unico che governa
+# ancora qualcosa).
 
 
 def apply_saved_policy(app: web.Application) -> None:
@@ -238,7 +216,6 @@ def apply_saved_policy(app: web.Application) -> None:
         app["gateway_settings"] = holder = {}
     settings = load_settings(data_dir)
     holder["notify_service"] = settings["notify_service"]
-    holder["notify_users"] = settings["notify_users"]
     cats = load_categories(data_dir)
     ents = load_entities(data_dir)
     if not cats and not ents:

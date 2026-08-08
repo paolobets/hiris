@@ -34,6 +34,7 @@ gia' pagato piu' volte in altri moduli.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from .archivio import ArchivioCasa
@@ -51,6 +52,8 @@ from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
 _TIPI_ANCORA = tuple(CHIAVE_ARCHIVIO_PER_TIPO)
 
 _NOMI_STRUMENTI = frozenset({"cerca", "guarda", "ricorda", "richiama"})
+
+logger = logging.getLogger(__name__)
 
 
 CERCA_TOOL_DEF = {
@@ -318,6 +321,13 @@ class DispatcherConoscenza:
             # archivio chiuso a meta', un tipo inatteso negli argomenti) si
             # dichiara qui invece di risalire -- vedi il docstring della
             # classe.
+            # Minor #7 review finale: dichiararlo al MODELLO non bastava --
+            # un archivio corrotto o un guasto ricorrente restava invisibile
+            # all'operatore, che non ha altro modo di saperlo (il modello
+            # riceve solo la stringa "errore", non uno stack). Loggato qui.
+            logger.warning(
+                "strumento «%s» ha sollevato %s: %s", nome, type(errore).__name__, errore
+            )
             return {"errore": f"lo strumento «{nome}» ha incontrato un problema: {errore}"}
 
     # -- cerca ---------------------------------------------------------

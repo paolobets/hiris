@@ -38,11 +38,14 @@ SECURITY (non-negotiable, see plan Global Constraints):
   `executor.execute()`, gated by the semaforo, as described above.
 - Agenti v1.1 Fase 2 Task 3: since `create_task` IS one of those tools, an
   Agentbot with a `perimeter` (mode="objective") also passes its id and its
-  allow-lists into `run_decision`, so a Task the reasoner emits is born
-  attributed to that agent and confined to its perimeter. The refusal
-  itself still happens where it always did -- `task_engine._run_action`'s
-  `allowed_entities`/`allowed_services` check, at execution time. Nothing
-  here enforces anything new; it only stops leaving those fields empty.
+  allow-lists into `run_decision` -- but no Task is ever actually emitted
+  from this path in practice (no dispatcher routes `create_task` to
+  `TaskEngine.add_task` since fetta E2 Task 7, see `_llm_reason`'s docstring
+  in server.py). Review finale fetta E2, I-1: even if one were, the
+  `allowed_entities`/`allowed_services` check this comment used to point to
+  is gone too -- `task_engine._run_action` no longer has a `call_ha_service`
+  action type to enforce them against. Nothing here enforces anything; the
+  forwarding is dead weight kept for the reason stated in server.py.
 - The zero-AI path calls `execute` directly with the exact same adapters
   (`notify`/`propose`) and `tiers`/`entity_tiers` shape as `_run_decision`'s
   own tail call, so the dangerous-domain denylist and tier gate in
@@ -334,11 +337,15 @@ async def run_agentbot(
             # moved it to an empty memory bucket.
             #
             # Downstream, `run_decision` (server.py's `_run_decision`) binds
-            # both onto the `llm_reason` callable; the Task the reasoner
-            # emits is then stamped with this agent's id and confined to
-            # this perimeter, and `task_engine._run_action`'s ALREADY
-            # EXISTING allow-list check refuses anything outside it at
-            # execution time.
+            # both onto the `llm_reason` callable; a Task the reasoner emitted
+            # would be stamped with this agent's id and confined to this
+            # perimeter -- but no Task is ever actually emitted from this path
+            # today (see `_llm_reason`'s docstring in server.py: `create_task`
+            # is offered but nothing dispatches it without the dead
+            # `ToolDispatcher`). Review finale fetta E2, I-1: even if one were,
+            # `task_engine._run_action`'s allow-list check no longer matters
+            # for `call_ha_service` specifically -- that action type is gone
+            # from the engine entirely (task_engine.py), not merely gated.
             perimeter = agentbot.get("perimeter")
             scope = {} if perimeter is None else {
                 "agent_id": agentbot_id, "perimeter": perimeter}

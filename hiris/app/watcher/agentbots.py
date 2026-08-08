@@ -456,13 +456,16 @@ def _validate_perimeter(raw) -> dict | None:
     `get_history`, `get_home_status`, `get_entities_on`,
     `get_entities_by_domain`, `get_area_entities`) and to gate what it may
     ACT ON (`call_ha_service`, `set_input_helper`, `trigger_automation`,
-    `toggle_automation`, and the Tasks it emits, enforced at execution time
-    by `task_engine._run_action`). fetta E2 Task 7: that dispatcher is gone,
-    so an objective Agentbot's reasoning no longer reads/acts through it
-    either -- the READ half of this docstring is now a historical
-    description, not a live behaviour; the ACT half (Tasks emitted and
-    checked by `task_engine._run_action`) is unaffected, since Tasks never
-    went through the dispatcher to be enforced. There is no separate
+    `toggle_automation`, and the Tasks it emits, historically enforced at
+    execution time by `task_engine._run_action`). fetta E2 Task 7: that
+    dispatcher is gone, so an objective Agentbot's reasoning no longer
+    reads/acts through it either -- the READ half of this docstring is now a
+    historical description, not a live behaviour; the ACT half (Tasks
+    emitted and checked by `task_engine._run_action`) never went through the
+    dispatcher to be enforced, so it is unaffected BY THAT removal -- but
+    review finale fetta E2, I-1 removed `call_ha_service` from
+    `task_engine._run_action` entirely (not just gated it): no Task, however
+    emitted, can call `ha.call_service` anymore. There is no separate
     "readable" axis: an entity that is not listed is not merely
     un-actuatable, it is NOT EVEN VISIBLE to the agent's reasoning -- while
     that reasoning could still reach the dispatcher. So an Agentbot with

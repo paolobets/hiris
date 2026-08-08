@@ -26,7 +26,6 @@ def engine(tmp_path, mock_ha, mock_cache):
         entity_cache=mock_cache,
         notify_config={},
         data_path=str(tmp_path / "tasks.json"),
-        execute_policy={"tiers": {"light": "green"}},
     )
     te._scheduler = MagicMock()  # prevent real scheduling
     return te
@@ -252,42 +251,36 @@ def test_evaluate_condition_entity_missing(engine, mock_cache):
 
 
 @pytest.mark.asyncio
-async def test_execute_task_done_on_success(engine, mock_ha):
-    task = engine.add_task({
-        "label": "Turn on",
-        "trigger": {"type": "delay", "minutes": 1},
-        "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on",
-                     "data": {"entity_id": "light.test"}}],
-    }, agent_id="hiris-default")
-    await engine._execute_task(task.id)
-    assert engine._tasks[task.id].status == "done"
-    mock_ha.call_service.assert_called_once_with("light", "turn_on", {"entity_id": "light.test"})
-
-
-@pytest.mark.asyncio
 async def test_execute_task_skipped_when_condition_false(engine, mock_cache):
     mock_cache.get_state = MagicMock(return_value={"state": "25.0"})
     task = engine.add_task({
         "label": "Cond task",
         "trigger": {"type": "delay", "minutes": 1},
         "condition": {"entity_id": "sensor.temp", "operator": "<", "value": 19},
-        "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on", "data": {}}],
+        "actions": [],
     }, agent_id="hiris-default")
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "skipped"
 
 
+# ── Review finale fetta E2, I-1: l'attuazione esce dal Task Engine ─────────
+# `call_ha_service` non e' piu' un'azione riconosciuta da `_run_action`: era
+# l'unica via per cui HIRIS 2.0 poteva ancora agire su Home Assistant (via un
+# tasks.json ereditato da un'installazione 1.x). Deve fallire in modo
+# rumoroso -- come qualunque altro tipo di azione sconosciuto -- non essere
+# saltata in silenzio.
 @pytest.mark.asyncio
-async def test_execute_task_failed_on_ha_error(engine, mock_ha):
-    mock_ha.call_service = AsyncMock(side_effect=Exception("HA error"))
+async def test_call_ha_service_action_is_no_longer_supported(engine, mock_ha):
     task = engine.add_task({
-        "label": "Fail task",
+        "label": "Legacy da 1.x",
         "trigger": {"type": "delay", "minutes": 1},
-        "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on", "data": {}, "on_fail": "stop"}],
+        "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on",
+                     "data": {"entity_id": "light.test"}, "on_fail": "stop"}],
     }, agent_id="hiris-default")
     await engine._execute_task(task.id)
     assert engine._tasks[task.id].status == "failed"
-    assert "HA error" in engine._tasks[task.id].error
+    assert "call_ha_service" in engine._tasks[task.id].error
+    mock_ha.call_service.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -328,14 +321,7 @@ async def test_check_time_window_within_window(engine, mock_ha):
                 "to": to_time,
                 "check_interval_minutes": 5,
             },
-            "actions": [
-                {
-                    "type": "call_ha_service",
-                    "domain": "light",
-                    "service": "turn_on",
-                    "data": {"entity_id": "light.test"},
-                }
-            ],
+            "actions": [],
         },
         agent_id="hiris-default",
     )
@@ -366,8 +352,7 @@ async def test_check_time_window_overnight_active_at_night(engine, mock_ha, monk
     task = engine.add_task(
         {"label": "Notte", "trigger": {"type": "time_window", "from": "23:00",
          "to": "06:00", "check_interval_minutes": 5},
-         "actions": [{"type": "call_ha_service", "domain": "light",
-                      "service": "turn_off", "data": {"entity_id": "light.x"}}]},
+         "actions": []},
         agent_id="hiris-default")
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "done"
@@ -381,8 +366,7 @@ async def test_check_time_window_overnight_dead_zone_waits_not_expired(engine, m
     task = engine.add_task(
         {"label": "Notte", "trigger": {"type": "time_window", "from": "23:00",
          "to": "06:00", "check_interval_minutes": 5},
-         "actions": [{"type": "call_ha_service", "domain": "light",
-                      "service": "turn_off", "data": {"entity_id": "light.x"}}]},
+         "actions": []},
         agent_id="hiris-default")
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "pending"
@@ -395,8 +379,7 @@ async def test_check_time_window_normal_expires_after_to(engine, mock_ha, monkey
     task = engine.add_task(
         {"label": "Mattina", "trigger": {"type": "time_window", "from": "08:00",
          "to": "10:00", "check_interval_minutes": 5},
-         "actions": [{"type": "call_ha_service", "domain": "light",
-                      "service": "turn_on", "data": {"entity_id": "light.x"}}]},
+         "actions": []},
         agent_id="hiris-default")
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "expired"
@@ -411,8 +394,7 @@ async def test_check_time_window_degenerate_from_equals_to_expires(engine, mock_
     task = engine.add_task(
         {"label": "Istante", "trigger": {"type": "time_window", "from": "08:00",
          "to": "08:00", "check_interval_minutes": 5},
-         "actions": [{"type": "call_ha_service", "domain": "light",
-                      "service": "turn_on", "data": {"entity_id": "light.x"}}]},
+         "actions": []},
         agent_id="hiris-default")
     await engine._check_time_window(task.id)
     assert engine._tasks[task.id].status == "expired"
@@ -464,175 +446,8 @@ def test_cancel_removes_scheduler_job(engine):
     assert f"task_{task.id}" in removed
 
 
-class _FakeHA2:
-    def __init__(self):
-        self.calls = []
-
-    async def call_service(self, domain, service, data):
-        self.calls.append((domain, service, data))
-        return {"ok": True}
-
-
-def _engine(policy):
-    return TaskEngine(
-        ha_client=_FakeHA2(), entity_cache=None,
-        notify_config={}, execute_policy=policy,
-    )
-
-
 def _now_iso():
     return datetime.now(timezone.utc).isoformat()
-
-
-@pytest.mark.asyncio
-async def test_task_green_action_runs():
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-              "data": {"entity_id": "light.kitchen"}}
-    t = Task(id="t1", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    res = await eng._run_action(action, t)
-    assert res == {"ok": True}
-    assert eng._ha.calls == [("light", "turn_on", {"entity_id": "light.kitchen"})]
-
-
-@pytest.mark.asyncio
-async def test_task_off_action_skipped():
-    eng = _engine({})  # fail-closed
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-              "data": {"entity_id": "light.kitchen"}}
-    t = Task(id="t2", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    res = await eng._run_action(action, t)
-    assert isinstance(res, str) and "skipped" in res
-    assert eng._ha.calls == []
-
-
-@pytest.mark.asyncio
-async def test_task_dangerous_action_skipped():
-    eng = _engine({"tiers": {"lock": "green"}})
-    action = {"type": "call_ha_service", "domain": "lock", "service": "unlock",
-              "data": {"entity_id": "lock.front"}}
-    t = Task(id="t3", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    res = await eng._run_action(action, t)
-    assert isinstance(res, str) and "skipped" in res
-    assert eng._ha.calls == []
-
-
-@pytest.mark.asyncio
-async def test_task_area_target_without_entities_skipped():
-    # A group target (area_id) with no explicit entity_id is not resolvable to
-    # a per-entity tier -> fail-closed (skip), even if the domain is green.
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-              "data": {"area_id": "cucina"}}
-    t = Task(id="t4", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    res = await eng._run_action(action, t)
-    assert isinstance(res, str) and res.startswith("skipped")
-    assert eng._ha.calls == []
-
-
-@pytest.mark.asyncio
-async def test_task_group_target_log_message_matches_dispatcher_wording(caplog):
-    # Fix 4: the guard fires on ANY group target (area/device/label), even
-    # with explicit entities accompanying it — the stale message said "without
-    # explicit entities" and omitted "label". Wording should now match the
-    # dispatcher's own log line (dispatcher.py: "area/device/label target
-    # present").
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-              "data": {"label_id": "salotto", "entity_id": "light.sofa"}}
-    t = Task(id="t4b", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    with caplog.at_level("WARNING", logger="hiris.app.task_engine"):
-        res = await eng._run_action(action, t)
-    assert isinstance(res, str) and res.startswith("skipped")
-    logged = [r.message for r in caplog.records if "gated" in r.message]
-    assert logged
-    assert "area/device/label target present" in logged[0]
-    assert "without explicit entities" not in logged[0]
-
-
-# ── review A/#5: target-vs-data split (gated entities must == executed entities) ──
-
-
-@pytest.mark.asyncio
-async def test_task_target_only_scoped_call_not_broadcast_to_domain():
-    # A deferred call_ha_service scoped via `target` (no `data.entity_id`) must
-    # execute scoped to that entity, not as a domain-wide broadcast -- the task
-    # engine previously read only `data`, so `target` was silently dropped and
-    # HA received no entity_id filter at all.
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-              "target": {"entity_id": "light.kitchen"}}
-    t = Task(id="t5", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    res = await eng._run_action(action, t)
-    assert res == {"ok": True}
-    assert eng._ha.calls == [("light", "turn_on", {"entity_id": "light.kitchen"})]
-
-
-@pytest.mark.asyncio
-async def test_task_group_target_in_target_field_fail_closed():
-    # The group-target fail-closed guard must fire when the area/device/label
-    # lives under `target`, not only under `data` -- the task engine previously
-    # never even read `target`, so this bypassed the guard entirely.
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-              "target": {"area_id": "cucina"}}
-    t = Task(id="t6", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    res = await eng._run_action(action, t)
-    assert isinstance(res, str) and res.startswith("skipped")
-    assert eng._ha.calls == []
-
-
-@pytest.mark.asyncio
-async def test_task_domain_wide_call_without_entity_still_works():
-    # Neither data nor target carries an entity_id (or a group target) -> this
-    # is a legitimate domain-wide call gated on the domain tier. Must keep
-    # working exactly as before.
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
-              "data": {}}
-    t = Task(id="t7", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    res = await eng._run_action(action, t)
-    assert res == {"ok": True}
-    assert eng._ha.calls == [("light", "turn_off", {})]
-
-
-@pytest.mark.asyncio
-async def test_task_non_string_entity_id_does_not_crash():
-    # entity_id: [123] (non-string list contents) must be filtered out (not
-    # crash domain-of / gate lookup) and fall back to the domain-level tier;
-    # with an unconfigured (fail-closed) domain that means deny_off/skipped.
-    eng = _engine({})  # domain unconfigured -> off, fail-closed
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-              "data": {"entity_id": [123]}}
-    t = Task(id="t5", label="x", agent_id="a", created_at=_now_iso(),
-              trigger={"type": "immediate"}, actions=[action])
-    res = await eng._run_action(action, t)
-    assert isinstance(res, str) and "skipped" in res
-    assert eng._ha.calls == []
-
-
-@pytest.mark.asyncio
-async def test_execute_task_records_gated_skip_honestly(engine):
-    # engine fixture policy is {"tiers": {"light": "green"}} -> a lock action is
-    # denylisted; the audit trail must show the real skip, not ":OK".
-    task = engine.add_task({
-        "label": "Gated",
-        "trigger": {"type": "delay", "minutes": 1},
-        "actions": [{"type": "call_ha_service", "domain": "lock", "service": "unlock",
-                     "data": {"entity_id": "lock.front"}}],
-    }, agent_id="hiris-default")
-    await engine._execute_task(task.id)
-    assert engine._tasks[task.id].status == "done"
-    assert "skipped" in engine._tasks[task.id].result
-    assert ":OK" not in engine._tasks[task.id].result
 
 
 def test_cleanup_keeps_tasks_within_7_days(engine):
@@ -814,121 +629,31 @@ async def test_execute_task_condition_crash_not_cancellable_but_not_stuck(engine
     assert engine.cancel_task(task.id) is False
 
 
-@pytest.mark.asyncio
-async def test_execute_task_runs_when_valid_condition_met(engine, mock_cache, mock_ha):
-    """Regression: a well-formed, satisfied condition still lets the task run
-    its actions normally (the fail-safe must not interfere with the legit
-    path)."""
-    mock_cache.get_state = MagicMock(return_value={"state": "15.0"})
-    task = engine.add_task(
-        {
-            "label": "Runs fine",
-            "trigger": {"type": "delay", "minutes": 1},
-            "condition": {"entity_id": "sensor.temp", "operator": "<", "value": 19},
-            "actions": [{"type": "call_ha_service", "domain": "light", "service": "turn_on",
-                         "data": {"entity_id": "light.test"}}],
-        },
-        agent_id="hiris-default",
-    )
-    await engine._execute_task(task.id)
-    assert engine._tasks[task.id].status == "done"
-    mock_ha.call_service.assert_called_once_with("light", "turn_on", {"entity_id": "light.test"})
-
-
 # ── Perimetro del Task (Agenti v1.1 Fase 2 Task 3) ─────────────────────────
-# L'enforcement esiste da sempre in `_run_action`; quello che mancava era
-# qualcuno che alimentasse `allowed_entities`/`allowed_services`. Questi test
-# fissano il punto di rifiuto DOVE GIA' E' -- il tier verde qui lascerebbe
-# passare l'azione, quindi l'unico motivo possibile dello skip e' il perimetro
-# del Task -- e pinnano la distinzione fra `None` e `[]`.
-
-
-@pytest.mark.asyncio
-async def test_task_entity_outside_allowed_entities_skipped():
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
-              "data": {"entity_id": "light.salotto"}}
-    t = Task(id="p1", label="x", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
-             trigger={"type": "immediate"}, actions=[action],
-             allowed_entities=["light.cucina"], allowed_services=["light.*"])
-    res = await eng._run_action(action, t)
-    assert isinstance(res, str) and "not permitted by policy" in res
-    assert "light.salotto" in res
-    assert eng._ha.calls == []
-
-
-@pytest.mark.asyncio
-async def test_task_entity_inside_allowed_entities_runs():
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
-              "data": {"entity_id": "light.cucina"}}
-    t = Task(id="p2", label="x", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
-             trigger={"type": "immediate"}, actions=[action],
-             allowed_entities=["light.cucina"], allowed_services=["light.*"])
-    res = await eng._run_action(action, t)
-    assert res == {"ok": True}
-    assert eng._ha.calls == [("light", "turn_off", {"entity_id": "light.cucina"})]
-
-
-@pytest.mark.asyncio
-async def test_task_service_outside_allowed_services_skipped():
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_on",
-              "data": {"entity_id": "light.cucina"}}
-    t = Task(id="p3", label="x", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
-             trigger={"type": "immediate"}, actions=[action],
-             allowed_entities=["light.cucina"], allowed_services=["light.turn_off"])
-    res = await eng._run_action(action, t)
-    assert isinstance(res, str) and "not permitted by policy" in res
-    assert eng._ha.calls == []
-
-
-@pytest.mark.asyncio
-async def test_task_empty_allow_lists_refuse_everything():
-    """`[]` significa "nessuna concessione", non "nessun limite": e' la
-    distinzione su cui si regge il perimetro di default materializzato per un
-    Agentbot in modalita' obiettivo che non ha ancora dichiarato nulla."""
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
-              "data": {"entity_id": "light.cucina"}}
-    t = Task(id="p4", label="x", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
-             trigger={"type": "immediate"}, actions=[action],
-             allowed_entities=[], allowed_services=[])
-    res = await eng._run_action(action, t)
-    assert isinstance(res, str) and "not permitted by policy" in res
-    assert eng._ha.calls == []
-
-
-@pytest.mark.asyncio
-async def test_task_without_perimeter_is_unconfined_as_before():
-    """Regressione: un Task senza perimetro (`None`, il caso di ogni Task
-    creato fuori dalla modalita' obiettivo) resta confinato dal solo semaforo,
-    esattamente come prima."""
-    eng = _engine({"tiers": {"light": "green"}})
-    action = {"type": "call_ha_service", "domain": "light", "service": "turn_off",
-              "data": {"entity_id": "light.salotto"}}
-    t = Task(id="p5", label="x", agent_id="hiris-default", created_at=_now_iso(),
-             trigger={"type": "immediate"}, actions=[action])
-    assert t.allowed_entities is None and t.allowed_services is None
-    res = await eng._run_action(action, t)
-    assert res == {"ok": True}
+# Review finale fetta E2, I-1: l'enforcement di `allowed_entities`/
+# `allowed_services` viveva SOLO dentro il ramo `call_ha_service` di
+# `_run_action`, uscito con lui (era l'unica azione che li leggeva). I test
+# che pinnavano quel rifiuto (dentro/fuori perimetro, liste vuote vs None,
+# nessun perimetro) sono usciti con il loro soggetto: il ramo che applicava
+# `allowed_entities`/`allowed_services` non esiste piu' in nessuna azione.
+# Sopravvive solo l'eredita' identita'+perimetro nel chaining `create_task`
+# sotto (attributi del Task, non un'esecuzione gated).
 
 
 @pytest.mark.asyncio
 async def test_child_task_inherits_parent_identity_and_perimeter(tmp_path):
     """Una catena di Task non e' una via d'uscita dal perimetro: il figlio
-    nasce con l'`agent_id` e le allow-list del padre (comportamento gia'
-    presente in `_run_action`, qui fissato perche' ora sono popolate)."""
-    eng = _engine({"tiers": {"light": "green"}})
-    # add_task persiste: senza questo il default "/data/tasks.json" verrebbe
-    # riscritto sul disco reale (gli altri test di questo blocco costruiscono
-    # i Task a mano e non salvano mai).
-    eng._data_path = str(tmp_path / "tasks.json")
+    nasce con l'`agent_id` e le allow-list del padre (attributi ereditati da
+    `_run_action`'s ramo `create_task` -- non piu' applicati a un'esecuzione
+    `call_ha_service`, uscita, ma restano metadati del Task figlio)."""
+    eng = TaskEngine(
+        ha_client=AsyncMock(), entity_cache=None, notify_config={},
+        data_path=str(tmp_path / "tasks.json"),
+    )
     eng._scheduler = MagicMock()
     action = {"type": "create_task", "task": {
         "label": "figlio", "trigger": {"type": "delay", "minutes": 5},
-        "actions": [{"type": "call_ha_service", "domain": "light",
-                     "service": "turn_off", "data": {"entity_id": "light.salotto"}}]}}
+        "actions": []}}
     t = Task(id="p6", label="padre", agent_id="eeeeeeeeeeee", created_at=_now_iso(),
              trigger={"type": "immediate"}, actions=[action],
              allowed_entities=["light.cucina"], allowed_services=["light.*"])
@@ -939,138 +664,3 @@ async def test_child_task_inherits_parent_identity_and_perimeter(tmp_path):
     assert child.allowed_entities == ["light.cucina"]
     assert child.allowed_services == ["light.*"]
     assert child.parent_task_id == "p6"
-
-
-def _yellow_policy():
-    # entity_tiers mette light.salotto in 'yellow' -> gate_action ritorna confirm
-    return {"tiers": {}, "entity_tiers": {"light.salotto": "yellow"}}
-
-
-@pytest.mark.asyncio
-async def test_confirm_tier_task_action_requests_stepup_and_holds(tmp_path):
-    from hiris.app.task_engine import TaskEngine, Task
-
-    seen = {}
-
-    async def fake_stepup(*, tool, inputs, tier):
-        seen["tool"] = tool
-        seen["inputs"] = inputs
-        seen["tier"] = tier
-        return {"nonce": "n1", "otp": "123456"}  # pending creato
-
-    class _HA:
-        async def call_service(self, *a, **k):
-            raise AssertionError("una azione confirm NON deve essere eseguita subito")
-
-    eng = TaskEngine(
-        ha_client=_HA(), entity_cache=None, notify_config={},
-        data_path=str(tmp_path / "tasks.json"),
-        execute_policy=_yellow_policy(), request_stepup=fake_stepup,
-    )
-    task = Task(id="t1", label="prova", agent_id="ag1",
-                created_at="2026-01-01T00:00:00", trigger={}, actions=[])
-    action = {"type": "call_ha_service", "domain": "light",
-              "service": "turn_on", "data": {"entity_id": "light.salotto"}}
-
-    out = await eng._run_action(action, task)
-
-    assert out == "pending: confirmation (light.turn_on)"
-    assert seen["tool"] == "call_ha_service"
-    assert seen["tier"] == "yellow"
-    # inputs congelato: gli entity_id sono i normalized (gated), dentro data
-    assert seen["inputs"]["domain"] == "light"
-    assert seen["inputs"]["service"] == "turn_on"
-    assert seen["inputs"]["data"].get("entity_id") == "light.salotto"
-
-
-@pytest.mark.asyncio
-async def test_confirm_tier_task_action_fails_closed_to_skip_without_stepup(tmp_path):
-    """Callable non iniettato (o ritorna None) -> fallback allo skip di oggi,
-    nessuna esecuzione, nessun pending."""
-    from hiris.app.task_engine import TaskEngine, Task
-
-    async def none_stepup(*, tool, inputs, tier):
-        return None
-
-    class _HA:
-        async def call_service(self, *a, **k):
-            raise AssertionError("skip: niente esecuzione")
-
-    for stepup in (None, none_stepup):
-        eng = TaskEngine(
-            ha_client=_HA(), entity_cache=None, notify_config={},
-            data_path=str(tmp_path / "tasks.json"),
-            execute_policy=_yellow_policy(), request_stepup=stepup,
-        )
-        task = Task(id="t1", label="prova", agent_id="ag1",
-                created_at="2026-01-01T00:00:00", trigger={}, actions=[])
-        action = {"type": "call_ha_service", "domain": "light",
-                  "service": "turn_on", "data": {"entity_id": "light.salotto"}}
-        out = await eng._run_action(action, task)
-        assert out == "skipped: confirm (light.turn_on)"
-
-
-@pytest.mark.asyncio
-async def test_max_tier_yellow_does_not_grant_yellow_auto_in_this_phase(tmp_path):
-    """C3: in Fase 2.5 max_tier NON abilita il giallo-auto (sarebbe fiducia
-    progressiva). Un'azione gialla passa per lo step-up (chiede), MAI
-    auto-eseguita, a prescindere dal max_tier dell'agente."""
-    from hiris.app.task_engine import TaskEngine, Task
-
-    called = {"stepup": 0}
-
-    async def fake_stepup(*, tool, inputs, tier):
-        called["stepup"] += 1
-        return {"nonce": "n1"}
-
-    class _HA:
-        async def call_service(self, *a, **k):
-            raise AssertionError("giallo NON deve auto-eseguire in questa fase")
-
-    eng = TaskEngine(
-        ha_client=_HA(), entity_cache=None, notify_config={},
-        data_path=str(tmp_path / "tasks.json"),
-        execute_policy={"tiers": {}, "entity_tiers": {"light.salotto": "yellow"}},
-        request_stepup=fake_stepup,
-    )
-    # il Task non porta alcun max_tier: la fetta non lo consuma a runtime
-    task = Task(id="t1", label="p", agent_id="ag1",
-                created_at="2026-01-01T00:00:00", trigger={}, actions=[])
-    action = {"type": "call_ha_service", "domain": "light",
-              "service": "turn_on", "data": {"entity_id": "light.salotto"}}
-    out = await eng._run_action(action, task)
-    assert out == "pending: confirmation (light.turn_on)"
-    assert called["stepup"] == 1  # ha CHIESTO, non auto-eseguito
-
-
-@pytest.mark.asyncio
-async def test_confirm_tier_action_outside_perimeter_is_skipped_not_escalated(tmp_path):
-    """CRITICAL fix: un'azione a tier confirm (giallo) su un'entita' FUORI dal
-    perimetro dell'agente NON deve essere escalata a step-up -- va saltata,
-    come gia' avviene al verde. Il perimetro gate-a ogni verdetto."""
-    from hiris.app.task_engine import TaskEngine, Task
-
-    called = {"stepup": 0}
-
-    async def fake_stepup(*, tool, inputs, tier):
-        called["stepup"] += 1
-        return {"nonce": "n1"}
-
-    class _HA:
-        async def call_service(self, *a, **k):
-            raise AssertionError("fuori perimetro: niente esecuzione")
-
-    eng = TaskEngine(
-        ha_client=_HA(), entity_cache=None, notify_config={},
-        data_path=str(tmp_path / "tasks.json"),
-        execute_policy={"tiers": {}, "entity_tiers": {"light.salotto": "yellow"}},
-        request_stepup=fake_stepup,
-    )
-    task = Task(id="t1", label="p", agent_id="ag1",
-                created_at="2026-01-01T00:00:00", trigger={}, actions=[],
-                allowed_entities=["light.cucina"])
-    action = {"type": "call_ha_service", "domain": "light",
-              "service": "turn_on", "data": {"entity_id": "light.salotto"}}
-    out = await eng._run_action(action, task)
-    assert out == "skipped: entity 'light.salotto' not permitted by policy"
-    assert called["stepup"] == 0  # MAI escalato a step-up

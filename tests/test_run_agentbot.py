@@ -29,7 +29,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from hiris.app import server
-from hiris.app.task_engine import TaskEngine
 from hiris.app.watcher.agentbots import validate_agentbot
 from hiris.app.watcher.executor import execute as real_execute
 from hiris.app.watcher.agentbot_runner import (
@@ -918,28 +917,23 @@ def _load_real_server_run_decision(*, app, gather_context, execute, notify, prop
 
 
 def _perimeter_chain(tmp_path, perimeter_raw):
-    """Costruisce un TaskEngine reale e l'agentbot objective validato dal
-    VERO `validate_agentbot`, cosi' il blocco `perimeter` ha esattamente la
-    forma che il validatore materializza in produzione. `task_engine`/`ha`
-    restano nella tupla per compatibilita' di forma con i chiamanti, ma dal
-    Task 7 (dispatcher uscito) nessun test qui li usa piu' per verificare un
-    Task creato -- solo i tre test system-prompt leggono `runner`."""
+    """Costruisce l'agentbot objective validato dal VERO `validate_agentbot`,
+    cosi' il blocco `perimeter` ha esattamente la forma che il validatore
+    materializza in produzione.
+
+    Review finale fetta E2, I-1: prima costruiva anche un TaskEngine reale
+    (`ha`/`task_engine` nella tupla) "per compatibilita' di forma con i
+    chiamanti" -- ma nessun test qui lo usava gia' dal Task 7 (dispatcher
+    uscito) per verificare un Task creato, e il fix di I-1 ha tolto
+    `execute_policy`/`request_stepup` dal costruttore di TaskEngine: tenerlo
+    avrebbe richiesto solo per restare "compatibile" con un chiamante che non
+    esiste. Tolto: solo i tre test system-prompt leggono `runner`."""
     agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW, "perimeter": perimeter_raw})
     assert agentbot is not None, "l'agentbot objective di prova deve essere valido"
 
-    ha = AsyncMock()
-    ha.call_service = AsyncMock(return_value=True)
-    cache = MagicMock()
-    cache.get_state = MagicMock(return_value={"state": "on"})
     execute_policy = {"tiers": {"light": "green"}, "entity_tiers": {}}
-
-    task_engine = TaskEngine(
-        ha_client=ha, entity_cache=cache, notify_config={},
-        data_path=str(tmp_path / "tasks.json"), execute_policy=execute_policy)
-    task_engine._scheduler = MagicMock()  # niente scheduling reale
-
     runner = _FakeReasoningRunner()
-    return agentbot, ha, execute_policy, task_engine, runner
+    return agentbot, execute_policy, runner
 
 
 async def _fire_objective_agentbot(agentbot, *, store, execute_policy, runner, rec):
@@ -1430,13 +1424,13 @@ async def test_unreadable_second_read_fails_open_and_says_so(store, caplog):
 
 async def _system_prompt_seen_by_the_model(store, tmp_path, agentbot_raw):
     """Fa scattare un agente-obiettivo lungo la catena VERA (le closure
-    `_llm_reason`/`_run_decision` estratte da `server._on_startup`, il
-    dispatcher e il TaskEngine reali) e restituisce il `system_prompt` che il
-    runner -- l'unico bordo finto, la chiamata all'LLM -- si e' visto
-    arrivare. E' letteralmente la stringa che il modello leggerebbe."""
+    `_llm_reason`/`_run_decision` estratte da `server._on_startup`) e
+    restituisce il `system_prompt` che il runner -- l'unico bordo finto, la
+    chiamata all'LLM -- si e' visto arrivare. E' letteralmente la stringa che
+    il modello leggerebbe."""
     agentbot = validate_agentbot(agentbot_raw)
     assert agentbot is not None, "l'agentbot di prova deve essere valido"
-    _, _, execute_policy, _, runner = _perimeter_chain(tmp_path, None)
+    _, execute_policy, runner = _perimeter_chain(tmp_path, None)
     rec = _Rec()
     outcome = await _fire_objective_agentbot(
         agentbot, store=store, execute_policy=execute_policy, runner=runner, rec=rec)

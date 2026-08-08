@@ -323,13 +323,10 @@ wrong", write "tell me if consumption exceeds 3kW".
 **Give context about your home:** include entity IDs, typical values, family
 schedule in `strategic_context`. Claude uses this to calibrate its replies.
 
-**Use `require_confirmation` for irreversible actions:** any Chatbot that
-controls heating, appliances, or security should have this enabled. It is an
-instruction to the model, not a hard block: it does not replace the semaphore,
-which is the safeguard that holds on its own for `call_ha_service`,
-`trigger_automation`, `toggle_automation` and `set_input_helper`. One
-exception, `create_ha_config`: the semaphore does not cover it, so there this
-confirmation is the only step before the effect. Set both.
+**`require_confirmation` has no observable effect today:** it is an
+instruction to the model to ask for confirmation before acting, but the
+chat's current catalog (search, look, remember, recall) is knowledge-only —
+no tool acts on the house. It remains configurable for future compatibility.
 
 **Keep scope tight:** `allowed_tools`/`allowed_entities`/`allowed_services` as
 narrow as possible for each Chatbot — especially for assistants shared with

@@ -46,24 +46,25 @@ def test_classify_by_rules_unknown():
     assert classify_by_rules("sensor.opaque_34945479_ch1_weird") is None
 
 
-def test_semantic_map_get_category_empty():
-    m = SemanticMap(data_dir=tempfile.gettempdir())
-    assert m.get_category("energy_meter") == []
+# Review finale fetta E2, I-2: `get_category` e' uscita da semantic_map.py
+# (orfana). `test_semantic_map_get_category_empty` testava solo quel metodo
+# ed e' uscita con lui; i test sotto sopravvivono leggendo `_categories`
+# direttamente -- il soggetto reale (classificazione/persistenza) resta vivo.
 
 
-def test_semantic_map_add_and_get_category():
+def test_semantic_map_add_entity_populates_category():
     m = SemanticMap(data_dir=tempfile.gettempdir())
     m._add_entity("sensor.power_main", "energy_meter", "Contatore principale", classified_by="rules")
-    assert "sensor.power_main" in m.get_category("energy_meter")
+    assert "sensor.power_main" in m._categories.get("energy_meter")
 
 
 def test_add_entity_reclassification_removes_old_category(tmp_path):
     m = SemanticMap(data_dir=str(tmp_path))
     m._add_entity("sensor.x", "unknown", "X", classified_by="pending")
-    assert "sensor.x" in m.get_category("unknown")
+    assert "sensor.x" in m._categories.get("unknown")
     m._add_entity("sensor.x", "energy_meter", "X meter", classified_by="claude")
-    assert "sensor.x" in m.get_category("energy_meter")
-    assert "sensor.x" not in m.get_category("unknown")
+    assert "sensor.x" in m._categories.get("energy_meter")
+    assert "sensor.x" not in m._categories.get("unknown")
 
 
 def test_semantic_map_save_load_roundtrip(tmp_path):
@@ -74,8 +75,8 @@ def test_semantic_map_save_load_roundtrip(tmp_path):
 
     m2 = SemanticMap(data_dir=str(tmp_path))
     m2.load()
-    assert "light.salotto" in m2.get_category("lighting")
-    assert "sensor.power_main" in m2.get_category("energy_meter")
+    assert "light.salotto" in m2._categories.get("lighting")
+    assert "sensor.power_main" in m2._categories.get("energy_meter")
 
 
 def test_semantic_map_get_all_entity_ids(tmp_path):
@@ -103,9 +104,9 @@ def test_build_from_cache_classifies_known(tmp_path):
     ])
     m = SemanticMap(data_dir=str(tmp_path))
     new_ids = m.build_from_cache(cache)
-    assert "light.salotto" in m.get_category("lighting")
-    assert "sensor.shellyem3_xxx_power" in m.get_category("energy_meter")
-    assert "climate.heatpump" in m.get_category("climate_sensor")
+    assert "light.salotto" in m._categories.get("lighting")
+    assert "sensor.shellyem3_xxx_power" in m._categories.get("energy_meter")
+    assert "climate.heatpump" in m._categories.get("climate_sensor")
 
 
 def test_build_from_cache_returns_unknown_for_ambiguous(tmp_path):
@@ -129,12 +130,12 @@ def test_build_from_cache_skips_existing(tmp_path):
 def test_on_entity_added_classifies_by_rules(tmp_path):
     m = SemanticMap(data_dir=str(tmp_path))
     m.on_entity_added("light.new_light", {"friendly_name": "New Light"})
-    assert "light.new_light" in m.get_category("lighting")
+    assert "light.new_light" in m._categories.get("lighting")
 
 
 def test_on_entity_added_marks_unknown_if_ambiguous(tmp_path):
     m = SemanticMap(data_dir=str(tmp_path))
     m.on_entity_added("sensor.opaque_xyz_weird", {})
-    assert "sensor.opaque_xyz_weird" in m.get_category("unknown")
+    assert "sensor.opaque_xyz_weird" in m._categories.get("unknown")
 
 

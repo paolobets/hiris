@@ -15,9 +15,7 @@ from ..claude_runner import (
     BASE_SYSTEM_PROMPT,
     EVALUATION_ONLY_TOOLS,
     RESTRICT_PROMPT,
-    REQUIRE_CONFIRMATION_PROMPT,
     RunnerBackendError,
-    _redact_stream_tool_calls,
     _current_tool_calls,
     _current_pseudonym_map,
     _PerCallList,
@@ -530,8 +528,13 @@ class OpenAICompatRunner:
             system_parts.append(context_str)
         if restrict_to_home:
             system_parts.append(RESTRICT_PROMPT)
-        if require_confirmation:
-            system_parts.append(REQUIRE_CONFIRMATION_PROMPT)
+        # Review finale fetta E2, I-5: l'iniezione di REQUIRE_CONFIRMATION_PROMPT
+        # e' uscita -- la costante nominava cinque strumenti (call_ha_service,
+        # trigger_automation, toggle_automation, set_input_helper,
+        # create_ha_config) che non esistono in NESSUN catalogo raggiungibile
+        # da questo runner. `require_confirmation` resta un campo di
+        # configurazione del Chatbot (UI/persistenza), ma oggi non ha alcun
+        # effetto osservabile sul system prompt: non c'e' nulla da confermare.
         if response_mode == "compact":
             system_parts.append("Rispondi in modo conciso, massimo 2-3 frasi.")
         elif response_mode == "minimal":
@@ -743,6 +746,9 @@ class OpenAICompatRunner:
                         # fetta E2 Task 7: ne' un dispatcher per-chiamata ne'
                         # un ToolDispatcher di scorta -- vedi il commento
                         # gemello in ClaudeRunner.chat().
+                        logger.debug(
+                            "Strumento '%s' richiesto ma nessun dispatcher disponibile "
+                            "(degradazione dichiarata, non un errore)", tc.function.name)
                         result = {"error": f"Strumento '{tc.function.name}' non disponibile."}
                     self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
                     messages.append({
@@ -854,8 +860,13 @@ class OpenAICompatRunner:
             system_parts.append(context_str)
         if restrict_to_home:
             system_parts.append(RESTRICT_PROMPT)
-        if require_confirmation:
-            system_parts.append(REQUIRE_CONFIRMATION_PROMPT)
+        # Review finale fetta E2, I-5: l'iniezione di REQUIRE_CONFIRMATION_PROMPT
+        # e' uscita -- la costante nominava cinque strumenti (call_ha_service,
+        # trigger_automation, toggle_automation, set_input_helper,
+        # create_ha_config) che non esistono in NESSUN catalogo raggiungibile
+        # da questo runner. `require_confirmation` resta un campo di
+        # configurazione del Chatbot (UI/persistenza), ma oggi non ha alcun
+        # effetto osservabile sul system prompt: non c'e' nulla da confermare.
         if response_mode == "compact":
             system_parts.append("Rispondi in modo conciso, massimo 2-3 frasi.")
         elif response_mode == "minimal":
@@ -1073,6 +1084,9 @@ class OpenAICompatRunner:
                         # fetta E2 Task 7: ne' un dispatcher per-chiamata ne'
                         # un ToolDispatcher di scorta -- vedi il commento
                         # gemello in chat().
+                        logger.debug(
+                            "Strumento '%s' richiesto ma nessun dispatcher disponibile "
+                            "(degradazione dichiarata, non un errore)", tc_data["name"])
                         result = {"error": f"Strumento '{tc_data['name']}' non disponibile."}
                     self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
                     messages.append({
@@ -1086,7 +1100,7 @@ class OpenAICompatRunner:
             yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
             return
 
-        yield f'data: {json.dumps({"type": "done", "agent_id": chatbot_id, "tool_calls": _redact_stream_tool_calls(self.last_tool_calls)})}\n\n'
+        yield f'data: {json.dumps({"type": "done", "agent_id": chatbot_id, "tool_calls": self.last_tool_calls})}\n\n'
 
     async def run_with_actions(
         self,

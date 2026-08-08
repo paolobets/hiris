@@ -368,7 +368,7 @@ Each Chatbot can be restricted to:
 | `allowed_services` | Glob patterns on callable services | `["light.*", "switch.turn_*"]` |
 | `allowed_endpoints` | Whitelisted URLs for `http_request` | `[{"url": "https://api.example.com", ...}]` |
 | `restrict_to_home` | Refuse off-topic questions | `true` |
-| `require_confirmation` | Claude must ask for a "yes/ok" before every real action (`call_ha_service`, `trigger_automation`, `toggle_automation`, `set_input_helper`, `create_ha_config`). It is an instruction to the model, not a hard block: the hard block is the semaphore — except for `create_ha_config`, which the semaphore does not cover (from chat it writes scripts and scenes to Home Assistant immediately), so there this confirmation is the only step before the effect | `true` |
+| `require_confirmation` | Instruction to the model to ask for a "yes/ok" before acting. Today the chat only offers knowledge tools (search, look, remember, recall): none of them acts on the house, so the option remains configurable but has no observable effect right now | `true` |
 | `knowledge_access` | Memory scope (sensitive data, which kinds) | `{"allow_sensitive": false, "kinds": "all"}` |
 | `max_chat_turns` | Limit conversation length | `20` |
 

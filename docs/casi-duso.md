@@ -334,13 +334,10 @@ va", scrivi "dimmi se il consumo supera 3kW".
 orari della famiglia in `strategic_context`. Claude usa questo per calibrare
 le risposte.
 
-**Usa `require_confirmation` per azioni irreversibili:** qualsiasi Chatbot
-che controlla riscaldamento, elettrodomestici o sicurezza dovrebbe averlo
-abilitato. È un'istruzione al modello, non un blocco tecnico: non sostituisce
-il semaforo, che è l'argine che regge da solo su `call_ha_service`,
-`trigger_automation`, `toggle_automation` e `set_input_helper`. Unica
-eccezione, `create_ha_config`: il semaforo non lo copre, quindi lì questa
-conferma è l'unico passaggio prima dell'effetto. Impostalo insieme ai tier.
+**`require_confirmation` oggi non ha effetto osservabile:** è un'istruzione
+al modello di chiedere conferma prima di agire, ma il catalogo attuale della
+chat (cerca, guarda, ricorda, richiama) è di sola conoscenza — nessuno
+strumento agisce sulla casa. Resta configurabile per compatibilità futura.
 
 **Restringi lo scope:** `allowed_tools`/`allowed_entities`/`allowed_services`
 più stretti possibile per ogni Chatbot — soprattutto per assistenti condivisi

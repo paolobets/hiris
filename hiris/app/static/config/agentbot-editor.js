@@ -84,12 +84,12 @@
   ];
 
   /* Il testo che spiega la cosa meno intuitiva del perimetro: NON e' solo
-     un limite sull'azione. La stessa `allowed_entities` filtra le LETTURE
-     del ragionatore (tools/dispatcher.py: get_entity_states, get_history,
+     un limite sull'azione. La stessa `allowed_entities` filtra (storicamente)
+     le LETTURE del ragionatore -- get_entity_states, get_history,
      get_home_status, get_entities_on, get_entities_by_domain,
-     get_area_entities) e le azioni dei Task che l'agente emette
-     (task_engine._run_action). L'utente deve saperlo PRIMA, non scoprirlo
-     quando l'agente non vede il sensore che gli serve per decidere. */
+     get_area_entities -- e le azioni dei Task che l'agente emette.
+     L'utente deve saperlo PRIMA, non scoprirlo quando l'agente non vede il
+     sensore che gli serve per decidere. */
   var PERIMETER_HELP =
     'Il perimetro limita sia ciò che l\'agente può toccare sia ciò che può vedere: ' +
     'un\'entità fuori dall\'elenco non è solo non azionabile, non è nemmeno leggibile ' +
@@ -695,9 +695,8 @@
   /* TRAPPOLA null-vs-[] (vedi commento in testa al file): l'interruttore
      spento significa "non ho dichiarato restrizioni su quest'asse" e deve
      viaggiare come `null` -- MAI come `[]`, che lungo tutta la catena
-     significa l'opposto ("nega tutto") e farebbe nascere paralizzato ogni
-     agente creato senza selezione: leggerebbe tutto ma ogni Task emesso
-     verrebbe rifiutato in esecuzione da task_engine._run_action.
+     significa l'opposto ("nega tutto") e farebbe nascere il campo `perimeter`
+     dell'agente gia' paralizzato su quest'asse fin dalla validazione.
      L'interruttore acceso manda l'elenco così com'è, vuoto compreso: quella
      è una negazione VOLUTA e deve restare rappresentabile.
 

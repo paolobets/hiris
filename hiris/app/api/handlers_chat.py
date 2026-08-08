@@ -485,19 +485,14 @@ async def handle_chat(request: web.Request) -> web.Response:
     # t.get("name"), but last_tool_calls keys are "tool"/"input", so every entry
     # was None; appendDebug then threw on t.input AFTER the answer had rendered,
     # surfacing a spurious "Errore di connessione" with no backend-side error.
-    def _debug_input(t: dict):
-        # OTP secrecy toward the client: confirm_pending's `input` carries the
-        # 6-digit code the user typed in chat. It must never be echoed back in
-        # the HTTP response debug payload — this covers the HTTP debug-payload
-        # surface (the sibling SSE redaction is `_redact_stream_tool_calls`,
-        # claude_runner.py).
-        inp = t.get("input")
-        if t.get("tool") == "confirm_pending" and isinstance(inp, dict) and "code" in inp:
-            return {**inp, "code": "***"}
-        return inp
-
+    # Review finale fetta E2, I-4: la redazione dell'OTP di confirm_pending
+    # (qui e nella gemella `_redact_stream_tool_calls`, claude_runner.py) e'
+    # uscita -- confirm_pending non e' dichiarato in nessun catalogo
+    # raggiungibile, quindi un tool_use con quel nome non arriva mai qui:
+    # l'impianto OTP e' uscito col Task 5, non esiste piu' un codice da
+    # nascondere.
     tools_called = [
-        {"tool": t.get("tool", ""), "input": _debug_input(t)}
+        {"tool": t.get("tool", ""), "input": t.get("input")}
         for t in raw if isinstance(t, dict)
     ] if isinstance(raw, list) else []
     raw_thinking = getattr(runner, "last_thinking_blocks", None)
