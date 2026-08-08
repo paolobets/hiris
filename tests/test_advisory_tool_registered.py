@@ -10,6 +10,11 @@ Il nono punto era il catalogo MCP (mcp/tiers.py), uscito con la Fetta E2 Task
 
 L'ottavo punto -- il catalogo della UI (static/config/templates.js) -- e' JS e
 vive in tests/js/tool-catalog.test.mjs.
+
+fetta E3 Task 7: il punto "READ_TOOLS del gateway" (api/handlers_gateway_
+policy.py) e' uscito insieme al semaforo e alla Sentinella -- READ_TOOLS non
+esiste in nessun file. Nessun successore: la superficie gateway che concedeva
+sempre le letture non c'e' piu'.
 """
 
 
@@ -18,10 +23,3 @@ def test_get_advisories_registered_in_runner():
     names = {t["name"] for t in EVALUATION_TOOL_DEFS}
     assert "get_advisories" in names
     assert "get_advisories" in EVALUATION_ONLY_TOOLS
-
-
-def test_get_advisories_fra_i_read_tools_del_gateway():
-    # READ_TOOLS e' la lista sempre concessa al gateway perche' non distruttiva.
-    from hiris.app.api.handlers_gateway_policy import READ_TOOLS
-
-    assert "get_advisories" in READ_TOOLS

@@ -159,9 +159,17 @@ async def test_run_loop_does_not_block_event_loop(monkeypatch):
     assert ticks == 5  # all ticker iterations completed within the tight budget
 
 
-# ── Consolidamento 1.4: il runner non ha piu' una propria copia di
-# `parse_decision`; adatta l'unica implementazione (watcher.reasoner) alla
-# forma a dizionario che viaggia sulla reasoning API. ──────────────────────
+# ── fetta E3 Task 7: `parse_decision` viveva in `watcher.reasoner`
+# ("Consolidamento 1.4: unica implementazione"); la Sentinella (unico altro
+# chiamante) e' uscita per intero in questo task, quindi il parser si e'
+# trasferito qui con l'ultimo chiamante rimasto (`_parse_decision` +
+# `Decision`/`VERDICT_*`/`FALLBACK_MESSAGE_MAX` ora vivono in questo modulo).
+# `parse_decision` adatta la `Decision` alla forma a dizionario che viaggia
+# sulla reasoning API. I due test sotto (rifiuto di un json non-oggetto,
+# soglia unica di troncamento) erano in tests/test_sentinel_reasoner.py,
+# cancellato con la Sentinella: coprivano un comportamento del parser stesso,
+# non del percorso Sentinella, quindi si spostano qui sul nuovo (unico)
+# proprietario. ──────────────────────────────────────────────────────────
 
 def test_parse_decision_is_fail_closed_and_returns_the_wire_dict():
     d = runner.parse_decision("nessun blocco json qui")
@@ -186,12 +194,13 @@ def test_parse_decision_reads_the_last_json_block():
     assert d["action"]["entity_id"] == "light.x"
 
 
-def test_parse_decision_delegates_to_the_single_reasoner_implementation():
-    # Nessuna seconda copia: il runner deve essere esattamente il ragionatore
-    # con default_verdict fail-closed e severity "info", solo in forma dict.
-    from dataclasses import asdict
-    from hiris.app.watcher import reasoner
-    for txt in ("nessun blocco json", "y" * 2000, '```json\n[1,2]\n```',
-                '```json\n{"verdict":"anomalia","message":"ok"}\n```'):
-        assert runner.parse_decision(txt) == asdict(reasoner.parse_decision(
-            txt, default_severity="info", default_verdict="falso_positivo"))
+def test_parse_decision_rejects_json_that_is_not_an_object():
+    # Un blocco json che contiene una lista (o uno scalare) non ha campi da
+    # leggere: deve ricadere sul fallback, non sollevare AttributeError.
+    d = runner.parse_decision('```json\n[1, 2, 3]\n```')
+    assert d["verdict"] == "falso_positivo" and d["action"] is None
+
+
+def test_parse_decision_fallback_message_truncation_is_the_single_threshold():
+    d = runner.parse_decision("x" * 2000)
+    assert len(d["message"]) == runner.FALLBACK_MESSAGE_MAX == 500

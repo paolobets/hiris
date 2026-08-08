@@ -7,12 +7,20 @@ qualunque dizionario non vuoto e scriveva in Home Assistant un'automazione senza
 trigger ne' azione. Stesso schema del bug di luglio: sembra applicata, non fa
 nulla.
 
-La difesa e' su entrambi i lati:
+La difesa era su entrambi i lati:
   - chi applica: `create_automation` rifiuta cio' che non ha la forma minima di
     un'automazione HA;
-  - chi propone: la Sentinella propone uno script (che e' cio' che ha davvero in
-    mano) e la coverage-review propone un'automazione solo quando il
-    suggerimento porta davvero una config di automazione.
+  - chi propone: la Sentinella proponeva uno script (che era cio' che aveva
+    davvero in mano) e la coverage-review un'automazione solo quando il
+    suggerimento portava davvero una config di automazione.
+
+fetta E3 Task 5 + Task 7: entrambi i "chi propone" sono usciti per intero --
+la coverage-review del Brain (Task 5, brain.coverage_review) e la Sentinella
+(Task 7, watcher/sentinel_proposal.py + watcher/executor.py, cancellati
+insieme al resto del guardiano/ragionatore/esecutore). Resta solo "chi
+applica": `create_automation`/`is_automation_config` (proxy/ha_client.py) non
+hanno nulla a che fare con la Sentinella -- sono la difesa che vale per
+QUALUNQUE proposta futura, non solo per quelle che la Sentinella creava.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -109,225 +117,20 @@ def test_is_automation_config_predicate():
 
 
 # ---------------------------------------------------------------------------
-# Chi propone (1) — la Sentinella propone uno script, non un'automazione
-# ---------------------------------------------------------------------------
-
-from hiris.app.proxy.proposta_config import apply_ha_config           # noqa: E402
-from hiris.app.watcher.sentinel_proposal import (                     # noqa: E402
-    build_sentinel_script_proposal,
-    propose_sentinel_script,
-)
-
-_ACTION = {"domain": "switch", "service": "turn_off",
-           "entity_id": "switch.stufa", "data": {}}
-
-
-_DEFAULT = object()
-
-
-def _record(action=_DEFAULT, **kw):
-    kw.setdefault("signal_kind", "power")
-    kw.setdefault("entity_id", "switch.stufa")
-    kw.setdefault("message", "Consumo anomalo: propongo di spegnere la stufa")
-    kw.setdefault("routing_reason", "Proposta dalla Sentinella (autonomia graduata)")
-    return build_sentinel_script_proposal(
-        _ACTION if action is _DEFAULT else action, **kw)
-
-
-def test_sentinel_proposal_declares_a_script_and_contains_a_script():
-    rec = _record()
-    assert rec is not None
-    assert rec["type"] == "ha_script"
-    assert rec["config"]["kind"] == "script"
-    assert rec["config"]["slug"] == "hiris_sentinella_power_stufa"
-    seq = rec["config"]["ha_config"]["sequence"]
-    assert seq == [{"service": "switch.turn_off",
-                    "target": {"entity_id": "switch.stufa"},
-                    "data": {}}]
-
-
-_NOTA_APPROVAZIONE = ("Approvando crei in Home Assistant uno script pronto all'uso: "
-                      "il rimedio non viene eseguito ora, lo esegui tu quando vuoi.")
-
-
-def test_sentinel_proposal_description_says_what_approving_produces():
-    """Il pannello Proposte mostra nome, descrizione, tipo e un bottone "Attiva",
-    senza anteprima del contenuto: se la descrizione promette il rimedio, l'utente
-    preme "Attiva" e ottiene uno script creato, non la stufa spenta. La descrizione
-    deve dire cosa si ottiene approvando, conservando cio' che e' stato rilevato."""
-    rec = _record()
-    assert rec["description"] == (
-        "Consumo anomalo: propongo di spegnere la stufa. " + _NOTA_APPROVAZIONE)
-
-
-def test_sentinel_proposal_never_claims_an_mcp_origin():
-    """Con un messaggio vuoto la descrizione non deve ricadere sul default di
-    build_config_proposal, che dichiara un'origine ("via MCP") che non e' la sua."""
-    rec = _record(message="")
-    assert "MCP" not in rec["description"]
-    assert rec["description"] == (
-        "Sentinella: power su switch.stufa. " + _NOTA_APPROVAZIONE)
-
-
-def test_sentinel_proposal_reuses_the_shared_identifier_rules():
-    """Le regole di forma di dominio/servizio/entity_id sono quelle di HAClient,
-    non una quarta copia scritta a mano qui."""
-    import hiris.app.proxy.ha_client as ha_client_mod
-    import hiris.app.watcher.sentinel_proposal as sp_mod
-
-    assert sp_mod._IDENTIFIER_RE is ha_client_mod._IDENTIFIER_RE
-    assert sp_mod._ENTITY_ID_RE is ha_client_mod._ENTITY_ID_RE
-
-
-def test_sentinel_proposal_is_not_an_automation_config():
-    """Il vecchio contenuto ({"suggested_action": ...}) sarebbe stato scritto in
-    HA come automazione senza trigger ne' azione: il nuovo non finisce mai la'."""
-    rec = _record()
-    assert rec["type"] != "ha_automation"
-    assert is_automation_config(rec["config"]) is False
-
-
-def test_sentinel_proposal_carries_the_delayed_turn_off():
-    """Stessa fedelta' del percorso automatico: `off_after_min` diventa un
-    ritardo + spegnimento nella sequenza, non si perde per strada."""
-    rec = _record({"domain": "switch", "service": "turn_on",
-                   "entity_id": "switch.pompa", "data": {}, "off_after_min": 15})
-    seq = rec["config"]["ha_config"]["sequence"]
-    assert seq[0]["service"] == "switch.turn_on"
-    assert seq[1] == {"delay": {"minutes": 15}}
-    assert seq[2] == {"service": "switch.turn_off",
-                      "target": {"entity_id": "switch.pompa"}}
-
-
-@pytest.mark.parametrize("action", [
-    None,
-    {},
-    {"entity_id": "switch.stufa"},                       # servizio mancante
-    {"entity_id": "switch.stufa", "service": "turn off"},  # servizio non valido
-    {"service": "turn_off"},                             # entita' mancante
-    {"entity_id": "stufa", "service": "turn_off"},       # entity_id senza dominio
-    {"entity_id": "switch.stufa", "service": "turn_off", "data": "non un dict"},
-])
-def test_sentinel_proposal_none_when_action_is_not_packageable(action):
-    assert _record(action) is None
-
-
-@pytest.mark.asyncio
-async def test_sentinel_proposal_actually_creates_the_script_on_apply():
-    """Il ramo di apply del tipo scelto fa qualcosa di reale: niente
-    "applicata" a vuoto."""
-    rec = _record()
-    ha = MagicMock()
-    ha.create_script = AsyncMock(return_value={"ok": True, "id": "hiris_sentinella_power_stufa"})
-    res = await apply_ha_config(ha, rec["config"])
-    assert res == {"ok": True, "id": "hiris_sentinella_power_stufa"}
-    ha.create_script.assert_awaited_once_with(
-        "hiris_sentinella_power_stufa", rec["config"]["ha_config"])
-
-
-# ---------------------------------------------------------------------------
-# Chi propone (1b) — l'esito registrato dice cio' che e' davvero accaduto
-# ---------------------------------------------------------------------------
-
-from hiris.app.watcher.executor import execute                        # noqa: E402
-from hiris.app.watcher.signals import Decision, WakeEvent             # noqa: E402
-
-
-def _decision(action=_ACTION):
-    return Decision("anomalia", "warn", "Consumo anomalo: propongo di spegnere la stufa",
-                    action)
-
-
-def _wake():
-    return WakeEvent("power", "switch.stufa", "warn", {"watt": 3500}, 1.0)
-
-
-class _Notifier:
-    def __init__(self):
-        self.notified = []
-
-    async def notify(self, message, *, title):
-        self.notified.append((title, message))
-
-
-async def _propose(decision, *, save, notifier):
-    return await propose_sentinel_script(
-        decision, _wake(), save=save, notify=notifier.notify,
-        notify_title="HIRIS Sentinella",
-        routing_reason="Proposta dalla Sentinella (autonomia graduata)")
-
-
-@pytest.mark.asyncio
-async def test_propose_saves_and_reports_propose():
-    saved = []
-
-    async def _save(record):
-        saved.append(record)
-
-    n = _Notifier()
-    outcome = await _propose(_decision(), save=_save, notifier=n)
-    assert outcome == "propose"
-    assert len(saved) == 1 and saved[0]["type"] == "ha_script"
-    assert n.notified == []
-
-
-@pytest.mark.asyncio
-async def test_propose_falls_back_to_the_notification_when_saving_fails():
-    """Se il salvataggio solleva non resta nulla: ne' proposta ne' avviso. Ma la
-    Sentinella aveva rilevato qualcosa che valeva la pena dire — stesso
-    trattamento del ramo "azione non confezionabile"."""
-    async def _save(record):
-        raise RuntimeError("disco pieno")
-
-    n = _Notifier()
-    outcome = await _propose(_decision(), save=_save, notifier=n)
-    assert n.notified == [("HIRIS Sentinella",
-                           "Consumo anomalo: propongo di spegnere la stufa")]
-    assert outcome != "propose", "nessuna proposta esiste: la timeline non deve dire 'propose'"
-    assert outcome == "alert"
-
-
-@pytest.mark.asyncio
-async def test_propose_reports_alert_when_the_action_is_not_packageable():
-    saved = []
-
-    async def _save(record):
-        saved.append(record)
-
-    n = _Notifier()
-    outcome = await _propose(_decision({"entity_id": "switch.stufa"}),
-                             save=_save, notifier=n)
-    assert saved == [] and len(n.notified) == 1
-    assert outcome == "alert"
-
-
-@pytest.mark.asyncio
-async def test_executor_records_the_outcome_the_propose_adapter_reports():
-    """execute() registrava "propose" comunque: l'esito vero lo conosce solo chi
-    ha provato a proporre."""
-    n = _Notifier()
-
-    async def _propose_alert(decision, wake):
-        return "alert"
-
-    out = await execute(_decision(), _wake(), tiers={"switch": "yellow"},
-                        entity_tiers={}, notify=n.notify,
-                        propose=_propose_alert)
-    assert out == "alert"
-
-    async def _propose_legacy(decision, wake):
-        return None
-
-    out = await execute(_decision(), _wake(), tiers={"switch": "yellow"},
-                        entity_tiers={}, notify=n.notify,
-                        propose=_propose_legacy)
-    assert out == "propose"
-
-
-# fetta E3 Task 5: la sezione "Chi propone (2) — la coverage-review propone
-# solo cio' che e' applicabile" che viveva qui e' uscita per intero: il suo
-# soggetto (brain.suggestions.apply_suggestions/SuggestionStore e brain.
-# coverage_review.COVERAGE_REVIEW_SYSTEM) e' cancellato insieme al Brain
-# auto-proponente. Nessun successore -- la "coverage-review" del docstring
-# di modulo (in cima a questo file) e' un riferimento storico al motivo per
-# cui la difesa "chi applica" esiste, non un soggetto vivo di questo file.
+# fetta E3 Task 5 + Task 7: le sezioni "Chi propone" che vivevano qui sono
+# uscite per intero, entrambe insieme al loro soggetto:
+#
+# - "Chi propone (1) — la Sentinella propone uno script" (Task 7):
+#   `build_sentinel_script_proposal`/`propose_sentinel_script`
+#   (watcher/sentinel_proposal.py) e `execute` (watcher/executor.py) sono
+#   cancellati insieme al resto della Sentinella (guardiano/ragionatore/
+#   esecutore) -- nessuna proposta automatica resta da confezionare.
+# - "Chi propone (2) — la coverage-review propone solo cio' che e'
+#   applicabile" (Task 5): `brain.suggestions.apply_suggestions`/
+#   `SuggestionStore`/`brain.coverage_review.COVERAGE_REVIEW_SYSTEM` sono
+#   cancellati insieme al Brain auto-proponente.
+#
+# Nessun successore per nessuna delle due -- resta solo "chi applica" sopra
+# (`create_automation`/`is_automation_config`), la difesa che vale per
+# qualunque proposta futura, non solo per quelle che questi due percorsi
+# creavano.

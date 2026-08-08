@@ -22,10 +22,14 @@ def test_reasoning_queue_importable():
 # poteva piu' cadere per nessuna modifica al prodotto: cancellato.
 # La META' VIVA di `test_missing_verdict_decision_does_not_execute_action`
 # (il fail-closed vero, dentro `watcher.executor.execute` su un verdetto
-# "falso_positivo") e' stata SPOSTATA in tests/test_sentinel_executor.py
-# come `test_falso_positivo_verdict_skips_execution` -- quell'esecutore e'
-# vivo (Guardian/Sentinella, esce solo al Task 7), quindi il test si sposta
-# invece di morire, come impone la regola della fetta.
+# "falso_positivo") era stata SPOSTATA in tests/test_sentinel_executor.py
+# come `test_falso_positivo_verdict_skips_execution` -- quell'esecutore era
+# vivo (Guardian/Sentinella, sarebbe uscito solo al Task 7), quindi il test
+# si era spostato invece di morire, come impone la regola della fetta.
+# fetta E3 Task 7: quel Task 7 e' questo. `watcher/executor.py` (e con lui
+# tutto `watcher/`) e' uscito per intero: `test_sentinel_executor.py`
+# (insieme al test spostato che portava) e' cancellato, non c'e' piu' un
+# esecutore vivo a cui il fail-closed possa spostarsi di nuovo.
 
 
 @pytest.mark.asyncio

@@ -30,8 +30,10 @@ if [ -z "${APPRISE_URLS}" ]; then
 fi
 export HISTORY_RETENTION_DAYS=$(bashio::config 'history_retention_days' '90')
 
-export SENTINEL_DAILY_CAP=$(bashio::config 'sentinel_daily_cap' '20')
-export SENTINEL_COOLDOWN_SEC=$(( $(bashio::config 'sentinel_cooldown_min' '30') * 60 ))
+# fetta E3 Task 7: escono SENTINEL_DAILY_CAP/sentinel_daily_cap e
+# SENTINEL_COOLDOWN_SEC/sentinel_cooldown_min -- la Sentinella che li leggeva
+# e' uscita per intero (SENTINEL_RONDA_MINUTES/sentinel_ronda_min era gia'
+# uscito con la ronda, Task 4).
 
 # fetta E3 Task 6: esce BRAIN_NOTIFY_HIGH/brain_notify_high -- la scansione di
 # salute che leggeva questa opzione e' uscita col Brain che parlava.

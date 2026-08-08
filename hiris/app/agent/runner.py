@@ -10,13 +10,11 @@ terzo catalogo di strumenti della mappa del prodotto, e ora MCP non e' piu'
 servito a Claude. `_reason_chat` sotto quindi ragiona in puro testo, senza
 poter leggere o controllare la casa: e' un guscio ridotto, non spetta a
 questo task rifarlo (arriva con il ponte push, un'altra fetta)."""
-import asyncio, json, logging, os, subprocess, time
-from dataclasses import asdict
+import asyncio, json, logging, os, re, subprocess, time
+from dataclasses import asdict, dataclass
+from typing import Optional
 import httpx
 from . import prompts
-# Consolidamento 1.4: l'interpretazione della risposta del modello vive in un
-# solo posto. Qui si importa, non si ricopia.
-from ..watcher import reasoner as _reasoner
 
 log = logging.getLogger("hiris.agent")
 
@@ -32,33 +30,90 @@ def _chat_claude_args(system: str, user: str, model: str) -> list:
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default", "--output-format", "json"]
 
+
+# fetta E3 Task 7: l'interpretazione della risposta del modello viveva in
+# `watcher.reasoner` ("Consolidamento 1.4: unica implementazione, non due
+# copie divergenti"). La Sentinella (guardiano/ragionatore/esecutore) e' uscita
+# per intero in questo task -- ma questo runner (il ponte push del Piano A,
+# vivo) restava l'ALTRO chiamante di quel parser, quindi il parser si sposta
+# qui con lui invece di sparire. E' di nuovo un'unica implementazione: prima
+# c'erano due moduli che si spartivano la stessa funzione (uno la definiva,
+# uno la usava), ora ce n'e' uno solo perche' l'altro chiamante non esiste
+# piu'.
+VERDICT_ANOMALY = "anomalia"
+VERDICT_FALSE_POSITIVE = "falso_positivo"
+VERDICTS = (VERDICT_ANOMALY, VERDICT_FALSE_POSITIVE)
+
+# Soglia per il testo grezzo riportato come messaggio quando non c'e' nulla da
+# interpretare (nessun blocco ```json``` valido nella risposta del modello).
+FALLBACK_MESSAGE_MAX = 500
+
+_JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
+
+
+@dataclass
+class Decision:
+    verdict: str            # "anomalia" | "falso_positivo"
+    severity: str           # "info" | "warn" | "critico"
+    message: str
+    action: Optional[dict] = None   # {"domain","service","entity_id","data"} | None
+
+
+def _parse_decision(text: str, default_severity: str = "info",
+                    default_verdict: str = VERDICT_FALSE_POSITIVE) -> Decision:
+    """Legge l'ultimo blocco ```json``` della risposta del modello e ne ricava
+    una Decision. Non solleva mai.
+
+    `default_verdict` e' il verdetto usato quando la risposta non e'
+    interpretabile: nessun blocco json, json non valido, json che non e' un
+    oggetto, oppure oggetto senza il campo `verdict`. Sono tutti lo stesso
+    caso -- il modello non ha detto cosa pensa. Questo runner ragiona in
+    remoto: la Decisione arriva a HIRIS attraverso la rete e (da fetta E3
+    Task 4) non viene piu' applicata da nessun esecutore automatico --
+    `handle_reasoning_submit` (handlers_reasoning.py) si limita a
+    REGISTRARLA con un warning. Il fail-closed (`default_verdict=
+    "falso_positivo"`) resta comunque la scelta giusta in caso di dubbio --
+    difesa in profondita', anche senza un esecutore a valle.
+
+    Un `default_verdict` fuori da VERDICTS ricade sul piu' prudente
+    ("falso_positivo"): un valore inatteso non deve poter aprire la strada
+    all'attuazione."""
+    if default_verdict not in VERDICTS:
+        default_verdict = VERDICT_FALSE_POSITIVE
+    m = list(_JSON_RE.finditer(text or ""))
+    if m:
+        try:
+            obj = json.loads(m[-1].group(1))
+        except (ValueError, TypeError):
+            obj = None
+        # Il blocco puo' contenere una lista o uno scalare: senza questa
+        # guardia `obj.get` sollevava AttributeError, che non e' fra le
+        # eccezioni catturate -- il parsing crashava invece di ricadere sul
+        # fallback.
+        if isinstance(obj, dict):
+            action = obj.get("action")
+            return Decision(
+                verdict=str(obj.get("verdict") or default_verdict),
+                severity=str(obj.get("severity") or default_severity),
+                message=str(obj.get("message", "")).strip() or "(nessun messaggio)",
+                action=action if isinstance(action, dict) else None,
+            )
+    return Decision(verdict=default_verdict, severity=default_severity,
+                    message=(text or "").strip()[:FALLBACK_MESSAGE_MAX] or "(vuoto)",
+                    action=None)
+
+
 def parse_decision(text: str) -> dict:
     """Decisione del runner nella forma che viaggia sulla reasoning API.
 
-    Consolidamento 1.4: qui NON c'e' piu' un parser. C'e' l'unico parser
-    (`watcher.reasoner.parse_decision`) piu' un adattatore di forma: il
-    ragionatore ritorna una `Decision` (dataclass), la reasoning API vuole un
-    dizionario `{verdict, severity, message, action}` -- `asdict` e' l'intera
-    conversione, i campi coincidono uno a uno.
-
-    Il comportamento in caso di dubbio e' dichiarato qui, non ereditato:
-    `default_verdict="falso_positivo"` (fail-closed). Questa Decisione
-    attraversa la rete verso /api/reasoning/submit -- ma da `101189a` (fetta
-    E3 Task 4) quella rotta non attua piu' nulla: `_execute_decision`
-    (server.py) e' stato cancellato insieme alla ronda/revisione olistica
-    che lo chiamava, e `app["execute_decision"]` non e' piu' wired da
-    nessuna parte in produzione. Il ramo non-chat di `handle_reasoning_
-    submit` (handlers_reasoning.py) si limita quindi a REGISTRARE la
-    decisione con un warning esplicito, mai ad applicarla. Il fail-closed
-    qui resta comunque la scelta giusta in caso di dubbio -- difesa in
-    profondita', anche se oggi non c'e' piu' nessun esecutore a valle che
-    potrebbe attuarla. `default_severity="info"` per lo stesso motivo: nel
-    dubbio il livello piu' basso. La Sentinella in-process (watcher/
-    reasoner.py, viva) dichiara l'opposto ("anomalia"), e sta tutto scritto
-    nella docstring del ragionatore."""
-    return asdict(_reasoner.parse_decision(
+    `_parse_decision` ritorna una `Decision` (dataclass); la reasoning API
+    vuole un dizionario `{verdict, severity, message, action}` -- `asdict` e'
+    l'intera conversione, i campi coincidono uno a uno. Fail-closed:
+    `default_severity="info"`, `default_verdict=VERDICT_FALSE_POSITIVE` --
+    nel dubbio il livello piu' basso e nessuna azione richiesta."""
+    return asdict(_parse_decision(
         text, default_severity="info",
-        default_verdict=_reasoner.VERDICT_FALSE_POSITIVE))
+        default_verdict=VERDICT_FALSE_POSITIVE))
 
 
 # M-1 (Plan 2B final review, fast-follow): CLAUDE_API_KEY is HIRIS's own

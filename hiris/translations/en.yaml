@@ -92,12 +92,6 @@ configuration:
   history_retention_days:
     name: "Conversation History Retention (days)"
     description: "How many days to keep conversation history before automatic deletion. Default is 90 days."
-  sentinel_daily_cap:
-    name: "Sentinella — AI wakeup cap per day"
-    description: "Maximum number of AI reasonings per day triggered by Sentinella. Default: 20."
-  sentinel_cooldown_min:
-    name: "Sentinella — Cooldown between wakeups (minutes)"
-    description: "Minimum minutes between two wakeups on the same signal. Default: 30."
   bridge_enabled:
     name: "Subscription bridge — enable"
     description: "Routes chat via subscription (if enabled below) to an external subscription runner instead of the local/pay-per-use provider. Off = chat via subscription never activates."

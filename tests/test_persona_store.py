@@ -112,82 +112,20 @@ async def test_run_persona_produces_text_only_no_actions(engine):
 
 
 # ---------------------------------------------------------------------------
-# Guard: Sentinella _llm_reason (server.py) → reasoner.reason still works
-# after run_with_actions dropped its action_mode/AZIONI branch.
+# fetta E3 Task 7: il guard "Sentinella _llm_reason (server.py) →
+# reasoner.reason still works after run_with_actions dropped its
+# action_mode/AZIONI branch" viveva qui. Entrambi gli estremi del percorso
+# che pinnava sono usciti per intero in questo task: `_llm_reason` (la
+# closure della Sentinella, server.py) e `watcher.reasoner.reason`/
+# `SENTINEL_SYSTEM` (l'intero pacchetto watcher/). Nessun successore -- non
+# resta alcun chiamante anonimo/unscoped di `run_with_actions` nel processo
+# in-addon (il ponte push remoto, agent/runner.py, non lo chiama: usa il
+# sottoprocesso `claude -p`). `run_with_actions` stesso non e' cancellato
+# (esce con la promessa fatta dalla E2, al Task 8 -- non tocca a questo
+# task): resta un metodo vivo su ClaudeRunner/LLMRouter/OpenAICompatRunner,
+# ma orfano di ogni chiamante di produzione da qui in poi -- dichiarato nel
+# report del task, non raccolto (fuori dal perimetro di questo task).
 # ---------------------------------------------------------------------------
-
-from hiris.app.claude_runner import ClaudeRunner
-from hiris.app.watcher.signals import WakeEvent
-from hiris.app.watcher.reasoner import reason, SENTINEL_SYSTEM
-
-
-async def _llm_reason_like_server(runner, system, user, *, model, max_tokens):
-    """Mirrors the ANONYMOUS/UNSCOPED shape of server.py's `_llm_reason`
-    closure -- the one every built-in sentinel caller still uses (post
-    Slice-5 edit): no `action_mode` kwarg, `allowed_tools=[]`, unwraps the
-    (text, structured) tuple and returns only the text.
-
-    Agenti v1.1 Fase 2 Task 3 added optional `agent_id`/`allowed_entities`/
-    `allowed_services` to the real closure; they are deliberately absent
-    here because this test guards the run_with_actions -> reason() path, not
-    that identity/perimeter forwarding. fetta E3 Task 3: their only supplier
-    (a user-defined Agentbot with a perimeter, via `watcher/agentbot_runner.py`)
-    is gone -- the real closure keeps the three parameters, dormant, for a
-    future "Agenti" project, but nothing in-repo exercises them today."""
-    out = await runner.run_with_actions(
-        user_message=user, system_prompt=system,
-        allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent")
-    if isinstance(out, tuple):
-        return out[0] or ""
-    return out or ""
-
-
-@pytest.mark.asyncio
-async def test_llm_reason_via_run_with_actions_still_produces_decision():
-    """End-to-end guard: ClaudeRunner.run_with_actions (simplified, no
-    action_mode) feeding the Sentinella reasoner must still yield a Decision
-    parsed from the model's ```json``` block, unmodified by any AZIONI/
-    VALUTAZIONE prompt injection (there is none anymore)."""
-    runner = ClaudeRunner.__new__(ClaudeRunner)
-    llm_text = (
-        "Il livello della batteria è basso ma non critico.\n"
-        "```json\n"
-        + json.dumps({
-            "verdict": "anomalia",
-            "severity": "info",
-            "message": "Batteria al 8%, sostituirla presto.",
-            "action": None,
-        })
-        + "\n```"
-    )
-    runner.chat = AsyncMock(return_value=llm_text)
-
-    we = WakeEvent("battery", "sensor.porta_garage_battery", "info", {"pct": 8}, 1.0)
-
-    async def llm_reason(system, user, *, model, max_tokens):
-        return await _llm_reason_like_server(runner, system, user, model=model, max_tokens=max_tokens)
-
-    decision = await reason(
-        we, gather_context=lambda w: {"friendly_name": "Porta garage"},
-        llm_reason=llm_reason, system=SENTINEL_SYSTEM,
-    )
-
-    assert decision.verdict == "anomalia"
-    assert decision.severity == "info"
-    assert "Batteria al 8%" in decision.message
-
-    # The reasoner's system prompt (SENTINEL_SYSTEM, already asking for a
-    # ```json``` block) must reach chat() untouched — run_with_actions no
-    # longer appends VALUTAZIONE/AZIONI instructions to it.
-    call_kwargs = runner.chat.call_args.kwargs
-    assert call_kwargs["system_prompt"] == SENTINEL_SYSTEM
-    assert "AZIONI:" not in call_kwargs["system_prompt"]
-    # allowed_tools=[] is falsy, so run_with_actions keeps the full
-    # EVALUATION_ONLY_TOOLS whitelist (read-only) rather than narrowing to
-    # nothing — this is what makes allowed_tools=[] a safe "no actuation"
-    # signal rather than a "no tools at all" one.
-    from hiris.app.claude_runner import EVALUATION_ONLY_TOOLS
-    assert set(call_kwargs["allowed_tools"]) == set(EVALUATION_ONLY_TOOLS)
 
 
 # ---------------------------------------------------------------------------

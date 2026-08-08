@@ -52,8 +52,6 @@ from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
 from .brain.memory_migration import migrate_agent_memories
 from .brain.privacy import VaultStore, Pseudonymizer
-from .brain.reasoner_memory import relevant_memory, MemoryRecall
-from .watcher.policy import load_policy
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .mqtt_publisher import MQTTPublisher
@@ -333,67 +331,16 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
         logger.warning("Lovelace card registration error: %s", exc)
 
 
-def _reasoning_runner(app: web.Application):
-    """L'oggetto a cui il percorso di ragionamento parla davvero: il router
-    LLM, o -- se non c'e' -- il ClaudeRunner dell'engine.
-
-    Risoluzione condivisa da ogni chiamante di `_llm_reason`, cosi' che tutti
-    guardino sempre lo stesso oggetto invece di rischiare di risolvere due
-    runner diversi in momenti diversi.
-
-    Fino al Task 3 di questa fetta serviva anche al bound per esecuzione
-    (`agent_run_bound` & co., Agenti v1.1 Fase 2 Task 5): quel bound esisteva
-    solo per misurare il costo di un Agentbot in modalita' obiettivo, e
-    l'unico chiamante che poteva innescarlo (`watcher/agentbot_runner.py`) e'
-    uscito con l'intero strato Agentbot -- percorso morto per costruzione, non
-    solo inutilizzato oggi. Rimosso insieme a lui."""
-    runner = app.get("llm_router")
-    if runner is None:
-        eng = app.get("engine")
-        runner = getattr(eng, "_claude_runner", None) if eng is not None else None
-    return runner
-
-
-async def _reason_memory_context(
-    app: web.Application, embedder, wake, friendly_name: str,
-) -> MemoryRecall:
-    """Slice 6b Task 4: bounded, egress-gated memory snippets for the
-    sentinel/situation reasoner's context.
-
-    Extracted to module level (instead of inlined in the `_gather_context`
-    closure inside `_on_startup`) specifically so it is unit-testable with a
-    plain dict standing in for `app` -- `_gather_context` itself is a
-    closure over `_on_startup`'s locals and isn't independently reachable
-    from tests. `app` only needs `.get("knowledge_store")` and
-    `.get("llm_router")`, both of which a dict provides.
-
-    The egress gate: memory that isn't `sensitivity='normal'` is only
-    included when `LLMRouter.automatic_allows_sensitive()` reports the
-    whole automatic backend chain is local (Task 1) -- this feeds the
-    proactive reasoner's `_llm_reason` -> `run_with_actions` (automatic
-    mode) path exclusively; it never routes through `simple_chat` or a
-    forced non-auto model.
-
-    Failure-safe: relevant_memory() itself never raises (see
-    reasoner_memory.py), but router.automatic_allows_sensitive() or a
-    malformed `wake` could -- so this is wrapped too, degrading to
-    `MemoryRecall(snippets=[], by_meaning=False)` rather than ever bubbling
-    an exception into `_gather_context`. Returning a `MemoryRecall` on
-    every path (not sometimes a bare list) keeps `_gather_context` able to
-    read `.snippets`/`.by_meaning` unconditionally.
-    """
-    try:
-        knowledge_store = app.get("knowledge_store") if app is not None else None
-        router = app.get("llm_router") if app is not None else None
-        allow_sensitive = router.automatic_allows_sensitive() if router is not None else False
-        query_text = f"{friendly_name} {wake.signal_kind}"[:200]
-        return await relevant_memory(
-            knowledge_store, embedder,
-            query_text=query_text, allow_sensitive=allow_sensitive,
-        )
-    except Exception:
-        logger.warning("_reason_memory_context: memory retrieval failed", exc_info=True)
-        return MemoryRecall(snippets=[], by_meaning=False)
+# fetta E3 Task 7: `_reasoning_runner(app)` -- risolveva l'oggetto a cui il
+# percorso di ragionamento proattivo parlava (llm_router, poi
+# engine._claude_runner) -- e' uscita: il suo unico chiamante era
+# `_llm_reason`, la closure della Sentinella cancellata per intero piu' sotto
+# (vedi il blocco "Sentinella" in _on_startup). Stessa sorte di
+# `_reason_memory_context`, che viveva subito sotto (leggeva reasoner_
+# memory.relevant_memory per il contesto memoria del ragionatore): il suo
+# unico chiamante era `_gather_context`, un'altra closure dello stesso
+# blocco. `MemoryRecall`/`relevant_memory` (brain/reasoner_memory.py) non
+# avevano altri chiamanti: il modulo e' cancellato con loro.
 
 
 async def _osserva_la_casa(app) -> int:
@@ -435,6 +382,17 @@ def _portrait_context(app) -> str:
 
     Sincrona di proposito: legge solo la cache in memoria e lo store locale,
     nessun I/O verso Home Assistant.
+
+    ORFANO DICHIARATO (fetta E3 Task 7): il suo ultimo chiamante di
+    produzione era `_gather_context`, la closure del Guardian dentro il
+    blocco Sentinella -- cancellata per intero in questo task insieme a
+    guardiano/ragionatore/esecutore. Il chiamante olistico era gia' uscito
+    col Task 4. Nessun chiamante di produzione resta oggi. Non tocca a
+    questo task ricollegarla: il ritratto e' fuori dal suo perimetro
+    ("non anticipare... il ritratto al Task 12"), che la trovera' qui.
+    `_osserva_la_casa` (sopra) NON e' orfana: il job schedulato
+    "hiris_portrait_observe" continua a scrivere la linea di base -- solo
+    questo consumatore del TESTO composto e' rimasto senza chiamante.
     """
     try:
         store = app.get("portrait_store") if app is not None else None
@@ -695,8 +653,12 @@ def programma_rilettura_comportamento(guarda, ritardo: float = 3.0):
 
 
 async def _on_startup(app: web.Application) -> None:
-    from .claude_runner import ClaudeRunner, RunnerBackendError
+    from .claude_runner import ClaudeRunner
     from .llm_router import LLMRouter
+    # fetta E3 Task 7: `import time as _time` viveva fra gli import della
+    # Sentinella (cancellati con lei), ma serve ancora qui sotto a
+    # `_reasoning_sweep` (ponte push, vivo) -- spostato invece di perso.
+    import time as _time
 
     # Pre-load static HTML so request handlers don't do sync open().read()
     # per request (would block the event loop). Cache invalidation happens via
@@ -719,26 +681,14 @@ async def _on_startup(app: web.Application) -> None:
     _cidrs = [c.strip() for c in os.environ.get(
         "SUPERVISOR_INGRESS_CIDR", "172.30.32.0/23").split(",") if c.strip()]
     app["supervisor_ingress_cidrs"] = _cidrs or ["172.30.32.0/23"]
-    # Il semaforo (tiers/entity_tiers) resta anche senza la superficie
-    # remota: lo legge ancora watcher/executor.py (propone/nega secondo il
-    # tier), e lo costruisce apply_saved_policy() poco sotto quando l'utente
-    # ha salvato una policy del gateway dalla UI. Va inizializzato QUI
-    # comunque perche' un'installazione senza policy salvata
-    # (apply_saved_policy ritorna subito) troverebbe la chiave assente e
-    # qualche lettore fallirebbe con KeyError. Un dict vuoto e' gia' il
-    # default sicuro: ogni consumatore legge `.get("tiers") or {}` e un
-    # tiers vuoto fa risultare "off" (fail-closed) in
-    # security.semaphore.effective_tier, mai fail-open.
-    # NB (Fetta E2 Task 4): fino a qui, questa chiave veniva popolata da
-    # parse_execute_policy in api/handlers_execute.py -- uscita con questo
-    # task insieme a tutta la superficie /api/execute che leggeva
-    # policy["tools"]/["allowed_entities"]/["allowed_services"]. Quei tre
-    # campi non hanno piu' alcun consumatore. Il dispatcher che li leggeva
-    # anche lui (tools/dispatcher.py) e' uscito -- fetta E2 Task 7. Review
-    # finale fetta E2, I-1: task_engine.py non legge piu' `execute_policy`
-    # per nessuna via -- solo "tiers"/"entity_tiers" restano letti, e solo
-    # da watcher/* (la Sentinella).
-    app["execute_policy"] = {}
+    # fetta E3 Task 7: `app["execute_policy"]` (tiers/entity_tiers) e' uscita.
+    # Era il semaforo condiviso fra la superficie remota (execute-API, uscita
+    # fetta E2 Task 4) e la Sentinella (watcher/executor.py::execute, uscita
+    # in questo task): con entrambe morte non resta nessun lettore. Con lei
+    # esce `api/handlers_gateway_policy.py` (apply_saved_policy, che la
+    # costruiva dalla policy UI-managed) e `hiris/app/security/semaphore.py`
+    # (DANGEROUS_DOMAINS/effective_tier/summarize_autonomy) -- verificato con
+    # grep che nessun modulo vivo li importa piu' (vedi il report del task).
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
         logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
@@ -780,11 +730,6 @@ async def _on_startup(app: web.Application) -> None:
     # brain_model.
     from .api.handlers_models import load_models_config
     app["models_config"] = load_models_config(data_dir)
-    # Se l'utente ha configurato la policy gateway dalla UI, la deriva e la
-    # applica a `app["execute_policy"]` (le CSV d'ambiente sono uscite nel
-    # Task 4 -- non c'e' piu' nulla da sovrascrivere).
-    from .api.handlers_gateway_policy import apply_saved_policy
-    apply_saved_policy(app)
 
     # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
     # casa cambia. La costruzione iniziale non deve poter impedire il boot: un
@@ -1242,267 +1187,41 @@ async def _on_startup(app: web.Application) -> None:
             "questo avvio", exc_info=True,
         )
 
-    # ── Sentinella (cervello proattivo, fetta 1) ──────────────────────────
-    # Shares the SAME semaforo (execute_policy tiers) as the execute-API/gateway
-    # — the single source of truth for what the AI is allowed to actuate.
-    from .watcher.sentinel_store import SentinelStore
-    from .watcher.guardian import Guardian
-    from .watcher.policy import load_policy
-    from .watcher.reasoner import reason
-    from .watcher.executor import execute
-    from .watcher.sentinel_proposal import propose_sentinel_script
-    from .notifiche import send_notification
-    import time as _time
-    from datetime import datetime as _dt
-
-    sentinel_store = SentinelStore(os.path.join(data_dir, "sentinel.db"))
-    app["sentinel_store"] = sentinel_store
-
-    # fetta E3 Task 5: SuggestionStore/suggestions.db e ReasoningLog/
-    # brain_reasoning.db erano cablati qui SOLO per il Brain auto-proponente
-    # (rispettivamente: coda "Suggerimenti del Brain" applicata dalla ronda
-    # olistica, e testo dei ragionamenti mostrato da /api/brain/reasoning).
-    # Entrambi gli apparati sono usciti in questo task -- vedi il commento
-    # piu' sotto, dove prima viveva la lista dei nove orfani lasciati dal
-    # Task 4: sono tutti usciti con loro. Un'installazione con suggestions.db
-    # o brain_reasoning.db popolati da un'installazione precedente non
-    # incontra piu' nessun codice che li legga o scriva: nessuno slot
-    # app["suggestion_store"]/app["reasoning_log"], nessun cleanup da fare.
-
-    async def _gather_context(wake) -> dict:
-        # Best-effort friendly_name from the entity cache; falls back to the
-        # raw entity_id when unavailable. This part is unchanged from before
-        # Task 4 and stays non-throwing on its own.
-        try:
-            cache = app.get("entity_cache")
-            state = cache.get_state(wake.entity_id) if cache is not None else None
-            fn = (state or {}).get("attributes", {}).get("friendly_name") if state else None
-            friendly_name = fn or wake.entity_id
-        except Exception:
-            return {"friendly_name": wake.entity_id, "portrait": _portrait_context(app)}
-
-        # Slice 6b Task 4: bounded, egress-gated memory recall added on top.
-        # _reason_memory_context is itself failure-safe (never raises), but
-        # this call is never allowed to prevent returning at least
-        # {"friendly_name": ...} exactly like before Task 4.
-        #
-        # fetta 2b Task 2: `.snippets`/`.by_meaning` are read INSIDE this try
-        # too (not just the await), so a malformed MemoryRecall can't raise
-        # past this point either -- both fallback returns below stay reachable
-        # only through this one except, never a second point of failure.
-        # `memory_by_meaning` travels alongside `memory` in the context dict
-        # so build_user_message can render the honest heading; it is popped
-        # (like `memory`) before the context is JSON-dumped as "Contesto:".
-        try:
-            mem = await _reason_memory_context(app, embedder, wake, friendly_name)
-            memory_snippets = mem.snippets
-            memory_by_meaning = mem.by_meaning
-            # Task 4 ("memoria unica 3a"): i DICHIARATI viaggiano insieme a
-            # memory/memory_by_meaning, dentro lo stesso try -- un
-            # MemoryRecall malformato non deve poter far fallire QUESTO
-            # ramo diversamente dagli altri due campi.
-            declared_items = mem.declared
-        except Exception:
-            return {"friendly_name": friendly_name, "portrait": _portrait_context(app)}
-        return {"friendly_name": friendly_name, "memory": memory_snippets,
-                "memory_by_meaning": memory_by_meaning,
-                "declared": declared_items,
-                "portrait": _portrait_context(app)}
-
-    async def _llm_reason(system, user, *, model, max_tokens,
-                          agent_id=None, allowed_entities=None, allowed_services=None):
-        # allowed_tools=[] is falsy -> narrowing is SKIPPED (claude_runner.py:894-896):
-        # this reasoning call receives every EVALUATION_ONLY_TOOLS entry
-        # (claude_runner.py:210-222), create_task included -- NOT zero tools. The
-        # real invariant is that set excludes the tools that ACT (call_ha_service,
-        # send_notification, trigger_automation, toggle_automation, http_request).
-        # The executor below does NOT act either since Task 6: `executor.execute()`
-        # treats "green" like "yellow" (propose, never auto-act) -- see the comment
-        # above `_act`'s removal, further down this function. Nothing downstream of
-        # this reasoning call calls `ha.call_service` for the green tier anymore.
-        #
-        # Agenti v1.1 Fase 2 Task 3: `agent_id` + `allowed_entities`/
-        # `allowed_services` are the reasoning agent's IDENTITY and PERIMETER.
-        # They are `None` for every caller today (guardian wakes) -- the
-        # anonymous/unscoped call they always made. The daily briefing was
-        # also an unscoped caller, and is gone since fetta E3 Task 6 (the
-        # Brain stops speaking). Situations/holistic/coverage-review were
-        # also unscoped callers, and are gone entirely since fetta E3 Task 4
-        # (the ronda). The only supplier of a real
-        # perimeter was a user-defined Agentbot with a perimeter block
-        # (mode="objective"), via `_run_decision` -- that whole layer
-        # (`watcher/agentbot_runner.py`, `_run_decision`'s own `agent_id`/
-        # `perimeter` params) is gone since fetta E3 Task 3; `_run_decision`
-        # itself (the last non-Agentbot caller of this shape) followed it out
-        # in Task 4, once its own last caller (`_on_situation`) died with the
-        # ronda.
-        # Kept here, dormant, rather than stripped: the shape (identity +
-        # allow-lists into the reasoning call) is exactly what a future
-        # "Agenti" project would need to reintroduce, and every current
-        # caller is already unaffected by its presence. `chatbot_id` is the
-        # runner-side name of that identity: it used to
-        # reach the tool dispatcher, which renamed it back to `agent_id` when
-        # it stamped a freshly created Task (`tools/dispatcher.py`,
-        # create_task branch) -- so passing it here is what would make an
-        # emitted Task belong to the agent that emitted it instead of to
-        # "hiris-default". fetta E2 Task 7: that dispatcher is gone and no
-        # replacement calls create_task from this path, so today no Task is
-        # ever actually emitted here -- the forwarding below is dead in
-        # practice, kept only because removing it would be a second,
-        # unrelated change (EVALUATION_ONLY_TOOLS/run_with_actions are
-        # explicitly out of scope for this fetta, see
-        # .superpowers/sdd/progress.md). Historically the two allow-lists
-        # rode the SAME dispatcher parameters, ending up on the Task itself
-        # -- where `task_engine._run_action`'s check used to enforce them at
-        # execution time for `call_ha_service`. Review finale fetta E2, I-1:
-        # that action type is gone from the engine entirely now, so even if
-        # a Task were emitted here, nothing left in `_run_action` reads
-        # these two allow-lists for enforcement.
-        # La risoluzione del runner vive nel module-level `_reasoning_runner(app)`
-        # invece che qui in linea, cosi' ogni chiamante guarda sempre lo
-        # stesso oggetto (llm_router, poi engine._claude_runner).
-        runner = _reasoning_runner(app)
-        if runner is None or not hasattr(runner, "run_with_actions"):
-            return ""
-        try:
-            out = await runner.run_with_actions(
-                user_message=user, system_prompt=system,
-                allowed_tools=[], model=model, max_tokens=max_tokens, agent_type="agent",
-                chatbot_id=agent_id,
-                allowed_entities=allowed_entities, allowed_services=allowed_services)
-        except RunnerBackendError:
-            # All backends failed (or a pinned-model call with no fallback,
-            # review C/#13). Reasoning degrades to empty -> the reasoner treats
-            # it as "no verdict" (alert-only/safe), never crashes the wake/round.
-            logger.warning("_llm_reason: all LLM backends failed; degrading to empty verdict")
-            return ""
-        if isinstance(out, tuple):
-            return out[0] or ""
-        return out or ""
-
-    # fetta E3 Task 6, SILENZIO DICHIARATO: qui vivevano i job schedulati
-    # "hiris_daily_briefing" (cron 08:00, resoconto consolidato via
-    # build_briefing_bundle+compose_briefing) e "hiris_urgent_nudges"
-    # (interval 6h, solleciti dedup via due_nudges/ReminderSeen) -- il canale
-    # per cui il Brain parlava all'utente ogni giorno. Usciti insieme a
-    # `brain/briefing.py` e `brain/reminders.py`: da questo task HIRIS non
-    # manda piu' ne' il resoconto delle 08:00 ne' i solleciti sulle
-    # scadenze. E' il comportamento deciso ("conosce ma non agisce"), non un
-    # guasto -- vedi il commit e il report del task per il perche'. Tornera'
-    # quando la conoscenza 2.0 avra' il nucleo da cui comporlo.
-
-    async def _notify(message, *, title):
-        # Reuses the exact notify_config object passed to the dispatcher/
-        # TaskEngine for send_notification — not a re-invented config shape.
-        await send_notification(ha_client, message, "ha_persistent", notify_config, title=title)
-
-    # `_act` (chiamava `dispatcher.dispatch("call_ha_service"/"create_task")`
-    # per il tier verde con opt-in) e' uscita qui: fetta E2 Task 6, "la
-    # Sentinella smette di usare il dispatcher". Non e' stata sostituita con
-    # un'altra via d'attuazione: `executor.execute()` ora tratta il tier
-    # "green" esattamente come "yellow" (propone, non agisce piu' da solo).
-    # Con lei sono usciti anche il parametro `allow_green_auto` (ovunque lo
-    # passasse: qui sotto, `_run_decision`, `_run_agentbot`,
-    # `_execute_decision`) e l'opzione add-on `sentinel_allow_green_auto`.
+    # fetta E3 Task 7 ("esce la Sentinella intera, e il semaforo che la E2 le
+    # aveva promesso"): guardiano (Guardian), ragionatore (watcher/
+    # reasoner.py::reason/_llm_reason/_gather_context), esecutore (watcher/
+    # executor.py::execute) e le closure che li collegavano (_notify,
+    # _propose, _on_wake) sono usciti per intero, insieme a `sentinel_store`
+    # (sentinel.db), al job "hiris_sentinel_reset" e al listener su
+    # `ha_client`. Con Agentbot (T3), ronda (T4) e Brain (T5-6) gia' usciti,
+    # il guardiano svegliava un ragionatore la cui Decisione arrivava a un
+    # `executor.execute()` che da fetta E2 "propone, non agisce" -- l'ultimo
+    # pezzo che poteva decidere qualcosa da solo. `hiris/app/watcher/` e
+    # `hiris/app/security/` (il semaforo, DANGEROUS_DOMAINS/effective_tier/
+    # summarize_autonomy) sono cancellati per intero: verificato con grep che
+    # nessun modulo vivo li importa piu' (i lettori del semaforo erano
+    # `watcher/executor.py` e `api/handlers_gateway_policy.py`, entrambi
+    # usciti con lui; vedi il report del task). L'unico chiamante vivo che
+    # importava qualcosa da `watcher/` -- `agent/runner.py`, il ponte push,
+    # che riusava `watcher.reasoner.parse_decision` -- si e' portato dietro
+    # quella funzione (ora vive li', non e' stata cancellata).
     #
-    # Review finale, I-1: questo NON era ancora il punto in cui "l'unica
-    # attuazione automatica rimasta smette di esistere" -- `task_engine.py`
-    # (`_run_action`) chiamava ancora `ha.call_service` per i task legacy
-    # ricaricati da `/data/tasks.json` al boot (upgrade da un'installazione
-    # 1.x, l'unico percorso di deploy previsto). Il fix di quel residuo e'
-    # nel Task Engine stesso (vedi il commento in cima a `_run_action`,
-    # task_engine.py): dopo il fix, `call_ha_service` non e' piu' un'azione
-    # riconosciuta da NESSUN motore -- ne' dalla Sentinella (qui sopra),
-    # ne' dai Task differiti (task_engine.py). Questo E' il punto in cui
-    # l'unica attuazione automatica rimasta smette di esistere.
-
-    async def _propose(decision, wake):
-        # Consolidamento 1.2: cio' che la Sentinella propone e' UNA chiamata di
-        # servizio (rimedio una-tantum), non una regola permanente. Prima
-        # veniva salvata come proposta 'ha_automation' con dentro
-        # {"suggested_action": ...}: all'approvazione finiva in HA come
-        # automazione senza trigger ne' azioni. Ora la proposta e' di tipo
-        # ha_script e contiene una vera config di script — vedi
-        # watcher/sentinel_proposal.py per il perche' non un'automazione.
-        #
-        # L'esito ritornato e' quello che finisce nella timeline: "propose" solo
-        # se una proposta esiste davvero, "alert" quando si e' ripiegato sulla
-        # notifica (azione non confezionabile o salvataggio fallito).
-        return await propose_sentinel_script(
-            decision, wake,
-            save=proposal_store.save, notify=_notify,
-            notify_title="HIRIS Sentinella",
-            routing_reason="Proposta dalla Sentinella (autonomia graduata)")
-
-    async def _on_wake(wake):
-        decision = None
-        outcome = "error"
-        try:
-            decision = await reason(wake, gather_context=_gather_context, llm_reason=_llm_reason)
-            # Semaforo source of truth: the SAME execute_policy the execute-API
-            # and gateway use, never the sentinel detector policy. Empty tiers
-            # → effective_tier() returns "off" → alert-only (SAFE default).
-            _ep = app.get("execute_policy") or {}
-            tiers = _ep.get("tiers") or {}
-            entity_tiers = _ep.get("entity_tiers") or {}
-            outcome = await execute(
-                decision, wake,
-                tiers=tiers, entity_tiers=entity_tiers,
-                notify=_notify, propose=_propose)
-        except Exception:
-            logger.exception("sentinel on_wake failed")
-            outcome = "error"
-        sentinel_store.record_event({
-            "ts": _time.time(), "kind": wake.signal_kind, "entity_id": wake.entity_id,
-            "verdict": getattr(decision, "verdict", None), "severity": wake.severity_hint,
-            "outcome": outcome, "message": getattr(decision, "message", "")})
-
-    # fetta E3 Task 3: la cache in-memory degli Agentbot evento-triggerati
-    # (`handlers_agentbots.set_agentbots`/`get_event_agentbots`) e il suo
-    # ponte verso `Guardian.on_state_changed` sono usciti insieme al modulo
-    # che li popolava: nessun codice legge piu' `app["user_agentbots"]`. Il
-    # Guardian resta vivo (fino al Task 7) senza i due kwarg opzionali
-    # `get_user_agentbots`/`run_agentbot` -- sono `Optional` di suo, quindi
-    # continua a funzionare col solo percorso DETECTORS built-in.
-    guardian = Guardian(
-        sentinel_store, lambda: load_policy(data_dir), _on_wake,
-        cooldown_sec=int(os.environ.get("SENTINEL_COOLDOWN_SEC", "1800")),
-        daily_cap=int(os.environ.get("SENTINEL_DAILY_CAP", "20")))
-    guardian.set_policy(load_policy(data_dir))
-    app["guardian"] = guardian
-    ha_client.add_state_listener(
-        lambda evt: _spawn(guardian.on_state_changed(evt), name="guardian_on_state_changed")
-    )
-
-    def _reset_sentinel_counter() -> None:
-        sentinel_store.reset_wakes(_dt.now().strftime("%Y-%m-%d"))
-
-    engine._scheduler.add_job(
-        _reset_sentinel_counter, trigger="cron", hour=0, minute=1,
-        id="hiris_sentinel_reset", replace_existing=True, misfire_grace_time=3600)
-
-    # fetta E3 Task 4 ("esce la casa vecchia, e con lei chi la guardava"): la
-    # ronda periodica (snapshot + le due situazioni hot_and_away/
-    # away_alarm_off + la revisione olistica) e' uscita per intero --
-    # girava ogni 15 minuti con tutte le situazioni spente di fabbrica
-    # (watcher/policy.py), consumando una GET /api/states e una chiamata
-    # meteo a vuoto, e dalla fetta E2 il suo execute() non attuava piu'
-    # nulla. Con lei sono usciti `_snap_deps`/`_snapshot` (watcher/snapshot.py
-    # + watcher/evaluator.py + watcher/situations.py), e -- verificato che
-    # nessun chiamante restava dopo aver tolto evaluator/situazioni/arrivo/
-    # olistico sotto -- anche `_record_situation_event`, `_run_decision` e
-    # `_on_situation`: erano tre gradini della stessa catena, orfani a
-    # cascata. Il Guardian (sopra) ha sempre avuto la propria `_on_wake`
-    # indipendente: non perde nulla.
-    #
-    # `_snap_deps["get_health"]` era l'ultima dipendenza reale che teneva
-    # `health_monitor` agganciato a questa macchina -- tolta qui, libera il
-    # Task 11 (che NON e' questo task: `health_monitor` resta orfano di
-    # proposito, costruito e servito su /api/health esattamente come prima).
-    #
-    # Silenzio dichiarato: da qui la casa non viene piu' "guardata" ogni 15
-    # minuti. Nessun log da aggiungere per questo -- non c'e' piu' codice che
-    # possa accorgersene.
+    # Silenzio dichiarato: un `sentinel.db` popolato da un'installazione
+    # precedente non incontra piu' nessun lettore/scrittore (nessuno slot
+    # app, nessuna rotta, nessun listener). Il file non viene cancellato
+    # (mai dati utente in /data), ma se c'e' lo diciamo esplicitamente nel
+    # log invece di incontrarlo in silenzio -- stessa disciplina di
+    # advisory.db (Task 6): un pass muto sarebbe indistinguibile da un
+    # guasto.
+    _sentinel_db_path = os.path.join(data_dir, "sentinel.db")
+    if os.path.exists(_sentinel_db_path):
+        logger.info(
+            "sentinel.db presente in %s da un'installazione precedente: "
+            "da fetta E3 Task 7 nessun codice lo legge ne' lo scrive piu' "
+            "(la Sentinella -- guardiano, ragionatore, esecutore -- e' "
+            "uscita per intero). Il file resta su disco, intatto.",
+            _sentinel_db_path,
+        )
 
     # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
     # runner remoto. Resta -- lo usa il ramo chat sotto (Slice 4b) -- ma
@@ -1558,7 +1277,8 @@ async def _on_startup(app: web.Application) -> None:
 
     # Slice 4b Task 3: separate daily cap for chat-via-abbonamento, checked by
     # handle_chat's subscription branch (handlers_chat.py) against
-    # reasoning_queue.count_chat_today() -- independent of SENTINEL_DAILY_CAP.
+    # reasoning_queue.count_chat_today() -- independent of the Sentinel's own
+    # cap (SENTINEL_DAILY_CAP, uscita insieme a lei -- fetta E3 Task 7).
     app["chat_daily_cap"] = int(os.environ.get("CHAT_DAILY_CAP", "50"))
 
     # fetta E3 Task 5: esce il Brain auto-proponente. Il Task 4 aveva lasciato
@@ -1849,8 +1569,6 @@ async def _on_cleanup(app: web.Application) -> None:
         app["proposal_store"].close()
     if "history_store" in app:
         app["history_store"].close()
-    if "sentinel_store" in app:
-        app["sentinel_store"].close()
     if "portrait_store" in app:
         app["portrait_store"].close()
     if "reasoning_queue" in app:
@@ -1947,31 +1665,27 @@ def create_app() -> web.Application:
     app.router.add_post("/api/knowledge/{id}/reject", handle_reject)
     app.router.add_post("/api/knowledge", handle_manual_add)
 
-    from .api.handlers_gateway_policy import (
-        handle_get_gateway_policy, handle_save_gateway_policy, handle_autonomy_summary,
-    )
-    app.router.add_get("/api/gateway/policy", handle_get_gateway_policy)
-    app.router.add_post("/api/gateway/policy", handle_save_gateway_policy)
-    app.router.add_post("/api/gateway/autonomy-summary", handle_autonomy_summary)
-
     from .api.handlers_history_policy import (
         handle_get_history_policy, handle_save_history_policy,
     )
     app.router.add_get("/api/history/policy", handle_get_history_policy)
     app.router.add_post("/api/history/policy", handle_save_history_policy)
 
-    from .api.handlers_sentinel import (
-        handle_get_sentinel_policy, handle_save_sentinel_policy, handle_sentinel_timeline,
-    )
-    app.router.add_get("/api/sentinel/policy", handle_get_sentinel_policy)
-    app.router.add_post("/api/sentinel/policy", handle_save_sentinel_policy)
-    app.router.add_get("/api/sentinel/timeline", handle_sentinel_timeline)
-
     # fetta E3 Task 3: le quattro rotte CRUD /api/agentbots sono uscite
     # insieme ad api/handlers_agentbots.py. La pagina #/agentbots
     # (agentbot-route.js), il suo editor (agentbot-editor.js) e il wizard
     # (create-wizard.js: POST /api/agentbots) restano nello static/ (fetta
     # E5) e da qui in poi ricevono 404 -- non riparati, per costruzione.
+    #
+    # fetta E3 Task 7: /api/gateway/policy, /api/gateway/autonomy-summary
+    # (api/handlers_gateway_policy.py) e /api/sentinel/policy,
+    # /api/sentinel/timeline (api/handlers_sentinel.py) sono uscite insieme
+    # alla Sentinella e al semaforo che le serviva -- entrambi i moduli
+    # handler sono cancellati per intero. La pagina #/gateway
+    # (gateway-route.js) e il riquadro "Autonomia" dell'editor Chatbot
+    # (chatbot-editor.js -> POST /api/gateway/autonomy-summary) restano nello
+    # static/ (fetta E5) e da qui in poi ricevono 404 -- non riparati, per
+    # costruzione (vedi il report del task).
 
     from .api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)

@@ -4,10 +4,18 @@ TOOL_DEF` -- il modulo e' uscito per intero (non serve a
 `EVALUATION_ONLY_TOOLS`, e nessuna funzione viva lo importa piu': `create_ha_
 config` era gia' orfana dal Task 7, il `ToolDispatcher` che la chiamava e'
 uscito). Il resto del file prova `hiris.app.proxy.proposta_config`, un modulo
-vivo (lo importano watcher/sentinel_proposal.py, api/handlers_execute.py,
-api/handlers_proposals.py -- vedi il commento in cima a config_tools.py, ora
-sparito insieme al modulo) e non tocca `tools/`: rinominato per riflettere
-cio' che prova davvero."""
+vivo (lo importa api/handlers_proposals.py, `apply_ha_config`) e non tocca
+`tools/`: rinominato per riflettere cio' che prova davvero.
+
+fetta E3 Task 7: dei tre importatori storici elencati qui,
+`watcher/sentinel_proposal.py` (build_config_proposal/normalize_config_
+inputs) e' uscito insieme all'intera Sentinella, e `api/handlers_execute.py`
+era gia' uscito prima (fetta E2 Task 4). Resta solo `api/handlers_
+proposals.py`, e solo per `apply_ha_config` -- `build_config_proposal`/
+`normalize_config_inputs` non hanno oggi alcun chiamante di produzione,
+solo questo file che li prova direttamente. Dichiarato nel report del task,
+non raccolto (proxy/proposta_config.py non e' nel file-list di questo
+task)."""
 import pytest
 from unittest.mock import AsyncMock
 from hiris.app.proxy.proposta_config import (

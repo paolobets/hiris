@@ -9,8 +9,9 @@ stopped being scoped to a single chatbot (Task 3,
 tests/test_knowledge_store_chatbot.py), what a person declares always enters
 context (Task 4, formerly tests/test_declared_block_chat.py -- retired for
 the chat surface by Task 3 of the "nucleo alla chat" slice, 2.0, see the
-note on Test 1 below -- + tests/test_declared_block_reasoner.py, which is
-untouched), and memory stopped expiring (Task 6,
+note on Test 1 below -- + tests/test_declared_block_reasoner.py, retired in
+turn by fetta E3 Task 7 together with the whole proactive reasoner it
+pinned), and memory stopped expiring (Task 6,
 tests/test_memory_alias_unified.py + tests/test_knowledge_store.py). None of
 those checked the whole chain end to end, with the REAL default-install
 embedder, the way a real conversation would actually exercise it. That is
@@ -30,16 +31,11 @@ import pytest
 
 from hiris.app.backends.embeddings import NullEmbedder
 from hiris.app.brain.knowledge_store import KnowledgeStore
-from hiris.app.brain.reasoner_memory import relevant_memory
 from hiris.app.chat_store import close_all_stores
-from hiris.app.server import _reason_memory_context
-from hiris.app.watcher.reasoner import build_user_message
-from hiris.app.watcher.signals import WakeEvent
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 PREF_TEXT = "d'inverno il soggiorno sta bene a 19.5 gradi"
-INSIGHT_TEXT = "media settimanale del consumo elettrico"
 
 
 # fetta E2 Task 8 ("escono i trentaquattro"): `handle_save_memory`/
@@ -86,33 +82,6 @@ def _close_chat_stores_after_each_test():
     close_all_stores()
 
 
-class _LocalRouter:
-    """Stand-in for LLMRouter: automatic_allows_sensitive() is the only
-    method _reason_memory_context reads off app["llm_router"]."""
-
-    def automatic_allows_sensitive(self) -> bool:
-        return True
-
-
-def _wake() -> WakeEvent:
-    return WakeEvent(signal_kind="temperature_change", entity_id="climate.salotto",
-                      severity_hint="info", evidence={}, ts=1.0)
-
-
-def _declared_section(msg: str) -> str:
-    """Slice out just the "Fatti dichiarati:" block from a rendered
-    build_user_message() string, so a test can assert what is/isn't in THAT
-    block specifically rather than anywhere in the whole prompt (memory
-    recalled by similarity lands in a different block, "Ultimi ricordi:" /
-    "Cosa so di rilevante:", and is allowed to contain other rows)."""
-    if "Fatti dichiarati:" not in msg:
-        return ""
-    start = msg.index("Fatti dichiarati:")
-    rest = msg[start:]
-    end = rest.find("\n\n")
-    return rest if end == -1 else rest[:end]
-
-
 # ---------------------------------------------------------------------------
 # Test 1 -- the whole promise, in one test.
 # ---------------------------------------------------------------------------
@@ -124,32 +93,30 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
     1. a preference is saved with the single save tool, WITHOUT any approval
        step;
     2. it is recallable while talking to a DIFFERENT chatbot than the one
-       that saved it;
-    3. it appears in the proactive reasoner's context too;
-    4. an insight sitting in the same store does NOT appear in the declared
-       block.
+       that saved it.
 
-    A step used to sit here between (2) and (3): "it appears ON ITS OWN in
-    the chat context of a later turn". Task 3 of the "nucleo alla chat"
-    slice (.superpowers/sdd/task-3-brief.md, 2.0) retired that path --
-    `handle_chat` no longer calls `KnowledgeStore.declared()`/`.search()` at
-    all, its context comes from the nucleo (`casa/nucleo.py`) instead. The
-    step was removed rather than repointed: "a person's declared fact
-    always enters context, unsearched" is still true and still tested (this
-    file's own Step 3 below, via the reasoner; the chat surface's OWN
-    equivalent claim -- "the nucleo degrades honestly when it can't be
-    composed" -- is covered by tests/test_chat_al_nucleo.py, a genuinely
-    different contract, not a repointed copy of this one).
+    A step used to sit here between (2) and what used to be Step 3: "it
+    appears ON ITS OWN in the chat context of a later turn". Task 3 of the
+    "nucleo alla chat" slice (.superpowers/sdd/task-3-brief.md, 2.0) retired
+    that path -- `handle_chat` no longer calls
+    `KnowledgeStore.declared()`/`.search()` at all, its context comes from
+    the nucleo (`casa/nucleo.py`) instead (chat's own equivalent claim --
+    "the nucleo degrades honestly when it can't be composed" -- is covered
+    by tests/test_chat_al_nucleo.py, a genuinely different contract).
+
+    Steps 3 ("it appears in the proactive reasoner's context too") and 4
+    ("an insight sitting in the same store does NOT appear in the declared
+    block") drove `_reason_memory_context`/`build_user_message`
+    (server.py/watcher.reasoner) directly -- both gone with the whole
+    proactive reasoner, fetta E3 Task 7. Removed, not moved: the insight-
+    exclusion property they pinned via the reasoner's declared block is
+    already independently proven at the store level, where it actually
+    lives (`KnowledgeStore.declared()`'s `source in DECLARED_SOURCES`
+    filter, tests/test_knowledge_store_declared.py) -- that test never
+    routed through the reasoner in the first place.
     """
     store = KnowledgeStore(str(tmp_path / "knowledge.db"))
     embedder = NullEmbedder()
-
-    # An insight HIRIS produced on its own, sharing the store with what a
-    # person will declare below -- it must never surface as "declared".
-    store.add_item(
-        kind="insight", content=INSIGHT_TEXT, owner="home",
-        status="approved", source="history-digest",
-    )
 
     # --- Step 1: save with the single tool, no approval step -------------
     # fetta E2 Task 8: `_salva_ricordo` chiama KnowledgeStore direttamente
@@ -176,36 +143,6 @@ async def test_the_whole_slice_end_to_end_with_real_null_embedder(tmp_path):
     assert PREF_TEXT in recalled_contents, (
         "un ricordo salvato parlando con chatbot-a deve essere richiamabile "
         "parlando con chatbot-b: la memoria e' di HIRIS, non del chatbot"
-    )
-
-    # --- Step 3: appears in the proactive reasoner's context too ----------
-    app_stub = {"knowledge_store": store, "llm_router": _LocalRouter()}
-    mem = await _reason_memory_context(app_stub, embedder, _wake(), "Salotto")
-    assert any(PREF_TEXT in d for d in mem.declared), (
-        "il ragionatore proattivo deve vedere il dichiarato SEMPRE, non solo "
-        "quando il segnale gli somiglia"
-    )
-    assert not any(INSIGHT_TEXT in d for d in mem.declared)
-
-    # Rendered exactly as the real _gather_context closure shapes the
-    # context dict (server.py, _on_startup) -- see this file's module
-    # docstring / tests/test_declared_block_reasoner.py for why
-    # _reason_memory_context (module-level) stands in for the closure.
-    ctx = {
-        "friendly_name": "Salotto",
-        "memory": mem.snippets,
-        "memory_by_meaning": mem.by_meaning,
-        "declared": mem.declared,
-    }
-    msg = build_user_message(_wake(), ctx)
-    assert "Fatti dichiarati:" in msg
-    assert PREF_TEXT in msg
-    declared_block = _declared_section(msg)
-    assert declared_block, "il blocco dei dichiarati deve essere renderizzato"
-    assert INSIGHT_TEXT not in declared_block, (
-        "un insight non deve MAI comparire nel blocco dei dichiarati, anche "
-        "se condivide l'archivio e potrebbe comparire altrove (es. 'Ultimi "
-        "ricordi:', che e' un blocco diverso)"
     )
 
     store.close()
@@ -367,14 +304,17 @@ async def test_production_shaped_expired_memory_row_is_revived(tmp_path):
     # Present in the declared block: source='chat' is a declared source, so
     # it must enter context unconditionally, exactly like the three real
     # production rows this shape is modeled on.
+    #
+    # fetta E3 Task 7: this used to also drive the row through
+    # `reasoner_memory.relevant_memory` (`brain/reasoner_memory.py`, gone
+    # with the whole proactive reasoner) to prove it reached
+    # `MemoryRecall.declared` too. Removed, not moved: `relevant_memory`'s
+    # declared branch was a thin pass-through over exactly this
+    # `KnowledgeStore.declared()` call (see the module's own docstring,
+    # deleted with it) -- proving the store call below is enough, there is
+    # no separate transformation left to pin.
     declared_items, declared_total = store.declared(owner="home")
     assert declared_total >= 1
     assert any(i["content"] == PRODUCTION_SHAPED_CONTENT for i in declared_items)
-
-    mem = await relevant_memory(
-        store, NullEmbedder(), query_text="stato generale della casa",
-        allow_sensitive=True, owner="home", limit=5,
-    )
-    assert any(PRODUCTION_SHAPED_CONTENT in d for d in mem.declared)
 
     store.close()

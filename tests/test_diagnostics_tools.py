@@ -48,15 +48,11 @@ def test_registrato_nel_runner_con_il_gating_giusto():
     assert "render_template" not in EVALUATION_ONLY_TOOLS
 
 
-def test_solo_il_logbook_fra_i_read_tools_del_gateway():
-    # Stessa ragione: derive_execute_policy concede SEMPRE i READ_TOOLS, senza
-    # opt-in per singolo tool, e le letture partono con allowed_entities=None.
-    from hiris.app.api.handlers_gateway_policy import READ_TOOLS
-    assert "get_logbook" in READ_TOOLS
-    assert "render_template" not in READ_TOOLS
-
-
 # La potatura della risposta del logbook (api/read_denylist.py) e' uscita con
 # la Fetta E2 Task 4 insieme a tutta la superficie /api/execute che la
 # consumava: il suo soggetto (prune_read_result) non esiste piu' in nessun
 # file, quindi il test che lo pinnava qui e' stato rimosso, non spostato.
+#
+# fetta E3 Task 7: "solo il logbook fra i READ_TOOLS del gateway" e' uscito
+# insieme ad api/handlers_gateway_policy.py (semaforo + Sentinella): READ_TOOLS
+# non esiste in nessun file, nessun successore.

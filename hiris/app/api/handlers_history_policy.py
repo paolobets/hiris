@@ -1,7 +1,9 @@
 """Storicizzazione policy — UI/file-managed, per-domain + explicit allow/exclude.
 
 Decides which entities the HistoryStore captures. Default empty => capture nothing
-(opt-in). Mirrors the gateway-policy pattern (handlers_gateway_policy.py)."""
+(opt-in). Mirrors the gateway-policy pattern that api/handlers_gateway_policy.py
+used to have (module exited with the Sentinel/semaforo, fetta E3 Task 7 --
+this file's own pattern is unaffected, it never depended on that module)."""
 from __future__ import annotations
 
 import json

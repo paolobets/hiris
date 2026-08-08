@@ -133,10 +133,6 @@ def test_portrait_store_construction_is_wrapped_in_try_except():
     )
 
 
-from hiris.app.watcher.reasoner import build_user_message
-from hiris.app.watcher.signals import WakeEvent
-
-
 class _FakeCacheWithAreas(_FakeCache):
     def get_area_map(self):
         return {"Cucina": ["light.a"]}
@@ -170,43 +166,35 @@ def test_portrait_context_is_failure_safe(tmp_path):
     store.close()
 
 
-def test_user_message_renders_the_portrait_block():
-    we = WakeEvent("battery", "sensor.b", "info", {"pct": 8}, 1.0)
-    msg = build_user_message(we, {"friendly_name": "Batt",
-                                  "portrait": "Com'e' la casa:\n- Cucina — acceso: Luce"})
-    assert "Com'e' la casa:" in msg
-    assert "portrait" not in msg  # estratta dal context, non finita nel json
-    assert msg.index("Com'e' la casa:") < msg.index("Valuta e rispondi")
-
-
-def test_user_message_is_unchanged_when_portrait_absent_or_empty():
-    we = WakeEvent("battery", "sensor.b", "info", {"pct": 8}, 1.0)
-    base = build_user_message(we, {"friendly_name": "Batt"})
-    assert build_user_message(we, {"friendly_name": "Batt", "portrait": ""}) == base
-    assert build_user_message(we, {"friendly_name": "Batt", "portrait": None}) == base
-
-
-def test_long_portrait_survives_sanitization():
-    """sanitize_ha_value tronca ogni valore a 120 caratteri. Se il ritratto
-    passasse da _san insieme al resto del context arriverebbe al prompt mozzato
-    alla prima riga, in silenzio. Va estratto PRIMA della sanificazione."""
-    we = WakeEvent("battery", "sensor.b", "info", {"pct": 8}, 1.0)
-    lungo = "Com'e' la casa:\n" + "\n".join(f"- Area{i} — acceso: Luce{i}"
-                                            for i in range(60))
-    assert len(lungo) > 1000
-    msg = build_user_message(we, {"friendly_name": "Batt", "portrait": lungo})
-    assert "Area59" in msg
-    assert len(msg) > 1000
-
-
-def test_gather_context_is_wired_to_the_portrait():
-    src = inspect.getsource(server._on_startup)
-    assert "_portrait_context(app)" in src
-    assert '"portrait"' in src
-
-
 # fetta E3 Task 4: test_holistic_is_wired_to_the_portrait e' uscito -- pinnava
 # la chiamata `portrait=_portrait_context(app)` dentro `_holistic_reason`,
-# cancellata per intero con la ronda. `test_gather_context_is_wired_to_the_
-# portrait` sopra resta: `_gather_context` (il percorso del Guardian) e'
-# vivo e passa ancora il ritratto.
+# cancellata per intero con la ronda.
+#
+# fetta E3 Task 7 -- trappola non elencata nel brief, trovata qui: la
+# Sentinella (guardiano/ragionatore/esecutore) esce per intero in questo
+# task, e con lei `_gather_context`, l'ULTIMO chiamante rimasto di
+# `_portrait_context` (il chiamante olistico era gia' uscito col Task 4,
+# vedi sopra). Tre test morivano qui:
+# - `test_user_message_renders_the_portrait_block`,
+#   `test_user_message_is_unchanged_when_portrait_absent_or_empty`,
+#   `test_long_portrait_survives_sanitization`: soggetto
+#   `watcher.reasoner.build_user_message` (il rendering del blocco ritratto
+#   nel prompt), cancellato per intero con tutto `watcher/`. Nessun
+#   successore -- non resta alcun renderer di prompt a cui il ritratto
+#   arrivi.
+# - `test_gather_context_is_wired_to_the_portrait`: pinnava che
+#   `_portrait_context(app)` fosse chiamato dentro `_on_startup` --
+#   affermazione ora falsa per costruzione (`_gather_context`, l'unica
+#   closure che lo chiamava, e' cancellata). Rimosso, non riparato: non
+#   tocca a questo task ricollegare il ritratto a un nuovo chiamante (esce
+#   dal perimetro -- "il ritratto al Task 12").
+#
+# `_portrait_context`/`_osserva_la_casa`/`PortraitStore`/il job
+# "hiris_portrait_observe" NON sono stati toccati (fuori dal file-list di
+# questo task): `_portrait_context` e' ora un ORFANO DICHIARATO (zero
+# chiamanti di produzione, la sua unica prova diretta resta nei due test
+# sopra che lo chiamano da soli) -- lasciato al Task 12, che possiede il
+# ritratto. `_osserva_la_casa` NON e' orfana: resta agganciata al job
+# schedulato "hiris_portrait_observe" (test_observation_job_is_registered
+# sopra), che continua a scrivere la linea di base -- solo il consumatore
+# del TESTO composto da `_portrait_context` e' sparito.

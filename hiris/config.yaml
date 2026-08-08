@@ -82,10 +82,9 @@ options:
   apprise_urls: []
   history_retention_days: 90
 
-  # ── Sentinella (knobs) ────────────────────────────────────────────────────
-  sentinel_daily_cap: 20
-  sentinel_cooldown_min: 30
-
+  # fetta E3 Task 7: escono `sentinel_daily_cap`/`sentinel_cooldown_min` --
+  # la Sentinella (guardiano/ragionatore/esecutore) che li leggeva e' uscita
+  # per intero (`sentinel_ronda_min` era gia' uscito con la ronda, Task 4).
   # fetta E3 Task 6: esce `brain_notify_high` -- la scansione di salute che
   # notificava e l'AdvisoryStore che le segnalazioni le persisteva sono
   # entrambi usciti col Brain che parlava (resoconto, solleciti, scansione).
@@ -154,10 +153,6 @@ schema:
   apprise_urls:
     - str
   history_retention_days: int(0,3650)
-
-  # ── Sentinella (knobs) ────────────────────────────────────────────────────
-  sentinel_daily_cap: int(0,200)
-  sentinel_cooldown_min: int(1,1440)
 
   # ── Ponte push (knobs) ────────────────────────────────────────────────────
   bridge_enabled: bool

@@ -255,8 +255,10 @@ def test_config_yaml_no_direct_port():
 # SEC-021 — APScheduler cron coalesce
 # ---------------------------------------------------------------------------
 # Retired (Slice 5): _schedule_agent and all autonomous-agent scheduling was
-# removed from ChatbotEngine — the Sentinella (watcher/) is now the sole
-# proactive engine, and it does not use APScheduler add_job() at all.
+# removed from ChatbotEngine — the Sentinella (watcher/) was the sole
+# proactive engine at the time, and did not use APScheduler add_job() at
+# all. fetta E3 Task 7: the Sentinella itself (and watcher/) is gone too —
+# no proactive engine of any kind remains.
 
 # ---------------------------------------------------------------------------
 # SEC-022 / SEC-022b — automation tools rispettano allowed_services/

@@ -35,18 +35,25 @@ _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 # handle_save_memory for why.
 DECLARED_SOURCES = ("chat", "manual", "migrated")
 
-# Quanti elementi dichiarati al massimo entrano in un prompt (chat e
-# ragionatore proattivo, vedi api/handlers_chat.py e
-# brain/reasoner_memory.py). 30 e' la cifra che il brief del Task 4 stesso
-# usa come esempio di "ci sta comodamente" (duecento medie settimanali NON
-# stanno in un prompt; trenta fatti dichiarati da chi abita la casa si',
-# sempre) -- in produzione, quattro mesi di uso ne hanno prodotti 3. Quando
-# i dichiarati superano questo numero, KnowledgeStore.declared() NON tronca
-# in silenzio: restituisce anche il conteggio totale, cosi' chi rende il
-# prompt (handlers_chat._render_declared_block,
-# reasoner_memory._declared_snippets) puo' dirlo esplicitamente invece di
-# far sparire un fatto dichiarato senza che nessuno se ne accorga -- e'
-# esattamente il guasto che questa fetta esiste per eliminare.
+# Quanti elementi dichiarati al massimo entrano in un prompt. 30 e' la
+# cifra che il brief del Task 4 stesso usa come esempio di "ci sta
+# comodamente" (duecento medie settimanali NON stanno in un prompt; trenta
+# fatti dichiarati da chi abita la casa si', sempre) -- in produzione,
+# quattro mesi di uso ne hanno prodotti 3. Quando i dichiarati superano
+# questo numero, KnowledgeStore.declared() NON tronca in silenzio:
+# restituisce anche il conteggio totale, cosi' chi rende il prompt puo'
+# dirlo esplicitamente invece di far sparire un fatto dichiarato senza che
+# nessuno se ne accorga -- e' esattamente il guasto che questa fetta esiste
+# per eliminare.
+#
+# fetta E3 Task 7: gli ultimi due chiamanti di produzione di `declared()`
+# (`api/handlers_chat.py`, gia' uscito nella slice "nucleo alla chat" 2.0,
+# e `brain/reasoner_memory.py`, uscito in questo task insieme all'intera
+# Sentinella) sono spariti entrambi: `declared()` e
+# `render_declared_overflow_note` sotto non hanno oggi alcun chiamante di
+# produzione, solo test diretti (tests/test_knowledge_store_declared.py) --
+# dichiarato nel report del task, non raccolto (knowledge_store.py resta,
+# per istruzione esplicita).
 DECLARED_MAX = 30
 
 
@@ -58,14 +65,16 @@ def render_declared_overflow_note(total: int, shown: int, limit: int) -> str:
     chiamante -- normalmente `len(items)`).
 
     Fix 2 (review wave, task-4-fixes): prima viveva come una f-string
-    IDENTICA duplicata in due file (`api/handlers_chat.
-    _render_declared_block` e `brain/reasoner_memory._declared_snippets`),
-    e ciascuna copia hardcodava `DECLARED_MAX` nel testo invece di leggere
-    il limite EFFETTIVAMENTE passato a `declared()` -- cosi' un futuro
-    chiamante con un limite personalizzato avrebbe visto nella nota il
-    numero sbagliato. Vive qui, accanto a `DECLARED_MAX`, con `limit` come
-    parametro esplicito: i due chiamanti non possono piu' divergere sul
-    testo, e il numero mostrato e' sempre quello vero.
+    IDENTICA duplicata in due file (`api/handlers_chat._render_declared_
+    block`, uscita nella slice "nucleo alla chat" 2.0, e `brain/
+    reasoner_memory._declared_snippets`, uscita fetta E3 Task 7 con la
+    Sentinella), e ciascuna copia hardcodava `DECLARED_MAX` nel testo
+    invece di leggere il limite EFFETTIVAMENTE passato a `declared()` --
+    cosi' un futuro chiamante con un limite personalizzato avrebbe visto
+    nella nota il numero sbagliato. Vive qui, accanto a `DECLARED_MAX`, con
+    `limit` come parametro esplicito -- oggi senza chiamanti di produzione
+    (vedi il commento sopra `DECLARED_MAX`), pronta per il prossimo che
+    componga un prompt dai dichiarati.
 
     Ritorna "" quando non c'e' overflow (`total <= shown`) -- i chiamanti
     aggiungono la nota solo se questa stringa non e' vuota."""
@@ -201,16 +210,15 @@ def confronta_significati(query_vec: list[float] | None) -> bool:
     query utilizzabile (non None, non vuoto).
 
     `search()` la usa per decidere se confrontare gli embedding o cadere su
-    `recent()`. Chi la importa invece di ricalcolare `bool(query_vec)` per conto
-    proprio:
-
-    - `api/handlers_chat.py` -- intestazione del blocco RAG della chat
-    - `brain/reasoner_memory.py` -- `MemoryRecall.by_meaning`, da cui prendono
-      l'intestazione il reasoner per-evento e la revisione olistica
-    - `tools/memory_tools.handle_recall_memory` -- flag `degraded` verso il
-      modello, e il gate della ricerca sui chunk documentali (fusione Task 2
-      del vecchio `tools/knowledge_tools.handle_recall_knowledge`, oggi
-      rimosso)
+    `recent()` -- oggi il suo unico chiamante di produzione. Importavano
+    `bool(query_vec)` da qui, invece di ricalcolarlo per conto proprio,
+    anche `api/handlers_chat.py` (intestazione del blocco RAG della chat) e
+    `brain/reasoner_memory.py` (`MemoryRecall.by_meaning`, da cui prendono
+    l'intestazione il reasoner per-evento e la revisione olistica) e
+    `tools/memory_tools.handle_recall_memory` (flag `degraded` verso il
+    modello) -- tutti e tre usciti (rispettivamente: slice "nucleo alla
+    chat" 2.0; fetta E3 Task 7 con l'intera Sentinella; fetta E2 Task 8 col
+    `ToolDispatcher`).
 
     Cosi' se `search` guadagnasse un altro motivo di degradazione (es. un
     mismatch di dimensione dell'embedding) etichette e flag resterebbero coerenti
