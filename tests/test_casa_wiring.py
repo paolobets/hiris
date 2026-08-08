@@ -144,8 +144,13 @@ async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti()
     sottoscrizione, questo test si accorge -- quello vecchio no.
 
     Un floor_registry_updated deve chiamare l'ascoltatore dell'anagrafe. Un
-    entity_registry_updated deve chiamare ENTRAMBI: quello storico, filtrato
-    su action=="create", e quello dell'anagrafe, senza filtro.
+    entity_registry_updated deve chiamarlo anche lui, SENZA filtro su
+    action -- create e update entrano entrambi.
+
+    Fino alla fetta E3 (2.0) qui si verificava anche il meccanismo storico
+    verso `add_registry_listener` (filtrato su action=="create"): e' uscito
+    con la context map, il suo unico chiamante di produzione (vedi
+    task-2-report.md) -- il caso resta, l'assert sul registro no.
     """
     ws = _FintoWSEventi([
         ("floor_registry_updated", {}),
@@ -156,9 +161,7 @@ async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti()
     client._session = _FintaSessioneEventi(ws)
 
     anagrafe_chiamate: list[str] = []
-    registro_chiamate: list[str] = []
     client.add_anagrafe_listener(lambda tipo: anagrafe_chiamate.append(tipo))
-    client.add_registry_listener(lambda eid, attrs: registro_chiamate.append(eid))
 
     task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
     await asyncio.sleep(0.05)
@@ -174,7 +177,6 @@ async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti()
         "riconnessione", "floor_registry_updated",
         "entity_registry_updated", "entity_registry_updated",
     ]
-    assert registro_chiamate == ["light.nuova"]  # solo il create, non l'update
 
 
 @pytest.mark.asyncio

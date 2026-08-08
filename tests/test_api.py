@@ -391,16 +391,17 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
 # test_chat_context_map_injects_area_context and the six test_chat_rag_*
 # tests that used to live here were removed by Task 3 of the "nucleo alla
 # chat" slice (.superpowers/sdd/task-3-brief.md, 2.0): they pinned the exact
-# wiring this task retires -- SemanticContextMap.get_context() and
+# wiring that task retired -- SemanticContextMap.get_context() and
 # KnowledgeStore.search()/.declared() called FROM handle_chat, with their
-# output injected into context_str/visible_entity_ids. handle_chat no longer
-# calls either; its context now comes from the nucleo (hiris/app/casa/
+# output injected into context_str/visible_entity_ids. handle_chat stopped
+# calling either; its context comes from the nucleo (hiris/app/casa/
 # nucleo.py, via handlers_casa.costruisci_nucleo) -- see
-# tests/test_chat_al_nucleo.py for the tests that replace these. Neither
-# SemanticContextMap nor KnowledgeStore.search()/.declared() were deleted:
-# they simply are not called from here anymore (SemanticContextMap's own
-# tests live in tests/test_semantic_context_map.py; KnowledgeStore's in
-# tests/test_knowledge_store*.py -- both untouched by this task).
+# tests/test_chat_al_nucleo.py for the tests that replace these.
+# SemanticContextMap itself (and knowledge_db, its only persistence) are gone
+# now too -- fetta E3 Task 2 (2.0): the context-preview route was their last
+# caller. KnowledgeStore.search()/.declared() were not deleted: they simply
+# are not called from here anymore (their tests live in
+# tests/test_knowledge_store*.py, untouched by this task).
 
 
 @pytest.mark.asyncio

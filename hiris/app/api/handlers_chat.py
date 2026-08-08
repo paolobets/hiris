@@ -260,9 +260,11 @@ async def handle_chat(request: web.Request) -> web.Response:
     # divergere) contiene gia' i dichiarati (come "cio' che le persone hanno
     # detto"), la casa, cosa e' notevole adesso, e cosa la casa fa da sola --
     # ed e' lo stesso testo che vedranno il Brain e gli agenti quando
-    # torneranno (vedi il brief). SemanticContextMap, il blocco RAG e
-    # KnowledgeStore.declared() non sono stati cancellati: smettono solo di
-    # essere chiamati da QUI (escono nella fetta successiva).
+    # torneranno (vedi il brief). Il blocco RAG e KnowledgeStore.declared()
+    # non sono stati cancellati: smettono solo di essere chiamati da QUI.
+    # SemanticContextMap invece e' uscita davvero (fetta E3 Task 2, 2.0):
+    # il suo unico altro chiamante era il context-preview dell'editor
+    # Chatbot, uscito con lei.
     #
     # Se il nucleo non si compone (nessun archivio della casa, anagrafe mai
     # letta) `componi()` non tace: lo dichiara nel testo stesso ("Nessun

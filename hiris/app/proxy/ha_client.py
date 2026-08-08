@@ -178,7 +178,6 @@ class HAClient:
         self._session: Optional[aiohttp.ClientSession] = None
         self._ws_task: Optional[asyncio.Task] = None
         self._state_listeners: list[Callable[[dict], None]] = []
-        self._registry_listeners: list[Callable[[str, dict], None]] = []
         self._anagrafe_listeners: list[Callable[[str], None]] = []
         self._plance_listeners: list[Callable[[dict], None]] = []
 
@@ -1043,10 +1042,6 @@ class HAClient:
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         self._state_listeners.append(callback)
 
-    def add_registry_listener(self, callback: Callable[[str, dict], None]) -> None:
-        """Register callback(entity_id, attributes) for entity_registry_updated events."""
-        self._registry_listeners.append(callback)
-
     def add_anagrafe_listener(self, callback: Callable[[str], None]) -> None:
         """callback(tipo_evento) a ogni cambio di registro: la casa e' cambiata."""
         self._anagrafe_listeners.append(callback)
@@ -1078,10 +1073,11 @@ class HAClient:
                     await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
                     await ws.send_json({"id": 2, "type": "subscribe_events", "event_type": "entity_registry_updated"})
                     # Gli altri registri dell'anagrafe (Task 5): entity_registry_updated
-                    # e' gia' sottoscritto sopra (id 2) e resta condiviso fra i due
-                    # smistamenti sotto — quello storico (solo action="create", verso
-                    # add_registry_listener) e quello nuovo verso add_anagrafe_listener,
-                    # che copre anche rinomini, spostamenti, disabilitazioni e cancellazioni.
+                    # e' gia' sottoscritto sopra (id 2) e va verso add_anagrafe_listener,
+                    # che copre anche rinomini, spostamenti, disabilitazioni e cancellazioni
+                    # (non solo le creazioni: quel filtro apparteneva al meccanismo storico
+                    # verso add_registry_listener, uscito con la context map che lo chiamava
+                    # -- fetta E3 Task 2, 2.0).
                     numero = 2
                     for tipo_evento in (t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"):
                         numero += 1
@@ -1128,16 +1124,6 @@ class HAClient:
                                         cb(event["data"])
                                     except Exception as cb_exc:
                                         logger.exception("state_listener callback raised: %s", cb_exc)
-                            elif event_type == "entity_registry_updated":
-                                action = event.get("data", {}).get("action")
-                                if action == "create":
-                                    eid = event["data"].get("entity_id", "")
-                                    attrs = event["data"]  # full payload for create events
-                                    for cb in self._registry_listeners:
-                                        try:
-                                            cb(eid, attrs)
-                                        except Exception as cb_exc:
-                                            logger.exception("registry_listener callback raised: %s", cb_exc)
                             elif event_type == EVENTO_PLANCE:
                                 # Il percorso della plancia cambiata sta in
                                 # event["data"], ma non lo si usa per filtrare:
@@ -1150,9 +1136,8 @@ class HAClient:
                                         logger.exception("plance_listener callback raised: %s", cb_exc)
                             if event_type in EVENTI_ANAGRAFE:
                                 # La casa e' cambiata (create/update/move/remove, su
-                                # qualsiasi registro): l'anagrafe va rifatta. A
-                                # differenza di _registry_listeners sopra, qui non si
-                                # filtra per action ne' per tipo di registro — vedi
+                                # qualsiasi registro): l'anagrafe va rifatta. Nessun
+                                # filtro per action ne' per tipo di registro — vedi
                                 # EVENTI_ANAGRAFE in cima al modulo.
                                 for cb in self._anagrafe_listeners:
                                     try:

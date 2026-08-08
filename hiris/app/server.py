@@ -18,7 +18,6 @@ from .api.handlers_chatbots import (
     handle_list_chatbots, handle_create_chatbot, handle_get_chatbot,
     handle_update_chatbot, handle_delete_chatbot, handle_run_chatbot,
     handle_get_chatbot_usage, handle_reset_chatbot_usage,
-    handle_context_preview,
 )
 from .api.handlers_entities import handle_list_entities
 from .api.handlers_suggestions import handle_list_suggestions, handle_undo_suggestion
@@ -52,8 +51,6 @@ from .memoria.archivio import ArchivioMemoria
 from .casa.comportamento import rileggi, rileggi_plance
 from .env_util import env_bool
 from .proxy.entity_cache import EntityCache
-from .proxy.knowledge_db import KnowledgeDB
-from .proxy.semantic_context_map import SemanticContextMap
 from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
 from .brain.memory_migration import migrate_agent_memories
@@ -1365,19 +1362,6 @@ async def _on_startup(app: web.Application) -> None:
         scheduler=engine._scheduler,
     )
     app["proposal_store"] = proposal_store
-
-    knowledge_db = KnowledgeDB(
-        db_path=os.path.join(data_dir, "home_map.db")
-    )
-    app["knowledge_db"] = knowledge_db
-
-    context_map = SemanticContextMap(
-        cache_path=os.path.join(data_dir, "semantic_context_map.json")
-    )
-    context_map.load()
-    context_map.build(entity_cache, knowledge_db=knowledge_db)
-    app["context_map"] = context_map
-    logger.info("SemanticContextMap ready")
 
     _apprise_raw = os.environ.get("APPRISE_URLS", "[]")
     try:
@@ -2782,8 +2766,6 @@ async def _on_cleanup(app: web.Application) -> None:
         await app["mayan_client"].aclose()
     if "mqtt_publisher" in app:
         await app["mqtt_publisher"].stop()
-    if "knowledge_db" in app:
-        app["knowledge_db"].close()
     if "knowledge_store" in app:
         app["knowledge_store"].close()
     if "vault" in app:
@@ -2875,7 +2857,6 @@ def create_app() -> web.Application:
     app.router.add_post("/api/suggestions/{id}/undo", handle_undo_suggestion)
     app.router.add_get("/api/chatbots/{agent_id}/usage", handle_get_chatbot_usage)
     app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
-    app.router.add_get("/api/chatbots/{agent_id}/context-preview", handle_context_preview)
     app.router.add_get("/api/chatbots/{agent_id}/chat-history", handle_get_chat_history)
     app.router.add_delete("/api/chatbots/{agent_id}/chat-history", handle_clear_chat_history)
     app.router.add_get("/api/tasks", handle_list_tasks)

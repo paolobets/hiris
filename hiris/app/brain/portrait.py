@@ -99,7 +99,8 @@ def build_portrait(*, area_map, states, baseline, changes) -> dict:
         # _san sul ritratto, fidandosi che sia "gia' sanificato alla fonte,
         # stringa per stringa"): senza questa riga quella fiducia sarebbe
         # falsa proprio per il nome area. Stesso trattamento gia' applicato
-        # ai nomi area in semantic_context_map.py.
+        # ai nomi area nella (ex) SemanticContextMap, uscita nella fetta E3
+        # Task 2 (2.0) insieme alla context map.
         area_nome = sanitize_ha_value(str(area))
         acceso: list[str] = []
         aperto: list[str] = []

@@ -1,9 +1,9 @@
 """Sanitize Home Assistant-derived strings before they reach the LLM.
 
-Friendly names, sensor states, knowledge_db annotations and any other field
-controllable through HA (or by users tinkering with HA) can carry prompt
-injection markers. We strip them before composing the system prompt or the
-context block so they cannot rewire the agent's instructions.
+Friendly names, sensor states, area names and any other field controllable
+through HA (or by users tinkering with HA) can carry prompt injection
+markers. We strip them before composing the system prompt or the context
+block so they cannot rewire the agent's instructions.
 """
 import re
 

@@ -186,7 +186,8 @@ async def test_handle_refresh_ha_health_calls_refresh():
 
 
 # ---------------------------------------------------------------------------
-# handle_run_chatbot + handle_context_preview (handlers_chatbots.py)
+# handle_run_chatbot (handlers_chatbots.py) -- handle_context_preview e'
+# uscito con la context map (fetta E3 Task 2, 2.0).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
