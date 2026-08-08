@@ -85,7 +85,6 @@ options:
   # ── Sentinella (knobs) ────────────────────────────────────────────────────
   sentinel_daily_cap: 20
   sentinel_cooldown_min: 30
-  sentinel_allow_green_auto: false
   sentinel_ronda_min: 15
 
   # ── Brain (salute del sistema) ───────────────────────────────────────────
@@ -165,7 +164,6 @@ schema:
   # ── Sentinella (knobs) ────────────────────────────────────────────────────
   sentinel_daily_cap: int(0,200)
   sentinel_cooldown_min: int(1,1440)
-  sentinel_allow_green_auto: bool
   sentinel_ronda_min: int(1,240)
 
   # ── Brain (salute del sistema) ───────────────────────────────────────────

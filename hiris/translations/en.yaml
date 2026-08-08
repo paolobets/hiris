@@ -98,9 +98,6 @@ configuration:
   sentinel_cooldown_min:
     name: "Sentinella — Cooldown between wakeups (minutes)"
     description: "Minimum minutes between two wakeups on the same signal. Default: 30."
-  sentinel_allow_green_auto:
-    name: "Sentinella — Auto actions on green domains"
-    description: "When enabled, Sentinella automatically executes actions on green-status domains (then notifies). Default: disabled."
   sentinel_ronda_min:
     name: "Sentinella — Situation scan interval (minutes)"
     description: "How often Sentinella scans home situations (hot+absence, all-away+alarm-off, holistic scan). Default: 15."

@@ -392,7 +392,7 @@ def test_chat_via_subscription_wiring_requires_bridge_enabled_in_source():
 def test_chat_via_subscription_env_var_read_same_convention_as_bridge_enabled():
     """CHAT_VIA_SUBSCRIPTION must be parsed with the exact same truthy-string
     convention used everywhere else in this module for boolean env vars
-    (BRIDGE_ENABLED, BRIDGE_FALLBACK, SENTINEL_ALLOW_GREEN_AUTO, ...) --
+    (BRIDGE_ENABLED, BRIDGE_FALLBACK, ...) --
     '1'/'true'/'yes'/'on' -- so ops behavior is consistent across knobs.
 
     SP-2 tech-debt: the idiom is now unified behind env_util.env_bool (still

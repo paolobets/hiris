@@ -102,9 +102,10 @@ def build_sentinel_script_proposal(
     sequence = [{"service": f"{domain}.{service}",
                  "target": {"entity_id": eid},
                  "data": dict(data)}]
-    # Stessa fedelta' del percorso automatico (_act in server.py): se l'azione
-    # prevede uno spegnimento ritardato, lo script lo contiene invece di
-    # perderlo. build_off_task e' la sola fonte della regola (solo turn_on, solo
+    # Stessa fedelta' che aveva il percorso automatico (`_act` in server.py,
+    # uscito con l'attuazione nella fetta E2 Task 6): se l'azione prevede
+    # uno spegnimento ritardato, lo script lo contiene invece di perderlo.
+    # build_off_task e' la sola fonte della regola (solo turn_on, solo
     # minuti positivi), qui non si duplica nessuna policy.
     off = build_off_task(action)
     if off is not None:

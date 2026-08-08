@@ -17,9 +17,11 @@ SECURITY (non-negotiable, see plan Global Constraints):
   `server.py:955-956`'s `decision.action = suggested`).
 - For a `notify`-type Agentbot, `agentbot_action(agentbot)` is `None`, so
   the guard above never re-injects anything — left alone, the LLM's OWN
-  parsed action would survive onto the Decision, and on a safe/green domain
-  with `allow_green_auto` the executor would actuate it. This module closes
-  that gap by passing `force_notify_only=(action.type=="notify")` into
+  parsed action would survive onto the Decision and reach `executor.execute()`
+  unchecked by this module's determinism guarantee (it would still land on
+  "propose", never "act" -- the Sentinel stopped acting in fetta E2 Task 6 --
+  but the PROPOSAL would then carry the LLM's target instead of nothing).
+  This module closes that gap by passing `force_notify_only=(action.type=="notify")` into
   `run_decision`, which (in server.py's `_run_decision`) forces
   `decision.action = None` right before `execute()` runs. A notify Agentbot
   can therefore NEVER actuate, reasoning-enabled or not — only its
@@ -42,9 +44,9 @@ SECURITY (non-negotiable, see plan Global Constraints):
   `allowed_entities`/`allowed_services` check, at execution time. Nothing
   here enforces anything new; it only stops leaving those fields empty.
 - The zero-AI path calls `execute` directly with the exact same adapters
-  (`notify`/`act`/`propose`) and `tiers`/`entity_tiers`/`allow_green_auto`
-  shape as `_run_decision`'s own tail call, so the dangerous-domain
-  denylist and tier gate in `executor.execute()` apply unchanged.
+  (`notify`/`propose`) and `tiers`/`entity_tiers` shape as `_run_decision`'s
+  own tail call, so the dangerous-domain denylist and tier gate in
+  `executor.execute()` apply unchanged.
 """
 from __future__ import annotations
 
@@ -76,9 +78,9 @@ def agentbot_action(agentbot: dict) -> Optional[dict]:
     """Deterministic action derived from the Agentbot's OWN config -- never
     from an LLM. `action.type == "service"` -> a concrete
     `{domain, service, entity_id, off_after_min?}` HA service-call shape
-    (matching the executor's/`_act`'s expected Decision.action shape);
+    (matching the executor's expected Decision.action shape);
     `"notify"` (or any other/missing type) -> `None`, meaning
-    "message-only": `executor.execute()` then just notifies, never acts."""
+    "message-only": `executor.execute()` then just notifies, never proposes."""
     action = (agentbot or {}).get("action") or {}
     if action.get("type") != "service":
         return None
@@ -206,10 +208,8 @@ async def run_agentbot(
     run_decision: Callable[..., Awaitable],
     execute: Callable[..., Awaitable],
     notify: Callable[..., Awaitable],
-    act: Callable[..., Awaitable],
     propose: Callable[..., Awaitable],
     get_execute_policy: Callable[[], dict],
-    allow_green_auto: bool,
     record_event: Callable[[dict], Any],
     sentinel_system: str,
     clock: Callable[[], float] = time.time,
@@ -356,8 +356,7 @@ async def run_agentbot(
         outcome = await execute(
             decision, w,
             tiers=ep.get("tiers") or {}, entity_tiers=ep.get("entity_tiers") or {},
-            notify=notify, act=act, propose=propose,
-            allow_green_auto=allow_green_auto,
+            notify=notify, propose=propose,
         )
         record_event({
             "ts": clock(), "kind": cap_scope, "entity_id": entity_id,

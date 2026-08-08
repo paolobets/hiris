@@ -4,8 +4,14 @@ from .signals import Decision
 from ..security.semaphore import DANGEROUS_DOMAINS as _DANGEROUS_DOMAINS, effective_tier
 
 async def execute(decision: Decision, wake, *, tiers: dict, entity_tiers: dict,
-                  notify: Callable[..., Awaitable], act: Callable[[dict], Awaitable],
-                  propose: Callable[..., Awaitable], allow_green_auto: bool) -> str:
+                  notify: Callable[..., Awaitable],
+                  propose: Callable[..., Awaitable]) -> str:
+    # La 2.0 conosce e non agisce: qui non c'e' piu' un adattatore `act` --
+    # nessun esito di questa funzione tocca mai HA. Un tempo il tier "green"
+    # con l'opt-in `allow_green_auto` chiamava `act(action)` ed eseguiva
+    # davvero il servizio; quel ramo e' uscito (fetta E2, Task 6) e "green"
+    # ora prende esattamente la stessa strada di "yellow": una proposta che
+    # l'utente deve approvare.
     title = "HIRIS Sentinella"
     if decision.verdict == "falso_positivo":
         return "skip"
@@ -20,10 +26,6 @@ async def execute(decision: Decision, wake, *, tiers: dict, entity_tiers: dict,
         await notify(decision.message, title=title)
         return "alert"
     tier = effective_tier(eid, tiers or {}, entity_tiers or {})
-    if tier == "green" and allow_green_auto:
-        await act(action)
-        await notify(f"{decision.message} (fatto)", title=title)
-        return "act"
     if tier in ("green", "yellow"):
         # L'esito vero lo conosce solo chi ha provato a proporre: se la proposta
         # non e' stata creata (azione non confezionabile, salvataggio fallito)

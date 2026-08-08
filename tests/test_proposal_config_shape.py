@@ -307,23 +307,20 @@ async def test_executor_records_the_outcome_the_propose_adapter_reports():
     ha provato a proporre."""
     n = _Notifier()
 
-    async def _act(action):
-        raise AssertionError("giallo: non deve agire")
-
     async def _propose_alert(decision, wake):
         return "alert"
 
     out = await execute(_decision(), _wake(), tiers={"switch": "yellow"},
-                        entity_tiers={}, notify=n.notify, act=_act,
-                        propose=_propose_alert, allow_green_auto=False)
+                        entity_tiers={}, notify=n.notify,
+                        propose=_propose_alert)
     assert out == "alert"
 
     async def _propose_legacy(decision, wake):
         return None
 
     out = await execute(_decision(), _wake(), tiers={"switch": "yellow"},
-                        entity_tiers={}, notify=n.notify, act=_act,
-                        propose=_propose_legacy, allow_green_auto=False)
+                        entity_tiers={}, notify=n.notify,
+                        propose=_propose_legacy)
     assert out == "propose"
 
 

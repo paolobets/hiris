@@ -98,9 +98,6 @@ configuration:
   sentinel_cooldown_min:
     name: "Sentinella — Pausa tra risvegli (minuti)"
     description: "Minuti minimi tra due risvegli sullo stesso segnale. Predefinito: 30."
-  sentinel_allow_green_auto:
-    name: "Sentinella — Azioni automatiche su domini verdi"
-    description: "Se attivo, la Sentinella esegue da sola le azioni sui domini a semaforo verde (poi notifica). Predefinito: spento."
   sentinel_ronda_min:
     name: "Sentinella — Intervallo ronda situazioni (minuti)"
     description: "Ogni quanti minuti la Sentinella scansiona le situazioni della casa (caldo+assenza, tutti-fuori+allarme-off, olistica). Predefinito: 15."

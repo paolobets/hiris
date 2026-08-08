@@ -39,22 +39,19 @@ def test_verdict_resolution_fails_closed():
 async def test_missing_verdict_decision_does_not_execute_action():
     """A submitted decision with a missing/unknown verdict must fail CLOSED
     all the way through the real executor: execute() must skip (no
-    notify/act/propose call reaches actuation), even when the decision
-    carries a concrete, green-tier action and allow_green_auto is on — the
-    worst case where a fail-OPEN default would have actuated."""
+    notify/propose call reaches actuation), even when the decision carries a
+    concrete, green-tier action — the worst case where a fail-OPEN default
+    would have let it through to a proposal."""
     from hiris.app.watcher.executor import execute
     from hiris.app.watcher.signals import Decision, WakeEvent
 
-    acted = []
-
-    async def _act(action):
-        acted.append(action)
+    proposed = []
 
     async def _notify(message, *, title):
         pass
 
     async def _propose(decision, wake):
-        pass
+        proposed.append(decision)
 
     decision_dict = {"message": "runner sent garbage", "action": {
         "domain": "light", "service": "turn_on", "entity_id": "light.x"}}
@@ -70,10 +67,10 @@ async def test_missing_verdict_decision_does_not_execute_action():
 
     outcome = await execute(
         d, wake, tiers={"light": "green"}, entity_tiers={},
-        notify=_notify, act=_act, propose=_propose, allow_green_auto=True)
+        notify=_notify, propose=_propose)
 
     assert outcome == "skip"
-    assert acted == []
+    assert proposed == []
 
 
 @pytest.mark.asyncio

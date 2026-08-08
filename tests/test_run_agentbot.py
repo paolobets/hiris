@@ -6,11 +6,11 @@
 
 `run_agentbot` is the function `server.py`'s `_on_startup` binds onto
 `app["run_agentbot"]` (a thin closure over the real sentinel_store/execute/
-_run_decision/notify/act/propose adapters) -- it lives in its own module
+_run_decision/notify/propose adapters) -- it lives in its own module
 precisely so it can be exercised here with real collaborators
 (`watcher.reasoner.reason`, `watcher.executor.execute`, a real
 `SentinelStore`) plus fakes only at the true I/O edges (the LLM call,
-notify/act/propose), instead of needing to boot the whole aiohttp app
+notify/propose), instead of needing to boot the whole aiohttp app
 (`_on_startup` connects to HA, writes ingress config, etc. -- not
 practical in a unit test, same reasoning as the existing
 `test_sentinel_evaluator.py`/`test_sentinel_executor.py` suites).
@@ -113,15 +113,11 @@ def test_lens_message_never_raises_on_empty_input():
 class _Rec:
     def __init__(self):
         self.notified = []
-        self.acted = []
         self.proposed = []
         self.events = []
 
     async def notify(self, message, *, title):
         self.notified.append((title, message))
-
-    async def act(self, action):
-        self.acted.append(action)
 
     async def propose(self, decision, wake):
         self.proposed.append(decision)
@@ -136,8 +132,8 @@ def _policy(tiers=None, entity_tiers=None):
     return _get
 
 
-def _make_run_decision_from_llm(llm_reason, *, gather_context=None, notify, act, propose,
-                                 execute_policy, allow_green_auto):
+def _make_run_decision_from_llm(llm_reason, *, gather_context=None, notify, propose,
+                                 execute_policy):
     """Test-local stand-in for server.py's real `_run_decision(wake, suggested,
     system, force_notify_only=False, model="auto")` (verified against the
     current `hiris/app/server.py` body, `_run_decision`): calls `reason()`
@@ -168,7 +164,7 @@ def _make_run_decision_from_llm(llm_reason, *, gather_context=None, notify, act,
         return await real_execute(
             decision, wake,
             tiers=ep.get("tiers") or {}, entity_tiers=ep.get("entity_tiers") or {},
-            notify=notify, act=act, propose=propose, allow_green_auto=allow_green_auto)
+            notify=notify, propose=propose)
     return _run_decision
 
 
@@ -226,25 +222,33 @@ async def test_zero_ai_notify_lens_calls_executor_notify_path(store):
     outcome = await run_agentbot(
         NOTIFY_LENS, {"entity_id": "sensor.temp", "value": 35},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
 
     assert outcome == "woke"
     assert rec.notified and rec.notified[0][1] == "Temperatura troppo alta!"
-    assert not rec.acted
+    assert not rec.proposed
     assert rec.events and rec.events[0]["outcome"] == "notify"
     assert rec.events[0]["kind"] == "agentbot:aaaaaaaaaaaa"
 
 
 # ---------------------------------------------------------------------------
-# (b) zero-AI Agentbot, service action, green tier + opt-in -> executor acts
+# (b) zero-AI Agentbot, service action, green tier -> executor proposes.
+#
+# Fetta E2 Task 6 ("la Sentinella smette di usare il dispatcher"): il tier
+# "green" non ha piu' un ramo di attuazione automatica (era dietro l'opt-in
+# `allow_green_auto`, ora rimosso insieme ad `act`) -- propone sempre, come
+# "yellow". Il nome del test e l'esito atteso sono cambiati di conseguenza;
+# il resto del comportamento (l'azione eseguita/proposta e' quella della
+# CONFIG dell'agentbot, mai dell'LLM) resta identico e continua a essere
+# verificato piu' sotto, sui percorsi con reasoning abilitato.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_zero_ai_service_lens_green_tier_acts(store):
+async def test_zero_ai_service_lens_green_tier_proposes(store):
     rec = _Rec()
 
     async def _run_decision_unused(wake, suggested, system):
@@ -253,21 +257,23 @@ async def test_zero_ai_service_lens_green_tier_acts(store):
     outcome = await run_agentbot(
         SERVICE_LENS, {"entity_id": "switch.stufa", "value": 3500},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
 
     assert outcome == "woke"
-    assert rec.acted == [{"domain": "switch", "service": "turn_off", "entity_id": "switch.stufa"}]
-    assert rec.events[0]["outcome"] == "act"
+    assert len(rec.proposed) == 1
+    assert rec.proposed[0].action == {
+        "domain": "switch", "service": "turn_off", "entity_id": "switch.stufa"}
+    assert rec.events[0]["outcome"] == "propose"
     # severity "alert" (SERVICE_LENS) must have been normalized to "critico"
     assert rec.events[0]["severity"] == "critico"
 
 
 # ---------------------------------------------------------------------------
-# (c) dangerous domain -> denylist blocks regardless of tier/opt-in (only alert)
+# (c) dangerous domain -> denylist blocks regardless of tier (only alert)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -280,15 +286,14 @@ async def test_dangerous_domain_service_lens_only_alerts(store):
     outcome = await run_agentbot(
         DANGEROUS_LENS, {"entity_id": "sensor.x", "value": 2},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"cover": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"cover": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
 
     assert outcome == "woke"
     assert rec.events[0]["outcome"] == "alert"
-    assert not rec.acted
     assert not rec.proposed
     assert rec.notified  # alert = notify with the Agentbot's message
 
@@ -309,14 +314,14 @@ async def test_ai_lens_system_contains_custom_prompt(store):
         return '```json\n{"verdict":"anomalia","severity":"warn","message":"ok","action":null}\n```'
 
     run_decision = _make_run_decision_from_llm(
-        _llm_reason, notify=rec.notify, act=rec.act, propose=rec.propose,
-        execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True)
+        _llm_reason, notify=rec.notify, propose=rec.propose,
+        execute_policy=_policy(tiers={"switch": "green"}))
 
     await run_agentbot(
         AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=run_decision, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
@@ -333,7 +338,7 @@ async def test_ai_lens_llm_attempts_to_override_action_is_ignored(store):
     `switch.pompa` target. This makes the test actually discriminating: if
     `run_agentbot` failed to pass the Agentbot's deterministic `suggested`
     action into `run_decision`, the LLM's `light.malicious_target` action
-    would sail through the (non-dangerous) tier gate and `act` would be
+    would sail through the (non-dangerous) tier gate and `propose` would be
     called with it -- unlike a dangerous-domain target, which the
     executor's denylist would block regardless of whether the override
     happened, making that variant non-discriminating for this specific
@@ -349,21 +354,24 @@ async def test_ai_lens_llm_attempts_to_override_action_is_ignored(store):
 
     tiers = {"switch": "green", "light": "green"}
     run_decision = _make_run_decision_from_llm(
-        _malicious_llm_reason, notify=rec.notify, act=rec.act, propose=rec.propose,
-        execute_policy=_policy(tiers=tiers), allow_green_auto=True)
+        _malicious_llm_reason, notify=rec.notify, propose=rec.propose,
+        execute_policy=_policy(tiers=tiers))
 
     await run_agentbot(
         AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=run_decision, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers=tiers), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers=tiers),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
 
-    # The executed action must be the AGENTBOT's config action, never the LLM's.
-    assert rec.acted == [{"domain": "switch", "service": "turn_off", "entity_id": "switch.pompa"}]
-    assert not any(a.get("domain") == "light" for a in rec.acted)
+    # The proposed action must be the AGENTBOT's config action, never the LLM's.
+    assert len(rec.proposed) == 1
+    assert rec.proposed[0].action == {
+        "domain": "switch", "service": "turn_off", "entity_id": "switch.pompa"}
+    assert not any(
+        d.action and d.action.get("domain") == "light" for d in rec.proposed)
 
 
 @pytest.mark.asyncio
@@ -373,7 +381,7 @@ async def test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied(st
     therefore isn't overridden by a `suggested` value, the real
     `executor.execute`'s dangerous-domain denylist is still the final
     backstop: a lock/alarm/cover/siren/garage target from the LLM is still
-    never acted upon."""
+    never acted upon, nor even proposed."""
     rec = _Rec()
     notify_lens_ai = {**NOTIFY_LENS, "reasoning": {"enabled": True, "prompt": "Sii prudente."}}
 
@@ -385,19 +393,19 @@ async def test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied(st
         )
 
     run_decision = _make_run_decision_from_llm(
-        _malicious_llm_reason, notify=rec.notify, act=rec.act, propose=rec.propose,
-        execute_policy=_policy(tiers={"lock": "green"}), allow_green_auto=True)
+        _malicious_llm_reason, notify=rec.notify, propose=rec.propose,
+        execute_policy=_policy(tiers={"lock": "green"}))
 
     await run_agentbot(
         notify_lens_ai, {"entity_id": "sensor.temp", "value": 35},
         store=store, run_decision=run_decision, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"lock": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"lock": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
 
-    assert not rec.acted  # dangerous domain denylist still blocks it
+    assert not rec.proposed  # dangerous domain denylist still blocks it
 
 
 @pytest.mark.asyncio
@@ -407,14 +415,13 @@ async def test_ai_notify_lens_never_actuates_even_on_safe_green_domain(store):
     ...` guard never re-injects a deterministic action. Without
     `force_notify_only`, that leaves the LLM's OWN parsed `action` sitting
     on the Decision, and on a SAFE (non-dangerous) domain with a green tier
-    + `allow_green_auto`, `executor.execute` would actuate it -- even
-    though the user explicitly configured this Agentbot as "just notify".
-    Unlike
+    `executor.execute` would propose it -- even though the user explicitly
+    configured this Agentbot as "just notify". Unlike
     `test_ai_lens_notify_only_llm_attempts_dangerous_action_still_denied`
     (which uses a dangerous `lock` domain, so the denylist alone would save
     it regardless of this fix), this test uses `light` -- a safe domain --
     so only `force_notify_only` forcing `decision.action = None` before
-    `execute()` runs can prevent the actuation."""
+    `execute()` runs can prevent the proposal."""
     rec = _Rec()
     notify_lens_ai = {**NOTIFY_LENS, "reasoning": {"enabled": True, "prompt": "Sii prudente."}}
 
@@ -426,20 +433,20 @@ async def test_ai_notify_lens_never_actuates_even_on_safe_green_domain(store):
         )
 
     run_decision = _make_run_decision_from_llm(
-        _llm_proposes_safe_action, notify=rec.notify, act=rec.act, propose=rec.propose,
-        execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True)
+        _llm_proposes_safe_action, notify=rec.notify, propose=rec.propose,
+        execute_policy=_policy(tiers={"light": "green"}))
 
     outcome = await run_agentbot(
         notify_lens_ai, {"entity_id": "sensor.temp", "value": 35},
         store=store, run_decision=run_decision, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"light": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
 
     assert outcome == "woke"
-    assert not rec.acted  # notify Agentbot must NEVER actuate, safe domain or not
+    assert not rec.proposed  # notify Agentbot must NEVER get anything proposed, safe domain or not
     assert rec.notified  # the AI verdict/message still reaches the user
 
 
@@ -459,8 +466,8 @@ async def test_cooldown_blocks_second_fire_within_window(store):
         return await run_agentbot(
             NOTIFY_LENS, {"entity_id": "sensor.temp"},
             store=store, run_decision=_run_decision_unused, execute=real_execute,
-            notify=rec.notify, act=rec.act, propose=rec.propose,
-            get_execute_policy=_policy(), allow_green_auto=True,
+            notify=rec.notify, propose=rec.propose,
+            get_execute_policy=_policy(),
             record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
             clock=lambda: clock_val, today=lambda: "2026-07-24",
             cooldown_sec=1800,
@@ -488,16 +495,16 @@ async def test_key_scopes_cooldown_per_lens_and_entity(store):
     out_a = await run_agentbot(
         NOTIFY_LENS, {"entity_id": "sensor.temp_a"},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
     out_b = await run_agentbot(
         NOTIFY_LENS, {"entity_id": "sensor.temp_b"},
         store=store, run_decision=_run_decision_unused, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
@@ -527,8 +534,8 @@ async def test_cooldown_sec_zero_bypasses_cooldown_but_daily_cap_still_applies(s
         return await run_agentbot(
             NOTIFY_LENS, {"entity_id": "sensor.temp"},
             store=store, run_decision=_run_decision_unused, execute=real_execute,
-            notify=rec.notify, act=rec.act, propose=rec.propose,
-            get_execute_policy=_policy(), allow_green_auto=True,
+            notify=rec.notify, propose=rec.propose,
+            get_execute_policy=_policy(),
             record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
             clock=lambda: clock_val, today=lambda: "2026-07-24",
             cooldown_sec=0, daily_cap=2,
@@ -555,8 +562,8 @@ async def test_omitted_cooldown_sec_still_defaults_to_thirty_minutes(store):
         return await run_agentbot(
             NOTIFY_LENS, {"entity_id": "sensor.temp"},
             store=store, run_decision=_run_decision_unused, execute=real_execute,
-            notify=rec.notify, act=rec.act, propose=rec.propose,
-            get_execute_policy=_policy(), allow_green_auto=True,
+            notify=rec.notify, propose=rec.propose,
+            get_execute_policy=_policy(),
             record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
             clock=lambda: clock_val, today=lambda: "2026-07-24",
             # cooldown_sec intentionally omitted -- must resolve to the
@@ -593,8 +600,8 @@ async def test_ai_lens_threads_its_own_reasoning_model_into_run_decision(store):
     await run_agentbot(
         lens_with_model, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
@@ -615,8 +622,8 @@ async def test_ai_lens_without_configured_model_defaults_to_auto(store):
     await run_agentbot(
         AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
@@ -662,8 +669,8 @@ async def test_objective_lens_action_none_forces_notify_only_true(store):
     await run_agentbot(
         OBJECTIVE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
@@ -680,7 +687,7 @@ async def test_objective_lens_llm_emitted_action_never_reaches_executor(store):
     `decision.action = None` before `execute()` runs can prevent this,
     since `suggested` (from `agentbot_action`) is also None here so the
     OTHER guard (`if suggested and ...`) never fires either. RED before the
-    fix: `rec.acted` would contain the LLM's fabricated action."""
+    fix: `rec.proposed` would contain the LLM's fabricated action."""
     rec = _Rec()
 
     async def _llm_invents_an_action(system, user, *, model, max_tokens):
@@ -691,19 +698,19 @@ async def test_objective_lens_llm_emitted_action_never_reaches_executor(store):
         )
 
     run_decision = _make_run_decision_from_llm(
-        _llm_invents_an_action, notify=rec.notify, act=rec.act, propose=rec.propose,
-        execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True)
+        _llm_invents_an_action, notify=rec.notify, propose=rec.propose,
+        execute_policy=_policy(tiers={"light": "green"}))
 
     await run_agentbot(
         OBJECTIVE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=run_decision, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"light": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"light": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
 
-    assert not rec.acted  # the LLM-invented action must never reach the executor
+    assert not rec.proposed  # the LLM-invented action must never reach the executor
     assert rec.notified   # the AI verdict/message still reaches the user
 
 
@@ -728,16 +735,16 @@ async def test_ai_lens_two_agentbots_use_independent_models(store):
     await run_agentbot(
         lens_a, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
     await run_agentbot(
         lens_b, {"entity_id": "switch.pompa2", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )
@@ -842,12 +849,12 @@ def _extract_closure(src: str, start_marker: str, end_marker: str) -> str:
     return textwrap.dedent(src[start:end])
 
 
-def _load_real_server_run_decision(*, app, gather_context, execute, notify, act, propose,
+def _load_real_server_run_decision(*, app, gather_context, execute, notify, propose,
                                    record_situation_event, extra_globals=None):
     """Carica le closure REALI `_llm_reason` + `_run_decision` da
     `server._on_startup`, legandole a doppi di test per le sole variabili
     libere che non sono simboli importabili (`app`, `_gather_context`,
-    `_notify`/`_act`/`_propose`, `_record_situation_event`). Tutto il resto
+    `_notify`/`_propose`, `_record_situation_event`). Tutto il resto
     (`reason`, `execute`, `env_bool`, `RunnerBackendError`, `logger`) e' un
     simbolo reale, quindi il legame e' esatto e non una supposizione.
 
@@ -875,7 +882,6 @@ def _load_real_server_run_decision(*, app, gather_context, execute, notify, act,
         "env_bool": server.env_bool,
         "_gather_context": gather_context,
         "_notify": notify,
-        "_act": act,
         "_propose": propose,
         "_record_situation_event": record_situation_event,
     }
@@ -956,14 +962,14 @@ async def _fire_objective_agentbot(agentbot, *, store, execute_policy, runner, r
     run_decision = _load_real_server_run_decision(
         app={"llm_router": runner, "execute_policy": execute_policy},
         gather_context=_gather_context, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
+        notify=rec.notify, propose=rec.propose,
         record_situation_event=_record_situation_event)
 
     return await run_agentbot(
         agentbot, {"entity_id": "light.cucina", "value": 1},
         store=store, run_decision=run_decision, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=lambda: execute_policy, allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=lambda: execute_policy,
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-29",
     )
@@ -1150,14 +1156,14 @@ async def test_rule_mode_agentbot_reasoning_call_is_unchanged(store, tmp_path):
     run_decision = _load_real_server_run_decision(
         app={"llm_router": runner, "execute_policy": execute_policy},
         gather_context=_gather_context, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
+        notify=rec.notify, propose=rec.propose,
         record_situation_event=_record_situation_event)
 
     await run_agentbot(
         agentbot, {"entity_id": "switch.stufa", "value": 3500},
         store=store, run_decision=run_decision, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=lambda: execute_policy, allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=lambda: execute_policy,
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-29",
     )
@@ -1186,7 +1192,7 @@ async def test_rule_mode_agentbot_reasoning_call_is_unchanged(store, tmp_path):
 # (stessa tecnica della sezione (g)): il bound e' proprio li' dentro, quindi
 # un mirror scritto a mano non proverebbe nulla. Cio' che viene verificato e'
 # COMPORTAMENTO: che il lavoro successivo (esecuzione della Decision:
-# notify/act/propose) NON avvenga, e che l'esito finisca leggibile dove il
+# notify/propose) NON avvenga, e che l'esito finisca leggibile dove il
 # sistema gia' registra gli esiti di queste esecuzioni
 # (`_record_situation_event` -> `sentinel_store.record_event` -> `/api/
 # sentinel/timeline` -> lista eventi dell'editor agentbot).
@@ -1282,15 +1288,15 @@ async def _fire_bounded_agentbot(agentbot, *, store, runner, rec, events,
     run_decision = _load_real_server_run_decision(
         app={"llm_router": runner, "execute_policy": execute_policy},
         gather_context=_gather_context, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
+        notify=rec.notify, propose=rec.propose,
         record_situation_event=_record_situation_event,
         extra_globals=extra_globals)
 
     return await run_agentbot(
         agentbot, {"entity_id": "light.cucina", "value": 1},
         store=store, run_decision=run_decision, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=lambda: execute_policy, allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=lambda: execute_policy,
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-29",
     )
@@ -1299,7 +1305,7 @@ async def _fire_bounded_agentbot(agentbot, *, store, runner, rec, events,
 @pytest.mark.asyncio
 async def test_run_over_token_budget_stops_and_records_why(store):
     """Sforare `budget_tokens` ferma l'esecuzione: la Decision del
-    ragionatore non viene eseguita (niente notify/act/propose) e al suo posto
+    ragionatore non viene eseguita (niente notify/propose) e al suo posto
     resta un esito che dice perche'."""
     agentbot = validate_agentbot({**OBJECTIVE_AGENTBOT_RAW,
                                   "perimeter": {"budget_tokens": 100}})
@@ -1316,7 +1322,7 @@ async def test_run_over_token_budget_stops_and_records_why(store):
     assert runner.calls == 1, "il ragionamento parte comunque: il budget e' per esecuzione"
     # (a) il lavoro successivo NON e' avvenuto
     assert rec.notified == [], "la Decision non doveva essere eseguita"
-    assert rec.acted == [] and rec.proposed == []
+    assert rec.proposed == []
     # (b) ...e l'esito e' leggibile da dove il sistema espone gli esiti
     assert len(events) == 1
     ev = events[0]
@@ -1353,7 +1359,7 @@ async def test_run_over_deadline_stops_and_records_why(store):
     assert outcome == "woke"
     assert runner.calls == 1 and runner.completed == 0, (
         "il ragionamento dev'essere stato annullato a meta', non atteso fino in fondo")
-    assert rec.notified == [] and rec.acted == [] and rec.proposed == []
+    assert rec.notified == [] and rec.proposed == []
     assert len(events) == 1
     ev = events[0]
     assert ev["outcome"] == "interrotto:scadenza"
@@ -1703,8 +1709,8 @@ async def test_rule_agentbot_system_prompt_is_byte_for_byte_unchanged(store):
     await run_agentbot(
         AI_SERVICE_LENS, {"entity_id": "switch.pompa", "value": 150},
         store=store, run_decision=_run_decision_spy, execute=real_execute,
-        notify=rec.notify, act=rec.act, propose=rec.propose,
-        get_execute_policy=_policy(tiers={"switch": "green"}), allow_green_auto=True,
+        notify=rec.notify, propose=rec.propose,
+        get_execute_policy=_policy(tiers={"switch": "green"}),
         record_event=rec.record_event, sentinel_system=SENTINEL_SYSTEM,
         clock=lambda: 1.0, today=lambda: "2026-07-24",
     )

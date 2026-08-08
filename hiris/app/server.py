@@ -1770,7 +1770,6 @@ async def _on_startup(app: web.Application) -> None:
     from .watcher.policy import load_policy
     from .watcher.reasoner import reason, SENTINEL_SYSTEM, SITUATION_HOLISTIC_SYSTEM
     from .watcher.executor import execute
-    from .watcher.off_task import build_off_task
     from .watcher.signals import WakeEvent
     from .watcher.sentinel_proposal import propose_sentinel_script
     from .notifiche import send_notification
@@ -1940,51 +1939,16 @@ async def _on_startup(app: web.Application) -> None:
         # TaskEngine for send_notification — not a re-invented config shape.
         await send_notification(ha_client, message, "ha_persistent", notify_config, title=title)
 
-    async def _act(action):
-        # Dispatched through the normal tool dispatcher (call_ha_service), same
-        # code path as every other actuation. Primary enforcement (tier gate +
-        # dangerous-domain denylist) already happened upstream in
-        # executor.execute() — this only ever runs for a green, non-dangerous
-        # action. As defense-in-depth, also pass a per-call allowlist scoped
-        # to exactly this action's domain.service and entity_id, so the
-        # dispatcher's own allowlist check (otherwise inert here) is a second,
-        # independent layer instead of a no-op.
-        #
-        # Action-shape fix: Decision.action carries entity_id as a top-level
-        # sibling of "data" (see reasoner.py's SENTINEL_SYSTEM contract), but
-        # ToolDispatcher.dispatch's call_ha_service branch reads the target
-        # entity from INSIDE inputs["data"]/inputs["target"]
-        # (dispatcher.py:213-224) and forwards inputs["data"] verbatim to
-        # self._ha.call_service(domain, service, data). Copy entity_id into
-        # data so the actuation actually reaches HA with a target, and so the
-        # allowed_entities check below (which also reads from data/target)
-        # has something to match against instead of always failing closed.
-        domain = action.get("domain") or action["entity_id"].split(".", 1)[0]
-        service = action.get("service", "")
-        eid = action.get("entity_id")
-        data = dict(action.get("data") or {})
-        if eid:
-            data["entity_id"] = eid
-        await dispatcher.dispatch(
-            "call_ha_service", {"domain": domain, "service": service, "data": data},
-            allowed_services=[f"{domain}.{service}"] if service else None,
-            allowed_entities=[eid] if eid else None,
-        )
-        # Irrigation-style actions (turn_on with off_after_min) get a matching
-        # delayed turn_off scheduled through the TaskEngine. build_off_task()
-        # already refuses to build anything unless service=="turn_on" and
-        # off_after_min is a positive number, so this is a no-op for every
-        # other action. create_task's own allowlist (below) scopes the
-        # scheduled task to exactly this domain.turn_off + entity_id — same
-        # defense-in-depth pattern as the turn_on dispatch above.
-        if action.get("off_after_min"):
-            off = build_off_task(action)
-            if off is not None:
-                await dispatcher.dispatch(
-                    "create_task", off,
-                    allowed_services=[f"{domain}.turn_off"],
-                    allowed_entities=[eid] if eid else None,
-                )
+    # `_act` (chiamava `dispatcher.dispatch("call_ha_service"/"create_task")`
+    # per il tier verde con opt-in) e' uscita qui: fetta E2 Task 6, "la
+    # Sentinella smette di usare il dispatcher". Non e' stata sostituita con
+    # un'altra via d'attuazione -- il perimetro della 2.0 e' "conosce e non
+    # agisce", e questo e' il punto in cui l'unica attuazione automatica
+    # rimasta smette di esistere: `executor.execute()` ora tratta il tier
+    # "green" esattamente come "yellow" (propone, non agisce piu' da solo).
+    # Con lei sono usciti anche il parametro `allow_green_auto` (ovunque lo
+    # passasse: qui sotto, `_run_decision`, `_run_agentbot`,
+    # `_execute_decision`) e l'opzione add-on `sentinel_allow_green_auto`.
 
     async def _propose(decision, wake):
         # Consolidamento 1.2: cio' che la Sentinella propone e' UNA chiamata di
@@ -2018,8 +1982,7 @@ async def _on_startup(app: web.Application) -> None:
             outcome = await execute(
                 decision, wake,
                 tiers=tiers, entity_tiers=entity_tiers,
-                notify=_notify, act=_act, propose=_propose,
-                allow_green_auto=env_bool("SENTINEL_ALLOW_GREEN_AUTO"))
+                notify=_notify, propose=_propose)
         except Exception:
             logger.exception("sentinel on_wake failed")
             outcome = "error"
@@ -2072,7 +2035,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # ── Situazioni (ronda periodica + revisione olistica, fetta 2) ──────────
     # Same semaforo (execute_policy) and same Fetta-1 adapters (_gather_context,
-    # _llm_reason, _notify, _act, _propose) as the guardian above — situations
+    # _llm_reason, _notify, _propose) as the guardian above — situations
     # are just another wake source feeding the identical reason→execute path.
     from .watcher.snapshot import build_snapshot as _build_snapshot
     from .watcher.evaluator import SituationEvaluator
@@ -2235,8 +2198,7 @@ async def _on_startup(app: web.Application) -> None:
         outcome = await execute(
             decision, wake,
             tiers=_ep.get("tiers") or {}, entity_tiers=_ep.get("entity_tiers") or {},
-            notify=_notify, act=_act, propose=_propose,
-            allow_green_auto=env_bool("SENTINEL_ALLOW_GREEN_AUTO"))
+            notify=_notify, propose=_propose)
         await _record_situation_event(wake.signal_kind, wake.entity_id, decision, outcome)
 
     async def _on_situation(wake, suggested):
@@ -2247,7 +2209,7 @@ async def _on_startup(app: web.Application) -> None:
     # `_run_agentbot` è un thin wiring del vero flusso (in
     # `watcher/agentbot_runner.py`, testabile in isolamento) sugli stessi
     # adapter reali già usati sopra (sentinel_store, _run_decision, execute,
-    # _notify/_act/_propose, execute_policy) — nessun path di actuation
+    # _notify/_propose, execute_policy) — nessun path di actuation
     # nuovo: stesso semaforo, stesso allowed_tools=[] della reasoning (via
     # _run_decision → reason → _llm_reason), stessa denylist domini
     # pericolosi (via executor.execute).
@@ -2263,9 +2225,8 @@ async def _on_startup(app: web.Application) -> None:
         return await _run_agentbot_flow(
             agentbot, evidence,
             store=sentinel_store, run_decision=_run_decision, execute=execute,
-            notify=_notify, act=_act, propose=_propose,
+            notify=_notify, propose=_propose,
             get_execute_policy=lambda: app.get("execute_policy") or {},
-            allow_green_auto=env_bool("SENTINEL_ALLOW_GREEN_AUTO"),
             record_event=sentinel_store.record_event,
             sentinel_system=SENTINEL_SYSTEM,
             cooldown_sec=cooldown_sec if cooldown_sec is not None
@@ -2321,8 +2282,7 @@ async def _on_startup(app: web.Application) -> None:
         outcome = await execute(
             d, wake,
             tiers=_ep.get("tiers") or {}, entity_tiers=_ep.get("entity_tiers") or {},
-            notify=_notify, act=_act, propose=_propose,
-            allow_green_auto=env_bool("SENTINEL_ALLOW_GREEN_AUTO"))
+            notify=_notify, propose=_propose)
         sentinel_store.record_event({
             "ts": _time.time(), "kind": wake.signal_kind, "entity_id": wake.entity_id,
             "verdict": d.verdict, "severity": d.severity,
