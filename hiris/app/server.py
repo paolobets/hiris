@@ -22,7 +22,6 @@ from .api.handlers_status import handle_status
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
 from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
-from .api.handlers_tasks import handle_list_tasks, handle_get_task, handle_cancel_task
 from .api.handlers_models import (
     handle_list_models, handle_get_models_config, handle_save_models_config,
 )
@@ -39,7 +38,6 @@ from .proxy.health_monitor import HealthMonitor
 from .proxy.supervisor_client import SupervisorClient
 from .proxy.proposal_store import ProposalStore
 from .chatbot_engine import ChatbotEngine
-from .task_engine import TaskEngine
 from .version import read_version
 from .proxy.ha_client import HAClient
 from .casa.archivio import ArchivioCasa
@@ -836,29 +834,39 @@ async def _on_startup(app: web.Application) -> None:
     # Deep-link ingress per le notifiche (issue live-verify #1): il tap apre
     # HIRIS invece della Dashboard home. Slug installato dal Supervisor -> path
     # frontend stabile `/hassio/ingress/<slug>`; se irraggiungibile, None ->
-    # il deep-link viene omesso (nessuna regressione). Letto da notify_tools
-    # (ha_push).
+    # il deep-link viene omesso (nessuna regressione).
     _slug = await _fetch_addon_slug(os.environ.get("SUPERVISOR_TOKEN", ""))
     _ingress_click_path = f"/hassio/ingress/{_slug}" if _slug else None
     notify_config["ingress_click_path"] = _ingress_click_path
     app["ingress_click_path"] = _ingress_click_path
     app["theme"] = os.environ.get("THEME", "auto")
 
-    tasks_data_path = os.environ.get("TASKS_DATA_PATH", "/data/tasks.json")
-    # Review finale fetta E2, I-1: TaskEngine non riceve piu' `execute_policy`
-    # ne' `request_stepup` -- l'unica azione che li usava (l'esecuzione di
-    # `call_ha_service`) e' uscita da `_run_action` (task_engine.py). Un
-    # tasks.json ereditato da un'installazione 1.x puo' ancora contenere
-    # quell'azione: al trigger fallisce ora come "Unknown action type",
-    # loggata, non piu' eseguita in silenzio.
-    task_engine = TaskEngine(
-        ha_client=ha_client,
-        entity_cache=entity_cache,
-        notify_config=notify_config,
-        data_path=tasks_data_path,
-    )
-    await task_engine.start()
-    app["task_engine"] = task_engine
+    # fetta E3 Task 9 ("esce il Task Engine"): il TaskEngine (il pianificatore
+    # innesco->azione, condannato dalla mappa per Legge III) e' uscito per
+    # intero -- modulo, rotte /api/tasks*, gli hook nei due engine. Era
+    # l'ULTIMO chiamante di `notifiche.send_notification` (le sue azioni
+    # residue, dopo che `call_ha_service` era uscita nella review finale E2,
+    # erano solo `send_notification`): `notify_config` qui sopra (e
+    # `_fetch_addon_slug`/`_ingress_click_path` che lo riempiono) non ha piu'
+    # nessun consumatore, ma resta cosi' com'e' -- non lo anticipiamo.
+    # `hiris/app/notifiche.py` NON esce con questo task: esce al Task 13,
+    # insieme al resto del suo cablaggio (questo compreso). SILENZIO
+    # DICHIARATO, due livelli:
+    #  1. `notifiche.send_notification` e' orfano da qui in poi (zero
+    #     chiamanti di produzione) -- lo raccoglie il Task 13.
+    #  1b. `EntityCache.get_state` (proxy/entity_cache.py) e' orfano allo
+    #     stesso modo: il suo unico chiamante era
+    #     `TaskEngine._evaluate_condition()`. `proxy/entity_cache.py` NON si
+    #     tocca in questa fetta (censimento conferma) -- lo raccoglie il
+    #     Task 12.
+    #  2. un `tasks.json` con task pendenti ereditato da un'installazione
+    #     precedente non viene piu' ne' caricato ne' eseguito: nessun codice
+    #     lo incontra piu' (a differenza di advisory.db/sentinel.db, Task
+    #     6/7, qui non resta alcun punto del boot che tocchi ancora
+    #     TASKS_DATA_PATH per poterne loggare la presenza) -- quindi nessun
+    #     log e' possibile. Il file resta su disco, intatto (mai dati utente
+    #     cancellati in /data): va nell'elenco /data del Task 15 e nelle note
+    #     di release.
 
     mqtt_pub = MQTTPublisher()
     await mqtt_pub.start(
@@ -1512,7 +1520,6 @@ async def _on_startup(app: web.Application) -> None:
         app["claude_runner"] = claude_runner  # backward compat (may be None)
         app["llm_router"] = router
         engine.set_claude_runner(router)
-        engine.set_task_engine(task_engine)
     else:
         app["claude_runner"] = None
         app["llm_router"] = None
@@ -1580,8 +1587,6 @@ async def _on_cleanup(app: web.Application) -> None:
         app["archivio_casa"].chiudi()
     if "archivio_memoria" in app:
         app["archivio_memoria"].chiudi()
-    if "task_engine" in app:
-        await app["task_engine"].stop()
     await app["engine"].stop()
     await app["ha_client"].stop()
     if app.get("supervisor_client") is not None:
@@ -1647,9 +1652,10 @@ def create_app() -> web.Application:
     app.router.add_post("/api/chatbots/{agent_id}/usage/reset", handle_reset_chatbot_usage)
     app.router.add_get("/api/chatbots/{agent_id}/chat-history", handle_get_chat_history)
     app.router.add_delete("/api/chatbots/{agent_id}/chat-history", handle_clear_chat_history)
-    app.router.add_get("/api/tasks", handle_list_tasks)
-    app.router.add_get("/api/tasks/{task_id}", handle_get_task)
-    app.router.add_delete("/api/tasks/{task_id}", handle_cancel_task)
+    # fetta E3 Task 9: le tre rotte /api/tasks* sono uscite insieme al Task
+    # Engine -- lasciano rotta la pagina #/tasks (tasks-route.js) e il
+    # pannello Task della chat (chat/tasks.js), entrambi vivi in static/
+    # fino alla E5 (vedi il report del task).
     app.router.add_get("/api/models", handle_list_models)
     app.router.add_get("/api/models/config", handle_get_models_config)
     app.router.add_put("/api/models/config", handle_save_models_config)

@@ -29,13 +29,11 @@ def reset_stores():
     close_all_stores()
 
 
-def _app(tmp_path, *, submit_chat_reply=None, execute_decision=None):
+def _app(tmp_path, *, submit_chat_reply=None):
     app = web.Application()
     q = ReasoningQueue(str(tmp_path / "r.db"))
     app["reasoning_queue"] = q
     app["_clock"] = lambda: 10.0
-    if execute_decision is not None:
-        app["execute_decision"] = execute_decision
     if submit_chat_reply is not None:
         app["submit_chat_reply"] = submit_chat_reply
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
@@ -45,18 +43,19 @@ def _app(tmp_path, *, submit_chat_reply=None, execute_decision=None):
 
 @pytest.mark.asyncio
 async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client, tmp_path):
+    """fetta E3 Task 9: questo test wirava anche un `execute_decision` finto
+    e verificava che NON venisse chiamato per un job kind="chat" -- da
+    quando l'hook `app["execute_decision"]` e' uscito per intero
+    (handlers_reasoning.py, rilievo 1 della review indipendente sul blocco
+    5-8), quella distinzione non esiste piu': nessun kind lo chiama mai.
+    Il soggetto vivo che resta -- un job "chat" instrada la risposta a
+    submit_chat_reply -- e' l'unica cosa ancora verificata qui."""
     recorded = []
 
     async def _submit_chat_reply(chatbot_id, reply_text):
         recorded.append((chatbot_id, reply_text))
 
-    executed = []
-
-    async def _exec(decision, wake):
-        executed.append((decision, wake))
-        return "notify"
-
-    app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply, execute_decision=_exec)
+    app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
     q.enqueue("chat", {}, {"chatbot_id": "agentX", "history": []}, deadline_ts=100.0, job_id="C1", now=1.0)
     client = await aiohttp_client(app)
 
@@ -70,7 +69,6 @@ async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client,
 
     assert body["ok"] is True
     assert recorded == [("agentX", "ciao!")]
-    assert executed == []  # holistic execute_decision must NOT fire for kind="chat"
 
 
 @pytest.mark.asyncio
@@ -117,33 +115,16 @@ async def test_chat_job_missing_agent_id_fails_closed(aiohttp_client, tmp_path):
     assert q.get("C3")["status"] == "decided"
 
 
-@pytest.mark.asyncio
-async def test_non_chat_job_still_uses_execute_decision_unchanged(aiohttp_client, tmp_path):
-    executed = []
-
-    async def _exec(decision, wake):
-        executed.append((decision, wake))
-        return "notify"
-
-    recorded = []
-
-    async def _submit_chat_reply(chatbot_id, reply_text):
-        recorded.append((chatbot_id, reply_text))
-
-    app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply, execute_decision=_exec)
-    q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
-              "evidence": {}, "ts": 1.0}, {"snapshot": {}}, deadline_ts=100.0, job_id="H1", now=1.0)
-    client = await aiohttp_client(app)
-
-    c = await (await client.post("/api/reasoning/claim")).json()
-    r = await client.post("/api/reasoning/submit", json={
-        "job_id": "H1", "nonce": c["job"]["nonce"],
-        "decision": {"verdict": "anomalia", "severity": "info", "message": "ok", "action": None}})
-    body = await r.json()
-
-    assert body["ok"] is True and body["outcome"] == "notify"
-    assert executed  # holistic path unchanged
-    assert recorded == []  # submit_chat_reply not invoked for non-chat kind
+# test_non_chat_job_still_uses_execute_decision_unchanged, che viveva qui,
+# e' cancellato dalla fetta E3 Task 9 (rilievo 1 della review indipendente
+# sul blocco 5-8): verificava che un job non-chat facesse ancora chiamare
+# `app["execute_decision"]" -- quel soggetto non esiste piu', l'hook e'
+# uscito per intero da handlers_reasoning.py. Verificato che cade per
+# costruzione prima della cancellazione: con l'hook rimosso l'assert
+# `body["outcome"] == "notify"` falliva (`outcome` resta "recorded"). Il suo
+# gemello per il caso "nessun hook wired" resta vivo in
+# test_reasoning_api.py::test_submit_without_execute_decision_wired_records_and_logs
+# -- e' quello, non piu' un ramo alternativo, il comportamento reale oggi.
 
 
 @pytest.mark.asyncio

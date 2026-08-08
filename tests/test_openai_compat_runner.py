@@ -324,7 +324,6 @@ async def test_chat_passes_through_clean_text(dispatcher, tmp_path):
     out = await runner.chat(
         user_message="come stiamo",
         model="mistralai/mistral-large",
-        allowed_tools=["get_ha_health"],
     )
     assert out == "Tutto ok — la casa è in buone condizioni."
 

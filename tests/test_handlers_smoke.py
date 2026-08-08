@@ -56,70 +56,13 @@ async def test_handle_config_default_theme_is_auto():
     assert json.loads(resp.body) == {"theme": "auto"}
 
 
-# ---------------------------------------------------------------------------
-# handle_get_task / handle_cancel_task
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_handle_get_task_no_engine_returns_404():
-    from hiris.app.api.handlers_tasks import handle_get_task
-    app = MagicMock()
-    app.get = MagicMock(return_value=None)
-    request = make_mocked_request(
-        "GET", "/api/tasks/x",
-        match_info={"task_id": "x"},
-        app=app,
-    )
-    resp = await handle_get_task(request)
-    assert resp.status == 404
-
-
-@pytest.mark.asyncio
-async def test_handle_get_task_unknown_returns_404():
-    from hiris.app.api.handlers_tasks import handle_get_task
-    engine = MagicMock()
-    engine.get_task.return_value = None
-    app = MagicMock()
-    app.get = MagicMock(side_effect=lambda k: engine if k == "task_engine" else None)
-    request = make_mocked_request(
-        "GET", "/api/tasks/x",
-        match_info={"task_id": "x"},
-        app=app,
-    )
-    resp = await handle_get_task(request)
-    assert resp.status == 404
-
-
-@pytest.mark.asyncio
-async def test_handle_cancel_task_no_engine_returns_404():
-    from hiris.app.api.handlers_tasks import handle_cancel_task
-    app = MagicMock()
-    app.get = MagicMock(return_value=None)
-    request = make_mocked_request(
-        "DELETE", "/api/tasks/x",
-        match_info={"task_id": "x"},
-        app=app,
-    )
-    resp = await handle_cancel_task(request)
-    assert resp.status == 404
-
-
-@pytest.mark.asyncio
-async def test_handle_cancel_task_success_returns_204():
-    from hiris.app.api.handlers_tasks import handle_cancel_task
-    engine = MagicMock()
-    engine.cancel_task.return_value = True
-    app = MagicMock()
-    app.get = MagicMock(side_effect=lambda k: engine if k == "task_engine" else None)
-    request = make_mocked_request(
-        "DELETE", "/api/tasks/x",
-        match_info={"task_id": "x"},
-        app=app,
-    )
-    resp = await handle_cancel_task(request)
-    assert resp.status == 204
-    engine.cancel_task.assert_called_once_with("x")
-
+# I quattro smoke test di handle_get_task/handle_cancel_task che vivevano
+# qui sono cancellati dalla fetta E3 Task 9 ("esce il Task Engine"): il
+# modulo che importavano, `hiris.app.api.handlers_tasks`, e' cancellato per
+# intero insieme alle tre rotte /api/tasks* che serviva. Verificato che
+# cadono per costruzione: `ModuleNotFoundError: No module named
+# 'hiris.app.api.handlers_tasks'` su tutti e quattro, prima della
+# cancellazione.
 
 # ---------------------------------------------------------------------------
 # handle_get_ha_health / handle_refresh_ha_health

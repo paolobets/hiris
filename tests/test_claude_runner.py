@@ -731,17 +731,11 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path):
     runner._client.messages.create = AsyncMock(side_effect=fake_create)
 
     async def call_a():
-        text = await runner.chat(
-            "call-A", allowed_tools=["recall_memory"],
-            knowledge_allow_sensitive=True,
-        )
+        text = await runner.chat("call-A", knowledge_allow_sensitive=True)
         return text, dict(runner.last_pseudonym_map)
 
     async def call_b():
-        text = await runner.chat(
-            "call-B", allowed_tools=["recall_memory"],
-            knowledge_allow_sensitive=True,
-        )
+        text = await runner.chat("call-B", knowledge_allow_sensitive=True)
         return text, dict(runner.last_pseudonym_map)
 
     (text_a, map_a), (text_b, map_b) = await asyncio.gather(call_a(), call_b())

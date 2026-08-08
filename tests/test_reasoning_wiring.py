@@ -1,6 +1,3 @@
-import pytest
-
-
 def test_reasoning_routes_registered():
     from hiris.app.server import create_app
     app = create_app()
@@ -30,36 +27,22 @@ def test_reasoning_queue_importable():
 # tutto `watcher/`) e' uscito per intero: `test_sentinel_executor.py`
 # (insieme al test spostato che portava) e' cancellato, non c'e' piu' un
 # esecutore vivo a cui il fail-closed possa spostarsi di nuovo.
-
-
-@pytest.mark.asyncio
-async def test_submit_logs_exception_from_execute_decision(aiohttp_client, tmp_path, caplog):
-    """Fix 2: a failing execute_decision must be logged, not swallowed silently."""
-    from aiohttp import web
-    from hiris.app.api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
-    from hiris.app.reasoning.queue import ReasoningQueue
-
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
-              "evidence": {}, "ts": 1.0}, {"snapshot": {}}, deadline_ts=100.0, job_id="J", now=1.0)
-
-    app = web.Application()
-    app["reasoning_queue"] = q
-    app["_clock"] = lambda: 10.0
-
-    async def _boom(decision, wake):
-        raise RuntimeError("boom")
-    app["execute_decision"] = _boom
-    app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
-    app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
-
-    client = await aiohttp_client(app)
-    c = await (await client.post("/api/reasoning/claim")).json()
-    with caplog.at_level("ERROR", logger="hiris.app.api.handlers_reasoning"):
-        r = await client.post("/api/reasoning/submit", json={
-            "job_id": "J", "nonce": c["job"]["nonce"],
-            "decision": {"verdict": "anomalia", "message": "x"}})
-    body = await r.json()
-    assert body["ok"] is True and body["outcome"] == "error"
-    assert any("execute_decision failed" in rec.message for rec in caplog.records)
-    q.close()
+#
+# fetta E3 Task 9 (rilievo 1 della review indipendente sul blocco 5-8):
+# `test_submit_logs_exception_from_execute_decision`, che viveva qui,
+# cancellato a sua volta: verificava che un `execute_decision` che solleva
+# fosse loggato invece di sparire silenzioso (Fix 2). Il ramo che chiamava
+# quel callable -- `ex = request.app.get("execute_decision"); if ex is not
+# None: ...` -- e' uscito per intero da handlers_reasoning.py: sopravviveva
+# dal Task 7 senza che nessun report lo nominasse, benche' la review del
+# blocco 1 lo assegnasse "al piu' tardi col Task 7" e il Task 5 lo
+# differisse qui per iscritto. Era l'ultimo punto del prodotto in cui un
+# callable cablato in `app` avrebbe attuato una Decisione -- dormiente,
+# cablato solo da questo test e dal suo gemello in test_reasoning_api.py,
+# mai da produzione (verificato con grep esaustivo su `hiris/app`). Fatto
+# cadere per costruzione prima della cancellazione: con l'hook rimosso
+# l'outcome torna sempre "recorded" e il messaggio di log diventa quello
+# del ramo "nessun execute_decision wired" (test_reasoning_api.py::
+# test_submit_without_execute_decision_wired_records_and_logs, ancora vivo
+# e ora l'UNICO comportamento possibile), non piu' "execute_decision
+# failed" -- l'assert su `outcome == "error"` cadeva.

@@ -50,12 +50,22 @@ logger = logging.getLogger(__name__)
 # dalla fusione di Task 2 (recall_knowledge/save_knowledge -> recall_memory/
 # save_memory). Un Chatbot creato PRIMA di questo branch puo' averli ancora
 # nel proprio `allowed_tools` persistito (erano due checkbox separate); lo
-# stesso vale per la CSV EXECUTE_API_TOOLS delle opzioni dell'add-on. Il
-# filtro per nome esatto (claude_runner.py:713, `t["name"] in allowed_tools`)
-# non li riconosce piu': un nome non mappato fa perdere in silenzio
-# lettura/scrittura del second brain a un bot il cui system prompt di base
-# ora ordina di chiamare save_memory subito -- il modello non puo' obbedire
-# e viene spinto proprio nel "preso nota" che quell'ordine vieta.
+# stesso vale per la CSV EXECUTE_API_TOOLS delle opzioni dell'add-on.
+#
+# fetta E3 Task 9 (rilievo 2 della review indipendente sul blocco 5-8):
+# questo commento affermava ancora al presente che "il filtro per nome
+# esatto (claude_runner.py:713, `t["name"] in allowed_tools`) non li
+# riconosce piu'" -- quel filtro non esiste da `bca1b85` (Task 8: il
+# catalogo di scorta che filtrava per `allowed_tools` e' uscito insieme al
+# suo unico chiamante). Cio' che e' vero oggi, verificato leggendo il
+# codice: il parametro `allowed_tools` di `chat()`/`chat_stream()` era
+# rimasto inerte in entrambi i runner (nessun corpo lo leggeva piu') -- il
+# Task 9 lo ha tolto dalla firma. `Chatbot.allowed_tools` (questo campo)
+# non alimenta piu' nessun filtro di runtime: e' solo configurazione
+# persistita che riempie il catalogo a checkbox di
+# `static/config/templates.js` (resta li' fino alla E5). `normalize_tool_names`
+# continua a riscrivere qui i nomi legacy al caricamento perche' altrimenti
+# quell'editor mostrerebbe checkbox per nomi di tool che non esistono piu'.
 LEGACY_TOOL_ALIASES = {
     "recall_knowledge": "recall_memory",
     "save_knowledge": "save_memory",
@@ -136,7 +146,6 @@ class ChatbotEngine:
         self._running_chatbots: set[str] = set()
         self._error_chatbots: set[str] = set()
         self._mqtt_publisher = None
-        self._task_engine: Any = None
         # Serialize tmp-write + os.replace across concurrent _save() calls
         # (executor uses a thread pool — two fire-and-forget _save() can otherwise
         # overlap on the same .tmp file and corrupt state).
@@ -165,9 +174,6 @@ class ChatbotEngine:
 
     def set_mqtt_publisher(self, publisher) -> None:
         self._mqtt_publisher = publisher
-
-    def set_task_engine(self, engine: Any) -> None:
-        self._task_engine = engine
 
     async def start(self) -> None:
         self._scheduler.start()

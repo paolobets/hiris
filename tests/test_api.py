@@ -404,34 +404,15 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
 # tests/test_knowledge_store*.py, untouched by this task).
 
 
-@pytest.mark.asyncio
-async def test_create_task_tool_via_chat(client):
-    from hiris.app.chatbot_engine import DEFAULT_CHATBOT_ID, Chatbot
-    from unittest.mock import MagicMock, AsyncMock
-
-    engine = client.app["engine"]
-    engine._chatbots[DEFAULT_CHATBOT_ID] = Chatbot(
-        id=DEFAULT_CHATBOT_ID, name="HIRIS", system_prompt="test",
-        allowed_tools=["create_task"], enabled=True, is_default=True,
-    )
-
-    mock_task_engine = MagicMock()
-    from hiris.app.task_engine import Task
-    from datetime import datetime, timezone
-    fake_task = Task(
-        id="t-001", label="Test", agent_id=DEFAULT_CHATBOT_ID,
-        created_at=datetime.now(timezone.utc).isoformat(),
-        trigger={"type": "delay", "minutes": 5}, actions=[],
-    )
-    mock_task_engine.add_task = MagicMock(return_value=fake_task)
-    client.app["task_engine"] = mock_task_engine
-
-    runner = client.app["claude_runner"]
-    runner.set_task_engine(mock_task_engine)
-    runner.chat = AsyncMock(return_value="Task scheduled")
-
-    resp = await client.post("/api/chat", json={"message": "schedule something"})
-    assert resp.status == 200
+# test_create_task_tool_via_chat, che viveva qui, e' cancellato dalla fetta
+# E3 Task 9 ("esce il Task Engine"): montava un `task_engine` finto,
+# chiamava `ClaudeRunner.set_task_engine` (gia' uscito col Task 8: il
+# dispatcher di scorta a cui inoltrava non e' mai esistito in produzione) e
+# verificava solo che /api/chat rispondesse 200 con `runner.chat` mockato --
+# non esercitava mai `add_task`/`create_task` per davvero. Il modulo che
+# importava (`hiris.app.task_engine`) e' cancellato: verificato che il test
+# cade per costruzione con `ModuleNotFoundError: No module named
+# 'hiris.app.task_engine'` prima della cancellazione.
 
 
 @pytest.mark.asyncio
@@ -462,15 +443,11 @@ async def test_chat_debug_tools_called_returns_objects(client):
     ]
 
 
-@pytest.mark.asyncio
-async def test_list_tasks_api_empty(client):
-    mock_te = MagicMock()
-    mock_te.list_tasks = MagicMock(return_value=[])
-    client.app["task_engine"] = mock_te
-    resp = await client.get("/api/tasks")
-    assert resp.status == 200
-    data = await resp.json()
-    assert isinstance(data, list)
+# test_list_tasks_api_empty, che viveva qui, e' cancellato dalla fetta E3
+# Task 9: colpiva GET /api/tasks, una delle tre rotte uscite col Task
+# Engine. Verificato che cade per costruzione: senza la rotta registrata
+# risponde 404 (era atteso 200) -- la pagina #/tasks (tasks-route.js) e il
+# pannello Task della chat restano rotti apposta, vedi il report del task.
 
 
 @pytest.mark.asyncio

@@ -298,11 +298,13 @@ def test_load_agent_with_legacy_tool_names_maps_to_current_names(mock_ha, tmp_pa
     """Fix 4 (Important, whole-branch review): a Chatbot persisted BEFORE the
     memoria-unica merge (Task 2) may still name the retired
     recall_knowledge/save_knowledge tools in allowed_tools (they were two
-    separate checkboxes). claude_runner.py's allowed_tools filter matches by
-    exact name (ALL_TOOL_DEFS lookup) -- an unmapped legacy name silently
-    drops second-brain access from a bot whose base system prompt now orders
-    it to call save_memory unconditionally. Loading must rewrite the old
-    names to the current recall_memory/save_memory."""
+    separate checkboxes). fetta E3 Task 9: claude_runner.py has no
+    allowed_tools filter anymore (the Task 8 catalog it used to gate is
+    gone, and Task 9 dropped the now-inert parameter itself) -- today
+    `Chatbot.allowed_tools` is only persisted config feeding the checkbox
+    catalog in static/config/templates.js (stays until E5). Loading must
+    still rewrite the old names to recall_memory/save_memory so that editor
+    doesn't show checkboxes for tool names that no longer exist."""
     path = tmp_path / "agents.json"
     path.write_text(json.dumps({
         "schema_version": 4,

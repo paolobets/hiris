@@ -54,22 +54,21 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
             outcome = "chat_reply_skipped"
         return web.json_response({"ok": True, "outcome": outcome})
 
-    ex = request.app.get("execute_decision")
-    if ex is not None:
-        try:
-            outcome = await ex(decision, (job or {}).get("wake") or {})
-        except Exception:
-            logger.exception("execute_decision failed")
-            outcome = "error"
-    else:
-        # fetta E3 Task 4: `app["execute_decision"]` non viene piu' wired da
-        # server.py -- la ronda/revisione olistica che lo attuava e' uscita,
-        # e con lei l'unico produttore di job non-"chat". Un submit non-chat
-        # puo' arrivare qui solo da un job scaduto/legacy: non tace (il
-        # silenzio non e' distinguibile da un'assenza di problemi), ma non
-        # attua piu' nulla -- resta "recorded", com'era gia' il default.
-        logger.warning(
-            "reasoning submit: nessun execute_decision wired -- l'attuazione "
-            "remota della revisione olistica non esiste piu' (job_id=%s, kind=%s), "
-            "decisione solo registrata", job_id, (job or {}).get("kind"))
+    # fetta E3 Task 9 (rilievo 1 della review indipendente sul blocco 5-8):
+    # l'hook `app["execute_decision"]` -- l'ultimo punto del prodotto in cui
+    # un callable cablato in `app` avrebbe potuto attuare una Decisione --
+    # e' uscito per intero. Era sopravvissuto al Task 7 senza una parola,
+    # benche' la review del blocco 1 lo assegnasse "al piu' tardi col Task
+    # 7" e il Task 5 lo differisse qui per iscritto. Verificato con grep
+    # (`execute_decision` su tutto `hiris/app`): server.py non lo scrive in
+    # `app[...]` da `101189a` (Task 4) -- oggi lo cablava solo la suite di
+    # test (`test_reasoning_wiring.py`, `test_reasoning_api.py`), mai
+    # produzione. Un submit non-chat puo' arrivare qui solo da un job
+    # scaduto/legacy: non tace (il silenzio non e' distinguibile da
+    # un'assenza di problemi), ma non attua piu' nulla -- resta "recorded",
+    # com'era gia' il default anche quando l'hook esisteva-ma-non-cablato.
+    logger.warning(
+        "reasoning submit: nessun execute_decision wired -- l'attuazione "
+        "remota della revisione olistica non esiste piu' (job_id=%s, kind=%s), "
+        "decisione solo registrata", job_id, (job or {}).get("kind"))
     return web.json_response({"ok": True, "outcome": outcome})
