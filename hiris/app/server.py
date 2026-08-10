@@ -868,7 +868,6 @@ async def _on_startup(app: web.Application) -> None:
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
     llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
-    automatic_policy = _parse_policy_csv(os.environ.get("AUTOMATIC_POLICY", ""))
     chat_policy = _parse_policy_csv(os.environ.get("CHAT_POLICY", ""))
 
     from .model_activation import derive_active_providers
@@ -1432,11 +1431,10 @@ async def _on_startup(app: web.Application) -> None:
         # provider attivi, poi (review finale SP-2) i provider attivi mancanti
         # dall'override vengono APPENDED in ordine di strategia -- una
         # chain_order parziale salvata quando meno provider erano attivi non
-        # deve MAI far sparire dalla catena un provider che diventa attivo
-        # dopo (fail-open su automatic_allows_sensitive() + provider escluso
-        # dal failover finché l'utente non riapre #/models e risalva).
-        # Se il risultato è comunque vuoto, fallback esplicito ai provider
-        # attivi in ordine di strategia (mai degradare silenziosamente).
+        # deve MAI far sparire dalla catena un provider che diventa attivo dopo
+        # (provider escluso dal failover finché l'utente non riapre #/models e
+        # risalva). Se il risultato è comunque vuoto, fallback esplicito ai
+        # provider attivi in ordine di strategia (mai degradare silenziosamente).
         _strategy_order = _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
         _manual = app.get("models_config", {}).get("chain_order")
         _chain = reconcile_chain(_strategy_order, _manual, app["active_providers"])
@@ -1447,8 +1445,7 @@ async def _on_startup(app: web.Application) -> None:
             openrouter=openrouter_runner,
             ollama=ollama_runner,
             strategy=llm_strategy,
-            automatic_policy=automatic_policy,  # deprecato, tenuto per retro-compat
-            chat_policy=chat_policy,            # deprecato
+            chat_policy=chat_policy,  # retro-compat del ramo chat (run.sh: chat_policy)
             model_chain=_chain,
         )
         app["claude_runner"] = claude_runner  # backward compat (may be None)

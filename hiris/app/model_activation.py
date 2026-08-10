@@ -57,9 +57,8 @@ def reconcile_chain(
         a partial persisted ``chain_order`` (saved back when fewer providers
         were active) must never silently drop a provider that becomes active
         later — that provider's runner is built and reachable via explicit
-        model selection regardless, so leaving it out of the chain only
-        misleads ``automatic_allows_sensitive()`` into thinking egress is
-        more restricted than it actually is.
+        model selection regardless, so leaving it out of the chain would only
+        make the chat fallback order look more restricted than it actually is.
       - If the result is empty either way (e.g. all overrides invalid AND no
         active strategy providers), it falls back to ``strategy_order``
         filtered to active providers -- callers still get an explicit,

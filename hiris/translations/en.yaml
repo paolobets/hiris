@@ -29,9 +29,6 @@ configuration:
   llm_strategy:
     name: "LLM Strategy"
     description: "How HIRIS selects models when multiple are available. 'balanced' (default) starts with Claude, then prefers OpenRouter over the dedicated OpenAI slot before falling back to local Ollama. 'cost_first' prefers cheaper/local models first. 'quality_first' always starts with Claude, then OpenAI, then OpenRouter, then Ollama."
-  automatic_policy:
-    name: "Backend policy — automatic"
-    description: "Backend order for automatic reasoning/chat, e.g. claude,ollama — empty = use the strategy."
   chat_policy:
     name: "Backend policy — chat"
     description: "Backend order for the interactive chat, e.g. claude,ollama — empty = use the strategy."

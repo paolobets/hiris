@@ -5,7 +5,6 @@ export CLAUDE_API_KEY=$(bashio::config 'claude_api_key')
 export OPENAI_API_KEY=$(bashio::config 'openai_api_key' '')
 export OPENROUTER_API_KEY=$(bashio::config 'openrouter_api_key' '')
 export LLM_STRATEGY=$(bashio::config 'llm_strategy' 'balanced')
-export AUTOMATIC_POLICY=$(bashio::config 'automatic_policy' '')
 # SP-2: attivazione provider esplicita. Default false su tutti => l'app
 # migra derivando gli attivi dalle credenziali presenti (retro-compat).
 export PROVIDER_SUBSCRIPTION=$(bashio::config 'provider_subscription' 'false')

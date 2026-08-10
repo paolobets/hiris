@@ -48,7 +48,6 @@ options:
   provider_ollama: false
   hide_free_models: false
   llm_strategy: "balanced"
-  automatic_policy: ""
   chat_policy: ""
 
   # ── Local Model (Ollama) ──────────────────────────────────────────────────
@@ -119,7 +118,6 @@ schema:
   provider_ollama: bool?
   hide_free_models: bool?
   llm_strategy: "list(balanced|cost_first|quality_first)"
-  automatic_policy: "str?"
   chat_policy: "str?"
 
   # ── Local Model (Ollama) ──────────────────────────────────────────────────

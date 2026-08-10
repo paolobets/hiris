@@ -56,11 +56,6 @@ _STRATEGY_ORDER = {
 }
 
 _VALID_BACKEND_NAMES = frozenset({"claude", "openai", "openrouter", "ollama"})
-# Backend names that run LOCALLY (no egress). Kept next to _VALID_BACKEND_NAMES
-# so any future backend addition is forced to decide its egress class here;
-# automatic_allows_sensitive() treats every name NOT in this set as cloud, so a
-# forgotten entry fails CLOSED (over-blocks sensitive memory, never leaks it).
-_LOCAL_BACKEND_NAMES = frozenset({"ollama"})
 
 
 def _norm_policy(policy: list[str] | None, strategy: str) -> list[str]:
@@ -91,15 +86,21 @@ class LLMRouter:
     Fallback: if the primary backend raises an exception and model="auto",
     the next backend in the policy chain is tried automatically.
 
-    Two independent ordered policies select the backend chain when
-    model="auto", picked via the `mode` kwarg on chat/chat_stream
-    ("chat" → chat_policy, else → automatic_policy).
-    If a policy is not supplied (None/empty), it derives from
+    A single ordered policy, chat_policy, selects the backend chain when
+    model="auto". If not supplied (None/empty), it derives from
     _STRATEGY_ORDER[strategy] — unchanged behavior for existing callers.
     When the caller instead passes `model_chain` (the boot-time reconciled
     chain built by model_activation.reconcile_chain — see server.py), that
-    single list is used as the unified chain for BOTH chat_policy and
-    automatic_policy, superseding the two-policy split above.
+    list supersedes chat_policy.
+
+    fetta E4 Task 7 ("un bot solo"): la modalità "automatic" (usata dai bot
+    proattivi/schedulati per instradare su una politica diversa da quella
+    della chat interattiva) è uscita insieme all'ultimo chiamante che
+    passava mode="automatic" a chat()/chat_stream() — il Test Run
+    (chatbot_engine.py, uscito al Task 4 di questa fetta). Con lei sono
+    uscite la seconda policy (automatic_policy) e automatic_allows_sensitive()
+    (già solo-test dal censimento prima di questo task, senza chiamante di
+    produzione).
 
     Explicit model routing (when model != "auto"):
       - 'claude-*'                  → Claude runner
@@ -115,7 +116,6 @@ class LLMRouter:
         openrouter: Any = None,
         ollama: Any = None,
         strategy: str = "balanced",
-        automatic_policy: list[str] | None = None,
         chat_policy: list[str] | None = None,
         model_chain: list[str] | None = None,
     ) -> None:
@@ -125,51 +125,14 @@ class LLMRouter:
         self._ollama = ollama
         self._strategy = strategy if strategy in _STRATEGY_ORDER else "balanced"
         self._all = [r for r in [claude, openai, openrouter, ollama] if r is not None]
-        # Two ordered backend policies (proactive/agents vs interactive chat).
-        # Each falls back to the strategy's default order when not provided.
-        # SP-2: una catena unica. Se model_chain è fornito, sostituisce ENTRAMBE
-        # le policy (chat + automatic) con lo stesso ordine, così _ordered_backends
-        # e automatic_allows_sensitive restano corretti invariati. Se None,
-        # comportamento legacy (due policy indipendenti).
+        # Se model_chain è fornito, sostituisce chat_policy col suo ordine
+        # (fetta E4 Task 7: non esiste più una seconda policy da tenere
+        # allineata -- automatic_policy è uscita con l'ultimo chiamante che
+        # passava mode="automatic").
         if model_chain:
-            chain = _norm_policy(model_chain, self._strategy)
-            self._automatic_policy = list(chain)
-            self._chat_policy = list(chain)
+            self._chat_policy = _norm_policy(model_chain, self._strategy)
         else:
-            self._automatic_policy = _norm_policy(automatic_policy, self._strategy)
             self._chat_policy = _norm_policy(chat_policy, self._strategy)
-
-    def automatic_allows_sensitive(self) -> bool:
-        """True only if the whole *available* automatic chain is local.
-
-        Rationale: a prompt composed for a local primary backend could still
-        fall back to a cloud backend if that primary is unreachable (see the
-        automatic-mode retry loop in chat()). So sensitive
-        content is safe to include only when NO cloud backend is reachable
-        anywhere in the automatic chain -- the chain must be non-empty and
-        every backend registered in it (non-None) must be local.
-
-        Note: backend_is_cloud() classifies *model strings* (e.g.
-        "claude-sonnet-4-6", "gpt-4o", "openrouter:x/y") by prefix, not the
-        bare backend keys ("claude", "openai", "openrouter", "ollama") used
-        in the automatic policy chain -- calling it directly on those keys
-        would misclassify every cloud backend as local (verified: it only
-        recognizes "auto" and prefixed model strings). So this method
-        classifies by backend-key membership instead: every
-        _VALID_BACKEND_NAMES entry is a cloud provider except "ollama",
-        mirroring backend_is_cloud's own claude/openai/openrouter-are-cloud,
-        ollama-is-local convention and this module's production wiring
-        (server.py always constructs the "openai"/"openrouter"/"claude"
-        runners as cloud and "ollama" as local).
-
-        Pure/deterministic, no I/O. Never raises.
-        """
-        try:
-            bmap = self._backend_map()
-            available = [name for name in self._automatic_policy if bmap.get(name) is not None]
-            return bool(available) and all(name in _LOCAL_BACKEND_NAMES for name in available)
-        except Exception:
-            return False
 
     def _backend_map(self) -> dict[str, Any]:
         return {
@@ -179,15 +142,10 @@ class LLMRouter:
             "ollama": self._ollama,
         }
 
-    def _ordered_backends(self, mode: str = "automatic") -> list[Any]:
-        """Return available backends in mode-policy priority order.
-
-        mode="chat" uses chat_policy (interactive chat); anything else
-        (default "automatic") uses automatic_policy (proactive/agents).
-        """
-        order = self._chat_policy if mode == "chat" else self._automatic_policy
+    def _ordered_backends(self) -> list[Any]:
+        """Return available backends in chat_policy priority order."""
         bmap = self._backend_map()
-        return [bmap[name] for name in order if bmap[name] is not None]
+        return [bmap[name] for name in self._chat_policy if bmap[name] is not None]
 
     def _route(self, model: str) -> Any:
         if _is_openrouter_model(model):
@@ -203,18 +161,15 @@ class LLMRouter:
     # ------------------------------------------------------------------
 
     async def chat(self, **kwargs) -> str:
-        # mode selects the auto-routing policy; popped so it is never
-        # forwarded to the underlying runner (runners don't accept it).
-        mode = kwargs.pop("mode", "chat")
         model = kwargs.get("model", "auto")
         if model != "auto":
             runner = self._route(model)
             if runner is None:
                 return "Nessun provider AI configurato per questo modello."
             return await runner.chat(**kwargs)
-        # auto: try backends in mode-policy order with fallback
+        # auto: try backends in chat_policy order with fallback
         last_friendly: str | None = None
-        for runner in self._ordered_backends(mode):
+        for runner in self._ordered_backends():
             try:
                 return await runner.chat(**kwargs)
             except RunnerBackendError as exc:
@@ -225,11 +180,10 @@ class LLMRouter:
         return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
 
     async def chat_stream(self, **kwargs):
-        mode = kwargs.pop("mode", "chat")
         model = kwargs.get("model", "auto")
         if model == "auto":
             # no fallback in streaming (as today): just the first pick
-            backends = self._ordered_backends(mode)
+            backends = self._ordered_backends()
             runner = backends[0] if backends else None
         else:
             runner = self._route(model)
