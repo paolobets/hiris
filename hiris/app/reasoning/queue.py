@@ -62,6 +62,27 @@ class ReasoningQueue:
         out = _row(r); out["nonce"] = nonce; out["status"] = "claimed"
         return out
 
+    # Silenzio dichiarato (3) della fetta "il ponte riceve il nucleo" (parita'
+    # A, Task 5, domanda aperta 7): sia qui in `submit()` sia in
+    # `sweep_expired()` sotto, la stessa UPDATE che chiude il job azzera anche
+    # `context_json` a '{}'. Il `context` di un job di chat porta il nucleo
+    # per intero -- aree, dispositivi, entita', "cio' che le persone hanno
+    # detto" (`casa/nucleo.py:14-16`) -- e senza questo azzeramento resterebbe
+    # nel file `reasoning.db` fino alla potatura a 7 giorni (`prune()`,
+    # chiamata da `server.py` con `before_ts = now - 7*86400`), ben oltre il
+    # tempo in cui serve a qualcuno. Verificato (non assunto) che nessun
+    # lettore lo riapre dopo la risoluzione: `handle_chat_reply_poll` legge
+    # solo `decision` dal job (`handlers_chat.py`, il ramo di poll), MAI
+    # `context`; `handle_reasoning_submit` chiama `q.get(job_id)` anche lui
+    # DOPO il proprio submit, ma legge solo `job.get("kind")`
+    # (`handlers_reasoning.py`); `has_pending_chat()` e' un COUNT indicizzato
+    # su `status`/`deadline_ts` che non riapre mai `context_json`
+    # (`:96-125` qui sopra). Il record -- riga, `status`, `decision_json`,
+    # timestamp -- resta: serve alla contabilita' (conteggio giornaliero,
+    # log dello sweep) e alla potatura, che continua a rimuovere le righe
+    # invariata. Sparisce solo il CONTENUTO del contesto, sostituito da un
+    # oggetto vuoto esplicito (non NULL: un job risolto resta distinguibile
+    # da un job che non ha mai portato un contesto).
     def submit(self, job_id: str, nonce: str, decision: dict, now: float) -> bool:
         with self._lock:
             r = self._conn.execute("SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)).fetchone()
@@ -69,18 +90,35 @@ class ReasoningQueue:
                     or r["deadline_ts"] <= now):
                 return False
             self._conn.execute(
-                "UPDATE reasoning_jobs SET status='decided', decided_ts=?, decision_json=?, nonce=NULL WHERE job_id=?",
+                "UPDATE reasoning_jobs SET status='decided', decided_ts=?, decision_json=?, "
+                "nonce=NULL, context_json='{}' WHERE job_id=?",
                 (now, json.dumps(decision), job_id))
             self._conn.commit()
         return True
 
     def sweep_expired(self, now: float) -> list[dict]:
+        # Stesso azzeramento del commento sopra `submit()`, per la seconda
+        # strada di chiusura di un job: quello che scade invece di essere
+        # risolto. Un contesto che sopravvivesse solo su questo ramo sarebbe
+        # un buco, non un dettaglio -- un job in `chat_via_subscription` che
+        # non riceve risposta in tempo (deadline breve, minuti) e' il caso
+        # comune, non l'eccezione.
+        #
+        # `rows` e' letto PRIMA di questa UPDATE: i dict restituiti da
+        # `_row(r)` sotto portano ancora il `context` originale (oltre a
+        # `kind`, l'unico campo che `_reasoning_sweep`, server.py, legge dal
+        # valore di ritorno per il suo log). Non e' una svista -- e' il valore
+        # di ritorno di QUESTA chiamata, non una rilettura del DB: il
+        # `context_json` sulla riga persistita e' comunque '{}' da subito
+        # dopo, come dimostra `get(job_id)` chiamato di nuovo.
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM reasoning_jobs WHERE status IN ('pending','claimed') AND deadline_ts <= ?",
                 (now,)).fetchall()
             for r in rows:
-                self._conn.execute("UPDATE reasoning_jobs SET status='expired' WHERE job_id=?", (r["job_id"],))
+                self._conn.execute(
+                    "UPDATE reasoning_jobs SET status='expired', context_json='{}' WHERE job_id=?",
+                    (r["job_id"],))
             self._conn.commit()
         return [_row(r) for r in rows]
 
