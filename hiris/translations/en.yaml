@@ -77,12 +77,20 @@ configuration:
   bridge_deadline_min:
     name: "Subscription bridge — deadline (minutes)"
     description: "Minutes within which a chat message routed to the external runner must get a reply before expiring (the user sees an error, no automatic fallback). Default: 5."
+  # fetta E4, fix della review totale (I2): vedi il commento gemello in it.yaml.
+  # La Sentinella (e SENTINEL_DAILY_CAP) e' uscita con la fetta E3 Task 7.
   chat_daily_cap:
     name: "Chat via subscription — messages/day cap"
-    description: "Maximum number of chat messages routed per day to the external subscription runner, separate from Sentinella's cap. Default: 50."
+    description: "Maximum number of chat messages HIRIS routes per day to the external subscription runner. Past the limit the chat replies with an error and the message is not sent: there is no automatic fallback to the local/pay-per-use provider. Only messages routed over the subscription are counted. Default: 50."
+  # fetta E4, fix della review totale (I2): vedi il commento gemello in it.yaml,
+  # che porta la motivazione per esteso. In breve: la scansione olistica non
+  # esiste piu' (E3 Task 4 + E4 Task 8), su questo percorso la chat non ha la
+  # conoscenza della casa, e provider_subscription + token OAuth accendono
+  # questa modalita' anche con l'opzione a false (server.py:1332-1340).
+  # DA RIVEDERE QUANDO LA PARITA' SARA' PRONTA -- insieme a it.yaml, stesso commit.
   chat_via_subscription:
     name: "Chat via subscription — enable"
-    description: "Routes interactive chat replies (not just the holistic scan) to the external subscription runner too, subject to the same daily cap/deadline. Takes effect only when the subscription bridge above is also enabled — otherwise chat keeps using the local/pay-per-use runner. Default: disabled."
+    description: "Routes chat replies to the external subscription runner instead of the local/pay-per-use provider, subject to the daily cap and deadline above. WARNING: on this path the chat does NOT have your home's knowledge — neither what HIRIS knows about your home nor its tools reach the external runner, so it answers only from what is written in the conversation, and says so rather than making things up. Takes effect only when \"Subscription bridge — enable\" above is also enabled. NOTE: if you enable the \"Subscription (Claude Max)\" provider and the OAuth token is present, this mode turns on anyway, even with this option left off. Default: disabled."
   mayan:
     name: "Mayan EDMS (documents)"
     description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."

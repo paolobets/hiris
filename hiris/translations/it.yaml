@@ -77,12 +77,35 @@ configuration:
   bridge_deadline_min:
     name: "Ponte abbonamento — scadenza (minuti)"
     description: "Minuti entro cui un messaggio di chat instradato al runner esterno deve ricevere risposta prima di scadere (l'utente vede un errore, nessun ripiego automatico). Predefinito: 5."
+  # fetta E4, fix della review totale (I2): la descrizione diceva «indipendente
+  # dal cap della Sentinella». La Sentinella e' uscita con la fetta E3 Task 7 e
+  # con lei SENTINEL_DAILY_CAP: il confronto era con un soggetto morto. Il
+  # comportamento vero e' quello di handlers_chat.py:220-226 (429 e messaggio
+  # non inviato) piu' l'assenza di ripiego dichiarata da bridge_deadline_min.
   chat_daily_cap:
     name: "Chat via abbonamento — cap messaggi/giorno"
-    description: "Numero massimo di messaggi chat instradati al giorno verso il runner esterno su abbonamento, indipendente dal cap della Sentinella. Predefinito: 50."
+    description: "Numero massimo di messaggi di chat che HIRIS instrada in un giorno al runner esterno su abbonamento. Superato il limite la chat risponde con un errore e il messaggio non parte: non c'è ripiego automatico sul provider locale/a consumo. Conta solo i messaggi instradati sull'abbonamento. Predefinito: 50."
+  # fetta E4, fix della review totale (I2): la descrizione diceva «non solo la
+  # scansione olistica». La scansione olistica e' uscita fra la fetta E3 Task 4
+  # (il produttore dei job) e la E4 Task 8 (il ramo che li ragionava): l'unico
+  # job che il ponte puo' ricevere oggi e' kind="chat", quindi il «non solo»
+  # confrontava con il nulla.
+  #
+  # DA RIVEDERE QUANDO LA PARITA' SARA' PRONTA: e' in corso un lavoro separato
+  # per dare al ponte il nucleo e gli strumenti. Finche' non e' fatto, questo
+  # testo deve dire la verita' di OGGI -- su questo percorso la chat non ha la
+  # conoscenza della casa (agent/prompts.py:_CHAT_TOOL_GUIDANCE lo dichiara
+  # anche al modello). Non si anticipa per iscritto una capacita' che non c'e':
+  # e' il difetto che questo prodotto combatte. Quando la parita' arriva, si
+  # riscrivono queste due descrizioni (it + en) NELLO STESSO commit.
+  #
+  # L'implicazione dichiarata in coda e' quella di server.py:1332-1340 letta
+  # con _sub_first_class (server.py:895+): provider_subscription attivo CON
+  # token OAuth accende sia il ponte sia questa modalita', anche con l'opzione
+  # a false.
   chat_via_subscription:
     name: "Chat via abbonamento — attiva"
-    description: "Instrada anche le risposte della chat interattiva (non solo la scansione olistica) al runner esterno su abbonamento, con lo stesso cap giornaliero/scadenza. Ha effetto solo se il ponte abbonamento sopra è anch'esso attivo — altrimenti la chat continua a usare il runner locale/a consumo. Predefinito: spento."
+    description: "Instrada le risposte della chat al runner esterno su abbonamento invece che al provider locale/a consumo, con il cap giornaliero e la scadenza qui sopra. ATTENZIONE: su questo percorso la chat NON ha la conoscenza della casa — al runner esterno non arrivano né ciò che HIRIS sa della tua casa né i suoi strumenti, quindi risponde solo con ciò che è scritto nella conversazione, e lo dichiara invece di inventare. Ha effetto solo se «Ponte abbonamento — attiva» qui sopra è anch'esso attivo. NOTA: se attivi il provider «Abbonamento (Claude Max)» ed è presente il token OAuth, questa modalità si accende lo stesso, anche lasciando questa opzione spenta. Predefinito: spento."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."

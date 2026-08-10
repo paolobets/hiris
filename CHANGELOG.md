@@ -1,5 +1,90 @@
 # HIRIS — Changelog
 
+## [2.0.0] — HIRIS conosce e non agisce (in preparazione)
+
+> **Voce in preparazione: la 2.0.0 non è ancora stata rilasciata.** Il tag non
+> esiste, l'add-on porta ancora il numero di versione precedente e il lavoro
+> sull'interfaccia non è finito — le pagine elencate in fondo sono rotte *oggi*.
+> Al rilascio questa nota va riletta e datata. **Manca ancora**, e arriverà
+> prima del rilascio, la parte che racconta ciò che HIRIS oggi *sa* della tua
+> casa: qui sotto c'è, per intero e in anticipo, ciò che invece **non fa più**.
+
+**HIRIS non tocca più niente in casa tua.** Non accende, non spegne, non crea
+automazioni né plance, non modifica scene, non chiede conferme — perché non c'è
+più nessuna azione da confermare. Non è un guasto: è la scelta che dà il nome a
+questa versione. HIRIS aveva trentaquattro strumenti per agire sulla casa e un
+impianto di conferme perché non lo facesse di nascosto, e la promessa che non ha
+mai mantenuto era proprio quella — diceva «fatto» quando non aveva fatto niente.
+Meglio un assistente che sa e te lo dice, che uno che dice di aver fatto.
+
+Ciò che è uscito **tornerà rifatto, con un progetto**: non è un buco da tappare.
+
+**E non ti parla più, se non gli parli tu.** Sono spariti il resoconto delle
+08:00, i solleciti, la scansione di salute notturna, la sorveglianza continua
+della casa, il saluto all'arrivo la sera, i suggerimenti che comparivano da soli
+e le proposte da approvare. Da questa versione HIRIS ha **una bocca sola** — la
+chat — e la apre solo se sei tu a cominciare. Se ti eri abituato a quelle voci,
+il silenzio che senti non è un malfunzionamento: non c'è più niente che parli.
+
+**Anche le notifiche sono uscite.** Nessun messaggio su Home Assistant, nessun
+canale esterno. L'impostazione che li configurava non c'è più: se l'avevi
+riempita, la trovi svanita dalla pagina di configurazione dell'add-on.
+
+**I sensori di HIRIS in Home Assistant restano «non disponibile».** HIRIS
+pubblicava via MQTT sette sensori per ogni assistente (consumi, budget, stato).
+Non li pubblica più, ma Home Assistant conserva le entità già scoperte: le
+vedrai `unavailable` per sempre finché non le togli tu, da *Impostazioni →
+Dispositivi e servizi → MQTT*. È l'unica cosa di questo aggiornamento che
+richiede un tuo gesto.
+
+**La cronologia della chat riparte da zero.** Al primo avvio dopo
+l'aggiornamento le conversazioni precedenti non ci sono più. È una decisione
+esplicita, non una perdita accidentale: la conversazione ha cambiato forma sotto
+i piedi (non è più legata a un assistente con un nome e un id) e trascinarsi
+dietro il vecchio formato avrebbe significato rispondere con metà contesto senza
+dirlo. Se HIRIS trova sul disco una cronologia della versione 1.x, lo **scrive
+nel log** invece di farla sparire in silenzio. Ciò che gli avevi *detto di
+ricordare* non è nella cronologia e **non si perde**.
+
+**C'è un solo assistente, e la chat è quell'assistente.** Niente più selezione
+del bot, niente più assistenti con un nome proprio e permessi diversi: si apre
+la chat e si parla con HIRIS. Le impostazioni della conversazione (il modello,
+il tono, il prompt) hanno i loro valori nel codice; se le avevi personalizzate,
+vivono in un file.
+
+**Gli assistenti in più che avevi creato non vengono più caricati.** Il file che
+li conteneva **resta intatto sul disco** — non è stato cancellato — e HIRIS ne
+dichiara la presenza nel log all'avvio. Attenzione a una cosa: un prompt
+personalizzato salvato sull'assistente predefinito **non viene trasferito** alla
+chat nuova. Se ne avevi uno e ci tieni, riprendilo dal file prima di riscriverlo.
+
+### Meno cose, non solo più cose
+
+- **Il «Test Run» non esiste più.** Non ha mai funzionato: ogni esecuzione vera
+  falliva, ed era protetto da un controllo automatico che verificava una firma
+  diversa da quella reale — cioè non lo provava affatto.
+- **La pagina Consumi perde il dettaglio per assistente.** Il contatore
+  **complessivo** — richieste, token, costo — resta vivo e vero. Fino alla
+  prossima versione la sezione per-assistente mostra una riga a zero: **non è un
+  consumo azzerato, è un consumo che non viene più misurato.**
+- Il tetto giornaliero dei messaggi di chat instradati sull'abbonamento resta,
+  ed è l'unico freno rimasto.
+- Dettaglio per chi ha scritto qualcosa sopra le API di HIRIS: l'evento `done`
+  del flusso della chat non porta più il campo `agent_id`.
+
+### Cosa è ancora rotto mentre scriviamo
+
+Sono i pezzi di interfaccia che la prossima fetta di lavoro rifà. Sono elencati
+qui perché **non li scopra tu**:
+
+- **L'onboarding compare a ogni installazione nuova e il pulsante «Crea» dà
+  errore.** «Salta» funziona ed è la strada giusta: non c'è niente da creare,
+  l'assistente è già lì.
+- **L'editor dell'assistente**: Salva, Elimina e Test Run danno errore, e i
+  riquadri che non hanno più una fonte si mostrano vuoti.
+- **Le impostazioni della chat non hanno ancora una pagina.** Il modello si
+  sceglie da *Modelli*, che funziona; il resto, per ora, solo da file.
+
 ## [1.1.0-beta.18] — Adesso ricorda davvero (2026-08-05)
 
 **Se gli dicevi una cosa, HIRIS non la teneva.** Rispondeva «preso nota» — e non

@@ -24,6 +24,22 @@ logger = logging.getLogger(__name__)
 # 2. Synthetic error sentinels persisted by the chat handler when an upstream
 #    call failed ("Errore temporaneo del servizio AI...", rate-limit message,
 #    402-credit message). These add no information and dilute the prompt.
+# 3. fetta E4, fix della review totale (I5): i sentinella del RUNNER DEL PONTE
+#    (agent/runner.py: `[errore runner rc=...]`, `[runner non disponibile]`,
+#    `[vuoto]`, `[mock] risposta di prova`). Sono la stessa specie della #2 --
+#    testo sintetico che non e' una risposta -- ma arrivano dall'altro capo,
+#    via `server._submit_chat_reply`, e non erano in nessun insieme qui: la
+#    review ha trovato due `[errore runner rc=3221226505]` gia' dentro
+#    chat_history.db, che ogni turno successivo rileggeva e rimandava al
+#    modello. Corretto QUI e non nel ramo di `_submit_chat_reply` per due
+#    motivi: (a) `_submit_chat_reply` gia' delega a `_is_toxic_assistant`,
+#    quindi un solo punto copre scrittura e rilettura invece di due filtri da
+#    tenere allineati; (b) solo qui la correzione vale anche per le righe GIA'
+#    scritte su disco -- `_purge_toxic_turns` gira in lettura
+#    (`load_context`), quindi le installazioni gia' avvelenate si ripuliscono
+#    da sole al primo turno, senza migrazione. Prefissi e non uguaglianze
+#    esatte perche' `[errore runner rc=...]` porta in coda un dettaglio
+#    variabile (fino a 300 caratteri di stdout del CLI).
 _TOXIC_ASSISTANT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}[^\x00-\x7F\s]")
 _TOXIC_ASSISTANT_EXACT = frozenset({
     "Errore temporaneo del servizio AI. Riprova tra poco.",
@@ -33,6 +49,11 @@ _TOXIC_ASSISTANT_EXACT = frozenset({
 _TOXIC_ASSISTANT_PREFIXES = (
     "Crediti OpenRouter insufficienti",
     "Il modello selezionato non gestisce correttamente i tool",
+    # I sentinella del ponte (agent/runner.py) -- vedi il punto 3 sopra.
+    "[errore runner rc=",
+    "[runner non disponibile]",
+    "[vuoto]",
+    "[mock] risposta di prova",
 )
 
 

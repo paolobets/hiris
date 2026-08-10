@@ -293,6 +293,65 @@ def test_is_toxic_detects_synthetic_error_strings():
     ) is True
 
 
+# ── fetta E4, fix della review totale (I5) ───────────────────────────────────
+# Il ponte (agent/runner.py) risponde con dei SENTINELLA quando non ha una
+# risposta: `[errore runner rc=...]`, `[runner non disponibile]`, `[vuoto]`,
+# `[mock] risposta di prova`. Non erano in nessun insieme qui sopra, quindi
+# `server._submit_chat_reply` -- che filtra proprio con `_is_toxic_assistant`
+# -- li scriveva in chat_history.db: la review ne ha trovati due dal vivo
+# (`[errore runner rc=3221226505]`), riletti e rimandati al modello a ogni
+# turno successivo.
+#
+# Il test NON ricopia le stringhe a mano: chiama il runner vero nei suoi
+# quattro modi di fallire e prende la risposta che produce DAVVERO. Cosi' il
+# legame regge anche a una riscrittura del sentinella nel runner -- se il
+# testo cambia di la' e non di qua, questo test diventa rosso invece di
+# lasciar rientrare l'avvelenamento a suite verde.
+# ────────────────────────────────────────────────────────────────────────────
+
+def test_is_toxic_copre_i_sentinella_veri_del_ponte():
+    from unittest.mock import patch
+
+    from hiris.app.agent import runner
+
+    job = {"kind": "chat", "context": {"history": [], "system_prompt": "Sei HIRIS."}}
+
+    class _Proc:
+        def __init__(self, returncode, stdout, stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    # 1. modalita' mock (qualunque mode != "live")
+    mock_reply = runner._reason_chat(job, "mock")["reply"]
+
+    # 2. il CLI esce con rc != 0 (auth 401, quota, crash del processo...)
+    with patch.object(runner.subprocess, "run",
+                      lambda *a, **k: _Proc(3221226505, '{"result": "boom"}')):
+        rc_reply = runner._reason_chat(job, "live")["reply"]
+
+    # 3. il CLI esce 0 ma senza testo
+    with patch.object(runner.subprocess, "run",
+                      lambda *a, **k: _Proc(0, '{"result": ""}')):
+        empty_reply = runner._reason_chat(job, "live")["reply"]
+
+    # 4. il CLI non e' installato/eseguibile
+    def _boom(*a, **k):
+        raise FileNotFoundError("claude")
+
+    with patch.object(runner.subprocess, "run", _boom):
+        missing_reply = runner._reason_chat(job, "live")["reply"]
+
+    for reply in (mock_reply, rc_reply, empty_reply, missing_reply):
+        assert _is_toxic_assistant(reply) is True, (
+            f"sentinella del ponte non filtrato: {reply!r} -- finirebbe in "
+            "chat_history.db e tornerebbe al modello a ogni turno")
+
+    # e il dettaglio variabile in coda a `[errore runner rc=...]` non deve
+    # poter far scappare la riga: il match e' per prefisso.
+    assert "3221226505" in rc_reply
+
+
 def test_is_toxic_does_not_match_legit_responses():
     legit = [
         "Tutto ok, la casa è in buone condizioni.",

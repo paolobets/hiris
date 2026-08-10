@@ -210,10 +210,12 @@ def test_run_once_job_non_chat_invia_la_decisione_vuota_senza_chiamare_claude():
 # (rilievo I-1/I-2 della review finale della fetta E3, dal lato abbonamento).
 # Questo runner ragiona in puro testo: nessun catalogo di strumenti gli viene
 # passato (`_chat_claude_args` non passa ne' `--mcp-config` ne'
-# `--allowedTools`), HIRIS conosce e non agisce, le conferme sono uscite con
-# l'impianto OTP. Il test difende il CONTENUTO del prompt, l'unica riga del
-# prodotto che il modello legge come verita': senza, la falsita' potrebbe
-# rientrare a suite verde. ───────────────────────────────────────────────────
+# `--allowedTools` -- non piu' solo qui in commento: lo asserisce
+# `test_argv_del_ponte_non_collega_nessuno_strumento` in fondo al file),
+# HIRIS non agisce, le conferme sono uscite con l'impianto OTP. Il test
+# difende il CONTENUTO del prompt, l'unica riga del prodotto che il modello
+# legge come verita': senza, la falsita' potrebbe rientrare a suite verde.
+# ─────────────────────────────────────────────────────────────────────────────
 
 def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     system, _user = prompts.build_chat_messages(
@@ -244,4 +246,36 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
 
     assert "cerca" in DEFAULT_SYSTEM_PROMPT and "guarda" in DEFAULT_SYSTEM_PROMPT
     assert "quelle istruzioni non si applicano" in system
-    assert "`cerca`" in system and "`guarda`" in system
+
+    # fetta E4, fix della review totale (m9): questi due assert erano su
+    # `system` -- e `system` contiene ANCHE DEFAULT_SYSTEM_PROMPT, che quei due
+    # nomi li scrive gia' in backtick (impostazioni_chat.py). Non potevano
+    # fallire: passavano anche cancellando l'elenco dalla guida del ponte,
+    # cioe' proprio la mutazione che questo test dichiara di sorvegliare.
+    # L'invariante e' che LA GUIDA li nomini per negarli, quindi si asserisce
+    # sul segmento della guida, non sulla concatenazione.
+    guida = prompts._CHAT_TOOL_GUIDANCE
+    assert "`cerca`" in guida and "`guarda`" in guida
+    assert "`ricorda`" in guida and "`richiama`" in guida
+    assert guida in system
+
+
+# ── fetta E4, fix della review totale (m10): il prompt qui sopra afferma «NON
+# hai alcuno strumento di HIRIS». E' vero SOLO perche' `_chat_claude_args` non
+# passa `--mcp-config` (nessun server MCP da cui prendere strumenti) ne'
+# `--allowedTools` (nessun permesso di usarli). Quella condizione viveva solo
+# in un commento: una fetta futura che riattacca gli strumenti al ponte
+# renderebbe il prompt falso A SUITE VERDE -- riaprendo esattamente il difetto
+# che la fetta E4 esisteva per chiudere. E quella fetta e' gia' decisa: questi
+# due assert sono il campanello che dovra' suonare, e la risposta giusta
+# quando suonera' non e' cancellarli ma riscrivere `_CHAT_TOOL_GUIDANCE`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_argv_del_ponte_non_collega_nessuno_strumento():
+    argv = runner._chat_claude_args("SYS", "USER", "sonnet")
+
+    assert "--mcp-config" not in argv
+    assert "--allowedTools" not in argv
+    # e i tool LOCALI del CLI restano esplicitamente vietati (shell/fs del
+    # container addon): il prompt non e' l'unica difesa.
+    assert "--disallowedTools" in argv

@@ -16,8 +16,16 @@ e' uscita con la fetta E2, l'organismo proattivo con la E3) per un job
 # tre righe. Questo runner ragiona in PURO TESTO: non riceve alcun catalogo di
 # strumenti (l'MCP interno che glieli serviva e' uscito alla fetta E2 Task 3 --
 # vedi il docstring in cima a agent/runner.py, e `_chat_claude_args`, che non
-# passa ne' `--mcp-config` ne' `--allowedTools`), HIRIS conosce e non agisce
-# (fette E2/E3), e le conferme sono uscite con l'impianto OTP (fetta E2 Task 5).
+# passa ne' `--mcp-config` ne' `--allowedTools`), HIRIS non agisce (fette
+# E2/E3), e le conferme sono uscite con l'impianto OTP (fetta E2 Task 5).
+#
+# fetta E4, fix della review totale (m11): questa riga del prompt diceva
+# «HIRIS conosce e non agisce». La formula e' vera del PRODOTTO, non di QUESTO
+# percorso: il capoverso immediatamente precedente ha appena detto al modello
+# che qui non puo' leggere NULLA della casa. E' una stringa
+# di prompt, non un commento: il modello la legge con la stessa autorita' con
+# cui gli neghiamo gli strumenti, e «conosce» gli darebbe il permesso di
+# credere di sapere. Resta solo «non agisce», che qui e' vero due volte.
 #
 # Serve anche a CORREGGERE il prompt che lo precede: il system prompt che
 # arriva qui e' quello delle impostazioni della chat (`impostazioni_chat.
@@ -38,8 +46,8 @@ _CHAT_TOOL_GUIDANCE = (
     "sezione con lo stato della casa, qui non ci sono: quelle istruzioni non "
     "si applicano. Non inventare stati, valori o entita', e non dire di aver "
     "guardato o di aver preso nota di qualcosa.\n"
-    "HIRIS conosce e non agisce: non accendi, non spegni, non invii "
-    "notifiche, non tocchi automazioni. Non c'e' nessuna conferma da "
+    "HIRIS non agisce: non accendi, non spegni, non invii notifiche, non "
+    "tocchi automazioni. Non c'e' nessuna conferma da "
     "chiedere, perche' non c'e' nessuna azione in attesa.\n"
     "Se per rispondere servirebbe lo stato vivo della casa, DILLO in una "
     "frase -- che in questa conversazione non puoi leggerlo -- invece di "

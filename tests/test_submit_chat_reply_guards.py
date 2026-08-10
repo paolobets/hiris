@@ -129,6 +129,46 @@ async def test_toxic_reply_is_dropped_not_persisted(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_bridge_error_sentinel_is_dropped_not_persisted(tmp_path):
+    """fetta E4, fix della review totale (I5): il sentinella che il RUNNER DEL
+    PONTE produce quando `claude -p` esce con rc != 0 arriva qui -- e' la
+    ``reply`` del job di chat -- e prima di questo fix veniva scritto in
+    chat_history.db (la review ne ha trovati due dal vivo). Questo e' il
+    percorso end-to-end del filtro: la stringa non e' ricopiata a mano ma
+    prodotta dal runner vero, come in
+    tests/test_chat_store.py::test_is_toxic_copre_i_sentinella_veri_del_ponte.
+    """
+    from unittest.mock import patch
+
+    from hiris.app.agent import runner
+
+    class _Proc:
+        returncode = 3221226505
+        stdout = '{"result": "Invalid API key"}'
+        stderr = ""
+
+    with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
+        sentinella = runner._reason_chat(
+            {"kind": "chat", "context": {"history": [], "system_prompt": "S"}},
+            "live")["reply"]
+
+    data_dir = str(tmp_path / "data")
+    calls = []
+
+    def _fake_append(messages, data_dir):
+        calls.append(messages)
+
+    app = {}
+    submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
+
+    await submit(sentinella)
+
+    assert calls == [], (
+        f"il sentinella del ponte {sentinella!r} e' stato persistito: "
+        "tornerebbe al modello a ogni turno successivo")
+
+
+@pytest.mark.asyncio
 async def test_clean_reply_is_persisted(tmp_path):
     data_dir = str(tmp_path / "data")
     app = {}
