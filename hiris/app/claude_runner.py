@@ -228,9 +228,9 @@ RESTRICT_PROMPT = (
 # l'uno ne' l'altro li offre). L'iniezione nel system prompt (qui sotto e nei
 # due punti gemelli di backends/openai_compat_runner.py) istruiva il modello
 # a chiedere conferma prima di strumenti che non puo' comunque chiamare --
-# una promessa vuota. `require_confirmation` resta un campo di
-# configurazione del Chatbot (UI/persistenza), ma oggi non ha alcun effetto
-# osservabile sul system prompt.
+# una promessa vuota. fetta E4 Task 6 ("un bot solo"): il parametro
+# `require_confirmation` stesso e' uscito da `chat()`/`chat_stream()` -- il
+# `Chatbot` di cui era un campo di configurazione era gia' uscito al Task 4.
 
 
 # Review finale fetta E2, I-4: `_redact_stream_tool_calls` e' uscita.
@@ -351,21 +351,10 @@ class ClaudeRunner:
     def __init__(
         self,
         api_key: str,
-        dispatcher: Any = None,
         usage_path: str = "",
         default_model: str = "",
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
-        # fetta E2 Task 7: nessun chiamante costruisce piu' un ToolDispatcher
-        # (uscito -- 818 righe, 16 dipendenze, un semaforo spento). Questo e'
-        # il dispatcher "di scorta" usato SOLO da chat() quando il chiamante
-        # non passa il suo (il parametro dispatcher/strumenti per-chiamata,
-        # che invece resta: la chat ci passa DispatcherConoscenza). Resta
-        # None per costruzione: senza catalogo di scorta (fetta E3 Task 8,
-        # uscito con run_with_actions/la Sentinella) uno strumento richiesto
-        # su questo ramo degrada comunque a "non disponibile" -- vedi il ramo
-        # `dispatcher is None` sotto.
-        self._dispatcher = dispatcher
         self._usage_path = usage_path
         self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto"
         self._is_cloud = True  # Anthropic cloud — always pseudonymize sensitive content
@@ -379,7 +368,6 @@ class ClaudeRunner:
         self.total_cost_usd: float = 0.0
         self.total_rate_limit_errors: int = 0
         self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
-        self._per_chatbot_usage: dict[str, dict] = {}
         # Serialize tmp-write + os.replace across concurrent _save_usage() calls.
         # _save_usage runs on every API response and is reachable from multiple
         # concurrent agent runs / chats; without this two writers race on the
@@ -388,16 +376,19 @@ class ClaudeRunner:
         self._save_lock = threading.Lock()
         self._load_usage()
 
-    # fetta E3 Task 8: `set_task_engine` e' uscito. Nella E2 Task 7 restava
-    # per "chi costruisce il runner senza dispatcher e lo chiama comunque" --
-    # ma quel comunque non esiste: zero chiamanti di produzione (server.py
-    # non lo invoca dal T7, chatbot_engine non ancora, arrivera' al T9 e
-    # chiamera' il proprio `ChatbotEngine.set_task_engine`, un metodo
-    # diverso). Inoltrava a `self._dispatcher.set_task_engine`, un metodo che
-    # nessun dispatcher di produzione ha mai avuto (self._dispatcher e'
-    # sempre None: vedi il commento sopra) ne' che DispatcherConoscenza
-    # (casa/strumenti.py, il dispatcher per-chiamata che la chat usa davvero)
-    # espone.
+    # fetta E4 Task 6 ("un bot solo"): il costruttore perdeva un `dispatcher`
+    # "di scorta" -- usato SOLO dal ramo `elif self._dispatcher is not None`
+    # dentro `chat()`, uscito con lui in questo stesso task. Nessun chiamante
+    # di produzione lo passava mai (fetta E2 Task 7, commit 68d3670: la chat
+    # passa SEMPRE il proprio DispatcherConoscenza per-chiamata, il parametro
+    # `dispatcher`/`strumenti` che invece resta -- vedi `chat()` sotto). Un
+    # tool richiesto senza un dispatcher per-chiamata degrada comunque a "non
+    # disponibile", come faceva gia' prima con `self._dispatcher` sempre
+    # `None` per costruzione: nessun comportamento osservabile cambia.
+    #
+    # fetta E3 Task 8: `set_task_engine` era gia' uscito per lo stesso motivo
+    # (zero chiamanti di produzione, inoltrava a un metodo che nessun
+    # dispatcher di produzione ha mai avuto).
 
     def _load_usage(self) -> None:
         if not self._usage_path or not os.path.exists(self._usage_path):
@@ -411,7 +402,24 @@ class ClaudeRunner:
             self.usage_last_reset = data.get("last_reset", self.usage_last_reset)
             self.total_cost_usd = data.get("total_cost_usd", 0.0)
             self.total_rate_limit_errors = data.get("total_rate_limit_errors", 0)
-            self._per_chatbot_usage = data.get("per_agent", {})
+            # fetta E4 Task 6 ("un bot solo"): la contabilita' per-chatbot
+            # (`per_agent`, get_chatbot_usage/reset_chatbot_usage) esce -- zero
+            # lettori di produzione dal Task 3 (rotte usage uscite) e dal
+            # Task 4 (ChatbotEngine uscito). Un usage.json scritto da una
+            # versione precedente non viene ne' migrato ne' cancellato (mai
+            # dati utente rimossi silenziosamente): se la chiave e' presente e
+            # non vuota lo dichiariamo in log invece di ignorarla muti --
+            # stessa disciplina di tests/test_startup_legacy_db_silence.py.
+            # Non piu' letta in `self`: da qui in poi il valore non alimenta
+            # piu' nessuno stato del runner, e il prossimo _save_usage() non
+            # la riscrive (vedi sotto).
+            _per_agent_legacy = data.get("per_agent")
+            if _per_agent_legacy:
+                logger.info(
+                    "usage.json contiene 'per_agent' (%d voci) di un'installazione "
+                    "precedente -- non piu' letto ne' scritto da questa versione.",
+                    len(_per_agent_legacy),
+                )
         except Exception as exc:
             logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
 
@@ -426,7 +434,6 @@ class ClaudeRunner:
             "last_reset": self.usage_last_reset,
             "total_cost_usd": self.total_cost_usd,
             "total_rate_limit_errors": self.total_rate_limit_errors,
-            "per_agent": dict(self._per_chatbot_usage),
         }
         tmp = self._usage_path + ".tmp"
 
@@ -455,32 +462,12 @@ class ClaudeRunner:
         self.usage_last_reset = datetime.now(timezone.utc).isoformat()
         self._save_usage()
 
-    def _ensure_today_reset(self, pau: dict) -> None:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        if pau.get("tokens_today_date", "") != today:
-            pau["tokens_today"] = 0
-            pau["tokens_today_date"] = today
-
-    def get_chatbot_usage(self, chatbot_id: str) -> dict:
-        """Return usage stats for a specific agent. Returns zero-filled dict if not found."""
-        pau = self._per_chatbot_usage.get(chatbot_id)
-        if pau is None:
-            return {
-                "input_tokens": 0, "output_tokens": 0,
-                "requests": 0, "cost_usd": 0.0, "last_run": None,
-                "tokens_today": 0, "tokens_today_date": "",
-            }
-        self._ensure_today_reset(pau)
-        return dict(pau)
-
-    def reset_chatbot_usage(self, chatbot_id: str) -> None:
-        """Reset usage counters for a specific agent."""
-        self._per_chatbot_usage[chatbot_id] = {
-            "input_tokens": 0, "output_tokens": 0,
-            "requests": 0, "cost_usd": 0.0, "last_run": None,
-            "tokens_today": 0, "tokens_today_date": "",
-        }
-        self._save_usage()
+    # fetta E4 Task 6 ("un bot solo"): `_ensure_today_reset`/`get_chatbot_usage`/
+    # `reset_chatbot_usage` sono usciti -- zero lettori di produzione (le
+    # rotte usage sono uscite al Task 3, ChatbotEngine al Task 4, MQTT in E3;
+    # LLMRouter aveva gli stessi due metodi SOLO per aggregarli su piu'
+    # runner, usciti con loro). Vedi il commento sul costruttore per la
+    # storia completa.
 
     async def simple_chat(self, messages: list[dict], system: str = "") -> str:
         """Single API call with no tools and no retry loop — for classification tasks."""
@@ -500,33 +487,16 @@ class ClaudeRunner:
         system_prompt: str = "",
         context_str: str = "",
         conversation_history: Optional[list[dict]] = None,
-        allowed_entities: Optional[list[str]] = None,
-        allowed_services: Optional[list[str]] = None,
-        allowed_endpoints: Optional[list[dict]] = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
         agent_type: str = "chat",
         restrict_to_home: bool = False,
-        require_confirmation: bool = False,
-        chatbot_id: Optional[str] = None,
-        visible_entity_ids: Optional[frozenset] = None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        knowledge_allow_sensitive: bool = False,
-        knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
         strumenti: list[dict] | None = None,
         dispatcher: Any | None = None,
     ) -> str:
-        if chatbot_id:
-            if chatbot_id not in self._per_chatbot_usage:
-                self._per_chatbot_usage[chatbot_id] = {
-                    "input_tokens": 0, "output_tokens": 0,
-                    "requests": 0, "cost_usd": 0.0, "last_run": None,
-                    "tokens_today": 0, "tokens_today_date": "",
-                }
-            self._per_chatbot_usage[chatbot_id]["requests"] += 1
-            self._per_chatbot_usage[chatbot_id]["last_run"] = datetime.now(timezone.utc).isoformat()
         self.last_tool_calls = []
         # Fresh per-exchange pseudonymization map (review B/#7) — populated by
         # the recall_memory tool path below, read by the caller afterwards.
@@ -552,10 +522,10 @@ class ClaudeRunner:
         # Behaviour modifiers — stable per agent config, must precede context_str.
         if restrict_to_home:
             system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
-        # Review finale fetta E2, I-5: l'iniezione di REQUIRE_CONFIRMATION_PROMPT
-        # e' uscita -- vedi il commento sopra `CONFIRMATION_COVERED_TOOLS`
-        # (rimossa insieme). `require_confirmation` non ha piu' alcun effetto
-        # sul system prompt.
+        # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`
+        # stesso e' uscito -- vedi il commento sopra `CONFIRMATION_COVERED_
+        # TOOLS` (Review finale fetta E2, I-5) per il perche' non aveva gia'
+        # piu' alcun effetto sul system prompt da prima di questo task.
         if response_mode == "compact":
             system_blocks.append({"type": "text", "text": "Rispondi in modo conciso, massimo 2-3 frasi."})
         elif response_mode == "minimal":
@@ -648,13 +618,6 @@ class ClaudeRunner:
                 + out * prices["output"]
             ) / 1_000_000
             self.total_cost_usd += cost
-            if chatbot_id and chatbot_id in self._per_chatbot_usage:
-                pau = self._per_chatbot_usage[chatbot_id]
-                pau["input_tokens"] += inp + cache_creation + cache_read
-                pau["output_tokens"] += out
-                pau["cost_usd"] += cost
-                self._ensure_today_reset(pau)
-                pau["tokens_today"] = pau.get("tokens_today", 0) + inp + cache_creation + cache_read + out
             self._save_usage()
 
             if response.stop_reason == "end_turn":
@@ -668,36 +631,23 @@ class ClaudeRunner:
                     if block.type == "tool_use":
                         if dispatcher is not None:
                             # DispatcherConoscenza (e affini) espone la stessa
-                            # interfaccia minima -- dispatch(nome, argomenti) --
-                            # non le kwargs pensate per il dispatcher di scorta
-                            # sotto: si chiama posizionale.
+                            # interfaccia minima -- dispatch(nome, argomenti).
+                            # fetta E4 Task 6: il ramo "dispatcher di scorta"
+                            # (self._dispatcher, con le kwargs allowed_entities/
+                            # allowed_services/allowed_endpoints/chatbot_id/
+                            # visible_entity_ids/knowledge_allow_sensitive/
+                            # knowledge_kinds) e' uscito -- zero chiamanti di
+                            # produzione lo popolavano (fetta E2 Task 7,
+                            # commit 68d3670).
                             result = await dispatcher.dispatch(block.name, block.input)
-                        elif self._dispatcher is not None:
-                            result = await self._dispatcher.dispatch(
-                                block.name, block.input,
-                                allowed_entities=allowed_entities,
-                                allowed_services=allowed_services,
-                                allowed_endpoints=allowed_endpoints,
-                                chatbot_id=chatbot_id,
-                                visible_entity_ids=visible_entity_ids,
-                                knowledge_allow_sensitive=knowledge_allow_sensitive,
-                                knowledge_kinds=knowledge_kinds,
-                                cloud=self._is_cloud,
-                                user_id=user_id,
-                                pseudonym_map=self.last_pseudonym_map,
-                            )
                         else:
-                            # fetta E2 Task 7: ne' un dispatcher per-chiamata
-                            # ne' un ToolDispatcher di scorta -- lo strumento
-                            # non e' eseguibile. Mai sollevare qui: un
-                            # dizionario leggibile dal modello, come ogni
-                            # altro dispatch() di questo ramo.
+                            # ne' un dispatcher per-chiamata: lo strumento non
+                            # e' eseguibile. Mai sollevare qui: un dizionario
+                            # leggibile dal modello, come ogni altro dispatch()
+                            # di questo ramo.
                             # Minor #7 review finale: questo degrado e'
                             # dichiarato al modello ma prima non lasciava
-                            # traccia in log -- una ronda della Sentinella che
-                            # gira a vuoto (ogni suo tool degrada qui per
-                            # costruzione, self._dispatcher e' sempre None in
-                            # produzione) era invisibile all'operatore.
+                            # traccia in log.
                             logger.debug(
                                 "Strumento '%s' richiesto ma nessun dispatcher disponibile "
                                 "(degradazione dichiarata, non un errore)", block.name)
@@ -726,20 +676,12 @@ class ClaudeRunner:
         system_prompt: str = "",
         context_str: str = "",
         conversation_history: Optional[list[dict]] = None,
-        allowed_entities: Optional[list[str]] = None,
-        allowed_services: Optional[list[str]] = None,
-        allowed_endpoints: Optional[list[dict]] = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
         agent_type: str = "chat",
         restrict_to_home: bool = False,
-        require_confirmation: bool = False,
-        chatbot_id: Optional[str] = None,
-        visible_entity_ids=None,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        knowledge_allow_sensitive: bool = False,
-        knowledge_kinds: list[str] | str | None = None,
         user_id: str | None = None,
         strumenti: list[dict] | None = None,
         dispatcher: Any | None = None,
@@ -753,8 +695,15 @@ class ClaudeRunner:
 
         Yields lines in the form:
           'data: {"type": "token", "text": "<chunk>"}\\n\\n'
-          'data: {"type": "done", "agent_id": "<id>", "tool_calls": [...]}\\n\\n'
+          'data: {"type": "done", "tool_calls": [...]}\\n\\n'
           'data: {"type": "error", "message": "<msg>"}\\n\\n'
+
+        fetta E4 Task 6 ("un bot solo"): il campo `agent_id` del done-event e'
+        uscito -- grep su static/ (send.js, hiris-chat-card.js) trova un solo
+        lettore del `done` event e legge SOLO `evt.type`, mai `evt.agent_id`;
+        la pagina chat (send.js) non usa nemmeno lo streaming. Nessun lettore
+        vivo, dichiarato per la E5 (docs/design/2026-08-08-frontend-da-
+        rifare.md non lo elenca: non c'era nulla da riparare).
 
         `strumenti`/`dispatcher` (Task 3 of the nucleo-alla-chat slice):
         forwarded to `self.chat()` unchanged -- since this generator is
@@ -772,20 +721,12 @@ class ClaudeRunner:
                 system_prompt=system_prompt,
                 context_str=context_str,
                 conversation_history=conversation_history,
-                allowed_entities=allowed_entities,
-                allowed_services=allowed_services,
-                allowed_endpoints=allowed_endpoints,
                 model=model,
                 max_tokens=max_tokens,
                 agent_type=agent_type,
                 restrict_to_home=restrict_to_home,
-                require_confirmation=require_confirmation,
-                chatbot_id=chatbot_id,
-                visible_entity_ids=visible_entity_ids,
                 response_mode=response_mode,
                 thinking_budget=thinking_budget,
-                knowledge_allow_sensitive=knowledge_allow_sensitive,
-                knowledge_kinds=knowledge_kinds,
                 user_id=user_id,
                 strumenti=strumenti,
                 dispatcher=dispatcher,
@@ -799,7 +740,7 @@ class ClaudeRunner:
             yield f'data: {_json.dumps({"type": "token", "text": result[i:i + chunk_size]})}\n\n'
 
         tool_calls = self.last_tool_calls if isinstance(self.last_tool_calls, list) else []
-        yield f'data: {_json.dumps({"type": "done", "agent_id": chatbot_id, "tool_calls": tool_calls})}\n\n'
+        yield f'data: {_json.dumps({"type": "done", "tool_calls": tool_calls})}\n\n'
 
     # fetta E3 Task 8: `run_with_actions` e' uscito. Girava un passaggio
     # agentico ristretto a `EVALUATION_ONLY_TOOLS` (le 18 letture) per conto

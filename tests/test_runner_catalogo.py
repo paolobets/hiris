@@ -185,14 +185,16 @@ async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
 # com'e' da prima di questo task. Il test prova esattamente questo: nomi
 # "sensibili" come http_request/recall_memory, se dentro `strumenti`, NON
 # vengono tolti -- non c'e' nessuna seconda regola nascosta sopra la
-# decisione del chiamante.
+# decisione del chiamante. fetta E4 Task 6: il kwarg `allowed_endpoints`
+# stesso (passato qui sotto come prova esplicita del non-filtro) e' uscito
+# dalla firma di `chat()` -- non c'e' piu' nulla da passare, la prova resta
+# la stessa senza di lui: nessun secondo filtro di NESSUN tipo si applica.
 
 @pytest.mark.asyncio
 async def test_claude_con_strumenti_nessun_filtro_si_applica(claude_runner):
     nomi = await _tools_di_chat_claude(
         claude_runner,
         strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
-        allowed_endpoints=None,
     )
     assert nomi == {"http_request", "recall_memory"}
 
@@ -202,7 +204,6 @@ async def test_openai_con_strumenti_nessun_filtro_si_applica(openai_runner):
     nomi = await _tools_di_chat_openai(
         openai_runner,
         strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
-        allowed_endpoints=None,
     )
     assert nomi == {"http_request", "recall_memory"}
 

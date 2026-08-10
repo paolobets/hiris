@@ -34,6 +34,28 @@ than assumed:
     dispatcher-shaped stand-in to keep proving the runner's OWN ContextVar
     isolation under concurrency; see their own comments for what replaced
     `ToolDispatcher` there.
+
+fetta E4 Task 6 ("un bot solo"): the constructor `dispatcher=` kwarg (the
+"scorta" stand-in the two concurrency tests above used to plug their
+dispatcher into) is gone -- `self._dispatcher` and the `elif self._dispatcher
+is not None` branch that read it are gone too, zero production callers ever
+populated them (fetta E2 Task 7, commit 68d3670). Both tests move to the
+per-call `dispatcher=` kwarg of `chat()` (the one that stays: DispatcherConoscenza's
+own path) instead -- verified BEFORE moving that leaving them untouched would
+have kept them GREEN for the wrong reason: `last_tool_calls.append(...)` runs
+unconditionally after the tool-dispatch if/else regardless of which branch
+ran, so `test_chat_concurrent_calls_do_not_leak_tool_calls` still passed with
+`runner._dispatcher = MagicMock(...)` even though that mock was never called
+any more (chat() no longer reads `self._dispatcher` at all) -- an illusion of
+coverage, not a construction failure. Also gone from this same file: the
+seven kwargs that were `elif self._dispatcher is not None`'s only readers
+(`chatbot_id`, `allowed_entities`, `allowed_services`, `allowed_endpoints`,
+`visible_entity_ids`, `knowledge_allow_sensitive`, `knowledge_kinds`) and
+`require_confirmation` (already inert in the system prompt since fetta E2,
+now gone from the signature too) plus the per-chatbot usage accounting
+(`get_chatbot_usage`/`reset_chatbot_usage`/`_per_chatbot_usage`) they fed --
+see task-6-report.md for the full account, including the grep evidence for
+every kwarg.
 """
 import asyncio
 import pytest
@@ -243,25 +265,14 @@ async def test_rate_limit_exhausts_retries_raises(runner):
 # Review finale fetta E2, I-5: `CONFIRMATION_COVERED_TOOLS` e
 # `REQUIRE_CONFIRMATION_PROMPT` sono uscite da claude_runner.py -- i tre test
 # che pinnavano l'iniezione del prompt sono usciti con il loro soggetto.
-# Sopravvive un pin del nuovo comportamento: `require_confirmation` non
-# altera piu' il system prompt, ne' quando True ne' quando False.
-@pytest.mark.asyncio
-async def test_require_confirmation_no_longer_alters_system_prompt(runner):
-    captured = []
-
-    async def capture(**kwargs):
-        captured.append(kwargs)
-        m = MagicMock()
-        m.stop_reason = "end_turn"
-        m.content = [MagicMock(type="text", text="ok")]
-        m.usage.input_tokens = 5
-        m.usage.output_tokens = 2
-        return m
-
-    runner._client.messages.create = capture
-    await runner.chat("Ciao", system_prompt="Base", require_confirmation=True)
-    await runner.chat("Ciao", system_prompt="Base", require_confirmation=False)
-    assert _sys_text(captured[0]["system"]) == _sys_text(captured[1]["system"])
+# fetta E4 Task 6 ("un bot solo"): il pin del comportamento successivo
+# (`test_require_confirmation_no_longer_alters_system_prompt`, "non altera
+# piu' il system prompt ne' quando True ne' quando False") e' uscito a sua
+# volta -- il parametro `require_confirmation` stesso e' uscito dalla firma
+# di `chat()`/`chat_stream()`: non c'e' piu' nulla da passare True/False a
+# cui provare l'assenza di effetto. Verificato fallire per costruzione prima
+# di cancellarlo: `TypeError: ClaudeRunner.chat() got an unexpected keyword
+# argument 'require_confirmation'`.
 
 
 # fetta E3 Task 8: `test_run_with_actions_is_plain_agentic_loop`,
@@ -278,96 +289,19 @@ def test_resolve_model_auto_agent_returns_haiku():
     assert resolve_model("auto", "agent") == "claude-haiku-4-5-20251001"
 
 
-def test_get_chatbot_usage_returns_zeros_for_unknown_agent():
-    from unittest.mock import MagicMock
-    from hiris.app.claude_runner import ClaudeRunner
-    runner = ClaudeRunner(
-        api_key="test",
-        usage_path="",
-    )
-    usage = runner.get_chatbot_usage("agent-xyz")
-    assert usage["input_tokens"] == 0
-    assert usage["output_tokens"] == 0
-    assert usage["requests"] == 0
-    assert usage["cost_usd"] == 0.0
-    assert usage["last_run"] is None
-
-
-def test_per_chatbot_usage_accumulates_after_chat():
-    """chat() with agent_id accumulates tokens in _per_chatbot_usage."""
-    import asyncio
-    from unittest.mock import MagicMock
-    from hiris.app.claude_runner import ClaudeRunner
-
-    runner = ClaudeRunner(
-        api_key="test",
-        usage_path="",
-    )
-
-    mock_response = MagicMock()
-    mock_response.stop_reason = "end_turn"
-    mock_response.content = [MagicMock(type="text", text="ok")]
-    mock_response.usage = MagicMock(
-        input_tokens=100, output_tokens=50,
-        cache_creation_input_tokens=0, cache_read_input_tokens=0,
-    )
-
-    async def fake_call(**kwargs):
-        return mock_response
-
-    runner._call_api = fake_call
-
-    asyncio.run(runner.chat(user_message="hello", chatbot_id="agent-abc"))
-
-    usage = runner.get_chatbot_usage("agent-abc")
-    assert usage["input_tokens"] == 100
-    assert usage["output_tokens"] == 50
-    assert usage["requests"] == 1
-    assert usage["cost_usd"] > 0
-    assert usage["last_run"] is not None
-
-
-def test_reset_chatbot_usage_clears_counters():
-    from unittest.mock import MagicMock
-    from hiris.app.claude_runner import ClaudeRunner
-
-    runner = ClaudeRunner(
-        api_key="test",
-        usage_path="",
-    )
-    runner._per_chatbot_usage["agent-abc"] = {
-        "input_tokens": 500, "output_tokens": 200,
-        "requests": 3, "cost_usd": 0.002, "last_run": "2026-01-01T00:00:00Z",
-    }
-    runner.reset_chatbot_usage("agent-abc")
-    usage = runner.get_chatbot_usage("agent-abc")
-    assert usage["input_tokens"] == 0
-    assert usage["requests"] == 0
-    assert usage["last_run"] is None
-
-
-def test_per_chatbot_usage_persists_and_reloads(tmp_path):
-    from unittest.mock import MagicMock
-    from hiris.app.claude_runner import ClaudeRunner
-
-    usage_file = str(tmp_path / "usage.json")
-    runner = ClaudeRunner(
-        api_key="test",
-        usage_path=usage_file,
-    )
-    runner._per_chatbot_usage["agent-persist"] = {
-        "input_tokens": 1000, "output_tokens": 400,
-        "requests": 5, "cost_usd": 0.005, "last_run": "2026-04-01T10:00:00Z",
-    }
-    runner._save_usage()
-
-    runner2 = ClaudeRunner(
-        api_key="test",
-        usage_path=usage_file,
-    )
-    usage = runner2.get_chatbot_usage("agent-persist")
-    assert usage["input_tokens"] == 1000
-    assert usage["requests"] == 5
+# fetta E4 Task 6 ("un bot solo"): quattro test sono usciti, cancellati e non
+# spostati -- provavano `get_chatbot_usage`/`reset_chatbot_usage`/
+# `_per_chatbot_usage`, usciti per intero (zero lettori di produzione dal
+# Task 3, rotte usage uscite, e dal Task 4, ChatbotEngine uscito). Verificato
+# fallire per costruzione prima di cancellarli:
+#   test_get_chatbot_usage_returns_zeros_for_unknown_agent:
+#     AttributeError: 'ClaudeRunner' object has no attribute 'get_chatbot_usage'
+#   test_per_chatbot_usage_accumulates_after_chat:
+#     TypeError: ClaudeRunner.chat() got an unexpected keyword argument 'chatbot_id'
+#   test_reset_chatbot_usage_clears_counters / test_per_chatbot_usage_persists_
+#   and_reloads:
+#     AttributeError: 'ClaudeRunner' object has no attribute '_per_chatbot_usage'
+# (visto girando la suite intera prima di questa pulizia -- vedi task-6-report.md).
 
 
 @pytest.mark.asyncio
@@ -506,7 +440,6 @@ async def test_cache_control_within_limit_with_modifiers_and_history(runner):
             {"role": "assistant", "content": "prima risposta"},
         ],
         restrict_to_home=True,
-        require_confirmation=True,
         response_mode="compact",
     )
     n = _count_cache_breakpoints(captured[0])
@@ -532,7 +465,6 @@ async def test_cache_control_single_system_breakpoint(runner):
         "Ciao",
         system_prompt="Prompt agente",
         restrict_to_home=True,
-        require_confirmation=True,
     )
     system = captured[0]["system"]
     n_system = sum(1 for b in system if isinstance(b, dict) and b.get("cache_control"))
@@ -615,17 +547,21 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
         return _end_response("done-A" if is_call_a else "done-B")
 
     runner._client.messages.create = AsyncMock(side_effect=fake_create)
-    # Dispatcher di scorta finto: la meccanica sotto test (isolamento per-Task
-    # di last_tool_calls) non dipende da COSA risponde il dispatch, solo dal
-    # fatto che risponda -- ToolDispatcher e' uscito, fetta E2 Task 7.
-    runner._dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
+    # Dispatcher finto passato PER-CHIAMATA (il solo ramo che sopravvive
+    # dalla fetta E4 Task 6 -- il "dispatcher di scorta" `self._dispatcher`,
+    # con cui questo test costruiva il finto prima di questo task, e' uscito:
+    # zero chiamanti di produzione lo popolavano, fetta E2 Task 7 commit
+    # 68d3670). La meccanica sotto test (isolamento per-Task di
+    # last_tool_calls) non dipende da COSA risponde il dispatch, solo dal
+    # fatto che risponda.
+    finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
 
     async def call_a():
-        text = await runner.chat("call-A")
+        text = await runner.chat("call-A", dispatcher=finto_dispatcher)
         return text, list(runner.last_tool_calls)
 
     async def call_b():
-        text = await runner.chat("call-B")
+        text = await runner.chat("call-B", dispatcher=finto_dispatcher)
         return text, list(runner.last_tool_calls)
 
     (text_a, tools_a), (text_b, tools_b) = await asyncio.gather(call_a(), call_b())
@@ -652,7 +588,22 @@ class _DispatcherPseudonimizzaDiScorta:
     pseudonimizzazione" -- quindi qui si pseudonimizza direttamente un
     contenuto canonico per query, senza passare da KnowledgeStore/embedder:
     stessa `Pseudonymizer`/vault reali, stesso forwarding di `pseudonym_map`,
-    una dipendenza in meno."""
+    una dipendenza in meno.
+
+    fetta E4 Task 6 ("un bot solo"): questo stand-in si costruiva col
+    `dispatcher=` DEL COSTRUTTORE (il "dispatcher di scorta" `self._dispatcher`,
+    l'unico ramo che passava `pseudonym_map=` a `dispatch()`) -- uscito con
+    quel ramo, zero chiamanti di produzione lo popolavano (fetta E2 Task 7
+    commit 68d3670). Il ramo che sopravvive (`dispatcher` per-chiamata) chiama
+    `dispatch(nome, argomenti)` posizionale, SENZA `pseudonym_map` (e' la
+    stessa interfaccia minima di `DispatcherConoscenza`, casa/strumenti.py --
+    vedi tests/test_runner_catalogo.py). Per continuare a provare
+    l'isolamento per-Task del vettore di pseudonimizzazione senza quel kwarg,
+    lo stand-in tiene un riferimento al runner e scrive direttamente nel SUO
+    `last_pseudonym_map` (il descriptor ContextVar-backed) dentro il proprio
+    `dispatch()`: gira comunque nello stesso asyncio Task di `chat()`, quindi
+    la scrittura atterra nella copia di contesto di QUEL Task -- lo stesso
+    meccanismo che il test prova, solo innescato da un punto diverso."""
 
     has_memory = True
 
@@ -661,13 +612,14 @@ class _DispatcherPseudonimizzaDiScorta:
         "query-B": "Contatto: segreto.userB@example.it",
     }
 
-    def __init__(self, pseudonymizer):
+    def __init__(self, pseudonymizer, runner):
         self._pseudonymizer = pseudonymizer
+        self._runner = runner
 
-    async def dispatch(self, name, inputs, *, pseudonym_map=None, **_ignored):
+    async def dispatch(self, name, inputs):
         assert name == "recall_memory"
         contenuto = self._pseudonymizer.pseudonymize(
-            self._CONTENUTO_PER_QUERY[inputs["query"]], pseudonym_map)
+            self._CONTENUTO_PER_QUERY[inputs["query"]], self._runner.last_pseudonym_map)
         return {"results": [{"content": contenuto}], "count": 1, "degraded": False}
 
 
@@ -690,15 +642,17 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path):
     bookkeeping. `ToolDispatcher` used to be that dispatcher; it is gone
     (fetta E2 Task 7). `_DispatcherPseudonimizzaDiScorta` above stands in for
     it -- see its own docstring for why it no longer routes through
-    KnowledgeStore/memory_tools (fetta E2 Task 8)."""
+    KnowledgeStore/memory_tools (fetta E2 Task 8), and for the fetta E4
+    Task 6 update on how it now reaches `last_pseudonym_map` without the
+    constructor `dispatcher=`/`pseudonym_map=` kwarg."""
     from hiris.app.brain.privacy import VaultStore, Pseudonymizer
 
     vault = VaultStore(str(tmp_path / "vault.db"))
     pseudonymizer = Pseudonymizer(vault)
 
-    dispatcher = _DispatcherPseudonimizzaDiScorta(pseudonymizer)
     with patch("anthropic.AsyncAnthropic"):
-        runner = ClaudeRunner(api_key="test-key", dispatcher=dispatcher)
+        runner = ClaudeRunner(api_key="test-key")
+    dispatcher = _DispatcherPseudonimizzaDiScorta(pseudonymizer, runner)
 
     def _usage():
         return MagicMock(input_tokens=1, output_tokens=1,
@@ -729,11 +683,11 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path):
     runner._client.messages.create = AsyncMock(side_effect=fake_create)
 
     async def call_a():
-        text = await runner.chat("call-A", knowledge_allow_sensitive=True)
+        text = await runner.chat("call-A", dispatcher=dispatcher)
         return text, dict(runner.last_pseudonym_map)
 
     async def call_b():
-        text = await runner.chat("call-B", knowledge_allow_sensitive=True)
+        text = await runner.chat("call-B", dispatcher=dispatcher)
         return text, dict(runner.last_pseudonym_map)
 
     (text_a, map_a), (text_b, map_b) = await asyncio.gather(call_a(), call_b())
@@ -754,6 +708,48 @@ async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path):
     assert pseudonymizer.detokenize(f"testo con {token_a}", map_b) == f"testo con {token_a}"
 
     vault.close()
+
+
+# fetta E4 Task 6 ("un bot solo"): silenzio dichiarato e pinnato per
+# usage.json's "per_agent" -- la contabilita' per-chatbot esce (vedi sopra),
+# ma un usage.json scritto da una versione precedente con quella chiave
+# popolata non va ignorato in muto: `_load_usage` lo dichiara in log, stesso
+# principio di tests/test_startup_legacy_db_silence.py (qui senza il
+# meccanismo di estrazione via inspect.getsource -- `_load_usage` e' gia' un
+# metodo autonomo, non un blocco inline dentro una funzione piu' grande).
+
+def test_usage_json_per_agent_legacy_logged_when_present(tmp_path, caplog):
+    import json as _json
+    usage_file = tmp_path / "usage.json"
+    usage_file.write_text(_json.dumps({
+        "schema_version": 1,
+        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
+        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
+        "total_rate_limit_errors": 0,
+        "per_agent": {"agent-x": {"input_tokens": 10}},
+    }), encoding="utf-8")
+    with patch("anthropic.AsyncAnthropic"), caplog.at_level("INFO"):
+        from hiris.app.claude_runner import ClaudeRunner
+        ClaudeRunner(api_key="test", usage_path=str(usage_file))
+    assert any(
+        "per_agent" in rec.message and "installazione precedente" in rec.message
+        for rec in caplog.records
+    )
+
+
+def test_usage_json_per_agent_silent_when_absent(tmp_path, caplog):
+    import json as _json
+    usage_file = tmp_path / "usage.json"
+    usage_file.write_text(_json.dumps({
+        "schema_version": 1,
+        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
+        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
+        "total_rate_limit_errors": 0,
+    }), encoding="utf-8")
+    with patch("anthropic.AsyncAnthropic"), caplog.at_level("INFO"):
+        from hiris.app.claude_runner import ClaudeRunner
+        ClaudeRunner(api_key="test", usage_path=str(usage_file))
+    assert not any("per_agent" in rec.message for rec in caplog.records)
 
 
 def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):

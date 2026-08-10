@@ -17,8 +17,6 @@ and then to the chosen provider — see openrouter.ai/privacy.
 """
 from __future__ import annotations
 
-from typing import Any
-
 from .openai_compat_runner import OpenAICompatRunner
 
 
@@ -46,7 +44,6 @@ class OpenRouterRunner(OpenAICompatRunner):
     def __init__(
         self,
         api_key: str,
-        dispatcher: Any = None,
         *,
         usage_path: str = "",
         default_model: str = "",
@@ -55,10 +52,15 @@ class OpenRouterRunner(OpenAICompatRunner):
         # selected by the user via the Designer model field. Default agent
         # behaviour (auto-resolve to a sensible cloud model) handled by
         # _resolve_model below.
+        #
+        # fetta E4 Task 6 ("un bot solo"): il proprio `dispatcher` "di scorta"
+        # -- una pura pass-through verso OpenAICompatRunner.__init__, uscito
+        # li' -- e' uscito anche qui, stessa mossa. Nessun chiamante di
+        # produzione lo passava (server.py costruisce sempre OpenRouterRunner
+        # senza `dispatcher=`).
         super().__init__(
             base_url=_OPENROUTER_BASE_URL,
             api_key=api_key,
-            dispatcher=dispatcher,
             usage_path=usage_path,
             default_model=default_model,
         )

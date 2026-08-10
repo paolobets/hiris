@@ -12,7 +12,6 @@ from ..chat_store import (
     _is_toxic_assistant,
 )
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
-from ..impostazioni_chat import ID_CHAT_DEFAULT
 from .handlers_casa import costruisci_nucleo
 
 logger = logging.getLogger(__name__)
@@ -363,24 +362,21 @@ async def handle_chat(request: web.Request) -> web.Response:
     # here. Kept as a literal only because runner.chat/chat_stream still take
     # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
     agent_type = "chat"
-    # fetta E4 Task 4: `max_tokens`/`require_confirmation` erano due dei sette
-    # campi che il turno di chat leggeva dal vecchio `Chatbot`, ma GIA' inerti
-    # in pratica -- non sono entrati in `ImpostazioniChat`, diventano qui due
-    # costanti dirette:
-    # - `max_tokens`: interactive chat gets a higher output ceiling than the
-    #   per-agent eval cap (complex requests -- a multi-view dashboard, a long
-    #   script -- legitimately need more room, and the old 4096 default
-    #   truncated them mid-tool-call). Il vecchio codice "floorava" un valore
-    #   persistito fino a CHAT_MAX_TOKENS -- ma senza piu' un editor che possa
-    #   persisterne uno diverso da 4096 (uscito con la E4 Task 3), il floor
-    #   scattava SEMPRE: usare direttamente CHAT_MAX_TOKENS e' lo stesso
-    #   comportamento, senza il giro morto.
-    # - `require_confirmation`: claude_runner.py:557 -- "non ha piu' alcun
-    #   effetto" da quando l'impianto OTP che lo consumava e' uscito (fetta
-    #   E2 Task 5). Resta `False` perche' i runner (ClaudeRunner/
-    #   OpenAICompatRunner) hanno ancora il parametro nella propria firma.
+    # fetta E4 Task 4: `max_tokens` era uno dei sette campi che il turno di
+    # chat leggeva dal vecchio `Chatbot`, ma GIA' inerte in pratica -- non e'
+    # entrato in `ImpostazioniChat`, diventa qui una costante diretta:
+    # interactive chat gets a higher output ceiling than the per-agent eval
+    # cap (complex requests -- a multi-view dashboard, a long script --
+    # legitimately need more room, and the old 4096 default truncated them
+    # mid-tool-call). Il vecchio codice "floorava" un valore persistito fino a
+    # CHAT_MAX_TOKENS -- ma senza piu' un editor che possa persisterne uno
+    # diverso da 4096 (uscito con la E4 Task 3), il floor scattava SEMPRE:
+    # usare direttamente CHAT_MAX_TOKENS e' lo stesso comportamento, senza il
+    # giro morto.
+    # `require_confirmation` (l'altro dei sette campi, gia' inerte da fetta E2
+    # Task 5) e' uscito per intero dalla firma dei runner alla fetta E4 Task 6:
+    # non c'e' piu' nulla da passare qui.
     agent_max_tokens = CHAT_MAX_TOKENS
-    agent_require_confirmation = False
     agent_restrict = impostazioni.restrict_to_home
     agent_response_mode = impostazioni.response_mode
     agent_thinking_budget = impostazioni.thinking_budget
@@ -410,14 +406,11 @@ async def handle_chat(request: web.Request) -> web.Response:
             max_tokens=agent_max_tokens,
             agent_type=agent_type,
             restrict_to_home=agent_restrict,
-            require_confirmation=agent_require_confirmation,
-            # fetta E4 Task 5: non c'e' piu' un `effective_chatbot_id` -- questo
-            # kwarg alimenta solo il tracking dei consumi per-bot dei runner
-            # (_per_chatbot_usage, claude_runner.py/openai_compat_runner.py) e
-            # il campo di debug `agent_id` del done-event SSE, entrambi non
-            # toccati da questo task (la loro sorte e' del Task 6, vedi il
-            # brief). ID_CHAT_DEFAULT resta l'unico id che il prodotto conosce.
-            chatbot_id=ID_CHAT_DEFAULT,
+            # fetta E4 Task 6 ("un bot solo"): `chatbot_id`/`require_confirmation`
+            # sono usciti dalla firma dei runner -- non c'e' piu' nulla da
+            # passare qui. `chatbot_id` alimentava solo il tracking dei consumi
+            # per-bot (uscito con lui) e il campo di debug `agent_id` del
+            # done-event SSE (uscito anche lui, nessun lettore in static/).
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             strumenti=STRUMENTI_CONOSCENZA,
@@ -473,9 +466,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             max_tokens=agent_max_tokens,
             agent_type=agent_type,
             restrict_to_home=agent_restrict,
-            require_confirmation=agent_require_confirmation,
             # Vedi il commento gemello sul ramo streaming sopra.
-            chatbot_id=ID_CHAT_DEFAULT,
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             strumenti=STRUMENTI_CONOSCENZA,

@@ -322,27 +322,10 @@ class LLMRouter:
         resets = [getattr(r, "usage_last_reset", "") for r in self._all]
         return min((s for s in resets if s), default="")
 
-    def get_chatbot_usage(self, chatbot_id: str) -> dict:
-        result = {
-            "input_tokens": 0, "output_tokens": 0,
-            "requests": 0, "cost_usd": 0.0, "last_run": None,
-            "tokens_today": 0, "tokens_today_date": "",
-        }
-        for r in self._all:
-            u = r.get_chatbot_usage(chatbot_id)
-            result["input_tokens"] += u.get("input_tokens", 0)
-            result["output_tokens"] += u.get("output_tokens", 0)
-            result["requests"] += u.get("requests", 0)
-            result["cost_usd"] += u.get("cost_usd", 0.0)
-            result["tokens_today"] += u.get("tokens_today", 0)
-            run_at = u.get("last_run")
-            if run_at and (not result["last_run"] or run_at > result["last_run"]):
-                result["last_run"] = run_at
-        return result
-
-    def reset_chatbot_usage(self, chatbot_id: str) -> None:
-        for r in self._all:
-            r.reset_chatbot_usage(chatbot_id)
+    # fetta E4 Task 6 ("un bot solo"): `get_chatbot_usage`/`reset_chatbot_usage`
+    # sono usciti -- aggregavano la stessa contabilita' per-chatbot uscita dai
+    # due runner (claude_runner.py/openai_compat_runner.py, stessa mossa),
+    # zero chiamanti di produzione.
 
     def reset_usage(self) -> None:
         for r in self._all:

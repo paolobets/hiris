@@ -44,8 +44,6 @@ def mock_runner():
     runner.total_cost_usd = 0.001
     runner.total_rate_limit_errors = 0
     runner.usage_last_reset = "2026-04-22T00:00:00Z"
-    runner.get_chatbot_usage = MagicMock(return_value={"input_tokens": 10})
-    runner.reset_chatbot_usage = MagicMock()
     runner.reset_usage = MagicMock()
     return runner
 
@@ -264,7 +262,6 @@ def test_openrouter_runner_init(tmp_path):
     from hiris.app.backends.openrouter_runner import OpenRouterRunner
     runner = OpenRouterRunner(
         api_key="sk-or-test",
-        dispatcher=MagicMock(),
         usage_path=str(tmp_path / "u.json"),
     )
     assert "openrouter.ai/api/v1" in str(runner._client.base_url)

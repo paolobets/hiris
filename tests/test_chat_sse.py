@@ -23,12 +23,11 @@ async def client(aiohttp_client, tmp_path):
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="SSE test response text")
     mock_runner.last_tool_calls = []
-    mock_runner.get_chatbot_usage = MagicMock(return_value={"cost_usd": 0.0})
 
     async def fake_chat_stream(**kwargs):
         import json
         yield f'data: {json.dumps({"type": "token", "text": "SSE test"})}\n\n'
-        yield f'data: {json.dumps({"type": "done", "agent_id": None, "tool_calls": []})}\n\n'
+        yield f'data: {json.dumps({"type": "done", "tool_calls": []})}\n\n'
 
     mock_runner.chat_stream = fake_chat_stream
     app["ha_client"] = mock_ha

@@ -82,12 +82,9 @@ async def test_claude_runner_system_prompt_carries_memory_rule():
 async def test_openai_compat_runner_system_prompt_carries_memory_rule(tmp_path):
     """backends/openai_compat_runner.py assembles its own system message
     (a single OpenAI "system" role) -- the rule must reach it too."""
-    dispatcher = MagicMock()
-    dispatcher.has_memory = True
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        dispatcher=dispatcher,
         usage_path=str(tmp_path / "usage.json"),
     )
 
@@ -117,12 +114,9 @@ async def test_openai_compat_runner_chat_stream_carries_memory_rule(tmp_path):
     """backends/openai_compat_runner.py's chat_stream() must also place the
     memory rule in the system message sent to the OpenAI API, since the
     streaming path assembles the system prompt independently of chat()."""
-    dispatcher = MagicMock()
-    dispatcher.has_memory = True
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        dispatcher=dispatcher,
         usage_path=str(tmp_path / "usage.json"),
     )
 
