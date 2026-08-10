@@ -396,6 +396,193 @@ async def test_senza_token_pubblicato_il_giro_del_ponte_fallisce_come_prima(
     assert errore.value.response.status_code == 401
 
 
+# ---------------------------------------------------------------------------
+# fetta «il ponte riceve gli strumenti» (parita' B, Task 3, fix round 2):
+# L'ALFABETO DEL TOKEN.
+#
+# Fino a questo giro nessuno validava l'opzione `internal_token`, che
+# `hiris/config.yaml` espone come `password` LIBERA: qualunque cosa l'utente
+# scrivesse entrava in circolo dopo un solo `.strip()`. Non era teorico -- con
+# un token che contiene CR/LF/NUL il client HTTP solleva **col valore dentro**
+# il messaggio, e quel messaggio finisce nel log dell'add-on
+# (`agent/runner.py::sonda_strumenti`), cioe' nel file che si incolla in una
+# segnalazione. Il docstring di quella funzione prometteva «il motivo non
+# contiene mai il token»: era una dichiarazione falsa al presente, ed e' questa
+# validazione a renderla vera.
+# ---------------------------------------------------------------------------
+
+def test_l_alfabeto_rifiuta_cio_che_rompe_l_header_e_nient_altro():
+    """La regola e' la piu' PICCOLA che chiude il difetto, non la piu' severa
+    che si possa scrivere: rifiutare anche le virgolette avrebbe respinto
+    configurazioni legittime che oggi funzionano, e quel fronte -- la redazione
+    del token nei log -- si chiude dove si manifesta
+    (`agent/runner.py::forme_del_token`)."""
+    # ammessi: tutto cio' che e' consegnabile in un header HTTP
+    for buono in ("abc-def_123", 'ab"cd\\ef', "con spazio interno", "a+b/c=",
+                  "x" * 200, "!#$%&'()*,;:@"):
+        assert token_interno.motivo_token_non_valido(buono) is None, buono
+    # rifiutati: i caratteri di controllo e il non-ASCII
+    for cattivo, atteso in (("abc\rdef", "ritorno a capo"),
+                            ("abc\ndef", "a-capo"),
+                            ("abc\x00def", "NUL"),
+                            ("abc\tdef", "tabulazione"),
+                            ("abc\x7fdef", "carattere di controllo"),
+                            ("ab\u00e8cd", "non-ASCII")):
+        motivo = token_interno.motivo_token_non_valido(cattivo)
+        assert motivo is not None, cattivo
+        assert atteso in motivo, f"{cattivo!r} -> {motivo!r}"
+        # la POSIZIONE si dice (serve a correggere l'opzione), il VALORE no
+        assert "posizione" in motivo
+    assert token_interno.motivo_token_non_valido("") is None
+
+
+def test_un_token_configurato_non_consegnabile_e_rifiutato_e_dichiarato(
+    tmp_path, monkeypatch, caplog
+):
+    """Rifiuto-per-difetto, la disciplina di questo file: si torna `""`, il
+    middleware continua a negare, e il guasto si DICHIARA. Mai un pass muto, e
+    mai una generazione al posto del token dell'utente -- che gli farebbe
+    credere che il valore configurato funziona."""
+    cattivo = "abc\r\ndef-SEGRETO"
+    monkeypatch.setenv("INTERNAL_TOKEN", cattivo)
+    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+
+    token = prepara_token_interno(str(tmp_path))
+
+    assert token == "", "un token non consegnabile non deve entrare in circolo"
+    assert os.environ["INTERNAL_TOKEN"] == "", (
+        "il valore rotto e' rimasto in os.environ: il worker del ponte lo "
+        "rileggerebbe da li' e continuerebbe a farlo sollevare")
+    # e NON si e' generato niente al suo posto: sarebbe un token che l'utente
+    # non ha scelto, in silenzio
+    assert not os.path.exists(percorso_token(str(tmp_path)))
+
+    testo = caplog.text
+    assert "internal_token" in testo
+    assert "ritorno a capo" in testo and "posizione 3" in testo
+    assert "NEGATA (401)" in testo, "il log deve dire cosa smette di funzionare"
+    assert "Rimedio" in testo, "un guasto senza rimedio e' meta' dichiarazione"
+    assert "SEGRETO" not in testo, "il VALORE del token non deve mai finire nel log"
+    assert cattivo.strip() not in testo
+
+
+def test_un_token_configurato_con_virgolette_e_backslash_resta_ACCETTATO(
+    tmp_path, monkeypatch
+):
+    """La mutazione che tiene onesta la regola: se un giorno qualcuno la
+    stringesse «per sicurezza» fino a rifiutare le virgolette, respingerebbe
+    configurazioni che oggi funzionano -- e questo test lo dice. Quel fronte e'
+    coperto altrove, dalla redazione di tutte le forme del token."""
+    monkeypatch.setenv("INTERNAL_TOKEN", 'ab"cd\\ef')
+
+    token = prepara_token_interno(str(tmp_path))
+
+    assert token == 'ab"cd\\ef'
+    assert os.environ["INTERNAL_TOKEN"] == 'ab"cd\\ef'
+
+
+def test_il_token_riletto_da_disco_e_validato_come_quello_configurato(
+    tmp_path, monkeypatch, caplog
+):
+    """Il file di `/data` lo scriviamo noi con un valore urlsafe, ma e' un file
+    di testo su un volume che l'utente puo' aprire: un file corretto a mano non
+    deve poter aggirare la validazione dell'opzione."""
+    percorso = percorso_token(str(tmp_path))
+    os.makedirs(str(tmp_path), exist_ok=True)
+    with open(percorso, "w", encoding="utf-8") as f:
+        f.write("meta\x00SEGRETO\n")
+    monkeypatch.setenv("INTERNAL_TOKEN", "")
+    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+
+    token = prepara_token_interno(str(tmp_path))
+
+    assert token == ""
+    # e NON lo si e' sovrascritto con uno nuovo: invaliderebbe i lavori in coda
+    assert open(percorso, encoding="utf-8").read().strip() == "meta\x00SEGRETO"
+    testo = caplog.text
+    assert "NUL" in testo and "modificato a mano" in testo
+    assert "SEGRETO" not in testo
+
+
+def test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_client(
+    tmp_path, monkeypatch,
+):
+    """**Il ponte fra la validazione e la promessa che rende vera.**
+
+    `agent/runner.py::sonda_strumenti` promette nel suo docstring che il motivo
+    non nomina mai il token. La promessa regge solo perche' un token che fa
+    sollevare il client HTTP non arriva mai fin li'. Qui si prova la premessa
+    contro un listener VERO -- non contro un doppio, perche' la validazione
+    dell'header avviene dentro il client, al momento dell'invio:
+
+    - col token rotto il client solleva **col valore dentro il messaggio**;
+    - la validazione lo rifiuta, quindi in produzione quel valore non esiste
+      in `os.environ` e `build_headers()` manda `""`.
+
+    Se un giorno la validazione sparisse, questo test diventa rosso e dice
+    che il docstring della sonda e' tornato falso."""
+    import socketserver
+    import http.server
+    import threading
+
+    class _H(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}')
+
+        def log_message(self, *a):
+            pass
+
+    server = socketserver.TCPServer(("127.0.0.1", 0), _H)
+    porta = server.server_address[1]
+    filo = threading.Thread(target=server.serve_forever, daemon=True)
+    filo.start()
+    try:
+        cattivo = "abc\r\ndef-SEGRETO"
+        # (a) il client solleva, e il motivo porta il valore: e' il guasto
+        with httpx.Client(timeout=5) as http_client:
+            ok, motivo = agent_runner.sonda_strumenti(
+                http_client, f"http://127.0.0.1:{porta}",
+                {"X-HIRIS-Internal-Token": cattivo})
+        assert ok is False
+        assert "SEGRETO" in motivo, (
+            "il client HTTP non mette piu' il valore dell'header nel messaggio: "
+            "la premessa di questo test e' cambiata, va riletta -- non "
+            "cancellata")
+        # (b) ...e per questo un token del genere non deve mai arrivare fin qui
+        assert token_interno.motivo_token_non_valido(cattivo) is not None
+        monkeypatch.setenv("INTERNAL_TOKEN", cattivo)
+        assert prepara_token_interno(str(tmp_path)) == ""
+        assert agent_runner.build_headers()["X-HIRIS-Internal-Token"] == ""
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.asyncio
+async def test_col_token_rifiutato_il_ponte_resta_negato(
+    aiohttp_client, tmp_path, monkeypatch
+):
+    """Il rifiuto-per-difetto, end-to-end e non solo nel valore di ritorno:
+    con un token configurato non consegnabile, il worker del ponte si prende
+    401 dal server vero -- che e' il comportamento giusto (rotto e detto), non
+    un'apertura silenziosa."""
+    monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
+    monkeypatch.delenv("HIRIS_ALLOW_NO_CSRF", raising=False)
+    monkeypatch.setenv("INTERNAL_TOKEN", "abc\ndef-SEGRETO")
+    monkeypatch.setenv("HIRIS_DATA_DIR", str(tmp_path))
+
+    app = _app_come_in_produzione(tmp_path)
+    _carica_blocco_avvio_token()(app, os, prepara_token_interno)
+    client = await aiohttp_client(app)
+
+    assert app["internal_token"] == ""
+    risposta = await client.get("/api/health", headers=agent_runner.build_headers())
+    assert risposta.status == 401
+
+
 def test_secrets_e_della_libreria_standard():
     """Nessuna dipendenza nuova: il segreto viene dal `secrets` di sistema."""
     assert token_interno.secrets is secrets_stdlib

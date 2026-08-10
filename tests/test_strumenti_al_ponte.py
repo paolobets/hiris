@@ -802,17 +802,55 @@ def test_il_blocco_del_contesto_resta_uno_solo_su_entrambi_i_rami():
 # del risultato sul ramo felice.
 # ---------------------------------------------------------------------------
 
-_TOKEN_SPIA = "TOKEN-SEGRETISSIMO-42"
+# ---------------------------------------------------------------------------
+# FIX ROUND 2 -- la redazione redigeva la RAPPRESENTAZIONE SBAGLIATA.
+#
+# I test del giro precedente provavano la difesa con un `_TOKEN_SPIA` urlsafe:
+# per quei token la forma grezza e quella JSON-encoded COINCIDONO, quindi la
+# difesa sembrava funzionare. `hiris/config.yaml` espone pero' `internal_token`
+# come `password` libera, e con un token che contiene `"` o `\` nell'argv
+# finisce la forma **escaped** -- che la redazione, cercando la grezza, mancava
+# su tutti e cinque i canali. Provare una difesa solo con l'input facile e' la
+# stessa classe di problema dei quattro test del giro ancora precedente: da qui
+# in giu' OGNI canale si prova con ENTRAMBI i token.
+# ---------------------------------------------------------------------------
 
-# L'eco realistica: la CLI ripete la mcp-config, token compreso.
-_ECO = (
-    'Error: failed to connect to MCP server from --mcp-config '
-    '{"mcpServers": {"hiris": {"type": "http", "url": "http://127.0.0.1:8099/api/mcp", '
-    f'"headers": {{"X-HIRIS-Internal-Token": "{_TOKEN_SPIA}", '
-    '"X-Requested-With": "hiris-mcp"}}}}')
+_TOKEN_URLSAFE = "TOKEN-SEGRETISSIMO-42"
+# Il token che ROMPE: virgolette e backslash. E' ammesso dalla validazione di
+# `token_interno` (sono caratteri header-safe: cio' che quella validazione
+# rifiuta sono i caratteri di CONTROLLO) -- quindi puo' arrivare fin qui, ed e'
+# esattamente il motivo per cui questa seconda difesa esiste.
+_TOKEN_ROTTO = 'ab"cd\\ef'
+_TOKEN_SPIA = _TOKEN_URLSAFE   # conservato: lo usano i test qui sotto per nome
+
+# I due token si passano a ogni canale. Gli id rendono leggibile quale dei due
+# ha fallito quando il rosso arriva.
+_TOKEN_IDS = ["urlsafe", "con-virgolette-e-backslash"]
+_TOKEN_SPIE = [_TOKEN_URLSAFE, _TOKEN_ROTTO]
 
 
-def _con_strumenti_e_processo(proc, caplog):
+def _eco_della_cli(token: str) -> str:
+    """L'eco realistica: la CLI ripete la mcp-config che le abbiamo passato.
+
+    Si costruisce dalla `config_mcp` VERA e non a mano: e' l'unico modo perche'
+    il token compaia qui nella stessa forma in cui compare nell'argv -- ed e'
+    proprio la differenza fra le due forme il difetto che questo giro chiude."""
+    return ("Error: failed to connect to MCP server from --mcp-config "
+            + runner.config_mcp("http://127.0.0.1:8099", token))
+
+
+def _ricostruibile(token: str, testo: str) -> bool:
+    """**L'oracolo forte.** Non «la forma X compare», che dipende da quanti
+    involucri JSON (o da un `%r`) ci sono in mezzo, ma «il segreto e'
+    ricostruibile»: si tolgono TUTTI i backslash da entrambi i lati e si
+    guarda se il token resta dentro. Un oracolo per forme esatte e' proprio
+    quello che ha fatto sembrare chiuso il fix del giro precedente."""
+    def nudo(t):
+        return t.replace("\\", "")
+    return nudo(token) in nudo(testo)
+
+
+def _con_strumenti_e_processo(proc, caplog, token=_TOKEN_URLSAFE):
     """Il turno pericoloso: strumenti ATTIVI (quindi il token E' nell'argv) e
     un sottoprocesso che riecheggia la configurazione."""
     job = {"kind": "chat", "job_id": "J-eco",
@@ -829,10 +867,13 @@ def _con_strumenti_e_processo(proc, caplog):
                 job, "live",
                 client=_ClientFinto(_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200)),
                 base_url="http://127.0.0.1:8099",
-                headers={"X-HIRIS-Internal-Token": _TOKEN_SPIA})
-    # la premessa del test: senza il token nell'argv non si starebbe provando
-    # niente -- e' l'errore che i quattro test del giro precedente facevano.
-    assert _TOKEN_SPIA in " ".join(catturato["argv"])
+                headers={"X-HIRIS-Internal-Token": token})
+    # La premessa del test, asserita e non assunta: senza il token nell'argv non
+    # si starebbe provando niente. Si usa l'oracolo forte perche' per il token
+    # che rompe la forma nell'argv NON e' quella grezza -- ed e' precisamente
+    # l'errore che la premessa del giro precedente commetteva.
+    assert _ricostruibile(token, " ".join(catturato["argv"])), (
+        "il token non e' nell'argv: questo test non sta provando la difesa")
     return esito, "\n".join(r.getMessage() for r in caplog.records)
 
 
@@ -844,78 +885,123 @@ def test_reda_segreti_non_esplode_su_un_segreto_vuoto():
     assert runner.reda_segreti("a-TOK-b", "TOK") == f"a-{runner.REDATTO}-b"
 
 
-def test_canali_1_e_2_il_token_non_esce_dal_log_ne_dalla_reply_su_rc_diverso_da_zero(caplog):
-    """① e ②. Il caso riprodotto dalla review: `rc != 0`, l'eco della
+def test_reda_segreti_sostituisce_la_forma_piu_lunga_per_prima():
+    """Due forme dello stesso segreto in cui una contiene l'altra: se si
+    sostituisse la corta per prima, resterebbe in giro un pezzo della lunga."""
+    testo = "prima ABCDEF poi ABC"
+    assert runner.reda_segreti(testo, "ABC", "ABCDEF") == (
+        f"prima {runner.REDATTO} poi {runner.REDATTO}")
+
+
+def test_forme_del_token_copre_i_due_livelli_di_annidamento():
+    """La misura che ha chiuso il giro: il token compare a tre profondita' --
+    grezza, dentro la stringa JSON di `--mcp-config`, e dentro l'evento
+    `stream-json` che a sua volta cita quella config."""
+    forme = runner.forme_del_token(_TOKEN_ROTTO)
+
+    assert forme[0] == _TOKEN_ROTTO
+    assert forme[1] == json.dumps(_TOKEN_ROTTO)[1:-1]
+    assert forme[2] == json.dumps(json.dumps(_TOKEN_ROTTO)[1:-1])[1:-1]
+    assert len(forme) == 3
+    # per un token urlsafe le tre forme COINCIDONO: una sola, senza doppioni --
+    # ed e' il motivo per cui il difetto era invisibile ai test di prima.
+    assert runner.forme_del_token(_TOKEN_URLSAFE) == (_TOKEN_URLSAFE,)
+    assert runner.forme_del_token("") == ()
+
+
+def test_la_forma_nell_argv_non_e_quella_grezza_per_un_token_con_virgolette():
+    """Il difetto, isolato: e' la premessa di tutto questo giro."""
+    config = runner.config_mcp("http://127.0.0.1:8099", _TOKEN_ROTTO)
+
+    assert _TOKEN_ROTTO not in config, (
+        "se la forma grezza fosse nella config, non ci sarebbe nessun difetto "
+        "da chiudere e questo test non starebbe difendendo niente")
+    assert json.dumps(_TOKEN_ROTTO)[1:-1] in config
+
+
+@pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
+def test_canali_1_e_2_il_token_non_esce_dal_log_ne_dalla_reply_su_rc_diverso_da_zero(
+    caplog, token,
+):
+    """(1) e (2). Il caso riprodotto dalla review: `rc != 0`, l'eco della
     mcp-config su stderr e nessun evento `result` da cui ricavare un dettaglio
     strutturato -- quindi il grezzo finisce **nella reply che l'utente legge in
     chat** e nel log che si incolla in una segnalazione."""
     class _Proc:
         returncode = 1
         stdout = ""
-        stderr = _ECO
+        stderr = _eco_della_cli(token)
 
-    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog)
+    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog, token)
 
     assert esito["reply"].startswith("[errore runner rc=1]")
-    assert _TOKEN_SPIA not in esito["reply"], "l'utente legge il proprio token in chat"
-    assert _TOKEN_SPIA not in log_testo, "il token e' nel log dell'add-on"
+    assert not _ricostruibile(token, esito["reply"]), (
+        "l'utente legge il proprio token in chat")
+    assert not _ricostruibile(token, log_testo), (
+        "il token e' nel log dell'add-on, cioe' nel file che si incolla in una "
+        "segnalazione")
     # ...e la diagnosi non si perde: la causa resta leggibile, redatta
     assert "failed to connect to MCP server" in esito["reply"]
     assert runner.REDATTO in esito["reply"]
 
 
-def test_canale_3_il_token_non_esce_dal_dettaglio_strutturato(caplog):
-    """③. Stesso ramo, ma con l'evento `result` presente: il dettaglio viene
-    da `esito.testo`, cioe' dallo stdout PARSATO. Redigere solo il grezzo non
-    basterebbe -- ed e' il motivo per cui la redazione sta PRIMA di
-    `leggi_flusso` e non dopo."""
+@pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
+def test_canale_3_il_token_non_esce_dal_dettaglio_strutturato(caplog, token):
+    """(3). Stesso ramo, ma con l'evento `result` presente: il dettaglio viene
+    da `esito.testo`, cioe' dallo stdout **PARSATO** -- e li' lo stdout grezzo
+    e' un JSON che ne contiene un altro, quindi il token sta a profondita' 2.
+    E' uno dei due canali che il fix round 1 lasciava aperti."""
     class _Proc:
         returncode = 1
         stdout = json.dumps({"type": "result", "subtype": "error_during_execution",
-                             "is_error": True, "result": _ECO}) + "\n"
+                             "is_error": True, "result": _eco_della_cli(token)}) + "\n"
         stderr = ""
 
-    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog)
+    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog, token)
 
-    assert _TOKEN_SPIA not in esito["reply"]
-    assert _TOKEN_SPIA not in log_testo
+    assert not _ricostruibile(token, esito["reply"])
+    assert not _ricostruibile(token, log_testo)
     assert runner.REDATTO in esito["reply"]
 
 
-def test_canale_4_il_token_non_esce_dalla_coda_del_flusso_incompleto(caplog):
-    """④. Il canale che il **Task 2** ha introdotto: `rc == 0` ma nessun evento
-    finale, e gli ultimi 200 caratteri dello stdout grezzo finiscono nella
-    reply. Era il canale piu' facile da dimenticare, perche' non e' un ramo
-    d'errore."""
+@pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
+def test_canale_4_il_token_non_esce_dalla_coda_del_flusso_incompleto(caplog, token):
+    """(4). Il canale che il **Task 2** ha introdotto: `rc == 0` ma nessun
+    evento finale, e gli ultimi 200 caratteri dello stdout grezzo finiscono
+    nella reply. Era il canale piu' facile da dimenticare, perche' non e' un
+    ramo d'errore."""
     class _Proc:
         returncode = 0
-        stdout = '{"type":"system","subtype":"init","tools":[],"mcp_servers":[]}\n' + _ECO
+        stdout = ('{"type":"system","subtype":"init","tools":[],"mcp_servers":[]}\n'
+                  + _eco_della_cli(token))
         stderr = ""
 
-    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog)
+    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog, token)
 
     assert esito["reply"].startswith("[flusso incompleto]")
     assert "ultimo pezzo di flusso letto" in esito["reply"]
-    assert _TOKEN_SPIA not in esito["reply"]
-    assert _TOKEN_SPIA not in log_testo
+    assert not _ricostruibile(token, esito["reply"])
+    assert not _ricostruibile(token, log_testo)
 
 
-def test_canale_5_il_token_non_esce_dal_testo_del_risultato(caplog):
-    """⑤. Il ramo FELICE: `rc == 0`, evento `result` presente, ma il modello
-    (o la CLI) ha messo l'eco dentro il testo. E' il canale meno probabile e il
-    piu' pericoloso, perche' quella reply non porta nessun sentinella: sembra
-    una risposta normale."""
+@pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
+def test_canale_5_il_token_non_esce_dal_testo_del_risultato(caplog, token):
+    """(5). Il ramo FELICE: `rc == 0`, evento `result` presente, ma la CLI ha
+    messo l'eco dentro il testo. E' il canale meno probabile e il piu'
+    pericoloso, perche' quella reply non porta nessun sentinella: sembra una
+    risposta normale. Anche qui il testo viene dallo stdout PARSATO, ed era il
+    secondo canale che il fix round 1 lasciava aperto."""
     class _Proc:
         returncode = 0
         stdout = json.dumps({"type": "result", "subtype": "success",
                              "is_error": False, "num_turns": 1,
-                             "result": f"ecco cosa e' successo: {_ECO}"}) + "\n"
+                             "result": f"ecco cosa e' successo: {_eco_della_cli(token)}"}) + "\n"
         stderr = ""
 
-    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog)
+    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog, token)
 
-    assert _TOKEN_SPIA not in esito["reply"]
-    assert _TOKEN_SPIA not in log_testo
+    assert not _ricostruibile(token, esito["reply"])
+    assert not _ricostruibile(token, log_testo)
     assert runner.REDATTO in esito["reply"]
 
 

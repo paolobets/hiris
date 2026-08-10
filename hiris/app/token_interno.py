@@ -54,6 +54,50 @@ BYTE_ENTROPIA = 32
 PERMESSI_FILE = 0o600
 
 
+# fetta "il ponte riceve gli strumenti" (parita' B, Task 3, fix round 2):
+# l'alfabeto ammesso per il token interno. Fino a questo giro NESSUNO validava
+# l'opzione `internal_token`, che `hiris/config.yaml` espone come `password`
+# libera: qualunque cosa l'utente scrivesse entrava in circolo dopo un solo
+# `.strip()`. Non era teorico -- un token con CR/LF/NUL fa sollevare il client
+# HTTP con IL VALORE DENTRO il messaggio d'errore, e quel messaggio finisce nel
+# log dell'add-on (`agent/runner.py::sonda_strumenti`, riprodotto contro un
+# listener vero: LocalProtocolError, Illegal header value, col valore dentro).
+#
+# La regola e' la piu' piccola che chiude il difetto, non la piu' severa che si
+# possa scrivere: si rifiuta cio' che NON e' consegnabile in un header HTTP --
+# i caratteri di controllo (0x00-0x1F e 0x7F) e tutto cio' che sta fuori
+# dall'ASCII. Restano ammessi lo spazio interno (i bordi li toglie gia'
+# `.strip()`) e OGNI carattere stampabile, virgolette e backslash compresi:
+# sono header-safe, spezzavano soltanto la REDAZIONE del token nei log, e quel
+# fronte si chiude dove si manifesta (`agent/runner.py::forme_del_token`, che
+# reda anche la forma JSON-escaped). Rifiutarli anche qui avrebbe respinto
+# configurazioni legittime che oggi funzionano.
+def motivo_token_non_valido(token: str) -> str | None:
+    """`None` se il token puo' circolare, altrimenti il PERCHE' -- **senza mai
+    nominarne il valore**, che e' la promessa in cima a questo file.
+
+    Si dice la categoria del carattere e la sua posizione: e' cio' che serve a
+    chi deve correggere l'opzione, e non e' entropia del segreto (un token non
+    e' costruito con dei ritorni a capo). Del carattere non-ASCII non si stampa
+    nemmeno il codice: li' un codepoint sarebbe un pezzo di segreto."""
+    for posizione, carattere in enumerate(token):
+        codice = ord(carattere)
+        # I controlli PRIMA del non-ASCII: 0x7F (DEL) e' un carattere di
+        # controllo, non un carattere fuori ASCII, e chiamarlo cosi' manderebbe
+        # chi legge il log a cercare un accento che non c'e'.
+        if codice < 0x20 or codice == 0x7F:
+            nome = {
+                0x00: "un byte NUL",
+                0x09: "una tabulazione",
+                0x0A: "un a-capo (LF)",
+                0x0D: "un ritorno a capo (CR)",
+            }.get(codice, f"un carattere di controllo (0x{codice:02X})")
+            return f"{nome} in posizione {posizione}"
+        if codice > 0x7F:
+            return f"un carattere non-ASCII in posizione {posizione}"
+    return None
+
+
 def percorso_token(data_dir: str) -> str:
     """Dove vive il token generato."""
     return os.path.join(data_dir, NOME_FILE_TOKEN)
@@ -118,6 +162,29 @@ def prepara_token_interno(data_dir: str) -> str:
     """
     configurato = os.environ.get("INTERNAL_TOKEN", "").strip()
     if configurato:
+        # fix round 2: prima di tutto, l'alfabeto. Un token non consegnabile in
+        # un header non deve entrare in circolo: non autenticherebbe niente
+        # (ogni richiesta del ponte fallirebbe prima di partire) e, peggio, il
+        # client HTTP solleva con IL VALORE DENTRO il messaggio, che finisce nel
+        # log dell'add-on -- quello che si incolla in una segnalazione.
+        # Rifiuto-per-difetto, come ogni altro ramo di guasto di questo file:
+        # si torna "" e il middleware continua a negare. Mai un pass muto.
+        motivo = motivo_token_non_valido(configurato)
+        if motivo is not None:
+            logger.error(
+                "Token interno: l'opzione internal_token contiene %s e NON e' "
+                "utilizzabile come intestazione HTTP. Non lo metto in circolo: "
+                "non autenticherebbe nulla, e il messaggio d'errore del client "
+                "porterebbe il valore del token dentro il log dell'add-on. "
+                "HIRIS resta senza token interno: ogni richiesta non-ingress "
+                "continua a essere NEGATA (401) e il ponte della chat via "
+                "abbonamento non potra' lavorare. Rimedio: usa un valore di "
+                "solo testo stampabile (o lascia l'opzione VUOTA e lascia che "
+                "HIRIS ne generi uno). Il valore configurato non compare in "
+                "questo log.",
+                motivo,
+            )
+            return _pubblica("")
         # Il token dell'utente vince sempre: nessuna generazione, nessuna
         # scrittura su disco. Si ripubblica il valore ripulito dagli spazi
         # perche' un header HTTP viene comunque consegnato senza spazi ai
@@ -146,6 +213,24 @@ def prepara_token_interno(data_dir: str) -> str:
         return _pubblica("")
 
     if esistente:
+        # Stesso gate: il file di `/data` e' scritto da noi con un valore
+        # urlsafe, ma e' un file di testo su un volume che l'utente puo'
+        # aprire. Un file corretto a mano non deve poter aggirare la
+        # validazione dell'opzione.
+        motivo = motivo_token_non_valido(esistente)
+        if motivo is not None:
+            logger.error(
+                "Token interno: il token riletto da %s contiene %s e NON e' "
+                "utilizzabile come intestazione HTTP -- il file e' stato "
+                "modificato a mano, o si e' corrotto. NON ne genero un altro "
+                "sopra: invaliderebbe i lavori gia' in coda. HIRIS resta senza "
+                "token interno: ogni richiesta non-ingress continua a essere "
+                "NEGATA (401). Rimedio: cancella quel file per farne rigenerare "
+                "uno, oppure valorizza a mano l'opzione internal_token. Il "
+                "valore letto non compare in questo log.",
+                percorso, motivo,
+            )
+            return _pubblica("")
         logger.info(
             "Token interno: riletto da %s, dove un avvio precedente lo aveva "
             "generato. Invariato fra i riavvii, quindi i lavori rimasti in coda "

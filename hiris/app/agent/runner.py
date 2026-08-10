@@ -176,10 +176,67 @@ def reda_segreti(testo: str, *segreti: str) -> str:
 
     Un segreto vuoto si salta: `"".replace("", "***")` sostituirebbe ogni
     posizione della stringa."""
-    for segreto in segreti:
+    # Dal piu' lungo al piu' corto: una forma che contiene l'altra deve essere
+    # sostituita per prima, o la prima passata mangerebbe un pezzo della
+    # seconda lasciando in giro il resto.
+    for segreto in sorted(set(segreti), key=len, reverse=True):
         if segreto:
             testo = testo.replace(segreto, REDATTO)
     return testo
+
+
+def forme_del_token(token: str, profondita: int = 2) -> tuple[str, ...]:
+    r"""Tutte le forme in cui QUESTO token puo' comparire nell'eco della CLI.
+
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 3, fix round 2).
+    La redazione del fix round 1 cercava la forma GREZZA, ma nell'argv il token
+    non entra grezzo: entra dentro una stringa JSON (`config_mcp`), quindi
+    **JSON-escaped**. Per i token urlsafe le due forme coincidono e la difesa
+    sembrava funzionare; per un token che contiene `"` o `\` no, e la
+    redazione mancava il bersaglio su tutti e cinque i canali. Riprodotto con
+    `token = ab"cd\ef`:
+
+        REPLY: [errore runner rc=1] ... "X-HIRIS-Internal-Token": "ab\\"cd\\ef"
+
+    -- il segreto ricostruibile con un JSON-unescape.
+
+    Che l'opzione `internal_token` possa contenerli non e' un'ipotesi: e' una
+    `password` libera in `hiris/config.yaml`, e `token_interno.py` la accetta
+    dopo un `.strip()`. Quella validazione ora rifiuta i caratteri di CONTROLLO
+    (che rompono l'header), non le virgolette: sono header-safe, e rompevano
+    solo la redazione. Questo e' il posto dove quel fronte si chiude.
+
+    **I livelli di annidamento sono DUE, non uno** -- misurato, non stimato:
+
+        profondita' 0  ab"cd\ef            il token come lo teniamo
+        profondita' 1  ab\"cd\ef          dentro la stringa JSON di --mcp-config
+        profondita' 2  ab\\\"cd\\ef  quando la CLI infila il proprio
+                                          messaggio d'errore (che cita la
+                                          nostra config) dentro un evento
+                                          `stream-json`, cioe' dentro un
+                                          SECONDO JSON
+
+    Fermarsi a 1 lasciava scoperti i canali (3) e (5), dove lo stdout grezzo e'
+    gia' un JSON che ne contiene un altro. Ci si ferma a 2 perche' oltre non
+    esiste un terzo involucro in questa catena: la config sta nell'errore, e
+    l'errore sta nell'evento. Il residuo -- un ipotetico terzo annidamento --
+    resta possibile solo sul LOG, perche' la `reply` passa da un cancello che
+    reda DOPO il parsing, quando il valore e' comunque tornato a profondita' 1.
+
+    Difesa in profondita': vale anche quando la prima difesa regge, perche' le
+    difese in profondita' servono esattamente quando la prima cede."""
+    if not token:
+        return ()
+    forme, corrente = [token], token
+    for _ in range(profondita):
+        corrente = json.dumps(corrente)[1:-1]
+        forme.append(corrente)
+    viste, uniche = set(), []
+    for forma in forme:
+        if forma not in viste:
+            viste.add(forma)
+            uniche.append(forma)
+    return tuple(uniche)
 
 
 def sonda_strumenti(client, base_url: str, headers: dict,
@@ -204,9 +261,18 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     strumenti" a "nessuna risposta", che e' peggio.
 
     **Silenzio dichiarato (1) della fetta**: ogni `False` produce un
-    `log.warning` che nomina il motivo e il `job_id`. Il motivo non contiene mai
+    `log.warning` che nomina il motivo e il `job_id`. Il motivo non nomina mai
     il token: gli header non si loggano e non rientrano nel messaggio, e della
-    risposta si stampa solo il codice o i nomi mancanti."""
+    risposta si stampa solo il codice o i nomi mancanti.
+
+    **Da cosa dipende quella promessa** (fix round 2, e va detto invece che
+    sottinteso): il ramo `except` mette nel motivo il messaggio dell'eccezione,
+    e con un token che contiene CR/LF/NUL il client HTTP solleva **col valore
+    dentro** -- verificato contro un listener vero, `LocalProtocolError: Illegal
+    header value b'...'`. La promessa regge perche' un token del genere non
+    arriva fin qui: `token_interno.motivo_token_non_valido` lo rifiuta
+    all'avvio, lo dichiara nel log e lascia in piedi il rifiuto-per-difetto. Se
+    quella validazione sparisse, questo docstring tornerebbe falso."""
     attesi = {d["name"] for d in STRUMENTI_CONOSCENZA}
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 
@@ -545,6 +611,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     history = context.get("history") or []
     system_prompt = context.get("system_prompt") or ""
     if mode != "live":           # fail-safe: qualunque valore != "live" = mock
+        # Unico ritorno che non passa da `_reply` (fix round 2): siamo
+        # PRIMA che il token sia in mano, e questa stringa e' una
+        # costante che non ha mai visto ne' la CLI ne' la sua eco.
         return {"reply": "[mock] risposta di prova"}
     # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
     # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
@@ -590,6 +659,22 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     else:
         strumenti = False
     token = intestazioni.get("X-HIRIS-Internal-Token", "")
+    forme = forme_del_token(token)
+
+    def _reply(testo: str) -> dict:
+        """L'UNICO modo in cui una risposta esce da questa funzione.
+
+        fix round 2, seconda meta' della difesa: redigere il solo stdout GREZZO
+        non basta, perche' i rami (3) e (5) ricavano il testo dallo stdout
+        PARSATO -- e il parsing riporta il token da profondita' 2 a profondita'
+        1, cioe' a una forma che la redazione del grezzo, fatta un livello piu'
+        in la', non trova piu'. Con questo cancello la `reply` viene redatta
+        DOPO il parsing e diventa indipendente da quanti involucri JSON la CLI
+        abbia messo intorno all'eco: qualunque forma arrivi qui, arriva ridotta
+        a una che conosciamo. Sei rami di ritorno, una sola redazione: non c'e'
+        un ramo da dimenticare, ne' oggi ne' quando ne nascera' un settimo."""
+        return {"reply": reda_segreti(testo, *forme)}
+
     mcp_config = config_mcp(base_url, token) if strumenti else ""
     # Le DUE righe che leggono lo stesso booleano, una accanto all'altra. Non
     # esiste un secondo posto in cui il prompt e l'argv possono divergere: se
@@ -627,17 +712,23 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # Esito (5): il CLI non parte, non c'e' o non finisce in tempo. Resta
         # l'unico ramo che non ha nemmeno uno stdout da leggere.
         log.warning("claude non eseguibile: %s", type(exc).__name__)
-        return {"reply": "[runner non disponibile]"}
+        return _reply("[runner non disponibile]")
 
     # La redazione, PRIMA di qualunque lettura (fix round 1, Important 2): il
     # token viaggia in `--mcp-config` e la CLI lo riecheggia quando il server
     # MCP non parte. Da qui in giu' `proc.stdout`/`proc.stderr` non si usano
     # piu': si usano queste due copie, e non c'e' nessun canale che possa
-    # dimenticarsi di redigere. La sostituzione avviene su una stringa JSON e
-    # la lascia valida (il token non contiene virgolette: e' generato da
-    # `token_interno.secrets.token_urlsafe`).
-    stdout = reda_segreti(proc.stdout or "", token)
-    stderr = reda_segreti(proc.stderr or "", token)
+    # dimenticarsi di redigere.
+    #
+    # fix round 2: si redigono TUTTE le forme del token (`forme_del_token`), non
+    # la sola grezza. Il commento che stava qui diceva «il token non contiene
+    # virgolette: e' generato da secrets.token_urlsafe» -- vero solo sul ramo
+    # GENERATO. `internal_token` e' una `password` libera in config.yaml, e con
+    # un token che contiene `"` o `\` la redazione mancava il bersaglio su
+    # tutti e cinque i canali. Era una dichiarazione falsa al presente dentro un
+    # commento, cioe' il secondo difetto ricorrente di questo prodotto.
+    stdout = reda_segreti(proc.stdout or "", *forme)
+    stderr = reda_segreti(proc.stderr or "", *forme)
 
     # UNA sola lettura del flusso, prima di qualunque ramo: e' cosi' che il
     # ramo d'errore e quello felice non possono divergere nel modo di leggere
@@ -669,8 +760,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # Nessun evento finale da cui ricavarlo (processo morto a meta'):
             # meglio il flusso grezzo che un silenzio.
             dettaglio = (stdout or stderr).strip()
-        return {"reply":
-                f"[errore runner rc={proc.returncode}] {str(dettaglio)[:300]}".strip()}
+        return _reply(
+            f"[errore runner rc={proc.returncode}] {str(dettaglio)[:300]}".strip())
 
     if not esito.risultato_presente:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
@@ -698,13 +789,13 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # non parsabile": e' l'unico modo di diagnosticare dall'interfaccia un
         # cambio di formato durante l'UAT. Compromesso dichiarato: e' brutto da
         # leggere, ma un ramo muto sarebbe peggio.
-        return {"reply": f"{avviso} (ultimo pezzo di flusso letto: {coda})"
-                if coda else avviso}
+        return _reply(f"{avviso} (ultimo pezzo di flusso letto: {coda})"
+                      if coda else avviso)
 
     # Esiti (2) e (4): il testo del risultato, oppure il sentinella del vuoto.
     testo = esito.testo.strip()
     if not testo:
-        return {"reply": "[vuoto]"}
+        return _reply("[vuoto]")
     if degrado:
         # Solo QUI, e non sugli altri rami: `[errore runner rc=...]`,
         # `[runner non disponibile]`, `[flusso incompleto]` e `[vuoto]` sono
@@ -713,8 +804,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # renderebbe invisibili a quel filtro, e tornerebbero al modello a ogni
         # turno successivo. Questo caso e' l'opposto: sotto c'e' una risposta
         # vera, che va conservata.
-        return {"reply": f"{AVVISO_STRUMENTI_ASSENTI}\n\n{testo}"}
-    return {"reply": testo}
+        return _reply(f"{AVVISO_STRUMENTI_ASSENTI}\n\n{testo}")
+    return _reply(testo)
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",
            headers: dict | None = None) -> dict:
