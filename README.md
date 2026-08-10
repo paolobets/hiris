@@ -27,11 +27,23 @@ representation of your house — floors, areas, devices, entities, and what the
 house already does on its own — and gives you one chat to interrogate it.
 
 That is the whole product. It reads Home Assistant and it remembers what you
-tell it. It does not turn anything on or off, does not send notifications, does
-not create or modify automations, and does not run anything on its own
-schedule. The HTTP primitive that called an HA service was removed from the
-client altogether (`hiris/app/proxy/ha_client.py:145-151`) — "doesn't act" is
-not a setting you could flip, it is the absence of the code.
+tell it. It does not turn anything on or off, does not send notifications, and
+does not create or modify automations. The HTTP primitive that called an HA
+service was removed from the client altogether
+(`hiris/app/proxy/ha_client.py:145-151`) — "doesn't act" is not a setting you
+could flip, it is the absence of the code.
+
+Periodic work *does* run — seven APScheduler jobs are registered at startup —
+but every one of them is internal housekeeping: none of them speaks to you, and
+none of them touches the house. They are: the entity-inventory reload every
+2 minutes (`hiris/app/server.py:969-974`), the `mtime` sentinel over
+`automations.yaml`/`scripts.yaml` every 5 minutes (`:980-985`), chat-history
+retention at 03:00 (`:1000-1008`), history compaction at 03:30 (`:1019-1023`),
+the nightly digest at 04:00, which writes rule-based insights into the
+knowledge store with no model call (`:1034-1038`,
+`hiris/app/brain/history_digest.py:1-2,135`), the reasoning-queue sweep every
+2 minutes (`:1305-1307`), and — only when `mayan.*` is configured — the Mayan
+document poll (`:1076-1083`).
 
 2.0 is a reduction to the core. Version 1.x shipped a much wider surface
 (autonomous agents, a proactive brain, proposals, an action gate); most of it

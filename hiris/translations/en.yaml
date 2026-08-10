@@ -71,9 +71,12 @@ configuration:
   history_retention_days:
     name: "Conversation History Retention (days)"
     description: "How many days to keep conversation history before automatic deletion. Default is 90 days."
+  # fetta E4, giro di chiusura (voce 2): vedi il commento gemello in it.yaml.
+  # «Off = chat via subscription never activates» era falso: _sub_first_class
+  # (server.py:907) e' OR-ato in _bridge_enabled (server.py:1332-1335).
   bridge_enabled:
     name: "Subscription bridge — enable"
-    description: "Routes chat via subscription (if enabled below) to an external subscription runner instead of the local/pay-per-use provider. Off = chat via subscription never activates."
+    description: "Routes chat via subscription (if enabled below) to an external subscription runner instead of the local/pay-per-use provider. NOTE: if you enable the \"Subscription (Claude Max)\" provider and the OAuth token is present, the bridge turns on anyway, even with this option left off."
   bridge_deadline_min:
     name: "Subscription bridge — deadline (minutes)"
     description: "Minutes within which a chat message routed to the external runner must get a reply before expiring (the user sees an error, no automatic fallback). Default: 5."

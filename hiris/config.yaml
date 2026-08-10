@@ -3,8 +3,10 @@ version: "1.1.0-beta.18"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
-  AI-powered agent platform for smart home management.
-  Combines Claude AI reasoning with Home Assistant automation.
+  HIRIS knows your home, and does not act on it: it builds a living picture of
+  your floors, areas, devices, entities and of what your automations and
+  scripts already do, and gives you one chat to ask it. It never calls a
+  service, never sends a notification, never creates or edits an automation.
 url: "https://github.com/paolobets/hiris"
 homeassistant: "2024.7.0"
 arch:

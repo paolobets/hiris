@@ -71,9 +71,16 @@ configuration:
   history_retention_days:
     name: "Conservazione Cronologia (giorni)"
     description: "Quanti giorni conservare la cronologia delle conversazioni prima della cancellazione automatica. Predefinito: 90 giorni."
+  # fetta E4, giro di chiusura (voce 2): la descrizione diceva «Spento = la chat
+  # via abbonamento non si attiva». Falso: `_sub_first_class` (server.py:907,
+  # cioe' provider_subscription attivo CON token OAuth) e' OR-ato dentro
+  # `_bridge_enabled` (server.py:1332-1335), quindi con questa opzione a false
+  # il ponte si accende lo stesso. E' la stessa implicazione gia' dichiarata,
+  # tre righe piu' sotto, nella descrizione di chat_via_subscription e nel
+  # README (:225): non poteva restare smentita nello stesso pannello.
   bridge_enabled:
     name: "Ponte abbonamento — attiva"
-    description: "Instrada la chat via abbonamento (se attiva sotto) a un runner esterno su abbonamento invece che al provider locale/a consumo. Spento = la chat via abbonamento non si attiva."
+    description: "Instrada la chat via abbonamento (se attiva sotto) a un runner esterno su abbonamento invece che al provider locale/a consumo. NOTA: se attivi il provider «Abbonamento (Claude Max)» e il token OAuth è presente, il ponte si accende comunque, anche lasciando questa opzione spenta."
   bridge_deadline_min:
     name: "Ponte abbonamento — scadenza (minuti)"
     description: "Minuti entro cui un messaggio di chat instradato al runner esterno deve ricevere risposta prima di scadere (l'utente vede un errore, nessun ripiego automatico). Predefinito: 5."

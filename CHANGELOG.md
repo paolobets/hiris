@@ -5,9 +5,75 @@
 > **Voce in preparazione: la 2.0.0 non è ancora stata rilasciata.** Il tag non
 > esiste, l'add-on porta ancora il numero di versione precedente e il lavoro
 > sull'interfaccia non è finito — le pagine elencate in fondo sono rotte *oggi*.
-> Al rilascio questa nota va riletta e datata. **Manca ancora**, e arriverà
-> prima del rilascio, la parte che racconta ciò che HIRIS oggi *sa* della tua
-> casa: qui sotto c'è, per intero e in anticipo, ciò che invece **non fa più**.
+> Al rilascio questa nota va riletta e datata.
+
+**HIRIS conosce la tua casa, e c'è una chat per interrogarla.** È questa la
+versione: non un assistente che promette di fare, ma uno che *sa* — e che dice
+anche cosa non sa. Sotto, in due metà: prima ciò che HIRIS oggi sa e prima non
+sapeva, poi ciò che non fa più.
+
+### Quello che HIRIS adesso sa
+
+**Conosce la casa come l'hai dichiarata tu.** All'avvio, e ogni volta che Home
+Assistant segnala un cambiamento, HIRIS rilegge i registri della tua casa:
+piani, aree, dispositivi, entità, etichette, categorie, integrazioni. Prima ne
+conosceva un livello solo — un elenco piatto di entità con accanto il nome
+dell'area; adesso sa che il termostato appartiene a un dispositivo, che quel
+dispositivo sta in una stanza e che quella stanza sta su un piano. Il
+significato non lo indovina e non lo compra da un modello: è quello che tu hai
+già scritto in Home Assistant — i nomi, gli alias, le etichette, le categorie.
+
+**Se un registro non risponde, non lo scambia per una casa vuota.** Un piano
+che non c'è e un registro dei piani caduto producono la stessa lista vuota:
+HIRIS le tiene distinte, conserva la casa di ieri invece di sostituirla con
+dieci liste vuote, e scrive quali registri non hanno risposto.
+
+**Sa anche cosa la casa fa già da sola.** Legge il corpo delle automazioni e
+degli script direttamente dai file di configurazione di Home Assistant, e si
+accorge che sono cambiati guardando la data di modifica dei file — l'unico
+segnale che esista per gli script, per i quali Home Assistant non emette alcun
+evento. Delle automazioni scritte a mano fuori da quei file conosce il nome ma
+non il corpo: **lo sa e lo dice**, invece di credere che non esistano.
+
+**Il nucleo: la stessa casa, sempre davanti.** Ogni turno di chat comincia da
+un testo solo, ricomposto ogni volta: *La casa* (piani, aree, cosa c'è in
+ciascuna), *Notevole adesso* (cosa è acceso, aperto, in allarme in questo
+momento), *Ciò che la casa fa già da sola*, *Ciò che le persone hanno detto*.
+Prima la stessa casa esisteva in cinque rappresentazioni diverse e nessuno le
+vedeva tutte: la chat ne riceveva una, il resto del sistema un'altra. Adesso è
+una sola. Il testo esatto che il modello riceve si può leggere anche da fuori,
+sull'API dell'add-on: quello che vedi tu è quello che vede lui.
+
+**E dichiara ciò che ignora.** Il nucleo ha una sezione sua — *Ciò che HIRIS
+ignora* — dove finisce quello che non ha potuto leggere. Con Home Assistant
+irraggiungibile non scrive «niente di notevole»: scrive che lo stato non è
+stato letto, e che **non è la stessa cosa**. Se il nucleo supera la propria
+dimensione massima, dice dentro sé stesso quanti elementi ha lasciato fuori,
+invece di troncare in silenzio.
+
+**Quattro strumenti in chat, e nessuno tocca la casa.** `cerca` (trova un'area,
+un'entità o un dispositivo a partire da come lo chiami tu, e quando un nome è
+ambiguo lo dichiara invece di scegliere il primo), `guarda` (il dettaglio di
+una cosa sola — un'area, un'entità col suo **stato di adesso**, un'automazione
+col suo corpo, un ricordo), `ricorda`, `richiama`. Sono quattro al posto dei
+trentaquattro di prima, e **leggono soltanto**. Se HIRIS non riesce a guardare
+lo stato vivo non restituisce un vuoto: marca il risultato come non letto.
+
+**E adesso ricorda davvero.** Dirgli «d'inverno il soggiorno sta bene a 19.5»
+lo fa salvare sul serio, e quel ricordo **ricompare nel nucleo del turno
+successivo**, sotto *Ciò che le persone hanno detto*, con il nome di chi l'ha
+detto. È la riparazione del difetto fondativo di HIRIS: la versione precedente
+rispondeva «preso nota» e non salvava niente (vedi la voce `[1.1.0-beta.18]`
+qui sotto), perché nessuno chiamava mai l'archivio.
+
+**Il ricordo può essere agganciato alla casa.** Oltre alla frase — che si salva
+sempre per intero, non riassunta — HIRIS può registrare a quale area o entità
+si riferisce, che forza ha (preferenza, divieto, fatto, regola), un valore o un
+intervallo e quando vale. Se aggancia il ricordo a qualcosa che nella tua casa
+non esiste, **quell'aggancio non viene scritto** — ma la frase sì, per intero, e
+lo scarto viene dichiarato: mai un ricordo mezzo inventato spacciato per buono.
+
+### Quello che HIRIS non fa più
 
 **HIRIS non tocca più niente in casa tua.** Non accende, non spegne, non crea
 automazioni né plance, non modifica scene, non chiede conferme — perché non c'è
@@ -17,7 +83,9 @@ impianto di conferme perché non lo facesse di nascosto, e la promessa che non h
 mai mantenuto era proprio quella — diceva «fatto» quando non aveva fatto niente.
 Meglio un assistente che sa e te lo dice, che uno che dice di aver fatto.
 
-Ciò che è uscito **tornerà rifatto, con un progetto**: non è un buco da tappare.
+Ciò che è uscito **non c'è più nel prodotto**, e non è nascosto dietro
+un'impostazione da riaccendere: è assenza di codice. La storia di Git lo
+conserva per intero.
 
 **E non ti parla più, se non gli parli tu.** Sono spariti il resoconto delle
 08:00, i solleciti, la scansione di salute notturna, la sorveglianza continua
@@ -64,9 +132,9 @@ chat nuova. Se ne avevi uno e ci tieni, riprendilo dal file prima di riscriverlo
   falliva, ed era protetto da un controllo automatico che verificava una firma
   diversa da quella reale — cioè non lo provava affatto.
 - **La pagina Consumi perde il dettaglio per assistente.** Il contatore
-  **complessivo** — richieste, token, costo — resta vivo e vero. Fino alla
-  prossima versione la sezione per-assistente mostra una riga a zero: **non è un
-  consumo azzerato, è un consumo che non viene più misurato.**
+  **complessivo** — richieste, token, costo — resta vivo e vero. La sezione
+  per-assistente mostra una riga a zero: **non è un consumo azzerato, è un
+  consumo che non viene più misurato.**
 - Il tetto giornaliero dei messaggi di chat instradati sull'abbonamento resta,
   ed è l'unico freno rimasto.
 - Dettaglio per chi ha scritto qualcosa sopra le API di HIRIS: l'evento `done`
@@ -74,16 +142,16 @@ chat nuova. Se ne avevi uno e ci tieni, riprendilo dal file prima di riscriverlo
 
 ### Cosa è ancora rotto mentre scriviamo
 
-Sono i pezzi di interfaccia che la prossima fetta di lavoro rifà. Sono elencati
-qui perché **non li scopra tu**:
+Sono i pezzi di interfaccia rimasti indietro rispetto al prodotto. Sono
+elencati qui perché **non li scopra tu**:
 
 - **L'onboarding compare a ogni installazione nuova e il pulsante «Crea» dà
   errore.** «Salta» funziona ed è la strada giusta: non c'è niente da creare,
   l'assistente è già lì.
 - **L'editor dell'assistente**: Salva, Elimina e Test Run danno errore, e i
   riquadri che non hanno più una fonte si mostrano vuoti.
-- **Le impostazioni della chat non hanno ancora una pagina.** Il modello si
-  sceglie da *Modelli*, che funziona; il resto, per ora, solo da file.
+- **Le impostazioni della chat non hanno una pagina.** Il modello si sceglie da
+  *Modelli*, che funziona; il resto si cambia solo da file.
 
 ## [1.1.0-beta.18] — Adesso ricorda davvero (2026-08-05)
 

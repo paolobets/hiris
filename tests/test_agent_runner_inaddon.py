@@ -271,11 +271,42 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
 # quando suonera' non e' cancellarli ma riscrivere `_CHAT_TOOL_GUIDANCE`.
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _normalizza(argv):
+    """Le opzioni del CLI, in una forma sola.
+
+    `claude` accetta sia `--allowedTools` sia l'alias kebab-case
+    `--allowed-tools`: due grafie della STESSA opzione. Un assert su una sola
+    delle due non scatterebbe se la fetta che riattacca gli strumenti al ponte
+    scrivesse l'altra -- il campanello resterebbe muto proprio nel caso per cui
+    esiste. Confrontare in minuscolo e senza trattini le rende indistinguibili.
+    Si confronta elemento per elemento (mai su una concatenazione): normalizzato,
+    "--disallowedTools" CONTIENE "allowedtools", e un test per sottostringa
+    fallirebbe sull'argv di oggi.
+    """
+    return {a.lower().replace("-", "") for a in argv}
+
+
 def test_argv_del_ponte_non_collega_nessuno_strumento():
     argv = runner._chat_claude_args("SYS", "USER", "sonnet")
+    opzioni = _normalizza(argv)
 
-    assert "--mcp-config" not in argv
-    assert "--allowedTools" not in argv
+    _perche = (
+        "gli strumenti sono tornati sul ponte, ma prompts._CHAT_TOOL_GUIDANCE "
+        "afferma ancora al modello «NON hai alcuno strumento di HIRIS»: il "
+        "prompt e' diventato FALSO a suite verde -- il difetto che la fetta E4 "
+        "esisteva per chiudere. La risposta giusta e' RISCRIVERE "
+        "_CHAT_TOOL_GUIDANCE (e i test che lo pinnano) insieme al nuovo argv, "
+        "non cancellare questo assert."
+    )
+
+    assert "mcpconfig" not in opzioni, (
+        f"--mcp-config e' comparso in argv ({argv!r}): " + _perche)
+    assert "allowedtools" not in opzioni, (
+        f"--allowedTools (o il suo alias --allowed-tools) e' comparso in argv "
+        f"({argv!r}): " + _perche)
     # e i tool LOCALI del CLI restano esplicitamente vietati (shell/fs del
     # container addon): il prompt non e' l'unica difesa.
-    assert "--disallowedTools" in argv
+    assert "disallowedtools" in opzioni, (
+        f"il divieto sui tool LOCALI del CLI (shell/fs del container addon) e' "
+        f"sparito da argv ({argv!r}): il prompt non e' l'unica difesa, e questa "
+        f"e' l'altra.")
