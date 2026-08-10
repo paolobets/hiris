@@ -56,9 +56,13 @@ configuration:
     rag_k:
       name: "RAG Results (k)"
       description: "Number of relevant memories returned during semantic search. Higher values give more context but increase token usage."
+  # fetta E4, bridge repair: see the twin comment in it.yaml. "Leave empty to
+  # auto-generate" was a promise no code kept -- with the field empty (the
+  # config.yaml default) every non-ingress call got 401 and the chat bridge
+  # spun forever. The generation now exists (app/token_interno.py).
   internal_token:
     name: "Internal Token"
-    description: "Secret token used to secure internal API calls between HIRIS components. Leave empty to auto-generate."
+    description: "Secret token that secures HIRIS's internal API calls, including the subscription chat bridge. Leave it empty and HIRIS generates one on first start and keeps it in the add-on data: it stays the same across restarts and you need do nothing. Set it by hand only if another component (the MCP gateway, say) must call the HIRIS API with a token you choose: yours then wins, and HIRIS neither generates nor writes anything."
   supervisor_ingress_cidr:
     name: "Trusted Supervisor ingress CIDR"
     description: "Source IP range(s) treated as genuine HA Supervisor ingress for the X-Ingress-Path bypass (CR-1). Everything else needs the internal token. Default 172.30.32.0/23; tighten (e.g. 172.30.32.2/32) if exposing the API to a tunnel."

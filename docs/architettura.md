@@ -514,6 +514,11 @@ Richiesta
             └── token corrisponde? → consenti | 401
 ```
 
+Il ramo «no» non e' piu' lo stato normale: se l'opzione `internal_token` e' vuota (il default di
+`config.yaml`) l'add-on ne **genera** uno all'avvio con `secrets` e lo conserva in `/data`, cosi'
+sopravvive ai riavvii (`hiris/app/token_interno.py`). Ci si finisce solo se generarlo o scriverlo
+fallisce: in quel caso l'errore e' dichiarato nel log e si continua a **negare**, mai ad aprire.
+
 ### Controllo permessi per Chatbot/Agentbot (ToolDispatcher)
 
 Ogni chiamata tool passa per `ToolDispatcher.dispatch()`:

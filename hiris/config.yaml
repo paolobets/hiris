@@ -65,6 +65,10 @@ options:
     rag_k: 5
 
   # ── General ───────────────────────────────────────────────────────────────
+  # Vuoto e' il default VOLUTO: all'avvio HIRIS genera il token e lo conserva
+  # in /data (app/token_interno.py), cosi' sopravvive ai riavvii. Valorizzarlo
+  # a mano serve solo a imporre un token deciso da chi integra HIRIS con altri
+  # componenti: in quel caso vince il valore scritto qui.
   internal_token: ""
   # CR-1: CIDR sorgenti fidate per il bypass-ingress (X-Ingress-Path). Solo le
   # richieste da questi range sono trattate come ingress del Supervisor; tutto

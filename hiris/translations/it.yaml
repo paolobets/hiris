@@ -56,9 +56,15 @@ configuration:
     rag_k:
       name: "Risultati RAG (k)"
       description: "Numero di memorie rilevanti restituite durante la ricerca semantica. Valori più alti danno più contesto ma aumentano l'uso di token."
+  # fetta E4, riparazione del ponte: la descrizione diceva «Lascia vuoto per
+  # generarlo automaticamente» ma nessuno generava niente -- con il campo vuoto
+  # (il default di config.yaml) ogni chiamata non-ingress prendeva 401 e il
+  # ponte della chat girava a vuoto per sempre. Ora la generazione esiste
+  # davvero (app/token_interno.py) e la descrizione racconta cio' che il codice
+  # fa: genera, conserva in /data, rilegge al riavvio.
   internal_token:
     name: "Token Interno"
-    description: "Token segreto usato per proteggere le chiamate API interne tra i componenti di HIRIS. Lascia vuoto per generarlo automaticamente."
+    description: "Token segreto che protegge le chiamate API interne di HIRIS, fra cui quelle del ponte della chat via abbonamento. Lascialo vuoto e HIRIS ne genera uno al primo avvio e lo conserva nei dati dell'add-on: resta lo stesso a ogni riavvio e non devi farci niente. Valorizzalo a mano solo se un altro componente (per esempio il gateway MCP) deve chiamare la API di HIRIS con un token che decidi tu: in quel caso vince il tuo, e HIRIS non genera ne' scrive nulla."
   supervisor_ingress_cidr:
     name: "CIDR ingress Supervisor fidata"
     description: "Range IP sorgente trattati come vero ingress del Supervisor HA per il bypass X-Ingress-Path (CR-1). Tutto il resto richiede il token interno. Default 172.30.32.0/23; restringi (es. 172.30.32.2/32) se esponi la API a un tunnel."

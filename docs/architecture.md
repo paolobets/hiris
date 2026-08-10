@@ -513,6 +513,12 @@ Request
             └── token match? → allow | 401
 ```
 
+The "no" branch is no longer the normal state: when the `internal_token` option is empty (the
+`config.yaml` default) the add-on **generates** one at startup with `secrets` and keeps it in
+`/data`, so it survives restarts (`hiris/app/token_interno.py`). You only land there if generating
+or writing it fails — and then the error is declared in the log and requests keep being **denied**,
+never allowed.
+
 ### Per-Chatbot/Agentbot permission enforcement (ToolDispatcher)
 
 Every tool call passes through `ToolDispatcher.dispatch()`:

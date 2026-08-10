@@ -32,6 +32,7 @@ from .casa.anagrafe import ricostruisci
 from .memoria.archivio import ArchivioMemoria
 from .casa.comportamento import rileggi, rileggi_plance
 from .env_util import env_bool
+from .token_interno import prepara_token_interno
 from .proxy.entity_cache import EntityCache
 from .backends.embeddings import build_embedding_provider
 from .brain.knowledge_store import KnowledgeStore
@@ -581,7 +582,26 @@ async def _on_startup(app: web.Application) -> None:
             logger.error("Static %s missing at %s", fname, path)
             app[key] = ""
 
-    app["internal_token"] = os.environ.get("INTERNAL_TOKEN", "")
+    # fetta E4 Task 4 ("un bot solo"): prima `data_dir` si derivava da
+    # `CHATBOTS_DATA_PATH` (un file per l'entita' Chatbot che non esiste
+    # piu'). Ne' l'una ne' l'altra erano un'opzione dell'add-on (nessuna voce
+    # in config.yaml/run.sh: solo un varco interno per i test) -- lo stesso
+    # varco, letto direttamente come directory.
+    #
+    # Sta qui in cima, e non piu' sotto insieme al resto degli store, perche'
+    # il token interno ci si conserva dentro (vedi subito sotto) e va risolto
+    # prima che qualunque middleware possa servire una richiesta.
+    data_dir = os.environ.get("HIRIS_DATA_DIR", "/data")
+    app["data_dir"] = data_dir
+    # Il token interno: se l'opzione dell'add-on e' vuota (il default di
+    # config.yaml) viene generato e conservato in `data_dir`, cosi' che
+    # sopravviva ai riavvii -- ed e' `prepara_token_interno` a ripubblicarlo
+    # anche in `os.environ["INTERNAL_TOKEN"]`, perche' il worker del ponte
+    # (`agent/runner.py::build_headers`) legge di li' a ogni giro e senza
+    # quella riga continuerebbe a mandare l'header vuoto. Se generarlo o
+    # scriverlo fallisce si torna "" e il rifiuto-per-default resta in piedi,
+    # dichiarato nel log: vedi `token_interno.py`.
+    app["internal_token"] = prepara_token_interno(data_dir)
     # CR-1: trusted Supervisor-ingress source CIDRs. The ingress-bypass in
     # internal_auth_middleware only applies to requests from these ranges, so a
     # forged X-Ingress-Path from a direct LAN/tunnel client cannot bypass the
@@ -629,13 +649,9 @@ async def _on_startup(app: web.Application) -> None:
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
 
-    # fetta E4 Task 4 ("un bot solo"): prima `data_dir` si derivava da
-    # `CHATBOTS_DATA_PATH` (un file per l'entita' Chatbot che non esiste
-    # piu'). Ne' l'una ne' l'altra erano un'opzione dell'add-on (nessuna voce
-    # in config.yaml/run.sh: solo un varco interno per i test) -- lo stesso
-    # varco, letto direttamente come directory.
-    data_dir = os.environ.get("HIRIS_DATA_DIR", "/data")
-    app["data_dir"] = data_dir
+    # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
+    # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
+    # stata spostata).
     # SP-2 Task 4: models-config store (chain_order + brain_model), letta prima
     # della costruzione LLMRouter più sotto così il chain-build (Task 2 Step 5)
     # può leggere chain_order, e prima di _holistic_reason (Brain) che legge
