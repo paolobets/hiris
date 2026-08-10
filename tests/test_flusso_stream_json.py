@@ -391,11 +391,15 @@ def test_il_sentinella_del_flusso_incompleto_e_filtrato_dalla_cronologia():
 
 def test_leggi_flusso_estrae_i_tool_use_in_ordine():
     # Step 6, ① del brief: due `tool_use` estratti IN ORDINE da un flusso
-    # costruito a mano.
+    # costruito a mano. Entrambi RISOLTI (un `tool_result` con `is_error:
+    # false` per ciascuno): qui si prova l'ORDINE, non lo stato di
+    # risoluzione -- quello ha i suoi test dedicati piu' sotto (fix round 1).
     esito = runner.leggi_flusso(_flusso(
         _init(),
         _tool_use("mcp__hiris__guarda", {"cosa": "salotto"}, id_="t1"),
+        _tool_result("t1", is_error=False),
         _tool_use("mcp__hiris__ricorda", {"testo": "la caldaia perde"}, id_="t2"),
+        _tool_result("t2", is_error=False),
         _result("fatto")))
 
     assert esito.tools_called == [
@@ -424,9 +428,11 @@ def test_il_nome_e_grezzo_e_non_normalizzato():
     # nome mai servito (uno strumento locale del CLI, o un nome inventato)
     # arriva cosi' com'e', non filtrato -- e' precisamente il caso ("il
     # modello chiama qualcosa che non gli abbiamo dato") che riscrivere il
-    # nome nasconderebbe.
+    # nome nasconderebbe. Risolta (con esito, per isolare cio' che questo
+    # test prova: il nome, non lo stato).
     esito = runner.leggi_flusso(_flusso(
-        _init(), _tool_use("Bash", {"command": "rm -rf /"}), _result("ok")))
+        _init(), _tool_use("Bash", {"command": "rm -rf /"}, id_="t1"),
+        _tool_result("t1", is_error=False), _result("ok")))
     assert esito.tools_called == [{"tool": "Bash", "input": {"command": "rm -rf /"}}]
 
 
@@ -434,8 +440,11 @@ def test_la_forma_e_identica_a_quella_del_ramo_sincrono():
     # Step 2 del brief: `{"tool": ..., "input": ...}`, IDENTICA a
     # `handlers_chat.py` (`tools_called = [{"tool": t.get("tool", ""),
     # "input": t.get("input")} ...]`) -- una forma sola per la UI della E5.
+    # Risolta con successo: e' la forma del caso comune, quella che deve
+    # combaciare col ramo sincrono bit-per-bit.
     esito = runner.leggi_flusso(_flusso(
-        _init(), _tool_use("mcp__hiris__cerca", {"query": "termosifone"}), _result("ok")))
+        _init(), _tool_use("mcp__hiris__cerca", {"query": "termosifone"}, id_="t1"),
+        _tool_result("t1", is_error=False), _result("ok")))
     voce = esito.tools_called[0]
     assert set(voce) == {"tool", "input"}
     assert voce == {"tool": "mcp__hiris__cerca", "input": {"query": "termosifone"}}
@@ -466,13 +475,43 @@ def test_una_chiamata_fallita_resta_distinguibile_da_una_riuscita():
 def test_un_tool_result_senza_tool_use_corrispondente_non_solleva():
     # Un `tool_use_id` che non corrisponde a nessuna chiamata vista (flusso
     # troncato proprio li', o formato imprevisto): non deve far cadere la
-    # lettura, e la chiamata gia' vista resta quella che era.
+    # lettura. La chiamata gia' vista (`t1`) pero' NON ha ricevuto nessun
+    # `tool_result` -- quello spaiato non conta come suo -- quindi resta
+    # SENZA esito confermato: fix round 1, e' esattamente il caso che
+    # l'Important ha trovato mancante (vedi il test gemello sotto).
     esito = runner.leggi_flusso(_flusso(
         _init(),
         _tool_use("mcp__hiris__guarda", {}, id_="t1"),
         _tool_result("id-mai-visto", is_error=True),
         _result("ok")))
-    assert esito.tools_called == [{"tool": "mcp__hiris__guarda", "input": {}}]
+    assert esito.tools_called == [
+        {"tool": "mcp__hiris__guarda", "input": {}, "esito": "sconosciuto"}]
+
+
+def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
+    """Fix round 1, Important. Prima di questo fix, un `tool_use` il cui
+    `tool_result` non arriva MAI (flusso troncato -- `risultato_presente`
+    `False` -- o un `result` di errore/max-turns che chiude il flusso con una
+    chiamata ancora aperta pur con `rc == 0`) produceva la STESSA forma di una
+    chiamata riuscita: `{"tool", "input"}`, senza nessuna terza chiave. Un
+    `ricorda` fallito il cui esito si perde nel troncamento sarebbe apparso,
+    nel dato, come un ricordo salvato -- l'esatto opposto di cio' per cui
+    questo task esiste.
+
+    Qui il flusso si tronca DAVVERO subito dopo il `tool_use` (nessun evento
+    `result` finale): e' il caso (3) gia' dichiarato da
+    `risultato_presente`, incontrato ora anche da `tools_called`."""
+    esito = runner.leggi_flusso(_flusso(
+        _init(), _tool_use("mcp__hiris__ricorda", {"testo": "mai confermato"}, id_="t1")))
+
+    assert esito.risultato_presente is False  # il troncamento vero, non simulato
+    mai_risolta = esito.tools_called[0]
+    riuscita = {"tool": "mcp__hiris__ricorda", "input": {"testo": "mai confermato"}}
+
+    assert mai_risolta != riuscita, (
+        "una chiamata MAI risolta non deve avere la stessa forma di una riuscita")
+    assert mai_risolta == {**riuscita, "esito": "sconosciuto"}
+    assert "is_error" not in mai_risolta  # non e' nemmeno il caso "fallita": e' IGNOTO
 
 
 # -- la decision che _reason_chat restituisce --------------------------------
@@ -495,8 +534,8 @@ def test_decision_mock_non_porta_tools_called():
 
 def test_decision_porta_le_chiamate_nella_stessa_forma_della_lista():
     decisione = _reason_full(_flusso(
-        _init(), _tool_use("mcp__hiris__ricorda", {"testo": "la caldaia perde"}),
-        _result("preso nota")))
+        _init(), _tool_use("mcp__hiris__ricorda", {"testo": "la caldaia perde"}, id_="t1"),
+        _tool_result("t1", is_error=False), _result("preso nota")))
     assert decisione["tools_called"] == [
         {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}}]
 
@@ -578,10 +617,15 @@ def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe()
     questo task esiste: quello in cui promessa e fatti divergono.
     `tools_called` porta quindi le chiamate di ENTRAMBI i giri, nell'ordine
     (primo, poi secondo)."""
+    # `t1` e' RISOLTA (un `tool_result` con `is_error: false`, come una
+    # scrittura MCP che verso il NOSTRO stesso add-on e' davvero riuscita):
+    # questo test prova l'ACCUMULO fra i due giri, non lo stato di
+    # risoluzione -- quello ha i suoi test dedicati (fix round 1, sopra).
     primo_giro = _flusso(
         _init(mcp_servers=[{"name": "hiris", "status": "failed"}]),
         _tool_use("mcp__hiris__ricorda",
                   {"testo": "scritto durante il giro poi buttato"}, id_="t1"),
+        _tool_result("t1", is_error=False),
         _result("mi sono segnato la cosa"))
     secondo_giro = _flusso(_init(mcp_servers=[]), _result("ok, senza strumenti"))
 

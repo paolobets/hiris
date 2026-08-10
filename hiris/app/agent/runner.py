@@ -600,11 +600,26 @@ class EsitoFlusso:
       (`mcp__hiris__ricorda`), MAI normalizzato: normalizzarlo nasconderebbe il
       caso -- il solo che conta per questo task -- in cui il modello chiama
       qualcosa che non gli abbiamo dato. Quando un `tool_result` abbinato
-      (stesso `tool_use_id`, in un evento `user` successivo) porta
+      (stesso `tool_use_id`, in un evento `user` successivo) ARRIVA ed e'
       `is_error: true`, la voce guadagna una terza chiave, `"is_error": True`:
-      SOLO in quel caso, cosi' una chiamata riuscita resta bit-per-bit la
-      stessa forma del ramo sincrono, e una fallita resta DISTINGUIBILE invece
-      di sparire nella stessa forma di una riuscita."""
+      cosi' una chiamata riuscita (esito arrivato, senza errore) resta
+      bit-per-bit la stessa forma del ramo sincrono, e una fallita resta
+      DISTINGUIBILE invece di sparire nella stessa forma di una riuscita.
+
+      **Fix round 1, Important**: l'ASSENZA di `is_error` significa "nessun
+      esito d'errore VISTO", non "prova di riuscita". Un `tool_use` il cui
+      `tool_result` non arriva MAI -- flusso troncato (`risultato_presente`
+      `False`), o un `result` di errore/max-turns che chiude il flusso con una
+      chiamata ancora aperta pur con `rc == 0` -- e' esattamente il caso (3)
+      che questo modulo gia' dichiara altrove, e prima di questo fix
+      produceva la STESSA forma di una riuscita: `{"tool", "input"}`, senza
+      nessuna terza chiave. Un `ricorda` fallito il cui esito si perde nel
+      troncamento sarebbe apparso come un ricordo salvato. Ora quella voce
+      guadagna una terza chiave diversa, `"esito": "sconosciuto"`
+      (mutualmente esclusiva con `"is_error"`: una voce e' o RISOLTA -- riuscita
+      senza terza chiave, o fallita con `is_error` -- o SCONOSCIUTA, mai due
+      cose insieme): tre stati, tre forme, e nessuno dei tre si confonde con
+      un altro."""
 
     testo: str = ""
     init: dict | None = None
@@ -712,11 +727,33 @@ def leggi_flusso(stdout: str) -> EsitoFlusso:
                     continue
                 id_chiamata = blocco.get("tool_use_id")
                 voce = chiamate_per_id.get(id_chiamata) if isinstance(id_chiamata, str) else None
-                if voce is not None and blocco.get("is_error"):
-                    # Solo quando VERO: cosi' una chiamata riuscita resta
-                    # bit-per-bit {"tool":..., "input":...}, identica alla
-                    # forma del ramo sincrono (Step 2 del brief).
+                if voce is None:
+                    continue
+                # Fix round 1, Important: l'esito e' ARRIVATO -- si segna
+                # SEMPRE (`_risolto`), non solo quando e' un errore. E'
+                # questo marcatore, tolto qui sotto dopo il ciclo, che
+                # distingue "arrivato e riuscito" da "mai arrivato": senza,
+                # i due casi produrrebbero la stessa forma (vedi il
+                # docstring di `EsitoFlusso.tools_called`).
+                voce["_risolto"] = True
+                if blocco.get("is_error"):
+                    # Solo quando VERO: cosi' una chiamata riuscita (esito
+                    # arrivato, senza errore) resta bit-per-bit
+                    # {"tool":..., "input":...}, identica alla forma del
+                    # ramo sincrono (Step 2 del brief).
                     voce["is_error"] = True
+    # Fix round 1, Important: le voci il cui `tool_result` non e' MAI
+    # arrivato (flusso troncato, o un `result` di errore/max-turns che
+    # chiude tutto con una chiamata ancora aperta) restano senza il
+    # marcatore `_risolto` -- si tolgono a fine ciclo, dopo aver letto
+    # TUTTI gli eventi, perche' un `tool_result` puo' arrivare in una riga
+    # successiva a quella del `tool_use` che lo attende. Il silenzio
+    # dichiarato (6) della fetta: senza questa marcatura un `ricorda`
+    # fallito il cui esito si perde nel troncamento sarebbe apparso, nel
+    # dato, come un ricordo salvato.
+    for voce in esito.tools_called:
+        if not voce.pop("_risolto", False):
+            voce["esito"] = "sconosciuto"
     risultato = esito.risultato or {}
     testo = risultato.get("result")
     esito.testo = testo if isinstance(testo, str) else ""
@@ -925,6 +962,19 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # fatti hanno divergito. Si accumula quindi su ENTRAMBE, nell'ordine
     # (primo giro, poi secondo), nella stessa lista che diventa
     # `decision["tools_called"]`.
+    #
+    # Step 5 del brief -- la nota che va dichiarata, non risolta qui. La
+    # fetta A (Task 5, reasoning/queue.py::submit) azzera `context_json` a
+    # job risolto, ma NON `decision_json` -- la risposta, che serve al poll.
+    # Questa lista vive quindi in `decision["tools_called"]` e resta su
+    # disco fino alla potatura a 7 giorni, con gli INPUT che il modello ha
+    # passato agli strumenti: per `ricorda`, non solo `testo` ma anche
+    # `detto_da` (un identificativo di PERSONA), `ancore` e `condizioni`
+    # (`casa/strumenti.py::_ricorda`, `argomenti.get(...)`); per `cerca`, la
+    # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
+    # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
+    # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5
+    # della fetta A l'aveva appena tolto dal `context`.
     tools_called_turno: list = []
 
     def _reply(testo: str) -> dict:
