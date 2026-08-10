@@ -98,9 +98,10 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
 
     Condivisa da `handle_get_nucleo` (GET /api/nucleo, la verifica dal vivo)
-    e da `handlers_chat.handle_chat` (il contesto che il modello riceve
-    davvero, Task 3 -- vedi .superpowers/sdd/task-3-brief.md): la STESSA
-    composizione, non due che potrebbero divergere -- e' esattamente la
+    e da `handlers_chat.componi_contesto_chat` (il contesto che il modello
+    riceve davvero -- dalla fetta "il ponte riceve il nucleo", parita' A, su
+    ENTRAMBI i percorsi di chat: il sincrono e quello in abbonamento): la
+    STESSA composizione, non due che potrebbero divergere -- e' esattamente la
     sovrapposizione n.1 della mappa del prodotto (vedi
     docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7) che questa
     condivisione esiste per chiudere: prima la chat vedeva una mappa senza

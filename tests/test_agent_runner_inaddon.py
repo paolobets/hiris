@@ -219,7 +219,8 @@ def test_run_once_job_non_chat_invia_la_decisione_vuota_senza_chiamare_claude():
 
 def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     system, _user = prompts.build_chat_messages(
-        "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.", [])
+        "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
+        [], contesto="## La casa\nSalotto: luce accesa.")
 
     # dice il vero su cio' che NON ha
     assert "NON hai alcuno strumento" in system
@@ -232,6 +233,25 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     assert "per agire" not in system
     assert "Hai accesso a strumenti" not in system
     assert "in attesa di conferma" not in system
+
+    # ── fetta "il ponte riceve il nucleo" (parita' A, Task 2): il pin si
+    # ESTENDE, non si riduce. Tutte le asserzioni qui sopra restano -- gli
+    # strumenti sul ponte continuano a non esserci, e questa fetta non glieli
+    # da'. Cio' che cambia e' che il ponte ora RICEVE il nucleo: continuare a
+    # dire al modello «non puoi leggere lo stato della casa» sarebbe la
+    # falsita' SPECULARE, dello stesso genere di quelle tre. Il prompt deve
+    # dire l'una e l'altra cosa insieme: nessuno strumento, ma una fotografia
+    # -- e la fotografia e' ancorata al TURNO, mai a un orario (il nucleo non
+    # timbra: `casa/nucleo.py::componi` e' pura e non compone nessuna data,
+    # quindi qualunque ora nel prompt sarebbe inventata).
+    assert "la fotografia qui sotto" in system
+    assert "non e' aggiornabile in questo turno" in system
+    assert "non presentarla come una lettura fatta adesso" in system
+    # la falsita' speculare: il prompt non deve piu' negare al presente che il
+    # modello possa leggere la casa, perche' la casa gliela stiamo dando.
+    assert "non puoi leggere lo stato della casa" not in system
+    # e il contesto ricevuto e' davvero nel prompt, non solo annunciato
+    assert "Salotto: luce accesa." in system
 
 
 def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
@@ -254,7 +274,14 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # cioe' proprio la mutazione che questo test dichiara di sorvegliare.
     # L'invariante e' che LA GUIDA li nomini per negarli, quindi si asserisce
     # sul segmento della guida, non sulla concatenazione.
-    guida = prompts._CHAT_TOOL_GUIDANCE
+    # fetta "il ponte riceve il nucleo" (parita' A, Task 2): `_CHAT_TOOL_
+    # GUIDANCE` si chiama ora `_GUIDA_SENZA_STRUMENTI`, perche' le guide sono
+    # diventate DUE -- l'altra (`_GUIDA_CON_STRUMENTI`) e' scritta per la
+    # fetta B e non e' raggiungibile dalla produzione. Il soggetto di questo
+    # test e' vivo e invariato: cambia solo la via d'accesso, quindi il test
+    # si adegua invece di essere cancellato (verificato prima dell'adeguamento
+    # che falliva con AttributeError, cioe' per costruzione).
+    guida = prompts._GUIDA_SENZA_STRUMENTI
     assert "`cerca`" in guida and "`guarda`" in guida
     assert "`ricorda`" in guida and "`richiama`" in guida
     assert guida in system
@@ -268,7 +295,10 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
 # renderebbe il prompt falso A SUITE VERDE -- riaprendo esattamente il difetto
 # che la fetta E4 esisteva per chiudere. E quella fetta e' gia' decisa: questi
 # due assert sono il campanello che dovra' suonare, e la risposta giusta
-# quando suonera' non e' cancellarli ma riscrivere `_CHAT_TOOL_GUIDANCE`.
+# quando suonera' non e' cancellarli ma riscrivere `_GUIDA_SENZA_STRUMENTI`
+# (che fino alla fetta "il ponte riceve il nucleo" si chiamava
+# `_CHAT_TOOL_GUIDANCE`) -- o meglio: girare `strumenti_attivi` su
+# `_GUIDA_CON_STRUMENTI`, che quella fetta ha gia' scritto apposta.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _normalizza(argv):
@@ -291,12 +321,13 @@ def test_argv_del_ponte_non_collega_nessuno_strumento():
     opzioni = _normalizza(argv)
 
     _perche = (
-        "gli strumenti sono tornati sul ponte, ma prompts._CHAT_TOOL_GUIDANCE "
+        "gli strumenti sono tornati sul ponte, ma prompts._GUIDA_SENZA_STRUMENTI "
         "afferma ancora al modello «NON hai alcuno strumento di HIRIS»: il "
         "prompt e' diventato FALSO a suite verde -- il difetto che la fetta E4 "
-        "esisteva per chiudere. La risposta giusta e' RISCRIVERE "
-        "_CHAT_TOOL_GUIDANCE (e i test che lo pinnano) insieme al nuovo argv, "
-        "non cancellare questo assert."
+        "esisteva per chiudere. La risposta giusta e' passare "
+        "strumenti_attivi=True a build_chat_messages (il ramo "
+        "_GUIDA_CON_STRUMENTI e' gia' scritto) e riscrivere i test che lo "
+        "pinnano insieme al nuovo argv, non cancellare questo assert."
     )
 
     assert "mcpconfig" not in opzioni, (

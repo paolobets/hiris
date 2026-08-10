@@ -462,3 +462,61 @@ def test_subscription_first_class_implies_bridge():
 def test_subscription_without_bridge_still_fails_closed():
     # invariante preservata: manca il bridge => NON attivo (fail-safe #1)
     assert _chat_subscription_active(True, False) is False
+
+
+# ---------------------------------------------------------------------------
+# fetta «il ponte riceve il nucleo» (parita' A, Task 2): il job accodato porta
+# anche il CONTESTO della casa. Prima di questa fetta il ponte riceveva solo
+# `history` + `system_prompt` e rispondeva senza sapere nulla della casa,
+# mentre il percorso sincrono aveva il nucleo: era la disparita' che la fetta
+# chiude. Il pin decisivo non e' "il contesto c'e'" ma "e' IDENTICO a quello
+# del ramo sincrono": entrambi vengono da `componi_contesto_chat`, e due
+# composizioni separate divergerebbero in silenzio (la "funzione doppia"
+# vietata da CLAUDE.md).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
+    from hiris.app.api.handlers_chat import componi_contesto_chat
+    from hiris.app.casa.archivio import ArchivioCasa
+    from hiris.app.memoria.archivio import ArchivioMemoria
+
+    app, q, runner, impostazioni, data_dir = _make_app(
+        tmp_path, chat_via_subscription=True, with_queue=True)
+
+    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio_casa.sostituisci({
+        "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
+        "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
+        "dispositivi": [],
+        "entita": [{"entity_id": "light.cucina", "name": "Faretti",
+                    "area_id": "cucina"}],
+        "etichette": [], "categorie": [], "integrazioni": [],
+    })
+    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
+    archivio_memoria.ricorda("La cucina ha i faretti dimmerabili", "paolo")
+    app["archivio_casa"] = archivio_casa
+    app["archivio_memoria"] = archivio_memoria
+
+    try:
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/chat", json={"message": "che c'e' in cucina?"})
+            assert resp.status == 202
+            body = await resp.json()
+
+        job = q.get(body["job_id"])
+        contesto = job["context"]["contesto"]
+
+        # ① la casa seminata e' arrivata davvero al ponte -- le sezioni del
+        # nucleo, la stanza seminata e il ricordo seminato
+        assert "## La casa" in contesto and "Cucina" in contesto
+        assert "## Cio' che le persone hanno detto" in contesto
+        assert "faretti dimmerabili" in contesto
+
+        # ② ed e' ESATTAMENTE la stringa che il ramo sincrono compone per la
+        # stessa app: se un giorno i due percorsi divergono, questo assert e'
+        # il primo a saperlo.
+        assert contesto == componi_contesto_chat(app, data_dir)
+    finally:
+        archivio_casa.chiudi()
+        archivio_memoria.chiudi()

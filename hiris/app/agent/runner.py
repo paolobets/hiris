@@ -7,9 +7,20 @@ API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 NB (Fetta E2 Task 3): il percorso `claude --mcp-config` verso l'MCP interno
 (Piano 2A, hiris/app/mcp/) e' uscito insieme al server che serviva -- era il
 terzo catalogo di strumenti della mappa del prodotto, e ora MCP non e' piu'
-servito a Claude. `_reason_chat` sotto quindi ragiona in puro testo, senza
-poter leggere o controllare la casa: e' un guscio ridotto, non spetta a
-questo task rifarlo (arriva con il ponte push, un'altra fetta)."""
+servito a Claude. `_reason_chat` sotto quindi ragiona SENZA STRUMENTI: non
+puo' guardare la casa in questo momento ne' salvare o richiamare ricordi, e
+non puo' controllarla.
+
+fetta "il ponte riceve il nucleo" (parita' A, Task 2): questa nota diceva
+«ragiona in puro testo, senza poter leggere o controllare la casa». La prima
+meta' e' diventata falsa: il job di chat porta ora anche `contesto`, la
+STESSA stringa che il ramo sincrono passa al runner
+(`handlers_chat.componi_contesto_chat`: nucleo + sessioni precedenti), e
+`_reason_chat` la passa a `prompts.build_chat_messages`. Il modello quindi
+LEGGE una fotografia della casa, presa quando il messaggio e' stato accodato;
+cio' che continua a non poter fare e' guardarla ADESSO e agire su di essa.
+Gli strumenti restano fuori: li riattacca la fetta B
+(docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md)."""
 import asyncio, json, logging, os, subprocess, time
 import httpx
 from . import prompts
@@ -51,15 +62,42 @@ def _safe_subprocess_env() -> dict:
     return env
 
 def _reason_chat(job: dict, mode: str) -> dict:
-    """Chat-via-abbonamento: risponde come HIRIS in puro testo (nessun tool HA:
-    l'MCP interno che li serviva e' uscito, Fetta E2 Task 3). Fail-safe:
-    mode!=live -> mock; su errore torna sempre una {"reply": <str>}."""
+    """Chat-via-abbonamento: risponde come HIRIS senza strumenti (nessun tool
+    HA: l'MCP interno che li serviva e' uscito, Fetta E2 Task 3) ma CON il
+    contesto della casa -- il nucleo e le sessioni precedenti che il job porta
+    nella chiave `contesto` (fetta "il ponte riceve il nucleo", parita' A,
+    Task 2). Fail-safe: mode!=live -> mock; su errore torna sempre una
+    {"reply": <str>}."""
     context = job.get("context") or {}
     history = context.get("history") or []
     system_prompt = context.get("system_prompt") or ""
     if mode != "live":           # fail-safe: qualunque valore != "live" = mock
         return {"reply": "[mock] risposta di prova"}
-    system, user = prompts.build_chat_messages(system_prompt, history)
+    # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
+    # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
+    # solo `history` + `system_prompt`. Arriva qui senza la chiave `contesto`
+    # e non c'e' modo di ricomporla (il runner non ha ne' l'app ne' gli
+    # archivi). NON si scrive `context.get("contesto") or ""`: un silenzio non
+    # dichiarato e' indistinguibile da un'assenza di problemi, e questo caso
+    # limite produce una risposta che al modello -- e all'utente -- sembra
+    # normale pur essendo cieca sulla casa. Si distingue la chiave ASSENTE
+    # (job legacy: log esplicito) da una chiave presente e vuota (il nucleo
+    # non si e' composto: lo dichiara gia' il suo testo, vedi
+    # `handlers_chat.componi_contesto_chat`). In entrambi i casi il prompt
+    # dice al modello che in questo turno non ha la fotografia della casa
+    # (`prompts._CONTESTO_ASSENTE`): il degrado si dichiara anche a valle,
+    # non solo in un log che nessuno legge.
+    if "contesto" in context:
+        contesto = context.get("contesto") or ""
+    else:
+        log.warning(
+            "job di chat senza la chiave 'contesto' (job_id=%s): accodato PRIMA "
+            "di questo deploy, quando il ponte non riceveva il nucleo -- verra' "
+            "ragionato SENZA la casa, e il prompt lo dichiara al modello",
+            (job or {}).get("job_id"))
+        contesto = ""
+    system, user = prompts.build_chat_messages(system_prompt, history,
+                                               contesto=contesto)
     model = os.environ.get("HIRIS_AGENT_CHAT_MODEL", "sonnet")
     argv = _chat_claude_args(system, user, model)
     try:

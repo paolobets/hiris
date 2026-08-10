@@ -199,6 +199,19 @@ async def _enqueue_chat_job(
     context = {
         "history": sanitized_history,
         "system_prompt": system_prompt,
+        # fetta "il ponte riceve il nucleo" (parita' A, Task 2): il job porta
+        # anche il contesto della casa -- la STESSA stringa che il ramo
+        # sincrono passa al runner, dalla STESSA funzione (non una seconda
+        # composizione destinata a divergere). Prima di questo task il ponte
+        # riceveva solo `history` + `system_prompt` e rispondeva senza sapere
+        # nulla della casa, mentre il percorso sincrono aveva il nucleo: era
+        # la disparita' che questa fetta chiude. Si compone QUI, al momento
+        # dell'accodamento, perche' e' l'ultimo punto in cui esistono l'app e
+        # gli archivi: il runner del ponte gira altrove e non li ha. Da cui
+        # l'unica cosa che il prompt puo' promettere al modello e' una
+        # fotografia presa in questo istante, non una lettura dal vivo (vedi
+        # `agent/prompts.py`).
+        "contesto": componi_contesto_chat(request.app, data_dir),
     }
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
