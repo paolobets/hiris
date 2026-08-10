@@ -10,9 +10,7 @@ terzo catalogo di strumenti della mappa del prodotto, e ora MCP non e' piu'
 servito a Claude. `_reason_chat` sotto quindi ragiona in puro testo, senza
 poter leggere o controllare la casa: e' un guscio ridotto, non spetta a
 questo task rifarlo (arriva con il ponte push, un'altra fetta)."""
-import asyncio, json, logging, os, re, subprocess, time
-from dataclasses import asdict, dataclass
-from typing import Optional
+import asyncio, json, logging, os, subprocess, time
 import httpx
 from . import prompts
 
@@ -29,91 +27,6 @@ def _chat_claude_args(system: str, user: str, model: str) -> list:
             "--exclude-dynamic-system-prompt-sections",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default", "--output-format", "json"]
-
-
-# fetta E3 Task 7: l'interpretazione della risposta del modello viveva in
-# `watcher.reasoner` ("Consolidamento 1.4: unica implementazione, non due
-# copie divergenti"). La Sentinella (guardiano/ragionatore/esecutore) e' uscita
-# per intero in questo task -- ma questo runner (il ponte push del Piano A,
-# vivo) restava l'ALTRO chiamante di quel parser, quindi il parser si sposta
-# qui con lui invece di sparire. E' di nuovo un'unica implementazione: prima
-# c'erano due moduli che si spartivano la stessa funzione (uno la definiva,
-# uno la usava), ora ce n'e' uno solo perche' l'altro chiamante non esiste
-# piu'.
-VERDICT_ANOMALY = "anomalia"
-VERDICT_FALSE_POSITIVE = "falso_positivo"
-VERDICTS = (VERDICT_ANOMALY, VERDICT_FALSE_POSITIVE)
-
-# Soglia per il testo grezzo riportato come messaggio quando non c'e' nulla da
-# interpretare (nessun blocco ```json``` valido nella risposta del modello).
-FALLBACK_MESSAGE_MAX = 500
-
-_JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
-
-
-@dataclass
-class Decision:
-    verdict: str            # "anomalia" | "falso_positivo"
-    severity: str           # "info" | "warn" | "critico"
-    message: str
-    action: Optional[dict] = None   # {"domain","service","entity_id","data"} | None
-
-
-def _parse_decision(text: str, default_severity: str = "info",
-                    default_verdict: str = VERDICT_FALSE_POSITIVE) -> Decision:
-    """Legge l'ultimo blocco ```json``` della risposta del modello e ne ricava
-    una Decision. Non solleva mai.
-
-    `default_verdict` e' il verdetto usato quando la risposta non e'
-    interpretabile: nessun blocco json, json non valido, json che non e' un
-    oggetto, oppure oggetto senza il campo `verdict`. Sono tutti lo stesso
-    caso -- il modello non ha detto cosa pensa. Questo runner ragiona in
-    remoto: la Decisione arriva a HIRIS attraverso la rete e (da fetta E3
-    Task 4) non viene piu' applicata da nessun esecutore automatico --
-    `handle_reasoning_submit` (handlers_reasoning.py) si limita a
-    REGISTRARLA con un warning. Il fail-closed (`default_verdict=
-    "falso_positivo"`) resta comunque la scelta giusta in caso di dubbio --
-    difesa in profondita', anche senza un esecutore a valle.
-
-    Un `default_verdict` fuori da VERDICTS ricade sul piu' prudente
-    ("falso_positivo"): un valore inatteso non deve poter aprire la strada
-    all'attuazione."""
-    if default_verdict not in VERDICTS:
-        default_verdict = VERDICT_FALSE_POSITIVE
-    m = list(_JSON_RE.finditer(text or ""))
-    if m:
-        try:
-            obj = json.loads(m[-1].group(1))
-        except (ValueError, TypeError):
-            obj = None
-        # Il blocco puo' contenere una lista o uno scalare: senza questa
-        # guardia `obj.get` sollevava AttributeError, che non e' fra le
-        # eccezioni catturate -- il parsing crashava invece di ricadere sul
-        # fallback.
-        if isinstance(obj, dict):
-            action = obj.get("action")
-            return Decision(
-                verdict=str(obj.get("verdict") or default_verdict),
-                severity=str(obj.get("severity") or default_severity),
-                message=str(obj.get("message", "")).strip() or "(nessun messaggio)",
-                action=action if isinstance(action, dict) else None,
-            )
-    return Decision(verdict=default_verdict, severity=default_severity,
-                    message=(text or "").strip()[:FALLBACK_MESSAGE_MAX] or "(vuoto)",
-                    action=None)
-
-
-def parse_decision(text: str) -> dict:
-    """Decisione del runner nella forma che viaggia sulla reasoning API.
-
-    `_parse_decision` ritorna una `Decision` (dataclass); la reasoning API
-    vuole un dizionario `{verdict, severity, message, action}` -- `asdict` e'
-    l'intera conversione, i campi coincidono uno a uno. Fail-closed:
-    `default_severity="info"`, `default_verdict=VERDICT_FALSE_POSITIVE` --
-    nel dubbio il livello piu' basso e nessuna azione richiesta."""
-    return asdict(_parse_decision(
-        text, default_severity="info",
-        default_verdict=VERDICT_FALSE_POSITIVE))
 
 
 # M-1 (Plan 2B final review, fast-follow): CLAUDE_API_KEY is HIRIS's own
@@ -176,35 +89,31 @@ def _reason_chat(job: dict, mode: str) -> dict:
         return {"reply": "[runner non disponibile]"}
 
 def reason(job: dict, mode: str) -> dict:
-    if (job or {}).get("kind") == "chat":
+    """Il runner del ponte ragiona SOLO i job di chat.
+
+    fetta E4 Task 8 ("un bot solo"): il ramo olistico e' uscito, con lui
+    `prompts.build_holistic_prompt`/`_SYSTEM` e l'intero apparato che ne
+    interpretava la risposta (`Decision`, `VERDICT_*`, `_parse_decision`,
+    `parse_decision`). Il motivo e' che nessuno puo' piu' produrre un job
+    diverso da "chat": l'unico `enqueue` del repo e' `kind="chat"`
+    (api/handlers_chat.py), e il produttore dei job olistici
+    (`_holistic_reason`) e' uscito alla fetta E3 Task 4.
+
+    Silenzio dichiarato: un job non-chat puo' arrivare qui SOLO da un
+    reasoning.db lasciato da un'installazione precedente questo deploy.
+    Non lo si ignora in silenzio -- un pass muto sarebbe indistinguibile da
+    un'assenza di problemi: un log esplicito lo dichiara e la decisione
+    restituita e' VUOTA (nessun verdetto, nessuna azione). A valle,
+    `handle_reasoning_submit` (api/handlers_reasoning.py) la registra e
+    basta: non attua piu' nulla da fetta E3 Task 9."""
+    kind = (job or {}).get("kind")
+    if kind == "chat":
         return _reason_chat(job, mode)
-    snapshot = (job.get("context") or {}).get("snapshot", {})
-    if mode != "live":            # fail-safe: any non-"live" value = mock (no spend)
-        return {"verdict": "anomalia", "severity": "info",
-                "message": "[mock] revisione olistica", "action": None}
-    prompt = prompts.build_holistic_prompt(snapshot)
-    model = os.environ.get("HIRIS_AGENT_MODEL", "sonnet")
-    try:
-        proc = subprocess.run(
-            ["claude", "-p", prompt, "--model", model,
-             "--disallowedTools",
-             "Bash,Read,Write,Edit,WebFetch,WebSearch,Glob,Grep,NotebookEdit,NotebookRead,Task",
-             "--permission-mode", "default", "--output-format", "json"],
-            capture_output=True, text=True, timeout=300, env=_safe_subprocess_env())
-        if proc.returncode != 0:
-            log.warning("claude rc=%s: %s", proc.returncode, proc.stderr[:300])
-            return {"verdict": "falso_positivo", "severity": "info",
-                    "message": "[errore runner]", "action": None}
-        try:
-            data = json.loads(proc.stdout)
-            text = data.get("result") or ""
-        except (ValueError, TypeError):
-            text = proc.stdout
-        return parse_decision(text)
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-        log.warning("claude non eseguibile: %s", type(exc).__name__)
-        return {"verdict": "falso_positivo", "severity": "info",
-                "message": "[runner non disponibile]", "action": None}
+    log.warning(
+        "job non-chat in coda: nessun ramo lo ragiona piu' (job_id=%s, kind=%r) -- "
+        "decisione vuota, il ramo olistico e' uscito con la fetta E4 Task 8",
+        (job or {}).get("job_id"), kind)
+    return {}
 
 def build_headers() -> dict:
     """Header per la reasoning API interna (127.0.0.1:8099). Solo loopback:

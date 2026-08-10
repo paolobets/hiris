@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import subprocess
 import time
 import pytest
@@ -159,48 +160,88 @@ async def test_run_loop_does_not_block_event_loop(monkeypatch):
     assert ticks == 5  # all ticker iterations completed within the tight budget
 
 
-# ── fetta E3 Task 7: `parse_decision` viveva in `watcher.reasoner`
-# ("Consolidamento 1.4: unica implementazione"); la Sentinella (unico altro
-# chiamante) e' uscita per intero in questo task, quindi il parser si e'
-# trasferito qui con l'ultimo chiamante rimasto (`_parse_decision` +
-# `Decision`/`VERDICT_*`/`FALLBACK_MESSAGE_MAX` ora vivono in questo modulo).
-# `parse_decision` adatta la `Decision` alla forma a dizionario che viaggia
-# sulla reasoning API. I due test sotto (rifiuto di un json non-oggetto,
-# soglia unica di troncamento) erano in tests/test_sentinel_reasoner.py,
-# cancellato con la Sentinella: coprivano un comportamento del parser stesso,
-# non del percorso Sentinella, quindi si spostano qui sul nuovo (unico)
-# proprietario. ──────────────────────────────────────────────────────────
+# ── fetta E4 Task 8 ("un bot solo"): il ramo olistico di `reason()` e' uscito
+# (con `prompts.build_holistic_prompt`/`_SYSTEM` e tutto l'apparato che ne
+# leggeva la risposta: `Decision`, `VERDICT_*`, `_JSON_RE`,
+# `FALLBACK_MESSAGE_MAX`, `_parse_decision`, `parse_decision` -- i cinque test
+# che li pinnavano sono caduti per costruzione, `AttributeError: module ... has
+# no attribute 'parse_decision'`). Al suo posto un SILENZIO DICHIARATO, e i due
+# test qui sotto sono la sua rete: senza di loro, cancellare il `log.warning`
+# lascerebbe la suite verde e il ponte tornerebbe a scartare job in silenzio --
+# il difetto numero uno di questo prodotto. ──────────────────────────────────
 
-def test_parse_decision_is_fail_closed_and_returns_the_wire_dict():
-    d = runner.parse_decision("nessun blocco json qui")
-    assert isinstance(d, dict)
-    assert set(d) == {"verdict", "severity", "message", "action"}
-    assert d["verdict"] == "falso_positivo"
-    assert d["severity"] == "info"
-    assert d["action"] is None
+def test_job_non_chat_e_dichiarato_nel_log_e_decide_vuoto(caplog):
+    job = {"job_id": "J-legacy", "kind": "holistic",
+           "context": {"snapshot": {"luci": 2}}}
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        decision = runner.reason(job, "live")
 
-
-def test_parse_decision_missing_verdict_field_stays_fail_closed():
-    d = runner.parse_decision('```json\n{"severity":"critico","message":"x"}\n```')
-    assert d["verdict"] == "falso_positivo"
-
-
-def test_parse_decision_reads_the_last_json_block():
-    txt = ('```json\n{"verdict":"falso_positivo","severity":"info","message":"a"}\n```\n'
-           '```json\n{"verdict":"anomalia","severity":"warn","message":"b",'
-           '"action":{"domain":"light","service":"turn_off","entity_id":"light.x"}}\n```')
-    d = runner.parse_decision(txt)
-    assert d["verdict"] == "anomalia" and d["severity"] == "warn"
-    assert d["action"]["entity_id"] == "light.x"
+    # decisione VUOTA: nessun verdetto, nessuna severita', nessuna azione.
+    assert decision == {}
+    rec = [r for r in caplog.records if r.name == "hiris.agent"]
+    assert len(rec) == 1, "il job scartato deve essere dichiarato una volta sola"
+    assert rec[0].levelno == logging.WARNING
+    messaggio = rec[0].getMessage()
+    assert "J-legacy" in messaggio and "holistic" in messaggio
+    assert "non-chat" in messaggio
 
 
-def test_parse_decision_rejects_json_that_is_not_an_object():
-    # Un blocco json che contiene una lista (o uno scalare) non ha campi da
-    # leggere: deve ricadere sul fallback, non sollevare AttributeError.
-    d = runner.parse_decision('```json\n[1, 2, 3]\n```')
-    assert d["verdict"] == "falso_positivo" and d["action"] is None
+def test_run_once_job_non_chat_invia_la_decisione_vuota_senza_chiamare_claude():
+    # Il guard non e' un `return` muto a meta' strada: il job viene comunque
+    # chiuso sulla reasoning API (submit con decisione vuota, che
+    # `handle_reasoning_submit` si limita a registrare), e nessun `claude -p`
+    # viene speso per ragionarlo.
+    job = {"job_id": "J", "nonce": "N", "kind": "holistic", "context": {"snapshot": {}}}
+    c = _Client({"job": job})
+
+    def _boom(*a, **k):
+        raise AssertionError("nessun subprocess claude per un job non-chat")
+
+    with patch.object(runner.subprocess, "run", _boom):
+        out = runner.run_once(c, "http://127.0.0.1:8099", {"X-HIRIS-Internal-Token": "TOK"}, "live")
+
+    assert out == "done"
+    assert c.submitted and c.submitted[0]["decision"] == {}
 
 
-def test_parse_decision_fallback_message_truncation_is_the_single_threshold():
-    d = runner.parse_decision("x" * 2000)
-    assert len(d["message"]) == runner.FALLBACK_MESSAGE_MAX == 500
+# ── fetta E4 Task 8, Step 1: `_CHAT_TOOL_GUIDANCE` diceva al modello di avere
+# strumenti per leggere la casa "e, quando serve, per agire", e che "le azioni
+# possono richiedere una conferma" -- tre affermazioni false in tre righe
+# (rilievo I-1/I-2 della review finale della fetta E3, dal lato abbonamento).
+# Questo runner ragiona in puro testo: nessun catalogo di strumenti gli viene
+# passato (`_chat_claude_args` non passa ne' `--mcp-config` ne'
+# `--allowedTools`), HIRIS conosce e non agisce, le conferme sono uscite con
+# l'impianto OTP. Il test difende il CONTENUTO del prompt, l'unica riga del
+# prodotto che il modello legge come verita': senza, la falsita' potrebbe
+# rientrare a suite verde. ───────────────────────────────────────────────────
+
+def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
+    system, _user = prompts.build_chat_messages(
+        "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.", [])
+
+    # dice il vero su cio' che NON ha
+    assert "NON hai alcuno strumento" in system
+    assert "non agisce" in system
+    assert "nessuna conferma" in system
+    # e dice al modello di DICHIARARE cio' che non puo' leggere, non di fingerlo
+    assert "DILLO" in system
+
+    # le tre falsita' storiche non devono poter rientrare
+    assert "per agire" not in system
+    assert "Hai accesso a strumenti" not in system
+    assert "in attesa di conferma" not in system
+
+
+def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
+    # Il `system_prompt` che arriva al ponte e' quello delle impostazioni della
+    # chat (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`), scritto per il percorso
+    # SINCRONO -- dove i quattro strumenti di casa/strumenti.py esistono
+    # davvero. Qui non esistono: la guida deve smentirlo esplicitamente, o il
+    # modello leggerebbe "usa `cerca`" senza alcun modo di scoprire che non c'e'.
+    from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
+
+    system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [])
+
+    assert "cerca" in DEFAULT_SYSTEM_PROMPT and "guarda" in DEFAULT_SYSTEM_PROMPT
+    assert "quelle istruzioni non si applicano" in system
+    assert "`cerca`" in system and "`guarda`" in system

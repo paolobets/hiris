@@ -130,11 +130,17 @@ BASE_SYSTEM_PROMPT = (
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
-# Higher default output ceiling for interactive chat: complex requests (a
-# multi-view dashboard, a long script) legitimately need more than the 4096
-# eval-agent cap. Kept well under the model max so the non-streaming SDK path
-# doesn't hit the request-timeout guard; per le plance molto grandi il modello
-# propone poche viste per volta invece di una singola risposta gigante.
+# Higher default output ceiling for interactive chat: una risposta lunga (il
+# riepilogo di una casa grande, un elenco di ricordi) supera legittimamente il
+# tetto da 4096 dell'agente di valutazione. Kept well under the model max so
+# the non-streaming SDK path doesn't hit the request-timeout guard.
+# fetta E4 Task 8, Step 2: questo commento diceva «complex requests (a
+# multi-view dashboard, a long script)» e «per le plance molto grandi il
+# modello propone poche viste per volta» -- una dichiarazione falsa al
+# presente: HIRIS 2.0 LEGGE le plance (proxy/ha_client.py, casa/
+# comportamento.py) e non ne scrive nessuna, il catalogo della chat e' i
+# quattro strumenti di conoscenza (casa/strumenti.py). Il tetto resta lo
+# stesso: cambia solo la ragione dichiarata, che ora e' vera.
 CHAT_MAX_TOKENS = 16000
 MAX_TOOL_ITERATIONS = 10
 MAX_RETRIES = 3
@@ -197,11 +203,17 @@ def _build_thinking_param(
     return {"type": "enabled", "budget_tokens": thinking_budget}
 
 
+# fetta E4 Task 8, Step 2: il testo precedente invitava l'utente a farsi
+# creare «una dashboard con molte stanze ... prima la dashboard con poche
+# viste, poi una vista/stanza alla volta» -- una capacita' che HIRIS 2.0 non
+# ha piu' (vedi il commento su CHAT_MAX_TOKENS): il messaggio prometteva
+# all'UTENTE cio' che i prompt di sistema promettevano al MODELLO, stesso
+# difetto in un'altra superficie. Riscritto su cio' che la chat sa fare oggi:
+# conoscere e rispondere.
 _TRUNCATION_NOTICE = (
     "⚠️ La risposta è stata troncata perché ha raggiunto il limite di token "
-    "(max_tokens). Se stavi creando qualcosa di grande (es. una dashboard con "
-    "molte stanze), chiedimi di crearla in modo incrementale — prima la dashboard "
-    "con poche viste, poi una vista/stanza alla volta — oppure semplifica la richiesta."
+    "(max_tokens). Prova a restringere la domanda — una stanza per volta, un "
+    "argomento per volta — invece di chiedere tutto in una risposta sola."
 )
 
 
