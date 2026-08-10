@@ -752,6 +752,36 @@ def test_usage_json_per_agent_silent_when_absent(tmp_path, caplog):
     assert not any("per_agent" in rec.message for rec in caplog.records)
 
 
+def test_usage_json_per_agent_legacy_survives_a_save(tmp_path):
+    """fix round 1 (Important 2 della review indipendente): `_save_usage()`
+    ricostruiva `usage.json` da zero, scrivendo SOLO le chiavi che il runner
+    conosce -- quindi il PRIMO salvataggio dopo un upgrade cancellava
+    silenziosamente `per_agent` di un'installazione precedente, il contrario
+    esatto di quanto dichiara il commento di `_load_usage` ("mai rimossi
+    silenziosamente") e del log dei due test gemelli sopra ("non piu' letto
+    ne' scritto", che un operatore legge come "e' ancora li'"). Ora
+    `_save_usage()` fa lettura-modifica-scrittura: la chiave sopravvive a un
+    salvataggio reale, non solo al load."""
+    import json as _json
+    usage_file = tmp_path / "usage.json"
+    usage_file.write_text(_json.dumps({
+        "schema_version": 1,
+        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
+        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
+        "total_rate_limit_errors": 0,
+        "per_agent": {"agent-x": {"input_tokens": 10}},
+    }), encoding="utf-8")
+    from hiris.app.claude_runner import ClaudeRunner
+    with patch("anthropic.AsyncAnthropic"):
+        runner = ClaudeRunner(api_key="test", usage_path=str(usage_file))
+    runner.total_requests += 1
+    runner._save_usage()
+    with open(usage_file, encoding="utf-8") as f:
+        data = _json.load(f)
+    assert data.get("per_agent") == {"agent-x": {"input_tokens": 10}}
+    assert data["total_requests"] == 1
+
+
 def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):
     """Concurrent _save_usage() calls must not corrupt usage.json.
 

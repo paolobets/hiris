@@ -80,6 +80,32 @@ def test_usage_json_per_agent_silent_when_absent(tmp_path, caplog):
     assert not any("per_agent" in rec.message for rec in caplog.records)
 
 
+def test_usage_json_per_agent_legacy_survives_a_save(tmp_path):
+    """fix round 1 (Important 2 della review indipendente): stessa mossa e
+    stesso motivo del pin gemello in tests/test_claude_runner.py -- prima
+    `_save_usage()` ricostruiva il file da zero e cancellava silenziosamente
+    `per_agent` al primo salvataggio dopo un upgrade. Ora sopravvive."""
+    usage_file = tmp_path / "usage.json"
+    usage_file.write_text(json.dumps({
+        "schema_version": 1,
+        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
+        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
+        "total_rate_limit_errors": 0,
+        "per_agent": {"agent-x": {"input_tokens": 10}},
+    }), encoding="utf-8")
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        usage_path=str(usage_file),
+    )
+    runner.total_requests += 1
+    runner._save_usage()
+    with open(usage_file, encoding="utf-8") as f:
+        data = json.load(f)
+    assert data.get("per_agent") == {"agent-x": {"input_tokens": 10}}
+    assert data["total_requests"] == 1
+
+
 @pytest.mark.asyncio
 async def test_circuit_open_message_names_cloud_backend(tmp_path):
     """Backlog #7: an open circuit on a CLOUD backend must not call itself

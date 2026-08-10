@@ -263,7 +263,11 @@ class OpenAICompatRunner:
             # -- la contabilita' per-chatbot esce, "per_agent" di un
             # usage.json legacy non viene ne' migrata ne' cancellata, solo
             # dichiarata in log se presente e non vuota (silenzio dichiarato,
-            # modello tests/test_startup_legacy_db_silence.py).
+            # modello tests/test_startup_legacy_db_silence.py). fix round 1
+            # (Important 2 della review indipendente): "non piu' scritta" NON
+            # significa "sparisce al prossimo save" -- vedi `_save_usage`
+            # sotto, che la riporta avanti intatta con una lettura-modifica-
+            # scrittura invece di ricostruire il file da zero.
             _per_agent_legacy = data.get("per_agent")
             if _per_agent_legacy:
                 logger.info(
@@ -277,23 +281,41 @@ class OpenAICompatRunner:
     def _save_usage(self) -> None:
         if not self._usage_path:
             return
-        data = {
-            "schema_version": 1,
-            "total_input_tokens": self.total_input_tokens,
-            "total_output_tokens": self.total_output_tokens,
-            "total_requests": self.total_requests,
-            "last_reset": self.usage_last_reset,
-            "total_cost_usd": self.total_cost_usd,
-            "total_rate_limit_errors": self.total_rate_limit_errors,
-        }
         tmp = self._usage_path + ".tmp"
 
         def _write() -> None:
             with self._save_lock:
                 try:
+                    # fix round 1 (Important 2 della review indipendente):
+                    # lettura-modifica-scrittura -- stessa mossa e stesso
+                    # motivo del commento gemello in claude_runner.py (la
+                    # vecchia versione cancellava silenziosamente `per_agent`
+                    # al primo save dopo un upgrade, il contrario esatto di
+                    # quanto dichiarato in `_load_usage`).
+                    disk_data: dict = {}
+                    if os.path.exists(self._usage_path):
+                        try:
+                            with open(self._usage_path, encoding="utf-8") as f:
+                                disk_data = json.load(f)
+                        except Exception as exc:
+                            logger.warning(
+                                "usage.json illeggibile prima del save, si riparte da zero "
+                                "(chiavi sconosciute di un file corrotto non recuperabili): %s",
+                                exc,
+                            )
+                            disk_data = {}
+                    disk_data.update({
+                        "schema_version": 1,
+                        "total_input_tokens": self.total_input_tokens,
+                        "total_output_tokens": self.total_output_tokens,
+                        "total_requests": self.total_requests,
+                        "last_reset": self.usage_last_reset,
+                        "total_cost_usd": self.total_cost_usd,
+                        "total_rate_limit_errors": self.total_rate_limit_errors,
+                    })
                     os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
                     with open(tmp, "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2)
+                        json.dump(disk_data, f, indent=2)
                     os.replace(tmp, self._usage_path)
                 except Exception as exc:
                     logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
@@ -412,6 +434,11 @@ class OpenAICompatRunner:
                 logger.error("simple_chat failed: %s", exc)
             return ""
 
+    # fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
+    # `user_id` e' uscito da `chat()`/`chat_stream()` -- stessa mossa, stessa
+    # storia del commento gemello in claude_runner.py (il suo unico lettore
+    # era il ramo di scorta rimosso da questo stesso task, sfuggito al primo
+    # giro).
     async def chat(
         self,
         user_message: str,
@@ -424,7 +451,6 @@ class OpenAICompatRunner:
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        user_id: str | None = None,
         strumenti: list[dict] | None = None,
         dispatcher: Any | None = None,
     ) -> str:
@@ -689,7 +715,6 @@ class OpenAICompatRunner:
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        user_id: str | None = None,
         strumenti: list[dict] | None = None,
         dispatcher: Any | None = None,
     ):

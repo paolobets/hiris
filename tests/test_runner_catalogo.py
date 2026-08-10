@@ -85,10 +85,13 @@ def test_i_due_runner_accettano_gli_stessi_argomenti_anche_in_streaming():
 
 @pytest.fixture
 def claude_runner():
-    # Nessun dispatcher di scorta -> self._dispatcher e' None (fetta E3 Task
-    # 8: senza catalogo di scorta questo non ha piu' alcun effetto osservabile
-    # sui test qui sotto -- resta il pattern minimo condiviso con
-    # test_claude_runner.py).
+    # fix round 1 (Important 3 della review indipendente): questo commento
+    # diceva "Nessun dispatcher di scorta -> self._dispatcher e' None" -- ma
+    # `self._dispatcher` non esiste piu' come attributo, ne' il costruttore
+    # accetta piu' un `dispatcher=` (fetta E4 Task 6: il "dispatcher di
+    # scorta" e' uscito per intero, non solo reso inerte come alla fetta E3
+    # Task 8 quando questo commento fu scritto). Resta il pattern minimo
+    # condiviso con test_claude_runner.py, senza piu' nulla da tacere sopra.
     with patch("anthropic.AsyncAnthropic"):
         r = ClaudeRunner(api_key="test-key")
     return r

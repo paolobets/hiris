@@ -411,8 +411,12 @@ class ClaudeRunner:
             # non vuota lo dichiariamo in log invece di ignorarla muti --
             # stessa disciplina di tests/test_startup_legacy_db_silence.py.
             # Non piu' letta in `self`: da qui in poi il valore non alimenta
-            # piu' nessuno stato del runner, e il prossimo _save_usage() non
-            # la riscrive (vedi sotto).
+            # piu' nessuno stato del runner. fix round 1 (Important 2 della
+            # review indipendente): "non piu' scritta" NON significa "sparisce
+            # al prossimo save" -- `_save_usage()` fa lettura-modifica-
+            # scrittura e la riporta avanti intatta (vedi sotto), cosi' il
+            # commento qui sopra ("mai rimossi silenziosamente") e' vero anche
+            # dopo il primo salvataggio, non solo al momento del load.
             _per_agent_legacy = data.get("per_agent")
             if _per_agent_legacy:
                 logger.info(
@@ -426,23 +430,48 @@ class ClaudeRunner:
     def _save_usage(self) -> None:
         if not self._usage_path:
             return
-        data = {
-            "schema_version": 1,
-            "total_input_tokens": self.total_input_tokens,
-            "total_output_tokens": self.total_output_tokens,
-            "total_requests": self.total_requests,
-            "last_reset": self.usage_last_reset,
-            "total_cost_usd": self.total_cost_usd,
-            "total_rate_limit_errors": self.total_rate_limit_errors,
-        }
         tmp = self._usage_path + ".tmp"
 
         def _write() -> None:
             with self._save_lock:
                 try:
+                    # fix round 1 (Important 2 della review indipendente):
+                    # lettura-modifica-scrittura invece di ricostruire `data`
+                    # da zero. La vecchia versione scriveva SOLO le chiavi che
+                    # questo runner conosce, quindi il PRIMO salvataggio dopo
+                    # un upgrade cancellava silenziosamente `per_agent` di
+                    # un'installazione precedente -- il contrario esatto di
+                    # quanto dichiarato dal commento in `_load_usage` ("mai
+                    # rimossi silenziosamente") e dal log li' sopra ("non piu'
+                    # letto ne' scritto", che un operatore legge come "e'
+                    # ancora li'"). Ora si legge il file esistente (se c'e'),
+                    # si aggiornano SOLO i campi che questo runner possiede, e
+                    # si riscrive tutto il resto (`per_agent` incluso) cosi'
+                    # com'era -- nessuna chiave sconosciuta viene mai persa.
+                    disk_data: dict = {}
+                    if os.path.exists(self._usage_path):
+                        try:
+                            with open(self._usage_path, encoding="utf-8") as f:
+                                disk_data = json.load(f)
+                        except Exception as exc:
+                            logger.warning(
+                                "usage.json illeggibile prima del save, si riparte da zero "
+                                "(chiavi sconosciute di un file corrotto non recuperabili): %s",
+                                exc,
+                            )
+                            disk_data = {}
+                    disk_data.update({
+                        "schema_version": 1,
+                        "total_input_tokens": self.total_input_tokens,
+                        "total_output_tokens": self.total_output_tokens,
+                        "total_requests": self.total_requests,
+                        "last_reset": self.usage_last_reset,
+                        "total_cost_usd": self.total_cost_usd,
+                        "total_rate_limit_errors": self.total_rate_limit_errors,
+                    })
                     os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
                     with open(tmp, "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2)
+                        json.dump(disk_data, f, indent=2)
                     os.replace(tmp, self._usage_path)
                 except Exception as exc:
                     logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
@@ -493,13 +522,29 @@ class ClaudeRunner:
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        user_id: str | None = None,
         strumenti: list[dict] | None = None,
         dispatcher: Any | None = None,
     ) -> str:
         self.last_tool_calls = []
-        # Fresh per-exchange pseudonymization map (review B/#7) — populated by
-        # the recall_memory tool path below, read by the caller afterwards.
+        # Fresh per-exchange pseudonymization map (review B/#7), read by the
+        # caller afterwards (handlers_chat.py, pseudonymizer.detokenize).
+        # fix round 1 (Important 3 della review indipendente): this used to
+        # say "populated by the recall_memory tool path below" -- false since
+        # fetta E2 Task 7 ("esce il dispatcher"), and doubly so after this
+        # task's own removal of the scorta branch. No path in THIS file
+        # writes into it any more: the only writer used to be the removed
+        # `elif self._dispatcher is not None` branch, which alone passed
+        # `pseudonym_map=self.last_pseudonym_map` to `dispatch()`. The
+        # surviving per-call `dispatcher` path calls `dispatch(nome,
+        # argomenti)` positional-only (DispatcherConoscenza's minimal
+        # interface, casa/strumenti.py — see the dispatch loop below), with
+        # no `pseudonym_map` kwarg at all. So today this dict is always reset
+        # to `{}` and never filled: the two `pseudonymizer.detokenize(text,
+        # pseudonym_map)` calls in handlers_chat.py are currently no-ops
+        # (nothing to expand). Pre-existing since fetta E2 Task 7 — NOT a
+        # regression of this task — left as-is per this fix round's scope
+        # (not repairing, only correcting the comment that hid it); flagged
+        # here for the fetta's final review, see task-6-report.md.
         self.last_pseudonym_map = {}
         # ── System prompt blocks with prompt caching ─────────────────────────
         # Anthropic prompt caching is *cumulative*: a single cache_control
@@ -682,7 +727,6 @@ class ClaudeRunner:
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        user_id: str | None = None,
         strumenti: list[dict] | None = None,
         dispatcher: Any | None = None,
     ):
@@ -704,6 +748,14 @@ class ClaudeRunner:
         la pagina chat (send.js) non usa nemmeno lo streaming. Nessun lettore
         vivo, dichiarato per la E5 (docs/design/2026-08-08-frontend-da-
         rifare.md non lo elenca: non c'era nulla da riparare).
+
+        fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
+        `user_id` e' uscito anche lui da `chat()`/`chat_stream()` -- il suo
+        unico lettore era `user_id=user_id` dentro il ramo di scorta
+        `elif self._dispatcher is not None` rimosso da questo stesso task
+        (era nel commit iniziale insieme agli altri otto kwarg orfani, ma
+        sfuggito al primo giro: verificato ora con lo stesso grep dello
+        Step 1, zero lettori in produzione).
 
         `strumenti`/`dispatcher` (Task 3 of the nucleo-alla-chat slice):
         forwarded to `self.chat()` unchanged -- since this generator is
@@ -727,7 +779,6 @@ class ClaudeRunner:
                 restrict_to_home=restrict_to_home,
                 response_mode=response_mode,
                 thinking_budget=thinking_budget,
-                user_id=user_id,
                 strumenti=strumenti,
                 dispatcher=dispatcher,
             )

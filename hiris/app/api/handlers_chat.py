@@ -5,7 +5,6 @@ import time
 
 from aiohttp import web
 
-from ..brain.identity import resolve_owner
 from ..casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
 from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
@@ -150,7 +149,13 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
 
 
 async def handle_chat(request: web.Request) -> web.Response:
-    owner = resolve_owner(request)
+    # fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
+    # il vecchio calcolo dell'identita' utente e il suo inoltro ai runner
+    # (`user_id=`) sono usciti -- `user_id` non aveva piu' nessun lettore nel
+    # corpo dei due runner (il suo unico lettore era il ramo di scorta
+    # rimosso da questo stesso task), quindi il valore entrava nei runner e
+    # veniva buttato in silenzio. Nessun altro punto di questa funzione lo
+    # legge: e' uscito con lui, non lasciato come calcolo morto.
     try:
         body = await request.json()
     except Exception:
@@ -338,18 +343,20 @@ async def handle_chat(request: web.Request) -> web.Response:
     # suoi quattro metodi non sollevano mai, dichiarano un `errore` per
     # strumento invece (vedi `DispatcherConoscenza.dispatch`).
     #
-    # Passarlo sempre (mai `None`) tiene chiusa anche un'altra trappola: e'
-    # il ramo `self._dispatcher.dispatch(...)` dei runner (il dispatcher di
-    # scorta del catalogo vecchio, preso SOLO quando `dispatcher` e' `None`)
-    # a leggere `visible_entity_ids` e a degradare APERTO quando e' assente
-    # (`if visible_entity_ids: ...` -- nessun filtro quando e' `None`). Con
-    # `dispatcher` sempre valorizzato quel ramo non viene mai preso dalla
-    # chat, quindi non passare piu' `visible_entity_ids` da qui (la mappa
-    # semantica che lo produceva non e' piu' consultata) non riapre nulla.
-    # fetta E2 Task 7: quel dispatcher di scorta (ToolDispatcher) e' uscito
-    # -- il ramo ora degrada a un errore "non disponibile" per QUALUNQUE
-    # chiamante che lo prenda, ma la chat non lo prende mai per il motivo
-    # sopra, quindi qui non cambia nulla.
+    # Passarlo sempre (mai `None`) tiene chiusa anche un'altra trappola:
+    # senza un `dispatcher` per-chiamata i runner degradano OGNI tool a un
+    # errore "non disponibile" (vedi il ramo `else` del dispatch loop in
+    # claude_runner.py/openai_compat_runner.py) -- passarlo sempre e' quello
+    # che tiene la chat viva.
+    #
+    # fix round 1 (Important 3 della review indipendente): questo commento
+    # descriveva un ramo -- il "dispatcher di scorta" `self._dispatcher`, che
+    # leggeva `visible_entity_ids` e degradava APERTO quando assente -- gia'
+    # uscito dai runner alla fetta E2 Task 7 (`ToolDispatcher`) e i cui ultimi
+    # resti (il costruttore `dispatcher=`, l'`elif self._dispatcher is not
+    # None`) sono usciti da QUESTA fetta, Task 6. `visible_entity_ids` non e'
+    # piu' un parametro di nessuna firma: non c'e' piu' niente da riaprire ne'
+    # da tenere chiuso su quel fronte, la trappola stessa non esiste piu'.
     dispatcher_conoscenza = DispatcherConoscenza(
         request.app.get("archivio_casa"),
         request.app.get("archivio_memoria"),
@@ -415,7 +422,6 @@ async def handle_chat(request: web.Request) -> web.Response:
             thinking_budget=agent_thinking_budget,
             strumenti=STRUMENTI_CONOSCENZA,
             dispatcher=dispatcher_conoscenza,
-            user_id=owner,
         ):
             await stream_resp.write(chunk.encode())
             try:
@@ -471,7 +477,6 @@ async def handle_chat(request: web.Request) -> web.Response:
             thinking_budget=agent_thinking_budget,
             strumenti=STRUMENTI_CONOSCENZA,
             dispatcher=dispatcher_conoscenza,
-            user_id=owner,
         )
     except RunnerBackendError as exc:
         # Review C/#13: runners now raise instead of returning a friendly
