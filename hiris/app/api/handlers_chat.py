@@ -55,6 +55,99 @@ def _build_system_prompt(impostazioni) -> str:
     return ""
 
 
+def componi_contesto_chat(app, data_dir: str) -> str:
+    """Il contesto della chat -- nucleo piu' sessioni precedenti -- in
+    un'unica stringa.
+
+    Estratta dal corpo di `handle_chat` (fetta "il ponte riceve il nucleo",
+    parita' A, Task 1): prima questo blocco viveva SOLO nel ramo sincrono.
+    Estratto qui, invariato, perche' il Task 2 deve mettere la STESSA
+    stringa nel job del ponte (chat via abbonamento) -- se la ricopiasse, i
+    due percorsi avrebbero due composizioni destinate a divergere, la
+    "funzione doppia" vietata da CLAUDE.md:70-72. Prende `app` (non
+    `request`), stessa ragione di `costruisci_nucleo` in handlers_casa.py:
+    nessun motivo di legarla a una request in corso.
+    """
+    # Inject closed-session summaries so Claude remembers previous conversations.
+    # Le sessioni precedenti restano una fonte A PARTE dal nucleo (Task 3):
+    # sono cronologia di conversazioni chiuse, non conoscenza sulla casa --
+    # il nucleo non le contiene e non deve contenerle.
+    past = get_past_summaries(data_dir)
+    past_str = ""
+    if past:
+        lines = ["Sessioni precedenti (memoria):"]
+        for s in past:
+            dt = s["started_at"][:10]
+            lines.append(f"[{dt}] {s['summary']}")
+        past_str = "\n".join(lines)
+
+    # Task 3 ("il contesto della chat viene dal nucleo"): una fonte sola.
+    # Prima qui c'erano quattro chiamate indipendenti -- KnowledgeStore.
+    # declared() per i dichiarati, KnowledgeStore.search() per il RAG,
+    # SemanticContextMap.get_context() per "cosa c'e' in giro", e le sessioni
+    # precedenti -- e nessuna delle prime tre vedeva mai il ritratto: e' la
+    # sovrapposizione n.1 della mappa del prodotto, vista da dentro (due
+    # intelligenze nella stessa casa che ne vedono due diverse -- vedi
+    # docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
+    # `costruisci_nucleo()` (condivisa con GET /api/nucleo,
+    # handlers_casa.py -- stessa composizione, non due che potrebbero
+    # divergere) contiene gia' i dichiarati (come "cio' che le persone hanno
+    # detto"), la casa, cosa e' notevole adesso, e cosa la casa fa da sola --
+    # ed e' lo stesso testo che vedranno il Brain e gli agenti quando
+    # torneranno (vedi il brief). Il blocco RAG e KnowledgeStore.declared()
+    # non sono stati cancellati: smettono solo di essere chiamati da QUI.
+    # SemanticContextMap invece e' uscita davvero (fetta E3 Task 2, 2.0):
+    # il suo unico altro chiamante era il context-preview dell'editor
+    # Chatbot, uscito con lei.
+    #
+    # Se il nucleo non si compone (nessun archivio della casa, anagrafe mai
+    # letta) `componi()` non tace: lo dichiara nel testo stesso ("Nessun
+    # piano registrato.", "Stato non letto ... non e' lo stesso di 'niente
+    # di notevole'", una voce in "Cio' che HIRIS ignora") -- lo stesso
+    # principio gia' verificato per `handle_get_nucleo`
+    # (test_api_nucleo_senza_archivi_non_afferma_di_sapere). Un silenzio non
+    # dichiarato e' indistinguibile da un'assenza di problemi: qui non puo'
+    # scattare, perche' il testo che il modello legge lo dice da solo.
+    # Fix E1-①: `costruisci_nucleo()` non e' protetta -- apre `archivio_casa`
+    # e `archivio_memoria` (SQLite) e puo' sollevare (file corrotto, o in
+    # lock dopo un riavvio sporco: sqlite3.DatabaseError/OperationalError).
+    # Il codice pre-fetta avvolgeva OGNI fonte in un try/except con questo
+    # stesso commento: "un fallimento qui non deve mai impedire alla chat di
+    # rispondere" (vedi git blame -- il blocco RAG e i dichiarati, qualche
+    # riga sopra qui in cronologia). Diventare una fonte sola ha fatto
+    # sparire quel commento insieme al codice che avvolgeva, e la regola con
+    # lui: senza questo try/except un `memoria.db` corrotto o un `casa.db`
+    # in lock fa rispondere 500 a OGNI `POST /api/chat`, dove prima -- coi
+    # quattro try/except separati -- la chat rispondeva semplicemente SENZA
+    # quella fonte. Il fallback qui sotto non e' una stringa vuota (che
+    # `if nucleo_testo:` scarterebbe zittendo la chat sul contesto, e che il
+    # modello leggerebbe come "casa vuota" invece che "guasto"): e' la
+    # stessa distinzione che il nucleo gia' fa per i registri caduti
+    # (`non_disponibili`) e per lo stato inaffidabile (`stato_non_letto`),
+    # qui applicata al caso in cui comporlo del tutto solleva invece di
+    # dichiarare.
+    try:
+        nucleo_testo, _nucleo_riepilogo = costruisci_nucleo(app)
+    except Exception as exc:
+        logger.warning("composizione del nucleo fallita, la chat risponde senza: %s", exc)
+        nucleo_testo = (
+            "## Cio' che HIRIS ignora\n"
+            "- il nucleo non si e' potuto comporre: un archivio della casa o "
+            "della memoria e' guasto o non leggibile in questo momento. "
+            "Nessuna delle sezioni che normalmente lo precedono (la casa, "
+            "cio' che e' notevole adesso, cio' che la casa fa da sola, cio' "
+            "che le persone hanno detto) e' disponibile in questo turno. "
+            "Non e' una casa vuota -- e' un guasto: dillo a chi ti ha "
+            "scritto, non rispondere come se conoscessi la casa."
+        )
+    context_parts: list[str] = []
+    if nucleo_testo:
+        context_parts.append(nucleo_testo)
+    if past_str:
+        context_parts.append(f"## Sessioni precedenti\n{past_str}")
+    return "\n\n".join(context_parts)
+
+
 def _bridge_on(app) -> bool:
     """Whether the reasoning-queue bridge is wired into this app.
 
@@ -255,84 +348,12 @@ async def handle_chat(request: web.Request) -> web.Response:
     # leggono sempre l'UNICA cronologia che esiste.
     system_prompt = _build_system_prompt(impostazioni)
 
-    # Inject closed-session summaries so Claude remembers previous conversations.
-    # Le sessioni precedenti restano una fonte A PARTE dal nucleo (Task 3):
-    # sono cronologia di conversazioni chiuse, non conoscenza sulla casa --
-    # il nucleo non le contiene e non deve contenerle.
-    past = get_past_summaries(data_dir)
-    past_str = ""
-    if past:
-        lines = ["Sessioni precedenti (memoria):"]
-        for s in past:
-            dt = s["started_at"][:10]
-            lines.append(f"[{dt}] {s['summary']}")
-        past_str = "\n".join(lines)
-
-    # Task 3 ("il contesto della chat viene dal nucleo"): una fonte sola.
-    # Prima qui c'erano quattro chiamate indipendenti -- KnowledgeStore.
-    # declared() per i dichiarati, KnowledgeStore.search() per il RAG,
-    # SemanticContextMap.get_context() per "cosa c'e' in giro", e le sessioni
-    # precedenti -- e nessuna delle prime tre vedeva mai il ritratto: e' la
-    # sovrapposizione n.1 della mappa del prodotto, vista da dentro (due
-    # intelligenze nella stessa casa che ne vedono due diverse -- vedi
-    # docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
-    # `costruisci_nucleo()` (condivisa con GET /api/nucleo,
-    # handlers_casa.py -- stessa composizione, non due che potrebbero
-    # divergere) contiene gia' i dichiarati (come "cio' che le persone hanno
-    # detto"), la casa, cosa e' notevole adesso, e cosa la casa fa da sola --
-    # ed e' lo stesso testo che vedranno il Brain e gli agenti quando
-    # torneranno (vedi il brief). Il blocco RAG e KnowledgeStore.declared()
-    # non sono stati cancellati: smettono solo di essere chiamati da QUI.
-    # SemanticContextMap invece e' uscita davvero (fetta E3 Task 2, 2.0):
-    # il suo unico altro chiamante era il context-preview dell'editor
-    # Chatbot, uscito con lei.
-    #
-    # Se il nucleo non si compone (nessun archivio della casa, anagrafe mai
-    # letta) `componi()` non tace: lo dichiara nel testo stesso ("Nessun
-    # piano registrato.", "Stato non letto ... non e' lo stesso di 'niente
-    # di notevole'", una voce in "Cio' che HIRIS ignora") -- lo stesso
-    # principio gia' verificato per `handle_get_nucleo`
-    # (test_api_nucleo_senza_archivi_non_afferma_di_sapere). Un silenzio non
-    # dichiarato e' indistinguibile da un'assenza di problemi: qui non puo'
-    # scattare, perche' il testo che il modello legge lo dice da solo.
-    # Fix E1-①: `costruisci_nucleo()` non e' protetta -- apre `archivio_casa`
-    # e `archivio_memoria` (SQLite) e puo' sollevare (file corrotto, o in
-    # lock dopo un riavvio sporco: sqlite3.DatabaseError/OperationalError).
-    # Il codice pre-fetta avvolgeva OGNI fonte in un try/except con questo
-    # stesso commento: "un fallimento qui non deve mai impedire alla chat di
-    # rispondere" (vedi git blame -- il blocco RAG e i dichiarati, qualche
-    # riga sopra qui in cronologia). Diventare una fonte sola ha fatto
-    # sparire quel commento insieme al codice che avvolgeva, e la regola con
-    # lui: senza questo try/except un `memoria.db` corrotto o un `casa.db`
-    # in lock fa rispondere 500 a OGNI `POST /api/chat`, dove prima -- coi
-    # quattro try/except separati -- la chat rispondeva semplicemente SENZA
-    # quella fonte. Il fallback qui sotto non e' una stringa vuota (che
-    # `if nucleo_testo:` scarterebbe zittendo la chat sul contesto, e che il
-    # modello leggerebbe come "casa vuota" invece che "guasto"): e' la
-    # stessa distinzione che il nucleo gia' fa per i registri caduti
-    # (`non_disponibili`) e per lo stato inaffidabile (`stato_non_letto`),
-    # qui applicata al caso in cui comporlo del tutto solleva invece di
-    # dichiarare.
-    try:
-        nucleo_testo, _nucleo_riepilogo = costruisci_nucleo(request.app)
-    except Exception as exc:
-        logger.warning("composizione del nucleo fallita, la chat risponde senza: %s", exc)
-        nucleo_testo = (
-            "## Cio' che HIRIS ignora\n"
-            "- il nucleo non si e' potuto comporre: un archivio della casa o "
-            "della memoria e' guasto o non leggibile in questo momento. "
-            "Nessuna delle sezioni che normalmente lo precedono (la casa, "
-            "cio' che e' notevole adesso, cio' che la casa fa da sola, cio' "
-            "che le persone hanno detto) e' disponibile in questo turno. "
-            "Non e' una casa vuota -- e' un guasto: dillo a chi ti ha "
-            "scritto, non rispondere come se conoscessi la casa."
-        )
-    context_parts: list[str] = []
-    if nucleo_testo:
-        context_parts.append(nucleo_testo)
-    if past_str:
-        context_parts.append(f"## Sessioni precedenti\n{past_str}")
-    context_str = "\n\n".join(context_parts)
+    # Nucleo + sessioni precedenti, in un'unica stringa: `componi_contesto_chat`
+    # (Task 1 della fetta "il ponte riceve il nucleo", parita' A) estrae
+    # invariato il blocco che prima viveva qui -- vedi il suo docstring per il
+    # perche' (il Task 2 mette la STESSA stringa nel job del ponte, senza
+    # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
+    context_str = componi_contesto_chat(request.app, data_dir)
 
     # I quattro strumenti che conoscono la casa (casa/strumenti.py) -- non il
     # catalogo di trentaquattro di ALL_TOOL_DEFS: la chat della 2.0 CONOSCE,
