@@ -9,6 +9,12 @@ Ogni `fetch(...)`/`api(...)` che compare in `hiris/app/static/` è stato estratt
 e confrontato con la tabella di routing viva, cioè l'elenco reale delle `app.router.add_*` in
 `hiris/app/server.py` **a HEAD di questa fetta** (35 rotte):
 
+> **Correzione del Task 9 della fetta E4 (fix round 1), verificata col comando e non a memoria:**
+> il numero giusto è **36**, non 35 — `git show 64e4457:hiris/app/server.py | grep "app.router.add_"`
+> dà **37** righe, di cui una `add_static`. L'elenco puntato qui sotto è corretto e completo; è solo
+> il totale a essere sbagliato di uno. Lasciata la riga originale per non riscrivere il verbale di
+> un altro task.
+
 ```
 /  /config  /api/health  /api/status  /api/config  /api/usage  /api/usage/reset
 /api/chat  /api/chat/reply/{job_id}
@@ -85,6 +91,13 @@ sono corrette qui sotto (righe 10 e 13).
 Estratta con `grep -n "app.router.add_" hiris/app/server.py` (29 righe, di cui una `add_static`):
 
 ```
+$ git show 64e4457:hiris/app/server.py | grep -c "app.router.add_"     # base della fetta
+37                                                                      # -> 36 rotte + /static
+$ grep -c "app.router.add_" hiris/app/server.py                         # HEAD
+29                                                                      # -> 28 rotte + /static
+```
+
+```
 /  /config  /api/health  /api/config  /api/usage  /api/usage/reset
 /api/chat  /api/chat/reply/{job_id}
 /api/chatbots                                   <- GET, lista a UN elemento (compatibilità)
@@ -100,6 +113,13 @@ Estratta con `grep -n "app.router.add_" hiris/app/server.py` (29 righe, di cui u
 **Uscite con la fetta E4** rispetto all'elenco della E3: `/api/status` (Task 4), `POST /api/chatbots`
 (Task 3), `GET`/`PUT`/`DELETE /api/chatbots/{id}` (Task 3), `POST /api/chatbots/{id}/run` (Task 2),
 `/api/chatbots/{id}/usage` e `/api/chatbots/{id}/usage/reset` (Task 3).
+
+**Il conto delle rotte: 36 alla base della fetta -> 28 a HEAD, delta -8.** Le otto sono esattamente
+quelle elencate qui sopra, verificate col diff dei percorsi fra le due versioni di `server.py`:
+`GET`/`PUT`/`DELETE /api/chatbots/{agent_id}`, `GET /api/chatbots/{agent_id}/usage`,
+`POST /api/chatbots/{agent_id}/usage/reset`, `POST /api/chatbots/{agent_id}/run`,
+`POST /api/chatbots`, `GET /api/status`. *(Fix round 1: la prima stesura dichiarava una base di 35
+e un delta di -7 -- in contraddizione con la propria lista, che ne contava otto.)*
 
 ## Tabella (seguito)
 
