@@ -183,8 +183,20 @@ def _build_thinking_param(
 
     Returns None when thinking is disabled / unsupported by the model.
     The runner silently disables thinking on non-capable models to avoid
-    surprising the user with an API 400 — frontend validation already prevents
-    this for new agents but legacy agents.json may carry stale combos.
+    surprising the user with an API 400.
+
+    fetta E4 Task 9 (il conto): qui c'era scritto "frontend validation already
+    prevents this for new agents but legacy agents.json may carry stale
+    combos". Entrambe le meta' sono false al presente. `agents.json` (e il suo
+    successore `chatbots.json`) non ha piu' nessun lettore dalla fetta E4
+    Task 4 -- l'unico `thinking_budget` che arriva fin qui e' quello di
+    `ImpostazioniChat`, col default nel codice -- e la "frontend validation"
+    stava nell'editor Chatbot, che dalla fetta E4 Task 3 non puo' piu'
+    persistere niente (PUT /api/chatbots/{id} non esiste). Il guard resta
+    perche' la coppia modello/thinking non la riverifica nessuno:
+    `thinking_budget` (default 0, cioe' disattivo) puo' diventare non-zero
+    solo scrivendo a mano `impostazioni_chat.json`, mentre il modello cambia
+    da `#/models`, che e' vivo.
     """
     if thinking_budget <= 0:
         return None
@@ -379,7 +391,21 @@ class ClaudeRunner:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._usage_path = usage_path
         self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto"
-        self._is_cloud = True  # Anthropic cloud — always pseudonymize sensitive content
+        # fetta E4 Task 9 (il conto): qui c'era scritto "Anthropic cloud —
+        # always pseudonymize sensitive content". Dichiarazione falsa al
+        # presente su due fronti. Primo: in QUESTA classe nulla legge
+        # `self._is_cloud` (l'unico lettore era il ramo "dispatcher di
+        # scorta", uscito alla fetta E4 Task 6) -- e' stato scritto e mai
+        # letto, rilievo m1 della review del Task 6. Secondo: la
+        # pseudonimizzazione e' INERTE nell'intero prodotto -- nessun percorso
+        # popola piu' `last_pseudonym_map` (vedi il commento su di essa in
+        # `chat()`), quindi non si pseudonimizza proprio niente, ne' "always"
+        # ne' mai. Non riparato qui: e' debito preesistente dalla fetta E2
+        # Task 7, che va alla fase "poi le sicurezze" insieme a
+        # `proxy/_sanitize.py`. La riga resta perche' toglierla e' codice
+        # eseguibile, fuori dal perimetro di questo task (solo documentazione
+        # e commenti).
+        self._is_cloud = True
         # last_tool_calls / last_thinking_blocks are intentionally NOT
         # initialized here — they are per-call/per-Task class-level
         # descriptors (see above); chat() resets them at the start of every

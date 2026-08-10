@@ -372,10 +372,25 @@ async def handle_chat(request: web.Request) -> web.Response:
     # fetta E4 Task 4: `max_tokens` era uno dei sette campi che il turno di
     # chat leggeva dal vecchio `Chatbot`, ma GIA' inerte in pratica -- non e'
     # entrato in `ImpostazioniChat`, diventa qui una costante diretta:
-    # interactive chat gets a higher output ceiling than the per-agent eval
-    # cap (complex requests -- a multi-view dashboard, a long script --
-    # legitimately need more room, and the old 4096 default truncated them
-    # mid-tool-call). Il vecchio codice "floorava" un valore persistito fino a
+    # la chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
+    # modulo dei runner (4096), perche' una risposta lunga -- il riepilogo di
+    # una casa grande, un elenco di ricordi -- lo supera legittimamente.
+    #
+    # fetta E4 Task 9 (il conto): questo commento diceva "higher output ceiling
+    # than the per-agent eval cap" e "complex requests -- a multi-view
+    # dashboard, a long script -- legitimately need more room, and the old 4096
+    # default truncated them mid-tool-call". Tre dichiarazioni false al
+    # presente, stessa famiglia bonificata al Task 8 in claude_runner.py
+    # (`_TRUNCATION_NOTICE`, il commento su `MAX_TOKENS`): l'agente di
+    # valutazione col suo tetto e' uscito con la fetta E3 Task 8
+    # (`run_with_actions`/`EVALUATION_TOOL_DEFS`) -- non c'e' piu' un "eval cap"
+    # con cui confrontarsi; le plance e gli script non sono piu' cose che HIRIS
+    # sa fare (l'attuazione e' uscita con la fetta E2), quindi non sono l'uso
+    # che riempie il tetto; e nessun tool-call puo' essere troncato "a meta'"
+    # per colpa di un default che nessun chiamante di produzione raggiunge piu'
+    # (qui si passa SEMPRE `CHAT_MAX_TOKENS`).
+    #
+    # Il vecchio codice "floorava" un valore persistito fino a
     # CHAT_MAX_TOKENS -- ma senza piu' un editor che possa persisterne uno
     # diverso da 4096 (uscito con la E4 Task 3), il floor scattava SEMPRE:
     # usare direttamente CHAT_MAX_TOKENS e' lo stesso comportamento, senza il

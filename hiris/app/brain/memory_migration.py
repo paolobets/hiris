@@ -5,8 +5,18 @@ KnowledgeStore (Slice 3).
 Historically each agent's long-term memory lived in its own SQLite database
 (`hiris_memory.db`, table `agent_memories` -- see `proxy/memory_store.py`).
 Slice 3 unifies all memory/knowledge under `knowledge_items` in
-`knowledge.db`, using the `chatbot_id` column to keep memories scoped per
-agent.
+`knowledge.db`.
+
+fetta E4 Task 9 (il conto): qui c'era scritto che `knowledge_items` usa la
+colonna `chatbot_id` "to keep memories scoped per agent". Non e' piu' vero e
+non lo e' da un pezzo: la delimitazione per chatbot e' uscita dai filtri con
+"Task 3, memoria unica" (vedi `KnowledgeStore._clausole_di_scope`, che lo
+dichiara: l'unico asse di riservatezza e' `owner`), e l'entita' Chatbot
+stessa e' uscita con la fetta E4 Task 4. La colonna resta in tabella come
+sola provenienza, e la riga migrata continua a portarla valorizzata
+(`chatbot_id=<agent_id>`, sotto) perche' e' l'unico posto dove il vecchio
+`agent_id` puo' ancora dire da dove veniva quel ricordo -- ma non delimita
+piu' chi lo vede.
 
 `migrate_agent_memories()` copies every legacy row into KnowledgeStore as a
 `kind="memory"` item (`chatbot_id=<agent_id>`, `source="migrated"`), then renames

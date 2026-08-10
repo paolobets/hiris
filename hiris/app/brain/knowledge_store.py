@@ -430,9 +430,15 @@ class KnowledgeStore:
             kinds = None if kinds == "all" else [kinds]
         if kinds is not None:
             if not kinds:
-                # An explicitly empty list is the deny-all sentinel (e.g. an
-                # agent configured with knowledge_access.kinds=[] meaning "no
-                # knowledge access"). `kind IN ()` is invalid SQL, so short-
+                # An explicitly empty list is the deny-all sentinel: "nessun
+                # kind ammesso", non "nessun filtro". fetta E4 Task 9 (il
+                # conto): qui c'era scritto "e.g. an agent configured with
+                # knowledge_access.kinds=[]" -- `knowledge_access` era un campo
+                # dell'entita' `Chatbot`, uscita per intero alla fetta E4
+                # Task 4, e nessuna configurazione del prodotto puo' piu'
+                # produrre quella lista. Il sentinella resta perche' e' il
+                # contratto del parametro, non perche' qualcuno lo eserciti:
+                # oggi lo passano solo i test. `kind IN ()` is invalid SQL, so short-
                 # circuit with an always-false predicate instead of falling
                 # through to "no filter" (which `if kinds:` used to do).
                 clauses.append("1=0")

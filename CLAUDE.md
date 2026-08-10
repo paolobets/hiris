@@ -161,23 +161,28 @@ Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un pia
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # ~3000 righe: registrazione rotte E gran parte del wiring
+    ├── server.py         # ~1.770 righe: registrazione rotte E gran parte del wiring
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
-    ├── chatbot_engine.py · llm_router.py · task_engine.py · chat_store.py
-    ├── model_activation.py · storage.py · mqtt_publisher.py · env_util.py · version.py
-    ├── api/        (26 file) handlers_* — la superficie HTTP
-    ├── tools/      (19)      i tool esposti al modello + dispatcher.py
-    ├── brain/      (22)      health_scan, advisory_store, knowledge_store, coverage_review, briefing
-    ├── proxy/      (11)      ha_client.py (il VERO client HA: REST+WS), semantic_context_map
-    ├── watcher/    (17)      guardian, detectors, agentbots, evaluator, executor  ← area condannata
+    ├── llm_router.py · chat_store.py · impostazioni_chat.py · model_activation.py
+    ├── config.py · storage.py · env_util.py · version.py
+    ├── api/        (15 file) handlers_* — la superficie HTTP
+    ├── casa/       (8)       anagrafe, archivio, comportamento, nucleo, domande, strumenti
+    ├── brain/      (9)       knowledge_store, privacy, identity, chunking, mayan_*, history_digest
     ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
-    ├── security/   (2)       semaphore.py                                        ← area condannata
-    ├── mcp/ · history/ · reasoning/ · agent/
+    ├── memoria/    (4)       archivio, interpretazione, riconoscitore
+    ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
+    ├── agent/      (3)       runner.py (il ponte push) + prompts.py
+    ├── history/    (3)  ·  reasoning/ (2)
     └── static/     index.html · config.html · chat/*.js · config/*.js · hiris-chat-card.js
 ```
 
-**Non esistono** (li citavano vecchi documenti): `app/routes.py`, `app/ha_client.py`,
-`app/agent_engine.py`, `api/handlers_agents.py`.
+**Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
+`app/routes.py`, `app/ha_client.py`, `app/agent_engine.py`, `api/handlers_agents.py`,
+e — dopo le tre fette di demolizione del 2.0 — `app/chatbot_engine.py`, `app/task_engine.py`,
+`app/mqtt_publisher.py`, e le cartelle `tools/`, `watcher/`, `security/`, `mcp/`.
+La tabella «Cosa è condannato» qui sopra resta valida come **regola**, ma i percorsi che cita
+(`watcher/detectors.py`, `security/semaphore.py`) sono ormai riferimenti storici: quelle aree
+sono uscite con le fette E2 ed E3.
 
 ---
 
@@ -185,8 +190,8 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 
 ### Test
 ```bash
-python -m pytest -q          # ~2070 test
-npm test                     # ~100 test frontend: node --test + jsdom
+python -m pytest -q          # 1.068 test (2.0 @ fine fetta E4; erano ~2.070 prima delle demolizioni)
+npm test                     # 135 test frontend: node --test + jsdom
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
 `app/`, `config.yaml` e `run.sh`: `package.json` e `node_modules` **non** entrano nell'immagine.

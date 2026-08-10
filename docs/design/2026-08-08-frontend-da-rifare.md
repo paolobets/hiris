@@ -70,3 +70,76 @@ JS coinvolti: `dashboard.js`, `main.js`, `tasks-route.js`, `chat/tasks.js`, `pro
 `gateway-route.js`, `chatbot-editor.js`, `logs.js`, `create-wizard.js`, più le due voci di sidebar
 (`config.html:106` per Agentbots, le voci nav di `index.html:76,83` per Task/Proposte) e il catalogo
 di `templates.js`. Nessuno di questi file è stato toccato da questo task.
+
+---
+
+# Aggiunte della fetta E4 — «Un bot solo»
+
+Prodotte dal **Task 9** della fetta E4, con lo stesso metodo e lo stesso vincolo (`static/` non si
+tocca: qui si elenca e si verifica). Ogni voce sotto è stata **verificata contro la tabella di
+routing viva a HEAD della E4**, non copiata dal brief: due voci del brief sono risultate imprecise e
+sono corrette qui sotto (righe 10 e 13).
+
+## La tabella di routing viva a HEAD della fetta E4 (28 rotte + `/static`)
+
+Estratta con `grep -n "app.router.add_" hiris/app/server.py` (29 righe, di cui una `add_static`):
+
+```
+/  /config  /api/health  /api/config  /api/usage  /api/usage/reset
+/api/chat  /api/chat/reply/{job_id}
+/api/chatbots                                   <- GET, lista a UN elemento (compatibilità)
+/api/chatbots/{agent_id}/chat-history           <- GET + DELETE, {agent_id} ignorato (compatibilità)
+/api/entities
+/api/models  /api/models/config
+/api/knowledge/pending  /api/knowledge/{id}/approve  /api/knowledge/{id}/reject  /api/knowledge
+/api/history/policy
+/api/reasoning/claim  /api/reasoning/submit
+/api/casa  /api/memoria  /api/memoria/{id}  /api/nucleo
+```
+
+**Uscite con la fetta E4** rispetto all'elenco della E3: `/api/status` (Task 4), `POST /api/chatbots`
+(Task 3), `GET`/`PUT`/`DELETE /api/chatbots/{id}` (Task 3), `POST /api/chatbots/{id}/run` (Task 2),
+`/api/chatbots/{id}/usage` e `/api/chatbots/{id}/usage/reset` (Task 3).
+
+## Tabella (seguito)
+
+| # | Pagina / pezzo | File JS | Endpoint morti chiamati | Uscito con | Come si rompe |
+|---|---|---|---|---|---|
+| 9 | **Onboarding della chat** (overlay «Benvenuto in HIRIS») | `chat/onboarding.js` (righe 17, 47), overlay `index.html:28`, script `index.html:232` | `POST /api/chatbots` (riga 47) | E4 Task 3 | `check()` (riga 17) chiama `GET api/chatbots`, che è **vivo**: la lista torna con l'unico bot, `is_default: true`, quindi `nonDefault.length === 0` e **l'overlay si apre**. Prima della fetta bastava creare un secondo bot perché non riapparisse mai più; ora quel ramo è irraggiungibile per costruzione — l'unica uscita è `localStorage['hiris_onboarding_v1']`. «Crea» (riga 47) prende 404 e mostra `alert('Errore nella creazione assistente. Riprova.')`: **errore visibile**. «Salta» chiude e scrive il localStorage, quindi su un'installazione già usata l'overlay non ricompare. Il caso rotto è l'**installazione fresca**, o un browser nuovo. |
+| 7bis | **Wizard di creazione — ramo Chatbot** (estende la riga 7) | `config/create-wizard.js:729-731` (`var url = isAgentbot ? 'api/agentbots' : 'api/chatbots'`) | `POST /api/chatbots` | E4 Task 3 | La riga 7 registrava morto solo il ramo Agentbot. Ora **entrambi i rami del ternario** puntano a rotte inesistenti: qualunque scelta faccia l'utente al primo step, «Crea» fallisce con l'errore visibile di `errorEl` («Errore nella creazione: HTTP 404»). Il wizard non ha più nessun esito riuscito. |
+| 10 | **`#/chatbots` — editor** | `config/chatbot-editor.js` (righe 641 salva, 732 Test Run, 757 refresh post-run, 778 elimina) | `PUT /api/chatbots/{id}`, `POST /api/chatbots/{id}/run`, `GET /api/chatbots/{id}` | E4 Task 3 (PUT/DELETE/GET-single), E4 Task 2 (`/run`) | **Correzione al brief: l'editor CARICA.** Il caricamento non passa da `GET /api/chatbots/{id}` ma dalla **lista viva** (`loadChatbots()` a riga 105 e il fallback a riga 810), quindi la pagina si apre e mostra i campi che la lista compat espone (`id`, `name`, `enabled`, `status`, `is_default`, `max_chat_turns`). Tutto il resto dei riquadri (istruzioni, modello, permessi, budget, strumenti) si disegna sui **default vuoti**, senza dire che non li ha letti. Morti: **Salva** (riga 641 -> alert «Errore salvataggio Chatbot (HTTP 404)»), **Elimina** (riga 778 -> alert), **Test Run** `#btn-test-run` (riga 732 -> `r.json()` su un 404 `text/plain` rigetta, ramo `.catch` -> «Errore: …»). La riga 757 (refresh log+usage dopo il run) non viene mai raggiunta, perché il run fallisce prima. |
+| 11 | **`#/chatbots` — lista** | `config/chatbots-list.js:9` | — (`GET /api/chatbots` è vivo) | — | Non è rotta: mostra **una riga sola**, che è il vero stato del prodotto. Elencata per completezza, perché la E5 la smonterà insieme all'editor. |
+| 12 | **Card Lovelace** | `hiris-chat-card.js` (righe 785-796 stato/budget, 977 toggle, 713 sensore budget, 1317 selettore) | `PUT /api/chatbots/{id}` (riga 977) | E4 Task 3 | **Toggle «abilitato»: revert silenzioso.** La card fa il flip ottimistico, il `PUT` prende 404, `resp.ok` è falso e lo stato torna indietro **senza alcun messaggio** — l'utente vede l'interruttore rimbalzare. Il **chip budget resta a 0/—**: `GET api/chatbots` è vivo ma il payload compat non porta più `budget_eur`/`usage` (`agent.budget_eur` in OR con `0`, riga 796). Trovato durante la verifica e **non nel brief**: la riga 713 legge anche `sensor.hiris_{agentId}_budget_eur`, un'entità HA che veniva pubblicata via MQTT — uscito con la fetta **E3 Task 14**: quel sensore non esiste più in Home Assistant, quindi anche la seconda fonte del budget è morta. |
+| 13 | **`#/usage` — sezione «Per Chatbot»** | `config/usage-route.js:58-105` | — (`GET /api/chatbots` è vivo) | E4 Task 6 (contabilità per-chatbot) | **Correzione al brief: non è una rotta morta.** La sezione si popola (la lista compat risponde) e mostra «1 totali» con una riga «Attivo» e `0 run · 0 tok · €0.000`: i campi `usage`/`budget_limit_eur`/`_rate_limit_paused` non esistono più nel payload e degradano tutti a zero/falso. È **una tabella che mente per omissione**, non una tabella vuota: sembra un consumo azzerato, ed è invece un consumo non misurato. Il contatore globale sopra (`api/usage`, righe 35 e 115) è vivo e vero. |
+| 14 | **Blocco `designer:` di `hiris/translations/{it,en}.yaml`** (righe 118-186, fino a fine file) | — | — | E4 Task 2 (`section_testrun`, `test_run`), E4 Task 6 (`section_usage`), fette E2/E3 (`section_actions`, `section_permissions`, `log:`, `action:`, `proposal:`, `cron:`) | **Trovato durante la verifica, diverso da come lo poneva il brief.** Non è un blocco che «esce con le pagine in E5»: **non ha nessun lettore già oggi**. Verificato con grep su tutto `hiris/app/` (Python e JS): nessun file legge `hiris/translations/*.yaml`; le stringhe del Designer sono hard-coded in italiano dentro i `.js`. Il file `translations/` è il canale delle traduzioni **dell'add-on** (Supervisor), e lì l'unico blocco con un significato dichiarato è `configuration:` — quello sì, vivo e allineato. Il blocco `designer:` è quindi peso morto puro, non una dipendenza del frontend: la E5 può cancellarlo senza toccare nessuna pagina. *(Limite dichiarato: che il Supervisor ignori un blocco non previsto dal suo schema non è verificabile da questo repo — qui è verificata solo l'assenza di lettori in-repo.)* |
+
+## La superficie di compatibilità da smontare in E5
+
+Non è rotta: è **tenuta apposta viva** perché la pagina chat e la card ne dipendono davvero
+(dichiarato al Task 3 della E4). La E5 la smonta insieme alle pagine che la chiamano:
+
+1. **`GET /api/chatbots`** — restituisce una lista di **un solo elemento** costruita a mano da
+   `handlers_chatbots.py::handle_list_chatbots` a partire da `ImpostazioniChat` (`id` costante,
+   `status: "idle"` letterale, `enabled: true` letterale). Chiamanti: `chat/agents.js:83`,
+   `chatbot-editor.js:105,810`, `chatbots-list.js:9`, `usage-route.js:58`, `onboarding.js:17`,
+   `hiris-chat-card.js:785,1317`.
+2. **`GET`/`DELETE /api/chatbots/{agent_id}/chat-history`** — il placeholder `{agent_id}` è
+   **accettato e ignorato**: non è nemmeno più letto da `match_info`, perché dal Task 5 esiste una
+   sola cronologia. Chiamanti: `chat/agents.js:116` (GET) e `chat/agents.js:37` (DELETE).
+3. **`chatbot_id` nel corpo di `POST /api/chat`** — letto in `handlers_chat.py:179`
+   (`_chatbot_id_ignorato`) e **mai usato per selezionare niente**. Letto invece di scartato di
+   proposito, così una richiesta che porta la chiave non si comporta diversamente da una che la
+   omette.
+
+## Riepilogo per chi pianificherà la E5 (aggiornato a fine E4)
+
+Alle 9 voci della E3 se ne aggiungono **6** (9, 7bis, 10, 12, 13, 14) più una riga di sola
+completezza (11) e la superficie di compatibilità qui sopra. File JS nuovi rispetto all'elenco della
+E3: `chat/onboarding.js`, `chatbots-list.js`, `usage-route.js`, `hiris-chat-card.js`, più
+`hiris/translations/{it,en}.yaml` (blocco `designer:`) che non è un file JS ma esce con le stesse
+pagine. `chatbot-editor.js` e `create-wizard.js` erano già in elenco e peggiorano.
+
+**Le uniche due voci con un errore visibile all'utente** restano l'onboarding («Crea») e il wizard;
+tutto il resto degrada in silenzio — che è, di nuovo, il motivo per cui il censimento non le vede.
+
+Nessuno di questi file è stato toccato dalla fetta E4.
