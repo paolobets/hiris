@@ -21,6 +21,7 @@ chiusura di un job, non solo una:
      file `reasoning.db` sul disco dopo che il job e' stato risolto -- la
      prova che il punto del task e' raggiunto, non solo la sua forma.
 """
+import json
 import os
 import sqlite3
 
@@ -166,7 +167,7 @@ def test_il_job_scaduto_resta_distinguibile_da_un_job_mai_esistito(q):
 # contenuto non sopravviva nemmeno sul disco).
 # ---------------------------------------------------------------------------
 
-from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll, componi_contesto_chat
+from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_store import close_all_stores
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.casa.archivio import ArchivioCasa
@@ -218,40 +219,53 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
             assert resp.status == 202
             job_id = (await resp.json())["job_id"]
 
-        # Prova che il ricordo e' arrivato per davvero nel job (altrimenti il
-        # test proverebbe poco): sia via API sia via lettura diretta del file.
-        contesto_in_volo = reasoning_queue.get(job_id)["context"]["contesto"]
-        assert ricordo_segreto in contesto_in_volo
-        raw_pending = sqlite3.connect(db_path).execute(
-            "SELECT context_json FROM reasoning_jobs WHERE job_id=?", (job_id,)
-        ).fetchone()[0]
-        assert ricordo_segreto in raw_pending
+            # Prova che il ricordo e' arrivato per davvero nel job (altrimenti
+            # il test proverebbe poco): sia via API sia via lettura diretta
+            # del file.
+            contesto_in_volo = reasoning_queue.get(job_id)["context"]["contesto"]
+            assert ricordo_segreto in contesto_in_volo
+            raw_pending = sqlite3.connect(db_path).execute(
+                "SELECT context_json FROM reasoning_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()[0]
+            assert ricordo_segreto in raw_pending
 
-        # Il ponte risolve il job (claim + submit), come farebbe il runner
-        # esterno reale.
-        claimed = reasoning_queue.claim(now=5.0)
-        assert claimed["job_id"] == job_id
-        assert ricordo_segreto in claimed["context"]["contesto"]
-        ok = reasoning_queue.submit(job_id, claimed["nonce"],
-                                     {"reply": "in cucina ci sono i faretti"}, now=6.0)
-        assert ok is True
+            # Il ponte risolve il job (claim + submit), come farebbe il runner
+            # esterno reale.
+            claimed = reasoning_queue.claim(now=5.0)
+            assert claimed["job_id"] == job_id
+            assert ricordo_segreto in claimed["context"]["contesto"]
+            ok = reasoning_queue.submit(job_id, claimed["nonce"],
+                                        {"reply": "in cucina ci sono i faretti"}, now=6.0)
+            assert ok is True
 
-        # Dopo la risoluzione: il ricordo NON e' piu' nel file, letto
-        # direttamente da sqlite (non dal wrapper, che gia' lo azzererebbe
-        # per costruzione -- qui si verifica il disco).
-        raw_after = sqlite3.connect(db_path).execute(
-            "SELECT context_json FROM reasoning_jobs WHERE job_id=?", (job_id,)
-        ).fetchone()[0]
-        assert ricordo_segreto not in raw_after
-        assert "Cucina" not in raw_after
-        assert raw_after == "{}"
+            # Dopo la risoluzione: il ricordo NON e' piu' nel file, letto
+            # direttamente da sqlite (non dal wrapper, che gia' lo azzererebbe
+            # per costruzione -- qui si verifica il disco).
+            raw_after = sqlite3.connect(db_path).execute(
+                "SELECT context_json FROM reasoning_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()[0]
+            assert ricordo_segreto not in raw_after
+            assert "Cucina" not in raw_after
+            assert raw_after == "{}"
 
-        # Il job resta risolvibile e la risposta arriva: solo il contesto e'
-        # sparito, non il record.
-        job = reasoning_queue.get(job_id)
-        assert job["status"] == "decided"
-        assert job["decision"]["reply"] == "in cucina ci sono i faretti"
-        assert job["context"] == {}
+            # Il job resta risolvibile e la risposta arriva: solo il contesto
+            # e' sparito, non il record.
+            job = reasoning_queue.get(job_id)
+            assert job["status"] == "decided"
+            assert job["decision"]["reply"] == "in cucina ci sono i faretti"
+            assert job["context"] == {}
+
+            # m-F della review del Task 5: la rotta di poll era CABLATA e mai
+            # chiamata -- il giro si chiudeva sul wrapper Python invece che
+            # sull'HTTP che vede l'utente. Ora si chiude dove si chiude
+            # davvero: la risposta arriva all'utente DOPO l'azzeramento, cioe'
+            # azzerare il contesto non gli toglie niente.
+            poll = await client.get(f"/api/chat/reply/{job_id}")
+            assert poll.status == 200
+            corpo = await poll.json()
+            assert corpo["status"] == "done"
+            assert corpo["reply"] == "in cucina ci sono i faretti"
+            assert ricordo_segreto not in json.dumps(corpo, ensure_ascii=False)
     finally:
         archivio_casa.chiudi()
         archivio_memoria.chiudi()

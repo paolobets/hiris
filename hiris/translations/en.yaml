@@ -89,15 +89,17 @@ configuration:
   chat_daily_cap:
     name: "Chat via subscription — messages/day cap"
     description: "Maximum number of chat messages HIRIS routes per day to the external subscription runner. Past the limit the chat replies with an error and the message is not sent: there is no automatic fallback to the local/pay-per-use provider. Only messages routed over the subscription are counted. Default: 50."
-  # fetta E4, fix della review totale (I2): vedi il commento gemello in it.yaml,
-  # che porta la motivazione per esteso. In breve: la scansione olistica non
-  # esiste piu' (E3 Task 4 + E4 Task 8), su questo percorso la chat non ha la
-  # conoscenza della casa, e provider_subscription + token OAuth accendono
-  # questa modalita' anche con l'opzione a false (server.py:1332-1340).
-  # DA RIVEDERE QUANDO LA PARITA' SARA' PRONTA -- insieme a it.yaml, stesso commit.
+  # fetta "il ponte riceve il nucleo" (parita' A, Task 6): vedi il commento
+  # gemello in it.yaml, che porta la motivazione per esteso. In breve: la
+  # scansione olistica non esiste piu' (E3 Task 4 + E4 Task 8);
+  # provider_subscription + token OAuth accendono questa modalita' anche con
+  # l'opzione a false (server.py, `_bridge_enabled` letta con `_sub_first_class`);
+  # e da questa fetta la chat su questo percorso RICEVE la conoscenza della casa
+  # ma non gli strumenti -- la descrizione qui sotto e' stata riscritta insieme
+  # a quella di it.yaml, nello stesso commit, come il commento precedente chiedeva.
   chat_via_subscription:
     name: "Chat via subscription — enable"
-    description: "Routes chat replies to the external subscription runner instead of the local/pay-per-use provider, subject to the daily cap and deadline above. WARNING: on this path the chat does NOT have your home's knowledge — neither what HIRIS knows about your home nor its tools reach the external runner, so it answers only from what is written in the conversation, and says so rather than making things up. Takes effect only when \"Subscription bridge — enable\" above is also enabled. NOTE: if you enable the \"Subscription (Claude Max)\" provider and the OAuth token is present, this mode turns on anyway, even with this option left off. Default: disabled."
+    description: "Routes chat replies to the external subscription runner instead of the local/pay-per-use provider, subject to the daily cap and deadline above. On this path the chat does receive your home's knowledge — the same core HIRIS uses in the other mode, memories and past sessions included — but NOT its tools: it reads a snapshot taken when the message was sent, it cannot look at the current state or act on the home, and it says so rather than making things up. Takes effect only when \"Subscription bridge — enable\" above is also enabled. NOTE: if you enable the \"Subscription (Claude Max)\" provider and the OAuth token is present, this mode turns on anyway, even with this option left off. Default: disabled."
   mayan:
     name: "Mayan EDMS (documents)"
     description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."

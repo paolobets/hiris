@@ -1,8 +1,10 @@
 """fetta "il ponte riceve il nucleo" (parita' A, Task 4): il modello del
 ponte e' quello scelto per la chat, non piu' `HIRIS_AGENT_CHAT_MODEL` --
 quella env non era mai esportata da `run.sh` (censimento -> "Variabili
-d'ambiente lette e mai esportate", `agent/runner.py:110`): in produzione era
-SEMPRE "sonnet", qualunque cosa l'utente scegliesse per la chat.
+d'ambiente lette e mai esportate", voce su `agent/runner.py`, dove
+`_reason_chat` la leggeva: oggi la voce non c'e' piu' perche' non c'e' piu'
+la lettura): in produzione era SEMPRE "sonnet", qualunque cosa l'utente
+scegliesse per la chat.
 
 `agent.runner.modello_cli(modello_risolto)` traduce il modello GIA' RISOLTO
 (via `claude_runner.resolve_model`, che puo' restituire un modello di

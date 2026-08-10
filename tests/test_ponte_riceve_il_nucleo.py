@@ -12,7 +12,8 @@ docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md).
 
 Cosa difende ciascun gruppo di test:
 - l'ORDINE dei blocchi del system prompt, che deve essere quello del ramo
-  sincrono (`claude_runner.py:612-633`): BASE -> persona -> guida -> contesto.
+  sincrono (`claude_runner.py::ClaudeRunner.chat`, dove si compone
+  `system_blocks`): BASE -> persona -> guida -> contesto.
   Non e' estetica: la guida esiste per SMENTIRE BASE e la persona (entrambi
   scritti per il percorso sincrono, entrambi nominano strumenti che qui non
   ci sono), e una guida che li precedesse non smentirebbe nulla;
@@ -75,7 +76,8 @@ def test_il_contesto_sta_in_coda_e_dopo_la_guida():
     assert system.index(prompts._GUIDA_SENZA_STRUMENTI) < system.index(_CONTESTO)
     assert system.rstrip().endswith(_CONTESTO), (
         "il contesto e' il blocco volatile: nel ramo sincrono sta in fondo, "
-        "dopo tutti i blocchi stabili (claude_runner.py:612-633). Se qui non "
+        "dopo tutti i blocchi stabili (claude_runner.py::ClaudeRunner.chat, "
+        "dove `context_str` e' l'ultimo append a `system_blocks`). Se qui non "
         "e' in coda, i due percorsi compongono cose diverse.")
 
 
@@ -233,7 +235,7 @@ def test_nessun_chiamante_di_produzione_gira_l_interruttore():
     assert firma.parameters["strumenti_attivi"].default is False
     assert firma.parameters["contesto"].default == ""
     # i due primi parametri restano POSIZIONALI (i pin esistenti li passano
-    # cosi': tests/test_agent_runner_inaddon.py:11)
+    # cosi': tests/test_agent_runner_inaddon.py::test_build_chat_messages_available)
     posizionali = [n for n, p in firma.parameters.items()
                    if p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD]
     assert posizionali == ["system_prompt", "history"]
@@ -242,6 +244,35 @@ def test_nessun_chiamante_di_produzione_gira_l_interruttore():
     assert "strumenti_attivi" not in sorgente, (
         "il runner del ponte gira l'interruttore degli strumenti: e' la fetta "
         "B, non questa")
+
+
+def test_il_prompt_che_esce_davvero_dal_ponte_e_quello_senza_strumenti():
+    """La META' DI COMPORTAMENTO del test qui sopra (m-B della review del
+    Task 2: quello era per meta' un test di FORMA -- firma, default, nomi dei
+    parametri, sorgente letta con `inspect`).
+
+    La forma non basta: la firma potrebbe restare identica e l'interruttore
+    essere girato da un chiamante NUOVO, o il default cambiare a valle. Qui
+    si guarda il prodotto finito -- il system prompt che finisce davvero
+    sulla riga di comando di `claude`, catturato dal percorso reale
+    (`_reason_chat` in modalita' live con `subprocess.run` finto) -- e si
+    verifica quale delle due guide contiene.
+
+    Quando la fetta B arrivera', questo test diventa rosso INSIEME ai tre pin
+    dell'argv, e la risposta giusta e' la stessa: riscriverlo col ramo nuovo,
+    non cancellarlo."""
+    job = {"kind": "chat", "job_id": "job-senza-strumenti",
+           "context": {"history": [{"role": "user", "content": "ciao"}],
+                       "system_prompt": "Sei HIRIS.", "contesto": _CONTESTO}}
+
+    system = _cattura_system(job)
+
+    assert prompts._GUIDA_SENZA_STRUMENTI in system, (
+        "il ponte non emette piu' la guida che nega gli strumenti")
+    assert prompts._GUIDA_CON_STRUMENTI not in system, (
+        "il ramo _GUIDA_CON_STRUMENTI e' diventato raggiungibile dalla "
+        "produzione: e' la fetta B, e va insieme a --mcp-config/--allowedTools "
+        "nell'argv (tests/test_agent_runner_inaddon.py, i tre pin)")
 
 
 # ---------------------------------------------------------------------------
@@ -414,9 +445,16 @@ def test_senza_argomenti_nessun_modificatore_di_default():
 
 
 def test_i_modificatori_stanno_fra_la_persona_e_la_guida():
-    """Stesso posto del ramo sincrono (claude_runner.py:645-661): dopo i
-    blocchi stabili di identita', prima del breakpoint di cache e del
-    contesto volatile. Qui, fra `system_prompt` e la guida."""
+    """Stesso posto del ramo sincrono (claude_runner.py::ClaudeRunner.chat,
+    dove RESTRICT_PROMPT/COMPACT_PROMPT/MINIMAL_PROMPT si appendono a
+    `system_blocks`): dopo i blocchi stabili di identita', prima del
+    breakpoint di cache e del contesto volatile. Qui, fra `system_prompt` e
+    la guida.
+
+    (I rinvii sono ai NOMI, non ai numeri di riga: i tre che stavano qui
+    erano gia' invecchiati -- `claude_runner.py:612-633` cadeva, a fetta
+    finita, dentro un commento su `pseudonym_map`. Un numero di riga
+    invecchia al primo commit che sposta il blocco; un nome no.)"""
     persona = "Sei HIRIS, la persona della chat."
     system, _user = prompts.build_chat_messages(
         persona, [], contesto=_CONTESTO, restrict_to_home=True, response_mode="compact")

@@ -67,7 +67,7 @@ class ReasoningQueue:
     # `sweep_expired()` sotto, la stessa UPDATE che chiude il job azzera anche
     # `context_json` a '{}'. Il `context` di un job di chat porta il nucleo
     # per intero -- aree, dispositivi, entita', "cio' che le persone hanno
-    # detto" (`casa/nucleo.py:14-16`) -- e senza questo azzeramento resterebbe
+    # detto" (`casa/nucleo.py::componi`) -- e senza questo azzeramento resterebbe
     # nel file `reasoning.db` fino alla potatura a 7 giorni (`prune()`,
     # chiamata da `server.py` con `before_ts = now - 7*86400`), ben oltre il
     # tempo in cui serve a qualcuno. Verificato (non assunto) che nessun
@@ -76,8 +76,12 @@ class ReasoningQueue:
     # `context`; `handle_reasoning_submit` chiama `q.get(job_id)` anche lui
     # DOPO il proprio submit, ma legge solo `job.get("kind")`
     # (`handlers_reasoning.py`); `has_pending_chat()` e' un COUNT indicizzato
-    # su `status`/`deadline_ts` che non riapre mai `context_json`
-    # (`:96-125` qui sopra). Il record -- riga, `status`, `decision_json`,
+    # su `status`/`deadline_ts` che non riapre mai `context_json` (il metodo
+    # e' piu' sotto in questo stesso file: si cerca per NOME, perche' un
+    # rinvio al numero di riga invecchia al primo commit che sposta il
+    # metodo -- ed e' gia' successo: quando questo commento e' stato
+    # scritto citava `:96-125`, e il metodo era gia' altrove). Il record --
+    # riga, `status`, `decision_json`,
     # timestamp -- resta: serve alla contabilita' (conteggio giornaliero,
     # log dello sweep) e alla potatura, che continua a rimuovere le righe
     # invariata. Sparisce solo il CONTENUTO del contesto, sostituito da un
