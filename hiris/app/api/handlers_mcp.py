@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import OrderedDict
 
 from aiohttp import web
 
@@ -66,6 +67,45 @@ PROTOCOLLO_PREDEFINITO = "2025-06-18"
 # I tre metodi che questa rotta conosce. Serve anche a scrivere un errore
 # `-32601` che DICE cosa esiste, invece di un "method not found" nudo.
 METODI = ("initialize", "tools/list", "tools/call")
+
+# Task 6 della fetta ("il ponte riceve gli strumenti", parita' B): il tetto ai
+# giri di strumento PER TURNO -- l'unico freno che l'abbonamento abbia.
+#
+# **Perche' qui e non sulla riga di comando.** Il piano lo chiede come
+# mitigazione minima (progetto, §5.2): il modello puo' incatenare `cerca` ->
+# `guarda` -> `richiama` -> ancora, e ogni giro costa un turno di
+# `chat_daily_cap` mentre ne consuma N. `claude 2.1.226` pero' NON ha un
+# `--max-turns` ne' alcun flag che limiti i giri di strumento (verificato su
+# `claude --help`, decisione A.7 del progetto): il tetto non puo' stare
+# sull'argv del ponte (`agent/runner.py::_chat_claude_args`), deve stare QUI,
+# l'unico punto che vede passare OGNI `tools/call` -- comprese, se mai
+# arrivassero, quelle di una SECONDA invocazione dello stesso turno (Task 4:
+# oggi quella seconda invocazione riparte sempre SENZA strumenti, quindi non
+# chiama mai questa rotta -- ma il tetto e' scritto per continuare a valere
+# anche il giorno in cui smettesse di essere cosi', vedi `runner.config_mcp`).
+#
+# **Il valore.** Il ramo sincrono ha gia' il suo tetto ai giri di strumento,
+# `MAX_TOOL_ITERATIONS = 10` (`hiris/app/claude_runner.py:211`), e non dipende
+# dalla risposta a Q2: vale identico sul ponte, per la stessa ragione per cui
+# vale sul sincrono, e usare lo stesso numero e' parita' invece di un secondo
+# valore da giustificare da zero.
+#
+# **Costante di modulo, non un'opzione dell'add-on** (regole della fetta): un
+# opzione vive in cinque posti (config.yaml options+schema, run.sh, le due
+# traduzioni, il lettore Python), e qui non c'e' niente che l'utente debba
+# toccare oggi -- se un giorno servira' configurarla, si fara' il giro dei
+# cinque posti allora.
+MAX_GIRI_STRUMENTI = 10
+
+# Quante identita' di turno diverse restano tracciate insieme. Piccolo di
+# proposito (Step 2 del brief, "N piccolo"): serve solo a impedire che il
+# dizionario cresca senza fine per l'intera vita del processo -- un turno del
+# ponte dura al piu' i due `subprocess.run(timeout=300)` di
+# `agent/runner.py::_reason_chat`, la sua identita' non serve piu' un istante
+# dopo, e tenerne migliaia sarebbe una perdita di memoria scritta apposta.
+# Le piu' vecchie si scartano (FIFO, `OrderedDict.popitem(last=False)`)
+# quando se ne affaccia una nuova e il tetto e' gia' pieno.
+_MAX_TURNI_TRACCIATI = 64
 
 
 def _risposta(id_richiesta, risultato: dict) -> web.Response:
@@ -104,6 +144,81 @@ def catalogo_mcp() -> list[dict]:
     return voci
 
 
+def _conta_giro(app, id_turno: str) -> int:
+    """Incrementa il contatore dei giri di strumento del turno `id_turno` e
+    restituisce il valore **prima** dell'incremento (quanti giri erano gia'
+    passati per questo turno).
+
+    **Vive solo nel processo e solo nel loop asyncio.** `handle_mcp` e' un
+    handler aiohttp: gira sempre nel thread del loop dell'add-on. Il
+    chiamante di produzione (il sottoprocesso `claude` del ponte) parla con
+    questa rotta solo via HTTP -- non tocca mai questo dizionario
+    direttamente -- e il runner che lo invoca (`agent/runner.py::run_loop`)
+    gira si' in un thread executor, ma quel thread fa solo `subprocess.run` e
+    non vede mai `app`. Non esiste quindi nessun accesso concorrente da due
+    thread allo stesso dizionario: e' la ragione per cui qui non c'e' nessun
+    lock, e va scritta perche' e' cio' che rende la struttura sicura SENZA
+    sincronizzazione, non un'omissione.
+
+    **Dimensione limitata** (`_MAX_TURNI_TRACCIATI`, "le ultime N identita' di
+    turno" del brief): quando arriva un'identita' MAI vista e il dizionario e'
+    gia' pieno, la piu' vecchia (FIFO) si scarta prima di inserire quella
+    nuova."""
+    contatori: OrderedDict[str, int] = app.setdefault("mcp_giri_per_turno", OrderedDict())
+    if id_turno in contatori:
+        contatori.move_to_end(id_turno)
+        giri = contatori[id_turno]
+    else:
+        giri = 0
+        if len(contatori) >= _MAX_TURNI_TRACCIATI:
+            contatori.popitem(last=False)  # il piu' vecchio
+    contatori[id_turno] = giri + 1
+    return giri
+
+
+def _rifiuto_tetto_raggiunto(nome: str) -> dict:
+    """Il `content` che il modello vede quando il tetto per-turno e' pieno.
+
+    **La forma scelta, motivata (non un dettaglio di stile).** Resta una
+    risposta JSON-RPC 2.0 NORMALE (`result`, non un `error` di protocollo
+    `-32xxx`): esattamente la stessa scelta che questo file fa gia' per un
+    guasto DICHIARATO del dispatcher (vedi `_chiama_strumento`, il ramo
+    `isError`) contro un guasto VERO (l'`except` di `handle_mcp`, che quello
+    si' risponde `-32603`). Il tetto raggiunto non e' un guasto del
+    protocollo -- la richiesta era benformata e la rotta funziona -- e' un
+    esito di merito dello strumento, la stessa categoria di
+    `DispatcherConoscenza._archivio_mancante`: si dichiara COSA e' successo
+    invece di restituire un guasto opaco. Un `error` di protocollo rischia
+    inoltre di far trattare l'intera chiamata dal client MCP della CLI come
+    una rottura del canale (schema non risolto, connessione da riprovare)
+    invece che come l'esito leggibile di UNO strumento fra tanti: il modello
+    deve poter leggere il testo e chiudere il turno con una risposta, non
+    restare a interpretare un errore di trasporto.
+
+    `isError: True`: non e' un successo travestito (nessun `content` finto
+    che pretenda che lo strumento abbia fatto il suo lavoro) -- il dispatcher
+    non e' stato invocato, e la chiamata NON ha prodotto l'effetto richiesto.
+    Cio' che la distingue da una chiamata fallita del dispatcher (stessa
+    forma nel protocollo: `isError: True`) e' il TESTO, leggibile sia nel log
+    sia da chi ispeziona `debug.tools_called` (Task 5): un fallimento del
+    dispatcher nomina l'archivio o l'argomento mancante, questo nomina
+    ESPLICITAMENTE il tetto e il numero. Un quarto stato nella forma del
+    protocollo non esiste in questo prodotto (tre bastano: riuscita, fallita,
+    mai risolta -- Task 5) e non lo si inventa qui: si dichiara nel contenuto,
+    dove sia il modello sia un umano che legga il log lo trovano."""
+    risultato = {
+        "errore": (
+            f"hai raggiunto il tetto di {MAX_GIRI_STRUMENTI} chiamate di "
+            f"strumento per questo turno (l'ultima tentata: «{nome}»): non "
+            "chiamare altri strumenti, rispondi con cio' che hai gia' "
+            "raccolto.")
+    }
+    return {
+        "content": [{"type": "text", "text": json.dumps(risultato, ensure_ascii=False)}],
+        "isError": True,
+    }
+
+
 async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> web.Response:
     """`tools/call`: il nome nudo, gli argomenti, e il dispatcher che c'e' gia'."""
     if not isinstance(parametri, dict):
@@ -132,6 +247,47 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
             f"ricevuto invece {type(argomenti).__name__}.",
             id_richiesta,
         )
+
+    # Task 6, Step 2 e 3: il tetto per-turno, DOPO la validazione (una
+    # `params` malformata e' un guasto di protocollo, non un giro speso) e
+    # PRIMA del dispatcher -- il dispatcher non deve mai vedere una chiamata
+    # oltre il tetto, o l'effetto (una scrittura in `memoria.db` per un
+    # `ricorda`, per dire) sarebbe gia' avvenuto quando lo si rifiuta.
+    #
+    # `X-HIRIS-Turno` e' l'intestazione che `agent/runner.py::config_mcp`
+    # aggiunge alla voce `--mcp-config` del ponte: la CLI la ripete su OGNI
+    # `tools/call` che fa verso questa rotta. Il runner conia UNA identita'
+    # sola per TURNO (non una per invocazione della CLI) e la riuserebbe se
+    # una seconda invocazione dello stesso turno chiamasse ancora strumenti
+    # (Task 4: oggi non succede -- il ritentativo riparte sempre senza
+    # strumenti -- ma se succedesse, questo e' cio' che impedirebbe al tetto
+    # di raddoppiare in silenzio).
+    id_turno = request.headers.get("X-HIRIS-Turno")
+    if not id_turno:
+        # Silenzio dichiarato (5) della fetta: un chiamante che non propaga
+        # questa intestazione (una CLI diversa dal ponte, un test, un
+        # chiamante futuro) non e' un guasto -- rifiutare lo strumento
+        # romperebbe il prodotto per un contatore che quel chiamante non sa
+        # nemmeno di dover portare. Si esegue lo strumento come se il tetto
+        # non esistesse, e si dichiara nel log che questa chiamata e' FUORI
+        # dal conteggio, invece di fingere che sia normale.
+        logger.warning(
+            "MCP tools/call «%s» senza l'intestazione X-HIRIS-Turno: non "
+            "viene contata nel tetto per-turno (%d/turno) -- il chiamante "
+            "non la propaga", nome, MAX_GIRI_STRUMENTI)
+    else:
+        giri_gia_fatti = _conta_giro(request.app, id_turno)
+        if giri_gia_fatti >= MAX_GIRI_STRUMENTI:
+            if giri_gia_fatti == MAX_GIRI_STRUMENTI:
+                # Un log.warning al PRIMO superamento per turno (Step 3 del
+                # brief), non a ogni chiamata successiva: il turno e' gia'
+                # dichiarato pieno, ripeterlo per ogni ulteriore tentativo
+                # sarebbe rumore invece di un segnale.
+                logger.warning(
+                    "MCP: tetto di %d chiamate di strumento raggiunto per il "
+                    "turno %s -- «%s» NON viene eseguita, il dispatcher non "
+                    "e' invocato", MAX_GIRI_STRUMENTI, id_turno, nome)
+            return _risposta(id_richiesta, _rifiuto_tetto_raggiunto(nome))
 
     # Il nome accettato e' quello nudo (`cerca`, ...): il prefisso
     # `mcp__hiris__` lo mette la CLI dal lato modello, non arriva nel

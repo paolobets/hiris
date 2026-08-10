@@ -51,10 +51,20 @@ osservabile una scrittura che non doveva avvenire. `leggi_flusso` la raccoglie
 dallo STESSO flusso che gia' legge (nessuna seconda lettura), `_reason_chat`
 la mette in `decision["tools_called"]`, nella STESSA forma del ramo sincrono.
 
+fetta "il ponte riceve gli strumenti" (parita' B, Task 6): il ponte ora
+manda anche `X-HIRIS-Turno` dentro la `--mcp-config` (`config_mcp`), un
+`secrets.token_urlsafe` mintato UNA volta per turno (non per invocazione
+della CLI), a prescindere da quante invocazioni il turno finira' per avere
+(Task 4). E' il gancio con cui `api/handlers_mcp.py` tiene
+il tetto ai giri di strumento per turno (`MAX_GIRI_STRUMENTI = 10`, parita'
+col ramo sincrono): il freno che sostituisce un `--max-turns` che la CLI non
+ha (verificato su `claude --help`) -- l'unico che l'abbonamento abbia, visto
+che `chat_daily_cap` conta i turni accodati e non i giri dentro ciascuno.
+
 Cio' che continua a non poter fare, e che nessuna fetta di questo ramo cambia:
 AGIRE. Gli strumenti sono quattro e nessuno tocca Home Assistant -- HIRIS
 conosce e non agisce (hiris/app/casa/strumenti.py)."""
-import asyncio, json, logging, os, subprocess, time
+import asyncio, json, logging, os, secrets, subprocess, time
 from dataclasses import dataclass, field
 import httpx
 from . import prompts
@@ -134,10 +144,40 @@ def nomi_mcp() -> tuple[str, ...]:
     return tuple(f"{prefisso}{d['name']}" for d in STRUMENTI_CONOSCENZA)
 
 
-def config_mcp(base_url: str, token: str) -> str:
+def config_mcp(base_url: str, token: str, id_turno: str = "") -> str:
     """La voce `--mcp-config` del ponte: una STRINGA JSON, mai un file.
 
-    Tre scelte, tutte deliberate:
+    `id_turno` (Task 6 della fetta, facoltativo e vuoto per default) diventa
+    l'intestazione `X-HIRIS-Turno` che la CLI ripete su OGNI `tools/call`
+    verso `/api/mcp`: e' cosi' che quella rotta sa QUALE turno sta chiamando
+    e puo' tenere il tetto ai giri di strumento per turno
+    (`api/handlers_mcp.MAX_GIRI_STRUMENTI`) -- il freno che sostituisce un
+    `--max-turns` che la CLI non ha (verificato su `claude --help`). **Serve
+    solo a contare**: non e' un'autenticazione (quella resta il token qui
+    sopra) e non va scambiata per tale -- e' pero' il gancio esatto su cui la
+    fase sicurezze potra' innestare il "token per-invocazione di validita'
+    pari al turno" che il progetto suggerisce (§3.3), senza dover inventare
+    un secondo meccanismo. Il default vuoto (nessuna intestazione aggiunta)
+    e' cio' che permette a `test_strumenti_al_ponte.py`/
+    `test_agent_runner_inaddon.py` di continuare a chiamare questa funzione
+    coi soli due argomenti di sempre: un tetto per-turno non e' niente che
+    quei test debbano conoscere.
+
+    **Un'identita' per TURNO, non per invocazione della CLI.** Il chiamante
+    (`_reason_chat`, sotto) la conia UNA sola volta per turno, PRIMA di
+    sapere se servira' una seconda invocazione (Task 4, `verifica_init`): se
+    ne coniasse una diversa a ogni chiamata di `_invoca`, un turno sdoppiato
+    finirebbe con due tetti indipendenti invece di uno solo -- il raddoppio
+    silenzioso che "un tetto per-turno deve sapere cosa fa quando il turno si
+    sdoppia" (Task 6) esiste per escludere. **Oggi la seconda invocazione di
+    un turno ritentato riparte SEMPRE senza strumenti** (Task 4: l'`init` ha
+    smentito la sonda, e si ricompone `strumenti_attivi=False`), quindi non
+    chiama mai `config_mcp` e questa identita' non le arriva comunque -- ma
+    e' coniata una volta sola A PRESCINDERE da quel dettaglio, cosi' la
+    proprieta' regge anche il giorno in cui una fetta futura ritentasse CON
+    gli strumenti ancora attivi.
+
+    Tre scelte sulla config stessa, tutte deliberate:
 
     (1) **stringa e non file.** La CLI accetta `--mcp-config` sia come percorso
         sia come stringa JSON (`claude --help`: «Load MCP servers from JSON
@@ -158,15 +198,18 @@ def config_mcp(base_url: str, token: str) -> str:
     (3) **il nome del server viene da `_nome_server_mcp()`**, non da una
         stringa scritta qui: e' lo stesso nome da cui discende il prefisso dei
         quattro strumenti."""
+    intestazioni = {
+        "X-HIRIS-Internal-Token": token,
+        "X-Requested-With": "hiris-mcp",
+    }
+    if id_turno:
+        intestazioni["X-HIRIS-Turno"] = id_turno
     return json.dumps({
         "mcpServers": {
             _nome_server_mcp(): {
                 "type": "http",
                 "url": f"{(base_url or '').rstrip('/')}/api/mcp",
-                "headers": {
-                    "X-HIRIS-Internal-Token": token,
-                    "X-Requested-With": "hiris-mcp",
-                },
+                "headers": intestazioni,
             },
         },
     }, ensure_ascii=False)
@@ -931,6 +974,24 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     restrict_to_home = bool(context.get("restrict_to_home", False))
     response_mode = context.get("response_mode") or ""
     job_id = (job or {}).get("job_id")
+    # Task 6: l'identita' del turno per il tetto ai giri di strumento, che
+    # vive nella rotta (`api/handlers_mcp.py::MAX_GIRI_STRUMENTI`), non qui.
+    # Si conia UNA sola volta per TURNO -- questa chiamata di `_reason_chat`,
+    # cioe' un job -- e non per invocazione della CLI: se il turno si
+    # sdoppia in una seconda invocazione (Task 4: l'`init` smentisce la
+    # sonda), quella seconda invocazione riparte SEMPRE senza strumenti e
+    # quindi non chiama mai `config_mcp` -- ma se lo facesse, riceverebbe
+    # QUESTA STESSA identita' (e' la stessa variabile, passata da `_invoca`,
+    # sotto, a ogni chiamata di `config_mcp` a prescindere da quale delle due
+    # invocazioni la fa). Se se ne coniasse una diversa per la seconda
+    # invocazione, il tetto per-turno raddoppierebbe in silenzio proprio nel
+    # turno in cui il ponte ha gia' fallito una volta -- l'opposto di un
+    # freno.
+    #
+    # Un `secrets.token_urlsafe` breve: **serve solo a contare**, non e'
+    # un'autenticazione (quella resta il token interno negli stessi header) e
+    # non va scambiata per tale -- vedi il docstring di `config_mcp`.
+    id_turno = secrets.token_urlsafe(9)
     # ── L'INTERRUTTORE UNICO (Task 3, Step 4) ──────────────────────────────
     # Gli strumenti sono ATTESI solo se il chiamante ha passato di che sondarli
     # e di che raggiungerli: senza client o senza base_url non c'e' nessun
@@ -1054,7 +1115,11 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                 "nessun terzo tentativo", job_id, MAX_INVOCAZIONI_PER_TURNO)
             return None
         invocazioni += 1
-        mcp_config = config_mcp(base_url, token) if strumenti_attivi else ""
+        # `id_turno` e' lo STESSO a ogni chiamata di `_invoca` in questo
+        # turno (mintato una volta sola sopra, prima di questa funzione): e'
+        # cosi' che il tetto per-turno della rotta MCP resta un tetto sul
+        # turno anche quando il turno si sdoppia (Task 4).
+        mcp_config = config_mcp(base_url, token, id_turno) if strumenti_attivi else ""
         # Le DUE righe che leggono lo stesso booleano, una accanto all'altra.
         # Non esiste un secondo posto in cui il prompt e l'argv possono
         # divergere: se un giorno queste due righe si allontanano, e' li' che

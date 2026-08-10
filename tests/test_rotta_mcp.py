@@ -20,6 +20,7 @@ essere:
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from unittest.mock import AsyncMock, MagicMock
 
@@ -266,6 +267,142 @@ async def test_tools_call_senza_nome_dice_quale_campo_manca(rotta):
     assert corpo["error"]["code"] == -32602
     assert "params.name" in corpo["error"]["message"]
     assert "ricorda" in corpo["error"]["message"]
+
+
+# ---------------------------------------------------------------------------
+# Task 6 -- il tetto ai giri di strumento per turno, l'unico freno che
+# l'abbonamento abbia: `claude` non ha un `--max-turns` (verificato su
+# `claude --help`), quindi il tetto sta QUI, l'unico punto che vede passare
+# OGNI `tools/call`.
+# ---------------------------------------------------------------------------
+
+async def _chiama_cerca(client, id_richiesta, intestazioni):
+    return await _jsonrpc(client, {
+        "jsonrpc": "2.0", "id": id_richiesta, "method": "tools/call",
+        "params": {"name": "cerca", "arguments": {"testo": "cucina"}},
+    }, intestazioni=intestazioni)
+
+
+@pytest.mark.asyncio
+async def test_tetto_raggiunto_rifiuta_e_il_dispatcher_non_viene_invocato(rotta, caplog):
+    """Step 5 ① del brief. Le prime `MAX_GIRI_STRUMENTI` chiamate del turno
+    passano regolarmente; la successiva riceve il testo del tetto -- e la
+    prova che il dispatcher non e' stato invocato non e' un'asserzione sulla
+    forma della risposta, ma sull'EFFETTO: nessuna scrittura in `memoria.db`
+    per un `ricorda` tentato oltre il tetto."""
+    client, memoria_db = rotta
+    intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-al-tetto"}
+
+    for i in range(handlers_mcp.MAX_GIRI_STRUMENTI):
+        risposta = await _chiama_cerca(client, i, intestazioni)
+        corpo = await risposta.json()
+        assert "isError" not in corpo["result"], (
+            f"la chiamata numero {i + 1} (dentro il tetto di "
+            f"{handlers_mcp.MAX_GIRI_STRUMENTI}) e' stata rifiutata")
+
+    with caplog.at_level(logging.WARNING):
+        risposta = await _jsonrpc(client, {
+            "jsonrpc": "2.0", "id": 999, "method": "tools/call",
+            "params": {"name": "ricorda", "arguments": {"testo": "scritto oltre il tetto"}},
+        }, intestazioni=intestazioni)
+
+    assert risposta.status == 200
+    corpo = await risposta.json()
+    assert "error" not in corpo  # risposta JSON-RPC NORMALE, non un errore di protocollo
+    assert corpo["result"]["isError"] is True
+    esito = json.loads(corpo["result"]["content"][0]["text"])
+    # Il testo dichiara COSA e' successo (il tetto, il numero) e COSA fare
+    # (rispondere con cio' che gia' si ha): mai un errore generico.
+    assert str(handlers_mcp.MAX_GIRI_STRUMENTI) in esito["errore"]
+    assert "tetto" in esito["errore"]
+    assert "rispond" in esito["errore"]
+
+    conn = sqlite3.connect(memoria_db)
+    try:
+        righe = conn.execute("SELECT testo FROM ricordi").fetchall()
+    finally:
+        conn.close()
+    assert righe == [], (
+        "il dispatcher e' stato invocato oltre il tetto: 'ricorda' ha scritto "
+        "in memoria.db un ricordo che il tetto doveva impedire")
+
+    # Un log.warning al primo superamento, che nomina il turno.
+    messaggi = [r.getMessage() for r in caplog.records]
+    assert any("tetto" in m and "turno-al-tetto" in m for m in messaggi)
+
+
+@pytest.mark.asyncio
+async def test_tetto_raggiunto_non_ripete_il_log_a_ogni_tentativo_successivo(rotta, caplog):
+    """Solo il PRIMO superamento logga: i tentativi successivi nello stesso
+    turno, gia' oltre il tetto, non devono produrre rumore a ogni chiamata."""
+    client, _ = rotta
+    intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-rumoroso"}
+    for i in range(handlers_mcp.MAX_GIRI_STRUMENTI):
+        await _chiama_cerca(client, i, intestazioni)
+
+    with caplog.at_level(logging.WARNING):
+        for i in range(3):
+            risposta = await _chiama_cerca(client, 100 + i, intestazioni)
+            corpo = await risposta.json()
+            assert corpo["result"]["isError"] is True
+
+    righe_tetto = [r for r in caplog.records if "tetto" in r.getMessage()
+                   and "turno-rumoroso" in r.getMessage()]
+    assert len(righe_tetto) == 1
+
+
+@pytest.mark.asyncio
+async def test_due_turni_diversi_hanno_contatori_indipendenti(rotta):
+    """Step 5 ②. Esaurire (e superare) il tetto del turno A non deve toccare
+    il turno B: due identita' diverse sono due contatori diversi."""
+    client, _ = rotta
+    turno_a = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-A"}
+    turno_b = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-B"}
+
+    for i in range(handlers_mcp.MAX_GIRI_STRUMENTI + 1):
+        await _chiama_cerca(client, i, turno_a)
+
+    risposta = await _chiama_cerca(client, 1, turno_b)
+    corpo = await risposta.json()
+    assert "isError" not in corpo["result"], (
+        "il turno B e' stato rifiutato per un tetto raggiunto dal turno A: i "
+        "due contatori non sono indipendenti")
+
+
+@pytest.mark.asyncio
+async def test_senza_intestazione_di_turno_lo_strumento_si_esegue_e_il_log_lo_dichiara(
+    rotta, caplog,
+):
+    """Step 5 ③ (silenzio dichiarato ⑤ della fetta). Un chiamante che non
+    manda `X-HIRIS-Turno` -- oggi, ogni test di questo file che non la
+    imposta -- non viene rifiutato: rifiutare romperebbe il prodotto per un
+    contatore. Lo strumento si esegue davvero, e il log dichiara che questa
+    chiamata resta fuori dal tetto."""
+    client, _ = rotta
+    with caplog.at_level(logging.WARNING):
+        risposta = await _chiama_cerca(client, 1, INTESTAZIONI_CLI)  # niente X-HIRIS-Turno
+    corpo = await risposta.json()
+    assert "isError" not in corpo["result"]
+    esito = json.loads(corpo["result"]["content"][0]["text"])
+    assert esito["trovati"]  # lo strumento e' stato ESEGUITO davvero
+
+    messaggi = [r.getMessage() for r in caplog.records]
+    assert any("X-HIRIS-Turno" in m and "cerca" in m for m in messaggi)
+
+
+@pytest.mark.asyncio
+async def test_il_dizionario_dei_contatori_non_cresce_oltre_il_limite(rotta):
+    """Step 5 ④. Molte identita' di turno diverse, una sola chiamata ciascuna:
+    il dizionario tenuto in `app` resta limitato a `_MAX_TURNI_TRACCIATI`, non
+    cresce per ogni identita' mai vista."""
+    client, _ = rotta
+    quante = handlers_mcp._MAX_TURNI_TRACCIATI * 3
+
+    for i in range(quante):
+        await _chiama_cerca(client, i, {**INTESTAZIONI_CLI, "X-HIRIS-Turno": f"turno-usa-getta-{i}"})
+
+    contatori = client.app["mcp_giri_per_turno"]
+    assert len(contatori) <= handlers_mcp._MAX_TURNI_TRACCIATI
 
 
 # ---------------------------------------------------------------------------
