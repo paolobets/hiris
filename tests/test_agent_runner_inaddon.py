@@ -137,10 +137,29 @@ class _Client:
 # fetta "il ponte riceve gli strumenti" (parita' B, Task 2): lo stdout finto e'
 # il flusso NDJSON vero -- `system/init`, un evento `assistant`, e l'evento
 # finale `result` da cui si prende il testo.
+def _init_col_server_collegato() -> str:
+    """L'evento `system/init` di un turno in cui gli strumenti sono arrivati
+    DAVVERO (fetta parita' B, Task 4).
+
+    Prima di quel task questo finto stdout diceva `mcp_servers: []` e `tools:
+    ["Task"]` -- cioe' descriveva un turno in cui la CLI NON aveva collegato
+    niente -- mentre il test intorno si chiamava «il giro felice CON gli
+    strumenti». Nessuno se ne accorgeva perche' nessuno leggeva l'`init`; dal
+    Task 4 quell'evento e' cio' su cui il ponte decide, e un finto flusso che
+    lo contraddice descrive il guasto, non il giro felice.
+
+    I nomi si derivano da `runner.nomi_mcp()`: quattro stringhe ricopiate qui
+    sarebbero il secondo catalogo."""
+    nomi = ", ".join(f'"{n}"' for n in runner.nomi_mcp())
+    return ('{"type":"system","subtype":"init","tools":["Task", ' + nomi + '],'
+            '"mcp_servers":[{"name":"' + runner._nome_server_mcp() +
+            '","status":"connected"}]}')
+
+
 class _ProcFelice:
     returncode = 0
     stdout = (
-        '{"type":"system","subtype":"init","tools":["Task"],"mcp_servers":[]}\n'
+        _init_col_server_collegato() + '\n'
         '{"type":"assistant","message":{"role":"assistant",'
         '"content":[{"type":"text","text":"2 luci accese"}]}}\n'
         '{"type":"result","subtype":"success","is_error":false,"num_turns":1,'

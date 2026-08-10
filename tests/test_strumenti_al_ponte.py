@@ -591,14 +591,44 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         casa.chiudi()
 
 
+def _riga_init(*, stato: str = "connected", nomi=None) -> str:
+    """L'evento `system/init` come lo emette la CLI quando gli strumenti sono
+    arrivati DAVVERO: il server col nostro nome in stato `connected`, e tutti e
+    quattro i `mcp__<server>__*` nella lista `tools` risolta.
+
+    Si costruisce da `runner.nomi_mcp()` e `runner._nome_server_mcp()`, non a
+    mano: quattro stringhe ricopiate qui sarebbero il secondo catalogo, e uno
+    strumento che entrasse in `casa/strumenti.py` lascerebbe questo finto init
+    disallineato dal vero senza che nessuno se ne accorga. `ToolSearch` c'e'
+    perche' c'e' anche nel flusso vero (la CLI lo usa per risolvere gli schemi
+    MCP) e perche' un `tools` con SOLO i nostri nomi renderebbe il test piu'
+    facile del reale."""
+    if nomi is None:
+        nomi = list(runner.nomi_mcp())
+    return json.dumps({
+        "type": "system", "subtype": "init",
+        "tools": ["ToolSearch", *nomi],
+        "mcp_servers": [{"name": runner._nome_server_mcp(), "status": stato}]})
+
+
+_RIGA_RESULT = json.dumps({
+    "type": "result", "subtype": "success", "is_error": False, "num_turns": 2,
+    "result": "in cucina una luce e' accesa",
+    "usage": {"input_tokens": 10, "output_tokens": 5}})
+
+
 class _ProcFelice:
+    """Il turno che riesce, per intero.
+
+    Task 4: fino a ieri questo finto stdout dichiarava UN solo strumento
+    risolto (`mcp__hiris__cerca`) mentre il prompt ne prometteva quattro --
+    cioe' precisamente il guasto che il Task 4 esiste per scoprire. Passava
+    perche' nessuno leggeva l'`init`. Ora si legge, e la forma dello stdout
+    finto deve essere quella del flusso vero: e' la stessa passata che il
+    Task 2 ha gia' dovuto fare una volta su questo file."""
+
     returncode = 0
-    stdout = (
-        '{"type":"system","subtype":"init","tools":["mcp__hiris__cerca"],'
-        '"mcp_servers":[{"name":"hiris","status":"connected"}]}\n'
-        '{"type":"result","subtype":"success","is_error":false,"num_turns":2,'
-        '"result":"in cucina una luce e\' accesa","usage":{"input_tokens":10,'
-        '"output_tokens":5}}\n')
+    stdout = _riga_init() + "\n" + _RIGA_RESULT + "\n"
     stderr = ""
 
 
@@ -805,7 +835,7 @@ def test_il_blocco_del_contesto_resta_uno_solo_su_entrambi_i_rami():
 # ---------------------------------------------------------------------------
 # FIX ROUND 2 -- la redazione redigeva la RAPPRESENTAZIONE SBAGLIATA.
 #
-# I test del giro precedente provavano la difesa con un `_TOKEN_SPIA` urlsafe:
+# I test del giro precedente provavano la difesa con un solo token urlsafe:
 # per quei token la forma grezza e quella JSON-encoded COINCIDONO, quindi la
 # difesa sembrava funzionare. `hiris/config.yaml` espone pero' `internal_token`
 # come `password` libera, e con un token che contiene `"` o `\` nell'argv
@@ -821,7 +851,6 @@ _TOKEN_URLSAFE = "TOKEN-SEGRETISSIMO-42"
 # rifiuta sono i caratteri di CONTROLLO) -- quindi puo' arrivare fin qui, ed e'
 # esattamente il motivo per cui questa seconda difesa esiste.
 _TOKEN_ROTTO = 'ab"cd\\ef'
-_TOKEN_SPIA = _TOKEN_URLSAFE   # conservato: lo usano i test qui sotto per nome
 
 # I due token si passano a ogni canale. Gli id rendono leggibile quale dei due
 # ha fallito quando il rosso arriva.
@@ -855,10 +884,14 @@ def _con_strumenti_e_processo(proc, caplog, token=_TOKEN_URLSAFE):
     un sottoprocesso che riecheggia la configurazione."""
     job = {"kind": "chat", "job_id": "J-eco",
            "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
-    catturato = {}
+    argv_visti = []
 
     def _run(argv, *a, **k):
-        catturato["argv"] = argv
+        # Task 4: si registrano TUTTE le invocazioni, non solo l'ultima. Da
+        # questo task un turno puo' invocare due volte (quando l'init smentisce
+        # la sonda), e la premessa qui sotto riguarda la PRIMA -- l'unica in
+        # cui il token entra nell'argv.
+        argv_visti.append(argv)
         return proc
 
     with caplog.at_level(logging.DEBUG):
@@ -872,7 +905,7 @@ def _con_strumenti_e_processo(proc, caplog, token=_TOKEN_URLSAFE):
     # si starebbe provando niente. Si usa l'oracolo forte perche' per il token
     # che rompe la forma nell'argv NON e' quella grezza -- ed e' precisamente
     # l'errore che la premessa del giro precedente commetteva.
-    assert _ricostruibile(token, " ".join(catturato["argv"])), (
+    assert _ricostruibile(token, " ".join(argv_visti[0])), (
         "il token non e' nell'argv: questo test non sta provando la difesa")
     return esito, "\n".join(r.getMessage() for r in caplog.records)
 
@@ -1023,3 +1056,360 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
 
     assert esito["reply"] == "in cucina una luce e' accesa"
     assert runner.REDATTO not in esito["reply"]
+
+
+# ---------------------------------------------------------------------------
+# TASK 4, nit 1 della review del Task 3 -- IL SETTIMO CANALE.
+#
+# I cinque canali qui sopra nascono dallo stdout della CLI. Il sesto e' la
+# reply. Il settimo e' un'ECCEZIONE: `run_once` fa HTTP verso la reasoning API
+# con gli header del claim, che portano `X-HIRIS-Internal-Token`, e con un
+# valore che il protocollo non accetta il client solleva **col valore dentro**.
+# Il catch del giro lo logga. Era irraggiungibile solo grazie a una difesa che
+# sta in un altro file (la validazione del token all'avvio) e che nessun test
+# legava a queste due righe.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
+def test_il_settimo_canale_l_eccezione_del_giro_non_porta_il_token(monkeypatch, token):
+    """Il messaggio dell'eccezione non si butta -- `run_once errore:
+    HTTPStatusError` non direbbe ne' quale rotta ne' quale codice, e un log che
+    non serve a diagnosticare e' il primo che smette di essere letto -- ma
+    passa dalla redazione che c'e' gia'."""
+    monkeypatch.setenv("INTERNAL_TOKEN", token)
+    exc = httpx.LocalProtocolError(f"Illegal header value b'{token}'")
+
+    motivo = runner._motivo_eccezione(exc)
+
+    assert not _ricostruibile(token, motivo), (
+        "il token e' nel log del giro, cioe' nel file che si incolla in una "
+        "segnalazione")
+    # ...e la diagnosi resta: tipo dell'eccezione e causa, redatta
+    assert "LocalProtocolError" in motivo
+    assert "Illegal header value" in motivo and runner.REDATTO in motivo
+
+
+def test_i_due_giri_del_runner_loggano_l_eccezione_redatta():
+    """I punti di perdita sono **due** -- `run_loop` (in-addon) e `main()` (il
+    runner come processo a se') -- e una difesa applicata a uno solo dei due
+    lascia aperto l'altro: e' la classe di difetto che questo prodotto ha gia'
+    pagato con la redazione dello stdout, chiusa in un punto e dimenticata in
+    quattro."""
+    import inspect
+
+    atteso = 'log.warning("run_once errore: %s", _motivo_eccezione(exc))'
+    for funzione in (runner.run_loop, runner.main):
+        assert atteso in inspect.getsource(funzione), (
+            f"{funzione.__name__} logga l'eccezione GREZZA: con un token non "
+            "consegnabile ne porterebbe il valore")
+
+
+# ---------------------------------------------------------------------------
+# TASK 4 -- L'`init` SMENTISCE LA SONDA: si butta l'invocazione, non si
+# corregge il prompt.
+#
+# La sonda (difesa 1) prova che la rotta risponde coi quattro nomi DAL NOSTRO
+# LATO. L'evento `system/init` dice se la CLI ci e' ARRIVATA: fra i due ci sono
+# Node, il parsing della stringa `--mcp-config`, `--strict-mcp-config` e il
+# loopback visto da un altro processo -- tutta la superficie a cui nessuna
+# suite verde puo' rispondere. Quando i due si contraddicono, il prompt e' gia'
+# partito affermando quattro strumenti che il modello non ha.
+#
+# Cosa si difende qui:
+#   (a) il guasto viene VISTO in tutte le sue forme (server `failed`, server
+#       connesso ma strumenti a meta', `init` assente del tutto);
+#   (b) l'invocazione si BUTTA: prompt e argv si ricompongono INSIEME dal
+#       booleano a `False`, e l'invariante dei due versi vale anche al secondo
+#       giro;
+#   (c) **una sola volta**: due invocazioni per turno, mai tre, nemmeno quando
+#       anche la seconda fallisce. E' un tetto di costo oltre che di logica;
+#   (d) l'utente lo legge, con la STESSA riga della difesa (1) -- due testi per
+#       lo stesso fatto sarebbero due cose da tenere vere;
+#   (e) il token non compare in nessuno dei percorsi nuovi.
+# ---------------------------------------------------------------------------
+
+
+def _proc(rc=0, stdout="", stderr=""):
+    return type("_ProcFinto", (), {"returncode": rc, "stdout": stdout,
+                                   "stderr": stderr})()
+
+
+class _CliFinta:
+    """Una CLI finta che RICORDA ogni invocazione.
+
+    Contare le invocazioni e' l'unico modo di provare un tetto di costo: un
+    finto `subprocess.run` che restituisce e basta direbbe che il ponte
+    risponde, non quante volte ha pagato per farlo. L'ultimo processo si
+    ripete se le invocazioni superano i processi dati, cosi' un test che
+    volesse provare "non c'e' un terzo giro" non finisce per misurare la
+    lunghezza della propria lista."""
+
+    def __init__(self, *procs):
+        self.procs = list(procs)
+        self.argv = []
+
+    def __call__(self, argv, *a, **k):
+        self.argv.append(list(argv))
+        return self.procs[min(len(self.argv) - 1, len(self.procs) - 1)]
+
+    @property
+    def invocazioni(self) -> int:
+        return len(self.argv)
+
+    def system(self, n: int) -> str:
+        argv = self.argv[n]
+        return argv[argv.index("--system-prompt") + 1]
+
+
+def _turno(cli, *, token="TOK", job_id="J-init", sonda=True):
+    """Un turno del ponte con gli strumenti ATTESI (client + base_url), la
+    sonda che dice di si', e la CLI finta al posto del sottoprocesso."""
+    job = {"kind": "chat", "job_id": job_id,
+           "context": {"history": [{"role": "user", "content": "che luci?"}],
+                       "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
+    risposta = (_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200) if sonda
+                else _Risposta({"error": "unauthorized"}, 401))
+    client = _ClientFinto(risposta)
+    with patch.object(runner.subprocess, "run", cli):
+        esito = runner._reason_chat(
+            job, "live", client=client, base_url="http://127.0.0.1:8099",
+            headers={"X-HIRIS-Internal-Token": token})
+    return esito, client
+
+
+def _messaggi(caplog) -> str:
+    return "\n".join(r.getMessage() for r in caplog.records
+                     if r.name == "hiris.agent")
+
+
+# -- (a) il guasto viene visto, nelle sue tre forme -------------------------
+
+@pytest.mark.parametrize("init_rotto, come", [
+    (_riga_init(stato="failed"), "server-failed"),
+    (_riga_init(nomi=list(runner.nomi_mcp())[:3]), "tre-su-quattro"),
+    ("", "init-assente"),
+], ids=["server-failed", "tre-strumenti-su-quattro", "init-assente"])
+def test_l_init_che_smentisce_la_sonda_butta_l_invocazione(init_rotto, come, caplog):
+    """① ② ④ del brief, in un test solo perche' e' UN fatto solo: qualunque
+    modo l'`init` abbia di smentire la sonda porta allo stesso esito.
+
+    - **server `failed`**: il guasto conclamato -- Node non ha collegato la
+      rotta, o la mcp-config non e' stata digerita;
+    - **tre strumenti su quattro**: un server connesso che non espone tutto e'
+      lo stesso guasto visto da un'altra parte, e per il modello e' peggio,
+      perche' il prompt li nomina uno per uno;
+    - **`init` assente**: CLI piu' vecchia, `--verbose` che non arriva, formato
+      cambiato. Vale **guasto, non conferma**: un'assenza non e' una conferma,
+      o la promessa del prompt finirebbe per dipendere da cio' che non e'
+      stato detto."""
+    stdout = (init_rotto + "\n" if init_rotto else "") + _RIGA_RESULT + "\n"
+    cli = _CliFinta(_proc(0, stdout), _ProcFelice())
+
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        esito, client = _turno(cli, job_id=f"J-{come}")
+
+    # (b) l'invocazione si e' BUTTATA e se n'e' composta un'altra
+    assert cli.invocazioni == 2
+    # ...e la seconda e' composta dall'ALTRO valore dello stesso booleano:
+    # niente mcp-config, e la guida che nega gli strumenti. L'invariante dei
+    # due versi vale anche qui, ed e' la ragione per cui il prompt si RICOMPONE
+    # invece di essere rattoppato.
+    assert "mcpconfig" in _normalizza(cli.argv[0])
+    assert "mcpconfig" not in _normalizza(cli.argv[1])
+    assert "allowedtools" not in _normalizza(cli.argv[1])
+    assert prompts._GUIDA_CON_STRUMENTI in cli.system(0)
+    assert prompts._GUIDA_SENZA_STRUMENTI in cli.system(1)
+    assert prompts._GUIDA_CON_STRUMENTI not in cli.system(1)
+
+    # (d) l'utente lo legge, e sotto resta la risposta vera
+    assert esito["reply"].startswith(runner.AVVISO_STRUMENTI_ASSENTI)
+    assert "in cucina una luce e' accesa" in esito["reply"]
+
+    # il silenzio (2), dichiarato: job_id + il motivo, e il motivo dice cosa
+    # la CLI ha davvero collegato
+    testo = _messaggi(caplog)
+    assert f"J-{come}" in testo
+    assert "system/init smentisce la sonda" in testo
+
+    # la sonda NON si ripete: la decisione e' una sola, presa una volta sola.
+    # Una seconda sonda sarebbe un secondo punto di decisione da tenere
+    # allineato -- esattamente cio' che l'interruttore unico esiste per negare.
+    assert len(client.chiamate) == 1
+
+
+def test_il_motivo_del_silenzio_2_nomina_lo_stato_e_i_nomi_mancanti(caplog):
+    """«Non ha funzionato» senza il PERCHE' e' un silenzio con una riga di log
+    intorno. Il motivo deve portare lo stato dei server e i nomi che la CLI non
+    ha risolto: sono le due sole informazioni da cui, davanti al log di un
+    utente UAT, si capisce da che parte guardare."""
+    mancante = sorted(runner.nomi_mcp())[0]
+    nomi = [n for n in runner.nomi_mcp() if n != mancante]
+    cli = _CliFinta(_proc(0, _riga_init(nomi=nomi) + "\n" + _RIGA_RESULT + "\n"),
+                    _ProcFelice())
+
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        _turno(cli, job_id="J-motivo")
+
+    testo = _messaggi(caplog)
+    assert "'connected'" in testo          # lo stato atteso, dichiarato
+    assert mancante in testo               # il nome che manca, per esteso
+    assert "J-motivo" in testo
+
+
+# -- (b) il complemento: l'init regolare non costa niente -------------------
+
+def test_l_init_regolare_non_fa_ricomporre_niente(caplog):
+    """③ del brief. Il costo della difesa (2) si paga **solo quando il guasto
+    c'e' davvero**: col flusso buono l'invocazione resta una, la reply e' la
+    risposta e basta, e non c'e' nessun avviso da leggere. Una difesa che
+    costasse un'invocazione a ogni turno sarebbe stata scartata dal progetto."""
+    cli = _CliFinta(_ProcFelice())
+
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        esito, _client = _turno(cli, job_id="J-buono")
+
+    assert cli.invocazioni == 1
+    assert esito["reply"] == "in cucina una luce e' accesa"
+    assert runner.AVVISO_STRUMENTI_ASSENTI not in esito["reply"]
+    assert not [r for r in caplog.records if r.name == "hiris.agent"]
+
+
+def test_senza_strumenti_attesi_l_init_rotto_non_scatena_niente(caplog):
+    """Il secondo tentativo non ha nessun `init` da verificare, e chi non ha
+    mai atteso gli strumenti nemmeno: la verifica gira **solo** quando il
+    booleano diceva `True`. Senza questo, il turno degradato controllerebbe la
+    presenza di strumenti che ha appena deciso di non chiedere -- e ogni turno
+    del ramo di degrado costerebbe due invocazioni."""
+    cli = _CliFinta(_proc(0, _riga_init(stato="failed") + "\n" + _RIGA_RESULT + "\n"))
+    job = {"kind": "chat", "job_id": "J-nessun-cliente",
+           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        with patch.object(runner.subprocess, "run", cli):
+            esito = runner._reason_chat(job, "live")
+
+    assert cli.invocazioni == 1
+    assert esito["reply"] == "in cucina una luce e' accesa"
+    assert "smentisce la sonda" not in _messaggi(caplog)
+
+
+# -- (c) il tetto: due invocazioni, mai tre --------------------------------
+
+def test_mai_piu_di_due_invocazioni_nemmeno_quando_anche_la_seconda_fallisce(caplog):
+    """⑥ del brief, e non e' una ridondanza dei test qui sopra: quelli provano
+    che il secondo giro AVVIENE, questo che non ne esiste un terzo **proprio
+    nel caso in cui la tentazione di riprovare e' massima** -- il secondo
+    tentativo fallisce a sua volta.
+
+    Un ciclo qui sarebbe peggio del guasto: moltiplicherebbe per N il costo di
+    un turno che sta gia' fallendo, e sull'abbonamento quel costo e' il tetto
+    giornaliero dell'utente."""
+    rotto = _proc(1, "", "Error: MCP server 'hiris' failed to start")
+    cli = _CliFinta(_proc(0, _riga_init(stato="failed") + "\n" + _RIGA_RESULT + "\n"),
+                    rotto)
+
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        esito, _client = _turno(cli, job_id="J-due-volte")
+
+    assert cli.invocazioni == 2 == runner.MAX_INVOCAZIONI_PER_TURNO
+    # Step 4: si restituisce l'esito d'errore del Task 2, senza un terzo giro
+    assert esito["reply"].startswith("[errore runner rc=1]")
+    # ...e il sentinella resta il PRIMO carattere della reply: anteporre
+    # l'avviso lo renderebbe invisibile a `chat_store._TOXIC_ASSISTANT_PREFIXES`
+    assert runner.AVVISO_STRUMENTI_ASSENTI not in esito["reply"]
+    # il log dice che si e' arrivati qui DOPO un ri-tentativo: senza, «claude
+    # rc=1» sembrerebbe il primo guasto del turno invece dell'ultimo di due
+    assert "secondo e ULTIMO tentativo" in _messaggi(caplog)
+
+
+def test_il_tetto_e_un_contatore_non_una_forma():
+    """Il tetto non e' affidato al fatto che le due chiamate stiano in fila
+    invece che in un ciclo: e' una costante letta da un contatore. Questo test
+    la pinna, perche' il giorno in cui qualcuno trasformasse quella sequenza in
+    un ciclo il costo per turno resti due invocazioni invece di diventare
+    illimitato."""
+    assert runner.MAX_INVOCAZIONI_PER_TURNO == 2
+
+
+# -- (d) una sola formulazione per un solo fatto ---------------------------
+
+def test_le_due_difese_dicono_all_utente_la_stessa_identica_riga():
+    """⑤ del brief. La sonda che dice di no e l'`init` che smentisce sono due
+    scoperte diverse dello **stesso fatto**: in questo turno gli strumenti non
+    ci sono. Due testi diversi sarebbero due cose da tenere vere, e la seconda
+    invecchierebbe."""
+    dalla_sonda, _c = _turno(_CliFinta(_ProcFelice()), sonda=False)
+    dall_init, _c2 = _turno(
+        _CliFinta(_proc(0, _riga_init(stato="failed") + "\n" + _RIGA_RESULT + "\n"),
+                  _ProcFelice()))
+
+    prima = dalla_sonda["reply"].split("\n\n")[0]
+    assert prima == dall_init["reply"].split("\n\n")[0]
+    assert prima == runner.AVVISO_STRUMENTI_ASSENTI
+
+
+# -- (e) il token non entra nei percorsi nuovi -----------------------------
+
+@pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
+def test_il_token_non_esce_dal_percorso_di_ri_invocazione(caplog, token):
+    """I percorsi nuovi di questo task sono due -- il motivo del silenzio (2) e
+    la reply del secondo tentativo -- e il primo turno del giro e' proprio
+    quello in cui il token E' nell'argv. Si prova con **entrambi** i token,
+    perche' per un urlsafe la forma grezza e quella JSON-escaped coincidono e
+    una difesa rotta sembrerebbe funzionare (e' il difetto del fix round 1)."""
+    # la CLI fallisce a collegare il server e RIECHEGGIA la mcp-config: e' il
+    # caso realistico, non uno costruito -- la config e' cio' che la CLI cita
+    # quando non riesce ad avviare un server MCP.
+    primo = _proc(0, _riga_init(stato="failed") + "\n" + json.dumps({
+        "type": "result", "subtype": "success", "is_error": False,
+        "result": _eco_della_cli(token)}) + "\n")
+    cli = _CliFinta(primo, _ProcFelice())
+
+    with caplog.at_level(logging.DEBUG):
+        esito, _client = _turno(cli, token=token, job_id="J-eco-init")
+
+    assert cli.invocazioni == 2
+    assert _ricostruibile(token, " ".join(cli.argv[0])), (
+        "il token non e' nell'argv del primo tentativo: questo test non sta "
+        "provando niente")
+    assert not _ricostruibile(token, esito["reply"])
+    assert not _ricostruibile(
+        token, "\n".join(r.getMessage() for r in caplog.records))
+
+
+# -- la verifica in se', provata da sola ------------------------------------
+
+def test_verifica_init_pretende_entrambe_le_condizioni():
+    """La funzione pura, senza il turno intorno. Le due condizioni si chiedono
+    **insieme**: un server connesso senza gli strumenti e uno strumento risolto
+    da un server `failed` sono lo stesso guasto visto da due lati."""
+    def esito(riga):
+        return runner.leggi_flusso(riga + "\n")
+
+    ok, motivo = runner.verifica_init(esito(_riga_init()))
+    assert ok is True and motivo == ""
+
+    ok, motivo = runner.verifica_init(esito(_riga_init(stato="failed")))
+    assert ok is False and "failed" in motivo
+
+    tolto = list(runner.nomi_mcp())[-1]
+    ok, motivo = runner.verifica_init(
+        esito(_riga_init(nomi=list(runner.nomi_mcp())[:3])))
+    assert ok is False and tolto in motivo
+
+    ok, motivo = runner.verifica_init(runner.EsitoFlusso())
+    assert ok is False and "non e' una conferma" in motivo
+
+
+def test_verifica_init_non_confonde_un_altro_server_col_nostro():
+    """Un `mcp_servers` che porta un server connesso **con un altro nome** non
+    e' il nostro: senza `--strict-mcp-config` la CLI userebbe anche i server
+    MCP dell'ambiente, e un controllo che guardasse solo "c'e' qualcosa di
+    connesso" direbbe di si' mentre HIRIS non c'e'."""
+    evento = json.loads(_riga_init())
+    evento["mcp_servers"] = [{"name": "qualcun-altro", "status": "connected"}]
+    esito = runner.leggi_flusso(json.dumps(evento) + "\n")
+
+    ok, motivo = runner.verifica_init(esito)
+    assert ok is False
+    assert runner._nome_server_mcp() in motivo

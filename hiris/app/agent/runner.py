@@ -34,6 +34,14 @@ serve (`mcp__hiris__cerca`, ...). Quando dice di no -- ed erano attesi -- il
 prompt torna a negarli e la `reply` lo dichiara ANCHE all'utente, in una riga
 premessa: mai una risposta che sembra normale.
 
+fetta "il ponte riceve gli strumenti" (parita' B, Task 4): gli stati sono TRE,
+non due -- strumenti attivi, strumenti mai attesi, e strumenti attesi e non
+arrivati IN QUESTO TURNO. Il terzo nasce quando l'evento `system/init` della CLI
+smentisce la sonda (`verifica_init`): li' l'invocazione si BUTTA e se ne
+ricompone una senza strumenti, una sola volta. Il terzo stato non ha un terzo
+testo di guida -- `_GUIDA_SENZA_STRUMENTI` e' vera anche li' -- e cio' che lo
+distingue e' `AVVISO_STRUMENTI_ASSENTI`, la riga che l'utente legge.
+
 Cio' che continua a non poter fare, e che nessuna fetta di questo ramo cambia:
 AGIRE. Gli strumenti sono quattro e nessuno tocca Home Assistant -- HIRIS
 conosce e non agisce (hiris/app/casa/strumenti.py)."""
@@ -68,6 +76,14 @@ _LOCAL_TOOLS_DENY = "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookE
 # questo prodotto -- un prompt che promette capacita' che l'invocazione non da'.
 # L'invariante e' pinnato NEI DUE VERSI in tests/test_strumenti_al_ponte.py:
 # `--mcp-config` nell'argv  <=>  `_GUIDA_CON_STRUMENTI` nel system.
+#
+# Task 4: la sonda puo' dire di si' e la CLI fallire lo stesso -- fra i due c'e'
+# Node, il parsing della mcp-config e un loopback visto da un altro processo.
+# L'evento `system/init` e' l'unico che lo dichiara, e quando smentisce la sonda
+# il prompt e' GIA' partito. La risposta non e' una postilla al testo: e'
+# rimettere il booleano a `False` e **ricomporre** prompt e argv insieme, una
+# volta sola (`verifica_init` + `MAX_INVOCAZIONI_PER_TURNO`). Il tetto e' due
+# invocazioni per turno, ed e' asserito.
 
 
 def _nome_server_mcp() -> str:
@@ -239,6 +255,42 @@ def forme_del_token(token: str, profondita: int = 2) -> tuple[str, ...]:
     return tuple(uniche)
 
 
+def _motivo_eccezione(exc: BaseException, token: str | None = None) -> str:
+    """Il messaggio di un'eccezione reso stampabile: tipo + testo REDATTO.
+
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 4, nit 1 della
+    review del Task 3). Un `log.warning("...: %s", exc)` e' il **settimo
+    canale** di perdita del token, e non e' teorico: gli header del claim
+    portano `X-HIRIS-Internal-Token`, e con un valore che il protocollo HTTP
+    non accetta il client solleva **col valore dentro** (`LocalProtocolError:
+    Illegal header value b'...'`, verificato contro un listener vero al fix
+    round 2 del Task 3). Fino a oggi quel canale era chiuso da una dipendenza
+    scritta in un docstring altrui -- `token_interno.motivo_token_non_valido`
+    rifiuta i caratteri di controllo all'avvio -- cioe' da una difesa che sta
+    in un altro file e che nessun test legava a questa riga.
+
+    Qui la dipendenza smette di essere l'unica difesa: si passa dalla
+    redazione che c'e' gia' (`reda_segreti` su tutte le `forme_del_token`),
+    invece di aprire una via nuova. **Il messaggio non si butta**: perdere il
+    testo dell'eccezione renderebbe illeggibile il log del giro
+    (`run_once errore: HTTPStatusError` non dice quale rotta ne' quale codice),
+    e un log che non serve a diagnosticare e' il primo che smette di essere
+    letto.
+
+    `token=None` significa "quello di produzione", letto dove lo legge
+    `build_headers` -- che e' esattamente il token che i due giri
+    (`run_loop`, `main`) mandano nell'header del claim. Chi ne avesse uno
+    diverso in mano passa il suo.
+
+    **Dove NON si applica, e perche'**: `sonda_strumenti` continua a mettere
+    nel motivo il messaggio grezzo. Non e' una dimenticanza -- vedi la nota
+    nel suo docstring: quel comportamento e' pinnato contro un listener vero
+    in `tests/test_token_interno.py`, file che questa fetta non tocca."""
+    if token is None:
+        token = os.environ.get("INTERNAL_TOKEN", "")
+    return f"{type(exc).__name__}: {reda_segreti(str(exc), *forme_del_token(token))}"
+
+
 def sonda_strumenti(client, base_url: str, headers: dict,
                     *, job_id=None) -> tuple[bool, str]:
     """Difesa (1) del progetto: gli strumenti ci sono DAVVERO, in questo turno?
@@ -272,7 +324,18 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     header value b'...'`. La promessa regge perche' un token del genere non
     arriva fin qui: `token_interno.motivo_token_non_valido` lo rifiuta
     all'avvio, lo dichiara nel log e lascia in piedi il rifiuto-per-difetto. Se
-    quella validazione sparisse, questo docstring tornerebbe falso."""
+    quella validazione sparisse, questo docstring tornerebbe falso.
+
+    Task 4: **questa e' l'unica dipendenza del genere che resta scoperta**, ed
+    e' scoperta di proposito. Farla passare da `_motivo_eccezione` (la
+    redazione usata per il settimo canale, in `run_once`) chiuderebbe il buco
+    da sola -- ma renderebbe rosso
+    `tests/test_token_interno.py::test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_client`,
+    che pinna contro un listener VERO proprio il fatto che il valore finisce
+    nel messaggio dell'eccezione, e quel file e' fra i «cosa RESTA e non si
+    tocca» di questa fetta. Provato: la redazione funziona (il motivo diventa
+    `Illegal header value b'***'`). Si consegna al task che potra' riscrivere
+    quel pin insieme al codice, invece di scavalcarlo qui."""
     attesi = {d["name"] for d in STRUMENTI_CONOSCENZA}
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 
@@ -461,6 +524,19 @@ AVVISO_STRUMENTI_ASSENTI = (
     "In questo turno non ho potuto usare gli strumenti per guardare la casa: "
     "rispondo con cio' che so dal nucleo e dalla conversazione.")
 
+# fetta "il ponte riceve gli strumenti" (parita' B, Task 4): il TETTO di
+# invocazioni della CLI per singolo turno del ponte. E' due perche' esiste
+# esattamente un motivo per invocare due volte -- l'`init` ha smentito la sonda
+# e il prompt gia' partito va buttato, non rattoppato -- e nessun motivo per
+# invocarne tre: un ciclo qui sarebbe peggio del guasto che cerca di riparare,
+# perche' moltiplicherebbe per N il costo di un turno che sta gia' fallendo.
+# E' un tetto di COSTO oltre che di logica, quindi non e' affidato alla forma
+# del codice ma a un contatore, e un test lo asserisce.
+#
+# Costante di modulo, non opzione dell'add-on (regole della fetta): se un
+# giorno servira' configurarla, si fara' il giro dei cinque posti allora.
+MAX_INVOCAZIONI_PER_TURNO = 2
+
 
 @dataclass
 class EsitoFlusso:
@@ -497,6 +573,26 @@ class EsitoFlusso:
         """False = flusso troncato, processo ucciso a meta', o formato cambiato
         da un aggiornamento della CLI. Chi legge DEVE dichiararlo."""
         return self.risultato is not None
+
+
+@dataclass
+class Invocazione:
+    """Una singola invocazione della CLI, gia' letta e gia' REDATTA.
+
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 4). Esiste perche'
+    da questo task l'invocazione puo' avvenire DUE volte nello stesso turno, e
+    i rami che ne interpretano l'esito (rc!=0, flusso senza risultato, testo
+    vuoto, testo) devono restare **uno solo**: se il secondo tentativo avesse
+    una propria copia di quei rami, il ponte avrebbe due modi di leggere la
+    stessa risposta -- che e' la biforcazione che il Task 2 esiste per evitare.
+
+    `stdout`/`stderr` sono le copie redatte: la grezza non sopravvive alla
+    funzione che le produce."""
+
+    rc: int = 0
+    stdout: str = ""
+    stderr: str = ""
+    esito: EsitoFlusso = field(default_factory=EsitoFlusso)
 
 
 def leggi_flusso(stdout: str) -> EsitoFlusso:
@@ -541,33 +637,91 @@ def leggi_flusso(stdout: str) -> EsitoFlusso:
     return esito
 
 
+def _server_dichiarati(esito: EsitoFlusso) -> list:
+    """Nome e stato di ogni server MCP dell'`init`, e NIENT'ALTRO.
+
+    E' l'unica forma in cui l'evento `init` esce da questo modulo -- verso un
+    log o verso un motivo. L'evento intero non si stampa mai: la
+    `--mcp-config` porta gli header di autenticazione, e un `%r` generoso e'
+    il modo classico di far finire un token nel log."""
+    return [{"name": s.get("name"), "status": s.get("status")}
+            for s in ((esito.init or {}).get("mcp_servers") or [])
+            if isinstance(s, dict)]
+
+
+def _strumenti_risolti(esito: EsitoFlusso) -> set:
+    """I nomi di strumento che la CLI dichiara di aver risolto in questo turno.
+    Solo stringhe: una voce di altro tipo non e' un nome e non conta."""
+    voci = (esito.init or {}).get("tools")
+    if not isinstance(voci, list):
+        return set()
+    return {v for v in voci if isinstance(v, str)}
+
+
 def _logga_init(esito: EsitoFlusso, job_id) -> None:
-    """L'`init` letto e loggato, ma NON ancora agito (Task 2, Step 5).
+    """L'`init` letto e loggato. Dal Task 4 ci si DECIDE anche sopra:
+    `verifica_init` qui sotto e' la difesa (2) del progetto, e questa riga
+    resta la misura -- il log dice cosa la CLI ha collegato, in ogni turno,
+    anche quando la verifica passa.
 
-    In QUESTO task il valore atteso e' la lista vuota: nessun server MCP e'
-    configurato, quindi `mcp_servers` e' `[]` e fra i `tools` non c'e' nessun
-    `mcp__hiris__*`. Loggarlo adesso e' cio' che rende il Task 4 una riga di
-    decisione invece di un secondo lavoro di parsing -- ed e' la prima misura
-    utile quando la build girera' sull'add-on vero.
-
-    Si logga il nome e lo stato di ogni server, non l'evento intero: la
-    `--mcp-config` porta gli header di autenticazione, e un `%r` generoso e' il
-    modo classico di far finire un token nel log."""
+    Si logga il nome e lo stato di ogni server, non l'evento intero
+    (`_server_dichiarati`)."""
     if esito.init is None:
         log.warning(
             "flusso stream-json senza evento system/init (job_id=%s): o "
-            "--verbose non e' arrivato alla CLI, o il formato e' cambiato. In "
-            "questo task non c'e' nessun server MCP da controllare, ma dal "
-            "Task 4 e' l'informazione su cui si decide se gli strumenti ci "
-            "sono davvero", job_id)
+            "--verbose non e' arrivato alla CLI, o il formato e' cambiato. "
+            "Quando gli strumenti erano attesi questa assenza NON e' una "
+            "conferma e vale come guasto: la decide `verifica_init`", job_id)
         return
-    server = [{"name": s.get("name"), "status": s.get("status")}
-              for s in (esito.init.get("mcp_servers") or [])
-              if isinstance(s, dict)]
     strumenti = esito.init.get("tools")
     log.info("init del ponte (job_id=%s): mcp_servers=%s, strumenti risolti=%d",
-             job_id, server,
+             job_id, _server_dichiarati(esito),
              len(strumenti) if isinstance(strumenti, list) else 0)
+
+
+def verifica_init(esito: EsitoFlusso) -> tuple[bool, str]:
+    """Difesa (2) del progetto: la CLI ci e' ARRIVATA, agli strumenti?
+
+    `sonda_strumenti` (difesa 1) prova che la rotta risponde coi quattro nomi
+    **dal nostro lato**, e la prova un istante prima di comporre il prompt. Fra
+    quel `200` e il modello restano pero' Node, il parsing della stringa
+    `--mcp-config`, `--strict-mcp-config` e il loopback visto da un ALTRO
+    processo: tutta la superficie a cui nessuna suite verde puo' rispondere.
+    L'evento `system/init` e' l'unico posto in cui la CLI dichiara com'e'
+    andata, e arriva PRIMA del primo token.
+
+    Si chiedono **entrambe** le condizioni, e non e' ridondanza:
+
+    - il server col NOSTRO nome dev'esserci fra i `mcp_servers` in stato
+      `connected` (un server assente o `failed` e' il guasto conclamato);
+    - **tutti e quattro** i `mcp__<server>__*` devono comparire nella lista
+      `tools` risolta. Un server connesso che non espone gli strumenti e' lo
+      stesso guasto visto da un'altra parte -- e per il modello e' peggio,
+      perche' il prompt li nomina uno per uno.
+
+    **Un `init` assente vale guasto, non successo.** Una CLI piu' vecchia, un
+    `--verbose` che non e' arrivato o un formato cambiato producono la stessa
+    assenza: trattarla come conferma vorrebbe dire far dipendere la promessa
+    del prompt da cio' che NON e' stato detto. Un'assenza non e' una conferma.
+
+    Pura: nessun log, nessuna rete, nessun subprocess -- il motivo lo logga
+    (e lo reda) chi la chiama. Restituisce `(True, "")` oppure `(False,
+    motivo)`, dove il motivo porta lo stato dei server e i nomi mancanti,
+    perche' «non ha funzionato» senza il PERCHE' e' un silenzio con una riga
+    di log intorno."""
+    nome = _nome_server_mcp()
+    if esito.init is None:
+        return False, ("il flusso non porta l'evento system/init: un'assenza "
+                       "non e' una conferma (CLI piu' vecchia, --verbose non "
+                       "arrivato, o formato cambiato)")
+    server = _server_dichiarati(esito)
+    stato = next((s.get("status") for s in server if s.get("name") == nome), None)
+    mancanti = sorted(set(nomi_mcp()) - _strumenti_risolti(esito))
+    if str(stato or "").strip().lower() != "connected" or mancanti:
+        return False, (f"mcp_servers={server}; server {nome!r} stato={stato!r} "
+                       f"(atteso 'connected'); strumenti non risolti dalla CLI="
+                       f"{mancanti}")
+    return True, ""
 
 
 def _logga_uso(esito: EsitoFlusso, job_id) -> None:
@@ -669,22 +823,24 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         PARSATO -- e il parsing riporta il token da profondita' 2 a profondita'
         1, cioe' a una forma che la redazione del grezzo, fatta un livello piu'
         in la', non trova piu'. Con questo cancello la `reply` viene redatta
-        DOPO il parsing e diventa indipendente da quanti involucri JSON la CLI
-        abbia messo intorno all'eco: qualunque forma arrivi qui, arriva ridotta
-        a una che conosciamo. Sei rami di ritorno, una sola redazione: non c'e'
-        un ramo da dimenticare, ne' oggi ne' quando ne nascera' un settimo."""
+        DOPO il parsing, quando qualunque eco e' tornata a profondita' 1.
+
+        **Il limite, misurato invece che promesso** (Task 4, nit 2 della review
+        del Task 3): la frase che stava qui diceva «indipendente da quanti
+        involucri JSON la CLI abbia messo intorno all'eco». Non e' vero, ed e'
+        proprio la classe di dichiarazione falsa al presente che questo
+        prodotto paga da tre fette. `forme_del_token` si ferma a profondita' 2
+        (grezza, dentro la mcp-config, dentro l'evento che la cita): questo
+        cancello copre **un involucro in piu'** di quelli che la catena
+        conosce, non un numero illimitato. Un terzo involucro non esiste in
+        questa catena -- ecco perche' non e' un difetto aperto -- ma se un
+        giorno la CLI ne aggiungesse uno, il residuo sarebbe qui e non
+        altrove.
+
+        Sei rami di ritorno, una sola redazione: non c'e' un ramo da
+        dimenticare, ne' oggi ne' quando ne nascera' un settimo."""
         return {"reply": reda_segreti(testo, *forme)}
 
-    mcp_config = config_mcp(base_url, token) if strumenti else ""
-    # Le DUE righe che leggono lo stesso booleano, una accanto all'altra. Non
-    # esiste un secondo posto in cui il prompt e l'argv possono divergere: se
-    # un giorno queste due righe si allontanano, e' li' che rientra il difetto
-    # numero uno di questo prodotto.
-    system, user = prompts.build_chat_messages(system_prompt, history,
-                                               contesto=contesto,
-                                               strumenti_attivi=strumenti,
-                                               restrict_to_home=restrict_to_home,
-                                               response_mode=response_mode)
     # fetta "il ponte riceve il nucleo" (parita' A, Task 4): il modello non
     # e' piu' `HIRIS_AGENT_CHAT_MODEL` (env mai esportata da run.sh --
     # censita fra le "lette e mai esportate": in produzione era SEMPRE
@@ -698,61 +854,157 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # esattamente il comportamento di prima di questo task, non un
     # degrado nuovo, quindi non e' uno dei silenzi dichiarati della fetta.
     model = context.get("model") or "sonnet"
-    argv = _chat_claude_args(system, user, model,
-                             strumenti_attivi=strumenti, mcp_config=mcp_config)
+    invocazioni = 0
+
+    def _invoca(strumenti_attivi: bool) -> Invocazione | None:
+        """UN'invocazione intera della CLI, composta dal SOLO `strumenti_attivi`.
+
+        fetta "il ponte riceve gli strumenti" (parita' B, Task 4). Prima di
+        questo task queste righe stavano distese nel corpo di `_reason_chat`;
+        ora sono una funzione perche' il turno puo' comporre e invocare **due
+        volte**, e la seconda volta deve essere la STESSA composizione con
+        l'altro argomento -- non una variante scritta a parte. E' l'interruttore
+        unico che regge anche al secondo giro: `mcp_config`, `system` e `argv`
+        nascono qui dentro, tutti e tre da `strumenti_attivi`, e non esiste un
+        punto in cui il prompt possa restare avanti all'argv.
+
+        `None` = esito (5): la CLI non parte, non c'e', o non finisce in tempo.
+        E' l'unico ramo che non ha nemmeno uno stdout da leggere."""
+        nonlocal invocazioni
+        if invocazioni >= MAX_INVOCAZIONI_PER_TURNO:
+            # Irraggiungibile per costruzione oggi (i due punti di chiamata
+            # sono in fila, non in un ciclo). Sta qui perche' il tetto non
+            # dipenda dalla FORMA del codice: il giorno in cui qualcuno
+            # trasformasse questa sequenza in un ciclo, il costo per turno
+            # resterebbe due invocazioni invece di diventare illimitato.
+            log.warning(
+                "tetto di invocazioni della CLI raggiunto (job_id=%s, max=%d): "
+                "nessun terzo tentativo", job_id, MAX_INVOCAZIONI_PER_TURNO)
+            return None
+        invocazioni += 1
+        mcp_config = config_mcp(base_url, token) if strumenti_attivi else ""
+        # Le DUE righe che leggono lo stesso booleano, una accanto all'altra.
+        # Non esiste un secondo posto in cui il prompt e l'argv possono
+        # divergere: se un giorno queste due righe si allontanano, e' li' che
+        # rientra il difetto numero uno di questo prodotto.
+        system, user = prompts.build_chat_messages(
+            system_prompt, history, contesto=contesto,
+            strumenti_attivi=strumenti_attivi,
+            restrict_to_home=restrict_to_home, response_mode=response_mode)
+        argv = _chat_claude_args(system, user, model,
+                                 strumenti_attivi=strumenti_attivi,
+                                 mcp_config=mcp_config)
+        try:
+            proc = subprocess.run(argv, capture_output=True, text=True,
+                                  timeout=300, env=_safe_subprocess_env())
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            log.warning("claude non eseguibile: %s", type(exc).__name__)
+            return None
+
+        # La redazione, PRIMA di qualunque lettura (fix round 1, Important 2):
+        # il token viaggia in `--mcp-config` e la CLI lo riecheggia quando il
+        # server MCP non parte. Da qui in giu' `proc.stdout`/`proc.stderr` non
+        # si usano piu': si usano queste due copie, e non c'e' nessun canale
+        # che possa dimenticarsi di redigere.
+        #
+        # fix round 2: si redigono TUTTE le forme del token
+        # (`forme_del_token`), non la sola grezza. Il commento che stava qui
+        # diceva «il token non contiene virgolette: e' generato da
+        # secrets.token_urlsafe» -- vero solo sul ramo GENERATO.
+        # `internal_token` e' una `password` libera in config.yaml, e con un
+        # token che contiene `"` o `\` la redazione mancava il bersaglio su
+        # tutti e cinque i canali. Era una dichiarazione falsa al presente
+        # dentro un commento, cioe' il secondo difetto ricorrente di questo
+        # prodotto.
+        #
+        # Si reda anche al SECONDO giro, dove il token non e' mai entrato
+        # nell'argv: costa una `str.replace` su una stringa che non lo
+        # contiene, e vale la regola «nessun canale che possa dimenticarsi».
+        stdout = reda_segreti(proc.stdout or "", *forme)
+        stderr = reda_segreti(proc.stderr or "", *forme)
+
+        # UNA sola lettura del flusso, prima di qualunque ramo: e' cosi' che il
+        # ramo d'errore e quello felice non possono divergere nel modo di
+        # leggere la stessa risposta.
+        esito = leggi_flusso(stdout)
+        _logga_init(esito, job_id)   # la misura, a ogni giro
+        _logga_uso(esito, job_id)    # Step 4: la misura per la domanda aperta 2
+        if esito.righe_saltate:
+            # Una riga di rumore non fa cadere il flusso, ma non sparisce: se
+            # la CLI cambia formato, il conto sale prima che qualcosa si rompa.
+            log.warning(
+                "flusso stream-json con %d riga/righe non-JSON saltate su %d "
+                "(job_id=%s): la risposta e' stata letta lo stesso, ma il "
+                "formato della CLI non e' piu' esattamente quello atteso",
+                esito.righe_saltate, esito.righe_lette, job_id)
+        return Invocazione(rc=proc.returncode, stdout=stdout, stderr=stderr,
+                           esito=esito)
+
     # Il degrado dichiarato: gli strumenti erano attesi e non ci sono. Il log
     # l'ha gia' detto (silenzio (1), dentro `sonda_strumenti`); qui si prepara
-    # a dirlo anche all'utente, in coda alla risposta che il modello riuscira'
+    # a dirlo anche all'utente, in testa alla risposta che il modello riuscira'
     # comunque a dare sul solo nucleo.
     degrado = attesi and not strumenti
-    try:
-        proc = subprocess.run(argv, capture_output=True, text=True,
-                              timeout=300, env=_safe_subprocess_env())
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-        # Esito (5): il CLI non parte, non c'e' o non finisce in tempo. Resta
-        # l'unico ramo che non ha nemmeno uno stdout da leggere.
-        log.warning("claude non eseguibile: %s", type(exc).__name__)
+
+    invocazione = _invoca(strumenti)
+    if invocazione is None:
         return _reply("[runner non disponibile]")
 
-    # La redazione, PRIMA di qualunque lettura (fix round 1, Important 2): il
-    # token viaggia in `--mcp-config` e la CLI lo riecheggia quando il server
-    # MCP non parte. Da qui in giu' `proc.stdout`/`proc.stderr` non si usano
-    # piu': si usano queste due copie, e non c'e' nessun canale che possa
-    # dimenticarsi di redigere.
+    # ── LA DIFESA (2): l'`init` smentisce la sonda (Task 4) ────────────────
+    # La sonda ha detto di si' DAL NOSTRO LATO; qui parla la CLI. Se le due si
+    # contraddicono, il prompt e' gia' partito affermando quattro strumenti che
+    # il modello non ha: la regola della fetta e' che **un prompt gia' partito
+    # non si corregge con una postilla -- si butta via l'invocazione e si
+    # ricompone dal medesimo booleano**, ora `False`.
     #
-    # fix round 2: si redigono TUTTE le forme del token (`forme_del_token`), non
-    # la sola grezza. Il commento che stava qui diceva «il token non contiene
-    # virgolette: e' generato da secrets.token_urlsafe» -- vero solo sul ramo
-    # GENERATO. `internal_token` e' una `password` libera in config.yaml, e con
-    # un token che contiene `"` o `\` la redazione mancava il bersaglio su
-    # tutti e cinque i canali. Era una dichiarazione falsa al presente dentro un
-    # commento, cioe' il secondo difetto ricorrente di questo prodotto.
-    stdout = reda_segreti(proc.stdout or "", *forme)
-    stderr = reda_segreti(proc.stderr or "", *forme)
+    # La verifica sta QUI, subito dopo la lettura del flusso e PRIMA dei rami
+    # che ne interpretano l'esito, e non solo sul ramo felice: con
+    # `--strict-mcp-config` una mcp-config che la CLI non digerisce e' una
+    # causa plausibile di `rc != 0`, e in quel caso il secondo tentativo non
+    # e' solo piu' onesto -- e' quello che ha qualche probabilita' di dare
+    # all'utente una risposta invece di un `[errore runner rc=...]`.
+    #
+    # L'esito (5) resta fuori di proposito: senza flusso non c'e' nessuna
+    # smentita da leggere, e ritentare pagherebbe un secondo timeout da 300s
+    # per un guasto che il ritentativo non ripara (la CLI non c'e').
+    ritentato = False
+    if strumenti:
+        confermato, motivo = verifica_init(invocazione.esito)
+        if not confermato:
+            # Silenzio dichiarato ② della fetta. Il motivo si reda come tutto
+            # cio' che nasce dal sottoprocesso: non c'e' una seconda via.
+            log.warning(
+                "l'evento system/init smentisce la sonda (job_id=%s): %s -- il "
+                "prompt era gia' partito affermando i quattro strumenti, quindi "
+                "questa invocazione si BUTTA e se ne ricompone una senza "
+                "strumenti (una sola volta, mai una terza); la reply lo "
+                "dichiara anche all'utente",
+                job_id, reda_segreti(motivo, *forme))
+            strumenti = False
+            degrado = True
+            ritentato = True
+            invocazione = _invoca(strumenti)
+            if invocazione is None:
+                return _reply("[runner non disponibile]")
 
-    # UNA sola lettura del flusso, prima di qualunque ramo: e' cosi' che il
-    # ramo d'errore e quello felice non possono divergere nel modo di leggere
-    # la stessa risposta.
-    esito = leggi_flusso(stdout)
-    _logga_init(esito, job_id)   # Step 5: letto e loggato, NON ancora agito
-    _logga_uso(esito, job_id)    # Step 4: la misura per la domanda aperta 2
-    if esito.righe_saltate:
-        # Una riga di rumore non fa cadere il flusso, ma non sparisce: se la
-        # CLI cambia formato, il conto sale prima che qualcosa si rompa.
-        log.warning(
-            "flusso stream-json con %d riga/righe non-JSON saltate su %d "
-            "(job_id=%s): la risposta e' stata letta lo stesso, ma il formato "
-            "della CLI non e' piu' esattamente quello atteso",
-            esito.righe_saltate, esito.righe_lette, job_id)
+    # Da qui in giu' si legge UNA invocazione: la prima se e' bastata, la
+    # seconda se la prima e' stata buttata. I rami sono gli stessi.
+    esito = invocazione.esito
+    stdout, stderr = invocazione.stdout, invocazione.stderr
+    # Step 4 del brief: se si e' arrivati a un esito d'errore DOPO un
+    # ri-tentativo, il log lo dice -- o «claude rc=1» sembrerebbe il primo
+    # guasto del turno invece dell'ultimo di due.
+    coda_log = (" [secondo e ULTIMO tentativo: il primo e' stato buttato perche' "
+                "l'init smentiva la sonda]" if ritentato else "")
 
-    if proc.returncode != 0:
+    if invocazione.rc != 0:
         # Esito (1). `claude -p` mette gli errori (auth 401, quota, ecc.) su
         # STDOUT come JSON, non su stderr: la nota vale ancora con stream-json,
         # dove l'errore arriva nell'evento `result` con `is_error: true`. Logga
         # entrambi i canali e prova a estrarre un dettaglio leggibile, per non
         # nascondere la causa dietro un numero.
-        log.warning("claude rc=%s stderr=%r stdout=%r", proc.returncode,
-                    stderr[:300], stdout[:500])
+        log.warning("claude rc=%s stderr=%r stdout=%r%s", invocazione.rc,
+                    stderr[:300], stdout[:500], coda_log)
         risultato = esito.risultato or {}
         dettaglio = (esito.testo or risultato.get("error")
                      or risultato.get("subtype") or "")
@@ -761,7 +1013,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # meglio il flusso grezzo che un silenzio.
             dettaglio = (stdout or stderr).strip()
         return _reply(
-            f"[errore runner rc={proc.returncode}] {str(dettaglio)[:300]}".strip())
+            f"[errore runner rc={invocazione.rc}] {str(dettaglio)[:300]}".strip())
 
     if not esito.risultato_presente:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
@@ -774,8 +1026,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         log.warning(
             "flusso stream-json chiuso senza evento finale type=result "
             "(job_id=%s, rc=%s): righe lette=%d, righe non-JSON saltate=%d -- "
-            "il ponte NON ha una risposta completa e lo dichiara nella reply",
-            job_id, proc.returncode, esito.righe_lette, esito.righe_saltate)
+            "il ponte NON ha una risposta completa e lo dichiara nella reply%s",
+            job_id, invocazione.rc, esito.righe_lette, esito.righe_saltate,
+            coda_log)
         # Quarto canale dello stdout grezzo (introdotto dal Task 2): anche
         # questa coda passa dalla copia redatta, non da `proc.stdout`.
         coda = stdout.strip()[-200:]
@@ -886,7 +1139,12 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
                 if outcome != "idle":
                     log.info("run: %s", outcome)
             except Exception as exc:
-                log.warning("run_once errore: %s", exc)
+                # Task 4, nit 1: `%s` sull'eccezione GREZZA e' il settimo
+                # canale di perdita del token (gli header del claim lo
+                # portano, e un valore non consegnabile risale col valore
+                # dentro). Si passa da `_motivo_eccezione`: tipo + messaggio
+                # REDATTO, cosi' il log resta diagnosticabile.
+                log.warning("run_once errore: %s", _motivo_eccezione(exc))
             await asyncio.sleep(poll_seconds)
 
 
@@ -904,7 +1162,11 @@ def main() -> None:
                 if outcome != "idle":
                     log.info("run: %s", outcome)
             except Exception as exc:
-                log.warning("run_once errore: %s", exc)
+                # Task 4, nit 1: vedi `run_loop` -- stesso canale, stessa
+                # chiusura. Sono due punti perche' questo `main()` e' il
+                # runner come processo a se' (il gateway esterno), e
+                # `run_loop` e' quello in-addon.
+                log.warning("run_once errore: %s", _motivo_eccezione(exc))
             time.sleep(interval)
 
 if __name__ == "__main__":

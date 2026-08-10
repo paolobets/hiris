@@ -274,11 +274,29 @@ def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
         "la sonda degli strumenti viene chiamata piu' di una volta in "
         "_reason_chat: e' il modo in cui il prompt e l'argv tornano a essere "
         "due decisioni invece di una")
-    # e le due letture del booleano sono la STESSA variabile, non due
-    assert "strumenti_attivi=strumenti," in sorgente
-    assert sorgente.count("strumenti_attivi=strumenti") == 2, (
+    # e le due letture del booleano sono la STESSA variabile, non due.
+    #
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 4): il soggetto e'
+    # vivissimo, cambia la via d'accesso -- quindi il pin **si adegua, non si
+    # butta**. Il Task 4 ha spostato la composizione dentro `_invoca`, perche'
+    # da quel task il turno puo' comporre DUE volte (l'evento `init` smentisce
+    # la sonda: si butta l'invocazione e si ricompone dal booleano a `False`).
+    # Le due letture ora nominano il PARAMETRO di `_invoca`, ed e' una garanzia
+    # piu' forte di prima: non c'e' piu' un punto del corpo in cui il prompt
+    # possa restare avanti all'argv, perche' nascono nella stessa chiamata.
+    assert "def _invoca(strumenti_attivi: bool)" in sorgente, (
+        "la composizione non passa piu' da un solo punto parametrico: se il "
+        "prompt e l'argv tornano a comporsi in due posti, il secondo giro del "
+        "Task 4 puo' ricomporne uno solo dei due")
+    assert sorgente.count("strumenti_attivi=strumenti_attivi") == 2, (
         "il prompt e l'argv non leggono piu' la stessa variabile: e' il punto "
         "in cui rientra un prompt che promette cio' che l'argv non da'")
+    # ...e il chiamante passa UN booleano, quello deciso dalla sonda (primo
+    # giro) o messo a False dalla difesa (2) (secondo giro).
+    assert sorgente.count("_invoca(strumenti)") == 2, (
+        "le invocazioni di `_invoca` non leggono piu' l'unico booleano del "
+        "turno: sono due decisioni da tenere allineate, cioe' esattamente "
+        "cio' che questa fetta esiste per rendere impossibile")
 
 
 def test_il_prompt_che_esce_davvero_dal_ponte_senza_sonda_e_quello_senza_strumenti():
