@@ -130,17 +130,27 @@ BASE_SYSTEM_PROMPT = (
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
-# Higher default output ceiling for interactive chat: una risposta lunga (il
+# Tetto d'uscita piu' alto per la chat interattiva: una risposta lunga (il
 # riepilogo di una casa grande, un elenco di ricordi) supera legittimamente il
-# tetto da 4096 dell'agente di valutazione. Kept well under the model max so
-# the non-streaming SDK path doesn't hit the request-timeout guard.
-# fetta E4 Task 8, Step 2: questo commento diceva «complex requests (a
-# multi-view dashboard, a long script)» e «per le plance molto grandi il
-# modello propone poche viste per volta» -- una dichiarazione falsa al
+# default da 4096 di `chat()`/`chat_stream()` -- `MAX_TOKENS` qui sopra,
+# ereditato dall'agente di valutazione uscito con la fetta E3 Task 8
+# (`run_with_actions`, vedi il commento su `EVALUATION_TOOL_DEFS` poco sopra;
+# stessa uscita annotata in llm_router.py e in backends/openai_compat_runner.py).
+# Quel default oggi non lo raggiunge nessun chiamante di produzione:
+# `handlers_chat.py` passa SEMPRE `CHAT_MAX_TOKENS`. Kept well under the model
+# max so the non-streaming SDK path doesn't hit the request-timeout guard.
+#
+# fetta E4 Task 8, Step 2: questo commento diceva "complex requests (a
+# multi-view dashboard, a long script)" e "per le plance molto grandi il
+# modello propone poche viste per volta" -- una dichiarazione falsa al
 # presente: HIRIS 2.0 LEGGE le plance (proxy/ha_client.py, casa/
 # comportamento.py) e non ne scrive nessuna, il catalogo della chat e' i
-# quattro strumenti di conoscenza (casa/strumenti.py). Il tetto resta lo
-# stesso: cambia solo la ragione dichiarata, che ora e' vera.
+# quattro strumenti di conoscenza (casa/strumenti.py).
+# fix round 1: la riscrittura aveva lasciato dentro un secondo soggetto morto
+# -- diceva "il tetto da 4096 dell'agente di valutazione" al PRESENTE, ma
+# quell'agente non esiste piu' (fetta E3 Task 8, commento poco sopra): 4096 e'
+# rimasto solo come default di firma. Il tetto (16000) non e' mai cambiato in
+# nessuno dei due giri: cambia la ragione dichiarata, che ora e' vera.
 CHAT_MAX_TOKENS = 16000
 MAX_TOOL_ITERATIONS = 10
 MAX_RETRIES = 3
