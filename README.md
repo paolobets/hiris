@@ -13,135 +13,167 @@
 </p>
 
 <p align="center">
-  <strong>An AI agent platform for Home Assistant that actually reasons about your home.</strong>
+  <strong>The knowledge of your home, and a chat to ask it.</strong>
 </p>
 
 ---
 
-## Why HIRIS exists
+## What HIRIS 2.0 is
 
-Most smart home AI tools are glorified voice assistants: they hear a command and execute it. HIRIS is different — it *thinks* before acting.
+> **HIRIS knows, and does not act.**
 
-When you ask HIRIS why your electricity bill is higher this month, it queries your energy sensors, checks yesterday's weather forecast it already fetched, looks at which appliances ran the most, and gives you a reasoned answer. When it detects an anomaly at 2 AM it doesn't just send a notification — it evaluates the context, decides if it's worth waking you up, and tells you exactly what it found.
+HIRIS 2.0 is a Home Assistant add-on that builds and keeps a living
+representation of your house — floors, areas, devices, entities, and what the
+house already does on its own — and gives you one chat to interrogate it.
 
-HIRIS is built on four ideas:
+That is the whole product. It reads Home Assistant and it remembers what you
+tell it. It does not turn anything on or off, does not send notifications, does
+not create or modify automations, and does not run anything on its own
+schedule. The HTTP primitive that called an HA service was removed from the
+client altogether (`hiris/app/proxy/ha_client.py:145-151`) — "doesn't act" is
+not a setting you could flip, it is the absence of the code.
 
-- **Three clear entities, not one blob** — Chatbot, Agentbot and Brain each have one job and one contract (see below), so you always know why something happened
-- **Security is structural, not a setting** — every action, from any surface, passes through the same semaforo (tier + denylist + step-up); an Agentbot can never choose its own action, only trigger a declared one
-- **Local-first when possible** — simple automations run entirely offline; AI is called only when reasoning is actually needed
-- **Your home, not a generic demo** — context about your house, your family, your habits is part of every AI call
-
----
-
-## What HIRIS can do
-
-### Talk to your home in natural language
-
-Ask anything. HIRIS queries Home Assistant in real time and reasons before answering.
-
-```
-You:   "Is the washing machine still running?"
-HIRIS: "Yes — it started 47 minutes ago and is drawing 980W. Based on the
-        usual cycle length, it should finish in about 25 minutes."
-
-You:   "Turn off the living room lights and tell me how much the house is
-        consuming right now."
-HIRIS: "Done. Current draw: 2.4 kW — oven (1.8 kW), fridge (0.6 kW).
-        Solar is producing 0W (it's night)."
-```
-
-### Three entities, one clear job each
-
-| Entity | What it does | How it reasons | Who creates it |
-|---|---|---|---|
-| **Chatbot** | Conversational — you ask, it answers. | Free-form prompt; can read HA freely and use tools within its allowlist; actions are gated by the semaforo. **No autonomous trigger** — it only runs when you talk to it. | You |
-| **Agentbot** | Autonomous — acts or notifies on its own, on a trigger (event or schedule), without you asking. | A restricted, tool-free reasoning step (optional) that returns a JSON verdict — never a free-form action. The action it may take is **declared in its configuration**, never chosen by the AI. Gated by the semaforo. | The Brain proposes one, or you create it directly |
-| **Brain** | The fulcrum — observes the house, tracks habits, and proposes (new Agentbots, HA automations, config changes). Prefers flagging a problem and suggesting the fix over acting on its own. | Continuous reasoning over the home's state; lives on the app's home screen (`#/`). | Built-in — always there |
-
-### Goal-first creation
-
-Instead of picking "Chatbot or Agentbot" in front of an empty form, you start
-from `#/nuovo` with a goal in plain language ("avvisami se la porta resta
-aperta" vs "rispondimi quante luci sono accese"). HIRIS derives the right
-entity type with a deterministic heuristic — **no LLM call** — walks you
-through a few guided steps for that type, and always lets you confirm or
-override the suggested type before continuing. The full editor (`#/chatbots/
-new`, `#/agentbots/new`) remains available for starting from a blank form.
-
-### Security: one gate, no exceptions
-
-Every action HIRIS could take on your home — from a Chatbot, an Agentbot, or
-the gateway — passes through the same **semaforo**: a tier per domain/entity
-(green/yellow/red/off), a hard denylist for dangerous domains (locks, alarms,
-covers, sirens, garage doors), and step-up confirmation for anything above
-green. There is no surface that bypasses it, and an Agentbot's reasoning step
-never gets to invent an action — only the action declared in its own
-configuration can ever fire.
-
-### Semantic Home Map
-
-HIRIS automatically builds a semantic model of your home by classifying every entity (lights, climate sensors, appliances, power meters) using rule-based logic + optional LLM assistance. This map powers:
-
-- Structured home snapshots injected into every AI call
-- RAG pre-fetch: live entity states loaded before each call (Claude gets real data without needing to call a tool first)
-- Energy tools that work without any manual entity configuration
-
-### Multi-provider LLM
-
-Supported backends: Anthropic Claude (API or Claude Max subscription), OpenAI (GPT-4o, GPT-4.1, o-series), OpenRouter, any Ollama-compatible local model — each toggled on independently, used only when active *and* credentialed.
-
-Every Chatbot and every Agentbot picks its own model (or `auto`), and the Brain has its own `brain_model` setting — there's no more one-size-fits-all mapping by entity type. The model dropdown is populated live from your active, credentialed providers.
-
-**Fallback chain:** when `model="auto"`, if the primary backend is unavailable the next one in the strategy chain is tried automatically (`balanced`: Claude → OpenRouter → OpenAI → Ollama; `quality_first`: Claude → OpenAI → OpenRouter → Ollama; `cost_first`: Ollama → OpenRouter → OpenAI → Claude).
-
-### Memory & RAG
-
-HIRIS stores and retrieves memories across conversations. Before every Claude call, relevant past interactions are injected as context — so a Chatbot remembers what happened last Tuesday and can build on it.
-
-### Notifications everywhere
-
-Send alerts via Home Assistant push, Telegram, WhatsApp, ntfy, Gotify, Pushover, Slack, and 80+ other channels — all configured through a single `apprise_urls` option.
-
-### HA and system health monitoring
-
-A live health snapshot of your Home Assistant installation — unavailable entities, integration errors, per-integration native health, add-on states and host disk space from the Supervisor, and available updates for core, OS, Supervisor and add-ons — updated in real time via WebSocket and refreshed every 30 minutes. Accessible to any Chatbot (within its tool allowlist) via the `get_ha_health` tool, via `GET /api/health/ha`, and feeds the Brain's own health scan.
-
-The Brain's own advisories (low batteries, entities unavailable for days, broken automations, dangerous domains left enabled) are readable from chat via `get_advisories`, and a push notification goes out for **severe** ones — once when the issue appears, again only if it reopens or escalates, with a 12-hour quiet period (toggle: `brain_notify_high`). `get_logbook` answers "what happened last night?" and `render_template` evaluates an HA Jinja template on the spot.
-
-**All of it is read-only, by design.** HIRIS reports available updates but never applies them, and cannot start, stop, restart or update anything — neither directly nor by raising a proposal.
-
-### Proposal workflow
-
-The Brain proposes new Agentbots, HA automations, and config changes for human review instead of applying them on its own — it prefers to flag a problem and suggest the fix. Proposals show up in the Brain's home stream (`#/`) and in `#/proposals`, with approve/reject actions, keeping a human in the loop for every configuration change.
+2.0 is a reduction to the core. Version 1.x shipped a much wider surface
+(autonomous agents, a proactive brain, proposals, an action gate); most of it
+has been taken out of the running product on purpose. See
+[what is *not* in 2.0](#what-is-not-in-20) below, and the scope document that
+governs the refactor:
+[`docs/design/2026-08-04-scope-hiris.md`](docs/design/2026-08-04-scope-hiris.md)
+(Italian).
 
 ---
 
-## Use cases
+## What it knows
 
-### Door left open
-An **Agentbot** with an event trigger on the front door contact sensor
-(`entity_id`, `operator: ">"` a duration in minutes) sends a notification the
-moment the condition is met — no polling, no custom code. Turn on its
-optional reasoning step to have the model phrase the alert instead of a flat
-template message.
+### The registry of the house
 
-### Energy anomaly alert
-An **Agentbot** with an event trigger on your grid power sensor
-(`threshold` in watts) notifies you the instant consumption crosses the
-line. Its action is declared up front — the AI never decides *what* to do,
-only whether and how to phrase the notification.
+On startup, and again whenever Home Assistant tells it something changed, HIRIS
+re-reads the HA registries over the WebSocket API — floors, areas, devices,
+entities, labels, categories, config entries — and rebuilds the house from them
+(`hiris/app/casa/anagrafe.py:14-50`, `hiris/app/proxy/ha_client.py:564-572`; the
+registry-update subscriptions live at `hiris/app/proxy/ha_client.py:26-31`, the
+debounced rebuild at `hiris/app/server.py:403`). The meaning is never guessed:
+it is whatever you already declared in Home Assistant.
 
-### Morning briefing, pre-heat, or a security sweep across multiple sensors
-These need to read several sources (forecast, calendar, more than one
-sensor) and reason across them — which is exactly what a **Chatbot**'s free
-tool access is for. Ask it in chat, or from a Lovelace card, whenever you
-want the answer: *"give me yesterday's energy summary and today's
-forecast"*. An Agentbot's reasoning step is intentionally tool-free, so this
-kind of multi-source, on-demand judgment call belongs to a Chatbot, not an
-Agentbot.
+If a registry fails to answer, HIRIS keeps the previous copy and records the
+gap rather than replacing a good house with ten empty lists
+(`hiris/app/casa/anagrafe.py:39-49`).
 
-### Chat for guests
-A **Chatbot** restricted to lighting and climate only, with `restrict_to_home: true` and `require_confirmation: true` — so guests can control the house without accessing sensitive data or executing unreviewed actions.
+### What the house already does by itself
+
+HIRIS reads `automations.yaml` and `scripts.yaml` from your HA config directory
+and cross-references them with live state
+(`hiris/app/casa/comportamento.py`). The file says what is *written*; the state
+says what *exists* — and the difference is information. Automations written by
+hand outside those files are known by name but not by body, and HIRIS says so
+instead of pretending they are empty.
+
+### The nucleo — one compact house, in every prompt
+
+Everything above is condensed into a single text that goes into the model's
+context on every turn (`hiris/app/casa/nucleo.py`, shared with the chat via
+`hiris/app/api/handlers_chat.py:317`). With three hundred entities, listing them
+all would blow the context window, so the nucleo **counts** rather than
+enumerates — "Cucina: 2 luci, 1 sensore", not the entity ids.
+
+It has five sections (`hiris/app/casa/nucleo.py:545-548,648`):
+
+| Section | What it holds |
+|---|---|
+| `## La casa` | floors → areas → devices → entities, as counts |
+| `## Notevole adesso` | what is currently on, open, playing, triggered… |
+| `## Cio' che la casa fa gia' da sola` | automations and scripts |
+| `## Cio' che le persone hanno detto` | the memories, in full |
+| `## Cio' che HIRIS ignora` | **what HIRIS could not read** |
+
+That last section is the point, not a footnote: **HIRIS declares what it does
+not know instead of faking it.** When HA is unreachable, the nucleo says
+*"Stato non letto (o dichiarato non attendibile): non si puo' dire se in
+questo momento c'e' qualcosa di notevole -- non e' lo stesso di 'niente di
+notevole'"* (`hiris/app/casa/nucleo.py:321-324`). The same discipline applies when the text
+has to be truncated to fit: the cut is written *inside* the nucleo, not only in
+a summary nobody reads.
+
+### Anchored memory
+
+Tell the chat something about the house and it is actually stored — with its
+strength (preference, prohibition, fact, rule), an optional value or range,
+optional conditions, and anchors to the areas/entities/devices it refers to
+(`hiris/app/memoria/archivio.py:86`). An anchor that does not exist in the house
+is not written, and the response says which one was dropped and why — the
+memory itself is still saved in full.
+
+Saved memories come back in the nucleo on the next turn, under
+*"Cio' che le persone hanno detto"*.
+
+---
+
+## The chat, and its four tools
+
+The chat is the only surface. The model gets the nucleo plus exactly four tools
+(`hiris/app/casa/strumenti.py:57,250`, passed at
+`hiris/app/api/handlers_chat.py:438-439,493-494`):
+
+| Tool | What it does |
+|---|---|
+| `cerca` | finds an area, entity or device from a name or alias — and returns **every** candidate, flagging the ambiguous ones instead of silently picking the first |
+| `guarda` | the detail of one single thing: an area with its entities and states, an entity, a device, an automation or script *with its body*, or a memory with its interpretation |
+| `ricorda` | saves what a person said, with its anchors to the house |
+| `richiama` | the memories anchored to one part of the house |
+
+None of the four touches Home Assistant: they read and they remember. There is
+no fifth tool and no allowlist to configure — the catalogue of thirty-four
+tools and the action gate that stood in front of them were both removed.
+
+Answers stream token by token (`text/event-stream`) when the client asks for
+it, and closed sessions are summarised back into the next conversation
+(`hiris/app/api/handlers_chat.py:262-269,330-335`).
+
+---
+
+## AI providers
+
+Five backends, each enabled independently, each used only when it is **both**
+switched on **and** credentialed (`hiris/app/model_activation.py:14-35`):
+
+| Provider | Credential |
+|---|---|
+| Claude API (Anthropic) | `claude_api_key` |
+| OpenAI | `openai_api_key` |
+| OpenRouter | `openrouter_api_key` |
+| Ollama (local) | `local_model.url` + `local_model.model` |
+| Claude subscription (Claude Max) | `claude_code_oauth_token` |
+
+**Fallback chain.** With `model="auto"`, if the leading backend is unavailable
+the next active one in the strategy order is tried
+(`hiris/app/llm_router.py:45-55`):
+
+- `balanced` (default): Claude → OpenRouter → OpenAI → Ollama
+- `quality_first`: Claude → OpenAI → OpenRouter → Ollama
+- `cost_first`: Ollama → OpenRouter → OpenAI → Claude
+
+You can override the order manually; an active provider missing from a stale
+saved order is appended rather than silently dropped
+(`hiris/app/model_activation.py:37-78`).
+
+Token counts and cumulative cost are tracked and readable at `GET /api/usage`.
+
+### One documented limit: the subscription bridge
+
+There is a second chat path. When it is active, a chat turn is handed to an
+external subscription runner through a queue instead of being answered locally.
+
+It is active when `bridge_enabled` **and** `chat_via_subscription` are both on
+— **and also**, regardless of those two options, whenever
+`provider_subscription` is enabled and `claude_code_oauth_token` is set: an
+active subscription provider implies both flags
+(`hiris/app/server.py:907,1332-1340`).
+
+**That path answers without the nucleo and without the four tools.** It gets
+the conversation transcript and the system prompt, nothing else — so it cannot
+read the state of your house, and it is told so explicitly in its own prompt
+(`hiris/app/agent/prompts.py:41-56`). It is not the same product as the
+synchronous chat, and it is not a drop-in replacement for it.
 
 ---
 
@@ -152,7 +184,8 @@ A **Chatbot** restricted to lighting and climate only, with `restrict_to_home: t
 1. **Settings → Add-ons → Add-on Store** → ⋮ → **Repositories**
 2. Add: `https://github.com/paolobets/hiris`
 3. Find **HIRIS** → Install
-4. Set your API key in the configuration tab, then start
+4. Enable at least one provider and set its credential in the configuration
+   tab, then start
 
 ### HACS
 
@@ -162,79 +195,133 @@ A **Chatbot** restricted to lighting and climate only, with `restrict_to_home: t
 
 ---
 
-## Quick configuration
+## Configuration
+
+Every option below exists in [`hiris/config.yaml`](hiris/config.yaml); the full
+descriptions are in [`hiris/translations/en.yaml`](hiris/translations/en.yaml)
+and are what the add-on UI shows.
+
+### To get answers
 
 | Option | Description |
 |---|---|
-| `claude_api_key` | Anthropic API key — required for Claude models |
-| `openai_api_key` | OpenAI API key — optional, enables GPT models |
-| `local_model.url` | Ollama base URL for local inference (e.g. `http://192.168.1.10:11434`) |
-| `local_model.model` | Ollama model name (e.g. `qwen2.5:27b`) |
+| `provider_claude` · `provider_openai` · `provider_openrouter` · `provider_ollama` · `provider_subscription` | Enable a provider. A provider is used only if enabled **and** credentialed |
+| `claude_api_key` · `openai_api_key` · `openrouter_api_key` | Cloud API keys |
+| `claude_code_oauth_token` | OAuth token for the Claude subscription runner |
+| `local_model.url` · `local_model.model` · `local_model.request_timeout` | Ollama base URL, model name, per-call timeout (10–1800s) |
 | `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first` |
-| `mqtt.host` | MQTT broker for native HA entity publishing (optional) |
-| `apprise_urls` | Notification URLs — one per channel (optional) |
-| `internal_token` | Shared secret for inter-addon calls (optional) |
+| `chat_policy` | Explicit backend order for the chat, e.g. `claude,ollama` — empty means "use the strategy" |
+| `hide_free_models` | Hide OpenRouter `:free` models from the model list |
 
-> If `local_model.url` and `local_model.model` are set, HIRIS runs fully offline using Ollama as the AI backend — the full agentic loop, tool use, and all three entities remain available. No API key is required. If neither a cloud key nor a local model is configured, AI calls are disabled.
+> With `local_model.url` + `local_model.model` set and `provider_ollama`
+> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the four
+> tools all work without any cloud key. If no provider is both enabled and
+> credentialed, AI calls are disabled.
+
+### Subscription bridge
+
+| Option | Description |
+|---|---|
+| `bridge_enabled` | Master switch for the external subscription runner — **unless** `provider_subscription` is on with a token, which forces it on |
+| `chat_via_subscription` | Route chat turns to it (see the limit above). Only effective when `bridge_enabled` is on — and likewise forced on by an active subscription provider |
+| `bridge_deadline_min` | Minutes before a queued turn expires (1–120, default 5) |
+| `chat_daily_cap` | Max chat turns routed per day (0–1000, default 50) |
+
+### General
+
+| Option | Description |
+|---|---|
+| `theme` | `light` · `dark` · `auto` |
+| `log_level` | `debug` · `info` · `warning` · `error` |
+| `history_retention_days` | Days of conversation history kept before automatic deletion (default 90) |
+| `internal_token` | Shared secret required by `/api/*` when the call does not come from the Supervisor ingress |
+| `supervisor_ingress_cidr` | Source ranges treated as genuine Supervisor ingress (default `172.30.32.0/23`) |
+| `debug_expose_port` | **Dev only.** Logs a warning at every startup; it does *not* open port 8099 by itself — that is the Network section of the add-on page |
+
+### Carried over from 1.x
+
+These options are still read and still configure the second-brain archive
+(document ingestion, semantic search, the nightly digest), but **the 2.0 chat
+does not read that archive**: its context comes from the nucleo only
+(`hiris/app/api/handlers_chat.py:271-283,317,330-335`). They are listed for honesty, not
+recommended.
+
+| Option | Description |
+|---|---|
+| `memory.embedding_provider` · `memory.embedding_model` · `memory.rag_k` | Embeddings for the knowledge store's semantic search |
+| `mayan.*` | Polling a Mayan EDMS tag into the knowledge store |
 
 ---
 
-## Lovelace Chat Card
+## Lovelace chat card
 
-Add the chat card to any dashboard:
+Add the chat to any dashboard:
 
 ```yaml
 type: custom:hiris-chat-card
-chatbot_id: hiris-default
-title: "Home Assistant"
+title: "HIRIS Chat"
 ```
 
-HIRIS auto-deploys the card to `/local/hiris/` and registers the Lovelace resource on startup. No manual resource configuration needed.
+Optional keys: `hiris_slug` (default `hiris`), `suggestions` (up to 6 starter
+prompts), `height`. A `chatbot_id` from a 1.x dashboard is still accepted and
+simply ignored — there is one chat now
+(`hiris/app/api/handlers_chat.py:170-179`).
+
+On startup HIRIS copies the card to `<ha-config>/www/hiris/` and registers the
+Lovelace resource over the WebSocket API, migrating stale URLs; the
+registration is idempotent (`hiris/app/server.py:115,201,612-618`). No manual
+resource configuration is needed.
 
 ---
 
-## Architecture
+## Interface
 
-```
-┌─────────────────────────────────────────────┐
-│  LAYER 2 — AI Reasoning                     │
-│  Claude / OpenAI / OpenRouter / Ollama      │
-│  • Chatbot — free-form chat + tool use      │
-│  • Agentbot — tool-free JSON-verdict step   │
-│  • Brain — continuous reasoning + proposals │
-│  • Semantic Home Map + RAG pre-fetch        │
-│  • LLM Router with strategy + fallback      │
-│  • Memory store (vector search)             │
-└─────────────────────────────────────────────┘
-┌─────────────────────────────────────────────┐
-│  LAYER 1 — Local Flow Engine                │
-│  Runs 100% offline — zero AI cost           │
-│  • APScheduler (Agentbot schedule triggers) │
-│  • HA WebSocket (Agentbot event triggers)   │
-│  • Semaforo: tier + denylist + step-up gate │
-│  • Task engine with action chaining         │
-└─────────────────────────────────────────────┘
-```
+Opening the add-on shows the chat. A configuration panel is still served at
+`/config`, but it is a 1.x leftover: several of its pages call routes that were
+removed during the refactor and degrade silently to empty. It is being rebuilt
+— the full inventory of what is broken and why is in
+[`docs/design/2026-08-08-frontend-da-rifare.md`](docs/design/2026-08-08-frontend-da-rifare.md)
+(Italian). Treat the chat as the product surface until that work lands.
 
-**Stack:** Python 3.13 · aiohttp · Anthropic SDK · OpenAI SDK · APScheduler · SQLite · Open-Meteo
+**Stack:** Python 3.13 (Alpine) · aiohttp · Anthropic SDK · OpenAI SDK ·
+APScheduler · SQLite · model2vec
+
+---
+
+## What is *not* in 2.0
+
+These existed in 1.x and are deliberately **out of the running product**. The
+code largely still sits in git history; anything that comes back will come back
+rewritten, with a design of its own.
+
+- **Actions of any kind** — no service calls, no turning things on or off, no
+  creating or editing automations, scripts, scenes or dashboards
+- **The semaforo** — tiers, denylists, step-up confirmations, per-action gating
+- **Agentbot / Sentinella / agents** — nothing is triggered by a schedule or an
+  event to reason on its own
+- **The Brain**, its proposals and its advisories
+- **Multiple chatbots**, their editors, their per-bot budgets and allowlists
+- **Notifications** — no Apprise, no HA push, no Telegram/ntfy/…
+- **MQTT**, the gateway, Test Run, the sandbox
+- **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
+- **The thirty-four-tool catalogue** — replaced by the four above
 
 ---
 
 ## Documentation
 
-| Document | Language |
-|---|---|
-| [Configuration guide — Apprise & Memory/RAG](docs/configuration-guide.md) | 🇬🇧 English |
-| [Guida alla configurazione — Apprise & Memoria/RAG](docs/guida-configurazione.md) | 🇮🇹 Italiano |
-| [Full local mode — zero cloud dependencies](docs/full-local-mode.md) | 🇬🇧 English |
-| [Modalità completamente locale — zero cloud](docs/full-local-mode-it.md) | 🇮🇹 Italiano |
-| [MQTT integration — HA entities & automations](docs/mqtt-integration.md) | 🇬🇧 English |
-| [How it works — architecture & internals](docs/how-it-works.md) | 🇬🇧 English |
-| [Come funziona — architettura e internals](docs/come-funziona.md) | 🇮🇹 Italiano |
-| [Technical architecture](docs/architecture.md) | 🇬🇧 English |
-| [Architettura tecnica](docs/architettura.md) | 🇮🇹 Italiano |
-| [Use cases & examples](docs/use-cases.md) | 🇬🇧 English |
-| [Casi d'uso ed esempi](docs/casi-duso.md) | 🇮🇹 Italiano |
+| Document | What it is | Language |
+|---|---|---|
+| [Scope — HIRIS 2.0](docs/design/2026-08-04-scope-hiris.md) | The live source of truth: what HIRIS must be | 🇮🇹 Italiano |
+| [La conoscenza di HIRIS](docs/design/2026-08-05-la-conoscenza-di-hiris.md) | The knowledge design 2.0 is built on | 🇮🇹 Italiano |
+| [Mappa delle funzionalita'](docs/design/2026-08-05-mappa-funzionalita.md) | What survives the refactor, and what does not | 🇮🇹 Italiano |
+| [Frontend da rifare](docs/design/2026-08-08-frontend-da-rifare.md) | The inventory of broken UI, for the next slice | 🇮🇹 Italiano |
+| [CHANGELOG](CHANGELOG.md) | What changed, slice by slice | 🇮🇹 Italiano |
+
+Everything under `docs/` outside `docs/design/` — the architecture, how-it-works,
+configuration and use-case guides, in both languages — describes HIRIS **before**
+the 2.0 refactor. Each of those files now carries a banner saying so. They are
+kept as history; do not read them as documentation of the current product.
 
 ---
 

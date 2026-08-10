@@ -1,5 +1,41 @@
 # Product
 
+> ## 🗄 Documento storico — 10 agosto 2026
+>
+> **Questo documento descrive il prodotto pre-2.0, e non è più una fonte di verità su nulla.**
+> È conservato come documento storico: si legge per sapere cosa HIRIS *voleva* essere prima del
+> Refactor 2.0, non per sapere cosa fa oggi. Non è stato riscritto — un verbale non si riscrive,
+> si annota — e questo blocco è l'annotazione.
+>
+> **La fonte viva è** [`docs/design/2026-08-04-scope-hiris.md`](docs/design/2026-08-04-scope-hiris.md),
+> che dichiara esplicitamente di sostituire questo documento (§0, «Il documento sbagliato era
+> quello, non il codice. Questo lo sostituisce»). Per cosa il prodotto fa *davvero* oggi, il
+> `README.md`.
+>
+> **Cosa questo documento afferma e che non è più vero.** Tutto il corpo qui sotto parla al
+> presente di cose uscite dal prodotto fra le fette E2, E3 ed E4: le tre entità **Chatbot ·
+> Agentbot · Brain** (§ *Product Purpose*), il **semaforo** davanti alle azioni, le **proposte**
+> del Brain, la **sandbox** come first-class e la **telemetria per-entità** come criteri di
+> successo (§ *Design Principles* 2 e 3), il **budget token per-chatbot** (§ *Product Purpose*)
+> e il costo cumulativo sempre a schermo (§ *Design Principles* 5), il **pannello di
+> configurazione delle entità AI**
+> come definizione stessa del prodotto (§ *Users*, § *Product Purpose*). HIRIS 2.0 è una
+> riduzione al nucleo: **conosce e non agisce** — la conoscenza della casa più una chat per
+> interrogarla, con quattro strumenti che leggono e ricordano, e nessuno che tocchi la casa.
+>
+> **Anche il blocco del 4 agosto qui sotto è superato**, su due punti verificati sul codice:
+> (1) non è una supersessione *parziale* di tre sezioni — è l'intero documento a descrivere un
+> prodotto che non esiste; (2) la frase «costruisce ciò che serve — oggetti standard di Home
+> Assistant … **agenti** quando serve giudizio» descrive la visione dello scope, non la 2.0
+> pubblicata, che non costruisce né oggetti HA né agenti. Resta qui sotto invariato, per lo
+> stesso motivo per cui resta il corpo: è il verbale di quel giorno.
+>
+> Ciò che di questo documento resta utile è il **registro visivo e l'accessibilità** —
+> *Brand Personality*, *Anti-references*, *Accessibility & Inclusion* — che descrivono un'identità
+> grafica e dei vincoli d'uso, non un perimetro funzionale. Vanno comunque riletti contro il
+> prodotto vero: nominano superfici (sandbox, editor Agentbot, telemetria per-entità) che non
+> ci sono più.
+
 > ## ⚠️ Documento parzialmente superato — 4 agosto 2026
 >
 > Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal
