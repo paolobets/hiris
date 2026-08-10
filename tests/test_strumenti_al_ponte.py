@@ -192,6 +192,35 @@ def test_config_mcp_e_json_valido_con_la_url_e_le_due_intestazioni():
     assert voce["headers"]["X-Requested-With"] == "hiris-mcp"
 
 
+def test_config_mcp_aggiunge_x_hiris_turno_quando_l_identita_e_valorizzata():
+    """Task 6 (fix round 1, Important): specchio del test sulle DUE
+    intestazioni qui sopra, per la TERZA -- facoltativa -- che quel test non
+    copriva. Quando il chiamante passa un'identita' di turno, l'header
+    `X-HIRIS-Turno` compare nella stessa voce, accanto alle altre due, e non
+    al loro posto."""
+    testo = runner.config_mcp("http://127.0.0.1:8099", "IL-TOKEN", "IDENTITA-DEL-TURNO")
+    config = json.loads(testo)
+
+    voce = config["mcpServers"][handlers_mcp.NOME_SERVER_MCP]
+    assert voce["headers"]["X-HIRIS-Turno"] == "IDENTITA-DEL-TURNO"
+    assert voce["headers"]["X-HIRIS-Internal-Token"] == "IL-TOKEN"
+    assert voce["headers"]["X-Requested-With"] == "hiris-mcp"
+
+
+def test_config_mcp_senza_id_turno_non_aggiunge_l_intestazione():
+    """Il default vuoto (nessun terzo argomento) non aggiunge NESSUN header al
+    suo posto: e' cio' che permette a chi chiama `config_mcp` con i soli due
+    argomenti di sempre -- ogni altro test di questo file, e
+    `tests/test_agent_runner_inaddon.py:648` -- di continuare a funzionare
+    invariato. Un tetto per-turno non e' niente che quei test debbano
+    conoscere."""
+    testo = runner.config_mcp("http://127.0.0.1:8099", "IL-TOKEN")
+    config = json.loads(testo)
+
+    voce = config["mcpServers"][handlers_mcp.NOME_SERVER_MCP]
+    assert "X-HIRIS-Turno" not in voce["headers"]
+
+
 def test_config_mcp_normalizza_la_barra_finale_della_base_url():
     """`http://host:8099/` + `/api/mcp` farebbe `//api/mcp`, che non e' la
     stessa rotta."""
@@ -1205,11 +1234,46 @@ def test_l_init_che_smentisce_la_sonda_butta_l_invocazione(init_rotto, come, cap
     stdout = (init_rotto + "\n" if init_rotto else "") + _RIGA_RESULT + "\n"
     cli = _CliFinta(_proc(0, stdout), _ProcFelice())
 
-    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+    # Task 6 (fix round 1, Important): l'identita' del turno
+    # (`secrets.token_urlsafe`, minted in `_reason_chat` PRIMA di `_invoca`)
+    # deve restare la STESSA anche quando il turno si sdoppia in due
+    # invocazioni -- e' esattamente questo test, l'unico che sdoppia un
+    # turno, il posto in cui quell'invariante puo' rompersi. Prima di questo
+    # fix nessun test in tutta la suite chiamava mai `config_mcp` col terzo
+    # argomento ne' verificava quante volte l'identita' viene coniata: una
+    # decisione protetta da un commento invece che da una rete. La spia conta
+    # le chiamate VERE a `secrets.token_urlsafe` (non solo quelle che finiscono
+    # nell'argv: oggi la seconda invocazione riparte senza strumenti e non
+    # chiama mai `config_mcp`, ma la conta deve restare giusta anche se quel
+    # dettaglio cambiasse) -- e' lo stesso controllo fatto a mano nello
+    # scratchpad in fase di sviluppo, portato dentro la suite.
+    identita_coniate = []
+    vera_token_urlsafe = runner.secrets.token_urlsafe
+
+    def _spia_token_urlsafe(*a, **k):
+        valore = vera_token_urlsafe(*a, **k)
+        identita_coniate.append(valore)
+        return valore
+
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"), \
+         patch.object(runner.secrets, "token_urlsafe", _spia_token_urlsafe):
         esito, client = _turno(cli, job_id=f"J-{come}")
 
     # (b) l'invocazione si e' BUTTATA e se n'e' composta un'altra
     assert cli.invocazioni == 2
+
+    # L'INVARIANTE del fix: UNA identita' sola per l'intero turno, non una
+    # per invocazione della CLI. Se `id_turno = secrets.token_urlsafe(9)`
+    # migrasse DENTRO `_invoca` -- errore facilissimo, dato che il codice gia'
+    # chiama `config_mcp` dentro quella chiusura -- verrebbe coniata due
+    # volte (una per ciascuna delle due chiamate a `_invoca` sopra) e questo
+    # assert diventa rosso. Verificato per mutazione durante lo sviluppo di
+    # questo fix (spostata l'assegnazione dentro `_invoca`, il test e' andato
+    # rosso, ripristinato): vedi il report, sezione "Fix round 1".
+    assert len(identita_coniate) == 1, (
+        f"l'identita' di turno e' stata coniata {len(identita_coniate)} volte "
+        "in un turno sdoppiato (attese: 1): il tetto per-turno della rotta "
+        "MCP raddoppierebbe in silenzio")
     # ...e la seconda e' composta dall'ALTRO valore dello stesso booleano:
     # niente mcp-config, e la guida che nega gli strumenti. L'invariante dei
     # due versi vale anche qui, ed e' la ragione per cui il prompt si RICOMPONE
