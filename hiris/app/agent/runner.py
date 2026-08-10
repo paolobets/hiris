@@ -147,6 +147,41 @@ def config_mcp(base_url: str, token: str) -> str:
     }, ensure_ascii=False)
 
 
+REDATTO = "***"
+
+
+def reda_segreti(testo: str, *segreti: str) -> str:
+    """Il token fuori da tutto cio' che esce dal sottoprocesso.
+
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 3, fix round 1,
+    Important 2). **Prima di questo task era innocuo**: l'argv del ponte non
+    conteneva segreti, quindi qualunque cosa la CLI riecheggiasse poteva essere
+    loggata e mostrata cosi' com'era. Da oggi il token interno viaggia dentro
+    `--mcp-config`, ed e' esattamente il genere di stringa che una CLI ripete
+    quando rifiuta o non riesce a connettere un server MCP:
+
+        claude rc=1 stderr='Error: failed to connect to MCP server from
+        --mcp-config {"mcpServers": {... "X-HIRIS-Internal-Token": "<il token>"}}'
+
+    Quello stderr finiva nel log dell'add-on -- cioe' nel file che si incolla in
+    una segnalazione -- e, senza un dettaglio strutturato da cui ricavare la
+    causa, anche NELLA REPLY che l'utente legge in chat.
+
+    Si reda in UN punto solo, appena il sottoprocesso ha risposto, PRIMA che
+    qualunque ramo guardi quei due canali: da li' in giu' non esiste piu' una
+    copia grezza da dimenticare. Redigere in quattro punti (il log, il
+    dettaglio, la coda del flusso incompleto, il testo del risultato) sarebbe
+    stato quattro cose da tenere allineate -- e la quinta, aggiunta domani,
+    sarebbe uscita in chiaro.
+
+    Un segreto vuoto si salta: `"".replace("", "***")` sostituirebbe ogni
+    posizione della stringa."""
+    for segreto in segreti:
+        if segreto:
+            testo = testo.replace(segreto, REDATTO)
+    return testo
+
+
 def sonda_strumenti(client, base_url: str, headers: dict,
                     *, job_id=None) -> tuple[bool, str]:
     """Difesa (1) del progetto: gli strumenti ci sono DAVVERO, in questo turno?
@@ -554,9 +589,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                                              job_id=job_id)
     else:
         strumenti = False
-    mcp_config = config_mcp(
-        base_url, intestazioni.get("X-HIRIS-Internal-Token", "")
-    ) if strumenti else ""
+    token = intestazioni.get("X-HIRIS-Internal-Token", "")
+    mcp_config = config_mcp(base_url, token) if strumenti else ""
     # Le DUE righe che leggono lo stesso booleano, una accanto all'altra. Non
     # esiste un secondo posto in cui il prompt e l'argv possono divergere: se
     # un giorno queste due righe si allontanano, e' li' che rientra il difetto
@@ -595,10 +629,20 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         log.warning("claude non eseguibile: %s", type(exc).__name__)
         return {"reply": "[runner non disponibile]"}
 
+    # La redazione, PRIMA di qualunque lettura (fix round 1, Important 2): il
+    # token viaggia in `--mcp-config` e la CLI lo riecheggia quando il server
+    # MCP non parte. Da qui in giu' `proc.stdout`/`proc.stderr` non si usano
+    # piu': si usano queste due copie, e non c'e' nessun canale che possa
+    # dimenticarsi di redigere. La sostituzione avviene su una stringa JSON e
+    # la lascia valida (il token non contiene virgolette: e' generato da
+    # `token_interno.secrets.token_urlsafe`).
+    stdout = reda_segreti(proc.stdout or "", token)
+    stderr = reda_segreti(proc.stderr or "", token)
+
     # UNA sola lettura del flusso, prima di qualunque ramo: e' cosi' che il
     # ramo d'errore e quello felice non possono divergere nel modo di leggere
     # la stessa risposta.
-    esito = leggi_flusso(proc.stdout or "")
+    esito = leggi_flusso(stdout)
     _logga_init(esito, job_id)   # Step 5: letto e loggato, NON ancora agito
     _logga_uso(esito, job_id)    # Step 4: la misura per la domanda aperta 2
     if esito.righe_saltate:
@@ -617,14 +661,14 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # entrambi i canali e prova a estrarre un dettaglio leggibile, per non
         # nascondere la causa dietro un numero.
         log.warning("claude rc=%s stderr=%r stdout=%r", proc.returncode,
-                    (proc.stderr or "")[:300], (proc.stdout or "")[:500])
+                    stderr[:300], stdout[:500])
         risultato = esito.risultato or {}
         dettaglio = (esito.testo or risultato.get("error")
                      or risultato.get("subtype") or "")
         if not dettaglio:
             # Nessun evento finale da cui ricavarlo (processo morto a meta'):
             # meglio il flusso grezzo che un silenzio.
-            dettaglio = (proc.stdout or proc.stderr or "").strip()
+            dettaglio = (stdout or stderr).strip()
         return {"reply":
                 f"[errore runner rc={proc.returncode}] {str(dettaglio)[:300]}".strip()}
 
@@ -641,7 +685,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             "(job_id=%s, rc=%s): righe lette=%d, righe non-JSON saltate=%d -- "
             "il ponte NON ha una risposta completa e lo dichiara nella reply",
             job_id, proc.returncode, esito.righe_lette, esito.righe_saltate)
-        coda = (proc.stdout or "").strip()[-200:]
+        # Quarto canale dello stdout grezzo (introdotto dal Task 2): anche
+        # questa coda passa dalla copia redatta, non da `proc.stdout`.
+        coda = stdout.strip()[-200:]
         avviso = (
             f"{_SENTINELLA_FLUSSO_INCOMPLETO} In questo turno la risposta si e' "
             "chiusa senza il messaggio finale del modello: quello che e' "

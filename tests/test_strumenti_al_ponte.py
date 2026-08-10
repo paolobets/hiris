@@ -709,3 +709,231 @@ def test_la_riga_di_degrado_non_precede_i_sentinella_di_guasto():
 
     assert esito["reply"].startswith("[errore runner rc=7]")
     assert runner.AVVISO_STRUMENTI_ASSENTI not in esito["reply"]
+
+
+# ---------------------------------------------------------------------------
+# FIX ROUND 1, Important 1 -- il ramo attivo non deve leggere frasi scritte per
+# il ramo spento. `_CONTESTO_PRESENTE` esce su ENTRAMBI i rami ed e' l'ULTIMA
+# cosa che il modello legge prima del blocco `## La casa`: una sua clausola
+# falsa al presente pesa piu' della guida, che sta sopra.
+# ---------------------------------------------------------------------------
+
+# Le due clausole uscite da `_CONTESTO_PRESENTE`. Scritte qui come costanti e
+# non ricopiate in ogni assert: se un giorno rientrassero con parole leggermente
+# diverse, il posto da aggiornare e' uno solo.
+_CONTRORDINI = (
+    "non e' aggiornabile in questo turno",
+    "invece di rispondere che non puoi richiamarlo",
+)
+
+
+@pytest.mark.parametrize("strumenti_attivi", [True, False])
+def test_il_blocco_del_contesto_non_contraddice_nessuno_dei_due_rami(strumenti_attivi):
+    """Le due clausole non devono rientrare su NESSUNO dei due rami.
+
+    Sul ramo attivo sono un contrordine e sono false. Sul ramo di degrado sono
+    ridondanti -- e la ridondanza e' stata verificata prima di togliere, non
+    assunta: e' il test qui sotto."""
+    system, _u = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto="## La casa\nSalotto: luce accesa.",
+        strumenti_attivi=strumenti_attivi)
+
+    for clausola in _CONTRORDINI:
+        assert clausola not in system, (
+            f"{clausola!r} e' rientrata nel prompt: sul ramo attivo contraddice "
+            "l'ordine di chiamare lo strumento due righe sopra, ed e' falsa -- "
+            "il tester vedrebbe `status: connected` nel log, nessuna "
+            "tools/call, e una risposta costruita sullo snapshot")
+
+
+def test_la_ridondanza_che_ha_permesso_di_togliere_le_due_clausole():
+    """**La verifica, non l'assunzione.** Togliere una clausola dal prompt del
+    ramo di degrado si puo' solo se cio' che diceva resta detto altrove: se
+    domani qualcuno alleggerisse `_GUIDA_SENZA_STRUMENTI`, questo test diventa
+    rosso e dice che la rimozione di allora non e' piu' coperta.
+
+    - «non e' aggiornabile in questo turno» -> la guida dice gia' che non si
+      puo' guardare adesso, e ordina di DIRLO quando servirebbe un valore
+      corrente;
+    - «cercalo li' dentro invece di rispondere che non puoi richiamarlo» ->
+      la compensazione dell'assenza di `richiama` resta detta due volte nello
+      stesso blocco del contesto («ricordi e sessioni precedenti compresi»,
+      «Usala per rispondere»), e il divieto di negare la memoria e' intatto."""
+    system, _u = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto="## Cio' che le persone hanno detto\n- la caldaia perde",
+        strumenti_attivi=False)
+
+    # cio' che copre la prima clausola tolta
+    assert "non puoi guardare adesso lo stato della casa" in prompts._GUIDA_SENZA_STRUMENTI
+    assert "servirebbe un valore aggiornato ADESSO, DILLO" in system
+    # cio' che copre la seconda
+    assert "ricordi e sessioni precedenti compresi" in system
+    assert "Usala per rispondere" in system
+    assert "richiamare ricordi" not in system, (
+        "il prompt e' tornato a NEGARE la memoria mentre il ricordo e' scritto "
+        "tre blocchi piu' sotto: e' la falsita' speculare gia' chiusa una volta")
+    assert "la caldaia perde" in system
+
+
+def test_il_blocco_del_contesto_resta_uno_solo_su_entrambi_i_rami():
+    """Nessun terzo testo, e nessuna biforcazione nella composizione: e' lo
+    STESSO `_CONTESTO_PRESENTE` che esce sui due rami. Se un giorno diventasse
+    condizionale, sarebbero due testi da tenere veri invece di uno."""
+    with_, _u = prompts.build_chat_messages("Sei HIRIS.", [], contesto="X",
+                                            strumenti_attivi=True)
+    without, _u2 = prompts.build_chat_messages("Sei HIRIS.", [], contesto="X",
+                                               strumenti_attivi=False)
+    assert prompts._CONTESTO_PRESENTE in with_
+    assert prompts._CONTESTO_PRESENTE in without
+
+
+# ---------------------------------------------------------------------------
+# FIX ROUND 1, Important 2 -- il token non esce da NESSUNO dei canali che
+# portano fuori lo stdout/stderr del sottoprocesso.
+#
+# Prima di questo task era innocuo: l'argv non conteneva segreti. Da oggi il
+# token viaggia in `--mcp-config`, ed e' il genere di stringa che una CLI
+# riecheggia quando rifiuta o non riesce a connettere il server MCP. I canali
+# sono CINQUE, e si chiudono tutti in un punto solo (`reda_segreti`, applicata
+# appena il sottoprocesso risponde): ① il log del ramo rc!=0; ② la reply del
+# ramo rc!=0 quando non c'e' un dettaglio strutturato; ③ la reply del ramo
+# rc!=0 quando il dettaglio strutturato c'e' ma porta l'eco; ④ la coda di 200
+# caratteri del flusso incompleto (canale introdotto dal Task 2); ⑤ il testo
+# del risultato sul ramo felice.
+# ---------------------------------------------------------------------------
+
+_TOKEN_SPIA = "TOKEN-SEGRETISSIMO-42"
+
+# L'eco realistica: la CLI ripete la mcp-config, token compreso.
+_ECO = (
+    'Error: failed to connect to MCP server from --mcp-config '
+    '{"mcpServers": {"hiris": {"type": "http", "url": "http://127.0.0.1:8099/api/mcp", '
+    f'"headers": {{"X-HIRIS-Internal-Token": "{_TOKEN_SPIA}", '
+    '"X-Requested-With": "hiris-mcp"}}}}')
+
+
+def _con_strumenti_e_processo(proc, caplog):
+    """Il turno pericoloso: strumenti ATTIVI (quindi il token E' nell'argv) e
+    un sottoprocesso che riecheggia la configurazione."""
+    job = {"kind": "chat", "job_id": "J-eco",
+           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+    catturato = {}
+
+    def _run(argv, *a, **k):
+        catturato["argv"] = argv
+        return proc
+
+    with caplog.at_level(logging.DEBUG):
+        with patch.object(runner.subprocess, "run", _run):
+            esito = runner._reason_chat(
+                job, "live",
+                client=_ClientFinto(_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200)),
+                base_url="http://127.0.0.1:8099",
+                headers={"X-HIRIS-Internal-Token": _TOKEN_SPIA})
+    # la premessa del test: senza il token nell'argv non si starebbe provando
+    # niente -- e' l'errore che i quattro test del giro precedente facevano.
+    assert _TOKEN_SPIA in " ".join(catturato["argv"])
+    return esito, "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_reda_segreti_non_esplode_su_un_segreto_vuoto():
+    """`"".replace("", "***")` sostituirebbe ogni posizione della stringa: e'
+    il modo in cui una redazione distrugge cio' che doveva proteggere."""
+    assert runner.reda_segreti("abc", "") == "abc"
+    assert runner.reda_segreti("abc", None or "") == "abc"
+    assert runner.reda_segreti("a-TOK-b", "TOK") == f"a-{runner.REDATTO}-b"
+
+
+def test_canali_1_e_2_il_token_non_esce_dal_log_ne_dalla_reply_su_rc_diverso_da_zero(caplog):
+    """① e ②. Il caso riprodotto dalla review: `rc != 0`, l'eco della
+    mcp-config su stderr e nessun evento `result` da cui ricavare un dettaglio
+    strutturato -- quindi il grezzo finisce **nella reply che l'utente legge in
+    chat** e nel log che si incolla in una segnalazione."""
+    class _Proc:
+        returncode = 1
+        stdout = ""
+        stderr = _ECO
+
+    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog)
+
+    assert esito["reply"].startswith("[errore runner rc=1]")
+    assert _TOKEN_SPIA not in esito["reply"], "l'utente legge il proprio token in chat"
+    assert _TOKEN_SPIA not in log_testo, "il token e' nel log dell'add-on"
+    # ...e la diagnosi non si perde: la causa resta leggibile, redatta
+    assert "failed to connect to MCP server" in esito["reply"]
+    assert runner.REDATTO in esito["reply"]
+
+
+def test_canale_3_il_token_non_esce_dal_dettaglio_strutturato(caplog):
+    """③. Stesso ramo, ma con l'evento `result` presente: il dettaglio viene
+    da `esito.testo`, cioe' dallo stdout PARSATO. Redigere solo il grezzo non
+    basterebbe -- ed e' il motivo per cui la redazione sta PRIMA di
+    `leggi_flusso` e non dopo."""
+    class _Proc:
+        returncode = 1
+        stdout = json.dumps({"type": "result", "subtype": "error_during_execution",
+                             "is_error": True, "result": _ECO}) + "\n"
+        stderr = ""
+
+    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog)
+
+    assert _TOKEN_SPIA not in esito["reply"]
+    assert _TOKEN_SPIA not in log_testo
+    assert runner.REDATTO in esito["reply"]
+
+
+def test_canale_4_il_token_non_esce_dalla_coda_del_flusso_incompleto(caplog):
+    """④. Il canale che il **Task 2** ha introdotto: `rc == 0` ma nessun evento
+    finale, e gli ultimi 200 caratteri dello stdout grezzo finiscono nella
+    reply. Era il canale piu' facile da dimenticare, perche' non e' un ramo
+    d'errore."""
+    class _Proc:
+        returncode = 0
+        stdout = '{"type":"system","subtype":"init","tools":[],"mcp_servers":[]}\n' + _ECO
+        stderr = ""
+
+    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog)
+
+    assert esito["reply"].startswith("[flusso incompleto]")
+    assert "ultimo pezzo di flusso letto" in esito["reply"]
+    assert _TOKEN_SPIA not in esito["reply"]
+    assert _TOKEN_SPIA not in log_testo
+
+
+def test_canale_5_il_token_non_esce_dal_testo_del_risultato(caplog):
+    """⑤. Il ramo FELICE: `rc == 0`, evento `result` presente, ma il modello
+    (o la CLI) ha messo l'eco dentro il testo. E' il canale meno probabile e il
+    piu' pericoloso, perche' quella reply non porta nessun sentinella: sembra
+    una risposta normale."""
+    class _Proc:
+        returncode = 0
+        stdout = json.dumps({"type": "result", "subtype": "success",
+                             "is_error": False, "num_turns": 1,
+                             "result": f"ecco cosa e' successo: {_ECO}"}) + "\n"
+        stderr = ""
+
+    esito, log_testo = _con_strumenti_e_processo(_Proc(), caplog)
+
+    assert _TOKEN_SPIA not in esito["reply"]
+    assert _TOKEN_SPIA not in log_testo
+    assert runner.REDATTO in esito["reply"]
+
+
+def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
+    """Il complemento: senza strumenti il token non e' mai stato nell'argv, e
+    la redazione non deve alterare cio' che la CLI dice -- una reply
+    inspiegabilmente piena di `***` sarebbe un guasto nuovo."""
+    class _Proc:
+        returncode = 0
+        stdout = json.dumps({"type": "result", "subtype": "success",
+                             "is_error": False,
+                             "result": "in cucina una luce e' accesa"}) + "\n"
+        stderr = ""
+
+    job = {"kind": "chat", "job_id": "J-pulito",
+           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+    with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
+        esito = runner._reason_chat(job, "live")
+
+    assert esito["reply"] == "in cucina una luce e' accesa"
+    assert runner.REDATTO not in esito["reply"]

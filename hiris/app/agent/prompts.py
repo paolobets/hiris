@@ -167,12 +167,41 @@ _GUIDA_CON_STRUMENTI = (
 # questo task esiste per chiudere, riaperta dal caso limite. Tenendole
 # separate la guida resta UNA (un solo posto dove si dice cosa il modello ha e
 # non ha) e la frase sul contesto dice sempre il vero.
+# fetta "il ponte riceve gli strumenti" (parita' B, Task 3, fix round 1,
+# Important 1): questo testo esce da SEMPRE su entrambi i rami -- e' l'ULTIMA
+# cosa che il modello legge prima del blocco `## La casa` -- ma era scritto
+# quando il ramo con gli strumenti non esisteva. Due sue clausole, accese le
+# quattro chiamate, diventavano un CONTRORDINE alla riga che le precede di
+# poche parole (`_GUIDA_CON_STRUMENTI`: «quando serve un valore CORRENTE
+# chiama lo strumento ... guarda adesso»), ed erano per giunta FALSE al
+# presente. Sono uscite:
+#
+#   - «non e' aggiornabile in questo turno»: col ramo attivo la fotografia
+#     E' aggiornabile -- si chiama `mcp__hiris__guarda`. Sul ramo di degrado
+#     la frase e' ridondante, non necessaria: `_GUIDA_SENZA_STRUMENTI` dice
+#     gia' «non puoi guardare adesso lo stato della casa» e «se per
+#     rispondere servirebbe un valore aggiornato ADESSO, DILLO». Verificato
+#     riga per riga prima di togliere, non assunto.
+#   - «Se ti chiedono cosa ti hanno detto, cercalo li' dentro invece di
+#     rispondere che non puoi richiamarlo»: nata come COMPENSAZIONE
+#     dell'assenza di `richiama` (fetta A, fix round 1, Important 1). Col
+#     ramo attivo `richiama` c'e', e mandare il modello a frugare nella
+#     fotografia invece di chiamarlo produce esattamente il sintomo che il
+#     tester non saprebbe distinguere da «gli strumenti non funzionano»:
+#     `status: connected` nel log e NESSUNA `tools/call`. Cio' che la
+#     compensazione doveva ottenere resta detto due volte in questo stesso
+#     testo -- «ricordi e sessioni precedenti compresi» e «Usala per
+#     rispondere» -- e il pin che vietava di negare la memoria
+#     (`"richiamare ricordi" not in system`) e' intatto.
+#
+# Cio' che RESTA e' vero su entrambi i rami: la fotografia esiste, e' presa
+# all'accodamento, non contiene tutto, e non va spacciata per una lettura
+# fatta adesso (col ramo attivo una lettura fatta adesso esiste davvero: e'
+# il risultato dello strumento, non questo blocco).
 _CONTESTO_PRESENTE = (
     "Cio' che sai della casa -- e di cio' che le persone ti hanno detto, "
     "ricordi e sessioni precedenti compresi -- e' la fotografia qui sotto, "
-    "presa quando e' arrivato questo messaggio: non e' aggiornabile in questo "
-    "turno e non contiene tutto. Se ti chiedono cosa ti hanno detto, cercalo "
-    "li' dentro invece di rispondere che non puoi richiamarlo. Usala per "
+    "presa quando e' arrivato questo messaggio: non contiene tutto. Usala per "
     "rispondere e dichiara apertamente quando cio' che serve non c'e', ma non "
     "presentarla come una lettura fatta adesso."
 )

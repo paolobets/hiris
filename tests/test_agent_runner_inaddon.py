@@ -406,7 +406,16 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # timbra: `casa/nucleo.py::componi` e' pura e non compone nessuna data,
     # quindi qualunque ora nel prompt sarebbe inventata).
     assert "la fotografia qui sotto" in system
-    assert "non e' aggiornabile in questo turno" in system
+    # fix round 1, Important 1: «non e' aggiornabile in questo turno» e' USCITA
+    # da `_CONTESTO_PRESENTE`. Non e' un pin allentato: quel testo esce su
+    # ENTRAMBI i rami, ed era l'ultima cosa che il modello leggeva prima di
+    # `## La casa` -- col ramo attivo contraddiceva «guarda adesso» due righe
+    # sopra ed era falsa al presente. Il SOGGETTO (in questo turno la casa non
+    # si puo' guardare) e' vivissimo qui sul ramo di degrado, e vive dove deve:
+    # nella guida, che e' l'unico posto che dice cosa il modello ha e non ha.
+    # Il test si adegua alla nuova via d'accesso, non si butta.
+    assert "non puoi guardare adesso lo stato della casa" in system
+    assert "servirebbe un valore aggiornato ADESSO, DILLO" in system
     assert "non presentarla come una lettura fatta adesso" in system
     # la falsita' speculare: il prompt non deve piu' negare al presente che il
     # modello possa leggere la casa, perche' la casa gliela stiamo dando.
@@ -452,6 +461,36 @@ def test_col_ramo_attivo_il_prompt_afferma_i_quattro_strumenti_prefissati():
     assert "nessuna conferma" in system
     assert "per agire" not in system
     assert "in attesa di conferma" not in system
+
+    # ── fix round 1, Important 1: IL CONTRORDINE.
+    # `_CONTESTO_PRESENTE` esce su entrambi i rami ed e' l'ULTIMA cosa che il
+    # modello legge prima del blocco `## La casa` -- cioe' quella che pesa di
+    # piu'. Due sue clausole erano scritte quando il ramo attivo non esisteva e,
+    # accese le quattro chiamate, dicevano al modello l'opposto della riga che
+    # le precede di poche parole («quando serve un valore CORRENTE chiama lo
+    # strumento ... guarda adesso»). Il sintomo sarebbe stato indistinguibile da
+    # «gli strumenti non funzionano»: `status: connected` nel log, NESSUNA
+    # `tools/call`, e una risposta costruita sullo snapshot -- e il Task 4 non
+    # lo intercetterebbe, perche' la sonda ha detto si' e l'init dira'
+    # `connected`. Fino a questo giro NESSUN test guardava cosa c'e' nel prompt
+    # attivo oltre alla guida: e' il buco da cui e' passato.
+    assert "non e' aggiornabile in questo turno" not in system, (
+        "il prompt del ramo ATTIVO dice al modello che la fotografia non e' "
+        "aggiornabile in questo turno, mentre due righe sopra gli ordina di "
+        "chiamare `mcp__hiris__guarda` per i valori correnti: e' un "
+        "contrordine, ed e' falso -- la fotografia E' aggiornabile, con lo "
+        "strumento")
+    assert "invece di rispondere che non puoi richiamarlo" not in system, (
+        "il prompt del ramo ATTIVO manda il modello a frugare nella fotografia "
+        "invece di chiamare `mcp__hiris__richiama`, che in questo turno c'e': "
+        "quella clausola era la COMPENSAZIONE dell'assenza dello strumento, e "
+        "con lo strumento presente diventa un contrordine")
+    # ...e l'ordine che DEVE sopravvivere e' ancora li'
+    assert "guarda adesso" in system
+    # cio' che resta vero su entrambi i rami, e non e' stato buttato col resto
+    assert "la fotografia qui sotto" in system
+    assert "ricordi e sessioni precedenti compresi" in system
+    assert "non presentarla come una lettura fatta adesso" in system
 
 
 def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
