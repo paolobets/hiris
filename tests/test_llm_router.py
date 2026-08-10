@@ -288,15 +288,22 @@ class _Dummy:
 # al Task 4) -- con lei sono uscite la seconda policy (automatic_policy) e
 # automatic_allows_sensitive(), gia' solo-test dal censimento prima di questo
 # task. `test_model_chain_all_local_allows_sensitive`,
-# `test_model_chain_with_cloud_blocks_sensitive`,
-# `test_none_model_chain_preserves_legacy_two_policies` e
-# `test_all_inactive_fails_closed_for_sensitive_egress` sono usciti, cancellati
+# `test_model_chain_with_cloud_blocks_sensitive` e
+# `test_none_model_chain_preserves_legacy_two_policies` sono usciti, cancellati
 # e non spostati -- provavano `automatic_allows_sensitive()` e/o la doppia
 # policy chat/automatic di `_ordered_backends(mode)`: nessuno dei due soggetti
 # esiste piu'. Verificato che cadessero per costruzione
 # (`AttributeError: 'LLMRouter' object has no attribute 'automatic_allows_sensitive'`,
 # `TypeError: LLMRouter.__init__() got an unexpected keyword argument
 # 'automatic_policy'`) prima della cancellazione.
+#
+# fix round 1 (review indipendente): `test_all_inactive_fails_closed_for_
+# sensitive_egress` era stato cancellato per intero, ma due delle sue cinque
+# asserzioni avevano un soggetto vivo che cambiava solo la via d'accesso --
+# "nessun runner registrato -> _ordered_backends() e' vuota", sui due rami del
+# costruttore (`model_chain` falsy e legacy). Le tre su
+# `automatic_allows_sensitive()` restano morte; le due superstiti si spostano
+# qui sotto, senza la meta' egress uscita col suo soggetto.
 
 
 def test_model_chain_sets_single_chain_for_both_modes():
@@ -305,6 +312,19 @@ def test_model_chain_sets_single_chain_for_both_modes():
                   model_chain=["ollama", "claude"])
     # un'unica policy (chat_policy), nell'ordine dato dalla catena
     assert r._ordered_backends() == [ollama, claude]
+
+
+def test_ordered_backends_empty_when_no_runners_registered():
+    """Nessun runner registrato (ogni provider inattivo) -> _ordered_backends()
+    e' vuota, su entrambi i rami del costruttore: model_chain esplicitamente
+    vuoto e il ramo legacy (nessun model_chain, nessun chat_policy). Meta' viva
+    di `test_all_inactive_fails_closed_for_sensitive_egress` (Slice 6b Task 1),
+    spostata qui -- la meta' su `automatic_allows_sensitive()` e' uscita col
+    suo soggetto (fetta E4 Task 7)."""
+    r_model_chain = LLMRouter(strategy="balanced", model_chain=[])
+    assert r_model_chain._ordered_backends() == []
+    r_legacy = LLMRouter(strategy="quality_first")
+    assert r_legacy._ordered_backends() == []
 
 
 @pytest.mark.asyncio

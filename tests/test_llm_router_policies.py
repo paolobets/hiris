@@ -47,11 +47,16 @@ async def test_chat_mode_uses_chat_policy_first():
 # -- invece di "ollama") prima della cancellazione.
 
 
-@pytest.mark.asyncio
-async def test_mode_not_forwarded_to_runner():
-    r = _router()
-    await r.chat(model="auto")
-    assert all("mode" not in kw for kw in r._claude.calls)
+# fetta E4 Task 7, fix round 1: `test_mode_not_forwarded_to_runner` e' uscito,
+# cancellato e non spostato -- non passava mai `mode`, quindi la sua
+# asserzione (`"mode" not in kw`) era vera per costruzione qualunque cosa
+# facesse il router: non poteva fallire, esattamente il criterio di vacuita'
+# gia' applicato al gemello streaming (sotto). Il `pop` che un tempo dava
+# quella garanzia e' uscito insieme al concetto di `mode` -- oggi `chat()`
+# inoltra tutto cio' che riceve, quindi se qualcuno passasse `mode` verrebbe
+# inoltrato per davvero: il nome del test dichiarava al presente una garanzia
+# non piu' vera. Nessun soggetto vivo da spostare: non c'e' piu' nessun pop
+# da provare.
 
 
 # fetta E4 Task 7: `_StrictR` e `test_chat_mode_leak_hardening_strict_runner_
