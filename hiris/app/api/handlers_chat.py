@@ -10,7 +10,8 @@ from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
 )
-from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
+from ..agent.runner import modello_cli
+from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError, resolve_model
 from .handlers_casa import costruisci_nucleo
 
 logger = logging.getLogger(__name__)
@@ -221,6 +222,24 @@ async def _enqueue_chat_job(
         # fosse la configurazione dell'utente.
         "restrict_to_home": impostazioni.restrict_to_home,
         "response_mode": impostazioni.response_mode,
+        # fetta "il ponte riceve il nucleo" (parita' A, Task 4): l'ultima
+        # delle tre impostazioni mancanti. Il ramo sincrono (sotto,
+        # `handle_chat`) risolve `impostazioni.model` con la STESSA
+        # `resolve_model` e lo stesso `provider_models["claude"]` di
+        # default -- niente di nuovo, solo lo stesso calcolo fatto anche
+        # QUI, perche' il runner del ponte gira altrove e non ha ne' l'app
+        # ne' `models_config`. La differenza col ramo sincrono e' che il
+        # ponte parla SOLO con la CLI dell'abbonamento Claude Max, mai con
+        # l'API a consumo di nessun provider: `modello_cli` traduce il
+        # modello risolto (che puo' essere di qualunque provider) in un
+        # alias della CLI, dichiarando nel log un modello non-Anthropic
+        # invece di lasciarlo fallire muto ad ogni turno (vedi il suo
+        # docstring in agent/runner.py -- silenzio dichiarato ② della
+        # fetta).
+        "model": modello_cli(resolve_model(
+            impostazioni.model, "chat",
+            (request.app.get("models_config") or {}).get("provider_models", {}).get("claude", ""),
+        )),
     }
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)

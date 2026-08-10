@@ -121,6 +121,37 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu(tmp_path):
+    # fetta "il ponte riceve il nucleo" (parita' A, Task 4, Step 3): il pin
+    # dell'INSIEME ESATTO -- il silenzio su cio' che NON attraversa il ponte.
+    # Dopo i Task 1-4 il context porta `history` + `system_prompt` (originari,
+    # Slice 4b) + `contesto` (Task 1/2) + `restrict_to_home`/`response_mode`
+    # (Task 3) + `model` (Task 4, questo task). Chi resta fuori, e perche':
+    #   - `thinking_budget` e `max_tokens` (CHAT_MAX_TOKENS): nessun
+    #     equivalente sulla riga di comando della CLI `claude` -- non c'e'
+    #     un `--thinking-budget` ne' un `--max-tokens` da passargli;
+    #   - `nome`: non e' letto da nessuno dei due percorsi (sincrono o
+    #     ponte), solo dal campo di compatibilita' `ImpostazioniChat.nome`
+    #     stesso (impostazioni_chat.py);
+    #   - i quattro strumenti (STRUMENTI_CONOSCENZA/dispatcher) e `debug`
+    #     (tools_called/thinking_blocks): la fetta A non da' strumenti al
+    #     ponte (regole-fetta.md), sono della fetta B.
+    # Questo e' il test che impedisce a un task futuro di aggiungerne meta'
+    # in silenzio, e quello che dice a chi verra' dopo dove guardare.
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 202
+        body = await resp.json()
+
+    job = q.get(body["job_id"])
+    assert set(job["context"]) == {
+        "history", "system_prompt", "contesto",
+        "restrict_to_home", "response_mode", "model",
+    }
+
+
+@pytest.mark.asyncio
 async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
     app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=False)
     async with TestClient(TestServer(app)) as client:

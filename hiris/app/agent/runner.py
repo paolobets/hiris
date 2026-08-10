@@ -40,6 +40,39 @@ def _chat_claude_args(system: str, user: str, model: str) -> list:
             "--permission-mode", "default", "--output-format", "json"]
 
 
+def modello_cli(modello_risolto: str) -> str:
+    """Traduce il modello GIA' RISOLTO della chat (`resolve_model`, che puo'
+    restituire un modello di QUALUNQUE provider configurato in
+    `provider_models` -- claude, openai, openrouter) in un alias della CLI
+    `claude`, l'unica cosa con cui questo ponte parla (solo abbonamento, mai
+    API a consumo -- vedi `_SUBPROCESS_ENV_DENYLIST` sopra).
+
+    fetta "il ponte riceve il nucleo" (parita' A, Task 4): passare un modello
+    non-Anthropic (es. `gpt-4o`) a `claude --model` fa fallire OGNI turno con
+    rc!=0, e l'utente legge solo `[errore runner rc=...]` senza il perche'.
+    Si traduce quindi nell'alias con meno modi di essere rifiutato
+    (`sonnet`/`opus`/`haiku` -- quello che su un abbonamento segue il modello
+    corrente del piano, non un nome di modello puntuale), confronto
+    case-insensitive sul nome gia' risolto. Un modello che non contiene
+    nessuno dei tre alias non fallisce muto: e' il silenzio dichiarato ②
+    della fetta, un `log.warning` che nomina il valore configurato e dice
+    perche' si ricade su 'sonnet' -- mai un pass silenzioso."""
+    nome = (modello_risolto or "").lower()
+    if "opus" in nome:
+        return "opus"
+    if "haiku" in nome:
+        return "haiku"
+    if "sonnet" in nome:
+        return "sonnet"
+    log.warning(
+        "modello configurato per la chat (%r) non e' un alias Claude "
+        "riconosciuto (ne' opus, ne' haiku, ne' sonnet): il ponte parla "
+        "SOLO con la CLI dell'abbonamento Claude Max, non puo' inoltrarlo "
+        "a un provider diverso -- ricado su 'sonnet'",
+        modello_risolto)
+    return "sonnet"
+
+
 # M-1 (Plan 2B final review, fast-follow): CLAUDE_API_KEY is HIRIS's own
 # METERED Anthropic key (see run.sh) -- it must never reach this subprocess.
 # The subscription runner authenticates `claude` via CLAUDE_CODE_OAUTH_TOKEN
@@ -107,7 +140,19 @@ def _reason_chat(job: dict, mode: str) -> dict:
                                                contesto=contesto,
                                                restrict_to_home=restrict_to_home,
                                                response_mode=response_mode)
-    model = os.environ.get("HIRIS_AGENT_CHAT_MODEL", "sonnet")
+    # fetta "il ponte riceve il nucleo" (parita' A, Task 4): il modello non
+    # e' piu' `HIRIS_AGENT_CHAT_MODEL` (env mai esportata da run.sh --
+    # censita fra le "lette e mai esportate": in produzione era SEMPRE
+    # "sonnet", qualunque cosa l'utente scegliesse per la chat) ma quello
+    # scelto per la chat, gia' risolto e tradotto in alias CLI da
+    # `handlers_chat._enqueue_chat_job` (`resolve_model` + `modello_cli`,
+    # sopra) prima di entrare nel job. L'`or` qui e' legittimo, non un
+    # errore di configurazione mascherato: copre SOLO il job legacy del
+    # Task 2 (accodato prima di questo deploy, quando il context non
+    # portava affatto la chiave `model`) -- per quel job "sonnet" e'
+    # esattamente il comportamento di prima di questo task, non un
+    # degrado nuovo, quindi non e' uno dei silenzi dichiarati della fetta.
+    model = context.get("model") or "sonnet"
     argv = _chat_claude_args(system, user, model)
     try:
         proc = subprocess.run(argv, capture_output=True, text=True,
