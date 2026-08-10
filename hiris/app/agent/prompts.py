@@ -22,7 +22,14 @@ da CLAUDE.md:70-72. (Nessun ciclo: `claude_runner.py` importa solo stdlib,
 Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
 `build_chat_messages` e il commento sopra `BASE_IDENTITA` in claude_runner.py.
 """
-from ..claude_runner import BASE_IDENTITA, BASE_REGOLE_STRUMENTI, BASE_SYSTEM_PROMPT
+from ..claude_runner import (
+    BASE_IDENTITA,
+    BASE_REGOLE_STRUMENTI,
+    BASE_SYSTEM_PROMPT,
+    RESTRICT_PROMPT,
+    COMPACT_PROMPT,
+    MINIMAL_PROMPT,
+)
 
 # Review finale fetta E3, difetto I-1/I-2 dal lato abbonamento: la versione
 # precedente diceva al modello «Hai accesso a strumenti per leggere lo stato
@@ -166,7 +173,9 @@ _CHAT_INSTRUCTION = (
 
 def build_chat_messages(system_prompt: str, history: list, *,
                         contesto: str = "",
-                        strumenti_attivi: bool = False) -> tuple[str, str]:
+                        strumenti_attivi: bool = False,
+                        restrict_to_home: bool = False,
+                        response_mode: str = "") -> tuple[str, str]:
     """Chat-via-abbonamento: separa il SYSTEM prompt (BASE + persona HIRIS +
     guida + contesto della casa) dal prompt UTENTE (trascritto conversazione +
     istruzione formato). Il system va passato al CLI via --system-prompt
@@ -188,11 +197,25 @@ def build_chat_messages(system_prompt: str, history: list, *,
 
     L'ordine dei blocchi e' quello del ramo sincrono (`ClaudeRunner.chat`),
     perche' i due percorsi devono comporre le stesse cose nello stesso ordine
-    o divergono in silenzio: BASE -> `system_prompt` (la persona) -> [i
-    modificatori di comportamento, che arrivano al Task 3 di questa fetta] ->
+    o divergono in silenzio: BASE -> `system_prompt` (la persona) -> i
+    modificatori di comportamento (`restrict_to_home`, `response_mode`) ->
     la guida -> `contesto`. La guida sta DOPO la persona per poterla
     smentire: e' scritta per il percorso sincrono e nomina strumenti che QUI
     non esistono.
+
+    `restrict_to_home` e `response_mode` (Task 3, "il ponte riceve il
+    nucleo"): le due impostazioni della chat che sono TESTO di prompt e che,
+    prima di questo task, il ponte non riceveva affatto (`_enqueue_chat_job`
+    portava solo `history` + `system_prompt`, mentre il ramo sincrono le
+    legge gia' da `impostazioni.restrict_to_home`/`.response_mode`,
+    `handlers_chat.py`). `RESTRICT_PROMPT`, `COMPACT_PROMPT` e
+    `MINIMAL_PROMPT` si IMPORTANO da `..claude_runner` -- sono gia' l'unica
+    fonte per il ramo sincrono E per `backends/openai_compat_runner.py`
+    (Task 3, Step 1: erano ricopiate li' tre volte prima di questo task);
+    una quarta copia qui sarebbe la "funzione doppia" vietata da
+    CLAUDE.md:70-72. Applicati fra `system_prompt` e la guida, come
+    `claude_runner.py::ClaudeRunner.chat` fa fra i suoi blocchi stabili e il
+    breakpoint di cache.
 
     `strumenti_attivi` sceglie DUE cose insieme, non una (fix round 1,
     Critical 1 della review indipendente):
@@ -221,9 +244,15 @@ def build_chat_messages(system_prompt: str, history: list, *,
     system_parts = [base.strip()]
     if system_prompt:
         system_parts.append(system_prompt.strip())
-    # [i modificatori di comportamento -- restrict_to_home, response_mode --
-    #  arrivano al Task 3 di questa fetta: nell'ordine del ramo sincrono
-    #  stanno fra la persona e il contesto, cioe' esattamente qui.]
+    # I modificatori di comportamento -- stesso ordine e stesse costanti
+    # IMPORTATE del ramo sincrono (claude_runner.py::ClaudeRunner.chat,
+    # `if restrict_to_home: ... if response_mode == "compact": ...`).
+    if restrict_to_home:
+        system_parts.append(RESTRICT_PROMPT)
+    if response_mode == "compact":
+        system_parts.append(COMPACT_PROMPT)
+    elif response_mode == "minimal":
+        system_parts.append(MINIMAL_PROMPT)
     guida = _GUIDA_CON_STRUMENTI if strumenti_attivi else _GUIDA_SENZA_STRUMENTI
     contesto = (contesto or "").strip()
     system_parts.append(

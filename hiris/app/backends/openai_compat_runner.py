@@ -13,6 +13,8 @@ import httpx as _httpx
 from ..claude_runner import (
     BASE_SYSTEM_PROMPT,
     RESTRICT_PROMPT,
+    COMPACT_PROMPT,
+    MINIMAL_PROMPT,
     RunnerBackendError,
     _current_tool_calls,
     _current_pseudonym_map,
@@ -494,12 +496,9 @@ class OpenAICompatRunner:
         # gemello in claude_runner.py per il perche' non aveva gia' piu'
         # alcun effetto sul system prompt da prima di questo task.
         if response_mode == "compact":
-            system_parts.append("Rispondi in modo conciso, massimo 2-3 frasi.")
+            system_parts.append(COMPACT_PROMPT)
         elif response_mode == "minimal":
-            system_parts.append(
-                "Rispondi SOLO in formato chiave: valore, una riga per dato. "
-                "Esempio:\nStato: acceso\nTemperatura: 21°C"
-            )
+            system_parts.append(MINIMAL_PROMPT)
 
         messages: list[dict] = [{"role": "system", "content": "\n\n---\n\n".join(system_parts)}]
         for msg in (conversation_history or []):
@@ -771,12 +770,9 @@ class OpenAICompatRunner:
         # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`
         # stesso e' uscito -- vedi il commento gemello in chat() sopra.
         if response_mode == "compact":
-            system_parts.append("Rispondi in modo conciso, massimo 2-3 frasi.")
+            system_parts.append(COMPACT_PROMPT)
         elif response_mode == "minimal":
-            system_parts.append(
-                "Rispondi SOLO in formato chiave: valore, una riga per dato. "
-                "Esempio:\nStato: acceso\nTemperatura: 21°C"
-            )
+            system_parts.append(MINIMAL_PROMPT)
 
         messages: list[dict] = [{"role": "system", "content": "\n\n---\n\n".join(system_parts)}]
         for msg in (conversation_history or []):

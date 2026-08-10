@@ -212,6 +212,15 @@ async def _enqueue_chat_job(
         # fotografia presa in questo istante, non una lettura dal vivo (vedi
         # `agent/prompts.py`).
         "contesto": componi_contesto_chat(request.app, data_dir),
+        # fetta "il ponte riceve il nucleo" (parita' A, Task 3): le due
+        # impostazioni della chat che SONO testo di prompt -- gli stessi due
+        # valori che il ramo sincrono legge qui sotto, a `handle_chat`
+        # (`impostazioni.restrict_to_home` / `.response_mode`). Prima di
+        # questo task il job non le portava affatto e il ponte rispondeva
+        # sempre senza restrizione ne' modificatore di formato, qualunque
+        # fosse la configurazione dell'utente.
+        "restrict_to_home": impostazioni.restrict_to_home,
+        "response_mode": impostazioni.response_mode,
     }
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)

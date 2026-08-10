@@ -20,18 +20,36 @@ Cosa difende ciascun gruppo di test:
   fetta B dovra' solo girare;
 - il silenzio ①: un job accodato PRIMA di questo deploy arriva senza la
   chiave `contesto`. Deve produrre un log esplicito e un prompt che dichiara
-  al modello di non avere nemmeno la fotografia -- mai un pass muto.
+  al modello di non avere nemmeno la fotografia -- mai un pass muto;
+- Task 3 ("e i modificatori smettono di essere quattro copie"): le due
+  impostazioni della chat `restrict_to_home`/`response_mode`, che ORA
+  attraversano anche il ponte -- con le STESSE costanti `RESTRICT_PROMPT`/
+  `COMPACT_PROMPT`/`MINIMAL_PROMPT` importate da `claude_runner.py`, mai una
+  quarta copia. Il pin decisivo e' l'IDENTITA' con la costante (non una
+  sottostringa scritta a mano nel test, che passerebbe anche con un testo
+  divergente), l'ordine (fra la persona e la guida, come nel ramo sincrono) e
+  che il job accodato porti davvero le due chiavi.
 """
 import logging
+import os
 
-from unittest.mock import patch
+import pytest
+from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
+from unittest.mock import AsyncMock, patch
 
 from hiris.app.agent import prompts, runner
+from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.claude_runner import (
     BASE_IDENTITA,
     BASE_REGOLE_STRUMENTI,
     BASE_SYSTEM_PROMPT,
+    RESTRICT_PROMPT,
+    COMPACT_PROMPT,
+    MINIMAL_PROMPT,
 )
+from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.reasoning.queue import ReasoningQueue
 
 
 _CONTESTO = "## La casa\nSalotto: luce accesa.\n\n## Sessioni precedenti\n[2026-08-01] ieri"
@@ -91,7 +109,14 @@ def test_base_system_prompt_e_importato_non_ricopiato():
     assert prompts.BASE_REGOLE_STRUMENTI is BASE_REGOLE_STRUMENTI
     assert prompts.BASE_SYSTEM_PROMPT is BASE_SYSTEM_PROMPT
     sorgente = open(prompts.__file__, encoding="utf-8").read()
-    assert "from ..claude_runner import BASE_IDENTITA" in sorgente
+    # Task 3 ("i modificatori smettono di essere quattro copie"): l'import
+    # e' diventato multilinea per aggiungere RESTRICT_PROMPT/COMPACT_PROMPT/
+    # MINIMAL_PROMPT -- si cerca il blocco intero (fino alla parentesi
+    # chiusa), non piu' una riga singola letterale, cosi' l'assert resta
+    # valido qualunque sia l'a-capo scelto.
+    inizio = sorgente.index("from ..claude_runner import")
+    blocco_import = sorgente[inizio:sorgente.index(")", inizio) + 1]
+    assert "BASE_IDENTITA" in blocco_import
     assert "Sei HIRIS, assistente AI integrata in Home Assistant" not in sorgente, (
         "il testo di BASE e' stato RICOPIATO in prompts.py invece che importato")
 
@@ -329,3 +354,206 @@ def test_il_ponte_resta_senza_strumenti_anche_col_contesto():
     opzioni = {a.lower().replace("-", "") for a in catturato["argv"]}
     assert "mcpconfig" not in opzioni
     assert "allowedtools" not in opzioni
+
+
+# ---------------------------------------------------------------------------
+# ⑤ Task 3: `restrict_to_home` e `response_mode` attraversano il ponte --
+# con le STESSE costanti del ramo sincrono, mai una quarta copia.
+# ---------------------------------------------------------------------------
+
+def test_restrict_to_home_aggiunge_restrict_prompt_importato():
+    """L'identita' con la costante (non una sottostringa scritta a mano):
+    e' cio' che impedisce a una futura modifica di ricopiare il testo invece
+    di importarlo, restando comunque verde."""
+    system, _user = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto=_CONTESTO, restrict_to_home=True)
+
+    assert RESTRICT_PROMPT in system
+
+
+def test_restrict_to_home_false_non_aggiunge_nulla():
+    system, _user = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto=_CONTESTO, restrict_to_home=False)
+
+    assert RESTRICT_PROMPT not in system
+
+
+def test_response_mode_compact_aggiunge_compact_prompt_importato():
+    system, _user = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto=_CONTESTO, response_mode="compact")
+
+    assert COMPACT_PROMPT in system
+    assert MINIMAL_PROMPT not in system
+
+
+def test_response_mode_minimal_aggiunge_minimal_prompt_importato():
+    system, _user = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto=_CONTESTO, response_mode="minimal")
+
+    assert MINIMAL_PROMPT in system
+    assert COMPACT_PROMPT not in system
+
+
+def test_response_mode_auto_non_aggiunge_nessun_modificatore():
+    system, _user = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto=_CONTESTO, response_mode="auto")
+
+    assert COMPACT_PROMPT not in system
+    assert MINIMAL_PROMPT not in system
+
+
+def test_senza_argomenti_nessun_modificatore_di_default():
+    """Il comportamento di prima del Task 3, invariato per chi non li passa
+    (i test dei gruppi ①-④ qui sopra, e ogni job legacy senza le due
+    chiavi)."""
+    system, _user = prompts.build_chat_messages("Sei HIRIS.", [], contesto=_CONTESTO)
+
+    assert RESTRICT_PROMPT not in system
+    assert COMPACT_PROMPT not in system
+    assert MINIMAL_PROMPT not in system
+
+
+def test_i_modificatori_stanno_fra_la_persona_e_la_guida():
+    """Stesso posto del ramo sincrono (claude_runner.py:645-661): dopo i
+    blocchi stabili di identita', prima del breakpoint di cache e del
+    contesto volatile. Qui, fra `system_prompt` e la guida."""
+    persona = "Sei HIRIS, la persona della chat."
+    system, _user = prompts.build_chat_messages(
+        persona, [], contesto=_CONTESTO, restrict_to_home=True, response_mode="compact")
+
+    i_persona = system.index(persona)
+    i_restrict = system.index(RESTRICT_PROMPT)
+    i_compact = system.index(COMPACT_PROMPT)
+    i_guida = system.index(prompts._GUIDA_SENZA_STRUMENTI)
+
+    assert i_persona < i_restrict < i_compact < i_guida
+
+
+def test_i_modificatori_sono_importati_non_ricopiati():
+    """Come `test_base_system_prompt_e_importato_non_ricopiato` sopra, ma per
+    i due modificatori: una seconda copia del loro testo in `prompts.py`
+    sarebbe la "funzione doppia" vietata da CLAUDE.md -- e la quarta copia in
+    assoluto (le prime tre, gia' unificate al Task 3 Step 1, erano
+    `claude_runner.py` e i due punti di `backends/openai_compat_runner.py`)."""
+    sorgente = open(prompts.__file__, encoding="utf-8").read()
+    assert "from ..claude_runner import" in sorgente
+    assert "RESTRICT_PROMPT" in sorgente
+    assert "COMPACT_PROMPT" in sorgente
+    assert "MINIMAL_PROMPT" in sorgente
+    assert "Sei HIRIS, assistente per la smart home" not in sorgente, (
+        "RESTRICT_PROMPT e' stato RICOPIATO in prompts.py invece che importato")
+    assert "Rispondi in modo conciso" not in sorgente, (
+        "COMPACT_PROMPT e' stato RICOPIATO in prompts.py invece che importato")
+    assert "Rispondi SOLO in formato chiave" not in sorgente, (
+        "MINIMAL_PROMPT e' stato RICOPIATO in prompts.py invece che importato")
+
+
+def test_il_ponte_non_da_strumenti_anche_coi_modificatori_attivi():
+    """La riga che separa la fetta A dalla B, vista con entrambi i
+    modificatori accesi insieme: restano innocui rispetto agli strumenti."""
+    job = {"kind": "chat", "job_id": "job-modificatori",
+           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": _CONTESTO,
+                       "restrict_to_home": True, "response_mode": "minimal"}}
+
+    catturato = {}
+
+    def _fake_run(argv, *a, **k):
+        catturato["argv"] = argv
+        return _Proc()
+
+    with patch.object(runner.subprocess, "run", _fake_run):
+        runner._reason_chat(job, "live")
+
+    opzioni = {a.lower().replace("-", "") for a in catturato["argv"]}
+    assert "mcpconfig" not in opzioni
+    assert "allowedtools" not in opzioni
+
+
+def test_reason_chat_legge_i_due_valori_dal_context_e_li_applica():
+    """`_reason_chat` legge `restrict_to_home`/`response_mode` dal `context`
+    del job e li passa a `build_chat_messages` -- non un default sempre
+    disattivo che ignorerebbe l'impostazione dell'utente."""
+    job = {"kind": "chat", "job_id": "job-attivi",
+           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": _CONTESTO,
+                       "restrict_to_home": True, "response_mode": "compact"}}
+
+    system = _cattura_system(job)
+
+    assert RESTRICT_PROMPT in system
+    assert COMPACT_PROMPT in system
+
+
+def test_reason_chat_col_loro_default_su_un_job_senza_le_due_chiavi():
+    """Il complemento: un job che non porta affatto le due chiavi (legacy, o
+    impostazioni di default) non deve emettere nessun modificatore --
+    `False`/`""`, non un errore."""
+    job = {"kind": "chat", "job_id": "job-senza-chiavi",
+           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": _CONTESTO}}
+
+    system = _cattura_system(job)
+
+    assert RESTRICT_PROMPT not in system
+    assert COMPACT_PROMPT not in system
+    assert MINIMAL_PROMPT not in system
+
+
+# ---------------------------------------------------------------------------
+# ⑥ il trasporto: `_enqueue_chat_job` mette le due chiavi nel `context`, con
+# gli stessi valori che il ramo sincrono legge da `impostazioni`
+# (`handlers_chat.py::handle_chat`, `agent_restrict`/`agent_response_mode`).
+# ---------------------------------------------------------------------------
+
+def _make_app_ponte(tmp_path, *, restrict_to_home=False, response_mode="auto"):
+    data_dir = str(tmp_path / "data")
+    os.makedirs(data_dir, exist_ok=True)
+    impostazioni = ImpostazioniChat(
+        nome="test-ponte", system_prompt="Sei HIRIS.",
+        restrict_to_home=restrict_to_home, response_mode=response_mode,
+    )
+    runner_mock = AsyncMock()
+    runner_mock.chat = AsyncMock(return_value="sync reply")
+    runner_mock.last_tool_calls = []
+    runner_mock.last_thinking_blocks = []
+
+    app = web.Application()
+    app["llm_router"] = runner_mock
+    app["claude_runner"] = runner_mock
+    app["impostazioni_chat"] = impostazioni
+    app["data_dir"] = data_dir
+    app["chat_via_subscription"] = True
+    q = ReasoningQueue(str(tmp_path / "reasoning.db"))
+    app["reasoning_queue"] = q
+    app.router.add_post("/api/chat", handle_chat)
+    return app, q, data_dir
+
+
+@pytest.mark.asyncio
+async def test_job_accodato_porta_restrict_to_home_e_response_mode(tmp_path):
+    app, q, _data_dir = _make_app_ponte(
+        tmp_path, restrict_to_home=True, response_mode="compact")
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 202
+        body = await resp.json()
+
+    job = q.get(body["job_id"])
+    assert job["context"]["restrict_to_home"] is True
+    assert job["context"]["response_mode"] == "compact"
+
+
+@pytest.mark.asyncio
+async def test_job_accodato_porta_i_default_quando_le_impostazioni_sono_di_default(tmp_path):
+    app, q, _data_dir = _make_app_ponte(tmp_path)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 202
+        body = await resp.json()
+
+    job = q.get(body["job_id"])
+    assert job["context"]["restrict_to_home"] is False
+    assert job["context"]["response_mode"] == "auto"

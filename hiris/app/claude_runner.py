@@ -286,6 +286,21 @@ RESTRICT_PROMPT = (
     "Per qualsiasi altro argomento, rispondi educatamente che non puoi aiutare su quel tema."
 )
 
+# fetta "il ponte riceve il nucleo" (parita' A, Task 3): i due modificatori di
+# `response_mode` erano ricopiati TRE volte -- qui sotto (uso originale) e nei
+# due punti gemelli di backends/openai_compat_runner.py (`chat` e
+# `chat_stream`). Farli attraversare anche il ponte (agent/prompts.py) senza
+# prima unificarli avrebbe aggiunto la QUARTA copia -- il doppione che
+# CLAUDE.md:70-72 vieta. Estratti qui accanto a RESTRICT_PROMPT (stessa
+# natura: testo di prompt, non logica) e importati dai tre punti d'uso
+# esistenti PIU' il quarto (prompts.build_chat_messages). Testo spostato alla
+# lettera, byte per byte: invariato rispetto a prima di questo task.
+COMPACT_PROMPT = "Rispondi in modo conciso, massimo 2-3 frasi."
+MINIMAL_PROMPT = (
+    "Rispondi SOLO in formato chiave: valore, una riga per dato. "
+    "Esempio:\nStato: acceso\nTemperatura: 21°C"
+)
+
 # Review finale fetta E2, I-5: `CONFIRMATION_COVERED_TOOLS` e
 # `REQUIRE_CONFIRMATION_PROMPT` sono uscite. Nominavano cinque strumenti che
 # ATTUANO (call_ha_service, trigger_automation, toggle_automation,
@@ -653,12 +668,9 @@ class ClaudeRunner:
         # TOOLS` (Review finale fetta E2, I-5) per il perche' non aveva gia'
         # piu' alcun effetto sul system prompt da prima di questo task.
         if response_mode == "compact":
-            system_blocks.append({"type": "text", "text": "Rispondi in modo conciso, massimo 2-3 frasi."})
+            system_blocks.append({"type": "text", "text": COMPACT_PROMPT})
         elif response_mode == "minimal":
-            system_blocks.append({"type": "text", "text": (
-                "Rispondi SOLO in formato chiave: valore, una riga per dato. "
-                "Esempio:\nStato: acceso\nTemperatura: 21°C"
-            )})
+            system_blocks.append({"type": "text", "text": MINIMAL_PROMPT})
         # Single cumulative cache breakpoint on the last stable block (captures
         # BASE + agent prompt + modifiers), placed before the volatile context_str.
         system_blocks[-1] = {**system_blocks[-1], "cache_control": {"type": "ephemeral"}}

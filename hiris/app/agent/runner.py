@@ -96,8 +96,17 @@ def _reason_chat(job: dict, mode: str) -> dict:
             "ragionato SENZA la casa, e il prompt lo dichiara al modello",
             (job or {}).get("job_id"))
         contesto = ""
+    # fetta "il ponte riceve il nucleo" (parita' A, Task 3): le due
+    # impostazioni della chat che sono TESTO di prompt. Stesso trattamento
+    # del silenzio ① sopra: un job legacy arriva senza queste due chiavi,
+    # col default False/"" -- nessun modificatore, il comportamento di
+    # prima di questo task, non un errore.
+    restrict_to_home = bool(context.get("restrict_to_home", False))
+    response_mode = context.get("response_mode") or ""
     system, user = prompts.build_chat_messages(system_prompt, history,
-                                               contesto=contesto)
+                                               contesto=contesto,
+                                               restrict_to_home=restrict_to_home,
+                                               response_mode=response_mode)
     model = os.environ.get("HIRIS_AGENT_CHAT_MODEL", "sonnet")
     argv = _chat_claude_args(system, user, model)
     try:
