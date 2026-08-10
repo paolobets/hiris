@@ -16,6 +16,7 @@ import logging
 from unittest.mock import patch
 
 from hiris.app.agent import runner
+from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 
 
 # ── i mattoni dei flussi finti ───────────────────────────────────────────────
@@ -33,6 +34,27 @@ def _assistant(testo):
     return json.dumps({"type": "assistant",
                        "message": {"role": "assistant",
                                    "content": [{"type": "text", "text": testo}]}})
+
+
+# ── fetta "il ponte riceve gli strumenti" (parita' B, Task 5): i mattoni di
+# un turno CON strumenti -- il blocco `tool_use` nell'evento assistant, e il
+# `tool_result` che torna in un evento "user" (la CLI riecheggia l'esito nel
+# flusso, per continuare la conversazione col modello). ────────────────────
+
+def _tool_use(nome, input_, id_="toolu_1"):
+    return json.dumps({"type": "assistant",
+                       "message": {"role": "assistant",
+                                   "content": [{"type": "tool_use", "id": id_,
+                                               "name": nome, "input": input_}]}})
+
+
+def _tool_result(tool_use_id, *, is_error=False, contenuto="ok"):
+    return json.dumps({"type": "user",
+                       "message": {"role": "user",
+                                   "content": [{"type": "tool_result",
+                                               "tool_use_id": tool_use_id,
+                                               "is_error": is_error,
+                                               "content": contenuto}]}})
 
 
 def _result(testo="2 luci accese", usage=None, **extra):
@@ -70,6 +92,15 @@ def _reason(stdout, rc=0, stderr="", job=None):
     with patch.object(runner.subprocess, "run",
                       lambda *a, **k: _Proc(rc, stdout, stderr)):
         return runner._reason_chat(job or _job(), "live")["reply"]
+
+
+def _reason_full(stdout, rc=0, stderr="", job=None, **kw):
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): la variante di
+    # `_reason` che NON scarta il resto della `decision` -- serve a leggere
+    # `tools_called`, che `_reason` (sopra) getta via prendendo solo `reply`.
+    with patch.object(runner.subprocess, "run",
+                      lambda *a, **k: _Proc(rc, stdout, stderr)):
+        return runner._reason_chat(job or _job(), "live", **kw)
 
 
 # ── ① il flusso normale ──────────────────────────────────────────────────────
@@ -348,3 +379,227 @@ def test_il_sentinella_del_flusso_incompleto_e_filtrato_dalla_cronologia():
 
     reply = _reason(_flusso(_init(), _assistant("sto guar")))
     assert _is_toxic_assistant(reply) is True, reply
+
+
+# ── fetta "il ponte riceve gli strumenti" (parita' B, Task 5): la raccolta di
+# `tools_called` dallo STESSO flusso che `leggi_flusso` gia' legge -- nessuna
+# seconda lettura -- e la forma nella `decision` che il poll (handlers_chat.py)
+# restituisce come `debug.tools_called`. La ragione: da questo task `ricorda`
+# e' raggiungibile ANCHE dal ponte, e scrive in `memoria.db`; senza questo
+# campo l'unico modo di accorgersi di una scrittura indebita e' trovarla nel
+# nucleo giorni dopo (vedi il docstring in cima a `agent/runner.py`). ────────
+
+def test_leggi_flusso_estrae_i_tool_use_in_ordine():
+    # Step 6, ① del brief: due `tool_use` estratti IN ORDINE da un flusso
+    # costruito a mano.
+    esito = runner.leggi_flusso(_flusso(
+        _init(),
+        _tool_use("mcp__hiris__guarda", {"cosa": "salotto"}, id_="t1"),
+        _tool_use("mcp__hiris__ricorda", {"testo": "la caldaia perde"}, id_="t2"),
+        _result("fatto")))
+
+    assert esito.tools_called == [
+        {"tool": "mcp__hiris__guarda", "input": {"cosa": "salotto"}},
+        {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}},
+    ]
+
+
+def test_flusso_senza_tool_use_tools_called_e_lista_vuota_non_none():
+    # Step 6, ② del brief: nessuno strumento chiamato -> lista VUOTA, mai
+    # `None`. Una lista vuota dice "nessuno strumento chiamato"; `None`
+    # direbbe "non lo so" -- e non e' quello il caso qui.
+    esito = runner.leggi_flusso(_flusso(
+        _init(), _assistant("sto guardando"), _result("ok")))
+    assert esito.tools_called == []
+    assert esito.tools_called is not None
+    assert isinstance(esito.tools_called, list)
+
+    # e vale anche per il flusso completamente vuoto/di rumore.
+    assert runner.leggi_flusso("").tools_called == []
+    assert runner.leggi_flusso("boom\nboom\n").tools_called == []
+
+
+def test_il_nome_e_grezzo_e_non_normalizzato():
+    # Step 1 del brief: il nome si riporta come il modello lo ha usato. Un
+    # nome mai servito (uno strumento locale del CLI, o un nome inventato)
+    # arriva cosi' com'e', non filtrato -- e' precisamente il caso ("il
+    # modello chiama qualcosa che non gli abbiamo dato") che riscrivere il
+    # nome nasconderebbe.
+    esito = runner.leggi_flusso(_flusso(
+        _init(), _tool_use("Bash", {"command": "rm -rf /"}), _result("ok")))
+    assert esito.tools_called == [{"tool": "Bash", "input": {"command": "rm -rf /"}}]
+
+
+def test_la_forma_e_identica_a_quella_del_ramo_sincrono():
+    # Step 2 del brief: `{"tool": ..., "input": ...}`, IDENTICA a
+    # `handlers_chat.py` (`tools_called = [{"tool": t.get("tool", ""),
+    # "input": t.get("input")} ...]`) -- una forma sola per la UI della E5.
+    esito = runner.leggi_flusso(_flusso(
+        _init(), _tool_use("mcp__hiris__cerca", {"query": "termosifone"}), _result("ok")))
+    voce = esito.tools_called[0]
+    assert set(voce) == {"tool", "input"}
+    assert voce == {"tool": "mcp__hiris__cerca", "input": {"query": "termosifone"}}
+
+
+def test_una_chiamata_fallita_resta_distinguibile_da_una_riuscita():
+    # La preoccupazione esplicita del task: se una `tools/call` fallisce, non
+    # deve sparire nella stessa forma di una riuscita -- e' precisamente il
+    # caso che rende osservabile un guasto. Il `tool_result` (evento "user")
+    # con `is_error: true`, abbinato per `tool_use_id`, e' l'unico segnale che
+    # lo dice.
+    esito = runner.leggi_flusso(_flusso(
+        _init(),
+        _tool_use("mcp__hiris__ricorda", {"testo": "ok"}, id_="t-ok"),
+        _tool_result("t-ok", is_error=False),
+        _tool_use("mcp__hiris__ricorda", {"testo": "fallita"}, id_="t-ko"),
+        _tool_result("t-ko", is_error=True, contenuto="errore: memoria non disponibile"),
+        _result("fatto")))
+
+    riuscita, fallita = esito.tools_called
+    assert riuscita == {"tool": "mcp__hiris__ricorda", "input": {"testo": "ok"}}
+    assert "is_error" not in riuscita  # la forma resta identica al ramo sincrono
+    assert fallita["tool"] == "mcp__hiris__ricorda"
+    assert fallita["is_error"] is True
+    assert fallita != riuscita, "una chiamata fallita non deve avere la STESSA forma di una riuscita"
+
+
+def test_un_tool_result_senza_tool_use_corrispondente_non_solleva():
+    # Un `tool_use_id` che non corrisponde a nessuna chiamata vista (flusso
+    # troncato proprio li', o formato imprevisto): non deve far cadere la
+    # lettura, e la chiamata gia' vista resta quella che era.
+    esito = runner.leggi_flusso(_flusso(
+        _init(),
+        _tool_use("mcp__hiris__guarda", {}, id_="t1"),
+        _tool_result("id-mai-visto", is_error=True),
+        _result("ok")))
+    assert esito.tools_called == [{"tool": "mcp__hiris__guarda", "input": {}}]
+
+
+# -- la decision che _reason_chat restituisce --------------------------------
+
+def test_decision_porta_tools_called_in_modalita_live_anche_vuota():
+    # `_reason_chat` mette `tools_called` nella `decision` -- SEMPRE in `live`,
+    # anche vuota: e' cosi' che il poll (`handlers_chat.py`) sa distinguere
+    # "turno vero senza strumenti" da "job mock/legacy senza la chiave".
+    decisione = _reason_full(_flusso(_init(), _assistant("ciao"), _result("ciao")))
+    assert decisione["tools_called"] == []
+
+
+def test_decision_mock_non_porta_tools_called():
+    # Il ramo mock non ha girato nessun flusso da leggere: la chiave resta
+    # ASSENTE (non una lista vuota) -- e' un job che non ha mai avuto
+    # l'occasione di chiamare uno strumento, non un turno vero senza.
+    decisione = runner._reason_chat(_job(), "mock")
+    assert "tools_called" not in decisione
+
+
+def test_decision_porta_le_chiamate_nella_stessa_forma_della_lista():
+    decisione = _reason_full(_flusso(
+        _init(), _tool_use("mcp__hiris__ricorda", {"testo": "la caldaia perde"}),
+        _result("preso nota")))
+    assert decisione["tools_called"] == [
+        {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}}]
+
+
+def test_il_token_non_compare_in_tools_called():
+    # Il cancello unico in uscita vale anche per questo canale nuovo: se un
+    # input di strumento contenesse per caso una delle forme del token, non
+    # deve uscire (vedi `_reda_struttura` in agent/runner.py).
+    token = "TOK-SEGRETO-123"
+    decisione = _reason_full(
+        _flusso(_init(),
+               _tool_use("mcp__hiris__ricorda", {"testo": f"il token e' {token}"}),
+               _result("preso nota")),
+        headers={"X-HIRIS-Internal-Token": token})
+
+    assert token not in json.dumps(decisione)
+    assert decisione["tools_called"][0]["input"]["testo"] == f"il token e' {runner.REDATTO}"
+
+
+# -- il conteggio dei giri (Step 4 del brief) --------------------------------
+
+def test_il_conteggio_e_la_lunghezza_della_lista_non_un_secondo_contatore():
+    # Il progetto chiede «il conteggio esposto dove l'utente lo vede» (Sec5.2).
+    # In questa fetta e' `len(decision["tools_called"])`, e basta: nessun
+    # secondo campo da tenere allineato con la lista che lo produce.
+    decisione = _reason_full(_flusso(
+        _init(),
+        _tool_use("mcp__hiris__guarda", {}, id_="t1"),
+        _tool_use("mcp__hiris__ricorda", {"testo": "x"}, id_="t2"),
+        _result("fatto")))
+    assert len(decisione["tools_called"]) == 2
+
+
+# -- Task 4 incontra Task 5: DUE invocazioni nello stesso turno --------------
+
+class _RispostaSonda:
+    def __init__(self, dati):
+        self._dati = dati
+        self.status_code = 200
+
+    def json(self):
+        return self._dati
+
+
+class _ClientSondaOk:
+    """Un client finto che risponde SEMPRE positivamente alla sonda
+    `tools/list` (i quattro nomi nudi del catalogo)."""
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        nomi = [d["name"] for d in STRUMENTI_CONOSCENZA]
+        return _RispostaSonda({"result": {"tools": [{"name": n} for n in nomi]}})
+
+
+class _CliDueGiri:
+    """Un `subprocess.run` finto che restituisce uno stdout diverso a ogni
+    chiamata: il primo giro (poi buttato), il secondo (quello che resta)."""
+
+    def __init__(self, *stdouts):
+        self._stdouts = list(stdouts)
+        self.chiamate = 0
+
+    def __call__(self, argv, *a, **k):
+        stdout = self._stdouts[min(self.chiamate, len(self._stdouts) - 1)]
+        self.chiamate += 1
+        return _Proc(0, stdout, "")
+
+
+def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe():
+    """Task 4 incontra Task 5: quando l'evento `system/init` smentisce la
+    sonda, la PRIMA invocazione si butta e se ne ricompone una seconda senza
+    strumenti (regole-fetta.md). La risposta OVVIA sarebbe riportare solo
+    l'ultima invocazione, quella la cui reply l'utente legge davvero -- ma non
+    e' quella giusta: se nella prima invocazione (poi buttata) il modello ha
+    chiamato `mcp__hiris__ricorda`, quella chiamata e' gia' passata per
+    davvero da `POST /api/mcp` fino a `DispatcherConoscenza` e ha gia' scritto
+    in `memoria.db`, PRIMA che il ponte si accorgesse che il prompt prometteva
+    strumenti a meta'. Buttare l'invocazione non disfa la scrittura.
+    Riportare solo l'ultimo giro nasconderebbe esattamente il turno per cui
+    questo task esiste: quello in cui promessa e fatti divergono.
+    `tools_called` porta quindi le chiamate di ENTRAMBI i giri, nell'ordine
+    (primo, poi secondo)."""
+    primo_giro = _flusso(
+        _init(mcp_servers=[{"name": "hiris", "status": "failed"}]),
+        _tool_use("mcp__hiris__ricorda",
+                  {"testo": "scritto durante il giro poi buttato"}, id_="t1"),
+        _result("mi sono segnato la cosa"))
+    secondo_giro = _flusso(_init(mcp_servers=[]), _result("ok, senza strumenti"))
+
+    cli = _CliDueGiri(primo_giro, secondo_giro)
+
+    with patch.object(runner.subprocess, "run", cli):
+        decisione = runner._reason_chat(
+            _job(), "live", client=_ClientSondaOk(),
+            base_url="http://127.0.0.1:8099",
+            headers={"X-HIRIS-Internal-Token": "TOK"})
+
+    assert cli.chiamate == 2  # la contraddizione ha davvero fatto ricomporre
+    # la chiamata del giro BUTTATO resta, da sola: e' l'unica che c'e' stata.
+    assert decisione["tools_called"] == [
+        {"tool": "mcp__hiris__ricorda",
+         "input": {"testo": "scritto durante il giro poi buttato"}}]
+    # la reply che l'utente legge resta quella del SECONDO giro (Task 4: mai
+    # promettere strumenti che non c'erano) -- questo task non cambia quella
+    # disciplina, la affianca.
+    assert decisione["reply"].startswith(runner.AVVISO_STRUMENTI_ASSENTI)
+    assert "ok, senza strumenti" in decisione["reply"]

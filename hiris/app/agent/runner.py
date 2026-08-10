@@ -42,6 +42,15 @@ ricompone una senza strumenti, una sola volta. Il terzo stato non ha un terzo
 testo di guida -- `_GUIDA_SENZA_STRUMENTI` e' vera anche li' -- e cio' che lo
 distingue e' `AVVISO_STRUMENTI_ASSENTI`, la riga che l'utente legge.
 
+fetta "il ponte riceve gli strumenti" (parita' B, Task 5): da qui `ricorda' e'
+raggiungibile ANCHE dal ponte, e scrive in `memoria.db` -- il primo effetto
+DURATURO che il ponte sappia produrre. Il ramo sincrono lo mostra all'utente
+(`handlers_chat.py`, `tools_called`); il ponte no, e con le sicurezze fuori
+dall'UAT (decisione del proprietario) quella riga e' l'unica cosa che rende
+osservabile una scrittura che non doveva avvenire. `leggi_flusso` la raccoglie
+dallo STESSO flusso che gia' legge (nessuna seconda lettura), `_reason_chat`
+la mette in `decision["tools_called"]`, nella STESSA forma del ramo sincrono.
+
 Cio' che continua a non poter fare, e che nessuna fetta di questo ramo cambia:
 AGIRE. Gli strumenti sono quattro e nessuno tocca Home Assistant -- HIRIS
 conosce e non agisce (hiris/app/casa/strumenti.py)."""
@@ -253,6 +262,28 @@ def forme_del_token(token: str, profondita: int = 2) -> tuple[str, ...]:
             viste.add(forma)
             uniche.append(forma)
     return tuple(uniche)
+
+
+def _reda_struttura(valore, *segreti: str):
+    """`reda_segreti`, applicata dentro una struttura JSON qualunque
+    (dict/list/str/altro), non solo su una stringa.
+
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 5). `tools_called`
+    porta l'`input` che il MODELLO ha passato a uno strumento -- per
+    `ricorda`, il testo del ricordo -- cioe' testo che noi non controlliamo.
+    Il cancello unico in uscita per la reply (`_reply` in `_reason_chat`) vale
+    anche per questo canale nuovo: se un giorno un input contenesse per caso
+    una delle forme del token (l'utente lo detta a voce a HIRIS e HIRIS lo
+    scrive in un `ricorda`, per dire), non deve uscire comunque. Nessuna
+    prova nota lo fa succedere oggi: e' difesa in profondita', non una
+    riparazione di un buco osservato."""
+    if isinstance(valore, str):
+        return reda_segreti(valore, *segreti)
+    if isinstance(valore, dict):
+        return {k: _reda_struttura(v, *segreti) for k, v in valore.items()}
+    if isinstance(valore, list):
+        return [_reda_struttura(v, *segreti) for v in valore]
+    return valore
 
 
 def _motivo_eccezione(exc: BaseException, token: str | None = None) -> str:
@@ -558,7 +589,22 @@ class EsitoFlusso:
     - `risultato`: l'evento finale grezzo, o `None`. La sua ASSENZA e' il
       silenzio dichiarato (3) della fetta e non deve mai diventare una stringa
       vuota in silenzio: sarebbe indistinguibile da "il modello non ha risposto
-      niente"."""
+      niente";
+    - `tools_called`: fetta "il ponte riceve gli strumenti" (parita' B, Task 5).
+      I blocchi `tool_use` degli eventi `assistant`, NELL'ORDINE in cui la CLI
+      li ha emessi -- `[{"tool": nome, "input": argomenti}, ...]`, la STESSA
+      forma di `handlers_chat.py` (ramo sincrono): una lista sola da rendere
+      per la UI della E5, non due. Lista VUOTA (mai `None`) quando nessuno
+      strumento e' stato chiamato: `None` direbbe "non lo so", una lista vuota
+      dice "nessuno". Il nome e' quello GREZZO che il modello ha usato
+      (`mcp__hiris__ricorda`), MAI normalizzato: normalizzarlo nasconderebbe il
+      caso -- il solo che conta per questo task -- in cui il modello chiama
+      qualcosa che non gli abbiamo dato. Quando un `tool_result` abbinato
+      (stesso `tool_use_id`, in un evento `user` successivo) porta
+      `is_error: true`, la voce guadagna una terza chiave, `"is_error": True`:
+      SOLO in quel caso, cosi' una chiamata riuscita resta bit-per-bit la
+      stessa forma del ramo sincrono, e una fallita resta DISTINGUIBILE invece
+      di sparire nella stessa forma di una riuscita."""
 
     testo: str = ""
     init: dict | None = None
@@ -567,6 +613,7 @@ class EsitoFlusso:
     righe_lette: int = 0
     risultato: dict | None = None
     num_turni: int | None = None
+    tools_called: list = field(default_factory=list)
 
     @property
     def risultato_presente(self) -> bool:
@@ -602,6 +649,13 @@ def leggi_flusso(stdout: str) -> EsitoFlusso:
     non e' un oggetto, flusso vuoto, flusso senza evento finale) diventa un
     campo dell'`EsitoFlusso`, mai un'eccezione che risale a `_reason_chat`."""
     esito = EsitoFlusso()
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): gli id dei
+    # `tool_use` visti finora, per abbinare il `tool_result` che arriva DOPO
+    # (un evento `user` successivo, con lo stesso `tool_use_id`) alla voce
+    # gia' accodata in `esito.tools_called`. Un dizionario e non una ricerca
+    # lineare: un turno puo' avere piu' chiamate in parallelo, e cercarle a
+    # ogni `tool_result` sarebbe quadratico per niente.
+    chiamate_per_id: dict[str, dict] = {}
     for riga in (stdout or "").splitlines():
         riga = riga.strip()
         if not riga:
@@ -623,6 +677,46 @@ def leggi_flusso(stdout: str) -> EsitoFlusso:
                 esito.init = evento
         elif tipo == "result":
             esito.risultato = evento  # l'ULTIMO result e' quello finale
+        elif tipo == "assistant":
+            # I blocchi `tool_use` dentro il messaggio dell'assistente:
+            # `{"type":"tool_use","id":...,"name":...,"input":...}`, in mezzo
+            # a blocchi `text`/`thinking` che si ignorano qui (non sono lo
+            # strumento).
+            blocchi = ((evento.get("message") or {}).get("content")
+                      if isinstance(evento.get("message"), dict) else None)
+            for blocco in (blocchi or []):
+                if not (isinstance(blocco, dict) and blocco.get("type") == "tool_use"):
+                    continue
+                nome = blocco.get("name")
+                # Il nome grezzo, MAI normalizzato (vedi il docstring di
+                # `EsitoFlusso.tools_called`): riscriverlo nasconderebbe
+                # proprio il caso -- il modello che chiama uno strumento che
+                # non gli abbiamo dato -- che questo campo esiste per rendere
+                # visibile.
+                voce = {"tool": nome if isinstance(nome, str) else "",
+                       "input": blocco.get("input")}
+                esito.tools_called.append(voce)
+                id_chiamata = blocco.get("id")
+                if isinstance(id_chiamata, str):
+                    chiamate_per_id[id_chiamata] = voce
+        elif tipo == "user":
+            # L'esito che torna al modello, riecheggiato nel flusso come
+            # messaggio "user": `{"type":"tool_result","tool_use_id":...,
+            # "is_error":...}`. E' l'UNICO punto in cui una chiamata fallita
+            # si distingue da una riuscita -- senza, "ricorda" fallito e
+            # "ricorda" riuscito produrrebbero la stessa identica voce.
+            blocchi = ((evento.get("message") or {}).get("content")
+                      if isinstance(evento.get("message"), dict) else None)
+            for blocco in (blocchi or []):
+                if not (isinstance(blocco, dict) and blocco.get("type") == "tool_result"):
+                    continue
+                id_chiamata = blocco.get("tool_use_id")
+                voce = chiamate_per_id.get(id_chiamata) if isinstance(id_chiamata, str) else None
+                if voce is not None and blocco.get("is_error"):
+                    # Solo quando VERO: cosi' una chiamata riuscita resta
+                    # bit-per-bit {"tool":..., "input":...}, identica alla
+                    # forma del ramo sincrono (Step 2 del brief).
+                    voce["is_error"] = True
     risultato = esito.risultato or {}
     testo = risultato.get("result")
     esito.testo = testo if isinstance(testo, str) else ""
@@ -815,6 +909,24 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     token = intestazioni.get("X-HIRIS-Internal-Token", "")
     forme = forme_del_token(token)
 
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): l'accumulo per
+    # TUTTO il turno, non per la sola invocazione che finisce nella reply.
+    #
+    # Perche' NON e' la risposta ovvia (riportare solo l'ultima invocazione).
+    # Quando il Task 4 butta la prima invocazione (l'`init` smentisce la
+    # sonda) e ne ricompone una seconda SENZA strumenti, il testo della prima
+    # sparisce -- ma le sue chiamate MCP, se ce ne sono state, sono gia'
+    # passate per davvero da `POST /api/mcp` fino a `DispatcherConoscenza`:
+    # un `ricorda` chiamato li' ha gia' scritto in `memoria.db`, prima che
+    # noi si scoprisse che il prompt prometteva strumenti a meta'. Buttare
+    # l'invocazione non disfa quella scrittura. Riportare solo l'ultima
+    # invocazione nasconderebbe esattamente il turno in cui questo task
+    # esiste per vedere qualcosa: quello in cui la promessa del prompt e i
+    # fatti hanno divergito. Si accumula quindi su ENTRAMBE, nell'ordine
+    # (primo giro, poi secondo), nella stessa lista che diventa
+    # `decision["tools_called"]`.
+    tools_called_turno: list = []
+
     def _reply(testo: str) -> dict:
         """L'UNICO modo in cui una risposta esce da questa funzione.
 
@@ -838,8 +950,18 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         altrove.
 
         Sei rami di ritorno, una sola redazione: non c'e' un ramo da
-        dimenticare, ne' oggi ne' quando ne nascera' un settimo."""
-        return {"reply": reda_segreti(testo, *forme)}
+        dimenticare, ne' oggi ne' quando ne nascera' un settimo.
+
+        fetta "il ponte riceve gli strumenti" (parita' B, Task 5): la
+        `decision` porta anche `tools_called` -- SEMPRE, in modalita' `live`
+        (una lista vuota se nessuno strumento e' stato chiamato, mai
+        l'assenza della chiave: e' cosi' che `handle_chat_reply_poll` sa
+        distinguere "nessun job legacy/mock" da "turno vero senza
+        strumenti"). Passa dallo STESSO cancello (`_reda_struttura`, sopra):
+        l'`input` e' testo del modello, non nostro, e la regola del progetto
+        e' che il token non compare in NESSUN canale nuovo."""
+        return {"reply": reda_segreti(testo, *forme),
+               "tools_called": _reda_struttura(tools_called_turno, *forme)}
 
     # fetta "il ponte riceve il nucleo" (parita' A, Task 4): il modello non
     # e' piu' `HIRIS_AGENT_CHAT_MODEL` (env mai esportata da run.sh --
@@ -927,6 +1049,11 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # ramo d'errore e quello felice non possono divergere nel modo di
         # leggere la stessa risposta.
         esito = leggi_flusso(stdout)
+        # Task 5: si accumula QUI, sull'esito di OGNI invocazione -- anche
+        # quella che il ramo dell'`init` (sotto) sta per buttare. Vedi il
+        # commento su `tools_called_turno`, sopra: una chiamata MCP di
+        # un'invocazione buttata e' gia' successa per davvero.
+        tools_called_turno.extend(esito.tools_called)
         _logga_init(esito, job_id)   # la misura, a ogni giro
         _logga_uso(esito, job_id)    # Step 4: la misura per la domanda aperta 2
         if esito.righe_saltate:

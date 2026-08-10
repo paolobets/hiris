@@ -186,7 +186,14 @@ def test_run_once_chat_reasons_and_submits():
     with patch.object(runner.subprocess, "run", _run):
         out = runner.run_once(c, "http://127.0.0.1:8099", {"X-HIRIS-Internal-Token": "TOK"}, "live")
     assert out == "done"
-    assert c.submitted and c.submitted[0]["decision"] == {"reply": "2 luci accese"}
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): la `decision`
+    # porta anche `tools_called` -- qui vuota, perche' questo flusso finto
+    # (`_ProcFelice`, sotto) non contiene nessun blocco `tool_use`. La lista
+    # e' VUOTA, non assente: e' il segnale che il turno e' girato in modalita'
+    # `live` senza chiamare nulla, non un job che non ha mai avuto
+    # l'occasione di farlo.
+    assert c.submitted and c.submitted[0]["decision"] == {
+        "reply": "2 luci accese", "tools_called": []}
 
     # la sonda e' passata dalla rotta, con GLI STESSI header del claim (non un
     # secondo modo di autenticarsi verso se stessi) e col metodo giusto

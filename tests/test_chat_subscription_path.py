@@ -393,6 +393,102 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# fetta "il ponte riceve gli strumenti" (parita' B, Task 5): `debug.tools_called`
+# sul poll. Il giro completo -- accoda, il worker (qui simulato, come fa gia'
+# `test_poll_route_pending_then_done` sopra, con `q.submit`) risolve con una
+# `decision` che porta `tools_called`, e il poll la restituisce come
+# `debug.tools_called`, nella STESSA forma del ramo sincrono
+# (`handlers_chat.py`: `[{"tool": ..., "input": ...}, ...]`).
+#
+# Perche' conta piu' di una chiave in piu' nella risposta: da questa fetta
+# `ricorda` (che scrive in `memoria.db`) e' raggiungibile ANCHE dal ponte, e
+# con le sicurezze fuori dall'UAT (decisione del proprietario) questo e'
+# l'UNICA cosa che rende visibile una scrittura in memoria fatta dal ponte --
+# vedi il docstring in cima a `agent/runner.py`.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_forma_del_sincrono(tmp_path):
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ricordati che la caldaia perde"})
+        job_id = (await resp.json())["job_id"]
+
+        claimed = q.claim(now=5.0)
+        assert claimed["job_id"] == job_id
+        # La forma che `_reason_chat` produce davvero (agent/runner.py,
+        # `_reply`): `reply` + `tools_called`, quest'ultima nella forma
+        # ESATTA del ramo sincrono -- Step 6, ④ del brief: una chiamata a
+        # `mcp__hiris__ricorda` compare nella lista, ed e' il caso che questo
+        # task esiste per rendere visibile.
+        ok = q.submit(job_id, claimed["nonce"], {
+            "reply": "Preso nota: la caldaia perde.",
+            "tools_called": [
+                {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}},
+            ],
+        }, now=6.0)
+        assert ok is True
+
+        poll = await client.get(f"/api/chat/reply/{job_id}")
+        assert poll.status == 200
+        body = await poll.json()
+
+    assert body == {
+        "status": "done",
+        "reply": "Preso nota: la caldaia perde.",
+        "debug": {"tools_called": [
+            {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}},
+        ]},
+    }
+
+
+@pytest.mark.asyncio
+async def test_poll_route_decision_senza_tools_called_non_porta_debug(tmp_path):
+    # Il complemento, e non un dettaglio: una `decision` senza la chiave (job
+    # legacy accodato prima di questo deploy, o un mock) non deve inventarsi
+    # un `debug` vuoto -- resta esattamente come prima di questo task
+    # (`test_poll_route_pending_then_done`, sopra, lo pinna gia' su questo
+    # stesso ramo: qui si pinna che il comportamento non e' cambiato).
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        job_id = (await resp.json())["job_id"]
+
+        claimed = q.claim(now=5.0)
+        ok = q.submit(job_id, claimed["nonce"], {"reply": "ciao anche a te"}, now=6.0)
+        assert ok is True
+
+        poll = await client.get(f"/api/chat/reply/{job_id}")
+        body = await poll.json()
+
+    assert body == {"status": "done", "reply": "ciao anche a te"}
+    assert "debug" not in body
+
+
+@pytest.mark.asyncio
+async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(tmp_path):
+    # Una lista VUOTA e' un turno vero senza chiamate -- non l'assenza della
+    # chiave (quella e' il caso del test sopra). La chiave deve comparire lo
+    # stesso, con la lista vuota dentro: e' cosi' che la E5 distingue "il
+    # ponte ha girato e non ha chiamato nulla" da "questa decision non lo sa".
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "che ore sono?"})
+        job_id = (await resp.json())["job_id"]
+
+        claimed = q.claim(now=5.0)
+        ok = q.submit(job_id, claimed["nonce"],
+                      {"reply": "Sono le tre.", "tools_called": []}, now=6.0)
+        assert ok is True
+
+        poll = await client.get(f"/api/chat/reply/{job_id}")
+        body = await poll.json()
+
+    assert body == {"status": "done", "reply": "Sono le tre.",
+                    "debug": {"tools_called": []}}
+
+
+# ---------------------------------------------------------------------------
 # Task 5: server.py wiring -- the addon option only takes effect when the
 # bridge is ALSO truly usable (BRIDGE_ENABLED), otherwise chat jobs would be
 # enqueued into a queue nothing sweeps/claims/prunes -> eternal pending + DB

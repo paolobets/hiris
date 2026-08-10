@@ -317,7 +317,20 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         })
     if not reply:
         return web.json_response({"status": "pending"})
-    return web.json_response({"status": "done", "reply": reply})
+    payload = {"status": "done", "reply": reply}
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): `tools_called`
+    # e' la SOLA cosa che rende osservabile una scrittura di `ricorda` fatta
+    # dal ponte -- vedi il docstring in cima a `agent/runner.py`. Compare in
+    # `decision` SOLO quando `_reason_chat` ha girato in modalita' `live`
+    # (un job mock o un `decision_json` scritto prima di questo deploy non
+    # porta la chiave): questo `if` e' l'unico cambio a questa funzione, i
+    # rami "pending"/"error" sopra restano identici. Il conteggio dei giri
+    # "esposto dove l'utente lo vede" (progetto, Sec5.2) e' len() di questa
+    # stessa lista lato client: non serve un secondo contatore qui da tenere
+    # allineato con lei.
+    if "tools_called" in decision:
+        payload["debug"] = {"tools_called": decision["tools_called"]}
+    return web.json_response(payload)
 
 
 async def handle_chat(request: web.Request) -> web.Response:
