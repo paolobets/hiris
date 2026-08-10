@@ -484,11 +484,36 @@ class OpenAICompatRunner:
         effective_model = self._resolve_model(model, agent_type)
 
         # Build system message (OpenAI uses a single system message)
+        #
+        # Fix della review totale della fetta "il ponte riceve il nucleo"
+        # (parita' A, m-4): qui i modificatori stavano DOPO `context_str`, e
+        # in `claude_runner.py::ClaudeRunner.chat` stanno PRIMA, con un
+        # commento che dichiara l'ordine obbligatorio ("must precede
+        # context_str"). Due composizioni divergenti della stessa cosa, con
+        # l'invariante scritta in un posto solo. Verificato prima di
+        # muovere: l'invariante e' VERA e ha una ragione meccanica, cioe' che
+        # i blocchi STABILI (BASE, persona, modificatori -- fissi per
+        # configurazione) devono stare prima del blocco VOLATILE
+        # (`context_str`, che cambia a ogni turno perche' e' il nucleo). Di
+        # la' quella ragione e' l'unico breakpoint di cache cumulativo, che
+        # va posato sull'ultimo blocco stabile; qui non ci sono breakpoint
+        # espliciti, ma il caching di prefisso di OpenAI/OpenRouter (e la
+        # cache di prompt di Ollama/llama.cpp) e' anch'esso PER PREFISSO: un
+        # blocco volatile messo prima dei modificatori butta i modificatori
+        # fuori dal prefisso riusabile a ogni singolo turno. Stessa
+        # invariante, stessa ragione, mezzo diverso.
+        #
+        # E in piu': `agent/prompts.py::build_chat_messages` (il ponte)
+        # compone gia' BASE -> persona -> modificatori -> guida -> contesto.
+        # Con questa correzione i TRE composizioni del prodotto mettono i
+        # modificatori nello stesso posto, e la parita' non e' piu' vera solo
+        # per due su tre. Pinnato da
+        # `tests/test_ordine_di_composizione.py`.
         system_parts = [BASE_SYSTEM_PROMPT]
         if system_prompt:
             system_parts.append(system_prompt)
-        if context_str:
-            system_parts.append(context_str)
+        # I modificatori di comportamento -- stabili per configurazione,
+        # DEVONO precedere `context_str` (vedi sopra).
         if restrict_to_home:
             system_parts.append(RESTRICT_PROMPT)
         # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`
@@ -499,6 +524,8 @@ class OpenAICompatRunner:
             system_parts.append(COMPACT_PROMPT)
         elif response_mode == "minimal":
             system_parts.append(MINIMAL_PROMPT)
+        if context_str:
+            system_parts.append(context_str)
 
         messages: list[dict] = [{"role": "system", "content": "\n\n---\n\n".join(system_parts)}]
         for msg in (conversation_history or []):
@@ -760,11 +787,13 @@ class OpenAICompatRunner:
         self.total_requests += 1
 
         effective_model = self._resolve_model(model, agent_type)
+        # Stesso ordine di `chat()` qui sopra: blocchi stabili, poi il
+        # volatile `context_str` (fix m-4 della review totale della fetta --
+        # la motivazione per esteso e' nel commento gemello in `chat()`; lo
+        # streaming non e' una porta di servizio).
         system_parts = [BASE_SYSTEM_PROMPT]
         if system_prompt:
             system_parts.append(system_prompt)
-        if context_str:
-            system_parts.append(context_str)
         if restrict_to_home:
             system_parts.append(RESTRICT_PROMPT)
         # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`
@@ -773,6 +802,8 @@ class OpenAICompatRunner:
             system_parts.append(COMPACT_PROMPT)
         elif response_mode == "minimal":
             system_parts.append(MINIMAL_PROMPT)
+        if context_str:
+            system_parts.append(context_str)
 
         messages: list[dict] = [{"role": "system", "content": "\n\n---\n\n".join(system_parts)}]
         for msg in (conversation_history or []):

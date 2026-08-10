@@ -122,14 +122,38 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # percorsi (chi e' HIRIS, cosa conosce); in `BASE_REGOLE_STRUMENTI` tutto cio'
 # che nomina, ordina o presuppone la chiamata a uno strumento. Le due meta'
 # sono PUBBLICHE (senza underscore) perche' attraversano un confine di modulo:
-# `agent/prompts.py` importa `BASE_IDENTITA`. L'ultima riga ("Rispondi nella
-# lingua dell'utente") cade nella seconda meta' perche' la concatenazione deve
-# restare ordinata e identica; sul ponte non manca nulla, perche'
-# `prompts._CHAT_INSTRUCTION` ordina gia' di rispondere in italiano.
+# `agent/prompts.py` importa `BASE_IDENTITA`.
+#
+# Fix della review totale della fetta (m-2): "Rispondi nella lingua
+# dell'utente" stava nella meta' SBAGLIATA, e il commento del taglio lo
+# ammetteva senza chiamarlo per nome ("cade nella seconda meta' perche' la
+# concatenazione deve restare ordinata e identica"). Non e' una regola sugli
+# strumenti -- non ne nomina, non ne ordina e non ne presuppone nessuno --
+# quindi stava di la' per CONTIGUITA' (era l'ultimo trattino dell'elenco), per
+# una ragione che il criterio dichiarato qui sopra non contiene: il commento
+# descriveva un taglio diverso da quello reale.
+#
+# La conseguenza non era cosmetica. Stando in `BASE_REGOLE_STRUMENTI`, la riga
+# sul ponte non veniva emessa affatto (il ponte compone la sola
+# `BASE_IDENTITA`), e l'unica istruzione di lingua che gli restava era
+# `prompts._CHAT_INSTRUCTION`, che imponeva SEMPRE l'italiano: un utente che
+# scrive in inglese riceveva inglese dal percorso sincrono e italiano dal
+# ponte. In una fetta che si chiama "parita'" quella e' una divergenza, non un
+# dettaglio. La riga e' quindi salita qui, dove il criterio la vuole (e' vera
+# su ENTRAMBI i percorsi), e `_CHAT_INSTRUCTION` e' stata allineata --
+# altrimenti i due blocchi si contraddicevano dentro lo stesso prompt.
+#
+# Il percorso sincrono non perde nulla: la riga c'e' ancora e
+# `BASE_SYSTEM_PROMPT` resta la concatenazione ordinata delle due meta'.
+# Cambia la POSIZIONE della riga dentro quel testo -- subito dopo l'identita'
+# invece che in coda all'elenco "## Regole fondamentali", dove peraltro era
+# l'unico trattino che non parlava di strumenti. Pinnata da
+# `tests/test_base_prompt_diviso.py`, cosi' non migra piu' in silenzio.
 BASE_IDENTITA = (
     "Sei HIRIS, assistente AI integrata in Home Assistant: conosci la casa"
     " (aree, entità, dispositivi, automazioni e script) e la memoria di ciò"
     " che le persone ti hanno detto.\n"
+    "Rispondi nella lingua dell'utente.\n"
 )
 
 BASE_REGOLE_STRUMENTI = (
@@ -148,8 +172,7 @@ BASE_REGOLE_STRUMENTI = (
     " stato di adesso né una richiesta una tantum, né ciò che puoi rileggere da Home Assistant quando"
     " serve.\n"
     "- 'Preso nota' senza aver chiamato ricorda è la stessa azione mai eseguita vietata sopra:"
-    " non dirlo se non hai salvato.\n"
-    "- Rispondi nella lingua dell'utente."
+    " non dirlo se non hai salvato."
 )
 
 BASE_SYSTEM_PROMPT = BASE_IDENTITA + BASE_REGOLE_STRUMENTI
@@ -661,6 +684,16 @@ class ClaudeRunner:
         if system_prompt:
             system_blocks.append({"type": "text", "text": system_prompt})
         # Behaviour modifiers — stable per agent config, must precede context_str.
+        # Fix m-4 della review totale della fetta "il ponte riceve il nucleo":
+        # questa invariante era dichiarata QUI e violata negli altri due punti
+        # che compongono la stessa cosa (backends/openai_compat_runner.py,
+        # `chat` e `chat_stream`, mettevano i modificatori DOPO `context_str`).
+        # Verificata invece di essere data per buona -- e' vera, e la ragione
+        # e' il caching per prefisso: qui il breakpoint cumulativo va posato
+        # sull'ultimo blocco stabile, di la' e' il prefix caching implicito di
+        # OpenAI/Ollama. I due punti gemelli sono stati allineati, non il
+        # commento, e l'ordine e' ora pinnato per tutti e tre i composers
+        # (`tests/test_ordine_di_composizione.py`).
         if restrict_to_home:
             system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
         # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`

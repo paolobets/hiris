@@ -22,10 +22,16 @@ da CLAUDE.md:70-72. (Nessun ciclo: `claude_runner.py` importa solo stdlib,
 Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
 `build_chat_messages` e il commento sopra `BASE_IDENTITA` in claude_runner.py.
 """
+# fix della review totale della fetta (m-3): `BASE_SYSTEM_PROMPT` NON e' piu'
+# importata. Questo file non la usa -- il ternario di `build_chat_messages`
+# compone `BASE_IDENTITA + BASE_REGOLE_STRUMENTI` -- e l'unico lettore che le
+# restava era un assert (`prompts.BASE_SYSTEM_PROMPT is BASE_SYSTEM_PROMPT`,
+# tests/test_ponte_riceve_il_nucleo.py), cioe' un import tenuto in vita dal
+# test che lo pinnava. I due assert sulle META' restano, e sono quelli che
+# contano: sono i simboli che il ponte compone davvero.
 from ..claude_runner import (
     BASE_IDENTITA,
     BASE_REGOLE_STRUMENTI,
-    BASE_SYSTEM_PROMPT,
     RESTRICT_PROMPT,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
@@ -164,9 +170,19 @@ _CONTESTO_ASSENTE = (
     "dillo apertamente se per rispondere servirebbe conoscere la casa."
 )
 
+# Fix della review totale della fetta (m-2): questa istruzione diceva
+# «Rispondi SEMPRE in italiano». Era l'UNICA istruzione di lingua che il ponte
+# riceveva -- "Rispondi nella lingua dell'utente" viveva in
+# `BASE_REGOLE_STRUMENTI`, la meta' che il ponte non emette -- e imponeva al
+# ponte una lingua che il percorso sincrono non impone: un utente che scrive
+# in inglese riceveva inglese di la' e italiano di qua. Ora quella riga sta in
+# `BASE_IDENTITA` (vedi il commento del taglio in claude_runner.py) e arriva
+# a ENTRAMBI i percorsi: lasciare qui «SEMPRE in italiano» significherebbe
+# contraddirla dentro lo stesso prompt -- il system dice una cosa, l'ultima
+# riga dell'utente ne dice un'altra, e vince l'ultima letta. Allineata.
 _CHAT_INSTRUCTION = (
     "Rispondi ORA come l'assistente, proseguendo la conversazione sopra. "
-    "Rispondi SEMPRE in italiano, con una risposta breve e pertinente. "
+    "Rispondi nella lingua dell'utente, con una risposta breve e pertinente. "
     "Nella risposta finale usa testo semplice: niente blocchi di codice o JSON."
 )
 

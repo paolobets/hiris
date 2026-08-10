@@ -109,7 +109,13 @@ def test_base_system_prompt_e_importato_non_ricopiato():
     1): si importano, non si riscrivono."""
     assert prompts.BASE_IDENTITA is BASE_IDENTITA
     assert prompts.BASE_REGOLE_STRUMENTI is BASE_REGOLE_STRUMENTI
-    assert prompts.BASE_SYSTEM_PROMPT is BASE_SYSTEM_PROMPT
+    # fix della review totale della fetta (m-3): l'assert su
+    # `prompts.BASE_SYSTEM_PROMPT` e' uscito, e con lui l'import in
+    # `prompts.py`. Non pinnava niente di vivo: il codice di `prompts.py` non
+    # usa quella costante -- il ternario di `build_chat_messages` compone le
+    # due META' -- e un simbolo importato solo perche' un test lo guarda non
+    # e' una fonte condivisa, e' un orfano col suo guardiano. I due assert
+    # qui sopra sono quelli che contano: sono i simboli che il ponte compone.
     sorgente = open(prompts.__file__, encoding="utf-8").read()
     # Task 3 ("i modificatori smettono di essere quattro copie"): l'import
     # e' diventato multilinea per aggiungere RESTRICT_PROMPT/COMPACT_PROMPT/

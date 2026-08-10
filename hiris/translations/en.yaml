@@ -8,9 +8,13 @@ configuration:
   openrouter_api_key:
     name: "OpenRouter API Key"
     description: "API key for OpenRouter — a unified proxy giving access to 200+ models (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ...) with one key. Get it at openrouter.ai. Free models are available (':free' suffix, e.g. 'meta-llama/llama-3.3-70b-instruct:free'). To use, set the agent model field to 'openrouter:provider/model-name'. PRIVACY: messages flow through OpenRouter (US) and then to the chosen model's provider — see openrouter.ai/privacy."
+  # Gemella italiana in it.yaml (stessa voce): li' c'e' il commento con la
+  # ragione del testo aggiunto -- fix I-2/I-3 della review totale della fetta
+  # "il ponte riceve il nucleo". Le due descrizioni devono restare
+  # semanticamente identiche.
   provider_subscription:
     name: "Enable provider: Subscription (Claude Max)"
-    description: "Activate the Claude subscription (Claude Max, via the in-addon runner) as an AI provider. Requires the OAuth token (claude_code_oauth_token). A provider is used only if enabled here AND its credential is set. NOTE: if you leave all provider_* toggles off on an existing install, HIRIS keeps deriving the active providers from the credentials already present (backward-compatible); once you enable ANY provider toggle, only the toggles you turn on are active, so re-enable every provider you want to keep."
+    description: "Activate the Claude subscription (Claude Max, via the in-addon runner) as an AI provider. Requires the OAuth token (claude_code_oauth_token). WARNING — what this entails: enabling it with the OAuth token present ROUTES CHAT ONTO THE SUBSCRIPTION BRIDGE, i.e. it turns on \"Chat via subscription — enable\" even if that option is left off. On that path, together with your message, your home's knowledge travels out (the core: areas, entities, what is notable right now, what the home already does by itself) along with the memories of what people have said, past sessions included — under the usage and retention terms of the Claude Max subscription, which differ from those of the pay-per-use API used by the other path. See \"Chat via subscription — enable\" below for what the chat does and does not receive on that path. A provider is used only if enabled here AND its credential is set. NOTE: if you leave all provider_* toggles off on an existing install, HIRIS keeps deriving the active providers from the credentials already present (backward-compatible); once you enable ANY provider toggle, only the toggles you turn on are active, so re-enable every provider you want to keep."
   provider_claude:
     name: "Enable provider: Claude API"
     description: "Activate Claude API as an AI provider (requires claude_api_key). A provider is used only if enabled here AND its credential is set. See the note on provider_subscription about enabling toggles on an existing install."

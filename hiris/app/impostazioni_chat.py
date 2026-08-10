@@ -44,12 +44,72 @@ _FILE_IMPOSTAZIONI = "impostazioni_chat.json"
 # veri di oggi (casa/strumenti.py: cerca, guarda). Spostato qui invariato da
 # `chatbot_engine.py::ChatbotEngine._DEFAULT_SYSTEM_PROMPT` (era li' righe
 # 231-237).
+#
+# Fix della review totale della fetta "il ponte riceve il nucleo" (parita' A,
+# I-1). Questo testo era scritto all'IMPERATIVO INCONDIZIONATO -- «Per
+# scoprire cosa c'e' in casa USA `cerca` ... e `guarda`», «USA I TOOL per
+# valori precisi» -- e arriva VERBATIM al ponte: `_build_system_prompt`
+# (api/handlers_chat.py) lo mette in `context["system_prompt"]`, il job lo
+# porta ad `agent/runner.py::_reason_chat`, e `agent/prompts.py::
+# build_chat_messages` lo compone subito dopo BASE. Sul ponte quei due
+# strumenti NON esistono (nessun `--mcp-config`, nessun `--allowedTools`:
+# `_chat_claude_args`, pinnato da `test_argv_del_ponte_non_collega_nessuno_
+# strumento`): era l'ULTIMO ordine ineseguibile rimasto in quel prompt.
+#
+# E' la stessa classe di difetto per cui, al Task 2 di questa fetta,
+# `BASE_SYSTEM_PROMPT` e' stata spezzata in due meta' (claude_runner.py, il
+# commento sopra `BASE_IDENTITA`): li' l'ordine falso ha smesso di essere
+# EMESSO, qui restava emesso e affidato alla smentita che lo segue tre
+# capoversi sotto (`prompts._GUIDA_SENZA_STRUMENTI`: «se il prompt qui sopra
+# nomina degli strumenti ... quelle istruzioni non si applicano»). Con le
+# parole di quel file: «un ordine non emesso e' una difesa, una frase che lo
+# contraddice e' una speranza» -- e una speranza calibrata su UN modello, che
+# l'abbonamento puo' cambiare sotto di noi.
+#
+# Il default e' NOSTRO, non dell'utente: riscritto in forma CONDIZIONALE, vera
+# su ENTRAMBI i percorsi. Il sincrono non perde nulla (l'antecedente e' vero:
+# di la' i quattro strumenti di casa/strumenti.py esistono davvero, e l'ordine
+# di usarli e' lo stesso di prima); il ponte legge il ramo "altrimenti", che
+# e' esattamente cio' che puo' fare -- rispondere col contesto e dichiarare
+# cio' che non c'e'. I due nomi `cerca` e `guarda` restano SCRITTI: la guida
+# del ponte li nomina per negarli, e `test_il_prompt_del_ponte_smentisce_gli_
+# strumenti_nominati_dalla_persona` asserisce che il default continui a
+# nominarli.
+#
+# Il riferimento alla "sezione CASA" e' uscito con l'imperativo: dal Task 1 di
+# questa fetta il contesto della chat non e' piu' una sezione sola ma il
+# NUCLEO INTERO (`componi_contesto_chat` -> `costruisci_nucleo`), che compone
+# «## La casa», «## Notevole adesso», «## Cio' che la casa fa gia' da sola»,
+# «## Cio' che le persone hanno detto», «## Cio' che HIRIS ignora», piu' «##
+# Sessioni precedenti». Nominare una sola sezione maiuscola che non esiste
+# piu' con quel nome sarebbe la solita dichiarazione falsa al presente.
+#
+# COSA SUCCEDE SU UN'INSTALLAZIONE ESISTENTE (verificato, non presunto).
+# Nessun codice di produzione scrive `impostazioni_chat.json`: `salva()` qui
+# sotto non ha oggi nessun chiamante fuori dai test (grep `\.salva(` su
+# `hiris/`), e la superficie HTTP che lo scrivera' e' della fetta E5. Il
+# predecessore che SI persisteva (`chatbots.json`, con il suo
+# `_LEGACY_DEFAULT_PROMPTS` che riscriveva i default invecchiati) e' uscito
+# alla fetta E4 Task 4, e con una decisione utente esplicita di NON migrare il
+# prompt salvato -- si riparte coi default nel codice (il log di quel silenzio
+# e' in server.py, `_chatbots_json_path`). Quindi: questo fix raggiunge ogni
+# installazione, perche' il vecchio testo non e' persistito da nessuna parte.
+# L'UNICO caso residuo e' un `impostazioni_chat.json` scritto A MANO
+# dall'utente (l'unica via oggi, vedi il commento su `thinking_budget` in
+# claude_runner.py), e li' un meccanismo alla `_LEGACY_DEFAULT_PROMPTS` NON
+# serve e sarebbe dannoso: dovrebbe riconoscere per uguaglianza esatta una
+# stringa che l'utente ha scelto di scrivere, e sovrascrivere il prompt
+# dell'utente e' peggio del difetto che chiude.
 DEFAULT_SYSTEM_PROMPT = (
     "Sei l'assistente principale per la gestione della smart home.\n"
-    "Per scoprire cosa c'è in casa usa `cerca` (trova per nome un'area, un'entità o un"
-    " dispositivo) e `guarda` (il dettaglio di una cosa sola, col suo stato).\n"
-    "La sezione CASA in fondo al prompt è uno snapshot di orientamento:"
-    " usa i tool per valori precisi come temperature e stati correnti."
+    "Se in questa conversazione hai gli strumenti `cerca` (trova per nome un'area,"
+    " un'entità o un dispositivo) e `guarda` (il dettaglio di una cosa sola, col suo"
+    " stato), usali per scoprire cosa c'è in casa e per i valori precisi — temperature,"
+    " stati correnti — invece di dedurli.\n"
+    "Altrimenti rispondi con ciò che trovi nel contesto in fondo al prompt (la casa,"
+    " ciò che le persone hanno detto, le sessioni precedenti): è uno snapshot di"
+    " orientamento, non una lettura fatta adesso. Dichiara apertamente ciò che non c'è,"
+    " invece di inventarlo."
 )
 
 
