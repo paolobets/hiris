@@ -286,8 +286,23 @@ def test_il_prompt_che_esce_davvero_dal_ponte_e_quello_senza_strumenti():
 # ---------------------------------------------------------------------------
 
 class _Proc:
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 2, fix round 1):
+    # lo stdout finto era rimasto nella forma di `--output-format json`
+    # (`{"result": "risposta"}`), che col nuovo parsing NON contiene nessun
+    # evento `type=result`: OGNI test di questo file che finti-esegue la CLI
+    # cadeva nel silenzio (3) e produceva due avvisi estranei. Due pin ne
+    # erano stati svuotati senza diventare rossi -- il modo peggiore di
+    # rompere una rete. Forma NDJSON di `stream-json --verbose`: init, un
+    # evento assistant, l'evento finale result.
     returncode = 0
-    stdout = '{"result": "risposta"}'
+    stdout = (
+        '{"type":"system","subtype":"init","tools":[],"mcp_servers":[]}\n'
+        '{"type":"assistant","message":{"role":"assistant",'
+        '"content":[{"type":"text","text":"risposta"}]}}\n'
+        '{"type":"result","subtype":"success","is_error":false,"num_turns":1,'
+        '"result":"risposta","usage":{"input_tokens":5,'
+        '"cache_creation_input_tokens":0,"cache_read_input_tokens":0,'
+        '"output_tokens":3}}\n')
     stderr = ""
 
 
@@ -318,7 +333,17 @@ def test_il_job_legacy_senza_contesto_dichiara_il_silenzio_nel_log(caplog):
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
         _cattura_system(job)
 
-    assert caplog.records, "il job legacy e' passato in silenzio"
+    # fix round 1: qui c'era `assert caplog.records`, ed era diventato VACUO
+    # -- lo stdout finto nel vecchio formato faceva scattare due avvisi
+    # estranei (silenzio (3) + init mancante) che bastavano a riempire
+    # `caplog`, quindi il pin passava anche se il log del silenzio (1) fosse
+    # sparito del tutto. Si asserisce il CONTEGGIO: un avviso, il suo, e
+    # nessun altro -- cosi' non e' riempibile dal rumore di un'altra fetta.
+    assert len(caplog.records) == 1, (
+        "il job legacy deve produrre ESATTAMENTE un avviso, il suo -- zero "
+        "significa che e' passato in silenzio, piu' di uno che questo pin "
+        "e' riempibile da rumore altrui: "
+        f"{[r.getMessage() for r in caplog.records]!r}")
     testo = "\n".join(rec.getMessage() for rec in caplog.records)
     assert "contesto" in testo and "job-legacy-1" in testo
     assert "PRIMA di questo deploy" in testo
@@ -350,7 +375,17 @@ def test_il_job_con_contesto_non_logga_e_porta_la_casa(caplog):
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
         system = _cattura_system(job)
 
-    assert not [r for r in caplog.records if "contesto" in r.getMessage()]
+    # fix round 1: l'assert era ristretto ai messaggi contenenti "contesto",
+    # e con lo stdout nel vecchio formato questo job produceva due avvisi a
+    # ogni esecuzione senza che nulla diventasse rosso: la guardia contro il
+    # rumore c'era ancora, ma non vedeva piu' il rumore. Il turno felice del
+    # ponte non deve loggare NIENTE a livello WARNING -- ne' sul contesto ne'
+    # su altro -- o il silenzio dichiarato smette di distinguersi.
+    assert not caplog.records, (
+        "il turno felice del ponte ha prodotto degli avvisi: un log che "
+        "scatta sempre e' rumore, e il silenzio dichiarato smette di "
+        "distinguersi -- "
+        f"{[r.getMessage() for r in caplog.records]!r}")
     assert _CONTESTO in system
     assert prompts._CONTESTO_PRESENTE in system
     assert prompts._CONTESTO_ASSENTE not in system
@@ -369,6 +404,11 @@ def test_contesto_presente_ma_vuoto_non_e_un_job_legacy(caplog):
         system = _cattura_system(job)
 
     assert not [r for r in caplog.records if "PRIMA di questo deploy" in r.getMessage()]
+    # fix round 1, stessa ragione del test qui sopra: nemmeno questo caso
+    # deve produrre avvisi estranei che rendano il pin riempibile da rumore.
+    assert not caplog.records, (
+        "avvisi inattesi sul job col contesto vuoto: "
+        f"{[r.getMessage() for r in caplog.records]!r}")
     assert prompts._CONTESTO_ASSENTE in system
 
 
