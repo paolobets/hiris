@@ -54,6 +54,14 @@ _TOXIC_ASSISTANT_PREFIXES = (
     "[runner non disponibile]",
     "[vuoto]",
     "[mock] risposta di prova",
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 2): il quinto
+    # sentinella. `--output-format stream-json` puo' chiudersi senza l'evento
+    # finale `type=result` (flusso troncato, processo ucciso, formato della CLI
+    # cambiato): il ponte lo DICHIARA invece di restituire una risposta
+    # parziale che sembra normale, e il testo che produce non e' una risposta
+    # -- va filtrato qui come gli altri quattro, o tornerebbe al modello a ogni
+    # turno successivo.
+    "[flusso incompleto]",
 )
 
 

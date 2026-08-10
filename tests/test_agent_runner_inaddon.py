@@ -44,12 +44,19 @@ def test_safe_subprocess_env_excludes_metered_api_keys(monkeypatch):
 
 
 def test_reason_chat_returns_fallback_reply_on_nonzero_returncode():
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 2): lo stdout
+    # finto passa alla forma NDJSON di `--output-format stream-json --verbose`
+    # -- il soggetto del test (il ponte non solleva e risponde comunque quando
+    # il CLI esce != 0) e' vivo e invariato, cambia solo la forma dello stdout.
+    # Gli assert restano identici, ed e' proprio questo il punto: sono la prova
+    # che il cambio di formato non ha perso questo ramo.
     job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
 
     class _Proc:
         returncode = 1
-        stdout = ""
+        stdout = ('{"type":"result","subtype":"error_during_execution",'
+                  '"is_error":true,"result":"quota superata"}\n')
         stderr = "boom"
 
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
@@ -57,9 +64,17 @@ def test_reason_chat_returns_fallback_reply_on_nonzero_returncode():
 
     assert isinstance(result, dict)
     assert isinstance(result.get("reply"), str) and result["reply"]
+    # ...e il ramo resta RICONOSCIBILE: il sentinella col codice, e la causa
+    # estratta dall'evento finale invece che nascosta dietro un numero.
+    assert result["reply"].startswith("[errore runner rc=1]")
+    assert "quota superata" in result["reply"]
 
 
 def test_reason_chat_returns_fallback_reply_on_timeout():
+    # Il ramo (5) non ha nemmeno uno stdout da leggere: e' l'unico che il
+    # cambio di formato non tocca, e va verificato che sia rimasto tale (con
+    # `stream-json` la tentazione e' di leggere il flusso parziale del processo
+    # ucciso e spacciarlo per risposta).
     job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
 
@@ -71,6 +86,7 @@ def test_reason_chat_returns_fallback_reply_on_timeout():
 
     assert isinstance(result, dict)
     assert isinstance(result.get("reply"), str) and result["reply"]
+    assert result["reply"] == "[runner non disponibile]"
 
 
 class _Resp:
@@ -92,7 +108,20 @@ def test_run_once_chat_reasons_and_submits():
            "context": {"system_prompt": "Sei HIRIS.", "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job})
 
-    class _Proc: returncode = 0; stdout = '{"result": "2 luci accese"}'; stderr = ""
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 2): lo stdout
+    # finto e' ora il flusso NDJSON vero -- `system/init`, un evento
+    # `assistant`, e l'evento finale `result` da cui si prende il testo.
+    class _Proc:
+        returncode = 0
+        stdout = (
+            '{"type":"system","subtype":"init","tools":["Task"],"mcp_servers":[]}\n'
+            '{"type":"assistant","message":{"role":"assistant",'
+            '"content":[{"type":"text","text":"2 luci accese"}]}}\n'
+            '{"type":"result","subtype":"success","is_error":false,"num_turns":1,'
+            '"result":"2 luci accese","usage":{"input_tokens":12,'
+            '"cache_creation_input_tokens":4096,"cache_read_input_tokens":8192,'
+            '"output_tokens":57}}\n')
+        stderr = ""
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
         out = runner.run_once(c, "http://127.0.0.1:8099", {"X-HIRIS-Internal-Token": "TOK"}, "live")
     assert out == "done"
@@ -374,3 +403,28 @@ def test_argv_del_ponte_non_collega_nessuno_strumento():
         f"il divieto sui tool LOCALI del CLI (shell/fs del container addon) e' "
         f"sparito da argv ({argv!r}): il prompt non e' l'unica difesa, e questa "
         f"e' l'altra.")
+
+
+# ── fetta "il ponte riceve gli strumenti" (parita' B, Task 2) ────────────────
+
+def test_argv_del_ponte_chiede_il_formato_a_flusso_e_verboso():
+    """`--output-format stream-json` SENZA `--verbose` e' peggio del vecchio
+    `json`: la CLI non emette gli eventi intermedi, l'evento `system/init` non
+    arriva mai, e con lui sparisce l'UNICO posto in cui si vede che il server
+    MCP non e' partito (reperto dal vivo, progetto 3.4/6). Le due opzioni sono
+    una cosa sola e vanno pinnate insieme, o una "pulizia" futura puo'
+    togliere `--verbose` lasciando la suite verde e il ponte cieco."""
+    argv = runner._chat_claude_args("SYS", "USER", "sonnet")
+
+    assert "--output-format" in argv
+    assert argv[argv.index("--output-format") + 1] == "stream-json"
+    assert "--verbose" in argv, (
+        f"--verbose e' sparito da argv ({argv!r}): senza, la CLI non emette "
+        "l'evento system/init e il fallimento del server MCP torna a essere "
+        "invisibile -- il difetto numero uno di questo prodotto.")
+    # e il vecchio formato non deve poter rientrare accanto al nuovo: due
+    # formati nell'argv sono due strade di lettura, che e' esattamente cio' che
+    # il Task 2 esiste per evitare.
+    assert "json" not in argv, (
+        f"`--output-format json` e' rimasto in argv ({argv!r}) accanto a "
+        "stream-json")

@@ -325,14 +325,24 @@ def test_is_toxic_copre_i_sentinella_veri_del_ponte():
     # 1. modalita' mock (qualunque mode != "live")
     mock_reply = runner._reason_chat(job, "mock")["reply"]
 
+    # fetta "il ponte riceve gli strumenti" (parita' B, Task 2): gli stdout
+    # finti passano alla forma NDJSON di `--output-format stream-json`, e i
+    # sentinella del ponte diventano CINQUE -- il quinto e' il flusso che si
+    # chiude senza evento finale. Il test si adegua e si ESTENDE: nessuno dei
+    # quattro modi di fallire e' sparito, ce n'e' uno in piu' da coprire.
+    _INIT = '{"type":"system","subtype":"init","tools":[],"mcp_servers":[]}'
+
     # 2. il CLI esce con rc != 0 (auth 401, quota, crash del processo...)
     with patch.object(runner.subprocess, "run",
-                      lambda *a, **k: _Proc(3221226505, '{"result": "boom"}')):
+                      lambda *a, **k: _Proc(3221226505,
+                                            _INIT + '\n{"type":"result",'
+                                            '"subtype":"success","result":"boom"}')):
         rc_reply = runner._reason_chat(job, "live")["reply"]
 
     # 3. il CLI esce 0 ma senza testo
     with patch.object(runner.subprocess, "run",
-                      lambda *a, **k: _Proc(0, '{"result": ""}')):
+                      lambda *a, **k: _Proc(0, _INIT + '\n{"type":"result",'
+                                            '"subtype":"success","result":""}')):
         empty_reply = runner._reason_chat(job, "live")["reply"]
 
     # 4. il CLI non e' installato/eseguibile
@@ -342,7 +352,22 @@ def test_is_toxic_copre_i_sentinella_veri_del_ponte():
     with patch.object(runner.subprocess, "run", _boom):
         missing_reply = runner._reason_chat(job, "live")["reply"]
 
-    for reply in (mock_reply, rc_reply, empty_reply, missing_reply):
+    # 5. il flusso si chiude senza l'evento finale `result` (troncato, processo
+    #    ucciso, formato della CLI cambiato)
+    with patch.object(runner.subprocess, "run",
+                      lambda *a, **k: _Proc(0, _INIT + '\n{"type":"assistant",'
+                                            '"message":{"content":[]}}')):
+        troncato_reply = runner._reason_chat(job, "live")["reply"]
+
+    # i cinque modi di fallire restano CINQUE risposte diverse: due sentinella
+    # identici sarebbero due guasti indistinguibili in cronologia e nel log.
+    assert empty_reply == "[vuoto]"
+    assert troncato_reply.startswith("[flusso incompleto]")
+    assert len({mock_reply, rc_reply, empty_reply, missing_reply,
+                troncato_reply}) == 5
+
+    for reply in (mock_reply, rc_reply, empty_reply, missing_reply,
+                  troncato_reply):
         assert _is_toxic_assistant(reply) is True, (
             f"sentinella del ponte non filtrato: {reply!r} -- finirebbe in "
             "chat_history.db e tornerebbe al modello a ogni turno")

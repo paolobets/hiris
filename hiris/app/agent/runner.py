@@ -22,6 +22,7 @@ cio' che continua a non poter fare e' guardarla ADESSO e agire su di essa.
 Gli strumenti restano fuori: li riattacca la fetta B
 (docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md)."""
 import asyncio, json, logging, os, subprocess, time
+from dataclasses import dataclass, field
 import httpx
 from . import prompts
 
@@ -33,11 +34,33 @@ _LOCAL_TOOLS_DENY = "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookE
 
 
 def _chat_claude_args(system: str, user: str, model: str) -> list:
+    """L'argv del ponte.
+
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 2): il formato
+    della risposta passa da `json` a `stream-json --verbose`, e NON e' un
+    dettaglio di forma. Con `--output-format json` il fallimento del server
+    MCP e' INVISIBILE: verificato dal vivo (docs/design/
+    2026-08-10-parita-ponte-chat.md, 3.4/6) puntando la config a un comando
+    inesistente, la CLI risponde `is_error: false`, `subtype: "success"` e
+    NESSUN campo dice che gli strumenti non c'erano. Solo `stream-json
+    --verbose` porta, nell'evento `{"type": "system", "subtype": "init"}` e
+    PRIMA del primo token, `mcp_servers: [{"name": ..., "status":
+    "connected"|"failed"}]` e la lista `tools` risolta.
+
+    `--verbose` e' OBBLIGATORIO: senza, la CLI non emette gli eventi
+    intermedi e l'`init` non arriva mai.
+
+    Cosa NON cambia qui, ed e' pinnato in fondo a
+    tests/test_agent_runner_inaddon.py: nessun `--mcp-config`, nessun
+    `--allowedTools`. Questo task cambia SOLO il formato di lettura; gli
+    strumenti li attacca il Task 3, e il prompt che li dichiara nasce dallo
+    stesso booleano dell'argv."""
     return ["claude", "-p", user, "--model", model,
             "--system-prompt", system,
             "--exclude-dynamic-system-prompt-sections",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
-            "--permission-mode", "default", "--output-format", "json"]
+            "--permission-mode", "default",
+            "--output-format", "stream-json", "--verbose"]
 
 
 def modello_cli(modello_risolto: str) -> str:
@@ -93,6 +116,156 @@ def _safe_subprocess_env() -> dict:
         if k.startswith("ANTHROPIC_") or k.startswith("CLAUDE_"):
             env[k] = v
     return env
+
+# -- fetta "il ponte riceve gli strumenti" (parita' B, Task 2): la lettura del
+# flusso, UNA sola ------------------------------------------------------------
+# `--output-format stream-json` non restituisce un oggetto JSON ma NDJSON: una
+# riga per evento. Cambiare formato riscrive quindi il parsing di OGNI risposta
+# del ponte, rami d'errore inclusi -- ed e' il motivo per cui questo pezzo sta
+# da solo, PRIMA degli strumenti: uno `stream-json` sbagliato e un MCP che non
+# parte, nello stesso commit, sarebbero indistinguibili.
+#
+# `leggi_flusso` e' l'UNICA strada di lettura: non affianca il vecchio parsing,
+# lo sostituisce. `_reason_chat` la chiama una volta sola, PRIMA di guardare il
+# returncode, e tutti e cinque i suoi esiti (rc!=0, testo, flusso senza
+# risultato, testo vuoto, CLI non eseguibile) si decidono su quell'unico esito.
+# Due strade -- una per il vecchio formato e una per il nuovo -- sarebbero la
+# biforcazione che questo task esiste per evitare.
+#
+# La funzione e' PURA: nessun subprocess, nessuna rete, nessun log. E' cio' che
+# la rende provabile senza la CLI (tests/test_flusso_stream_json.py).
+
+# Il sentinella del silenzio dichiarato (3) della fetta. Come gli altri tre del
+# ponte, e' anche in `chat_store._TOXIC_ASSISTANT_PREFIXES`: senza, finirebbe
+# in chat_history.db e tornerebbe al modello a ogni turno successivo -- difetto
+# gia' trovato dal vivo e riparato una volta su questo ramo.
+_SENTINELLA_FLUSSO_INCOMPLETO = "[flusso incompleto]"
+
+
+@dataclass
+class EsitoFlusso:
+    """Cio' che si ricava da uno stdout `stream-json`.
+
+    - `testo`: il campo `result` dell'evento finale `{"type": "result"}`;
+    - `init`: l'evento `{"type": "system", "subtype": "init"}` INTERO (o
+      `None`). Porta `mcp_servers` e la lista `tools` risolta: in questo task
+      si logga soltanto -- ci decidera' sopra il Task 4, e per farlo gli serve
+      il dato intero, non un riassunto;
+    - `usage`: il blocco `usage` del risultato (o `{}`) -- la misura che chiude
+      la domanda aperta 2 (costo del prefisso) dopo la prima settimana di UAT,
+      invece di lasciarla a un'opinione;
+    - `righe_saltate`: quante righe non erano JSON. Una riga illeggibile si
+      salta e si CONTA, non fa cadere il flusso: la CLI puo' scrivere una riga
+      di rumore senza che la risposta vada persa, ma il fatto non sparisce;
+    - `righe_lette`: quante righe non vuote sono arrivate (distingue un flusso
+      VUOTO da un flusso pieno di rumore);
+    - `risultato`: l'evento finale grezzo, o `None`. La sua ASSENZA e' il
+      silenzio dichiarato (3) della fetta e non deve mai diventare una stringa
+      vuota in silenzio: sarebbe indistinguibile da "il modello non ha risposto
+      niente"."""
+
+    testo: str = ""
+    init: dict | None = None
+    usage: dict = field(default_factory=dict)
+    righe_saltate: int = 0
+    righe_lette: int = 0
+    risultato: dict | None = None
+    num_turni: int | None = None
+
+    @property
+    def risultato_presente(self) -> bool:
+        """False = flusso troncato, processo ucciso a meta', o formato cambiato
+        da un aggiornamento della CLI. Chi legge DEVE dichiararlo."""
+        return self.risultato is not None
+
+
+def leggi_flusso(stdout: str) -> EsitoFlusso:
+    """Legge l'NDJSON di `claude --output-format stream-json --verbose`.
+
+    Non solleva mai: ogni modo di essere malformato (riga non-JSON, JSON che
+    non e' un oggetto, flusso vuoto, flusso senza evento finale) diventa un
+    campo dell'`EsitoFlusso`, mai un'eccezione che risale a `_reason_chat`."""
+    esito = EsitoFlusso()
+    for riga in (stdout or "").splitlines():
+        riga = riga.strip()
+        if not riga:
+            continue
+        esito.righe_lette += 1
+        try:
+            evento = json.loads(riga)
+        except (ValueError, TypeError):
+            esito.righe_saltate += 1
+            continue
+        if not isinstance(evento, dict):
+            # JSON valido ma non un evento (una lista, un numero): stessa sorte
+            # di una riga illeggibile -- si conta e si va avanti.
+            esito.righe_saltate += 1
+            continue
+        tipo = evento.get("type")
+        if tipo == "system" and evento.get("subtype") == "init":
+            if esito.init is None:   # il PRIMO init: arriva prima del primo token
+                esito.init = evento
+        elif tipo == "result":
+            esito.risultato = evento  # l'ULTIMO result e' quello finale
+    risultato = esito.risultato or {}
+    testo = risultato.get("result")
+    esito.testo = testo if isinstance(testo, str) else ""
+    uso = risultato.get("usage")
+    esito.usage = uso if isinstance(uso, dict) else {}
+    # `num_turns` sta in cima all'evento `result`, non dentro `usage` (verificato
+    # sul flusso vero): si legge di la', con `usage` come ripiego.
+    turni = risultato.get("num_turns")
+    if turni is None:
+        turni = esito.usage.get("num_turns")
+    esito.num_turni = turni if isinstance(turni, int) else None
+    return esito
+
+
+def _logga_init(esito: EsitoFlusso, job_id) -> None:
+    """L'`init` letto e loggato, ma NON ancora agito (Task 2, Step 5).
+
+    In QUESTO task il valore atteso e' la lista vuota: nessun server MCP e'
+    configurato, quindi `mcp_servers` e' `[]` e fra i `tools` non c'e' nessun
+    `mcp__hiris__*`. Loggarlo adesso e' cio' che rende il Task 4 una riga di
+    decisione invece di un secondo lavoro di parsing -- ed e' la prima misura
+    utile quando la build girera' sull'add-on vero.
+
+    Si logga il nome e lo stato di ogni server, non l'evento intero: la
+    `--mcp-config` porta gli header di autenticazione, e un `%r` generoso e' il
+    modo classico di far finire un token nel log."""
+    if esito.init is None:
+        log.warning(
+            "flusso stream-json senza evento system/init (job_id=%s): o "
+            "--verbose non e' arrivato alla CLI, o il formato e' cambiato. In "
+            "questo task non c'e' nessun server MCP da controllare, ma dal "
+            "Task 4 e' l'informazione su cui si decide se gli strumenti ci "
+            "sono davvero", job_id)
+        return
+    server = [{"name": s.get("name"), "status": s.get("status")}
+              for s in (esito.init.get("mcp_servers") or [])
+              if isinstance(s, dict)]
+    strumenti = esito.init.get("tools")
+    log.info("init del ponte (job_id=%s): mcp_servers=%s, strumenti risolti=%d",
+             job_id, server,
+             len(strumenti) if isinstance(strumenti, list) else 0)
+
+
+def _logga_uso(esito: EsitoFlusso, job_id) -> None:
+    """La misura che chiudera' la domanda aperta 2 (Task 2, Step 4).
+
+    Non e' telemetria e non esce dall'add-on: e' una riga di log per turno,
+    l'unico modo perche' "quanto costa il prefisso" smetta di essere
+    un'opinione dopo la prima settimana di UAT. Solo conteggi: nessun valore di
+    prompt, nessun testo di risposta, nessun segreto."""
+    uso = esito.usage
+    log.info(
+        "uso del ponte (job_id=%s): input_tokens=%s "
+        "cache_creation_input_tokens=%s cache_read_input_tokens=%s "
+        "output_tokens=%s num_turns=%s",
+        job_id, uso.get("input_tokens"), uso.get("cache_creation_input_tokens"),
+        uso.get("cache_read_input_tokens"), uso.get("output_tokens"),
+        esito.num_turni)
+
 
 def _reason_chat(job: dict, mode: str) -> dict:
     """Chat-via-abbonamento: risponde come HIRIS senza strumenti (nessun tool
@@ -154,31 +327,78 @@ def _reason_chat(job: dict, mode: str) -> dict:
     # degrado nuovo, quindi non e' uno dei silenzi dichiarati della fetta.
     model = context.get("model") or "sonnet"
     argv = _chat_claude_args(system, user, model)
+    job_id = (job or {}).get("job_id")
     try:
         proc = subprocess.run(argv, capture_output=True, text=True,
                               timeout=300, env=_safe_subprocess_env())
-        if proc.returncode != 0:
-            # claude -p --output-format json mette gli errori (auth 401, quota,
-            # ecc.) su STDOUT come JSON, non su stderr: logga entrambi e prova a
-            # estrarre un dettaglio leggibile per non nascondere la causa.
-            log.warning("claude rc=%s stderr=%r stdout=%r", proc.returncode,
-                        proc.stderr[:300], proc.stdout[:500])
-            detail = ""
-            try:
-                j = json.loads(proc.stdout)
-                detail = j.get("result") or j.get("error") or j.get("subtype") or ""
-            except (ValueError, TypeError):
-                detail = (proc.stdout or proc.stderr or "").strip()
-            return {"reply": f"[errore runner rc={proc.returncode}] {str(detail)[:300]}".strip()}
-        try:
-            data = json.loads(proc.stdout)
-            text = data.get("result") or ""
-        except (ValueError, TypeError):
-            text = proc.stdout
-        return {"reply": (text or "").strip() or "[vuoto]"}
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        # Esito (5): il CLI non parte, non c'e' o non finisce in tempo. Resta
+        # l'unico ramo che non ha nemmeno uno stdout da leggere.
         log.warning("claude non eseguibile: %s", type(exc).__name__)
         return {"reply": "[runner non disponibile]"}
+
+    # UNA sola lettura del flusso, prima di qualunque ramo: e' cosi' che il
+    # ramo d'errore e quello felice non possono divergere nel modo di leggere
+    # la stessa risposta.
+    esito = leggi_flusso(proc.stdout or "")
+    _logga_init(esito, job_id)   # Step 5: letto e loggato, NON ancora agito
+    _logga_uso(esito, job_id)    # Step 4: la misura per la domanda aperta 2
+    if esito.righe_saltate:
+        # Una riga di rumore non fa cadere il flusso, ma non sparisce: se la
+        # CLI cambia formato, il conto sale prima che qualcosa si rompa.
+        log.warning(
+            "flusso stream-json con %d riga/righe non-JSON saltate su %d "
+            "(job_id=%s): la risposta e' stata letta lo stesso, ma il formato "
+            "della CLI non e' piu' esattamente quello atteso",
+            esito.righe_saltate, esito.righe_lette, job_id)
+
+    if proc.returncode != 0:
+        # Esito (1). `claude -p` mette gli errori (auth 401, quota, ecc.) su
+        # STDOUT come JSON, non su stderr: la nota vale ancora con stream-json,
+        # dove l'errore arriva nell'evento `result` con `is_error: true`. Logga
+        # entrambi i canali e prova a estrarre un dettaglio leggibile, per non
+        # nascondere la causa dietro un numero.
+        log.warning("claude rc=%s stderr=%r stdout=%r", proc.returncode,
+                    (proc.stderr or "")[:300], (proc.stdout or "")[:500])
+        risultato = esito.risultato or {}
+        dettaglio = (esito.testo or risultato.get("error")
+                     or risultato.get("subtype") or "")
+        if not dettaglio:
+            # Nessun evento finale da cui ricavarlo (processo morto a meta'):
+            # meglio il flusso grezzo che un silenzio.
+            dettaglio = (proc.stdout or proc.stderr or "").strip()
+        return {"reply":
+                f"[errore runner rc={proc.returncode}] {str(dettaglio)[:300]}".strip()}
+
+    if not esito.risultato_presente:
+        # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
+        # 0 ma il flusso si e' chiuso senza l'evento finale: troncato, ucciso,
+        # o formato cambiato da un aggiornamento della CLI. Restituire "" qui
+        # sarebbe indistinguibile da "il modello non ha risposto niente", e
+        # restituire il testo parziale degli eventi `assistant` sarebbe peggio:
+        # una risposta che SEMBRA normale. Si dichiara nel log e -- come tutti
+        # i degradi di questa fetta -- anche all'utente, nel testo della reply.
+        log.warning(
+            "flusso stream-json chiuso senza evento finale type=result "
+            "(job_id=%s, rc=%s): righe lette=%d, righe non-JSON saltate=%d -- "
+            "il ponte NON ha una risposta completa e lo dichiara nella reply",
+            job_id, proc.returncode, esito.righe_lette, esito.righe_saltate)
+        coda = (proc.stdout or "").strip()[-200:]
+        avviso = (
+            f"{_SENTINELLA_FLUSSO_INCOMPLETO} In questo turno la risposta si e' "
+            "chiusa senza il messaggio finale del modello: quello che e' "
+            "arrivato non e' una risposta completa, e non te la presento come "
+            "tale. Riprova; se succede a ogni turno, il formato della CLI e' "
+            "cambiato e va guardato il log dell'add-on.")
+        # Il pezzo grezzo resta nella reply, come faceva il vecchio ramo "JSON
+        # non parsabile": e' l'unico modo di diagnosticare dall'interfaccia un
+        # cambio di formato durante l'UAT. Compromesso dichiarato: e' brutto da
+        # leggere, ma un ramo muto sarebbe peggio.
+        return {"reply": f"{avviso} (ultimo pezzo di flusso letto: {coda})"
+                if coda else avviso}
+
+    # Esiti (2) e (4): il testo del risultato, oppure il sentinella del vuoto.
+    return {"reply": esito.testo.strip() or "[vuoto]"}
 
 def reason(job: dict, mode: str) -> dict:
     """Il runner del ponte ragiona SOLO i job di chat.

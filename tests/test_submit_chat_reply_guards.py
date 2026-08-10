@@ -143,8 +143,12 @@ async def test_bridge_error_sentinel_is_dropped_not_persisted(tmp_path):
     from hiris.app.agent import runner
 
     class _Proc:
+        # fetta "il ponte riceve gli strumenti" (parita' B, Task 2): stdout
+        # nella forma NDJSON di `--output-format stream-json --verbose`.
         returncode = 3221226505
-        stdout = '{"result": "Invalid API key"}'
+        stdout = ('{"type":"system","subtype":"init","tools":[],"mcp_servers":[]}\n'
+                  '{"type":"result","subtype":"error_during_execution",'
+                  '"is_error":true,"result":"Invalid API key"}\n')
         stderr = ""
 
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
