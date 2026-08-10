@@ -5,6 +5,7 @@ import time
 import pytest
 from unittest.mock import patch
 from hiris.app.agent import runner, prompts
+from hiris.app.claude_runner import BASE_IDENTITA, BASE_REGOLE_STRUMENTI
 
 
 def test_build_chat_messages_available():
@@ -233,6 +234,38 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     assert "per agire" not in system
     assert "Hai accesso a strumenti" not in system
     assert "in attesa di conferma" not in system
+
+    # ── fix round 1, Important 2 della review indipendente: le tre negative
+    # qui sopra erano diventate AGGIRABILI, e l'aggiramento era gia' avvenuto.
+    # `"Hai accesso a strumenti" not in system` passava mentre il prompt
+    # affermava gli strumenti -- perche' `BASE_SYSTEM_PROMPT`, che il Task 2
+    # aveva cominciato a comporre qui, lo scrive con altre parole («Hai A
+    # DISPOSIZIONE strumenti»). La rete non era stata tagliata: era stata
+    # aggirata. Le negative vanno quindi sui PEZZI CHE CONTANO, presi dal
+    # testo reale della meta' che il ponte non deve emettere
+    # (`claude_runner.BASE_REGOLE_STRUMENTI`), e applicate al `system`
+    # COMPOSTO -- non alla costante.
+    for ordine in ("Hai a disposizione strumenti", "Usa SEMPRE gli strumenti",
+                   "chiama ricorda subito"):
+        assert ordine in BASE_REGOLE_STRUMENTI, (
+            f"{ordine!r} non e' piu' nel testo di BASE_REGOLE_STRUMENTI: "
+            "questa negativa non sta piu' sorvegliando niente")
+        assert ordine not in system, (
+            f"il prompt del ponte ORDINA {ordine!r} a un percorso che non ha "
+            "strumenti: e' il caso 'preso nota senza aver salvato'")
+    # e la meta' vera c'e', cosi' la negativa qui sopra non passa perche' BASE
+    # e' sparito del tutto
+    assert BASE_IDENTITA.strip() in system
+
+    # ── fix round 1, Important 1: la falsita' speculare era stata corretta
+    # per la casa («leggere» -> «guardare adesso») e lasciata in piedi per la
+    # META' MEMORIA. Il contesto che arriva al ponte contiene TUTTI i ricordi
+    # (`costruisci_nucleo` chiama `richiama(limite=conta())`) e le sessioni
+    # precedenti: dire al modello che non puo' «richiamare ricordi» mentre il
+    # ricordo e' scritto tre blocchi piu' sotto e' lo stesso difetto.
+    assert "richiamare ricordi" not in system
+    assert "non puoi salvare nuovi ricordi" in system
+    assert "ricordi e sessioni precedenti compresi" in system
 
     # ── fetta "il ponte riceve il nucleo" (parita' A, Task 2): il pin si
     # ESTENDE, non si riduce. Tutte le asserzioni qui sopra restano -- gli

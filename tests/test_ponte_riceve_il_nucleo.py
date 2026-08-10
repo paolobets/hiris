@@ -27,7 +27,11 @@ import logging
 from unittest.mock import patch
 
 from hiris.app.agent import prompts, runner
-from hiris.app.claude_runner import BASE_SYSTEM_PROMPT
+from hiris.app.claude_runner import (
+    BASE_IDENTITA,
+    BASE_REGOLE_STRUMENTI,
+    BASE_SYSTEM_PROMPT,
+)
 
 
 _CONTESTO = "## La casa\nSalotto: luce accesa.\n\n## Sessioni precedenti\n[2026-08-01] ieri"
@@ -69,7 +73,7 @@ def test_ordine_dei_blocchi_uguale_al_ramo_sincrono():
     persona = "Sei HIRIS, la persona della chat."
     system, _user = prompts.build_chat_messages(persona, [], contesto=_CONTESTO)
 
-    i_base = system.index(BASE_SYSTEM_PROMPT.strip())
+    i_base = system.index(BASE_IDENTITA.strip())
     i_persona = system.index(persona)
     i_guida = system.index(prompts._GUIDA_SENZA_STRUMENTI)
     i_contesto = system.index(_CONTESTO)
@@ -78,16 +82,80 @@ def test_ordine_dei_blocchi_uguale_al_ramo_sincrono():
 
 
 def test_base_system_prompt_e_importato_non_ricopiato():
-    """`BASE_SYSTEM_PROMPT` ha UNA fonte (`claude_runner.py:101`). Una seconda
-    copia in `prompts.py` sarebbe la "funzione doppia" vietata da CLAUDE.md e
+    """BASE ha UNA fonte (`claude_runner.py`). Una seconda copia in
+    `prompts.py` sarebbe la "funzione doppia" vietata da CLAUDE.md e
     divergerebbe in silenzio: i due percorsi di chat direbbero al modello due
-    cose diverse su chi e'."""
+    cose diverse su chi e'. Vale anche dopo il taglio in due meta' (fix round
+    1): si importano, non si riscrivono."""
+    assert prompts.BASE_IDENTITA is BASE_IDENTITA
+    assert prompts.BASE_REGOLE_STRUMENTI is BASE_REGOLE_STRUMENTI
     assert prompts.BASE_SYSTEM_PROMPT is BASE_SYSTEM_PROMPT
     sorgente = open(prompts.__file__, encoding="utf-8").read()
-    assert "from ..claude_runner import BASE_SYSTEM_PROMPT" in sorgente
+    assert "from ..claude_runner import BASE_IDENTITA" in sorgente
     assert "Sei HIRIS, assistente AI integrata in Home Assistant" not in sorgente, (
-        "il testo di BASE_SYSTEM_PROMPT e' stato RICOPIATO in prompts.py "
-        "invece che importato")
+        "il testo di BASE e' stato RICOPIATO in prompts.py invece che importato")
+
+
+# ---------------------------------------------------------------------------
+# ②bis fix round 1, Critical 1: di BASE il ponte emette la sola META' VERA.
+#
+# Prima di questo giro il ponte componeva `BASE_SYSTEM_PROMPT` intero, e la
+# guida che segue doveva smentirne quattro affermazioni. Ma «Usa SEMPRE gli
+# strumenti per dati sulla casa» e «chiama ricorda subito, senza chiedere il
+# permesso» non sono affermazioni: sono ORDINI di chiamare uno strumento che
+# qui non esiste. Il caso peggiore -- l'utente dice "ricordati che la caldaia
+# perde", il modello obbedisce a BASE, lo strumento non c'e', e risponde
+# "preso nota" -- e' il bug misurato in produzione da cui `ricorda` e' nato
+# (vedi il commento sopra BASE_IDENTITA in claude_runner.py). Un ordine non
+# emesso e' un meccanismo; una frase che lo contraddice e' una speranza.
+# ---------------------------------------------------------------------------
+
+def test_senza_strumenti_il_ponte_non_emette_le_regole_sugli_strumenti():
+    system, _user = prompts.build_chat_messages("Sei HIRIS.", [], contesto=_CONTESTO)
+
+    assert BASE_IDENTITA.strip() in system, "la meta' VERA di BASE deve esserci"
+    assert BASE_REGOLE_STRUMENTI not in system
+    # i quattro pezzi che sul ponte sarebbero falsi o ineseguibili, uno per uno
+    assert "Usa SEMPRE gli strumenti" not in system
+    assert "chiama ricorda subito" not in system
+    assert "Hai a disposizione strumenti" not in system
+    assert "non aggiungere disclaimers" not in system
+
+
+def test_con_strumenti_il_ponte_riemette_base_intero_e_contiguo():
+    """Il complemento, e la ragione per cui non nasce una terza variante di
+    BASE da mantenere: con `strumenti_attivi=True` le due meta' tornano
+    adiacenti e il blocco e' byte per byte `BASE_SYSTEM_PROMPT`, cioe' quello
+    che il ramo sincrono compone gia' oggi."""
+    system, _user = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto=_CONTESTO, strumenti_attivi=True)
+
+    assert BASE_SYSTEM_PROMPT.strip() in system
+    assert "Usa SEMPRE gli strumenti" in system
+    assert "chiama ricorda subito" in system
+
+
+# ---------------------------------------------------------------------------
+# ②ter fix round 1, Important 1: la fotografia porta anche la MEMORIA, e il
+# prompt deve dirlo. `costruisci_nucleo` passa TUTTI i ricordi
+# (`richiama(limite=conta())`) e `componi_contesto_chat` aggiunge
+# "## Sessioni precedenti": negare al modello di poter "richiamare ricordi"
+# mentre il ricordo e' scritto tre blocchi piu' sotto e' la stessa falsita'
+# speculare gia' corretta per lo stato della casa.
+# ---------------------------------------------------------------------------
+
+def test_la_memoria_nella_fotografia_non_viene_negata():
+    ricordo = ("## Cio' che le persone hanno detto" + chr(10)
+               + "- la caldaia perde (detto da paolo)")
+    system, _user = prompts.build_chat_messages("Sei HIRIS.", [], contesto=ricordo)
+
+    # quel che si nega e' lo STRUMENTO...
+    assert "non puoi salvare nuovi ricordi" in system
+    assert "andare a cercarne altri adesso" in system
+    # ...non il CONTENUTO, che e' li' dentro
+    assert "richiamare ricordi" not in system
+    assert "ricordi e sessioni precedenti compresi" in system
+    assert ricordo in system
 
 
 # ---------------------------------------------------------------------------

@@ -13,13 +13,16 @@ piu' soltanto `history` + `system_prompt`. Riceve anche il `contesto` -- la
 STESSA stringa che il ramo sincrono passa al runner, composta da
 `handlers_chat.componi_contesto_chat` (nucleo + sessioni precedenti). Da qui
 in poi questo file compone il system prompt del ponte NELLO STESSO ORDINE del
-ramo sincrono (`claude_runner.py:612-633`): BASE -> persona -> modificatori ->
-guida -> contesto. `BASE_SYSTEM_PROMPT` si IMPORTA da `..claude_runner`: una
-seconda copia qui sarebbe la "funzione doppia" vietata da CLAUDE.md:70-72.
-(Nessun ciclo: `claude_runner.py` importa solo stdlib, `anthropic` e
-`.backends.pricing` -- mai `agent/`.)
+ramo sincrono (`claude_runner.py`, `ClaudeRunner.chat`): BASE -> persona ->
+modificatori -> guida -> contesto. Le costanti di BASE si IMPORTANO da
+`..claude_runner`: una seconda copia qui sarebbe la "funzione doppia" vietata
+da CLAUDE.md:70-72. (Nessun ciclo: `claude_runner.py` importa solo stdlib,
+`anthropic` e `.backends.pricing` -- mai `agent/`.)
+
+Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
+`build_chat_messages` e il commento sopra `BASE_IDENTITA` in claude_runner.py.
 """
-from ..claude_runner import BASE_SYSTEM_PROMPT
+from ..claude_runner import BASE_IDENTITA, BASE_REGOLE_STRUMENTI, BASE_SYSTEM_PROMPT
 
 # Review finale fetta E3, difetto I-1/I-2 dal lato abbonamento: la versione
 # precedente diceva al modello «Hai accesso a strumenti per leggere lo stato
@@ -40,19 +43,26 @@ from ..claude_runner import BASE_SYSTEM_PROMPT
 # gli strumenti, e «conosce» gli darebbe il permesso di credere di sapere.
 # Resta solo «non agisce», che qui e' vero due volte.
 #
-# Serve anche a CORREGGERE i prompt che la precedono: al ponte ne arrivano ORA
-# DUE, scritti entrambi per il percorso SINCRONO -- `BASE_SYSTEM_PROMPT`
-# (claude_runner.py:101: «Usa SEMPRE gli strumenti per dati sulla casa»,
-# «chiama ricorda subito») e il system prompt delle impostazioni della chat
-# (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`, via
-# `handlers_chat._build_system_prompt`), che nomina i quattro strumenti in
-# backtick. Di la' i quattro strumenti di `casa/strumenti.py` esistono
-# davvero; QUI no. Senza questa smentita esplicita -- che sta DOPO entrambi,
-# ed e' il motivo per cui l'ordine di composizione conta -- il modello
-# leggerebbe «usa `cerca` e `guarda`» senza alcun modo di scoprire che non ci
-# sono: di nuovo il "preso nota" senza aver salvato, in un'altra forma. La
-# disciplina e' quella del nucleo: dichiarare cio' che si ignora invece di
-# fingerlo.
+# Serve anche a CORREGGERE il prompt che la precede: il system prompt delle
+# impostazioni della chat (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`, via
+# `handlers_chat._build_system_prompt`) e' scritto per il percorso SINCRONO e
+# nomina i quattro strumenti in backtick. Di la' i quattro strumenti di
+# `casa/strumenti.py` esistono davvero; QUI no. Senza questa smentita
+# esplicita -- che sta DOPO la persona, ed e' il motivo per cui l'ordine di
+# composizione conta -- il modello leggerebbe «usa `cerca` e `guarda`» senza
+# alcun modo di scoprire che non ci sono: di nuovo il "preso nota" senza aver
+# salvato, in un'altra forma. La disciplina e' quella del nucleo: dichiarare
+# cio' che si ignora invece di fingerlo.
+#
+# Fix round 1, Critical 1: fino a poco fa la smentita doveva coprire anche
+# `BASE_SYSTEM_PROMPT`, che il Task 2 aveva cominciato a passare INTERO al
+# ponte -- ordini come «Usa SEMPRE gli strumenti per dati sulla casa» e
+# «chiama ricorda subito» rivolti a un percorso senza strumenti. Non piu': la
+# meta' che nomina gli strumenti (`BASE_REGOLE_STRUMENTI`) qui NON viene
+# emessa affatto (vedi `build_chat_messages`). La smentita di testo restava
+# l'unica difesa contro un ORDINE di chiamare uno strumento inesistente, ed e'
+# esattamente il bug per cui `ricorda` e' nato: un ordine non emesso e' una
+# difesa, una frase che lo contraddice e' una speranza.
 #
 # fetta "il ponte riceve il nucleo" (parita' A, Task 2): la frase «non puoi
 # LEGGERE lo stato della casa ... o una sezione con lo stato della casa, qui
@@ -69,7 +79,8 @@ from ..claude_runner import BASE_SYSTEM_PROMPT
 _GUIDA_SENZA_STRUMENTI = (
     "In questa conversazione NON hai alcuno strumento di HIRIS: non puoi "
     "guardare adesso lo stato della casa (entita', aree, dispositivi, meteo, "
-    "storico) ne' salvare o richiamare ricordi. Se il prompt qui sopra nomina "
+    "storico) e non puoi salvare nuovi ricordi ne' andare a cercarne altri "
+    "adesso. Se il prompt qui sopra nomina "
     "degli strumenti (per esempio `cerca`, `guarda`, `ricorda`, `richiama`) o "
     "ti ordina di chiamarli, qui non ci sono: quelle istruzioni non si "
     "applicano. Non inventare stati, valori o entita', e non dire di aver "
@@ -130,10 +141,13 @@ _GUIDA_CON_STRUMENTI = (
 # separate la guida resta UNA (un solo posto dove si dice cosa il modello ha e
 # non ha) e la frase sul contesto dice sempre il vero.
 _CONTESTO_PRESENTE = (
-    "Cio' che sai della casa e' la fotografia qui sotto, presa quando e' "
-    "arrivato questo messaggio: non e' aggiornabile in questo turno e non "
-    "contiene tutto. Usala per rispondere e dichiara apertamente quando cio' "
-    "che serve non c'e', ma non presentarla come una lettura fatta adesso."
+    "Cio' che sai della casa -- e di cio' che le persone ti hanno detto, "
+    "ricordi e sessioni precedenti compresi -- e' la fotografia qui sotto, "
+    "presa quando e' arrivato questo messaggio: non e' aggiornabile in questo "
+    "turno e non contiene tutto. Se ti chiedono cosa ti hanno detto, cercalo "
+    "li' dentro invece di rispondere che non puoi richiamarlo. Usala per "
+    "rispondere e dichiara apertamente quando cio' che serve non c'e', ma non "
+    "presentarla come una lettura fatta adesso."
 )
 
 _CONTESTO_ASSENTE = (
@@ -172,20 +186,39 @@ def build_chat_messages(system_prompt: str, history: list, *,
     a dirlo -- che gli STRUMENTI non ci sono: `contesto` e' una fotografia,
     non un accesso.
 
-    L'ordine dei blocchi e' quello del ramo sincrono
-    (`claude_runner.py:612-633`), perche' i due percorsi devono comporre le
-    stesse cose nello stesso ordine o divergono in silenzio:
-    `BASE_SYSTEM_PROMPT` -> `system_prompt` (la persona) -> [i modificatori di
-    comportamento, che arrivano al Task 3 di questa fetta] -> la guida ->
-    `contesto`. La guida sta DOPO BASE e la persona per poterli smentire:
-    sono scritti entrambi per il percorso sincrono e nominano strumenti che
-    QUI non esistono.
+    L'ordine dei blocchi e' quello del ramo sincrono (`ClaudeRunner.chat`),
+    perche' i due percorsi devono comporre le stesse cose nello stesso ordine
+    o divergono in silenzio: BASE -> `system_prompt` (la persona) -> [i
+    modificatori di comportamento, che arrivano al Task 3 di questa fetta] ->
+    la guida -> `contesto`. La guida sta DOPO la persona per poterla
+    smentire: e' scritta per il percorso sincrono e nomina strumenti che QUI
+    non esistono.
 
-    `strumenti_attivi` sceglie quale delle due guide entra. Nella fetta A e'
-    sempre False (nessun chiamante di produzione lo passa): il ramo True e'
-    scritto e non raggiungibile, e lo raccoglie la fetta B -- che cosi' cambia
-    un argomento invece di riscrivere il prompt una terza volta."""
-    system_parts = [BASE_SYSTEM_PROMPT.strip()]
+    `strumenti_attivi` sceglie DUE cose insieme, non una (fix round 1,
+    Critical 1 della review indipendente):
+
+    1. **quanto di BASE viene emesso.** `BASE_IDENTITA` (chi e' HIRIS, cosa
+       conosce) e' vera su entrambi i percorsi ed entra sempre.
+       `BASE_REGOLE_STRUMENTI` -- «Usa SEMPRE gli strumenti per dati sulla
+       casa», «chiama ricorda subito», «se hai chiamato uno strumento con
+       successo l'azione e' reale» -- e' un ORDINE DI CHIAMARE UNO STRUMENTO
+       che sul ponte non esiste, e sul ponte non viene emessa affatto. La
+       prima stesura di questo task passava BASE intero e lo faceva smentire
+       dalla guida che segue: una smentita di testo non e' un meccanismo, e
+       il caso peggiore -- «preso nota» senza aver salvato -- e' il bug
+       misurato in produzione da cui `ricorda` e' nato. Con
+       `strumenti_attivi=True` i due pezzi tornano contigui e il blocco e'
+       byte per byte `BASE_SYSTEM_PROMPT`, come nel ramo sincrono;
+    2. **quale delle due guide entra.**
+
+    Nella fetta A e' sempre False (nessun chiamante di produzione lo passa):
+    il ramo True e' scritto e non raggiungibile, e lo raccoglie la fetta B --
+    che cosi' cambia un argomento invece di riscrivere il prompt una terza
+    volta."""
+    # Con gli strumenti attivi le due meta' tornano adiacenti e il blocco e'
+    # esattamente `BASE_SYSTEM_PROMPT`: nessuna terza variante da mantenere.
+    base = BASE_IDENTITA + BASE_REGOLE_STRUMENTI if strumenti_attivi else BASE_IDENTITA
+    system_parts = [base.strip()]
     if system_prompt:
         system_parts.append(system_prompt.strip())
     # [i modificatori di comportamento -- restrict_to_home, response_mode --

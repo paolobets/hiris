@@ -98,10 +98,41 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # salvato, perche' la chiamata che gli abbiamo insegnato a fare fallisce in
 # silenzio. Riscritta perche' descriva cio' che HIRIS e' oggi: conosce la
 # casa e la memoria, risponde, non attua.
-BASE_SYSTEM_PROMPT = (
+# fetta "il ponte riceve il nucleo" (parita' A, Task 2, fix round 1 --
+# Critical 1 della review indipendente): la costante e' spezzata in DUE meta',
+# e `BASE_SYSTEM_PROMPT` resta la loro concatenazione, byte per byte. NESSUN
+# chiamante cambia: `chat()` qui sotto, backends/openai_compat_runner.py
+# (`chat` e `chat_stream`) e tests/test_base_prompt_memoria.py continuano a
+# vedere la STESSA costante con lo STESSO testo (pinnato da
+# tests/test_base_prompt_diviso.py).
+#
+# Perche' spezzarla: dal Task 2 questa costante arriva ANCHE al ponte (la chat
+# in abbonamento, agent/prompts.py), dove i quattro strumenti NON esistono. La
+# prima stesura del task la importava intera e la faceva smentire dal testo che
+# la segue -- ma "Usa SEMPRE gli strumenti per dati sulla casa" e "chiama
+# ricorda subito" sono ORDINI DI CHIAMARE UNO STRUMENTO INESISTENTE, cioe'
+# esattamente cio' che il commento qui sopra dichiara di non voler piu' fare:
+# il modello puo' rispondere "preso nota" senza aver salvato -- il bug misurato
+# in produzione da cui `ricorda` e' nato. Una smentita di TESTO non e' un
+# meccanismo. Spezzata, il ponte compone la sola meta' VERA quando non ha
+# strumenti, ed entrambe quando li avra' (fetta B): la parte falsa non viene
+# proprio emessa.
+#
+# Il criterio del taglio: in `BASE_IDENTITA` cio' che e' vero su ENTRAMBI i
+# percorsi (chi e' HIRIS, cosa conosce); in `BASE_REGOLE_STRUMENTI` tutto cio'
+# che nomina, ordina o presuppone la chiamata a uno strumento. Le due meta'
+# sono PUBBLICHE (senza underscore) perche' attraversano un confine di modulo:
+# `agent/prompts.py` importa `BASE_IDENTITA`. L'ultima riga ("Rispondi nella
+# lingua dell'utente") cade nella seconda meta' perche' la concatenazione deve
+# restare ordinata e identica; sul ponte non manca nulla, perche'
+# `prompts._CHAT_INSTRUCTION` ordina gia' di rispondere in italiano.
+BASE_IDENTITA = (
     "Sei HIRIS, assistente AI integrata in Home Assistant: conosci la casa"
     " (aree, entità, dispositivi, automazioni e script) e la memoria di ciò"
     " che le persone ti hanno detto.\n"
+)
+
+BASE_REGOLE_STRUMENTI = (
     "Hai a disposizione strumenti per cercare e guardare il dettaglio di una"
     " cosa della casa, e per salvare e richiamare ciò che ti viene detto — non"
     " controlli dispositivi, non invii notifiche, non gestisci automazioni o"
@@ -120,6 +151,8 @@ BASE_SYSTEM_PROMPT = (
     " non dirlo se non hai salvato.\n"
     "- Rispondi nella lingua dell'utente."
 )
+
+BASE_SYSTEM_PROMPT = BASE_IDENTITA + BASE_REGOLE_STRUMENTI
 
 # fetta E3 Task 8: `EVALUATION_TOOL_DEFS` (ex `ALL_TOOL_DEFS`, il catalogo da
 # 34) e `EVALUATION_ONLY_TOOLS` (le 18 letture concesse alla Sentinella) sono
