@@ -231,13 +231,31 @@ def test_il_ramo_con_strumenti_afferma_i_quattro_strumenti():
     assert "mcp__hiris__" in prompts._GUIDA_CON_STRUMENTI
 
 
-def test_nessun_chiamante_di_produzione_gira_l_interruttore():
-    """La fetta A non da' strumenti al ponte: il default resta False e il
-    runner non lo passa. Se un giorno questo test diventa rosso senza che i
-    pin dell'argv siano stati ribaltati, il prompt sta mentendo."""
+def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
+    """── IL QUARTO CAMPANELLO, RIBALTATO (fetta "il ponte riceve gli
+    strumenti", parita' B, Task 3).
+
+    **Cosa pinnava.** Che nessun chiamante di produzione girasse l'interruttore
+    degli strumenti: `"strumenti_attivi" not in inspect.getsource(_reason_chat)`.
+    Nella parita' A era vero e doveva restarlo -- il ramo `_GUIDA_CON_STRUMENTI`
+    era scritto e non raggiungibile.
+
+    **Cosa e' successo.** Il Task 3 lo ha girato, ed e' diventato rosso proprio
+    come previsto («il runner del ponte gira l'interruttore degli strumenti:
+    e' la fetta B, non questa» -- era la fetta B). Cancellarlo avrebbe
+    lasciato senza guardiano la cosa piu' importante di questa fetta.
+
+    **Cosa pinna adesso.** La stessa cosa vista dall'altro verso: che
+    l'interruttore ci sia, che sia UNO SOLO, e che il prompt e l'argv lo
+    leggano dalla STESSA variabile. Un secondo booleano -- o due chiamate a
+    `sonda_strumenti` -- sarebbero due decisioni da tenere allineate, cioe'
+    esattamente cio' che questa fetta esiste per rendere impossibile. ──"""
     import inspect
 
     firma = inspect.signature(prompts.build_chat_messages)
+    # il default resta False perche' False e' il ramo di DEGRADO: cio' che si
+    # ottiene quando non si sa. Un default True prometterebbe strumenti a chi
+    # non li ha chiesti.
     assert firma.parameters["strumenti_attivi"].default is False
     assert firma.parameters["contesto"].default == ""
     # i due primi parametri restano POSIZIONALI (i pin esistenti li passano
@@ -247,12 +265,23 @@ def test_nessun_chiamante_di_produzione_gira_l_interruttore():
     assert posizionali == ["system_prompt", "history"]
 
     sorgente = inspect.getsource(runner._reason_chat)
-    assert "strumenti_attivi" not in sorgente, (
-        "il runner del ponte gira l'interruttore degli strumenti: e' la fetta "
-        "B, non questa")
+    assert "strumenti_attivi" in sorgente, (
+        "il runner del ponte non gira piu' l'interruttore degli strumenti: il "
+        "ponte e' tornato cieco senza che nessuno lo abbia deciso")
+    # UNA sola sonda per turno: due chiamate sarebbero due decisioni, e due
+    # decisioni possono divergere (il prompt composto su una, l'argv sull'altra).
+    assert sorgente.count("sonda_strumenti(") == 1, (
+        "la sonda degli strumenti viene chiamata piu' di una volta in "
+        "_reason_chat: e' il modo in cui il prompt e l'argv tornano a essere "
+        "due decisioni invece di una")
+    # e le due letture del booleano sono la STESSA variabile, non due
+    assert "strumenti_attivi=strumenti," in sorgente
+    assert sorgente.count("strumenti_attivi=strumenti") == 2, (
+        "il prompt e l'argv non leggono piu' la stessa variabile: e' il punto "
+        "in cui rientra un prompt che promette cio' che l'argv non da'")
 
 
-def test_il_prompt_che_esce_davvero_dal_ponte_e_quello_senza_strumenti():
+def test_il_prompt_che_esce_davvero_dal_ponte_senza_sonda_e_quello_senza_strumenti():
     """La META' DI COMPORTAMENTO del test qui sopra (m-B della review del
     Task 2: quello era per meta' un test di FORMA -- firma, default, nomi dei
     parametri, sorgente letta con `inspect`).
@@ -264,9 +293,15 @@ def test_il_prompt_che_esce_davvero_dal_ponte_e_quello_senza_strumenti():
     (`_reason_chat` in modalita' live con `subprocess.run` finto) -- e si
     verifica quale delle due guide contiene.
 
-    Quando la fetta B arrivera', questo test diventa rosso INSIEME ai tre pin
-    dell'argv, e la risposta giusta e' la stessa: riscriverlo col ramo nuovo,
-    non cancellarlo."""
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 3): il soggetto e'
+    vivo e il test NON si cancella, ma cambia cosa dimostra. `_cattura_system`
+    chiama `_reason_chat` SENZA `client` ne' `base_url`: non c'e' niente da
+    sondare e nessun `/api/mcp` a cui puntare la mcp-config, quindi gli
+    strumenti non sono nemmeno attesi. E' il ramo di DEGRADO, e li' il prompt
+    deve continuare a negarli per sempre -- un prompt che li affermasse senza
+    che l'argv li porti e' il difetto numero uno di questo prodotto. Il gemello
+    (il turno CON la sonda che risponde) e'
+    tests/test_strumenti_al_ponte.py."""
     job = {"kind": "chat", "job_id": "job-senza-strumenti",
            "context": {"history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": _CONTESTO}}
@@ -276,9 +311,10 @@ def test_il_prompt_che_esce_davvero_dal_ponte_e_quello_senza_strumenti():
     assert prompts._GUIDA_SENZA_STRUMENTI in system, (
         "il ponte non emette piu' la guida che nega gli strumenti")
     assert prompts._GUIDA_CON_STRUMENTI not in system, (
-        "il ramo _GUIDA_CON_STRUMENTI e' diventato raggiungibile dalla "
-        "produzione: e' la fetta B, e va insieme a --mcp-config/--allowedTools "
-        "nell'argv (tests/test_agent_runner_inaddon.py, i tre pin)")
+        "il ponte afferma gli strumenti in un turno in cui non ha nemmeno "
+        "potuto sondarli (nessun client, nessuna base_url): il prompt promette "
+        "cio' che l'argv non puo' dare -- e l'argv non lo da', perche' senza "
+        "base_url non c'e' nessun /api/mcp da mettere nella mcp-config")
 
 
 # ---------------------------------------------------------------------------
@@ -412,9 +448,15 @@ def test_contesto_presente_ma_vuoto_non_e_un_job_legacy(caplog):
     assert prompts._CONTESTO_ASSENTE in system
 
 
-def test_il_ponte_resta_senza_strumenti_anche_col_contesto():
-    """La riga che separa questa fetta dalla B, vista dal runner: il contesto
-    arriva, gli strumenti no."""
+def test_senza_sonda_il_ponte_resta_senza_strumenti_anche_col_contesto():
+    """La riga che separava questa fetta dalla B, vista dal runner: il contesto
+    arriva, gli strumenti no.
+
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 3): non e' piu' la
+    riga fra due fette, e' la riga fra i due RAMI. Qui `_reason_chat` non
+    riceve ne' `client` ne' `base_url`, quindi non c'e' sonda e non ci sono
+    strumenti attesi: l'argv deve restare quello di prima, byte per byte, o
+    smentirebbe il prompt che in questo stesso turno li nega."""
     job = {"kind": "chat", "job_id": "job-nuovo",
            "context": {"history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO}}

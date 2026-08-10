@@ -115,24 +115,38 @@ _GUIDA_SENZA_STRUMENTI = (
 # difetto che il docstring in cima al file documenta: cosi' la fetta B cambia
 # un argomento invece di riscrivere la composizione (vedi
 # docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md).
-# Cio' che gli impedisce di diventare vero per sbaglio non e' una convenzione
-# ma un pin: `test_argv_del_ponte_non_collega_nessuno_strumento`
-# (tests/test_agent_runner_inaddon.py) asserisce che l'argv del ponte non
-# porta ne' `--mcp-config` ne' `--allowedTools`, e resta verde per tutta la
-# fetta A.
 #
-# NB per la fetta B: attraverso MCP il modello vede i nomi PREFISSATI dal
-# server (`mcp__hiris__cerca`, non `cerca`), e il prefisso dipende dal nome
-# che la mcp-config dara' al server -- una decisione della B, non della A. Il
-# testo qui sotto nomina entrambe le forme e dichiara che sono gli stessi
-# quattro strumenti; la B lo rifinisce quando quel nome e' deciso (riserva 1
-# del suo piano).
+# fetta "il ponte riceve gli strumenti" (parita' B, Task 3): l'orfano e' stato
+# RACCOLTO -- `_reason_chat` passa `strumenti_attivi` e questo testo esce
+# davvero, quando la sonda dice che i quattro strumenti ci sono. Cio' che gli
+# impedisce di diventare falso non e' piu' un pin sull'assenza degli strumenti
+# ma l'INVARIANTE nei due versi (tests/test_strumenti_al_ponte.py):
+# `--mcp-config` nell'argv <=> questo testo nel system. Mai l'uno senza l'altro.
+#
+# **La correzione di questo testo (riserva 1 della sezione D del progetto).**
+# La fetta A non poteva sapere con quale nome il modello avrebbe visto gli
+# strumenti, e aveva scritto «Possono comparire col prefisso del server (per
+# esempio `mcp__hiris__cerca`)». Ora il nome e' deciso e la frase e' TROPPO
+# DEBOLE per essere vera: `_chat_claude_args` passa
+# `--allowedTools mcp__hiris__cerca,mcp__hiris__guarda,mcp__hiris__ricorda,
+# mcp__hiris__richiama` (i nomi di `runner.nomi_mcp()`, derivati da
+# `casa/strumenti.py`), quindi la forma prefissata non e' una possibilita' fra
+# due: e' l'UNICA in cui gli strumenti gli sono serviti e l'unica che potra'
+# chiamare. Un «possono comparire» lascerebbe il modello a credere che
+# `cerca` nudo sia altrettanto valido -- e una chiamata a un nome che non
+# esiste e' proprio il modo in cui questo prodotto ha gia' prodotto un «preso
+# nota» senza aver salvato. Il testo nomina quindi i quattro nomi VERI, e
+# ricollega a loro i nomi nudi che la persona (il system prompt delle
+# impostazioni della chat) continua a usare.
 _GUIDA_CON_STRUMENTI = (
-    "In questa conversazione HAI gli strumenti di HIRIS: `cerca` e `guarda` "
-    "per lo stato della casa, `ricorda` e `richiama` per la memoria di cio' "
-    "che le persone ti hanno detto. Possono comparire col prefisso del server "
-    "che te li serve (per esempio `mcp__hiris__cerca`): sono gli STESSI "
-    "quattro strumenti nominati qui sopra, non altri.\n"
+    "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
+    "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
+    "l'unica forma in cui puoi chiamarli: `mcp__hiris__cerca` e "
+    "`mcp__hiris__guarda` per lo stato della casa, `mcp__hiris__ricorda` e "
+    "`mcp__hiris__richiama` per la memoria di cio' che le persone ti hanno "
+    "detto. Quando il prompt qui sopra parla di `cerca`, `guarda`, `ricorda` o "
+    "`richiama` parla di questi STESSI quattro strumenti, non di altri: usa il "
+    "nome prefissato per chiamarli.\n"
     "Quando serve un valore CORRENTE chiama lo strumento invece di rispondere "
     "con cio' che leggi nel contesto qui sotto: guarda adesso. Non inventare "
     "stati, valori o entita', e non dire di aver guardato o di aver preso "
@@ -250,10 +264,14 @@ def build_chat_messages(system_prompt: str, history: list, *,
        byte per byte `BASE_SYSTEM_PROMPT`, come nel ramo sincrono;
     2. **quale delle due guide entra.**
 
-    Nella fetta A e' sempre False (nessun chiamante di produzione lo passa):
-    il ramo True e' scritto e non raggiungibile, e lo raccoglie la fetta B --
-    che cosi' cambia un argomento invece di riscrivere il prompt una terza
-    volta."""
+    Nella fetta A era sempre False (nessun chiamante di produzione lo
+    passava). La fetta "il ponte riceve gli strumenti" (parita' B, Task 3) ha
+    raccolto il ramo True cambiando UN ARGOMENTO, senza riscrivere il prompt
+    una terza volta: `agent/runner.py::_reason_chat` lo passa, e il valore
+    viene dalla sonda `sonda_strumenti` -- lo stesso booleano che decide
+    l'argv, due righe piu' sotto. Il default resta False perche' False e' il
+    ramo di DEGRADO, e un degrado deve essere cio' che si ottiene quando non
+    si sa: un default True prometterebbe strumenti a chi non li ha chiesti."""
     # Con gli strumenti attivi le due meta' tornano adiacenti e il blocco e'
     # esattamente `BASE_SYSTEM_PROMPT`: nessuna terza variante da mantenere.
     base = BASE_IDENTITA + BASE_REGOLE_STRUMENTI if strumenti_attivi else BASE_IDENTITA

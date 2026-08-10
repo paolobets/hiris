@@ -20,20 +20,204 @@ STESSA stringa che il ramo sincrono passa al runner
 LEGGE una fotografia della casa, presa quando il messaggio e' stato accodato;
 cio' che continua a non poter fare e' guardarla ADESSO e agire su di essa.
 Gli strumenti restano fuori: li riattacca la fetta B
-(docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md)."""
+(docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md).
+
+fetta "il ponte riceve gli strumenti" (parita' B, Task 3): li ha riattaccati.
+Le due note qui sopra sono ora vere solo per il ramo di DEGRADO. Il ponte
+chiede alla rotta `POST /api/mcp` (Task 1) se i quattro strumenti ci sono
+(`sonda_strumenti`), e da quell'UNICO booleano discendono insieme il prompt
+(`prompts.build_chat_messages(strumenti_attivi=...)`) e l'argv
+(`_chat_claude_args(strumenti_attivi=..., mcp_config=...)`): non esistono due
+decisioni da tenere allineate. Quando la sonda dice di si', il modello puo'
+guardare la casa ADESSO e salvare o richiamare ricordi, coi nomi che MCP gli
+serve (`mcp__hiris__cerca`, ...). Quando dice di no -- ed erano attesi -- il
+prompt torna a negarli e la `reply` lo dichiara ANCHE all'utente, in una riga
+premessa: mai una risposta che sembra normale.
+
+Cio' che continua a non poter fare, e che nessuna fetta di questo ramo cambia:
+AGIRE. Gli strumenti sono quattro e nessuno tocca Home Assistant -- HIRIS
+conosce e non agisce (hiris/app/casa/strumenti.py)."""
 import asyncio, json, logging, os, subprocess, time
 from dataclasses import dataclass, field
 import httpx
 from . import prompts
+from ..casa.strumenti import STRUMENTI_CONOSCENZA
 
 log = logging.getLogger("hiris.agent")
 
 # Tool LOCALI del CLI sempre vietati (il modello non deve toccare shell/fs del
 # container addon).
+#
+# fetta "il ponte riceve gli strumenti" (parita' B, Task 3): questa stringa NON
+# guadagna `ToolSearch`, e l'assenza e' deliberata. La CLI inserisce un
+# passaggio `ToolSearch` per RISOLVERE gli schemi degli strumenti MCP (progetto
+# 3.4/5): vietarlo qui renderebbe i quattro strumenti visibili nell'elenco e
+# IRRAGGIUNGIBILI -- il modo peggiore di non averli, perche' il prompt li
+# afferma e la chiamata non arriva mai. E' esattamente il genere di stringa che
+# qualcuno "completa" leggendo l'elenco: non si completa.
 _LOCAL_TOOLS_DENY = "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookEdit,NotebookRead,Task"
 
 
-def _chat_claude_args(system: str, user: str, model: str) -> list:
+# -- fetta "il ponte riceve gli strumenti" (parita' B, Task 3): L'INTERRUTTORE -
+# Da qui in giu' vive un solo booleano. Lo decide `sonda_strumenti` un istante
+# prima che si componga qualsiasi cosa, e alimenta INSIEME il prompt
+# (`prompts.build_chat_messages(strumenti_attivi=...)`) e l'argv
+# (`_chat_claude_args(strumenti_attivi=...)`), nella stessa funzione e a due
+# righe di distanza (`_reason_chat`). Non esistono due decisioni da tenere
+# allineate: e' l'unica difesa strutturale contro il difetto numero uno di
+# questo prodotto -- un prompt che promette capacita' che l'invocazione non da'.
+# L'invariante e' pinnato NEI DUE VERSI in tests/test_strumenti_al_ponte.py:
+# `--mcp-config` nell'argv  <=>  `_GUIDA_CON_STRUMENTI` nel system.
+
+
+def _nome_server_mcp() -> str:
+    """Il nome con cui il server MCP si presenta alla CLI, dall'UNICA fonte.
+
+    L'import e' DIFFERITO -- dentro la funzione e non in cima al file -- per un
+    motivo misurato, non per stile: `api/handlers_chat.py` importa `modello_cli`
+    da QUESTO modulo, e `api/handlers_mcp.py` importa `handlers_chat`. Un import
+    in cima chiude il cerchio e rompe l'avvio: verificato prima di scrivere
+    questa riga, `ImportError: cannot import name 'modello_cli' from partially
+    initialized module 'hiris.app.agent.runner' (most likely due to a circular
+    import)`.
+
+    Ricopiare "hiris" qui sarebbe il secondo posto da tenere allineato, e non un
+    posto qualunque: da questo nome discende il prefisso `mcp__hiris__` che
+    finisce sia in `--allowedTools` sia nel TESTO del prompt che il modello
+    legge. Due copie divergerebbero in silenzio, e il sintomo sarebbe un modello
+    che chiama nomi che non esistono."""
+    from ..api.handlers_mcp import NOME_SERVER_MCP
+    return NOME_SERVER_MCP
+
+
+def nomi_mcp() -> tuple[str, ...]:
+    """I quattro nomi che il modello vede DAVVERO, derivati dal catalogo.
+
+    Attraverso MCP la CLI prefissa ogni strumento col nome del server: `cerca`
+    diventa `mcp__hiris__cerca`, ed e' quello -- non il nome nudo -- cio' che il
+    modello legge nell'elenco e cio' che `--allowedTools` deve permettere.
+
+    Si DERIVA da `STRUMENTI_CONOSCENZA`: quattro stringhe scritte a mano qui
+    sarebbero il SECONDO catalogo, l'errore che l'intera fetta E2 e' esistita
+    per chiudere (tre cataloghi divergenti della stessa cosa). Cosi' uno
+    strumento che entra o esce da `casa/strumenti.py` arriva qui da solo.
+
+    E' una funzione e non una costante di modulo per la stessa ragione
+    dell'import differito qui sopra: il prefisso ha bisogno del nome del server,
+    che a import-time non si puo' ancora leggere."""
+    prefisso = f"mcp__{_nome_server_mcp()}__"
+    return tuple(f"{prefisso}{d['name']}" for d in STRUMENTI_CONOSCENZA)
+
+
+def config_mcp(base_url: str, token: str) -> str:
+    """La voce `--mcp-config` del ponte: una STRINGA JSON, mai un file.
+
+    Tre scelte, tutte deliberate:
+
+    (1) **stringa e non file.** La CLI accetta `--mcp-config` sia come percorso
+        sia come stringa JSON (`claude --help`: «Load MCP servers from JSON
+        files or strings»). Il vecchio disegno (Piano 2A, uscito con la fetta
+        E2) scriveva un file 0600 perche' la sua config NON conteneva segreti;
+        questa si', e una stringa non resta su disco. **Il residuo e'
+        dichiarato e non nascosto**: il token diventa visibile nell'`argv` del
+        processo dentro il container (decisione C.3.5 del progetto, consegnata
+        alla fase sicurezze). Cio' che invece NON deve succedere e' che finisca
+        in un log: per questo `_logga_init` logga nome+stato dei server e mai
+        l'evento intero, e per questo nessun ramo di `_reason_chat` stampa
+        l'argv.
+    (2) **`X-Requested-With` oltre al token.** Il token da solo basterebbe --
+        `csrf_middleware` esenta chi ne porta uno valido -- ma cosi' la rotta
+        dipenderebbe da UN SOLO ramo di UN SOLO middleware. Mandandoli entrambi
+        passa da qualunque dei due sopravviva (decisione A.3; entrambi i rami
+        sono pinnati in tests/test_rotta_mcp.py).
+    (3) **il nome del server viene da `_nome_server_mcp()`**, non da una
+        stringa scritta qui: e' lo stesso nome da cui discende il prefisso dei
+        quattro strumenti."""
+    return json.dumps({
+        "mcpServers": {
+            _nome_server_mcp(): {
+                "type": "http",
+                "url": f"{(base_url or '').rstrip('/')}/api/mcp",
+                "headers": {
+                    "X-HIRIS-Internal-Token": token,
+                    "X-Requested-With": "hiris-mcp",
+                },
+            },
+        },
+    }, ensure_ascii=False)
+
+
+def sonda_strumenti(client, base_url: str, headers: dict,
+                    *, job_id=None) -> tuple[bool, str]:
+    """Difesa (1) del progetto: gli strumenti ci sono DAVVERO, in questo turno?
+
+    Un `POST /api/mcp` con `tools/list` sullo STESSO `httpx.Client` e con gli
+    STESSI header del claim: loopback, ~1 ms, zero token del modello. E' cio'
+    che permette di decidere il prompt e l'argv insieme, PRIMA di spendere un
+    turno -- invece di scoprire a risposta arrivata che il modello aveva
+    strumenti promessi e non serviti.
+
+    Restituisce `True` **solo** se la risposta porta tutti e quattro i nomi
+    attesi. Il 200 non basta, e non e' un dettaglio: la rotta risponde 200 anche
+    con gli archivi assenti (l'errore sta DENTRO il risultato della singola
+    chiamata, non nello stato HTTP), quindi una sonda che si accontentasse del
+    codice non proverebbe niente di cio' che dice di provare.
+
+    Non solleva MAI: connessione rifiutata, timeout, JSON malformato, corpo
+    inatteso diventano tutti `False` + un motivo leggibile. Il ponte non deve
+    cadere perche' una difesa non ha risposto -- degraderebbe da "risposta senza
+    strumenti" a "nessuna risposta", che e' peggio.
+
+    **Silenzio dichiarato (1) della fetta**: ogni `False` produce un
+    `log.warning` che nomina il motivo e il `job_id`. Il motivo non contiene mai
+    il token: gli header non si loggano e non rientrano nel messaggio, e della
+    risposta si stampa solo il codice o i nomi mancanti."""
+    attesi = {d["name"] for d in STRUMENTI_CONOSCENZA}
+    url = f"{(base_url or '').rstrip('/')}/api/mcp"
+
+    def _no(motivo: str) -> tuple[bool, str]:
+        log.warning(
+            "sonda degli strumenti fallita (job_id=%s): %s -- questo turno del "
+            "ponte va SENZA strumenti, il prompt torna a negarli e la reply lo "
+            "dichiara all'utente", job_id, motivo)
+        return False, motivo
+
+    try:
+        risposta = client.post(
+            url, headers=headers,
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            timeout=15)
+    except Exception as exc:
+        # `Exception` e non le sole eccezioni di httpx: il chiamante puo'
+        # passare qualunque client, e una difesa che solleva non e' una difesa.
+        return _no(f"{url} non ha risposto ({type(exc).__name__}: {exc})")
+
+    codice = getattr(risposta, "status_code", None)
+    if codice != 200:
+        return _no(f"{url} ha risposto {codice} invece di 200 (autenticazione, "
+                   f"o rotta non registrata)")
+    try:
+        corpo = risposta.json()
+    except Exception as exc:
+        return _no(f"{url} ha risposto 200 ma il corpo non e' JSON "
+                   f"({type(exc).__name__}: {exc})")
+
+    voci = ((corpo or {}).get("result") or {}).get("tools")
+    if not isinstance(voci, list):
+        errore = (corpo or {}).get("error")
+        return _no(f"{url} ha risposto 200 ma senza result.tools "
+                   f"(error={errore!r})")
+    trovati = {v.get("name") for v in voci if isinstance(v, dict)}
+    mancanti = attesi - trovati
+    if mancanti:
+        return _no(f"tools/list non porta {sorted(mancanti)}: il ponte avrebbe "
+                   f"strumenti a meta', e il prompt li afferma tutti e quattro")
+    return True, ""
+
+
+def _chat_claude_args(system: str, user: str, model: str, *,
+                      strumenti_attivi: bool = False,
+                      mcp_config: str = "") -> list:
     """L'argv del ponte.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 2): il formato
@@ -50,17 +234,33 @@ def _chat_claude_args(system: str, user: str, model: str) -> list:
     `--verbose` e' OBBLIGATORIO: senza, la CLI non emette gli eventi
     intermedi e l'`init` non arriva mai.
 
-    Cosa NON cambia qui, ed e' pinnato in fondo a
-    tests/test_agent_runner_inaddon.py: nessun `--mcp-config`, nessun
-    `--allowedTools`. Questo task cambia SOLO il formato di lettura; gli
-    strumenti li attacca il Task 3, e il prompt che li dichiara nasce dallo
-    stesso booleano dell'argv."""
-    return ["claude", "-p", user, "--model", model,
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 3): `strumenti_attivi`
+    e' la META' ARGV dell'interruttore unico -- l'altra meta' e' la guida del
+    prompt, e le due si leggono dalla stessa variabile in `_reason_chat`. Con
+    `True` si aggiungono tre opzioni, e nessuna e' facoltativa:
+
+    - `--mcp-config <stringa>`: la voce del server (vedi `config_mcp`);
+    - `--strict-mcp-config`: senza, la CLI userebbe ANCHE i server MCP
+      dell'ambiente, che non sono nostri -- il modello si troverebbe strumenti
+      che HIRIS non gli ha dato e che il prompt non nomina;
+    - `--allowedTools <i quattro nomi>`: i nomi PREFISSATI di `nomi_mcp()`,
+      derivati dal catalogo. Senza, gli strumenti sarebbero visibili e non
+      permessi.
+
+    Con `False` l'argv e' ESATTAMENTE quello di prima di questo task: e' il ramo
+    di degrado, e deve restare byte per byte quello che il prompt senza
+    strumenti descrive."""
+    argv = ["claude", "-p", user, "--model", model,
             "--system-prompt", system,
             "--exclude-dynamic-system-prompt-sections",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default",
             "--output-format", "stream-json", "--verbose"]
+    if strumenti_attivi:
+        argv += ["--mcp-config", mcp_config,
+                 "--strict-mcp-config",
+                 "--allowedTools", ",".join(nomi_mcp())]
+    return argv
 
 
 def modello_cli(modello_risolto: str) -> str:
@@ -140,6 +340,25 @@ def _safe_subprocess_env() -> dict:
 # in chat_history.db e tornerebbe al modello a ogni turno successivo -- difetto
 # gia' trovato dal vivo e riparato una volta su questo ramo.
 _SENTINELLA_FLUSSO_INCOMPLETO = "[flusso incompleto]"
+
+# fetta "il ponte riceve gli strumenti" (parita' B, Task 3), difesa (3) del
+# progetto: la riga rivolta ALL'UTENTE quando gli strumenti erano attesi e la
+# sonda non li ha trovati. Il degrado si dichiara dove l'utente guarda, non solo
+# in un log che nessuno legge -- «mai una risposta che sembra normale».
+#
+# Perche' NON e' in `chat_store._TOXIC_ASSISTANT_PREFIXES` come gli altri cinque
+# sentinella: quelli SOSTITUISCONO la risposta (non c'e' niente da conservare),
+# questa la PRECEDE -- sotto c'e' una risposta vera, composta sul nucleo e sulla
+# conversazione. Filtrare il turno intero cancellerebbe dalla cronologia una
+# risposta legittima, che e' il difetto opposto e altrettanto grave.
+#
+# Riserva 2 del progetto (sezione D): il terzo stato -- "strumenti assenti IN
+# QUESTO TURNO" -- NON ha un terzo testo di prompt. `_GUIDA_SENZA_STRUMENTI` e'
+# gia' vera anche qui; cio' che distingue il terzo stato dal secondo e' proprio
+# questa riga.
+AVVISO_STRUMENTI_ASSENTI = (
+    "In questo turno non ho potuto usare gli strumenti per guardare la casa: "
+    "rispondo con cio' che so dal nucleo e dalla conversazione.")
 
 
 @dataclass
@@ -267,13 +486,26 @@ def _logga_uso(esito: EsitoFlusso, job_id) -> None:
         esito.num_turni)
 
 
-def _reason_chat(job: dict, mode: str) -> dict:
-    """Chat-via-abbonamento: risponde come HIRIS senza strumenti (nessun tool
-    HA: l'MCP interno che li serviva e' uscito, Fetta E2 Task 3) ma CON il
-    contesto della casa -- il nucleo e le sessioni precedenti che il job porta
-    nella chiave `contesto` (fetta "il ponte riceve il nucleo", parita' A,
-    Task 2). Fail-safe: mode!=live -> mock; su errore torna sempre una
-    {"reply": <str>}."""
+def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
+                 headers: dict | None = None) -> dict:
+    """Chat-via-abbonamento: risponde come HIRIS CON il contesto della casa --
+    il nucleo e le sessioni precedenti che il job porta nella chiave `contesto`
+    (fetta "il ponte riceve il nucleo", parita' A, Task 2) -- e, dalla fetta
+    "il ponte riceve gli strumenti" (parita' B, Task 3), anche con i QUATTRO
+    STRUMENTI, serviti dalla rotta `POST /api/mcp`. Fail-safe: mode!=live ->
+    mock; su errore torna sempre una {"reply": <str>}.
+
+    `client`/`base_url`/`headers` sono keyword-only e con default, e i default
+    NON sono una comodita' di test: senza di essi non c'e' niente da sondare e
+    non c'e' nessun `/api/mcp` a cui puntare la mcp-config, quindi gli strumenti
+    non sono nemmeno ATTESI -- il turno vale esattamente quanto valeva prima di
+    questo task, senza avvisi e senza righe di degrado. Chi li passa (il solo
+    `run_once`, cioe' il percorso di produzione) dichiara con quel gesto che il
+    ponte e' configurato per averli: da li' in poi la loro assenza e' un
+    guasto, e come tale si dichiara.
+
+    Gli header sono gli STESSI del claim (`run_once` passa i suoi): l'add-on non
+    deve avere due modi di autenticarsi verso se' stesso."""
     context = job.get("context") or {}
     history = context.get("history") or []
     system_prompt = context.get("system_prompt") or ""
@@ -309,8 +541,29 @@ def _reason_chat(job: dict, mode: str) -> dict:
     # prima di questo task, non un errore.
     restrict_to_home = bool(context.get("restrict_to_home", False))
     response_mode = context.get("response_mode") or ""
+    job_id = (job or {}).get("job_id")
+    # ── L'INTERRUTTORE UNICO (Task 3, Step 4) ──────────────────────────────
+    # Gli strumenti sono ATTESI solo se il chiamante ha passato di che sondarli
+    # e di che raggiungerli: senza client o senza base_url non c'e' nessun
+    # `/api/mcp` da mettere nella mcp-config, quindi non c'e' nessun guasto da
+    # dichiarare -- e' il vecchio comportamento, non un degrado nuovo.
+    attesi = client is not None and bool(base_url)
+    intestazioni = headers if headers is not None else build_headers()
+    if attesi:
+        strumenti, _motivo = sonda_strumenti(client, base_url, intestazioni,
+                                             job_id=job_id)
+    else:
+        strumenti = False
+    mcp_config = config_mcp(
+        base_url, intestazioni.get("X-HIRIS-Internal-Token", "")
+    ) if strumenti else ""
+    # Le DUE righe che leggono lo stesso booleano, una accanto all'altra. Non
+    # esiste un secondo posto in cui il prompt e l'argv possono divergere: se
+    # un giorno queste due righe si allontanano, e' li' che rientra il difetto
+    # numero uno di questo prodotto.
     system, user = prompts.build_chat_messages(system_prompt, history,
                                                contesto=contesto,
+                                               strumenti_attivi=strumenti,
                                                restrict_to_home=restrict_to_home,
                                                response_mode=response_mode)
     # fetta "il ponte riceve il nucleo" (parita' A, Task 4): il modello non
@@ -326,8 +579,13 @@ def _reason_chat(job: dict, mode: str) -> dict:
     # esattamente il comportamento di prima di questo task, non un
     # degrado nuovo, quindi non e' uno dei silenzi dichiarati della fetta.
     model = context.get("model") or "sonnet"
-    argv = _chat_claude_args(system, user, model)
-    job_id = (job or {}).get("job_id")
+    argv = _chat_claude_args(system, user, model,
+                             strumenti_attivi=strumenti, mcp_config=mcp_config)
+    # Il degrado dichiarato: gli strumenti erano attesi e non ci sono. Il log
+    # l'ha gia' detto (silenzio (1), dentro `sonda_strumenti`); qui si prepara
+    # a dirlo anche all'utente, in coda alla risposta che il modello riuscira'
+    # comunque a dare sul solo nucleo.
+    degrado = attesi and not strumenti
     try:
         proc = subprocess.run(argv, capture_output=True, text=True,
                               timeout=300, env=_safe_subprocess_env())
@@ -398,9 +656,22 @@ def _reason_chat(job: dict, mode: str) -> dict:
                 if coda else avviso}
 
     # Esiti (2) e (4): il testo del risultato, oppure il sentinella del vuoto.
-    return {"reply": esito.testo.strip() or "[vuoto]"}
+    testo = esito.testo.strip()
+    if not testo:
+        return {"reply": "[vuoto]"}
+    if degrado:
+        # Solo QUI, e non sugli altri rami: `[errore runner rc=...]`,
+        # `[runner non disponibile]`, `[flusso incompleto]` e `[vuoto]` sono
+        # gia' dichiarazioni di guasto, e sono riconosciuti PER PREFISSO da
+        # `chat_store._TOXIC_ASSISTANT_PREFIXES` -- anteporre qualcosa li
+        # renderebbe invisibili a quel filtro, e tornerebbero al modello a ogni
+        # turno successivo. Questo caso e' l'opposto: sotto c'e' una risposta
+        # vera, che va conservata.
+        return {"reply": f"{AVVISO_STRUMENTI_ASSENTI}\n\n{testo}"}
+    return {"reply": testo}
 
-def reason(job: dict, mode: str) -> dict:
+def reason(job: dict, mode: str, *, client=None, base_url: str = "",
+           headers: dict | None = None) -> dict:
     """Il runner del ponte ragiona SOLO i job di chat.
 
     fetta E4 Task 8 ("un bot solo"): il ramo olistico e' uscito, con lui
@@ -420,7 +691,13 @@ def reason(job: dict, mode: str) -> dict:
     basta: non attua piu' nulla da fetta E3 Task 9."""
     kind = (job or {}).get("kind")
     if kind == "chat":
-        return _reason_chat(job, mode)
+        # fetta "il ponte riceve gli strumenti" (parita' B, Task 3): il client e
+        # la base_url del giro passano di qui SENZA essere ricostruiti. La sonda
+        # degli strumenti deve girare sullo STESSO `httpx.Client` del claim e
+        # con gli STESSI header: un secondo client (o un secondo modo di
+        # autenticarsi) sarebbe un secondo posto da tenere allineato.
+        return _reason_chat(job, mode, client=client, base_url=base_url,
+                            headers=headers)
     log.warning(
         "job non-chat in coda: nessun ramo lo ragiona piu' (job_id=%s, kind=%r) -- "
         "decisione vuota, il ramo olistico e' uscito con la fetta E4 Task 8",
@@ -444,7 +721,8 @@ def run_once(client, base_url: str, headers: dict, mode: str) -> str:
     if not job_id or not nonce:
         log.warning("claim malformato (job senza id/nonce)")
         return "failed"
-    decision = reason(job, mode)
+    decision = reason(job, mode, client=client, base_url=base_url,
+                      headers=headers)
     sr = client.post(f"{base_url}/api/reasoning/submit", headers=headers,
                      json={"job_id": job_id, "nonce": nonce, "decision": decision})
     sr.raise_for_status()
