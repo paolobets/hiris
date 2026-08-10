@@ -40,6 +40,44 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     return trimmed
 
 
+def costruisci_dispatcher_conoscenza(app) -> DispatcherConoscenza:
+    """L'UNICO punto del prodotto in cui `DispatcherConoscenza` viene costruito.
+
+    I quattro strumenti che conoscono la casa (`casa/strumenti.py`) -- non il
+    catalogo di trentaquattro di ALL_TOOL_DEFS: la chat della 2.0 CONOSCE, non
+    agisce (vedi il docstring di quel modulo). Il dispatcher si costruisce dagli
+    stessi tre oggetti dell'app che alimentano `costruisci_nucleo()`
+    (`archivio_casa`, `archivio_memoria`, `entity_cache`) -- lo stesso specchio
+    dello stato vivo, non uno ricalcolato a mano -- ed e' SEMPRE costruibile,
+    anche quando gli archivi sono assenti: i suoi quattro metodi non sollevano
+    mai, dichiarano un `errore` per strumento invece (vedi
+    `DispatcherConoscenza.dispatch`).
+
+    **Perche' e' una funzione e non tre righe ripetute.** Dalla fetta «il ponte
+    riceve gli strumenti» (parita' B, Task 1) i costruttori sarebbero stati DUE:
+    il turno sincrono qui e la rotta `POST /api/mcp` (`handlers_mcp.py`), che
+    porta gli stessi quattro strumenti al ponte via abbonamento. Due costruzioni
+    che possono divergere sono esattamente il difetto da cui e' nata la fetta E2
+    (tre cataloghi della stessa cosa): qui ce n'e' una sola, e un
+    grep del nome della classe seguito da parentesi su `hiris/app/` lo dimostra
+    (e `tests/test_rotta_mcp.py` lo pinna). E' lo stesso
+    principio gia' applicato al nucleo con `costruisci_nucleo`
+    (`handlers_casa.py`: «la STESSA composizione, non due che potrebbero
+    divergere»).
+
+    Passarlo sempre (mai `None`) al runner tiene chiusa anche un'altra trappola:
+    senza un `dispatcher` per-chiamata i runner degradano OGNI tool a un errore
+    "non disponibile" (vedi il ramo `else` del dispatch loop in
+    claude_runner.py/openai_compat_runner.py) -- passarlo sempre e' quello che
+    tiene la chat viva.
+    """
+    return DispatcherConoscenza(
+        app.get("archivio_casa"),
+        app.get("archivio_memoria"),
+        cache=app.get("entity_cache"),
+    )
+
+
 def _build_system_prompt(impostazioni) -> str:
     """Il prompt statico della chat, condiviso dal ramo sincrono e da quello
     in abbonamento (async job context).
@@ -396,34 +434,22 @@ async def handle_chat(request: web.Request) -> web.Response:
     # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
     context_str = componi_contesto_chat(request.app, data_dir)
 
-    # I quattro strumenti che conoscono la casa (casa/strumenti.py) -- non il
-    # catalogo di trentaquattro di ALL_TOOL_DEFS: la chat della 2.0 CONOSCE,
-    # non agisce (vedi il docstring del modulo). `DispatcherConoscenza` si
-    # costruisce dagli stessi archivi/cache che alimentano `costruisci_nucleo()`
-    # qui sopra -- lo stesso specchio dello stato vivo, non uno ricalcolato a
-    # mano -- ed e' SEMPRE passato, anche quando gli archivi sono assenti: i
-    # suoi quattro metodi non sollevano mai, dichiarano un `errore` per
-    # strumento invece (vedi `DispatcherConoscenza.dispatch`).
+    # I quattro strumenti che conoscono la casa -- il perche' di ogni riga sta
+    # nel docstring di `costruisci_dispatcher_conoscenza` (sopra), che dalla
+    # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
+    # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
+    # che possono divergere.
     #
-    # Passarlo sempre (mai `None`) tiene chiusa anche un'altra trappola:
-    # senza un `dispatcher` per-chiamata i runner degradano OGNI tool a un
-    # errore "non disponibile" (vedi il ramo `else` del dispatch loop in
-    # claude_runner.py/openai_compat_runner.py) -- passarlo sempre e' quello
-    # che tiene la chat viva.
-    #
-    # fix round 1 (Important 3 della review indipendente): questo commento
-    # descriveva un ramo -- il "dispatcher di scorta" `self._dispatcher`, che
-    # leggeva `visible_entity_ids` e degradava APERTO quando assente -- gia'
-    # uscito dai runner alla fetta E2 Task 7 (`ToolDispatcher`) e i cui ultimi
-    # resti (il costruttore `dispatcher=`, l'`elif self._dispatcher is not
-    # None`) sono usciti da QUESTA fetta, Task 6. `visible_entity_ids` non e'
-    # piu' un parametro di nessuna firma: non c'e' piu' niente da riaprire ne'
-    # da tenere chiuso su quel fronte, la trappola stessa non esiste piu'.
-    dispatcher_conoscenza = DispatcherConoscenza(
-        request.app.get("archivio_casa"),
-        request.app.get("archivio_memoria"),
-        cache=request.app.get("entity_cache"),
-    )
+    # fix round 1 (Important 3 della review indipendente): il commento che
+    # viveva qui descriveva un ramo -- il "dispatcher di scorta"
+    # `self._dispatcher`, che leggeva `visible_entity_ids` e degradava APERTO
+    # quando assente -- gia' uscito dai runner alla fetta E2 Task 7
+    # (`ToolDispatcher`) e i cui ultimi resti (il costruttore `dispatcher=`,
+    # l'`elif self._dispatcher is not None`) sono usciti dalla fetta E4,
+    # Task 6. `visible_entity_ids` non e' piu' un parametro di nessuna firma:
+    # non c'e' piu' niente da riaprire ne' da tenere chiuso su quel fronte, la
+    # trappola stessa non esiste piu'.
+    dispatcher_conoscenza = costruisci_dispatcher_conoscenza(request.app)
 
     agent_model = impostazioni.model
     # Personas are always the chat entity (Slice 5 retired the non-chat

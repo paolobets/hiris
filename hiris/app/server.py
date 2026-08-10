@@ -1652,6 +1652,26 @@ def create_app() -> web.Application:
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
+    # fetta "il ponte riceve gli strumenti" (parita' B) Task 1: l'adattatore
+    # JSON-RPC che porta i quattro strumenti della casa anche al ponte via
+    # abbonamento -- l'unico modo in cui la CLI `claude` accetta strumenti
+    # nostri (vedi il docstring di api/handlers_mcp.py).
+    #
+    # CHI LA CHIAMA: il sottoprocesso `claude` che il worker del ponte avvia
+    # dentro l'add-on, dal Task 3 in poi (`--mcp-config`). Fino a quel task
+    # nessun chiamante di produzione esiste e la rotta e' un ORFANO
+    # DICHIARATO, che `scripts/censimento.py` conta fra le «rotte HTTP
+    # chiamate solo dai test».
+    #
+    # COSA NON E': una superficie remota. Vive sul listener che c'e' gia',
+    # raggiungibile su `127.0.0.1` dall'interno del container -- nessuna porta
+    # nuova, nessun port mapping, nessuna opzione `Network`, nessuna opzione
+    # dell'add-on. L'handler accetta inoltre la SOLA autenticazione a token
+    # interno (`auth_via == "token"`): ne' l'ingress del Supervisor ne' la
+    # valvola di sviluppo `HIRIS_ALLOW_NO_TOKEN` la aprono.
+    from .api.handlers_mcp import handle_mcp
+    app.router.add_post("/api/mcp", handle_mcp)
+
     # fetta E3 Task 5: /api/brain/feed e /api/brain/reasoning sono uscite col
     # Brain auto-proponente (handle_brain_feed componeva reasoning_log/
     # brain.feed, handle_brain_reasoning leggeva il solo reasoning_log --
