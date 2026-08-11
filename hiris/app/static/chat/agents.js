@@ -26,7 +26,9 @@
     var current = state.turnCount || 0;
     counter.style.display = '';
     counter.textContent = current + ' / ' + max + ' messaggi';
-    counter.style.color = current >= max ? 'var(--err)' : 'var(--text-3)';
+    /* `--err-ink` e non `--err`: e' testo, e sul tema chiaro `--err` sta a
+       4.05:1, sotto la soglia AA. */
+    counter.style.color = current >= max ? 'var(--err-ink)' : 'var(--text-3)';
   }
 
   function checkTurnLimit() {
@@ -45,12 +47,34 @@
     if (sessionMsg) sessionMsg.style.display = reached ? '' : 'none';
   }
 
+  /* Costruisce la domanda della conferma dicendo COSA si perde, come si fa
+     gia' nella pagina Memoria (dove il `confirm` cita la frase esatta del
+     ricordo). Il vecchio testo -- «Cancellare la cronologia di questa
+     conversazione?» -- sottodichiarava due volte: non diceva quanto, e
+     soprattutto diceva «questa» mentre la DELETE porta via TUTTO.
+     Verificato: `chat_store.ChatStore.clear()` svuota `chat_messages` e
+     `chat_sessions`, quindi spariscono anche i riassunti delle sessioni chiuse
+     che `handlers_chat.componi_contesto_chat` inietta nel prompt come
+     «Sessioni precedenti (memoria)». Non e' una conversazione: e' la
+     memoria delle conversazioni. */
+  function domandaDiConferma() {
+    var quanti = state.els.messages
+      ? state.els.messages.querySelectorAll('.msg-row').length : 0;
+    var visibili = quanti === 0
+      ? 'Qui non c’è niente da cancellare'
+      : quanti === 1
+        ? 'Perdi il messaggio che vedi'
+        : 'Perdi i ' + quanti + ' messaggi che vedi';
+    return visibili + ', e anche i riassunti delle conversazioni precedenti '
+      + 'che HIRIS si tiene da parte. Non si può annullare.\n\nCancellare?';
+  }
+
   async function clearConversation() {
     /* Irreversibile: la conferma qui mancava, ed e' stata aggiunta copiando
        il testo dalla card Lovelace, che per la stessa azione la chiedeva. La
        card e' uscita col Task 5 della E5: la conferma resta perche' e' il
        comportamento giusto, non perche' un'altra superficie la imponga. */
-    if (!window.confirm('Cancellare la cronologia di questa conversazione?')) return;
+    if (!window.confirm(domandaDiConferma())) return;
     try {
       var r = await fetch('api/chat/cronologia', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
       if (!r.ok) {
@@ -66,6 +90,12 @@
       window.alert('Non è stato possibile cancellare la cronologia. Riprova più tardi.');
       return;
     }
+    /* Prima di buttare via le righe, ferma quello che ci gira dentro: un
+       indicatore d'attesa lasciato acceso continuerebbe a far battere il suo
+       cronometro su un nodo che non esiste piu'. In pratica non ci si arriva
+       (il bottone e' spento durante l'elaborazione), ma un timer orfano non
+       deve dipendere da un `disabled` per non nascere. */
+    window.HirisChatMessages.fermaTutteLeAttese();
     state.els.messages.innerHTML = '';
     state.els.messages.appendChild(state.els.welcome);
     state.els.welcome.style.display = '';

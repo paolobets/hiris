@@ -9,11 +9,34 @@ function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+/* Le tre funzioni qui sotto sono LA grammatica dei numeri di HIRIS, per tutte
+   e due le superfici. Prima ce n'erano due copie divergenti: il riquadro
+   «Utilizzo» della chat scriveva `1.28M` e `€3.2149`, la pagina «Consumi»
+   scriveva gli stessi identici dati come `1.3M` e `€ 3.21`, e le date come
+   `da 2026-08-01` mentre tutto il resto del prodotto scrive `11/08/2026`. Chi
+   guardava le due schermate una dopo l'altra aveva ragione di credere che una
+   delle due stesse sbagliando. Un solo posto, quattro decimali mai: un costo
+   si legge a due. */
 function fmtNum(n) {
   if (n == null) return '—';
   return n >= 1000000 ? (n/1000000).toFixed(2) + 'M'
        : n >= 1000    ? (n/1000).toFixed(1) + 'k'
        : String(n);
+}
+
+function fmtEuro(n) {
+  if (n == null) return '—';
+  return '€ ' + Number(n).toFixed(2);
+}
+
+/* Data e ora nel formato italiano, l'unico che il prodotto usa a schermo.
+   Restituisce stringa vuota su un valore assente o illeggibile, cosi' chi
+   chiama puo' decidere se scrivere un trattino o niente -- e non finisce mai
+   con un `Invalid Date` stampato addosso all'utente. */
+function fmtDataOra(v) {
+  if (!v) return '';
+  var d = new Date(v);
+  return isNaN(d.getTime()) ? '' : d.toLocaleString('it-IT');
 }
 
 /* Theme: localStorage > server config > system. */
@@ -90,11 +113,9 @@ async function loadUsage() {
     _setUsageText('u-requests', d.total_requests != null ? d.total_requests : '—');
     _setUsageText('u-input', fmtNum(d.input_tokens));
     _setUsageText('u-output', fmtNum(d.output_tokens));
-    _setUsageText('u-cost', d.cost_eur != null ? '€' + d.cost_eur.toFixed(4) : '—');
-    if (d.last_reset) {
-      var dt = new Date(d.last_reset);
-      _setUsageText('usage-last-reset', 'Azzerato il ' + dt.toLocaleString('it-IT'));
-    }
+    _setUsageText('u-cost', fmtEuro(d.cost_eur));
+    var quando = fmtDataOra(d.last_reset);
+    if (quando) _setUsageText('usage-last-reset', 'Azzerato il ' + quando);
     return true;
   } catch(e) {
     console.error('loadUsage failed', e);

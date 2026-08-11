@@ -14,10 +14,28 @@
   --iris-6:     oklch(0.72 0.20 330);  /* fuchsia */
   --iris-amber: oklch(0.78 0.15 75);   /* warning / preventive */
 
-  /* petal hex (for gradients / brand moments only) — only violet+fuchsia are
-     referenced today; indigo/blue/cyan/teal removed (dead) in v0.9.2. */
+  /* petal hex (for gradients / brand moments only). Sono quattro dei sei
+     petali del segno: gli altri due (indigo, cyan) restano fuori finche'
+     nessuna regola li legge -- furono tolti come morti in v0.9.2 e non e' il
+     caso di rimetterli dentro per simmetria. Blue e teal rientrano qui perche'
+     `--brand-sweep-ink` (sotto) li usa: prima gli stessi quattro esadecimali
+     stavano scritti a mano dentro `hiris-chat.css`, cioe' la firma cromatica
+     del prodotto viveva in una stringa di un foglio, non nel sistema. */
   --p-violet:  #c084fc;
+  --p-blue:    #60a5fa;
+  --p-teal:    #2dd4bf;
   --p-fuchsia: #e879f9;
+
+  /* La "spazzata" di marca: il gradiente che scorre sulla scritta d'attesa
+     della chat. Due versioni, perche' i petali sono nati per fondo scuro e
+     sul bianco stanno fra 1.86:1 e 2.64:1 -- illeggibili proprio nel momento
+     in cui l'utente ha piu' bisogno di leggere. Gli stop della versione
+     chiara sono misurati sul bianco (`--surface`) in Chromium: 6.11 / 6.22 /
+     5.24 / 6.27, tutti sopra AA. Quelli scuri, i petali veri, stanno a 6.80 /
+     7.07 / 9.65 / 7.30 su `--surface` scuro. */
+  --brand-sweep-ink: linear-gradient(90deg,
+      oklch(0.52 0.20 300), oklch(0.50 0.17 265),
+      oklch(0.52 0.09 195), oklch(0.52 0.22 330), oklch(0.52 0.20 300));
 
   /* light theme — warm-tinted neutral, default */
   --bg:        oklch(0.985 0.005 280);
@@ -29,7 +47,10 @@
   --border-2:  oklch(0.86 0.018 280);
   --text:      oklch(0.22 0.02 280);
   --text-2:    oklch(0.45 0.015 280);
-  --text-3:    oklch(0.62 0.012 280);
+  /* --text-3 era oklch(0.62 …), cioe' 3.67:1 sul bianco: sotto AA, e lo porta
+     quasi tutto il testo di contorno delle due superfici (sottotitoli, orari,
+     segnaposto, .sc-desc, .field-hint). Misurato in Chromium dopo: 5.55:1. */
+  --text-3:    oklch(0.52 0.014 280);
   --text-4:    oklch(0.74 0.010 280);
 
   --accent:        var(--iris);
@@ -45,6 +66,20 @@
   --warn-tint: oklch(0.96 0.06 75);
   --err:       oklch(0.62 0.22 25);
   --err-tint:  oklch(0.95 0.05 25);
+
+  /* I tre colori semantici sopra sono nati per PALLINI e RIEMPIMENTI, e su
+     fondo chiaro stanno a 2.04:1 (warn), 2.49:1 (ok), 4.05:1 (err): sotto AA
+     tutti e tre. Finche' colorano un `.dot` o un bordo non importa; quando
+     colorano UN TESTO importa moltissimo, perche' il testo in `--warn` e'
+     quello con cui HIRIS dice «questo non l'ho letto» -- la frase che il
+     prodotto esiste per dire, servita dal colore meno leggibile che ha.
+     Da qui i tre token *-ink: stesso significato, luminosita' abbassata
+     quanto basta. Misurati in Chromium sul bianco: 5.61 / 5.16 / 5.44.
+     Regola d'uso: `--x-ink` per il testo, `--x` per pallini, bordi e
+     riempimenti (dove il contrasto del testo non c'entra). */
+  --ok-ink:    oklch(0.52 0.13 155);
+  --warn-ink:  oklch(0.52 0.13 75);
+  --err-ink:   oklch(0.55 0.22 25);
 
   --shadow-sm: 0 1px 2px oklch(0.20 0.05 280 / 0.06);
   --shadow:    0 4px 16px oklch(0.20 0.05 280 / 0.08);
@@ -85,6 +120,15 @@
   --ok-tint:   oklch(0.30 0.08 155);
   --warn-tint: oklch(0.32 0.09 75);
   --err-tint:  oklch(0.30 0.09 25);
+  /* Su fondo scuro i tre semantici sono gia' sopra AA come sono: gli *-ink
+     esistono per il tema chiaro e qui coincidono con l'originale, cosi' chi
+     scrive `var(--warn-ink)` non deve chiedersi in che tema si trova. */
+  --ok-ink:    var(--ok);
+  --warn-ink:  var(--warn);
+  --err-ink:   var(--err);
+  /* In scuro la spazzata torna i petali veri del segno. */
+  --brand-sweep-ink: linear-gradient(90deg,
+      var(--p-violet), var(--p-blue), var(--p-teal), var(--p-fuchsia), var(--p-violet));
 
   --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.32);
   --shadow:    0 8px 24px oklch(0 0 0 / 0.32), 0 2px 6px oklch(0 0 0 / 0.20);
@@ -113,6 +157,14 @@
     --ok-tint:   oklch(0.30 0.08 155);
     --warn-tint: oklch(0.32 0.09 75);
     --err-tint:  oklch(0.30 0.09 25);
+    /* Gemelli dei tre alias e della spazzata nel blocco [data-theme="dark"]
+       qui sopra: questo e' il ramo "il sistema operativo e' scuro e l'utente
+       non ha scelto", e deve dire le stesse cose. */
+    --ok-ink:    var(--ok);
+    --warn-ink:  var(--warn);
+    --err-ink:   var(--err);
+    --brand-sweep-ink: linear-gradient(90deg,
+        var(--p-violet), var(--p-blue), var(--p-teal), var(--p-fuchsia), var(--p-violet));
     --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.32);
     --shadow:    0 8px 24px oklch(0 0 0 / 0.32), 0 2px 6px oklch(0 0 0 / 0.20);
     --shadow-lg: 0 24px 64px oklch(0 0 0 / 0.40);
@@ -182,7 +234,9 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 6px 18px var(--iris-glow);
 }
 .btn-primary:hover { filter: brightness(1.06); background: var(--accent); color: var(--on-accent); }
-.btn-danger { background: var(--err-tint); color: var(--err); border-color: transparent; }
+/* Testo (`--err-ink`) su riempimento (`--err-tint`): la scritta di un bottone
+   distruttivo e' l'ultima che deve risultare sbiadita. */
+.btn-danger { background: var(--err-tint); color: var(--err-ink); border-color: transparent; }
 .btn-danger:hover { background: var(--err); color: #fff; }
 
 .icon-btn {

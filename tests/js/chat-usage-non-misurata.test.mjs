@@ -57,7 +57,7 @@ function fixtureHtml() {
         <header id="header">
           <button id="menu-btn"></button>
           <div id="header-title">HIRIS <span id="header-version"></span></div>
-          <button id="new-conv-btn"></button>
+          <button id="cancella-conv-btn"></button>
           <button id="theme-toggle"><svg class="ic-moon"></svg><svg class="ic-sun" style="display:none"></svg></button>
           <div id="agent-pill"><span id="ap-avatar"></span><span id="ap-name"></span></div>
           <div id="conn-dot"></div>
@@ -170,7 +170,7 @@ test('C-1: con i consumi misurati non cambia niente — i numeri si vedono e le 
 
   assert.equal(fermati.length, 0, 'qui il timer serve: i numeri cambiano');
   assert.equal(document.getElementById('u-requests').textContent, '42');
-  assert.equal(document.getElementById('u-cost').textContent, '€0.1234');
+  assert.equal(document.getElementById('u-cost').textContent, '€ 0.12');
   const righe = [...document.querySelectorAll('#usage-widget .usage-row')];
   for (const r of righe) assert.notEqual(r.style.display, 'none');
 });

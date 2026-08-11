@@ -74,9 +74,16 @@ def test_lo_script_e_dichiarato_in_config_html():
 
 
 def test_la_voce_di_menu_esiste_e_punta_alla_route():
-    voce = re.search(r'<a class="nav-item" href="#/impostazioni" data-route="impostazioni">'
-                     r'.*?</a>', HTML, re.S)
+    # Il tag di apertura non e' piu' scritto per intero nel pattern: pretendeva
+    # che gli attributi fossero esattamente quei tre, in quell'ordine, e cadeva
+    # appena la voce ne guadagnava uno -- come e' successo quando ogni voce ha
+    # preso `title`/`aria-label` (sotto i 1024 px la barra si stringe e le
+    # etichette spariscono: senza quei due attributi restano sei icone senza
+    # nome). Il soggetto del test resta lo stesso: che la voce esista, che
+    # punti a quella route e che porti quel testo.
+    voce = re.search(r'<a class="nav-item"[^>]*href="#/impostazioni"[^>]*>.*?</a>', HTML, re.S)
     assert voce, "senza voce di nav la pagina esisterebbe e nessuno la troverebbe"
+    assert 'data-route="impostazioni"' in voce.group(0)
     assert "Impostazioni chat" in voce.group(0)
 
 

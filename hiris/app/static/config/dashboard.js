@@ -24,9 +24,14 @@
 window.HirisDashboard = (function () {
   'use strict';
 
-  /* Toni: il colore non e' decorazione, distingue i tre stati. */
-  var TONO_IGNOTO = 'color:var(--warn)';
-  var TONO_PROBLEMA = 'color:var(--err)';
+  /* Toni: il colore non e' decorazione, distingue i tre stati. Sono i token
+     *-ink, non `--warn`/`--err`: quelli nascono per pallini e riempimenti e sul
+     tema chiaro -- che e' il predefinito -- stanno a 2.04:1 e 4.05:1. Qui
+     colorano il TESTO con cui HIRIS dice «questo non l'ho letto», cioe' la
+     frase per cui questa pagina esiste: era servita dal colore meno leggibile
+     dell'intera tavolozza. */
+  var TONO_IGNOTO = 'color:var(--warn-ink)';
+  var TONO_PROBLEMA = 'color:var(--err-ink)';
   var TONO_QUIETO = 'color:var(--text-3)';
 
   var NOMI_REGISTRI = {

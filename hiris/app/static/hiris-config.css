@@ -269,7 +269,10 @@
       background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem;
     }
     .proposals-section h2 { margin: 0 0 1rem; font-size: 16px; color: var(--text); }
-    .proposals-error { color: var(--danger); font-size: 13px; padding: 12px 0; }
+    /* `--danger` mappa su `--err` (hiris-config-override.css), 4.05:1 sul
+       chiaro: sotto AA proprio sui messaggi d'errore, che sono l'unico testo
+       che l'utente DEVE riuscire a leggere quando qualcosa si rompe. */
+    .proposals-error { color: var(--err-ink); font-size: 13px; padding: 12px 0; }
 /* ═══ v5 modern overrides ═══ */
     /* ─── HIRIS Designer · v5 modern overrides ─── */
     body {
@@ -742,10 +745,21 @@
   min-height: 100vh;
   background: var(--bg);
 }
+/* Sotto i 1024 px la colonna di sinistra si stringe a 64 px: e' la larghezza
+   dell'iframe di ingress su un portatile da 1280 con la barra di Home Assistant
+   aperta, non un caso limite. Restava dentro l'intestazione di sezione, che a
+   64 px si tagliava a meta' -- si leggeva `CONFIC` -- e le etichette sparivano
+   lasciando sei icone identiche per dimensione senza uno straccio di nome, ne'
+   per il mouse ne' per uno screen reader. L'etichetta di sezione esce con le
+   altre; i nomi delle voci vivono in `title`/`aria-label` in config.html. */
 @media (max-width: 1023px) {
   .app-shell { grid-template-columns: var(--shell-sidebar-w-collapsed) 1fr; }
   .side-nav .nav-label { display: none; }
   .side-nav .brand-name { display: none; }
+  .side-nav .nav-section-label { display: none; }
+  /* Senza etichetta accanto, l'icona non ha piu' motivo di stare a sinistra. */
+  .side-nav .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+  .side-nav .brand { justify-content: center; padding-left: 0; padding-right: 0; }
 }
 
 /* Off-canvas drawer on phones: the 64px rail wastes space, so below 768px the
@@ -915,6 +929,13 @@
   display: flex; flex-direction: column;
   gap: var(--sp-5);
 }
+/* Il corpo di una sezione e' un flex a colonna: senza questa riga ogni bottone
+   appeso direttamente al corpo veniva stirato per tutta la larghezza (950 px su
+   desktop, misurati) e diventava indistinguibile da un campo di testo bordato.
+   Chi lo scambiava per un campo non lo cliccava; chi lo cliccava per sbaglio si
+   riscriveva il prompt di sistema. Vale per i bottoni di oggi e per quelli che
+   verranno. */
+.section-card .sc-body > .btn { align-self: flex-start; }
 
 /* Field group inside a section */
 .field-group {
@@ -935,6 +956,16 @@
 .field label {
   font-size: var(--fs-13); font-weight: 500;
   color: var(--text-2);
+}
+/* `.field-hint` esisteva SOLO come discendente di `.field`, ma meta' dei suoi
+   portatori non sta dentro un `.field`: date, autori, conteggi, «Caricamento…»
+   e «Preset corrente» finivano resi col corpo e il nero del contenuto vero. Il
+   contorno pesava quanto il dato. La regola indipendente vale per tutti; quella
+   discendente resta per non cambiare la specificita' dove serviva. */
+.field-hint {
+  font-size: var(--fs-12);
+  color: var(--text-3);
+  line-height: var(--lh-snug);
 }
 .field .field-hint {
   font-size: var(--fs-12);
@@ -1002,7 +1033,9 @@
   border: 1px solid var(--border);
 }
 .agent-badge.badge-on {
-  color: var(--ok);
+  /* Testo in `--ok-ink`: il badge «Attivo» scritto in `--ok` stava a 2.18:1
+     sul proprio riempimento (misurato). Bordo e fondo restano com'erano. */
+  color: var(--ok-ink);
   background: var(--ok-tint);
   border-color: var(--ok);
 }
@@ -1226,11 +1259,22 @@
 /* ────────────────────────────────────────────────────────────
    Buttons (extends v5 .btn)
    ──────────────────────────────────────────────────────────── */
+/* `.btn-ghost` porta «Riprova» e «Correggi»: senza bordo ne' sfondo, l'unica
+   via d'uscita da un errore aveva l'aspetto di un'etichetta. Il bordo la
+   rimette fra le cose che si cliccano, restando piu' leggera di `.btn-primary`.
+   Il testo passa da `--text-3` a `--text-2`: e' un comando, non un contorno. */
 .btn-ghost {
-  background: transparent; border: 1px solid transparent;
-  color: var(--text-3);
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-2);
 }
-.btn-ghost:hover { background: var(--hover); color: var(--text); border-color: transparent; }
+.btn-ghost:hover { background: var(--hover); color: var(--text); border-color: var(--border-2); }
+/* La distruttiva non deve essere l'elemento piu' pesante della riga: «Dimentica»
+   sta accanto a «Correggi» ed era l'unico dei due a sembrare un bottone. Adesso
+   e' un ghost come l'altro e il rosso arriva solo quando il dito ci si posa
+   sopra -- cioe' quando serve la conferma visiva, non prima. */
+.btn-ghost-danger:hover {
+  background: var(--err-tint); color: var(--err-ink); border-color: var(--err);
+}
 .btn-sm { padding: 4px 10px; font-size: var(--fs-12); }
 .btn-icon-left svg { width: 14px; height: 14px; }
 
@@ -1252,7 +1296,9 @@
 .dot.warn { background: var(--warn); box-shadow: 0 0 0 3px oklch(from var(--warn) l c h / 0.18); }
 
 .agent-badge.badge-warn {
-  color: var(--warn);
+  /* Gemello di `.badge-on`: qui c'e' scritto «manca credenziale», ed e' il
+     genere di frase che non deve costare fatica a leggere. */
+  color: var(--warn-ink);
   background: var(--warn-tint);
   border-color: var(--warn);
 }
@@ -1296,7 +1342,9 @@
   margin-top: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
   background: var(--warn-tint);
-  color: var(--warn);
+  /* «Nessun provider attivo. HIRIS non puo' rispondere...»: e' un avviso di
+     blocco totale, in `--warn` era il testo meno leggibile della pagina. */
+  color: var(--warn-ink);
   border: 1px solid oklch(from var(--warn) l c h / 0.3);
   border-radius: var(--r-sm);
   font-size: var(--fs-13);

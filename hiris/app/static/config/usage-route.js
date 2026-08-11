@@ -5,12 +5,11 @@
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  function formatTokens(n) {
-    n = Number(n) || 0;
-    if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n/1000).toFixed(1) + 'k';
-    return String(n);
-  }
+  /* `formatTokens` viveva qui e arrotondava i milioni a un decimale mentre
+     `fmtNum` (config/api.js), che serve il riquadro della chat, ne usa due:
+     lo stesso numero appariva come `1.3M` di qua e `1.28M` di la'. La copia
+     locale e' uscita, restano le funzioni condivise -- api.js e' gia' il posto
+     delle utilita' comuni e questa pagina lo carica gia'. */
 
   function mount() {
     var outlet = document.getElementById('route-outlet');
@@ -50,7 +49,9 @@
         grid.style.display = 'none';
         var avviso = document.createElement('p');
         avviso.className = 'page-subtitle';
-        avviso.style.cssText = 'color:var(--warn)';
+        /* `--warn-ink`, non `--warn`: e' testo, e questa e' la frase che
+           spiega perche' non ci sono numeri. */
+        avviso.style.cssText = 'color:var(--warn-ink)';
         avviso.textContent = u.messaggio || 'I consumi non si misurano su questa configurazione.';
         grid.parentNode.insertBefore(avviso, grid);
         var azioni = document.getElementById('usage-azioni');
@@ -62,12 +63,12 @@
       var tout = u.total_output_tokens || u.output_tokens || 0;
       var cost = u.total_cost_eur || u.cost_eur || 0;
       var req = u.total_requests || u.requests || 0;
-      var lastReset = u.last_reset || u.reset_at || '';
+      var lastReset = fmtDataOra(u.last_reset || u.reset_at);
       grid.innerHTML =
-        '<div class="stat-tile"><div class="st-label">Richieste</div><div class="st-value">' + req + '</div><div class="st-delta">' + (lastReset ? 'da ' + escHtml(String(lastReset).slice(0,10)) : '') + '</div></div>' +
-        '<div class="stat-tile"><div class="st-label">Token IN</div><div class="st-value">' + formatTokens(tin) + '</div></div>' +
-        '<div class="stat-tile"><div class="st-label">Token OUT</div><div class="st-value">' + formatTokens(tout) + '</div></div>' +
-        '<div class="stat-tile"><div class="st-label">Costo</div><div class="st-value">€ ' + Number(cost).toFixed(2) + '</div></div>';
+        '<div class="stat-tile"><div class="st-label">Richieste</div><div class="st-value">' + req + '</div><div class="st-delta">' + (lastReset ? 'da ' + escHtml(lastReset) : '') + '</div></div>' +
+        '<div class="stat-tile"><div class="st-label">Token IN</div><div class="st-value">' + fmtNum(tin) + '</div></div>' +
+        '<div class="stat-tile"><div class="st-label">Token OUT</div><div class="st-value">' + fmtNum(tout) + '</div></div>' +
+        '<div class="stat-tile"><div class="st-label">Costo</div><div class="st-value">' + fmtEuro(cost) + '</div></div>';
     }).catch(function(err) {
       console.error('usage global fetch failed', err);
       var grid = document.getElementById('usage-global-grid');

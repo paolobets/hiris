@@ -4,8 +4,8 @@
    final <script> in config.html). */
 (function() {
   function wireHeaderAndSidebarButtons() {
-    var newConvBtn = document.getElementById('new-conv-btn');
-    if (newConvBtn) newConvBtn.addEventListener('click', window.HirisChatAgents.clearConversation);
+    var btnCancella = document.getElementById('cancella-conv-btn');
+    if (btnCancella) btnCancella.addEventListener('click', window.HirisChatAgents.clearConversation);
   }
 
   /* Unica fonte del "connesso/offline": estende la chiamata a GET api/health

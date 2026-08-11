@@ -20,7 +20,13 @@ const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 const MESSAGGIO = "Sul percorso abbonamento i consumi non si misurano: la chat gira sull'abbonamento Claude.";
 
 async function monta(risposta) {
-  const ctx = loadScripts(['config/usage-route.js'], { html: HTML });
+  /* `config/api.js` prima non serviva: questa pagina aveva una copia privata
+     delle sue funzioni di formattazione, e per lo stesso numero scriveva
+     `1.3M` dove il riquadro della chat scriveva `1.28M`. Le copie sono uscite,
+     restano le funzioni condivise -- che nella pagina vera arrivano dallo
+     <script> che config.html carica PRIMA di questo (vedi l'ordine li'). La
+     lista qui sotto adesso dice la verita' su cosa serve alla pagina. */
+  const ctx = loadScripts(['config/api.js', 'config/usage-route.js'], { html: HTML });
   ctx.window.fetch = () => Promise.resolve(risposta());
   ctx.window.HirisUsageRoute.mount();
   await tick(0);
@@ -73,6 +79,50 @@ test('C-1: con i consumi misurati la pagina mostra i numeri e il pulsante', asyn
   assert.match(testo, /42/);
   assert.match(testo, /1\.2k/, 'i token si abbreviano, ma ci sono');
   assert.notEqual(outlet.querySelector('#usage-azioni').style.display, 'none');
+});
+
+// ---------------------------------------------------------------------------
+// I9 -- lo stesso numero, scritto in due modi. Il riquadro «Utilizzo» della
+// chat e questa pagina leggono LA STESSA rotta (`GET api/usage`) e mostrano gli
+// stessi dati: scrivevano `1.28M` contro `1.3M`, `€3.2149` contro `€ 3.21`, e
+// `da 2026-08-01` contro il formato italiano usato ovunque nel prodotto. Non e'
+// un dettaglio tipografico: chi guarda le due schermate una dopo l'altra ha
+// ragione di credere che una delle due stia sbagliando. Questo test tiene le
+// due superfici sulla stessa grammatica facendole rendere lo STESSO payload
+// nello stesso documento e confrontando quel che si legge.
+// ---------------------------------------------------------------------------
+
+test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', async () => {
+  const DATI = {
+    misurata: true, total_requests: 128,
+    input_tokens: 1284000, output_tokens: 92100,
+    cost_eur: 3.21492, last_reset: '2026-08-01T09:12:00Z',
+  };
+  const ctx = loadScripts(['config/api.js', 'config/usage-route.js'], {
+    html: '<!doctype html><body><div id="route-outlet"></div>'
+      + '<div id="usage-widget">'
+      + '<div class="usage-row"><span class="usage-val" id="u-input">—</span></div>'
+      + '<div class="usage-row"><span class="usage-val" id="u-cost">—</span></div>'
+      + '</div></body>',
+  });
+  ctx.window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(DATI) });
+
+  await globalThis.loadUsage();          // il riquadro della chat
+  ctx.window.HirisUsageRoute.mount();    // la pagina Consumi
+  await tick(0);
+  await tick(0);
+
+  const tessere = [...ctx.document.querySelectorAll('#usage-global-grid .stat-tile')]
+    .map((t) => t.querySelector('.st-value').textContent);
+  assert.equal(ctx.document.getElementById('u-input').textContent, tessere[1],
+    'i token di ingresso: stessa cifra, stesse abbreviazioni');
+  assert.equal(ctx.document.getElementById('u-cost').textContent, tessere[3],
+    'il costo: stesso simbolo, stessa spaziatura, stessi due decimali');
+  assert.equal(tessere[3], '€ 3.21', 'due decimali, mai quattro');
+  const quando = ctx.document.querySelector('#usage-global-grid .st-delta').textContent;
+  assert.doesNotMatch(quando, /2026-08-01/,
+    'la data si scrive come nel resto del prodotto, non come un ISO tagliato a metà');
+  assert.match(quando, /01\/08\/2026/);
 });
 
 test('la pagina non chiama più «Chatbot» ciò che il prodotto non ha più', async () => {

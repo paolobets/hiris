@@ -31,7 +31,14 @@
       min-width: 0;
       overflow: hidden;
     }
-    [data-theme="dark"] #sidebar,
+    /* Erano una regola sola, scritta `selettore, @media (…) { … }`: una lista
+       di selettori con dentro una at-rule. Il parser di Chrome la scarta
+       intera, in silenzio -- verificato leggendo `document.styleSheets[…]
+       .cssRules`, dove nessuna delle due compariva. Effetto per chi guarda:
+       in tema scuro la colonna di sinistra restava a `--surface`, senza piu'
+       stacco dall'area dei messaggi. Due regole normali, che il browser
+       tiene davvero. */
+    [data-theme="dark"] #sidebar { background: oklch(0.185 0.020 280); }
     @media (prefers-color-scheme: dark) {
       html:not([data-theme="light"]) #sidebar { background: oklch(0.185 0.020 280); }
     }
@@ -136,7 +143,7 @@
     #conn-dot.offline {
       display: inline-flex;
       background: var(--err-tint);
-      color: var(--err);
+      color: var(--err-ink);
     }
     /* v0.10.4: theme-toggle circolare invece di quadrato. Stile coerente
        con .btn-icon-only del designer v6. */
@@ -250,6 +257,11 @@
       font-size: 14.5px;
       line-height: 1.6;
       word-break: break-word;
+      /* Una riga di testo, bordi e imbottitura compresi. L'indicatore d'attesa
+         e la risposta sono lo STESSO nodo (vedi chat/send.js): senza questo,
+         una risposta di due parole farebbe rimpicciolire la bolla nell'istante
+         in cui arriva, e la conversazione salterebbe sotto gli occhi. */
+      min-height: calc(1.6em + 24px);
     }
     .msg-row.assistant .bubble {
       background: var(--surface);
@@ -264,14 +276,14 @@
       color: var(--text);
       border-top-right-radius: 6px;
     }
-    [data-theme="dark"] .msg-row.user .bubble,
-    @media (prefers-color-scheme: dark) {
-      html:not([data-theme="light"]) .msg-row.user .bubble {
-        background: var(--accent-tint);
-        border-color: var(--accent-tint-2);
-        color: var(--text);
-      }
-    }
+    /* Qui stava la seconda regola con la stessa forma malata (`selettore,
+       @media (…) { … }`), anche lei scartata dal browser. Non e' stata
+       spezzata come quella del `#sidebar`: e' stata cancellata. Ripeteva
+       parola per parola i tre valori della regola qui sopra, e tutti e tre
+       arrivano da token che cambiano gia' da soli col tema -- riscriverli
+       per il tema scuro non aggiungeva niente nemmeno quando la regola era
+       valida. Farla funzionare sarebbe stato rimettere in vita una riga che
+       non serve a nessuno. */
     .msg-time { font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); padding: 0 4px; }
 
     /* Welcome */
@@ -396,69 +408,20 @@
     .tool-args code { background: transparent; padding: 0; }
     .tool-args b { color: var(--accent); font-weight: 600; }
 
-    /* Typing */
-    .typing-row {
-      max-width: 740px; width: 100%;
-      margin: 0 auto;
-      padding: 0 32px;
-      display: flex; gap: 12px; align-items: flex-start;
-    }
-    .typing-bubble {
-      display: inline-flex; gap: 4px;
-      padding: 14px 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--r-md);
-      border-top-left-radius: 6px;
-      box-shadow: var(--shadow-sm);
-    }
-    .typing-dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: var(--accent);
-      animation: bounce 1.2s ease-in-out infinite;
-      opacity: 0.5;
-    }
-    .typing-dot:nth-child(2) { animation-delay: 0.15s; }
-    .typing-dot:nth-child(3) { animation-delay: 0.3s; }
+    /* ─── L'attesa: un indicatore solo ───────────────────────────────────
+       Qui vivevano TRE estetiche dell'attesa: `.typing-row`/`.typing-bubble`
+       (tre pallini), `.thinking-code` (un prompt col caret e barrette
+       monospace, con la parola «elaboro»), e questa. Quale delle prime due
+       vedessi dipendeva da come il server aveva smaltito il turno -- una
+       differenza che l'utente non sceglie, non capisce e non deve vedere.
+       Ne resta una: il logo che pulsa, la scritta che scorre nei colori del
+       marchio, e -- solo se l'attesa si allunga -- un cronometro. Le altre
+       due sono uscite con i loro portatori in `chat/messages.js`.
 
-    /* Indicatore "sta elaborando" stile code/terminale (issue #3 live-verify):
-       prompt col caret lampeggiante + barrette monospace che scorrono come
-       codice in scrittura, mentre HIRIS elabora (l'input resta bloccato). */
-    .thinking-code {
-      display: inline-flex; align-items: center; gap: 9px;
-      font-family: var(--font-mono); font-size: 12.5px; color: var(--text-2);
-      padding: 12px 15px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--r-md); border-top-left-radius: 6px;
-      box-shadow: var(--shadow-sm);
-    }
-    .thinking-code .tk-prompt { color: var(--accent); font-weight: 700; }
-    .thinking-code .tk-prompt::after {
-      content: '\2588'; margin-left: 1px;
-      animation: tk-caret 1.05s steps(1) infinite;
-    }
-    @keyframes tk-caret { 50% { opacity: 0; } }
-    .thinking-code .tk-stream { display: inline-flex; gap: 3px; }
-    .thinking-code .tk-stream i {
-      display: inline-block; height: 8px; border-radius: 2px; opacity: 0.85;
-      background: linear-gradient(90deg, var(--border) 25%, var(--accent-tint) 50%, var(--border) 75%);
-      background-size: 200% 100%;
-      animation: tk-shimmer 1.15s linear infinite;
-    }
-    .thinking-code .tk-stream i:nth-child(1) { width: 14px; animation-delay: 0s; }
-    .thinking-code .tk-stream i:nth-child(2) { width: 22px; animation-delay: 0.12s; }
-    .thinking-code .tk-stream i:nth-child(3) { width: 10px; animation-delay: 0.24s; }
-    .thinking-code .tk-stream i:nth-child(4) { width: 18px; animation-delay: 0.36s; }
-    .thinking-code .tk-stream i:nth-child(5) { width: 12px; animation-delay: 0.48s; }
-    @keyframes tk-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .thinking-code .tk-label { color: var(--text-3); }
-    @media (prefers-reduced-motion: reduce) {
-      .thinking-code .tk-prompt::after, .thinking-code .tk-stream i { animation: none; }
-    }
-
-    /* Placeholder "in elaborazione" per la risposta via abbonamento (202): il
-       logo HIRIS pulsa, la label scorre nei colori del logo, e un timer sotto
-       conta i secondi -- si vede che non e' bloccato (richiesta utente). */
+       I colori non sono piu' scritti a mano qui dentro: la scritta prende
+       `--brand-sweep-ink` dal tema, che ha una versione per fondo chiaro e
+       una per fondo scuro. I quattro esadecimali che stavano in questa riga
+       stavano fra 1.86:1 e 2.64:1 sul bianco. */
     .avatar.thinking-logo { animation: hiris-logo-pulse 1.8s ease-in-out infinite; }
     @keyframes hiris-logo-pulse {
       0%, 100% { transform: scale(1);    opacity: 0.85; }
@@ -468,7 +431,7 @@
     .thinking-live .tl-top { display: inline-flex; align-items: center; gap: 8px; }
     .thinking-live .tl-label {
       font-weight: 600; font-size: 13.5px;
-      background: linear-gradient(90deg, #c084fc, #60a5fa, #2dd4bf, #e879f9, #c084fc);
+      background-image: var(--brand-sweep-ink);
       background-size: 300% 100%;
       -webkit-background-clip: text; background-clip: text;
       -webkit-text-fill-color: transparent; color: transparent;
@@ -482,13 +445,38 @@
     }
     .thinking-live .tl-dots i:nth-child(2) { animation-delay: 0.15s; }
     .thinking-live .tl-dots i:nth-child(3) { animation-delay: 0.3s; }
+    /* Il cronometro NON c'e' nei primi dieci secondi: prima di allora non e'
+       informazione, e' solo una risposta rapida trasformata in una risposta
+       cronometrata. Quando compare, entra in dissolvenza per non far saltare
+       l'altezza della bolla. */
     .thinking-live .thinking-timer {
       font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
       font-variant-numeric: tabular-nums;
+      animation: hiris-thinking-entra 0.24s ease-out both;
     }
+    /* La riga di servizio dei due minuti: dice che cosa succede al turno se
+       l'utente se ne va. Il testo lo sceglie chat/messages.js, perche' la
+       risposta vera dipende da come il turno viene servito. */
+    .thinking-live .tl-servizio {
+      font-size: 12px; color: var(--text-3); line-height: var(--lh-snug, 1.4);
+      max-width: 44ch;
+      animation: hiris-thinking-entra 0.24s ease-out both;
+    }
+    @keyframes hiris-thinking-entra { from { opacity: 0; } to { opacity: 1; } }
+    /* Con il movimento attenuato la scritta smette di scorrere e diventa una
+       tinta piatta -- che deve essere LEGGIBILE: il ripiego era `--accent`,
+       3.35:1 sul bianco, cioe' il fallback per chi ha chiesto meno animazione
+       era anche il testo peggio contrastato della pagina. `--accent-ink` sta a
+       13.70:1 in chiaro e a 8.2:1 in scuro. Qui resta comunque il cronometro,
+       che e' testo che cambia e non movimento: e' lui a dire «sono viva» a chi
+       ha spento le animazioni. */
     @media (prefers-reduced-motion: reduce) {
-      .avatar.thinking-logo, .thinking-live .tl-label, .thinking-live .tl-dots i { animation: none; }
-      .thinking-live .tl-label { -webkit-text-fill-color: var(--accent); color: var(--accent); }
+      .avatar.thinking-logo, .thinking-live .tl-label, .thinking-live .tl-dots i,
+      .thinking-live .thinking-timer, .thinking-live .tl-servizio { animation: none; }
+      .thinking-live .tl-label {
+        background-image: none;
+        -webkit-text-fill-color: var(--accent-ink); color: var(--accent-ink);
+      }
     }
 
     @keyframes bounce {
@@ -556,7 +544,10 @@
     #session-ended-msg {
       font-size: 12px; text-align: center;
       padding: 8px 12px;
-      color: var(--err); background: var(--err-tint);
+      /* testo in `--err-ink` sul riempimento `--err-tint`: `--err` sul chiaro
+         sta a 4.05:1, sotto AA, e questa e' la riga che spiega perche' non si
+         puo' piu' scrivere. */
+      color: var(--err-ink); background: var(--err-tint);
       border-top: 1px solid var(--border);
     }
 
@@ -590,7 +581,22 @@
     #sidebar-overlay { display: none; }
     @media (pointer: coarse) { #menu-btn { width: 44px; height: 44px; } }
 
-    @media (max-width: 720px) {
+    /* Fra i 721 e i ~880 px l'header si spezzava in due righe (misurato: 83 px
+       contro i 66 di un desktop) perche' il sottotitolo andava a capo e il
+       bottone di destra si spezzava dentro se stesso. Il sottotitolo e' la
+       prima cosa che si puo' togliere: e' una sigla in inglese su un prodotto
+       in italiano, e non dice niente che serva mentre si scrive. */
+    @media (max-width: 900px) {
+      #header-subtitle { display: none; }
+      #cancella-conv-btn { white-space: nowrap; }
+    }
+
+    /* Era 720 px. Portato a 768 per far cambiare forma alle due superfici alla
+       STESSA larghezza: sotto i 768 la configurazione mostra gia' il pannello a
+       scomparsa, e a 768 esatti -- l'iPad in verticale -- la chat teneva invece
+       una colonna fissa da 280 px, il 36% dello schermo per una voce di menu e
+       un riquadro di consumi. */
+    @media (max-width: 768px) {
       #app { grid-template-columns: 1fr; }
       #menu-btn { display: inline-flex; }
       #sidebar {
@@ -603,20 +609,20 @@
       }
       #sidebar.open { transform: translateX(0); }
       #sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55; }
-      .msg-row, .typing-row, #welcome, #input-inner, .debug-row { padding-left: 16px; padding-right: 16px; }
+      .msg-row, #welcome, #input-inner, .debug-row { padding-left: 16px; padding-right: 16px; }
       #input-area { padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
 
       /* Mobile header redesign: minimal & clear. The crowded items (logo,
          version, subtitle, agent pill, Task) move into the drawer / are hidden;
-         only essentials stay: ☰ menu · HIRIS · nuova conversazione · tema. */
+         only essentials stay: ☰ menu · HIRIS · cancella conversazione · tema. */
       #header { padding: 8px 12px calc(8px + env(safe-area-inset-top)); gap: 8px; }
       #header-icon, #header-subtitle, #header-version, #agent-pill,
       #mobile-task-btn, #mobile-proposals-btn { display: none; }
       #header-title { font-size: 16px; }
       #header-tools { margin-left: auto; gap: 4px; }
-      #new-conv-btn {
+      #cancella-conv-btn {
         font-size: 0; gap: 0; padding: 0; width: 44px; height: 44px;
         display: inline-flex; align-items: center; justify-content: center;
       }
-      #new-conv-btn svg { width: 19px; height: 19px; }
+      #cancella-conv-btn svg { width: 19px; height: 19px; }
     }

@@ -72,25 +72,53 @@
            * overall timeout above gives up. */
         }
       }
-      window.HirisChatMessages.updateBubble(placeholderRow, 'La risposta non è arrivata in tempo. Riprova.');
+      /* Cinque minuti di attesa non possono finire in un vicolo cieco. Su
+         questo percorso il turno vive sul server: se la risposta arriva dopo
+         che abbiamo smesso di chiedere, finisce comunque in cronologia
+         (`server.py::_submit_chat_reply`) e ricompare al caricamento dopo.
+         Dirlo e' piu' vero -- e piu' utile -- di un «Riprova» che
+         rimanderebbe la stessa domanda una seconda volta. */
+      window.HirisChatMessages.updateBubble(placeholderRow,
+        'Ho smesso di aspettare dopo cinque minuti. Se la risposta arriva, la trovi in questa conversazione ricaricando la pagina.');
     } finally {
       setLoadingState(false);
       if (!state.els.input.disabled) state.els.input.focus();
     }
   }
 
+  var SEGNAPOSTO_NORMALE = 'Scrivi un messaggio\u2026';
+  var SEGNAPOSTO_ATTESA = 'HIRIS sta rispondendo \u2014 potrai scrivere appena ha finito';
+
   function setLoadingState(loading) {
     state.isLoading = loading;
-    /* Blocca la textarea (non solo il bottone) mentre HIRIS elabora: niente
-       secondo messaggio finche' non arriva la risposta. Allo sblocco NON
-       forziamo abilitato -- ripristiniamo lo stato reale via checkTurnLimit
-       (potrebbe essere disabilitato per turn-limit). */
+    /* La textarea diventa `readOnly`, non `disabled`. Un controllo disabilitato
+       PERDE IL FUOCO: su un tablet questo chiude la tastiera di sistema, e
+       chat/keyboard.js se ne accorge 300 ms dopo e ricalcola l'altezza della
+       pagina -- cioe' a ogni invio la conversazione saltava sotto il dito, e
+       alla risposta risaliva. In sola lettura il fuoco resta dov'e', la
+       tastiera resta aperta, e il secondo invio e' comunque impossibile: lo
+       ferma la guardia `state.isLoading` in send(), che e' il vero blocco.
+       Il segnaposto dice PERCHE' non si puo' scrivere, invece di lasciare un
+       campo muto e inerte davanti a chi ci ha appena cliccato dentro.
+       Allo sblocco NON forziamo abilitato: ripristiniamo lo stato reale via
+       checkTurnLimit (potrebbe essere disabilitato per turn-limit -- e li' il
+       `disabled` e' giusto, perche' la sessione e' finita davvero). */
     if (loading) {
-      state.els.input.disabled = true;
+      state.els.input.readOnly = true;
+      state.els.input.placeholder = SEGNAPOSTO_ATTESA;
       state.els.sendBtn.disabled = true;
     } else {
+      state.els.input.readOnly = false;
+      state.els.input.placeholder = SEGNAPOSTO_NORMALE;
       window.HirisChatAgents.checkTurnLimit();
     }
+    /* Il bottone «cancella conversazione» non deve poter rispondere mentre
+       HIRIS elabora: premuto in quel momento svuotava la lista, e la risposta
+       -- gia' pagata in token -- veniva poi scritta dentro una riga staccata
+       dal DOM, che nessuno vedeva mai. E' la stessa condizione che blocca il
+       composer, quindi vive qui e non in un secondo posto da tenere allineato. */
+    var btnCancella = document.getElementById('cancella-conv-btn');
+    if (btnCancella) btnCancella.disabled = loading;
     state.els.sendBtn.classList.toggle('loading', loading);
   }
 
@@ -101,7 +129,12 @@
     autoResize();
     setLoadingState(true);
     window.HirisChatMessages.appendMsg('user', text);
-    var typing = window.HirisChatMessages.showTyping();
+    /* L'indicatore d'attesa e la risposta sono LO STESSO NODO, su tutti e due i
+       percorsi. Prima il ramo diretto creava una riga d'attesa, la rimuoveva e
+       ne aggiungeva un'altra: un fotogramma di vuoto, un cambio d'altezza e uno
+       scorrimento, proprio nell'istante in cui l'occhio sta cercando la
+       risposta. Adesso ogni ramo scrive DENTRO la bolla che c'e' gia'. */
+    var attesa = window.HirisChatMessages.showThinking();
     /* handedOff: sul path 202 il lock passa a pollChatReply (che sblocca a fine
        poll), quindi il finally qui NON deve sbloccare -- altrimenti l'input si
        riaprirebbe mentre HIRIS sta ancora elaborando la risposta. */
@@ -113,19 +146,22 @@
         body: JSON.stringify({ message: text }),
       });
       var data = await r.json();
-      typing.remove();
       if (r.status === 202 && data.status === 'pending' && data.job_id) {
-        var placeholder = window.HirisChatMessages.showThinking();
+        /* Da qui in poi il turno vive sul server: il messaggio dell'utente e'
+           gia' in cronologia e la risposta ci finira' da sola. L'indicatore lo
+           sa, e ai due minuti lo dice con la frase giusta invece di spaventare
+           chi vuole chiudere la pagina. */
+        window.HirisChatMessages.attesaAlSicuroSulServer(attesa);
         handedOff = true;
-        pollChatReply(data.job_id, placeholder);
+        pollChatReply(data.job_id, attesa);
         return;
       }
       if (data.error === 'max_turns_reached') {
-        window.HirisChatMessages.appendMsg('assistant', 'Sessione completata. Avvia una nuova conversazione.');
+        window.HirisChatMessages.updateBubble(attesa, 'Sessione completata. Avvia una nuova conversazione.');
         window.HirisChatAgents.checkTurnLimit();
         return;
       }
-      window.HirisChatMessages.appendMsg('assistant', data.response || data.error || 'Errore sconosciuto');
+      window.HirisChatMessages.updateBubble(attesa, data.response || data.error || 'Errore sconosciuto');
       if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
         window.HirisChatMessages.appendDebug(data.debug.tools_called);
       }
@@ -133,8 +169,7 @@
       window.HirisChatAgents.updateTurnCounter();
       window.HirisChatAgents.checkTurnLimit();
     } catch (e) {
-      typing.remove();
-      window.HirisChatMessages.appendMsg('assistant', 'Errore di connessione. Riprova tra poco.');
+      window.HirisChatMessages.updateBubble(attesa, 'Errore di connessione. Riprova tra poco.');
     } finally {
       if (!handedOff) {
         setLoadingState(false);
@@ -152,22 +187,45 @@
 
   function wireComposer() {
     var enterSent = false;
+    var acapoVoluto = false;
     state.els.input.addEventListener('keydown', function(e) {
-      if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
+      if (e.key === 'Enter' || e.keyCode === 13) {
+        if (e.shiftKey) {
+          /* Maiusc+Invio e' l'unico gesto di composizione che esiste in una
+             chat, e vuol dire «vado a capo». Il gestore `input` qui sotto
+             lo vedeva come un a-capo qualsiasi e mandava il messaggio: il
+             gesto faceva l'opposto di se stesso. */
+          acapoVoluto = true;
+          return;
+        }
         e.preventDefault();
         enterSent = true;
         send();
         setTimeout(function() { enterSent = false; }, 200);
       }
     });
-    state.els.input.addEventListener('input', function() {
+    /* Questa euristica esiste per UNA ragione sola: certe tastiere di sistema
+       (mobile) inseriscono un a-capo nel testo invece di emettere un `keydown`
+       con Invio, e senza di lei il tasto «invia» del telefono non
+       inviava niente. Reagiva pero' a QUALUNQUE a-capo comparso nel campo --
+       quindi anche a Maiusc+Invio e a un incolla di due righe prese dai log di
+       Home Assistant: il messaggio partiva da solo, con un testo che l'utente
+       non aveva finito di scrivere, bruciando un turno del tetto di sessione.
+       E le righe venivano saldate cancellando l'a-capo (`\n` -> stringa
+       vuota), non sostituendolo: «riga uno\nriga due» diventava
+       «riga unoriga due». Adesso guarda `inputType`, che dice quale
+       gesto ha prodotto la modifica, e resta accesa solo sul suo caso. */
+    state.els.input.addEventListener('input', function(e) {
       autoResize();
-      if (!enterSent && state.els.input.value.includes('\n')) {
-        var msg = state.els.input.value.replace(/\n/g, '').trim();
-        state.els.input.value = msg;
-        autoResize();
-        if (msg) send(msg);
-      }
+      if (acapoVoluto) { acapoVoluto = false; return; }
+      /* incolla, dettatura, annulla, correzione automatica: non sono invii */
+      if (e && e.inputType && e.inputType !== 'insertLineBreak') return;
+      if (enterSent) return;
+      if (state.els.input.value.indexOf('\n') === -1) return;
+      var msg = state.els.input.value.replace(/\n+/g, ' ').trim();
+      state.els.input.value = msg;
+      autoResize();
+      if (msg) send(msg);
     });
     state.els.sendBtn.addEventListener('click', function() { send(); });
 

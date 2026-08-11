@@ -131,8 +131,10 @@ window.HirisMemoriaRoute = (function () {
       var nome = a.nome_attuale || a.nome_visto || a.riferimento;
       var testo, tono;
       if (a.esiste === true) { testo = nome; tono = ''; }
-      else if (a.esiste === false) { testo = nome + ' — non esiste più nell’anagrafe'; tono = 'var(--err)'; }
-      else { testo = nome + ' — non è stato possibile verificarlo'; tono = 'var(--warn)'; }
+      /* `--err-ink`/`--warn-ink` e non `--err`/`--warn`: e' testo, e sul tema
+         chiaro i due originali stanno sotto AA (4.05:1 e 2.04:1). */
+      else if (a.esiste === false) { testo = nome + ' — non esiste più nell’anagrafe'; tono = 'var(--err-ink)'; }
+      else { testo = nome + ' — non è stato possibile verificarlo'; tono = 'var(--warn-ink)'; }
       var li = el('li', null, (TIPO_ANCORA_LABELS[a.tipo] || a.tipo) + ': ' + testo);
       if (tono) li.style.color = tono;
       ul.appendChild(li);
@@ -302,9 +304,12 @@ window.HirisMemoriaRoute = (function () {
     barra.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap';
     var btnCorreggi = el('button', 'btn btn-ghost btn-sm', 'Correggi');
     btnCorreggi.type = 'button';
-    var btnCancella = el('button', 'btn btn-ghost btn-sm', 'Dimentica');
+    /* «Dimentica» era l'unico elemento della riga che sembrasse un bottone --
+       rosso, bordato -- mentre «Correggi», l'azione sicura, sembrava
+       un'etichetta: la gerarchia era rovesciata. Ora sono due ghost uguali e il
+       rosso di questo arriva col passaggio del mouse (`.btn-ghost-danger`). */
+    var btnCancella = el('button', 'btn btn-ghost btn-ghost-danger btn-sm', 'Dimentica');
     btnCancella.type = 'button';
-    btnCancella.style.cssText = 'color:var(--err);border-color:var(--err)';
     barra.appendChild(btnCorreggi);
     barra.appendChild(btnCancella);
     body.appendChild(barra);
