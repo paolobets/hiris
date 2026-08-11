@@ -35,6 +35,26 @@
     });
   }
 
+  /* Il riquadro "Utilizzo" si aggiorna a intervalli, ma smette da solo quando
+     non c'e' niente da aggiornare. `loadUsage()` (config/api.js) restituisce
+     `false` SOLO quando il server dichiara che su questa configurazione i
+     consumi non si misurano (percorso abbonamento, o nessun provider): e' un
+     fatto che non cambia senza un riavvio dell'add-on, quindi ripetere la
+     chiamata ogni 30 secondi produce solo rumore -- prima erano un 503 e un
+     console.error ogni mezzo minuto, per sempre, senza che l'utente leggesse
+     mai il perche'. Un errore di rete o un HTTP non-200 restituiscono invece
+     `true`: quelli possono passare, e il timer resta. */
+  var timerConsumi = null;
+
+  function aggiornaConsumi() {
+    return loadUsage().then(function (continua) {
+      if (continua === false && timerConsumi !== null) {
+        clearInterval(timerConsumi);
+        timerConsumi = null;
+      }
+    });
+  }
+
   function boot() {
     window.HirisChatTheme.init();
 
@@ -45,10 +65,10 @@
     /* Ricarica la history della conversazione: senza questo, tornando alla chat
        da config (reload pieno) si vedeva una chat vuota pur essendo salvata. */
     window.HirisChatAgents.restore();
-    loadUsage();
+    aggiornaConsumi();
     window.HirisChatAgents.updateGreeting();
     setInterval(window.HirisChatAgents.loadSettings, 30000);
-    setInterval(loadUsage, 30000);
+    timerConsumi = setInterval(aggiornaConsumi, 30000);
     setInterval(window.HirisChatAgents.updateGreeting, 60 * 60 * 1000); /* refresh greeting every hour */
 
     window.HirisChatSidebar.init();

@@ -80,9 +80,11 @@
     if (!pill) return;
     var avatar = document.getElementById('ap-avatar');
     var name = document.getElementById('ap-name');
-    var letter = (agentName || 'I').trim().charAt(0).toUpperCase();
+    /* Il ripiego e' il nome del prodotto, non quello di un assistente
+       che non esiste piu': la 2.0 ha una chat sola, ed e' HIRIS. */
+    var letter = (agentName || 'HIRIS').trim().charAt(0).toUpperCase();
     if (avatar) avatar.textContent = letter;
-    if (name) name.textContent = agentName || 'Iris';
+    if (name) name.textContent = agentName || 'HIRIS';
   }
 
   function updateGreeting() {

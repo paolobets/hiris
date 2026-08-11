@@ -52,11 +52,41 @@ function _setUsageText(id, text) {
   if (el) el.textContent = text;
 }
 
+/* Mostra/nasconde le quattro righe di numeri del riquadro "Utilizzo".
+   Quando la misura non esiste, quattro trattini accanto a "Richieste" e
+   "Costo" si leggono come "sto caricando": le righe escono di scena e resta
+   la frase che dice perche'. Guardata sull'esistenza: la pagina di
+   configurazione non ha questo riquadro. */
+function _mostraRigheConsumi(visibili) {
+  var widget = document.getElementById('usage-widget');
+  if (!widget) return;
+  var righe = widget.querySelectorAll('.usage-row');
+  for (var i = 0; i < righe.length; i++) {
+    righe[i].style.display = visibili ? '' : 'none';
+  }
+}
+
+/* Restituisce `false` quando il server ha DICHIARATO che su questa
+   configurazione i consumi non si misurano (GET api/usage -> 200 con
+   `misurata: false`, vedi api/handlers_usage.py): e' un fatto della
+   configurazione, non un guasto passeggero, e non cambia senza un riavvio
+   dell'add-on. Chi chiama a intervalli usa questo `false` per SMETTERE di
+   chiamare -- prima il riquadro della chat ripeteva la stessa domanda ogni
+   30 secondi e ogni volta si prendeva un 503 e un console.error, senza mai
+   dire niente all'utente. In ogni altro caso (numeri veri, errore HTTP,
+   rete caduta) restituisce `true`: quelli si' che possono cambiare al giro
+   dopo. */
 async function loadUsage() {
   try {
     var r = await fetch('api/usage');
-    if (!r.ok) { console.error('loadUsage failed', r.status); return; }
+    if (!r.ok) { console.error('loadUsage failed', r.status); return true; }
     var d = await r.json();
+    if (d.misurata === false) {
+      _mostraRigheConsumi(false);
+      _setUsageText('usage-last-reset', d.messaggio || 'I consumi non si misurano su questa configurazione.');
+      return false;
+    }
+    _mostraRigheConsumi(true);
     _setUsageText('u-requests', d.total_requests != null ? d.total_requests : '—');
     _setUsageText('u-input', fmtNum(d.input_tokens));
     _setUsageText('u-output', fmtNum(d.output_tokens));
@@ -65,7 +95,9 @@ async function loadUsage() {
       var dt = new Date(d.last_reset);
       _setUsageText('usage-last-reset', 'Azzerato il ' + dt.toLocaleString('it-IT'));
     }
+    return true;
   } catch(e) {
     console.error('loadUsage failed', e);
+    return true;
   }
 }

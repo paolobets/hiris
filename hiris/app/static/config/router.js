@@ -58,7 +58,7 @@
     if (outlet) {
       outlet.innerHTML =
         '<div class="page-title">Pagina non trovata</div>' +
-        '<p class="page-subtitle">La pagina richiesta non esiste. <a href="#/">Torna alla Dashboard</a></p>';
+        '<p class="page-subtitle">La pagina richiesta non esiste. <a href="#/">Torna a «Cosa HIRIS sa»</a></p>';
     }
   }
 

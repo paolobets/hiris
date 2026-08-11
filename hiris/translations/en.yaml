@@ -104,6 +104,15 @@ configuration:
   chat_via_subscription:
     name: "Chat via subscription — enable"
     description: "Routes chat replies to the external subscription runner instead of the local/pay-per-use provider, subject to the daily cap and deadline above. On this path the chat does receive your home's knowledge — the same core HIRIS uses in the other mode, memories and past sessions included — but NOT its tools: it reads a snapshot taken when the message was sent, it cannot look at the current state or act on the home, and it says so rather than making things up. Takes effect only when \"Subscription bridge — enable\" above is also enabled. NOTE: if you enable the \"Subscription (Claude Max)\" provider and the OAuth token is present, this mode turns on anyway, even with this option left off. Default: disabled."
+  # fetta «fix pre-UAT»: gemella italiana in it.yaml (stessa voce), dove sta
+  # il commento con la ragione. In breve: claude_code_oauth_token era in
+  # config.yaml (options + schema) ma senza traduzione in NESSUNA delle due
+  # lingue -- nel Supervisor compariva senza etichetta ne' descrizione, ed e'
+  # il campo che accende il percorso abbonamento. Le due descrizioni devono
+  # restare semanticamente identiche.
+  claude_code_oauth_token:
+    name: "Claude Code OAuth token (subscription)"
+    description: "OAuth token of the Claude subscription (Claude Max) that lets HIRIS reason without spending pay-per-use API credit. This is the field that turns on the subscription path: set it AND enable \"Enable provider: Subscription (Claude Max)\" above — with both present, chat is routed over the subscription even with \"Subscription bridge — enable\" and \"Chat via subscription — enable\" left off. Get it on the machine where you already have Claude Code installed and authenticated, with the `claude setup-token` command, and paste here the string it prints. WARNING: on this path usage is NOT measured — the subscription exposes neither the tokens nor the cost of an individual reply, and the Usage page says so instead of showing zeros — and the usage and retention terms of the Claude Max subscription apply, which differ from those of the pay-per-use API. Leave it empty if you only use API keys."
   mayan:
     name: "Mayan EDMS (documents)"
     description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."

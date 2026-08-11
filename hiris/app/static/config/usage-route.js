@@ -17,14 +17,14 @@
     outlet.innerHTML =
       '<div class="page-title">Consumi globali</div>' +
       '<p class="page-subtitle">Token e costi complessivi, aggregati dall\'avvio o dall\'ultimo reset. ' +
-        'Il dettaglio per Chatbot non è misurato in questa versione — HIRIS gira su un\'unica chat, senza id.</p>' +
+        'Il dettaglio per singolo assistente non esiste più: HIRIS ha una chat sola, senza id.</p>' +
       '<div class="stat-grid" id="usage-global-grid">' +
         '<div class="stat-tile"><div class="st-label">Richieste</div><div class="st-value">—</div></div>' +
         '<div class="stat-tile"><div class="st-label">Token IN</div><div class="st-value">—</div></div>' +
         '<div class="stat-tile"><div class="st-label">Token OUT</div><div class="st-value">—</div></div>' +
         '<div class="stat-tile"><div class="st-label">Costo</div><div class="st-value">—</div></div>' +
       '</div>' +
-      '<div style="margin-top:24px;display:flex;gap:8px">' +
+      '<div style="margin-top:24px;display:flex;gap:8px" id="usage-azioni">' +
         '<button class="btn btn-danger" id="usage-reset-global">↺ Azzera contatori globali</button>' +
       '</div>';
 
@@ -35,6 +35,29 @@
     }).then(function(u) {
       var grid = document.getElementById('usage-global-grid');
       if (!grid) return;
+      /* Il server DICHIARA che su questa configurazione i consumi non si
+         misurano (200 con `misurata: false`, vedi api/handlers_usage.py).
+         Prima questo caso arrivava qui come 503 e finiva nel `catch` in
+         fondo, insieme ai guasti di rete: la pagina diceva soltanto «Errore
+         caricamento consumi.» su una configurazione perfettamente sana --
+         ed era una delle sei pagine superstiti, ridotta a un vicolo cieco
+         proprio sul percorso piu' comune (abbonamento acceso, nessuna
+         chiave API). Ora dice la cosa vera, con le parole del server, e
+         toglie di mezzo il pulsante di azzeramento: non c'e' nessun
+         contatore da azzerare. */
+      if (u.misurata === false) {
+        grid.innerHTML = '';
+        grid.style.display = 'none';
+        var avviso = document.createElement('p');
+        avviso.className = 'page-subtitle';
+        avviso.style.cssText = 'color:var(--warn)';
+        avviso.textContent = u.messaggio || 'I consumi non si misurano su questa configurazione.';
+        grid.parentNode.insertBefore(avviso, grid);
+        var azioni = document.getElementById('usage-azioni');
+        if (azioni) azioni.style.display = 'none';
+        return;
+      }
+      grid.style.display = '';
       var tin = u.total_input_tokens || u.input_tokens || 0;
       var tout = u.total_output_tokens || u.output_tokens || 0;
       var cost = u.total_cost_eur || u.cost_eur || 0;

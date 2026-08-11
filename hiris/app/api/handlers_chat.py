@@ -424,8 +424,24 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
+        # E' la PRIMA cosa che legge chi installa HIRIS e apre la chat senza
+        # aver ancora configurato niente. Prima diceva, in inglese, «set
+        # CLAUDE_API_KEY»: un nome di variabile d'ambiente che NON e'
+        # un'opzione dell'add-on (l'opzione si chiama `claude_api_key`) e che
+        # chi usa l'abbonamento non deve compilare affatto. Ora e' in
+        # italiano, nomina i campi come li vede nel Supervisor, e dice le due
+        # strade invece di una.
         return web.json_response(
-            {"error": "Claude runner not configured — set CLAUDE_API_KEY"}, status=503
+            {"error": (
+                "Nessun provider AI configurato: HIRIS non ha ancora un modello a "
+                "cui chiedere. Apri Impostazioni → Add-on → HIRIS → Configurazione "
+                "e scegli una strada: con l'abbonamento Claude, attiva «Attiva "
+                "provider: Abbonamento (Claude Max)» e incolla il token in «Token "
+                "OAuth Claude Code (abbonamento)»; con l'API a consumo, attiva "
+                "«Attiva provider: API Claude» e incolla la chiave in «Chiave API "
+                "Claude». Poi riavvia l'add-on."
+            )},
+            status=503,
         )
 
     # Load server-side history (client-sent history field is ignored)

@@ -86,6 +86,50 @@ window.HirisDashboard = (function () {
     return nonDisponibili.map(function (v) { return String(v).split(':')[0]; });
   }
 
+  /* Il comportamento ha DUE tipi fissi, e nessuno dei due puo' sparire.
+     `conteggi` (handlers_casa.py) si costruisce contando le voci lette: una
+     casa con dodici automazioni e zero script produce `{automazione: 12}` e
+     la tessera «Script» non veniva disegnata affatto -- ne' «0» ne' «non
+     letto», proprio niente. Qui i due tipi ci sono sempre.
+
+     Il terzo stato lo porta `file_non_letti`, che pero' mappa il NOME DEL
+     FILE ("automations.yaml") alla ragione, non il tipo di voce
+     ("automazione"): senza questa traduzione il quarto argomento di
+     `tessere()` non veniva passato affatto, ed era il Minor e7.
+
+     Attenzione a cosa significa davvero un file non letto: le voci arrivano
+     dai file E dallo stato di Home Assistant (`casa/comportamento.rileggi`),
+     quindi con `automations.yaml` assente HIRIS puo' comunque conoscere per
+     NOME dodici automazioni prese dallo stato -- e `senza_corpo` dice gia'
+     di quante non conosce il corpo. Marcare quella tessera «non letto»
+     nasconderebbe dodici voci vere. Un tipo si dichiara non letto solo
+     quando il suo file non si e' letto E il conto e' a zero: e' l'unico caso
+     in cui «non c'e' niente» e «non ho guardato» sono indistinguibili. */
+  var FILE_PER_TIPO = { automazione: 'automations.yaml', script: 'scripts.yaml' };
+
+  function conteggiComportamento(conteggi) {
+    var letti = conteggi || {};
+    var esito = {};
+    Object.keys(FILE_PER_TIPO).forEach(function (tipo) {
+      esito[tipo] = letti[tipo] != null ? letti[tipo] : 0;
+    });
+    /* Un tipo nuovo del backend deve comparire, non sparire: stessa regola
+       delle chiavi sconosciute al dizionario dei nomi, un livello piu' su. */
+    Object.keys(letti).forEach(function (tipo) {
+      if (esito[tipo] == null) esito[tipo] = letti[tipo];
+    });
+    return esito;
+  }
+
+  function comportamentoCaduto(fileNonLetti, conteggi) {
+    if (!fileNonLetti) return null;   // null = non si sa, diverso da nessuno
+    var letti = conteggi || {};
+    return Object.keys(FILE_PER_TIPO).filter(function (tipo) {
+      return Object.prototype.hasOwnProperty.call(fileNonLetti, FILE_PER_TIPO[tipo])
+          && !letti[tipo];
+    });
+  }
+
   /* Un conteggio per chiave, in tessere. Chiamata SOLO quando la lettura
      corrispondente e' avvenuta: una griglia di zeri su una lettura mai fatta
      racconterebbe una casa vuota al posto di una casa non letta.
@@ -96,8 +140,17 @@ window.HirisDashboard = (function () {
      registro letto e vuoto. Il terzo stato ce l'ha `non_disponibili`, che
      nomina il registro: dove i due si incontrano, vince il non-letto e il
      numero non si stampa affatto. */
-  function tessere(corpo, conteggi, nomi, caduti) {
+  function tessere(corpo, conteggi, nomi, caduti, motivoCaduto) {
     var chiavi = Object.keys(conteggi || {});
+    /* Una chiave caduta puo' NON essere in `conteggi` affatto: `conteggi` e'
+       un conto di cio' che si e' letto, quindi cio' che non si e' letto non
+       ci compare. Senza questa riga la tessera SPARIVA invece di dire «non
+       letto» -- su una pagina il cui unico scopo e' distinguere «non lo so»
+       da «non c'e'», una tessera che sparisce e' il difetto-firma del
+       prodotto. */
+    (caduti || []).forEach(function (chiave) {
+      if (chiavi.indexOf(chiave) === -1) chiavi.push(chiave);
+    });
     if (!chiavi.length) {
       riga(corpo, 'La lettura non ha prodotto nessuna voce.', TONO_QUIETO);
       return;
@@ -113,7 +166,7 @@ window.HirisDashboard = (function () {
         var valore = el('div', 'st-value', 'non letto');
         valore.style.cssText = 'font-size:var(--fs-15);font-weight:500;letter-spacing:normal;' + TONO_IGNOTO;
         tessera.appendChild(valore);
-        tessera.appendChild(el('div', 'st-delta', 'il registro non ha risposto'));
+        tessera.appendChild(el('div', 'st-delta', motivoCaduto || 'il registro non ha risposto'));
       } else {
         tessera.appendChild(el('div', 'st-value', String(conteggi[chiave])));
       }
@@ -209,7 +262,9 @@ window.HirisDashboard = (function () {
       riga(corpoComp, 'Il comportamento non è ancora stato letto.', TONO_IGNOTO);
     } else {
       riga(corpoComp, 'Letto il ' + comp.letto_il + '.', TONO_QUIETO);
-      tessere(corpoComp, comp.conteggi, NOMI_COMPORTAMENTO);
+      tessere(corpoComp, conteggiComportamento(comp.conteggi), NOMI_COMPORTAMENTO,
+              comportamentoCaduto(comp.file_non_letti, comp.conteggi),
+              'il file non è stato letto');
     }
 
     /* `senza_corpo` e' il numero che dice quanto HIRIS sa DAVVERO: le voci di
@@ -225,10 +280,16 @@ window.HirisDashboard = (function () {
       riga(corpoComp, 'Di ' + senzaCorpo + ' voci HIRIS conosce solo il nome, non il corpo.', TONO_PROBLEMA);
     }
 
+    /* «L'ultima lettura non ha lasciato niente in sospeso» compariva una riga
+       SOPRA l'elenco dei file non letti (il `treStati` subito qui sotto): due
+       frasi adiacenti che si smentivano. Questo blocco parla soltanto delle
+       voci che sono state lette -- id duplicati, script vuoti, voci
+       malformate -- e ora lo dice invece di promettere che non c'e' rimasto
+       niente in sospeso in tutta la lettura. */
     treStati(corpoComp, soloSeLetta(comp.letto_il, comp.problemi), {
-      ignoto: 'Non si sa se l’ultima lettura del comportamento abbia avuto problemi.',
-      vuoto: 'L’ultima lettura non ha lasciato niente in sospeso.',
-      pieno: 'Ciò che l’ultima lettura non ha potuto concludere con certezza:'
+      ignoto: 'Non si sa se nelle voci lette ci siano incongruenze: la lettura non è avvenuta.',
+      vuoto: 'Nelle voci lette non c’è nessuna incongruenza.',
+      pieno: 'Incongruenze nelle voci lette, che HIRIS non ha potuto sciogliere con certezza:'
     });
 
     treStati(corpoComp, soloSeLetta(comp.letto_il, comp.file_non_letti), {

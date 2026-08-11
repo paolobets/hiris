@@ -139,6 +139,16 @@ configuration:
   chat_via_subscription:
     name: "Chat via abbonamento — attiva"
     description: "Instrada le risposte della chat al runner esterno su abbonamento invece che al provider locale/a consumo, con il cap giornaliero e la scadenza qui sopra. Su questo percorso la chat riceve la conoscenza della casa — il nucleo, ricordi e sessioni precedenti compresi, le stesse cose che sa nell'altra modalità — ma NON i suoi strumenti: legge una fotografia scattata quando il messaggio parte, non può guardare lo stato in questo momento né agire sulla casa, e lo dichiara invece di inventare. Ha effetto solo se «Ponte abbonamento — attiva» qui sopra è anch'esso attivo. NOTA: se attivi il provider «Abbonamento (Claude Max)» ed è presente il token OAuth, questa modalità si accende lo stesso, anche lasciando questa opzione spenta. Predefinito: spento."
+  # fetta «fix pre-UAT»: `claude_code_oauth_token` era in config.yaml fra le
+  # `options` E nello `schema`, ma non aveva voce qui ne' in en.yaml -- nel
+  # Supervisor si presentava senza etichetta e senza descrizione, ed e' il
+  # campo che accende il percorso dell'UAT (abbonamento, nessuna chiave API).
+  # Il Task 11 aveva verificato la parita' it/en, che era vera: mancava in
+  # ENTRAMBE. La copertura si controlla contro config.yaml, non fra le due
+  # lingue.
+  claude_code_oauth_token:
+    name: "Token OAuth Claude Code (abbonamento)"
+    description: "Token OAuth dell'abbonamento Claude (Claude Max) con cui HIRIS ragiona senza consumare credito dell'API a consumo. È il campo che accende il percorso abbonamento: valorizzalo E attiva «Attiva provider: Abbonamento (Claude Max)» qui sopra — con entrambi presenti, la chat viene instradata sull'abbonamento anche lasciando spente «Ponte abbonamento — attiva» e «Chat via abbonamento — attiva». Lo ottieni sulla macchina dove hai già Claude Code installato e autenticato, con il comando `claude setup-token`, e incolli qui la stringa che stampa. ATTENZIONE: su questo percorso i consumi NON si misurano — l'abbonamento non espone né i token né il costo della singola risposta, e la pagina Consumi lo dichiara invece di mostrare zeri — e valgono le condizioni d'uso e di conservazione dell'abbonamento Claude Max, diverse da quelle dell'API a consumo. Lascialo vuoto se usi solo chiavi API."
   mayan:
     name: "Mayan EDMS (documenti)"
     description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."

@@ -41,7 +41,10 @@
    riga), ma un editor di liste di oggetti tipo+riferimento con verifica
    contro l'anagrafe è un pezzo di superficie a sé, senza un pattern
    riusabile altrove in questo repo — resta un'estensione futura, non
-   silenziosa: questo commento la dichiara.
+   silenziosa: questo commento la dichiara, e dalla fetta «fix pre-UAT» la
+   dichiara anche il modulo di correzione, sullo schermo, sopra i campi
+   (`costruisciModuloCorrezione`) — un commento nel sorgente non lo legge
+   nessuno di quelli che aprono la pagina.
 
    Cancellare un ricordo è distruttivo e definitivo (l'archivio non ha una
    coda di attesa): `window.confirm()` mostra SEMPRE la frase esatta del
@@ -168,6 +171,20 @@ window.HirisMemoriaRoute = (function () {
     inpMassimo.value = r.massimo != null ? r.massimo : '';
     var inpUnita = el('input'); inpUnita.type = 'text'; inpUnita.value = r.unita || '';
     var inpDettoDa = el('input'); inpDettoDa.type = 'text'; inpDettoDa.value = r.detto_da || '';
+
+    /* L'ambito di «Correggi» era dichiarato SOLO nel commento in cima a
+       questo file: chi apre il modulo vede sei campi e non ha modo di sapere
+       che il testo del ricordo, le ancore («Riguarda:») e le condizioni
+       («Quando vale:») non si toccano da qui -- e un salvataggio che non
+       cambia cio' che l'utente si aspettava di cambiare e' esattamente il
+       silenzio che questo prodotto paga da sempre. Ora la regola sta sullo
+       schermo, sopra i campi. */
+    var ambito = el('p', 'sc-desc',
+      'Da qui si corregge solo come HIRIS ha interpretato il ricordo. ' +
+      'La frase, le ancore («Riguarda:») e le condizioni («Quando vale:») ' +
+      'sono in sola lettura: si cambiano parlando in chat.');
+    ambito.style.cssText = 'margin:0;font-size:var(--fs-12);color:var(--text-3)';
+    wrap.appendChild(ambito);
 
     wrap.appendChild(campo('Forza', selForza));
     wrap.appendChild(campo('Grandezza (es. temperature, humidity — vocabolario di Home Assistant)', inpGrandezza));

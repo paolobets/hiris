@@ -1,10 +1,6 @@
 # HIRIS — Changelog
 
-## [2.0.0] — HIRIS conosce e non agisce (in preparazione)
-
-> **Voce in preparazione: la 2.0.0 non è ancora stata rilasciata.** Il tag non
-> esiste, l'add-on porta ancora il numero di versione precedente e il lavoro
-> sull'interfaccia non è finito. Al rilascio questa nota va riletta e datata.
+## [2.0.0] — HIRIS conosce e non agisce (2026-08-11)
 
 **HIRIS conosce la tua casa, e c'è una chat per interrogarla.** È questa la
 versione: non un assistente che promette di fare, ma uno che *sa* — e che dice
@@ -150,7 +146,7 @@ Erano le pagine di un prodotto che agiva sulla casa: senza le azioni, le
 approvazioni e gli assistenti multipli, non governavano più niente — e da mesi
 si limitavano a mostrare liste vuote senza dire che erano vuote perché il
 motore sotto non c'era più. Quello che resta è quello che funziona: *Cosa HIRIS
-sa*, *Memoria*, *Modelli*, *Consumi*, *Cronologia*, *Impostazioni chat*.
+sa*, *Memoria*, *Modelli*, *Consumi*, *Storicizzazione*, *Impostazioni chat*.
 
 **La schermata «Benvenuto in HIRIS» al primo avvio non c'è più.** Chiedeva di
 creare un secondo assistente in un prodotto che ne ha uno solo: su
@@ -202,10 +198,16 @@ chat nuova. Se ne avevi uno e ci tieni, riprendilo dal file prima di riscriverlo
 - **Il «Test Run» non esiste più.** Non ha mai funzionato: ogni esecuzione vera
   falliva, ed era protetto da un controllo automatico che verificava una firma
   diversa da quella reale — cioè non lo provava affatto.
-- **La pagina Consumi perde il dettaglio per assistente.** Il contatore
-  **complessivo** — richieste, token, costo — resta vivo e vero. La sezione
-  per-assistente mostra una riga a zero: **non è un consumo azzerato, è un
-  consumo che non viene più misurato.**
+- **La pagina Consumi perde per intero la sezione per assistente.** Non mostra
+  una riga a zero: la tabella è stata rimossa, perché HIRIS ha una chat sola e
+  non c'è più nessun id per cui contare. Resta il **contatore complessivo** —
+  richieste, token, costo — che però è vero **solo se stai usando una chiave
+  API a consumo** (Claude, OpenAI, OpenRouter) o Ollama. Se usi
+  l'**abbonamento** Claude, quei numeri non esistono: l'abbonamento non espone
+  né i token né il costo della singola risposta. In quel caso la pagina te lo
+  **dice** — «i consumi non si misurano sul percorso abbonamento» — invece di
+  mostrare zeri o un errore. **Non è un consumo azzerato, è un consumo che non
+  viene misurato.**
 - Il tetto giornaliero dei messaggi di chat instradati sull'abbonamento resta,
   ed è l'unico freno rimasto.
 - Dettaglio per chi ha scritto qualcosa sopra le API di HIRIS: l'evento `done`

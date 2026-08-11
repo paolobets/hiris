@@ -6,4 +6,13 @@ labels:
   org.opencontainers.image.title: "HIRIS"
   org.opencontainers.image.description: "Home Intelligent Reasoning & Integration System"
   org.opencontainers.image.source: "https://github.com/paolobets/hiris"
-  org.opencontainers.image.licenses: "MIT"
+  # Allineata al file LICENSE alla radice del repo, che e' il documento
+  # legalmente autoritativo: «Copyright (c) 2026 Paolo Bets. All Rights
+  # Reserved. PROPRIETARY SOFTWARE LICENSE». Diceva "MIT", e questa
+  # etichetta finisce DENTRO l'immagine Docker pubblicata: due licenze
+  # incompatibili affermate insieme dallo stesso prodotto. Scelta
+  # conservativa: si allinea l'etichetta al LICENSE, non il contrario --
+  # rendere il prodotto MIT e' una decisione del proprietario, non
+  # tecnica, ed e' una riga sola (qui e in LICENSE) se la prende.
+  # "LicenseRef-" e' la forma SPDX per una licenza non catalogata.
+  org.opencontainers.image.licenses: "LicenseRef-HIRIS-Proprietary"
