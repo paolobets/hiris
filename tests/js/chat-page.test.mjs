@@ -360,6 +360,13 @@ test('updateBubble ferma il cronometro e scrive la risposta nella stessa bolla',
       'nessun intervallo sopravvive alla risposta: il cronometro staccato non deve piu\' cambiare');
     assert.equal(row.querySelector('.thinking-timer'), null,
       'e non ne ricompare uno scrivendo su un nodo che non c\'e\' piu\'');
+    /* La finestra dell\'annuncio finisce, ma QUANDO lo decide la costante, non
+       questo test: l\'attesa qui sotto la insegue. Prima era un `tick` fisso, e
+       vietava anche di ALLUNGARE il ritardo -- cioe\' la direzione prudente,
+       quella verso cui si andrebbe davanti a un tablet lento e a uno screen
+       reader che non parla. Il vincolo utile e\' il minimo (le due asserzioni
+       qui sopra), non il massimo. */
+    await tick(Math.max(0, soglie.uscitaRegioneLive - 1500) + 300);
     assert.equal(row.querySelector('.bubble').getAttribute('role'), null,
       'passata la finestra dell\'annuncio, la bolla smette di essere una regione live');
   } finally {
@@ -455,8 +462,13 @@ test('l\'attesa annuncia che sta per arrendersi SOLO dove una resa esiste', asyn
   const margine = soglie.margineResa;
   /* La scadenza vera (`CHAT_POLL_MAX_MS`, 5 minuti) la porta chat/send.js e non
      si tocca: sposto il MARGINE, cosi\' l\'avviso cade poco dopo l\'invio
-     passando per la strada vera -- send(), il 202, la consegna della scadenza. */
-  soglie.margineResa = 5 * 60 * 1000 - 80;
+     passando per la strada vera -- send(), il 202, la consegna della scadenza.
+     700 ms e non 80: serve una finestra abbastanza larga da guardarci dentro
+     PRIMA che scatti. Verificare solo che l\'avviso compaia lascerebbe passare
+     un avviso programmato a zero -- cioe\' l\'utente che preme invio e si sente
+     dire «fra poco smetto di aspettare» mentre HIRIS ha appena cominciato. E\'
+     la stessa promessa falsa di R1, spostata dal percorso al tempo. */
+  soglie.margineResa = 5 * 60 * 1000 - 700;
   try {
     window.fetch = async (url) => {
       if (String(url).endsWith('api/chat')) {
@@ -466,10 +478,14 @@ test('l\'attesa annuncia che sta per arrendersi SOLO dove una resa esiste', asyn
     };
 
     await window.HirisChatSend.send('una domanda lunga');
-    await tick(250);
 
+    await tick(250);
+    assert.match(document.querySelector('.tl-label').textContent, /sta elaborando/,
+      'l\'avviso di resa non deve arrivare all\'inizio: qui HIRIS ha appena cominciato');
+
+    await tick(700);
     assert.match(document.querySelector('.tl-label').textContent, /smetto di aspettare/,
-      'sul ponte il poll si ferma davvero: annunciarlo prima e\' corretto');
+      'ma deve arrivare a ridosso della scadenza vera: il poll si ferma davvero, e annunciarlo prima e\' corretto');
   } finally {
     soglie.margineResa = margine;
   }

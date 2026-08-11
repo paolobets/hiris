@@ -6,10 +6,6 @@
 (function() {
   var state = window.HirisChatState;
 
-  /* Quanto la bolla resta una regione live DOPO che ci e' stata scritta dentro
-     la risposta. Vedi updateBubble: il valore non e' un gusto, e' misurato. */
-  var USCITA_REGIONE_LIVE_MS = 1200;
-
   function nowHHMM() {
     return new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
@@ -69,22 +65,31 @@
          riannunciare qualunque cosa la tocchi in seguito.
 
          Il ritardo era di un giro dell'event loop (`setTimeout(…, 0)`) e NON
-         BASTAVA: misurato in Chromium con l'accessibilita' forzata, subito
-         dopo il cambio di testo gli attributi c'erano ancora, ma **al primo
-         fotogramma erano gia' spariti** e l'albero di accessibilita' esponeva
-         la bolla come `generic`, con zero proprieta' live. Chrome smaltisce
-         gli eventi delle regioni live durante l'aggiornamento del ciclo di
-         vita del documento, cioe' al fotogramma dopo la modifica, leggendo lo
-         stato di allora: togliere gli attributi prima di quel momento uccide
-         proprio l'annuncio che C6 doveva ottenere -- e stavolta con il codice
-         che dichiarava di averlo risolto. Un secondo e due decimi sono ~75
-         fotogrammi di margine, e restano comunque molto meno del tempo che
-         serve a leggere una risposta. */
+         BASTAVA. Questo e' MISURATO, in Chromium con l'accessibilita' forzata:
+         subito dopo il cambio di testo gli attributi c'erano ancora, ma al
+         primo fotogramma erano gia' spariti e l'albero di accessibilita'
+         esponeva la bolla come `generic`, con zero proprieta' live. Chrome
+         smaltisce gli eventi delle regioni live durante l'aggiornamento del
+         ciclo di vita del documento -- al fotogramma dopo la modifica, e
+         leggendo lo stato di allora: togliere gli attributi prima uccide
+         proprio l'annuncio che C6 doveva ottenere.
+
+         Il valore, invece, e' SCELTO, e la distinzione conta. Scansione dei
+         ritardi su questa macchina: fino a 33 ms la bolla resta `generic`, da
+         50 ms in su e' `status` con `live: polite` -- la soglia sta fra i due,
+         due o tre fotogrammi (un revisore indipendente, su un'altra macchina,
+         l'ha trovata fra 16 e 33). 1200 ms non e' quella soglia: e' un margine
+         largo ~24-36 volte, preso apposta perche' il bersaglio di questo
+         frontend sono tablet vecchi, dove un fotogramma dura molto di piu' e
+         uno screen reader smaltisce con calma. Il margine non costa niente:
+         `updateBubble` gira una volta per turno, non c'e' streaming, quindi
+         non esiste il rischio di riannunci -- e 1,2 s restano molto meno del
+         tempo che serve a leggere una risposta. */
       if (bubble.getAttribute('role') === 'status') {
         setTimeout(function () {
           bubble.removeAttribute('role');
           bubble.removeAttribute('aria-live');
-        }, USCITA_REGIONE_LIVE_MS);
+        }, SOGLIE_ATTESA.uscitaRegioneLive);
       }
     }
     var timeEl = row.querySelector('.msg-time');
@@ -142,11 +147,13 @@
      che scrive `m:ss`, ed e' inevitabile -- ma parte solo dopo la prima
      soglia, e viene fermato su OGNI uscita. */
 
-  /* Le soglie dell'attesa, in millisecondi, in un posto solo. Sono calibrate
-     sulla letteratura (i 10 secondi oltre i quali l'attenzione si stacca) e
-     NON su tempi di risposta misurati su questo prodotto: nessuno li ha
-     ancora raccolti. Dopo l'UAT, con la distribuzione vera in mano, cambiarle
-     e' una riga qui dentro e nient'altro. */
+  /* Le durate dell'attesa, in millisecondi, in un posto solo. Le prime tre --
+     quelle che l'utente vive come attesa -- sono calibrate sulla letteratura
+     (i 10 secondi oltre i quali l'attenzione si stacca) e NON su tempi di
+     risposta misurati su questo prodotto: nessuno li ha ancora raccolti. Dopo
+     l'UAT, con la distribuzione vera in mano, cambiarle e' una riga qui dentro
+     e nient'altro. Le ultime due hanno una provenienza diversa, dichiarata
+     accanto a ciascuna. */
   var SOGLIE_ATTESA = {
     /* compare il cronometro */
     timer: 10000,
@@ -164,7 +171,12 @@
     margineResa: 30000,
     /* E quando dirlo dove una scadenza non esiste proprio. Questo numero e'
        arbitrario e lo dichiara: non c'e' niente da cui derivarlo. */
-    senzaScadenza: 270000
+    senzaScadenza: 270000,
+    /* Quanto la bolla resta una regione live DOPO che ci e' stata scritta
+       dentro la risposta (vedi updateBubble). Sta qui con le altre durate
+       dell'attesa perche' e' l'ultimo atto della stessa vita: l'indicatore che
+       diventa risposta. */
+    uscitaRegioneLive: 1200
   };
 
   var ETICHETTA_ATTESA = 'HIRIS sta elaborando';

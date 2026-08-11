@@ -22,7 +22,7 @@ configuration:
   # riga: i numeri invecchiano al primo commit che sposta il blocco.)
   provider_subscription:
     name: "Attiva provider: Abbonamento (Claude Max)"
-    description: "Attiva l'abbonamento Claude (Claude Max, tramite il runner in-addon) come provider AI. Richiede il token OAuth (claude_code_oauth_token). ATTENZIONE — cosa comporta: attivarlo con il token OAuth presente INSTRADA LA CHAT SUL PONTE dell'abbonamento, cioè accende «Chat via abbonamento — attiva» anche se quell'opzione resta spenta. Su quel percorso, insieme al tuo messaggio, viaggiano la conoscenza della casa (il nucleo: aree, entità, cosa è notevole adesso, cosa la casa fa da sola) e i ricordi di ciò che le persone hanno detto, sessioni precedenti comprese — sotto le condizioni d'uso e di conservazione dell'abbonamento Claude Max, che sono diverse da quelle dell'API a consumo usata dall'altro percorso. Vedi «Chat via abbonamento — attiva» più sotto per cosa la chat riceve su quel percorso e cosa NON riceve. Un provider è usato solo se attivo qui E con la sua credenziale. NOTA: se lasci tutti i toggle provider_* disattivi su un install esistente, HIRIS continua a derivare i provider attivi dalle credenziali già presenti (retro-compatibile); appena attivi UN toggle qualsiasi, sono attivi solo i toggle che accendi, quindi riattiva ogni provider che vuoi mantenere."
+    description: "Attiva l'abbonamento Claude (Claude Max, tramite il runner in-addon) come provider AI. Richiede il token OAuth (claude_code_oauth_token). ATTENZIONE — cosa comporta: attivarlo con il token OAuth presente INSTRADA LA CHAT SUL PONTE dell'abbonamento, cioè accende «Chat via abbonamento — attiva» anche se quell'opzione resta spenta. Su quel percorso, insieme al tuo messaggio, viaggiano la conoscenza della casa (il nucleo: aree, entità, cosa è notevole adesso, cosa la casa fa da sola) e i ricordi di ciò che le persone hanno detto, sessioni precedenti comprese — sotto le condizioni d'uso e di conservazione dell'abbonamento Claude Max, che sono diverse da quelle dell'API a consumo usata dall'altro percorso. Vedi «Chat via abbonamento — attiva» più sotto per che cosa la chat riceve su quel percorso. Un provider è usato solo se attivo qui E con la sua credenziale. NOTA: se lasci tutti i toggle provider_* disattivi su un install esistente, HIRIS continua a derivare i provider attivi dalle credenziali già presenti (retro-compatibile); appena attivi UN toggle qualsiasi, sono attivi solo i toggle che accendi, quindi riattiva ogni provider che vuoi mantenere."
   provider_claude:
     name: "Attiva provider: API Claude"
     description: "Attiva l'API Claude come provider AI (richiede claude_api_key). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
@@ -116,18 +116,28 @@ configuration:
   # job che il ponte puo' ricevere oggi e' kind="chat", quindi il «non solo»
   # confrontava con il nulla.
   #
-  # fetta "il ponte riceve il nucleo" (parita' A, Task 6): la parita' e'
-  # arrivata a META', e questo testo e' stato riscritto per dirlo -- il
-  # commento di prima lo chiedeva esplicitamente ("quando la parita' arriva,
-  # si riscrivono queste due descrizioni, it + en, NELLO STESSO commit"). Cio'
-  # che e' cambiato: su questo percorso la chat ORA riceve la conoscenza della
-  # casa (il nucleo, `handlers_chat.componi_contesto_chat`, la stessa stringa
-  # del percorso sincrono). Cio' che NON e' cambiato: gli strumenti restano
-  # fuori (li riattacca la fetta B), quindi la chat non puo' guardare lo stato
-  # in questo momento ne' agire, e il prompt lo dichiara al modello
-  # (`agent/prompts.py::_GUIDA_SENZA_STRUMENTI`). Dire "non ha la conoscenza
-  # della casa" sarebbe ora falso quanto lo sarebbe promettere gli strumenti:
-  # sono lo STESSO difetto, in due direzioni.
+  # fetta "il ponte riceve il nucleo" (parita' A, Task 6): la parita' arrivo'
+  # a META' e questo testo fu riscritto per dirlo -- su questo percorso la chat
+  # riceve la conoscenza della casa (il nucleo, la stessa stringa del percorso
+  # sincrono, `handlers_chat.componi_contesto_chat`) ma non gli strumenti.
+  #
+  # fetta "il ponte riceve gli strumenti" (parita' B): l'altra meta' e'
+  # arrivata, e questo testo e' rimasto indietro di una fetta -- fino a oggi
+  # diceva "ma NON i suoi strumenti", cioe' NEGAVA una capacita' che il codice
+  # ha. E' lo stesso difetto che questo ramo passa il tempo a chiudere, girato
+  # al contrario: di solito il testo promette cio' che il codice non fa, qui
+  # negava cio' che il codice fa -- e chi lo leggeva non avrebbe mai provato a
+  # chiedere alla chat in abbonamento di cercare qualcosa.
+  #
+  # Il testo di adesso e' vero in TUTTI E DUE gli stati, perche' gli stati sono
+  # due e li decide una sonda, non una configurazione: `agent/runner.py::
+  # sonda_strumenti` interroga `POST /api/mcp` prima di partire, e da
+  # quell'unico booleano discendono insieme il prompt (`_GUIDA_CON_STRUMENTI`
+  # oppure `_GUIDA_SENZA_STRUMENTI`) e gli argomenti della CLI. Quando la sonda
+  # riesce il modello ha i quattro strumenti col prefisso `mcp__hiris__`;
+  # quando non riesce la risposta e' preceduta da `AVVISO_STRUMENTI_ASSENTI`,
+  # che e' la riga che l'utente legge. Promettere gli strumenti senza dire del
+  # secondo stato sarebbe il difetto di prima con il segno di nuovo invertito.
   #
   # L'implicazione dichiarata in coda e' quella del punto in cui `server.py`
   # cabla la coda di ragionamento leggendo `_bridge_enabled`, OR-ato con
@@ -138,7 +148,7 @@ configuration:
   # quel blocco, ed e' successo cinque volte in questa sola fetta.)
   chat_via_subscription:
     name: "Chat via abbonamento — attiva"
-    description: "Instrada le risposte della chat al runner esterno su abbonamento invece che al provider locale/a consumo, con il cap giornaliero e la scadenza qui sopra. Su questo percorso la chat riceve la conoscenza della casa — il nucleo, ricordi e sessioni precedenti compresi, le stesse cose che sa nell'altra modalità — ma NON i suoi strumenti: legge una fotografia scattata quando il messaggio parte, non può guardare lo stato in questo momento né agire sulla casa, e lo dichiara invece di inventare. Ha effetto solo se «Ponte abbonamento — attiva» qui sopra è anch'esso attivo. NOTA: se attivi il provider «Abbonamento (Claude Max)» ed è presente il token OAuth, questa modalità si accende lo stesso, anche lasciando questa opzione spenta. Predefinito: spento."
+    description: "Instrada le risposte della chat al runner esterno su abbonamento invece che al provider locale/a consumo, con il cap giornaliero e la scadenza qui sopra. Su questo percorso la chat riceve la conoscenza della casa — il nucleo, ricordi e sessioni precedenti compresi, le stesse cose che sa nell'altra modalità — e, quando il runner riesce a ricollegarsi a HIRIS, anche i suoi quattro strumenti: può cercare fra le entità e guardare lo stato ADESSO, non solo la fotografia scattata quando il messaggio è partito, e può ricordare e richiamare. Se quel collegamento non riesce risponde lo stesso, con ciò che sa dal nucleo e dalla conversazione, e te lo dice in cima alla risposta invece di far finta di aver guardato. In nessuno dei due casi agisce sulla casa: non accende, non spegne, non tocca automazioni. Sotto la risposta trovi le targhette degli strumenti che ha usato davvero. Ha effetto solo se «Ponte abbonamento — attiva» qui sopra è anch'esso attivo. NOTA: se attivi il provider «Abbonamento (Claude Max)» ed è presente il token OAuth, questa modalità si accende lo stesso, anche lasciando questa opzione spenta. Predefinito: spento."
   # fetta «fix pre-UAT»: `claude_code_oauth_token` era in config.yaml fra le
   # `options` E nello `schema`, ma non aveva voce qui ne' in en.yaml -- nel
   # Supervisor si presentava senza etichetta e senza descrizione, ed e' il

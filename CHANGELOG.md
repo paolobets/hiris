@@ -89,6 +89,96 @@ frase esatta prima di toglierla. È la pagina promessa nella versione
 `[1.1.0-beta.18]` («arriva nella prossima versione»): eccola. Gli agganci alla
 casa e le condizioni si vedono ma non si modificano da qui.
 
+### Quello che si tocca con le dita
+
+**La chat non manda più messaggi che non hai scritto.** Premere **Maiusc+Invio**
+per andare a capo faceva partire il messaggio; incollare due righe prese dal log
+di Home Assistant lo faceva partire **e** saldava le due righe senza spazio
+(«riga uno» e «riga due» diventavano «riga unoriga due»). Era l'unico gesto di
+composizione che esiste in una chat, e faceva l'opposto di se stesso — su un
+messaggio che non si può annullare e che consuma un turno del tetto di
+sessione. Adesso Maiusc+Invio va a capo, l'incolla resta nel campo, e il
+messaggio parte quando lo chiedi tu. Continua a funzionare il caso per cui
+quella scorciatoia era nata: le tastiere dei telefoni che, invece di premere
+Invio, infilano un a capo nel testo.
+
+**Il bottone in alto a destra adesso dice cosa fa.** Si chiamava «Nuova conv.» e
+non apriva niente di nuovo: cancellava. Adesso si chiama **Cancella la chat**, ha
+l'icona di un cestino, e la conferma ti dice **quanto** stai per perdere — i
+messaggi che vedi **e** i riassunti delle conversazioni passate, che HIRIS si
+tiene da parte e usa nei turni successivi. È sempre stato così: non era mai
+stato scritto. In più il bottone è **spento mentre HIRIS elabora**: premuto in
+quel momento svuotava la conversazione, e la risposta in arrivo — già pagata in
+token — finiva in un punto che nessuno vedeva. Spariva, e nessuno lo diceva.
+
+**Mentre HIRIS elabora si vede una cosa sola.** Ce n'erano due, e quale vedessi
+dipendeva da come il server aveva smaltito la domanda: una differenza che non
+scegli, non capisci e non ti serve. Adesso è sempre il logo che pulsa con la
+scritta che scorre nei colori del marchio. Il **cronometro non parte subito**:
+compare dopo dieci secondi, così una risposta da tre secondi non viene
+cronometrata. A trenta secondi l'attesa ammette di essere lunga. **A due minuti
+ti dice se puoi chiudere la pagina** — e lo dice guardando che fine fa davvero la
+tua domanda: se è stata affidata all'abbonamento la risposta arriva comunque in
+cronologia e la ritrovi riaprendo; se sta rispondendo un provider a consumo,
+chiudere la perde. Sono due frasi diverse perché sono due fatti diversi. E dove
+HIRIS ha un tempo massimo lo annuncia prima di arrendersi; dove non ce l'ha, **lo
+dice invece di promettere una fine che non arriverebbe**.
+
+**Chi usa uno screen reader adesso viene avvisato.** Prima si mandava il
+messaggio e non si sentiva più niente: nessun annuncio della presa in carico,
+nessun annuncio della risposta, silenzio per minuti. Adesso la riga dell'attesa
+è una regione annunciata, ed è la stessa in cui viene scritta la risposta:
+arrivano tutte e due. Il cronometro invece resta muto di proposito — un
+contatore dentro una regione annunciata verrebbe letto ogni secondo.
+
+**Su tablet la pagina non salta più sotto il dito.** A ogni invio il campo di
+scrittura si spegneva, quindi perdeva il fuoco, quindi la tastiera si chiudeva e
+la pagina si allungava di colpo; alla risposta tutto risaliva. Adesso il campo
+resta dov'è, in sola lettura, e **dice perché** non si può scrivere invece di
+restare muto e inerte. Nella stessa fascia di larghezze l'intestazione della
+chat non si spezza più in due righe, e le due schermate — chat e configurazione
+— cambiano forma alla stessa larghezza invece che a due diverse.
+
+**Adesso «non l'ho letto» si legge.** La frase con cui HIRIS dichiara di non
+sapere una cosa era servita, sul tema chiaro, dal colore meno leggibile
+dell'intera tavolozza: arancione pallido su bianco, sotto ogni soglia di
+accessibilità. Cioè la frase per cui questo prodotto esiste era quella che si
+faceva più fatica a leggere. Adesso è leggibile, e con lei gli errori, i badge
+di stato, i sottotitoli, gli orari, i numeri di sezione e la scritta d'attesa —
+in tutti e due i temi, non solo nel chiaro. Sotto i 1024 px — la larghezza che
+l'add-on ha su un portatile con la barra di Home Assistant aperta — la colonna
+del menu della configurazione non taglia più la propria intestazione a metà, e
+le sue icone hanno un nome: prima erano sei disegni identici per dimensione,
+senza etichetta, senza suggerimento al passaggio del mouse e senza nome per uno
+screen reader.
+
+**Dettagli che si notano solo se ci lavori dentro.** Le azioni di recupero
+(«Riprova», «Correggi») hanno di nuovo l'aspetto di comandi invece che di
+etichette, e «Dimentica» non è più l'elemento più pesante della riga: la cosa
+distruttiva non deve essere la più invitante. Un bottone appeso al corpo di una
+sezione non si stira più per tutta la larghezza facendosi scambiare per un campo
+di testo. E lo stesso numero è scritto allo stesso modo nelle due schermate: il
+riquadro «Utilizzo» della chat diceva `1.28M` e `€3.2149` dove la pagina
+*Consumi* diceva `1.3M` e `€ 3.21` — sugli stessi identici dati, il che dava
+ragione a chi sospettava che uno dei due stesse sbagliando. E le date si
+scrivono dappertutto come nel resto del prodotto, `01/08/2026`, non come un ISO
+tagliato a metà.
+
+**La descrizione dell'opzione «Chat via abbonamento» negava una cosa che HIRIS
+sa fare.** Diceva che su quel percorso la chat riceve la conoscenza della casa
+«ma NON i suoi strumenti». Era vero fino a poco fa; poi gli strumenti sono stati
+riattaccati anche a quel percorso, e il testo è rimasto indietro — nel pannello
+di configurazione dell'add-on, in italiano e in inglese, e nel README. È lo
+stesso difetto che questa versione ha passato la settimana a chiudere, girato al
+contrario: di solito il testo promette ciò che il codice non fa, qui negava ciò
+che il codice fa. Chi leggeva non avrebbe mai provato a chiedere alla chat in
+abbonamento di cercare qualcosa. Adesso il testo dice come stanno le cose, in
+tutti e due i casi: quando il collegamento riesce il modello ha i quattro
+strumenti e guarda lo stato di adesso; quando non riesce risponde lo stesso con
+ciò che sa, e **te lo dice in cima alla risposta** invece di far finta di aver
+guardato. Le targhette sotto la risposta ti mostrano quali strumenti ha usato
+davvero.
+
 ### Quello che HIRIS non fa più
 
 **HIRIS non tocca più niente in casa tua.** Non accende, non spegne, non crea
@@ -204,8 +294,9 @@ come storiche — dopo questa pubblicazione le funzionalità principali verranno
 **reinventate**, quindi quei testi non sarebbero un riferimento nemmeno per ciò
 che arriva dopo, e un avviso in cima a una pagina sbagliata lascia comunque una
 pagina sbagliata. La storia di Git le conserva per intero. Quello che resta da
-leggere è questo CHANGELOG e i documenti di progetto in `docs/design/`, che
-portano una data e si presentano per quello che sono.
+leggere è questo CHANGELOG, il foglio `docs/prova-la-2.0.md` per chi prova
+questa build, e i documenti di progetto in `docs/design/`, che portano una data
+e si presentano per quello che sono.
 
 ### Meno cose, non solo più cose
 

@@ -170,7 +170,7 @@ saved order is appended rather than silently dropped
 
 Token counts and cumulative cost are tracked and readable at `GET /api/usage`.
 
-### One documented limit: the subscription bridge
+### The second chat path: the subscription bridge
 
 There is a second chat path. When it is active, a chat turn is handed to an
 external subscription runner through a queue instead of being answered locally.
@@ -181,11 +181,23 @@ It is active when `bridge_enabled` **and** `chat_via_subscription` are both on
 active subscription provider implies both flags
 (`hiris/app/server.py:907,1332-1340`).
 
-**That path answers without the nucleo and without the four tools.** It gets
-the conversation transcript and the system prompt, nothing else — so it cannot
-read the state of your house, and it is told so explicitly in its own prompt
-(`hiris/app/agent/prompts.py:41-56`). It is not the same product as the
-synchronous chat, and it is not a drop-in replacement for it.
+**That path now carries the nucleo, and — when it can — the four tools.** The
+turn is enqueued together with the same context the synchronous chat composes
+(`handlers_chat.py::_enqueue_chat_job`), and the runner probes `POST /api/mcp`
+before it starts (`agent/runner.py::sonda_strumenti`). One boolean comes out of
+that probe and decides two things at once: the prompt the model reads and the
+arguments the CLI is launched with. When the probe succeeds the model has
+`cerca`, `guarda`, `ricorda` and `richiama` under an `mcp__hiris__` prefix and
+can look at the current state, not just the snapshot. When it fails, the answer
+is prefixed with a line saying the tools were not available this turn
+(`AVVISO_STRUMENTI_ASSENTI`) instead of quietly pretending it looked. Either
+way it does not act on the home. The tool chips under a reply are drawn on this
+path too (`handle_chat_reply_poll` → `send.js::pollChatReply`).
+
+What still differs from the synchronous path: usage is **not** measured (the
+subscription exposes neither tokens nor cost — `GET /api/usage` says so instead
+of showing zeros), the reply arrives by polling rather than in one response, and
+the turn is subject to `bridge_deadline_min` and to a separate daily cap.
 
 ---
 
@@ -284,12 +296,23 @@ card tile from your dashboard is the one gesture left to you.
 
 ## Interface
 
-Opening the add-on shows the chat. A configuration panel is still served at
-`/config`, but it is a 1.x leftover: several of its pages call routes that were
-removed during the refactor and degrade silently to empty. It is being rebuilt
-— the full inventory of what is broken and why is in
+Opening the add-on shows the chat. A configuration panel is served at
+`/config` as a small single-page app with six live routes:
+
+| Route | What it does |
+|---|---|
+| `#/` | **What HIRIS knows** — the home as it was read (floors, areas, devices, entities) and the exact nucleo the model sees in chat. Says «not read yet» where it has not read, instead of showing a zero |
+| `#/memoria` | The remembered facts: read them, correct them, forget them — with the anchors resolved against today's registry |
+| `#/impostazioni` | The seven chat settings (system prompt, model, answer shape, reasoning, turn cap, home restriction, name) |
+| `#/models` | Active providers, the automatic chain and the default model per provider |
+| `#/usage` | Tokens and cost, or the reason why they cannot be measured |
+| `#/history` | Historicisation: retention and compaction |
+
+Both surfaces share one stylesheet and one palette. The rebuild inventory in
 [`docs/design/2026-08-08-frontend-da-rifare.md`](docs/design/2026-08-08-frontend-da-rifare.md)
-(Italian). Treat the chat as the product surface until that work lands.
+(Italian) is closed: all fourteen entries were resolved, and what remains open
+is listed at the bottom of that document — none of it is a fault a tester can
+run into.
 
 **Stack:** Python 3.13 (Alpine) · aiohttp · Anthropic SDK · OpenAI SDK ·
 APScheduler · SQLite · model2vec
