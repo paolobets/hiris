@@ -4,12 +4,17 @@ Porta in-addon del runner del gateway esterno (hiris-mcp-gateway/agent/runner.py
 L'internal token (env INTERNAL_TOKEN) resta usato per l'HTTP verso la reasoning
 API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
-NB (Fetta E2 Task 3): il percorso `claude --mcp-config` verso l'MCP interno
-(Piano 2A, hiris/app/mcp/) e' uscito insieme al server che serviva -- era il
-terzo catalogo di strumenti della mappa del prodotto, e ora MCP non e' piu'
-servito a Claude. `_reason_chat` sotto quindi ragiona SENZA STRUMENTI: non
-puo' guardare la casa in questo momento ne' salvare o richiamare ricordi, e
-non puo' controllarla.
+OGGI, in una riga: il ponte LEGGE la casa e la memoria con i quattro strumenti
+della conoscenza, e NON agisce (parita' B, sotto). Le note che seguono sono la
+STORIA di come ci si e' arrivati, e sono al passato apposta: fino alla review
+totale della parita' B la prima di esse affermava al PRESENTE il contrario, ed
+era la prima cosa che un lettore di questo file trovava.
+
+STORIA (Fetta E2 Task 3): il percorso `claude --mcp-config` verso l'MCP interno
+(Piano 2A, hiris/app/mcp/) usci' insieme al server che serviva -- era il terzo
+catalogo di strumenti della mappa del prodotto. Da allora, e fino alla parita'
+B, `_reason_chat` ragionava SENZA STRUMENTI: non poteva guardare la casa in quel
+momento ne' salvare o richiamare ricordi, e non poteva controllarla.
 
 fetta "il ponte riceve il nucleo" (parita' A, Task 2): questa nota diceva
 «ragiona in puro testo, senza poter leggere o controllare la casa». La prima
@@ -19,8 +24,8 @@ STESSA stringa che il ramo sincrono passa al runner
 `_reason_chat` la passa a `prompts.build_chat_messages`. Il modello quindi
 LEGGE una fotografia della casa, presa quando il messaggio e' stato accodato;
 cio' che continua a non poter fare e' guardarla ADESSO e agire su di essa.
-Gli strumenti restano fuori: li riattacca la fetta B
-(docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md).
+Gli strumenti restavano fuori; li ha riattaccati la fetta B
+(docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md), qui sotto.
 
 fetta "il ponte riceve gli strumenti" (parita' B, Task 3): li ha riattaccati.
 Le due note qui sopra sono ora vere solo per il ramo di DEGRADO. Il ponte

@@ -1474,10 +1474,13 @@ async def _on_startup(app: web.Application) -> None:
     # Polls the internal reasoning queue and reasons via `claude -p` under the
     # user's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN) instead of metered
     # API spend. Off unless both the feature flag and the token are present
-    # (should_start_agent_worker). Il server MCP interno che la chat usava
-    # per i tool di controllo casa e' uscito (Fetta E2 Task 3): questo worker
-    # resta, ma senza quel percorso ragiona in puro testo (vedi
-    # agent/runner.py).
+    # (should_start_agent_worker). Il server MCP interno che la chat usava per
+    # i tool di CONTROLLO casa usci' con la Fetta E2 Task 3 e non torna: HIRIS
+    # conosce e non agisce. Ma questo worker non ragiona piu' in puro testo --
+    # dalla fetta "il ponte riceve gli strumenti" (parita' B) riceve i QUATTRO
+    # strumenti della CONOSCENZA dalla rotta `POST /api/mcp` registrata piu'
+    # sotto, e il prompt lo dichiara al modello solo quando la sonda ha
+    # confermato che ci sono davvero (vedi agent/runner.py).
     if should_start_agent_worker():
         from .agent import runner as _agent_runner
 
@@ -1658,10 +1661,12 @@ def create_app() -> web.Application:
     # nostri (vedi il docstring di api/handlers_mcp.py).
     #
     # CHI LA CHIAMA: il sottoprocesso `claude` che il worker del ponte avvia
-    # dentro l'add-on, dal Task 3 in poi (`--mcp-config`). Fino a quel task
-    # nessun chiamante di produzione esiste e la rotta e' un ORFANO
-    # DICHIARATO, che `scripts/censimento.py` conta fra le «rotte HTTP
-    # chiamate solo dai test».
+    # dentro l'add-on (`--mcp-config`), e la sonda `tools/list` che il runner
+    # fa PRIMA di comporre il turno (`agent/runner.py::sonda_strumenti`).
+    # Fino al Task 3 di questa fetta nessun chiamante di produzione esisteva e
+    # la rotta fu un ORFANO DICHIARATO, contato da `scripts/censimento.py` fra
+    # le «rotte HTTP chiamate solo dai test»: col Task 3 l'orfano e' stato
+    # raccolto e il censimento e' tornato a 43.
     #
     # COSA NON E': una superficie remota. Vive sul listener che c'e' gia',
     # raggiungibile su `127.0.0.1` dall'interno del container -- nessuna porta
