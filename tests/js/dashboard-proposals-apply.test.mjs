@@ -53,3 +53,40 @@ test('peek Dashboard: Attiva fa apply e ricarica, senza falso "Errore di rete"',
   assert.equal(applyCall.opts.method, 'POST');
   assert.deepEqual(alerts, [], 'nessun alert: il falso "Errore di rete" non deve più comparire');
 });
+
+/* Spostato qui dalla fetta E5 Task 6, da tests/js/chat-proposals.test.mjs:
+   quel file aveva come soggetto chat/proposals.js, uscito con /api/proposals*,
+   ma QUESTO caso ha come soggetto config/proposals-core.js, che sopravvive
+   perche' il peek della Dashboard qui sopra lo usa. Soggetto vivo, sola via
+   d'accesso cambiata: si sposta, non si butta. Esce insieme al peek quando il
+   Task 8 riscrive dashboard.js. */
+// ---------------------------------------------------------------------------
+// I-5 (review indipendente su bee3ab1): act()/undo() mostravano
+// `res.error || 'Errore'` -- la stringa tecnica del backend
+// (handlers_proposals.py/handlers_dashboards.py) direttamente all'utente.
+// ---------------------------------------------------------------------------
+
+test('HirisProposalsCore.errorMessage: mai la stringa del backend, derivato dallo stato', () => {
+  const { window } = loadScripts(['config/api.js', 'config/proposals-core.js']);
+  const M = window.HirisProposalsCore.errorMessage;
+
+  const raw409 = M({ status: 409, error: 'Proposal not found or not in pending state' });
+  assert.doesNotMatch(raw409, /Proposal not found/);
+
+  const raw503 = M({ status: 503, error: 'ProposalStore not initialized' });
+  assert.doesNotMatch(raw503, /ProposalStore/);
+  assert.notEqual(raw503, raw409, '409 e 503 devono dire cose diverse');
+
+  const raw502 = M({ status: 502, error: 'Automazione non creata in HA: connection refused' });
+  assert.doesNotMatch(raw502, /connection refused/);
+  assert.notEqual(raw502, raw409);
+  assert.notEqual(raw502, raw503);
+
+  // I-5: quando lo stato non rientra in nessun caso noto, mostra almeno il
+  // codice HTTP -- "Errore 500" e "Errore 404" devono restare distinguibili,
+  // non un "Errore" generico e basta.
+  const unknown500 = M({ status: 500, error: null });
+  const unknown404 = M({ status: 404, error: null });
+  assert.match(unknown500, /500/);
+  assert.notEqual(unknown500, unknown404);
+});

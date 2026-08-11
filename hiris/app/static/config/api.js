@@ -1,5 +1,5 @@
-/* HIRIS · Designer · api + helpers
-   Tiny utilities + fetch wrappers used across modules. Loads first. */
+/* HIRIS - utilita' condivise dalle due pagine (chat e configurazione).
+   Carica per prima: definisce globali bare, non un modulo. */
 
 function esc(t) {
   return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -14,13 +14,6 @@ function fmtNum(n) {
   return n >= 1000000 ? (n/1000000).toFixed(2) + 'M'
        : n >= 1000    ? (n/1000).toFixed(1) + 'k'
        : String(n);
-}
-
-function estimateTok(text) { return Math.ceil((text || '').length / 4); }
-
-function fmtTok(n) {
-  if (n === 0) return '—';
-  return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
 }
 
 /* Theme: localStorage > server config > system. */
@@ -42,13 +35,6 @@ async function applyTheme() {
     }
   } catch(e) {}
 }
-
-/* loadModels()/_setModelValue() spostate in config/editor-kit.js
-   (HirisEditorKit.modelSelect / HirisEditorKit.setModelValue) — SP-4 Fase B
-   Task 3: erano codice editor (popolano #f-model) dentro un file di utility
-   pure, e ogni chiamante (agentbot-route.js) ne rifaceva una fetch propria
-   per riga invece di condividerla. Vedi editor-kit.js per la cache
-   condivisa. */
 
 /* Scrive il testo in `id` solo se l'elemento esiste in questa pagina.
    Correzione (I-3, review indipendente): il commento precedente diceva che

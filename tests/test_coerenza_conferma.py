@@ -62,32 +62,12 @@ def _strip_js_comments(js: str) -> str:
 # a cui il prompt doveva restare fedele e' sparito con lui, non solo la
 # lettura che lo scopriva.
 #
-# Sopravvive un pin sul nuovo stato: l'editor non deve promettere che
-# require_confirmation copre strumenti che non esistono piu' in nessun
-# catalogo -- deve dire la verita' (oggi non ha alcun effetto osservabile),
-# non ripetere una promessa vuota.
-
-
-def test_editor_non_promette_copertura_di_strumenti_morti():
-    """Isola SOLO il blocco "Conferma" (require_confirmation): chatbot-editor.js
-    nomina ancora `call_ha_service` altrove (il gruppo di checkbox
-    `allowed_tools`, fuori scope qui -- esce con la E5 insieme al resto del
-    catalogo a 34 nomi), quindi la guardia non puo' leggere l'intero file."""
-    js = _strip_js_comments(
-        (BASE / "static" / "config" / "chatbot-editor.js").read_text(encoding="utf-8")
-    )
-    start = js.index('<div class="fg-label">Conferma</div>')
-    end = js.index("</p></div>';", start)
-    blocco_conferma = js[start:end]
-    for tool in ("call_ha_service", "trigger_automation", "toggle_automation",
-                 "set_input_helper", "create_ha_config"):
-        assert tool not in blocco_conferma, (
-            f"il blocco Conferma nomina ancora {tool} come coperto da "
-            "require_confirmation, ma nessun catalogo raggiungibile lo offre piu'"
-        )
-    assert "f-require-confirmation" in blocco_conferma, (
-        "il campo require_confirmation e' sparito dall'editor"
-    )
+# Sopravviveva un pin sul blocco "Conferma" dell'editor Chatbot: non doveva
+# promettere che require_confirmation copre strumenti che non esistono piu'.
+# Con la fetta E5 Task 6 quell'editor (static/config/chatbot-editor.js) e'
+# uscito insieme alle rotte POST/PUT/DELETE /api/chatbots/{id} che salvavano:
+# non c'e' piu' nessuna interfaccia che faccia quella promessa, quindi il pin
+# e' caduto per costruzione (FileNotFoundError) e non ha dove spostarsi.
 
 
 # ---------------------------------------------------------------------------

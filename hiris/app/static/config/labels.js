@@ -28,8 +28,14 @@
    una voce non mappata deve restare visibile (anche se non tradotta), mai
    sparire.
 
-   Caricato come <script src> statico sia in config.html sia in
-   static/index.html (la chat), PRIMA di ogni modulo che lo usa. */
+   Stato alla fetta E5 Task 6: dei sei dizionari qui sotto ne resta usato
+   UNO SOLO -- ADVISORY_SEVERITY_LABELS, letto da config/dashboard.js. Le
+   pagine che consultavano gli altri (config/tasks-route.js, chat/tasks.js,
+   config/agentbot-route.js) sono uscite con il backend che servivano. Il
+   file sopravvive percio' solo finche' sopravvive dashboard.js, che il
+   Task 8 riscrive: quando quella lettura sparisce, sparisce anche questo
+   file. Caricato come <script src> statico da config.html soltanto (la
+   chat non ne ha piu' bisogno), PRIMA di ogni modulo che lo usa. */
 (function() {
   var TASK_STATUS_LABELS = {
     pending: 'In attesa',

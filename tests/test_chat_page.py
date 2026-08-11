@@ -1,6 +1,6 @@
 """Wiring guards for the rebuilt standalone chat page (SP-4 Fase B Task 8).
 
-Real behaviour (send -> chatbot_id, 202 -> polling, turn-limit, tasks panel)
+Real behaviour (send -> POST api/chat, 202 -> polling, turn-limit)
 is covered by tests/js/chat-page.test.mjs (node --test + jsdom, per the
 plan's "test comportamentali richiesti" table, row 8). These are text-source
 guards only: that the inline <script> block is gone, that each functional
@@ -14,9 +14,11 @@ STATIC = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 INDEX = STATIC / "index.html"
 CHAT = STATIC / "chat"
 
+# fetta E5 Task 6: tasks.js e proposals.js sono usciti insieme alle rotte
+# /api/tasks* e /api/proposals*, che il backend non serve piu' dalla E3.
 EXPECTED_CHAT_FILES = (
     "state.js", "messages.js", "agents.js", "send.js", "theme.js",
-    "tasks.js", "proposals.js", "sidebar.js", "keyboard.js", "main.js",
+    "knowledge-core.js", "knowledge.js", "sidebar.js", "keyboard.js", "main.js",
 )
 
 

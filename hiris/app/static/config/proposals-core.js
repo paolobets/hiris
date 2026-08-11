@@ -9,13 +9,14 @@
    null.querySelector -> TypeError -> catch -> alert('Errore di rete').
    Cioè: l'automazione VENIVA attivata, ma appariva un falso errore di rete.
 
-   Questo core fa SOLO la chiamata di rete e ritorna l'esito. Ogni vista
-   (pagina Proposte del config, peek della Dashboard, pannello Proposte della
-   chat) aggiorna il PROPRIO DOM: nessuna vista eredita il DOM di un'altra,
-   quindi quella classe di bug non può più ripresentarsi.
+   Questo core fa SOLO la chiamata di rete e ritorna l'esito: ogni vista
+   aggiorna il PROPRIO DOM, senza ereditare quello di un'altra.
 
-   Caricato come <script src> statico sia in config.html sia in
-   static/index.html (la chat), come config/api.js. */
+   Stato alla fetta E5 Task 6: delle tre viste ne resta UNA, il peek della
+   Dashboard (config/dashboard.js) -- la pagina Proposte del config e il
+   pannello Proposte della chat sono uscite con /api/proposals*. Il file
+   sopravvive percio' solo finche' sopravvive quel peek, che il Task 8
+   riscrive. Caricato come <script src> statico da config.html soltanto. */
 (function() {
   function _result(r) {
     /* Normalizza in {ok, error, status}. Legge il body JSON best-effort per
@@ -38,9 +39,10 @@
      "ProposalStore not initialized", "Proposal not found or not in pending
      state", "Automazione non creata in HA: <eccezione HA grezza>". Stesso
      principio di chat/knowledge.js::messaggioErrore, qui condiviso in UN
-     punto perche' i 5 chiamanti (chat/proposals.js, config/proposals.js,
-     config/dashboard.js) userebbero altrimenti 5 copie della stessa mappa,
-     a rischio di deriva.
+     punto perche' i chiamanti di allora (chat/proposals.js,
+     config/proposals.js, config/dashboard.js) userebbero altrimenti una
+     copia a testa della stessa mappa, a rischio di deriva. Oggi ne resta
+     uno solo, config/dashboard.js.
      Quando lo stato non rientra in nessuno dei casi noti (un guasto non-
      JSON, un proxy che risponde con un HTML di errore, ...) si mostra
      comunque il codice HTTP: "Errore 502" e "Errore 404" mandano l'utente in

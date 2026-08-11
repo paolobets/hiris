@@ -15,14 +15,15 @@
    stessa e la ridefinizione della pagina "Memoria" come "cio' che HIRIS sa"
    sono fuori dallo scope di questa fetta (design memoria-unica §2⑤, §4).
 
-   Sta nella chat, accanto a Proposte e Task, perche' e' la stessa natura —
-   un'inbox di cose che aspettano una decisione — e perche' e' li' che nasce:
-   l'elemento e' stato salvato durante una conversazione.
+   Sta nella chat perche' e' li' che nasce: l'elemento e' stato salvato
+   durante una conversazione. Alla fetta E5 Task 6 e' rimasto l'UNICO
+   pannello di questa pagina -- quelli di Proposte e Task sono usciti con le
+   rotte che servivano, e con loro la mutua esclusione fra i tre.
 
-   Struttura ricalcata su chat/proposals.js: voce di navigazione con badge,
-   pannello mutuamente esclusivo con Task e Proposte, click delegato sul
-   contenitore (la lista viene ricostruita a ogni caricamento, quindi un
-   listener per bottone morirebbe al primo refresh). La rete sta in
+   Struttura: voce di navigazione con badge, pannello che copre l'area della
+   conversazione, click delegato sul contenitore (la lista viene ricostruita
+   a ogni caricamento, quindi un listener per bottone morirebbe al primo
+   refresh). La rete sta in
    chat/knowledge-core.js, senza DOM. `esc()` e' il globale di config/api.js,
    gia' caricato in questa pagina.
 
@@ -271,21 +272,12 @@
     if (inputArea) inputArea.style.display = isKb ? 'none' : '';
     var tc = document.getElementById('turn-counter'); if (tc) tc.style.display = isKb ? 'none' : '';
     var se = document.getElementById('session-ended-msg'); if (se) se.style.display = isKb ? 'none' : '';
-    /* mutua esclusione con Task e Proposte (stessa area overlay) */
-    var taskPanel = document.getElementById('task-panel'); if (taskPanel) taskPanel.style.display = 'none';
-    var propPanel = document.getElementById('proposals-panel'); if (propPanel) propPanel.style.display = 'none';
     var panel = document.getElementById('knowledge-panel');
     if (panel) panel.style.display = isKb ? 'flex' : 'none';
     var nav = document.getElementById('nav-knowledge');
     if (nav) nav.classList.toggle('active', isKb);
     var mobileBtn = document.getElementById('mobile-knowledge-btn');
     if (mobileBtn) mobileBtn.classList.toggle('active', isKb);
-    if (isKb) {
-      var navTasks = document.getElementById('nav-tasks'); if (navTasks) navTasks.classList.remove('active');
-      var mobileTask = document.getElementById('mobile-task-btn'); if (mobileTask) mobileTask.classList.remove('active');
-      var navProp = document.getElementById('nav-proposals'); if (navProp) navProp.classList.remove('active');
-      var mobileProp = document.getElementById('mobile-proposals-btn'); if (mobileProp) mobileProp.classList.remove('active');
-    }
     var header = document.getElementById('knowledge-panel-header');
     if (header) header.style.display = (isKb && window.innerWidth <= 720) ? 'flex' : 'none';
     if (isKb) load();

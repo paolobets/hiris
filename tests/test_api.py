@@ -356,8 +356,9 @@ async def test_chat_debug_tools_called_returns_objects(client):
 # test_list_tasks_api_empty, che viveva qui, e' cancellato dalla fetta E3
 # Task 9: colpiva GET /api/tasks, una delle tre rotte uscite col Task
 # Engine. Verificato che cade per costruzione: senza la rotta registrata
-# risponde 404 (era atteso 200) -- la pagina #/tasks (tasks-route.js) e il
-# pannello Task della chat restano rotti apposta, vedi il report del task.
+# risponde 404 (era atteso 200). Le due interfacce che restavano rotte --
+# la pagina #/tasks (config/tasks-route.js) e il pannello Task della chat
+# (chat/tasks.js) -- sono uscite con la fetta E5 Task 6.
 
 
 @pytest.mark.asyncio

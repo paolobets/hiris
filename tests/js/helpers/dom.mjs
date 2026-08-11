@@ -17,8 +17,8 @@ const globalEval = (0, eval);
  * NB: la ricetta "libro di testo" per jsdom (`runScripts: 'outside-only'`
  * + `window.eval(code)`) è stata provata per prima e NON funziona per
  * questi test: `window` in quella modalità vive nel proprio vm-realm, per
- * cui gli array/oggetti creati dentro gli script (es. `selection.slice()`
- * dentro entity-picker.js) non sono `instanceof` l'Array del processo
+ * cui gli array/oggetti creati dentro gli script non sono `instanceof`
+ * l'Array del processo
  * Node.js che esegue i test — ogni `assert.deepEqual(picker.getValue(),
  * [...])` falliva con "same structure but are not reference-equal" anche
  * quando il comportamento era corretto.
@@ -36,15 +36,14 @@ const globalEval = (0, eval);
  * livello globale). In un vero browser è equivalente a un global bare
  * (`window === globalThis` lì), ma qui `window` è un oggetto bridged
  * DIVERSO da `globalThis` — quindi `window.Foo = ...` non creava
- * `globalThis.Foo`, e un secondo script che referenzia `Foo` bare (es.
- * `chatbot-editor.js` che chiama `HirisEntityPicker.create(...)` o
- * `HirisState.set(...)`) falliva con ReferenceError. Il proxy sotto
+ * `globalThis.Foo`, e un secondo script che referenzia `Foo` bare (es. un
+ * modulo di route che chiama `HirisState.set(...)`) falliva con
+ * ReferenceError. Il proxy sotto
  * intercetta ogni assegnazione `window.X = ...` e la specchia anche su
  * `globalThis.X`, replicando la semantica reale del browser. Necessario da
  * quando i test hanno iniziato a caricare più moduli che si referenziano a
- * vicenda (prima, i soli test su entity-picker.js accedevano sempre via
- * `window.HirisEntityPicker` esplicito dal lato test, non da altro codice
- * IIFE caricato insieme).
+ * vicenda (prima, i test accedevano sempre via `window.HirisX` esplicito dal
+ * lato test, non da altro codice IIFE caricato insieme).
  *
  * Isolamento fra test() nello stesso file: `node --test` isola i FILE di
  * test in processi separati, ma NON le singole `test()` dentro lo stesso
@@ -105,16 +104,17 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
   define('localStorage', rawWindow.localStorage);
   // `HTMLElement` non è un global di Node — esiste solo su `window` in jsdom —
   // e va bridged sul globalThis dell'host esattamente come document/navigator/
-  // Event sopra: `config/drawer.js` e `config/popover.js` lo usano bare
-  // (`opts.body instanceof HTMLElement`), come farebbero nel browser.
+  // Event sopra, per gli script che lo usano bare come farebbero nel browser.
   //
-  // fetta E5 Task 5: qui stavano anche `customElements` e `CustomEvent`,
-  // aggiunti da SP-4 Fase B Task 7 per l'unico Custom Element del progetto
-  // (`hiris-chat-card.js`, `class HirisCard extends HTMLElement` +
-  // `customElements.define`). La card e' uscita dal prodotto e in `static/`
-  // non e' rimasto nessun Custom Element ne' nessun uso di `CustomEvent`
-  // (verificato con grep prima di togliere i due bridge): erano due global
-  // montati per nessuno. Se un domani la card torna, tornano con lei.
+  // fetta E5 Task 5: qui stavano anche `customElements` e `CustomEvent`, per
+  // l'unico Custom Element del progetto (`hiris-chat-card.js`), uscito col
+  // prodotto. fetta E5 Task 6: i due file che usavano `HTMLElement` bare
+  // (`config/drawer.js`, `config/popover.js`) sono usciti a loro volta --
+  // oggi nessuno script di `static/` lo nomina (verificato col grep). Il
+  // bridge resta perche' e' un global standard del browser che un qualunque
+  // script caricato qui puo' legittimamente usare, non un'impalcatura per un
+  // consumatore specifico: a differenza di `customElements`, non promette
+  // niente su cosa esiste nel prodotto.
   define('HTMLElement', rawWindow.HTMLElement);
   // `fetch` è normalmente sovrascritto per-test da stubFetch(window, ...);
   // la getter/setter lo tiene agganciato dinamicamente a window.fetch così

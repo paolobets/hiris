@@ -52,8 +52,6 @@
     setInterval(window.HirisChatAgents.updateGreeting, 60 * 60 * 1000); /* refresh greeting every hour */
 
     window.HirisChatSidebar.init();
-    window.HirisChatTasks.init();
-    window.HirisChatProposals.init();
     window.HirisChatKnowledge.init();
     window.HirisChatKeyboard.init();
     window.HirisChatSend.wireComposer();

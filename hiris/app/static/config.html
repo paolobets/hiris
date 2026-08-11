@@ -58,31 +58,17 @@
       <span class="nav-label">Dashboard</span>
       <span class="nav-badge" id="nav-adv-count">—</span>
     </a>
-    <a class="nav-item" href="#/chatbots" data-route="chatbots">
-      <span class="nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M3 21c0-4 4-7 9-7s9 3 9 7"/></svg>
-      </span>
-      <span class="nav-label">Chatbot</span>
-      <span class="nav-badge" id="nav-chatbots-count">—</span>
-    </a>
     <!-- fetta E5 Task 2: i sette campi di ImpostazioniChat (prompt di
          sistema, modello, forma della risposta, ragionamento, tetto di turni,
          restrizione alla casa, nome) prima si cambiavano solo scrivendo a
-         mano /data/impostazioni_chat.json. La voce sta qui, subito sotto
-         Chatbot, perche' e' cio' che resta quando l'editor #/chatbots esce
-         (Task 6 di questa fetta). -->
+         mano /data/impostazioni_chat.json. E' l'unico posto in cui si
+         configura la chat da quando il Task 6 di questa fetta ha fatto
+         uscire l'editor #/chatbots. -->
     <a class="nav-item" href="#/impostazioni" data-route="impostazioni">
       <span class="nav-icon">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="17" r="2"/></svg>
       </span>
       <span class="nav-label">Impostazioni chat</span>
-    </a>
-    <a class="nav-item" href="#/proposals" data-route="proposals">
-      <span class="nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20l-7-3V7l7-3 7 3v10z"/><path d="M12 4v16"/></svg>
-      </span>
-      <span class="nav-label">Proposte</span>
-      <span class="nav-badge" id="nav-proposals-count">—</span>
     </a>
     <a class="nav-item" href="#/usage" data-route="usage">
       <span class="nav-icon">
@@ -96,30 +82,11 @@
       </span>
       <span class="nav-label">Modelli</span>
     </a>
-    <a class="nav-item" href="#/tasks" data-route="tasks">
-      <span class="nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      </span>
-      <span class="nav-label">Task</span>
-      <span class="nav-badge" id="nav-tasks-count">—</span>
-    </a>
-    <a class="nav-item" href="#/gateway" data-route="gateway">
-      <span class="nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
-      </span>
-      <span class="nav-label">Accessi Gateway</span>
-    </a>
     <a class="nav-item" href="#/history" data-route="history">
       <span class="nav-icon">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 5-5"/></svg>
       </span>
       <span class="nav-label">Storicizzazione</span>
-    </a>
-    <a class="nav-item" href="#/agentbots" data-route="agentbots">
-      <span class="nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
-      </span>
-      <span class="nav-label">Agentbot</span>
     </a>
     <!-- v0.10.8: rimossi nav-spacer + voce duplicata "Vai alla chat" in fondo
          (icona luna sbagliata + duplicava il link Chat ora in cima alla sidebar). -->
@@ -142,90 +109,20 @@
     </div>
   </template>
 
-  <!-- SP-4 Fase B Task 4: le section-card + il rail anchor-nav non sono più
-       scritte qui a mano -- erano duplicate 3 volte (qui, l'<aside>, e i
-       letterali sc-body-* nei populate*() di chatbot-editor.js). Ora
-       chatbot-editor.js le genera entrambe da un unico array SECTIONS
-       (buildSections()); questo template porta solo la cornice: il
-       contenitore .editor-content (con la sola sticky-actions-wrap, dentro
-       cui le section-card vengono inserite PRIMA a runtime) e l'<aside>
-       anchor-nav vuoto (con la sola label statica "Indice"). -->
-  <template id="tpl-agent-editor">
-    <div class="editor-grid">
-      <div class="editor-content">
-        <!-- v0.10.8: sticky-actions con wrap pattern. Outer wrap fixed full-width
-             (background+blur+border-top). Inner box max-width centrato simmetrico
-             a page-main. Layout: Annulla left | spacer | TestRun/Elimina/Salva right.
-             Stato salvataggio indicato dal solo bottone Salva (disabled = saved,
-             enabled = pending). Niente più "Salvato ✓" text inline. -->
-        <div class="sticky-actions-wrap" id="sticky-actions-wrap">
-          <div class="sticky-actions" id="sticky-actions">
-            <button class="btn btn-ghost" id="btn-cancel">Annulla</button>
-            <span class="sa-spacer"></span>
-            <button class="btn" id="btn-test-run"><span class="spinner"></span>▶ Test Run</button>
-            <button class="btn btn-danger" id="btn-delete" style="display:none">Elimina</button>
-            <button class="btn btn-primary" id="btn-save" disabled>Salva</button>
-          </div>
-        </div>
-      </div>
-      <aside class="anchor-nav" id="anchor-nav">
-        <div class="an-label">Indice</div>
-      </aside>
-    </div>
-  </template>
-
-  <!-- Drawer + Popover container (mounted by atom modules in Phase 3) -->
-  <div id="drawer-container"></div>
-  <div id="popover-container"></div>
-
-  <!-- Scripts — ordine di dipendenze reali (SP-4 Fase B Task 2: collassato
-       il loader dinamico di chatbot-editor.js. I 7 file sotto erano prima
-       iniettati a runtime dopo il mount, con rewire manuale dei listener a
-       ogni remount — vedi docs/design/2026-07-28-piano-SP4b1-cornice-
-       unificata.md Task 2. Ora sono <script src> statici come tutti gli
-       altri: ognuno viene fingerprintato individualmente da _inject_version
-       (server.py), quindi il cache-busting per-file torna corretto "gratis".
-       state → router → api → entity-picker → templates → permessi →
-       log-row → logs → usage → proposals → drawer → popover →
-       chatbot-editor → (route) → main. -->
+  <!-- Scripts — ordine di dipendenze reali. Ogni file e' fingerprintato
+       individualmente da _inject_version (server.py), quindi il cache-busting
+       per-file e' automatico.
+       state → router → api → labels → proposals-core → (route) → main. -->
   <script src="static/config/state.js"></script>
   <script src="static/config/router.js"></script>
   <script src="static/config/api.js"></script>
-  <!-- Task 3 A4+B1: dizionario condiviso di etichette (stati task, stati
-       suggerimenti, severita' segnalazioni, tipi di trigger). Deve caricare
-       prima di dashboard.js, tasks-route.js, agentbot-route.js (tutti lo
-       consultano). -->
+  <!-- Dizionario condiviso di etichette (severita' delle segnalazioni).
+       Unico consumatore rimasto: dashboard.js -- deve caricare prima. -->
   <script src="static/config/labels.js"></script>
-  <!-- SP-4 Fase B Task 1: entity-picker.js sostituisce il selettore entità
-       singleton di permessi.js (istanziabile, serve l'editor Chatbot ora e
-       l'editor Agentbot in seguito, che ne userà tre per riga). Usa escHtml
-       (api.js) — deve caricare dopo api.js e prima di chatbot-editor.js,
-       che lo istanzia in populateScope(). -->
-  <script src="static/config/entity-picker.js"></script>
-  <!-- SP-4 Fase B Task 3: kit editor condiviso (fabbriche di campo, select
-       modello con fetch cachata, checkGroup, dirty tracking reale + guard di
-       navigazione, save bar). Deve caricare prima di permessi.js (assorbe
-       buildToolChecks/buildActionChecks), chatbot-editor.js (usa checkGroup/
-       modelSelect/dirty/saveBar) e agentbot-route.js (modelSelect cachato). -->
-  <script src="static/config/editor-kit.js"></script>
-  <script src="static/config/templates.js"></script>
-  <script src="static/config/permessi.js"></script>
-  <script src="static/config/log-row.js"></script>
-  <script src="static/config/logs.js"></script>
-  <script src="static/config/usage.js"></script>
+  <!-- Azioni sulle proposte (approva/rifiuta + messaggio d'errore in
+       italiano). Unico consumatore rimasto: dashboard.js. -->
   <script src="static/config/proposals-core.js"></script>
-  <script src="static/config/proposals.js"></script>
-  <!-- SP-4 Fase B Task 4: chatbot-form.js è stato assorbito integralmente in
-       chatbot-editor.js (unico owner di load+payload: openAgent/buildPayload/
-       loadChatbots) ed eliminato. -->
-  <!-- drawer/popover: atomi UI generici, devono caricare prima di
-       chatbot-editor.js (che li usa) ma dopo i moduli Persona sopra. -->
-  <script src="static/config/drawer.js"></script>
-  <script src="static/config/popover.js"></script>
-  <script src="static/config/chatbot-editor.js"></script>
   <script src="static/config/dashboard.js"></script>
-  <script src="static/config/chatbots-list.js"></script>
-  <script src="static/config/proposals-route.js"></script>
   <script src="static/config/usage-route.js"></script>
   <script src="static/config/models-route.js"></script>
   <!-- fetta E5 Task 2: pagina #/impostazioni. Nessuna dipendenza (usa solo
@@ -233,23 +130,7 @@
        niente: sta accanto a models-route.js perche' e' l'altra pagina che
        parla di modelli. -->
   <script src="static/config/impostazioni-route.js"></script>
-  <script src="static/config/tasks-route.js"></script>
-  <script src="static/config/gateway-route.js"></script>
   <script src="static/config/history-route.js"></script>
-  <script src="static/config/agentbot-route.js"></script>
-  <!-- SP-4 Fase B Task 5: editor Agentbot per-entità, estratto dal blocco
-       CRUD che viveva dentro agentbot-route.js. Usa HirisEntityPicker
-       (entity-picker.js) ed HirisEditorKit (editor-kit.js), entrambi già
-       caricati sopra -- l'ordine relativo ad agentbot-route.js non conta
-       (moduli indipendenti su window), ma deve caricare dopo di loro. -->
-  <script src="static/config/agentbot-editor.js"></script>
-  <!-- SP-4 Fase B Task 6: wizard di creazione goal-first. Usa
-       HirisEditorKit (field.*/checkGroup), HirisEntityPicker e i cataloghi
-       TOOLS/KNOWLEDGE_KINDS di templates.js -- deve caricare dopo tutti e
-       tre. Referenziato solo dentro closure di route in main.js (deferred),
-       quindi l'ordine relativo a main.js stesso non conta, ma resta prima
-       per coerenza con lo stesso pattern di agentbot-editor.js sopra. -->
-  <script src="static/config/create-wizard.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>

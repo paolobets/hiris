@@ -11,18 +11,12 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 
 function fixtureHtml() {
   return `<!doctype html><body>
-    <a id="nav-tasks"></a>
-    <a id="nav-proposals"><span class="task-badge" id="proposals-badge" data-count="0"></span></a>
     <a id="nav-knowledge"><span class="task-badge" id="knowledge-badge" data-count="0"></span></a>
-    <button id="mobile-task-btn"></button>
-    <button id="mobile-proposals-btn"><span id="mobile-proposals-badge" data-count="0"></span></button>
     <button id="mobile-knowledge-btn"><span id="mobile-knowledge-badge" data-count="0"></span></button>
     <div id="messages"></div>
     <div id="input-area"></div>
     <div id="turn-counter" style="display:none"></div>
     <div id="session-ended-msg" style="display:none"></div>
-    <div id="task-panel"></div>
-    <div id="proposals-panel"></div>
     <div id="knowledge-panel">
       <div id="knowledge-panel-header"><button id="knowledge-panel-back-btn"></button></div>
       <div id="chat-knowledge-list"></div>
@@ -198,40 +192,4 @@ test('coda vuota e coda illeggibile dicono due cose diverse', async () => {
   assert.notEqual(testoRotto, testoVuoto, 'i due stati devono essere distinguibili');
   assert.equal(rotta.document.getElementById('knowledge-badge').textContent, '',
     'nessun conteggio inventato quando la lettura fallisce');
-});
-
-test('aprire la Memoria chiude Proposte e Task', async () => {
-  const { window, document } = loadScripts(
-    ['config/api.js', 'config/labels.js', 'config/proposals-core.js', 'chat/proposals.js',
-      'chat/tasks.js', 'chat/knowledge-core.js', 'chat/knowledge.js'],
-    { html: fixtureHtml() },
-  );
-  window.fetch = async (url) => (String(url).indexOf('api/tasks') !== -1
-    ? jsonResponse([])
-    : jsonResponse({ items: [], proposals: [] }));
-
-  document.getElementById('proposals-panel').style.display = 'flex';
-  document.getElementById('task-panel').style.display = 'flex';
-  document.getElementById('nav-proposals').classList.add('active');
-  document.getElementById('nav-tasks').classList.add('active');
-
-  window.HirisChatKnowledge.showPanel('knowledge');
-  await tick(5);
-
-  assert.equal(document.getElementById('knowledge-panel').style.display, 'flex');
-  assert.equal(document.getElementById('proposals-panel').style.display, 'none');
-  assert.equal(document.getElementById('task-panel').style.display, 'none');
-  assert.equal(document.getElementById('nav-proposals').classList.contains('active'), false);
-  assert.equal(document.getElementById('nav-tasks').classList.contains('active'), false);
-  assert.equal(document.getElementById('nav-knowledge').classList.contains('active'), true);
-
-  /* e viceversa: aprire Proposte deve chiudere la Memoria */
-  window.HirisChatProposals.showPanel('proposals');
-  await tick(5);
-  assert.equal(document.getElementById('knowledge-panel').style.display, 'none');
-  assert.equal(document.getElementById('nav-knowledge').classList.contains('active'), false);
-
-  window.HirisChatTasks.showPanel('tasks');
-  await tick(5);
-  assert.equal(document.getElementById('knowledge-panel').style.display, 'none');
 });

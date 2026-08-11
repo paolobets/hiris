@@ -4,14 +4,15 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* SP-4 Fase B Task 8: rebuild della pagina chat standalone (static/index.html).
    Il JS inline (~610 righe) è stato estratto in static/chat/*.js, uno per
-   blocco funzionale (state/messages/agents/send/theme/tasks/sidebar/keyboard/
+   blocco funzionale (state/messages/agents/send/theme/sidebar/keyboard/
    main) -- vedi task-8-report.md per il dettaglio dello split. L'onboarding
    che faceva parte di quell'elenco è uscito con la fetta E5 Task 1 (C1: il
    primo gesto del primo utilizzo dava un errore). Questi sono i test
    comportamentali richiesti dal piano (tabella "Test comportamentali
    richiesti per task", riga 8): invio -> POST api/chat, risposta 202
-   -> il polling completa, turn-limit blocca l'invio, il pannello task carica
-   e cancella. La fetta E5 Task 3 ("via l'elenco dei bot dalla sidebar") ha
+   -> il polling completa, turn-limit blocca l'invio. I due casi sul pannello
+   Task sono usciti con la fetta E5 Task 6, insieme a chat/tasks.js e alla
+   rotta /api/tasks che serviva. La fetta E5 Task 3 ("via l'elenco dei bot dalla sidebar") ha
    tolto `chatbot_id` dal body -- un solo assistente non ha più bisogno di
    dirsi quale -- e sostituito le mappe `agentMaxTurns`/`agentTurnCounts`
    indicizzate per id con `state.maxChatTurns`/`state.turnCount`, valori
@@ -56,11 +57,6 @@ function fixtureHtml() {
         <div id="input-area"><textarea id="input"></textarea><button id="send-btn"></button></div>
         <div id="turn-counter" style="display:none"></div>
         <div id="session-ended-msg" style="display:none"></div>
-        <div id="task-panel">
-          <div id="task-panel-header"><button id="task-panel-back-btn" type="button"></button></div>
-          <div id="task-active-list"></div>
-          <div id="task-recent-list"></div>
-        </div>
       </main>
     </div>
   </body>`;
@@ -309,84 +305,4 @@ test('clearConversation: se la DELETE fallisce lato server, i messaggi NON spari
   assert.match(alerts[0], /[Nn]on è stato possibile cancellare/);
   assert.ok(document.querySelector('.msg-row.user'),
     'la UI non deve fingere di aver cancellato se il server non lo ha fatto');
-});
-
-// ---------------------------------------------------------------------------
-// Pannello task: carica le card e permette di cancellare una task.
-// ---------------------------------------------------------------------------
-
-test('il pannello task carica le card e puo\' cancellare una task pending', async () => {
-  const { window, document } = loadScripts(
-    ['config/api.js', 'config/labels.js', 'chat/state.js', 'chat/tasks.js'],
-    { html: fixtureHtml() },
-  );
-  const calls = [];
-  window.fetch = async (url, opts) => {
-    calls.push({ url: String(url), opts: opts || {} });
-    if (opts && opts.method === 'DELETE') {
-      return { ok: true, status: 204, json: async () => ({}) };
-    }
-    return {
-      ok: true, status: 200,
-      json: async () => ([{ id: 't1', label: 'Irrigazione giardino', status: 'pending', trigger: { type: 'delay', minutes: 5 } }]),
-    };
-  };
-  window.confirm = () => true;
-
-  await window.HirisChatTasks.load();
-
-  const card = document.querySelector('#task-active-list .task-card');
-  assert.ok(card, 'la card della task pending deve comparire in task-active-list');
-  const cancelBtn = document.querySelector('.task-cancel-btn');
-  assert.ok(cancelBtn, 'una task pending deve avere il bottone Annulla');
-  assert.equal(cancelBtn.dataset.taskId, 't1');
-
-  // Wire della delegazione click (init()) senza lasciare un vero
-  // setInterval(30s) attivo nel processo di test -- lo stub-e-ripristina
-  // qui sotto è lo stesso principio del teardown in helpers/dom.mjs: non
-  // lasciare side-effect fuori dallo scope del singolo test().
-  const realSetInterval = globalThis.setInterval;
-  globalThis.setInterval = () => 0;
-  window.HirisChatTasks.init();
-  globalThis.setInterval = realSetInterval;
-  await tick(10); // lascia assestare il load() interno di init()
-
-  const callsBeforeCancel = calls.length;
-  document.querySelector('.task-cancel-btn').dispatchEvent(new window.Event('click', { bubbles: true }));
-  await tick(10);
-
-  const deleteCall = calls.slice(callsBeforeCancel).find((c) => c.opts.method === 'DELETE');
-  assert.ok(deleteCall, 'annullare la task deve fare una DELETE');
-  assert.match(deleteCall.url, /api\/tasks\/t1$/);
-  assert.equal(deleteCall.opts.headers['X-Requested-With'], 'fetch');
-});
-
-// ---------------------------------------------------------------------------
-// M-6 (review indipendente su bee3ab1, fratello di A7 nella stessa pagina):
-// una DELETE fallita non produceva NIENTE -- ne' un alert ne' un log.
-// ---------------------------------------------------------------------------
-
-test('annullare una task: una DELETE fallita lo dice, non resta muta (M-6)', async () => {
-  const { window, document } = loadScripts(
-    ['config/api.js', 'config/labels.js', 'chat/state.js', 'chat/tasks.js'],
-    { html: fixtureHtml() },
-  );
-  window.fetch = async (url, opts) => {
-    if (opts && opts.method === 'DELETE') {
-      return { ok: false, status: 500, json: async () => ({}) };
-    }
-    return {
-      ok: true, status: 200,
-      json: async () => ([{ id: 't1', label: 'Irrigazione giardino', status: 'pending', trigger: { type: 'delay', minutes: 5 } }]),
-    };
-  };
-  window.confirm = () => true;
-  const alerts = [];
-  window.alert = (m) => alerts.push(m);
-
-  await window.HirisChatTasks.load();
-  await window.HirisChatTasks.cancel('t1');
-
-  assert.equal(alerts.length, 1, 'una DELETE fallita deve produrre un alert, non silenzio');
-  assert.match(alerts[0], /[Nn]on è stato possibile annullare/);
 });

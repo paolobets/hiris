@@ -1,18 +1,19 @@
 /* HIRIS · Designer · hash router minimal */
 (function() {
   var routes = [];
-  /* Ultimo hash effettivamente risolto (route handler invocata). Chiude il
-     bug live #2 (guard di navigazione, editor-kit.js dirty.guard()): quando
-     l'utente RIFIUTA di uscire con modifiche non salvate, il guard ripristina
-     window.location.hash all'hash corrente -- ma quel ripristino genera un
-     SECONDO hashchange (l'"eco"), sul quale il guard stesso non richiama più
-     stopImmediatePropagation() (già "consumato" sul primo evento reale).
-     Senza questo controllo, resolveRoute() rimonta la route CORRENTE su
-     quell'eco -- mount() azzera lo stato (es. setupStickyActions in
-     chatbot-editor.js resetta 'unsaved'), quindi scegliere "resta" perdeva
-     comunque le modifiche. Un hashchange verso un hash DIVERSO aggiorna
-     sempre lastResolvedHash più sotto, quindi ogni navigazione vera (anche
-     "vai altrove e poi torna sulla stessa route") monta regolarmente. */
+  /* Ultimo hash effettivamente risolto (route handler invocata). Serve a
+     ignorare l'"eco" di un hashchange: quando qualcosa riporta
+     window.location.hash al valore corrente, il browser genera un secondo
+     hashchange verso lo STESSO hash, e senza questo controllo
+     resolveRoute() rimonterebbe la route corrente azzerandone lo stato.
+     Storia: il caso reale era il guard di navigazione contro le modifiche
+     non salvate (uscito con editor-kit.js alla fetta E5 Task 6, insieme ai
+     tre editor che lo usavano); il meccanismo resta perche' vale per
+     qualunque riscrittura dell'hash, non solo per quel guard, ed e'
+     pinnato da tests/js/router-retry.test.mjs. Un hashchange verso un hash
+     DIVERSO aggiorna sempre lastResolvedHash piu' sotto, quindi ogni
+     navigazione vera (anche "vai altrove e poi torna sulla stessa route")
+     monta regolarmente. */
   var lastResolvedHash = null;
 
   function resolveRoute() {

@@ -5,8 +5,6 @@ task's Step 5 grep so a future edit that reintroduces a stray `api/agents`,
 `#/sentinel`, etc. fails CI instead of silently 404ing the UI.
 
 Deliberately NOT flagged (must stay, out of the SP-4 Fase A rename scope):
-  - `api/sentinel/policy` / `api/sentinel/timeline` -- Sentinella detector
-    config + timeline, distinct from the renamed user-defined Agentbots.
   - the `agent_id` wire key in the chat POST body / SSE "done" event --
     handlers_chat.py / claude_runner.py / openai_compat_runner.py still read
     and emit that literal key (unrelated to this FE-only task).
@@ -60,31 +58,12 @@ def test_no_pre_rename_agent_sentinel_traces_in_static():
     assert offenders == [], "stale pre-rename references found:\n" + "\n".join(offenders)
 
 
-def test_renamed_fe_files_exist():
-    cfg = STATIC / "config"
-    for name in (
-        "chatbot-editor.js", "chatbots-list.js", "agentbot-route.js",
-    ):
-        assert (cfg / name).is_file(), f"expected renamed file missing: {name}"
-    # chatbot-form.js (SP-4 Fase B Task 4): absorbed into chatbot-editor.js
-    # (single owner of load+payload) and deleted -- it must NOT exist.
-    #
-    # `agent-editor.js` was removed from this forbidden-absent list in v1.1
-    # Fase 1 Task 5: it names a genuinely dead concept in 1.0 but v1.1
-    # unifies Chatbot + Agentbot into one "Agente" entity, and this is the
-    # filename that unified editor will legitimately reuse in a later phase.
-    # No FE file is renamed yet in this task -- only the guard's future
-    # roadblock is removed. Do not re-add it here.
-    for old in (
-        "agent-form.js", "agents-list.js", "sentinel-route.js",
-        "chatbot-form.js",
-    ):
-        assert not (cfg / old).exists(), f"pre-rename/absorbed file still present: {old}"
-
-
-def test_sentinel_config_timeline_routes_untouched():
-    """Out-of-scope routes (Sentinella detector policy/timeline, not the
-    renamed Agentbots) must still be reachable under their original path."""
-    js = (STATIC / "config" / "agentbot-route.js").read_text(encoding="utf-8")
-    assert "api/sentinel/policy" in js
-    assert "api/sentinel/timeline" in js
+# fetta E5 Task 6: gli altri due casi di questo file sono usciti col loro
+# soggetto. `test_renamed_fe_files_exist` elencava chatbot-editor.js /
+# chatbots-list.js / agentbot-route.js, cancellati insieme alle rotte che
+# chiamavano; `test_sentinel_config_timeline_routes_untouched` leggeva
+# agentbot-route.js per verificare che `api/sentinel/policy` e
+# `api/sentinel/timeline` restassero raggiungibili -- entrambe uscite dal
+# backend fra la E3 e la E4, e il file che le chiamava e' uscito qui.
+# La guardia sopra resta, e diventa piu' forte: il suo soggetto e' TUTTO
+# static/, che ora e' piu' piccolo e non deve riacquisire nessuno di quei nomi.
