@@ -6,10 +6,10 @@
      02 Catena automatica (GET/PUT api/models/config chain_order, riordino
         frecce, preset llm_strategy)
      03 Assegnazione per entità (Chatbot -> PUT api/chatbots/{id}, Brain -> PUT
-        api/models/config brain_model, Agentbot -> rimando a #/agentbots)
+        api/models/config brain_model)
      04 Embeddings (riga informativa, sola lettura, da GET api/models/config)
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
-   (stesso vincolo di agentbot-route.js).
+   (stesso vincolo di history-route.js e impostazioni-route.js).
 
    Task 7B ha arricchito GET /api/models/config con:
      providers: [{id: subscription|claude|openai|openrouter|ollama, label,
@@ -227,9 +227,9 @@
   }
 
   /* ── Sezione 3: dropdown modello condivisa (Brain / Chatbot) ─────────
-     Stesso value-format già in uso in tutta la SPA (agent.model, il
-     per-Agentbot picker in agentbot-route.js): id modello grezzo così come
-     ritornato da GET api/models, "auto" come opzione top-level unica. */
+     Stesso value-format già in uso nel resto della SPA: id modello grezzo
+     così come ritornato da GET api/models, "auto" come opzione top-level
+     unica. */
   function fillModelOptions(sel, currentValue) {
     clearEl(sel);
     var autoOpt = el('option', null, 'auto');
@@ -707,7 +707,11 @@
       'Ogni entità usa "auto" (segue la catena) o un modello esplicito.');
     outlet.appendChild(sec3);
     /* buildSectionShell già mette un placeholder "Caricamento…" in sec3-body;
-       lo sostituiamo con i tre field-group Chatbot/Brain/Agentbot. */
+       lo sostituiamo con i due field-group Chatbot/Brain. Il terzo, Agentbot,
+       è uscito con la fetta E5 Task 6: rimandava a #/agentbots (rotta
+       cancellata) e affermava al presente che esiste un editor Agentbot dove
+       impostare il modello per singolo Agentbot -- non esiste piu' né
+       l'editor né l'entità, uscita col backend fra la E3 e la E4. */
     var sec3body = byId('sec3-body');
     clearEl(sec3body);
 
@@ -726,16 +730,6 @@
     brainBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
     gBrain.appendChild(brainBody);
     sec3body.appendChild(gBrain);
-
-    var gAgentbot = el('div', 'field-group');
-    gAgentbot.appendChild(el('div', 'fg-label', 'Agentbot'));
-    var agentbotBlock = el('div', 'field-hint-block');
-    agentbotBlock.appendChild(el('p', null, 'Il modello per singolo Agentbot si imposta nel suo editor, non qui.'));
-    var sentinelLink = el('a', 'btn btn-ghost btn-sm', 'Vai a Agentbot →');
-    sentinelLink.href = '#/agentbots';
-    agentbotBlock.appendChild(sentinelLink);
-    gAgentbot.appendChild(agentbotBlock);
-    sec3body.appendChild(gAgentbot);
 
     outlet.appendChild(buildSectionShell('04', 'sec4', 'Embeddings',
       'Usati per RAG e memoria semantica — non fanno parte della catena sopra e non sono assegnabili per entità.'));

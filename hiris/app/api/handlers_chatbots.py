@@ -8,17 +8,23 @@ from ..impostazioni_chat import ID_CHAT_DEFAULT
 # senza id. `handle_list_chatbots` resta il solo handler di questo modulo:
 # superficie di compatibilita' fino al Task 10 della E5, che la smonta.
 #
-# Chi la chiama, aggiornato a fine Task 5 della E5 -- perche' le due ragioni
+# Chi la chiama, aggiornato a fine Task 6 della E5 -- perche' le due ragioni
 # scritte qui alla E4 non valgono piu' NESSUNA delle due: la pagina chat se
 # n'e' staccata col Task 3 (nome e tetto di turni arrivano da
 # `GET /api/impostazioni-chat`, l'indicatore "connesso" da `GET api/health`,
 # vedi static/chat/agents.js) e la card Lovelace, che era l'altro chiamante,
-# e' **uscita dal prodotto** col Task 5. Restano solo le pagine della SPA di
-# configurazione -- config/dashboard.js, config/main.js (il contatore in
-# sidebar), config/chatbots-list.js, config/chatbot-editor.js,
-# config/models-route.js, config/usage-route.js, config/tasks-route.js --
-# cioe' esattamente le pagine che il Task 10 smonta insieme alla rotta.
-# Spegnerla prima di loro le lascerebbe rotte in silenzio.
+# e' **uscita dal prodotto** col Task 5.
+#
+# Dei sette chiamanti elencati qui fino al Task 5, il Task 6 ne ha fatti
+# uscire QUATTRO: config/chatbots-list.js, config/chatbot-editor.js,
+# config/tasks-route.js e il contatore in sidebar di config/main.js. Ne
+# restano TRE, e ognuno ha gia' il suo task:
+#   - config/dashboard.js     -> esce al Task 8 (riscrittura della home);
+#   - config/models-route.js  -> esce al Task 7 (sezione "Chatbot");
+#   - config/usage-route.js   -> esce al Task 7 (tabella "Per Chatbot").
+# Spegnere la rotta prima di loro le lascerebbe rotte in silenzio: e' per
+# questo che il Task 10 viene dopo il 7 e l'8, e il suo gate e' che
+# `grep -rn "api/chatbots" hiris/app/static/` torni vuoto.
 #
 # Il payload perde `usage`/`budget_eur` (leggevano `runner.get_chatbot_usage`,
 # un concetto per-persona che non esiste piu' con una sola chat senza id):

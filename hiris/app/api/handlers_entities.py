@@ -51,8 +51,16 @@ async def handle_list_entities(request: web.Request) -> web.Response:
     tool di chat: dice «questa casa non ha entità» quando la frase vera è «non
     ho potuto guardare». Qui diventa un 503 dichiarato, senza la chiave
     `entities`, così un chiamante che la legga fallisce invece di mostrare un
-    elenco vuoto (i due consumatori in-repo -- entity-picker e agentbot-route
-    -- degradano già su risposta non-ok).
+    elenco vuoto.
+
+    Consumatori, aggiornato alla fetta E5 Task 6: **nessuno in questo repo**.
+    I due che c'erano -- `static/config/entity-picker.js` e
+    `static/config/agentbot-route.js`, che degradavano già su risposta
+    non-ok -- sono usciti insieme alle pagine del workbench. La rotta
+    **resta** lo stesso: è superficie API interna, consumata dall'MCP
+    Gateway fuori da questo repo. Da lì in poi il censimento la classifica
+    come «chiamata solo dai test»: è atteso e dichiarato, non un difetto
+    da chiudere togliendo la rotta.
     """
     cache = request.app.get("entity_cache")
     if cache is not None and not hasattr(cache, "all_states"):

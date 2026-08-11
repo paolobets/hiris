@@ -1317,8 +1317,8 @@ async def _on_startup(app: web.Application) -> None:
     # (il modulo non era nel perimetro del Task 5): nessun chiamante di
     # produzione, solo citazioni in commenti/metadata (handlers_gateway_
     # policy.py's PROPOSE_TOOLS, gia' morto da prima) e nella lista UI del
-    # Designer (static/config/templates.js, fuori scope, e' la E5 -- la
-    # voce resta li' come checkbox inerte, dichiarata nel report del Task 8).
+    # Designer (static/config/templates.js: era una checkbox inerte, ed e'
+    # uscita col file alla fetta E5 Task 6).
     # Il Task 8 di questa fetta ha cancellato l'intera cartella `tools/`,
     # `proposal_tools.py` incluso: la citazione sopra e' storica.
     # `watcher.policy.apply_brain_detector/remove_brain_detector/
@@ -1661,12 +1661,17 @@ def create_app() -> web.Application:
     # (Global Constraints, vedi handlers_chatbots.py). Chi la chiama, a oggi,
     # non e' piu' la chat: il Task 3 di questa fetta l'ha staccata (nome e
     # tetto di turni vengono da GET /api/impostazioni-chat, il "connesso" da
-    # GET api/health) e il Task 5 ha fatto uscire la card. Restano i suoi
-    # chiamanti dentro la SPA di configurazione -- config/dashboard.js,
-    # config/main.js (il contatore in sidebar), config/chatbots-list.js,
-    # config/chatbot-editor.js, config/models-route.js, config/usage-route.js,
-    # config/tasks-route.js -- cioe' pagine che il Task 10 smonta insieme
-    # alla rotta.
+    # GET api/health) e il Task 5 ha fatto uscire la card.
+    #
+    # Elenco aggiornato al Task 6, che ne ha fatti uscire QUATTRO dei sette
+    # (config/chatbots-list.js, config/chatbot-editor.js,
+    # config/tasks-route.js e il contatore in sidebar di config/main.js).
+    # Ne restano TRE, tutti nella SPA di configurazione:
+    #   - config/dashboard.js     -> esce al Task 8;
+    #   - config/models-route.js  -> esce al Task 7;
+    #   - config/usage-route.js   -> esce al Task 7.
+    # Il gate del Task 10 e' che `grep -rn "api/chatbots"
+    # hiris/app/static/` torni vuoto: oggi non lo e', e sono questi tre.
     app.router.add_get("/api/chatbots", handle_list_chatbots)
     app.router.add_get("/api/entities", handle_list_entities)
     # fetta E5 Task 4 ("il frontend"): erano
@@ -1682,9 +1687,10 @@ def create_app() -> web.Application:
     app.router.add_get("/api/chat/cronologia", handle_get_chat_history)
     app.router.add_delete("/api/chat/cronologia", handle_clear_chat_history)
     # fetta E3 Task 9: le tre rotte /api/tasks* sono uscite insieme al Task
-    # Engine -- lasciano rotta la pagina #/tasks (tasks-route.js) e il
-    # pannello Task della chat (chat/tasks.js), entrambi vivi in static/
-    # fino alla E5 (vedi il report del task).
+    # Engine -- hanno lasciato rotte la pagina #/tasks (tasks-route.js) e il
+    # pannello Task della chat (chat/tasks.js) per due fette. Il Task 6
+    # della E5 le ha cancellate entrambe, con le due voci di menu che ci
+    # portavano.
     # fetta E5 Task 2 ("il frontend"): le impostazioni della chat hanno di
     # nuovo una superficie. Fino a qui i sette campi di `ImpostazioniChat` si
     # cambiavano solo scrivendo a mano `/data/impostazioni_chat.json`
@@ -1720,8 +1726,9 @@ def create_app() -> web.Application:
     # fetta E3 Task 3: le quattro rotte CRUD /api/agentbots sono uscite
     # insieme ad api/handlers_agentbots.py. La pagina #/agentbots
     # (agentbot-route.js), il suo editor (agentbot-editor.js) e il wizard
-    # (create-wizard.js: POST /api/agentbots) restano nello static/ (fetta
-    # E5) e da qui in poi ricevono 404 -- non riparati, per costruzione.
+    # (create-wizard.js: POST /api/agentbots) sono rimasti per due fette a
+    # ricevere 404 -- non riparati, per costruzione. Il Task 6 della E5 li
+    # ha cancellati: nessuna interfaccia nomina piu' queste rotte.
     #
     # fetta E3 Task 7: /api/gateway/policy, /api/gateway/autonomy-summary
     # (api/handlers_gateway_policy.py) e /api/sentinel/policy,
@@ -1729,9 +1736,10 @@ def create_app() -> web.Application:
     # alla Sentinella e al semaforo che le serviva -- entrambi i moduli
     # handler sono cancellati per intero. La pagina #/gateway
     # (gateway-route.js) e il riquadro "Autonomia" dell'editor Chatbot
-    # (chatbot-editor.js -> POST /api/gateway/autonomy-summary) restano nello
-    # static/ (fetta E5) e da qui in poi ricevono 404 -- non riparati, per
-    # costruzione (vedi il report del task).
+    # (chatbot-editor.js -> POST /api/gateway/autonomy-summary) sono rimasti
+    # per due fette a ricevere 404 -- non riparati, per costruzione. Il
+    # Task 6 della E5 li ha cancellati entrambi, insieme alla voce di menu
+    # "Accessi Gateway" che portava alla pagina.
 
     from .api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
