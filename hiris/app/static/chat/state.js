@@ -1,6 +1,7 @@
-/* HIRIS · Chat page · shared state (SP-4 Fase B Task 8: rebuild pagina chat)
+/* HIRIS · Chat page · shared state (SP-4 Fase B Task 8: rebuild pagina chat;
+   fetta E5 Task 3: via l'elenco dei bot -- una conversazione sola)
    Single mutable namespace the other chat/*.js modules read/write, so the
-   page keeps working like the old inline <script> (one shared "activeAgentId"
+   page keeps working like the old inline <script> (one shared "turnCount"
    etc.) without resorting to bare top-level `var` across files. Cached DOM
    refs here instead of re-querying in every module -- this file loads right
    after the body markup, exactly where the old inline <script> used to sit,
@@ -26,23 +27,18 @@
       messages: document.getElementById('messages'),
       input: document.getElementById('input'),
       sendBtn: document.getElementById('send-btn'),
-      agentList: document.getElementById('agent-list'),
       welcome: document.getElementById('welcome'),
       connDot: document.getElementById('conn-dot'),
     },
     /* Mutable — read/written directly by the other chat/*.js modules
-       (window.HirisChatState.activeAgentId = ...), same shared-state shape
+       (window.HirisChatState.turnCount = ...), same shared-state shape
        the single inline <script> used to have as bare `var`s. */
-    /* Ripristinato dall'ultima sessione (localStorage): la pagina chat e'
-       separata da config, quindi tornarci e' un reload pieno -- senza questo si
-       ripartiva sempre da 'hiris-default' perdendo l'agente in uso. */
-    activeAgentId: (function() {
-      try { return window.localStorage.getItem('hiris_active_agent') || 'hiris-default'; }
-      catch (e) { return 'hiris-default'; }
-    })(),
     hasMessages: false,
-    agentMaxTurns: {},
-    agentTurnCounts: {},
+    /* Tetto e contatore di turni per l'UNICA conversazione (Task 3): prima
+       erano mappe indicizzate per agentId, con un id solo dentro. `maxChatTurns`
+       viene da `GET /api/impostazioni-chat` (chat/agents.js::loadSettings). */
+    maxChatTurns: 0,
+    turnCount: 0,
     isLoading: false,
   };
 })();

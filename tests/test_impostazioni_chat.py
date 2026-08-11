@@ -90,8 +90,8 @@ def test_carica_system_prompt_vuoto_in_file_ricade_sul_default(tmp_path):
 
 
 def test_id_chat_default_e_hiris_default():
-    """Lo stesso id che il frontend gia' usa come fallback locale
-    (static/chat/state.js, hiris-chat-card.js) -- non un valore nuovo che il
+    """Lo stesso id che il frontend gia' usa come chiave della cronologia
+    (static/chat/agents.js, hiris-chat-card.js) -- non un valore nuovo che il
     client deve imparare."""
     assert ID_CHAT_DEFAULT == "hiris-default"
 

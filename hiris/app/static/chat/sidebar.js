@@ -14,10 +14,12 @@
     if (menuBtn) menuBtn.addEventListener('click', function() { toggle(); });
     var overlay = document.getElementById('sidebar-overlay');
     if (overlay) overlay.addEventListener('click', function() { toggle(false); });
-    /* Close the drawer after picking an agent (tap inside the sidebar list). */
+    /* Close the drawer after tapping a nav item (fetta E5 Task 3: l'elenco
+       bot -- .agent-item -- e' uscito dalla sidebar, non c'e' piu' niente da
+       scegliere li' dentro). */
     var sb = document.getElementById('sidebar');
     if (sb) sb.addEventListener('click', function(e) {
-      var hit = e.target.closest('.agent-item, .sb-nav-item');
+      var hit = e.target.closest('.sb-nav-item');
       if (hit && window.matchMedia('(max-width: 720px)').matches) toggle(false);
     });
   }

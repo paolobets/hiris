@@ -58,9 +58,15 @@ def test_shared_api_js_is_reused_not_forked():
     assert "function loadUsage(" not in chat_src, "loadUsage() deve venire da config/api.js"
 
 
-def test_chat_wire_uses_chatbot_id():
+def test_chat_wire_non_manda_piu_chatbot_id():
+    """Rovescio di test_chat_wire_uses_chatbot_id (fetta E5 Task 3, "via
+    l'elenco dei bot"): un solo assistente non ha piu' bisogno di dirsi
+    quale. La chiave resta accettata e ignorata lato server fino al Task 10
+    (che smonta anche quella lettura, §3 del brief); qui si pinna solo che
+    il wire non la mandi piu'. Verificato a mutazione: reintrodurre
+    `chatbot_id: state.activeAgentId` nel body fa fallire questo test."""
     send_js = (CHAT / "send.js").read_text(encoding="utf-8")
-    assert "chatbot_id: state.activeAgentId" in send_js or "chatbot_id:" in send_js
+    assert "chatbot_id:" not in send_js, "il wire non deve piu' inviare chatbot_id nel body"
     assert "agent_id:" not in send_js, "il wire non deve inviare la chiave legacy agent_id"
 
 

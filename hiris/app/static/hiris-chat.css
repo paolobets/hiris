@@ -35,50 +35,15 @@
     @media (prefers-color-scheme: dark) {
       html:not([data-theme="light"]) #sidebar { background: oklch(0.185 0.020 280); }
     }
-    #sidebar-header {
-      padding: 18px 20px 14px;
-      border-bottom: 1px solid var(--border);
-    }
-    #sidebar-header h2 {
-      font-size: 11px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.10em;
-      color: var(--text-3);
-    }
-    #agent-list { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; }
-    .agent-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 10px;
-      border-radius: var(--r-sm);
-      font-size: 13.5px;
-      color: var(--text);
-      cursor: pointer;
-      position: relative;
-      min-width: 0;
-      transition: background 0.16s ease, color 0.16s ease;
-    }
-    .agent-item:hover { background: var(--hover); }
-    .agent-item.agent-active {
-      background: var(--accent-tint);
-      color: var(--accent-ink);
-    }
-    .agent-item.agent-active::before {
-      content: ""; position: absolute; left: 0; top: 9px; bottom: 9px;
-      width: 2px; border-radius: 2px; background: var(--accent);
-    }
-    .agent-item > span:first-of-type {
-      flex: 1; min-width: 0; font-weight: 500;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .agent-item .meta {
-      font-family: var(--font-mono); font-size: 10px;
-      color: var(--text-3); letter-spacing: 0;
-      padding: 1px 6px; border-radius: 4px;
-      background: var(--surface-2);
-    }
-
+    /* #sidebar-header e #agent-list (l'elenco bot, sempre un elemento solo)
+       sono usciti dalla sidebar con la fetta E5 Task 3 -- una conversazione
+       sola non ha piu' niente da elencare. `#sidebar-footer` guadagna
+       `flex: 1` al posto del vecchio spaziatore: era `#agent-list` (flex: 1)
+       a spingere footer e usage-widget in fondo alla sidebar, altrimenti
+       resterebbero incollati in alto lasciando vuoto sotto. */
     #sidebar-footer {
+      flex: 1;
       padding: 8px 12px;
-      border-top: 1px solid var(--border);
       display: flex; flex-direction: column; gap: 2px;
     }
     .sb-nav-item {
@@ -196,7 +161,10 @@
       #theme-toggle { width: 44px; height: 44px; }
     }
 
-    /* Agent picker pill — shows the active chat agent in the header */
+    /* Etichetta statica nell'header: nome dell'assistente in uso (Task 2,
+       impostazioni -> "nome"). Non e' piu' un selettore -- non lo e' mai
+       stato via click, ma prima affiancava un elenco scambiabile; da Task 3
+       e' l'unico posto della pagina dove compare il nome. */
     #agent-pill {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 5px 12px 5px 5px;

@@ -1,19 +1,36 @@
-/* HIRIS · Chat page · Chatbot list, switching, turn limit (SP-4 Fase B Task 8) */
+/* HIRIS · Chat page · una conversazione sola: nome, turn limit, cronologia
+   (fetta E5 Task 3 -- "via l'elenco dei bot dalla sidebar")
+
+   Dalla E4 esiste un solo assistente: non c'e' piu' niente da elencare o da
+   scambiare. Questo file non costruisce piu' una lista (era sempre un
+   elemento solo, con un pallino "acceso/spento" che leggeva un booleano
+   letterale) ne' seleziona un id diverso da se stesso -- portava rumore, e
+   per un tester era una promessa falsa ("ci sono piu' assistenti"). Restano
+   le funzioni con un comportamento reale da preservare: la cancellazione
+   della cronologia (con conferma), il limite di turni per sessione, il
+   ripristino della cronologia al boot, il nome mostrato nella pill
+   dell'header.
+
+   `CHAT_ID` e' la chiave (letterale, non piu' scelta dall'utente) delle due
+   rotte di cronologia -- superficie di compatibilita' che esce al Task 10;
+   fino ad allora restano `GET/DELETE api/chatbots/{id}/chat-history`,
+   invariate qui (vedi impostazioni_chat.ID_CHAT_DEFAULT lato server). */
 (function() {
   var state = window.HirisChatState;
+  var CHAT_ID = 'hiris-default';
 
   function updateTurnCounter() {
     var counter = document.getElementById('turn-counter');
-    var max = state.agentMaxTurns[state.activeAgentId] || 0;
-    if (!state.activeAgentId || max === 0) { counter.style.display = 'none'; return; }
-    var current = state.agentTurnCounts[state.activeAgentId] || 0;
+    var max = state.maxChatTurns || 0;
+    if (max === 0) { counter.style.display = 'none'; return; }
+    var current = state.turnCount || 0;
     counter.style.display = '';
     counter.textContent = current + ' / ' + max + ' messaggi';
     counter.style.color = current >= max ? 'var(--err)' : 'var(--text-3)';
   }
 
   function checkTurnLimit() {
-    var max = state.agentMaxTurns[state.activeAgentId] || 0;
+    var max = state.maxChatTurns || 0;
     var sessionMsg = document.getElementById('session-ended-msg');
     if (max === 0) {
       state.els.input.disabled = false;
@@ -21,7 +38,7 @@
       if (sessionMsg) sessionMsg.style.display = 'none';
       return;
     }
-    var current = state.agentTurnCounts[state.activeAgentId] || 0;
+    var current = state.turnCount || 0;
     var reached = current >= max;
     state.els.input.disabled = reached;
     state.els.sendBtn.disabled = reached;
@@ -29,12 +46,11 @@
   }
 
   async function clearConversation() {
-    if (!state.activeAgentId) return;
     /* Irreversibile: la card Lovelace (hiris-chat-card.js) chiede conferma
        per la stessa identica azione con lo stesso testo -- qui mancava. */
     if (!window.confirm('Cancellare la cronologia di questa conversazione?')) return;
     try {
-      var r = await fetch('api/chatbots/' + state.activeAgentId + '/chat-history', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
+      var r = await fetch('api/chatbots/' + CHAT_ID + '/chat-history', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
       if (!r.ok) {
         /* Se il server non ha cancellato, la UI non deve fingere che l'abbia
            fatto: altrove in questo file un catch vuoto ha nascosto per mesi
@@ -52,7 +68,7 @@
     state.els.messages.appendChild(state.els.welcome);
     state.els.welcome.style.display = '';
     state.hasMessages = false;
-    state.agentTurnCounts[state.activeAgentId] = 0;
+    state.turnCount = 0;
     updateTurnCounter();
     checkTurnLimit();
   }
@@ -78,43 +94,33 @@
     hello.textContent = word;
   }
 
-  async function load() {
+  /* Sostituisce il vecchio `load()` (costruttore d'elenco). Legge il nome e
+     il tetto di turni dalle impostazioni della chat (Task 2,
+     `GET /api/impostazioni-chat`), non piu' dalla superficie di
+     compatibilita' `GET /api/chatbots`: e' il primo chiamante che se ne
+     stacca. L'indicatore "connesso/offline" non vive piu' qui -- e'
+     diventato parte del controllo di salute che chat/main.js gia' fa al
+     boot (`GET api/health`), invece di una fetch separata. */
+  async function loadSettings() {
     try {
-      var r = await fetch('api/chatbots');
-      if (!r.ok) throw new Error();
-      var agents = await r.json();
-      state.els.connDot.classList.remove('offline');
-      state.els.connDot.textContent = 'connesso';
-      state.els.agentList.innerHTML = '';
-      agents.forEach(function(a) {
-        state.agentMaxTurns[a.id] = a.max_chat_turns || 0;
-        var div = document.createElement('div');
-        div.className = 'agent-item' + (a.id === state.activeAgentId ? ' agent-active' : '');
-        div.innerHTML =
-          '<div class="dot ' + (a.enabled ? 'on' : 'off') + '"></div>' +
-          '<span>' + esc(a.name) + '</span>' +
-          (a.is_default ? '<span class="meta">default</span>' : '');
-        div.addEventListener('click', function() { setActive(a.id, a.name); });
-        state.els.agentList.appendChild(div);
-      });
-      /* keep pill in sync with active agent */
-      var current = agents.find(function(a) { return a.id === state.activeAgentId; }) || agents[0];
-      if (current) updateAgentPill(current.name);
+      var r = await fetch('api/impostazioni-chat');
+      if (!r.ok) throw new Error('impostazioni-chat: ' + r.status);
+      var dati = await r.json();
+      state.maxChatTurns = dati.max_chat_turns || 0;
+      updateAgentPill(dati.nome);
     } catch (e) {
-      state.els.connDot.classList.add('offline');
-      state.els.connDot.textContent = 'offline';
+      console.error('loadSettings failed', e);
     }
   }
 
-  /* Carica e mostra la history salvata di `agentId`. Il guard sul confronto con
-     l'agente attivo evita che una risposta stale (l'utente cambia agente prima
-     che la fetch torni) riscriva la chat del nuovo agente. Estratta da setActive
-     per essere riusata al boot (restore). */
-  async function applyHistory(agentId) {
-    var localId = agentId;
+  /* Carica e mostra la history salvata della conversazione. Estratta da un
+     vecchio `setActive()` per essere riusata al boot (restore); il guard
+     sul cambio d'agente che c'era qui e' uscito con l'agente stesso -- non
+     esiste piu' un secondo id con cui la risposta possa arrivare in
+     ritardo. */
+  async function applyHistory() {
     try {
-      var r = await fetch('api/chatbots/' + agentId + '/chat-history');
-      if (localId !== state.activeAgentId) return;
+      var r = await fetch('api/chatbots/' + CHAT_ID + '/chat-history');
       if (!r.ok) {
         /* Fratello dello stesso difetto: prima ne' il ramo r.ok=false ne' il
            catch sotto lasciavano traccia -- la cronologia restava vuota senza
@@ -123,12 +129,11 @@
         return;
       }
       var data = await r.json();
-      if (localId !== state.activeAgentId) return;
       var msgs = data.messages || [];
       msgs.forEach(function(m) {
         window.HirisChatMessages.appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
       });
-      state.agentTurnCounts[agentId] = msgs.filter(function(m) { return m.role === 'user'; }).length;
+      state.turnCount = msgs.filter(function(m) { return m.role === 'user'; }).length;
       updateTurnCounter();
       checkTurnLimit();
     } catch (e) {
@@ -136,34 +141,10 @@
     }
   }
 
-  async function setActive(agentId, agentName) {
-    if (agentId === state.activeAgentId) return;
-    state.activeAgentId = agentId;
-    /* Ricorda l'agente attivo: la pagina chat e' separata da config, quindi
-       tornarci = reload pieno; senza questo activeAgentId ripartiva sempre da
-       'hiris-default' e si perdeva la conversazione dell'agente in uso. */
-    try { window.localStorage.setItem('hiris_active_agent', agentId); } catch (e) {}
-    state.els.messages.innerHTML = '';
-    state.els.messages.appendChild(state.els.welcome);
-    state.els.welcome.style.display = '';
-    state.hasMessages = false;
-    var titleEl = document.getElementById('header-title');
-    if (titleEl && titleEl.firstChild) titleEl.firstChild.nodeValue = agentName + ' ';
-    updateAgentPill(agentName);
-    state.agentTurnCounts[agentId] = 0;
-    updateTurnCounter();
-    checkTurnLimit();
-    await applyHistory(agentId);
-    load();
-  }
-
-  /* Boot: setActive carica la history SOLO al cambio agente (guard su id), quindi
-     al primo mount la conversazione dell'agente attivo non veniva mai ricaricata
-     -> tornando alla chat da config si vedeva una chat vuota pur essendo salvata
-     lato server (per chatbot_id). restore() ricarica la history dell'agente
-     attivo (ripristinato da localStorage in state.js), senza il guard di cambio. */
+  /* Boot: senza questo, tornando alla chat da config (reload pieno) si
+     vedeva una chat vuota pur essendo salvata lato server. */
   async function restore() {
-    await applyHistory(state.activeAgentId);
+    await applyHistory();
   }
 
   window.HirisChatAgents = {
@@ -172,8 +153,7 @@
     clearConversation: clearConversation,
     updateAgentPill: updateAgentPill,
     updateGreeting: updateGreeting,
-    load: load,
-    setActive: setActive,
+    loadSettings: loadSettings,
     restore: restore,
   };
 })();

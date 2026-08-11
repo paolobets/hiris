@@ -1,6 +1,8 @@
-/* HIRIS · Chat page · send + poll (SP-4 Fase B Task 8)
-   POSTs api/chat with chatbot_id (the backend also accepts a legacy
-   agent_id fallback -- this page always sends the current key).
+/* HIRIS · Chat page · send + poll (SP-4 Fase B Task 8; fetta E5 Task 3: il
+   wire smette di mandare chatbot_id -- un solo assistente non ha bisogno di
+   dirsi quale, e la chiave resta accettata-e-ignorata lato server fino al
+   Task 10, che smonta anche quella lettura)
+   POSTs api/chat with just the message.
 
    Slice 4b (chat via abbonamento): when the backend enqueues the turn to
    the subscription runner instead of replying synchronously, it returns
@@ -41,7 +43,7 @@
           var data = await r.json();
           if (data.status === 'done') {
             window.HirisChatMessages.updateBubble(placeholderRow, data.reply || '');
-            state.agentTurnCounts[state.activeAgentId] = (state.agentTurnCounts[state.activeAgentId] || 0) + 1;
+            state.turnCount = (state.turnCount || 0) + 1;
             window.HirisChatAgents.updateTurnCounter();
             window.HirisChatAgents.checkTurnLimit();
             return;
@@ -95,7 +97,7 @@
       var r = await fetch('api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-        body: JSON.stringify({ message: text, chatbot_id: state.activeAgentId }),
+        body: JSON.stringify({ message: text }),
       });
       var data = await r.json();
       typing.remove();
@@ -114,7 +116,7 @@
       if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
         window.HirisChatMessages.appendDebug(data.debug.tools_called);
       }
-      state.agentTurnCounts[state.activeAgentId] = (state.agentTurnCounts[state.activeAgentId] || 0) + 1;
+      state.turnCount = (state.turnCount || 0) + 1;
       window.HirisChatAgents.updateTurnCounter();
       window.HirisChatAgents.checkTurnLimit();
     } catch (e) {

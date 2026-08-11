@@ -9,9 +9,13 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    che faceva parte di quell'elenco è uscito con la fetta E5 Task 1 (C1: il
    primo gesto del primo utilizzo dava un errore). Questi sono i test
    comportamentali richiesti dal piano (tabella "Test comportamentali
-   richiesti per task", riga 8): invio -> POST con chatbot_id, risposta 202
+   richiesti per task", riga 8): invio -> POST api/chat, risposta 202
    -> il polling completa, turn-limit blocca l'invio, il pannello task carica
-   e cancella.
+   e cancella. La fetta E5 Task 3 ("via l'elenco dei bot dalla sidebar") ha
+   tolto `chatbot_id` dal body -- un solo assistente non ha più bisogno di
+   dirsi quale -- e sostituito le mappe `agentMaxTurns`/`agentTurnCounts`
+   indicizzate per id con `state.maxChatTurns`/`state.turnCount`, valori
+   singoli per l'unica conversazione.
 
    Fixture HTML: replica il sottoinsieme di static/index.html che estato.js/
    chat/*.js toccano al load (state.js cattura i riferimenti DOM
@@ -27,7 +31,6 @@ function fixtureHtml() {
     <div id="app">
       <div id="sidebar-overlay" style="display:none"></div>
       <aside id="sidebar">
-        <div id="agent-list"></div>
         <div id="usage-widget">
           <span class="usage-val" id="u-requests">—</span>
           <span class="usage-val" id="u-input">—</span>
@@ -75,9 +78,8 @@ function setupChat() {
 // Invio messaggio -> POST api/chat con chatbot_id + X-Requested-With
 // ---------------------------------------------------------------------------
 
-test('inviare un messaggio fa POST a api/chat con chatbot_id nel body e X-Requested-With', async () => {
+test('inviare un messaggio fa POST a api/chat con X-Requested-With (niente più chatbot_id, Task 3)', async () => {
   const { window } = setupChat();
-  window.HirisChatState.activeAgentId = 'mio-chatbot';
   const calls = [];
   window.fetch = async (url, opts) => {
     calls.push({ url: String(url), opts: opts || {} });
@@ -90,8 +92,8 @@ test('inviare un messaggio fa POST a api/chat con chatbot_id nel body e X-Reques
   assert.ok(postCall, 'la POST a api/chat deve essere stata effettuata');
   assert.equal(postCall.opts.headers['X-Requested-With'], 'fetch');
   const body = JSON.parse(postCall.opts.body);
-  assert.equal(body.chatbot_id, 'mio-chatbot', 'il wire deve usare chatbot_id, non agent_id');
   assert.equal(body.message, 'ciao HIRIS');
+  assert.equal('chatbot_id' in body, false, 'un solo assistente non ha piu\' bisogno di dirsi quale');
 });
 
 // ---------------------------------------------------------------------------
@@ -101,7 +103,6 @@ test('inviare un messaggio fa POST a api/chat con chatbot_id nel body e X-Reques
 
 test('risposta 202 pending: il polling completa e la risposta finale viene renderizzata', async () => {
   const { window, document } = setupChat();
-  window.HirisChatState.activeAgentId = 'bot-202';
   window.fetch = async (url) => {
     const u = String(url);
     if (u.endsWith('api/chat')) {
@@ -133,14 +134,16 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
 
 // ---------------------------------------------------------------------------
 // Persistenza chat (bug live-verify #3): tornando alla chat da config (reload
-// pieno) la conversazione spariva perche' la history dell'agente attivo non
-// veniva MAI ricaricata al boot (setActive la carica solo al CAMBIO agente).
-// restore() la ricarica.
+// pieno) la conversazione spariva perche' la history non veniva MAI
+// ricaricata al boot. restore() la ricarica.
+// Task 3 ("via l'elenco dei bot"): non esiste piu' un "agente attivo" da
+// scegliere -- c'e' una sola conversazione, con una chiave fissa
+// (hiris-default) usata dalle due rotte di cronologia finche' il Task 10 non
+// le sostituisce.
 // ---------------------------------------------------------------------------
 
-test('restore() ricarica la history salvata dell\'agente attivo', async () => {
+test('restore() ricarica la history salvata della conversazione', async () => {
   const { window, document } = setupChat();
-  window.HirisChatState.activeAgentId = 'bot-restore';
   const seen = [];
   window.fetch = async (url) => {
     seen.push(String(url));
@@ -155,13 +158,13 @@ test('restore() ricarica la history salvata dell\'agente attivo', async () => {
 
   await window.HirisChatAgents.restore();
 
-  assert.ok(seen.some((u) => /api\/chatbots\/bot-restore\/chat-history/.test(u)),
-    'restore deve fetchare la history dell\'agente attivo');
+  assert.ok(seen.some((u) => /api\/chatbots\/hiris-default\/chat-history/.test(u)),
+    'restore deve fetchare la history della conversazione (chiave hiris-default)');
   const bubbles = document.querySelectorAll('.msg-row .bubble');
   assert.ok(bubbles.length >= 2, 'i messaggi salvati devono ricomparire');
   assert.equal(document.getElementById('welcome').style.display, 'none',
     'il welcome si nasconde quando c\'e\' history');
-  assert.equal(window.HirisChatState.agentTurnCounts['bot-restore'], 1,
+  assert.equal(window.HirisChatState.turnCount, 1,
     'un turno utente contato dalla history ricaricata');
 });
 
@@ -197,7 +200,6 @@ test('showThinking: logo pulsante + timer; updateBubble ferma il timer e scrive 
 test('durante la risposta via abbonamento (202) l\'input resta bloccato e un secondo invio non parte', async () => {
   const { window } = setupChat();
   const state = window.HirisChatState;
-  state.activeAgentId = 'bot-lock';
   window.fetch = async (url) => {
     const u = String(url);
     if (u.endsWith('api/chat')) return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'j1' }) };
@@ -233,9 +235,8 @@ test('durante la risposta via abbonamento (202) l\'input resta bloccato e un sec
 test('turn-limit raggiunto disabilita input e send-btn (blocca l\'invio)', () => {
   const { window, document } = setupChat();
   const state = window.HirisChatState;
-  state.activeAgentId = 'bot-limit';
-  state.agentMaxTurns['bot-limit'] = 2;
-  state.agentTurnCounts['bot-limit'] = 2;
+  state.maxChatTurns = 2;
+  state.turnCount = 2;
 
   window.HirisChatAgents.checkTurnLimit();
 
@@ -244,7 +245,7 @@ test('turn-limit raggiunto disabilita input e send-btn (blocca l\'invio)', () =>
   assert.equal(document.getElementById('session-ended-msg').style.display, '');
 
   // Sotto al limite: i controlli tornano utilizzabili.
-  state.agentTurnCounts['bot-limit'] = 1;
+  state.turnCount = 1;
   window.HirisChatAgents.checkTurnLimit();
   assert.equal(state.els.input.disabled, false);
   assert.equal(state.els.sendBtn.disabled, false);
@@ -261,7 +262,6 @@ test('turn-limit raggiunto disabilita input e send-btn (blocca l\'invio)', () =>
 
 test('clearConversation chiede conferma prima di cancellare (come la card Lovelace)', async () => {
   const { window, document } = setupChat();
-  window.HirisChatState.activeAgentId = 'bot-clear';
   window.HirisChatMessages.appendMsg('user', 'ciao');
   document.getElementById('welcome').style.display = 'none';
 
@@ -280,7 +280,6 @@ test('clearConversation chiede conferma prima di cancellare (come la card Lovela
 
 test('clearConversation confermata: DELETE parte e i messaggi si svuotano', async () => {
   const { window, document } = setupChat();
-  window.HirisChatState.activeAgentId = 'bot-clear-2';
   window.HirisChatMessages.appendMsg('user', 'ciao');
   window.confirm = () => true;
   const calls = [];
@@ -290,13 +289,12 @@ test('clearConversation confermata: DELETE parte e i messaggi si svuotano', asyn
 
   const del = calls.find((c) => c.opts && c.opts.method === 'DELETE');
   assert.ok(del, 'la DELETE deve partire dopo conferma');
-  assert.match(del.url, /api\/chatbots\/bot-clear-2\/chat-history$/);
+  assert.match(del.url, /api\/chatbots\/hiris-default\/chat-history$/);
   assert.equal(document.querySelectorAll('.msg-row.user').length, 0, 'i messaggi devono svuotarsi');
 });
 
 test('clearConversation: se la DELETE fallisce lato server, i messaggi NON spariscono e viene avvisato', async () => {
   const { window, document } = setupChat();
-  window.HirisChatState.activeAgentId = 'bot-clear-3';
   window.HirisChatMessages.appendMsg('user', 'messaggio importante');
   window.confirm = () => true;
   window.fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
