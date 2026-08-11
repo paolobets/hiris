@@ -5,17 +5,14 @@ Usage:
   python scripts/release.py --version X.Y.Z           # standard release
   python scripts/release.py --version X.Y.Z --dry-run  # preview, no git ops
   python scripts/release.py --version X.Y.Z --skip-tests  # hotfix only
-  python scripts/release.py --version X.Y.Z --skip-doc-check  # bypass doc review
 
 Steps (abort on first failure):
   1   Validate semver X.Y.Z
   2   Check config.yaml version matches --version
   3   Check CHANGELOG.md has ## [X.Y.Z] section
-  3b  Update version/date headers in all versioned docs
-  3c  Doc consistency check — stale keys, broken links, coverage (skipped with --skip-doc-check)
-  4   Check git tree clean (only config.yaml / CHANGELOG.md / docs allowed dirty)
+  4   Check git tree clean (only config.yaml / CHANGELOG.md allowed dirty)
   5   Run pytest (skipped with --skip-tests)
-  6   git add + commit chore: release vX.Y.Z (includes docs)
+  6   git add + commit chore: release vX.Y.Z
   7  git tag vX.Y.Z
   8  git push HEAD:master --tags  (always targets master, worktree-safe)
   9  Extract changelog section for X.Y.Z
@@ -25,7 +22,6 @@ import argparse
 import re
 import subprocess
 import sys
-from datetime import date
 from pathlib import Path
 
 # Ensure UTF-8 output on Windows (cp1252 terminals can't encode ✓/✗/→)
@@ -38,20 +34,17 @@ ROOT = Path(__file__).parent.parent
 CONFIG = ROOT / "hiris" / "config.yaml"
 CHANGELOG = ROOT / "CHANGELOG.md"
 
-# Docs that carry a version/date header updated on each release
-_VERSIONED_DOCS = [
-    ROOT / "docs" / "architecture.md",
-    ROOT / "docs" / "architettura.md",
-    ROOT / "docs" / "how-it-works.md",
-    ROOT / "docs" / "come-funziona.md",
-    ROOT / "docs" / "use-cases.md",
-    ROOT / "docs" / "casi-duso.md",
-    ROOT / "docs" / "configuration-guide.md",
-    ROOT / "docs" / "guida-configurazione.md",
-    ROOT / "docs" / "full-local-mode.md",
-    ROOT / "docs" / "full-local-mode-it.md",
-    ROOT / "docs" / "mqtt-integration.md",
-]
+# `_VERSIONED_DOCS` e i passi 3b (intestazioni di versione) e 3c (doc_check.py)
+# sono usciti insieme ai quattordici documenti del prodotto 1.x, cancellati
+# perche' descrivevano al PRESENTE Agentbot, semaforo, notifiche e MQTT --
+# cose uscite dal prodotto con le fette E2-E5. Il passo 3b stampava la versione
+# del giorno su quelle intestazioni: rilasciare la 2.0.0 senza toglierlo
+# avrebbe prodotto undici dichiarazioni false datate oggi. Il passo 3c
+# invocava scripts/doc_check.py, uscito a sua volta: quattro dei suoi cinque
+# controlli leggevano `docs/*.md`, che dopo la cancellazione e' vuoto, e
+# avrebbero stampato un visto verde su un insieme vuoto.
+# I documenti della 2.0 vivono in docs/design/ e sono datati: non portano
+# un'intestazione di versione da riscrivere a ogni rilascio.
 
 _GREEN = "\033[32m"
 _RED = "\033[31m"
@@ -121,75 +114,6 @@ def check_changelog(version: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step 3b — bump version/date headers in docs
-# ---------------------------------------------------------------------------
-
-def update_docs_version(version: str, dry_run: bool) -> None:
-    today = date.today().isoformat()
-    updated: list[str] = []
-    for doc in _VERSIONED_DOCS:
-        if not doc.exists():
-            continue
-        text = doc.read_text(encoding="utf-8")
-        new_text = text
-        # "> Version: X.Y.Z · Updated: DATE" (EN)
-        new_text = re.sub(
-            r"(> Version: )\d+\.\d+\.\d+( · Updated: )\d{4}-\d{2}-\d{2}",
-            rf"\g<1>{version}\g<2>{today}",
-            new_text,
-        )
-        # "> Versione: X.Y.Z · Aggiornato: DATE" (IT)
-        new_text = re.sub(
-            r"(> Versione: )\d+\.\d+\.\d+( · Aggiornato: )\d{4}-\d{2}-\d{2}",
-            rf"\g<1>{version}\g<2>{today}",
-            new_text,
-        )
-        # roadmap: "Current version: **vX.Y.Z**"
-        new_text = re.sub(
-            r"(Current version: \*\*v)\d+\.\d+\.\d+(\*\*)",
-            rf"\g<1>{version}\g<2>",
-            new_text,
-        )
-        # roadmap: "Last updated: DATE"
-        new_text = re.sub(
-            r"(Last updated: )\d{4}-\d{2}-\d{2}",
-            rf"\g<1>{today}",
-            new_text,
-        )
-        if new_text != text:
-            updated.append(doc.name)
-            if not dry_run:
-                doc.write_text(new_text, encoding="utf-8")
-    if updated:
-        label = "[dry-run] would update" if dry_run else "Updated version headers in"
-        _info(f"{label}: {', '.join(updated)}")
-    _ok(f"Docs version headers → {version} ({today})")
-
-
-# ---------------------------------------------------------------------------
-# Step 3c — documentation consistency check
-# ---------------------------------------------------------------------------
-
-def check_docs(skip: bool) -> None:
-    if skip:
-        _info("Skipping doc check (--skip-doc-check)")
-        return
-    _info("Running doc consistency check (--fix applied automatically)…")
-    doc_check = ROOT / "scripts" / "doc_check.py"
-    # Run with --fix so stale key names are repaired in-place before commit
-    result = subprocess.run(
-        [sys.executable, str(doc_check), "--fix"],
-        cwd=ROOT,
-    )
-    if result.returncode != 0:
-        _fail(
-            "Doc check failed — broken links or other unfixable issues found.\n"
-            "  Run  python scripts/doc_check.py  for details."
-        )
-    _ok("Doc check passed")
-
-
-# ---------------------------------------------------------------------------
 # Step 4
 # ---------------------------------------------------------------------------
 
@@ -213,8 +137,6 @@ def check_git_clean() -> None:
         "CHANGELOG.md",
         "README.md",
         "scripts/release.py",
-        "scripts/doc_check.py",
-        *[f"docs/{d.name}" for d in _VERSIONED_DOCS],
     }
 
     def _extract_path(line: str) -> str:
@@ -257,10 +179,9 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
     # Always push HEAD to master regardless of the working branch/worktree.
     # "HEAD:master" is a refspec that fast-forwards remote master to the
     # current commit without requiring a local checkout of master.
-    doc_paths = [f"docs/{d.name}" for d in _VERSIONED_DOCS if (ROOT / "docs" / d.name).exists()]
-    extra = [p for p in ["hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "hiris/app/backends/embeddings.py", "hiris/app/static/index.html", "README.md", "scripts/release.py", "scripts/doc_check.py"] if (ROOT / p).exists()]
+    extra = [p for p in ["hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "hiris/app/backends/embeddings.py", "hiris/app/static/index.html", "README.md", "scripts/release.py"] if (ROOT / p).exists()]
     cmds = [
-        ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *doc_paths, *extra],
+        ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *extra],
         ["git", "commit", "-m", f"chore: release v{version}"],
         ["git", "tag", f"v{version}"],
         ["git", "push", "origin", "HEAD:master", "--tags"],
@@ -329,8 +250,6 @@ def main() -> None:
                         help="Preview steps 6–10, no git/gh operations")
     parser.add_argument("--skip-tests", action="store_true",
                         help="Skip pytest (emergency hotfix only)")
-    parser.add_argument("--skip-doc-check", action="store_true",
-                        help="Skip documentation consistency check (emergency only)")
     args = parser.parse_args()
 
     if args.dry_run:
@@ -339,8 +258,6 @@ def main() -> None:
     validate_semver(args.version)               # step 1
     check_config_version(args.version)          # step 2
     check_changelog(args.version)               # step 3
-    update_docs_version(args.version, args.dry_run)  # step 3b
-    check_docs(args.skip_doc_check)             # step 3c
     check_git_clean()                           # step 4
     if args.skip_tests:
         _info("Skipping pytest (--skip-tests)")

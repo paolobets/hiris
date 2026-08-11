@@ -326,10 +326,17 @@ rewritten, with a design of its own.
 | [Frontend da rifare](docs/design/2026-08-08-frontend-da-rifare.md) | The inventory of broken UI, for the next slice | 🇮🇹 Italiano |
 | [CHANGELOG](CHANGELOG.md) | What changed, slice by slice | 🇮🇹 Italiano |
 
-Everything under `docs/` outside `docs/design/` — the architecture, how-it-works,
-configuration and use-case guides, in both languages — describes HIRIS **before**
-the 2.0 refactor. Each of those files now carries a banner saying so. They are
-kept as history; do not read them as documentation of the current product.
+The guides that used to sit in `docs/` — architecture, how it works, use cases,
+configuration, security, MQTT, full local mode, in both languages — have been
+**deleted**. They described in the present tense a product that no longer exists:
+Agentbot, the semaforo, notifications, MQTT. After this release the main features
+are being reinvented, so those pages were not a reference for what comes next
+either — and a banner on top of a wrong page is still a wrong page. Git keeps
+them all: `git log --diff-filter=D -- docs/` finds them if you ever need one.
+
+What is left under `docs/` is `docs/design/` — the record of the 2.0 refactor,
+dated document by dated document — and `docs/archive/`, declared history by its
+own README.
 
 ---
 

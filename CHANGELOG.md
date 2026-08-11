@@ -193,6 +193,20 @@ dichiara la presenza nel log all'avvio. Attenzione a una cosa: un prompt
 personalizzato salvato sull'assistente predefinito **non viene trasferito** alla
 chat nuova. Se ne avevi uno e ci tieni, riprendilo dal file prima di riscriverlo.
 
+**La documentazione del prodotto vecchio non c'è più.** In `docs/` c'erano
+quattordici guide — architettura, come funziona, casi d'uso, configurazione,
+sicurezza, MQTT, modalità completamente locale, in italiano e in inglese — che
+raccontavano **al presente** un HIRIS che agisce sulla casa: gli Agentbot, il
+semaforo delle conferme, le notifiche, i sensori MQTT. Niente di tutto questo
+esiste più: chi le apriva leggeva le istruzioni di un prodotto diverso da quello
+che aveva installato. Sono state **cancellate**, non aggiornate e non marcate
+come storiche — dopo questa pubblicazione le funzionalità principali verranno
+**reinventate**, quindi quei testi non sarebbero un riferimento nemmeno per ciò
+che arriva dopo, e un avviso in cima a una pagina sbagliata lascia comunque una
+pagina sbagliata. La storia di Git le conserva per intero. Quello che resta da
+leggere è questo CHANGELOG e i documenti di progetto in `docs/design/`, che
+portano una data e si presentano per quello che sono.
+
 ### Meno cose, non solo più cose
 
 - **Il «Test Run» non esiste più.** Non ha mai funzionato: ogni esecuzione vera

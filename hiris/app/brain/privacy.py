@@ -128,7 +128,7 @@ class Pseudonymizer:
     never resolve to real PII. Callers must thread the SAME dict returned/
     populated by their ``pseudonymize`` call into the matching ``detokenize``
     call — never share it across requests/conversations. See
-    docs/reviews/2026-07-25-fable-whole-codebase-review.md finding #7 and
+    docs/archive/reviews/2026-07-25-fable-whole-codebase-review.md finding #7 and
     .superpowers/sdd/task-B3-report.md for the full design rationale.
     """
 
