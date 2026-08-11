@@ -44,6 +44,18 @@
           var data = await r.json();
           if (data.status === 'done') {
             window.HirisChatMessages.updateBubble(placeholderRow, data.reply || '');
+            /* Review totale della fetta E5: il ramo del ponte (202 -> job_id) e'
+               l'UNICO che un tester con l'abbonamento percorre, ed era l'unico che
+               NON mostrava gli strumenti usati. Il backend li manda anche qui
+               (`handlers_chat.py:352`, "il conteggio esposto dove l'utente lo vede
+               e' len() di questa lista lato client") -- ma nessuno li leggeva: la
+               cosa costruita perche' una scrittura di `ricorda` fosse OSSERVABILE
+               non era osservabile proprio sul percorso che la produce. Stessa
+               chiamata e stesse condizioni del ramo sincrono venti righe sotto, in
+               modo che i due percorsi non divergano una seconda volta. */
+            if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
+              window.HirisChatMessages.appendDebug(data.debug.tools_called);
+            }
             state.turnCount = (state.turnCount || 0) + 1;
             window.HirisChatAgents.updateTurnCounter();
             window.HirisChatAgents.checkTurnLimit();

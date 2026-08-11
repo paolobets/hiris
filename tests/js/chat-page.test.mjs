@@ -128,6 +128,56 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
 });
 
 // ---------------------------------------------------------------------------
+// Review totale della fetta E5: sul ramo del ponte (202 -> job_id) gli strumenti
+// usati NON comparivano. Il backend li manda anche li' (handlers_chat.py:352) e
+// il ramo sincrono li rende da sempre: era l'osservabilita' promessa che mancava
+// PROPRIO sul percorso che la produce -- cioe' quello di un tester UAT con
+// l'abbonamento. I due test sotto sono una coppia: il primo pretende che
+// compaiano quando ci sono, il secondo che NON si inventi una riga vuota quando
+// non ci sono (senza il secondo, "mostra sempre una riga" passerebbe il primo).
+// ---------------------------------------------------------------------------
+
+function fetchPonte(replyPayload) {
+  return async (url) => {
+    const u = String(url);
+    if (u.endsWith('api/chat')) {
+      return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'job-1' }) };
+    }
+    if (u.includes('api/chat/reply/')) {
+      return { ok: true, status: 200, json: async () => replyPayload };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+}
+
+test('via ponte (202): gli strumenti usati compaiono anche sul ramo del polling', async () => {
+  const { window, document } = setupChat();
+  window.fetch = fetchPonte({
+    status: 'done',
+    reply: 'Ho annotato.',
+    debug: { tools_called: [{ tool: 'ricorda', input: { frase: 'la caldaia perde' } }] },
+  });
+
+  await window.HirisChatSend.send('ricordati che la caldaia perde');
+  await tick(3700);
+
+  const chips = document.querySelectorAll('.debug-row .tool-chip .tc-name');
+  assert.equal(chips.length, 1, 'la riga degli strumenti deve comparire sul ramo del ponte');
+  assert.equal(chips[0].textContent, 'ricorda');
+});
+
+test('via ponte (202): senza strumenti non compare nessuna riga vuota', async () => {
+  const { window, document } = setupChat();
+  window.fetch = fetchPonte({ status: 'done', reply: 'Le luci accese sono due.' });
+
+  await window.HirisChatSend.send('quante luci accese?');
+  await tick(3700);
+
+  assert.equal(document.querySelectorAll('.debug-row').length, 0,
+    'nessun strumento usato -> nessuna riga strumenti');
+});
+
+// ---------------------------------------------------------------------------
 // Persistenza chat (bug live-verify #3): tornando alla chat da config (reload
 // pieno) la conversazione spariva perche' la history non veniva MAI
 // ricaricata al boot. restore() la ricarica.

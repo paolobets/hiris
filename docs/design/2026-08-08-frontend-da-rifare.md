@@ -163,3 +163,121 @@ pagine. `chatbot-editor.js` e `create-wizard.js` erano già in elenco e peggiora
 tutto il resto degrada in silenzio — che è, di nuovo, il motivo per cui il censimento non le vede.
 
 Nessuno di questi file è stato toccato dalla fetta E4.
+
+---
+
+# Chiusura — la fetta E5 ha eseguito questo elenco (Task 12, 11 agosto 2026)
+
+Prodotta dal **Task 12** della fetta E5 («Il frontend»), il conto della fetta. **Questo documento si
+chiude qui: ha fatto il suo lavoro.** Non va ampliato — quello che resta aperto sta in fondo, per
+nome, e vive nel CHANGELOG e nel ledger, non qui.
+
+Range della fetta: `1e14382..9f43316`. Tutti i numeri sotto sono **misurati col comando a
+`9f43316`**, non ricordati.
+
+## Le quattordici voci della tabella, e come sono state risolte
+
+| # | Voce | Esito | Con quale task |
+|---|---|---|---|
+| 1 | Dashboard `#/` — zona «Azioni» | **ricostruita** — la home non è più un pannello di controllo di cose che non esistono: è «Cosa HIRIS sa» (casa letta, comportamento, plance, nucleo verbatim). I tre badge di navigazione sono usciti col loro codice | Task 6 (badge e pannelli), Task 8 (la pagina nuova) |
+| 2 | `#/tasks` (pagina intera) | **uscita** — rotta SPA, file, voce di menu | Task 6 |
+| 2b | Pannello Task della chat + voce nav | **uscito** (`chat/tasks.js`) | Task 6 |
+| 3 | `#/proposals` (pagina intera) | **uscita** (`proposals-route.js`, `proposals.js`; `proposals-core.js` è uscito al Task 8, non al 6: la Dashboard vecchia lo usava ancora, e cancellarlo al Task 6 avrebbe rotto la home) | Task 6, Task 8 |
+| 3b | Pannello Proposte della chat + voce nav | **uscito** (`chat/proposals.js`) | Task 6 |
+| 4 | `#/agentbots` (lista) + editor Agentbot | **uscita** (`agentbot-route.js`, `agentbot-editor.js`) | Task 6 |
+| 4b | Voce di navigazione Agentbots | **uscita** | Task 6 |
+| 5 | `#/gateway` (pagina intera) | **uscita** (`gateway-route.js`, e con essa il commento morto su `HA_NOTIFY_SERVICE`) | Task 6 |
+| 6a | Editor Chatbot — riquadro «Autonomia» | **uscito col suo editor**; il blocco Agentbot superstite dentro `mount()` — che non era di nessun task — è stato rimosso al fix del Task 6 | Task 6 |
+| 6b | Editor Chatbot — riquadro «Context preview» | **uscito col suo editor** (`logs.js` cancellato) | Task 6 |
+| 7 | Wizard di creazione — ramo Agentbot | **uscito** (`create-wizard.js` intero) | Task 6 |
+| 8 | Catalogo a checkbox del Designer | **uscito** (`templates.js` intero). *Nota: erano **33** voci in `TOOLS`, non 34 — vedi le correzioni sotto* | Task 6 |
+| 9 | Onboarding della chat («Benvenuto in HIRIS») | **uscito per primo**, perché era il Critical: il primo gesto del primo utilizzo dava un errore. `chat/onboarding.js`, l'overlay e lo script di `index.html` | Task 1 |
+| 7bis | Wizard — ramo Chatbot | **uscito col wizard** | Task 6 |
+| 10 | `#/chatbots` — editor | **uscito** (`chatbot-editor.js`, `editor-kit.js`, `entity-picker.js`, `permessi.js`, `drawer.js`, `popover.js`, `log-row.js`; `labels.js` al Task 8) | Task 6, Task 8 |
+| 11 | `#/chatbots` — lista | **uscita** (`chatbots-list.js`) | Task 6 |
+| 12 | Card Lovelace | **uscita per intero, non ripulita** — decisione del proprietario dell'11 agosto: rientrerà **rifatta** quando il prodotto sarà completo. E con un **disinstallatore**: l'add-on toglie da Home Assistant la risorsa Lovelace e i file che *lui* aveva installato, idempotente, e se HA non risponde non fallisce l'avvio ma logga quale risorsa è rimasta e dove toglierla a mano | Task 5 |
+| 13 | `#/usage` — sezione «Per Chatbot» | **corretta, non cancellata a metà**: la tabella che mentiva per omissione esce, e il sottotitolo **dichiara** che il dato per assistente non è misurato — non lo nasconde | Task 7 |
+| 14 | Blocco `designer:` delle traduzioni | **uscito** da `it.yaml` e `en.yaml` nello stesso commit. Righe reali `it.yaml:174`→fine e `en.yaml:139`→fine (non 118-186, e nemmeno 154/133: vedi sotto) | Task 11 |
+
+## Le due voci che questo elenco non aveva
+
+Entrambe trovate col grep completo di `fetch(`/`api(` su `static/` mentre si scriveva il piano E5, e
+**non** presenti nella tabella sopra:
+
+- **`config/usage.js`** (92 righe, caricato staticamente da `config.html`) — il riquadro «Consumi»
+  *dentro* l'editor Chatbot: tre chiamate, tutte e tre 404 dalla E4 Task 3
+  (`GET api/chatbots/{id}/usage`, `POST .../usage/reset`, `PUT api/chatbots/{id}`).
+  **Uscito col suo editor** al Task 6, insieme ai suoi 4 test JS e al suo test Python.
+- **`config/models-route.js:572`** — ogni cambio di select nella sezione 3 di `#/models` faceva
+  `PUT api/chatbots/{id}` → 404, `sel.value = prev` e badge rosso. `#/models` era dichiarata «non
+  rotta» in questo stesso documento. **Corretta al Task 7**: la sezione dell'assegnazione per entità
+  esce (i suoi due controlli erano *sempre* fallimentari), e il modello della chat si cambia dalla
+  pagina Impostazioni chat, dove ha sempre dovuto stare.
+
+## Le tre correzioni a questo documento
+
+Dal piano E5 §0, tutte e tre confermate durante l'esecuzione:
+
+1. **Il blocco `designer:` non era alle righe 118-186.** Il piano lo correggeva in `it.yaml:154` /
+   `en.yaml:133`; il Task 11, ricontando prima di tagliare, ha trovato **174** e **139** (fino a fine
+   file: 242 e 207). *Anche la correzione era invecchiata.*
+2. **Gli strumenti a checkbox erano trentatré, non trentaquattro** (`templates.js`, `TOOLS`).
+3. **La card Lovelace non mostrava «Card non configurata» a un tester**: `getStubConfig()` restituiva
+   già un `chatbot_id`, quindi una card aggiunta dal picker di HA renderizzava sempre. Il guasto vero
+   era un altro — ed è diventato irrilevante, perché la card è uscita per intero.
+
+## Il conto delle rotte a fine fetta
+
+`grep -c "app.router.add_" hiris/app/server.py` → **31 righe**, di cui una `add_static`:
+**30 registrazioni di rotta + `/static`**, contate con la stessa convenzione delle sezioni sopra.
+
+Il confronto con le **28** di fine E4 non è diretto: fra la E4 e la E5 c'è stata la parità del ponte,
+che ha aggiunto `POST /api/mcp` (**29** alla base della fetta, `1e14382`, verificato col comando).
+Da 29 a 30, dentro la E5:
+
+- **fuori 3**: `GET /api/chatbots`, `GET` e `DELETE /api/chatbots/{agent_id}/chat-history` — l'intera
+  superficie di compatibilità che la E4 aveva contratto **con la scadenza scritta** (Task 4, Task 10);
+- **dentro 4**: `GET` e `DELETE /api/chat/cronologia` (Task 4: la cronologia ha una rotta onesta, senza
+  un id di bot accettato e ignorato), `GET` e `PUT /api/impostazioni-chat` (Task 2: la pagina che non
+  c'era).
+
+**Delta netto +1 registrazione, ma quattro rotte nuove e tre morte in meno:** la superficie non è
+cresciuta, si è spostata da quella del prodotto vecchio a quella del prodotto vero.
+
+Sul lato SPA il conto è l'opposto e più netto: `grep -rn "HirisRouter.register" hiris/app/static/`
+dà **6** rotte a HEAD contro **14** alla base — dieci uscite (`#/chatbots`, `#/chatbots/new`,
+`#/chatbots/:id`, `#/nuovo`, `#/agentbots`, `#/agentbots/new`, `#/agentbots/:id`, `#/proposals`,
+`#/tasks`, `#/gateway`) e due nate (`#/memoria`, `#/impostazioni`). Restano `#/` («Cosa HIRIS sa»),
+`#/memoria`, `#/models`, `#/usage`, `#/history`, `#/impostazioni`.
+
+## Cosa resta aperto (non è un difetto: è la mappa del dopo)
+
+1. **`knowledge_store` e le tre rotte `/api/knowledge*` senza faccia.** `GET /api/knowledge/pending`,
+   `POST /api/knowledge/{id}/approve`, `POST /api/knowledge/{id}/reject` hanno perso l'unico
+   chiamante frontend col pannello Conoscenza della chat (Task 9). Restano vive perché lo store è
+   materia della **fetta conoscenza**, non di questa. Sono tre delle cinque voci «rotte chiamate solo
+   dai test» del censimento.
+2. **`/api/entities` come superficie API senza pagina.** L'entity-picker era il suo ultimo chiamante
+   frontend ed è uscito al Task 6. La rotta resta perché è superficie API interna, non una pagina — e
+   il docstring della rotta lo dice, così il reperto non sembra un difetto a chi non ha il conto in
+   mano.
+3. **I due CSS monolitici, potati ma non riscritti.** `hiris-config.css` e `hiris-chat.css` sono
+   condivisi da tutte le viste: non c'è un file per pagina. La potatura del Task 6 ha retto a una
+   verifica formale (148 token estratti dalle righe rimosse e incrociati con quelli davvero usati dal
+   frontend superstite, comprese le famiglie composte a runtime), ma **restano tre regole orfane note
+   e non tolte** — `.task-section-title`, `.task-empty`, `.pp-warn` in `hiris-chat.css`, orfanate dal
+   pannello Task uscito al Task 6. Nessuno strumento del repo le vede: il censimento dichiara di non
+   guardare il frontend.
+4. **`#/history` resta, e configura un motore acceso.** `HistoryCapture` è cablato all'avvio, la
+   compattazione è schedulata, il digest gira: la pagina non è morta. La sua sorte **di prodotto** la
+   discute la mappa delle funzionalità, non questa fetta.
+5. **L'assenza totale di i18n della UI web.** L'add-on parla due lingue (`translations/it.yaml` e
+   `en.yaml`, canale Supervisor); la sua interfaccia web ne parla **una sola**, con le stringhe
+   scritte in italiano dentro i `.js`. Non è una regressione di questa fetta: è una mancanza che
+   questa fetta ha reso visibile, perché ha riscritto le pagine e ha dovuto scrivere ogni frase in
+   una lingua sola.
+
+---
+
+**Nessuna delle voci qui sopra è un guasto che un tester UAT possa incontrare.** Ciò che un tester
+incontra, e che questa fetta ha chiuso, è nel CHANGELOG alla voce `[2.0.0]`.

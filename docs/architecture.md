@@ -5,7 +5,11 @@
 > has retired or rewritten.
 >
 > **What HIRIS must be now:** [`docs/design/2026-08-04-scope-hiris.md`](design/2026-08-04-scope-hiris.md) (Italian)
-> **What the code does today:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md) (Italian)
+> **What the code looked like on 3 August 2026:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md) (Italian)
+> — that one is a dated snapshot too (branch `feat/coerenza`, HEAD `feb6e1e`), not the current state: it still
+> documents the `/api/chatbots` CRUD, the Chatbot/Agentbot/Tasks/Proposals/Gateway pages and the Lovelace
+> card, all of which left the product in slices E4 and E5. **What the code does today is told by the code
+> and by [`CHANGELOG.md`](../CHANGELOG.md).**
 >
 > The purely operational parts (installation, keys, add-on options) are still useful. It will be
 > rewritten as the final act of the refactor, against the real product.

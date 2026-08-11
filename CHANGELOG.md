@@ -72,6 +72,27 @@ intervallo e quando vale. Se aggancia il ricordo a qualcosa che nella tua casa
 non esiste, **quell'aggancio non viene scritto** — ma la frase sì, per intero, e
 lo scarto viene dichiarato: mai un ricordo mezzo inventato spacciato per buono.
 
+**La prima pagina della configurazione adesso mostra cosa HIRIS sa.** Si
+chiama *Cosa HIRIS sa* e ha preso il posto della vecchia Dashboard: quanti
+piani, aree, dispositivi ed entità ha letto della tua casa, cosa la casa fa già
+da sola (automazioni e script), quali plance ha visto, e — per intero, parola
+per parola — **il testo del nucleo che il modello riceve a ogni turno**. Quello
+che leggi tu è quello che legge lui.
+
+**E quando non ha letto, lo dice.** Se un registro della casa non ha risposto,
+o se HIRIS non ha ancora fatto la prima lettura, quella tessera non mostra uno
+zero e non dice «tutto a posto»: dice **che non ha guardato**. Un numero mai
+misurato e un numero misurato a zero non sono la stessa cosa, e ora sullo
+schermo non si somigliano più.
+
+**La Memoria si guarda e si corregge.** Configurazione → *Memoria*
+(`#/memoria`) elenca tutto ciò che HIRIS ha imparato da te: la frase per
+intero, chi l'ha detta, quando, a cosa è agganciata. Ogni voce si può
+**correggere** o **cancellare**, con una conferma che ti rimette davanti la
+frase esatta prima di toglierla. È la pagina promessa nella versione
+`[1.1.0-beta.18]` («arriva nella prossima versione»): eccola. Gli agganci alla
+casa e le condizioni si vedono ma non si modificano da qui.
+
 ### Quello che HIRIS non fa più
 
 **HIRIS non tocca più niente in casa tua.** Non accende, non spegne, non crea
@@ -120,6 +141,16 @@ modello, prompt di sistema, forma della risposta, budget di ragionamento,
 tetto di turni, restrizione alla casa) si cambiano dalla pagina
 *Configurazione → Impostazioni chat* (`#/impostazioni`, GET/PUT
 `api/impostazioni-chat`).
+
+**Sono uscite sei pagine della configurazione.** *Chatbot* (lista ed
+editor), *Agentbot*, *Nuovo* (la procedura guidata di creazione), *Task*,
+*Proposte* e *Accessi Gateway* non esistono più, e con loro i pannelli Task,
+Proposte e Conoscenza dentro la chat e le voci di menu che ci portavano.
+Erano le pagine di un prodotto che agiva sulla casa: senza le azioni, le
+approvazioni e gli assistenti multipli, non governavano più niente — e da mesi
+si limitavano a mostrare liste vuote senza dire che erano vuote perché il
+motore sotto non c'era più. Quello che resta è quello che funziona: *Cosa HIRIS
+sa*, *Memoria*, *Modelli*, *Consumi*, *Cronologia*, *Impostazioni chat*.
 
 **La schermata «Benvenuto in HIRIS» al primo avvio non c'è più.** Chiedeva di
 creare un secondo assistente in un prodotto che ne ha uno solo: su

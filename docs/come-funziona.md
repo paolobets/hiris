@@ -5,7 +5,11 @@
 > refactor ha mandato in pensione o riscritto.
 >
 > **Cosa HIRIS deve essere oggi:** [`docs/design/2026-08-04-scope-hiris.md`](design/2026-08-04-scope-hiris.md)
-> **Cosa fa oggi il codice:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md)
+> **Com'era il codice al 3 agosto 2026:** [`docs/design/2026-08-03-analisi-funzionale.md`](design/2026-08-03-analisi-funzionale.md)
+> — anche quella e' una fotografia datata (branch `feat/coerenza`, HEAD `feb6e1e`), non lo stato di oggi:
+> descrive ancora le CRUD `/api/chatbots`, le pagine Chatbot/Agentbot/Task/Proposte/Gateway e la card
+> Lovelace, tutte uscite dal prodotto con le fette E4 ed E5. **Cosa fa oggi il codice lo dicono il codice
+> e [`CHANGELOG.md`](../CHANGELOG.md).**
 >
 > Restano utili le parti puramente operative (installazione, chiavi, opzioni dell'add-on). Sarà
 > riscritto come atto finale del refactor, sul prodotto vero.
