@@ -6,6 +6,8 @@ stato rappresentabile: `carica()` non solleva mai e non restituisce mai
 chiude, vedi handlers_chat.py)."""
 import json
 
+import pytest
+
 from hiris.app.impostazioni_chat import (
     ID_CHAT_DEFAULT, DEFAULT_SYSTEM_PROMPT, ImpostazioniChat,
 )
@@ -92,3 +94,81 @@ def test_id_chat_default_e_hiris_default():
     (static/chat/state.js, hiris-chat-card.js) -- non un valore nuovo che il
     client deve imparare."""
     assert ID_CHAT_DEFAULT == "hiris-default"
+
+
+# ---------------------------------------------------------------------------
+# fetta E5 Task 2: `salva()` smette di essere orfana, e la sua scrittura si
+# allinea al precedente di questo ramo per i file di /data che devono
+# sopravvivere ai riavvii (token_interno._scrivi_token).
+# ---------------------------------------------------------------------------
+
+def test_salva_ha_un_chiamante_di_produzione():
+    r"""Il difetto che il Task 2 della fetta E5 chiude, pinnato dove si vede.
+
+    Fino a quel task `\.salva(` compariva due volte in tutto il repo, ed
+    erano entrambe in questo file: i sette campi si potevano cambiare SOLO
+    scrivendo a mano `/data/impostazioni_chat.json`. Se questo test tornasse a
+    fallire significherebbe che la superficie HTTP che li salva e' uscita
+    senza sostituto, cioe' che il buco si e' riaperto."""
+    import re
+    from pathlib import Path
+
+    app = Path(__file__).resolve().parents[1] / "hiris" / "app"
+    chiamanti = []
+    for f in app.rglob("*.py"):
+        for i, riga in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"\.salva\(", riga) and not riga.lstrip().startswith("#"):
+                chiamanti.append(f"{f.name}:{i}")
+    assert chiamanti, (
+        "ImpostazioniChat.salva() non ha nessun chiamante di produzione: i sette "
+        "campi tornerebbero a essere modificabili solo scrivendo a mano il JSON "
+        "in /data"
+    )
+    assert any("handlers_impostazioni" in c for c in chiamanti), chiamanti
+
+
+def test_salva_non_lascia_il_temporaneo_se_la_scrittura_fallisce(tmp_path, monkeypatch):
+    """Un errore a meta' scrittura non deve ne' pubblicare un file troncato ne'
+    lasciare il `.tmp` a sporcare /data per sempre."""
+    import json as _json
+
+    def esplodi(*args, **kwargs):
+        raise OSError("disco pieno")
+
+    monkeypatch.setattr(_json, "dump", esplodi)
+    with pytest.raises(OSError):
+        ImpostazioniChat(nome="Mai scritto").salva(str(tmp_path))
+    assert not (tmp_path / "impostazioni_chat.json").exists()
+    assert not (tmp_path / "impostazioni_chat.json.tmp").exists()
+
+
+def test_salva_non_pubblica_un_file_su_un_errore_e_lascia_intatto_il_precedente(tmp_path, monkeypatch):
+    """Il caso vero: c'e' gia' un file buono e il salvataggio successivo
+    fallisce. Il precedente deve restare leggibile e invariato -- e' cio' che
+    l'add-on rileggera' al prossimo avvio."""
+    import json as _json
+
+    ImpostazioniChat(nome="Il buono").salva(str(tmp_path))
+    monkeypatch.setattr(_json, "dump", lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
+    with pytest.raises(OSError):
+        ImpostazioniChat(nome="Il rotto").salva(str(tmp_path))
+    assert ImpostazioniChat.carica(str(tmp_path)).nome == "Il buono"
+
+
+def test_salva_scrive_col_permesso_piu_stretto_disponibile(tmp_path):
+    """Stessa disciplina di `token_interno._scrivi_token`: i permessi si danno
+    alla creazione del temporaneo, non con un chmod dopo la pubblicazione.
+
+    Su Linux -- la piattaforma dell'add-on -- il file finisce 0600. Su Windows,
+    dove gira solo la suite, i bit di gruppo/altri non esistono: si verifica
+    cio' che quella piattaforma puo' garantire, cioe' che il proprietario
+    legga e scriva, invece di asserire un valore che li' non significa
+    niente."""
+    import os
+    import stat
+
+    ImpostazioniChat(nome="Permessi").salva(str(tmp_path))
+    modo = stat.S_IMODE(os.stat(tmp_path / "impostazioni_chat.json").st_mode)
+    assert modo & stat.S_IRUSR and modo & stat.S_IWUSR
+    if os.name != "nt":
+        assert modo & (stat.S_IRWXG | stat.S_IRWXO) == 0, oct(modo)

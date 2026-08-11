@@ -21,6 +21,9 @@ from .api.handlers_chat_history import handle_get_chat_history, handle_clear_cha
 from .api.handlers_models import (
     handle_list_models, handle_get_models_config, handle_save_models_config,
 )
+from .api.handlers_impostazioni import (
+    handle_get_impostazioni, handle_save_impostazioni,
+)
 from .api.handlers_knowledge import (
     handle_list_pending, handle_approve, handle_reject, handle_manual_add,
 )
@@ -1612,6 +1615,15 @@ def create_app() -> web.Application:
     # Engine -- lasciano rotta la pagina #/tasks (tasks-route.js) e il
     # pannello Task della chat (chat/tasks.js), entrambi vivi in static/
     # fino alla E5 (vedi il report del task).
+    # fetta E5 Task 2 ("il frontend"): le impostazioni della chat hanno di
+    # nuovo una superficie. Fino a qui i sette campi di `ImpostazioniChat` si
+    # cambiavano solo scrivendo a mano `/data/impostazioni_chat.json`
+    # (`salva()` non aveva chiamanti di produzione). Il PUT passa dallo stesso
+    # `csrf_middleware` di ogni altra rotta di scrittura -- nessuna
+    # autenticazione propria -- e la pagina che lo chiama e' `#/impostazioni`
+    # (static/config/impostazioni-route.js), nello stesso commit.
+    app.router.add_get("/api/impostazioni-chat", handle_get_impostazioni)
+    app.router.add_put("/api/impostazioni-chat", handle_save_impostazioni)
     app.router.add_get("/api/models", handle_list_models)
     app.router.add_get("/api/models/config", handle_get_models_config)
     app.router.add_put("/api/models/config", handle_save_models_config)

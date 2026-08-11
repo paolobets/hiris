@@ -148,7 +148,13 @@
         (route === 'gateway' && hash.indexOf('#/gateway') === 0) ||
         (route === 'history' && hash.indexOf('#/history') === 0) ||
         (route === 'agentbots' && hash.indexOf('#/agentbots') === 0) ||
-        (route === 'settings' && hash.indexOf('#/settings') === 0);
+        /* fetta E5 Task 2: qui c'era un ramo `settings` orfano -- nessuna
+           voce di nav con data-route="settings" (tolta in v0.10.5) e nessuna
+           route `#/settings` registrata sotto, quindi la condizione non
+           poteva essere vera per nessun elemento. Non se ne aggiunge un
+           secondo accanto: quel ramo diventa questo, l'unico, sulla pagina
+           che ora esiste davvero. */
+        (route === 'impostazioni' && hash.indexOf('#/impostazioni') === 0);
       item.classList.toggle('active', isActive);
     });
   }
@@ -276,9 +282,19 @@
     HirisState.set('activeAgentbotId', m[1]);
     HirisAgentbotEditor.mount(m[1]);
   });
-  /* v0.10.5: rimosso route /settings — la nav voce è stata tolta da config.html
-     (era solo placeholder "Implementata in Phase 11"). Re-aggiungere quando
-     ci sarà contenuto reale (theme persist, version info, diagnostic export). */
+  /* fetta E5 Task 2: la route che in v0.10.5 era stata rimossa perché
+     placeholder vuoto (`#/settings`, «Implementata in Phase 11») rinasce qui
+     con contenuto reale e con il nome italiano del resto della fetta:
+     `#/impostazioni`, i sette campi di ImpostazioniChat. */
+  HirisRouter.register(/^#\/impostazioni\/?$/, function() {
+    setCrumbHere('Impostazioni chat');
+    if (window.HirisImpostazioniRoute) {
+      HirisImpostazioniRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML =
+        '<div class="page-title">Impostazioni chat</div>';
+    }
+  });
 
   document.addEventListener('DOMContentLoaded', function() {
     mountChrome();

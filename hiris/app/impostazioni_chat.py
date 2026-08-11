@@ -38,6 +38,10 @@ ID_CHAT_DEFAULT = "hiris-default"
 
 _FILE_IMPOSTAZIONI = "impostazioni_chat.json"
 
+# Permessi del file: solo il proprietario legge e scrive -- stesso valore e
+# stessa motivazione di `token_interno.PERMESSI_FILE` (vedi `salva()` sotto).
+_PERMESSI_FILE = 0o600
+
 # Review finale fetta E3, Important #2: la versione precedente istruiva a
 # chiamare `get_home_status()`/`get_area_entities()`, morti dalla E2 Task 8 --
 # catturato dal vivo in un turno di chat reale. Riscritta sui due strumenti
@@ -85,21 +89,28 @@ _FILE_IMPOSTAZIONI = "impostazioni_chat.json"
 # piu' con quel nome sarebbe la solita dichiarazione falsa al presente.
 #
 # COSA SUCCEDE SU UN'INSTALLAZIONE ESISTENTE (verificato, non presunto).
-# Nessun codice di produzione scrive `impostazioni_chat.json`: `salva()` qui
-# sotto non ha oggi nessun chiamante fuori dai test (grep `\.salva(` su
-# `hiris/`), e la superficie HTTP che lo scrivera' e' della fetta E5. Il
-# predecessore che SI persisteva (`chatbots.json`, con il suo
+# Il predecessore che SI persisteva (`chatbots.json`, con il suo
 # `_LEGACY_DEFAULT_PROMPTS` che riscriveva i default invecchiati) e' uscito
 # alla fetta E4 Task 4, e con una decisione utente esplicita di NON migrare il
 # prompt salvato -- si riparte coi default nel codice (il log di quel silenzio
 # e' in server.py, `_chatbots_json_path`). Quindi: questo fix raggiunge ogni
-# installazione, perche' il vecchio testo non e' persistito da nessuna parte.
-# L'UNICO caso residuo e' un `impostazioni_chat.json` scritto A MANO
-# dall'utente (l'unica via oggi, vedi il commento su `thinking_budget` in
-# claude_runner.py), e li' un meccanismo alla `_LEGACY_DEFAULT_PROMPTS` NON
-# serve e sarebbe dannoso: dovrebbe riconoscere per uguaglianza esatta una
-# stringa che l'utente ha scelto di scrivere, e sovrascrivere il prompt
-# dell'utente e' peggio del difetto che chiude.
+# installazione che non abbia gia' un `impostazioni_chat.json` proprio, perche'
+# il vecchio testo non e' persistito da nessuna parte.
+#
+# Aggiornamento fetta E5 Task 2: fino a quel task la frase qui sopra diceva
+# «nessun codice di produzione scrive `impostazioni_chat.json`, `salva()` non
+# ha nessun chiamante fuori dai test, e la superficie HTTP che lo scrivera' e'
+# della fetta E5». Quella superficie ORA esiste --
+# `api/handlers_impostazioni.py`, `PUT /api/impostazioni-chat`, la pagina
+# `#/impostazioni` -- quindi un `impostazioni_chat.json` sul disco non e' piu'
+# necessariamente scritto a mano: puo' essere stato salvato dall'utente dalla
+# pagina. Cio' che NON cambia e' la conclusione: un meccanismo alla
+# `_LEGACY_DEFAULT_PROMPTS` (riconoscere per uguaglianza esatta un prompt
+# vecchio e riscriverlo) NON serve e sarebbe dannoso -- sovrascrivere il
+# prompt che l'utente ha scelto e' peggio del difetto che chiuderebbe. La via
+# di ritorno al default esiste ed e' esplicita: si svuota il campo nella
+# pagina (`handlers_impostazioni.valida`, `system_prompt` vuoto ->
+# `DEFAULT_SYSTEM_PROMPT`), che e' una decisione dell'utente, non nostra.
 DEFAULT_SYSTEM_PROMPT = (
     "Sei l'assistente principale per la gestione della smart home.\n"
     "Se in questa conversazione hai gli strumenti `cerca` (trova per nome un'area,"
@@ -159,11 +170,38 @@ class ImpostazioniChat:
         )
 
     def salva(self, data_dir: str) -> None:
-        """Scrittura atomica tmp+replace, stessa disciplina di
-        `ChatbotEngine._save()` (chatbot_engine.py, uscito con questo task):
-        un crash a meta' scrittura non deve mai lasciare un
+        """Scrittura atomica e durevole: file temporaneo, `fsync`, `os.replace`.
+
+        Un crash a meta' scrittura non deve mai lasciare un
         `impostazioni_chat.json` troncato che il prossimo avvio legge come
-        JSON valido ma incompleto."""
+        JSON valido ma incompleto -- e queste sono le impostazioni con cui la
+        chat riparte dopo un riavvio, cioe' l'unico stato che le sopravvive.
+
+        fetta E5 Task 2: la disciplina e' allineata a quella di
+        `token_interno._scrivi_token`, che e' il precedente di questo ramo per
+        un file di `/data` che deve sopravvivere ai riavvii. Tre differenze
+        rispetto alla versione precedente (che era il semplice tmp+replace
+        ereditato da `ChatbotEngine._save()`):
+
+        1. **`flush` + `fsync` prima del `replace`**: senza, `os.replace` puo'
+           pubblicare un nome che punta a contenuto non ancora sul disco -- su
+           una perdita di alimentazione il file esiste, e' "valido" per il
+           filesystem, ed e' vuoto. L'atomicita' del rename non e' durabilita'
+           del contenuto: sono due garanzie distinte, e qui servono entrambe.
+        2. **Permessi stretti alla creazione** (`os.open` con `_PERMESSI_FILE`,
+           non un `chmod` dopo): il file contiene il prompt di sistema, cioe'
+           testo che l'utente ha scritto. Come in `token_interno.py`, su Linux
+           -- la piattaforma dell'add-on -- e' 0600; su Windows, dove gira solo
+           la suite, i bit di gruppo/altri non esistono e la chiamata incide di
+           fatto solo sul flag di sola lettura: e' il piu' stretto possibile
+           *su questa piattaforma*, non un'illusione di isolamento.
+        3. **Il temporaneo si rimuove se la scrittura fallisce**, invece di
+           restare li' a sporcare `/data` dopo ogni errore.
+
+        Solleva `OSError` se il disco non collabora: il chiamante HTTP
+        (`api/handlers_impostazioni.handle_save_impostazioni`) la cattura e
+        risponde dichiarando il guasto, invece di rispondere "salvato".
+        """
         path = os.path.join(data_dir, _FILE_IMPOSTAZIONI)
         tmp = path + ".tmp"
         data = {
@@ -177,8 +215,20 @@ class ImpostazioniChat:
         }
         os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
         with _save_lock:
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            descrittore = os.open(
+                tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _PERMESSI_FILE,
+            )
+            try:
+                with os.fdopen(descrittore, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
             os.replace(tmp, path)
 
 
