@@ -6,6 +6,10 @@
 (function() {
   var state = window.HirisChatState;
 
+  /* Quanto la bolla resta una regione live DOPO che ci e' stata scritta dentro
+     la risposta. Vedi updateBubble: il valore non e' un gusto, e' misurato. */
+  var USCITA_REGIONE_LIVE_MS = 1200;
+
   function nowHHMM() {
     return new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
@@ -60,17 +64,27 @@
       bubble.innerHTML = formatContent(text);
       /* La bolla era una regione live (`role="status"`), ed e' cosi' che la
          risposta viene annunciata a chi usa uno screen reader: il contenuto
-         cambia DENTRO la regione, senza altro codice. Subito dopo i due
-         attributi escono, perche' una bolla di risposta che resta live
-         farebbe riannunciare qualunque cosa la tocchi in seguito. La
-         rimozione e' rimandata di un giro dell'event loop: toglierli nello
-         stesso istante in cui cambia il testo significa toglierli prima che
-         l'annuncio parta. */
+         cambia DENTRO la regione, senza altro codice. I due attributi poi
+         escono, perche' una bolla di risposta che resta live farebbe
+         riannunciare qualunque cosa la tocchi in seguito.
+
+         Il ritardo era di un giro dell'event loop (`setTimeout(…, 0)`) e NON
+         BASTAVA: misurato in Chromium con l'accessibilita' forzata, subito
+         dopo il cambio di testo gli attributi c'erano ancora, ma **al primo
+         fotogramma erano gia' spariti** e l'albero di accessibilita' esponeva
+         la bolla come `generic`, con zero proprieta' live. Chrome smaltisce
+         gli eventi delle regioni live durante l'aggiornamento del ciclo di
+         vita del documento, cioe' al fotogramma dopo la modifica, leggendo lo
+         stato di allora: togliere gli attributi prima di quel momento uccide
+         proprio l'annuncio che C6 doveva ottenere -- e stavolta con il codice
+         che dichiarava di averlo risolto. Un secondo e due decimi sono ~75
+         fotogrammi di margine, e restano comunque molto meno del tempo che
+         serve a leggere una risposta. */
       if (bubble.getAttribute('role') === 'status') {
         setTimeout(function () {
           bubble.removeAttribute('role');
           bubble.removeAttribute('aria-live');
-        }, 0);
+        }, USCITA_REGIONE_LIVE_MS);
       }
     }
     var timeEl = row.querySelector('.msg-time');
@@ -140,13 +154,33 @@
     lenta: 30000,
     /* compare la riga che dice che fine fa il turno */
     servizio: 120000,
-    /* avvisa che sta per arrendersi (CHAT_POLL_MAX_MS meno mezzo minuto) */
-    quasiResa: 270000
+    /* Quanto PRIMA della scadenza avvisare che sta per arrendersi. La scadenza
+       non e' scritta qui: la porta chi ce l'ha davvero, cioe' chat/send.js, e
+       arriva insieme al fatto che il turno e' al sicuro sul server (vedi
+       `attesaAlSicuroSulServer`). Qui c'era un `270000` con scritto accanto
+       "CHAT_POLL_MAX_MS meno mezzo minuto": un secondo numero, in un secondo
+       file, che dichiarava un legame inesistente -- bastava cambiare la
+       scadenza vera perche' l'avviso mentisse in silenzio. */
+    margineResa: 30000,
+    /* E quando dirlo dove una scadenza non esiste proprio. Questo numero e'
+       arbitrario e lo dichiara: non c'e' niente da cui derivarlo. */
+    senzaScadenza: 270000
   };
 
   var ETICHETTA_ATTESA = 'HIRIS sta elaborando';
   var ETICHETTA_LENTA = 'Ci sto mettendo più del solito';
+  /* Due finali diversi, per la stessa ragione delle due frasi di servizio qui
+     sotto: su un percorso una resa esiste, sull'altro no.
+       - il ramo del ponte ha una scadenza vera (`CHAT_POLL_MAX_MS`, chat/send.js):
+         il poll smette e la bolla lo dice. Annunciarlo prima e' corretto -- un
+         fallimento annunciato non e' un fallimento improvviso.
+       - il ramo diretto NON ha nessuna scadenza: la `fetch` di send.js non ha
+         ne un `AbortController` ne un timeout, quindi la pagina aspetta finche
+         la risposta arriva o la connessione cade. Dire li "fra poco smetto di
+         aspettare" era una promessa che nessuno avrebbe mantenuto, scritta
+         nell'istante in cui l'utente decide se abbandonare. */
   var ETICHETTA_QUASI_RESA = 'Ancora niente: fra poco smetto di aspettare';
+  var ETICHETTA_SENZA_SCADENZA = 'Ancora niente. Continuo ad aspettare: su questo turno non ho un tempo massimo.';
 
   /* Le due frasi dei due minuti dicono cose OPPOSTE su che fine fa il turno se
      l'utente se ne va, e la differenza non e' di stile: e' verificata sul
@@ -166,7 +200,11 @@
      inventata. L'aspetto dell'indicatore resta identico nei due casi: cambia
      una frase, e cambia perche' il fatto e' diverso. */
   var SERVIZIO_TIENI_APERTO = 'Le risposte lunghe possono richiedere qualche minuto. Tieni aperta questa pagina: se la chiudi, questa risposta si perde.';
-  var SERVIZIO_AL_SICURO = 'Le risposte lunghe possono richiedere qualche minuto. Puoi anche chiudere: la risposta finisce nella cronologia e la ritrovi qui.';
+  /* Il "se arriva" non e' timidezza: `_submit_chat_reply` (server.py) scarta in
+     silenzio una risposta vuota o tossica, e il job ha una scadenza sua
+     (`BRIDGE_DEADLINE_MIN`). La cronologia raccoglie la risposta se la risposta
+     c'e', ed e' esattamente quel che il messaggio dei cinque minuti dice gia. */
+  var SERVIZIO_AL_SICURO = 'Le risposte lunghe possono richiedere qualche minuto. Puoi anche chiudere: se arriva, la risposta finisce nella cronologia e la ritrovi qui.';
 
   /* Tutte le attese vive, per poterle fermare anche quando la riga che le
      ospita viene buttata via senza passare da updateBubble(). */
@@ -188,11 +226,24 @@
     while (attese.length) fermaAttesa(attese[attese.length - 1]);
   }
 
-  /* Dichiara che QUESTO turno e' gia' al sicuro sul server: lo chiama
-     chat/send.js quando il backend risponde 202 con un job_id. Cambia solo la
-     frase di servizio dei due minuti (vedi sopra), niente altro. */
-  function attesaAlSicuroSulServer(row) {
-    if (row && row._attesa) row._attesa.alSicuro = true;
+  /* Dichiara che QUESTO turno e' gia' al sicuro sul server, e per quanto tempo
+     la pagina continuera' a chiederne notizia. Lo chiama chat/send.js quando il
+     backend risponde 202 con un job_id, passando la propria `CHAT_POLL_MAX_MS`:
+     e' l'unico posto in cui quella scadenza esiste, e da qui in poi l'indicatore
+     non ne tiene una copia da mantenere allineata. Due conseguenze, entrambe
+     sul VERO: la frase dei due minuti dice che si puo' chiudere, e l'avviso di
+     resa viene programmato -- perche' su questo percorso una resa c'e'. */
+  function attesaAlSicuroSulServer(row, scadenzaMs) {
+    if (!row || !row._attesa) return;
+    row._attesa.alSicuro = true;
+    if (!scadenzaMs) return;
+    row._attesa.scadenza = scadenzaMs;
+    var fraQuanto = scadenzaMs - SOGLIE_ATTESA.margineResa - (Date.now() - row._attesa.avvio);
+    row._attesa.timeout.push(setTimeout(function () {
+      if (!row._attesa) return;
+      var etichetta = row.querySelector('.tl-label');
+      if (etichetta) etichetta.textContent = ETICHETTA_QUASI_RESA;
+    }, Math.max(0, fraQuanto)));
   }
 
   function testoCronometro(ms) {
@@ -228,7 +279,7 @@
     var avvio = Date.now();
     var bolla = row.querySelector('.bubble');
     var etichetta = row.querySelector('.tl-label');
-    row._attesa = { avvio: avvio, timeout: [], intervallo: null, alSicuro: false };
+    row._attesa = { avvio: avvio, timeout: [], intervallo: null, alSicuro: false, scadenza: 0 };
     attese.push(row);
 
     /* Il cronometro NON parte subito. Sotto i dieci secondi il tempo non e'
@@ -266,10 +317,16 @@
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
     }, SOGLIE_ATTESA.servizio));
 
-    /* Un fallimento annunciato non e' un fallimento improvviso. */
+    /* L'avviso di resa NON si programma qui: qui non si sa ancora se una resa
+       esistera'. Lo programma `attesaAlSicuroSulServer` quando il ponte porta
+       la sua scadenza. Questo timer copre il caso opposto -- nessuna scadenza,
+       cioe' il percorso diretto -- e dice quello, invece di promettere una fine
+       che non arrivera'. Se la scadenza nel frattempo e' arrivata, tace: ne
+       parla l'altro. */
     row._attesa.timeout.push(setTimeout(function () {
-      if (row._attesa) etichetta.textContent = ETICHETTA_QUASI_RESA;
-    }, SOGLIE_ATTESA.quasiResa));
+      if (!row._attesa || row._attesa.scadenza) return;
+      etichetta.textContent = ETICHETTA_SENZA_SCADENZA;
+    }, SOGLIE_ATTESA.senzaScadenza));
 
     return row;
   }

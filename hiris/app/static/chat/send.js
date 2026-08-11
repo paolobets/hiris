@@ -150,8 +150,14 @@
         /* Da qui in poi il turno vive sul server: il messaggio dell'utente e'
            gia' in cronologia e la risposta ci finira' da sola. L'indicatore lo
            sa, e ai due minuti lo dice con la frase giusta invece di spaventare
-           chi vuole chiudere la pagina. */
-        window.HirisChatMessages.attesaAlSicuroSulServer(attesa);
+           chi vuole chiudere la pagina.
+           Gli passiamo anche `CHAT_POLL_MAX_MS`, che vive qui e solo qui: e'
+           la scadenza VERA di questa attesa, e vale solo su questo ramo --
+           `pollChatReply` e' l'unico posto del prodotto che smette di
+           aspettare. Sul ramo diretto la `fetch` qui sotto non ha ne un
+           `AbortController` ne un timeout: nessuna scadenza da dichiarare, e
+           l'indicatore infatti non ne promette una. */
+        window.HirisChatMessages.attesaAlSicuroSulServer(attesa, CHAT_POLL_MAX_MS);
         handedOff = true;
         pollChatReply(data.job_id, attesa);
         return;

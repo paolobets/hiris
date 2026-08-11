@@ -284,6 +284,18 @@ test('il cronometro non c\'e\' nei primi secondi, e compare quando l\'attesa si 
     soglie.timer = 40;
     const row2 = window.HirisChatMessages.showThinking();
     await tick(200);
+    /* Ogni test si porta via i timer che ha acceso, con l\'id che vede lui e
+       senza passare dalla funzione di pulizia del prodotto: se un giorno quella
+       si rompe, il file deve diventare ROSSO, non piantarsi in silenzio. */
+    /* L'id va preso ADESSO, non dentro il gancio: i ganci di `t.after` girano
+       nell'ordine in cui sono stati registrati, e quello di `setupChat` viene
+       prima -- a quel punto `fermaTutteLeAttese()` ha gia' azzerato `_attesa` e
+       il gancio non troverebbe piu' niente da spegnere. E `clearInterval`
+       nudo, non `window.clearInterval`: in questo harness il `setInterval`
+       nudo di messages.js e' quello di Node, e i due non condividono lo spazio
+       degli id. */
+    const idCronometro = row2._attesa.intervallo;
+    t.after(() => clearInterval(idCronometro));
 
     const timer = row2.querySelector('.thinking-timer');
     assert.ok(timer, 'passata la soglia il cronometro compare');
@@ -304,7 +316,22 @@ test('updateBubble ferma il cronometro e scrive la risposta nella stessa bolla',
   try {
     const row = window.HirisChatMessages.showThinking();
     await tick(80);
-    const testoPrima = row.querySelector('.thinking-timer').textContent;
+    /* Il nodo del cronometro va tenuto per mano PRIMA della risposta: dopo,
+       `updateBubble` riscrive la bolla e quel nodo resta staccato dal
+       documento. E\' proprio li che un intervallo sopravvissuto continuerebbe
+       a scrivere -- invisibile a chi guarda la pagina, invisibile a
+       `row.querySelector`, e visibilissimo qui. Prima questa verifica
+       confrontava una variabile con se stessa: non poteva fallire, e infatti
+       togliendo il `clearInterval` da messages.js nessuna asserzione cadeva --
+       il file di test si limitava a non terminare piu\'. Un blocco muto e\'
+       peggio di un rosso. */
+    const nodoCronometro = row.querySelector('.thinking-timer');
+    const idIntervallo = row._attesa.intervallo;
+    /* Se la correzione non c\'e\', questo e\' l\'unico modo di far FALLIRE il
+       test invece di piantare il file: l\'intervallo orfano terrebbe vivo
+       l\'event loop per sempre. */
+    t.after(() => clearInterval(idIntervallo));
+    const testoPrima = nodoCronometro.textContent;
 
     window.HirisChatMessages.updateBubble(row, 'Ecco la risposta');
     assert.equal(row._attesa, null, 'updateBubble ferma tutto: cronometro e cambi d\'etichetta');
@@ -312,11 +339,29 @@ test('updateBubble ferma il cronometro e scrive la risposta nella stessa bolla',
     assert.equal(row.querySelector('.bubble').classList.contains('thinking-live'), false,
       'la bolla non e\' piu\' in stato "in elaborazione"');
     assert.equal(row.querySelector('.thinking-timer'), null, 'il cronometro sparisce con l\'attesa');
+    /* La bolla deve restare una regione live ANCORA per un po\': e\' cosi\' che
+       la risposta si annuncia da sola. Misurato in Chromium con
+       l\'accessibilita\' forzata: togliendo gli attributi dopo un solo giro
+       dell\'event loop, al primo fotogramma la bolla era gia\' `generic`, con
+       zero proprieta\' live -- cioe\' proprio il silenzio che C6 doveva
+       togliere. */
+    assert.equal(row.querySelector('.bubble').getAttribute('aria-live'), 'polite',
+      'la risposta deve poter essere annunciata: la regione live non muore con lei');
+    /* E deve sopravvivere a MOLTO PIU\' di un giro dell\'event loop. Questa
+       riga e\' la traduzione in test della misura fatta nel browser: con la
+       rimozione rimandata di un solo giro, a cento millisecondi la regione era
+       gia\' sparita -- e con lei l\'annuncio. */
+    await tick(100);
+    assert.equal(row.querySelector('.bubble').getAttribute('aria-live'), 'polite',
+      'un solo giro dell\'event loop non basta: Chrome smaltisce le regioni live al fotogramma dopo');
 
-    await tick(80);
-    assert.equal(testoPrima, testoPrima, 'nessun intervallo sopravvive alla risposta');
+    await tick(1400);
+    assert.equal(nodoCronometro.textContent, testoPrima,
+      'nessun intervallo sopravvive alla risposta: il cronometro staccato non deve piu\' cambiare');
     assert.equal(row.querySelector('.thinking-timer'), null,
       'e non ne ricompare uno scrivendo su un nodo che non c\'e\' piu\'');
+    assert.equal(row.querySelector('.bubble').getAttribute('role'), null,
+      'passata la finestra dell\'annuncio, la bolla smette di essere una regione live');
   } finally {
     soglie.timer = originale;
   }
@@ -332,6 +377,147 @@ test('la risposta arriva anche se la riga e\' stata staccata dal DOM mentre HIRI
   assert.ok(row.parentNode, 'la riga deve tornare in conversazione, non restare nel vuoto');
   assert.match(document.getElementById('messages').textContent, /Risposta pagata in token/,
     'una risposta gia\' pagata non puo\' sparire senza che nessuno lo dica');
+});
+
+// ---------------------------------------------------------------------------
+// La linea del tempo dell\'attesa, dove le due strade dicono cose diverse.
+//
+// Non e\' una differenza di stile: e\' verificata sul server. Un turno affidato
+// al ponte (HTTP 202) e\' gia\' in cronologia prima di essere accodato
+// (`handlers_chat.py`, `_enqueue_chat_job`) e la risposta ci finisce da fuori
+// la richiesta (`server.py`, `_submit_chat_reply`): chiudere non perde niente,
+// e una scadenza esiste (`CHAT_POLL_MAX_MS`). Un turno servito direttamente
+// viene scritto solo alla fine, dentro la stessa richiesta che la pagina
+// aspetta, e quella `fetch` non ha nessun timeout: chiudere perde tutto, e una
+// resa non arrivera\' mai.
+//
+// Questi quattro test esistono perche\' senza di loro la decisione piu\'
+// discussa del lavoro non era difesa da niente: chi passa di qui la
+// uniformerebbe in buona fede, e il prodotto ricomincerebbe a mentire a meta\'
+// dei suoi utenti proprio nell\'istante in cui decidono se abbandonare.
+// ---------------------------------------------------------------------------
+
+/* `fetch` che non risponde mai: e\' l\'unico modo di tenere viva l\'attesa sul
+   percorso diretto, che e\' appunto quello senza scadenza. */
+function fetchCheNonTorna() {
+  return () => new Promise(() => {});
+}
+
+test('a due minuti, sul ponte, l\'attesa dice che si puo\' chiudere la pagina', async (t) => {
+  const { window, document } = setupChat(t);
+  const soglie = window.HirisChatMessages.SOGLIE_ATTESA;
+  const originale = soglie.servizio;
+  soglie.servizio = 60;
+  try {
+    window.fetch = async (url) => {
+      if (String(url).endsWith('api/chat')) {
+        return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'j1' }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ status: 'pending' }) };
+    };
+
+    await window.HirisChatSend.send('dimmi tutto della casa');
+    await tick(200);
+
+    const servizio = document.querySelector('.tl-servizio');
+    assert.ok(servizio, 'passata la soglia, l\'attesa dice che fine fa il turno');
+    assert.match(servizio.textContent, /[Pp]uoi anche chiudere/,
+      'il turno e\' gia\' sul server: spaventare chi vuole chiudere sarebbe una paura inventata');
+    assert.doesNotMatch(servizio.textContent, /si perde/);
+  } finally {
+    soglie.servizio = originale;
+  }
+});
+
+test('a due minuti, sul percorso diretto, l\'attesa dice di tenere la pagina aperta', async (t) => {
+  const { window, document } = setupChat(t);
+  const soglie = window.HirisChatMessages.SOGLIE_ATTESA;
+  const originale = soglie.servizio;
+  soglie.servizio = 60;
+  try {
+    window.fetch = fetchCheNonTorna();
+    window.HirisChatSend.send('dimmi tutto della casa'); // non si conclude: e\' il punto
+    await tick(200);
+
+    const servizio = document.querySelector('.tl-servizio');
+    assert.ok(servizio, 'passata la soglia, l\'attesa dice che fine fa il turno');
+    assert.match(servizio.textContent, /si perde/,
+      'qui la risposta vive solo dentro questa richiesta: promettere la cronologia sarebbe una bugia');
+    assert.doesNotMatch(servizio.textContent, /[Pp]uoi anche chiudere/);
+  } finally {
+    soglie.servizio = originale;
+  }
+});
+
+test('l\'attesa annuncia che sta per arrendersi SOLO dove una resa esiste', async (t) => {
+  const { window, document } = setupChat(t);
+  const soglie = window.HirisChatMessages.SOGLIE_ATTESA;
+  const margine = soglie.margineResa;
+  /* La scadenza vera (`CHAT_POLL_MAX_MS`, 5 minuti) la porta chat/send.js e non
+     si tocca: sposto il MARGINE, cosi\' l\'avviso cade poco dopo l\'invio
+     passando per la strada vera -- send(), il 202, la consegna della scadenza. */
+  soglie.margineResa = 5 * 60 * 1000 - 80;
+  try {
+    window.fetch = async (url) => {
+      if (String(url).endsWith('api/chat')) {
+        return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'j1' }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ status: 'pending' }) };
+    };
+
+    await window.HirisChatSend.send('una domanda lunga');
+    await tick(250);
+
+    assert.match(document.querySelector('.tl-label').textContent, /smetto di aspettare/,
+      'sul ponte il poll si ferma davvero: annunciarlo prima e\' corretto');
+  } finally {
+    soglie.margineResa = margine;
+  }
+});
+
+test('sul percorso diretto non promette nessuna resa, perche\' non ne ha una', async (t) => {
+  const { window, document } = setupChat(t);
+  const soglie = window.HirisChatMessages.SOGLIE_ATTESA;
+  const originale = soglie.senzaScadenza;
+  soglie.senzaScadenza = 80;
+  try {
+    window.fetch = fetchCheNonTorna();
+    window.HirisChatSend.send('una domanda lunga');
+    await tick(250);
+
+    const etichetta = document.querySelector('.tl-label').textContent;
+    assert.doesNotMatch(etichetta, /smetto di aspettare/,
+      'questa fetch non ha ne AbortController ne timeout: la pagina non smette mai, e non deve dire il contrario');
+    assert.match(etichetta, /non ho un tempo massimo/,
+      'e il silenzio non e\' la risposta: lo dichiara');
+  } finally {
+    soglie.senzaScadenza = originale;
+  }
+});
+
+test('svuotare la conversazione ferma i cronometri delle attese che ci vivevano dentro', async (t) => {
+  const { window } = setupChat(t);
+  const soglie = window.HirisChatMessages.SOGLIE_ATTESA;
+  const originale = soglie.timer;
+  soglie.timer = 20;
+  try {
+    const row = window.HirisChatMessages.showThinking();
+    await tick(80);
+    const idIntervallo = row._attesa.intervallo;
+    assert.ok(idIntervallo, 'il cronometro sta girando');
+    /* Come nel test dell\'intervallo: senza questo, se la correzione manca il
+       file non fallisce, si pianta. */
+    t.after(() => clearInterval(idIntervallo));
+
+    window.confirm = () => true;
+    window.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
+    await window.HirisChatAgents.clearConversation();
+
+    assert.equal(row._attesa, null,
+      'le righe se ne vanno, i loro cronometri devono andarsene con loro');
+  } finally {
+    soglie.timer = originale;
+  }
 });
 
 test('durante la risposta via abbonamento (202) l\'input resta bloccato e un secondo invio non parte', async (t) => {

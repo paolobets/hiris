@@ -107,7 +107,12 @@
   --border-2:  oklch(0.350 0.030 280);
   --text:      oklch(0.97 0.006 280);
   --text-2:    oklch(0.74 0.014 280);
-  --text-3:    oklch(0.56 0.018 280);
+  /* Gemello del ritocco fatto sul tema chiaro: qui `--text-3` stava a 3.87:1
+     sulla superficie scura (misurato; l'audit dice 3.85), cioe' lo stesso
+     fallimento AA dall'altra parte. A 0.62 sta a 4.92:1 sulla superficie e a
+     5.28:1 sullo sfondo. Non l'ho fermato a 0.60 (4.53:1) apposta: un margine
+     di tre centesimi sopra la soglia sparisce al primo ritocco di un fondo. */
+  --text-3:    oklch(0.62 0.018 280);
   --text-4:    oklch(0.42 0.020 280);
 
   --accent:        oklch(0.78 0.17 280);
@@ -146,7 +151,8 @@
     --border-2:  oklch(0.350 0.030 280);
     --text:      oklch(0.97 0.006 280);
     --text-2:    oklch(0.74 0.014 280);
-    --text-3:    oklch(0.56 0.018 280);
+    /* Gemello del blocco [data-theme="dark"] qui sopra. */
+    --text-3:    oklch(0.62 0.018 280);
     --text-4:    oklch(0.42 0.020 280);
     --accent:        oklch(0.78 0.17 280);
     --accent-ink:    oklch(0.86 0.14 280);

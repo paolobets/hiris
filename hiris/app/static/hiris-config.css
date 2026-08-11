@@ -786,7 +786,19 @@
     padding-top: calc(var(--sp-4) + env(safe-area-inset-top));
   }
   .side-nav.open { transform: translateX(0) !important; }
+  /* Le tre regole del blocco dei 1023 px servono al rail da 64 px, dove le
+     etichette non esistono. Qui il rail non esiste: c'e' un cassetto largo
+     280 px con le etichette visibili, e quelle regole vanno annullate tutte e
+     tre -- non solo la prima. Annullarne una sola e' quel che faceva questo
+     blocco fino a poco fa: le voci restavano centrate e senza margine
+     orizzontale, e l'intestazione di sezione spariva dal cassetto. Non era
+     rotto, era storto, e prima non lo era. */
   .side-nav .nav-label, .side-nav .brand-name { display: inline !important; }
+  .side-nav .nav-section-label { display: block; }
+  .side-nav .nav-item, .side-nav .brand {
+    justify-content: flex-start;
+    padding-left: var(--sp-3); padding-right: var(--sp-3);
+  }
   .sidenav-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55; }
   .page-chrome { padding-top: calc(12px + env(safe-area-inset-top)); }
   /* Prevent grid-item blowout: let the content column shrink to the viewport
@@ -825,7 +837,9 @@
 .side-nav .nav-section-label {
   font-size: 10.5px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--text-4);
+  /* Gemello di `.sc-num`: e' l'intestazione che divide la chat dal resto del
+     menu, e a 2.31:1 su un corpo da 10,5 px non si leggeva. */
+  color: var(--text-3);
   padding: var(--sp-3) var(--sp-3) var(--sp-1);
 }
 .nav-item {
@@ -916,7 +930,11 @@
 .section-card .sc-num {
   font-family: var(--font-mono);
   font-size: var(--fs-12);
-  color: var(--text-4);
+  /* Era `--text-4`, 2.31:1 sul bianco. E' il numero della sezione -- «01»,
+     «02» -- cioe' l'unico segnale dell'ordine in cui vanno lette: contenuto,
+     non decorazione. `--text-4` resta dov'e' davvero decorazione (il chevron
+     fra le briciole, il pollice della barra di scorrimento). */
+  color: var(--text-3);
   font-weight: 400;
 }
 .section-card .sc-desc {
@@ -1361,7 +1379,9 @@
 .chain-row:last-of-type { border-bottom: none; }
 .chain-row .chain-num {
   font-family: var(--font-mono); font-size: var(--fs-12);
-  color: var(--text-4);
+  /* Terzo gemello: la posizione nella catena dei modelli e' il dato della
+     riga, non un ornamento. */
+  color: var(--text-3);
 }
 .chain-row .chain-label {
   font-size: var(--fs-13); color: var(--text);
