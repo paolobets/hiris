@@ -1,4 +1,4 @@
-/* HIRIS · Designer · hash router minimal */
+/* HIRIS · Config · hash router minimal */
 (function() {
   var routes = [];
   /* Ultimo hash effettivamente risolto (route handler invocata). Serve a

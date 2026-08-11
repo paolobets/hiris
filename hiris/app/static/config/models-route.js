@@ -1,4 +1,4 @@
-/* HIRIS · Designer · models route mount (SP-2 Task 7 + Task 7-fix; fetta E5
+/* HIRIS · Config · models route mount (SP-2 Task 7 + Task 7-fix; fetta E5
    Task 7 ha tolto la sezione "Assegnazione per entità" — vedi sotto)
    Sezione #/models — implementa il contratto UX di
    docs/design/2026-07-27-ux-models-section.md, ridotto a tre sezioni vive

@@ -1,4 +1,4 @@
-/* HIRIS · Designer · global state with mini pub-sub */
+/* HIRIS · Config · global state with mini pub-sub */
 (function() {
   var data = { unsaved: false };
   var subs = {};

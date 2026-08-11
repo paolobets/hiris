@@ -4,8 +4,7 @@
 
 > **Voce in preparazione: la 2.0.0 non è ancora stata rilasciata.** Il tag non
 > esiste, l'add-on porta ancora il numero di versione precedente e il lavoro
-> sull'interfaccia non è finito — le pagine elencate in fondo sono rotte *oggi*.
-> Al rilascio questa nota va riletta e datata.
+> sull'interfaccia non è finito. Al rilascio questa nota va riletta e datata.
 
 **HIRIS conosce la tua casa, e c'è una chat per interrogarla.** È questa la
 versione: non un assistente che promette di fare, ma uno che *sa* — e che dice
@@ -116,9 +115,11 @@ ricordare* non è nella cronologia e **non si perde**.
 
 **C'è un solo assistente, e la chat è quell'assistente.** Niente più selezione
 del bot, niente più assistenti con un nome proprio e permessi diversi: si apre
-la chat e si parla con HIRIS. Le impostazioni della conversazione (il modello,
-il tono, il prompt) hanno i loro valori nel codice; se le avevi personalizzate,
-vivono in un file.
+la chat e si parla con HIRIS. Le impostazioni della conversazione (nome,
+modello, prompt di sistema, forma della risposta, budget di ragionamento,
+tetto di turni, restrizione alla casa) si cambiano dalla pagina
+*Configurazione → Impostazioni chat* (`#/impostazioni`, GET/PUT
+`api/impostazioni-chat`).
 
 **La schermata «Benvenuto in HIRIS» al primo avvio non c'è più.** Chiedeva di
 creare un secondo assistente in un prodotto che ne ha uno solo: su
@@ -126,8 +127,8 @@ un'installazione nuova non trovava mai niente da offrire, e il pulsante «Crea»
 falliva sempre con un errore — era la primissima cosa che un'installazione
 nuova mostrava, ed era rotta. Ora si apre direttamente sulla chat, già pronta,
 con l'assistente predefinito attivo. Il dare un nome e delle istruzioni proprie
-a quell'assistente avrà una pagina sua (Configurazione → conversazione) in una
-prossima versione. Se il tuo browser aveva già visto la schermata, resta nel
+a quell'assistente ha ora una pagina sua (*Configurazione → Impostazioni
+chat*). Se il tuo browser aveva già visto la schermata, resta nel
 suo `localStorage` una chiave inerte (`hiris_onboarding_v1`) che non serve più
 a nulla: non viene ripulita, perché non c'è più codice che la legga.
 
@@ -178,16 +179,6 @@ chat nuova. Se ne avevi uno e ci tieni, riprendilo dal file prima di riscriverlo
   ed è l'unico freno rimasto.
 - Dettaglio per chi ha scritto qualcosa sopra le API di HIRIS: l'evento `done`
   del flusso della chat non porta più il campo `agent_id`.
-
-### Cosa è ancora rotto mentre scriviamo
-
-Sono i pezzi di interfaccia rimasti indietro rispetto al prodotto. Sono
-elencati qui perché **non li scopra tu**:
-
-- **L'editor dell'assistente**: Salva, Elimina e Test Run danno errore, e i
-  riquadri che non hanno più una fonte si mostrano vuoti.
-- **Le impostazioni della chat non hanno una pagina.** Il modello si sceglie da
-  *Modelli*, che funziona; il resto si cambia solo da file.
 
 ## [1.1.0-beta.18] — Adesso ricorda davvero (2026-08-05)
 

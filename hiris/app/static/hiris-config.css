@@ -1,5 +1,5 @@
 /* ───────────────────────────────────────────────────────────
-   HIRIS — Agent Designer · config.html styles
+   HIRIS — Configurazione · config.html styles
    Loads after hiris-theme.css and hiris-config-override.css.
    Two sections: legacy (preserved) + v5 modern overrides.
    ─────────────────────────────────────────────────────────── */
@@ -1325,13 +1325,12 @@
   }
 }
 
-.field-hint-block {
-  display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2);
-}
-.field-hint-block p {
-  font-size: var(--fs-13); color: var(--text-3);
-  margin: 0;
-}
+/* fetta E5 Task 11 ("il vocabolario che resta dice il vero"): qui viveva
+   `.field-hint-block` (+ `.field-hint-block p`), orfanata dalla rimozione
+   di editor-kit.js al Task 6 (era il wrapper del blocco hint sotto un
+   campo negli editor Chatbot/Agentbot/wizard, tutti usciti con lui).
+   Zero elementi in tutto `static/` con quella classe (verificato col
+   grep), segnalata dal ledger della fetta. */
 
 /* fetta E5 Task 8: qui viveva il pulse `.feed-new` ("nuovo dall'ultima
    visita"). Marcava gli item del feed del Brain piu' recenti dell'ultima

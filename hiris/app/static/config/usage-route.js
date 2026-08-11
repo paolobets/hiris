@@ -1,4 +1,4 @@
-/* HIRIS · Designer · usage route mount (Phase 9) */
+/* HIRIS · Config · usage route mount (Phase 9) */
 (function() {
   function escHtml(s) {
     if (s == null) return '';

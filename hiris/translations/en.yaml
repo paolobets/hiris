@@ -29,7 +29,7 @@ configuration:
     description: "Activate the local Ollama model as an AI provider (requires local_model url + model). A provider is used only if enabled here AND its credential is set. See the note on provider_subscription about enabling toggles on an existing install."
   hide_free_models:
     name: "Hide :free OpenRouter models"
-    description: "When enabled, OpenRouter ':free' models are hidden from the model dropdown in the Agent Designer. Useful if you have purchased OpenRouter credit and prefer to avoid the low daily quota and frequent upstream rate-limits of the free tier."
+    description: "When enabled, OpenRouter ':free' models are hidden from the model dropdown on the Models page (#/models) and in the chat settings. Useful if you have purchased OpenRouter credit and prefer to avoid the low daily quota and frequent upstream rate-limits of the free tier."
   llm_strategy:
     name: "LLM Strategy"
     description: "How HIRIS selects models when multiple are available. 'balanced' (default) starts with Claude, then prefers OpenRouter over the dedicated OpenAI slot before falling back to local Ollama. 'cost_first' prefers cheaper/local models first. 'quality_first' always starts with Claude, then OpenAI, then OpenRouter, then Ollama."
@@ -135,73 +135,3 @@ configuration:
       (only internal_token as a barrier). DO NOT leave enabled in
       production.
 
-# v6 designer redesign (2026-05-07)
-designer:
-  nav:
-    dashboard: Dashboard
-    agents: Agents
-    proposals: Proposals
-    usage: Usage
-    settings: Settings
-    chat: Open chat
-  dash:
-    welcome: Welcome to HIRIS
-    stat_active_agents: Active agents
-    stat_exec_24h: Executions 24h
-    stat_tokens_today: Tokens today
-    stat_cost_month: Monthly cost
-    last_logs: Last logs
-    proposals_pending: Pending proposals
-    next_triggers: Next triggers
-    next_triggers_p2: "Coming soon — next triggers requires a backend endpoint (P2)."
-  editor:
-    section_identity: Identity & Triggers
-    section_instructions: Instructions
-    section_model: AI Model
-    section_permissions: Permissions
-    section_actions: Actions
-    section_enable: Enabling
-    section_log: Execution log
-    section_testrun: Test Run
-    section_usage: Agent usage
-    unsaved: Unsaved changes
-    saved: Saved
-    save: Save
-    cancel: Cancel
-    delete: Delete
-    test_run: Test Run
-  log:
-    filter_all: all
-    filter_ok: ok
-    filter_err: err
-    filter_thinking: thinking
-    refresh: refresh
-    copy_summary: copy summary
-    copy_raw: copy raw JSON
-    show_thinking: show thinking
-    hide_thinking: hide thinking
-    empty: No executions recorded.
-  action:
-    type_notify: Notify
-    type_script: Run HA script
-    type_call_service: Call HA service (advanced)
-    type_wait: Wait (delay)
-    type_verify: Verify condition
-    script_picker: Home Assistant script
-    script_variables: Variables (optional)
-    on_fail_continue: Continue sequence
-    on_fail_stop: Stop execution
-    add: Add action
-  proposal:
-    type_ha_automation: "→ HA automation"
-    activate: Activate
-    reject: Reject
-    pending: Pending
-    archived: Archived
-  cron:
-    preset_hourly: Hourly
-    preset_morning: Every morning 06:00
-    preset_evening: Every evening 20:00
-    preset_weekday: Mondays only 09:00
-    preset_weekend: Weekends 10:00
-    preset_custom: "Custom…"
