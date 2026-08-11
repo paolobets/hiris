@@ -11,7 +11,12 @@ from ..env_util import env_bool
 
 logger = logging.getLogger(__name__)
 
-# SP-2 Task 4: models-config store (chain_order + brain_model), see §8 code map.
+# SP-2 Task 4: models-config store (chain_order), see §8 code map.
+# brain_model e' uscito alla fetta E5 Task 7 ("Consumi e Modelli smettono di
+# mentire"): il Brain che lo leggeva e' uscito con la E3, zero lettori di
+# produzione da allora. Non e' un'opzione dell'add-on (vive solo in
+# models_config.json), quindi esce dai tre posti reali -- lettore e
+# scrittore qui sotto, UI in config/models-route.js -- nello stesso commit.
 _VALID_BACKENDS = ("claude", "openai", "openrouter", "ollama")
 
 # SP-2 Task 5C: per-provider DEFAULT model, e.g. {"claude": "claude-opus-4-7"}.
@@ -47,12 +52,23 @@ def load_models_config(data_dir: str) -> dict:
     if not isinstance(raw_chain, list):
         raw_chain = []
     chain = [n for n in raw_chain if n in _VALID_BACKENDS]
-    brain = raw.get("brain_model", "auto")
-    if not isinstance(brain, str) or not brain:
-        brain = "auto"
+    # fetta E5 Task 7: un models_config.json scritto da una versione
+    # precedente puo' avere 'brain_model' popolato -- non viene ne' migrato
+    # ne' cancellato (mai dati utente rimossi silenziosamente), ma il
+    # silenzio si dichiara: stessa disciplina di
+    # tests/test_startup_legacy_db_silence.py e dello stesso identico
+    # precedente in claude_runner._load_usage per 'per_agent' di usage.json
+    # (tests/test_claude_runner.py:721-780). save_models_config (sotto) fa
+    # lettura-modifica-scrittura, quindi la chiave sopravvive anche a un
+    # salvataggio, non solo al load.
+    if "brain_model" in raw:
+        logger.info(
+            "models_config.json contiene 'brain_model' (%r) di un'installazione "
+            "precedente -- non piu' letto ne' scritto da questa versione.",
+            raw.get("brain_model"),
+        )
     return {
         "chain_order": chain,
-        "brain_model": brain,
         "provider_models": _clean_provider_models(raw.get("provider_models")),
     }
 
@@ -65,15 +81,30 @@ def save_models_config(data_dir: str, data: dict) -> dict:
         raw_chain = []
     clean = {
         "chain_order": [n for n in raw_chain if n in _VALID_BACKENDS],
-        "brain_model": data.get("brain_model", "auto"),
         "provider_models": _clean_provider_models(data.get("provider_models")),
     }
-    if not isinstance(clean["brain_model"], str) or not clean["brain_model"]:
-        clean["brain_model"] = "auto"
     path = _models_config_path(data_dir)
     tmp = path + ".tmp"
+    # Lettura-modifica-scrittura (stesso fix di claude_runner._save_usage per
+    # 'per_agent'): senza questo, il PRIMO salvataggio dopo un upgrade
+    # cancellerebbe silenziosamente un 'brain_model' legacy dal disco -- il
+    # contrario di quanto dichiara il log in load_models_config ("non piu'
+    # letto ne' scritto", che un operatore legge come "e' ancora li'"). Solo
+    # le chiavi che questa versione possiede (chain_order, provider_models)
+    # vengono aggiornate; qualunque altra chiave gia' sul disco (incl.
+    # 'brain_model') resta intatta.
+    disk_data: dict = {}
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                disk_data = json.load(fh)
+        except Exception:
+            disk_data = {}
+    if not isinstance(disk_data, dict):
+        disk_data = {}
+    disk_data.update(clean)
     with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(clean, fh)
+        json.dump(disk_data, fh)
     os.replace(tmp, path)
     return clean
 

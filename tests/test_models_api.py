@@ -15,8 +15,10 @@ async def test_get_models_config_defaults(client):
     resp = await client.get("/api/models/config")
     assert resp.status == 200
     body = await resp.json()
-    assert body["brain_model"] == "auto"
     assert "chain_order" in body
+    # fetta E5 Task 7: brain_model esce dal payload -- configurazione morta,
+    # zero lettori da quando il Brain e' uscito con la E3.
+    assert "brain_model" not in body
 
 
 @pytest.mark.asyncio
@@ -147,11 +149,16 @@ async def test_get_models_config_never_leaks_secrets(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_put_models_config_persists_and_hot_updates(client):
-    resp = await client.put("/api/models/config", json={"brain_model": "claude-opus-4-7"})
+    """fetta E5 Task 7: il soggetto storico di questo test era brain_model
+    (uscito -- vedi test_get_models_config_defaults), ma il comportamento che
+    verifica -- PUT persiste E il successivo GET riflette l'hot-update di
+    request.app['models_config'] -- e' vivo e non coperto altrove: si sposta
+    su chain_order invece di sparire."""
+    resp = await client.put("/api/models/config", json={"chain_order": ["claude", "openai"]})
     assert resp.status == 200
-    assert (await resp.json())["brain_model"] == "claude-opus-4-7"
+    assert (await resp.json())["chain_order"] == ["claude", "openai"]
     resp2 = await client.get("/api/models/config")
-    assert (await resp2.json())["brain_model"] == "claude-opus-4-7"
+    assert (await resp2.json())["chain_order"] == ["claude", "openai"]
 
 
 @pytest.mark.asyncio

@@ -1,13 +1,22 @@
-/* HIRIS · Designer · models route mount (SP-2 Task 7 + Task 7-fix)
+/* HIRIS · Designer · models route mount (SP-2 Task 7 + Task 7-fix; fetta E5
+   Task 7 ha tolto la sezione "Assegnazione per entità" — vedi sotto)
    Sezione #/models — implementa il contratto UX di
-   docs/design/2026-07-27-ux-models-section.md:
+   docs/design/2026-07-27-ux-models-section.md, ridotto a tre sezioni vive
+   dal contratto originale di quattro:
      01 Provider attivi (GET api/models/config -> providers[], badge stato +
         picker default per-provider da GET api/models)
      02 Catena automatica (GET/PUT api/models/config chain_order, riordino
         frecce, preset llm_strategy)
-     03 Assegnazione per entità (Chatbot -> PUT api/chatbots/{id}, Brain -> PUT
-        api/models/config brain_model)
-     04 Embeddings (riga informativa, sola lettura, da GET api/models/config)
+     03 Embeddings (riga informativa, sola lettura, da GET api/models/config)
+   La sezione 03 originale del design doc ("Assegnazione per entità": Chatbot
+   -> PUT api/chatbots/{id}, Brain -> PUT api/models/config brain_model) è
+   uscita alla fetta E5 Task 7 ("Consumi e Modelli smettono di mentire"): il
+   ramo Chatbot faceva PUT su una rotta che non esiste per quel metodo (solo
+   GET /api/chatbots, vedi server.py) — ogni cambio di select falliva con
+   404, sel.value tornava al valore precedente e compariva il badge rosso; il
+   ramo Brain scriveva brain_model, una configurazione senza più nessun
+   lettore da quando il Brain è uscito con la E3. Il modello della chat si
+   cambia dal Task 2 della E5 (impostazioni chat), dove è sempre dovuto stare.
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
    (stesso vincolo di history-route.js e impostazioni-route.js).
 
@@ -21,10 +30,11 @@
      llm_strategy: string
      embeddings: {provider, model}
      ollama_model: nome del modello Ollama fisso configurato
-   (oltre a chain_order/brain_model/provider_models già presenti). Questo file
-   consuma quell'arricchimento invece di dedurre badge/stato da GET /api/models
-   (che elenca solo i provider già credenziati, senza i disattivi/senza
-   credenziale — vedi report Task 7-fix). */
+   (oltre a chain_order/provider_models già presenti — brain_model è uscito
+   dal payload alla fetta E5 Task 7). Questo file consuma quell'arricchimento
+   invece di dedurre badge/stato da GET /api/models (che elenca solo i
+   provider già credenziati, senza i disattivi/senza credenziale — vedi
+   report Task 7-fix). */
 (function() {
   'use strict';
 
@@ -92,8 +102,10 @@
   /* ── Feedback di successo condiviso (design §7.2.3): un check "✓" che
      compare per ~1.2s accanto al controllo toccato poi svanisce. Testo via
      textContent (mai innerHTML), contenitore aria-live="polite" già impostato
-     da chi crea il badge con buildSuccessBadge(). Riusato sia dai PUT
-     models-config (§7.2) sia dal PUT per-Chatbot (§7.3). */
+     da chi crea il badge con buildSuccessBadge(). Usato dal picker
+     default-provider di Parte 1 (§7.2); il secondo chiamante storico, il PUT
+     per-Chatbot (§7.3), è uscito con la fetta E5 Task 7 insieme alla sezione
+     che lo usava. */
   function buildSuccessBadge() {
     var b = el('span', 'agent-badge badge-on', '');
     b.style.display = 'none';
@@ -148,11 +160,8 @@
     llmStrategy: '',       // GET api/models/config -> llm_strategy
     embeddings: { provider: '', model: '' },  // GET api/models/config -> embeddings
     ollamaModel: '',       // GET api/models/config -> ollama_model
-    cfg: { chain_order: [], brain_model: 'auto', provider_models: { claude: '', openai: '', openrouter: '' } },
-    agents: []            // GET api/chatbots
+    cfg: { chain_order: [], provider_models: { claude: '', openai: '', openrouter: '' } }
   };
-  var providersReady = false;
-  var agentsReady = false;
 
   function findProvider(id) {
     for (var i = 0; i < state.providers.length; i++) {
@@ -214,9 +223,10 @@
 
   /* Inserisce (in testa) e seleziona un'opzione "orfana" quando il valore
      salvato non è (più) tra le opzioni disponibili — così il valore non viene
-     perso silenziosamente (design §5.1). Usata sia dal picker condiviso
-     Brain/Chatbot (fillModelOptions) sia dal picker default-provider di
-     Parte 1 (Task 7-fix punto 5). */
+     perso silenziosamente (design §5.1). Usata dal picker default-provider di
+     Parte 1 (Task 7-fix punto 5); il secondo chiamante storico — il picker
+     condiviso Brain/Chatbot, fillModelOptions — è uscito con la fetta E5
+     Task 7 insieme alla sezione che lo usava. */
   function ensureOrphanOption(sel, val, suffix) {
     if (!val) return;
     if (sel.value === val) return; // già selezionabile, nessuna orfana da inserire
@@ -224,34 +234,6 @@
     orphan.value = val;
     sel.insertBefore(orphan, sel.firstChild);
     sel.value = val;
-  }
-
-  /* ── Sezione 3: dropdown modello condivisa (Brain / Chatbot) ─────────
-     Stesso value-format già in uso nel resto della SPA: id modello grezzo
-     così come ritornato da GET api/models, "auto" come opzione top-level
-     unica. */
-  function fillModelOptions(sel, currentValue) {
-    clearEl(sel);
-    var autoOpt = el('option', null, 'auto');
-    autoOpt.value = 'auto';
-    sel.appendChild(autoOpt);
-    usableProviders().forEach(function(p) {
-      var grp = document.createElement('optgroup');
-      grp.label = p.label;
-      (p.models || []).forEach(function(m) {
-        if (m === 'auto') return;
-        var opt = el('option', null, modelLabel(p.id, m));
-        opt.value = m;
-        grp.appendChild(opt);
-      });
-      if (grp.children.length) sel.appendChild(grp);
-    });
-    var val = currentValue || 'auto';
-    sel.value = val;
-    /* Il modello salvato non è più offerto da nessun provider usabile
-       (provider disattivato nel frattempo) — resta selezionato e visibile,
-       segnalato, nessuna azione forzata (design §5.1). */
-    ensureOrphanOption(sel, val, ' (provider non attivo)');
   }
 
   /* ── Sezione 1: Provider attivi ──────────────────────────────────────── */
@@ -376,25 +358,6 @@
 
     var body2 = clearEl(byId('sec2-body'));
     if (body2) body2.appendChild(el('p', 'field-hint', 'Impossibile caricare la catena — vedi Provider attivi qui sopra.'));
-    var brainBody = clearEl(byId('sec3-brain-body'));
-    if (brainBody) brainBody.appendChild(el('p', 'field-hint', 'Impossibile caricare i modelli disponibili.'));
-    /* UX review fix: senza questo blocco, sec3-chatbot-body non viene mai
-       toccato da questa funzione. Se GET /api/chatbots nel frattempo va a
-       buon fine (agentsReady=true), renderSection3Chatbot() resta gated su
-       providersReady — che qui non diventa mai true — e la sezione Chatbot
-       resta bloccata sul placeholder "Caricamento…" iniziale per sempre,
-       senza errore né modo di recuperare. Stesso Riprova di Parte 1: rilancia
-       loadModelsAndConfig(), che a sua volta chiama renderSection3Chatbot()
-       (se agentsReady) una volta che providersReady torna true. */
-    var chatbotBody = clearEl(byId('sec3-chatbot-body'));
-    if (chatbotBody) {
-      chatbotBody.appendChild(el('p', 'proposals-error',
-        'Errore caricamento provider — impossibile mostrare i modelli Chatbot.'));
-      var chatbotBtn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
-      chatbotBtn.type = 'button';
-      chatbotBtn.addEventListener('click', function() { loadModelsAndConfig(); });
-      chatbotBody.appendChild(chatbotBtn);
-    }
     var body4 = clearEl(byId('sec4-body'));
     if (body4) body4.appendChild(el('p', 'field-hint', 'Non configurato — vedi local_model in Configurazione add-on.'));
   }
@@ -497,107 +460,19 @@
     });
   }
 
-  /* ── Sezione 3: Brain ─────────────────────────────────────────────────
-     brain_model è live (nessun hint boot-time, design §7.4). */
-  function renderSection3Brain() {
-    var wrap = clearEl(byId('sec3-brain-body'));
-    if (!wrap) return;
-    var field = el('div', 'field');
-    var lbl = el('label', null, 'Ragionamento core');
-    lbl.setAttribute('for', 'model-brain');
-    var sel = el('select', 'select');
-    sel.id = 'model-brain';
-    fillModelOptions(sel, state.cfg.brain_model);
-    field.appendChild(lbl);
-    field.appendChild(sel);
-    var okBadge = buildSuccessBadge();
-    field.appendChild(okBadge);
-    var errBadge = buildErrorBadge();
-    field.appendChild(errBadge);
-    wrap.appendChild(field);
+  /* ── Sezione 3 (Brain + Chatbot) uscita alla fetta E5 Task 7 ───────────
+     renderSection3Brain scriveva PUT api/models/config brain_model: il
+     Brain che lo leggeva è uscito con la E3, zero lettori di produzione da
+     allora (configurazione morta, tolta anche da handlers_models.py
+     load/save nello stesso commit). renderSection3Chatbot faceva PUT
+     api/chatbots/{id} a ogni cambio di select: quella rotta non esiste per
+     il metodo PUT (solo GET, vedi server.py) — ogni salvataggio falliva con
+     404, sel.value tornava al valore precedente e compariva il badge rosso.
+     Il modello della chat si cambia dal Task 2 della E5 (impostazioni
+     chat), dove è sempre dovuto stare. */
 
-    sel.addEventListener('change', function() {
-      var prev = state.cfg.brain_model;
-      state.cfg.brain_model = sel.value;
-      hideErrBadge(errBadge);
-      putModelsConfig().then(function(ok) {
-        if (!ok) {
-          state.cfg.brain_model = prev;
-          sel.value = prev;
-          showErrBadge(errBadge);
-        } else {
-          flashSuccess(okBadge);
-        }
-      });
-    });
-  }
-
-  /* ── Sezione 3: Chatbot ───────────────────────────────────────────────
-     model per-Chatbot è live, PUT diretto e isolato per riga (design §7.3). */
-  function renderSection3Chatbot() {
-    var body = clearEl(byId('sec3-chatbot-body'));
-    if (!body) return;
-    if (!state.agents.length) {
-      body.appendChild(el('p', 'field-hint', 'Nessun Chatbot configurato.'));
-      var link = el('a', 'btn btn-ghost btn-sm', 'Crea il primo Chatbot →');
-      link.href = '#/chatbots';
-      body.appendChild(link);
-      return;
-    }
-    var sorted = state.agents.slice().sort(function(a, b) {
-      var ea = a.enabled ? 1 : 0, eb = b.enabled ? 1 : 0;
-      if (eb !== ea) return eb - ea;
-      return (a.name || '').localeCompare(b.name || '');
-    });
-    sorted.forEach(function(a) {
-      var field = el('div', 'field');
-      var selId = 'model-agent-' + a.id;
-      var lbl = el('label', null, a.name || a.id);
-      lbl.setAttribute('for', selId);
-      var sel = el('select', 'select');
-      sel.id = selId;
-      fillModelOptions(sel, a.model || 'auto');
-      field.appendChild(lbl);
-      field.appendChild(sel);
-      var okBadge = buildSuccessBadge();
-      field.appendChild(okBadge);
-      var errBadge = buildErrorBadge();
-      field.appendChild(errBadge);
-      body.appendChild(field);
-
-      sel.addEventListener('change', function() {
-        var prev = a.model || 'auto';
-        var next = sel.value;
-        hideErrBadge(errBadge);
-        api('api/chatbots/' + encodeURIComponent(a.id), {
-          method: 'PUT',
-          body: JSON.stringify({ model: next })
-        }).then(function(r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        }).then(function(updated) {
-          a.model = (updated && updated.model) || next;
-          flashSuccess(okBadge);
-        }).catch(function(err) {
-          console.error('save agent model failed', err);
-          sel.value = prev;
-          showErrBadge(errBadge);
-        });
-      });
-    });
-  }
-
-  function renderSection3ChatbotError() {
-    var body = clearEl(byId('sec3-chatbot-body'));
-    if (!body) return;
-    body.appendChild(el('p', 'proposals-error', 'Errore caricamento Chatbot.'));
-    var btn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
-    btn.type = 'button';
-    btn.addEventListener('click', function() { loadChatbots(); });
-    body.appendChild(btn);
-  }
-
-  /* ── Sezione 4: Embeddings ────────────────────────────────────────────
+  /* ── Sezione 3 (id interno "sec4", invariato — vedi buildSectionShell in
+     mount()): Embeddings ─────────────────────────────────────────────────
      Sola lettura. Task 7B ha aggiunto embeddings.{provider,model} al payload
      GET /api/models/config — mostrato qui invece del fallback statico
      precedente (assunzione aperta #1 del design doc, ora risolta). */
@@ -615,10 +490,12 @@
   }
 
   /* ── Caricamento dati ─────────────────────────────────────────────────
-     Le tre fetch (models, models/config, agents) partono in parallelo (§7.1);
-     models+models/config sono trattati come un'unica unità dati perché
-     Parte 1 (picker), Parte 2 (catena), Parte 3-Brain e Parte 4 (embeddings)
-     dipendono da entrambe. */
+     Le due fetch (models, models/config) partono in parallelo (§7.1);
+     trattate come un'unica unità dati perché Parte 1 (picker), Parte 2
+     (catena) e Parte 3 (embeddings) dipendono da entrambe. Non c'è più una
+     terza fetch verso api/chatbots: la sezione che la consumava (Chatbot,
+     dentro la vecchia "Assegnazione per entità") è uscita con la fetta E5
+     Task 7. */
   function loadModelsAndConfig() {
     var body1 = byId('sec1-body');
     if (body1) { clearEl(body1); body1.appendChild(el('p', 'field-hint', 'Caricamento…')); }
@@ -636,7 +513,6 @@
       var cfgRaw = results[1] || {};
       state.cfg = {
         chain_order: Array.isArray(cfgRaw.chain_order) ? cfgRaw.chain_order.slice() : [],
-        brain_model: cfgRaw.brain_model || 'auto',
         provider_models: Object.assign({ claude: '', openai: '', openrouter: '' }, cfgRaw.provider_models || {})
       };
       state.configProviders = Array.isArray(cfgRaw.providers) ? cfgRaw.providers : [];
@@ -644,31 +520,12 @@
       state.embeddings = (cfgRaw.embeddings && typeof cfgRaw.embeddings === 'object')
         ? cfgRaw.embeddings : { provider: '', model: '' };
       state.ollamaModel = cfgRaw.ollama_model || '';
-      providersReady = true;
       renderSection1();
       renderSection2();
-      renderSection3Brain();
       renderSection4();
-      if (agentsReady) renderSection3Chatbot();
     }).catch(function(err) {
       console.error('models/config fetch failed', err);
       renderSection1Error();
-    });
-  }
-
-  function loadChatbots() {
-    var body = byId('sec3-chatbot-body');
-    if (body) { clearEl(body); body.appendChild(el('p', 'field-hint', 'Caricamento…')); }
-    fetch('api/chatbots').then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function(d) {
-      state.agents = Array.isArray(d) ? d : (d.agents || []);
-      agentsReady = true;
-      if (providersReady) renderSection3Chatbot();
-    }).catch(function(err) {
-      console.error('agents fetch failed', err);
-      renderSection3ChatbotError();
     });
   }
 
@@ -696,51 +553,26 @@
     var outlet = document.getElementById('route-outlet');
     clearEl(outlet);
     outlet.appendChild(el('div', 'page-title', 'Modelli'));
-    outlet.appendChild(el('p', 'page-subtitle', 'Chi usa cosa: provider attivi, catena automatica e modello per entità.'));
+    outlet.appendChild(el('p', 'page-subtitle', 'Chi usa cosa: provider attivi e catena automatica di failover.'));
 
     outlet.appendChild(buildSectionShell('01', 'sec1', 'Provider attivi',
       'Riflesso della configurazione dell\'add-on. Per attivare o disattivare un provider vai su Impostazioni → Add-on → HIRIS → Configurazione.'));
     outlet.appendChild(buildSectionShell('02', 'sec2', 'Catena automatica',
       'Ordine di failover quando un\'entità è in "auto". Riordina con le frecce.', 'list'));
 
-    var sec3 = buildSectionShell('03', 'sec3', 'Assegnazione per entità',
-      'Ogni entità usa "auto" (segue la catena) o un modello esplicito.');
-    outlet.appendChild(sec3);
-    /* buildSectionShell già mette un placeholder "Caricamento…" in sec3-body;
-       lo sostituiamo con i due field-group Chatbot/Brain. Il terzo, Agentbot,
-       è uscito con la fetta E5 Task 6: rimandava a #/agentbots (rotta
-       cancellata) e affermava al presente che esiste un editor Agentbot dove
-       impostare il modello per singolo Agentbot -- non esiste piu' né
-       l'editor né l'entità, uscita col backend fra la E3 e la E4. */
-    var sec3body = byId('sec3-body');
-    clearEl(sec3body);
+    /* La sezione 03 originale del design doc ("Assegnazione per entità":
+       Chatbot + Brain) è uscita alla fetta E5 Task 7 -- vedi il commento
+       sopra renderSection4 per il perché. Embeddings diventa così la terza
+       e ultima sezione della pagina (id interno invariato "sec4", numero
+       mostrato "03"). */
+    outlet.appendChild(buildSectionShell('03', 'sec4', 'Embeddings',
+      'Usati per RAG e memoria semantica — non fanno parte della catena sopra.'));
 
-    var gChatbot = el('div', 'field-group');
-    gChatbot.appendChild(el('div', 'fg-label', 'Chatbot'));
-    var chatbotBody = el('div');
-    chatbotBody.id = 'sec3-chatbot-body';
-    chatbotBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
-    gChatbot.appendChild(chatbotBody);
-    sec3body.appendChild(gChatbot);
-
-    var gBrain = el('div', 'field-group');
-    gBrain.appendChild(el('div', 'fg-label', 'Brain'));
-    var brainBody = el('div');
-    brainBody.id = 'sec3-brain-body';
-    brainBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
-    gBrain.appendChild(brainBody);
-    sec3body.appendChild(gBrain);
-
-    outlet.appendChild(buildSectionShell('04', 'sec4', 'Embeddings',
-      'Usati per RAG e memoria semantica — non fanno parte della catena sopra e non sono assegnabili per entità.'));
-
-    providersReady = false;
-    agentsReady = false;
-    /* Sezione 4 parte con il placeholder "Caricamento…" di buildSectionShell;
-       viene popolata con i dati reali (o il fallback) da loadModelsAndConfig
-       una volta arrivato GET /api/models/config (Task 7-fix punto 7). */
+    /* La sezione "03" (Embeddings) parte con il placeholder "Caricamento…"
+       di buildSectionShell; viene popolata con i dati reali (o il
+       fallback) da loadModelsAndConfig una volta arrivato GET
+       /api/models/config (Task 7-fix punto 7). */
     loadModelsAndConfig();
-    loadChatbots();
   }
 
   window.HirisModelsRoute = { mount: mount };

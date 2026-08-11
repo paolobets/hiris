@@ -712,10 +712,11 @@ async def _on_startup(app: web.Application) -> None:
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
     # stata spostata).
-    # SP-2 Task 4: models-config store (chain_order + brain_model), letta prima
-    # della costruzione LLMRouter più sotto così il chain-build (Task 2 Step 5)
-    # può leggere chain_order, e prima di _holistic_reason (Brain) che legge
-    # brain_model.
+    # SP-2 Task 4: models-config store (chain_order), letta prima della
+    # costruzione LLMRouter più sotto così il chain-build (Task 2 Step 5) può
+    # leggere chain_order. Portava anche brain_model, uscito alla fetta E5
+    # Task 7: il Brain (_holistic_reason) che l'avrebbe letto è già uscito
+    # con la E3 -- vedi handlers_models.py.
     from .api.handlers_models import load_models_config
     app["models_config"] = load_models_config(data_dir)
 

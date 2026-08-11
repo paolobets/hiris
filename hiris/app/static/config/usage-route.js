@@ -16,7 +16,8 @@
     var outlet = document.getElementById('route-outlet');
     outlet.innerHTML =
       '<div class="page-title">Consumi globali</div>' +
-      '<p class="page-subtitle">Token, costi e budget per Chatbot. Stat aggregate dall\'avvio o dall\'ultimo reset.</p>' +
+      '<p class="page-subtitle">Token e costi complessivi, aggregati dall\'avvio o dall\'ultimo reset. ' +
+        'Il dettaglio per Chatbot non è misurato in questa versione — HIRIS gira su un\'unica chat, senza id.</p>' +
       '<div class="stat-grid" id="usage-global-grid">' +
         '<div class="stat-tile"><div class="st-label">Richieste</div><div class="st-value">—</div></div>' +
         '<div class="stat-tile"><div class="st-label">Token IN</div><div class="st-value">—</div></div>' +
@@ -25,10 +26,6 @@
       '</div>' +
       '<div style="margin-top:24px;display:flex;gap:8px">' +
         '<button class="btn btn-danger" id="usage-reset-global">↺ Azzera contatori globali</button>' +
-      '</div>' +
-      '<div class="dash-list" style="margin-top:24px">' +
-        '<h3>Per Chatbot <span class="right" id="usage-per-agent-count">—</span></h3>' +
-        '<div id="usage-per-agent-body"><div style="padding:24px;color:var(--text-3)">Caricamento…</div></div>' +
       '</div>';
 
     /* Global usage */
@@ -54,58 +51,14 @@
       if (grid) grid.innerHTML = '<div class="proposals-error" style="grid-column:1/-1">Errore caricamento consumi.</div>';
     });
 
-    /* Per-agent table */
-    fetch('api/chatbots').then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function(d) {
-      var list = Array.isArray(d) ? d : (d.agents || []);
-      var body = document.getElementById('usage-per-agent-body');
-      var countEl = document.getElementById('usage-per-agent-count');
-      if (countEl) countEl.textContent = list.length + ' totali';
-      if (!body) return;
-      if (!list.length) {
-        body.innerHTML = '<div style="padding:24px;color:var(--text-3)">Nessun Chatbot configurato.</div>';
-        return;
-      }
-      var sorted = list.slice().sort(function(a, b) {
-        var ea = a.enabled ? 1 : 0, eb = b.enabled ? 1 : 0;
-        if (eb !== ea) return eb - ea;
-        return (a.name || '').localeCompare(b.name || '');
-      });
-      body.innerHTML = sorted.map(function(a) {
-        var u = a.usage || {};
-        var tin = u.input_tokens || 0;
-        var tout = u.output_tokens || 0;
-        var cost = u.cost_eur || 0;
-        var reqs = u.requests || 0;
-        var budget = a.budget_limit_eur || a.usage_budget_eur || 0;
-        var pct = budget > 0 ? Math.round((cost / budget) * 100) : 0;
-        var paused = !!a._rate_limit_paused;
-        var enabled = !!a.enabled;
-        var rowCls = 'dl-row agent-row' + (enabled ? '' : ' is-disabled') + (paused ? ' is-paused' : '');
-        var badge = paused
-          ? '<span class="agent-badge badge-paused">⏸ in pausa</span>'
-          : (enabled
-              ? '<span class="agent-badge badge-on">● Attivo</span>'
-              : '<span class="agent-badge badge-off">○ Disabilitato</span>');
-        return '<a class="' + rowCls + '" href="#/chatbots/' + escHtml(a.id) + '">' +
-          '<span class="dl-time"><span class="dot ' + (paused ? 'iris' : (enabled ? 'on' : 'off')) + '"></span></span>' +
-          '<span class="dl-content">' +
-            '<span class="dl-agent">' + escHtml(a.name) + '</span>' +
-            '<span class="dl-text">' + reqs + ' run · ' + formatTokens(tin + tout) + ' tok · €' + Number(cost).toFixed(3) + (budget > 0 ? ' / €' + budget + ' (' + pct + '%)' : '') + '</span>' +
-          '</span>' +
-          badge +
-          '<span class="dl-arrow">→</span>' +
-        '</a>';
-      }).join('');
-    }).catch(function(err) {
-      console.error('usage per-agent fetch failed', err);
-      var body = document.getElementById('usage-per-agent-body');
-      var countEl = document.getElementById('usage-per-agent-count');
-      if (countEl) countEl.textContent = '—';
-      if (body) body.innerHTML = '<div class="proposals-error">Errore caricamento Chatbot.</div>';
-    });
+    /* fetta E5 Task 7 ("Consumi e Modelli smettono di mentire"): la tabella
+       "Per Chatbot" esce -- non era una rotta morta (GET api/chatbots
+       risponde), ma mentiva per omissione: i campi usage/budget_limit_eur/
+       _rate_limit_paused che leggeva non esistono piu' nel payload
+       (handlers_chatbots.handle_list_chatbots, dalla E4 Task 4 "un bot
+       solo") e degradavano tutti a zero -- sembrava un consumo azzerato, era
+       un consumo mai misurato per-entita'. Il sottotitolo qui sopra lo
+       dichiara invece di lasciarlo sparire in silenzio. */
 
     /* Reset button */
     var resetBtn = document.getElementById('usage-reset-global');
