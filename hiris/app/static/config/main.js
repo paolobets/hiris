@@ -53,16 +53,17 @@
       paint(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
 
-    /* Update Brain advisories count badge on Dashboard nav item — hide when 0
-       (SP-3 Task 9: #/ è la home del Brain, il badge segnala segnalazioni aperte) */
-    fetch('api/brain/advisories?status=open').then(function(r) { return r.ok ? r.json() : { advisories: [] }; })
-      .then(function(d) {
-        var el = document.getElementById('nav-adv-count');
-        if (!el) return;
-        var n = (d.advisories || []).length;
-        el.textContent = n;
-        el.classList.toggle('is-empty', n === 0);
-      }).catch(function() { /* silent */ });
+    /* fetta E5 Task 8: qui viveva l'ultimo badge della cornice, `#nav-adv-count`
+       sulla voce Dashboard. Interrogava `api/brain/advisories?status=open`, una
+       rotta uscita con la fetta E3 Task 6, e degradava in SILENZIO: il `.catch`
+       vuoto lasciava il badge a «—» e il ramo `r.ok ? ... : {advisories: []}`
+       scriveva `0` su un 404. Cioe' l'utente non poteva distinguere «nessuna
+       segnalazione» da «la rotta non esiste piu'» -- il difetto ricorrente n.1
+       di questo prodotto, dentro la cornice stessa. Non si sostituisce con un
+       altro contatore: la home ora e' «Cosa HIRIS sa», e cio' che HIRIS ignora
+       si legge nella pagina, con la sua fonte accanto, non in un numero senza
+       fonte appiccicato alla voce di menu. La cornice non fa piu' nessuna
+       fetch. */
   }
 
   function updateNavActive() {
@@ -70,7 +71,7 @@
     document.querySelectorAll('.nav-item[data-route]').forEach(function(item) {
       var route = item.getAttribute('data-route');
       var isActive =
-        (route === 'dashboard' && (hash === '#/' || hash === '')) ||
+        (route === 'conoscenza' && (hash === '#/' || hash === '')) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
         (route === 'history' && hash.indexOf('#/history') === 0) ||
@@ -95,12 +96,12 @@
      Task 6) e un modulo che la monta; il ramo `else` e' il degrado se lo
      script del modulo non ha caricato. */
   HirisRouter.register(/^#\/?$/, function() {
-    setCrumbHere('Dashboard');
+    setCrumbHere('Cosa HIRIS sa');
     if (window.HirisDashboard) {
       HirisDashboard.mount();
     } else {
       document.getElementById('route-outlet').innerHTML =
-        '<div class="page-title">Dashboard</div><p class="page-subtitle">Caricamento…</p>';
+        '<div class="page-title">Cosa HIRIS sa</div><p class="page-subtitle">Caricamento…</p>';
     }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {

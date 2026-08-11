@@ -51,12 +51,18 @@
       <span class="nav-label">Chat</span>
     </a>
     <div class="nav-section-label">Configurazione</div>
-    <a class="nav-item" href="#/" data-route="dashboard">
+    <!-- fetta E5 Task 8: la home della configurazione non e' piu' la
+         "Dashboard" del prodotto vecchio (chatbot da creare, proposte,
+         gateway): e' «Cosa HIRIS sa», la faccia di GET /api/casa e
+         GET /api/nucleo. Il badge `#nav-adv-count` che stava qui contava le
+         segnalazioni del Brain leggendo una rotta uscita con la fetta E3, e
+         mostrava `0` quando la rotta rispondeva 404: e' uscito con la sua
+         fonte, vedi config/main.js. -->
+    <a class="nav-item" href="#/" data-route="conoscenza">
       <span class="nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3H11v18H5.5A2.5 2.5 0 0 1 3 18.5z"/><path d="M21 5.5A2.5 2.5 0 0 0 18.5 3H13v18h5.5a2.5 2.5 0 0 0 2.5-2.5z"/></svg>
       </span>
-      <span class="nav-label">Dashboard</span>
-      <span class="nav-badge" id="nav-adv-count">—</span>
+      <span class="nav-label">Cosa HIRIS sa</span>
     </a>
     <!-- fetta E5 Task 2: i sette campi di ImpostazioniChat (prompt di
          sistema, modello, forma della risposta, ragionamento, tetto di turni,
@@ -112,16 +118,17 @@
   <!-- Scripts — ordine di dipendenze reali. Ogni file e' fingerprintato
        individualmente da _inject_version (server.py), quindi il cache-busting
        per-file e' automatico.
-       state → router → api → labels → proposals-core → (route) → main. -->
+       state → router → api → (route) → main.
+       fetta E5 Task 8: `labels.js` e `proposals-core.js` stavano qui in mezzo,
+       e la loro unica ragione di esistere era la vecchia Dashboard (lo
+       dichiarava questo stesso commento: «unico consumatore rimasto:
+       dashboard.js»). Con la riscrittura di dashboard.js sono rimasti senza
+       nessun consumatore -- e i loro soggetti erano gia' morti: le severita'
+       delle segnalazioni del Brain e le azioni su /api/proposals*, rotte
+       uscite con la fetta E3. Sono usciti col loro ultimo chiamante. -->
   <script src="static/config/state.js"></script>
   <script src="static/config/router.js"></script>
   <script src="static/config/api.js"></script>
-  <!-- Dizionario condiviso di etichette (severita' delle segnalazioni).
-       Unico consumatore rimasto: dashboard.js -- deve caricare prima. -->
-  <script src="static/config/labels.js"></script>
-  <!-- Azioni sulle proposte (approva/rifiuta + messaggio d'errore in
-       italiano). Unico consumatore rimasto: dashboard.js. -->
-  <script src="static/config/proposals-core.js"></script>
   <script src="static/config/dashboard.js"></script>
   <script src="static/config/usage-route.js"></script>
   <script src="static/config/models-route.js"></script>

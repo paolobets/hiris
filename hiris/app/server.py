@@ -1781,13 +1781,16 @@ def create_app() -> web.Application:
     # entrambi usciti).
     # fetta E3 Task 6: /api/brain/advisories* e' uscita con loro --
     # `handlers_brain.py` (che a questo punto conteneva solo le advisories)
-    # e' cancellato per intero. La Dashboard (static/config/dashboard.js:206,
-    # 257-258 e static/config/main.js:127) chiamava queste tre rotte per il
-    # pannello segnalazioni e il badge nella nav: restano rotte morte,
-    # elenco per la E5 (static/ non e' nel perimetro di questo task).
+    # e' cancellato per intero. La Dashboard e il badge della nav le
+    # chiamavano ancora, e degradavano in silenzio; la fetta E5 Task 8 ha
+    # raccolto quel debito: la home e' stata riscritta come «Cosa HIRIS sa»
+    # e il badge e' uscito con la sua fonte. Nessun chiamante superstite in
+    # `static/` -- verificato col grep in quel task.
 
     # Task 6 SDD casa: sola lettura, per guardare dal vivo cio' che l'archivio
     # ha ricostruito -- la suite verde non prova che la lettura funzioni.
+    # Dalla fetta E5 Task 8 e' anche la fonte della home della
+    # configurazione: vedi il commento di /api/nucleo piu' sotto.
     from .api.handlers_casa import handle_get_casa
     app.router.add_get("/api/casa", handle_get_casa)
 
@@ -1803,8 +1806,10 @@ def create_app() -> web.Application:
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
     # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.
-    # Stessa forma di /api/casa e /api/memoria: nessun frontend in questo
-    # task, si guarda dal browser.
+    # Nata senza faccia, come /api/casa e /api/memoria: dalla fetta E5
+    # Task 8 una faccia ce l'ha -- la home della configurazione
+    # (`static/config/dashboard.js`) legge questa rotta e /api/casa, e non
+    # ne ricalcola nessun dato per conto proprio.
     from .api.handlers_casa import handle_get_nucleo
     app.router.add_get("/api/nucleo", handle_get_nucleo)
 

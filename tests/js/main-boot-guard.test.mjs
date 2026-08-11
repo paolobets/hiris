@@ -43,7 +43,9 @@ const SOLO_LO_SCHELETRO = ['config/state.js', 'config/router.js', 'config/main.j
    divergono, o è uscita una pagina senza aggiornare il test, o ne è entrata
    una senza segnaposto. */
 const ROUTE = [
-  ['#/', 'Dashboard'],
+  // fetta E5 Task 8: la home non e' piu' la "Dashboard" del prodotto vecchio,
+  // e' «Cosa HIRIS sa» -- il segnaposto e la briciola sono cambiati con lei.
+  ['#/', 'Cosa HIRIS sa'],
   ['#/usage', 'Consumi'],
   ['#/models', 'Modelli'],
   ['#/history', 'Storicizzazione'],
@@ -52,9 +54,12 @@ const ROUTE = [
 
 function avvia() {
   const ctx = loadScripts(SOLO_LO_SCHELETRO, { html: HTML });
-  // mountChrome() (su DOMContentLoaded, che jsdom dispatcha in asincrono)
-  // fa la fetch del badge segnalazioni: stub per non sporcare l'output con
-  // richieste di rete reali o "fetch is not a function".
+  // fetta E5 Task 8: mountChrome() non fa piu' NESSUNA fetch -- il badge
+  // `#nav-adv-count`, che interrogava una rotta uscita con la fetta E3 e
+  // scriveva `0` sul suo 404, e' uscito con la sua fonte. Lo stub resta
+  // perche' questo test simula "nessun modulo di route caricato" e la
+  // cornice potrebbe tornare a fare rete in futuro: senza, un domani il
+  // fallimento sarebbe "fetch is not a function" invece del vero motivo.
   stubFetch(ctx.window, {});
   return ctx;
 }

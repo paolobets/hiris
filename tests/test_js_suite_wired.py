@@ -15,7 +15,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # "test" EFFETTIVO da package.json (non solo cerca "npm test" come
 # sottostringa nel workflow) e verifica un numero minimo di file
 # *.test.mjs, non solo "almeno uno".
-_MIN_JS_TEST_FILES = 10
+#
+# fetta E5 Task 8: la soglia era 10 ed e' stata RIANCORATA a 8, non abbassata
+# per far passare la suite. Il fatto che questa guardia sia scattata e' il suo
+# lavoro: va spiegato, non aggiustato in silenzio.
+#   - la soglia fu scritta quando `static/` conteneva il workbench intero
+#     (Chatbot, Agentbot, wizard, Task, Proposte, Gateway, Designer);
+#   - la fetta E5 lo fa uscire per intero, e con esso i test che avevano quei
+#     file come soggetto. A HEAD del Task 6 i file erano esattamente 10 --
+#     la soglia era gia' al pelo;
+#   - il Task 8 ne toglie 3 (`dashboard-feed-new`, `dashboard-proposals-apply`,
+#     `labels-dict`), ciascuno visto fallire per costruzione prima della
+#     cancellazione, e ne aggiunge 1 (`dashboard-conoscenza`): 8.
+# La soglia resta ANCORATA AL CONTEGGIO REALE, cioe' massimamente stretta:
+# cosi' continua a fare cio' per cui e' nata (rompersi su una cancellazione di
+# massa) invece di diventare un margine dentro cui si puo' erodere la suite
+# senza che nessuno se ne accorga. Chi la riabbassa deve scrivere qui perche',
+# come e' stato fatto ora.
+_MIN_JS_TEST_FILES = 8
 
 
 def _js_test_files():

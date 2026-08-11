@@ -834,23 +834,10 @@
   display: grid; place-items: center;
   flex-shrink: 0;
 }
-.nav-item .nav-badge {
-  margin-left: auto;
-  font-size: 10.5px; font-weight: 600;
-  background: var(--surface-3); color: var(--text-3);
-  padding: 1px 6px; border-radius: 999px;
-  font-family: var(--font-mono);
-}
-.nav-item.active .nav-badge {
-  background: var(--accent); color: var(--on-accent);
-}
-.nav-item .nav-badge.is-empty {
-  opacity: 0;
-  pointer-events: none;
-}
-.nav-item.active .nav-badge.is-empty {
-  opacity: 0;
-}
+/* fetta E5 Task 8: qui vivevano le quattro regole di `.nav-badge`, e il loro
+   unico portatore era `#nav-adv-count` sulla voce Dashboard -- un contatore
+   di segnalazioni del Brain su una rotta uscita con la fetta E3. La voce di
+   nav e' uscita col badge (config.html), le regole con lei. */
 .side-nav .nav-spacer { flex: 1; }
 
 /* ────────────────────────────────────────────────────────────
@@ -996,72 +983,18 @@
 }
 @media (max-width: 1023px) { .dash-cols { grid-template-columns: 1fr; } }
 
-/* Dashboard list atom (last logs / proposals / next triggers) */
-.dash-list {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  overflow: hidden;
-}
-.dash-list h3 {
-  padding: var(--sp-3) var(--sp-4);
-  font-size: var(--fs-13); font-weight: 600;
-  letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--text-3);
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: var(--sp-2);
-  margin: 0;
-}
-.dash-list h3 .right {
-  margin-left: auto;
-  font-weight: 400; text-transform: none;
-  letter-spacing: normal; font-size: var(--fs-12);
-  color: var(--text-3);
-  font-family: var(--font-mono);
-}
-.dl-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: var(--sp-3);
-  align-items: center;
-  padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--fs-13);
-  cursor: pointer;
-  transition: background 0.12s;
-  text-decoration: none;
-  color: inherit;
-}
-.dl-row:last-child { border-bottom: none; }
-.dl-row:hover { background: var(--hover); }
-.dl-row .dl-time {
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
-  color: var(--text-3);
-  width: 86px;
-}
-.dl-row .dl-content {
-  display: flex; flex-direction: column; gap: 2px;
-  min-width: 0;
-}
-.dl-row .dl-agent {
-  font-size: var(--fs-12);
-  color: var(--accent-ink); font-weight: 500;
-}
-.dl-row .dl-text {
-  color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.dl-row .dl-status {
-  font-family: var(--font-mono); font-size: var(--fs-12);
-  font-weight: 600;
-}
-.dl-row.agent-row {
-  grid-template-columns: auto 1fr auto auto;
-}
-.dl-row.agent-row .dl-arrow { color: var(--text-4); padding-left: var(--sp-2); }
-.dl-row.agent-row.is-disabled { opacity: 0.55; }
-.dl-row.agent-row.is-disabled .dl-agent { color: var(--text-2); }
+/* fetta E5 Task 8: qui vivevano `.dash-list*` (l'atomo "elenco della
+   dashboard": intestazione + righe) e tutta la famiglia `.dl-row*`. Il loro
+   unico portatore era la vecchia Dashboard -- le tre zone «Stream
+   ragionamenti / Segnalazioni / Proposte», che leggevano rotte uscite con la
+   fetta E3. La riscrittura in «Cosa HIRIS sa» usa `.section-card` come le
+   altre pagine della configurazione, e queste regole sono rimaste senza
+   nessun elemento in tutto `static/` (verificato col grep). Le varianti
+   `.dl-row.agent-row*` erano gia' morte da prima (l'elenco degli Agentbot,
+   uscito al Task 6) e escono ora con la famiglia da cui dipendevano: senza
+   `.dl-row` non potevano piu' selezionare niente comunque.
+   `.agent-badge*` qui sotto invece RESTA: e' viva, la usa
+   `config/models-route.js` per lo stato dei provider. */
 .agent-badge {
   font-size: var(--fs-12); font-weight: 500;
   padding: 2px var(--sp-2); border-radius: 999px;
@@ -1082,46 +1015,10 @@
   background: var(--accent-tint);
   border-color: var(--accent-tint-2);
 }
-.prop-card {
-  padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--border);
-}
-.prop-card:last-child { border-bottom: none; }
-.prop-card .prop-title {
-  font-size: var(--fs-13); font-weight: 500;
-  color: var(--text); margin-bottom: 2px;
-}
-.prop-card .prop-desc {
-  font-size: var(--fs-12); color: var(--text-3);
-  line-height: 1.5; margin-bottom: var(--sp-2);
-}
-.prop-card .prop-actions { display: flex; gap: var(--sp-1); }
-.adv-card {
-  padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--border);
-  border-left: 3px solid var(--border);
-}
-.adv-card:last-child { border-bottom: none; }
-.adv-card .adv-title {
-  font-size: var(--fs-13); font-weight: 500;
-  color: var(--text); margin-bottom: 2px;
-}
-.adv-card .prop-desc {
-  font-size: var(--fs-12); color: var(--text-3);
-  line-height: 1.5; margin-bottom: var(--sp-2);
-}
-.adv-card .adv-sev {
-  display: inline-block;
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px;
-  font-family: var(--font-mono); margin-bottom: 4px;
-}
-.adv-card.adv-info { border-left-color: var(--accent-tint-2, var(--border)); }
-.adv-card.adv-info .adv-sev { background: var(--accent-tint); color: var(--accent-ink); }
-.adv-card.adv-warn { border-left-color: var(--warn); }
-.adv-card.adv-warn .adv-sev { background: var(--warn-tint); color: var(--warn); }
-.adv-card.adv-high { border-left-color: var(--err); }
-.adv-card.adv-high .adv-sev { background: var(--err-tint); color: var(--err); }
+/* fetta E5 Task 8: `.prop-card*` e `.adv-card*` (le card delle proposte e
+   delle segnalazioni del Brain) avevano un unico portatore, la vecchia
+   Dashboard: la riscrittura in «Cosa HIRIS sa» le ha lasciate senza nessun
+   elemento in tutto `static/`, verificato col grep. Uscite con lei. */
 .next-trigger {
   padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--border);
@@ -1436,19 +1333,11 @@
   margin: 0;
 }
 
-/* "Nuovo dall'ultima visita" (issue live-verify #1, increment 2): un item del
-   feed (ragionamento/segnalazione/proposta) piu' recente dell'ultima apertura
-   riceve .feed-new -> un pulse di sfondo che sfuma. Solo background: nessuno
-   shift di layout. `border-radius` per non sbordare sulle card. */
-@keyframes hiris-feed-new {
-  0%   { background-color: var(--accent-tint); }
-  100% { background-color: transparent; }
-}
-.feed-new {
-  animation: hiris-feed-new 2.4s ease-out 1;
-  border-radius: var(--radius-2, 6px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .feed-new { animation: none; }
-}
+/* fetta E5 Task 8: qui viveva il pulse `.feed-new` ("nuovo dall'ultima
+   visita"). Marcava gli item del feed del Brain piu' recenti dell'ultima
+   apertura; il feed e' uscito con la fetta E3, la classe con la riscrittura
+   della Dashboard. La cronologia per-dispositivo che la alimentava stava in
+   `localStorage` sotto `hiris_feed_last_seen`: SILENZIO DICHIARATO -- la
+   chiave resta sui browser gia' usati e non serve piu' a niente, non e' un
+   file in /data e non si cancella da qui. */
 
