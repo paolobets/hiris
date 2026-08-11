@@ -53,8 +53,9 @@
 
     /* fetta E5 Task 7 ("Consumi e Modelli smettono di mentire"): la tabella
        "Per Chatbot" esce -- non era una rotta morta (GET api/chatbots
-       risponde), ma mentiva per omissione: i campi usage/budget_limit_eur/
-       _rate_limit_paused che leggeva non esistono piu' nel payload
+       rispondeva ancora, prima di uscire per intero alla fetta E5 Task 10),
+       ma mentiva per omissione: i campi usage/budget_limit_eur/
+       _rate_limit_paused che leggeva non esistevano piu' nel payload
        (handlers_chatbots.handle_list_chatbots, dalla E4 Task 4 "un bot
        solo") e degradavano tutti a zero -- sembrava un consumo azzerato, era
        un consumo mai misurato per-entita'. Il sottotitolo qui sopra lo

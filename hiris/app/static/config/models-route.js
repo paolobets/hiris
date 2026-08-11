@@ -11,8 +11,9 @@
    La sezione 03 originale del design doc ("Assegnazione per entità": Chatbot
    -> PUT api/chatbots/{id}, Brain -> PUT api/models/config brain_model) è
    uscita alla fetta E5 Task 7 ("Consumi e Modelli smettono di mentire"): il
-   ramo Chatbot faceva PUT su una rotta che non esiste per quel metodo (solo
-   GET /api/chatbots, vedi server.py) — ogni cambio di select falliva con
+   ramo Chatbot faceva PUT su una rotta che non esisteva per quel metodo
+   (solo GET rispondeva su /api/chatbots — rotta uscita per intero, GET
+   compreso, alla fetta E5 Task 10) — ogni cambio di select falliva con
    404, sel.value tornava al valore precedente e compariva il badge rosso; il
    ramo Brain scriveva brain_model, una configurazione senza più nessun
    lettore da quando il Brain è uscito con la E3. Il modello della chat si
@@ -465,9 +466,10 @@
      Brain che lo leggeva è uscito con la E3, zero lettori di produzione da
      allora (configurazione morta, tolta anche da handlers_models.py
      load/save nello stesso commit). renderSection3Chatbot faceva PUT
-     api/chatbots/{id} a ogni cambio di select: quella rotta non esiste per
-     il metodo PUT (solo GET, vedi server.py) — ogni salvataggio falliva con
-     404, sel.value tornava al valore precedente e compariva il badge rosso.
+     api/chatbots/{id} a ogni cambio di select: quella rotta non esisteva
+     per il metodo PUT (solo GET rispondeva — uscita anch'essa, per intero,
+     alla fetta E5 Task 10) — ogni salvataggio falliva con 404, sel.value
+     tornava al valore precedente e compariva il badge rosso.
      Il modello della chat si cambia dal Task 2 della E5 (impostazioni
      chat), dove è sempre dovuto stare. */
 

@@ -11,12 +11,13 @@ chiamante di produzione (due sole occorrenze in tutto il repo, entrambe in
 `tests/test_impostazioni_chat.py`). Per chi installa l'add-on senza aprire una
 shell dentro il container, quei sette campi erano di fatto costanti.
 
-**Il contratto e' nuovo, non la superficie di compatibilita' inglese.** Il
-payload usa i nomi italiani dei campi del dataclass (`nome`, `system_prompt`,
-`model`, `response_mode`, `thinking_budget`, `max_chat_turns`,
-`restrict_to_home`). `GET /api/chatbots` (`handlers_chatbots.py`) continua a
-esistere e a parlare inglese per la card Lovelace e la pagina chat: e' la
-superficie che questa fetta smonta al Task 10, e questo file **non la usa**.
+**Il contratto e' nuovo, non la superficie di compatibilita' inglese che
+c'era.** Il payload usa i nomi italiani dei campi del dataclass (`nome`,
+`system_prompt`, `model`, `response_mode`, `thinking_budget`,
+`max_chat_turns`, `restrict_to_home`). `GET /api/chatbots`
+(`handlers_chatbots.py`) parlava inglese per la card Lovelace e la pagina
+chat: questo file non l'ha mai usata, ed e' uscita per intero al Task 10 di
+questa fetta, col resto dei suoi ultimi chiamanti in `static/`.
 
 **Cosa si valida, e perche' non di piu'.** Un campo fuori intervallo, di tipo
 sbagliato o sconosciuto produce un **400 che dice quale campo e cosa non va**,
@@ -51,7 +52,8 @@ altra forma. E' lo stesso hot-update di
 application is deprecated") che quella riga produce gia' oggi in suite:
 aiohttp scoraggia la mutazione di `app` dopo l'avvio, ma qui non esiste un
 canale alternativo senza cambiare il tipo di `app["impostazioni_chat"]`, letto
-per riferimento da `handlers_chat.py` e `handlers_chatbots.py`. Dichiarato,
+per riferimento da `handlers_chat.py` (`handlers_chatbots.py` la leggeva
+anche lui, finche' non e' uscito al Task 10 della E5). Dichiarato,
 non taciuto.
 """
 from __future__ import annotations

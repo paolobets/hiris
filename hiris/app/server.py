@@ -11,7 +11,6 @@ import aiohttp
 from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
-from .api.handlers_chatbots import handle_list_chatbots
 from .api.handlers_entities import handle_list_entities
 from .api.handlers_config import handle_config
 from .api.handlers_usage import handle_usage, handle_reset_usage
@@ -1658,22 +1657,15 @@ def create_app() -> web.Application:
     # .../usage/reset) sono uscite -- erano le tre strade sopravvissute alla
     # E3 (wizard, editor vuoto, onboarding della chat) che creavano tutte
     # l'entita' gia' attiva, il contrario di quanto prescrive lo scope.
-    # GET /api/chatbots resta come superficie di compatibilita' dichiarata
-    # (Global Constraints, vedi handlers_chatbots.py). Chi la chiama, a oggi,
-    # non e' piu' la chat: il Task 3 di questa fetta l'ha staccata (nome e
-    # tetto di turni vengono da GET /api/impostazioni-chat, il "connesso" da
-    # GET api/health) e il Task 5 ha fatto uscire la card.
-    #
-    # Elenco aggiornato al Task 6, che ne ha fatti uscire QUATTRO dei sette
-    # (config/chatbots-list.js, config/chatbot-editor.js,
-    # config/tasks-route.js e il contatore in sidebar di config/main.js).
-    # Ne restano TRE, tutti nella SPA di configurazione:
-    #   - config/dashboard.js     -> esce al Task 8;
-    #   - config/models-route.js  -> esce al Task 7;
-    #   - config/usage-route.js   -> esce al Task 7.
-    # Il gate del Task 10 e' che `grep -rn "api/chatbots"
-    # hiris/app/static/` torni vuoto: oggi non lo e', e sono questi tre.
-    app.router.add_get("/api/chatbots", handle_list_chatbots)
+    # GET /api/chatbots e' restata come superficie di compatibilita'
+    # dichiarata (Global Constraints) finche' avesse un chiamante: la chat
+    # se n'e' staccata al Task 3 di questa fetta (nome e tetto di turni da
+    # GET /api/impostazioni-chat, il "connesso" da GET api/health), la card
+    # e' uscita dal prodotto al Task 5, e i tre chiamanti rimasti nella SPA
+    # di configurazione (config/dashboard.js, config/models-route.js,
+    # config/usage-route.js) sono usciti ai Task 7 e 8. Col gate verde
+    # (`grep -rn "api/chatbots" hiris/app/static/` a zero fetch, solo
+    # commenti storici) la rotta e il suo handler sono usciti col Task 10.
     app.router.add_get("/api/entities", handle_list_entities)
     # fetta E5 Task 4 ("il frontend"): erano
     # GET/DELETE /api/chatbots/{agent_id}/chat-history -- un placeholder

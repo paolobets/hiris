@@ -199,6 +199,69 @@ async def test_chat_con_chatbot_id_sconosciuto_non_rompe_e_ignora_lid(client):
 
 
 @pytest.mark.asyncio
+async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_path):
+    """fetta E5 Task 10: la lettura esplicita di `chatbot_id`/`agent_id`
+    (`_chatbot_id_ignorato = body.get(...)`, dieci righe di commento incluse)
+    esce da handlers_chat.py insieme all'ultimo chiamante della superficie
+    che la mandava. Il comportamento dichiarato dal commento cancellato --
+    "una richiesta che la porta non si comporta diversamente da una che la
+    omette" -- non era mai stato pinnato da un test: qui lo verifichiamo
+    davvero, non solo affermato. aiohttp non valida il corpo della request,
+    quindi una chiave extra nel JSON non fa differenza nemmeno senza un
+    `.get()` esplicito che la legga e la scarti.
+
+    Due app/data_dir indipendenti (non lo stesso `client`/tmp_path condiviso
+    delle altre prove qui sopra): la cronologia e' un'unica conversazione
+    incondizionata (fetta E4 Task 5), quindi due richieste sullo stesso store
+    differirebbero per `conversation_history` a prescindere da `chatbot_id`
+    -- un rumore che nasconderebbe il confronto, non lo farebbe."""
+    def _build(data_dir_name):
+        mock_ha = AsyncMock()
+        mock_ha.get_states = AsyncMock(return_value=[])
+        mock_ha.start = AsyncMock()
+        mock_ha.stop = AsyncMock()
+        mock_ha.add_state_listener = MagicMock()
+        mock_ha.start_websocket = AsyncMock()
+        mock_runner = AsyncMock()
+        mock_runner.chat = AsyncMock(return_value="stessa risposta")
+        mock_runner.last_tool_calls = []
+        app = create_app()
+        app["ha_client"] = mock_ha
+        app["impostazioni_chat"] = ImpostazioniChat(system_prompt="Prompt fisso.")
+        app["claude_runner"] = mock_runner
+        app["theme"] = "auto"
+        app["data_dir"] = str(tmp_path / data_dir_name)
+        app.on_startup.clear()
+        app.on_cleanup.clear()
+        return app, mock_runner
+
+    app_con, runner_con = _build("con")
+    client_con = await aiohttp_client(app_con)
+    resp_con = await client_con.post("/api/chat", json={
+        "message": "ciao",
+        "chatbot_id": "qualunque-cosa",
+    })
+    assert resp_con.status == 200
+    body_con = await resp_con.json()
+    kwargs_con = dict(runner_con.chat.call_args.kwargs)
+
+    app_senza, runner_senza = _build("senza")
+    client_senza = await aiohttp_client(app_senza)
+    resp_senza = await client_senza.post("/api/chat", json={"message": "ciao"})
+    assert resp_senza.status == 200
+    body_senza = await resp_senza.json()
+    kwargs_senza = dict(runner_senza.chat.call_args.kwargs)
+
+    # `dispatcher` e' un oggetto per-app (un'istanza di DispatcherConoscenza
+    # per `create_app()`), non qualcosa che `chatbot_id` influenza: due app
+    # indipendenti ne creano due identita' diverse per costruzione. Il tipo
+    # e' comunque lo stesso, a riprova che non e' un ramo di codice diverso.
+    assert type(kwargs_con.pop("dispatcher")) is type(kwargs_senza.pop("dispatcher"))
+    assert body_con == body_senza
+    assert kwargs_con == kwargs_senza
+
+
+@pytest.mark.asyncio
 async def test_config_endpoint_returns_theme(client):
     resp = await client.get("/api/config")
     assert resp.status == 200

@@ -372,16 +372,6 @@ async def handle_chat(request: web.Request) -> web.Response:
     if len(message) > 4000:
         return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
 
-    # "chatbot_id" is the wire key (SP-4 Fase A rename, "agent_id" the older
-    # pre-rename fallback) -- fetta E4 Task 4 ("un bot solo"): accepted but no
-    # longer used to SELECT anything. There is exactly one chat now
-    # (`ImpostazioniChat`, no id), so whatever id the client sends (or
-    # doesn't) makes no difference to which settings apply. Still read here
-    # (not just dropped) so a request carrying the key doesn't behave
-    # differently from one that omits it, and to document that this is a
-    # deliberate no-op, not an oversight -- the wire key itself dies with the
-    # frontend that sends it (fetta E5, Task 5 of this fetta's brief).
-    _chatbot_id_ignorato = body.get("chatbot_id") or body.get("agent_id")
     data_dir = request.app.get("data_dir", "/data")
     impostazioni = request.app["impostazioni_chat"]
 

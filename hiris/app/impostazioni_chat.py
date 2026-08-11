@@ -30,12 +30,6 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# L'unico bot esiste, non ha un id che lo distingua da altri -- questo e'
-# usato solo come chiave transitoria della cronologia (chat_store.py) e del
-# payload di compatibilita' (GET /api/chatbots, handlers_chatbots.py) finche'
-# quella superficie non si smonta insieme al frontend (fetta E5).
-ID_CHAT_DEFAULT = "hiris-default"
-
 _FILE_IMPOSTAZIONI = "impostazioni_chat.json"
 
 # Permessi del file: solo il proprietario legge e scrive -- stesso valore e

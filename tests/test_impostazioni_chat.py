@@ -8,9 +8,7 @@ import json
 
 import pytest
 
-from hiris.app.impostazioni_chat import (
-    ID_CHAT_DEFAULT, DEFAULT_SYSTEM_PROMPT, ImpostazioniChat,
-)
+from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat
 
 
 def test_default_e_completo_senza_argomenti():
@@ -89,11 +87,15 @@ def test_carica_system_prompt_vuoto_in_file_ricade_sul_default(tmp_path):
     assert imp.system_prompt == DEFAULT_SYSTEM_PROMPT
 
 
-def test_id_chat_default_e_hiris_default():
-    """Lo stesso id che il frontend gia' usa come chiave della cronologia
-    (static/chat/agents.js) -- non un valore nuovo che il client deve
-    imparare."""
-    assert ID_CHAT_DEFAULT == "hiris-default"
+# fetta E5 Task 10 ("esce la superficie di compatibilita'"): test_id_chat_
+# default_e_hiris_default pinnava `ID_CHAT_DEFAULT`, uscito da questo modulo
+# insieme al suo unico chiamante di produzione (handlers_chatbots.py --
+# `chat_store.py` non l'ha mai letto, nonostante il commento della costante
+# lo affermasse: gia' falso al presente prima di questo task). Il docstring
+# del test era anch'esso invecchiato: static/chat/agents.js non legge piu'
+# "hiris-default" da un pezzo (fetta E5 Task 4, vedi la sua intestazione).
+# Verificato che cadesse per costruzione (`ImportError: cannot import name
+# 'ID_CHAT_DEFAULT'`) prima della cancellazione.
 
 
 # ---------------------------------------------------------------------------
