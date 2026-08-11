@@ -25,8 +25,15 @@ logger = logging.getLogger(__name__)
 #    call failed ("Errore temporaneo del servizio AI...", rate-limit message,
 #    402-credit message). These add no information and dilute the prompt.
 # 3. fetta E4, fix della review totale (I5): i sentinella del RUNNER DEL PONTE
-#    (agent/runner.py: `[errore runner rc=...]`, `[runner non disponibile]`,
-#    `[vuoto]`, `[mock] risposta di prova`). Sono la stessa specie della #2 --
+#    (agent/runner.py). Sono CINQUE, e l'elenco va tenuto pari alla tupla
+#    `_TOXIC_ASSISTANT_PREFIXES` qui sotto: `[errore runner rc=...]`,
+#    `[runner non disponibile]`, `[vuoto]`, `[mock] risposta di prova` e
+#    `[flusso incompleto]` -- quest'ultimo aggiunto dalla fetta "il ponte
+#    riceve gli strumenti" (parita' B, Task 2) e rimasto fuori da questo
+#    elenco fino alla review totale della stessa fetta (I-6): un commento che
+#    ENUMERA e ne salta uno e' una dichiarazione falsa al presente, la classe
+#    di difetto che questa fetta ha gia' pagato quattro volte.
+#    Tutti e cinque sono la stessa specie della #2 --
 #    testo sintetico che non e' una risposta -- ma arrivano dall'altro capo,
 #    via `server._submit_chat_reply`, e non erano in nessun insieme qui: la
 #    review ha trovato due `[errore runner rc=3221226505]` gia' dentro

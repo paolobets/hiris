@@ -1674,8 +1674,15 @@ def create_app() -> web.Application:
     # dell'add-on. L'handler accetta inoltre la SOLA autenticazione a token
     # interno (`auth_via == "token"`): ne' l'ingress del Supervisor ne' la
     # valvola di sviluppo `HIRIS_ALLOW_NO_TOKEN` la aprono.
-    from .api.handlers_mcp import handle_mcp
+    from .api.handlers_mcp import handle_mcp, prepara_contatori
     app.router.add_post("/api/mcp", handle_mcp)
+    # M-2 della review totale della fetta: i contatori dei giri di strumento
+    # per turno si creano QUI, mentre l'app si compone, e non alla prima
+    # `tools/call` servita. Scrivere in `app[...]` a richiesta gia' servita fa
+    # emettere ad aiohttp «Changing state of started or joined application is
+    # deprecated» -- oggi un warning nell'output della suite, con aiohttp 4 un
+    # errore.
+    prepara_contatori(app)
 
     # fetta E3 Task 5: /api/brain/feed e /api/brain/reasoning sono uscite col
     # Brain auto-proponente (handle_brain_feed componeva reasoning_log/

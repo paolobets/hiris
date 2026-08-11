@@ -405,6 +405,65 @@ async def test_il_dizionario_dei_contatori_non_cresce_oltre_il_limite(rotta):
     assert len(contatori) <= handlers_mcp._MAX_TURNI_TRACCIATI
 
 
+@pytest.mark.asyncio
+async def test_un_turno_attivo_non_viene_mai_espulso(rotta):
+    """Review totale della fetta (M-1): la proprieta' che rende SANO il tetto,
+    e che fino a qui non aveva un test.
+
+    Il test qui sopra pinna solo che il dizionario sia LIMITATO -- e resterebbe
+    verde anche con un'espulsione FIFO, cioe' con la piu' VECCHIA per data di
+    nascita. Con una FIFO un turno lungo verrebbe espulso dopo
+    `_MAX_TURNI_TRACCIATI` turni altrui, il suo contatore ripartirebbe da zero
+    e **il tetto si aggirerebbe semplicemente durando**: chiamare 10 volte,
+    lasciar passare 64 turni, chiamare altre 10.
+
+    Cio' che il codice fa davvero e' LRU (`move_to_end` a ogni giro): il turno
+    che continua a chiamare si rimette in coda e non e' mai il candidato
+    all'espulsione. Qui lo si prova sull'EFFETTO, non sulla struttura -- un
+    turno «caldo» che chiama fino al tetto mentre `_MAX_TURNI_TRACCIATI` turni
+    usa-e-getta gli passano accanto, e la sua chiamata successiva che viene
+    **rifiutata**: se il contatore fosse ripartito, quella passerebbe."""
+    client, _ = rotta
+    caldo = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-caldo"}
+
+    # Il turno caldo consuma il suo tetto, ma **intervallato** da altrettanti
+    # turni nuovi: alla fine gliene sono passati accanto piu' di
+    # `_MAX_TURNI_TRACCIATI`, cioe' abbastanza da espellerlo per intero se
+    # l'espulsione guardasse la data di nascita.
+    per_giro = (handlers_mcp._MAX_TURNI_TRACCIATI
+                // handlers_mcp.MAX_GIRI_STRUMENTI) + 1
+    usa_e_getta = 0
+    for giro in range(handlers_mcp.MAX_GIRI_STRUMENTI):
+        risposta = await _chiama_cerca(client, giro, caldo)
+        corpo = await risposta.json()
+        assert "isError" not in corpo["result"], (
+            f"la chiamata {giro + 1} del turno caldo, DENTRO il tetto di "
+            f"{handlers_mcp.MAX_GIRI_STRUMENTI}, e' stata rifiutata")
+        for _ in range(per_giro):
+            usa_e_getta += 1
+            await _chiama_cerca(
+                client, 1000 + usa_e_getta,
+                {**INTESTAZIONI_CLI, "X-HIRIS-Turno": f"altro-{usa_e_getta}"})
+
+    assert usa_e_getta > handlers_mcp._MAX_TURNI_TRACCIATI, (
+        "il test non prova niente se i turni passati accanto sono meno della "
+        "capienza del dizionario: alzare `per_giro`")
+
+    risposta = await _chiama_cerca(client, 9999, caldo)
+    corpo = await risposta.json()
+    assert corpo["result"].get("isError") is True, (
+        "il turno caldo e' stato ESPULSO e il suo contatore e' ripartito da "
+        "zero: l'espulsione ha guardato la data di nascita (FIFO) invece "
+        "dell'ultimo uso (LRU), e il tetto per-turno si aggira semplicemente "
+        "durando -- 10 chiamate, 64 turni altrui, altre 10 chiamate")
+    testo = json.loads(corpo["result"]["content"][0]["text"])["errore"]
+    assert str(handlers_mcp.MAX_GIRI_STRUMENTI) in testo
+
+    # e la controprova che il dizionario e' rimasto limitato lo stesso: la
+    # proprieta' nuova non e' stata comprata rinunciando al tetto di memoria.
+    assert len(client.app["mcp_giri_per_turno"]) <= handlers_mcp._MAX_TURNI_TRACCIATI
+
+
 # ---------------------------------------------------------------------------
 # ⑥ -- le notifiche, e gli altri errori di protocollo
 # ---------------------------------------------------------------------------

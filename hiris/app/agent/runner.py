@@ -192,9 +192,10 @@ def config_mcp(base_url: str, token: str, id_turno: str = "") -> str:
         dichiarato e non nascosto**: il token diventa visibile nell'`argv` del
         processo dentro il container (decisione C.3.5 del progetto, consegnata
         alla fase sicurezze). Cio' che invece NON deve succedere e' che finisca
-        in un log: per questo `_logga_init` logga nome+stato dei server e mai
-        l'evento intero, e per questo nessun ramo di `_reason_chat` stampa
-        l'argv.
+        in un log: per questo `_logga_init` logga nome+stato dei server, la
+        versione della CLI e `apiKeySource` -- quattro campi scelti a mano, e
+        mai l'evento intero -- e per questo nessun ramo di `_reason_chat`
+        stampa l'argv.
     (2) **`X-Requested-With` oltre al token.** Il token da solo basterebbe --
         `csrf_middleware` esenta chi ne porta uno valido -- ma cosi' la rotta
         dipenderebbe da UN SOLO ramo di UN SOLO middleware. Mandandoli entrambi
@@ -480,28 +481,46 @@ def _chat_claude_args(system: str, user: str, model: str, *,
     fetta "il ponte riceve gli strumenti" (parita' B, Task 3): `strumenti_attivi`
     e' la META' ARGV dell'interruttore unico -- l'altra meta' e' la guida del
     prompt, e le due si leggono dalla stessa variabile in `_reason_chat`. Con
-    `True` si aggiungono tre opzioni, e nessuna e' facoltativa:
+    `True` si aggiungono due opzioni, e nessuna e' facoltativa:
 
     - `--mcp-config <stringa>`: la voce del server (vedi `config_mcp`);
-    - `--strict-mcp-config`: senza, la CLI userebbe ANCHE i server MCP
-      dell'ambiente, che non sono nostri -- il modello si troverebbe strumenti
-      che HIRIS non gli ha dato e che il prompt non nomina;
     - `--allowedTools <i quattro nomi>`: i nomi PREFISSATI di `nomi_mcp()`,
       derivati dal catalogo. Senza, gli strumenti sarebbero visibili e non
       permessi.
 
-    Con `False` l'argv e' ESATTAMENTE quello di prima di questo task: e' il ramo
-    di degrado, e deve restare byte per byte quello che il prompt senza
-    strumenti descrive."""
+    fetta "il ponte riceve gli strumenti", review totale (I-1):
+    `--strict-mcp-config` sta FUORI dall'`if`, cioe' su ENTRAMBI i rami, e non
+    e' una svista al contrario. Il flag non concede strumenti: li TOGLIE --
+    dice alla CLI di usare SOLO i server MCP che le passiamo noi e di ignorare
+    quelli dell'ambiente. Sul ramo con strumenti quello che resta e' il nostro;
+    sul ramo di degrado non resta NIENTE, che e' esattamente cio' che
+    `prompts._GUIDA_SENZA_STRUMENTI` afferma al modello («NON hai alcuno
+    strumento di HIRIS»).
+
+    Perche' non bastava lasciarlo dentro l'`if`: riprodotto dal vivo con
+    l'argv di produzione, il ramo di degrado caricava SEI server MCP
+    dell'ambiente e li offriva al modello mentre il prompt gli diceva di non
+    averne nessuno. E non e' un rischio teorico dell'ambiente di sviluppo:
+    `run.sh` esporta `CLAUDE_CONFIG_DIR=/data/claude` e `_safe_subprocess_env`
+    lo lascia passare, `/data` e' scrivibile dall'host (SSH/Samba/File
+    editor), e il giorno in cui qualcosa scrivesse `mcpServers` li' dentro il
+    prompt diventerebbe falso SENZA che nessuno tocchi questo codice. Il
+    costo e' misurato: col flag su entrambi i rami `mcp_servers = []`, la
+    lista `tools` risolta e' identica e `rc` e' identico.
+
+    Con `False` l'argv resta quello del ramo di DEGRADO: nessuna
+    `--mcp-config`, nessun `--allowedTools`, e il prompt che nega gli
+    strumenti resta vero per costruzione invece che per fortuna."""
     argv = ["claude", "-p", user, "--model", model,
             "--system-prompt", system,
             "--exclude-dynamic-system-prompt-sections",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default",
+            # Su entrambi i rami: vedi I-1 nel docstring.
+            "--strict-mcp-config",
             "--output-format", "stream-json", "--verbose"]
     if strumenti_attivi:
         argv += ["--mcp-config", mcp_config,
-                 "--strict-mcp-config",
                  "--allowedTools", ",".join(nomi_mcp())]
     return argv
 
@@ -844,18 +863,48 @@ def _logga_init(esito: EsitoFlusso, job_id) -> None:
     anche quando la verifica passa.
 
     Si logga il nome e lo stato di ogni server, non l'evento intero
-    (`_server_dichiarati`)."""
+    (`_server_dichiarati`).
+
+    Review totale della fetta (I-3): la riga porta anche **due campi che
+    l'`init` ha gia'** e che nessun altro posto dice.
+
+    - `claude_code_version`: il `Dockerfile` installa
+      `@anthropic-ai/claude-code@2`, che NON e' una versione pinnata -- due
+      build dello stesso codice possono avere due CLI diverse. Se «strumenti
+      risolti=N» cambia fra una build e l'altra, oggi nulla nel log dice
+      perche'; con la versione accanto, la prima domanda ha gia' la risposta.
+    - `apiKeySource`: e' l'**unica prova a runtime** che questo ponte stia
+      parlando con l'ABBONAMENTO e non con una chiave a consumo (`none` =
+      abbonamento). La promessa «solo abbonamento, mai API a consumo» e'
+      difesa dal codice da una sola cosa, `_SUBPROCESS_ENV_DENYLIST`, che e'
+      una denylist di due nomi: una denylist non puo' provare cio' che NON e'
+      passato, questo campo si'.
+
+    Review totale della fetta (I-5): il warning dell'`init` assente non manda
+    piu' a cercare `--verbose` per primo. La causa piu' frequente e' un'altra
+    -- la CLI e' morta prima di emettere l'evento, e allora il campo da
+    guardare e' `rc` -- e l'implementer del Task 7 ci ha perso un giro di
+    diagnosi dal vivo. Il messaggio elenca le cause senza sceglierne una:
+    affermarne una sola e' esattamente il modo in cui questa riga sviava."""
     if esito.init is None:
         log.warning(
-            "flusso stream-json senza evento system/init (job_id=%s): o "
-            "--verbose non e' arrivato alla CLI, o il formato e' cambiato. "
+            "flusso stream-json senza evento system/init (job_id=%s): l'init "
+            "non e' arrivato. Le cause possibili, in nessun ordine di colpa: "
+            "la CLI puo' essere morta prima di emetterlo (guardare rc e "
+            "stderr, che questo modulo logga a parte), oppure --verbose non e' "
+            "arrivato alla CLI, oppure il formato del flusso e' cambiato. "
             "Quando gli strumenti erano attesi questa assenza NON e' una "
             "conferma e vale come guasto: la decide `verifica_init`", job_id)
         return
     strumenti = esito.init.get("tools")
-    log.info("init del ponte (job_id=%s): mcp_servers=%s, strumenti risolti=%d",
-             job_id, _server_dichiarati(esito),
-             len(strumenti) if isinstance(strumenti, list) else 0)
+    log.info(
+        "init del ponte (job_id=%s): cli=%s, apiKeySource=%s, mcp_servers=%s, "
+        "strumenti risolti=%d",
+        job_id,
+        esito.init.get("claude_code_version"),
+        esito.init.get("apiKeySource"),
+        _server_dichiarati(esito),
+        len(strumenti) if isinstance(strumenti, list) else 0)
 
 
 def verifica_init(esito: EsitoFlusso) -> tuple[bool, str]:

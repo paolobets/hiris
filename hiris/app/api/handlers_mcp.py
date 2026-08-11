@@ -31,10 +31,18 @@ nata l'intera fetta E2. Non e' un secondo dispatcher: `tools/call` chiama
 Non e' un canale di azione: gli strumenti restano quattro e nessuno tocca Home
 Assistant -- HIRIS conosce e non agisce.
 
-**Nessuno la chiama ancora.** Il chiamante di produzione -- l'argv del ponte con
-`--mcp-config` -- nasce al Task 3 della stessa fetta. Fino ad allora la rotta e'
-un **orfano dichiarato** (`scripts/censimento.py` la conta fra le «rotte HTTP
-chiamate solo dai test»), non un orfano nascosto.
+**Chi la chiama.** Due chiamanti di produzione, entrambi in
+`hiris/app/agent/runner.py`: il sottoprocesso `claude` del ponte, a cui l'argv
+passa questa rotta nella voce `--mcp-config` (`config_mcp`), e la sonda
+`tools/list` che il runner fa PRIMA di comporre il turno (`sonda_strumenti`),
+per decidere se il prompt puo' affermare i quattro strumenti. La registrazione
+in `server.py` (`app.router.add_post("/api/mcp", handle_mcp)`) porta lo stesso
+elenco: i due file devono restare d'accordo.
+
+Fra il Task 1 e il Task 3 di questa fetta la rotta e' stata un **orfano
+dichiarato** -- `scripts/censimento.py` la contava fra le «rotte HTTP chiamate
+solo dai test» -- mai un orfano nascosto. Col Task 3 l'orfano e' stato raccolto
+e il censimento e' tornato a 43.
 """
 from __future__ import annotations
 
@@ -103,9 +111,39 @@ MAX_GIRI_STRUMENTI = 10
 # ponte dura al piu' i due `subprocess.run(timeout=300)` di
 # `agent/runner.py::_reason_chat`, la sua identita' non serve piu' un istante
 # dopo, e tenerne migliaia sarebbe una perdita di memoria scritta apposta.
-# Le piu' vecchie si scartano (FIFO, `OrderedDict.popitem(last=False)`)
-# quando se ne affaccia una nuova e il tetto e' gia' pieno.
+# L'espulsione e' **LRU, non FIFO** (l'etichetta era sbagliata fino alla
+# review totale della fetta, M-1): `_conta_giro` fa `move_to_end` a ogni
+# chiamata, quindi l'`OrderedDict` e' ordinato per ULTIMO USO e
+# `popitem(last=False)` scarta il turno che tace da piu' tempo, non quello
+# iniziato per primo. La differenza non e' terminologica: e' cio' che rende
+# vera la proprieta' portante di questo tetto -- **un turno ancora attivo non
+# viene mai espulso**, per quanti altri turni gli passino accanto. Con una
+# FIFO vera un turno lungo verrebbe scartato dopo `_MAX_TURNI_TRACCIATI`
+# turni altrui e il suo contatore ripartirebbe da zero, cioe' il tetto si
+# potrebbe aggirare semplicemente durando. La proprieta' e' pinnata in
+# `tests/test_rotta_mcp.py::test_un_turno_attivo_non_viene_mai_espulso`.
 _MAX_TURNI_TRACCIATI = 64
+
+# La chiave sotto cui i contatori vivono nell'`Application`. Costante e non una
+# stringa ripetuta: chi la crea (`server.create_app`) e chi la legge
+# (`_conta_giro`) devono per forza nominare la stessa cosa.
+CHIAVE_GIRI_PER_TURNO = "mcp_giri_per_turno"
+
+
+def prepara_contatori(app) -> None:
+    """Crea la struttura dei contatori **prima che l'app parta**.
+
+    M-2 della review totale della fetta. Prima, `_conta_giro` la creava con
+    `app.setdefault(...)` alla prima `tools/call` servita: aiohttp lo vede
+    come una modifica dello stato di un'applicazione gia' avviata ed emette
+    «Changing state of started or joined application is deprecated» -- oggi un
+    `DeprecationWarning` visibile nell'output della suite, con **aiohttp 4 un
+    errore**. Lo stato di un'app aiohttp si compone in `create_app()`, cioe'
+    prima del `freeze`, e non a richiesta servita.
+
+    Non e' `setdefault`: chiamarla due volte sulla stessa app azzererebbe i
+    contatori, e non esiste nessun motivo per chiamarla due volte."""
+    app[CHIAVE_GIRI_PER_TURNO] = OrderedDict()
 
 
 def _risposta(id_richiesta, risultato: dict) -> web.Response:
@@ -162,9 +200,18 @@ def _conta_giro(app, id_turno: str) -> int:
 
     **Dimensione limitata** (`_MAX_TURNI_TRACCIATI`, "le ultime N identita' di
     turno" del brief): quando arriva un'identita' MAI vista e il dizionario e'
-    gia' pieno, la piu' vecchia (FIFO) si scarta prima di inserire quella
-    nuova."""
-    contatori: OrderedDict[str, int] = app.setdefault("mcp_giri_per_turno", OrderedDict())
+    gia' pieno, si scarta quella usata da PIU' TEMPO -- LRU e non FIFO, ed e'
+    il `move_to_end` qui sotto a farne la differenza. Un turno che continua a
+    chiamare si rimette in coda a ogni giro e non puo' essere espulso: se lo
+    fosse, il suo contatore ripartirebbe da zero e il tetto si aggirerebbe
+    durando (vedi il commento su `_MAX_TURNI_TRACCIATI`).
+
+    **La struttura la crea `server.create_app()`**, non questa funzione (M-2
+    della review totale): scriverla qui, a richiesta gia' servita, faceva
+    emettere ad aiohttp «Changing state of started or joined application»,
+    che con aiohttp 4 diventa un errore. Lo stato di un'app aiohttp si compone
+    prima che l'app parta."""
+    contatori: OrderedDict[str, int] = app[CHIAVE_GIRI_PER_TURNO]
     if id_turno in contatori:
         contatori.move_to_end(id_turno)
         giri = contatori[id_turno]

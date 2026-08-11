@@ -698,12 +698,19 @@ def test_argv_del_ponte_collega_esattamente_i_quattro_strumenti():
 
 
 def test_argv_del_ponte_senza_strumenti_resta_quello_di_prima():
-    """Il ramo di DEGRADO, e l'asserzione vecchia parola per parola.
+    """Il ramo di DEGRADO: nessuno strumento, e nessuno che ne arrivi da fuori.
 
     Quando la sonda non trova gli strumenti il ponte compone il prompt che li
     nega: l'argv deve corrispondere, o il prompt torna a mentire nel verso
     opposto. Questo test deve restare onesto PER SEMPRE -- non e' un residuo
-    della fetta precedente, e' l'altra meta' dell'interruttore."""
+    della fetta precedente, e' l'altra meta' dell'interruttore.
+
+    Review totale della fetta (I-1): «nessuno strumento» ha DUE condizioni, non
+    una. Non basta che il ponte non ne PASSI (`--mcp-config`/`--allowedTools`
+    assenti): serve anche che la CLI non ne PRENDA per conto suo
+    (`--strict-mcp-config`). Il pin di questo test e' stato ribaltato per
+    questo -- prima chiedeva l'assenza del flag per simmetria con l'altro ramo,
+    ed era l'unico assert del file senza un motivo scritto."""
     argv = runner._chat_claude_args("SYS", "USER", "sonnet")
     opzioni = _normalizza(argv)
 
@@ -719,7 +726,16 @@ def test_argv_del_ponte_senza_strumenti_resta_quello_di_prima():
     assert "allowedtools" not in opzioni, (
         f"--allowedTools (o il suo alias --allowed-tools) e' comparso nell'argv "
         f"senza strumenti ({argv!r}): " + _perche)
-    assert "strictmcpconfig" not in opzioni
+    assert "strictmcpconfig" in opzioni, (
+        f"--strict-mcp-config e' sparito dall'argv del ramo di DEGRADO "
+        f"({argv!r}). Qui il flag non e' una simmetria con l'altro ramo: e' "
+        f"cio' che RENDE VERO il prompt che nega gli strumenti. Senza, la CLI "
+        f"carica ANCHE i server MCP dell'ambiente (verificato dal vivo: SEI "
+        f"server offerti al modello mentre prompts._GUIDA_SENZA_STRUMENTI gli "
+        f"dice «NON hai alcuno strumento di HIRIS»), e l'ambiente non lo "
+        f"controlliamo noi -- `run.sh` esporta CLAUDE_CONFIG_DIR=/data/claude "
+        f"e /data e' scrivibile dall'host. Il flag non CONCEDE strumenti, li "
+        f"TOGLIE: toglierlo di qui rimette il prompt alla fortuna.")
     assert "disallowedtools" in opzioni, (
         f"il divieto sui tool LOCALI del CLI (shell/fs del container addon) e' "
         f"sparito da argv ({argv!r}): il prompt non e' l'unica difesa, e questa "

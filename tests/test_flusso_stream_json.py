@@ -21,13 +21,21 @@ from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 
 # ── i mattoni dei flussi finti ───────────────────────────────────────────────
 
-def _init(mcp_servers=None, tools=None):
-    return json.dumps({
+def _init(mcp_servers=None, tools=None, **extra):
+    # I due campi in coda (`claude_code_version`, `apiKeySource`) NON sono
+    # inventati per il test: sono quelli che la CLI vera emette davvero
+    # nell'evento `init` -- verificati dal vivo su `claude 2.1.227`
+    # (task-7-report.md §2 e la review totale della fetta, voce I-3).
+    evento = {
         "type": "system", "subtype": "init",
         "cwd": "/app", "session_id": "S-1", "model": "claude-sonnet-4",
         "tools": tools if tools is not None else ["Task", "Bash"],
         "mcp_servers": mcp_servers if mcp_servers is not None else [],
-    })
+        "claude_code_version": "2.1.227",
+        "apiKeySource": "none",
+    }
+    evento.update(extra)
+    return json.dumps(evento)
 
 
 def _assistant(testo):
@@ -244,6 +252,36 @@ def test_init_e_loggato_ma_non_agito(caplog):
     assert "strumenti risolti=2" in init_log[0]
 
 
+def test_l_init_loggato_dice_anche_con_quale_cli_e_con_quale_credenziale(caplog):
+    """Review totale della fetta (I-3): due campi che l'`init` porta gia' e che
+    nessun altro posto dice.
+
+    - `claude_code_version`: il `Dockerfile` installa
+      `@anthropic-ai/claude-code@2`, NON pinnata. Se «strumenti risolti=N»
+      cambia fra due build, senza questo campo il log non dice perche'.
+    - `apiKeySource`: e' l'UNICA prova a runtime che il ponte parli con
+      l'ABBONAMENTO e non con una chiave a consumo. Oggi quella promessa e'
+      difesa dal codice da `_SUBPROCESS_ENV_DENYLIST`, cioe' da una denylist
+      di due nomi -- e una denylist non puo' provare cio' che NON e' passato.
+    """
+    with caplog.at_level(logging.INFO, logger="hiris.agent"):
+        _reason(_flusso(
+            _init(claude_code_version="2.1.227", apiKeySource="none"),
+            _result("ok")))
+    riga = next(m for m in (r.getMessage() for r in caplog.records)
+                if m.startswith("init del ponte"))
+
+    assert "2.1.227" in riga, (
+        f"la versione della CLI e' sparita dalla riga di init ({riga!r}): "
+        "il Dockerfile installa `@anthropic-ai/claude-code@2`, non una "
+        "versione pinnata -- senza questo campo un N diverso fra due build "
+        "resta senza spiegazione")
+    assert "apiKeySource=none" in riga, (
+        f"`apiKeySource` e' sparito dalla riga di init ({riga!r}): e' l'unica "
+        "prova a runtime che questo turno sia andato sull'abbonamento e non "
+        "su una chiave a consumo")
+
+
 def test_in_questo_task_i_server_mcp_sono_la_lista_vuota(caplog):
     # La condizione attesa OGGI: nessun `--mcp-config` nell'argv, quindi
     # nessun server. Se un giorno questa riga loggasse un server senza che
@@ -257,14 +295,37 @@ def test_in_questo_task_i_server_mcp_sono_la_lista_vuota(caplog):
 
 
 def test_flusso_senza_init_e_dichiarato(caplog):
-    # `--verbose` non arrivato alla CLI, o formato cambiato: non e' uno dei
-    # cinque esiti della reply (l'init non serve a rispondere, in questo task),
-    # ma non passa in silenzio.
+    # La CLI morta prima, `--verbose` non arrivato, o formato cambiato: non e'
+    # uno dei cinque esiti della reply (l'init non serve a rispondere, in
+    # questo task), ma non passa in silenzio.
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
         reply = _reason(_flusso(_result("ok")))
     assert reply == "ok"
     righe = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert any("senza evento system/init" in m for m in righe), righe
+
+
+def test_il_warning_dell_init_assente_non_accusa_una_causa_sola(caplog):
+    """Review totale della fetta (I-5): il messaggio elencava DUE cause
+    (`--verbose` mancante, formato cambiato) e taceva quella che l'implementer
+    del Task 7 ha davvero incontrato -- la CLI morta prima di emettere
+    l'evento. Chi legge questa riga in UAT viene mandato a controllare l'argv
+    mentre il dato che serve e' `rc`. Il messaggio deve nominare **tutte e
+    tre** le cause e non sceglierne nessuna: e' una diagnosi, non un verdetto.
+    """
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        _reason(_flusso(_result("ok")))
+    riga = next(m for m in (r.getMessage() for r in caplog.records)
+                if "senza evento system/init" in m)
+
+    assert "rc" in riga, (
+        f"il warning non nomina piu' `rc` ({riga!r}): e' il primo campo da "
+        "guardare quando la CLI e' morta prima dell'init, ed e' proprio la "
+        "causa che questa riga taceva")
+    assert "--verbose" in riga and "formato" in riga, (
+        f"il warning ha perso una delle altre due cause ({riga!r}): "
+        "restringere l'elenco a una sola causa e' il difetto che I-5 ha "
+        "chiuso, non importa QUALE causa resti")
 
 
 # ── la misura del Task 2, Step 4: l'usage loggato a ogni turno ──────────────
