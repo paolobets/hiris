@@ -120,6 +120,17 @@ la chat e si parla con HIRIS. Le impostazioni della conversazione (il modello,
 il tono, il prompt) hanno i loro valori nel codice; se le avevi personalizzate,
 vivono in un file.
 
+**La schermata «Benvenuto in HIRIS» al primo avvio non c'è più.** Chiedeva di
+creare un secondo assistente in un prodotto che ne ha uno solo: su
+un'installazione nuova non trovava mai niente da offrire, e il pulsante «Crea»
+falliva sempre con un errore — era la primissima cosa che un'installazione
+nuova mostrava, ed era rotta. Ora si apre direttamente sulla chat, già pronta,
+con l'assistente predefinito attivo. Il dare un nome e delle istruzioni proprie
+a quell'assistente avrà una pagina sua (Configurazione → conversazione) in una
+prossima versione. Se il tuo browser aveva già visto la schermata, resta nel
+suo `localStorage` una chiave inerte (`hiris_onboarding_v1`) che non serve più
+a nulla: non viene ripulita, perché non c'è più codice che la legga.
+
 **Gli assistenti in più che avevi creato non vengono più caricati.** Il file che
 li conteneva **resta intatto sul disco** — non è stato cancellato — e HIRIS ne
 dichiara la presenza nel log all'avvio. Attenzione a una cosa: un prompt
@@ -145,9 +156,6 @@ chat nuova. Se ne avevi uno e ci tieni, riprendilo dal file prima di riscriverlo
 Sono i pezzi di interfaccia rimasti indietro rispetto al prodotto. Sono
 elencati qui perché **non li scopra tu**:
 
-- **L'onboarding compare a ogni installazione nuova e il pulsante «Crea» dà
-  errore.** «Salta» funziona ed è la strada giusta: non c'è niente da creare,
-  l'assistente è già lì.
 - **L'editor dell'assistente**: Salva, Elimina e Test Run danno errore, e i
   riquadri che non hanno più una fonte si mostrano vuoti.
 - **Le impostazioni della chat non hanno una pagina.** Il modello si sceglie da

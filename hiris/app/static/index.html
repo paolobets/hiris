@@ -24,43 +24,6 @@
 </head>
 <body>
 
-<!-- Onboarding wizard -->
-<div id="onboarding" style="display:none" role="dialog" aria-modal="true" aria-label="Benvenuto in HIRIS">
-  <div class="ob-card">
-    <div class="ob-progress">
-      <div class="ob-dot active" id="ob-dot-0"></div>
-      <div class="ob-dot" id="ob-dot-1"></div>
-    </div>
-
-    <div class="ob-step active" id="ob-step-0">
-      <img src="static/hiris-icon.svg" class="ob-icon" alt="HIRIS">
-      <div class="ob-title">Benvenuto in HIRIS</div>
-      <div class="ob-sub">Il tuo Chatbot per Home Assistant.<br>Creiamo il primo assistente — meno di un minuto.</div>
-      <div class="ob-actions">
-        <button class="btn ob-btn-skip" type="button" id="ob-btn-skip-0">Salta</button>
-        <button class="btn btn-primary ob-btn-next" type="button" id="ob-btn-start">Inizia &#8594;</button>
-      </div>
-    </div>
-
-    <div class="ob-step" id="ob-step-1">
-      <div class="ob-title">Configura il tuo Chatbot</div>
-      <div class="ob-sub">Pochi dettagli per iniziare — potrai modificarli in seguito dalla Configurazione.</div>
-      <div class="ob-field">
-        <label>Nome assistente</label>
-        <input type="text" id="ob-name" placeholder="Es: Iris, Monitor Energia…" maxlength="60">
-      </div>
-      <div class="ob-field">
-        <label>Istruzioni (opzionale)</label>
-        <textarea id="ob-prompt" placeholder="Descrivi come deve comportarsi questo assistente…"></textarea>
-      </div>
-      <div class="ob-actions">
-        <button class="btn ob-btn-skip" type="button" id="ob-btn-back-1">&#8592; Indietro</button>
-        <button class="btn btn-primary ob-btn-next" id="ob-create-btn" type="button">Crea assistente &#10003;</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div id="app">
   <div id="sidebar-overlay" style="display:none"></div>
   <aside id="sidebar">
@@ -229,7 +192,6 @@
 <script src="static/chat/proposals.js"></script>
 <script src="static/chat/knowledge-core.js"></script>
 <script src="static/chat/knowledge.js"></script>
-<script src="static/chat/onboarding.js"></script>
 <script src="static/chat/sidebar.js"></script>
 <script src="static/chat/keyboard.js"></script>
 <script src="static/chat/main.js"></script>

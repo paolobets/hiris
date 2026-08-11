@@ -16,7 +16,7 @@ CHAT = STATIC / "chat"
 
 EXPECTED_CHAT_FILES = (
     "state.js", "messages.js", "agents.js", "send.js", "theme.js",
-    "tasks.js", "proposals.js", "onboarding.js", "sidebar.js", "keyboard.js", "main.js",
+    "tasks.js", "proposals.js", "sidebar.js", "keyboard.js", "main.js",
 )
 
 
@@ -78,16 +78,3 @@ def test_only_one_poll_chat_reply_implementation_on_this_surface():
     send_js = (CHAT / "send.js").read_text(encoding="utf-8")
     assert send_js.count("function pollChatReply") == 1
     assert "function pollChatReply" not in INDEX.read_text(encoding="utf-8")
-
-
-def test_onboarding_no_longer_sends_stale_type_and_triggers_fields():
-    """Chatbot creation (POST api/chatbots) has no `type`/`triggers` field
-    since the SP-4 Fase B rename (see handlers_chatbots.py
-    ::_validate_chatbot_payload / config/create-wizard.js) -- the old
-    3-choice onboarding wizard (Monitor/Chat/Reattivo) sent those fields
-    regardless of the choice, so every option silently created the same
-    plain Chatbot. Rebuilt to 2 steps (Benvenuto -> Nome+Istruzioni)."""
-    ob = (CHAT / "onboarding.js").read_text(encoding="utf-8")
-    assert "payload.triggers" not in ob and "triggers:" not in ob
-    assert "obSelectType" not in ob
-    assert "type: backendType" not in ob

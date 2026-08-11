@@ -4,21 +4,23 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* SP-4 Fase B Task 8: rebuild della pagina chat standalone (static/index.html).
    Il JS inline (~610 righe) è stato estratto in static/chat/*.js, uno per
-   blocco funzionale (state/messages/agents/send/theme/tasks/onboarding/
-   sidebar/keyboard/main) -- vedi task-8-report.md per il dettaglio dello
-   split. Questi sono i test comportamentali richiesti dal piano (tabella
-   "Test comportamentali richiesti per task", riga 8): invio -> POST con
-   chatbot_id, risposta 202 -> il polling completa, turn-limit blocca
-   l'invio, il pannello task carica e cancella.
+   blocco funzionale (state/messages/agents/send/theme/tasks/sidebar/keyboard/
+   main) -- vedi task-8-report.md per il dettaglio dello split. L'onboarding
+   che faceva parte di quell'elenco è uscito con la fetta E5 Task 1 (C1: il
+   primo gesto del primo utilizzo dava un errore). Questi sono i test
+   comportamentali richiesti dal piano (tabella "Test comportamentali
+   richiesti per task", riga 8): invio -> POST con chatbot_id, risposta 202
+   -> il polling completa, turn-limit blocca l'invio, il pannello task carica
+   e cancella.
 
    Fixture HTML: replica il sottoinsieme di static/index.html che estato.js/
    chat/*.js toccano al load (state.js cattura i riferimenti DOM
    IMMEDIATAMENTE, non dentro un DOMContentLoaded -- lo script vive in fondo
    al <body>, col markup già presente, esattamente come il vecchio <script>
-   inline). Solo chat/main.js esegue side-effect (boot(): fetch, setInterval,
-   onboarding) al caricamento -- per questo NON è mai incluso qui: ogni test
-   carica solo i moduli che gli servono e li pilota a mano, come fa
-   entity-picker.test.mjs con config/*.js. */
+   inline). Solo chat/main.js esegue side-effect (boot(): fetch, setInterval)
+   al caricamento -- per questo NON è mai incluso qui: ogni test carica solo
+   i moduli che gli servono e li pilota a mano, come fa entity-picker.test.mjs
+   con config/*.js. */
 
 function fixtureHtml() {
   return `<!doctype html><body>
