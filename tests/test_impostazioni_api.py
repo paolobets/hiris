@@ -324,3 +324,53 @@ async def test_client_diretto_senza_token_resta_negato(tmp_path, monkeypatch):
     app.on_cleanup.clear()
     async with TestClient(TestServer(app)) as c:
         assert (await c.get(ROTTA)).status == 401
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1, I-1: un corpo JSON valido ma non codificabile in UTF-8
+# ---------------------------------------------------------------------------
+
+# Il payload si compone con chr(92) invece di scrivere il backslash: la
+# sequenza \ud800 dentro una stringa JSON e' un surrogato SPAIATO -- json.loads
+# lo accetta e produce una `str` Python legittima, che pero' json.dump non sa
+# riscrivere. E' il testo che arriva da una clipboard rotta o da una sorgente
+# malformata, incollato nel prompt di sistema.
+_SURROGATO = chr(92) + "ud800"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("campo", ["system_prompt", "nome", "model"])
+async def test_put_con_un_surrogato_spaiato_e_400_parlante_non_500(client, campo):
+    """Prima del fix round 1 questo era l'UNICO buco nella promessa «ogni
+    corpo sbagliato produce un 400 che dice quale campo»: `valida()` verificava
+    il tipo e non la codificabilita', e l'`UnicodeEncodeError` di `json.dump`
+    (che NON e' un `OSError`) usciva come 500 col traceback."""
+    await client.put(ROTTA, json={"nome": "Valore precedente"})
+    prima = _su_disco(client)
+
+    corpo = '{"' + campo + '": "A' + _SURROGATO + 'B"}'
+    resp = await client.put(ROTTA, data=corpo,
+                            headers={"Content-Type": "application/json"})
+    assert resp.status == 400, f"atteso 400, ricevuto {resp.status}"
+    body = await resp.json()
+    assert body["campo"] == campo
+    assert "UTF-8" in body["error"]
+    assert campo in body["error"]
+    # Del carattere si dice la posizione, mai il valore.
+    assert "posizione 1" in body["error"]
+
+    assert _su_disco(client) == prima, "un corpo rifiutato non deve toccare il file"
+    assert client.app["impostazioni_chat"].nome == "Valore precedente"
+
+
+@pytest.mark.asyncio
+async def test_il_surrogato_arriva_davvero_fino_a_valida(client):
+    """Guardia del test qui sopra: se un giorno aiohttp/json rifiutassero il
+    surrogato PRIMA di `valida()`, i test sopra passerebbero per il motivo
+    sbagliato (400 da un altro punto). Qui si verifica che il valore attraversi
+    `json.loads` intatto, cioe' che il caso da difendere esista ancora."""
+    import json as _json
+    caricato = _json.loads('{"system_prompt": "A' + _SURROGATO + 'B"}')
+    assert len(caricato["system_prompt"]) == 3
+    with pytest.raises(UnicodeEncodeError):
+        caricato["system_prompt"].encode("utf-8")

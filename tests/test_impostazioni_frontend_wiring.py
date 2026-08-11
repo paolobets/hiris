@@ -16,9 +16,54 @@ import re
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
-HTML = (BASE / "config.html").read_text(encoding="utf-8")
-MAIN = (BASE / "config" / "main.js").read_text(encoding="utf-8")
-ROUTE = (BASE / "config" / "impostazioni-route.js").read_text(encoding="utf-8")
+
+
+def _senza_commenti_js(testo: str) -> str:
+    r"""Il sorgente JS coi commenti a blocco sostituiti da spazi.
+
+    Fix round 1, I-3 (la variante lieve). Queste guardie sono testuali, quindi
+    un COMMENTO che nomina la cosa cercata le soddisfa esattamente come il
+    codice vero -- lo stesso vizio per cui la guardia su `salva()` e' passata
+    all'AST. Qui l'AST non c'e' (non si vuole un parser JavaScript in questa
+    suite per tre `assert`), ma togliere i commenti chiude la falla concreta:
+    ogni commento di `static/config/*.js` in questo repo e' un blocco
+    `/* ... */`, e i due file guardati qui non fanno eccezione.
+
+    Limite dichiarato, non nascosto: i commenti di riga `// ...` NON vengono
+    tolti, perche' toglierli con una regex mangerebbe le barre dentro le
+    stringhe e i letterali di espressione regolare (`/^#\/impostazioni\/?$/`).
+    Se un giorno questi file ne usassero, la guardia tornerebbe soddisfabile
+    da un commento di riga. Un `assert` qui sotto lo pinna, cosi' il limite si
+    accorge da solo di essere stato superato.
+    """
+    return re.sub(r"/\*.*?\*/", " ", testo, flags=re.S)
+
+
+def _senza_commenti_html(testo: str) -> str:
+    """L'HTML coi commenti sostituiti da spazi, stessa ragione di sopra."""
+    return re.sub(r"<!--.*?-->", " ", testo, flags=re.S)
+
+
+HTML = _senza_commenti_html((BASE / "config.html").read_text(encoding="utf-8"))
+MAIN = _senza_commenti_js((BASE / "config" / "main.js").read_text(encoding="utf-8"))
+ROUTE = _senza_commenti_js((BASE / "config" / "impostazioni-route.js").read_text(encoding="utf-8"))
+
+
+def test_i_due_file_guardati_non_usano_commenti_di_riga():
+    """Il presupposto di `_senza_commenti_js`, verificato invece che sperato.
+
+    Si cerca `//` a inizio riga (dopo spazi): e' la forma che un commento di
+    riga assume in questo stile di codice, e nessuna stringa o regex letterale
+    puo' cominciare cosi'."""
+    for nome, testo in (("main.js", "config/main.js"),
+                        ("impostazioni-route.js", "config/impostazioni-route.js")):
+        grezzo = (BASE / testo).read_text(encoding="utf-8")
+        righe = [i for i, r in enumerate(grezzo.splitlines(), 1) if r.lstrip().startswith("//")]
+        assert not righe, (
+            f"{nome} usa commenti di riga alle righe {righe}: le guardie testuali "
+            "di questo file tornerebbero soddisfabili da un commento -- vedi "
+            "_senza_commenti_js"
+        )
 
 
 def test_lo_script_e_dichiarato_in_config_html():

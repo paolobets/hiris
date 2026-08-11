@@ -49,6 +49,35 @@ def _is_conn_error(exc: Exception) -> bool:
 
 logger = logging.getLogger(__name__)
 
+
+def avvisa_thinking_ignorato(backend_noun: str, thinking_budget: int) -> None:
+    """Dice nel log che `thinking_budget` non viene applicato su questo backend.
+
+    fetta E5 Task 2, fix round 1 (I-2). Fino a qui le due `del
+    thinking_budget` qui sotto erano MUTE, col commento «intentionally ignored
+    here (no warning: legitimately unused)» -- ed era vero finche' quel valore
+    non poteva essere cambiato da nessuna interfaccia. Dal Task 2 della fetta
+    E5 l'utente lo imposta dalla pagina «Impostazioni chat», legge «Salvato», e
+    su OpenAI/OpenRouter/Ollama non succede niente: nessun ragionamento esteso
+    e nessuna riga che lo dica. E' il difetto n.1 di questo prodotto -- il
+    silenzio -- nella sua forma peggiore, perche' l'impostazione risulta
+    salvata.
+
+    Non si tenta di emulare il ragionamento esteso: il protocollo
+    OpenAI-compatibile non espone un budget per richiesta, e inventarne uno
+    sarebbe peggio. Si dichiara, una volta per turno e solo se il valore e'
+    diverso da zero (a 0 non c'e' niente da dire: e' il default).
+    """
+    if thinking_budget:
+        logger.warning(
+            "thinking_budget=%d NON viene applicato: %s parla il protocollo "
+            "OpenAI-compatibile, che non espone un budget di ragionamento per "
+            "richiesta. L'impostazione resta salvata ma non ha effetto qui: il "
+            "ragionamento esteso vale solo con i modelli Claude sul percorso "
+            "diretto (claude_runner.py).",
+            thinking_budget, backend_noun,
+        )
+
 AUTO_MODEL_MAP: dict[str, str] = {
     "chat":  "gpt-4o",
     "agent": "gpt-4o-mini",
@@ -461,8 +490,13 @@ class OpenAICompatRunner:
         # OpenRouter don't surface a comparable per-request budget knob in the
         # OpenAI-compatible spec — Ollama uses `extra_body={"think": False}`
         # for reasoning-default models, applied unconditionally below.
-        # The kwarg is accepted to match the LLMRouter common signature; it
-        # is intentionally ignored here (no warning: legitimately unused).
+        # The kwarg is accepted to match the LLMRouter common signature. Fino
+        # al fix round 1 del Task 2 della fetta E5 qui c'era scritto
+        # "intentionally ignored here (no warning: legitimately unused)": la
+        # seconda meta' e' diventata falsa nel momento in cui l'utente ha
+        # potuto impostare quel valore dalla pagina. Vedi
+        # `avvisa_thinking_ignorato` in cima al file.
+        avvisa_thinking_ignorato(self._backend_noun, thinking_budget)
         del thinking_budget
         import openai as _openai
 
@@ -760,7 +794,10 @@ class OpenAICompatRunner:
         divergenti per la stessa conversazione, esattamente il difetto che
         questa fetta esiste per chiudere.
         """
-        # See chat() for rationale on accepting+ignoring thinking_budget here.
+        # See chat() for rationale on accepting+ignoring thinking_budget here
+        # -- avviso incluso (fix round 1, I-2): il ramo SSE serve la card
+        # Lovelace, dove il silenzio sarebbe identico.
+        avvisa_thinking_ignorato(self._backend_noun, thinking_budget)
         del thinking_budget
         import openai as _openai
 

@@ -873,3 +873,63 @@ async def test_chat_healthy_backend_behavior_unchanged(tmp_path):
 # allowed_tools/allowed_entities puo' piu' far comparire "render_template" in
 # un catalogo che non lo contiene: tre dei sei test fallivano gia' per
 # costruzione, gli altri tre erano diventati vacui.
+
+
+# ---------------------------------------------------------------------------
+# fetta E5 Task 2, fix round 1 (I-2): il silenzio su thinking_budget si chiude
+# ---------------------------------------------------------------------------
+
+def test_thinking_budget_ignorato_lo_dice_nel_log(caplog):
+    """Prima di questo fix le due `del thinking_budget` di questo runner erano
+    MUTE, col commento «no warning: legitimately unused» -- vero finche' quel
+    valore si poteva cambiare solo scrivendo a mano il JSON in /data. Dal Task
+    2 della fetta E5 l'utente lo imposta dalla pagina, legge «Salvato», e su
+    OpenAI/OpenRouter/Ollama non succedeva niente e nessuno lo diceva."""
+    from hiris.app.backends.openai_compat_runner import avvisa_thinking_ignorato
+
+    with caplog.at_level("WARNING"):
+        avvisa_thinking_ignorato("Il backend locale", 8000)
+    detto = " ".join(r.getMessage() for r in caplog.records)
+    assert "thinking_budget=8000" in detto, "il valore scartato va detto, non genericamente 'ignorato'"
+    assert "NON viene applicato" in detto
+    assert "Il backend locale" in detto
+    assert "resta salvata" in detto, "deve dire che l'impostazione risulta salvata"
+
+
+def test_thinking_budget_a_zero_non_dice_niente(caplog):
+    """A 0 non c'e' niente da dichiarare: e' il default, e un warning per turno
+    su ogni installazione sarebbe rumore che insegna a ignorare i log."""
+    from hiris.app.backends.openai_compat_runner import avvisa_thinking_ignorato
+
+    with caplog.at_level("WARNING"):
+        avvisa_thinking_ignorato("Il servizio AI", 0)
+    assert not [r for r in caplog.records if "thinking_budget" in r.getMessage()]
+
+
+def test_entrambi_i_percorsi_del_runner_avvisano():
+    """`chat()` e `chat_stream()` scartano entrambi il parametro: il ramo SSE
+    serve la card Lovelace, dove il silenzio sarebbe identico. Guardia sul
+    sorgente perche' esercitare i due loop agentici richiederebbe un finto
+    server OpenAI completo -- il comportamento del messaggio e' gia' coperto
+    dai due test sopra."""
+    import ast
+    import inspect
+
+    from hiris.app.backends import openai_compat_runner as modulo
+
+    albero = ast.parse(inspect.getsource(modulo))
+    chiamate = [
+        n for n in ast.walk(albero)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        and n.func.id == "avvisa_thinking_ignorato"
+    ]
+    assert len(chiamate) == 2, (
+        "ogni punto che scarta thinking_budget deve dichiararlo: attesi 2 "
+        f"(chat, chat_stream), trovati {len(chiamate)}"
+    )
+    scarti = [
+        n for n in ast.walk(albero)
+        if isinstance(n, ast.Delete)
+        and any(isinstance(t, ast.Name) and t.id == "thinking_budget" for t in n.targets)
+    ]
+    assert len(scarti) == len(chiamate), "uno scarto muto e' rientrato"

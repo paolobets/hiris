@@ -256,3 +256,22 @@ test('se l\'elenco dei modelli non arriva si ricade su un campo di testo, e lo s
     /Non è stato possibile leggere l'elenco dei modelli/,
     'il degrado si dichiara, non si subisce in silenzio');
 });
+
+// ---------------------------------------------------------------------------
+// Fix round 1 (I-2): la descrizione di thinking_budget non promette piu' un
+// log che su due percorsi su tre non esisteva.
+// ---------------------------------------------------------------------------
+
+test('la descrizione di thinking_budget dice DOVE vale, e non promette effetto ovunque', async () => {
+  const { window, document } = montaConServer();
+  window.HirisImpostazioniRoute.mount();
+  await tick(20);
+
+  const testo = document.getElementById('route-outlet').textContent;
+  assert.match(testo, /Vale solo con i modelli Claude sul percorso diretto/,
+    'il tester deve sapere prima di scrivere il valore che altrove non ha effetto');
+  assert.match(testo, /OpenAI, OpenRouter, Ollama/);
+  assert.match(testo, /modalità abbonamento/);
+  assert.doesNotMatch(testo, /viene disattivato comunque e il log lo dice/,
+    'la vecchia frase era vera su un percorso su tre: era una dichiarazione falsa al presente');
+});

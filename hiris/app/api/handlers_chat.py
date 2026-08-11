@@ -279,6 +279,26 @@ async def _enqueue_chat_job(
             (request.app.get("models_config") or {}).get("provider_models", {}).get("claude", ""),
         )),
     }
+    # fetta E5 Task 2, fix round 1 (I-2): il `context` qui sopra porta sei
+    # chiavi e `thinking_budget` NON e' fra loro -- il ponte parla con la CLI
+    # dell'abbonamento, che non espone un budget di ragionamento per turno.
+    # Finche' quel valore si poteva cambiare solo scrivendo a mano il JSON in
+    # /data l'omissione era innocua; da quando l'utente lo imposta dalla
+    # pagina «Impostazioni chat» e legge «Salvato», tacere qui significa
+    # lasciarlo davanti a un'impostazione che risulta salvata e non fa niente,
+    # senza una riga da nessuna parte. Si dichiara al momento
+    # dell'accodamento, una volta per turno e solo se e' diverso da zero.
+    if impostazioni.thinking_budget:
+        logger.warning(
+            "thinking_budget=%d NON viene applicato a questo turno: passa dal "
+            "ponte per abbonamento, che parla con la CLI di Claude Code e non "
+            "espone un budget di ragionamento per richiesta. L'impostazione "
+            "resta salvata ma non ha effetto qui: il ragionamento esteso vale "
+            "solo con i modelli Claude sul percorso diretto (chat_via_"
+            "subscription spento).",
+            impostazioni.thinking_budget,
+        )
+
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 

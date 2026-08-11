@@ -123,11 +123,41 @@ def _tipo(valore) -> str:
 
 
 def _testo(body: dict, chiave: str, corrente: str) -> str:
+    """Il valore di un campo di testo, verificato ANCHE come scrivibile.
+
+    Fix round 1, I-1. `isinstance(valore, str)` verifica il TIPO, non la
+    CODIFICABILITA': una stringa Python puo' contenere un surrogato spaiato
+    (un U+D800 isolato) -- JSON valido in ingresso, `str` a tutti gli effetti
+    -- che il `json.dump` di `ImpostazioniChat.salva()` rifiuta con
+    `UnicodeEncodeError`. Quell'eccezione NON e' un `OSError`, quindi non
+    veniva catturata dal chiamante e usciva come 500 col traceback: era
+    l'unico buco nella promessa «ogni corpo sbagliato produce un 400 che dice
+    quale campo». E non e' teorico -- e' cio' che si prende un tester che
+    incolla nel prompt di sistema del testo copiato da una sorgente
+    malformata.
+
+    Si controlla QUI, dentro la validazione, invece di allargare l'`except` a
+    valle: il rifiuto deve nominare il campo come tutti gli altri, e la regola
+    «si valida tutto prima di toccare il disco» resta vera per costruzione,
+    non per fortuna.
+    """
     if chiave not in body:
         return corrente
     valore = body[chiave]
     if not isinstance(valore, str):
         raise Rifiuto(chiave, f"«{chiave}» deve essere testo, non {_tipo(valore)}.")
+    try:
+        valore.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        # Del carattere si dice la POSIZIONE, mai il valore: stessa disciplina
+        # di `token_interno.motivo_token_non_valido`, e un prompt di sistema
+        # intero dentro un messaggio d'errore sarebbe illeggibile in pagina.
+        raise Rifiuto(
+            chiave,
+            f"«{chiave}» contiene un carattere non rappresentabile in UTF-8 "
+            f"(posizione {exc.start}): di solito significa che il testo e' "
+            "stato incollato da una sorgente malformata. Ricopialo e riprova.",
+        ) from None
     return valore
 
 

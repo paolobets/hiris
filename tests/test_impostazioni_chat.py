@@ -102,29 +102,57 @@ def test_id_chat_default_e_hiris_default():
 # sopravvivere ai riavvii (token_interno._scrivi_token).
 # ---------------------------------------------------------------------------
 
-def test_salva_ha_un_chiamante_di_produzione():
-    r"""Il difetto che il Task 2 della fetta E5 chiude, pinnato dove si vede.
+def _chiamate_a_salva():
+    r"""Le chiamate `qualcosa.salva(...)` in `hiris/app`, trovate con l'AST.
 
-    Fino a quel task `\.salva(` compariva due volte in tutto il repo, ed
-    erano entrambe in questo file: i sette campi si potevano cambiare SOLO
-    scrivendo a mano `/data/impostazioni_chat.json`. Se questo test tornasse a
-    fallire significherebbe che la superficie HTTP che li salva e' uscita
-    senza sostituto, cioe' che il buco si e' riaperto."""
-    import re
+    Fix round 1, I-3. La prima versione di questa guardia cercava
+    `\.salva\(` con una regex riga per riga, scartando solo le righe che
+    cominciano con `#`. Una DOCSTRING la soddisfaceva: la prosa in cima a
+    `api/handlers_impostazioni.py` contiene la frase «`ImpostazioniChat.salva()`
+    non aveva nessun chiamante», che combacia col pattern e nomina il file
+    cercato -- quindi entrambe le asserzioni sarebbero rimaste verdi anche
+    cancellando la chiamata vera.
+
+    E' esattamente il limite che il report di questo task imputa al censimento
+    («il rilevatore crede il nome citato»), riprodotto dentro il test scritto
+    per rimediarvi. Con l'AST la prosa smette di contare: si cercano nodi
+    `Call` il cui `func` e' un `Attribute` di nome `salva`, cioe' chiamate
+    vere. Verificato per mutazione (vedi il report): cancellando la riga della
+    chiamata e lasciando la docstring, il test diventa rosso.
+    """
+    import ast
     from pathlib import Path
 
     app = Path(__file__).resolve().parents[1] / "hiris" / "app"
-    chiamanti = []
-    for f in app.rglob("*.py"):
-        for i, riga in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-            if re.search(r"\.salva\(", riga) and not riga.lstrip().startswith("#"):
-                chiamanti.append(f"{f.name}:{i}")
+    trovate = []
+    for f in sorted(app.rglob("*.py")):
+        try:
+            albero = ast.parse(f.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover - un file non parsabile e' gia' un guasto suo
+            continue
+        for nodo in ast.walk(albero):
+            if (isinstance(nodo, ast.Call)
+                    and isinstance(nodo.func, ast.Attribute)
+                    and nodo.func.attr == "salva"):
+                trovate.append(f"{f.name}:{nodo.lineno}")
+    return trovate
+
+
+def test_salva_ha_un_chiamante_di_produzione():
+    """Il difetto che il Task 2 della fetta E5 chiude, pinnato dove si vede.
+
+    Fino a quel task le uniche chiamate a `ImpostazioniChat.salva()` in tutto
+    il repo erano le due di questo file: i sette campi si potevano cambiare
+    SOLO scrivendo a mano `/data/impostazioni_chat.json`. Se questo test
+    tornasse a fallire significherebbe che la superficie HTTP che li salva e'
+    uscita senza sostituto, cioe' che il buco si e' riaperto."""
+    chiamanti = _chiamate_a_salva()
     assert chiamanti, (
         "ImpostazioniChat.salva() non ha nessun chiamante di produzione: i sette "
         "campi tornerebbero a essere modificabili solo scrivendo a mano il JSON "
         "in /data"
     )
-    assert any("handlers_impostazioni" in c for c in chiamanti), chiamanti
+    assert any(c.startswith("handlers_impostazioni.py:") for c in chiamanti), chiamanti
 
 
 def test_salva_non_lascia_il_temporaneo_se_la_scrittura_fallisce(tmp_path, monkeypatch):

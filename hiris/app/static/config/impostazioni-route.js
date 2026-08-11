@@ -186,9 +186,19 @@ window.HirisImpostazioniRoute = (function () {
     campo(body, 'Forma della risposta',
       'Quanto deve essere asciutta la risposta.', selModo);
 
+    /* Fix round 1 (I-2). La versione precedente prometteva «viene disattivato
+       comunque e il log lo dice», ed era vero su UN percorso su tre: sugli
+       altri due (OpenAI/OpenRouter/Ollama via openai_compat_runner, e il ponte
+       per abbonamento) il valore veniva scartato senza una riga. Le due righe
+       di log ora ci sono, ma la descrizione non le promette come se
+       l'impostazione avesse effetto ovunque: dice PRIMA dove vale, che e' cio'
+       che serve a chi sta decidendo quanto scrivere. */
     var thinking = campo(body, 'Budget di ragionamento (token)',
-      '0 disattiva il ragionamento esteso. Sotto i 1024 token, o su un modello ' +
-      'che non lo supporta, viene disattivato comunque e il log lo dice.',
+      '0 disattiva il ragionamento esteso. Vale solo con i modelli Claude sul ' +
+      'percorso diretto: sugli altri backend (OpenAI, OpenRouter, Ollama) e in ' +
+      'modalità abbonamento resta salvato ma non ha effetto, e il log lo dice a ' +
+      'ogni turno. Anche sul percorso diretto, sotto i 1024 token o su un modello ' +
+      'che non lo supporta viene disattivato.',
       input('number', dati.thinking_budget));
     thinking.min = '0';
 

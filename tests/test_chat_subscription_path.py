@@ -647,3 +647,47 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     finally:
         archivio_casa.chiudi()
         archivio_memoria.chiudi()
+
+
+# ---------------------------------------------------------------------------
+# fetta E5 Task 2, fix round 1 (I-2): thinking_budget non attraversa il ponte,
+# e da oggi lo dice. Il pin dell'INSIEME ESATTO delle sei chiavi (sopra)
+# certifica l'ASSENZA; questo certifica che l'assenza non sia piu' MUTA.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_path, caplog):
+    """Il tester imposta 8000 dalla pagina «Impostazioni chat», legge
+    «Salvato», e in modalita' abbonamento non ottiene nessun ragionamento
+    esteso: la CLI di Claude Code non ha un budget per richiesta da ricevere.
+    Fino al fix round 1 non c'era una riga da nessuna parte -- l'impostazione
+    risultava salvata e non faceva niente, in silenzio."""
+    app, q, runner, impostazioni, data_dir = _make_app(
+        tmp_path, chat_via_subscription=True, with_queue=True)
+    app["impostazioni_chat"] = ImpostazioniChat(
+        nome="test-agent", system_prompt="You are a helpful assistant.",
+        thinking_budget=8000,
+    )
+    with caplog.at_level("WARNING"):
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/chat", json={"message": "ciao"})
+            assert resp.status == 202
+
+    detto = " ".join(r.getMessage() for r in caplog.records)
+    assert "thinking_budget=8000" in detto, "il valore scartato va detto"
+    assert "NON viene applicato" in detto
+    assert "resta salvata" in detto, "deve dire che l'impostazione risulta salvata"
+    # L'assenza dal context resta vera e non si aggira: la certifica il pin
+    # dell'insieme esatto delle sei chiavi, qui sopra in questo stesso file.
+
+
+@pytest.mark.asyncio
+async def test_il_ponte_non_dice_niente_con_thinking_budget_a_zero(tmp_path, caplog):
+    """A 0 (il default) non c'e' niente da dichiarare: un warning a ogni turno
+    su ogni installazione sarebbe rumore che insegna a ignorare i log."""
+    app, q, runner, impostazioni, data_dir = _make_app(
+        tmp_path, chat_via_subscription=True, with_queue=True)
+    with caplog.at_level("WARNING"):
+        async with TestClient(TestServer(app)) as client:
+            assert (await client.post("/api/chat", json={"message": "ciao"})).status == 202
+    assert not [r for r in caplog.records if "thinking_budget" in r.getMessage()]
