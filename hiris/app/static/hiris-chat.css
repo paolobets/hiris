@@ -578,69 +578,6 @@
       background: var(--err-tint, rgba(192,57,43,.08));
       border-radius: var(--r-sm); padding: 6px 10px; margin-bottom: 8px;
     }
-    /* Coda della memoria (chat) — stesso linguaggio visivo di #proposals-panel */
-    #knowledge-panel { display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 28px; min-height: 0; }
-    #knowledge-panel-header { display: none; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    #knowledge-panel-header span { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
-    .kb-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--r); padding: 12px 16px; margin-bottom: 8px;
-    }
-    .kb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .kb-kind {
-      font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
-      font-family: var(--font-mono); color: var(--accent-ink);
-      background: var(--accent-tint); padding: 2px 8px; border-radius: 999px;
-    }
-    /* Il marchio "sensibile" sta accanto al tipo, non in fondo: chi approva
-       deve vederlo prima di decidere, non dopo. */
-    .kb-flag {
-      font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
-      font-family: var(--font-mono); color: var(--err, #c0392b);
-      background: var(--err-tint, rgba(192,57,43,.08)); padding: 2px 8px; border-radius: 999px;
-    }
-    .kb-date { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); margin-left: auto; }
-    .kb-title { font-weight: 500; font-size: 13.5px; color: var(--text); margin-bottom: 3px; }
-    .kb-content { font-size: 12.5px; color: var(--text-2); line-height: 1.4; margin-bottom: 6px; white-space: pre-wrap; }
-    /* Contenuto coperto: si legge come "c'e' qualcosa qui, ma non e' in
-       chiaro", non come testo vero. */
-    .kb-masked { color: var(--text-3); font-style: italic; }
-    .kb-reveal {
-      background: none; border: 1px solid var(--border); color: var(--text-2);
-      border-radius: var(--r-sm); padding: 3px 10px; font-size: 11.5px;
-      cursor: pointer; margin-bottom: 8px;
-    }
-    .kb-reveal:hover { background: var(--hover); color: var(--text); }
-    .kb-meta { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); margin-bottom: 4px; }
-    .kb-origin { font-size: 11.5px; color: var(--text-3); margin-bottom: 10px; }
-    .kb-error { color: var(--err, #c0392b); }
-    .kb-actions { display: flex; gap: 8px; }
-    .kb-approve, .kb-discard {
-      border-radius: var(--r-sm); padding: 5px 14px; font-size: 12.5px; cursor: pointer;
-      border: 1px solid var(--border);
-    }
-    .kb-approve { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
-    .kb-approve:hover { filter: brightness(1.05); }
-    .kb-discard { background: none; color: var(--text-2); }
-    .kb-discard:hover { background: var(--hover); color: var(--text); }
-    @media (pointer: coarse) {
-      .kb-approve, .kb-discard, .kb-reveal { min-height: 44px; padding: 8px 16px; }
-    }
-    #mobile-knowledge-btn {
-      display: none; align-items: center; gap: 6px;
-      background: none; border: 1px solid var(--border); border-radius: var(--r-sm);
-      padding: 5px 10px; color: var(--text-2); font-size: 12px; cursor: pointer;
-    }
-    #mobile-knowledge-btn:hover { background: var(--hover); color: var(--text); }
-    #mobile-knowledge-btn.active { color: var(--accent); border-color: var(--accent); }
-    #mobile-knowledge-badge {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-width: 16px; height: 16px; border-radius: 8px;
-      background: var(--accent); color: var(--on-accent);
-      font-size: 10px; font-weight: 700; padding: 0 4px; font-family: var(--font-mono);
-    }
-    #mobile-knowledge-badge:empty, #mobile-knowledge-badge[data-count="0"] { display: none; }
-
     /* Responsive */
     /* Hamburger + off-canvas sidebar (mobile). Hidden on desktop. */
     #menu-btn {
@@ -674,7 +611,7 @@
          only essentials stay: ☰ menu · HIRIS · nuova conversazione · tema. */
       #header { padding: 8px 12px calc(8px + env(safe-area-inset-top)); gap: 8px; }
       #header-icon, #header-subtitle, #header-version, #agent-pill,
-      #mobile-task-btn, #mobile-proposals-btn, #mobile-knowledge-btn { display: none; }
+      #mobile-task-btn, #mobile-proposals-btn { display: none; }
       #header-title { font-size: 16px; }
       #header-tools { margin-left: auto; gap: 4px; }
       #new-conv-btn {

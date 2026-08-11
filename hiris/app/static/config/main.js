@@ -72,6 +72,7 @@
       var route = item.getAttribute('data-route');
       var isActive =
         (route === 'conoscenza' && (hash === '#/' || hash === '')) ||
+        (route === 'memoria' && hash.indexOf('#/memoria') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
         (route === 'history' && hash.indexOf('#/history') === 0) ||
@@ -102,6 +103,16 @@
     } else {
       document.getElementById('route-outlet').innerHTML =
         '<div class="page-title">Cosa HIRIS sa</div><p class="page-subtitle">Caricamento…</p>';
+    }
+  });
+  /* fetta E5 Task 9: sostituisce il pannello Memoria della chat -- vedi
+     config/memoria-route.js per il perché. */
+  HirisRouter.register(/^#\/memoria\/?$/, function() {
+    setCrumbHere('Memoria');
+    if (window.HirisMemoriaRoute) {
+      HirisMemoriaRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Memoria</div>';
     }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {

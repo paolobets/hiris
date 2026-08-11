@@ -16,9 +16,14 @@ CHAT = STATIC / "chat"
 
 # fetta E5 Task 6: tasks.js e proposals.js sono usciti insieme alle rotte
 # /api/tasks* e /api/proposals*, che il backend non serve piu' dalla E3.
+# fetta E5 Task 9: knowledge-core.js e knowledge.js sono usciti a loro volta,
+# insieme al pannello Memoria della chat che interrogava la coda di
+# approvazione (vuota per costruzione da mesi) -- vedi
+# static/config/memoria-route.js, che la sostituisce sulla pagina di
+# configurazione.
 EXPECTED_CHAT_FILES = (
     "state.js", "messages.js", "agents.js", "send.js", "theme.js",
-    "knowledge-core.js", "knowledge.js", "sidebar.js", "keyboard.js", "main.js",
+    "sidebar.js", "keyboard.js", "main.js",
 )
 
 
