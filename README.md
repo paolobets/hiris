@@ -320,6 +320,7 @@ rewritten, with a design of its own.
 
 | Document | What it is | Language |
 |---|---|---|
+| [Prova la 2.0](docs/prova-la-2.0.md) | The sheet that goes with the test build: install, options, what to expect, what to report | 🇮🇹 Italiano |
 | [Scope — HIRIS 2.0](docs/design/2026-08-04-scope-hiris.md) | The live source of truth: what HIRIS must be | 🇮🇹 Italiano |
 | [La conoscenza di HIRIS](docs/design/2026-08-05-la-conoscenza-di-hiris.md) | The knowledge design 2.0 is built on | 🇮🇹 Italiano |
 | [Mappa delle funzionalita'](docs/design/2026-08-05-mappa-funzionalita.md) | What survives the refactor, and what does not | 🇮🇹 Italiano |
