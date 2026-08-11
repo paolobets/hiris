@@ -19,12 +19,29 @@ def _make_app(data_dir: str) -> MagicMock:
     return app
 
 
-# fetta E4 Task 5 ("un bot solo"): chat_store non ha piu' un chatbot_id per
-# cui filtrare -- c'e' UNA cronologia. Il placeholder {agent_id} nel path
-# resta nella richiesta mockata sotto solo perche' la rotta reale
-# (server.py) lo dichiara ancora nel pattern per compatibilita' di
-# superficie (agents.js compone ancora l'URL con l'id del bot di default) --
-# gli handler non lo leggono piu' da match_info.
+# fetta E5 Task 4 ("nasce la rotta onesta, muore il placeholder"): la rotta
+# reale (server.py) e' ora `GET/DELETE /api/chat/cronologia`, senza nessun
+# identificatore nel percorso -- c'e' UNA cronologia (dalla E4 Task 5), non
+# c'e' piu' niente da scegliere. Gli handler sotto non leggevano l'id da
+# match_info nemmeno prima: cambia solo la richiesta mockata, non il loro
+# corpo.
+#
+# `test_get_chat_history_ignores_path_placeholder_value` (pin della E4 Task
+# 5: "qualunque valore nel placeholder {agent_id} legge la STESSA
+# cronologia") e' uscito qui, non spostato: il suo soggetto era il
+# placeholder stesso, che questo task cancella dalla rotta -- non c'e' piu'
+# nessun placeholder da poter ignorare. Non falliva per costruzione a
+# livello di singolo test (chiamava l'handler direttamente con un
+# match_info costruito a mano, bypassando il router: l'handler non lo
+# leggeva ne' prima ne' dopo), ma lo scenario che pinnava non esiste piu' a
+# livello di prodotto: verificato con `app.router.resolve()` su un
+# `create_app()` reale, `/api/chatbots/qualunque-cosa-mai-esistita/
+# chat-history` risolve a `MatchInfoError` (404) dopo questo task, contro
+# `UrlMappingMatchInfo` prima. Il comportamento che restava vivo -- "la
+# cronologia e' unica, chi la legge la legge sempre uguale" -- resta pinnato
+# da `test_get_chat_history_returns_messages` e
+# `test_get_chat_history_empty_when_no_messages` sotto, che non hanno
+# bisogno di un placeholder arbitrario per dirlo.
 
 @pytest.mark.asyncio
 async def test_get_chat_history_returns_messages(tmp_path):
@@ -33,8 +50,7 @@ async def test_get_chat_history_returns_messages(tmp_path):
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "GET", "/api/chatbots/hiris-default/chat-history", app=app,
-        match_info={"agent_id": "hiris-default"},
+        "GET", "/api/chat/cronologia", app=app, match_info={},
     )
 
     resp = await handle_get_chat_history(request)
@@ -46,8 +62,7 @@ async def test_get_chat_history_returns_messages(tmp_path):
 async def test_get_chat_history_empty_when_no_messages(tmp_path):
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "GET", "/api/chatbots/hiris-default/chat-history", app=app,
-        match_info={"agent_id": "hiris-default"},
+        "GET", "/api/chat/cronologia", app=app, match_info={},
     )
 
     resp = await handle_get_chat_history(request)
@@ -62,8 +77,7 @@ async def test_clear_chat_history_removes_messages(tmp_path):
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "DELETE", "/api/chatbots/hiris-default/chat-history", app=app,
-        match_info={"agent_id": "hiris-default"},
+        "DELETE", "/api/chat/cronologia", app=app, match_info={},
     )
 
     resp = await handle_clear_chat_history(request)
@@ -76,29 +90,9 @@ async def test_clear_chat_history_removes_messages(tmp_path):
 async def test_clear_chat_history_noop_when_empty(tmp_path):
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "DELETE", "/api/chatbots/hiris-default/chat-history", app=app,
-        match_info={"agent_id": "hiris-default"},
+        "DELETE", "/api/chat/cronologia", app=app, match_info={},
     )
 
     resp = await handle_clear_chat_history(request)
     data = json.loads(resp.body)
     assert data["ok"] is True
-
-
-@pytest.mark.asyncio
-async def test_get_chat_history_ignores_path_placeholder_value(tmp_path):
-    """Pin dichiarato del comportamento del Task 5: qualunque valore nel
-    placeholder {agent_id} (anche uno mai esistito) legge la STESSA, unica
-    cronologia -- il placeholder non seleziona piu' nulla."""
-    from hiris.app.chat_store import append_messages
-    append_messages([{"role": "user", "content": "unica"}], str(tmp_path))
-
-    app = _make_app(str(tmp_path))
-    request = make_mocked_request(
-        "GET", "/api/chatbots/qualunque-cosa-mai-esistita/chat-history", app=app,
-        match_info={"agent_id": "qualunque-cosa-mai-esistita"},
-    )
-
-    resp = await handle_get_chat_history(request)
-    data = json.loads(resp.body)
-    assert data["messages"] == [{"role": "user", "content": "unica"}]

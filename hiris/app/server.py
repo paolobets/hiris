@@ -1601,14 +1601,21 @@ def create_app() -> web.Application:
     # config/main.js (il contatore in sidebar), config/chatbots-list.js,
     # config/chatbot-editor.js, config/models-route.js, config/usage-route.js,
     # config/tasks-route.js -- cioe' pagine che il Task 10 smonta insieme
-    # alla rotta. Le due rotte chat-history hanno invece un chiamante vivo e
-    # solo: static/chat/agents.js (ripristino e cancellazione della
-    # cronologia). La card non le ha mai chiamate: teneva la propria
-    # cronologia in localStorage.
+    # alla rotta.
     app.router.add_get("/api/chatbots", handle_list_chatbots)
     app.router.add_get("/api/entities", handle_list_entities)
-    app.router.add_get("/api/chatbots/{agent_id}/chat-history", handle_get_chat_history)
-    app.router.add_delete("/api/chatbots/{agent_id}/chat-history", handle_clear_chat_history)
+    # fetta E5 Task 4 ("il frontend"): erano
+    # GET/DELETE /api/chatbots/{agent_id}/chat-history -- un placeholder
+    # {agent_id} che il handler non leggeva mai da match_info (c'e' UNA
+    # cronologia dalla E4 Task 5). Rotta onesta: nessun identificatore nel
+    # percorso, perche' non c'e' niente da identificare. Chiamante unico e
+    # vivo: static/chat/agents.js (ripristino e cancellazione della
+    # cronologia) -- riscritto in questo stesso task. La card Lovelace non le
+    # ha mai chiamate (teneva la propria cronologia in localStorage) ed e'
+    # comunque uscita per intero con la E5 Task 5. Gli handler non cambiano:
+    # non hanno mai visto l'id, cambia solo la firma pubblica della rotta.
+    app.router.add_get("/api/chat/cronologia", handle_get_chat_history)
+    app.router.add_delete("/api/chat/cronologia", handle_clear_chat_history)
     # fetta E3 Task 9: le tre rotte /api/tasks* sono uscite insieme al Task
     # Engine -- lasciano rotta la pagina #/tasks (tasks-route.js) e il
     # pannello Task della chat (chat/tasks.js), entrambi vivi in static/

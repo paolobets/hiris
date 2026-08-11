@@ -11,13 +11,13 @@
    ripristino della cronologia al boot, il nome mostrato nella pill
    dell'header.
 
-   `CHAT_ID` e' la chiave (letterale, non piu' scelta dall'utente) delle due
-   rotte di cronologia -- superficie di compatibilita' che esce al Task 10;
-   fino ad allora restano `GET/DELETE api/chatbots/{id}/chat-history`,
-   invariate qui (vedi impostazioni_chat.ID_CHAT_DEFAULT lato server). */
+   Le due rotte di cronologia sono `GET/DELETE api/chat/cronologia` (fetta E5
+   Task 4 -- "nasce la rotta onesta e muore il placeholder"): fino a quel
+   task portavano ancora un id di bot nel path (`{agent_id}`, sempre
+   'hiris-default', mai piu' letto dal server); ora il percorso non porta
+   nessun identificatore, perche' non c'e' niente da identificare. */
 (function() {
   var state = window.HirisChatState;
-  var CHAT_ID = 'hiris-default';
 
   function updateTurnCounter() {
     var counter = document.getElementById('turn-counter');
@@ -52,7 +52,7 @@
        comportamento giusto, non perche' un'altra superficie la imponga. */
     if (!window.confirm('Cancellare la cronologia di questa conversazione?')) return;
     try {
-      var r = await fetch('api/chatbots/' + CHAT_ID + '/chat-history', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
+      var r = await fetch('api/chat/cronologia', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
       if (!r.ok) {
         /* Se il server non ha cancellato, la UI non deve fingere che l'abbia
            fatto: altrove in questo file un catch vuoto ha nascosto per mesi
@@ -122,7 +122,7 @@
      ritardo. */
   async function applyHistory() {
     try {
-      var r = await fetch('api/chatbots/' + CHAT_ID + '/chat-history');
+      var r = await fetch('api/chat/cronologia');
       if (!r.ok) {
         /* Fratello dello stesso difetto: prima ne' il ramo r.ok=false ne' il
            catch sotto lasciavano traccia -- la cronologia restava vuota senza

@@ -1,16 +1,16 @@
 from aiohttp import web
 from ..chat_store import load_history, clear_history
 
-# fetta E4 Task 5 ("un bot solo"): chat_store non ha piu' un chatbot_id per
-# cui filtrare -- c'e' UNA cronologia (il Task 5 l'ha tolto dallo schema
-# stesso, chat_messages/chat_sessions). Il placeholder `{agent_id}` nel path
-# (server.py) resta nella rotta per compatibilita' di superficie -- lo
-# compone ancora static/chat/agents.js (righe 37, 116), che costruisce l'URL
-# con l'id del bot di default -- ma qui non seleziona piu' nulla: non e'
-# nemmeno piu' letto da match_info. La validazione che c'era prima
-# (`_validate_chatbot_id`, un pattern su un valore mai passato a nessuna
-# query/percorso) e' uscita con lui: non protegge piu' niente. La rotta si
-# smonta per intero nella fetta E5, insieme al resto del frontend.
+# fetta E5 Task 4 ("il frontend"): la rotta e' `GET/DELETE
+# /api/chat/cronologia` (server.py) -- nessun identificatore nel percorso,
+# perche' c'e' UNA cronologia sola (chat_store non ha piu' un chatbot_id per
+# cui filtrare dalla E4 Task 5). Storia: fino a questo task il path portava
+# ancora un placeholder `{agent_id}` ereditato dall'epoca multi-assistente --
+# accettato ma non selezionava nulla: non era nemmeno piu' letto da
+# match_info (la validazione che c'era prima, `_validate_chatbot_id`, era
+# gia' uscita con lui, perche' non proteggeva piu' niente). Il placeholder e'
+# morto in questo task insieme al path che lo portava; gli handler sotto non
+# sono cambiati di una riga, perche' non hanno mai letto l'id.
 
 
 async def handle_get_chat_history(request: web.Request) -> web.Response:
