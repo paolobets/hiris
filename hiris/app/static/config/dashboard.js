@@ -145,6 +145,42 @@ window.HirisDashboard = (function () {
     });
   }
 
+  /* Il fatto «questa sezione è stata letta» non sta nel campo: sta nella sua
+     DATA. I getter dell'archivio NON distinguono i due casi -- su un archivio
+     esistente ma mai riempito (nessuna riga in `meta`) `non_disponibili()`
+     torna `[]` (archivio.py:173-183), `problemi_comportamento()` `[]`
+     (:256-268), `file_non_letti()` `{}` (:270-281),
+     `non_disponibili_plance()` `[]` (:332-344), e `senza_corpo` è un `sum()`
+     su zero voci, cioè `0` (handlers_casa.py:75). Solo le tre date tornano
+     `None`.
+
+     Quindi un elenco vuoto è prova di «controllato, niente da segnalare»
+     SOLO se la lettura corrispondente è avvenuta. Senza questa riga la
+     pagina, su una casa mai letta, affermava quattro volte «tutto a posto»
+     accanto a «non ho ancora guardato» -- ed è lo stato che `server.py:723-733`
+     dichiara per iscritto come ATTESO (un Home Assistant non ancora pronto
+     all'avvio), non un ramo di difesa.
+
+     È la stessa regola già applicata alle tessere dei conteggi, fatta scendere
+     un livello più su: dove il dato non ha tre stati, il terzo stato lo porta
+     la data. */
+  function soloSeLetta(letta, valore) {
+    return letta == null ? null : valore;
+  }
+
+  /* I registri caduti, in italiano. `non_disponibili` porta il nome grezzo
+     della tabella e, per le categorie, l'ambito che ha fallito
+     (`categorie:script` -- vedi `ha_client.leggi_registri`): l'ambito NON si
+     butta, è il dettaglio che dice quale delle quattro chiamate è caduta. */
+  function nomiRegistriInItaliano(voci) {
+    return voci.map(function (voce) {
+      var pezzi = String(voce).split(':');
+      var nome = NOMI_REGISTRI[pezzi[0]] || pezzi[0];
+      var ambito = pezzi.slice(1).join(':');
+      return ambito ? nome + ' (ambito «' + ambito + '»)' : nome;
+    });
+  }
+
   /* ---------------------------------------------------------------- casa */
 
   function rendiCasa(outlet, casa) {
@@ -158,11 +194,11 @@ window.HirisDashboard = (function () {
       tessere(corpo, casa.conteggi, NOMI_REGISTRI, registriCaduti(casa.non_disponibili));
     }
 
-    treStati(corpo, casa.non_disponibili, {
+    treStati(corpo, soloSeLetta(casa.anagrafe_letta_il, casa.non_disponibili), {
       ignoto: 'Non si sa quali registri abbiano risposto: HIRIS non ha potuto controllarlo.',
       vuoto: 'Tutti i registri hanno risposto.',
       pieno: 'Registri che non hanno risposto all’ultima lettura:'
-    });
+    }, nomiRegistriInItaliano);
 
     /* Comportamento */
     var comp = casa.comportamento || {};
@@ -178,22 +214,24 @@ window.HirisDashboard = (function () {
 
     /* `senza_corpo` e' il numero che dice quanto HIRIS sa DAVVERO: le voci di
        cui conosce il nome e non il corpo. A null non diventa «0»: sarebbe
-       l'affermazione «conosco tutto» su una lettura mai avvenuta. */
-    if (comp.senza_corpo == null) {
+       l'affermazione «conosco tutto» su una lettura mai avvenuta -- e senza
+       lettura il backend manda proprio `0`, non `null`. */
+    var senzaCorpo = soloSeLetta(comp.letto_il, comp.senza_corpo);
+    if (senzaCorpo == null) {
       riga(corpoComp, 'Non si sa di quante voci HIRIS conosca solo il nome: la lettura non è avvenuta.', TONO_IGNOTO);
-    } else if (comp.senza_corpo === 0) {
+    } else if (senzaCorpo === 0) {
       riga(corpoComp, 'Di ogni voce HIRIS conosce anche il corpo, non solo il nome.', TONO_QUIETO);
     } else {
-      riga(corpoComp, 'Di ' + comp.senza_corpo + ' voci HIRIS conosce solo il nome, non il corpo.', TONO_PROBLEMA);
+      riga(corpoComp, 'Di ' + senzaCorpo + ' voci HIRIS conosce solo il nome, non il corpo.', TONO_PROBLEMA);
     }
 
-    treStati(corpoComp, comp.problemi, {
+    treStati(corpoComp, soloSeLetta(comp.letto_il, comp.problemi), {
       ignoto: 'Non si sa se l’ultima lettura del comportamento abbia avuto problemi.',
       vuoto: 'L’ultima lettura non ha lasciato niente in sospeso.',
       pieno: 'Ciò che l’ultima lettura non ha potuto concludere con certezza:'
     });
 
-    treStati(corpoComp, comp.file_non_letti, {
+    treStati(corpoComp, soloSeLetta(comp.letto_il, comp.file_non_letti), {
       ignoto: 'Non si sa quali file di automazioni e script siano stati letti.',
       vuoto: 'Tutti i file di automazioni e script sono stati letti.',
       pieno: 'File non letti, con la ragione:'
@@ -217,7 +255,7 @@ window.HirisDashboard = (function () {
       }
     }
 
-    treStati(corpoPlance, plance.non_disponibili, {
+    treStati(corpoPlance, soloSeLetta(plance.lette_il, plance.non_disponibili), {
       ignoto: 'Non si sa quali plance abbiano risposto: HIRIS non ha potuto controllarlo.',
       vuoto: 'Tutte le plance hanno risposto.',
       pieno: 'Plance che l’ultima lettura non è riuscita a risolvere:'

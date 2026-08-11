@@ -37,10 +37,14 @@ function casaLetta(modifiche = {}) {
   }, modifiche);
 }
 
-/* La risposta di /api/casa quando l'archivio non c'e': TUTTI i campi a tre
-   stati sono `null`. E' la forma letterale del ramo di difesa di
-   handlers_casa.handle_get_casa. */
-const CASA_MAI_LETTA = {
+/* Le DUE forme di «casa non letta», che non sono la stessa cosa. Tenerle
+   separate e' il punto: la seconda e' quella che il tester incontra davvero.
+
+   (a) Archivio ASSENTE: tutti i campi a tre stati sono `null`. E' la forma
+       letterale del ramo di difesa di `handlers_casa.handle_get_casa`, che
+       dichiara di se stesso (`:25-31`): «difesa, non stato atteso: in
+       produzione questo ramo non dovrebbe mai scattare». */
+const CASA_ARCHIVIO_ASSENTE = {
   anagrafe_letta_il: null, non_disponibili: null, conteggi: {}, piani: [],
   comportamento: {
     letto_il: null, conteggi: {}, senza_corpo: null,
@@ -48,6 +52,39 @@ const CASA_MAI_LETTA = {
   },
   plance: { lette_il: null, non_disponibili: null, voci: [] },
 };
+
+/* (b) Archivio ESISTENTE ma mai riempito -- nessuna riga in `meta`. Solo le
+       tre DATE tornano `null`; ogni elenco torna vuoto e `senza_corpo` e' un
+       `sum()` su zero voci, cioe' `0`:
+         non_disponibili()        -> []   (archivio.py:173-183)
+         problemi_comportamento() -> []   (:256-268)
+         file_non_letti()         -> {}   (:270-281)
+         non_disponibili_plance() -> []   (:332-344)
+         senza_corpo              -> 0    (handlers_casa.py:75)
+       E' lo stato che `server.py:723-733` dichiara per iscritto come ATTESO:
+       «un Home Assistant non ancora pronto lascia l'anagrafe vuota con un
+       avviso nel log, non fa fallire l'add-on». Cioe': la prima apertura
+       della home, su un HA lento o con un token sbagliato. */
+const CASA_ARCHIVIO_VUOTO = {
+  anagrafe_letta_il: null, non_disponibili: [], conteggi: {}, piani: [],
+  comportamento: {
+    letto_il: null, conteggi: {}, senza_corpo: 0,
+    problemi: [], file_non_letti: {}, voci: [],
+  },
+  plance: { lette_il: null, non_disponibili: [], voci: [] },
+};
+
+/* Le CINQUE frasi che affermano «ho controllato, va tutto bene». Nessuna di
+   loro puo' comparire su una lettura mai avvenuta, in NESSUNA delle due
+   forme sopra. (La review ne contava quattro nell'intestazione e cinque
+   nella resa che ha incollato: sono cinque -- le plance sono la quinta.) */
+const FRASI_TUTTO_A_POSTO = [
+  /Tutti i registri hanno risposto/,
+  /Di ogni voce HIRIS conosce anche il corpo/,
+  /non ha lasciato niente in sospeso/,
+  /Tutti i file di automazioni e script sono stati letti/,
+  /Tutte le plance hanno risposto/,
+];
 
 const NUCLEO_VUOTO = { testo: '', riepilogo: { caratteri: 0, troncato: false, ricordi_esclusi: 0, avvisi: [] } };
 
@@ -90,8 +127,10 @@ test("`non_disponibili: null` NON viene reso come «tutto a posto»", async () =
 
 test('i registri caduti si NOMINANO, non si contano soltanto', async () => {
   const { testo } = await rendi(casaLetta({ non_disponibili: ['piani', 'dispositivi'] }));
-  assert.match(testo, /piani/);
-  assert.match(testo, /dispositivi/);
+  /* Fix round 1: i nomi si leggono in italiano, non col nome grezzo della
+     tabella -- il resto della pagina lo e', e questo elenco era l'unico punto
+     che mostrava un identificatore tecnico. */
+  assert.match(testo, /Registri che non hanno risposto all’ultima lettura:PianiDispositivi/);
   assert.doesNotMatch(testo, /Tutti i registri hanno risposto/);
 });
 
@@ -122,7 +161,7 @@ test('il conteggio di un registro caduto NON si stampa: 0 letto e 0 non-letto no
 });
 
 test("un'anagrafe mai letta non si traveste da casa vuota (nessun conteggio a zero)", async () => {
-  const { testo, document } = await rendi(CASA_MAI_LETTA);
+  const { testo, document } = await rendi(CASA_ARCHIVIO_ASSENTE);
   assert.match(testo, /non è ancora stata letta/,
     'deve dire che non ha guardato, non mostrare una casa senza dispositivi');
   assert.doesNotMatch(testo, /Letta il/,
@@ -139,6 +178,58 @@ test("un'anagrafe mai letta non si traveste da casa vuota (nessun conteggio a ze
   const etichetteLette = [...lette.document.querySelectorAll('.stat-tile .st-label')].map((e) => e.textContent);
   assert.ok(etichetteLette.includes('Entità') && etichetteLette.includes('Automazioni'),
     'a lettura avvenuta, invece, i conteggi ci sono e vengono dal backend');
+});
+
+/* ------------------------------------------------------------------------
+   Fix round 1 (review indipendente, Important). Il caso qui sotto e' quello
+   che il tester incontra DAVVERO -- archivio esistente e mai riempito -- e
+   nel primo giro non era coperto: il file pinnava solo l'archivio ASSENTE,
+   che il backend stesso dichiara «non stato atteso». Con gli elenchi vuoti
+   che l'archivio restituisce in quel caso, la pagina affermava cinque volte
+   «ho controllato, va tutto bene» sulla stessa schermata in cui diceva «non
+   ho ancora guardato».
+   ------------------------------------------------------------------------ */
+
+test('archivio esistente ma mai riempito: NESSUNA frase «tutto a posto» su una lettura mai avvenuta', async () => {
+  const { testo } = await rendi(CASA_ARCHIVIO_VUOTO);
+
+  /* Precondizione: la pagina deve comunque dire che non ha guardato. */
+  assert.match(testo, /L’anagrafe non è ancora stata letta/);
+  assert.match(testo, /Il comportamento non è ancora stato letto/);
+  assert.match(testo, /Le plance non sono ancora state lette/);
+
+  for (const frase of FRASI_TUTTO_A_POSTO) {
+    assert.doesNotMatch(testo, frase,
+      `«${frase.source}» afferma un controllo che non e' avvenuto: gli ` +
+      "elenchi sono vuoti perche' l'archivio non e' mai stato riempito, non " +
+      "perche' qualcuno abbia guardato senza trovare niente");
+  }
+
+  /* E al loro posto ci deve essere la frase vera, una per campo. */
+  assert.match(testo, /Non si sa quali registri abbiano risposto/);
+  assert.match(testo, /Non si sa di quante voci HIRIS conosca solo il nome/);
+  assert.match(testo, /Non si sa se l’ultima lettura del comportamento/);
+  assert.match(testo, /Non si sa quali file di automazioni e script/);
+  assert.match(testo, /Non si sa quali plance abbiano risposto/);
+});
+
+test('a lettura avvenuta gli stessi elenchi vuoti tornano a significare «tutto a posto»', async () => {
+  /* La contro-prova del test qui sopra: senza questa, «non dire mai tutto a
+     posto» si potrebbe soddisfare non dicendolo MAI, e il terzo stato
+     sparirebbe dal lato opposto. */
+  const { testo } = await rendi(casaLetta());
+  for (const frase of FRASI_TUTTO_A_POSTO) {
+    assert.match(testo, frase,
+      `«${frase.source}» deve comparire quando la lettura c'e' stata davvero`);
+  }
+});
+
+test('il nome di un registro caduto si legge in italiano, e l’ambito non si butta', async () => {
+  const { testo } = await rendi(casaLetta({ non_disponibili: ['categorie:script', 'piani'] }));
+  assert.match(testo, /Categorie \(ambito «script»\)/,
+    'la stringa tecnica «categorie:script» non va mostrata grezza in una pagina in italiano');
+  assert.doesNotMatch(testo, /categorie:script/);
+  assert.match(testo, /Piani/, 'un registro senza ambito resta il suo nome italiano');
 });
 
 test("`senza_corpo: null` non diventa «0», e `0` non diventa «non si sa»", async () => {
