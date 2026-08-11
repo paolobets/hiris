@@ -122,8 +122,7 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
   assert.match(think.textContent, /elaborando/i);
   assert.ok(think.querySelector('.thinking-timer'), 'con il timer che scorre');
 
-  // Il polling usa un vero setTimeout(3.5s) (stesso pattern accettato in
-  // chat-card.test.mjs per _pollChatReply) -- nessun mock dei timer, per
+  // Il polling usa un vero setTimeout(3.5s) -- nessun mock dei timer, per
   // restare fedeli al comportamento reale invece di far avanzare a mano
   // una catena di await fragile. Il test è quindi ~3.5s più lento.
   await tick(3700);
@@ -253,14 +252,15 @@ test('turn-limit raggiunto disabilita input e send-btn (blocca l\'invio)', () =>
 
 // ---------------------------------------------------------------------------
 // Sprint coerenza, lotto A, task 5 (A7): cancellare la cronologia era
-// irreversibile e senza conferma -- la card Lovelace (hiris-chat-card.js)
-// chiede conferma per la STESSA azione con lo stesso testo, qui mancava.
+// irreversibile e senza conferma. Il testo della conferma fu preso dalla card
+// Lovelace, che per la stessa azione la chiedeva; la card e' uscita col Task 5
+// della E5, la conferma resta perche' e' il comportamento giusto.
 // Fratello nello stesso file: il fetch DELETE aveva un catch(e) {} vuoto --
 // se il server falliva, la UI cancellava comunque i messaggi mostrati,
 // dicendo "fatto" quando non lo era.
 // ---------------------------------------------------------------------------
 
-test('clearConversation chiede conferma prima di cancellare (come la card Lovelace)', async () => {
+test('clearConversation chiede conferma prima di cancellare', async () => {
   const { window, document } = setupChat();
   window.HirisChatMessages.appendMsg('user', 'ciao');
   document.getElementById('welcome').style.display = 'none';
@@ -273,7 +273,7 @@ test('clearConversation chiede conferma prima di cancellare (come la card Lovela
   await window.HirisChatAgents.clearConversation();
 
   assert.equal(confirmMsg, 'Cancellare la cronologia di questa conversazione?',
-    'stesso testo della card Lovelace (hiris-chat-card.js:1222)');
+    'il testo della conferma non deve cambiare sotto i piedi di chi la legge');
   assert.equal(calls.length, 0, 'con la conferma negata nessuna DELETE deve partire');
   assert.ok(document.querySelector('.msg-row.user'), 'i messaggi non devono sparire se non confermato');
 });

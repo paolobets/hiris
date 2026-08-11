@@ -69,11 +69,12 @@ def test_i_due_runner_accettano_gli_stessi_argomenti():
 def test_i_due_runner_accettano_gli_stessi_argomenti_anche_in_streaming():
     """Task 3 della fetta "il contesto della chat viene dal nucleo": il buco
     oltre il brief -- `chat_stream()` non riceveva `strumenti`/`dispatcher`,
-    quindi la card Lovelace (che streamma, static/hiris-chat-card.js) sarebbe
-    rimasta sul catalogo di trentaquattro strumenti mentre la pagina chat
-    (che non streamma, static/chat/send.js) passava ai quattro del nucleo --
-    due strade divergenti per la stessa conversazione. Stesso confronto via
-    inspect del test gemello sopra, sul metodo streaming."""
+    quindi la superficie che streammava (allora la card Lovelace, uscita col
+    Task 5 della E5) sarebbe rimasta sul catalogo di trentaquattro strumenti
+    mentre la pagina chat, che non streamma, passava ai quattro del nucleo.
+    Il ramo streaming e' vivo anche senza la card: il vincolo di CLAUDE.md
+    sulle due firme vale comunque. Stesso confronto via inspect del test
+    gemello sopra, sul metodo streaming."""
     a = set(inspect.signature(ClaudeRunner.chat_stream).parameters)
     b = set(inspect.signature(OpenAICompatRunner.chat_stream).parameters)
     assert {"strumenti", "dispatcher"} <= a

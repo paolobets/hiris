@@ -103,22 +103,19 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
   define('navigator', rawWindow.navigator);
   define('Event', rawWindow.Event);
   define('localStorage', rawWindow.localStorage);
-  // SP-4 Fase B Task 7 (rebuild card Lovelace): hiris-chat-card.js è il primo
-  // modulo caricato da questo harness che è un vero Custom Element
-  // (`class HirisCard extends HTMLElement`, `customElements.define(...)`,
-  // `this.attachShadow(...)`), non un IIFE `config/*.js`. `HTMLElement` e
-  // `customElements` non sono global di Node — esistono solo su
-  // `window` in jsdom — quindi vanno bridged sul globalThis dell'host
-  // esattamente come document/navigator/Event sopra, altrimenti
-  // `class HirisCard extends HTMLElement` lancia un ReferenceError al load.
-  // `CustomEvent` idem, usato da HirisChatCardEditor per l'evento
-  // `config-changed`. Verificato con jsdom 25 + Node 24: attachShadow,
-  // customElements.define su una classe extends HTMLElement, e la
-  // costruzione diretta (`new Ctor()`, non solo document.createElement)
-  // funzionano tutti out of the box in questo bridge.
+  // `HTMLElement` non è un global di Node — esiste solo su `window` in jsdom —
+  // e va bridged sul globalThis dell'host esattamente come document/navigator/
+  // Event sopra: `config/drawer.js` e `config/popover.js` lo usano bare
+  // (`opts.body instanceof HTMLElement`), come farebbero nel browser.
+  //
+  // fetta E5 Task 5: qui stavano anche `customElements` e `CustomEvent`,
+  // aggiunti da SP-4 Fase B Task 7 per l'unico Custom Element del progetto
+  // (`hiris-chat-card.js`, `class HirisCard extends HTMLElement` +
+  // `customElements.define`). La card e' uscita dal prodotto e in `static/`
+  // non e' rimasto nessun Custom Element ne' nessun uso di `CustomEvent`
+  // (verificato con grep prima di togliere i due bridge): erano due global
+  // montati per nessuno. Se un domani la card torna, tornano con lei.
   define('HTMLElement', rawWindow.HTMLElement);
-  define('customElements', rawWindow.customElements);
-  define('CustomEvent', rawWindow.CustomEvent);
   // `fetch` è normalmente sovrascritto per-test da stubFetch(window, ...);
   // la getter/setter lo tiene agganciato dinamicamente a window.fetch così
   // gli script (che lo chiamano non qualificato, come farebbero nel browser)

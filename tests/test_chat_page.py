@@ -76,11 +76,11 @@ def test_no_inline_onclick_attributes_left():
 
 
 def test_only_one_poll_chat_reply_implementation_on_this_surface():
-    """Task 8 removes the page's inline pollChatReply duplicate. The card
-    (hiris-chat-card.js) keeps its own -- it is Shadow-DOM code copied into
-    HA's www/ folder via a different deploy path (server.py) and cannot
-    <script src> a static/chat/*.js file, so cross-surface sharing is out
-    of scope here (see task-8-report.md)."""
+    """Il Task 8 di SP-4 aveva tolto il doppione inline della pagina, ma ne
+    restava un secondo nella card Lovelace (codice Shadow-DOM copiato dentro
+    Home Assistant, che non poteva condividere un file di static/chat/). Col
+    Task 5 della E5 la card e' uscita: adesso di cicli di polling della
+    risposta ne esiste **uno solo** in tutto il prodotto, ed e' questo."""
     send_js = (CHAT / "send.js").read_text(encoding="utf-8")
     assert send_js.count("function pollChatReply") == 1
     assert "function pollChatReply" not in INDEX.read_text(encoding="utf-8")

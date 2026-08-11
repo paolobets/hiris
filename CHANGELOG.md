@@ -131,6 +131,34 @@ prossima versione. Se il tuo browser aveva già visto la schermata, resta nel
 suo `localStorage` una chiave inerte (`hiris_onboarding_v1`) che non serve più
 a nulla: non viene ripulita, perché non c'è più codice che la legga.
 
+**La card di HIRIS nelle tue dashboard non c'è più.** Se avevi messo la chat
+di HIRIS dentro una dashboard di Home Assistant (la tessera
+`custom:hiris-chat-card`), quella tessera **smette di funzionare**: la card è
+uscita dal prodotto. Non è un guasto ed è una decisione, presa per una ragione
+sola: la card verrà **rifatta da zero** come ultimo passo, quando il resto di
+HIRIS sarà finito, invece di essere rattoppata a ogni cambiamento nel
+frattempo. Fino ad allora si parla con HIRIS in un posto solo: aprendo
+l'add-on. La tessera vuota rimasta nella dashboard va tolta da te — è l'unico
+gesto che ti resta.
+
+Di suo, HIRIS **disinstalla ciò che aveva installato**: al primo avvio dopo
+l'aggiornamento toglie da Home Assistant la copia della card
+(`<configurazione>/www/hiris/`) e la risorsa Lovelace che aveva registrato, e
+scrive nel log che l'ha fatto. Toglie **soltanto** quelle: qualunque altra
+risorsa nella tua dashboard — di un altro add-on, o messa da te — non viene
+toccata, e se in quella cartella avevi file tuoi restano dove sono. Se Home
+Assistant non risponde in quel momento, HIRIS non insiste e non fallisce
+l'avvio: scrive nel log **quale** risorsa è rimasta e dove toglierla a mano
+(*Impostazioni → Dashboard → Risorse*). Senza questa pulizia ti resterebbe in
+dashboard una risorsa che punta a un file che non esiste più — un errore che
+avresti scoperto tu.
+
+Una traccia resta, ed è nel tuo browser: la card teneva la propria cronologia
+in `localStorage` (chiavi `hiris.chat.<slug>.<id>`), separata da quella che il
+server già salva. Quelle chiavi restano dove sono e diventano inerti — non c'è
+più codice che le legga, e nessuna conversazione va persa: la cronologia della
+chat dell'add-on è quella del server, e non è mai stata la stessa.
+
 **Gli assistenti in più che avevi creato non vengono più caricati.** Il file che
 li conteneva **resta intatto sul disco** — non è stato cancellato — e HIRIS ne
 dichiara la presenza nel log all'avvio. Attenzione a una cosa: un prompt

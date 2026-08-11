@@ -2,11 +2,9 @@
 import asyncio
 import contextlib
 import hashlib
-import json
 import logging
 import os
 import re
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 import aiohttp
@@ -116,33 +114,6 @@ def _find_ha_config_dir() -> str | None:
     return None
 
 
-def _deploy_card_to_www(slug: str = "hiris") -> None:
-    """Copy hiris-chat-card.js to <ha-config>/www/{slug}/ for auth-free Lovelace access.
-
-    Requires 'config:rw' in the add-on map (config.yaml).
-    """
-    ha_config = _find_ha_config_dir()
-    if ha_config is None:
-        logger.error(
-            "HA config directory not found at /config or /homeassistant — "
-            "card cannot be deployed. Ensure 'config:rw' is in the add-on map, "
-            "then stop and restart the add-on. "
-            "Until fixed, /local/%s/hiris-chat-card.js will return 404.",
-            slug,
-        )
-        return
-
-    src = os.path.join(os.path.dirname(__file__), "static", "hiris-chat-card.js")
-    dst_dir = os.path.join(ha_config, "www", slug)
-    dst = os.path.join(dst_dir, "hiris-chat-card.js")
-    try:
-        os.makedirs(dst_dir, exist_ok=True)
-        shutil.copy2(src, dst)
-        logger.info("HIRIS card deployed to %s", dst)
-    except Exception as exc:
-        logger.error("Failed to deploy HIRIS card to %s: %s", dst, exc, exc_info=True)
-
-
 async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
     """Read WebSocket messages until we get the one matching msg_id."""
     loop = asyncio.get_running_loop()
@@ -156,62 +127,53 @@ async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
             return msg
 
 
-async def _write_ingress_config(supervisor_token: str, slug: str = "hiris") -> None:
-    """Write /homeassistant/www/{slug}/hiris-ingress.json with the real ingress URL.
+# fetta E5 Task 5: la card Lovelace esce per intero -- il file
+# `static/hiris-chat-card.js`, la sua copia dentro Home Assistant, il file di
+# scoperta dell'ingress che solo lei leggeva e la registrazione della risorsa.
+# Tornera' riscritta da zero quando il prodotto sara' completo.
+#
+# Con lei escono `_deploy_card_to_www` (copiava il JS in <config-ha>/www/{slug}/),
+# `_write_ingress_config` (scriveva `hiris-ingress.json` accanto alla card: il
+# suo unico lettore era la card, `hiris-chat-card.js:565`) e
+# `_register_lovelace_card` (registrava la risorsa e migrava gli URL stantii).
+#
+# Al loro posto resta questa **disinstallazione**, perche' quelle tre funzioni
+# non scrivevano dentro l'add-on: scrivevano nella configurazione dell'utente.
+# Cancellare il solo codice lascerebbe in piedi una risorsa Lovelace che punta
+# a un file che non esiste piu' -- un errore visibile nella dashboard, che
+# l'utente dovrebbe togliere a mano senza sapere perche'. Chi ha installato
+# disinstalla.
+#
+# Le tre regole che questa funzione rispetta, e che i test pinnano:
+#  1. **tocca solo cio' che ha messo lei**: gli unici URL riconosciuti sono i
+#     due che `_register_lovelace_card` sapeva creare -- il vecchio URL ingress
+#     e qualunque `/local/{slug}/hiris-chat-card.js` (nudo o con `?v=`).
+#     Qualsiasi altra risorsa Lovelace dell'utente resta dov'e';
+#  2. **e' idempotente**: al secondo avvio non trova niente e non fa niente;
+#  3. **non fa cadere l'avvio**: se Home Assistant non risponde, o la cartella
+#     di configurazione non e' montata, la funzione registra e torna. E se la
+#     deregistrazione fallisce lo **dice**, con l'URL esatto da togliere a
+#     mano: una traccia lasciata in silenzio nella configurazione dell'utente
+#     sarebbe indistinguibile da un'assenza di problemi.
+_URL_CARD_LOCALE = "/local/{slug}/hiris-chat-card.js"
+_URL_CARD_INGRESS = "/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
+# I due file che l'add-on copiava dentro <config-ha>/www/{slug}/. Nient'altro
+# di quella cartella e' suo: se l'utente ci ha messo roba propria, resta.
+_FILE_CARD = ("hiris-chat-card.js", "hiris-ingress.json")
 
-    The HA Supervisor uses a randomly-generated ingress token (not the add-on slug)
-    as the path component in /api/hassio_ingress/{token}/.  The Lovelace card reads
-    this file (no auth required — /local/ is served publicly) to discover the correct
-    URL before making any API call.
+
+def _e_risorsa_della_card(url: str, slug: str) -> bool:
+    """Vero solo per gli URL che l'add-on stesso registrava (nudo o con `?v=`)."""
+    locale = _URL_CARD_LOCALE.format(slug=slug)
+    return url == _URL_CARD_INGRESS.format(slug=slug) or url.startswith(locale)
+
+
+async def _deregistra_risorsa_card(ha_base_url: str, token: str, slug: str) -> bool:
+    """Toglie da Lovelace le risorse della card. Torna False se non ha potuto.
+
+    False = "non si sa se e' rimasto qualcosa", ed e' gia' stato dichiarato nel
+    log insieme all'URL da togliere a mano.
     """
-    ha_config = _find_ha_config_dir()
-    if ha_config is None:
-        return
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "http://supervisor/addons/self/info",
-                headers={"Authorization": f"Bearer {supervisor_token}"},
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning(
-                        "Supervisor /addons/self/info returned %s — "
-                        "card will fall back to slug-based ingress URL",
-                        resp.status,
-                    )
-                    return
-                data = await resp.json()
-    except Exception as exc:
-        logger.warning("Cannot reach Supervisor API (%s) — skipping ingress config", exc)
-        return
-
-    ingress_url = (data.get("data") or {}).get("ingress_url")
-    if not ingress_url:
-        logger.warning("Supervisor did not return ingress_url — skipping ingress config")
-        return
-
-    dst_dir = os.path.join(ha_config, "www", slug)
-    dst = os.path.join(dst_dir, "hiris-ingress.json")
-    try:
-        os.makedirs(dst_dir, exist_ok=True)
-        with open(dst, "w", encoding="utf-8") as f:
-            json.dump({"ingress_url": ingress_url}, f)
-        logger.info("HIRIS ingress config written: %s → %s", ingress_url, dst)
-    except Exception as exc:
-        logger.error("Failed to write ingress config to %s: %s", dst, exc)
-
-
-async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hiris") -> None:
-    """Register /local/{slug}/hiris-chat-card.js?v=VERSION as a Lovelace module resource.
-
-    Uses the HA WebSocket API, which works even when the REST endpoint is unavailable.
-    Migrates stale URLs (old ingress URL and older versioned /local/ URLs). Idempotent.
-    The ?v= query param forces the browser to fetch the new JS on every version bump.
-    """
-    version = read_version()
-    new_url = f"/local/{slug}/hiris-chat-card.js?v={version}"
-    old_url = f"/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
     ws_url = (
         ha_base_url.replace("http://", "ws://").replace("https://", "wss://")
         + "/api/websocket"
@@ -219,80 +181,108 @@ async def _register_lovelace_card(ha_base_url: str, token: str, slug: str = "hir
     try:
         async with aiohttp.ClientSession() as session:
             async with session.ws_connect(ws_url) as ws:
-                # Authenticate
                 handshake = await asyncio.wait_for(ws.receive_json(), timeout=10.0)
                 if handshake.get("type") == "auth_required":
                     await ws.send_json({"type": "auth", "access_token": token})
                     auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=10.0)
                     if auth_resp.get("type") != "auth_ok":
-                        logger.warning("HA WebSocket auth failed — Lovelace registration skipped")
-                        return
+                        logger.warning(
+                            "card HIRIS: autenticazione WebSocket rifiutata da Home "
+                            "Assistant — la risorsa Lovelace non e' stata tolta; se "
+                            "resta in dashboard, toglila da Impostazioni -> "
+                            "Dashboard -> Risorse")
+                        return False
 
-                # List existing resources
                 await ws.send_json({"id": 1, "type": "lovelace/resources"})
                 list_resp = await _ws_await(ws, msg_id=1)
-
                 if not list_resp.get("success"):
-                    # YAML mode or HA version without resources support
-                    err_msg = list_resp.get("error", {}).get("message", "unsupported")
+                    # Lovelace in modalita' YAML: le risorse non si gestiscono da
+                    # qui, e in quella modalita' l'add-on non ne aveva mai
+                    # registrata una (la registrazione usciva dallo stesso ramo).
                     logger.info(
-                        "Lovelace resources not manageable via WebSocket (%s) — "
-                        "add manually in lovelace config: url: %s  type: module",
-                        err_msg, new_url,
-                    )
-                    return
+                        "card HIRIS: risorse Lovelace non gestibili via WebSocket "
+                        "(%s) — se avevi aggiunto la card a mano, toglila dal tuo "
+                        "lovelace.yaml",
+                        list_resp.get("error", {}).get("message", "unsupported"))
+                    return True
 
-                resources: list[dict] = list_resp.get("result", [])
                 msg_id = 2
-
-                # Remove stale URLs: old ingress URL and any /local/ URL that is not
-                # the current versioned URL (handles version upgrades and bare URL left
-                # by older add-on versions).
-                base_local = f"/local/{slug}/hiris-chat-card.js"
-                for resource in resources:
-                    url = resource.get("url", "")
-                    is_stale = (
-                        url == old_url
-                        or (url.startswith(base_local) and url != new_url)
-                    )
-                    if is_stale:
-                        await ws.send_json({
-                            "id": msg_id,
-                            "type": "lovelace/resources/delete",
-                            "resource_id": resource["id"],
-                        })
-                        del_resp = await _ws_await(ws, msg_id)
-                        if del_resp.get("success"):
-                            logger.info("Removed stale Lovelace resource: %s", url)
-                        msg_id += 1
-
-                # Idempotency check against the current versioned URL
-                for resource in resources:
-                    if resource.get("url") == new_url:
-                        logger.debug("HIRIS Lovelace card already registered: %s", new_url)
-                        return
-
-                # Register
-                await ws.send_json({
-                    "id": msg_id,
-                    "type": "lovelace/resources/create",
-                    "res_type": "module",
-                    "url": new_url,
-                })
-                create_resp = await _ws_await(ws, msg_id)
-
-                if create_resp.get("success"):
-                    logger.info(
-                        "HIRIS Lovelace card registered ✓ url=%s — reload HA UI to activate",
-                        new_url,
-                    )
-                else:
-                    logger.warning(
-                        "Lovelace registration failed: %s",
-                        create_resp.get("error", {}).get("message", "unknown"),
-                    )
+                tolte = 0
+                for risorsa in list_resp.get("result", []):
+                    url = risorsa.get("url", "")
+                    if not _e_risorsa_della_card(url, slug):
+                        continue
+                    await ws.send_json({
+                        "id": msg_id,
+                        "type": "lovelace/resources/delete",
+                        "resource_id": risorsa["id"],
+                    })
+                    resp = await _ws_await(ws, msg_id)
+                    msg_id += 1
+                    if resp.get("success"):
+                        tolte += 1
+                        logger.info(
+                            "card HIRIS: risorsa Lovelace rimossa (%s) — la card e' "
+                            "uscita dal prodotto, tornera' riscritta", url)
+                    else:
+                        logger.warning(
+                            "card HIRIS: non ho potuto togliere la risorsa Lovelace "
+                            "%s (%s) — toglila a mano da Impostazioni -> Dashboard "
+                            "-> Risorse", url,
+                            resp.get("error", {}).get("message", "sconosciuto"))
+                        return False
+                return True
     except Exception as exc:
-        logger.warning("Lovelace card registration error: %s", exc)
+        logger.warning(
+            "card HIRIS: Home Assistant non ha risposto (%s) — se nella tua "
+            "dashboard resta la risorsa %s, toglila da Impostazioni -> Dashboard "
+            "-> Risorse", exc, _URL_CARD_LOCALE.format(slug=slug))
+        return False
+
+
+def _rimuovi_file_card(slug: str) -> None:
+    """Toglie i due file della card da <config-ha>/www/{slug}/, se ci sono."""
+    ha_config = _find_ha_config_dir()
+    if ha_config is None:
+        # Senza cartella montata non c'e' niente da togliere e niente da dire:
+        # non e' un guasto, e' una installazione che la copia non l'ha mai
+        # ricevuta.
+        return
+    cartella = os.path.join(ha_config, "www", slug)
+    for nome in _FILE_CARD:
+        percorso = os.path.join(cartella, nome)
+        try:
+            if os.path.exists(percorso):
+                os.remove(percorso)
+                logger.info("card HIRIS: rimosso %s", percorso)
+        except Exception as exc:
+            logger.warning(
+                "card HIRIS: non ho potuto rimuovere %s (%s) — puoi cancellarlo "
+                "a mano", percorso, exc)
+    # La cartella si toglie SOLO se e' rimasta vuota: se l'utente ci ha messo
+    # qualcosa di suo, quella roba non e' dell'add-on e non si tocca.
+    try:
+        if os.path.isdir(cartella) and not os.listdir(cartella):
+            os.rmdir(cartella)
+            logger.info("card HIRIS: rimossa la cartella vuota %s", cartella)
+    except Exception as exc:
+        logger.debug("card HIRIS: cartella %s non rimossa (%s)", cartella, exc)
+
+
+async def _disinstalla_card_lovelace(ha_base_url: str, token: str,
+                                     slug: str = "hiris") -> None:
+    """Disinstalla la card Lovelace dalla configurazione di Home Assistant.
+
+    Prima la risorsa, poi i file: al contrario si lascerebbe -- proprio nella
+    finestra in cui Home Assistant non risponde -- una risorsa registrata che
+    punta a un file gia' cancellato, cioe' l'errore che questa funzione esiste
+    per evitare. Se la deregistrazione fallisce i file si tolgono lo stesso
+    (il JS non esiste piu' nell'immagine: quella copia e' un residuo di una
+    versione precedente), ma il fallimento e' gia' stato dichiarato nel log
+    con l'URL da togliere a mano.
+    """
+    await _deregistra_risorsa_card(ha_base_url, token, slug)
+    _rimuovi_file_card(slug)
 
 
 # fetta E3 Task 7: `_reasoning_runner(app)` -- risolveva l'oggetto a cui il
@@ -630,11 +620,13 @@ async def _on_startup(app: web.Application) -> None:
     await ha_client.start()
     app["ha_client"] = ha_client
 
-    # Deploy card JS and ingress config to /homeassistant/www/, register Lovelace resource
+    # fetta E5 Task 5: qui l'add-on installava la card Lovelace dentro Home
+    # Assistant (copia in www/, file di ingress, risorsa registrata). La card
+    # e' uscita dal prodotto: adesso quelle tre tracce si **tolgono**, una
+    # volta, riconoscendo solo cio' che l'add-on stesso aveva messo. Vedi il
+    # commento esteso su `_disinstalla_card_lovelace`.
     hiris_slug = os.environ.get("HIRIS_SLUG", "hiris")
-    _deploy_card_to_www(hiris_slug)
-    await _write_ingress_config(os.environ.get("SUPERVISOR_TOKEN", ""), hiris_slug)
-    await _register_lovelace_card(
+    await _disinstalla_card_lovelace(
         ha_base_url,
         os.environ.get("SUPERVISOR_TOKEN", ""),
         hiris_slug,
@@ -1601,12 +1593,18 @@ def create_app() -> web.Application:
     # E3 (wizard, editor vuoto, onboarding della chat) che creavano tutte
     # l'entita' gia' attiva, il contrario di quanto prescrive lo scope.
     # GET /api/chatbots resta come superficie di compatibilita' dichiarata
-    # (Global Constraints, vedi handlers_chatbots.py): la pagina chat e la
-    # card ne dipendono per l'indicatore "connesso" e la lista (verificato
-    # in static/chat/agents.js, hiris-chat-card.js). Le due rotte
-    # chat-history restano per lo stesso motivo. Le pagine che restano rotte
-    # (editor #/chatbots, usage, assegnazione modello per entita', toggle
-    # della card) sono elencate nel report del task, per l'elenco della E5.
+    # (Global Constraints, vedi handlers_chatbots.py). Chi la chiama, a oggi,
+    # non e' piu' la chat: il Task 3 di questa fetta l'ha staccata (nome e
+    # tetto di turni vengono da GET /api/impostazioni-chat, il "connesso" da
+    # GET api/health) e il Task 5 ha fatto uscire la card. Restano i suoi
+    # chiamanti dentro la SPA di configurazione -- config/dashboard.js,
+    # config/main.js (il contatore in sidebar), config/chatbots-list.js,
+    # config/chatbot-editor.js, config/models-route.js, config/usage-route.js,
+    # config/tasks-route.js -- cioe' pagine che il Task 10 smonta insieme
+    # alla rotta. Le due rotte chat-history hanno invece un chiamante vivo e
+    # solo: static/chat/agents.js (ripristino e cancellazione della
+    # cronologia). La card non le ha mai chiamate: teneva la propria
+    # cronologia in localStorage.
     app.router.add_get("/api/chatbots", handle_list_chatbots)
     app.router.add_get("/api/entities", handle_list_entities)
     app.router.add_get("/api/chatbots/{agent_id}/chat-history", handle_get_chat_history)

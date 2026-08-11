@@ -25,7 +25,7 @@ You should receive an acknowledgement within **5 business days**. Coordinated di
 
 In scope:
 - The HIRIS add-on container (`hiris/app/` Python code).
-- The Lovelace card (`hiris/app/static/`).
+- The add-on's own web interface (`hiris/app/static/`).
 - The internal HTTP API and the proxy paths consumed by other add-ons.
 
 Out of scope:

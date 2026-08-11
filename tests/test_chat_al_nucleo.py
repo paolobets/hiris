@@ -177,12 +177,13 @@ async def test_la_chat_offre_quattro_strumenti(aiohttp_client, tmp_path):
 
 @pytest.mark.asyncio
 async def test_lo_streaming_offre_gli_stessi_quattro_strumenti(aiohttp_client, tmp_path):
-    """Il buco oltre il brief: la card Lovelace usa lo streaming
-    (static/hiris-chat-card.js), la pagina chat no (static/chat/send.js) --
-    se solo una delle due ricevesse `strumenti`/`dispatcher`, sarebbero due
-    strade divergenti per la stessa conversazione (esattamente il difetto
-    che questa fetta esiste per chiudere). Qui si passa dallo stesso
-    `handle_chat`, ramo SSE."""
+    """Il buco oltre il brief: quando questo test e' stato scritto, le due
+    superfici della chat sceglievano strade diverse -- la card Lovelace
+    streammava, la pagina chat no -- e se solo una delle due ricevesse
+    `strumenti`/`dispatcher` sarebbero due conversazioni divergenti. La card
+    e' uscita col Task 5 della E5 e oggi nessun frontend chiede lo streaming,
+    ma il ramo SSE di `handle_chat` e' vivo (lo usano il ponte e questi test):
+    resta pinnato qui, cosi' non riparte divergente."""
     app = create_app()
 
     mock_ha = AsyncMock()

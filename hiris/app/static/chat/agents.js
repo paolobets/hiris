@@ -46,8 +46,10 @@
   }
 
   async function clearConversation() {
-    /* Irreversibile: la card Lovelace (hiris-chat-card.js) chiede conferma
-       per la stessa identica azione con lo stesso testo -- qui mancava. */
+    /* Irreversibile: la conferma qui mancava, ed e' stata aggiunta copiando
+       il testo dalla card Lovelace, che per la stessa azione la chiedeva. La
+       card e' uscita col Task 5 della E5: la conferma resta perche' e' il
+       comportamento giusto, non perche' un'altra superficie la imponga. */
     if (!window.confirm('Cancellare la cronologia di questa conversazione?')) return;
     try {
       var r = await fetch('api/chatbots/' + CHAT_ID + '/chat-history', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });

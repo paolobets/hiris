@@ -29,8 +29,7 @@ from unittest.mock import AsyncMock, MagicMock
 # soggetto (handle_list_chatbots che calcolava budget_eur/usage da
 # runner.get_chatbot_usage(agent_id)) e' uscito per intero col resto
 # dell'entita' Chatbot: niente piu' usage per-persona con un bot solo senza
-# id (la card mostra 0/--, "agent.budget_eur || 0" in
-# hiris-chat-card.js -- l'elenco dei consumi torna nella E5). Verificato che
+# id (l'elenco dei consumi torna nella E5). Verificato che
 # cadessero per costruzione prima della cancellazione:
 # test_list_agents_has_budget_fields -> AssertionError ("budget_eur" non e'
 # piu' nel payload); test_list_agents_budget_computed_from_usage -> KeyError

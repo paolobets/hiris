@@ -869,11 +869,15 @@ class ClaudeRunner:
           'data: {"type": "error", "message": "<msg>"}\\n\\n'
 
         fetta E4 Task 6 ("un bot solo"): il campo `agent_id` del done-event e'
-        uscito -- grep su static/ (send.js, hiris-chat-card.js) trova un solo
-        lettore del `done` event e legge SOLO `evt.type`, mai `evt.agent_id`;
-        la pagina chat (send.js) non usa nemmeno lo streaming. Nessun lettore
+        uscito -- il grep su static/ trovava un solo lettore del `done` event
+        (la card Lovelace) e leggeva SOLO `evt.type`, mai `evt.agent_id`; la
+        pagina chat (send.js) non usa nemmeno lo streaming. Nessun lettore
         vivo, dichiarato per la E5 (docs/design/2026-08-08-frontend-da-
-        rifare.md non lo elenca: non c'era nulla da riparare).
+        rifare.md non lo elenca: non c'era nulla da riparare). fetta E5 Task
+        5: la card e' uscita dal prodotto, quindi `chat_stream()` non ha
+        oggi **nessun** lettore nel frontend -- la pagina chat resta sul
+        turno sincrono. Non e' codice morto (il ponte e i test lo usano), ma
+        e' una superficie senza superficie: dichiarato per il Task 10.
 
         fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
         `user_id` e' uscito anche lui da `chat()`/`chat_stream()` -- il suo

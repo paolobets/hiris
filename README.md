@@ -265,24 +265,20 @@ recommended.
 
 ---
 
-## Lovelace chat card
+## Lovelace chat card — removed for now
 
-Add the chat to any dashboard:
+There is **no HIRIS card for your dashboards in this version**. The 1.x card
+(`custom:hiris-chat-card`) has been removed from the product and will come back
+rewritten, once the rest of 2.0 is finished. Until then, the chat lives in one
+place: the add-on's own page.
 
-```yaml
-type: custom:hiris-chat-card
-title: "HIRIS Chat"
-```
-
-Optional keys: `hiris_slug` (default `hiris`), `suggestions` (up to 6 starter
-prompts), `height`. A `chatbot_id` from a 1.x dashboard is still accepted and
-simply ignored — there is one chat now
-(`hiris/app/api/handlers_chat.py:170-179`).
-
-On startup HIRIS copies the card to `<ha-config>/www/hiris/` and registers the
-Lovelace resource over the WebSocket API, migrating stale URLs; the
-registration is idempotent (`hiris/app/server.py:115,201,612-618`). No manual
-resource configuration is needed.
+If you had the card on a dashboard, that tile stops working — see the `[2.0.0]`
+entry in [`CHANGELOG.md`](CHANGELOG.md). You do not have to clean up after it:
+on first start after the update HIRIS **uninstalls what it had installed** —
+the copy under `<ha-config>/www/hiris/` and the registered Lovelace resource —
+touching only those, never a resource it did not add, and saying so in the log
+(`hiris/app/server.py`, `_disinstalla_card_lovelace`). Removing the now-empty
+card tile from your dashboard is the one gesture left to you.
 
 ---
 

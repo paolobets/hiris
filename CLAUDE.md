@@ -173,13 +173,18 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
     ├── agent/      (3)       runner.py (il ponte push) + prompts.py
     ├── history/    (3)  ·  reasoning/ (2)
-    └── static/     index.html · config.html · chat/*.js · config/*.js · hiris-chat-card.js
+    └── static/     index.html · config.html · chat/*.js · config/*.js
 ```
 
 **Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
 `app/routes.py`, `app/ha_client.py`, `app/agent_engine.py`, `api/handlers_agents.py`,
 e — dopo le tre fette di demolizione del 2.0 — `app/chatbot_engine.py`, `app/task_engine.py`,
 `app/mqtt_publisher.py`, e le cartelle `tools/`, `watcher/`, `security/`, `mcp/`.
+Dalla fetta E5 (Task 5) non esiste più nemmeno `static/hiris-chat-card.js`, la card Lovelace:
+è uscita per intero — file, copia dentro Home Assistant, registrazione della risorsa — e tornerà
+riscritta da zero come ultimo passo, quando il prodotto sarà completo. Al suo posto `server.py`
+tiene solo la **disinstallazione** (`_disinstalla_card_lovelace`), perché quelle scritture
+stavano nella configurazione dell'utente, non dentro l'add-on.
 La tabella «Cosa è condannato» qui sopra resta valida come **regola**, ma i percorsi che cita
 (`watcher/detectors.py`, `security/semaphore.py`) sono ormai riferimenti storici: quelle aree
 sono uscite con le fette E2 ed E3.

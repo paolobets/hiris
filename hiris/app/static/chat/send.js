@@ -11,15 +11,16 @@
    "error") arrives. Gives up after CHAT_POLL_MAX_MS so the UI never spins
    forever.
 
-   This is the page's own polling loop, not shared with hiris-chat-card.js:
-   the card is a Shadow-DOM custom element copied into HA's www/ folder and
-   deployed via a completely different mechanism (Lovelace module registry,
-   see hiris-chat-card.js header), so it cannot <script src> this file --
-   sharing would mean shipping an extra file into www/ for one function.
-   Project-wide there are now exactly two implementations (this one and the
-   card's _pollChatReply), each the single owner for its surface -- down
-   from the three near-duplicates the SP-4 grounding found (this file's old
-   private copy, plus the card's). See task-8-report.md. */
+   fetta E5 Task 5: questo e' adesso l'UNICO ciclo di polling della risposta
+   di tutto il prodotto. Erano due -- questo e il `_pollChatReply` della card
+   Lovelace, che girava dentro Home Assistant e non poteva condividere questo
+   file. Quello della card **non leggeva `debug`**, cioe' la tracciabilita'
+   delle chiamate agli strumenti (rilievo I-7 della review di parita' B):
+   chi usava la card vedeva la risposta senza sapere cosa HIRIS avesse
+   guardato. Con l'uscita della card il doppione sparisce, e con lui la
+   possibilita' che le due superfici raccontino il turno in due modi diversi.
+   Erano tre near-duplicati alla ricognizione SP-4 (questo file ne aveva una
+   copia privata, piu' quella della card): adesso e' uno. */
 (function() {
   var state = window.HirisChatState;
   var CHAT_POLL_INTERVAL_MS = 3500;
