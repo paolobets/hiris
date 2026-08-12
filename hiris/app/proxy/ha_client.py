@@ -157,16 +157,31 @@ class HAClient:
     # erano gia' caduti col ToolDispatcher. Raccolto qui (fetta E3 Task 12):
     # verificato di nuovo, zero chiamanti in tutto il repo.
 
-    # Review finale fetta E3, Important #3: `call_service` (POST
-    # /api/services/{domain}/{service}) e' uscita -- era l'ULTIMA primitiva
-    # di attuazione rimasta nel codebase, zero chiamanti di produzione (ne'
-    # in questo modulo ne' altrove: verificato con grep sull'intero repo).
-    # Nessun piano o report la dichiarava "tenuta apposta" (a differenza di
-    # `get_statistics`), e il censimento non la vedeva: la stringa del suo
-    # stesso log d'errore ("call_service %s.%s failed %s: %s") contava come
-    # occorrenza nel codice, mascherando l'orfano. In un HIRIS che "conosce e
-    # non agisce" la primitiva che agisce non deve esistere -- torna quando
-    # tornera' un progetto agenti con perimetro e verifica umana.
+    async def call_service(self, dominio: str, servizio: str, dati: dict) -> list[dict]:
+        """Chiama un servizio di Home Assistant. La primitiva che ATTUA.
+
+        Era uscita con la fetta E3 -- «in un HIRIS che conosce e non agisce la
+        primitiva che agisce non deve esistere» -- e torna adesso con la fetta
+        «comandare» dell'azione. Il commento che ne raccontava la rimozione e'
+        stato tolto: descriveva un fatto che non e' piu' vero.
+
+        **Non chiamarla direttamente.** L'unico chiamante di produzione e'
+        `azione/porta.py`, che verifica prima e rilegge dopo. Questa funzione
+        non verifica NIENTE: se le si passa un servizio inesistente, la
+        richiesta parte e Home Assistant risponde 400. E' voluto -- la verifica
+        e' un pezzo separato e testabile senza rete, e questa e' la primitiva
+        nuda.
+
+        Restituisce la lista degli stati che Home Assistant dichiara cambiati.
+        Puo' essere vuota anche quando il servizio e' andato a buon fine (non
+        tutti i servizi cambiano uno stato): non usarla come prova di successo
+        -- per quello c'e' la rilettura nella porta.
+        """
+        url = f"{self._base_url}/api/services/{dominio}/{servizio}"
+        async with self._session.post(url, json=dati) as resp:
+            resp.raise_for_status()
+            cambiati = await resp.json()
+        return cambiati if isinstance(cambiati, list) else []
 
     # fetta E3 Task 12: `get_automations`/`create_automation`/
     # `resolve_automation_id_by_alias`/`resolve_automation_id_by_entity_id`/
