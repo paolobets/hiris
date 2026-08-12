@@ -1,5 +1,105 @@
 # HIRIS — Changelog
 
+## [2.2.0] — Adesso puoi chiedergli di fare (2026-08-12)
+
+**Fino a ieri HIRIS sapeva e basta. Da questa versione, se glielo chiedi, fa.**
+«Spegni la luce della cucina» non è più una domanda a cui rispondere: è una cosa
+che succede. HIRIS chiama i servizi di Home Assistant — accende, spegne, imposta —
+sulle entità che gli indichi, e poi ti racconta com'è andata.
+
+Il resto di questa nota dice tre cose: cosa vedi succedere, cosa succede prima che
+qualcosa si muova, e cosa questa versione **non** fa ancora.
+
+### Cosa vedi succedere
+
+Scrivi in chat quello che vuoi. Sotto la risposta compare la targhetta di uno
+strumento nuovo, **`esegui`**: è l'unico punto in cui HIRIS tocca la tua casa, e
+cliccandola vedi con quali argomenti è stato chiamato — quale servizio, su quale
+entità. Gli altri quattro strumenti (`cerca`, `guarda`, `ricorda`, `richiama`)
+continuano a fare quello che facevano: leggere e ricordare.
+
+Se gli dai un nome invece di un'entità («la luce della cucina»), HIRIS cerca prima
+e agisce dopo: gli id delle entità li prende dalla tua casa, non se li inventa.
+
+### Prima di toccare qualcosa, controlla che si possa
+
+Non c'è nessuna conferma da confermare — e non è una dimenticanza, è una scelta:
+prima la capacità, poi le sicurezze, in una fase pensata apposta. Al posto della
+conferma c'è una **verifica**, fatta sulla *tua* installazione e non su un elenco
+scritto da noi:
+
+- **quel servizio esiste in questa casa?** HIRIS chiede a Home Assistant cosa sa
+  fare, e lo richiede da sé man mano che passa il tempo: un'integrazione che
+  installi oggi entra nel giro senza che HIRIS venga aggiornato;
+- **quell'entità esiste?**
+- **quel servizio si applica a quell'entità?** `light.turn_off` su una presa viene
+  fermato prima di partire;
+- **quel parametro è un parametro di quel servizio?**
+
+E quando dice di no, **dice cosa esiste davvero**: non «non posso», ma «"quello" non
+esiste, i servizi di questo dominio sono questi». È scritto per il modello, che se
+ne serve per correggersi da solo, ma lo leggi anche tu nel log dell'add-on.
+
+### Dopo, ti dice cosa è successo — non cosa avevi chiesto
+
+Chiamato il servizio, HIRIS **rilegge lo stato** delle entità che ha toccato e
+confronta prima e dopo. «L'ho spenta» te lo dice solo se è spenta.
+
+Due casi che vedrai, e che sono la parte onesta di questa versione:
+
+- **«la chiamata è andata a buon fine ma nessuno stato è cambiato».** Succede
+  quando la luce era già spenta, quando il servizio non cambia nessuno stato, e
+  anche quando la cosa **si sta ancora muovendo**: una tapparella impiega venti
+  secondi e HIRIS rilegge dopo pochi millisecondi. Non aspetta apposta: preferisce
+  dirti un fatto («in questo momento non è cambiato niente») invece di indovinare.
+- **«non sono riuscito a rileggere lo stato: non so dire cosa sia cambiato».** La
+  chiamata è partita, la lettura dopo no. Dichiara di non sapere invece di
+  dedurre che sia cambiato tutto.
+
+E se HIRIS non riesce a leggere cosa Home Assistant sa fare, o non vede lo stato
+della casa, **si ferma e lo dice** — «non ho potuto controllare» — invece di
+spacciare la propria cecità per un «non esiste».
+
+### Quando la tua frase ammette più letture
+
+«Accendi il bagno», e in bagno hai due luci, uno scaldasalviette e un aspiratore.
+HIRIS **agisce sulla lettura più naturale e ti dice cosa ha fatto**, invece di
+fermarsi a chiedere: quello che fa si annulla dicendo il contrario, quindi
+sbagliare costa una frase mentre domandare costerebbe qualcosa a ogni richiesta.
+Chiede solo quando una lettura naturale non c'è.
+
+Se lo correggi, ti proporrà di ricordare la tua **preferenza generale** — «quando
+dico di accendere una stanza, di solito intendo le luci» — e non una sostituzione
+della tua frase con delle entità. È voluto: una sostituzione ti toglierebbe la
+possibilità di intendere il riscaldamento con le stesse parole, e non varrebbe per
+nessun'altra stanza.
+
+### Cosa NON fa ancora
+
+Nessuna di queste è un difetto da segnalare.
+
+- **Non costruisce niente.** Non crea e non modifica automazioni, script, scene o
+  dashboard. Chiamare un servizio sì; scrivere oggetti dentro Home Assistant no.
+- **Non fa niente da solo.** Non esiste nessun percorso — un orario, un evento, una
+  regola, una ronda — che possa far partire un'azione senza di te. **Ogni azione
+  nasce da una tua frase in questa conversazione.**
+- **Non sa rimandare a più tardi.** «Spegni le luci fra un'ora» non è una cosa che
+  può prendere in carico: non c'è nessun promemoria e nessuna coda. O adesso, o mai.
+- **Non ti chiede conferma e non ha livelli di permesso.** Vedi sopra: è una scelta
+  di questa fase. Se ti pare che manchi un freno, **segnalalo lo stesso**.
+- **Agisce sulle entità**, non su un'area o su un dispositivo come bersaglio: se
+  chiedi una stanza, HIRIS ne ricava le entità e agisce su quelle.
+
+### Prima di fidartene su una casa vera
+
+Questa versione fa cose che nessuna suite di test può provare da sola: che i
+servizi che HIRIS legge siano davvero quelli della *tua* installazione, si vede
+solo sulla tua installazione. **`docs/prova-azione.md`** è il foglio delle otto
+prove da fare, in mezz'ora, con cosa deve succedere e come si riconosce il
+fallimento. La prima di quelle prove va fatta prima delle altre.
+
+---
+
 ## [2.1.0] — Esce l'integrazione documentale (2026-08-12)
 
 **HIRIS non legge più i tuoi documenti, e smette di registrare la tua casa per
