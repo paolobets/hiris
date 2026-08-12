@@ -208,3 +208,95 @@ def test_il_registro_e_agganciato_all_app():
     assert server.RegistroServizi is RegistroServizi
     assert 'app["registro_servizi"] = RegistroServizi()' in inspect.getsource(
         server._on_startup)
+
+
+# --- la forma di `fields`, un livello piu' sotto ----------------------------
+#
+# R-1 e R-2 della review della fetta. Il parser era difensivo sulla forma
+# ESTERNA (lista, voci, domini) e cieco su quella INTERNA: il docstring del
+# modulo prometteva che «ogni chiave e ogni tipo sono verificati prima
+# dell'uso» ed era falso di un livello. Due esiti misurati, non ipotesi.
+
+@pytest.mark.asyncio
+async def test_i_campi_a_sezioni_salgono_di_un_livello():
+    """R-2. Da Home Assistant 2024.6 i campi avanzati arrivano raggruppati in
+    sezioni. Letti piatti, `rgbw_color` -- un parametro **vero** -- veniva
+    rifiutato, e al modello si offriva `advanced_fields` come «uno di quelli
+    veri»: un rifiuto sbagliato e un nome interno spacciato per parametro,
+    nella stessa frase."""
+    registro = RegistroServizi()
+    await registro.aggiorna(FintoClient([{"domain": "light", "services": {"turn_on": {"fields": {
+        "brightness_pct": {"selector": {}},
+        "advanced_fields": {"collapsed": True, "fields": {"rgbw_color": {}, "effect": {}}},
+    }}}}]))
+    campi = registro.servizio("light", "turn_on")["fields"]
+    assert sorted(campi) == ["brightness_pct", "effect", "rgbw_color"]
+    assert "advanced_fields" not in campi, (
+        "il nome della sezione non e' un parametro: offerto al modello, lo "
+        "proverebbe e riceverebbe un secondo rifiuto")
+
+
+@pytest.mark.asyncio
+async def test_appiattire_non_tocca_i_campi_gia_piatti():
+    """La difesa dev'essere innocua dove le sezioni non ci sono -- che e' la
+    sola forma che qualcuno abbia mai scritto in una finta."""
+    registro = RegistroServizi()
+    await registro.aggiorna(FintoClient(RISPOSTA_HA))
+    assert sorted(registro.servizio("light", "turn_on")["fields"]) == [
+        "brightness_pct", "transition"]
+    assert registro.servizio("switch", "turn_on")["fields"] == {}
+
+
+@pytest.mark.asyncio
+async def test_un_campo_che_non_e_una_mappa_diventa_none_e_non_solleva():
+    """R-1. `fields` che non e' una mappa (p.es. una lista di oggetti) faceva
+    risalire un `TypeError` da `PortaAzione.esegui`, e il modello riceveva
+    «unhashable type: 'dict'» come **motivo del rifiuto**: un errore Python
+    travestito da spiegazione.
+
+    `None`, non `{}`: `{}` significa «letto, nessun parametro» e autorizza a
+    rifiutare un parametro in piu'. Qui non abbiamo letto niente."""
+    registro = RegistroServizi()
+    await registro.aggiorna(FintoClient(
+        [{"domain": "light", "services": {"turn_on": {"fields": [{"name": "brightness_pct"}]}}}]))
+    assert registro.servizio("light", "turn_on")["fields"] is None
+    assert registro.servizi_di("light") == ["turn_on"], (
+        "il servizio esiste: una forma non capita non deve farlo sparire")
+
+
+@pytest.mark.asyncio
+async def test_un_servizio_senza_campi_non_ne_guadagna_uno_finto():
+    """Il registro e' lo SPECCHIO di `/api/services`: aggiungere una chiave che
+    Home Assistant non ha mandato sarebbe insegnare invece di specchiare."""
+    registro = RegistroServizi()
+    await registro.aggiorna(FintoClient(
+        [{"domain": "light", "services": {"turn_on": {"target": {}}, "toggle": {}}}]))
+    assert registro.servizio("light", "turn_on") == {"target": {}}
+    assert registro.servizio("light", "toggle") == {}
+
+
+@pytest.mark.asyncio
+async def test_una_risposta_letta_e_non_capita_lo_dice(caplog):
+    """m-3 della review. Una risposta che c'era e da cui non si e' capito
+    niente e' l'unico esito che il resto del prodotto non sa raccontare:
+    all'utente si dice «non sono riuscito a leggerlo, riprova fra poco» -- per
+    sempre -- e nel log c'era solo `INFO: 0 domini, 0 servizi`, che assomiglia
+    a una casa senza servizi. E' il fallimento numero 1 del foglio delle prove;
+    chi non ha il foglio in mano deve poterlo diagnosticare dal log."""
+    import logging
+    registro = RegistroServizi()
+    with caplog.at_level(logging.WARNING, logger="hiris.app.azione.registro"):
+        await registro.aggiorna(FintoClient({"light": {"turn_on": {}}}))  # un dizionario, non una lista
+    assert registro.domini() == []
+    assert any("non e' quella attesa" in r.getMessage() for r in caplog.records), caplog.text
+
+
+@pytest.mark.asyncio
+async def test_una_casa_senza_servizi_non_viene_dichiarata_un_guasto(caplog):
+    """Il complemento: la diagnosi qui sopra deve distinguere «non ho capito»
+    da «non c'era niente da capire», o sarebbe un allarme che urla sempre."""
+    import logging
+    registro = RegistroServizi()
+    with caplog.at_level(logging.WARNING, logger="hiris.app.azione.registro"):
+        await registro.aggiorna(FintoClient([]))
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []

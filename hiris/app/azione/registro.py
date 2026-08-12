@@ -19,11 +19,81 @@ La forma di `/api/services` presa per buona qui e' una lista di
 ancora misurata su un'installazione vera: per questo ogni chiave e ogni tipo
 sono verificati prima dell'uso e una voce che non torna viene saltata invece
 di far cadere l'intero aggiornamento.
+
+La verifica arriva **fino ai parametri**, e non si ferma un livello sopra come
+faceva prima della revisione della fetta: `fields` viene normalizzato qui
+(`_campi`), cosi' che chi legge il registro trovi sempre o una mappa di nomi o
+un `None` dichiarato, mai una forma da indovinare. Erano due difetti misurati,
+non ipotesi: un `fields` che non fosse una mappa faceva risalire un `TypeError`
+fino al modello (`unhashable type: 'dict'` come motivo di un rifiuto), e un
+`fields` **a sezioni** -- la forma che Home Assistant >= 2024.6 manda per
+parecchi domini core -- faceva rifiutare un parametro legittimo offrendo
+`advanced_fields` come «uno di quelli veri».
 """
 import logging
 import time
 
 logger = logging.getLogger(__name__)
+
+
+def _campi(grezzo) -> dict | None:
+    """I parametri di un servizio, appiattiti di un livello.
+
+    Tre esiti, e il terzo e' il motivo per cui questa funzione esiste:
+
+    - **forma piatta** -- `{"brightness_pct": {...}, "transition": {...}}`:
+      resta com'e';
+    - **forma a sezioni** (Home Assistant >= 2024.6) -- i campi avanzati
+      stanno raggruppati: `{"advanced_fields": {"collapsed": true, "fields":
+      {"rgbw_color": {...}}}}`. Letta piatta faceva due danni in una frase
+      sola: rifiutava `rgbw_color`, che e' un parametro **vero**, e offriva al
+      modello `advanced_fields` come parametro -- che il modello avrebbe
+      provato, per un secondo rifiuto. Qui la sezione si apre e i suoi campi
+      salgono di un livello. Appiattire e' **innocuo dove le sezioni non ci
+      sono**: senza un `fields` annidato dentro, non c'e' niente da aprire.
+      Un livello solo, di proposito: le sezioni di Home Assistant non si
+      annidano, e scendere all'infinito trasformerebbe un parser in
+      un'ipotesi.
+    - **forma illeggibile** -- `fields` c'e' ma non e' una mappa: `None`.
+      `None` NON e' `{}`, ed e' la stessa distinzione che questo modulo usa
+      gia' per `servizio()` e `eta_secondi()`: `{}` dice «letto: nessun
+      parametro» e autorizza a rifiutare un parametro in piu', `None` dice
+      «non l'ho potuto leggere» -- e su cio' che non si e' potuto misurare
+      non si rifiuta.
+
+    Cosa distingue una sezione da un campo: il valore e' una mappa che
+    contiene a sua volta un `fields` che e' una mappa. Il descrittore di un
+    campo (`selector`, `required`, `example`, `default`...) non ha un
+    `fields`; una sezione ce l'ha per definizione, ed e' li' che stanno i
+    nomi veri.
+    """
+    if not isinstance(grezzo, dict):
+        return None
+    piatti: dict = {}
+    for nome, dettaglio in grezzo.items():
+        interni = dettaglio.get("fields") if isinstance(dettaglio, dict) else None
+        if isinstance(interni, dict):
+            for sotto, dettaglio_sotto in interni.items():
+                if isinstance(sotto, str):
+                    piatti[sotto] = dettaglio_sotto
+        elif isinstance(nome, str):
+            piatti[nome] = dettaglio
+    return piatti
+
+
+def _dettaglio(grezzo) -> dict:
+    """Il dettaglio di un servizio, coi suoi `fields` gia' normalizzati.
+
+    Un dettaglio che non e' un dizionario diventa `{}` -- «il servizio esiste,
+    non sappiamo com'e' fatto» -- e non fa cadere il dominio intero. Un
+    dettaglio senza `fields` resta tale e quale: aggiungere una chiave che
+    Home Assistant non ha mandato sarebbe insegnare invece di specchiare.
+    """
+    if not isinstance(grezzo, dict):
+        return {}
+    if "fields" not in grezzo:
+        return grezzo
+    return {**grezzo, "fields": _campi(grezzo["fields"])}
 
 
 class RegistroServizi:
@@ -49,12 +119,23 @@ class RegistroServizi:
             servizi = voce.get("services")
             if not isinstance(dominio, str) or not isinstance(servizi, dict):
                 continue
-            nuovo[dominio] = {n: (d if isinstance(d, dict) else {})
+            nuovo[dominio] = {n: _dettaglio(d)
                               for n, d in servizi.items() if isinstance(n, str)}
         self._per_dominio = nuovo
         self._caricato_a = time.monotonic()
         logger.info("registro servizi: %d domini, %d servizi",
                     len(nuovo), sum(len(s) for s in nuovo.values()))
+        # Una risposta che c'era e da cui non si e' capito NIENTE e' l'unico
+        # esito che il resto del prodotto non sa raccontare: l'utente si sente
+        # dire «non sono riuscito a leggerlo, riprova fra poco» per sempre, e
+        # nel log c'era solo un `INFO: 0 domini, 0 servizi` che assomiglia a
+        # una casa senza servizi. E' il fallimento numero 1 del foglio delle
+        # prove: qui diventa una diagnosi invece di un silenzio.
+        if grezzo and not nuovo:
+            logger.warning("registro servizi: la risposta di /api/services non era "
+                           "vuota (%s voci) ma non se ne e' capita nessuna -- la sua "
+                           "forma non e' quella attesa (lista di {domain, services})",
+                           len(grezzo) if isinstance(grezzo, list) else "?")
 
     async def assicura_fresco(self, ha_client) -> None:
         """Ricarica se serve. Un guasto NON svuota cio' che sapevamo.
@@ -83,7 +164,14 @@ class RegistroServizi:
                            type(errore).__name__, errore, eta or 0.0)
 
     def servizio(self, dominio: str, nome: str) -> dict | None:
-        """Il dettaglio di un servizio, o `None` se qui non esiste."""
+        """Il dettaglio di un servizio, o `None` se qui non esiste.
+
+        Quando c'e', il suo `fields` -- se c'e' -- e' gia' normalizzato da
+        `_campi`: o una mappa di nomi di parametro, o `None` («c'era, ma in
+        una forma che non so leggere»). Chi lo interroga non deve piu'
+        indovinare la forma, ed e' l'unico posto in cui quella forma va
+        capita.
+        """
         return self._per_dominio.get(dominio, {}).get(nome)
 
     def domini(self) -> list[str]:

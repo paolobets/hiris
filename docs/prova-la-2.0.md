@@ -255,7 +255,7 @@ Sette richieste che li esercitano davvero:
    posso».
 
 **Se hai mezz'ora e un impianto vero**, `prova-azione.md` (in questa stessa cartella)
-è il foglio delle otto prove che mettono alla prova solo `esegui` — cosa deve succedere
+è il foglio delle nove prove che mettono alla prova solo `esegui` — cosa deve succedere
 e come si riconosce il fallimento, riga di log per riga di log. La prima di quelle prove
 va fatta prima di tutte le altre.
 

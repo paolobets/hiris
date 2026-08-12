@@ -178,3 +178,80 @@ async def test_senza_bersaglio_rifiutato():
     v = verifica({"servizio": "light.turn_off"}, await _registro_pronto(), STATI)
     assert v.ok is False
     assert "entit" in v.motivo.lower()
+
+
+# --- cio' che il registro non ha saputo leggere -----------------------------
+#
+# R-1 e R-2 visti da qui: la verifica e' l'unico lettore di `fields`, e le due
+# forme che nessuno aveva misurato le incontrava lei.
+
+@pytest.mark.asyncio
+async def test_un_parametro_dentro_una_sezione_e_un_parametro_vero():
+    """R-2, end-to-end fino al verdetto: il registro appiattisce, la verifica
+    accetta. Prima di questa passata «metti la luce in bianco freddo»
+    riceveva «`rgbw_color` non e' un parametro di `light.turn_on`»."""
+    risposta = [{"domain": "light", "services": {"turn_on": {"fields": {
+        "brightness_pct": {},
+        "advanced_fields": {"collapsed": True, "fields": {"rgbw_color": {}}},
+    }}}}]
+    registro = await _registro_pronto(risposta)
+    v = verifica({"servizio": "light.turn_on",
+                  "bersaglio": {"entita": ["light.salotto"]},
+                  "dati": {"rgbw_color": [255, 255, 255, 255]}}, registro, STATI)
+    assert v.ok is True, v.motivo
+
+    # e il nome della sezione non e' diventato un parametro accettabile
+    no = verifica({"servizio": "light.turn_on",
+                   "bersaglio": {"entita": ["light.salotto"]},
+                   "dati": {"advanced_fields": 1}}, registro, STATI)
+    assert no.ok is False
+    assert "advanced_fields" not in no.motivo.split("Quelli veri sono:")[1]
+
+
+@pytest.mark.asyncio
+async def test_un_fields_illeggibile_non_solleva_e_non_rifiuta():
+    """R-1. Due cose insieme, e la seconda conta quanto la prima.
+
+    Non solleva: prima, `set(definizione.get("fields") or {})` su una lista di
+    oggetti faceva risalire un `TypeError` fino al modello, che leggeva
+    «unhashable type: 'dict'» come motivo del rifiuto. La promessa «la porta
+    non solleva mai» era mantenuta solo dal `try/except` del suo chiamante
+    attuale -- lo schedulatore di domani la prenderebbe in faccia.
+
+    E non rifiuta: su cio' che non si e' potuto misurare non si dice «non
+    accetta parametri». Se la forma vera di `/api/services` fosse quella, quel
+    rifiuto varrebbe per OGNI servizio della casa."""
+    registro = await _registro_pronto(
+        [{"domain": "light", "services": {"turn_on": {"fields": [{"name": "brightness_pct"}]}}}])
+    v = verifica({"servizio": "light.turn_on",
+                  "bersaglio": {"entita": ["light.salotto"]},
+                  "dati": {"brightness_pct": 50}}, registro, STATI)
+    assert v.ok is True, v.motivo
+
+
+def test_un_fields_illeggibile_non_solleva_nemmeno_saltando_il_registro():
+    """La verifica e' pura e chiunque puo' costruirle un registro: il
+    controllo di forma dev'essere anche qui, o la promessa della porta
+    tornerebbe a dipendere da chi la chiama."""
+    class RegistroACaso:
+        def domini(self): return ["light"]
+        def servizi_di(self, d): return ["turn_on"]
+        def servizio(self, d, n): return {"fields": [{"name": "brightness_pct"}]}
+
+    v = verifica({"servizio": "light.turn_on",
+                  "bersaglio": {"entita": ["light.salotto"]},
+                  "dati": {"brightness_pct": 50}}, RegistroACaso(), STATI)
+    assert v.ok is True
+
+
+@pytest.mark.asyncio
+async def test_un_servizio_senza_parametri_rifiuta_ancora_quello_in_piu():
+    """Il complemento: `{}` («letto: nessun parametro») e `None` («non l'ho
+    letto») non devono collassare l'uno nell'altro, o allargare la difesa di
+    R-1 avrebbe spento un controllo che funzionava."""
+    v = verifica({"servizio": "switch.turn_on",
+                  "bersaglio": {"entita": ["switch.presa"]},
+                  "dati": {"colore_del_mercoledi": "blu"}},
+                 await _registro_pronto(), STATI)
+    assert v.ok is False
+    assert "non accetta parametri" in v.motivo

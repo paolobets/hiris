@@ -8,8 +8,10 @@ description: >-
   scripts already do, and gives you one chat to ask it and to command it.
   Service calls are checked against your own installation before they are sent
   and the state is read back after, so it tells you what actually happened.
-  It never acts on its own, never sends a notification, and never creates or
-  edits an automation.
+  It never acts on its own: every action starts from a sentence you type.
+  It does not write automations, scripts, scenes or dashboards - but it calls
+  services, and that includes switching an automation on or off, or sending a
+  notification if your installation exposes notify entities.
 url: "https://github.com/paolobets/hiris"
 homeassistant: "2024.7.0"
 arch:

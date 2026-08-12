@@ -35,7 +35,11 @@ import pytest
 from hiris.app.azione.porta import PortaAzione
 from hiris.app.azione.registro import RegistroServizi
 
-RISPOSTA_HA = [{"domain": "light", "services": {"turn_off": {"fields": {"transition": {}}}}}]
+RISPOSTA_HA = [
+    {"domain": "light", "services": {"turn_off": {"fields": {"transition": {}}}}},
+    # un servizio parametrico vero, per il confronto che guarda gli attributi
+    {"domain": "climate", "services": {"set_temperature": {"fields": {"temperature": {}}}}},
+]
 
 
 class FintoClient:
@@ -71,7 +75,21 @@ class FintaCache:
                 and self.letture >= self._rompe_dalla_lettura):
             raise RuntimeError("websocket caduto")
         sorgente = self._dopo if (self.letture > 1 and self._dopo is not None) else self._stati
-        return [{"id": eid, "state": stato} for eid, stato in sorgente.items()]
+        return [_voce(eid, valore) for eid, valore in sorgente.items()]
+
+
+def _voce(eid: str, valore) -> dict:
+    """Una voce minimale come la costruisce `EntityCache._to_minimal`.
+
+    La forma corta (`"light.salotto": "on"`) resta quella dei casi in cui
+    conta solo lo stato; quella lunga (`{"state": ..., "attributes": {...}}`)
+    serve ai comandi parametrici, dove lo stato NON cambia e cambia un
+    attributo -- ed e' la stessa forma che `_to_minimal` produce davvero,
+    pinnata da `test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene`.
+    """
+    if isinstance(valore, dict):
+        return {"id": eid, **valore}
+    return {"id": eid, "state": valore}
 
 
 SALOTTO_ACCESO = {"light.salotto": "on"}
@@ -79,6 +97,13 @@ SALOTTO_SPENTO = {"light.salotto": "off"}
 
 SPEGNI_IL_SALOTTO = {"servizio": "light.turn_off",
                      "bersaglio": {"entita": ["light.salotto"]}}
+
+# Il comando parametrico: `state` resta «heat», cambia solo la temperatura.
+CLIMA_A_19 = {"climate.salotto": {"state": "heat", "attributes": {"temperature": 19}}}
+CLIMA_A_21 = {"climate.salotto": {"state": "heat", "attributes": {"temperature": 21}}}
+METTI_A_21 = {"servizio": "climate.set_temperature",
+              "bersaglio": {"entita": ["climate.salotto"]},
+              "dati": {"temperature": 21}}
 
 
 async def _registro_pronto(client):
@@ -104,8 +129,8 @@ async def test_esegue_e_racconta_cosa_e_cambiato():
     assert client.chiamate == [("light", "turn_off", {"entity_id": ["light.salotto"]})]
     assert esito["servizio"] == "light.turn_off"
     assert esito["entita"] == ["light.salotto"]
-    assert esito["prima"] == {"light.salotto": "on"}
-    assert esito["dopo"] == {"light.salotto": "off"}
+    assert esito["prima"] == {"light.salotto": {"state": "on"}}
+    assert esito["dopo"] == {"light.salotto": {"state": "off"}}
     assert esito["cambiato"] == ["light.salotto"]
     assert "avviso" not in esito
     assert cache.letture == 2, (
@@ -272,3 +297,80 @@ async def test_se_la_rilettura_non_riesce_non_inventa_cosa_e_cambiato():
     assert esito["cambiato"] == []
     assert "rileggere" in esito["avviso"]
     assert esito["dopo"] == {"light.salotto": None}
+
+
+# --- il comando parametrico -------------------------------------------------
+#
+# R-3 della review della fetta. Prima di questi test il confronto guardava il
+# solo `state`: «metti il termostato a 21» eseguiva davvero e veniva raccontato
+# come «nessuno stato e' cambiato», perche' cio' che cambia e'
+# `attributes.temperature`. Non e' il difetto peggiore possibile -- non
+# dichiarava un successo mai misurato, sbagliava rifiutando il proprio stesso
+# lavoro -- ma e' una frase falsa detta con sicurezza, cioe' la famiglia che
+# questa porta esiste per chiudere, e su una casa vera capita tutti i giorni:
+# clima, luminosita', tapparelle, volume, ventilatori.
+
+@pytest.mark.asyncio
+async def test_un_comando_parametrico_non_viene_raccontato_come_nulla_e_cambiato():
+    client = FintoClient()
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(CLIMA_A_19, dopo=CLIMA_A_21))
+    esito = await porta.esegui(METTI_A_21, origine="chat")
+    assert esito["eseguito"] is True
+    assert esito["cambiato"] == ["climate.salotto"], (
+        "la temperatura e' passata da 19 a 21: dire che non e' cambiato niente "
+        "sarebbe raccontare cio' che e' stato chiesto invece di cio' che e' "
+        "successo, col verso sbagliato")
+    assert "avviso" not in esito
+
+
+@pytest.mark.asyncio
+async def test_prima_e_dopo_mostrano_la_differenza_che_cambiato_dichiara():
+    """`cambiato` dev'essere sempre spiegabile da `prima` e `dopo`: sono i tre
+    campi che il prompt promette al modello, e se il primo affermasse una
+    differenza che gli altri due non mostrano il modello avrebbe in mano un
+    racconto che si contraddice."""
+    client = FintoClient()
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(CLIMA_A_19, dopo=CLIMA_A_21))
+    esito = await porta.esegui(METTI_A_21, origine="chat")
+    assert esito["prima"] == {"climate.salotto": {"state": "heat", "temperature": 19}}
+    assert esito["dopo"] == {"climate.salotto": {"state": "heat", "temperature": 21}}
+    for entita in esito["cambiato"]:
+        assert esito["prima"][entita] != esito["dopo"][entita]
+
+
+@pytest.mark.asyncio
+async def test_un_parametrico_che_davvero_non_cambia_niente_lo_dichiara_ancora():
+    """L'altra faccia: allargare il confronto agli attributi non deve
+    trasformare l'avviso in un ramo morto. Se ne' lo stato ne' gli attributi
+    si muovono, l'avviso resta -- ed e' il caso della valvola termostatica
+    gia' a 21."""
+    client = FintoClient()
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(CLIMA_A_21))
+    esito = await porta.esegui(METTI_A_21, origine="chat")
+    assert esito["eseguito"] is True
+    assert esito["cambiato"] == []
+    assert "nessuno stato e' cambiato" in esito["avviso"]
+
+
+def test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene():
+    """La guardia contro il difetto piu' silenzioso di questa correzione.
+
+    La porta puo' confrontare solo cio' che `EntityCache` mette nella voce
+    minimale (`_DOMAIN_ATTRS`). Le finte di questo file gli attributi se li
+    scrivono da sole: se domani `temperature` uscisse da quell'elenco, tutti i
+    test qui sopra resterebbero verdi e la casa vera tornerebbe a sentirsi dire
+    «non e' cambiato niente». Qui l'impronta si costruisce sulla voce che
+    produce il codice VERO dell'inventario.
+    """
+    from hiris.app.azione.porta import _impronta
+    from hiris.app.proxy.entity_cache import _to_minimal
+
+    voce = _to_minimal({"entity_id": "climate.salotto", "state": "heat",
+                        "attributes": {"temperature": 21, "friendly_name": "Salotto"}})
+    assert _impronta(voce) == {"state": "heat", "temperature": 21}, (
+        "l'attributo che regge «metti il termostato a 21» non arriva piu' "
+        "dall'inventario alla porta: o e' uscito da _DOMAIN_ATTRS, o la voce "
+        "minimale ha cambiato forma")

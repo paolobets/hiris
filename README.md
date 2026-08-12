@@ -29,8 +29,24 @@ to command it**.
 
 That is the whole product. It reads Home Assistant, it remembers what you tell
 it, and it calls Home Assistant services on your behalf when you ask it to in
-chat. It still does not send notifications, and it does not create or modify
-automations, scripts, scenes or dashboards.
+chat. It does not *write* objects into Home Assistant: no automations, no
+scripts, no scenes, no dashboards.
+
+**Read that boundary literally, because it is narrower than it sounds.** There
+is no category of service that HIRIS holds back — the only limits are the ones
+below (the service and the entity have to exist, and have to match). Two
+consequences worth knowing before you install it:
+
+- **your automations are not out of reach.** HIRIS will not rewrite one, but
+  `automation.turn_off` on an `automation.*` entity is an ordinary service call
+  and it will make it if you ask. Unlike a light, a disabled automation is not
+  obvious to look at and it stays disabled until something re-enables it.
+- **notifications are not carved out either.** HIRIS has no notification
+  channel of its own (see [what is *not* in 2.0](#what-is-not-in-20)), but on
+  an installation that exposes `notify.*` entities — ordinary since Home
+  Assistant 2024.6 — `notify.send_message` passes the same checks as anything
+  else. Nothing in the code prevents it; earlier versions of this README
+  claimed otherwise, and the claim was resting on an accident.
 
 Action came back deliberately, and through **one door only**
 (`hiris/app/azione/porta.py`): every call is verified against *your*
@@ -335,7 +351,8 @@ rewritten, with a design of its own.
 
 - **Building things** — no creating or editing automations, scripts, scenes or
   dashboards. Calling a service *is* back (`esegui`, above); writing objects
-  into Home Assistant is not
+  into Home Assistant is not. Note the seam: *enabling and disabling* an
+  automation is a service call, and is therefore **in**
 - **The semaforo** — tiers, denylists, step-up confirmations, per-action gating.
   Action returned without it, on purpose: safeguards are a designed phase of
   their own, not an inheritance from 1.x
@@ -343,7 +360,11 @@ rewritten, with a design of its own.
   event to reason on its own
 - **The Brain**, its proposals and its advisories
 - **Multiple chatbots**, their editors, their per-bot budgets and allowlists
-- **Notifications** — no Apprise, no HA push, no Telegram/ntfy/…
+- **Notifications** — HIRIS has no notification channel of its own: no
+  Apprise, no HA push, no Telegram/ntfy/…, and nothing that can reach you when
+  you are not in the chat. That is a statement about HIRIS, not a guarantee
+  about your house: if your installation exposes `notify.*` entities, `esegui`
+  can call their services like any other
 - **MQTT**, the gateway, Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
 - **The thirty-four-tool catalogue** — replaced by the five above

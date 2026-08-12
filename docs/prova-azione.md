@@ -23,7 +23,7 @@ forma *osservata*. Nessuno dei passi che hanno costruito questa versione ha tocc
 impianto reale (un tentativo su `192.168.1.95:8123` si è fermato su un `401`). Se quella
 forma è diversa da come la immaginiamo, **non è una prova che fallisce: è tutta la
 versione da rileggere**. Per questo è la prova numero 1, e va fatta prima delle altre
-sette.
+otto.
 
 ---
 
@@ -194,10 +194,16 @@ accetta parametri, e ne hai passato ...»*.
 - Il parametro **passa** e la chiamata parte: la verifica dei parametri non funziona.
 - Il rifiuto dice *«non accetta parametri»* per un servizio che invece ne ha (per esempio
   `light.turn_on`, che ha almeno `brightness_pct`). È il segnale che il dettaglio dei
-  servizi arriva **senza** la chiave `fields`, o con quei parametri in un posto diverso:
-  torna alla prova 1, guarda nell'output del `curl` la voce di `light.turn_on` e
-  segnalala. È lo stesso rischio della prova 1 — una forma assunta e non misurata — in
-  una sua piega più profonda.
+  servizi arriva **senza** la chiave `fields`: torna alla prova 1, guarda nell'output del
+  `curl` la voce di `light.turn_on` e segnalala. È lo stesso rischio della prova 1 — una
+  forma assunta e non misurata — in una sua piega più profonda.
+- **Nell'elenco di «quelli veri» compare un nome che non è un parametro** — tipicamente
+  qualcosa che finisce in `_fields`. Da Home Assistant 2024.6 i parametri avanzati
+  arrivano raggruppati in **sezioni**, e HIRIS ora le apre e ne fa salire i campi di un
+  livello; se ne vedi ancora una nell'elenco, il raggruppamento ha una forma che non
+  conosciamo. Allo stesso modo, un rifiuto di un parametro che tu sai essere legittimo
+  (`rgbw_color` su `light.turn_on`, per esempio) è la stessa cosa vista dall'altro lato.
+  In entrambi i casi: `curl` sulla voce di quel servizio, e segnalala per intero.
 
 ---
 
@@ -274,6 +280,49 @@ ed è precisamente il difetto che questa versione ha cercato di impedire.
 
 ---
 
+## Prova 9 — Un comando che cambia un valore, non lo stato
+
+**Cosa fare.** Con un termostato acceso e a una temperatura diversa da quella che
+chiederai, in chat: *«metti il termostato del salotto a 21»*. Se non hai un termostato
+va bene una **luce già accesa** portata a metà luminosità (*«metti la luce della cucina
+al 30%»*), o una tapparella **già ferma a metà** portata a un'altra posizione.
+
+**Perché esiste questa prova.** È la sola classe di comandi che le altre otto non
+toccano, ed è quella che su una casa vera capita tutti i giorni. Un comando così **non
+cambia lo `state`**: il clima resta `heat`, la luce resta `on`. Cambia un valore dentro
+di esso. Fino alla revisione di questa versione HIRIS confrontava il solo stato, e
+rispondeva *«la chiamata è andata a buon fine ma nessuno stato è cambiato»* di un comando
+che aveva funzionato benissimo — una frase falsa detta con sicurezza, cioè esattamente la
+cosa che questa versione esiste per non fare. Ora il confronto guarda anche i valori. Qui
+si misura se ci riesce sulla tua casa.
+
+**Cosa deve succedere.** Il termostato va davvero a 21. HIRIS te lo dice **nominando i
+due numeri** — «era a 19, adesso è a 21» — e **senza** l'avviso «nessuno stato è
+cambiato». Nel log:
+
+```
+azione eseguita [origine=chat] climate.set_temperature su ['climate.salotto'] -- cambiati: ['climate.salotto']
+```
+
+**Come si riconosce il fallimento.** Tre modi, e tutti e tre vanno segnalati con il
+dominio e il servizio esatti:
+
+- **la riga di log dice `cambiati: nessuno`** e HIRIS aggiunge l'avviso, mentre il
+  termostato è andato a 21 davvero. Significa che il valore che è cambiato **non è fra
+  quelli che HIRIS tiene in memoria**: l'inventario delle entità conserva un elenco corto
+  di attributi per dominio (`hiris/app/proxy/entity_cache.py`, `_DOMAIN_ATTRS`), e ciò
+  che non è lì dentro è invisibile al confronto. È un limite dichiarato, non una
+  sorpresa: **la segnalazione utile è quale attributo**, perché è quello il dato che
+  serve per allungare l'elenco con dei nomi *osservati* invece che indovinati.
+- **HIRIS dichiara i due numeri ma sono sbagliati** (dice «da 19 a 21» e il termostato è
+  fermo a 19): la rilettura sta arrivando prima dell'evento di Home Assistant. È la
+  stessa corsa della prova 6, vista su un valore invece che su uno stato.
+- **HIRIS risponde che non è cambiato niente e non è cambiato niente davvero**, perché il
+  termostato era già a 21: non è un fallimento, è il caso giusto. Rifallo partendo da un
+  valore diverso.
+
+---
+
 ## Due controlli che si fanno dopo, non durante
 
 ### A. Il ricordo che contiene degli `entity_id` (dieci secondi, dopo qualche giorno)
@@ -316,6 +365,28 @@ azione rifiutata [origine=chat]: «group.set» non si applica a «light.cucina»
 
 **Se lo vedi, annota il servizio esatto.** Non è un guasto da aggirare: è esattamente il
 dato che serve per allargare quella lista con dei nomi *osservati*.
+
+**E c'è il verso opposto, che fino alla revisione di questa versione nessuno guardava.**
+L'esenzione vale sul **dominio intero**, non sui servizi che agiscono sull'entità che hai
+nominato — che è invece la ragione scritta accanto alla lista (`homeassistant.turn_off`
+spegne luci, prese, media player). Conseguenza: `homeassistant.restart` e
+`homeassistant.stop` con un'entità qualunque nel bersaglio **passano la verifica ed
+escono verso Home Assistant**. Non è un cancello mancante — nessuno di quei due parte se
+non glielo chiedi — ma è un'esenzione più larga del suo motivo, e il controllo sul
+dominio è l'unico contenimento strutturale che questa versione possiede.
+
+Stringerla si potrebbe: le definizioni dei servizi di Home Assistant portano un campo
+`target`, e un servizio che non ne dichiara nessuno non guarda l'entità che gli passi.
+**Non è stato fatto, e la ragione è la stessa di tutto questo foglio**: `target` vive
+nella stessa risposta di `/api/services` che nessuno ha ancora misurato, e se in una casa
+vera quel campo mancasse anche dove serve, la restrizione rifiuterebbe
+`homeassistant.turn_off` — cioè proprio la chiamata che la prova 4 dice che **deve
+funzionare**. Restringere al buio è lo stesso difetto che allargare al buio.
+
+**Cosa fare quindi, e costa dieci secondi**: nell'output del `curl` della prova 1, cerca
+la voce del dominio `homeassistant` e guarda se `turn_off` ha un `target` e se `restart`
+non ce l'ha. Se è così, la restrizione è decidibile con dei dati misurati e va fatta.
+Segnala le due voci per intero.
 
 ---
 

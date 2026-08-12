@@ -208,7 +208,7 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 1.188 test + 1 skip (2.0 @ fine fetta «comandare»)
+python -m pytest -q          # 1.207 test + 1 skip (2.0 @ riserve della fetta «comandare» chiuse)
 npm test                     # 92 test frontend: node --test + jsdom
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo

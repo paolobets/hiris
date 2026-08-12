@@ -45,6 +45,14 @@ ne serve per correggersi da solo, ma lo leggi anche tu nel log dell'add-on.
 Chiamato il servizio, HIRIS **rilegge lo stato** delle entità che ha toccato e
 confronta prima e dopo. «L'ho spenta» te lo dice solo se è spenta.
 
+Il confronto guarda lo stato **e i valori**: la temperatura di un termostato, la
+luminosità di una luce, la posizione di una tapparella, il volume. Serve perché
+«metti il termostato a 21» non cambia lo stato — il clima resta `heat`, cambia
+il numero — e guardando il solo stato HIRIS ti avrebbe risposto che non è
+cambiato niente di un comando che aveva funzionato. Se il valore che cambia è
+uno che HIRIS non tiene in memoria (il colore di una luce, per esempio), vedrai
+l'avviso del punto qui sotto: dice il vero su ciò che ha potuto guardare.
+
 Due casi che vedrai, e che sono la parte onesta di questa versione:
 
 - **«la chiamata è andata a buon fine ma nessuno stato è cambiato».** Succede
@@ -79,7 +87,23 @@ nessun'altra stanza.
 Nessuna di queste è un difetto da segnalare.
 
 - **Non costruisce niente.** Non crea e non modifica automazioni, script, scene o
-  dashboard. Chiamare un servizio sì; scrivere oggetti dentro Home Assistant no.
+  dashboard: non scrive oggetti dentro Home Assistant. **Ma le tue automazioni
+  non sono fuori portata**, e questo va letto alla lettera: *accendere e
+  spegnere* un'automazione è una chiamata a un servizio come tutte le altre
+  (`automation.turn_off`), e HIRIS la fa se gliela chiedi. È l'unica azione di
+  questa versione che **non si vede guardando la casa** e che resta finché
+  qualcuno non la riattiva — il riscaldamento che non parte più, e nessuno che
+  sappia perché. Se succede, HIRIS te lo dice; ma se il riavvio dell'add-on
+  cancellasse quella conversazione, il log dell'add-on resterebbe l'unico posto
+  in cui l'informazione esiste.
+- **Non ha un modo suo di raggiungerti.** Nessuna notifica, nessun push,
+  nessun canale: quando non sei nella chat, HIRIS non ti parla. Questa però è
+  una frase su HIRIS, **non una garanzia sulla tua casa**: se la tua
+  installazione ha entità `notify.*` (dalla 2024.6 di Home Assistant è una
+  configurazione ordinaria), `notify.send_message` passa gli stessi controlli
+  di qualunque altro servizio. Non c'è niente nel codice che tenga fuori una
+  categoria di servizi, e dire il contrario sarebbe promettere un freno che
+  non esiste.
 - **Non fa niente da solo.** Non esiste nessun percorso — un orario, un evento, una
   regola, una ronda — che possa far partire un'azione senza di te. **Ogni azione
   nasce da una tua frase in questa conversazione.**
@@ -94,7 +118,7 @@ Nessuna di queste è un difetto da segnalare.
 
 Questa versione fa cose che nessuna suite di test può provare da sola: che i
 servizi che HIRIS legge siano davvero quelli della *tua* installazione, si vede
-solo sulla tua installazione. **`docs/prova-azione.md`** è il foglio delle otto
+solo sulla tua installazione. **`docs/prova-azione.md`** è il foglio delle nove
 prove da fare, in mezz'ora, con cosa deve succedere e come si riconosce il
 fallimento. La prima di quelle prove va fatta prima delle altre.
 

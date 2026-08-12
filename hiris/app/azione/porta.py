@@ -40,6 +40,60 @@ _RILETTURA_CIECA = ("la chiamata e' partita, ma non sono riuscito a rileggere lo
                     "stato: non so dire cosa sia cambiato")
 
 
+def _impronta(voce) -> dict | None:
+    """Cio' che di un'entita' si confronta prima e dopo: lo stato **e** gli
+    attributi che lo specchio conserva.
+
+    Il solo `state` non basta, e non era un caso di scuola: «metti il
+    termostato a 21» chiama davvero `climate.set_temperature`, la casa cambia
+    davvero, e `state` resta `heat` -- cambia `attributes.temperature`. Col
+    confronto sul solo stato l'esito portava `cambiato: []`, il prompt
+    insegna al modello a dire «e' riuscita ma nulla e' cambiato», e l'utente
+    si sentiva raccontare una frase falsa con sicurezza. Vale per l'intera
+    classe dei comandi parametrici -- temperatura, luminosita', posizione di
+    una tapparella, volume, velocita' di un ventilatore -- cioe' per una casa
+    vera tutti i giorni.
+
+    **Gli attributi sono quelli che lo specchio gia' conserva**
+    (`entity_cache._DOMAIN_ATTRS`: `temperature`, `brightness`,
+    `current_position`, `volume_level`, `percentage`...). Nessuno viene
+    aggiunto qui: quell'elenco e' una decisione dell'inventario -- che lo
+    tiene corto apposta, perche' lo legge tutto il prodotto -- non della
+    porta. La conseguenza va detta invece di essere scoperta: un attributo
+    che lo specchio non tiene (il colore di una luce, l'umidita' di un
+    umidificatore) resta invisibile a questo confronto, e quel comando
+    continuera' a portare l'avviso «nessuno stato e' cambiato». E' lo stesso
+    avviso onesto-ma-parziale della tapparella lenta: dice il vero su cio'
+    che HIRIS ha potuto guardare.
+
+    **Perche' non la lista dei cambiati di `call_service`.** Home Assistant
+    la restituisce, e chiuderebbe anche la corsa fra la rilettura e l'arrivo
+    dell'evento websocket. E' stata scartata per due ragioni. La prima: e'
+    una **seconda forma non misurata** della stessa risposta da cui vengono
+    entrambi gli altri difetti chiusi in questa passata (`fields` a sezioni,
+    `fields` non-mappa) -- lo specchio, invece, e' costruito da noi in
+    `_to_minimal`, e confrontarlo con se stesso non presuppone niente. La
+    seconda: metterebbe in `cambiato` entita' la cui differenza `prima` e
+    `dopo` non possono mostrare, cioe' un racconto che si contraddice da
+    solo. Resta un debito dichiarato, e la corsa e' sorvegliata dalla prova 2
+    del foglio.
+
+    `None` -- non `{}` -- quando dell'entita' non c'e' nessuna voce: e' la
+    stessa distinzione «non ho guardato» / «ho guardato» del resto del
+    modulo, ed e' cio' che il modello legge nel `dopo` di una rilettura
+    cieca.
+    """
+    if not isinstance(voce, dict):
+        return None
+    impronta = {"state": voce.get("state")}
+    attributi = voce.get("attributes")
+    if isinstance(attributi, dict):
+        # `state` non si lascia sovrascrivere da un attributo omonimo: la
+        # chiave che dice lo stato dev'essere sempre quella.
+        impronta.update({k: v for k, v in attributi.items() if k != "state"})
+    return impronta
+
+
 class PortaAzione:
     def __init__(self, ha_client, registro, cache) -> None:
         self._ha = ha_client
@@ -125,9 +179,14 @@ class PortaAzione:
         # «non cambiato», e l'avviso dira' il vero -- in QUEL momento non era
         # cambiato. Nessuna attesa: una `sleep` arbitraria trasformerebbe un
         # fatto onesto in un'ipotesi.
+        #
+        # Cio' che si confronta e' l'IMPRONTA, non il solo `state`: vedi
+        # `_impronta` qui sopra. `prima` e `dopo` portano al modello la stessa
+        # cosa che il confronto guarda, cosi' `cambiato` e' sempre spiegabile
+        # da loro due -- e il modello puo' dire «da 19 a 21» invece di «fatto».
         stati_dopo = self._stati()
-        prima = {e: (stati_prima.get(e) or {}).get("state") for e in verdetto.entita}
-        dopo = {e: ((stati_dopo or {}).get(e) or {}).get("state") for e in verdetto.entita}
+        prima = {e: _impronta(stati_prima.get(e)) for e in verdetto.entita}
+        dopo = {e: _impronta((stati_dopo or {}).get(e)) for e in verdetto.entita}
         # Se la rilettura non e' riuscita, `dopo` e' tutto `None` e il
         # confronto direbbe che TUTTO e' cambiato: sarebbe inventare. Si
         # dichiara di non saperlo.

@@ -308,3 +308,37 @@ def test_il_prompt_promette_almeno_le_chiavi_che_raccontano_l_esito():
                 f"il prompt del percorso {percorso} non nomina piu' `{chiave}`: "
                 "il modello non ha modo di sapere dove guardare per raccontare "
                 "cosa e' successo davvero")
+
+
+# -- 5. l'azione che non si vede -------------------------------------------
+#
+# R-5 della review della fetta, meta' meccanismo. Il CHANGELOG e il README
+# dicevano «non crea e non modifica automazioni»: letteralmente vero,
+# praticamente ambiguo -- un utente ne conclude che le sue automazioni siano
+# fuori portata, e non lo sono (`automation.turn_off` su un'entita'
+# `automation.*` passa la verifica ed esegue). I tre testi sono stati
+# riscritti; ma il testo che l'utente legge non e' un meccanismo, e il prompt
+# insegnava al modello la regola opposta -- «cio' che fai si annulla dicendo il
+# contrario», usata per giustificare l'azione senza chiedere. Un'automazione
+# spenta non si annulla dicendo il contrario: nessuno se ne accorge.
+
+def test_entrambi_i_percorsi_conoscono_l_azione_che_non_si_vede():
+    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
+        assert "automation.turn_off" in testo, (
+            f"il prompt del percorso {percorso} non nomina piu' l'eccezione a "
+            "«si annulla dicendo il contrario»: il modello ha in mano l'unica "
+            "azione di questa versione che resta invisibile e persistente, e "
+            "la regola accanto gli dice che sbagliare costa una frase")
+        assert "eccezione" in testo
+
+
+def test_l_eccezione_sta_dove_stanno_le_regole_dell_azione():
+    """Non nella guida del ponte: il percorso sincrono -- quello che oggi porta
+    la chat vera -- le guide di `agent/prompts.py` non le vede mai. E' la
+    stessa correzione al piano che il Task 6 aveva gia' dovuto fare per le
+    quattro regole dell'azione."""
+    from hiris.app.claude_runner import BASE_REGOLE_STRUMENTI
+    assert "automation.turn_off" in BASE_REGOLE_STRUMENTI
+    assert "automation.turn_off" not in _GUIDA_SENZA_STRUMENTI, (
+        "un percorso senza strumenti non deve ricevere una regola su come "
+        "usarli: e' la meta' falsa che la fetta «parita'» ha tolto")
