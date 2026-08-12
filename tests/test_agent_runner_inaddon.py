@@ -379,7 +379,15 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
 
     # dice il vero su cio' che NON ha
     assert "NON hai alcuno strumento" in system
-    assert "non agisce" in system
+    # fetta «comandare» (Task 6): questo assert era `"non agisce" in system`.
+    # Il soggetto e' vivo -- in QUESTO turno non si tocca la casa -- ma la
+    # formula era una proprieta' del PRODOTTO, e dal Task 5 il prodotto agisce
+    # (`esegui`). Il testo dice ora la cosa vera e piu' stretta, e il pin la
+    # segue: cambia la via d'accesso, non cio' che difende.
+    assert "non puoi accendere, spegnere o chiamare un servizio" in system
+    assert "non perche' HIRIS non sappia farlo" in system, (
+        "la guida del degrado nega la capacita' senza dire che manca solo in "
+        "questo turno: e' la vecchia falsita' di prodotto, riscritta")
     assert "nessuna conferma" in system
     # e dice al modello di DICHIARARE cio' che non puo' leggere, non di fingerlo
     assert "DILLO" in system
@@ -469,16 +477,18 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
 # passera' -- e con `strict` un XPASS e' un FALLIMENTO: la suite tornera'
 # rossa finche' qualcuno non toglie questa riga. Un `xfail` non-strict
 # sarebbe stato il modo silenzioso di dimenticarsene.
-@pytest.mark.xfail(strict=True, reason=(
-    "fetta comandare Task 5: `esegui` e' nell'argv ma non ancora nel prompt "
-    "-- lo nomina il Task 6, che riscrive le guide. TOGLIERE QUESTO MARKER "
-    "quando il Task 6 e' fatto: con strict=True il suo XPASS fara' rossa la "
-    "suite finche' non e' tolto."))
-def test_col_ramo_attivo_il_prompt_afferma_i_quattro_strumenti_prefissati():
+#
+# Task 6, DEBITO SALDATO: il marker e' stato tolto e il test e' un test
+# normale, verde. `_GUIDA_CON_STRUMENTI` nomina `mcp__hiris__esegui` e non
+# dichiara piu' «HIRIS non agisce comunque»; l'invariante argv <=> prompt e'
+# di nuovo intera, e questo test la sorveglia sui CINQUE nomi senza saperlo
+# (li prende da `runner.nomi_mcp()`, che deriva dal catalogo unico). Il nome
+# del test ha perso «i_quattro_»: contava un numero che non conta.
+def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     """Il GEMELLO del pin qui sopra, nato con la fetta "il ponte riceve gli
     strumenti" (parita' B, Task 3): sul ramo `strumenti_attivi=True` il prompt
-    deve affermare i quattro strumenti -- e affermarli **coi nomi che il
-    modello vedra' davvero**.
+    deve affermare gli strumenti del catalogo -- e affermarli **coi nomi che
+    il modello vedra' davvero**.
 
     E' la meta' che rende il pin dell'argv una coppia invece di un assert
     isolato: l'argv da' `--allowedTools mcp__hiris__*`, e questo test verifica
@@ -503,13 +513,27 @@ def test_col_ramo_attivo_il_prompt_afferma_i_quattro_strumenti_prefissati():
             "il nome con cui la CLI li serve al modello: il modello leggerebbe "
             "un nome e ne dovrebbe chiamare un altro")
     # ...e i nomi NUDI restano nominati, perche' la persona (il system prompt
-    # delle impostazioni) continua a usarli: il prompt li ricollega ai quattro
+    # delle impostazioni) continua a usarli: il prompt li ricollega ai nomi
     # prefissati invece di lasciarli orfani.
-    assert "STESSI quattro strumenti" in system
-    # cio' che NON diventa vero nemmeno qui: HIRIS conosce e non agisce.
-    assert "non agisce" in system
+    # fetta «comandare» (Task 6): «STESSI quattro strumenti» -> «STESSI
+    # strumenti». Il numero non partecipava al ricollegamento (che si fa
+    # elencando i nomi, non contandoli) ed era l'ennesima dichiarazione da
+    # tenere allineata a mano: gli strumenti sono cinque da `33da82b`.
+    assert "STESSI strumenti" in system
+    # ── fetta «comandare» (Task 6). Qui stavano `"non agisce" in system` e
+    # `"per agire" not in system`: il pin di un prodotto che conosceva e non
+    # attuava. Il Task 5 ha dato `esegui` al modello, e questa e' la prima
+    # riga di test che DEVE cambiare di segno -- non per accomodare il codice
+    # ma perche' la proprieta' difesa non esiste piu'. Al suo posto: il prompt
+    # del ramo attivo non deve poter tornare a NEGARE l'azione, che sarebbe il
+    # sintomo indistinguibile da «gli strumenti sono rotti».
+    for negazione in ("non agisce", "non accendi", "non spegni"):
+        assert negazione not in system, (
+            f"il prompt del ramo ATTIVO dice «{negazione}» mentre la CLI gli "
+            "serve `mcp__hiris__esegui`: il modello rifiutera' di agire")
+    # cio' che NON diventa vero nemmeno qui: nessuna conferma esiste, e il
+    # prompt non deve prometterne una (ne' inventare azioni in sospeso).
     assert "nessuna conferma" in system
-    assert "per agire" not in system
     assert "in attesa di conferma" not in system
 
     # ── fix round 1, Important 1: IL CONTRORDINE.
@@ -638,7 +662,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
 #   - con `strumenti_attivi=True` gli strumenti CI SONO, sono ESATTAMENTE i
 #     quattro di `casa/strumenti.py` (derivati, mai scritti a mano) e il prompt
 #     lo dice (il gemello sul prompt e'
-#     `test_col_ramo_attivo_il_prompt_afferma_i_quattro_strumenti_prefissati`);
+#     `test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati`);
 #   - con `strumenti_attivi=False` l'asserzione vecchia resta viva PAROLA PER
 #     PAROLA: e' il ramo di degrado, e deve restare onesto per sempre.
 # L'invariante che lega i due rami al prompt -- `--mcp-config` nell'argv <=>

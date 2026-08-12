@@ -56,6 +56,27 @@ from ..claude_runner import (
 # gli strumenti, e «conosce» gli darebbe il permesso di credere di sapere.
 # Resta solo «non agisce», che qui e' vero due volte.
 #
+# fetta «comandare» (Task 6): «non agisce» ha smesso di essere vero DUE
+# volte, ed e' rimasto vero UNA. Il Task 5 ha dato a HIRIS `esegui` (catalogo
+# unico, `casa/strumenti.py`): il prodotto agisce. Questo turno no -- qui non
+# c'e' nessuno strumento da chiamare -- e la differenza fra le due cose e'
+# tutta nella frase. «HIRIS non agisce» era una proprieta' del PRODOTTO
+# affermata da un percorso che parla solo di se': lo stesso errore di scala
+# che il fix m11 qui sopra ha corretto su «conosce», ripetuto sull'altra
+# meta' della formula. Il testo dice ora cio' che questo turno puo': non
+# accendere, non spegnere, non chiamare un servizio -- «perche' lo strumento
+# che lo fa qui non c'e', non perche' HIRIS non sappia farlo». La seconda
+# proposizione non e' cortesia: senza, un modello che leggesse questa riga
+# come una proprieta' del prodotto negherebbe la capacita' anche all'utente
+# che gliela chiede per il turno dopo.
+#
+# Cio' che NON e' cambiato di una virgola e' l'altra meta': in questo turno
+# gli strumenti non ci sono davvero, e un modello che si credesse capace di
+# agire annuncerebbe accensioni mai avvenute -- il «preso nota» senza aver
+# salvato, in un'altra forma. Per questo `esegui` entra anche nell'elenco
+# degli strumenti che il testo NOMINA PER NEGARLI: se il prompt di sopra lo
+# ordina, qui quell'ordine non si applica.
+#
 # Serve anche a CORREGGERE il prompt che la precede: il system prompt delle
 # impostazioni della chat (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`, via
 # `handlers_chat._build_system_prompt`) e' scritto per il percorso SINCRONO e
@@ -94,12 +115,15 @@ _GUIDA_SENZA_STRUMENTI = (
     "guardare adesso lo stato della casa (entita', aree, dispositivi, meteo, "
     "storico) e non puoi salvare nuovi ricordi ne' andare a cercarne altri "
     "adesso. Se il prompt qui sopra nomina "
-    "degli strumenti (per esempio `cerca`, `guarda`, `ricorda`, `richiama`) o "
+    "degli strumenti (per esempio `cerca`, `guarda`, `ricorda`, `richiama`, "
+    "`esegui`) o "
     "ti ordina di chiamarli, qui non ci sono: quelle istruzioni non si "
     "applicano. Non inventare stati, valori o entita', e non dire di aver "
     "guardato o di aver preso nota di qualcosa.\n"
-    "HIRIS non agisce: non accendi, non spegni, non invii notifiche, non "
-    "tocchi automazioni. Non c'e' nessuna conferma da "
+    "In questo turno non puoi nemmeno far succedere niente in casa: non puoi "
+    "accendere, spegnere o chiamare un servizio di Home Assistant, perche' "
+    "lo strumento che lo fa (`esegui`) qui non c'e' -- non perche' HIRIS non "
+    "sappia farlo. Non c'e' nessuna conferma da "
     "chiedere, perche' non c'e' nessuna azione in attesa.\n"
     "Se per rispondere servirebbe un valore aggiornato ADESSO, DILLO in una "
     "frase -- che in questa conversazione non puoi andare a guardarlo -- "
@@ -135,25 +159,61 @@ _GUIDA_SENZA_STRUMENTI = (
 # chiamare. Un «possono comparire» lascerebbe il modello a credere che
 # `cerca` nudo sia altrettanto valido -- e una chiamata a un nome che non
 # esiste e' proprio il modo in cui questo prodotto ha gia' prodotto un «preso
-# nota» senza aver salvato. Il testo nomina quindi i quattro nomi VERI, e
+# nota» senza aver salvato. Il testo nomina quindi i nomi VERI, e
 # ricollega a loro i nomi nudi che la persona (il system prompt delle
 # impostazioni della chat) continua a usare.
+#
+# fetta «comandare» (Task 6). Tre cose cambiano qui, e una NON cambia.
+#
+# ① I nomi sono cinque: `mcp__hiris__esegui` e' nell'argv da `33da82b`
+#   (`--allowedTools` deriva da `runner.nomi_mcp()`, che deriva dal catalogo
+#   unico), e l'invariante argv <=> prompt vuole che il testo lo nomini --
+#   e' cio' che pinna `test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_
+#   prefissati` in tests/test_agent_runner_inaddon.py. Fra questo commit e
+#   quello il prompt affermava CINQUE strumenti serviti e ne nominava
+#   QUATTRO, per giunta dichiarando «HIRIS non agisce comunque»: quel test
+#   era `xfail(strict=True)` apposta, cosi' il debito si esigeva da solo.
+#
+# ② «STESSI quattro strumenti» -> «STESSI strumenti». Il numero nel testo del
+#   prompt non aggiungeva niente al ricollegamento dei nomi nudi (che si fa
+#   elencandoli, non contandoli) e sarebbe l'ennesima dichiarazione da tenere
+#   allineata a mano.
+#
+# ③ Il capoverso «HIRIS non agisce comunque: non accendi, non spegni ...» e'
+#   USCITO, ed e' la ragione per cui questo task esiste: era un ordine di non
+#   usare uno strumento che il turno successivo serve davvero. Al suo posto
+#   c'e' la sola cosa che questo testo -- quello dei NOMI -- ha il compito di
+#   dire su `esegui`: che gli id vanno presi da `mcp__hiris__cerca` e non
+#   ricavati dal nome. E' l'errore piu' probabile («la luce della cucina»
+#   passata come id) ed e' un problema di NOMI, cioe' materia di questa
+#   guida. Le altre regole dell'azione -- raccontare cosa e' successo,
+#   l'ambiguita', il ricordo-preferenza -- NON stanno qui ma in
+#   `claude_runner.BASE_REGOLE_STRUMENTI`, che su questo ramo e' emessa e sul
+#   percorso sincrono pure: scriverle qui le avrebbe date al ponte e negate
+#   alla chat vera (vedi il commento sopra `BASE_IDENTITA` in claude_runner.py).
+#
+# Cio' che NON cambia: «non dire di aver guardato o di aver preso nota se non
+# hai chiamato lo strumento» -- che acquista un terzo caso, «di aver acceso
+# qualcosa». E' la stessa regola di sempre, e da questa fetta ha una vittima
+# in piu' da proteggere.
 _GUIDA_CON_STRUMENTI = (
     "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
     "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
     "l'unica forma in cui puoi chiamarli: `mcp__hiris__cerca` e "
     "`mcp__hiris__guarda` per lo stato della casa, `mcp__hiris__ricorda` e "
     "`mcp__hiris__richiama` per la memoria di cio' che le persone ti hanno "
-    "detto. Quando il prompt qui sopra parla di `cerca`, `guarda`, `ricorda` o "
-    "`richiama` parla di questi STESSI quattro strumenti, non di altri: usa il "
+    "detto, `mcp__hiris__esegui` per far succedere qualcosa in casa. Quando "
+    "il prompt qui sopra parla di `cerca`, `guarda`, `ricorda`, `richiama` o "
+    "`esegui` parla di questi STESSI strumenti, non di altri: usa il "
     "nome prefissato per chiamarli.\n"
     "Quando serve un valore CORRENTE chiama lo strumento invece di rispondere "
     "con cio' che leggi nel contesto qui sotto: guarda adesso. Non inventare "
-    "stati, valori o entita', e non dire di aver guardato o di aver preso "
-    "nota se non hai chiamato lo strumento.\n"
-    "HIRIS non agisce comunque: non accendi, non spegni, non invii notifiche, "
-    "non tocchi automazioni. Non c'e' nessuna conferma da chiedere, perche' "
-    "non c'e' nessuna azione in attesa."
+    "stati, valori o entita', e non dire di aver guardato, di aver preso "
+    "nota o di aver acceso qualcosa se non hai chiamato lo strumento.\n"
+    "Gli id delle entita' che passi a `mcp__hiris__esegui` sono quelli ESATTI "
+    "di questa casa: non li inventi e non li ricavi dal nome. Se hai solo il "
+    "nome di una cosa, o di una stanza, chiama prima `mcp__hiris__cerca` e "
+    "usa gli id che ti risponde."
 )
 
 # Le due frasi sul CONTESTO, complementari fra loro: una sola delle due entra

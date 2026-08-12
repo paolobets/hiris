@@ -98,6 +98,50 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # salvato, perche' la chiamata che gli abbiamo insegnato a fare fallisce in
 # silenzio. Riscritta perche' descriva cio' che HIRIS e' oggi: conosce la
 # casa e la memoria, risponde, non attua.
+#
+# fetta «comandare» (Task 6): «non attua» non e' piu' vero, e la riscrittura
+# di allora e' diventata la falsita' che quel commento vieta -- girata al
+# contrario. Il Task 5 ha messo `esegui` nel catalogo unico
+# (`casa/strumenti.py`) e quindi nei tool del ramo sincrono E nell'argv della
+# CLI: il modello RICEVE lo strumento, e questa costante gli diceva «non
+# controlli dispositivi ... rispondi, non agisci». Un ordine di NON usare uno
+# strumento che esiste e' lo stesso difetto dell'ordine di usarne uno che non
+# esiste: in un caso il modello dichiara azioni mai avvenute, nell'altro
+# rifiuta azioni che poteva fare -- e il sintomo («HIRIS dice che non puo'
+# accendere») e' indistinguibile da «gli strumenti sono rotti».
+#
+# Perche' le regole nuove stanno QUI e non nella guida del ponte
+# (`agent/prompts._GUIDA_CON_STRUMENTI`, dove il brief le aveva messe): sono
+# regole del PRODOTTO, e questa meta' e' l'unico testo emesso SE E SOLO SE
+# gli strumenti esistono -- sempre sul percorso sincrono (che le guide non le
+# vede MAI: `chat()` qui sotto compone `BASE_SYSTEM_PROMPT`) e sul ponte solo
+# con `strumenti_attivi=True`. Scritte nella guida sarebbero arrivate al
+# ponte e non alla chat vera, cioe' la divergenza fra i due percorsi che la
+# fetta «parita'» ha passato due task a chiudere. Alla guida resta il suo
+# mestiere: i nomi PREFISSATI, che qui non avrebbero senso.
+#
+# Le regole e la ragione di ciascuna stanno in tests/test_prompt_azione.py.
+# Una sola merita di essere ripetuta accanto al testo: sull'ambiguita'
+# («accendi il bagno») HIRIS AGISCE sulla lettura piu' naturale e non chiede
+# conferma -- in questa fetta ogni azione e' una chiamata a un servizio e si
+# annulla dicendo il contrario, quindi sbagliare costa una frase mentre
+# domandare costerebbe su OGNI richiesta, per sempre. La bilancia si ribalta
+# nella fetta dei costruttori (un'automazione scritta male non si annulla
+# dicendo il contrario): quella regola sara' diversa, e questa non va copiata
+# li'. E cio' che si propone di ricordare dev'essere una PREFERENZA GENERALE,
+# mai una sostituzione della frase con delle entita': una sostituzione
+# toglierebbe all'utente la possibilita' di intendere il riscaldamento con le
+# stesse parole, e non varrebbe per nessun'altra stanza. Il vincolo regge
+# perche' la memoria di HIRIS non e' una tabella di macro: e' testo che
+# rientra nel prompt e che il modello rilegge insieme alla frase di adesso.
+# Il prompt lo dice esplicitamente perche' la sostituzione e' la forma che al
+# modello viene naturale.
+#
+# Cio' che il prompt NON dice, e non dira' finche' non esiste: che HIRIS
+# chieda conferma prima di agire. Nessun meccanismo di conferma esiste in
+# questa fetta -- `esegui` verifica e chiama -- e prometterlo sarebbe la
+# classe di difetto che questo ramo ha passato settimane a chiudere.
+#
 # fetta "il ponte riceve il nucleo" (parita' A, Task 2, fix round 1 --
 # Critical 1 della review indipendente): la costante e' spezzata in DUE meta',
 # e `BASE_SYSTEM_PROMPT` resta la loro concatenazione, byte per byte. NESSUN
@@ -158,14 +202,34 @@ BASE_IDENTITA = (
 
 BASE_REGOLE_STRUMENTI = (
     "Hai a disposizione strumenti per cercare e guardare il dettaglio di una"
-    " cosa della casa, e per salvare e richiamare ciò che ti viene detto — non"
-    " controlli dispositivi, non invii notifiche, non gestisci automazioni o"
-    " task: rispondi, non agisci.\n\n"
+    " cosa della casa, per salvare e richiamare ciò che ti viene detto e per"
+    " far succedere qualcosa: `esegui` chiama un servizio di Home Assistant"
+    " su una o più entità — accendere, spegnere, impostare. La chiamata viene"
+    " verificata contro questa installazione prima di partire e lo stato"
+    " riletto dopo. Non scrivi automazioni né script, e non programmi niente"
+    " per dopo: ogni azione nasce da una richiesta di questa conversazione.\n\n"
     "## Regole fondamentali\n"
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
+    "- `esegui` vuole gli id ESATTI delle entità, mai il nome con cui le persone le chiamano:"
+    " se hai solo un nome, o un'area, chiama prima cerca e usa gli id che ti risponde.\n"
+    "- Dopo aver eseguito racconta cosa è SUCCESSO, non cosa è stato chiesto: la risposta di"
+    " `esegui` porta `prima`, `dopo` e `cambiato`. Se `cambiato` è vuoto la chiamata è"
+    " riuscita ma nulla è cambiato in casa — dillo, invece di annunciare un successo.\n"
     "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
     "- Se hai chiamato uno strumento con successo, l'azione è reale:\n"
     "  non aggiungere disclaimers come 'ho inventato', 'ho simulato' o 'non ho realmente eseguito'.\n"
+    "- Quando una richiesta ammette più letture — «accendi il bagno», e in bagno ci sono due"
+    " luci, uno scaldasalviette e un aspiratore — agisci sulla lettura più naturale e di' cosa"
+    " hai fatto: ciò che fai si annulla dicendo il contrario, quindi sbagliare costa una frase"
+    " mentre domandare costerebbe a ogni richiesta. Non c'è nessuna conferma da chiedere e"
+    " nessuna azione in attesa. Domanda solo quando una lettura naturale non c'è: in quella"
+    " stanza non c'è niente del genere, oppure i candidati sono così diversi che nessuno è ovvio.\n"
+    "- Se l'utente ti corregge, proponi di ricordare la sua PREFERENZA GENERALE con ricorda"
+    " — «quando dico di accendere una stanza senza specificare altro, di solito intendo le"
+    " luci» — e mai una sostituzione della frase con delle entità («accendi il bagno = queste"
+    " due luci»): la sostituzione gli toglierebbe la possibilità di intendere il riscaldamento"
+    " con le stesse parole, e non varrebbe per nessun'altra stanza. Ciò che ricordi è testo che"
+    " rileggerai insieme alla frase di allora, non una macro che la sostituisce.\n"
     "- Quando l'utente dichiara qualcosa di duraturo su di sé, sulla casa o su come vuole le cose —"
     " una preferenza, un vincolo, un guasto, una regola operativa — chiama ricorda subito, senza"
     " chiedere il permesso: basta l'affermazione, non serve che dica 'ricordati che'. Non salvare lo"
