@@ -20,38 +20,75 @@ deliberata, non un guasto: sarà rivista più avanti, con un progetto.
 
 ### Se avevi configurato Mayan
 
-**Non devi fare niente, e non perdi niente.** Alla prima partenza HIRIS trova le
-tue vecchie opzioni `mayan.*` e semplicemente le ignora: Home Assistant le
-rimuove dalla configurazione dell'add-on da solo. **Nessun file viene
-cancellato**, né dentro HIRIS né sul tuo Mayan: i documenti restano dov'erano,
-in Mayan, e gli archivi che HIRIS si era creato (`knowledge.db`, `history.db`,
-`vault.db`, `history_policy.json`) restano intatti nella cartella dati
-dell'add-on. Se ci sono, HIRIS lo scrive nel log all'avvio, una riga per file,
-invece di incontrarli in silenzio.
+**Non devi fare niente, e non perdi nessun file.** Alla prima partenza HIRIS
+trova le tue vecchie opzioni `mayan.*` e semplicemente non le legge più: non
+sono più nello schema dell'add-on, quindi spariscono dalla pagina di
+configurazione. Home Assistant potrebbe segnalarle nel proprio log come opzioni
+sconosciute finché restano salvate: se succede, apri la Configurazione
+dell'add-on e salva una volta: le righe vecchie se ne vanno con quel salvataggio.
+**Nessun file viene cancellato**, né dentro HIRIS né sul tuo Mayan: i documenti
+restano dov'erano, in Mayan, e gli archivi che HIRIS si era creato
+(`knowledge.db`, `hiris_memory.db`, `history.db`, `vault.db`,
+`history_policy.json`) restano intatti nella cartella dati dell'add-on. Se ci
+sono, HIRIS lo scrive nel log all'avvio, una riga per file, invece di
+incontrarli in silenzio.
+
+Restano intatti, ma **da questa versione nessun codice li riapre più**: quello
+che c'era dentro — i ricordi migrati dalla 1.x, ciò che era entrato da
+`POST /api/knowledge`, i documenti indicizzati — non è più raggiungibile da
+nessuna pagina e da nessuna chat. I file sono tuoi e restano tuoi; sono però
+archivio, non più memoria viva del prodotto.
 
 **Quello che ti sembrava di avere, però, non l'avevi.** Chi configurava Mayan
 credeva di alimentare la chat: non la alimentava. La chat 2.0 costruisce il suo
 contesto dal *nucleo* — l'anagrafe della casa, cosa è notevole adesso, cosa la
 casa fa da sola, e ciò che le hai detto tu — e quell'archivio non lo apriva mai.
-Nessuna pagina lo mostrava. HIRIS spendeva ogni notte chiamate a un servizio di
-embedding per riempire un cassetto che nessuno riapriva.
+Nessuna pagina lo mostrava. E se avevi configurato un provider di embedding,
+HIRIS spendeva ogni notte chiamate a quel servizio per riempire un cassetto che
+nessuno riapriva.
 
 ### Una promessa che ritiriamo perché non era vera
 
 L'opzione `mayan.sensitivity` diceva, testualmente, che il valore `sensitive`
-**«nasconde il contenuto all'AI cloud»**. **Non era vero.** Il meccanismo che
-avrebbe dovuto sostituire i dati personali con dei segnaposto prima di parlare
-con un modello in cloud esisteva nel codice ma **non veniva più invocato da
-nessuna parte**: nessun testo veniva mai mascherato.
+**«nasconde il contenuto all'AI cloud»**. **Non era vero.**
 
-Va detto con precisione cosa questo significa e cosa non significa. **Non c'è
-stata nessuna fuga di dati causata da questo difetto**: il meccanismo era
-completamente fermo in entrambi i versi, quindi non c'era nulla di mascherato
-che potesse essere smascherato per errore. Quello che c'era è **una promessa di
-protezione mai mantenuta** — l'etichetta di un'opzione che dichiarava una difesa
-inesistente. Chi ha ingerito estratti conto o fatture in HIRIS confidando in
-quella frase, li ha inviati al modello **come li avrebbe inviati con
-`sensitivity: normal`.**
+Va detto con precisione cosa significa e cosa non significa, perché sono tre
+cose diverse e vanno separate.
+
+**1. Il modello con cui parli non ha mai letto i tuoi documenti.** Non è una
+sfumatura: l'archivio in cui finivano non veniva riaperto da nessuna pagina e da
+nessuna chat, e nei prompt di sistema non compare. Su questo la rassicurazione
+regge intera.
+
+**2. Il testo dei documenti veniva però mandato al servizio che calcola gli
+embedding, per indicizzarlo.** Integrale, così come l'OCR lo aveva letto, senza
+alcun mascheramento e **senza guardare il valore di `sensitivity`**: la
+sensibilità veniva scritta nella riga dell'archivio, non usata per decidere cosa
+uscisse. Dove finiva quel testo dipende da una sola opzione,
+`memory.embedding_provider`:
+
+- **vuoto** — è il valore **di fabbrica**, e chi non l'ha mai toccato ce l'ha
+  ancora: HIRIS non calcolava nessun embedding e **non faceva nessuna chiamata di
+  rete**. Il testo non usciva dall'add-on.
+- **`model2vec`** — calcolo locale, dentro l'add-on: il testo non usciva di casa.
+- **`ollama`** — con l'URL del tuo server impostato, il testo andava a quel
+  server, sulla tua rete: non usciva di casa. (Senza URL, come senza chiave nel
+  caso qui sotto, HIRIS ricadeva sul comportamento del valore vuoto: niente.)
+- **`openai`** — con la chiave API impostata, **il testo dei documenti usciva in
+  chiaro verso i server di OpenAI** (`api.openai.com`), esattamente come sarebbe
+  uscito con `sensitivity: normal`. Lo stesso vale per i riepiloghi notturni
+  delle 04:00 sullo stato della casa.
+
+**Se vuoi sapere se questo ti riguarda, guarda `memory.embedding_provider` nella
+Configurazione dell'add-on:** se è vuoto — il default — non ti riguarda. Se hai
+scelto `openai`, il testo dei documenti che hai ingerito è passato di là.
+
+**3. La difesa che l'etichetta prometteva non è mai esistita.** Il meccanismo che
+avrebbe dovuto sostituire i dati personali con dei segnaposto esisteva nel codice
+ma non veniva più invocato da nessuna parte, in nessuno dei due versi: nessun
+testo veniva mai mascherato, e quindi non c'era neanche nulla di mascherato che
+potesse essere smascherato per errore. `sensitive` e `normal` producevano lo
+stesso identico comportamento.
 
 Preferiamo dirlo che nasconderlo. La frase esce insieme all'opzione, e il codice
 che la sosteneva a metà esce con lei: quando le difese torneranno, saranno

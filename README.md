@@ -33,7 +33,7 @@ service was removed from the client altogether
 (`hiris/app/proxy/ha_client.py:145-151`) — "doesn't act" is not a setting you
 could flip, it is the absence of the code.
 
-Periodic work *does* run — seven APScheduler jobs are registered at startup —
+Periodic work *does* run — four APScheduler jobs are registered at startup —
 but every one of them is internal housekeeping: none of them speaks to you, and
 none of them touches the house. They are: the entity-inventory reload every
 2 minutes (`hiris/app/server.py:969-974`), the `mtime` sentinel over
@@ -291,7 +291,7 @@ card tile from your dashboard is the one gesture left to you.
 ## Interface
 
 Opening the add-on shows the chat. A configuration panel is served at
-`/config` as a small single-page app with six live routes:
+`/config` as a small single-page app with five live routes:
 
 | Route | What it does |
 |---|---|
@@ -300,7 +300,6 @@ Opening the add-on shows the chat. A configuration panel is served at
 | `#/impostazioni` | The seven chat settings (system prompt, model, answer shape, reasoning, turn cap, home restriction, name) |
 | `#/models` | Active providers, the automatic chain and the default model per provider |
 | `#/usage` | Tokens and cost, or the reason why they cannot be measured |
-| `#/history` | Historicisation: retention and compaction |
 
 Both surfaces share one stylesheet and one palette. The rebuild inventory in
 [`docs/design/2026-08-08-frontend-da-rifare.md`](docs/design/2026-08-08-frontend-da-rifare.md)
@@ -309,7 +308,8 @@ is listed at the bottom of that document — none of it is a fault a tester can
 run into.
 
 **Stack:** Python 3.13 (Alpine) · aiohttp · Anthropic SDK · OpenAI SDK ·
-APScheduler · SQLite · model2vec
+APScheduler · SQLite · model2vec (shipped in the image, not invoked today — see the inert
+embedding options above)
 
 ---
 

@@ -31,7 +31,13 @@ def test_models_route_has_three_sections():
     assert "'Provider attivi'" in js
     assert "'Catena automatica'" in js
     assert "'Assegnazione per entità'" not in js
-    assert "'Embeddings'" in js
+    # Riserva C-2 della review «esce l'integrazione documentale»: il titolo
+    # della terza sezione dichiara adesso l'inerzia, come già facevano
+    # config.yaml, run.sh e le due translations. Il soggetto del test è
+    # cambiato (il titolo reso a schermo), quindi l'attesa si adegua; e la
+    # forma dell'attesa impedisce che il titolo torni a tacere l'inerzia.
+    assert "'Embeddings (oggi inattivi)'" in js
+    assert "'Usati per RAG e memoria semantica" not in js
 
 def test_models_route_puts_full_config_object():
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")

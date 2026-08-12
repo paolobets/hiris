@@ -360,7 +360,7 @@
     var body2 = clearEl(byId('sec2-body'));
     if (body2) body2.appendChild(el('p', 'field-hint', 'Impossibile caricare la catena — vedi Provider attivi qui sopra.'));
     var body4 = clearEl(byId('sec4-body'));
-    if (body4) body4.appendChild(el('p', 'field-hint', 'Non configurato — vedi local_model in Configurazione add-on.'));
+    if (body4) body4.appendChild(el('p', 'field-hint', 'Non configurato — si imposta da memory.embedding_provider in Configurazione add-on.'));
   }
 
   /* ── Sezione 2: Catena automatica ─────────────────────────────────────
@@ -486,9 +486,9 @@
     if (provider && model) {
       body.appendChild(el('p', null, 'Provider: ' + provider + ' · Modello: ' + model));
     } else {
-      body.appendChild(el('p', null, 'Non configurato — vedi local_model in Configurazione add-on.'));
+      body.appendChild(el('p', null, 'Non configurato — si imposta da memory.embedding_provider in Configurazione add-on.'));
     }
-    body.appendChild(el('p', 'field-hint', 'L\'Abbonamento non fa embeddings.'));
+    body.appendChild(el('p', 'field-hint', 'Oggi nessun testo viene vettorizzato: il valore è letto e mostrato, non usato. (L\'Abbonamento non fa embeddings.)'));
   }
 
   /* ── Caricamento dati ─────────────────────────────────────────────────
@@ -567,8 +567,8 @@
        sopra renderSection4 per il perché. Embeddings diventa così la terza
        e ultima sezione della pagina (id interno invariato "sec4", numero
        mostrato "03"). */
-    outlet.appendChild(buildSectionShell('03', 'sec4', 'Embeddings',
-      'Usati per RAG e memoria semantica — non fanno parte della catena sopra.'));
+    outlet.appendChild(buildSectionShell('03', 'sec4', 'Embeddings (oggi inattivi)',
+      'Oggi nessuna parte di HIRIS calcola embedding: qui vedi solo cosa hai configurato. La ricerca per somiglianza è rimandata, non annullata.'));
 
     /* La sezione "03" (Embeddings) parte con il placeholder "Caricamento…"
        di buildSectionShell; viene popolata con i dati reali (o il

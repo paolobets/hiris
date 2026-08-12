@@ -200,7 +200,7 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 1.129 test + 1 skip (2.0 @ fetta «esce il documentale»)
+python -m pytest -q          # 1.144 test + 1 skip (2.0 @ «l'azione torna in HIRIS»)
 npm test                     # 92 test frontend: node --test + jsdom
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo

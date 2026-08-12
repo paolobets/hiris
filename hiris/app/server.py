@@ -1020,7 +1020,8 @@ async def _on_startup(app: web.Application) -> None:
     #     `search_chunks()` non avevano gia' oggi nessun chiamante di
     #     produzione, e le quattro rotte /api/knowledge* nessun frontend.
     # Cioe': HIRIS registrava la casa a ogni `state_changed`, spendeva
-    # embedding ogni notte alle 04:00 e ingeriva documenti in un archivio che
+    # embedding ogni notte alle 04:00 (per chi aveva scelto un provider: di
+    # fabbrica l'opzione e' vuota) e ingeriva documenti in un archivio che
     # nessuno riapriva. Escono insieme il digest storico (brain/
     # history_digest.py), la migrazione una-tantum della memoria legacy
     # (brain/memory_migration.py, che scriveva solo li'), la pagina
@@ -1031,8 +1032,14 @@ async def _on_startup(app: web.Application) -> None:
     # "nasconde il contenuto all'AI cloud": era FALSO: nessun percorso
     # chiamava piu' `pseudonymize()`, quindi `last_pseudonym_map` restava
     # sempre vuota e i due `detokenize` lavoravano su un dizionario vuoto.
-    # Nessuna fuga -- non c'era nulla da detokenizzare -- ma una promessa di
-    # protezione non mantenuta, che esce con l'opzione che la dichiarava.
+    # Niente da detokenizzare, quindi niente da smascherare per errore -- ma
+    # la promessa non era solo non mantenuta, era contraddetta: `mayan_ingest`
+    # passava all'embedder il testo OCR INTEGRALE del documento, senza
+    # guardare `sensitivity`. Con `memory.embedding_provider` di fabbrica
+    # ("" -> NullEmbedder, zero rete) e con `model2vec`/`ollama` quel testo
+    # non usciva dall'impianto; con `openai` usciva in chiaro verso
+    # api.openai.com. Il CHANGELOG 2.1.0 lo dice all'utente per esteso, per
+    # provider. La promessa esce con l'opzione che la dichiarava.
     #
     # SILENZIO DICHIARATO, stessa disciplina di advisory.db/portrait.db/
     # sentinel.db piu' sotto: i file di un'installazione precedente NON
@@ -1085,9 +1092,13 @@ async def _on_startup(app: web.Application) -> None:
     if os.path.exists(_vault_db_path):
         logger.info(
             "vault.db presente in %s da un'installazione precedente: "
-            "brain/privacy.py (VaultStore/Pseudonymizer) e' uscito. Nessun "
-            "percorso lo popolava piu' da tempo, quindi il file e' quasi "
-            "certamente vuoto. Resta su disco, intatto.",
+            "brain/privacy.py (VaultStore/Pseudonymizer) e' uscito. Se il file "
+            "non e' vuoto contiene DATI PERSONALI IN CHIARO: la colonna "
+            "`value` della mappa PII<->token non e' mai stata cifrata "
+            "(cifratura at-rest differita e mai fatta). Nessun codice lo "
+            "legge piu' e nessuna interfaccia lo svuota: cancellarlo e' "
+            "sicuro, ed e' una decisione tua. Fino ad allora resta su disco, "
+            "intatto.",
             _vault_db_path,
         )
 

@@ -9,6 +9,36 @@ mattoncino abbiamo perso la coerenza»*.
 **Come si legge:** la Parte 1 è l'elefante — leggila. La Parte 2 dice quanto del prodotto è
 effettivamente acceso. La Parte 3 è la mappa completa, riga per riga, su cui mettere una crocetta.
 
+> ## 🗄 Annotazione — 12 agosto 2026: il verdetto sui documenti è stato superato
+>
+> **Questa mappa resta il verbale del 5 agosto e non viene riscritta — un verbale non si riscrive,
+> si annota (stessa disciplina di `PRODUCT.md`). Questo blocco è l'annotazione.**
+>
+> Il 12 agosto 2026 il proprietario ha deciso: *«Al momento l'integrazione documentale può essere
+> tolta, la rivedremo poi, non serve.»* Con la 2.1.0 (`refactor!: esce l'integrazione documentale`)
+> sono usciti dal prodotto Mayan EDMS, l'archivio di conoscenza (`KnowledgeStore`, `knowledge.db`),
+> la cattura dello storico (`HistoryStore`, `history.db`), la pagina Storicizzazione, il digest
+> delle 04:00 e la pseudonimizzazione (`brain/privacy.py`).
+>
+> **Le righe di questa mappa che quella decisione ha superato:**
+>
+> - § 3.4, `| Documenti | Spenti; unico consumatore legittimo degli embedding | **TIENE** |` — il
+>   verdetto è oggi **ESCE**. È la riga su cui la fetta aveva appoggiato il proprio confine, ed è
+>   quella che la decisione ha ribaltato.
+> - § 3.4, `| Storico | … | **SEMPLIFICA** |` — non è stato semplificato: è **uscito** per intero,
+>   con la sua pagina e le sue rotte. La cronaca della casa la tiene Home Assistant.
+> - Parte 4, l'elenco di *«ciò che sopravvive intero»*: la voce **«i documenti, unico consumatore
+>   legittimo degli embedding»** non sopravvive.
+>
+> **Cosa resta valido.** Tutto il resto della mappa, compresa la riga
+> `| Embedding e ricerca vettoriale | Inerte di fabbrica, e l'utente non lo sa | **TIENE** ma va
+> dichiarato in UI |`: le due opzioni `memory.embedding_provider`/`memory.embedding_model` sono
+> rimaste, e la 2.1.0 ha fatto esattamente ciò che la riga chiedeva — dichiarare l'inerzia in
+> configurazione, nelle traduzioni e nella pagina Modelli. Il consumatore che la riga dava per
+> legittimo però non c'è più: quando i vettori si accenderanno, sarà sopra un archivio nuovo.
+>
+> **Per cosa il prodotto fa davvero oggi:** il `README.md` e il `CHANGELOG.md`.
+
 ---
 
 # Parte 1 — L'elefante
