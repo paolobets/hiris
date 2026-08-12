@@ -1,5 +1,33 @@
 # HIRIS — Changelog
 
+## [2.0.1] — La CLI dentro l'immagine adesso ha un numero (2026-08-12)
+
+**Due installazioni della stessa versione di HIRIS contengono adesso lo stesso
+programma.** Prima non era garantito. L'immagine chiedeva «l'ultima 2.x» della
+CLI di Claude — il programma che alimenta la chat quando usi l'abbonamento — e
+quale fosse dipendeva dal giorno in cui l'immagine veniva costruita. Due
+persone che installavano la stessa 2.0.0 a una settimana di distanza potevano
+ritrovarsi con due programmi diversi sotto il cofano: se una delle due vedeva
+un comportamento strano e l'altra no, non c'era modo di dire se la differenza
+stesse lì.
+
+Adesso la versione è scritta per intero: **2.1.228**. Cambia soltanto quando
+qualcuno la cambia a mano, e allora esce con una versione nuova di HIRIS e con
+una riga qui dentro che lo dice.
+
+**Cosa cambia per te nell'uso di tutti i giorni: niente.** Cambia però da dove
+arrivano gli aggiornamenti di quel programma: non più in silenzio a ogni
+reinstallazione, ma dichiarati, insieme a un aggiornamento di HIRIS. E se ti
+serve sapere quale CLI sta girando davvero — non quale dovrebbe — è scritta nel
+log dell'add-on, nella riga `init del ponte`, subito dopo `cli=`.
+
+**Il commento nel file di costruzione dell'immagine diceva una cosa falsa**:
+che vincolare la CLI alla sola versione maggiore rendesse le build
+riproducibili. Non le rendeva riproducibili — è esattamente il difetto che
+questo rilascio chiude. Adesso quel commento dice cosa il vincolo fa davvero,
+cosa costa tenerlo e come si aggiorna.
+
+
 ## [2.0.0] — HIRIS conosce e non agisce (2026-08-11)
 
 **HIRIS conosce la tua casa, e c'è una chat per interrogarla.** È questa la

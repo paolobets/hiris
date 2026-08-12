@@ -10,10 +10,31 @@ RUN echo "HIRIS v0.9.7 — hotfix thinking_budget kwarg per non-Claude runners"
 
 # Chat via abbonamento (Piano 2B): node + Claude CLI. Alpine/musl -> ripgrep di
 # sistema (il ripgrep bundle di claude e' glibc). Node 22+ e' in Alpine 3.21.
-# CLI pinnato al major 2: build riproducibili (niente salto a un 3.x che
-# potrebbe rompere l'addon) pur ricevendo le patch. Bumpare a mano per un major.
+#
+# La CLI e' pinnata a una versione ESATTA, non a un major. Il pin al major
+# (`@2`) non rendeva riproducibile un bel niente: risolveva all'ultima 2.x
+# pubblicata al momento del build, quindi due immagini della STESSA versione
+# di HIRIS potevano contenere due CLI diverse -- e se il ponte cambiava
+# comportamento fra una consegna e l'altra, non c'era un colpevole leggibile.
+# Con la versione esatta l'immagine costruita oggi e quella costruita fra sei
+# mesi contengono la stessa CLI.
+#
+# Cosa costa, detto per intero: le patch della CLI non arrivano piu' da sole.
+# Si resta su questa riga finche' qualcuno non la cambia a mano, comprese le
+# correzioni di sicurezza. Aggiornare la CLI diventa un atto deliberato di chi
+# rilascia, non un effetto collaterale del build: e' il prezzo del pin, ed e'
+# la ragione per cui la riga va guardata a ogni giro di rilascio.
+#
+# Come si bumpa:
+#   1. `npm view @anthropic-ai/claude-code version` -> l'ultima pubblicata
+#   2. cambiare il numero nella riga `npm install -g` qui sotto
+#   3. bumpare `config.yaml` (il Supervisor offre l'aggiornamento solo se la
+#      versione dell'add-on cambia) e scrivere la voce nel CHANGELOG
+#   4. dopo il deploy, la CLI che gira DAVVERO si rilegge nel log, riga
+#      «init del ponte», campo `cli=`: e' li' che si verifica che il pin
+#      sia arrivato fino al container, invece di fidarsi di questo file
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2 \
+    && npm install -g @anthropic-ai/claude-code@2.1.228 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 
