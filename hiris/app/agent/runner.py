@@ -868,11 +868,14 @@ def _logga_init(esito: EsitoFlusso, job_id) -> None:
     Review totale della fetta (I-3): la riga porta anche **due campi che
     l'`init` ha gia'** e che nessun altro posto dice.
 
-    - `claude_code_version`: il `Dockerfile` installa
-      `@anthropic-ai/claude-code@2`, che NON e' una versione pinnata -- due
-      build dello stesso codice possono avere due CLI diverse. Se «strumenti
-      risolti=N» cambia fra una build e l'altra, oggi nulla nel log dice
-      perche'; con la versione accanto, la prima domanda ha gia' la risposta.
+    - `claude_code_version`: il `Dockerfile` pinna la CLI a una versione
+      esatta, e questo campo e' l'unico posto in cui si legge quella che sta
+      girando DAVVERO. La ragione non e' caduta col pin, e' migliorata: prima
+      serviva a sapere QUALE CLI fosse capitata dentro l'immagine, perche'
+      `@2` ne lasciava entrare una qualunque; adesso serve a PROVARE che il
+      pin sia arrivato fino al container -- e a smascherare l'immagine
+      installata piu' vecchia di quella che si crede, che il `Dockerfile` da
+      solo non puo' dire.
     - `apiKeySource`: e' l'**unica prova a runtime** che questo ponte stia
       parlando con l'ABBONAMENTO e non con una chiave a consumo (`none` =
       abbonamento). La promessa «solo abbonamento, mai API a consumo» e'

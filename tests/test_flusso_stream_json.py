@@ -256,9 +256,10 @@ def test_l_init_loggato_dice_anche_con_quale_cli_e_con_quale_credenziale(caplog)
     """Review totale della fetta (I-3): due campi che l'`init` porta gia' e che
     nessun altro posto dice.
 
-    - `claude_code_version`: il `Dockerfile` installa
-      `@anthropic-ai/claude-code@2`, NON pinnata. Se «strumenti risolti=N»
-      cambia fra due build, senza questo campo il log non dice perche'.
+    - `claude_code_version`: il `Dockerfile` pinna la CLI a una versione
+      esatta, e questo campo e' l'unico posto in cui si legge quella che gira
+      DAVVERO -- cioe' l'unica prova che il pin sia arrivato fino al
+      container, e non solo scritto nel `Dockerfile`.
     - `apiKeySource`: e' l'UNICA prova a runtime che il ponte parli con
       l'ABBONAMENTO e non con una chiave a consumo. Oggi quella promessa e'
       difesa dal codice da `_SUBPROCESS_ENV_DENYLIST`, cioe' da una denylist
@@ -273,9 +274,10 @@ def test_l_init_loggato_dice_anche_con_quale_cli_e_con_quale_credenziale(caplog)
 
     assert "2.1.227" in riga, (
         f"la versione della CLI e' sparita dalla riga di init ({riga!r}): "
-        "il Dockerfile installa `@anthropic-ai/claude-code@2`, non una "
-        "versione pinnata -- senza questo campo un N diverso fra due build "
-        "resta senza spiegazione")
+        "il Dockerfile pinna la CLI a una versione esatta, e questo campo e' "
+        "l'unica prova che quel pin sia arrivato fino al container -- senza, "
+        "un'immagine che porta la CLI sbagliata e' indistinguibile da una "
+        "giusta")
     assert "apiKeySource=none" in riga, (
         f"`apiKeySource` e' sparito dalla riga di init ({riga!r}): e' l'unica "
         "prova a runtime che questo turno sia andato sull'abbonamento e non "
