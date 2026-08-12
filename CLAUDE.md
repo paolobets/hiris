@@ -53,6 +53,13 @@ memoria **da solo**, apre questioni e **propone**; non tocca la casa senza un s�
 (unici esecutori, autosufficienti, nascono da un comando testuale o da una proposta del Brain,
 attivi solo dopo un sì).
 
+**Dove sta oggi il prodotto in quell'impianto.** ① c'è. ② e ③ no. Dalla fetta «comandare»
+(agosto 2026) la **chat** esegue: chiede a `hiris/app/azione/porta.py`, che verifica la chiamata
+contro l'installazione, la esegue e rilegge lo stato. Non è ③ — non c'è nessun agente, nessuna
+autonomia, nessun perimetro da approvare — è la chat che fa una cosa sola quando gliela chiedi.
+Quando ② e ③ arriveranno, **quella porta resta l'unica**: chi vuole agire chiede a lei. Un secondo
+punto di scrittura è un difetto, non un'ottimizzazione.
+
 **La porta è la Chat**: si interroga il Brain e si **costruisce** con lui.
 
 **Il perimetro** — ciò che si approva: **permessi** (cosa può toccare) + **freni** (frequenza,
@@ -161,12 +168,13 @@ Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un pia
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # ~1.770 righe: registrazione rotte E gran parte del wiring
+    ├── server.py         # ~1.900 righe: registrazione rotte E gran parte del wiring
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
     ├── llm_router.py · chat_store.py · impostazioni_chat.py · model_activation.py
     ├── config.py · storage.py · env_util.py · version.py
-    ├── api/        (13 file) handlers_* — la superficie HTTP
+    ├── api/        (14 file) handlers_* — la superficie HTTP
     ├── casa/       (8)       anagrafe, archivio, comportamento, nucleo, domande, strumenti
+    ├── azione/     (4)       porta.py — l'UNICO punto che esegue — verifica.py, registro.py
     ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
     ├── memoria/    (4)       archivio, interpretazione, riconoscitore
     ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
@@ -200,7 +208,7 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 1.144 test + 1 skip (2.0 @ «l'azione torna in HIRIS»)
+python -m pytest -q          # 1.188 test + 1 skip (2.0 @ fine fetta «comandare»)
 npm test                     # 92 test frontend: node --test + jsdom
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo

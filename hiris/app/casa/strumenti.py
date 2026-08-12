@@ -1,4 +1,4 @@
-"""I quattro strumenti della chat -- da trentaquattro a quattro.
+"""Gli strumenti della chat -- da trentaquattro a cinque.
 
 Il modello riceveva un catalogo di trentaquattro strumenti, che esisteva in
 TRE copie divergenti (claude_runner.py, e altre due -- vedi
@@ -7,24 +7,33 @@ un semaforo che di fabbrica negava tutto in silenzio. Il catalogo dei
 trentaquattro e il semaforo sono usciti per intero (fetta E2 Task 8 "escono
 i trentaquattro"; fetta E3 Task 7 "esce la Sentinella intera, e il semaforo
 che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
-Qui il modello ne riceve quattro, e NESSUNO di essi tocca Home Assistant: la
-chat della 2.0 CONOSCE, non agisce -- le azioni rientreranno rifatte, con un
-progetto proprio, quando la conoscenza sara' solida.
+
+Qui il modello ne riceve CINQUE. Quattro leggono e ricordano; il quinto,
+`esegui`, fa succedere qualcosa in casa -- ed e' l'unico. Per un tratto della
+2.0 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
+agisce»: era vero allora, non lo e' piu' dalla fetta «comandare», che ha
+ridato l'azione al prodotto con un progetto proprio, dopo che la conoscenza
+si era fatta solida. La differenza fra i quattro e il quinto non e' di
+importanza ma di verso: i quattro LEGGONO gli archivi e lo specchio dello
+stato, `esegui` SCRIVE -- e scrive per una sola strada, la porta
+(`azione/porta.py`), che verifica prima e rilegge dopo.
 
     cerca    -- trova qualcosa per nome o alias, dichiarando le ambiguita'
     guarda   -- il dettaglio di una cosa: un'area, un'entita', un'automazione
                 col suo corpo, un ricordo
     ricorda  -- salva cio' che l'utente ha detto, con le ancore alla casa
     richiama -- i ricordi che riguardano una parte della casa
+    esegui   -- chiama un servizio di Home Assistant, verificato prima e
+                riletto dopo: l'unico strumento che tocca la casa
 
 `ricorda` e' il motivo per cui questo modulo esiste: l'utente aveva scritto
 in chat *"d'inverno il soggiorno ideale e' 19.5"*, e HIRIS aveva risposto
 "preso nota" -- SENZA salvare niente, perche' il vecchio dispatcher non
 chiamava mai `ArchivioMemoria.ricorda()`. Qui sotto, `ricorda` salva davvero
-(vedi `DispatcherConoscenza._ricorda`).
+(vedi `DispatcherStrumenti._ricorda`).
 
 Le due funzioni pure che fanno il lavoro vero -- `cerca()` e `guarda()` --
-vivono gia' in `domande.py`, e non si riscrivono qui: `DispatcherConoscenza`
+vivono gia' in `domande.py`, e non si riscrivono qui: `DispatcherStrumenti`
 e' solo il punto che le collega agli archivi (`casa/archivio.py`,
 `memoria/archivio.py`) e all'indice (`memoria/riconoscitore.py`), nella
 forma che il modello puo' chiamare.
@@ -311,8 +320,8 @@ STRUMENTI_CONOSCENZA: list[dict] = [
 _NOMI_STRUMENTI = frozenset(d["name"] for d in STRUMENTI_CONOSCENZA)
 
 
-class DispatcherConoscenza:
-    """Collega i quattro strumenti agli archivi -- e non altro.
+class DispatcherStrumenti:
+    """Collega i cinque strumenti agli archivi e alla porta -- e non altro.
 
     Prende `archivio_casa` e `archivio_memoria` gia' costruiti dal chiamante
     (`create_app()` o l'equivalente nei test): questa classe non ne apre
@@ -330,8 +339,12 @@ class DispatcherConoscenza:
         self._memoria = archivio_memoria
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
         # il nucleo prende "notevole adesso": una sola fonte, un solo
-        # specchio. Sapere che una luce e' accesa e' CONOSCENZA, non
-        # azione: «conosce, non agisce» vuol dire che non SCRIVE.
+        # specchio. La cache resta in SOLA LETTURA anche adesso che `esegui`
+        # esiste: chi scrive e' la porta (`azione/porta.py`), che chiama
+        # Home Assistant e poi RILEGGE da qui -- lo specchio non si aggiorna
+        # a mano per far tornare i conti. Prima della fetta «comandare» la
+        # ragione scritta qui era «conosce, non agisce»: era una proprieta'
+        # del prodotto, oggi e' una proprieta' di QUESTO attributo.
         self._cache = cache
         # La porta dell'azione (`azione/porta.py`), l'unico punto del prodotto
         # che esegue. `None` e' legittimo: il dispatcher e' SEMPRE costruibile

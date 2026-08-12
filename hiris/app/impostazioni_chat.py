@@ -66,7 +66,7 @@ _PERMESSI_FILE = 0o600
 #
 # Il default e' NOSTRO, non dell'utente: riscritto in forma CONDIZIONALE, vera
 # su ENTRAMBI i percorsi. Il sincrono non perde nulla (l'antecedente e' vero:
-# di la' i quattro strumenti di casa/strumenti.py esistono davvero, e l'ordine
+# di la' gli strumenti di casa/strumenti.py esistono davvero, e l'ordine
 # di usarli e' lo stesso di prima); il ponte legge il ramo "altrimenti", che
 # e' esattamente cio' che puo' fare -- rispondere col contesto e dichiarare
 # cio' che non c'e'. I due nomi `cerca` e `guarda` restano SCRITTI: la guida
@@ -105,6 +105,40 @@ _PERMESSI_FILE = 0o600
 # di ritorno al default esiste ed e' esplicita: si svuota il campo nella
 # pagina (`handlers_impostazioni.valida`, `system_prompt` vuoto ->
 # `DEFAULT_SYSTEM_PROMPT`), che e' una decisione dell'utente, non nostra.
+#
+# fetta «comandare» (Task 7): questo testo NON e' stato esteso a `esegui`, ed
+# e' una decisione, non una dimenticanza. Il testo qui sotto non e' FALSO --
+# non dice da nessuna parte che HIRIS non agisce -- e' soltanto INCOMPLETO:
+# nomina due strumenti a titolo di esempio in una condizionale («Se in questa
+# conversazione hai gli strumenti `cerca` ... e `guarda` ..., usali per
+# scoprire cosa c'e' in casa»), che resta vera parola per parola con cinque
+# strumenti nel catalogo. Le tre ragioni per lasciarlo stare:
+#
+#   1. Questa e' la PERSONA, il campo che l'utente riscrive dalla pagina
+#      Impostazioni. Le regole del PRODOTTO stanno in
+#      `claude_runner.BASE_REGOLE_STRUMENTI`, l'unico testo emesso esattamente
+#      quando gli strumenti ci sono e su ENTRAMBI i percorsi -- ed e' li' che
+#      il Task 6 ha messo `esegui` con tutte le sue regole (gli id esatti,
+#      raccontare cosa e' successo, l'ambiguita'). Scrivere le regole
+#      dell'azione anche qui le renderebbe cancellabili dall'utente con una
+#      modifica alla persona: una regola di sicurezza d'uso che sparisce
+#      quando si personalizza il tono.
+#   2. Il default raggiunge solo chi NON ha un `impostazioni_chat.json`
+#      proprio. Cambiarlo creerebbe due popolazioni con personae diverse per
+#      un testo che, sulla popolazione che l'ha salvato, non si aggiorna
+#      comunque -- e la via per riallinearsi (svuotare il campo) e' gia' la
+#      stessa in entrambi i casi.
+#   3. Il ponte, sul ramo di degrado, deve poter SMENTIRE ogni strumento che
+#      la persona nomina (`prompts._GUIDA_SENZA_STRUMENTI`, e il test
+#      `test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_
+#      persona`). Ogni nome aggiunto qui e' un nome in piu' da tenere
+#      allineato di la': il conto delle dichiarazioni da mantenere a mano
+#      cresce, ed e' proprio il difetto che questo task chiude.
+#
+# Cio' che questa fetta rende vero e non era vero prima e' la PRIMA riga --
+# «Sei l'assistente principale per la gestione della smart home» -- che fino
+# al Task 5 prometteva una gestione che il prodotto non poteva fare. Non c'e'
+# stato bisogno di toccarla: e' diventata vera da sola.
 DEFAULT_SYSTEM_PROMPT = (
     "Sei l'assistente principale per la gestione della smart home.\n"
     "Se in questa conversazione hai gli strumenti `cerca` (trova per nome un'area,"

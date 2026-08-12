@@ -3,7 +3,7 @@
 taglio sia cio' che il taglio NON deve rompere.
 
 Perche' esiste. Dal Task 2 `BASE_SYSTEM_PROMPT` arriva anche al ponte (la chat
-in abbonamento), dove i quattro strumenti di `casa/strumenti.py` non esistono.
+in abbonamento), dove gli strumenti di `casa/strumenti.py` non esistono.
 La prima stesura del task lo passava INTERO e lo faceva smentire dal testo che
 lo segue -- ma dentro ci sono ORDINI di chiamare uno strumento («Usa SEMPRE
 gli strumenti per dati sulla casa», «chiama ricorda subito»), e il commento
@@ -102,7 +102,7 @@ def test_il_ponte_e_il_sincrono_non_si_contraddicono_sulla_lingua():
 
 def test_il_percorso_sincrono_continua_a_comporre_la_costante_intera():
     """I tre chiamanti sincroni non cambiano: compongono `BASE_SYSTEM_PROMPT`,
-    non le meta'. Il taglio serve al ponte e solo al ponte -- di la' i quattro
+    non le meta'. Il taglio serve al ponte e solo al ponte -- di la' gli
     strumenti esistono davvero e le regole sono vere.
 
     (Che la regola arrivi davvero al modello lo verificano gia' i test di

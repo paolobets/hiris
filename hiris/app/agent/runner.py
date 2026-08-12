@@ -4,11 +4,15 @@ Porta in-addon del runner del gateway esterno (hiris-mcp-gateway/agent/runner.py
 L'internal token (env INTERNAL_TOKEN) resta usato per l'HTTP verso la reasoning
 API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
-OGGI, in una riga: il ponte LEGGE la casa e la memoria con i quattro strumenti
-della conoscenza, e NON agisce (parita' B, sotto). Le note che seguono sono la
+OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
+anche AGIRE su di essa -- gli strumenti sono cinque, e il quinto (`esegui`)
+chiama un servizio di Home Assistant passando per la porta unica
+(`azione/porta.py`), la stessa della chat sincrona. Le note che seguono sono la
 STORIA di come ci si e' arrivati, e sono al passato apposta: fino alla review
 totale della parita' B la prima di esse affermava al PRESENTE il contrario, ed
-era la prima cosa che un lettore di questo file trovava.
+era la prima cosa che un lettore di questo file trovava. La riga qui sopra ha
+appena smesso a sua volta di dire «e NON agisce» (fetta «comandare», Task 5):
+lo stesso difetto, un giro dopo.
 
 STORIA (Fetta E2 Task 3): il percorso `claude --mcp-config` verso l'MCP interno
 (Piano 2A, hiris/app/mcp/) usci' insieme al server che serviva -- era il terzo
@@ -29,12 +33,13 @@ Gli strumenti restavano fuori; li ha riattaccati la fetta B
 
 fetta "il ponte riceve gli strumenti" (parita' B, Task 3): li ha riattaccati.
 Le due note qui sopra sono ora vere solo per il ramo di DEGRADO. Il ponte
-chiede alla rotta `POST /api/mcp` (Task 1) se i quattro strumenti ci sono
+chiede alla rotta `POST /api/mcp` (Task 1) se gli strumenti ci sono
 (`sonda_strumenti`), e da quell'UNICO booleano discendono insieme il prompt
 (`prompts.build_chat_messages(strumenti_attivi=...)`) e l'argv
 (`_chat_claude_args(strumenti_attivi=..., mcp_config=...)`): non esistono due
 decisioni da tenere allineate. Quando la sonda dice di si', il modello puo'
-guardare la casa ADESSO e salvare o richiamare ricordi, coi nomi che MCP gli
+guardare la casa ADESSO, salvare o richiamare ricordi e -- dalla fetta
+«comandare» -- far succedere qualcosa in casa, coi nomi che MCP gli
 serve (`mcp__hiris__cerca`, ...). Quando dice di no -- ed erano attesi -- il
 prompt torna a negarli e la `reply` lo dichiara ANCHE all'utente, in una riga
 premessa: mai una risposta che sembra normale.
@@ -66,9 +71,13 @@ col ramo sincrono): il freno che sostituisce un `--max-turns` che la CLI non
 ha (verificato su `claude --help`) -- l'unico che l'abbonamento abbia, visto
 che `chat_daily_cap` conta i turni accodati e non i giri dentro ciascuno.
 
-Cio' che continua a non poter fare, e che nessuna fetta di questo ramo cambia:
-AGIRE. Gli strumenti sono quattro e nessuno tocca Home Assistant -- HIRIS
-conosce e non agisce (hiris/app/casa/strumenti.py)."""
+Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
+ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
+AGIRE». La fetta l'ha cambiata. Gli strumenti sono cinque e il quinto tocca
+Home Assistant (hiris/app/casa/strumenti.py): il ponte agisce quando la sonda
+dice di si', esattamente come la chat sincrona, e per la stessa porta. Cio' che
+resta vero e' il confine: nessuna autonomia. Ogni esecuzione nasce da una frase
+in chat -- non c'e' trigger ne' schedulazione che possa farne partire una."""
 import asyncio, json, logging, os, secrets, subprocess, time
 from dataclasses import dataclass, field
 import httpx
@@ -83,7 +92,7 @@ log = logging.getLogger("hiris.agent")
 # fetta "il ponte riceve gli strumenti" (parita' B, Task 3): questa stringa NON
 # guadagna `ToolSearch`, e l'assenza e' deliberata. La CLI inserisce un
 # passaggio `ToolSearch` per RISOLVERE gli schemi degli strumenti MCP (progetto
-# 3.4/5): vietarlo qui renderebbe i quattro strumenti visibili nell'elenco e
+# 3.4/5): vietarlo qui renderebbe gli strumenti visibili nell'elenco e
 # IRRAGGIUNGIBILI -- il modo peggiore di non averli, perche' il prompt li
 # afferma e la chiamata non arriva mai. E' esattamente il genere di stringa che
 # qualcuno "completa" leggendo l'elenco: non si completa.
@@ -131,14 +140,14 @@ def _nome_server_mcp() -> str:
 
 
 def nomi_mcp() -> tuple[str, ...]:
-    """I quattro nomi che il modello vede DAVVERO, derivati dal catalogo.
+    """I nomi che il modello vede DAVVERO, derivati dal catalogo.
 
     Attraverso MCP la CLI prefissa ogni strumento col nome del server: `cerca`
     diventa `mcp__hiris__cerca`, ed e' quello -- non il nome nudo -- cio' che il
     modello legge nell'elenco e cio' che `--allowedTools` deve permettere.
 
-    Si DERIVA da `STRUMENTI_CONOSCENZA`: quattro stringhe scritte a mano qui
-    sarebbero il SECONDO catalogo, l'errore che l'intera fetta E2 e' esistita
+    Si DERIVA da `STRUMENTI_CONOSCENZA`: un elenco di stringhe scritto a mano
+    qui sarebbe il SECONDO catalogo, l'errore che l'intera fetta E2 e' esistita
     per chiudere (tre cataloghi divergenti della stessa cosa). Cosi' uno
     strumento che entra o esce da `casa/strumenti.py` arriva qui da solo.
 
@@ -202,8 +211,8 @@ def config_mcp(base_url: str, token: str, id_turno: str = "") -> str:
         passa da qualunque dei due sopravviva (decisione A.3; entrambi i rami
         sono pinnati in tests/test_rotta_mcp.py).
     (3) **il nome del server viene da `_nome_server_mcp()`**, non da una
-        stringa scritta qui: e' lo stesso nome da cui discende il prefisso dei
-        quattro strumenti."""
+        stringa scritta qui: e' lo stesso nome da cui discende il prefisso
+        degli strumenti."""
     intestazioni = {
         "X-HIRIS-Internal-Token": token,
         "X-Requested-With": "hiris-mcp",
@@ -381,8 +390,8 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     turno -- invece di scoprire a risposta arrivata che il modello aveva
     strumenti promessi e non serviti.
 
-    Restituisce `True` **solo** se la risposta porta tutti e quattro i nomi
-    attesi. Il 200 non basta, e non e' un dettaglio: la rotta risponde 200 anche
+    Restituisce `True` **solo** se la risposta porta TUTTI i nomi attesi --
+    quelli di `nomi_mcp()`, quindi il catalogo intero, `esegui` compreso. Il 200 non basta, e non e' un dettaglio: la rotta risponde 200 anche
     con gli archivi assenti (l'errore sta DENTRO il risultato della singola
     chiamata, non nello stato HTTP), quindi una sonda che si accontentasse del
     codice non proverebbe niente di cio' che dice di provare.
@@ -455,7 +464,7 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     mancanti = attesi - trovati
     if mancanti:
         return _no(f"tools/list non porta {sorted(mancanti)}: il ponte avrebbe "
-                   f"strumenti a meta', e il prompt li afferma tutti e quattro")
+                   f"strumenti a meta', e il prompt li afferma tutti")
     return True, ""
 
 
@@ -484,7 +493,7 @@ def _chat_claude_args(system: str, user: str, model: str, *,
     `True` si aggiungono due opzioni, e nessuna e' facoltativa:
 
     - `--mcp-config <stringa>`: la voce del server (vedi `config_mcp`);
-    - `--allowedTools <i quattro nomi>`: i nomi PREFISSATI di `nomi_mcp()`,
+    - `--allowedTools <i nomi del catalogo>`: i nomi PREFISSATI di `nomi_mcp()`,
       derivati dal catalogo. Senza, gli strumenti sarebbero visibili e non
       permessi.
 
@@ -913,7 +922,7 @@ def _logga_init(esito: EsitoFlusso, job_id) -> None:
 def verifica_init(esito: EsitoFlusso) -> tuple[bool, str]:
     """Difesa (2) del progetto: la CLI ci e' ARRIVATA, agli strumenti?
 
-    `sonda_strumenti` (difesa 1) prova che la rotta risponde coi quattro nomi
+    `sonda_strumenti` (difesa 1) prova che la rotta risponde con tutti i nomi
     **dal nostro lato**, e la prova un istante prima di comporre il prompt. Fra
     quel `200` e il modello restano pero' Node, il parsing della stringa
     `--mcp-config`, `--strict-mcp-config` e il loopback visto da un ALTRO
@@ -925,7 +934,7 @@ def verifica_init(esito: EsitoFlusso) -> tuple[bool, str]:
 
     - il server col NOSTRO nome dev'esserci fra i `mcp_servers` in stato
       `connected` (un server assente o `failed` e' il guasto conclamato);
-    - **tutti e quattro** i `mcp__<server>__*` devono comparire nella lista
+    - **tutti** i `mcp__<server>__*` di `nomi_mcp()` devono comparire nella lista
       `tools` risolta. Un server connesso che non espone gli strumenti e' lo
       stesso guasto visto da un'altra parte -- e per il modello e' peggio,
       perche' il prompt li nomina uno per uno.
@@ -1071,7 +1080,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # Quando il Task 4 butta la prima invocazione (l'`init` smentisce la
     # sonda) e ne ricompone una seconda SENZA strumenti, il testo della prima
     # sparisce -- ma le sue chiamate MCP, se ce ne sono state, sono gia'
-    # passate per davvero da `POST /api/mcp` fino a `DispatcherConoscenza`:
+    # passate per davvero da `POST /api/mcp` fino a `DispatcherStrumenti`:
     # un `ricorda` chiamato li' ha gia' scritto in `memoria.db`, prima che
     # noi si scoprisse che il prompt prometteva strumenti a meta'. Buttare
     # l'invocazione non disfa quella scrittura. Riportare solo l'ultima
@@ -1251,7 +1260,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 
     # ── LA DIFESA (2): l'`init` smentisce la sonda (Task 4) ────────────────
     # La sonda ha detto di si' DAL NOSTRO LATO; qui parla la CLI. Se le due si
-    # contraddicono, il prompt e' gia' partito affermando quattro strumenti che
+    # contraddicono, il prompt e' gia' partito affermando strumenti che
     # il modello non ha: la regola della fetta e' che **un prompt gia' partito
     # non si corregge con una postilla -- si butta via l'invocazione e si
     # ricompone dal medesimo booleano**, ora `False`.
@@ -1274,7 +1283,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # cio' che nasce dal sottoprocesso: non c'e' una seconda via.
             log.warning(
                 "l'evento system/init smentisce la sonda (job_id=%s): %s -- il "
-                "prompt era gia' partito affermando i quattro strumenti, quindi "
+                "prompt era gia' partito affermando gli strumenti, quindi "
                 "questa invocazione si BUTTA e se ne ricompone una senza "
                 "strumenti (una sola volta, mai una terza); la reply lo "
                 "dichiara anche all'utente",

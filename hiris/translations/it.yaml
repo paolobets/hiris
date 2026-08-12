@@ -136,7 +136,7 @@ configuration:
   # sonda_strumenti` interroga `POST /api/mcp` prima di partire, e da
   # quell'unico booleano discendono insieme il prompt (`_GUIDA_CON_STRUMENTI`
   # oppure `_GUIDA_SENZA_STRUMENTI`) e gli argomenti della CLI. Quando la sonda
-  # riesce il modello ha i quattro strumenti col prefisso `mcp__hiris__`;
+  # riesce il modello ha gli strumenti col prefisso `mcp__hiris__`;
   # quando non riesce la risposta e' preceduta da `AVVISO_STRUMENTI_ASSENTI`,
   # che e' la riga che l'utente legge. Promettere gli strumenti senza dire del
   # secondo stato sarebbe il difetto di prima con il segno di nuovo invertito.
@@ -148,9 +148,21 @@ configuration:
   # questa modalita', anche con l'opzione a false. (I rinvii sono ai NOMI e
   # non ai numeri di riga: un numero invecchia al primo commit che sposta
   # quel blocco, ed e' successo cinque volte in questa sola fetta.)
+  #
+  # fetta «comandare» (Task 7): la descrizione diceva «In nessuno dei due casi
+  # agisce sulla casa: non accende, non spegne, non tocca automazioni». Era
+  # vera fino al Task 5 e non lo e' piu': lo strumento `esegui` chiama servizi
+  # di Home Assistant, e su questo percorso arriva come tutti gli altri --
+  # `--allowedTools` deriva dal catalogo unico. Cio' che resta vero, e che il
+  # testo continua a dire, e' che l'azione non sopravvive al FALLIMENTO della
+  # sonda: senza strumenti il modello risponde e basta. Il testo nuovo dice
+  # anche la cosa che l'utente ha diritto di sapere prima di accendere
+  # l'opzione -- che non c'e' nessuna conferma da dare -- perche' questa e' la
+  # voce che lui legge nel Supervisor prima di decidere, e non c'e' un altro
+  # posto in cui glielo diciamo.
   chat_via_subscription:
     name: "Chat via abbonamento — attiva"
-    description: "Instrada le risposte della chat al runner esterno su abbonamento invece che al provider locale/a consumo, con il cap giornaliero e la scadenza qui sopra. Su questo percorso la chat riceve la conoscenza della casa — il nucleo, ricordi e sessioni precedenti compresi, le stesse cose che sa nell'altra modalità — e, quando il runner riesce a ricollegarsi a HIRIS, anche i suoi quattro strumenti: può cercare fra le entità e guardare lo stato ADESSO, non solo la fotografia scattata quando il messaggio è partito, e può ricordare e richiamare. Se quel collegamento non riesce risponde lo stesso, con ciò che sa dal nucleo e dalla conversazione, e te lo dice in cima alla risposta invece di far finta di aver guardato. In nessuno dei due casi agisce sulla casa: non accende, non spegne, non tocca automazioni. Sotto la risposta trovi le targhette degli strumenti che ha usato davvero. Ha effetto solo se «Ponte abbonamento — attiva» qui sopra è anch'esso attivo. NOTA: se attivi il provider «Abbonamento (Claude Max)» ed è presente il token OAuth, questa modalità si accende lo stesso, anche lasciando questa opzione spenta. Predefinito: spento."
+    description: "Instrada le risposte della chat al runner esterno su abbonamento invece che al provider locale/a consumo, con il cap giornaliero e la scadenza qui sopra. Su questo percorso la chat riceve la conoscenza della casa — il nucleo, ricordi e sessioni precedenti compresi, le stesse cose che sa nell'altra modalità — e, quando il runner riesce a ricollegarsi a HIRIS, anche i suoi strumenti: può cercare fra le entità e guardare lo stato ADESSO, non solo la fotografia scattata quando il messaggio è partito, può ricordare e richiamare, e può far succedere qualcosa in casa — accendere, spegnere, impostare — chiamando un servizio di Home Assistant. Ogni chiamata viene verificata contro la tua installazione prima di partire e lo stato viene riletto dopo, così quello che ti racconta è quello che è successo davvero. Non ti viene chiesta nessuna conferma: parte quando glielo chiedi in chat, e mai da sola. Se quel collegamento non riesce risponde lo stesso, con ciò che sa dal nucleo e dalla conversazione, e te lo dice in cima alla risposta invece di far finta di aver guardato — ma in quel caso non può nemmeno agire. Sotto la risposta trovi le targhette degli strumenti che ha usato davvero. Ha effetto solo se «Ponte abbonamento — attiva» qui sopra è anch'esso attivo. NOTA: se attivi il provider «Abbonamento (Claude Max)» ed è presente il token OAuth, questa modalità si accende lo stesso, anche lasciando questa opzione spenta. Predefinito: spento."
   # fetta «fix pre-UAT»: `claude_code_oauth_token` era in config.yaml fra le
   # `options` E nello `schema`, ma non aveva voce qui ne' in en.yaml -- nel
   # Supervisor si presentava senza etichetta e senza descrizione, ed e' il

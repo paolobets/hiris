@@ -101,14 +101,18 @@ configuration:
   # provider_subscription + token OAuth accendono questa modalita' anche con
   # l'opzione a false (server.py, `_bridge_enabled` letta con `_sub_first_class`);
   # e la chat su questo percorso RICEVE la conoscenza della casa e -- quando la
-  # sonda di `runner.py::sonda_strumenti` riesce -- anche i quattro strumenti
+  # sonda di `runner.py::sonda_strumenti` riesce -- anche gli strumenti
   # (parita' B). Il testo copre tutti e due gli stati, perche' li decide una
   # sonda e non una configurazione: quando fallisce, la risposta e' preceduta da
   # `AVVISO_STRUMENTI_ASSENTI`. La descrizione qui sotto e' riscritta insieme a
   # quella di it.yaml, nello stesso commit, come il commento precedente chiedeva.
+  # fetta «comandare» (Task 7): gemella italiana in it.yaml, dove sta il
+  # commento con la ragione per esteso. In breve: «It never acts on the home
+  # either way» era vero fino al Task 5 e non lo e' piu' -- `esegui` c'e' anche
+  # qui. Riscritte insieme, nello stesso commit.
   chat_via_subscription:
     name: "Chat via subscription — enable"
-    description: "Routes chat replies to the external subscription runner instead of the local/pay-per-use provider, subject to the daily cap and deadline above. On this path the chat does receive your home's knowledge — the same core HIRIS uses in the other mode, memories and past sessions included — and, when the runner manages to call back into HIRIS, its four tools as well: it can search your entities and look at the state NOW, not just the snapshot taken when the message was sent, and it can remember and recall. If that call back fails it still answers, from the core and the conversation, and it says so at the top of the reply instead of pretending it looked. It never acts on the home either way: nothing is turned on or off, no automation is touched. The chips under the reply show which tools it actually used. Takes effect only when \"Subscription bridge — enable\" above is also enabled. NOTE: if you enable the \"Subscription (Claude Max)\" provider and the OAuth token is present, this mode turns on anyway, even with this option left off. Default: disabled."
+    description: "Routes chat replies to the external subscription runner instead of the local/pay-per-use provider, subject to the daily cap and deadline above. On this path the chat does receive your home's knowledge — the same core HIRIS uses in the other mode, memories and past sessions included — and, when the runner manages to call back into HIRIS, its tools as well: it can search your entities and look at the state NOW, not just the snapshot taken when the message was sent, it can remember and recall, and it can make something happen in the house — turn things on or off, set values — by calling a Home Assistant service. Every call is checked against your own installation before it is sent, and the state is read back afterwards, so what it tells you is what actually happened. You are never asked to confirm: it acts when you ask it to in chat, and never on its own. If that call back fails it still answers, from the core and the conversation, and it says so at the top of the reply instead of pretending it looked — but in that case it cannot act either. The chips under the reply show which tools it actually used. Takes effect only when \"Subscription bridge — enable\" above is also enabled. NOTE: if you enable the \"Subscription (Claude Max)\" provider and the OAuth token is present, this mode turns on anyway, even with this option left off. Default: disabled."
   # fetta «fix pre-UAT»: gemella italiana in it.yaml (stessa voce), dove sta
   # il commento con la ragione. In breve: claude_code_oauth_token era in
   # config.yaml (options + schema) ma senza traduzione in NESSUNA delle due

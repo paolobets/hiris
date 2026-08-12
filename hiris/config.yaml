@@ -3,10 +3,13 @@ version: "2.1.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
-  HIRIS knows your home, and does not act on it: it builds a living picture of
-  your floors, areas, devices, entities and of what your automations and
-  scripts already do, and gives you one chat to ask it. It never calls a
-  service, never sends a notification, never creates or edits an automation.
+  HIRIS knows your home and acts on it when you ask: it builds a living picture
+  of your floors, areas, devices, entities and of what your automations and
+  scripts already do, and gives you one chat to ask it and to command it.
+  Service calls are checked against your own installation before they are sent
+  and the state is read back after, so it tells you what actually happened.
+  It never acts on its own, never sends a notification, and never creates or
+  edits an automation.
 url: "https://github.com/paolobets/hiris"
 homeassistant: "2024.7.0"
 arch:

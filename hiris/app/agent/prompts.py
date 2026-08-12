@@ -80,7 +80,7 @@ from ..claude_runner import (
 # Serve anche a CORREGGERE il prompt che la precede: il system prompt delle
 # impostazioni della chat (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`, via
 # `handlers_chat._build_system_prompt`) e' scritto per il percorso SINCRONO e
-# nomina i quattro strumenti in backtick. Di la' i quattro strumenti di
+# nomina in backtick alcuni degli strumenti. Di la' gli strumenti di
 # `casa/strumenti.py` esistono davvero; QUI no. Senza questa smentita
 # esplicita -- che sta DOPO la persona, ed e' il motivo per cui l'ordine di
 # composizione conta -- il modello leggerebbe «usa `cerca` e `guarda`» senza
@@ -142,7 +142,7 @@ _GUIDA_SENZA_STRUMENTI = (
 #
 # fetta "il ponte riceve gli strumenti" (parita' B, Task 3): l'orfano e' stato
 # RACCOLTO -- `_reason_chat` passa `strumenti_attivi` e questo testo esce
-# davvero, quando la sonda dice che i quattro strumenti ci sono. Cio' che gli
+# davvero, quando la sonda dice che gli strumenti ci sono. Cio' che gli
 # impedisce di diventare falso non e' piu' un pin sull'assenza degli strumenti
 # ma l'INVARIANTE nei due versi (tests/test_strumenti_al_ponte.py):
 # `--mcp-config` nell'argv <=> questo testo nel system. Mai l'uno senza l'altro.

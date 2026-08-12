@@ -15,8 +15,9 @@ import anthropic
 # 12 moduli di `tools/` (da cui venivano importate queste definizioni)
 # sopravvivevano solo per donargliele. Cataloghi, `run_with_actions` e
 # `tools/` escono qui insieme -- la chat riceve il suo catalogo da fuori
-# (`strumenti=STRUMENTI_CONOSCENZA`, casa/strumenti.py, quattro strumenti che
-# conoscono la casa e non la toccano) da prima di questo task.
+# (`strumenti=STRUMENTI_CONOSCENZA`, casa/strumenti.py: quattro strumenti che
+# conoscono la casa, piu' `esegui` che la comanda per la porta unica) da prima
+# di questo task.
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # tests/test_base_prompt_diviso.py).
 #
 # Perche' spezzarla: dal Task 2 questa costante arriva ANCHE al ponte (la chat
-# in abbonamento, agent/prompts.py), dove i quattro strumenti NON esistono. La
+# in abbonamento, agent/prompts.py), dove gli strumenti NON esistono. La
 # prima stesura del task la importava intera e la faceva smentire dal testo che
 # la segue -- ma "Usa SEMPRE gli strumenti per dati sulla casa" e "chiama
 # ricorda subito" sono ORDINI DI CHIAMARE UNO STRUMENTO INESISTENTE, cioe'
@@ -264,8 +265,9 @@ MAX_TOKENS = 4096
 # multi-view dashboard, a long script)" e "per le plance molto grandi il
 # modello propone poche viste per volta" -- una dichiarazione falsa al
 # presente: HIRIS 2.0 LEGGE le plance (proxy/ha_client.py, casa/
-# comportamento.py) e non ne scrive nessuna, il catalogo della chat e' i
-# quattro strumenti di conoscenza (casa/strumenti.py).
+# comportamento.py) e non ne scrive nessuna, e il catalogo della chat e'
+# quello di casa/strumenti.py -- che dalla fetta «comandare» chiama servizi di
+# Home Assistant (`esegui`) ma continua a non scrivere plance.
 # fix round 1: la riscrittura aveva lasciato dentro un secondo soggetto morto
 # -- diceva "il tetto da 4096 dell'agente di valutazione" al PRESENTE, ma
 # quell'agente non esiste piu' (fetta E3 Task 8, commento poco sopra): 4096 e'
@@ -392,9 +394,10 @@ MINIMAL_PROMPT = (
 # `REQUIRE_CONFIRMATION_PROMPT` sono uscite. Nominavano cinque strumenti che
 # ATTUANO (call_ha_service, trigger_automation, toggle_automation,
 # set_input_helper, create_ha_config): nessuno dei cinque esiste in un
-# catalogo raggiungibile da nessun runner (chat = i quattro strumenti di
-# conoscenza di STRUMENTI_CONOSCENZA; Sentinella = soli read + task, ne'
-# l'uno ne' l'altro li offre). L'iniezione nel system prompt (qui sotto e nei
+# catalogo raggiungibile da nessun runner (chat = STRUMENTI_CONOSCENZA;
+# Sentinella = soli read + task, ne' l'uno ne' l'altro li offre; e quando
+# l'azione e' rientrata, alla fetta «comandare», e' rientrata come UNO
+# strumento solo, `esegui`, e senza conferme -- vedi i vincoli della fetta). L'iniezione nel system prompt (qui sotto e nei
 # due punti gemelli di backends/openai_compat_runner.py) istruiva il modello
 # a chiedere conferma prima di strumenti che non puo' comunque chiamare --
 # una promessa vuota. fetta E4 Task 6 ("un bot solo"): il parametro
@@ -538,7 +541,7 @@ class ClaudeRunner:
     # "di scorta" -- usato SOLO dal ramo `elif self._dispatcher is not None`
     # dentro `chat()`, uscito con lui in questo stesso task. Nessun chiamante
     # di produzione lo passava mai (fetta E2 Task 7, commit 68d3670: la chat
-    # passa SEMPRE il proprio DispatcherConoscenza per-chiamata, il parametro
+    # passa SEMPRE il proprio DispatcherStrumenti per-chiamata, il parametro
     # `dispatcher`/`strumenti` che invece resta -- vedi `chat()` sotto). Un
     # tool richiesto senza un dispatcher per-chiamata degrada comunque a "non
     # disponibile", come faceva gia' prima con `self._dispatcher` sempre
@@ -730,8 +733,8 @@ class ClaudeRunner:
             system_blocks.append({"type": "text", "text": context_str})
         effective_model = resolve_model(model, agent_type, self._default_model)
         if strumenti is not None:
-            # Il catalogo arriva gia' deciso dal chiamante (es. i quattro
-            # strumenti di DispatcherConoscenza, casa/strumenti.py).
+            # Il catalogo arriva gia' deciso dal chiamante (es. gli
+            # strumenti di DispatcherStrumenti, casa/strumenti.py).
             tools = list(strumenti)
         else:
             # fetta E3 Task 8: non esiste piu' un catalogo di scorta da cui
@@ -820,7 +823,7 @@ class ClaudeRunner:
                 for block in response.content:
                     if block.type == "tool_use":
                         if dispatcher is not None:
-                            # DispatcherConoscenza (e affini) espone la stessa
+                            # DispatcherStrumenti (e affini) espone la stessa
                             # interfaccia minima -- dispatch(nome, argomenti).
                             # fetta E4 Task 6: il ramo "dispatcher di scorta"
                             # (self._dispatcher, con le kwargs allowed_entities/

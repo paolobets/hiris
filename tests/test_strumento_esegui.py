@@ -16,7 +16,7 @@ test. Qui si pinnano tre cose che nessun altro test copre:
 import inspect
 
 import pytest
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
+from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 
 
 class FintaPorta:
@@ -51,7 +51,7 @@ def test_esegui_si_propaga_al_catalogo_del_ponte():
 @pytest.mark.asyncio
 async def test_dispatch_passa_alla_porta_e_dichiara_l_origine():
     porta = FintaPorta()
-    d = DispatcherConoscenza(None, None, cache=None, porta=porta)
+    d = DispatcherStrumenti(None, None, cache=None, porta=porta)
     esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert esito["eseguito"] is True
@@ -62,7 +62,7 @@ async def test_dispatch_passa_alla_porta_e_dichiara_l_origine():
 
 @pytest.mark.asyncio
 async def test_senza_porta_lo_dichiara_invece_di_rompersi():
-    d = DispatcherConoscenza(None, None, cache=None, porta=None)
+    d = DispatcherStrumenti(None, None, cache=None, porta=None)
     esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert "errore" in esito
@@ -72,7 +72,7 @@ async def test_senza_porta_lo_dichiara_invece_di_rompersi():
 @pytest.mark.asyncio
 async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
     """La modifica a dispatch() non deve rompere i gestori che non sono coroutine."""
-    d = DispatcherConoscenza(None, None, cache=None, porta=None)
+    d = DispatcherStrumenti(None, None, cache=None, porta=None)
     esito = await d.dispatch("cerca", {"testo": "salotto"})
     assert "errore" in esito  # niente archivio casa: errore dichiarato, non eccezione
 
@@ -87,14 +87,14 @@ async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
 
 @pytest.mark.asyncio
 async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
-    """`costruisci_dispatcher_conoscenza` e' l'UNICO punto di costruzione del
+    """`costruisci_dispatcher_strumenti` e' l'UNICO punto di costruzione del
     dispatcher (chat sincrona e rotta `/api/mcp` chiamano lui): se la porta non
     passa di qui non passa da nessuna parte, e per entrambi i percorsi
     insieme."""
-    from hiris.app.api.handlers_chat import costruisci_dispatcher_conoscenza
+    from hiris.app.api.handlers_chat import costruisci_dispatcher_strumenti
 
     porta = FintaPorta()
-    d = costruisci_dispatcher_conoscenza({"porta_azione": porta})
+    d = costruisci_dispatcher_strumenti({"porta_azione": porta})
 
     esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})

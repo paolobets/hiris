@@ -252,7 +252,7 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
     body_senza = await resp_senza.json()
     kwargs_senza = dict(runner_senza.chat.call_args.kwargs)
 
-    # `dispatcher` e' un oggetto per-app (un'istanza di DispatcherConoscenza
+    # `dispatcher` e' un oggetto per-app (un'istanza di DispatcherStrumenti
     # per `create_app()`), non qualcosa che `chatbot_id` influenza: due app
     # indipendenti ne creano due identita' diverse per costruzione. Il tipo
     # e' comunque lo stesso, a riprova che non e' un ramo di codice diverso.

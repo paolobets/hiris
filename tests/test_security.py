@@ -179,7 +179,7 @@ def test_config_yaml_no_direct_port():
 # "create_task"}`), so they were never reachable via `task_engine._run_action`
 # either -- their ONLY caller was direct LLM tool dispatch. That caller was
 # already gone before this task: the chat/Test Run surfaces switched to the
-# four `DispatcherConoscenza` tools (fetta E2 Task 2, "il Test Run passa ai
+# four `DispatcherStrumenti` tools (fetta E2 Task 2, "il Test Run passa ai
 # 4 strumenti"; `casa/strumenti.py`'s STRUMENTI_CONOSCENZA has no automation
 # tool at all), and `EVALUATION_ONLY_TOOLS` (claude_runner.py) has
 # deliberately excluded all three from the Sentinel/Agentbot evaluation
@@ -193,6 +193,21 @@ def test_config_yaml_no_direct_port():
 # Not a new regression, but newly UNDENIABLE: with the code gone there is
 # nothing left claiming to test a live path, which is why the tests are
 # deleted here rather than carried forward pointing at nothing.
+#
+# fetta «comandare» (Task 7). One present-tense clause above has stopped being
+# true and is NOT rewritten -- the block is a dated record of why these tests
+# were deleted, and it was correct on its date. The clause is
+# "`casa/strumenti.py`'s STRUMENTI_CONOSCENZA has no automation tool at all".
+# It still has no automation-SPECIFIC tool, but since Task 5 it has `esegui`,
+# which calls any Home Assistant service the installation declares -- and
+# `automation.turn_on` on an `automation.*` entity passes the verification and
+# executes. So the capability this section used to gate is reachable again,
+# by a different road and with no gate: that is the deliberate decision of
+# this fetta (capability first, safeguards as a designed phase). What replaces
+# the gate today is verification, not authorisation -- `azione/verifica.py`
+# checks the service, the entity and the parameters against THIS installation,
+# and `azione/porta.py` reads the state back. The gating logic these deleted
+# tests covered is still gone, and is not coming back in this form.
 
 # ---------------------------------------------------------------------------
 # SEC-025 — CSRF middleware (require X-Requested-With on state-changing API)

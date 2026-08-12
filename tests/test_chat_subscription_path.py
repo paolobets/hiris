@@ -133,7 +133,7 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
     #   - `nome`: non e' letto da nessuno dei due percorsi (sincrono o
     #     ponte), solo dal campo di compatibilita' `ImpostazioniChat.nome`
     #     stesso (impostazioni_chat.py);
-    #   - i quattro strumenti (STRUMENTI_CONOSCENZA/dispatcher) e `debug`
+    #   - gli strumenti (STRUMENTI_CONOSCENZA/dispatcher) e `debug`
     #     (tools_called/thinking_blocks): la fetta A non da' strumenti al
     #     ponte (regole-fetta.md), sono della fetta B.
     # Questo e' il test che impedisce a un task futuro di aggiungerne meta'

@@ -1,12 +1,12 @@
-"""`POST /api/mcp` -- l'adattatore JSON-RPC che porta i quattro strumenti al ponte.
+"""`POST /api/mcp` -- l'adattatore JSON-RPC che porta gli strumenti al ponte.
 
-**Perche' esiste.** HIRIS ha due percorsi di chat. Il turno sincrono passa i
-quattro strumenti (`STRUMENTI_CONOSCENZA`) direttamente al runner, che li
-dispaccia con `DispatcherConoscenza`. Il ponte via abbonamento invece invoca la
+**Perche' esiste.** HIRIS ha due percorsi di chat. Il turno sincrono passa gli
+strumenti (`STRUMENTI_CONOSCENZA`) direttamente al runner, che li
+dispaccia con `DispatcherStrumenti`. Il ponte via abbonamento invece invoca la
 CLI `claude` come sottoprocesso, e **l'unico modo in cui quella CLI accetta
 strumenti nostri e' MCP**: senza questa rotta il ponte risponde su una
 fotografia (il nucleo composto all'accodamento) e non puo' ne' cercare, ne'
-guardare, ne' ricordare, ne' richiamare.
+guardare, ne' ricordare, ne' richiamare -- ne' far succedere niente in casa.
 
 **Perche' e' una rotta e non un server.** Il server MCP interno del vecchio
 prodotto e' uscito per intero con la fetta E2 (`2e78354`) e non e' ripristinabile
@@ -27,15 +27,24 @@ la espone. Non e' un secondo catalogo: `tools/list` **ri-forma**
 `STRUMENTI_CONOSCENZA` (una sola chiave rinominata) e non ne dichiara uno
 proprio -- tre cataloghi divergenti della stessa cosa sono il difetto da cui e'
 nata l'intera fetta E2. Non e' un secondo dispatcher: `tools/call` chiama
-`costruisci_dispatcher_conoscenza(app)`, la stessa funzione del turno sincrono.
-Non e' un canale di azione: gli strumenti restano quattro e nessuno tocca Home
-Assistant -- HIRIS conosce e non agisce.
+`costruisci_dispatcher_strumenti(app)`, la stessa funzione del turno sincrono.
+
+**E' anche un canale di azione, dalla fetta «comandare».** Fino a quel momento
+qui si leggeva «gli strumenti restano quattro e nessuno tocca Home Assistant --
+HIRIS conosce e non agisce»: era vero, e ha smesso di esserlo su entrambe le
+meta'. Gli strumenti sono cinque e il quinto, `esegui`, chiama un servizio di
+Home Assistant. Cio' che NON cambia e' il motivo per cui la frase stava qui:
+questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con
+la stessa funzione del turno sincrono, che dispaccia alla stessa porta unica
+(`azione/porta.py`) -- il ponte non ha una strada verso la casa che la chat non
+abbia, e non ne ha una sua. Un secondo punto di scrittura sarebbe un difetto,
+non un'ottimizzazione.
 
 **Chi la chiama.** Due chiamanti di produzione, entrambi in
 `hiris/app/agent/runner.py`: il sottoprocesso `claude` del ponte, a cui l'argv
 passa questa rotta nella voce `--mcp-config` (`config_mcp`), e la sonda
 `tools/list` che il runner fa PRIMA di comporre il turno (`sonda_strumenti`),
-per decidere se il prompt puo' affermare i quattro strumenti. La registrazione
+per decidere se il prompt puo' affermare gli strumenti. La registrazione
 in `server.py` (`app.router.add_post("/api/mcp", handle_mcp)`) porta lo stesso
 elenco: i due file devono restare d'accordo.
 
@@ -54,7 +63,7 @@ from aiohttp import web
 
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
 from ..version import read_version
-from .handlers_chat import costruisci_dispatcher_conoscenza
+from .handlers_chat import costruisci_dispatcher_strumenti
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +243,7 @@ def _rifiuto_tetto_raggiunto(nome: str) -> dict:
     si' risponde `-32603`). Il tetto raggiunto non e' un guasto del
     protocollo -- la richiesta era benformata e la rotta funziona -- e' un
     esito di merito dello strumento, la stessa categoria di
-    `DispatcherConoscenza._archivio_mancante`: si dichiara COSA e' successo
+    `DispatcherStrumenti._archivio_mancante`: si dichiara COSA e' successo
     invece di restituire un guasto opaco. Un `error` di protocollo rischia
     inoltre di far trattare l'intera chiamata dal client MCP della CLI come
     una rottura del canale (schema non risolto, connessione da riprovare)
@@ -341,7 +350,7 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
     # protocollo. Se un giorno arrivasse, il dispatcher lo direbbe con un
     # `errore` leggibile invece di sollevare -- non c'e' niente da sbucciare
     # qui a indovinare.
-    dispatcher = costruisci_dispatcher_conoscenza(request.app)
+    dispatcher = costruisci_dispatcher_strumenti(request.app)
     risultato = await dispatcher.dispatch(nome, argomenti)
 
     contenuto: dict = {
@@ -462,7 +471,7 @@ async def handle_mcp(request: web.Request) -> web.Response:
             id_richiesta,
         )
     except Exception as errore:
-        # Stessa proprieta' di `DispatcherConoscenza.dispatch`: da qui non
+        # Stessa proprieta' di `DispatcherStrumenti.dispatch`: da qui non
         # risale mai un'eccezione, e non esce mai un 500 nudo. Un turno del
         # ponte spezzato da una traccia Python sarebbe indistinguibile, per
         # l'utente, da una risposta che non arriva.

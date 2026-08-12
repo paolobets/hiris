@@ -40,6 +40,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from unittest.mock import AsyncMock, patch
 
 from hiris.app.agent import prompts, runner
+from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.claude_runner import (
     BASE_IDENTITA,
@@ -203,7 +204,7 @@ def test_il_ramo_senza_strumenti_li_nega():
     assert "NON hai alcuno strumento" in system
 
 
-def test_il_ramo_con_strumenti_afferma_i_quattro_strumenti():
+def test_il_ramo_con_strumenti_afferma_gli_strumenti_del_catalogo():
     """L'UNICO lettore di `_GUIDA_CON_STRUMENTI` nella fetta A: e' un orfano
     DICHIARATO, scritto ora perche' la fetta B possa cambiare un argomento
     invece di riscrivere il prompt una terza volta (e' il difetto che il
@@ -219,15 +220,18 @@ def test_il_ramo_con_strumenti_afferma_i_quattro_strumenti():
 
     assert prompts._GUIDA_CON_STRUMENTI in system
     assert prompts._GUIDA_SENZA_STRUMENTI not in system
-    # afferma i quattro, non li nega
-    for nome in ("`cerca`", "`guarda`", "`ricorda`", "`richiama`"):
-        assert nome in prompts._GUIDA_CON_STRUMENTI
+    # li afferma tutti, non li nega -- e l'elenco si DERIVA dal catalogo
+    # unico (fetta «comandare», Task 7): scritto a mano restava a quattro
+    # mentre il catalogo ne aveva cinque, ed e' esattamente la dichiarazione
+    # che invecchia in silenzio di cui questo file e' pieno di lapidi.
+    for voce in STRUMENTI_CONOSCENZA:
+        assert f"`{voce['name']}`" in prompts._GUIDA_CON_STRUMENTI
     assert "HAI gli strumenti di HIRIS" in system
     assert "NON hai alcuno strumento" not in system
     # riserva 1 del piano della fetta B: attraverso MCP il modello vede i nomi
     # PREFISSATI dal server. Il prefisso esatto e' una decisione della B --
     # qui si pinna solo che il testo prepara il modello a vederli prefissati,
-    # invece di nominare quattro nomi nudi che non comparirebbero mai.
+    # invece di nominare dei nomi nudi che non comparirebbero mai.
     assert "mcp__hiris__" in prompts._GUIDA_CON_STRUMENTI
 
 

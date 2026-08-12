@@ -6,7 +6,7 @@ essere:
 1. **un catalogo solo e un dispatcher solo.** `tools/list` ri-forma
    `STRUMENTI_CONOSCENZA` (nessun nome scritto a mano qui dentro: una lista
    scritta a mano sarebbe il secondo catalogo che nasce) e `tools/call` passa
-   dal `DispatcherConoscenza` vero -- provato dal fatto che un `ricorda` fatto
+   dal `DispatcherStrumenti` vero -- provato dal fatto che un `ricorda` fatto
    attraverso la rotta si ritrova in `memoria.db`;
 2. **l'autenticazione, con le valvole della suite RIMOSSE.** `conftest.py`
    imposta `HIRIS_ALLOW_NO_TOKEN=1` e `HIRIS_ALLOW_NO_CSRF=1` per tutta la
@@ -509,7 +509,7 @@ async def test_metodo_sconosciuto_e_32601_e_dice_quali_esistono(rotta):
 @pytest.mark.asyncio
 async def test_json_non_valido_e_32700_e_non_un_500(rotta):
     """Mai un 500 nudo, e mai un'eccezione che risalga: e' la stessa proprieta'
-    che `DispatcherConoscenza.dispatch` promette per contratto."""
+    che `DispatcherStrumenti.dispatch` promette per contratto."""
     client, _ = rotta
     risposta = await client.post(
         "/api/mcp", data="{non e' json", headers=INTESTAZIONI_CLI)
@@ -624,7 +624,7 @@ def test_la_rotta_e_registrata_in_create_app():
 
 def test_il_dispatcher_si_costruisce_in_un_solo_punto_del_prodotto():
     """Due costruzioni che possono divergere sono il difetto da cui e' nata la
-    fetta E2. `handlers_mcp` non costruisce un `DispatcherConoscenza` proprio:
+    fetta E2. `handlers_mcp` non costruisce un `DispatcherStrumenti` proprio:
     chiama la stessa funzione del turno sincrono. Il test guarda il sorgente di
     `hiris/app/` perche' e' l'unico modo di pinnare un'ASSENZA."""
     import pathlib
@@ -632,11 +632,11 @@ def test_il_dispatcher_si_costruisce_in_un_solo_punto_del_prodotto():
     costruttori = []
     for percorso in radice.rglob("*.py"):
         for numero, riga in enumerate(percorso.read_text(encoding="utf-8").splitlines(), 1):
-            if "DispatcherConoscenza(" in riga and not riga.strip().startswith("#"):
+            if "DispatcherStrumenti(" in riga and not riga.strip().startswith("#"):
                 costruttori.append(f"{percorso.relative_to(radice)}:{numero}")
     assert len(costruttori) == 1, (
         "il dispatcher va costruito in UN SOLO punto "
-        f"(costruisci_dispatcher_conoscenza); trovati invece: {costruttori}"
+        f"(costruisci_dispatcher_strumenti); trovati invece: {costruttori}"
     )
     assert costruttori[0].replace("\\", "/").startswith("api/handlers_chat.py:"), costruttori
 
@@ -644,15 +644,15 @@ def test_il_dispatcher_si_costruisce_in_un_solo_punto_del_prodotto():
 @pytest.mark.asyncio
 async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monkeypatch):
     """La controprova dinamica del test qui sopra: se `handle_mcp` smettesse di
-    passare da `costruisci_dispatcher_conoscenza`, questo test cadrebbe."""
+    passare da `costruisci_dispatcher_strumenti`, questo test cadrebbe."""
     chiamate = []
-    vero = handlers_mcp.costruisci_dispatcher_conoscenza
+    vero = handlers_mcp.costruisci_dispatcher_strumenti
 
     def _spia(app):
         chiamate.append(app)
         return vero(app)
 
-    monkeypatch.setattr(handlers_mcp, "costruisci_dispatcher_conoscenza", _spia)
+    monkeypatch.setattr(handlers_mcp, "costruisci_dispatcher_strumenti", _spia)
     client, _ = rotta
     await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",

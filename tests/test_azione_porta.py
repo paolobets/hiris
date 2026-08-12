@@ -21,7 +21,7 @@ Due famiglie di test, e la seconda vale quanto la prima:
 esiste: `EntityCache` (`hiris/app/proxy/entity_cache.py`) espone
 `all_states()`, che restituisce una **lista** di dizionari minimali con
 chiave `id` (non `entity_id`) — la stessa forma che
-`DispatcherConoscenza._stato_vivo` legge gia'. La finta e' stata adattata al
+`DispatcherStrumenti._stato_vivo` legge gia'. La finta e' stata adattata al
 metodo vero; il codice di produzione non e' stato piegato al test.
 Espone anche `loaded`, la bandiera che distingue «casa senza entita'» da
 «inventario non ancora pronto».

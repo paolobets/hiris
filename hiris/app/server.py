@@ -387,7 +387,7 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
 
     `_on_startup` logga e prosegue quando `EntityCache.load` fallisce (Home
     Assistant che parte dopo l'addon, riavvio del core, rete che balbetta):
-    da li' in poi la cache resta `loaded is False` e i quattro strumenti che
+    da li' in poi la cache resta `loaded is False` e gli strumenti che
     la leggono rispondono "non ancora pronto". Onesto, ma senza qualcuno che
     riprovi resterebbe cosi' fino al riavvio dell'addon: piu' onesto di prima
     e piu' scomodo. Questo e' quel qualcuno.
@@ -417,7 +417,7 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
     )
     # Stesso avvio, stesso guasto: se `load` era fallita per Home Assistant
     # irraggiungibile, anche il registro delle aree lo era. Indipendente dal
-    # ritorno: cio' che sblocca i quattro strumenti e' l'inventario.
+    # ritorno: cio' che sblocca gli strumenti e' l'inventario.
     try:
         await cache.load_area_registry(ha_client)
     except Exception as exc:
@@ -716,7 +716,7 @@ async def _on_startup(app: web.Application) -> None:
     # esiste ancora -- `app.get("entity_cache")` avrebbe dato `None` e la
     # porta avrebbe rifiutato OGNI azione con «non vedo lo stato di questa
     # casa», per sempre. Costruita una volta e condivisa: la chat la usa oggi
-    # via `costruisci_dispatcher_conoscenza`, lo schedulatore e il brain
+    # via `costruisci_dispatcher_strumenti`, lo schedulatore e il brain
     # domani, senza che ne nasca una seconda.
     app["porta_azione"] = PortaAzione(ha_client, app["registro_servizi"],
                                       app.get("entity_cache"))
@@ -801,7 +801,7 @@ async def _on_startup(app: web.Application) -> None:
     # `engine.set_entity_cache(entity_cache)`/`set_archivi(archivio_casa,
     # archivio_memoria)` non hanno bisogno di un successore: erano gia'
     # orfani prima di questo task (nessun lettore in produzione dalla fetta
-    # E4 Task 2 -- DispatcherConoscenza legge `app["entity_cache"]`/
+    # E4 Task 2 -- DispatcherStrumenti legge `app["entity_cache"]`/
     # `app["archivio_casa"]`/`app["archivio_memoria"]` direttamente, gia'
     # valorizzati sopra).
     impostazioni_chat = ImpostazioniChat.carica(data_dir)
@@ -867,9 +867,12 @@ async def _on_startup(app: web.Application) -> None:
     # e le rotte /api/proposals*, /api/dashboards* (handlers_proposals.py,
     # handlers_dashboards.py). Scrivevano in HA col solo token del richiedente
     # (nessuna verifica umana indipendente -- mappa §3.5): l'ultima via
-    # d'attuazione rimasta in un HIRIS che per decisione non agisce.
-    # Torneranno rifatte, col perimetro e la verifica umana, nel progetto
-    # agenti. SILENZIO DICHIARATO, stessa disciplina di advisory.db/
+    # d'attuazione rimasta in un HIRIS che per decisione, ALLORA, non agiva.
+    # L'azione e' rientrata con la fetta «comandare», ma rifatta e da una parte
+    # sola: `esegui` -> `azione/porta.py`, che verifica contro l'installazione
+    # e rilegge lo stato. Queste tre vie NON sono rientrate con lei -- scrivere
+    # config, proposte e plance e' materia del progetto agenti, col perimetro
+    # e la verifica umana. SILENZIO DICHIARATO, stessa disciplina di advisory.db/
     # sentinel.db (Task 6/7): un proposals.db o un dashboard_backups.json
     # ereditati da un'installazione precedente non vengono ne' cancellati
     # (mai dati utente in /data) ne' incontrati in silenzio.
@@ -1117,8 +1120,8 @@ async def _on_startup(app: web.Application) -> None:
 
     # Ricarica dell'inventario entita' dopo un avvio senza Home Assistant.
     # `entity_cache.load` piu' sopra logga e prosegue se fallisce: senza questo
-    # lavoro la cache resterebbe "mai caricata" fino al riavvio dell'addon, e i
-    # quattro strumenti che la leggono continuerebbero a rispondere "non ancora
+    # lavoro la cache resterebbe "mai caricata" fino al riavvio dell'addon, e
+    # gli strumenti che la leggono continuerebbero a rispondere "non ancora
     # pronto" per sempre.
     #
     # Due minuti: un'indisponibilita' passeggera (riavvio del core, rete che
@@ -1547,12 +1550,13 @@ async def _on_startup(app: web.Application) -> None:
     # user's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN) instead of metered
     # API spend. Off unless both the feature flag and the token are present
     # (should_start_agent_worker). Il server MCP interno che la chat usava per
-    # i tool di CONTROLLO casa usci' con la Fetta E2 Task 3 e non torna: HIRIS
-    # conosce e non agisce. Ma questo worker non ragiona piu' in puro testo --
-    # dalla fetta "il ponte riceve gli strumenti" (parita' B) riceve i QUATTRO
-    # strumenti della CONOSCENZA dalla rotta `POST /api/mcp` registrata piu'
-    # sotto, e il prompt lo dichiara al modello solo quando la sonda ha
-    # confermato che ci sono davvero (vedi agent/runner.py).
+    # i tool di CONTROLLO casa usci' con la Fetta E2 Task 3 e non e' tornato:
+    # quando l'azione e' rientrata (fetta «comandare») e' rientrata come UNO
+    # strumento nel catalogo unico, non come un secondo server. Questo worker
+    # non ragiona piu' in puro testo -- dalla fetta "il ponte riceve gli
+    # strumenti" (parita' B) riceve gli strumenti dalla rotta `POST /api/mcp`
+    # registrata piu' sotto, e il prompt lo dichiara al modello solo quando la
+    # sonda ha confermato che ci sono davvero (vedi agent/runner.py).
     if should_start_agent_worker():
         from .agent import runner as _agent_runner
 
@@ -1738,7 +1742,7 @@ def create_app() -> web.Application:
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
     # fetta "il ponte riceve gli strumenti" (parita' B) Task 1: l'adattatore
-    # JSON-RPC che porta i quattro strumenti della casa anche al ponte via
+    # JSON-RPC che porta gli strumenti della casa anche al ponte via
     # abbonamento -- l'unico modo in cui la CLI `claude` accetta strumenti
     # nostri (vedi il docstring di api/handlers_mcp.py).
     #

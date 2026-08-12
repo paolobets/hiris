@@ -13,25 +13,34 @@
 </p>
 
 <p align="center">
-  <strong>The knowledge of your home, and a chat to ask it.</strong>
+  <strong>The knowledge of your home, and a chat to ask it — and to tell it.</strong>
 </p>
 
 ---
 
 ## What HIRIS 2.0 is
 
-> **HIRIS knows, and does not act.**
+> **HIRIS knows your house, and acts on it when you ask.**
 
 HIRIS 2.0 is a Home Assistant add-on that builds and keeps a living
 representation of your house — floors, areas, devices, entities, and what the
-house already does on its own — and gives you one chat to interrogate it.
+house already does on its own — and gives you one chat to interrogate it **and
+to command it**.
 
-That is the whole product. It reads Home Assistant and it remembers what you
-tell it. It does not turn anything on or off, does not send notifications, and
-does not create or modify automations. The HTTP primitive that called an HA
-service was removed from the client altogether
-(`hiris/app/proxy/ha_client.py:145-151`) — "doesn't act" is not a setting you
-could flip, it is the absence of the code.
+That is the whole product. It reads Home Assistant, it remembers what you tell
+it, and it calls Home Assistant services on your behalf when you ask it to in
+chat. It still does not send notifications, and it does not create or modify
+automations, scripts, scenes or dashboards.
+
+Action came back deliberately, and through **one door only**
+(`hiris/app/azione/porta.py`): every call is verified against *your*
+installation before it is sent — the service has to exist, the entity has to
+exist, the parameters have to belong to that service — and the state is read
+back afterwards, so the chat tells you what actually happened rather than what
+was asked for. There is no confirmation step and no allowlist: capability
+first, safeguards as a designed phase of their own. What there is instead is a
+hard boundary — **nothing acts on its own.** Every execution starts from a
+sentence you typed. No schedule, no trigger, no autonomous agent.
 
 Periodic work *does* run — four APScheduler jobs are registered at startup —
 but every one of them is internal housekeeping: none of them speaks to you, and
@@ -118,11 +127,10 @@ Saved memories come back in the nucleo on the next turn, under
 
 ---
 
-## The chat, and its four tools
+## The chat, and its five tools
 
-The chat is the only surface. The model gets the nucleo plus exactly four tools
-(`hiris/app/casa/strumenti.py:57,250`, passed at
-`hiris/app/api/handlers_chat.py:438-439,493-494`):
+The chat is the only surface. The model gets the nucleo plus exactly five tools
+(`hiris/app/casa/strumenti.py`, passed at `hiris/app/api/handlers_chat.py`):
 
 | Tool | What it does |
 |---|---|
@@ -130,10 +138,14 @@ The chat is the only surface. The model gets the nucleo plus exactly four tools
 | `guarda` | the detail of one single thing: an area with its entities and states, an entity, a device, an automation or script *with its body*, or a memory with its interpretation |
 | `ricorda` | saves what a person said, with its anchors to the house |
 | `richiama` | the memories anchored to one part of the house |
+| `esegui` | calls a Home Assistant service — verified against your installation before it is sent, and the state read back after, so `prima`, `dopo` and `cambiato` say what actually changed |
 
-None of the four touches Home Assistant: they read and they remember. There is
-no fifth tool and no allowlist to configure — the catalogue of thirty-four
-tools and the action gate that stood in front of them were both removed.
+Four of the five read and remember; only `esegui` touches Home Assistant, and
+it does so through the single door described above. There is no allowlist and
+no confirmation step to configure — the catalogue of thirty-four tools and the
+action gate that stood in front of them were both removed in 2.0, and when
+action came back it came back as **one** tool with a verification step, not as
+a catalogue with a gate.
 
 Answers stream token by token (`text/event-stream`) when the client asks for
 it, and closed sessions are summarised back into the next conversation
@@ -179,18 +191,20 @@ It is active when `bridge_enabled` **and** `chat_via_subscription` are both on
 active subscription provider implies both flags
 (`hiris/app/server.py:907,1332-1340`).
 
-**That path now carries the nucleo, and — when it can — the four tools.** The
+**That path now carries the nucleo, and — when it can — the tools.** The
 turn is enqueued together with the same context the synchronous chat composes
 (`handlers_chat.py::_enqueue_chat_job`), and the runner probes `POST /api/mcp`
 before it starts (`agent/runner.py::sonda_strumenti`). One boolean comes out of
 that probe and decides two things at once: the prompt the model reads and the
 arguments the CLI is launched with. When the probe succeeds the model has
-`cerca`, `guarda`, `ricorda` and `richiama` under an `mcp__hiris__` prefix and
-can look at the current state, not just the snapshot. When it fails, the answer
+`cerca`, `guarda`, `ricorda`, `richiama` and `esegui` under an `mcp__hiris__`
+prefix: it can look at the current state, not just the snapshot, and it can act
+— through the very same door as the synchronous path, never one of its own.
+When it fails, the answer
 is prefixed with a line saying the tools were not available this turn
-(`AVVISO_STRUMENTI_ASSENTI`) instead of quietly pretending it looked. Either
-way it does not act on the home. The tool chips under a reply are drawn on this
-path too (`handle_chat_reply_poll` → `send.js::pollChatReply`).
+(`AVVISO_STRUMENTI_ASSENTI`) instead of quietly pretending it looked; on that
+branch it cannot act at all, and the prompt says so. The tool chips under a
+reply are drawn on this path too (`handle_chat_reply_poll` → `send.js::pollChatReply`).
 
 What still differs from the synchronous path: usage is **not** measured (the
 subscription exposes neither tokens nor cost — `GET /api/usage` says so instead
@@ -319,9 +333,12 @@ These existed in 1.x and are deliberately **out of the running product**. The
 code largely still sits in git history; anything that comes back will come back
 rewritten, with a design of its own.
 
-- **Actions of any kind** — no service calls, no turning things on or off, no
-  creating or editing automations, scripts, scenes or dashboards
-- **The semaforo** — tiers, denylists, step-up confirmations, per-action gating
+- **Building things** — no creating or editing automations, scripts, scenes or
+  dashboards. Calling a service *is* back (`esegui`, above); writing objects
+  into Home Assistant is not
+- **The semaforo** — tiers, denylists, step-up confirmations, per-action gating.
+  Action returned without it, on purpose: safeguards are a designed phase of
+  their own, not an inheritance from 1.x
 - **Agentbot / Sentinella / agents** — nothing is triggered by a schedule or an
   event to reason on its own
 - **The Brain**, its proposals and its advisories
@@ -329,7 +346,7 @@ rewritten, with a design of its own.
 - **Notifications** — no Apprise, no HA push, no Telegram/ntfy/…
 - **MQTT**, the gateway, Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
-- **The thirty-four-tool catalogue** — replaced by the four above
+- **The thirty-four-tool catalogue** — replaced by the five above
 
 ---
 

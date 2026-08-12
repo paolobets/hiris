@@ -1,19 +1,30 @@
 # Prova la 2.0
 
-*Foglio della prova aperta l'11 agosto 2026. Accompagna la build che ti è stata
+*Foglio della prova aperta l'11 agosto 2026, **aggiornato il 12 agosto** per la build
+che riporta l'azione (§4, §5). Accompagna la build che ti è stata
 consegnata: si legge in dieci minuti, dice come si parte, cosa aspettarsi, cosa
 **non** aspettarsi e cosa segnalare. Non è la documentazione del prodotto — quella
-verrà riscritta quando le funzionalità saranno rifatte — e non viene tenuto
-aggiornato dopo la prova.*
+verrà riscritta quando le funzionalità saranno rifatte. Non è un verbale: descrive
+al presente la build che hai in mano, quindi si aggiorna quando la build cambia,
+invece di restare indietro.*
 
 ---
 
 ## In una riga
 
-**HIRIS conosce la tua casa e non la tocca.** Legge da Home Assistant piani, aree,
-dispositivi, entità, automazioni e script; ricorda ciò che gli dici; e c'è una chat
-per interrogarlo. Non accende, non spegne, non manda notifiche, non scrive
-automazioni.
+**HIRIS conosce la tua casa, e la tocca quando glielo chiedi tu.** Legge da Home
+Assistant piani, aree, dispositivi, entità, automazioni e script; ricorda ciò che gli
+dici; e c'è una chat per interrogarlo e per comandarlo. Accende, spegne, imposta —
+chiamando i servizi di Home Assistant, **solo** quando glielo chiedi in chat e mai
+di sua iniziativa. Non manda notifiche e non scrive automazioni.
+
+**Non ti viene chiesta nessuna conferma prima di un'azione, ed è voluto.** Prima la
+capacità, poi le sicurezze, in una fase pensata apposta: quello che c'è al posto
+della conferma è una **verifica** — prima di chiamare un servizio HIRIS controlla
+sulla *tua* installazione che quel servizio esista, che l'entità esista e che i
+parametri siano suoi; e dopo aver chiamato **rilegge lo stato**, così ti racconta
+cos'è successo davvero invece di cos'era stato chiesto. Se non è cambiato niente,
+te lo dice.
 
 Il tratto che stiamo mettendo alla prova è un altro, ed è quello che ti chiediamo di
 guardare per primo: **HIRIS deve dichiarare ciò che non sa invece di fingerlo.** Una
@@ -200,12 +211,13 @@ cosa.
 
 ## 4. Cosa chiedere alla chat
 
-Il modello riceve il nucleo (la casa condensata) più **quattro strumenti**, e nessuno
-dei quattro tocca Home Assistant: `cerca` (trova per nome o alias), `guarda` (il
-dettaglio di una cosa sola), `ricorda` (salva ciò che hai detto), `richiama` (i
-ricordi legati a una parte della casa).
+Il modello riceve il nucleo (la casa condensata) più **cinque strumenti**. Quattro
+leggono e ricordano: `cerca` (trova per nome o alias), `guarda` (il dettaglio di una
+cosa sola), `ricorda` (salva ciò che hai detto), `richiama` (i ricordi legati a una
+parte della casa). Il quinto, `esegui`, è l'unico che tocca Home Assistant: chiama un
+servizio — verificato prima, con lo stato riletto dopo.
 
-Sei domande che esercitano davvero questi quattro:
+Sette richieste che li esercitano davvero:
 
 1. **«Quante luci ci sono al piano di sopra?»** — risponde dal nucleo, che **conta
    invece di elencare**: le entità di una casa non entrerebbero tutte nel contesto,
@@ -231,6 +243,16 @@ Sei domande che esercitano davvero questi quattro:
 6. **«Cosa ti ho già detto sulla cucina?»** — `richiama`. Nessun ricordo non
    significa «la casa non ha ricordi»: significa che nessuno di quelli salvati
    nomina proprio la cucina.
+7. **«Spegni la luce della cucina»** — `esegui`. È la novità di questa build, ed è
+   quella su cui ti chiediamo di essere più severo. Guarda tre cose, in quest'ordine:
+   che **spenga quella giusta** (se in casa hai due «cucina», deve chiedertelo invece
+   di tirare a indovinare — è lo stesso comportamento del punto 3, applicato a
+   qualcosa che poi succede per davvero); che ti racconti **cos'è cambiato**, non
+   cos'ha chiesto; e che quando **non cambia niente** — la luce era già spenta,
+   oppure il servizio è andato ma lo stato è rimasto uguale — te lo dica, invece di
+   dichiarare un successo. Prova anche a chiedergli qualcosa di impossibile
+   («imposta il colore del termostato»): deve dirti **cosa** non esiste, non «non
+   posso».
 
 **Sotto la risposta**, quando il modello ha usato uno strumento, compaiono delle
 targhette con il nome dello strumento: cliccale per vedere con quali argomenti è
@@ -250,15 +272,21 @@ definitiva e la conferma ti mostra la frase esatta prima di procedere.
 Nessuna di queste è un difetto da segnalare. Sono scelte, e sono la ragione per cui
 questa versione esiste.
 
-- **Non agisce.** Non accende e non spegne niente, non chiama servizi di Home
-  Assistant, non crea né modifica automazioni, script, scene o dashboard. Non è
-  un'impostazione che puoi accendere: è codice che non c'è.
+- **Non costruisce.** Non crea né modifica automazioni, script, scene o dashboard.
+  Chiamare un servizio sì (`esegui`, §4): scrivere oggetti dentro Home Assistant no.
+  Questo è ciò che tornerà rifatto quando HIRIS saprà **costruire**, ed è un progetto
+  a sé.
 - **Non ti scrive mai per primo.** Niente notifiche, niente Telegram, niente
   messaggi push, niente promemoria. Parla solo quando gli parli tu.
-- **Non ragiona da solo.** Niente agenti, niente sentinella, niente ronde, niente
-  proposte da approvare, niente segnalazioni.
+- **Non ragiona da solo, e non agisce da solo.** Niente agenti, niente sentinella,
+  niente ronde, niente proposte da approvare, niente segnalazioni. Ogni azione nasce
+  da una frase che hai scritto tu in chat: non esiste nessun percorso — orario,
+  evento, regola — che possa farne partire una senza di te.
 - **Non ha un semaforo dei permessi.** Non esistono livelli, liste di divieti,
-  conferme rinforzate: non c'è niente da autorizzare, perché non c'è niente da fare.
+  conferme rinforzate. Adesso che HIRIS agisce questa è una scelta, non una
+  conseguenza: prima la capacità, poi le sicurezze, disegnate sui rischi veri di
+  questa struttura e non ereditate dalla 1.x. Se ti pare che manchi un freno,
+  **segnalalo lo stesso** — è esattamente il materiale che serve alla fase dopo.
 - **Niente MQTT, niente gateway, niente Test Run.**
 - **Non c'è la card per le dashboard.** Se avevi la card della 1.x, quel riquadro
   smette di funzionare: al primo avvio HIRIS **disinstalla da solo** ciò che aveva
@@ -334,17 +362,16 @@ la scelta memorizzata, e il pulsante sole/luna dentro HIRIS è l'unico modo di
 cambiarla. È verificato nel codice e osservato; è un difetto noto, non serve
 segnalarlo di nuovo — ma sappilo, prima di concludere che l'opzione è rotta.
 
-**8. Il ponte dell'abbonamento: l'etichetta e il codice non dicono la stessa cosa.**
-La descrizione dell'opzione «Chat via abbonamento — attiva», quella che leggi nel
-Supervisor, dice che su quel percorso la chat riceve la conoscenza della casa **ma
-non i suoi strumenti**. Nel codice di questa build gli strumenti sono stati
-riattaccati anche a quel percorso: prima di ogni turno HIRIS verifica che i quattro
-ci siano davvero, e se non ci sono **te lo dice in una riga premessa alla risposta**
+**8. Il ponte dell'abbonamento: gli strumenti ci sono, ma non sempre.**
+Su quel percorso la chat non riceve solo la conoscenza della casa: riceve anche gli
+strumenti, `esegui` compreso. Prima di ogni turno HIRIS verifica che ci siano davvero,
+e se non ci sono **te lo dice in una riga premessa alla risposta**
 (*«In questo turno non ho potuto usare gli strumenti per guardare la casa…»*)
-invece di rispondere come se niente fosse. **La descrizione nell'interfaccia è
-rimasta indietro rispetto al codice, ed è già segnalata.** Se provi la strada
-dell'abbonamento, guarda quale delle due è vera sul tuo impianto: te lo dicono le
-targhette degli strumenti sotto la risposta, e quella riga premessa quando mancano.
+invece di rispondere come se niente fosse — e in quel caso non può nemmeno agire.
+Guarda quale dei due stati capita sul tuo impianto: te lo dicono le targhette degli
+strumenti sotto la risposta, e quella riga premessa quando mancano. *(Fino alla
+build precedente la descrizione dell'opzione nel Supervisor era rimasta indietro e
+negava gli strumenti; adesso è allineata al codice.)*
 
 **9. Le risposte in elenco si vedono grezze.** Il testo della chat riconosce solo il
 **grassetto**, il `codice` e l'a capo. Se il modello risponde con un elenco

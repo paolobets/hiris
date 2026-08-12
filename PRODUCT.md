@@ -36,6 +36,21 @@
 > prodotto vero: nominano superfici (sandbox, editor Agentbot, telemetria per-entità) che non
 > ci sono più.
 
+> ## 🗄 Annotazione all'annotazione — 12 agosto 2026
+>
+> Il blocco del 10 agosto qui sopra è **anch'esso un verbale**, e non è stato riscritto: si
+> annota, come tutti gli altri. Una sua frase ha smesso di essere vera. Diceva che HIRIS 2.0
+> è *«una riduzione al nucleo: **conosce e non agisce** — la conoscenza della casa più una chat
+> per interrogarla, con quattro strumenti che leggono e ricordano, e nessuno che tocchi la
+> casa»*.
+>
+> Era vero il 10 agosto. Con la fetta **«comandare»** l'azione è rientrata: gli strumenti della
+> chat sono **cinque**, e il quinto (`esegui`) chiama i servizi di Home Assistant passando da un
+> unico punto che verifica prima e rilegge lo stato dopo (`hiris/app/azione/porta.py`). Ciò che
+> resta vero, e che separa questa 2.0 dal prodotto descritto nel corpo del documento, è il resto:
+> nessuna autonomia — ogni esecuzione nasce da una frase in chat — e nessun semaforo, che non è
+> tornato con lei. Per cosa il prodotto fa davvero oggi, il `README.md`.
+
 > ## ⚠️ Documento parzialmente superato — 4 agosto 2026
 >
 > Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal

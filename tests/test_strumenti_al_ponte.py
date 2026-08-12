@@ -23,8 +23,8 @@ Cosa difende ciascun gruppo:
 - ④ **la sonda vera contro il server vero**: l'autenticazione della rotta e
   quella del ponte sono **lo stesso token**, non due;
 - ⑤ **la rientranza**: mentre la CLI "gira" nel thread dell'executor, l'add-on
-  serve davvero la callback -- e la serve per **tutti e quattro** gli
-  strumenti, `guarda` compreso, che e' l'unico che legge la `entity_cache` e
+  serve davvero la callback -- e la serve per **tutti** gli
+  strumenti di conoscenza, `guarda` compreso, che e' l'unico che legge la `entity_cache` e
   quindi l'argomento portante con cui il disegno giustifica una rotta invece
   di un sottoprocesso separato;
 - ⑥ **il degrado dichiarato**: gli strumenti erano attesi e non ci sono -- la
@@ -304,8 +304,8 @@ def test_la_sonda_dice_no_se_il_corpo_non_e_json():
 
 
 def test_la_sonda_dice_no_se_la_lista_e_incompleta():
-    """**Tre nomi su quattro non sono «quasi si'».** Il prompt del ramo attivo
-    afferma tutti e quattro gli strumenti: con tre, il modello ne chiamerebbe
+    """**Una lista incompleta non e' «quasi si'».** Il prompt del ramo attivo
+    afferma TUTTI gli strumenti del catalogo: se ne mancasse uno, il modello ne chiamerebbe
     uno che non esiste -- e il messaggio che riceverebbe non e' una risposta,
     e' un errore che nessuno gli ha spiegato."""
     tre = sorted(_NOMI_NUDI)[:3]
@@ -315,7 +315,7 @@ def test_la_sonda_dice_no_se_la_lista_e_incompleta():
     assert mancante in motivo
 
 
-def test_la_sonda_dice_si_solo_con_tutti_e_quattro():
+def test_la_sonda_dice_si_solo_col_catalogo_intero():
     client = _ClientFinto(_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200))
     ok, motivo = _sonda_con(client)
 
@@ -409,7 +409,7 @@ def _base_url(client) -> str:
 def _semina_gli_archivi(app, tmp_path):
     """Gli archivi veri e la `entity_cache` vera nell'app gia' avviata.
 
-    `guarda` e' l'unico dei quattro che legge la cache delle entita', ed e'
+    `guarda` e' l'unico strumento di lettura che legge la cache delle entita', ed e'
     **l'argomento portante** con cui il disegno giustifica una rotta invece di
     un sottoprocesso stdio separato (`handlers_mcp.py`, «la stessa
     `entity_cache` del turno sincrono»): senza di essa `guarda` risponderebbe
@@ -488,7 +488,7 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
 ):
     """**Il limite di questa difesa, scritto invece che scoperto dopo.**
 
-    `tools/list` risponde 200 coi quattro nomi **anche con gli archivi
+    `tools/list` risponde 200 con tutti i nomi **anche con gli archivi
     assenti** (l'anagrafe mai letta): il catalogo e' una costante, e l'errore
     «la conoscenza della casa non e' ancora stata caricata» sta DENTRO il
     risultato della singola `tools/call`, non nello stato HTTP. La sonda dice
@@ -538,8 +538,8 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     test e' cio' che glielo impedisce -- e fallirebbe **in stallo**, che e'
     l'unico modo onesto di fallire per questa proprieta'.
 
-    Si esercitano **tutti e quattro** gli strumenti attraverso la rotta,
-    `guarda` e `richiama` compresi (Minor noto del Task 1: non l'avevano mai
+    Si esercitano **tutti e quattro** gli strumenti DI CONOSCENZA attraverso la
+    rotta, `guarda` e `richiama` compresi (Minor noto del Task 1: non l'avevano mai
     attraversata), e `guarda` legge la `entity_cache` vera dell'app -- che e'
     l'argomento con cui il disegno ha scartato un sottoprocesso stdio."""
     client, coda, app = ponte_con_configurazione_predefinita
@@ -596,7 +596,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         system = visto["argv"][visto["argv"].index("--system-prompt") + 1]
         assert prompts._GUIDA_CON_STRUMENTI in system
 
-        # la callback e' stata servita, e ha portato i quattro nomi
+        # la callback e' stata servita, e ha portato i nomi del catalogo
         assert visto["nomi"] == _NOMI_NUDI
 
         # `cerca` legge l'archivio della casa dell'app
@@ -628,10 +628,10 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
 def _riga_init(*, stato: str = "connected", nomi=None) -> str:
     """L'evento `system/init` come lo emette la CLI quando gli strumenti sono
     arrivati DAVVERO: il server col nostro nome in stato `connected`, e tutti e
-    quattro i `mcp__<server>__*` nella lista `tools` risolta.
+    i `mcp__<server>__*` del catalogo nella lista `tools` risolta.
 
     Si costruisce da `runner.nomi_mcp()` e `runner._nome_server_mcp()`, non a
-    mano: quattro stringhe ricopiate qui sarebbero il secondo catalogo, e uno
+    mano: un elenco ricopiato qui sarebbe il secondo catalogo, e uno
     strumento che entrasse in `casa/strumenti.py` lascerebbe questo finto init
     disallineato dal vero senza che nessuno se ne accorga. `ToolSearch` c'e'
     perche' c'e' anche nel flusso vero (la CLI lo usa per risolvere gli schemi
@@ -655,7 +655,7 @@ class _ProcFelice:
     """Il turno che riesce, per intero.
 
     Task 4: fino a ieri questo finto stdout dichiarava UN solo strumento
-    risolto (`mcp__hiris__cerca`) mentre il prompt ne prometteva quattro --
+    risolto (`mcp__hiris__cerca`) mentre il prompt li prometteva tutti --
     cioe' precisamente il guasto che il Task 4 esiste per scoprire. Passava
     perche' nessuno leggeva l'`init`. Ora si legge, e la forma dello stdout
     finto deve essere quella del flusso vero: e' la stessa passata che il
@@ -1128,7 +1128,7 @@ def test_i_due_giri_del_runner_loggano_l_eccezione_redatta():
     runner come processo a se') -- e una difesa applicata a uno solo dei due
     lascia aperto l'altro: e' la classe di difetto che questo prodotto ha gia'
     pagato con la redazione dello stdout, chiusa in un punto e dimenticata in
-    quattro."""
+    quelli del catalogo."""
     import inspect
 
     atteso = 'log.warning("run_once errore: %s", _motivo_eccezione(exc))'
@@ -1142,12 +1142,12 @@ def test_i_due_giri_del_runner_loggano_l_eccezione_redatta():
 # TASK 4 -- L'`init` SMENTISCE LA SONDA: si butta l'invocazione, non si
 # corregge il prompt.
 #
-# La sonda (difesa 1) prova che la rotta risponde coi quattro nomi DAL NOSTRO
+# La sonda (difesa 1) prova che la rotta risponde con tutti i nomi DAL NOSTRO
 # LATO. L'evento `system/init` dice se la CLI ci e' ARRIVATA: fra i due ci sono
 # Node, il parsing della stringa `--mcp-config`, `--strict-mcp-config` e il
 # loopback visto da un altro processo -- tutta la superficie a cui nessuna
 # suite verde puo' rispondere. Quando i due si contraddicono, il prompt e' gia'
-# partito affermando quattro strumenti che il modello non ha.
+# partito affermando strumenti che il modello non ha.
 #
 # Cosa si difende qui:
 #   (a) il guasto viene VISTO in tutte le sue forme (server `failed`, server
@@ -1220,16 +1220,16 @@ def _messaggi(caplog) -> str:
 
 @pytest.mark.parametrize("init_rotto, come", [
     (_riga_init(stato="failed"), "server-failed"),
-    (_riga_init(nomi=list(runner.nomi_mcp())[:3]), "tre-su-quattro"),
+    (_riga_init(nomi=list(runner.nomi_mcp())[:3]), "lista-strumenti-incompleta"),
     ("", "init-assente"),
-], ids=["server-failed", "tre-strumenti-su-quattro", "init-assente"])
+], ids=["server-failed", "lista-strumenti-incompleta", "init-assente"])
 def test_l_init_che_smentisce_la_sonda_butta_l_invocazione(init_rotto, come, caplog):
     """① ② ④ del brief, in un test solo perche' e' UN fatto solo: qualunque
     modo l'`init` abbia di smentire la sonda porta allo stesso esito.
 
     - **server `failed`**: il guasto conclamato -- Node non ha collegato la
       rotta, o la mcp-config non e' stata digerita;
-    - **tre strumenti su quattro**: un server connesso che non espone tutto e'
+    - **lista incompleta**: un server connesso che non espone tutto e'
       lo stesso guasto visto da un'altra parte, e per il modello e' peggio,
       perche' il prompt li nomina uno per uno;
     - **`init` assente**: CLI piu' vecchia, `--verbose` che non arriva, formato

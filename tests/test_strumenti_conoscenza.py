@@ -1,7 +1,7 @@
 import pytest
 
 from hiris.app.casa.archivio import ArchivioCasa
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
+from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.memoria.archivio import ArchivioMemoria
 from tests.test_nucleo import _CASA, _COMPORTAMENTO
 
@@ -76,12 +76,12 @@ def memoria(tmp_path):
 
 @pytest.fixture
 def dispatcher(archivio_casa, memoria):
-    return DispatcherConoscenza(archivio_casa, memoria)
+    return DispatcherStrumenti(archivio_casa, memoria)
 
 
 @pytest.fixture
 def dispatcher_ambiguo(archivio_casa_ambiguo, memoria):
-    return DispatcherConoscenza(archivio_casa_ambiguo, memoria)
+    return DispatcherStrumenti(archivio_casa_ambiguo, memoria)
 
 
 def test_il_catalogo_e_questo_e_uno_solo_di_essi_tocca_la_casa():
@@ -98,7 +98,7 @@ def test_il_catalogo_e_questo_e_uno_solo_di_essi_tocca_la_casa():
 
 
 def test_ogni_definizione_ha_una_descrizione_utile():
-    """Una descrizione vaga e' un tool che il modello usa male: sono quattro,
+    """Una descrizione vaga e' un tool che il modello usa male: sono pochi,
     possono permettersi di essere spiegati bene."""
     for s in STRUMENTI_CONOSCENZA:
         assert len(s["description"]) > 60
@@ -240,11 +240,13 @@ class _CacheFinta:
 
 @pytest.mark.asyncio
 async def test_guarda_mostra_lo_stato_vivo(archivio_casa, memoria):
-    """Sapere che una luce e' accesa e' CONOSCENZA, non azione: «conosce, non
-    agisce» vuol dire che non SCRIVE. Prima `guarda` restituiva sempre
-    `stato: None` perche' la cache non era cablata -- onesto ma inutile."""
+    """Sapere che una luce e' accesa e' CONOSCENZA, non azione: `guarda` legge
+    lo specchio dello stato e non lo scrive -- nemmeno adesso che il prodotto
+    agisce. Chi scrive e' `esegui`, e passa dalla porta. Prima `guarda`
+    restituiva sempre `stato: None` perche' la cache non era cablata --
+    onesto ma inutile."""
     cache = _CacheFinta({"light.cucina_1": "on", "light.cucina_2": "off"})
-    d = DispatcherConoscenza(archivio_casa, memoria, cache=cache)
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=cache)
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
     stati = {e["id"]: e["stato"] for e in esito["entita"]}
     assert stati["light.cucina_1"] == "on"
@@ -256,7 +258,7 @@ async def test_guarda_mostra_lo_stato_vivo(archivio_casa, memoria):
 async def test_senza_inventario_leggibile_lo_stato_si_dichiara_non_letto(archivio_casa, memoria):
     """Ogni `stato: None` sarebbe altrimenti ambiguo fra «l'entita' non ha
     stato» e «non ho potuto guardare»."""
-    d = DispatcherConoscenza(archivio_casa, memoria, cache=None)
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=None)
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
     assert esito["stato_non_letto"] is True
 
@@ -279,7 +281,7 @@ async def test_uno_stato_vivo_che_solleva_si_dichiara_non_letto(archivio_casa, m
     """Fix E1-③: `_stato_vivo` inghiottiva l'eccezione e restituiva `{}`,
     indistinguibile da "nessuna entita' ha stato" -- con la cache che si
     dichiara comunque caricata, `stato_non_letto` non scattava mai."""
-    d = DispatcherConoscenza(archivio_casa, memoria, cache=_CacheGuastaMaDichiarataPronta())
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheGuastaMaDichiarataPronta())
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
     assert esito["stato_non_letto"] is True
 
@@ -311,7 +313,7 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
     None il modello riceveva «'NoneType' object has no attribute 'leggi'»: un
     errore Python travestito da risposta, che non gli permette ne' di capire
     ne' di spiegarlo all'utente -- solo di riprovare all'infinito."""
-    d = DispatcherConoscenza(None, None, cache=None)
+    d = DispatcherStrumenti(None, None, cache=None)
     for nome, argomenti in [
         ("cerca", {"testo": "cucina"}),
         ("guarda", {"tipo": "area", "riferimento": "cucina"}),

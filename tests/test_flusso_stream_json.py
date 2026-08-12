@@ -645,7 +645,7 @@ class _RispostaSonda:
 
 class _ClientSondaOk:
     """Un client finto che risponde SEMPRE positivamente alla sonda
-    `tools/list` (i quattro nomi nudi del catalogo)."""
+    `tools/list` (i nomi nudi del catalogo)."""
 
     def post(self, url, headers=None, json=None, timeout=None):
         nomi = [d["name"] for d in STRUMENTI_CONOSCENZA]
@@ -673,7 +673,7 @@ def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe()
     l'ultima invocazione, quella la cui reply l'utente legge davvero -- ma non
     e' quella giusta: se nella prima invocazione (poi buttata) il modello ha
     chiamato `mcp__hiris__ricorda`, quella chiamata e' gia' passata per
-    davvero da `POST /api/mcp` fino a `DispatcherConoscenza` e ha gia' scritto
+    davvero da `POST /api/mcp` fino a `DispatcherStrumenti` e ha gia' scritto
     in `memoria.db`, PRIMA che il ponte si accorgesse che il prompt prometteva
     strumenti a meta'. Buttare l'invocazione non disfa la scrittura.
     Riportare solo l'ultimo giro nasconderebbe esattamente il turno per cui

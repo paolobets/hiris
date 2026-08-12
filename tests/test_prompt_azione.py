@@ -30,6 +30,8 @@ Per questo alcuni test guardano il prompt COMPOSTO (`_prompt_del_ponte()`) e
 non la sola costante: il soggetto e' cio' che il modello legge, e la costante
 e' solo la via d'accesso.
 """
+import pytest
+
 from hiris.app.agent import prompts
 from hiris.app.agent.prompts import _GUIDA_CON_STRUMENTI, _GUIDA_SENZA_STRUMENTI
 from hiris.app.claude_runner import BASE_SYSTEM_PROMPT
@@ -206,3 +208,103 @@ def test_la_guida_senza_strumenti_continua_a_dire_cio_che_in_quel_turno_manca():
     assert "non puoi accendere" in basso, (
         "la guida del ramo di degrado non dice piu' che in QUESTO turno non "
         "si puo' toccare la casa")
+
+
+# -- La guardia che LEGA il prompt al contratto della porta -----------------
+#
+# fetta «comandare» (Task 7). Il Task 6 ha chiuso il suo lavoro dichiarando
+# questo buco (§9.3 del suo rapporto): il prompt promette al modello quattro
+# CHIAVI -- `prima`, `dopo`, `cambiato`, `avviso` -- e quelle chiavi le
+# produce `azione/porta.py`. Le due cose non erano legate da niente. Se domani
+# la porta rinominasse `cambiato`, il prompt continuerebbe a nominarlo, il
+# modello riceverebbe un dizionario senza quel campo e racconterebbe cio' che
+# e' stato CHIESTO invece di cio' che e' successo -- **in silenzio**, con la
+# suite verde: nessun test di `test_azione_porta.py` guarda il prompt, e
+# nessun test del prompt guarda la porta.
+#
+# E' esattamente la famiglia di difetti di cui il Task 7 si occupa -- la
+# dichiarazione al presente che non e' piu' vera -- ed e' l'unico pezzo di
+# essa che si puo' PREVENIRE invece di correggere. Da qui in poi il rename
+# della chiave e' un test rosso.
+#
+# **Il verso conta.** Si asserisce che ogni chiave nominata dal PROMPT esista
+# davvero nell'esito della PORTA, non il contrario: la porta puo' legittimamente
+# restituire campi che il prompt non nomina (`eseguito`, `servizio`, `entita`),
+# e pretendere che il prompt li elenchi tutti sarebbe fissare la prosa invece
+# della proprieta'.
+#
+# Le chiavi si raccolgono ESEGUENDO la porta vera -- non da una lista scritta
+# qui, che sarebbe il secondo catalogo di sempre. Due giri, perche' `avviso`
+# compare solo su uno di essi: quello in cui la chiamata riesce e non cambia
+# niente, cioe' proprio il caso che il prompt esiste per far raccontare.
+
+_CHIAVI_NOMINATE_DAL_PROMPT = ("prima", "dopo", "cambiato", "avviso")
+
+
+async def _chiavi_prodotte_dalla_porta() -> set:
+    """L'unione delle chiavi che `PortaAzione.esegui` restituisce davvero.
+
+    Usa le stesse finte di `tests/test_azione_porta.py` (importate, non
+    ricopiate: una seconda copia divergerebbe il giorno in cui la forma vera
+    di `EntityCache` cambia) e la porta VERA."""
+    from hiris.app.azione.porta import PortaAzione
+    from hiris.app.azione.registro import RegistroServizi
+    from tests.test_azione_porta import (
+        FintoClient, FintaCache, SALOTTO_ACCESO, SALOTTO_SPENTO, SPEGNI_IL_SALOTTO,
+    )
+
+    chiavi = set()
+
+    # giro 1: lo stato cambia davvero -> `prima`/`dopo`/`cambiato`, niente avviso
+    client = FintoClient()
+    registro = RegistroServizi()
+    await registro.aggiorna(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO, dopo=SALOTTO_SPENTO))
+    chiavi |= set(await porta.esegui(SPEGNI_IL_SALOTTO, origine="test"))
+
+    # giro 2: la chiamata riesce e non cambia niente -> compare `avviso`
+    client2 = FintoClient()
+    registro2 = RegistroServizi()
+    await registro2.aggiorna(client2)
+    porta2 = PortaAzione(client2, registro2, FintaCache(SALOTTO_SPENTO))
+    chiavi |= set(await porta2.esegui(SPEGNI_IL_SALOTTO, origine="test"))
+
+    return chiavi
+
+
+@pytest.mark.asyncio
+async def test_le_chiavi_che_il_prompt_promette_esistono_davvero_nell_esito():
+    prodotte = await _chiavi_prodotte_dalla_porta()
+    # la finta deve aver esercitato entrambi i rami, o la guardia sorveglierebbe
+    # meno di quello che crede
+    assert "avviso" in prodotte, (
+        "il giro «riuscito ma nulla e' cambiato» non ha prodotto `avviso`: "
+        "questa guardia non sta piu' esercitando il ramo che le serve")
+
+    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
+        for chiave in _CHIAVI_NOMINATE_DAL_PROMPT:
+            if f"`{chiave}`" not in testo:
+                continue  # il prompt non la promette: niente da garantire
+            assert chiave in prodotte, (
+                f"il prompt del percorso {percorso} promette al modello il "
+                f"campo `{chiave}`, ma `azione/porta.py` non lo produce (ne' "
+                f"sul giro che cambia stato ne' su quello che non cambia "
+                f"niente). Il modello leggerebbe di un campo che non riceve: "
+                f"o il prompt nomina una chiave vecchia, o la porta l'ha "
+                f"rinominata senza portarsi dietro il prompt. "
+                f"Chiavi prodotte davvero: {sorted(prodotte)}")
+
+
+def test_il_prompt_promette_almeno_le_chiavi_che_raccontano_l_esito():
+    """Il complemento della guardia qui sopra, e senza di lui si svuoterebbe
+    da sola: la guardia salta le chiavi che il prompt NON nomina, quindi un
+    prompt che smettesse di nominarle tutte la farebbe passare a vuoto.
+
+    Le tre chiavi qui sotto sono quelle senza cui la regola «di' cosa e'
+    successo, non cosa e' stato chiesto» non e' eseguibile dal modello."""
+    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
+        for chiave in ("prima", "dopo", "cambiato"):
+            assert f"`{chiave}`" in testo, (
+                f"il prompt del percorso {percorso} non nomina piu' `{chiave}`: "
+                "il modello non ha modo di sapere dove guardare per raccontare "
+                "cosa e' successo davvero")

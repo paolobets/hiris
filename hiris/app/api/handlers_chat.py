@@ -5,7 +5,7 @@ import time
 
 from aiohttp import web
 
-from ..casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
+from ..casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
@@ -40,23 +40,24 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     return trimmed
 
 
-def costruisci_dispatcher_conoscenza(app) -> DispatcherConoscenza:
-    """L'UNICO punto del prodotto in cui `DispatcherConoscenza` viene costruito.
+def costruisci_dispatcher_strumenti(app) -> DispatcherStrumenti:
+    """L'UNICO punto del prodotto in cui `DispatcherStrumenti` viene costruito.
 
-    I quattro strumenti che conoscono la casa (`casa/strumenti.py`) -- non il
-    catalogo di trentaquattro di ALL_TOOL_DEFS: la chat della 2.0 CONOSCE, non
-    agisce (vedi il docstring di quel modulo). Il dispatcher si costruisce dagli
-    stessi tre oggetti dell'app che alimentano `costruisci_nucleo()`
-    (`archivio_casa`, `archivio_memoria`, `entity_cache`) -- lo stesso specchio
-    dello stato vivo, non uno ricalcolato a mano -- ed e' SEMPRE costruibile,
-    anche quando gli archivi sono assenti: i suoi quattro metodi non sollevano
-    mai, dichiarano un `errore` per strumento invece (vedi
-    `DispatcherConoscenza.dispatch`).
+    I cinque strumenti della chat (`casa/strumenti.py`) -- non il catalogo di
+    trentaquattro di ALL_TOOL_DEFS: quattro conoscono la casa e il quinto,
+    `esegui`, la comanda passando per la porta unica (vedi il docstring di quel
+    modulo). Il dispatcher si costruisce dagli
+    stessi oggetti dell'app che alimentano `costruisci_nucleo()`
+    (`archivio_casa`, `archivio_memoria`, `entity_cache`), piu' `porta_azione`
+    -- lo stesso specchio dello stato vivo, non uno ricalcolato a mano -- ed e'
+    SEMPRE costruibile, anche quando archivi e porta sono assenti: i suoi
+    gestori non sollevano mai, dichiarano un `errore` per strumento invece (vedi
+    `DispatcherStrumenti.dispatch`).
 
     **Perche' e' una funzione e non tre righe ripetute.** Dalla fetta «il ponte
     riceve gli strumenti» (parita' B, Task 1) i costruttori sarebbero stati DUE:
     il turno sincrono qui e la rotta `POST /api/mcp` (`handlers_mcp.py`), che
-    porta gli stessi quattro strumenti al ponte via abbonamento. Due costruzioni
+    porta gli stessi strumenti al ponte via abbonamento. Due costruzioni
     che possono divergere sono esattamente il difetto da cui e' nata la fetta E2
     (tre cataloghi della stessa cosa): qui ce n'e' una sola, e un
     grep del nome della classe seguito da parentesi su `hiris/app/` lo dimostra
@@ -71,7 +72,7 @@ def costruisci_dispatcher_conoscenza(app) -> DispatcherConoscenza:
     claude_runner.py/openai_compat_runner.py) -- passarlo sempre e' quello che
     tiene la chat viva.
     """
-    return DispatcherConoscenza(
+    return DispatcherStrumenti(
         app.get("archivio_casa"),
         app.get("archivio_memoria"),
         cache=app.get("entity_cache"),
@@ -477,8 +478,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
     context_str = componi_contesto_chat(request.app, data_dir)
 
-    # I quattro strumenti che conoscono la casa -- il perche' di ogni riga sta
-    # nel docstring di `costruisci_dispatcher_conoscenza` (sopra), che dalla
+    # I cinque strumenti della chat -- il perche' di ogni riga sta
+    # nel docstring di `costruisci_dispatcher_strumenti` (sopra), che dalla
     # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
     # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
     # che possono divergere.
@@ -492,7 +493,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # Task 6. `visible_entity_ids` non e' piu' un parametro di nessuna firma:
     # non c'e' piu' niente da riaprire ne' da tenere chiuso su quel fronte, la
     # trappola stessa non esiste piu'.
-    dispatcher_conoscenza = costruisci_dispatcher_conoscenza(request.app)
+    dispatcher_strumenti = costruisci_dispatcher_strumenti(request.app)
 
     agent_model = impostazioni.model
     # Personas are always the chat entity (Slice 5 retired the non-chat
@@ -567,7 +568,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             strumenti=STRUMENTI_CONOSCENZA,
-            dispatcher=dispatcher_conoscenza,
+            dispatcher=dispatcher_strumenti,
         ):
             await stream_resp.write(chunk.encode())
             try:
@@ -617,7 +618,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             strumenti=STRUMENTI_CONOSCENZA,
-            dispatcher=dispatcher_conoscenza,
+            dispatcher=dispatcher_strumenti,
         )
     except RunnerBackendError as exc:
         # Review C/#13: runners now raise instead of returning a friendly

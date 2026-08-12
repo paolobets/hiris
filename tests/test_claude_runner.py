@@ -42,7 +42,7 @@ fetta E4 Task 6 ("un bot solo"): the constructor `dispatcher=` kwarg (the
 dispatcher into) is gone -- `self._dispatcher` and the `elif self._dispatcher
 is not None` branch that read it are gone too, zero production callers ever
 populated them (fetta E2 Task 7, commit 68d3670). Both tests move to the
-per-call `dispatcher=` kwarg of `chat()` (the one that stays: DispatcherConoscenza's
+per-call `dispatcher=` kwarg of `chat()` (the one that stays: DispatcherStrumenti's
 own path) instead -- verified BEFORE moving that leaving them untouched would
 have kept them GREEN for the wrong reason: `last_tool_calls.append(...)` runs
 unconditionally after the tool-dispatch if/else regardless of which branch

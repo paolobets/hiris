@@ -105,8 +105,8 @@ class _Resp:
 def _tools_list_come_la_rotta() -> dict:
     """La risposta di `tools/list` nella forma che la rotta vera produce.
 
-    I nomi si DERIVANO da `STRUMENTI_CONOSCENZA`: quattro stringhe scritte a
-    mano qui sarebbero il secondo catalogo, e questo finto client smetterebbe
+    I nomi si DERIVANO da `STRUMENTI_CONOSCENZA`: un elenco scritto a
+    mano qui sarebbe il secondo catalogo, e questo finto client smetterebbe
     di somigliare alla rotta il giorno in cui il catalogo cambia."""
     return {"jsonrpc": "2.0", "id": 1,
             "result": {"tools": [{"name": d["name"]} for d in STRUMENTI_CONOSCENZA]}}
@@ -148,8 +148,8 @@ def _init_col_server_collegato() -> str:
     Task 4 quell'evento e' cio' su cui il ponte decide, e un finto flusso che
     lo contraddice descrive il guasto, non il giro felice.
 
-    I nomi si derivano da `runner.nomi_mcp()`: quattro stringhe ricopiate qui
-    sarebbero il secondo catalogo."""
+    I nomi si derivano da `runner.nomi_mcp()`: un elenco ricopiato qui
+    sarebbe il secondo catalogo."""
     nomi = ", ".join(f'"{n}"' for n in runner.nomi_mcp())
     return ('{"type":"system","subtype":"init","tools":["Task", ' + nomi + '],'
             '"mcp_servers":[{"name":"' + runner._nome_server_mcp() +
@@ -171,7 +171,7 @@ class _ProcFelice:
 
 def test_run_once_chat_reasons_and_submits():
     """Il giro felice del ponte, che dal Task 3 della parita' B e' il giro CON
-    gli strumenti: la sonda trova i quattro nomi, l'argv li collega, e la
+    gli strumenti: la sonda trova tutti i nomi, l'argv li collega, e la
     `reply` che torna alla reasoning API e' la risposta del modello e basta --
     nessuna riga di degrado, perche' non c'e' nessun degrado da dichiarare."""
     job = {"job_id": "J", "nonce": "N", "kind": "chat",
@@ -354,6 +354,15 @@ def test_run_once_job_non_chat_invia_la_decisione_vuota_senza_chiamare_claude():
 # HIRIS non agisce, le conferme sono uscite con l'impianto OTP. Il test
 # difende il CONTENUTO del prompt, l'unica riga del prodotto che il modello
 # legge come verita': senza, la falsita' potrebbe rientrare a suite verde.
+#
+# fetta «comandare» (Task 7): di quel blocco una sola cosa e' rimasta indietro,
+# ed e' «HIRIS non agisce». Il prodotto agisce dal Task 5 (`esegui`, catalogo
+# unico) e il prompt lo dice dal Task 6. Cio' che questo test difende NON
+# cambia, e per questo il blocco non si riscrive: il ramo di DEGRADO -- quello
+# senza strumenti -- non ha davvero niente da chiamare, e li' l'assenza di
+# strumenti E di azione resta vera per sempre. Le asserzioni dentro al test
+# sono gia' state riportate dal Task 6 dalla proprieta' del PRODOTTO a quella
+# del TURNO; questa riga e' la sola che raccontava ancora il prodotto.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
@@ -362,7 +371,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     basta: gli strumenti non c'erano per NESSUNO. Ora ce ne sono due, di
     prompt, e questo pin difende quello del ramo di DEGRADO --
     `strumenti_attivi=False`, cioe' il turno in cui la sonda non ha trovato la
-    rotta o i quattro nomi.
+    rotta o tutti i nomi del catalogo.
 
     Il valore era il default e ora si passa ESPLICITAMENTE: un pin che si
     appoggia a un default smette di sorvegliare il giorno in cui il default
@@ -570,7 +579,7 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
 def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # Il `system_prompt` che arriva al ponte e' quello delle impostazioni della
     # chat (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`), scritto per il percorso
-    # SINCRONO -- dove i quattro strumenti di casa/strumenti.py esistono
+    # SINCRONO -- dove gli strumenti di casa/strumenti.py esistono
     # davvero. Qui non esistono: la guida deve smentirlo esplicitamente, o il
     # modello leggerebbe "usa `cerca`" senza alcun modo di scoprire che non c'e'.
     from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
@@ -610,7 +619,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     la falsita' speculare, lo stesso difetto girato al contrario.
 
     Cio' che il prompt deve fare qui e' un'altra cosa: **ricollegare** i nomi
-    nudi della persona ai quattro nomi prefissati che la CLI serve davvero.
+    nudi della persona ai nomi prefissati che la CLI serve davvero.
     Senza quel ponte il modello leggerebbe «usa `cerca`» e chiamerebbe un nome
     che non gli e' stato dato."""
     from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
@@ -624,11 +633,15 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     # la smentita del ramo di degrado non deve poter comparire qui: sarebbe
     # falsa, e la falsita' speculare e' lo stesso difetto.
     assert "quelle istruzioni non si applicano" not in guida
-    # i quattro nomi nudi sono tutti nominati dalla guida...
-    for nudo in ("`cerca`", "`guarda`", "`ricorda`", "`richiama`"):
-        assert nudo in guida
+    # i nomi nudi del catalogo sono tutti nominati dalla guida -- `esegui`
+    # compreso dalla fetta «comandare»: l'elenco si DERIVA da
+    # `STRUMENTI_CONOSCENZA`, cosi' uno strumento nuovo entra qui da solo
+    # invece di lasciare questo test a sorvegliarne quattro su cinque.
+    for voce in STRUMENTI_CONOSCENZA:
+        assert f"`{voce['name']}`" in guida
     # ...e i due che la persona nomina davvero (impostazioni_chat.py ne scrive
-    # due, non quattro) sono proprio quelli che la guida ricollega.
+    # due soli, ed e' una decisione: vedi il commento sopra
+    # `DEFAULT_SYSTEM_PROMPT`) sono proprio quelli che la guida ricollega.
     for nudo in ("`cerca`", "`guarda`"):
         assert nudo in DEFAULT_SYSTEM_PROMPT
 
@@ -659,8 +672,8 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
 #
 # **Cosa pinnano adesso i due test qui sotto, insieme.** La nuova condizione di
 # verita', nei due rami:
-#   - con `strumenti_attivi=True` gli strumenti CI SONO, sono ESATTAMENTE i
-#     quattro di `casa/strumenti.py` (derivati, mai scritti a mano) e il prompt
+#   - con `strumenti_attivi=True` gli strumenti CI SONO, sono ESATTAMENTE
+#     quelli di `casa/strumenti.py` (derivati, mai scritti a mano) e il prompt
 #     lo dice (il gemello sul prompt e'
 #     `test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati`);
 #   - con `strumenti_attivi=False` l'asserzione vecchia resta viva PAROLA PER
@@ -688,9 +701,11 @@ def _normalizza(argv):
     return {a.lower().replace("-", "") for a in argv}
 
 
-def test_argv_del_ponte_collega_esattamente_i_quattro_strumenti():
+def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
     """Il pin ribaltato: con `strumenti_attivi=True` gli strumenti ci sono, e
-    sono esattamente quei quattro."""
+    sono esattamente quelli del catalogo unico -- ne' uno di piu' ne' uno di
+    meno. Il nome del test non conta piu' «i quattro»: contava un numero che
+    non conta, ed e' cambiato una volta gia' (fetta «comandare»)."""
     argv = runner._chat_claude_args("SYS", "USER", "sonnet",
                                     strumenti_attivi=True,
                                     mcp_config=runner.config_mcp("http://x", "TOK"))
@@ -737,7 +752,7 @@ def test_argv_del_ponte_collega_esattamente_i_quattro_strumenti():
         f"sparito da argv ({argv!r}): il prompt non e' l'unica difesa, e questa "
         f"e' l'altra.")
     # ToolSearch NON e' nel divieto, e non e' una dimenticanza: la CLI ci passa
-    # per risolvere gli schemi MCP, e vietarlo renderebbe i quattro strumenti
+    # per risolvere gli schemi MCP, e vietarlo renderebbe gli strumenti
     # visibili e IRRAGGIUNGIBILI.
     assert "ToolSearch" not in runner._LOCAL_TOOLS_DENY, (
         "ToolSearch e' finito in _LOCAL_TOOLS_DENY: la CLI lo usa per "

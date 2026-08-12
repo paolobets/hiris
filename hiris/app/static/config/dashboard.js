@@ -1,8 +1,10 @@
 /* HIRIS · Configurazione · «Cosa HIRIS sa» (route #/, la home)
 
-   HIRIS 2.0 e' la conoscenza della casa piu' una chat per interrogarla.
-   Questa pagina e' la faccia della prima meta': mostra cio' che HIRIS ha
-   letto della casa e cio' che dichiara di ignorare.
+   HIRIS 2.0 e' la conoscenza della casa piu' una chat per interrogarla -- e,
+   dalla fetta «comandare», per comandarla. Questa pagina e' la faccia della
+   sola CONOSCENZA: mostra cio' che HIRIS ha letto della casa e cio' che
+   dichiara di ignorare. L'azione non ha (ancora) una faccia qui: passa dalla
+   chat e si racconta li'.
 
    Due sole fetch, su rotte vive e in sola lettura:
      - GET /api/casa   -> l'anagrafe ricostruita, il comportamento, le plance;

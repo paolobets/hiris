@@ -35,7 +35,7 @@ import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from hiris.app.casa.archivio import ArchivioCasa
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
+from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.chat_store import _get_store, _TS_FMT, close_all_stores
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.claude_runner import ClaudeRunner
@@ -181,7 +181,7 @@ async def test_la_chat_offre_gli_strumenti_del_catalogo(aiohttp_client, tmp_path
     # passi al runner IL catalogo (`STRUMENTI_CONOSCENZA`), non un elenco
     # suo -- e quella proprieta' non dipende da quante voci abbia.
     assert nomi == {d["name"] for d in STRUMENTI_CONOSCENZA}
-    assert isinstance(call_kwargs["dispatcher"], DispatcherConoscenza)
+    assert isinstance(call_kwargs["dispatcher"], DispatcherStrumenti)
 
 
 @pytest.mark.asyncio
@@ -229,7 +229,7 @@ async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path)
 
     nomi = {t["name"] for t in catturati["strumenti"]}
     assert nomi == {d["name"] for d in STRUMENTI_CONOSCENZA}
-    assert isinstance(catturati["dispatcher"], DispatcherConoscenza)
+    assert isinstance(catturati["dispatcher"], DispatcherStrumenti)
 
 
 # ---------------------------------------------------------------------------
@@ -371,13 +371,13 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
 # proverebbe niente -- e' il difetto che la prova di mutazione ha gia'
 # trovato sette volte su questo ramo.
 #
-# `DispatcherConoscenza`, gli archivi (`ArchivioCasa`, `ArchivioMemoria`) e
+# `DispatcherStrumenti`, gli archivi (`ArchivioCasa`, `ArchivioMemoria`) e
 # `handle_chat` restano codice di produzione vero, esattamente come nella
 # chat reale -- solo la rete verso Anthropic e' finta.
 # ---------------------------------------------------------------------------
 
 async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_casa=None,
-                                          archivio_memoria=None, cache=None):
+                                          archivio_memoria=None, cache=None, porta=None):
     """Come `_build_chat_client` sopra, ma con un `ClaudeRunner` VERO al
     posto del mock -- l'unico modo per verificare che la chat segua il
     protocollo vero degli strumenti (richiesta -> tool_use -> tool_result ->
@@ -409,6 +409,12 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
         app["archivio_memoria"] = archivio_memoria
     if cache is not None:
         app["entity_cache"] = cache
+    # La porta dell'azione (`azione/porta.py`). Passarla e' cio' che rende
+    # `esegui` disponibile al dispatcher: senza, lo strumento c'e' nel
+    # catalogo ma dichiara «il collegamento con Home Assistant non e'
+    # disponibile» -- il degrado onesto del contratto di `dispatch()`.
+    if porta is not None:
+        app["porta_azione"] = porta
 
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -489,7 +495,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     aiohttp_client, tmp_path,
 ):
     archivio_casa = _semina_casa_con_comportamento(tmp_path)  # porta automation.sveglia
-    # DispatcherConoscenza._guarda legge SEMPRE anche l'archivio della
+    # DispatcherStrumenti._guarda legge SEMPRE anche l'archivio della
     # memoria (per i ricordi ancorati alla cosa guardata): in produzione
     # `_on_startup` (server.py) lo cabla sempre insieme a `archivio_casa`,
     # mai l'uno senza l'altro -- qui si replica lo stesso accoppiamento,
@@ -597,55 +603,164 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
 
 
 # ---------------------------------------------------------------------------
-# Conversazione 4: "accendi la luce della cucina" -- non puo', e lo dice
-# bene: fra gli strumenti offerti al modello non ce n'e' NESSUNO che scriva
-# in Home Assistant. Un modello onesto, senza un tool che lo permetta, non
-# ci prova nemmeno -- risponde direttamente, senza un giro di tool_use
-# fallito.
+# Conversazione 4: "spegni la luce della cucina" -- e la spegne.
+#
+# fetta «comandare» (Task 7). Fino a `33da82b` questa conversazione si
+# chiamava `..._accendi_la_luce_non_puo_e_lo_dice` e provava che HIRIS NON
+# poteva agire. Passava ancora dopo il Task 5, ma **solo perche' l'API finta
+# era scritturata a rispondere «non posso»**: era il test a scrivere la
+# risposta che poi verificava. Lo scenario non descriveva piu' il prodotto.
+#
+# Adesso descrive quello che succede davvero, e la prova NON e' piu' il testo
+# della risposta -- che il finto controlla ancora -- ma la CATENA, in tre
+# punti che nessun altro test copre insieme:
+#
+#   1. il modello riceve `esegui` fra gli strumenti della chat vera;
+#   2. quando lo chiama, la richiesta arriva alla PORTA (l'unico punto che
+#      esegue), con l'origine dichiarata;
+#   3. cio' che la porta restituisce torna al modello COME TOOL_RESULT, non
+#      riassunto ne' riscritto da noi.
+#
+# Il punto 3 e' quello che vale: e' la stessa catena che si era gia' spezzata
+# in silenzio una volta su questo prodotto -- «preso nota» senza aver salvato
+# -- e qui il danno sarebbe peggiore, perche' l'azione e' successa per davvero
+# e il modello racconterebbe qualcos'altro.
+#
+# Resta il vecchio guardiano: nessuno dei nomi del catalogo VECCHIO
+# (`claude_runner.ALL_TOOL_DEFS`, i trentaquattro) deve poter rientrare da una
+# porta di servizio. Quelli attuavano ciascuno per conto proprio; `esegui`
+# passa da una porta sola.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_conversazione_4_accendi_la_luce_non_puo_e_lo_dice(aiohttp_client, tmp_path):
+async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_modello(
+        aiohttp_client, tmp_path):
     archivio_casa = _semina_casa_con_comportamento(tmp_path)
+
+    class _PortaFinta:
+        """Sta al posto di `azione/porta.py` -- che ha i suoi test, con la
+        verifica e la rilettura vere (`tests/test_azione_porta.py`). Qui
+        interessa solo che la chat ci ARRIVI, e con cosa."""
+        def __init__(self):
+            self.chiamate = []
+
+        async def esegui(self, chiamata, *, origine):
+            self.chiamate.append((chiamata, origine))
+            return {"eseguito": True, "servizio": "light.turn_off",
+                    "entita": ["light.cucina_1"],
+                    "prima": {"light.cucina_1": "on"},
+                    "dopo": {"light.cucina_1": "off"},
+                    "cambiato": ["light.cucina_1"]}
+
+    porta = _PortaFinta()
     client, runner = await _build_chat_client_runner_reale(
-        aiohttp_client, tmp_path, archivio_casa=archivio_casa,
+        aiohttp_client, tmp_path, archivio_casa=archivio_casa, porta=porta,
     )
 
     richieste: list[dict] = []
+    giro = {"n": 0}
 
     async def _api_finta(**kwargs):
         richieste.append(kwargs)
-        return _falsa_risposta_testo(
-            "Non posso accendere la luce della cucina: non ho nessuno strumento che "
-            "scriva su Home Assistant. Posso solo conoscere la casa -- cercarla, "
-            "guardarla, ricordare cosa mi hai detto."
-        )
+        giro["n"] += 1
+        if giro["n"] == 1:
+            return _falsa_risposta_tool_use(
+                "esegui", {"servizio": "light.turn_off",
+                           "bersaglio": {"entita": ["light.cucina_1"]}})
+        return _falsa_risposta_testo("L'ho spenta.")
 
     runner._client.messages.create = _api_finta
 
-    resp = await client.post("/api/chat", json={"message": "accendi la luce della cucina"})
+    resp = await client.post("/api/chat", json={"message": "spegni la luce della cucina"})
     assert resp.status == 200
     body = await resp.json()
 
-    # Il modello riceve IL catalogo e nient'altro. fetta "comandare" Task 5:
-    # la frase che stava qui -- «nessuno strumento offerto scrive in Home
-    # Assistant» -- non e' piu' vera, `esegui` scrive. Cio' che resta vero, ed
-    # e' cio' che questo test difende, e' che nessuno dei nomi del catalogo
-    # VECCHIO (claude_runner.ALL_TOOL_DEFS, i trentaquattro) sia tornato da
-    # una porta di servizio: quelli attuavano ciascuno per conto suo, mentre
-    # `esegui` passa dall'unica porta che verifica prima e rilegge dopo.
+    # (1) il catalogo offerto e' quello unico, `esegui` compreso -- e nessuno
+    # dei trentaquattro e' rientrato.
     nomi_offerti = {t["name"] for t in richieste[0]["tools"]}
     assert nomi_offerti == {d["name"] for d in STRUMENTI_CONOSCENZA}
+    assert "esegui" in nomi_offerti
     strumenti_che_scrivono = {
         "call_ha_service", "trigger_automation", "toggle_automation",
         "set_input_helper", "create_ha_config",
     }
     assert not (nomi_offerti & strumenti_che_scrivono)
 
-    # Non ci prova nemmeno: un solo giro, nessun tool_use tentato e fallito.
-    assert len(richieste) == 1
-    assert runner.last_tool_calls == []
-    assert body["debug"]["tools_called"] == []
-    assert "non posso" in body["response"].lower()
+    # (2) la chiamata e' arrivata ALLA PORTA, una volta sola, con l'origine.
+    assert len(porta.chiamate) == 1, (
+        "la chat non ha raggiunto la porta: `esegui` e' stato offerto al "
+        "modello ma la sua chiamata non e' arrivata all'unico punto che esegue")
+    chiamata, origine = porta.chiamate[0]
+    assert chiamata["servizio"] == "light.turn_off"
+    assert chiamata["bersaglio"]["entita"] == ["light.cucina_1"]
+    assert origine == "chat"
+
+    # (3) l'esito della porta e' tornato al modello COME TOOL_RESULT, non
+    # riscritto da noi. Si guarda il secondo giro: il contenuto del blocco
+    # deve portare `cambiato`, che e' la chiave con cui la porta dice cosa e'
+    # successo per davvero -- ed e' cio' che il prompt promette al modello.
+    assert len(richieste) == 2
+    blocchi = [b for m in richieste[1]["messages"]
+               for b in (m["content"] if isinstance(m["content"], list) else [])
+               if isinstance(b, dict) and b.get("type") == "tool_result"]
+    assert blocchi, "nessun tool_result e' tornato al modello dopo l'azione"
+    assert "cambiato" in str(blocchi[0]["content"]), (
+        "il modello non ha ricevuto cosa e' CAMBIATO: racconterebbe cio' che "
+        "e' stato chiesto invece di cio' che e' successo")
+    assert "light.cucina_1" in str(blocchi[0]["content"])
+
+    # e la targhetta dello strumento arriva all'interfaccia
+    assert body["debug"]["tools_called"] == [
+        {"tool": "esegui", "input": {"servizio": "light.turn_off",
+                                     "bersaglio": {"entita": ["light.cucina_1"]}}}
+    ]
+
+    archivio_casa.chiudi()
+
+
+# ---------------------------------------------------------------------------
+# Il gemello: senza porta cablata `esegui` non sparisce dal catalogo -- dice
+# perche' non puo'. E' il contratto di `dispatch()` (non solleva mai, degrada
+# in un `errore` leggibile) applicato al quinto strumento, e la ragione per
+# cui il dispatcher resta SEMPRE costruibile.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_senza_porta_esegui_resta_offerto_ma_dichiara_il_motivo(
+        aiohttp_client, tmp_path):
+    archivio_casa = _semina_casa_con_comportamento(tmp_path)
+    client, runner = await _build_chat_client_runner_reale(
+        aiohttp_client, tmp_path, archivio_casa=archivio_casa,
+    )
+
+    richieste: list[dict] = []
+    giro = {"n": 0}
+
+    async def _api_finta(**kwargs):
+        richieste.append(kwargs)
+        giro["n"] += 1
+        if giro["n"] == 1:
+            return _falsa_risposta_tool_use(
+                "esegui", {"servizio": "light.turn_off",
+                           "bersaglio": {"entita": ["light.cucina_1"]}})
+        return _falsa_risposta_testo("Non riesco a raggiungere Home Assistant.")
+
+    runner._client.messages.create = _api_finta
+
+    resp = await client.post("/api/chat", json={"message": "spegni la luce della cucina"})
+    assert resp.status == 200
+
+    # `esegui` e' offerto lo stesso: toglierlo dal catalogo quando manca la
+    # porta darebbe al modello un prodotto diverso a ogni turno.
+    assert "esegui" in {t["name"] for t in richieste[0]["tools"]}
+    blocchi = [b for m in richieste[1]["messages"]
+               for b in (m["content"] if isinstance(m["content"], list) else [])
+               if isinstance(b, dict) and b.get("type") == "tool_result"]
+    assert blocchi
+    testo = str(blocchi[0]["content"])
+    assert "errore" in testo, "un guasto deve tornare come errore leggibile, non come eccezione"
+    assert "Home Assistant" in testo, (
+        "il rifiuto deve portare il MOTIVO: «non posso» senza motivo e' "
+        "esattamente cio' che i vincoli della fetta vietano")
 
     archivio_casa.chiudi()
